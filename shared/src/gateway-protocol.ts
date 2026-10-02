@@ -87,6 +87,7 @@ export type GatewayMethodName =
   | 'sessions.list'
   | 'sessions.subscribe'
   | 'sessions.messages.subscribe'
+  | 'sessions.messages.unsubscribe'
   | 'system-presence';
 
 export type GatewayMethodParams =
@@ -385,6 +386,7 @@ export interface GatewayMethodMap {
   'sessions.list': { params: SessionsListParams; result: SessionsListResult };
   'sessions.subscribe': { params: SessionsSubscribeParams; result: SessionsSubscribeResult };
   'sessions.messages.subscribe': { params: SessionsMessagesSubscribeParams; result: SessionsMessagesSubscribeResult };
+  'sessions.messages.unsubscribe': { params: SessionsMessagesSubscribeParams; result: { ok: boolean; key: string; subscribed: boolean } };
   'system-presence': { params: SystemPresenceParams; result: SystemPresenceResult };
 }
 

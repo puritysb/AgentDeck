@@ -53,3 +53,4 @@ export * from './usage-severity.js';
 
 export * from './claude-weekly-view.js';
 export * from './matrix-expression.js';
+export { GatewayLiveActivity, GATEWAY_LIVE_RULES } from './gateway-live-activity.js';

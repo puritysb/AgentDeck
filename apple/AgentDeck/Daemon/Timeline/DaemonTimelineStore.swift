@@ -265,7 +265,8 @@ actor DaemonTimelineStore {
             flush()
             return
         }
-        if let idx = entries.lastIndex(where: { $0.ts == entry.ts && $0.type == entry.type }) {
+        if let idx = entries.lastIndex(where: { $0.ts == entry.ts && $0.type == entry.type && ($0.sessionId == nil || entry.sessionId == nil || $0.sessionId == entry.sessionId)
+            && ($0.runId == nil || entry.runId == nil || $0.runId == entry.runId) }) {
             entries[idx] = entry
             dirty = true
         } else {

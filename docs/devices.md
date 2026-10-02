@@ -270,14 +270,17 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Conversation scenes**: the reader's own turn is what the panel is for. When a
   user message reaches a live session (`chat_start`, not automated), that agent's
   official creature appears listening under `ASK` until its reply lands (at most
-  10 minutes). The reply (`chat_response`, not automated) holds the stage for 45
-  seconds under `REPLY` with a speech bubble. Automated turns (crons) and bare task
+  10 minutes, while the session is processing; a turn close also clears it). The reply (`chat_response`, not automated) holds the stage for six
+  seconds under `SENT` (answer delivered, not input requested) with a speech bubble. Automated turns (crons) and bare task
   closes are not conversations; a task close still gets the six-second result scene.
+  A newer turn or removal from the live roster cancels the reply scene.
   The Timebox face mirrors both: a listening face, then a talking face.
 - **Event scenes**: a new live session gets a six-second official-creature entrance
   (a conversation outranks it). Then the numeric summary
   returns. There is no decorative creature carousel. Waiting/errors preempt both
-  scenes; quota usage never causes an error. Initial/reconnected rosters establish
+  scenes and show the affected creature with `WAIT`/`ERR` and the affected count.
+  Multiple affected sessions rotate in stable ID order every six seconds; cleared
+  sessions leave the rotation immediately. Quota usage never causes an error. Initial/reconnected rosters establish
   a baseline rather than replaying entrances. A burst coalesces to one entrance.
   The bottom event-scene dots show up to eight live session states (overflow is
   marked); unknown agents use a neutral resident, never another agent's logo.

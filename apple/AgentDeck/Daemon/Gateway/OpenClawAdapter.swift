@@ -214,6 +214,9 @@ actor OpenClawAdapter {
     private var modelDisplayNameByKey: [String: String] = [:]
     private var explicitDefaultModelName: String?
     private var currentRunId: String?
+    private var liveActivity = GatewayLiveActivity()
+    private var liveTimelineEvent = false
+    private var liveSubscriptions: [String] = []
     private var promptCapturedForRunId: String? // guard: emit prompt entry once per runId
     private var automatedRunId: String? // runId whose prompt was a scheduled (cron) turn — flagged automated
     /// Latest cumulative assistant text per run, harvested from `chat` delta
@@ -376,6 +379,8 @@ actor OpenClawAdapter {
         let wasConnected = isConnected
         isConnected = false
         sessionsSubscribed = false
+        liveActivity.reset()
+        liveSubscriptions.removeAll()
         promptCapturedForRunId = nil
         automatedRunId = nil
         if wasConnected {
@@ -528,6 +533,27 @@ actor OpenClawAdapter {
 
     private func handleGatewayEvent(_ event: ADGatewayEventName?, rawEvent: String?, payload: [String: Any]) {
         let eventName = rawEvent ?? event?.rawValue ?? ""
+
+        let wasBusy = liveActivity.busy
+        for update in liveActivity.ingest(eventName, payload, now: Date().timeIntervalSince1970 * 1000) {
+            emitTimelineEntry(update.entry, extras: ["liveProjection": true, "upsert": update.upsert])
+        }
+        if wasBusy != liveActivity.busy {
+            _onEvent?(["type": "gateway_activity", "busy": liveActivity.busy])
+        }
+        if eventName == "sessions.changed", let key = payload["sessionKey"] as? String,
+           !liveSubscriptions.contains(key) {
+            if liveSubscriptions.count >= GatewayLiveActivity.maxRuns {
+                sendRPC(method: "sessions.messages.unsubscribe", params: ["key": liveSubscriptions.removeFirst()])
+            }
+            liveSubscriptions.append(key)
+            Task { [weak self, weak socket = wsTask] in
+                guard let socket else { return }
+                await self?.subscribeLiveSession(key, socket: socket)
+            }
+        }
+        liveTimelineEvent = payload["sessionKey"] as? String != nil
+        defer { liveTimelineEvent = false }
         switch eventName {
         case ADGatewayEventName.connectChallenge.rawValue:
             guard let nonce = payload["nonce"] as? String, !nonce.isEmpty else {
@@ -622,7 +648,7 @@ actor OpenClawAdapter {
             // Chat events (delta, final, aborted, error).
             // runId is promoted to the top level so DaemonServer can route it
             // to the APME collector without unwrapping the nested payload.
-            var chatEvent: [String: Any] = ["type": "gateway_chat", "event": eventName, "payload": payload]
+            var chatEvent: [String: Any] = ["type": "gateway_chat", "event": eventName, "payload": payload, "busy": liveActivity.busy]
             if let runId = currentRunId { chatEvent["runId"] = runId }
             self._onEvent?(chatEvent)
         case ADGatewayEventName.execApprovalRequested.rawValue:
@@ -702,6 +728,11 @@ actor OpenClawAdapter {
         default:
             break
         }
+    }
+
+    private func subscribeLiveSession(_ key: String, socket: URLSessionWebSocketTask) async {
+        let response = await rpcRequest(method: "sessions.messages.subscribe", params: ["key": key])
+        if !response.ok && wsTask === socket { liveSubscriptions.removeAll { $0 == key } }
     }
 
     private func handleResponse(_ json: [String: Any]) {
@@ -885,6 +916,8 @@ actor OpenClawAdapter {
             return
         }
 
+        liveActivity.reset()
+        liveSubscriptions.removeAll()
         let wasConnected = isConnected
         // Drain pending RPCs bound to the closing task before nilling wsTask.
         // Picks up any in-flight RPCs the server didn't get to answer.
@@ -2279,6 +2312,7 @@ actor OpenClawAdapter {
     }
 
     private func emitTimelineEntry(fromSessionTool payload: [String: Any]) {
+        if Self.sessionToolBody(payload)?["phase"] as? String == "update" { return }
         // Resolve tool name and remember whether we hit the literal "tool"
         // fallback so the placeholder guard below can drop rows that carry
         // zero useful signal.
@@ -2385,6 +2419,7 @@ actor OpenClawAdapter {
         if let repeatCount = entry.repeatCount { entryDict["repeatCount"] = repeatCount }
         if let automated = entry.automated { entryDict["automated"] = automated }
         if let runId = entry.runId { entryDict["runId"] = runId }
+        if let summaryKind = entry.summaryKind { entryDict["summaryKind"] = summaryKind }
         // Attribution parity with the Node daemon's enrichGatewayTimelineEntry:
         // this adapter is OpenClaw-only wiring, so rows may default their
         // projectName instead of shipping bare and degrading to the agent-tag
@@ -2399,6 +2434,10 @@ actor OpenClawAdapter {
         // handler) needs for APME wiring. WS clients that don't recognize
         // these keys ignore them.
         for (k, v) in extras { entryDict[k] = v }
+        if liveTimelineEvent && extras["liveProjection"] as? Bool != true
+            && ["model_call", "model_response", "tool_exec", "chat_start", "chat_response", "chat_end", "error"].contains(entry.type) {
+            entryDict["timelineHidden"] = true
+        }
         _onEvent?([
             "type": "gateway_timeline_entry",
             "entry": entryDict,

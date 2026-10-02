@@ -1,5 +1,10 @@
 # Hermes mermaid modeling reference
 
+The concept PNGs described below are not committed: they are stored as assets of
+the [`assets-hermes-character-candidate`](https://github.com/puritysb/AgentDeck/releases/tag/assets-hermes-character-candidate) prerelease (with `SHA256SUMS`)
+so git history does not carry them. Fetch them into this directory with
+`gh release download assets-hermes-character-candidate -p 'hermes-mermaid-*.png' -D assets/terrarium/references`.
+
 `hermes-mermaid-turnaround.png` is an AI-generated modeling reference, not a
 production mesh or an official Hermes mascot. Created with the built-in image
 generation tool from the user's preferred cute Nous girl mermaid concept and

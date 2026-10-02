@@ -14,6 +14,8 @@ import {
   isOpenClawCronPrompt,
   ED25519_SPKI_PREFIX_LEN,
   GATEWAY_PROTOCOL_VERSION,
+  GatewayLiveActivity,
+  GATEWAY_LIVE_RULES,
 } from '@agentdeck/shared';
 import type {
   AgentAdapter,
@@ -220,6 +222,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   // Chat tracking for timeline events
   private readonly personalActivity = new Set<symbol>();
+  private readonly liveActivity = new GatewayLiveActivity();
+  private readonly liveSubscriptions = new Set<string>();
+  private liveTimelineEvent = false;
   private chatStarted = false;
   private chatStartTime = 0;
   private chatToolCount = 0;
@@ -1130,6 +1135,12 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         return true;
 
       case 'send_prompt': {
+        const liveRunId = randomUUID();
+        if (this.currentSessionKey) {
+          for (const update of this.liveActivity.dispatch(this.currentSessionKey, liveRunId, cmd.text, Date.now())) {
+            this.emitAdapterEvent({ source: 'timeline', ...update });
+          }
+        }
         debug('adapter:openclaw', `send_prompt: "${cmd.text.slice(0, 60)}"`);
         this.lastPrompt = cmd.text;
 
@@ -1143,7 +1154,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           const prompt = cmd.text;
           const promptRaw = prompt.length > 500 ? prompt.slice(0, 497) + '...' : prompt;
           const promptDetail = prompt.length > 100 ? (prompt.length > 1000 ? prompt.slice(0, 997) + '...' : prompt) : undefined;
-          this.emitTimelineEntry({
+          if (!this.currentSessionKey) this.emitTimelineEntry({
             ts: Date.now(), type: 'chat_start', raw: promptRaw,
             ...(promptDetail ? { detail: promptDetail } : {}),
           });
@@ -1162,8 +1173,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           this.rpcCall('chat.send', {
             sessionKey: this.currentSessionKey,
             message: cmd.text,
-            idempotencyKey: randomUUID(),
+            idempotencyKey: liveRunId,
           }).catch((err) => {
+            this.liveActivity.ingest('chat', { sessionKey: this.currentSessionKey, runId: liveRunId, state: 'error' }, Date.now());
             debug('adapter:openclaw', `chat.send failed: ${err}`);
             this.emitTimelineEntry({
               ts: Date.now(), type: 'error', raw: `Send failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1269,6 +1281,8 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   async shutdown(): Promise<void> {
     this.shutdownRequested = true;
+    this.liveActivity.reset();
+    this.liveSubscriptions.clear();
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -1442,6 +1456,8 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     this.ws.on('close', () => {
       debug('adapter:openclaw', 'Gateway disconnected');
       const wasAlive = this.alive;
+      this.liveActivity.reset();
+      this.liveSubscriptions.clear();
       this.alive = false;
       this.invalidateCatalogFetch();
       // Pending approvals are Gateway-process state: a reconnect issues new
@@ -1597,6 +1613,29 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   private handleGatewayEvent(event: string, payload: Record<string, unknown>): void {
     debug('adapter:openclaw', `Event: ${event}`);
+
+    const previousBusy = this.liveActivity.busy;
+    const updates = this.liveActivity.ingest(event, payload, Date.now());
+    for (const update of updates) {
+      this.emitAdapterEvent({ source: 'timeline', ...update });
+      const entry = update.entry;
+      if (!update.upsert && entry.type === 'chat_response' && !entry.automated && (entry.detail?.length ?? 0) > 30) {
+        summarizeResponse(entry.detail!).then(summary => {
+          if (summary) this.emitAdapterEvent({ source: 'timeline', upsert: true,
+            entry: { ...entry, raw: summary, summaryKind: 'llm' } });
+        }).catch(err => logError(`[adapter:openclaw] post-summary upsert threw: ${String(err)}`));
+      }
+    }
+    if (previousBusy !== this.liveActivity.busy) {
+      this.emitAdapterEvent({ source: 'parser', event: this.liveActivity.busy ? 'spinner_start' : 'idle' });
+    }
+    if (event === 'sessions.changed' && typeof payload.sessionKey === 'string') {
+      this.subscribeLiveSession(payload.sessionKey);
+    }
+    // The live reducer owns chat/tool rows. The legacy switch still feeds APME,
+    // approvals and voice listeners, but must not create a second timeline.
+    this.liveTimelineEvent = typeof payload.sessionKey === 'string';
+    try {
 
     switch (event) {
       // ===== Connection handshake =====
@@ -1778,7 +1817,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
             // polling responses are dropped at storage time, and an upsert
             // that finds no match falls through to addEntry — the enriched
             // label would resurrect the dropped noise row.
-            if (responseContent && responseContent.length > 30 && !this.chatIsAutomated) {
+            if (responseContent && responseContent.length > 30 && !this.chatIsAutomated && !this.liveTimelineEvent) {
               const savedToolSummary = toolSummary;
               const savedDuration = duration;
               const savedStartedAt = this.chatStartTime;
@@ -2140,6 +2179,22 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         debug('adapter:openclaw', `Unhandled event: ${event}`);
         break;
     }
+    } finally { this.liveTimelineEvent = false; }
+  }
+
+  private subscribeLiveSession(key: string): void {
+    if (!this.alive || this.liveSubscriptions.has(key)) return;
+    if (this.liveSubscriptions.size >= GATEWAY_LIVE_RULES.maxRuns) {
+      const oldest = this.liveSubscriptions.values().next().value!;
+      this.liveSubscriptions.delete(oldest);
+      this.rpcCall('sessions.messages.unsubscribe', { key: oldest }).catch(() => {});
+    }
+    this.liveSubscriptions.add(key);
+    const socket = this.ws;
+    this.rpcCall('sessions.messages.subscribe', { key }).catch(err => {
+      if (this.ws === socket) this.liveSubscriptions.delete(key);
+      debug('adapter:openclaw', `session subscription failed: ${String(err)}`);
+    });
   }
 
   /**
@@ -2497,22 +2552,24 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   /** Emit a timeline event through the adapter event system */
   private emitTimelineEntry(entry: TimelineEntry): void {
+    if (this.liveTimelineEvent && ['chat_start', 'chat_response', 'chat_end', 'error'].includes(entry.type)) return;
     this.emitAdapterEvent({ source: 'timeline', entry });
   }
 
   /** Emit a timeline upsert (update existing entry with same ts+type, or add new) */
   private emitTimelineUpsert(entry: TimelineEntry): void {
+    if (this.liveTimelineEvent) return;
     this.emitAdapterEvent({ source: 'timeline', entry, upsert: true });
   }
 
   private emitAdapterEvent(evt: AdapterEvent): void {
     if (evt.source === 'parser' && (evt.event === 'idle' || evt.event === 'spinner_start')) {
       // Active permissions outrank work, including while a voice turn is open.
-      if (this.personalActivity.size > 0 && this.activePendingApproval()) {
+      if ((this.personalActivity.size > 0 || this.liveActivity.busy) && this.activePendingApproval()) {
         this.rebroadcastActivePrompt();
         return;
       }
-      if (evt.event === 'idle' && this.personalActivity.size > 0) {
+      if (evt.event === 'idle' && (this.personalActivity.size > 0 || this.liveActivity.busy)) {
         evt = { ...evt, event: 'spinner_start' };
       }
     }

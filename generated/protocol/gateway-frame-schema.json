@@ -890,6 +890,7 @@
         "sessions.list",
         "sessions.subscribe",
         "sessions.messages.subscribe",
+        "sessions.messages.unsubscribe",
         "system-presence"
       ],
       "type": "string"

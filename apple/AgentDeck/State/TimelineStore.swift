@@ -171,7 +171,8 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
                 }
             }
             // Update existing entry with same ts + type
-            if let idx = entries.firstIndex(where: { $0.ts == entry.ts && $0.type == entry.type }) {
+            if let idx = entries.firstIndex(where: { $0.ts == entry.ts && $0.type == entry.type && ($0.sessionId == nil || entry.sessionId == nil || $0.sessionId == entry.sessionId)
+                && ($0.runId == nil || entry.runId == nil || $0.runId == entry.runId) }) {
                 entries[idx] = mergedUpsert(base: entries[idx], incoming: entry)
                 return
             }

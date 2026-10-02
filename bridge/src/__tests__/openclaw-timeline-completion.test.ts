@@ -59,7 +59,7 @@ describe('OpenClaw chat final → single completion row', () => {
     expect(responses.length).toBe(1);
     expect(ends.length).toBe(0);
     expect(responses[0].entry.detail).toContain('30자를 확실히 넘기는');
-    expect(responses[0].entry.automated).toBeUndefined();
+    expect(responses[0].entry.automated).toBe(false);
     expect(responses[0].entry.startedAt).toBeTypeOf('number');
     expect(responses[0].entry.endedAt).toBeTypeOf('number');
 
@@ -77,9 +77,9 @@ describe('OpenClaw chat final → single completion row', () => {
     const adapter = new OpenClawAdapter({ autoReconnect: false });
     const rows = collectTimeline(adapter);
 
-    // No lastPrompt → the delta path flags the chat as automated.
-    gw(adapter, 'chat', { state: 'delta', runId: 'r2', sessionKey: 's1', ...msg('부분') });
-    gw(adapter, 'chat', { state: 'final', runId: 'r2', sessionKey: 's1', ...msg(LONG_RESPONSE) });
+    // Automation is identified by the session key, never a missing prompt.
+    gw(adapter, 'chat', { state: 'delta', runId: 'r2', sessionKey: 'agent:main:cron:test', ...msg('부분') });
+    gw(adapter, 'chat', { state: 'final', runId: 'r2', sessionKey: 'agent:main:cron:test', ...msg(LONG_RESPONSE) });
 
     const response = rows.find((r) => !r.upsert && r.entry.type === 'chat_response');
     expect(response).toBeDefined();
@@ -105,5 +105,25 @@ describe('OpenClaw chat final → single completion row', () => {
     const ends = added.filter((r) => r.entry.type === 'chat_end');
     expect(ends.length).toBe(1);
     expect(ends[0].entry.summaryKind).toBeDefined();
+  });
+});
+
+describe('captured external run → adapter state', () => {
+  it('starts WORKING during preparation and stays working through tool execution', async () => {
+    const { readFileSync } = await import('node:fs');
+    const frames = JSON.parse(readFileSync(new URL('../../../tests/parity/gateway-live/turn.json', import.meta.url), 'utf8'));
+    const adapter = new OpenClawAdapter({ autoReconnect: false });
+    const rows = collectTimeline(adapter);
+    let state = 'idle';
+    adapter.on('event', (evt: AdapterEvent) => {
+      if (evt.source === 'parser' && evt.event === 'spinner_start') state = 'working';
+      if (evt.source === 'parser' && evt.event === 'idle') state = 'idle';
+    });
+    for (const f of frames) {
+      gw(adapter, f.event, f.payload);
+      if (f.event === 'session.tool' || (f.event === 'chat' && f.payload.state === 'status')) expect(state).toBe('working');
+    }
+    expect(state).toBe('idle');
+    expect(rows.filter(r => !r.upsert).map(r => r.entry.type)).toEqual(['chat_start', 'tool_exec', 'chat_response']);
   });
 });

@@ -1,0 +1,569 @@
+[
+  {
+    "observedAt": 1790691042039,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "reason": "send",
+      "ts": 1790691042038,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": "a6267c9d-fdee-4494-ac2a-b9093829efe7",
+        "hasActiveRun": true,
+        "activeRunIds": [
+          "agentdeck-validation-20260929-chat-1"
+        ]
+      }
+    }
+  },
+  {
+    "observedAt": 1790691042879,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 1,
+      "state": "status",
+      "phase": "preparing_workspace"
+    }
+  },
+  {
+    "observedAt": 1790691042879,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "run_status",
+      "data": {
+        "phase": "preparing_workspace"
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 1,
+      "ts": 1790691042879
+    }
+  },
+  {
+    "observedAt": 1790691042885,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 2,
+      "state": "status",
+      "phase": "preparing_context"
+    }
+  },
+  {
+    "observedAt": 1790691042885,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "run_status",
+      "data": {
+        "phase": "preparing_context"
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 2,
+      "ts": 1790691042883
+    }
+  },
+  {
+    "observedAt": 1790691042891,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "reason": "participants",
+      "ts": 1790691042890,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": "a6267c9d-fdee-4494-ac2a-b9093829efe7",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691042892,
+    "event": "session.message",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "message": {
+        "role": "user",
+        "content": "Second AgentDeck live verification. Execute exactly one command: sleep 20; printf \"AGENTDECK_OC_CHAT_TOOL_OK\\n\". Use exec yieldMs 30000, wait for completion, then reply exactly AGENTDECK_OC_CHAT_DONE. No other tools, no file changes, no messages or scheduled tasks.",
+        "__openclaw": {
+          "transport": {
+            "clients": [
+              {
+                "id": "cli",
+                "mode": "cli"
+              }
+            ]
+          },
+          "id": "17769dab-22af-4fa7-ada8-9bd472828d7e",
+          "idempotencyKey": "agentdeck-validation-20260929-chat-1:user",
+          "recordTimestampMs": 1790691042858,
+          "transcriptPosition": {
+            "source": "bxmK1o6ZXCVciDnPhehxsfvoO2f4NO0-fJ_eopPKTug",
+            "rawSeq": 10
+          },
+          "seq": 5
+        }
+      },
+      "messageId": "17769dab-22af-4fa7-ada8-9bd472828d7e",
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": "a6267c9d-fdee-4494-ac2a-b9093829efe7",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691043769,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "start"
+      },
+      "seq": 3,
+      "ts": 1790691043767
+    }
+  },
+  {
+    "observedAt": 1790691043777,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 4,
+      "state": "status",
+      "phase": "starting_model"
+    }
+  },
+  {
+    "observedAt": 1790691043777,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "run_status",
+      "data": {
+        "phase": "starting_model"
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 4,
+      "ts": 1790691043776
+    }
+  },
+  {
+    "observedAt": 1790691043785,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "reason": "agent.run.started",
+      "ts": 1790691043783,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691043786,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "phase": "start",
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "ts": 1790691043767,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691045770,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "model"
+      },
+      "seq": 5,
+      "ts": 1790691045767
+    }
+  },
+  {
+    "observedAt": 1790691045793,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "phase": "model",
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "ts": 1790691045767,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691045801,
+    "event": "session.message",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "message": {
+        "role": "assistant",
+        "content": [],
+        "stopReason": "toolUse",
+        "__openclaw": {
+          "runId": "agentdeck-validation-20260929-chat-1",
+          "id": "02daf38d-3cca-4afc-8ddb-d94510cbb652",
+          "recordTimestampMs": 1790691045795,
+          "transcriptPosition": {
+            "source": "bxmK1o6ZXCVciDnPhehxsfvoO2f4NO0-fJ_eopPKTug",
+            "rawSeq": 12
+          },
+          "seq": 6
+        }
+      },
+      "messageId": "02daf38d-3cca-4afc-8ddb-d94510cbb652",
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691045803,
+    "event": "session.tool",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "tool",
+      "data": {
+        "phase": "start",
+        "name": "exec",
+        "toolCallId": "call_f4faff0dd13e4d1886858efc",
+        "args": {
+          "command": "sleep 20; printf \"AGENTDECK_OC_CHAT_TOOL_OK\\n\"",
+          "title": "AgentDeck chat verification",
+          "yieldMs": 30000
+        }
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 8,
+      "ts": 1790691045802,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": null
+      }
+    }
+  },
+  {
+    "observedAt": 1790691065961,
+    "event": "session.tool",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "tool",
+      "data": {
+        "phase": "update",
+        "name": "exec",
+        "toolCallId": "call_f4faff0dd13e4d1886858efc",
+        "partialResult": {
+          "content": [
+            {
+              "type": "text",
+              "text": "AGENTDECK_OC_CHAT_TOOL_OK\n"
+            }
+          ],
+          "details": {
+            "status": "running",
+            "sessionId": "clear-ocean",
+            "pid": 13021,
+            "startedAt": 1790691045809,
+            "cwd": "/fixture/workspace",
+            "tail": "AGENTDECK_OC_CHAT_TOOL_OK\n"
+          }
+        }
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 9,
+      "ts": 1790691065955,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": null
+      }
+    }
+  },
+  {
+    "observedAt": 1790691066013,
+    "event": "session.tool",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "stream": "tool",
+      "data": {
+        "phase": "result",
+        "name": "exec",
+        "toolCallId": "call_f4faff0dd13e4d1886858efc",
+        "meta": "AgentDeck chat verification",
+        "isError": false,
+        "commandBearing": true,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "AGENTDECK_OC_CHAT_TOOL_OK"
+            }
+          ],
+          "details": {
+            "status": "completed",
+            "exitCode": 0,
+            "exitSignal": null,
+            "exitReason": "exit",
+            "durationMs": 20156,
+            "aggregated": "AGENTDECK_OC_CHAT_TOOL_OK",
+            "noOutputTimedOut": false,
+            "cwd": "/fixture/workspace"
+          }
+        }
+      },
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 12,
+      "ts": 1790691066011,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "lastRunId": null
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067506,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "model"
+      },
+      "seq": 15,
+      "ts": 1790691067504
+    }
+  },
+  {
+    "observedAt": 1790691067512,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "phase": "model",
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "ts": 1790691067504,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067519,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 16,
+      "state": "delta",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "AGENT"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067527,
+    "event": "session.message",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "AGENTDECK_OC_CHAT_DONE"
+          }
+        ],
+        "stopReason": "stop",
+        "__openclaw": {
+          "runId": "agentdeck-validation-20260929-chat-1",
+          "id": "5c8b8e9e-6637-412e-9f84-0ad0bb04049d",
+          "recordTimestampMs": 1790691067519,
+          "transcriptPosition": {
+            "source": "bxmK1o6ZXCVciDnPhehxsfvoO2f4NO0-fJ_eopPKTug",
+            "rawSeq": 15
+          },
+          "seq": 8
+        }
+      },
+      "messageId": "5c8b8e9e-6637-412e-9f84-0ad0bb04049d",
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "running",
+        "hasActiveRun": true
+      },
+      "runId": "agentdeck-validation-20260929-chat-1"
+    }
+  },
+  {
+    "observedAt": 1790691067528,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "finishing"
+      },
+      "seq": 19,
+      "ts": 1790691067528
+    }
+  },
+  {
+    "observedAt": 1790691067546,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "model"
+      },
+      "seq": 20,
+      "ts": 1790691067545
+    }
+  },
+  {
+    "observedAt": 1790691067551,
+    "event": "agent",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "stream": "lifecycle",
+      "data": {
+        "phase": "end",
+        "terminalReply": {
+          "disposition": "visible",
+          "text": "AGENTDECK_OC_CHAT_DONE"
+        },
+        "executionSettled": true
+      },
+      "seq": 21,
+      "ts": 1790691067546
+    }
+  },
+  {
+    "observedAt": 1790691067551,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 21,
+      "state": "delta",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "AGENTDECK_OC_CHAT_DONE"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067551,
+    "event": "chat",
+    "payload": {
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "seq": 21,
+      "state": "final",
+      "stopReason": "stop",
+      "message": {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "AGENTDECK_OC_CHAT_DONE"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067581,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "reason": "agent.input.settled",
+      "ts": 1790691067578,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "done",
+        "lastRunId": "agentdeck-validation-20260929-chat-1",
+        "hasActiveRun": false,
+        "activeRunIds": []
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067583,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "phase": "model",
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "ts": 1790691067545,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "done",
+        "lastRunId": "agentdeck-validation-20260929-chat-1",
+        "hasActiveRun": false,
+        "activeRunIds": []
+      }
+    }
+  },
+  {
+    "observedAt": 1790691067584,
+    "event": "sessions.changed",
+    "payload": {
+      "sessionKey": "agent:main:agentdeck-validation-20260929",
+      "phase": "end",
+      "runId": "agentdeck-validation-20260929-chat-1",
+      "ts": 1790691067546,
+      "session": {
+        "key": "agent:main:agentdeck-validation-20260929",
+        "status": "done",
+        "lastRunId": "agentdeck-validation-20260929-chat-1",
+        "hasActiveRun": false,
+        "activeRunIds": []
+      }
+    }
+  }
+]
