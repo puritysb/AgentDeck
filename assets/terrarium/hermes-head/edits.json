@@ -12428,5 +12428,339 @@
    0.025,
    0.016
   ]
+ },
+ {
+  "note": "E67 (2026-10-02): the curtain front edge comes forward from eye level to the jaw. Profile sheet and master both show the hair starting just behind the outer eye corner; the model showed ~40-50 sheet px of bare cheek there. Col 7 (outer) moves the full amount, col 6 (inner tuck, close to the cheek) 40%. Below the chin (rings 12-13) the hem goes slightly back instead: the profile sheet's hem ends ~50 px behind the chin and leaves the neck visible."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0,
+   -0.12,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 6,
+  "move": [
+   0,
+   -0.048,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 7,
+  "move": [
+   0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 8,
+  "col": 6,
+  "move": [
+   0,
+   -0.112,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 7,
+  "move": [
+   0,
+   -0.36,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 9,
+  "col": 6,
+  "move": [
+   0,
+   -0.144,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 7,
+  "move": [
+   0,
+   -0.4,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 10,
+  "col": 6,
+  "move": [
+   0,
+   -0.16,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 7,
+  "move": [
+   0,
+   -0.38,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 11,
+  "col": 6,
+  "move": [
+   0,
+   -0.152,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 7,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "col": 6,
+  "move": [
+   0,
+   0.016,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 7,
+  "move": [
+   0,
+   0.1,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "col": 6,
+  "move": [
+   0,
+   0.04,
+   0
+  ]
+ },
+ {
+  "note": "E68 (2026-10-02): taper the lower face. Front-view skin width per row vs the front sheet (normalized by hem-to-chin) matched within 1-3% down to the nose, then ran 7-16% wide from the mouth to the jaw, which read as a round, chubby lower face in the front and master views. Scale x of the jaw rings."
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "cols": "all",
+  "scale": [
+   0.97,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 8,
+  "cols": "all",
+  "scale": [
+   0.93,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 9,
+  "cols": "all",
+  "scale": [
+   0.87,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 10,
+  "cols": "all",
+  "scale": [
+   0.87,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 11,
+  "cols": "all",
+  "scale": [
+   0.92,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "note": "E69 (2026-10-02): flat anime face front at eye level. The face surface under the eyes turned 15 deg at the inner corner, 35 at the centre and 68-77 at the outer corner, so the far eye in the master view shrank to ~37% of the near eye (concept ~67%) and the profile eye faced sideways. Cols 1-3 come forward at the eye rings; x (front silhouette) unchanged."
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 1,
+  "move": [
+   0,
+   -0.05,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 2,
+  "move": [
+   0,
+   -0.15,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 4,
+  "col": 3,
+  "move": [
+   0,
+   -0.2,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 1,
+  "move": [
+   0,
+   -0.08,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 2,
+  "move": [
+   0,
+   -0.25,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 5,
+  "col": 3,
+  "move": [
+   0,
+   -0.35,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 1,
+  "move": [
+   0,
+   -0.04,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 2,
+  "move": [
+   0,
+   -0.18,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 6,
+  "col": 3,
+  "move": [
+   0,
+   -0.28,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 2,
+  "move": [
+   0,
+   -0.1,
+   0
+  ]
+ },
+ {
+  "obj": "head",
+  "ring": 7,
+  "col": 3,
+  "move": [
+   0,
+   -0.15,
+   0
+  ]
  }
 ]

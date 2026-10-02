@@ -24,6 +24,8 @@ import Foundation
   case "tq": camera.camera.fieldOfViewInDegrees = 22; camera.look(at: [0, 0.20, 0], from: [0.85, 0.32, 1.36], relativeTo: nil)
   case "master": camera.camera.fieldOfViewInDegrees = 15; camera.look(at: [0, 0.195, 0], from: [3.0 * sin(0.5585), 0.195 + 3.0 * sin(0.0698), 3.0 * cos(0.5585)], relativeTo: nil)
   case "side": camera.camera.fieldOfViewInDegrees = 22; camera.look(at: [0, 0.20, 0], from: [1.6, 0.22, 0], relativeTo: nil)
+  case "profile": camera.camera.fieldOfViewInDegrees = 1.25; camera.look(at: [0.0, 0.215, -0.05], from: [40.0, 0.215, -0.05], relativeTo: nil)
+  case "frontfar": camera.camera.fieldOfViewInDegrees = 1.25; camera.look(at: [0, 0.215, 0], from: [0, 0.215, 40.0], relativeTo: nil)
   default: camera.look(at: [0, 0.035, 0], from: [0.9, 0.1, 2], relativeTo: nil)
   }
   anchor.addChild(camera)

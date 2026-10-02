@@ -34,6 +34,10 @@ def smooth(a, b, x):
     return t * t * (3 - 2 * t)
 
 
+TIP = 0.040      # was 0.0330: the profile nose stands further proud of the bridge root
+RECESS = 0.011   # lower-face set-back at the chin (head-frame m)
+
+
 def nose_form(face, F):
     """Nose and lip forms on the evaluated face (vertices already in head frame).
 
@@ -58,7 +62,7 @@ def nose_form(face, F):
         # the profile sheet's nose stands 0.30 blockout units (~0.035 m) proud of
         # the cheek plane; the face already gives ~0.012 there
         sy = 0.0075 if y >= yt else 0.0105    # longer below: the sheet's tip is a rounded wedge with a flat underside
-        tip = 0.0330 * math.exp(-((x / 0.0095) ** 2 + ((y - yt) / sy) ** 2))
+        tip = TIP * math.exp(-((x / 0.0105) ** 2 + ((y - yt) / sy) ** 2))
         # bridge ridge from between the eyes to the tip, narrowing downward
         t = min(1.0, max(0.0, (ye - y) / (ye - yt))) if y <= ye else 0.0
         w = 0.0080 - 0.0022 * t      # broad enough that the front view shows a soft bridge, not two dark lines
@@ -74,7 +78,12 @@ def nose_form(face, F):
                + 0.0025 * math.exp(-((x / 0.018) ** 2 + ((y - (ym - 0.0230)) / 0.0050) ** 2)))  # chin pad
         # smooth union of tip and bridge (max() left a V crease on the bridge)
         form = (tip ** 4 + bridge ** 4) ** 0.25
-        disp[v.index] = form + under + lip
+        # the profile sheet sets the mouth and chin back from the nose (lips
+        # ~15-25, chin ~35 sheet px behind the tip); the face cage alone left
+        # them nearly level with it, so the side view read as one convex curve
+        r = smooth(yt - 0.012, ym, y) * 0.55 + smooth(ym, ym - 0.040, y) * 0.45
+        recess = -RECESS * r * math.exp(-(x / 0.075) ** 2)
+        disp[v.index] = form + under + lip + recess
         v.co.z = z + disp[v.index]
     # Relax the displaced heights: on the ~2.5 mm grid the 2 cm tip came to a
     # point (vertex normals 60 deg off their faces), which RealityKit shaded with
@@ -86,7 +95,7 @@ def nose_form(face, F):
         if a in nbr: nbr[a].append(b)
         if b in nbr: nbr[b].append(a)
     # heightfield smoothing of the displacement only (the face itself is untouched)
-    for _ in range(7):
+    for _ in range(10):
         new = {}
         for i, ns in nbr.items():
             if abs(disp[i]) < 0.0004 or not ns:

@@ -420,16 +420,13 @@ def decal(name, parent, outline, depth, mat, cuts=3):
     return bm_to(name, bm, mat, parent)
 
 EYE_X, EYE_Y = F.EYE_X, F.EYE_Y
+import eyes3d
+_eyes, _pupils, _lids = {}, {}, {}
 for side, label in [(-1, 'left'), (1, 'right')]:
     eye = joint('hermes_eye_' + label, head, (side * EYE_X, EYE_Y, 0))
-    decal('sclera_' + label, eye, F.almond(side), .0018, m_white)
-    decal('lid_shadow_' + label, eye, F.lid_shadow(side), .0024, m_lidshadow, 2)
+    # v19: sclera, iris, pupil and glints are 3D (hermes-head/eyes3d.py) so the
+    # eye reads as an eye from the side; liner, lashes and crease stay decals
     pupil = joint('hermes_pupil_' + label, eye)
-    decal('iris_' + label, pupil, F.iris(side), .0030, m_iris)
-    decal('iris_glow_' + label, pupil, F.iris_glow(side), .0036, m_glow, 2)
-    decal('pupil_' + label, pupil, F.pupil(side), .0040, m_line)
-    decal('highlight_' + label, pupil, F.glint(side), .0050, m_white, 2)
-    decal('highlight_small_' + label, pupil, F.glint_small(side), .0050, m_white, 2)
     decal('lower_lash_' + label, eye, F.lower_lash(side), .0054, m_line, 2)
     for i, spike in enumerate(F.lash_spikes(side)): decal(f'lash_spike_{label}_{i}', eye, spike, .0062, m_line, 1)
     for i, spike in enumerate(F.lower_spikes(side)): decal(f'lower_spike_{label}_{i}', eye, spike, .0054, m_line, 1)
@@ -439,6 +436,10 @@ for side, label in [(-1, 'left'), (1, 'right')]:
     decal('closed_lid_' + label, lid, F.closed_lid(side), .0070, m_line)
     brow = joint('hermes_brow_' + label, head, (side * F.BROW_X, F.BROW_Y, 0))   # fine brows just under the fringe hem
     decal('eyebrow_' + label, brow, F.brow(side), .0036, m_line, 2)
+    _eyes[label], _pupils[label], _lids[label] = eye, pupil, lid
+eyes3d.build(F, head, face, bpy.data.objects.get('face_backing'), FACE_BVH, _eyes, _pupils, _lids,
+             {'white': m_white, 'iris': m_iris, 'glow': m_glow, 'line': m_line, 'skin': skin, 'lidshadow': m_lidshadow},
+             decal)
 # v19: the nose is a form on the face plus painted shade (hermes-head/face_paint.py), not a line decal
 mouth = joint('hermes_mouth', head, (0, F.MOUTH_Y, 0))
 up = joint('hermes_lip_upper', mouth)
@@ -455,7 +456,7 @@ decal('mouth_open', mouth, F.mouth_open(), .0034, m_line, 2)
 # Face artwork is single-sided in RealityKit: every decal must face the viewer.
 decals = [o for o in head.children_recursive if o.type == 'MESH' and o.name not in
           ('face', 'face_backing', 'portrait_bob', 'portrait_fringe', 'hair_under', 'Nous_headband', 'Nous_band_hook')
-          and not o.name.startswith(('side_lock', 'hair_clump', 'hair_flick', 'bang_strand', 'bang_clump', 'headset', 'Nous_band_hook'))]
+          and not o.name.startswith(('eyeball_', 'eye_socket_', 'iris', 'pupil_', 'highlight', 'lid_shadow_', 'side_lock', 'hair_clump', 'hair_flick', 'bang_strand', 'bang_clump', 'headset', 'Nous_band_hook'))]
 for o in decals:
     offset = Vector(); q = o.parent
     while q is not None and q != head: offset += q.location; q = q.parent

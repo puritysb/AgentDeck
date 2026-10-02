@@ -628,6 +628,78 @@ Earlier gaps:
 - The back and top are not verified, because there is no back reference.
 - The reference front/profile disagree on headset placement; this is unresolved.
 
+## 3D eyes and face planes (2026-10-02)
+
+**Why.** In profile the eye was still a front-projected drawing. The
+measurements below also showed that the face around it was off.
+
+**Measurement.** RealityKit renders under the app's lights, with
+near-orthographic `profile` / `frontfar` cameras (40 m, 1.25 deg) added to
+`native_preview.swift`. Contours are registered on the sheets by hem-to-chin:
+
+- **Profile.** The nose was in place, but the face around it sat too far
+  forward: the bridge root under the eye by ~10 sheet px, the lips by 12-20
+  and the chin by 15-20. The side view read as one convex curve. Between
+  the outer eye corner and the hair, ~40-50 px of bare cheek showed; the
+  sheet has the curtain right behind the eye wing.
+- **Front.** Skin width per row matched the sheet within 1-3% down to the
+  nose, then ran 7-16% wide from the mouth to the jaw. This is the round,
+  chubby lower face.
+- **Master.** The far eye was ~37% of the near eye's width; the concept's
+  is ~63%. The face under the eyes turned 15 deg at the inner corner, 35
+  at the centre and 68-77 at the outer corner, so the eyes faced sideways.
+
+**Changes:**
+
+- **`eyes3d.py` (new):** real eyes.
+  - An almond opening is cut in `face` / `face_backing`, with its rim
+    snapped to the drawn outline.
+  - Sclera, iris, glow, pupil and glints are patches on an eyeball surface
+    (R 0.065), clamped 0.8 mm inside the face. A full sphere bulged out at
+    the outer corners, where the face turns faster than any sphere.
+  - Eyeball patches go under `hermes_eye_*`, iris parts under
+    `hermes_pupil_*`, and a skin socket sits behind.
+  - The faces cut from the opening become `lid_skin_*` under
+    `hermes_lid_*`. They keep the face material and UVs, so the closed
+    lid shows the painted skin. A separate skin decal read as a patch.
+  - Face and lid share the normals of the uncut mesh as custom normals.
+    The rim snap leaves slivers whose own normals streaked the lid.
+  - Liner, lashes, crease, brows and the closed-lid line stay decals.
+  - Node names and `hermes-rig.json` are unchanged.
+- **`face_paint.nose_form`:**
+  - The nose tip goes from 0.033 to 0.040, with x width 0.0105.
+  - New `RECESS`: a lower-face set-back that reaches 0.011 at the chin.
+  - The displacement is relaxed 10 times instead of 7.
+- **E67:** the curtain front edge (hair cols 6-7) comes forward from eye
+  level to the jaw. Below the chin it goes slightly back, so the neck
+  shows in profile.
+- **E68:** lower-face taper, scaling head rings 7-11 in x
+  (0.97 / 0.93 / 0.87 / 0.87 / 0.92). Front widths now match the sheet
+  within 2% on every row from the hem to the chin.
+- **E69:** a flat anime face front at eye level (cols 1-3 forward, x
+  unchanged). The eye-centre normal now turns 20 deg instead of 35, and
+  the far eye in the master view is ~55% of the near eye's width.
+
+**Results.** In profile, the nose now projects, the mouth and chin sit
+back, a narrow face strip shows with a diagonal jaw, and the eye is
+narrower. In front, the chin has the sheet's soft V. On the master, the
+hair starts right after the near eye's wing.
+
+**Checked.** HermesAquariumTests pass (9/9), and `hermes-rig.json` is
+unchanged. The blink is seamless.
+
+**Not regressions.** A few isolated black pixels (one on the nose bridge,
+some on the body) are present in the committed model at the same pixels.
+
+**Kept on purpose:**
+- The crown sits lower than the sheets: earlier user feedback said the head
+  read too big.
+- The model's face is a little longer than the sheet's. Normalising by
+  hem-to-chin therefore makes the hair look deeper than it is; the
+  registered blockout overlay (`run.sh`) shows the back and hem matching.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-eyes3d/review.png`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate
