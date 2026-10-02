@@ -865,7 +865,7 @@ Review: `diagnostics/hermes-mermaid/nous-v19-crown/review.png`.
 
 **Asset.** 153.7k tris in 58 meshes. HermesAquariumTests pass.
 
-**Known artifact.** The one remaining black pixel, on the headset band's
+**Known artifact (since fixed, see "Band slivers").** The one remaining black pixel, on the headset band's
 silhouette in the 3/4 camera, comes from the band:
 
 - hiding the band clears it;
@@ -911,6 +911,27 @@ near side, so profile is unaffected.
 **Checked.** HermesAquariumTests pass; `hermes-rig.json` is unchanged.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-tiers/`.
+
+## Band slivers: the last black pixels (2026-10-02)
+
+**Cause.** The band's remaining NaN-black pixels (3/4 band edge, and a
+short line on its top in the side camera) came from sliver triangles.
+`build_headset`'s BEVEL modifier (0.02 wide, 2 segments) laid narrow
+strips along ~0.11-long band segments: median minimum angle 12.6 deg,
+some under 3 deg.
+
+**Fix.** The modifier is removed; the concept's band is a crisp ribbon.
+The band now has 516 tris with a minimum angle of 6.3 deg (median 19.4)
+and none under 3 deg.
+
+**Dead end.** A bevel added at export made the slivers worse: median
+5.8 deg, 484 under 3 deg.
+
+**After.** An isolated-dark-pixel scan of the tq, master, side, full,
+face, profile, front-far, nose-zoom and blink renders flags only drawn
+lash, liner, eye-edge and lip-line pixels.
+
+**Asset.** 152.9k tris in 59 meshes. HermesAquariumTests pass.
 
 ## After the gate
 

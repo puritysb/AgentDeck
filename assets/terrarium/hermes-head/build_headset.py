@@ -102,7 +102,9 @@ me = bpy.data.meshes.new("hermes_headset_band"); bm.to_mesh(me); bm.free()
 band = bpy.data.objects.new("hermes_headset_band", me)
 bpy.context.scene.collection.objects.link(band)
 band.data.materials.append(WHITE)
-bev = band.modifiers.new("round", "BEVEL"); bev.width = 0.02; bev.segments = 2
+# (no bevel modifier, 2026-10-02: its 0.02-wide strips over ~0.11-long band
+# segments made sliver triangles, which RealityKit shaded as lines of black
+# NaN pixels; the concept's band is a crisp ribbon anyway)
 
 # clasp at her left end: a round disc with a black dot and two short tails
 end, en = pts[0], nors[0]
