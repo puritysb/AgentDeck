@@ -897,6 +897,21 @@ at fringe level is softer as a side effect.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-facets/`.
 
+## Two-tier flips on her right (2026-10-02)
+
+**Why.** The master's far side and the front sheet's left side both draw
+two tiers of outward flips on her right. The model had only up_R1.
+
+**Change.** A new `lo_R1` lies on the bob below up_R1 (theta -84..-89),
+runs down the surface, and hooks out and up at the hem (tip offset 1.0).
+It is not the old dangling claw. It joins the `hermes_hair_left` sway
+joint. Her left stays smooth, as on the profile sheet and the master's
+near side, so profile is unaffected.
+
+**Checked.** HermesAquariumTests pass; `hermes-rig.json` is unchanged.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-tiers/`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

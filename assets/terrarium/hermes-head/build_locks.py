@@ -56,6 +56,13 @@ LOCKS = [
     ("up_L1", [("hair", 78, 1.9, -0.05), ("hair", 80, 1.15, 0.06), ("hair", 82, 0.65, 0.12),
                ("hair", 83, 0.4, 0.5), ("hair", 83, 0.56, 0.8), ("hair", 81, 0.78, 0.82)],
      [0.76, 0.76, 0.68, 0.48, 0.20, 0.0], 0.20),
+    # the second, lower flip on her right (the master's far side and the front
+    # sheet's left both draw two tiers): lies on the bob below up_R1 and only
+    # its end hooks out and up at the hem -- not a dangling claw like the
+    # removed lower locks
+    ("lo_R1", [("hair", -84, 0.7, -0.05), ("hair", -86, 0.2, 0.08), ("hair", -88, -0.15, 0.20),
+               ("hair", -89, -0.32, 0.55), ("hair", -89, -0.12, 0.92), ("hair", -87, 0.20, 1.02)],
+     [0.72, 0.72, 0.64, 0.48, 0.22, 0.0], 0.20),
 ]
 HAIR_AXIS_Y = 0.6   # hair mass widest-at depth (bootstrap HAIR_M)
 HEAD_AXIS_Y = 0.0
