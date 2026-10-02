@@ -1,11 +1,26 @@
 import type { ObservedSession } from './passive-observer.js';
 
 /** Hermes observer v1: a conversation survives turns, not explicit finalize.
- * No process guessing, gateway singleton, transcript scraping, or steering. */
+ * No process guessing, gateway singleton, transcript scraping, or steering.
+ * The one process fact used is the pid the observer reports for itself: a
+ * conversation cannot outlive the Hermes process that hosts it. */
 export const HERMES_SILENCE_TTL_MS = 30 * 60_000;
 const MAX_SESSIONS = 128;
 const EVENTS = new Set(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end']);
-interface Entry { row: ObservedSession; lastAt: number; }
+interface Entry { row: ObservedSession; lastAt: number; pid?: number; }
+
+/** Whether a reported Hermes pid still runs. Three answers: only "no such
+ *  process" is `dead`; a refused or failed probe (EPERM…) is `unknown` and
+ *  never closes a conversation. */
+export type HermesPidLiveness = 'alive' | 'dead' | 'unknown';
+export function hermesPidLiveness(pid: number): HermesPidLiveness {
+  try {
+    process.kill(pid, 0);
+    return 'alive';
+  } catch (err) {
+    return (err as NodeJS.ErrnoException)?.code === 'ESRCH' ? 'dead' : 'unknown';
+  }
+}
 
 export class HermesSessions {
   private readonly sessions = new Map<string, Entry>();
@@ -51,11 +66,38 @@ export class HermesSessions {
       row.currentTool = undefined;
       row.currentTask = undefined;
     }
+    const pid = typeof payload.pid === 'number' && Number.isInteger(payload.pid) && payload.pid > 1
+      ? payload.pid : old?.pid;
     this.sessions.delete(sid);
-    this.sessions.set(sid, { row, lastAt: now });
+    this.sessions.set(sid, { row, lastAt: now, pid });
     while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value!);
     this.onChanged?.();
     return true;
+  }
+
+  /**
+   * Close every conversation whose Hermes process is gone, as if it had been
+   * finalized: the row leaves and a late callback cannot resurrect it. Returns
+   * the closed session ids so the caller can close their APME runs. One-shot
+   * mode (`hermes -z`) never fires on_session_finalize, so this is its only
+   * end short of the silence TTL; it also covers kill/crash. A row with no
+   * reported pid, or whose probe is `unknown`, keeps the TTL path.
+   */
+  sweepDeparted(probe: (pid: number) => HermesPidLiveness = hermesPidLiveness, now = Date.now()): string[] {
+    const closed: string[] = [];
+    const verdicts = new Map<number, HermesPidLiveness>();
+    for (const [sid, entry] of this.sessions) {
+      if (entry.pid == null) continue;
+      let verdict = verdicts.get(entry.pid);
+      if (verdict == null) { verdict = probe(entry.pid); verdicts.set(entry.pid, verdict); }
+      if (verdict !== 'dead') continue;
+      this.sessions.delete(sid);
+      this.ended.set(sid, now);
+      closed.push(sid);
+    }
+    while (this.ended.size > MAX_SESSIONS) this.ended.delete(this.ended.keys().next().value!);
+    if (closed.length) this.onChanged?.();
+    return closed;
   }
 
   private reap(now: number): void {

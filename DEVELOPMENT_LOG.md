@@ -11,6 +11,25 @@ On the Stream Deck keypad and the D200H, z.ai's two windows (5H and the MCP tool
 - **D200H** (`shared/src/d200h-layout.ts` `buildUsageTiles`): the compaction cascade is now Codex → z.ai → Claude → three-row Claude. z.ai used to compact last, after Claude's 5H and 7D had already been merged; Claude's 5H is the reading a user glances at mid-session, so z.ai yields first. The full six-reading three-key strip is unchanged. The macOS D200H preview (`D200HLayoutModel.swift`) mirrors the new order; its SYNC-HASH pin is bumped.
 - **Stream Deck** (`plugin/src/session-slot-manager.ts`): the row used to page as soon as the readings outnumbered the row. Folding z.ai first means six readings now fit a classic 15-key deck's five-key row with no page key. Paging still applies when the row overflows after folding (for example a Neo's three-key row).
 
+## 2026-10-02 — Hermes conversations end with their process (`hermes -z` never finalizes)
+
+### Measured
+
+This Mac was given a verification-only Hermes install: the official installer with `--non-interactive`, so no gateway service and nothing kept running. It used z.ai `glm-5.3`, and the AgentDeck observer was enabled. Two one-shot runs:
+
+- `hermes chat -q "…" --oneshot`: start, prompt, Stop and finalize all arrived. The APME run closed and the deck row left at once.
+- `hermes -z "…"`: the turn closed (`end_source=stop`, about 6 s), but no finalize arrived. The APME run stayed open and the row stayed `idle` until the 30-minute silence TTL.
+
+The cause is upstream, in Hermes main `0a374d167`. `hermes_cli/main.py::_run_and_exit_oneshot` runs `run_oneshot` and then `_exit_after_oneshot`, which calls `os._exit` to dodge a native finalizer abort (#30387, #43055). `run_oneshot` never calls `lifecycle.finalize_session`, and `os._exit` skips `atexit`. So no observer callback can report the end; the plugin's own one-second `atexit` drain never runs either.
+
+### Change
+
+- The observer payload carries `pid` (`os.getpid()`), the process that hosts the conversation.
+- `HermesSessions` records it and gains `sweepDeparted(probe)`. A conversation whose process probes `dead` (`ESRCH` only) is closed as a finalize would close it: the row leaves, it is entered in the ended set so a late callback cannot reopen it, and its id is returned. `unknown` (EPERM, any other error) never closes. A row with no pid keeps the TTL path. Each pid is probed once per sweep, so a gateway's conversations close together.
+- The Node daemon runs `sweepDepartedHermes()` on its five-second coordination tick and closes each departed conversation's APME run.
+
+`isProcessAlive` (session-registry) was not reused: it folds EPERM into "dead", which would close a live conversation whose probe was merely refused.
+
 ## 2026-10-02 — Hermes mermaid: likeness, motion and laptop state cues
 
 ### Problem

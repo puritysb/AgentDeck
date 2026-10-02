@@ -378,7 +378,8 @@ An existing unowned plugin directory is refused. Disable with
 in the Hermes process environment.
 
 The observer exports bounded prompt/final-response text (8,192 characters each),
-model, platform, CLI working directory and tool name to the local daemon. It
+model, platform, CLI working directory, tool name and its own process id to the
+local daemon. It
 never exports full conversation history, tool arguments/results, profile memory,
 credentials, or provider request bodies. Profile paths/native IDs are hashed
 for identity; CLI cwd is intentionally visible as project context.
@@ -392,6 +393,20 @@ failures are ignored; callbacks always return `None`. CLI exit allows up to one
 second for queued events to drain. Transport is best effort, without retries or
 persistent event storage. Losing events can leave incomplete timeline evidence;
 30 minutes of silence retires a row without claiming task success.
+
+A conversation also ends with the Hermes process that hosts it. One-shot mode
+(`hermes -z`) runs `run_oneshot` and hard-exits through `os._exit`: it never
+calls `finalize_session`, and the `atexit` chain is skipped by design. Measured
+2026-10-02 on Hermes main `0a374d167`: the turn's Stop arrived
+(`end_source=stop`), no finalize followed, and the row stayed idle with its APME
+run open until the silence TTL. `hermes chat -q … --oneshot` does finalize. The
+observer therefore reports its pid, and the Node daemon probes it on its
+five-second coordination tick. When the process no longer exists (`ESRCH`), it
+closes the conversation as a finalize would: the row leaves, a late callback
+cannot reopen it, and the APME run closes. A refused or failed probe is
+`unknown` and never closes anything. A row without a pid (an older observer)
+keeps the silence TTL. One gateway process hosting several conversations is
+probed once, and all of them close with it.
 
 Child sessions with explicit parent IDs or observed `subagent_start` identities
 are suppressed from the top-level deck. Parent census and subagent timeline

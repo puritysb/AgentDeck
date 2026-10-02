@@ -77,6 +77,12 @@ class ObserverTests(unittest.TestCase):
         self.emit('pre_llm_call', user_message='x' * 10000)
         self.assertEqual(len(self.events[-1][1]['prompt']), 8192)
 
+    def test_payload_names_the_hosting_process(self):
+        # One-shot mode hard-exits without on_session_finalize; the daemon
+        # closes the conversation when this pid is gone.
+        self.emit('on_session_start')
+        self.assertEqual(self.events[-1][1]['pid'], os.getpid())
+
     def test_callback_exceptions_are_fail_open(self):
         with patch.object(self.module, '_handle', side_effect=RuntimeError('offline')):
             self.emit('pre_tool_call')

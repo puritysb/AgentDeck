@@ -61,6 +61,10 @@ def _payload(kwargs, sid=None):
         "cwd": os.getcwd() if platform.lower() == "cli" else "",
         "project_name": "Hermes · " + platform,
         "model": _text(kwargs.get("model"), 200),
+        # Lets the daemon close the row when this process is gone. One-shot
+        # mode (`hermes -z`) hard-exits through os._exit without firing
+        # on_session_finalize or atexit, so no event can carry that end.
+        "pid": os.getpid(),
     }
 
 

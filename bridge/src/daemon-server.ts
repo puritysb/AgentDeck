@@ -4927,6 +4927,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       passiveSessionObserver.execChildren(), passiveSessionObserver.processes(), execChildPeers(),
     );
     sweepVanishedCodexRuns();
+    sweepDepartedHermes();
   };
   const coordinationTimer = setInterval(coordinationTick, 5_000);
   coordinationTimer.unref?.();
@@ -5096,6 +5097,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       codexApmeSessions.delete(sid);
       codexRosterAbsentSince.delete(sid);
       debug('APME', `closed codex run ${sid.slice(0, 8)}: its session left the roster ${Math.round((now - since) / 1000)}s ago`);
+    }
+  }
+  /** Close Hermes conversations whose process has exited without a finalize
+   *  (one-shot `hermes -z` hard-exits; kill/crash) — the row leaves and its
+   *  APME run closes, the same close a finalize would have given it. */
+  function sweepDepartedHermes(now = Date.now()): void {
+    for (const sid of hermesSessions.sweepDeparted(undefined, now)) {
+      if (apme?.collector.getRunId(sid)) {
+        try { apme.collector.closeRun(sid); }
+        catch (err) { debug('APME', `closeRun for departed hermes ${sid.slice(0, 15)} failed: ${String(err)}`); }
+      }
+      log(`[agentdeck] Hermes ${sid.slice(0, 15)}: its process exited without finalizing; conversation closed`);
     }
   }
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
