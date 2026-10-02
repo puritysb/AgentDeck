@@ -111,7 +111,11 @@ plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/plugin/
 tools/creature-simulator/sim-data.js
 tools/creature-simulator/sim-frames/
 tools/creature-simulator/previews/
-apple/DerivedData/
+# Xcode build output under any -derivedDataPath name (DerivedData-foo, DerivedData.bak, nested).
+# XCBuildData attachments record the full build-time shell environment, API keys included —
+# a suffixed directory slipped past the old exact-name rule and leaked tokens in PR #438.
+DerivedData*/
+*.xcbuilddata/
 .ds-sync/
 ds-bundle/
 _ds_gen/
