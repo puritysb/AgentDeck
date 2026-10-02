@@ -13,12 +13,16 @@ import bmesh
 from mathutils import Vector
 
 
+import os
+FOLD = float(os.environ.get('HERMES_HAIR_FOLD', 0.05))
+
+
 def _hash(a, b, salt):
     h = (a * 73856093) ^ (b * 19349663) ^ (salt * 83492791)
     return ((h & 0xFFFF) / 0xFFFF) * 2 - 1
 
 
-def facet_mass(me, jitter=0.11, lift=0.035, axis_y=0.6):
+def facet_mass(me, jitter=0.11, lift=0.035, axis_y=0.6, fold=FOLD):
     bm = bmesh.new(); bm.from_mesh(me)
     lr = bm.verts.layers.int.get("ring"); lc = bm.verts.layers.int.get("col")
     bm.verts.ensure_lookup_table()
@@ -46,6 +50,15 @@ def facet_mass(me, jitter=0.11, lift=0.035, axis_y=0.6):
         ridge = _hash(0, c, 7) if not refined else 0.0
         # the per-column ridge carries the facet look: strand planes from the crown down
         v.co += radial * (ridge * 1.8 + _hash(r, c, 3) * 0.25) * lift * k
+        # fold each quad along the diagonal it is split on: the diagonal's two
+        # corners share (ring + col) parity, so pushing that parity out and the
+        # other in creases every quad into two visible triangles. Flat pairs
+        # read as a grid of squares on the crown, where the concept shows
+        # large irregular triangles (2026-10-02). Dome rings only; the curtain
+        # keeps its strand planes.
+        if not refined and 0 <= r <= 6:
+            sgn = 1.0 if (r + c) % 2 == 0 else -1.0
+            v.co += radial * sgn * fold * (0.6 + 0.4 * abs(_hash(r, c, 11))) * k
     quads = [f for f in bm.faces if len(f.verts) == 4]
     for f in quads:
         vs = list(f.verts)

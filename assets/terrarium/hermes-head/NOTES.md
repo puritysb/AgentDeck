@@ -879,6 +879,24 @@ aquarium scale.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-hairends/review.png`.
 
+## Crown facets fold into triangles (2026-10-02)
+
+**Problem.** The hair quads were already split along parity diagonals, but
+on the crown each pair of triangles lay nearly flat. The dome read as a
+grid of squares, where the concept shows large irregular triangles.
+
+**Fix.** `facets.facet_mass(fold=0.05)` pushes the dome rings' vertices
+(rings 0-6) out or in by (ring + col) parity, varied per vertex. A quad's
+diagonal joins two corners of the same parity, so every quad creases into
+two visible triangles. The curtain keeps its strand planes.
+
+Of the two strengths tried, 0.10 read as jagged and busy. The ledge band
+at fringe level is softer as a side effect.
+
+**Checked.** HermesAquariumTests pass.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-facets/`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate
