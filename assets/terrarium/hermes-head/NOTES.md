@@ -834,6 +834,48 @@ sub-pixel at aquarium scale.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-crown/review.png`.
 
+## Hair ends (2026-10-02, E71/E72, lower locks removed)
+
+**Measurement.** Front silhouette per row against the registered sheet:
+
+- **Ledge.** Rows 260-300 (z ~1.76-2.11) ran 14-34 px narrower than the
+  sheet. The dome above and the flare below matched. The sheet's outline is
+  one smooth curve.
+- **Bottom.** The sheet's bob tucks in from row ~498 and ends ~535
+  (z ~-0.30). The model stayed full width to row ~546, and its four lower
+  flick locks hung to ~570.
+
+**Changes:**
+
+- **E71:** pushes hair rings 6-7 outward at the sides (col 8: +0.06 at
+  ring 6, +0.27 at ring 7). Row 280 is now 506 vs 520 px; row 300 matches.
+- **E72:** ring 12 x0.90; ring 13 (the hem) x0.77 and +0.16 up. The hair
+  ends where the sheet's does.
+- **Lower locks removed** (lo_L1, lo_L2, lo_R1, lo_R2):
+  - from the front they dangled under the hem as claws;
+  - in the master they made a cluster at the back;
+  - in profile they read as fins.
+
+  The sheets' bob ends in its outward flips (the two up_ locks, kept). The
+  `hermes_hair_*` joints now pivot on the up_ locks alone, and the rig
+  contract is unchanged.
+
+**Asset.** 153.7k tris in 58 meshes. HermesAquariumTests pass.
+
+**Known artifact.** The one remaining black pixel, on the headset band's
+silhouette in the 3/4 camera, comes from the band:
+
+- hiding the band clears it;
+- it survives emission-only colour, roughness 1, specular 0, IOR and
+  clearcoat changes;
+- the exported band has no degenerate triangles and no invalid normals;
+- it moves with tiny geometry changes.
+
+This is a RealityKit rasterization artifact on a clean mesh, invisible at
+aquarium scale.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-hairends/review.png`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

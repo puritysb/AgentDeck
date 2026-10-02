@@ -41,6 +41,9 @@ RING = 6         # cross-section vertices
 # Her LEFT has no flicks at all (iteration 24): the profile sheet and the
 # master's near side are smooth, and front-facing blades there covered the
 # cheek in profile.
+# (the four lower locks lo_L1/lo_L2/lo_R1/lo_R2 were removed 2026-10-02: they
+# dangled below the bob as claws in front, a cluster at the back in the master
+# and fins in profile; the sheets' bob ends in its outward flips)
 LOCKS = [
     # name, control points, widths (root..tip), thickness
     # 2026-10-02 rework: the front sheet's bob falls close to the face and only
@@ -50,21 +53,9 @@ LOCKS = [
     ("up_R1", [("hair", -78, 1.9, -0.05), ("hair", -80, 1.5, 0.06), ("hair", -82, 0.85, 0.12),
                ("hair", -83, 0.45, 0.40), ("hair", -83, 0.66, 0.78), ("hair", -81, 1.02, 0.86)],
      [0.80, 0.80, 0.72, 0.50, 0.22, 0.0], 0.20),
-    ("lo_R1", [("hair", -96, 1.1, -0.05), ("hair", -97, 0.3, 0.06), ("hair", -98, -0.25, 0.12),
-               ("hair", -99, -0.48, 0.32), ("hair", -99, -0.30, 0.54), ("hair", -97, -0.08, 0.55)],
-     [0.78, 0.78, 0.70, 0.48, 0.20, 0.0], 0.20),
     ("up_L1", [("hair", 78, 1.9, -0.05), ("hair", 80, 1.15, 0.06), ("hair", 82, 0.65, 0.12),
                ("hair", 83, 0.4, 0.5), ("hair", 83, 0.56, 0.8), ("hair", 81, 0.78, 0.82)],
      [0.76, 0.76, 0.68, 0.48, 0.20, 0.0], 0.20),
-    ("lo_L1", [("hair", 97, 1.1, -0.05), ("hair", 98, 0.3, 0.06), ("hair", 99, -0.25, 0.12),
-               ("hair", 100, -0.46, 0.48), ("hair", 100, -0.30, 0.76), ("hair", 98, -0.10, 0.78)],
-     [0.74, 0.74, 0.66, 0.46, 0.20, 0.0], 0.20),
-    ("lo_L2", [("hair", 118, 0.9, -0.05), ("hair", 118, 0.0, 0.08), ("hair", 119, -0.35, 0.10),
-               ("hair", 120, -0.52, 0.40), ("hair", 120, -0.36, 0.66), ("hair", 118, -0.16, 0.66)],
-     [0.70, 0.70, 0.62, 0.44, 0.18, 0.0], 0.18),
-    ("lo_R2", [("hair", -118, 0.9, -0.05), ("hair", -118, 0.0, 0.08), ("hair", -119, -0.35, 0.10),
-               ("hair", -120, -0.52, 0.3), ("hair", -120, -0.36, 0.49), ("hair", -118, -0.16, 0.49)],
-     [0.70, 0.70, 0.62, 0.44, 0.18, 0.0], 0.18),
 ]
 HAIR_AXIS_Y = 0.6   # hair mass widest-at depth (bootstrap HAIR_M)
 HEAD_AXIS_Y = 0.0

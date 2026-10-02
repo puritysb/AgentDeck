@@ -12826,5 +12826,141 @@
    0,
    0.05
   ]
+ },
+ {
+  "note": "E71 (2026-10-02): fill the front-view ledge between the dome and the curtains. Registered on the front sheet, rows 260-300 (z ~1.76-2.11) ran 14-34 px narrower than the sheet while the dome above and the flare below matched; the sheet's outline is one smooth curve."
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.15,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.1,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   0.1,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 8,
+  "move": [
+   0.06,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 7,
+  "move": [
+   0.04,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 6,
+  "col": 9,
+  "move": [
+   0.04,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 8,
+  "move": [
+   0.12,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 7,
+  "move": [
+   0.08,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 7,
+  "col": 9,
+  "move": [
+   0.08,
+   0,
+   0
+  ]
+ },
+ {
+  "note": "E72 (2026-10-02): round the bob's bottom. The sheet's hair tucks in from row ~498 and ends ~535 (z ~-0.30); the model stayed full width to row ~546. Ring 12 comes in a little, ring 13 (the hem) rises and tucks in."
+ },
+ {
+  "obj": "hair",
+  "ring": 12,
+  "cols": "all",
+  "scale": [
+   0.9,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": "all",
+  "scale": [
+   0.77,
+   1,
+   1
+  ],
+  "center": [
+   0,
+   0,
+   0
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 13,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.16
+  ]
  }
 ]
