@@ -125,6 +125,9 @@ assets/terrarium/hermes-character.blend
 assets/terrarium/hermes-character.usdz
 assets/terrarium/hermes-character.glb
 assets/terrarium/references/hermes-mermaid-*.png
+# The mermaid builder also writes a GLB beside the bundled USDZ; nothing consumes
+# it at runtime yet, and it is regenerated from hermes-mermaid.blend (PR #427).
+assets/terrarium/hermes-mermaid.glb
 assets/terrarium/references/turnaround/head-study/*.png
 # Blender's automatic save backups
 *.blend1

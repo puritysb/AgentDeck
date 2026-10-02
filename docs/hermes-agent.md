@@ -163,8 +163,9 @@ user's visual acceptance of the 3D face. Passing tests is not visual
 acceptance.
 
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
-built by `build-hermes-mermaid.py`. Apple bundles its USDZ; a portable GLB is
-kept beside the authoring source for the later Android renderer. The model has
+built by `build-hermes-mermaid.py`. Apple bundles its USDZ; the builder also
+writes a portable GLB for the later Android renderer. That GLB is a build
+output and is not committed (`.gitignore`): rerun the builder to regenerate it. The model has
 13 deformation bones across spine, continuous tail, split fins, shoulders,
 elbows and wrists, plus independent head, gaze, lid, brow, lip and hair controls.
 Seven source meshes are skinned; RealityKit imports them as one skeleton.
