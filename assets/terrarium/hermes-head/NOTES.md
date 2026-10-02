@@ -812,6 +812,28 @@ An on-device frame-time measurement still needs hardware.
 
 Review renders: `diagnostics/hermes-mermaid/nous-v19-flatshade/`.
 
+## Crown raised to the sheet height (2026-10-02, E70)
+
+**Why.** Registered on the sheets, the crown sat ~47 sheet px low. It had
+been lowered after "the head looks too big", and side by side the dome read
+as a squashed cap. The user chose the sheet height over the low crown,
+given a three-way comparison
+(`diagnostics/hermes-mermaid/nous-v19-crown/crown-compare.png`).
+
+**Change.** E70 raises the pole and hair rings 0-4, by +0.38 at the pole
+tapering to +0.05. The headset apex C goes from z 3.85 to 4.15 so the band
+still arches over the dome.
+
+**Checked.** HermesAquariumTests pass; `hermes-rig.json` is unchanged.
+
+**Known artifact.** One NaN pixel can remain on the headset band's
+silhouette edge in the 3/4 camera. The band mesh is clean (closed, no
+duplicates, no folds), and the pixel does not move with roughness,
+specular, IOR or clearcoat. It is a RealityKit rasterization artifact,
+sub-pixel at aquarium scale.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-crown/review.png`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

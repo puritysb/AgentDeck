@@ -12762,5 +12762,69 @@
    -0.15,
    0
   ]
+ },
+ {
+  "note": "E70 (2026-10-02): crown back up to the sheets' height. Registered on the front/profile sheets the crown sat ~47 sheet px low (it had been lowered for 'the head looks too big'); side by side the low dome read as a squashed cap. The user chose the sheet height. Pole and rings 0-4 rise, tapering to the curtain."
+ },
+ {
+  "obj": "hair",
+  "ring": -1,
+  "col": -1,
+  "move": [
+   0,
+   0,
+   0.38
+  ],
+  "mirror": false
+ },
+ {
+  "obj": "hair",
+  "ring": 0,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.36
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 1,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.32
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 2,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.24
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 3,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.14
+  ]
+ },
+ {
+  "obj": "hair",
+  "ring": 4,
+  "cols": "all",
+  "move": [
+   0,
+   0,
+   0.05
+  ]
  }
 ]
