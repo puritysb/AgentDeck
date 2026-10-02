@@ -133,7 +133,7 @@ hooks. An absent event during inactivity is not evidence of broken integration.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
-| Hermes observer monitoring (preview) | Relay only | Yes | Opt-in Python observer runs inside Hermes; Node daemon receives telemetry. Native daemon ingestion and native creature rendering remain tracked in #423. No App Store subprocess or installer. |
+| Hermes observer monitoring (preview) | Relay only | Yes | Opt-in Python observer runs inside Hermes and posts `hermes_*` hooks to a receiver advertising `hermesObserver: 1`. Both daemons ingest them (Node `HermesSessions`; Swift `HermesObserverGate` + `handleHermesHook`, with the same admission rules and process-exit close). The observer finds its receiver through `~/.agentdeck/daemon.json`, which the sandboxed App Store daemon does not write, so an App Store install receives Hermes only through a relaying Node daemon; unsigned/dev builds receive it directly. Rows are read-only (`controlMode: observed`): no device approvals, prompt injection or voice target. No App Store subprocess or installer. |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |

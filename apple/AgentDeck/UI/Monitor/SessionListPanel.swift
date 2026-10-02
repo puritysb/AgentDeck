@@ -304,6 +304,7 @@ struct SessionListPanel: View {
             case "antigravity": return "Antigravity"
             case "kiro-cli": return "Kiro CLI"
             case "kiro-ide": return "Kiro IDE"
+            case "hermes": return "Hermes"
             default: break
             }
         }
@@ -548,6 +549,7 @@ struct SessionListPanel: View {
         case "antigravity": return "Antigravity"
         case "kiro-cli": return "Kiro CLI"
         case "kiro-ide": return "Kiro IDE"
+        case "hermes": return "Hermes"
         default: return "Agent"
         }
     }

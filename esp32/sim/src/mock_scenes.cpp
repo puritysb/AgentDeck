@@ -48,6 +48,13 @@ void addSession(const char* agentType, const char* state, const char* project) {
   // firmware supports.
   else if (std::strncmp(agentType, "kiro", 4) == 0)
     setStr(g_state.kiroNames[g_state.kiroCount++], 24, project);
+#if !defined(BOARD_TTGO)
+  else if (std::strcmp(agentType, "hermes") == 0 && g_state.hermesCount < 4)
+    setStr(g_state.hermesNames[g_state.hermesCount++], 24, project);
+#else
+  else if (std::strcmp(agentType, "hermes") == 0)
+    g_state.hermesCount++;
+#endif
 }
 
 // Append a timeline row the way protocol.cpp handleTimelineEvent does, so card
@@ -99,7 +106,7 @@ void base(CreatureState cs) {
 }
 
 // `demo:<agent>:<state>` — the creature-simulator web demo's agent × state
-// matrix (agents: claude|codex|opencode|openclaw|antigravity|kiro, states:
+// matrix (agents: claude|codex|opencode|openclaw|antigravity|kiro|hermes, states:
 // idle|working|asking|sleeping). Session shape and usage values mirror
 // scripts/render-creature-simulator.mjs buildSessions()/buildUsage() so the
 // ESP32 panels on the demo page stay visually coherent with the LED-matrix /
@@ -133,6 +140,7 @@ bool applyDemoScene(const char* agent, const char* state) {
       {"opencode", "opencode", "OpenCode"},
       {"antigravity", "antigravity", "Antigravity"},
       {"kiro", "kiro-cli", "Kiro"},
+      {"hermes", "hermes", "Hermes"},
   };
   bool known = std::strcmp(agent, "openclaw") == 0;
   const char* selectedState = working ? "processing"
@@ -338,6 +346,15 @@ bool SimScenes::apply(const char* name) {
     addSession("claude-code", "idle", "site");
     addSession("codex-app", "idle", "epoch");
     addSession("kiro-cli", "idle", "AgentDeck");
+    return true;
+  }
+  // Hermes Agent (observed, read-only) beside two coding agents: the Nous girl
+  // mark must render as itself, in its own lane, never as another creature.
+  if (std::strcmp(name, "hermes") == 0) {
+    base(CreatureState::WORKING);
+    addSession("hermes", "processing", "Hermes (cli)");
+    addSession("claude-code", "idle", "AgentDeck");
+    addSession("kiro-cli", "idle", "hooks");
     return true;
   }
   if (std::strcmp(name, "multi") == 0) {

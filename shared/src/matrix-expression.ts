@@ -18,7 +18,7 @@ export const MATRIX_POLICY = {
 export const MATRIX_AGENTS: Record<string, string> = {
   'claude-code': 'claudeCode', 'codex-cli': 'codex', 'codex-app': 'codex',
   opencode: 'openCode', openclaw: 'openClaw', antigravity: 'antigravity',
-  'kiro-cli': 'kiro', 'kiro-ide': 'kiro',
+  'kiro-cli': 'kiro', 'kiro-ide': 'kiro', hermes: 'hermes',
 };
 export const MATRIX_KINDS = ['waiting', 'error', 'done', 'working', 'idle', 'unknown', 'arrival', 'asked', 'reply'] as const;
 export type MatrixKind = typeof MATRIX_KINDS[number];

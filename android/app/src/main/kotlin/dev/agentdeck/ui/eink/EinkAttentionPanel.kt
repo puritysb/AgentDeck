@@ -317,6 +317,7 @@ private fun agentLabel(agentType: String?): String = when (agentType) {
     "antigravity" -> "Antigravity"
     "kiro-cli" -> "Kiro CLI"
     "kiro-ide" -> "Kiro IDE"
+    "hermes" -> "Hermes"
     null -> "Agent"
     else -> agentType.replaceFirstChar { it.uppercaseChar() }
 }

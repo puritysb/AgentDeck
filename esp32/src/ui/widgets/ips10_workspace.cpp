@@ -161,6 +161,7 @@ static uint32_t brandColor(const char* agent) {
     if(!strcmp(agent,"codex") || !strcmp(agent,"codex-cli") || !strcmp(agent,"codex-app")) return Theme::CloudBody;
     if(!strcmp(agent,"openclaw")) return Theme::CrayfishShell;
     if(!strncmp(agent,"kiro",4)) return Theme::KiroMark;
+    if(!strcmp(agent,"hermes")) return Theme::HermesMark;
     if(!strcmp(agent,"antigravity")) return Theme::AntigravityMark;
     return Theme::OpenCodeOuter;
 }

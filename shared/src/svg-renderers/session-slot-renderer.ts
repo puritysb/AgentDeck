@@ -227,6 +227,7 @@ export function agentSlotAccent(agentType: string | undefined | null): string {
     case 'kiro-ide':                  return '#A78BFA';
     case 'opencode':                  return '#F1ECEC';
     case 'antigravity':               return '#9AA0A6';
+    case 'hermes':                    return '#FFFFFF';
     default:                          return '#B8BEC8';
   }
 }

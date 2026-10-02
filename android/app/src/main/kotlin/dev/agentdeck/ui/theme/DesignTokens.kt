@@ -103,7 +103,9 @@ object DesignTokens {
         val antigravity = Color(0xFF5F6368)
         val kiro = Color(0xFF7C3AED)
         val zai = Color(0xFF1F63EC)
+        val hermes = Color(0xFF000000)
         val opencodeOnDark = Color(0xFFF1ECEC)
+        val hermesOnDark = Color(0xFFFFFFFF)
     }
 
     // === Type stack ===

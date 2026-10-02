@@ -448,6 +448,7 @@ static void handleSessionsList(JsonObject& obj) {
     g_state.opencodeCount = 0;
     g_state.antigravityCount = 0;
     g_state.kiroCount = 0;
+    g_state.hermesCount = 0;
     g_state.crayfishCount = 0;
 
     for (uint8_t i = 0; i < g_state.sessionCount; i++) {
@@ -549,6 +550,8 @@ static void handleSessionsList(JsonObject& obj) {
                 // kiro-cli and kiro-ide share one creature: they are the same
                 // agent seen through two front ends.
                 g_state.kiroCount++;
+            } else if (strcmp(g_state.sessions[i].agentType, "hermes") == 0) {
+                g_state.hermesCount++;
             } else if (strcmp(g_state.sessions[i].agentType, "claude-code") == 0) {
                 g_state.octopusCount++;
             }
@@ -754,6 +757,48 @@ static void handleSessionsList(JsonObject& obj) {
         }
     }
     }  // MAX_KIRO > 0
+
+#if !defined(BOARD_TTGO)  // no hermesNames on TTGO (see agent_state.h)
+    // Populate hermesNames for hermes creature name tags (same dedup logic)
+    if (MAX_HERMES > 0) {
+    char hermesRawNames[MAX_HERMES > 0 ? MAX_HERMES : 1][24];
+    uint8_t hermesNameIdx = 0;
+    for (uint8_t i = 0; i < g_state.sessionCount && hermesNameIdx < MAX_HERMES; i++) {
+        if (g_state.sessions[i].alive &&
+            strcmp(g_state.sessions[i].agentType, "hermes") == 0) {
+            const char* name = sessionDisplayName(g_state.sessions[i]);
+            if (name[0]) {
+                strncpy(hermesRawNames[hermesNameIdx], name, sizeof(hermesRawNames[hermesNameIdx]) - 1);
+                hermesRawNames[hermesNameIdx][sizeof(hermesRawNames[hermesNameIdx]) - 1] = '\0';
+            } else {
+                snprintf(hermesRawNames[hermesNameIdx], sizeof(hermesRawNames[hermesNameIdx]), "Hermes %d", hermesNameIdx + 1);
+            }
+            hermesNameIdx++;
+        }
+    }
+    for (uint8_t i = 0; i < hermesNameIdx; i++) {
+        bool hasDup = false;
+        for (uint8_t j = 0; j < hermesNameIdx; j++) {
+            if (j != i && strcmp(hermesRawNames[i], hermesRawNames[j]) == 0) {
+                hasDup = true;
+                break;
+            }
+        }
+        if (hasDup) {
+            uint8_t occurrence = 1;
+            for (uint8_t j = 0; j < i; j++) {
+                if (strcmp(hermesRawNames[i], hermesRawNames[j]) == 0) occurrence++;
+            }
+            snprintf(g_state.hermesNames[i], sizeof(g_state.hermesNames[i]),
+                     "%s #%d", hermesRawNames[i], occurrence);
+        } else {
+            strncpy(g_state.hermesNames[i], hermesRawNames[i],
+                    sizeof(g_state.hermesNames[i]) - 1);
+            g_state.hermesNames[i][sizeof(g_state.hermesNames[i]) - 1] = '\0';
+        }
+    }
+    }  // MAX_HERMES > 0
+#endif
 
     // No OpenClaw sessions: gate crayfish on authentication, not reachability.
     if (g_state.crayfishCount == 0) {

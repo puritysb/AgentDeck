@@ -153,6 +153,7 @@ function creatureEmoji(agentType?: string): string {
     if ((agentType as string) === 'opencode') return 'O';
     if ((agentType as string) === 'antigravity') return 'A';
     if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return 'K';
+    if ((agentType as string) === 'hermes') return 'H';
     return '*';
   }
   if ((agentType as string) === 'daemon') return '\u2699\uFE0F';      // ⚙️
@@ -161,6 +162,7 @@ function creatureEmoji(agentType?: string): string {
   if ((agentType as string) === 'opencode') return '\u25A3';           // ▣ (nested square — matches creature)
   if ((agentType as string) === 'antigravity') return '\u25B2';        // ▲ (Antigravity peak)
   if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return '\uD83D\uDC7B'; // 👻 (official Kiro ghost motif)
+  if ((agentType as string) === 'hermes') return '\u2624';         // ☤ (Hermes CLI's own caduceus)
   if ((agentType as string) === 'claude-code') return '\u273B';  // ✻ (teardrop-spoked asterisk — Claude sparkle)
   // An agent this build predates gets a NEUTRAL mark, never Claude's. The
   // daemon ships on its own schedule and will name agents that were not in
@@ -180,6 +182,7 @@ function creatureBrandColor(agentType?: string): string {
     case 'antigravity': return fg(210, 214, 220);    // Google gray
     case 'kiro-cli':
     case 'kiro-ide': return fg(124, 58, 237);        // Kiro purple
+    case 'hermes': return fg(255, 255, 255);         // white Nous girl (Brand.hermesOnDark)
     default: return '';
   }
 }

@@ -55,6 +55,8 @@ constexpr uint32_t AntigravityYellow = 0xF3D233;
 
 // --- Kiro (ghost mark) ---
 constexpr uint32_t KiroMark = ProductPalette::BrandKiro;
+// --- Hermes Agent (official Nous girl mark, upstream white variant) ---
+constexpr uint32_t HermesMark = ProductPalette::BrandHermesOnDark;
 constexpr uint32_t AntigravityOrange = 0xFF8A18;
 constexpr uint32_t AntigravityRed = 0xFF4F47;
 constexpr uint32_t AntigravityPurple = 0xA85CC8;
@@ -179,6 +181,18 @@ constexpr float KiroSwimMaxX   = 0.60f;
 constexpr float KiroSwimMinY   = 0.14f;
 constexpr float KiroSwimMaxY   = 0.60f;
 
+// Hermes (Nous girl mark). Between the Codex cloud lane (0.50) and OpenCode
+// (0.63); a mermaid swims mid-water rather than drifting like the Kiro ghost.
+constexpr float HermesRadiusFrac = 0.050f;
+constexpr float HermesHomeX      = 0.56f;
+constexpr float HermesStandingY  = 0.54f;
+constexpr float HermesSleepY     = 0.70f;
+constexpr float HermesWorkingY   = 0.34f;
+constexpr float HermesSwimMinX   = 0.38f;
+constexpr float HermesSwimMaxX   = 0.70f;
+constexpr float HermesSwimMinY   = 0.15f;
+constexpr float HermesSwimMaxY   = 0.58f;
+
 // Tetra
 constexpr float TetraSize     = 0.018f;
 constexpr float TetraSwimMinX = 0.10f;
@@ -255,6 +269,17 @@ constexpr float KiroSwimMinX   = 0.33f;
 constexpr float KiroSwimMaxX   = 0.60f;
 constexpr float KiroSwimMinY   = 0.12f;
 constexpr float KiroSwimMaxY   = 0.63f;
+
+// Hermes (Nous girl mark): between the Codex lane (0.50) and OpenCode (0.65).
+constexpr float HermesRadiusFrac = 0.045f;
+constexpr float HermesHomeX      = 0.58f;
+constexpr float HermesStandingY  = 0.55f;
+constexpr float HermesSleepY     = 0.70f;
+constexpr float HermesWorkingY   = 0.35f;
+constexpr float HermesSwimMinX   = 0.40f;
+constexpr float HermesSwimMaxX   = 0.72f;
+constexpr float HermesSwimMinY   = 0.15f;
+constexpr float HermesSwimMaxY   = 0.60f;
 
 // Tetra
 constexpr float TetraSize     = 0.015f;

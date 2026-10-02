@@ -13,9 +13,9 @@
 // origin changes, re-port (or confirm no visual impact) and bump its pin in the
 // same commit. Note: Kotlin-side parser workarounds (e.g. normalizeSvgArcFlags)
 // don't change path geometry and only need a pin bump.
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt 435d60044ee9f5528fd270fca9878b939894b687
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt cec9fad8e298145c7a380ba2c5a0b1b79ac7eda6
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt d1787545b6dc5da690a58475fae851158be4e054
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt e349b2d2743f0489a3f9b4d4ac68df1f821a0e87
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 776da07134cef654ff773f7d36de96742febb1b4
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)
@@ -79,6 +79,7 @@ enum CreatureGeometry {
     static let octopusPath: Path = CrayfishCreature.parseSvgPath(octopusPathData)
     static let antigravityPath: Path = CrayfishCreature.parseSvgPath(antigravityPathData)
     static let kiroPath: Path = CrayfishCreature.parseSvgPath(kiroPathData)
+    static let hermesPaths: [Path] = HermesBrandPaths.data.map(CrayfishCreature.parseSvgPath)
     static let codexPath: Path = CrayfishCreature.parseSvgPath(codexPathData)
     static let openCodePath: Path = CrayfishCreature.parseSvgPath(openCodePathData)
     static let openClawBodyPaths = openClawBodyPathData.map(CrayfishCreature.parseSvgPath)
@@ -110,6 +111,7 @@ enum CreatureGeometry {
         case octopus
         case antigravity
         case kiro
+        case hermes
         case crayfish
         case cloud
         case ring
@@ -128,6 +130,8 @@ enum CreatureGeometry {
             return .antigravity
         case "kiro", "kiro-cli", "kiro-ide":
             return .kiro
+        case "hermes":
+            return .hermes
         case "codex", "codex-cli", "codex-app":
             return .cloud
         case "opencode":
@@ -155,6 +159,11 @@ enum CreatureGeometry {
             return Creature(
                 viewBox: kiroViewBox,
                 layers: [Layer(path: kiroPath, role: .evenOddFill)]
+            )
+        case .hermes:
+            return Creature(
+                viewBox: 24,
+                layers: hermesPaths.map { Layer(path: $0, role: .evenOddFill) }
             )
         case .crayfish:
             return Creature(
@@ -266,6 +275,8 @@ struct CanonicalCreatureView: View {
             return "Antigravity creature"
         case "kiro", "kiro-cli", "kiro-ide":
             return "Kiro ghost creature"
+        case "hermes":
+            return "Hermes Nous girl creature"
         default:
             return "Agent creature"
         }

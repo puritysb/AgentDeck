@@ -88,6 +88,23 @@ enum CreatureLayout {
         )
     }
 
+    /// Hermes mermaids — left mid-water band (shared/src/creature-layout.ts
+    /// `layoutHermesCreatures`): below the Kiro ghosts, clear of the
+    /// session-list HUD, the crayfish floor territory and the floor strip.
+    static func layoutHermesCreatures(count: Int) -> [CreatureSlot] {
+        layoutBand(
+            count: count,
+            xMin: 0.21,
+            xMax: 0.30,
+            frontY: 0.26,
+            backY: 0.36,
+            singleRowLimit: 2,
+            baseScale: 0.96,
+            minScale: 0.56,
+            creatureWidth: 0.086
+        )
+    }
+
     /// Hard floor for the crowd-driven shrink. Below the per-band `minScale`
     /// so tightly packed bands can still shrink enough to honor the overlap cap
     /// before we give up and accept brief overlap.

@@ -161,7 +161,7 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 1c4e26c5f65cfd86b510f7a08a392bba76d1c645
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp fc8d3d6187b3d3944463c162f6d9ab02a75da5f1
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -429,6 +429,7 @@ private enum Tc001Sprites {
         case .openclaw: key = .openClaw
         case .antigravity: key = .antigravity
         case .kiro: key = .kiro
+        case .hermes: key = .hermes
         }
         return OfficialTc001Glyphs.masks[key] ?? []
     }
@@ -444,6 +445,7 @@ private enum Tc001Sprites {
             case .opencode:    rgb = (140, 132, 132)  // warm light gray, mid-pulse
             case .antigravity: rgb = (140, 143, 148)  // cool gray envelope, mid-pulse
             case .kiro:        rgb = (98, 60, 174)    // Kiro purple, mid-pulse
+            case .hermes:      rgb = (180, 180, 180)  // white Nous girl, mid-pulse
             default:           rgb = (125, 75, 56)    // terracotta, mid-pulse
             }
         case .awaitingPrompt:
@@ -459,6 +461,7 @@ private enum Tc001Sprites {
             case .opencode:    rgb = (72, 67, 67)
             case .antigravity: rgb = (68, 70, 73)     // dim rainbow envelope
             case .kiro:        rgb = (58, 32, 103)    // dim Kiro purple
+            case .hermes:      rgb = (90, 90, 90)     // dim white Nous girl
             default:           rgb = (80, 45, 35)
             }
         case .disconnected:

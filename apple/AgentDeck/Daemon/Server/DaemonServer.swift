@@ -1367,6 +1367,8 @@ final class DaemonServer {
     /// semantics, fed by the `opencode_*` observer-plugin hooks.
     private var openCodeTurnAnchors = ChatTurnAnchorTracker()
     private var openCodeLastPromptTopicBySession: [String: String] = [:]
+    /// `hermes_*` observer admission + process lifetime (HermesObserverGate).
+    private var hermesGate = HermesObserverGate()
 
     /// Codex threads that re-engaged after a terminal event (second prompt on
     /// the same thread id). Companion tasks are single-turn by construction,
@@ -3164,6 +3166,9 @@ final class DaemonServer {
                 // Full-health payload only — the unauthenticated LAN /health
                 // (httpAccessResponse) stays minimal.
                 "posture": posture.healthDict,
+                // The Hermes observer plugin posts only to a receiver that
+                // declares it (older daemons would mint Claude rows).
+                "hermesObserver": 1,
             ]
             if let m = focus.model { payload["modelName"] = m }
             if let e = focus.effort { payload["effortLevel"] = e }
@@ -5354,6 +5359,7 @@ final class DaemonServer {
                 let table = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
                 self.lastProcessTable = table
                 await self.codexExecChildrenTick(table: table)
+                self.sweepDepartedHermes()
                 let peers = self.coordinationTracker.mergePeers([])
                 guard !peers.isEmpty else { continue }
                 let rels = self.coordinationTracker.observe(table, peers: peers)
@@ -5634,6 +5640,14 @@ final class DaemonServer {
     private func handleHookEvent(_ json: [String: Any]) async {
         guard let event = json["event"] as? String else { return }
         DaemonLogger.shared.debug("Hook", "Received: \(event)")
+
+        // Hermes has its own small lifecycle (handleHermesHook). It must not
+        // enter the generic pipeline below, whose unknown-event fallback mints
+        // Claude rows.
+        if event.hasPrefix("hermes_") {
+            handleHermesHook(event: event, json: json)
+            return
+        }
 
         // opencode_* lifecycle hooks (posted by AgentDeck's OpenCode observer
         // plugin, hooks/src/opencode-install.ts) ride the same observed-
@@ -6565,6 +6579,9 @@ final class DaemonServer {
         // Standalone opencode sessions are always interactive multi-turn
         // conversations — the 180 s ghost TTL flapped a live-but-quiet turn.
         if sid.hasPrefix(openCodeSessionPrefix) { return openCodeIdleTTL }
+        // A Hermes conversation survives turns; 30 min of silence retires it
+        // (Node HERMES_SILENCE_TTL_MS). Process exit closes it sooner.
+        if sid.hasPrefix(HermesObserverGate.sessionPrefix) { return HermesObserverGate.silenceTTL }
         // A genuinely-awaiting session is quiet by nature (one Notification
         // then it waits on the user) — don't reap it in the 180 s ghost
         // window or its creature vanishes mid-decision. Answering fires a
@@ -6662,6 +6679,7 @@ final class DaemonServer {
         guard !expired.isEmpty else { return }
 
         for sid in expired {
+            hermesGate.forget(sessionKey: sid)
             let expiredEntry = pushedSessionsById[sid]
             let isPostTerminal = lastTerminalCodexEventBySession[sid]
                 .map { $0 < codexTerminalCutoff } ?? false
@@ -11424,6 +11442,8 @@ final class DaemonServer {
             source = ("codex_", "codex-cli")
         } else if event.hasPrefix("opencode_") {
             source = ("opencode_", "opencode")
+        } else if event.hasPrefix("hermes_") {
+            source = ("hermes_", "hermes")
         } else {
             source = nil
         }
@@ -11679,6 +11699,94 @@ final class DaemonServer {
     /// session entry's resolved name (skipping the "OpenCode" display
     /// fallback — an agent-name label on a timeline row is noise the
     /// clients' agent-tag fallback already covers), then the payload's cwd.
+    /// `hermes_*` observer hooks (hooks/hermes-agentdeck). Mirrors the Node
+    /// daemon's HermesSessions path: one observed row per conversation,
+    /// prompt → response turns on the timeline, APME through the agent-neutral
+    /// boundary, and no control surface — a read-only observer is not a prompt
+    /// endpoint, so the row stays `controlMode: observed`. The global state
+    /// machine is not driven, as on Node.
+    private func handleHermesHook(event: String, json: [String: Any]) {
+        let now = Date()
+        guard case let .accept(boundary, sessionId) = hermesGate.admit(event: event, payload: json, now: now) else {
+            DaemonLogger.shared.debug("Hook", "Hermes \(event) not admitted")
+            return
+        }
+        let apmeHook = Self.normalizeApmeObservedHook(
+            event: event,
+            json: apmeEnrichedHookPayload(json: json, sessionId: sessionId),
+            sessionId: sessionId
+        )
+        // The prompt boundary opens the task first so its chat row is tagged.
+        if boundary == "user_prompt_submit", let hook = apmeHook {
+            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        }
+        if boundary == "session_end" {
+            if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
+                appendOpenCodeChatEnd(json: json, sessionId: sessionId, interrupted: true, agentType: "hermes")
+            }
+            removeHermesRow(sessionId)
+        } else {
+            var entry = pushedSessionsById[sessionId] ?? DaemonSessionEntry(
+                id: sessionId, port: Int(port), pid: 0, projectName: "Hermes", agentType: "hermes",
+                tmuxSession: nil, tty: nil, parentTty: nil, startedAt: ISO8601DateFormatter().string(from: now))
+            if let name = Self.nonEmptyString(json["project_name"]) { entry.projectName = String(name.prefix(160)) }
+            if let model = Self.nonEmptyString(json["model"]) { entry.modelName = String(model.prefix(200)) }
+            entry.controlMode = "observed"
+            switch boundary {
+            case "user_prompt_submit":
+                entry.state = "processing"
+                entry.currentTool = nil
+            case "tool_start":
+                entry.state = "processing"
+                entry.currentTool = Self.nonEmptyString(json["tool_name"]).map { String($0.prefix(120)) }
+            case "tool_end":
+                entry.currentTool = nil
+            case "stop":
+                entry.state = "idle"
+                entry.currentTool = nil
+            default:
+                entry.state = entry.state ?? "idle"
+            }
+            pushedSessionsById[sessionId] = entry
+            upsertIntoCachedSessions(entry)
+            lastHookAtByPushedSession[sessionId] = now
+            if boundary == "user_prompt_submit" {
+                appendOpenCodeChatStart(json: json, sessionId: sessionId, agentType: "hermes")
+            } else if boundary == "stop" {
+                appendOpenCodeChatEnd(json: json, sessionId: sessionId,
+                    interrupted: (json["interrupted"] as? Bool) == true, agentType: "hermes")
+            }
+            broadcastSessionsList()
+        }
+        if boundary != "user_prompt_submit", let hook = apmeHook {
+            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        }
+    }
+
+    private func removeHermesRow(_ sessionId: String) {
+        pushedSessionsById.removeValue(forKey: sessionId)
+        cachedSessions.removeAll { $0.id == sessionId }
+        lastHookAtByPushedSession.removeValue(forKey: sessionId)
+        openCodeTurnAnchors.clear(sid: sessionId)
+        openCodeLastPromptTopicBySession.removeValue(forKey: sessionId)
+        broadcastSessionsList()
+    }
+
+    /// Close conversations whose Hermes process exited without finalizing
+    /// (one-shot `hermes -z` hard-exits; kill, crash) as a finalize would. In
+    /// the App Sandbox `kill(pid, 0)` may be refused — that is `unknown`, and
+    /// the silence TTL stays the backstop.
+    private func sweepDepartedHermes() {
+        for sessionId in hermesGate.sweepDeparted(now: Date()) {
+            if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
+                appendOpenCodeChatEnd(json: [:], sessionId: sessionId, interrupted: true, agentType: "hermes")
+            }
+            apmeCollector?.handleHook(event: "session_end", data: ["session_id": sessionId, "agent_type": "hermes"])
+            removeHermesRow(sessionId)
+            DaemonLogger.shared.info("Hermes \(sessionId.prefix(22)): its process exited without finalizing; conversation closed")
+        }
+    }
+
     private func openCodeTimelineProjectName(sessionId: String, json: [String: Any]) -> String? {
         if let p = Self.nonEmptyString(pushedSessionsById[sessionId]?.projectName),
            p != Self.openCodeFallbackProjectName {
@@ -11692,7 +11800,7 @@ final class DaemonServer {
     /// `user_prompt_submit` boundary (classifyObservedHookEvent), so a
     /// standalone `opencode` run gets the same prompt → response turn shape
     /// on the timeline as a direct `claude`/`codex` run.
-    private func appendOpenCodeChatStart(json: [String: Any], sessionId: String?) {
+    private func appendOpenCodeChatStart(json: [String: Any], sessionId: String?, agentType: String = "opencode") {
         guard let sessionId else { return }
         openCodeLastPromptTopicBySession.removeValue(forKey: sessionId)
         let prompt = claudeCodePromptText(from: json)
@@ -11705,7 +11813,7 @@ final class DaemonServer {
             detail: prompt.count > 100 ? String(prompt.prefix(1000)) : nil,
             approvalId: nil,
             status: nil,
-            agentType: "opencode",
+            agentType: agentType,
             repeatCount: nil,
             automated: nil
         )
@@ -11756,7 +11864,7 @@ final class DaemonServer {
     /// APME prompt boundary ran before this source-specific timeline path, so
     /// every row can use the session-scoped task id without borrowing another
     /// agent's task.
-    private func appendOpenCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false) {
+    private func appendOpenCodeChatEnd(json: [String: Any], sessionId: String?, interrupted: Bool = false, agentType: String = "opencode") {
         guard let sessionId else { return }
         let now = Date().timeIntervalSince1970 * 1000
         // Claim once at the top so chat_response and chat_end stamp the same
@@ -11782,7 +11890,7 @@ final class DaemonServer {
                 detail: assistantText.count > 100 ? String(assistantText.prefix(1000)) : nil,
                 approvalId: nil,
                 status: nil,
-                agentType: "opencode",
+                agentType: agentType,
                 repeatCount: nil,
                 automated: nil
             )
@@ -11810,7 +11918,7 @@ final class DaemonServer {
             detail: topicFromPrompt.map { "Prompt: \($0)" },
             approvalId: nil,
             status: nil,
-            agentType: "opencode",
+            agentType: agentType,
             repeatCount: nil,
             automated: nil
         )

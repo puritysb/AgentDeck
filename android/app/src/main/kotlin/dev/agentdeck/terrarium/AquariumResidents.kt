@@ -31,6 +31,9 @@ internal fun aquariumResidents(state: TerrariumState): List<AquariumResident> {
             when (item.agentType) {
                 "opencode" -> project(item, "opencode")
                 "kiro-cli", "kiro-ide" -> project(item, "kiro")
+                // assets/terrarium/export-android-hermes.py — the bundled
+                // mermaid, decimated to a static resident template.
+                "hermes" -> project(item, "hermes")
                 else -> null
             }
         } +

@@ -927,6 +927,7 @@ private fun drawEinkOpenCode(
     displayName: String? = null,
 ) {
     val isKiro = agentType == "kiro-cli" || agentType == "kiro-ide"
+    val isHermes = agentType == "hermes"
     val wanderX = if (state == OctopusVisualState.WORKING) {
         val phase = swimFrame + ((centerXFraction * 100).toInt() * 9)
         0.06f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
@@ -960,25 +961,27 @@ private fun drawEinkOpenCode(
     }
     val cy = h * baseYFraction + bobY
 
-    // Canonical OpenCode ring or Kiro ghost. Both use the same motion/layout
-    // mechanics, but never substitute one agent's silhouette for the other.
-    if (isKiro) {
+    // Canonical OpenCode ring, Kiro ghost or Hermes Nous girl. They share the
+    // motion/layout mechanics, but never substitute one agent's silhouette for
+    // another's. Hermes is three separate paths, drawn one by one.
+    if (isKiro || isHermes) {
+        val geometry = dev.agentdeck.terrarium.CreatureGeometry
+        val viewBox = if (isHermes) geometry.HERMES_VIEWBOX else geometry.KIRO_VIEWBOX
+        val markPaths = if (isHermes) geometry.hermesNativePaths else listOf(geometry.kiroNativePath)
+        val bodyColor = if (isHermes) einkPick(GRAY_HERMES_BODY, COLOR_HERMES_BODY) else einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
         val markSize = w * 0.052f * scaleFactor * if (einkColorEnabled) 2.0f else 1.75f
-        val svgScale = markSize / dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX
+        val svgScale = markSize / viewBox
         paint.style = Paint.Style.FILL
         paint.color = if (state == OctopusVisualState.SLEEPING) {
-            einkPick(GRAY_KIRO_SLEEP, COLOR_KIRO_SLEEP)
+            if (isHermes) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_SLEEP) else einkPick(GRAY_KIRO_SLEEP, COLOR_KIRO_SLEEP)
         } else {
-            einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
+            bodyColor
         }
         canvas.save()
         canvas.translate(cx, cy)
         canvas.scale(svgScale, svgScale)
-        canvas.translate(
-            -dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX / 2f,
-            -dev.agentdeck.terrarium.CreatureGeometry.KIRO_VIEWBOX / 2f,
-        )
-        drawAquariumMark(canvas, paint, dev.agentdeck.terrarium.CreatureGeometry.kiroNativePath)
+        canvas.translate(-viewBox / 2f, -viewBox / 2f)
+        for (markPath in markPaths) drawAquariumMark(canvas, paint, markPath)
         canvas.restore()
 
         if (displayName != null) {
@@ -990,7 +993,7 @@ private fun drawEinkOpenCode(
             paint.color = einkPick(GRAY_AIR, COLOR_AIR)
             paint.style = Paint.Style.FILL
             canvas.drawCircle(bubbleX, cy, bubbleR, paint)
-            paint.color = einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
+            paint.color = bodyColor
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = 1.5f * scaleFactor
             canvas.drawCircle(bubbleX, cy, bubbleR, paint)
@@ -1565,6 +1568,9 @@ private const val GRAY_OPENCODE_INNER = 0xFF444444.toInt() // level 4 — inner 
 private const val GRAY_OPENCODE_SLEEP = 0xFFAAAAAA.toInt() // level 10 — sleeping/dormant (faded, distinct from active outer)
 private const val GRAY_KIRO_BODY = 0xFF444444.toInt()
 private const val GRAY_KIRO_SLEEP = 0xFF999999.toInt()
+// Hermes on paper is the upstream BLACK Nous girl (Brand.hermes #000000).
+private const val GRAY_HERMES_BODY = 0xFF222222.toInt()
+private const val GRAY_HERMES_SLEEP = 0xFF999999.toInt()
 private const val GRAY_ANTIGRAVITY_BODY = 0xFF303030.toInt() // dark peak/arc body for B/W e-ink
 private const val GRAY_ANTIGRAVITY_SLEEP = 0xFF777777.toInt() // sleeping/dormant (faded)
 private const val GRAY_STARBURST  = 0xFF999999.toInt()  // level 9 — WORKING starburst glow
@@ -1635,6 +1641,8 @@ private val COLOR_OPENCODE_INNER = 0xFF4B4646.toInt()  // dark brown-gray inner 
 private val COLOR_OPENCODE_SLEEP = 0xFF9A9595.toInt()  // muted sleep
 private val COLOR_KIRO_BODY = 0xFF7C3AED.toInt()
 private val COLOR_KIRO_SLEEP = 0xFF7A6A91.toInt()
+private val COLOR_HERMES_BODY = 0xFF1A1A1A.toInt()
+private val COLOR_HERMES_SLEEP = 0xFF8A8A8A.toInt()
 
 // Antigravity (peak/arc mark — rainbow in color mode, gray fallback for B/W e-ink)
 private val COLOR_ANTIGRAVITY_BODY = 0xFF5F6368.toInt()  // Google gray primary

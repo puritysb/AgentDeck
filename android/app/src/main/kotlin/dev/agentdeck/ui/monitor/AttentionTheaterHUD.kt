@@ -413,6 +413,7 @@ fun buildAttentionFeatured(
         "antigravity" -> "Antigravity"
         "kiro-cli"    -> "Kiro CLI"
         "kiro-ide"    -> "Kiro IDE"
+        "hermes"      -> "Hermes"
         else          -> session.agentType?.replaceFirstChar { it.uppercaseChar() } ?: "Agent"
     }
     val parts = buildList {

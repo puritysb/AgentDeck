@@ -59,7 +59,9 @@ def _payload(kwargs, sid=None):
     return {
         "session_id": identity,
         "cwd": os.getcwd() if platform.lower() == "cli" else "",
-        "project_name": "Hermes · " + platform,
+        # ASCII only: board fonts have no U+00B7, so "Hermes · cli" drew a
+        # missing-glyph box on every ESP32 name tag.
+        "project_name": "Hermes (" + platform + ")",
         "model": _text(kwargs.get("model"), 200),
         # Lets the daemon close the row when this process is gone. One-shot
         # mode (`hermes -z`) hard-exits through os._exit without firing

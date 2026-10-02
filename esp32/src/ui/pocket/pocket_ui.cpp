@@ -69,6 +69,7 @@ static uint32_t agentColor(const char* agentType) {
     if (strcmp(agentType, "opencode") == 0) return Theme::OpenCodeOuter;
     if (strcmp(agentType, "antigravity") == 0) return Theme::AntigravityMark;
     if (strncmp(agentType, "kiro", 4) == 0) return Theme::KiroMark;
+    if (strcmp(agentType, "hermes") == 0) return Theme::HermesMark;
     // Unknown agent → neutral dim, never another agent's brand colour.
     return Theme::HUDDim;
 }

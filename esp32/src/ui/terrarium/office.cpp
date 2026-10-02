@@ -59,6 +59,7 @@ static uint32_t agentColor(const char* t) {
     if (strstr(t, "opencode")) return 0x9aa0a8;  // lifted from #3a3a3a (see above)
     if (strstr(t, "antigravity")) return 0x5F6368;
     if (strstr(t, "kiro"))    return 0x7C3AED;
+    if (strstr(t, "hermes"))  return 0xE6E6E6;  // white Nous girl, lifted like opencode
     if (strstr(t, "claude"))   return 0xC07058;
     return C_agentUnknown;
 }
@@ -81,6 +82,7 @@ static const uint8_t* agentGlyphA8(const char* t) {
     if (strstr(t, "codex"))    return CODEX_A8;
     if (strstr(t, "antigravity")) return ANTIGRAVITY_A8;
     if (strstr(t, "kiro"))    return KIRO_A8;
+    if (strstr(t, "hermes"))  return HERMES_A8;
     if (strstr(t, "claude"))   return OCTOPUS_A8;
     return nullptr;
 }

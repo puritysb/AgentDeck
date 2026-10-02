@@ -35,6 +35,7 @@ enum StateColors {
         case "opencode":    return DesignTokens.Brand.opencodeOnDark
         case "antigravity": return DesignTokens.Brand.antigravity
         case "kiro-cli", "kiro-ide": return DesignTokens.Brand.kiro
+        case "hermes":      return DesignTokens.Brand.hermesOnDark
         default:            return DesignTokens.UI.hudSubtext
         }
     }

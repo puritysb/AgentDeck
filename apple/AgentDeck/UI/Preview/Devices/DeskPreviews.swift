@@ -38,6 +38,7 @@ struct StreamDeckKeyPreview: View {
         case .openclaw:    return "router"
         case .antigravity: return "gemini-3"
         case .kiro:        return "auto"
+        case .hermes:      return "auto"
         }
     }
 
@@ -87,6 +88,7 @@ struct StreamDeckPlusPreview: View {
         case .openclaw:    return "router"
         case .antigravity: return "gemini-3"
         case .kiro:        return "auto"
+        case .hermes:      return "auto"
         }
     }
 

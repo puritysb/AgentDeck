@@ -291,7 +291,7 @@ fun DashboardState.toTerrariumState(
     // Build vector-mark creatures from OpenCode and Kiro sessions. They share
     // motion/layout mechanics but render their own canonical brand geometry.
     val openCodeCreatures = mutableListOf<AgentCreatureState>()
-    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && (agentType == "opencode" || isKiroAgent(agentType))) {
+    if (agentState != AgentState.DISCONNECTED && !isDaemonLike && isVectorMarkAgentType(agentType)) {
         openCodeCreatures.add(
             AgentCreatureState(
                 sessionId = sessionId ?: "primary-opencode",
@@ -308,7 +308,7 @@ fun DashboardState.toTerrariumState(
     var openCodeSlot = openCodeCreatures.size
     for (sibling in siblingSessions) {
         if (sessionId != null && sibling.id == sessionId) continue
-        if (sibling.agentType != "opencode" && !isKiroAgent(sibling.agentType)) continue
+        if (!isVectorMarkAgentType(sibling.agentType)) continue
         openCodeCreatures.add(
             AgentCreatureState(
                 sessionId = sibling.id,

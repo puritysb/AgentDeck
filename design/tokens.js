@@ -69,7 +69,9 @@
     antigravity: '#5F6368',
     kiro: '#7C3AED',
     zai: '#1F63EC',
+    hermes: '#000000',
     opencodeOnDark: '#F1ECEC',
+    hermesOnDark: '#FFFFFF',
   };
 
   window.DT = { Tide, Ink, Kelp, Coral, Amber, Status, UI, Session, Brand };

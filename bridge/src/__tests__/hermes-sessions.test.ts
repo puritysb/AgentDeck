@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { HermesSessions, HERMES_SILENCE_TTL_MS, hermesPidLiveness, type HermesPidLiveness } from '../hermes-sessions.js';
 const session_id = `hermes-${'a'.repeat(32)}`;
-const payload = { session_id, model: 'custom-model', project_name: 'Hermes · telegram' };
+const payload = { session_id, model: 'custom-model', project_name: 'Hermes (telegram)' };
 
 describe('Hermes conversation lifetime', () => {
   it('replays captured real CLI tool work through Stop and finalization', () => {

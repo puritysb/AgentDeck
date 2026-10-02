@@ -34,6 +34,7 @@ enum PixooPreviewAgent: String, CaseIterable, Identifiable, Sendable {
     case openclaw    = "openclaw"
     case antigravity = "antigravity"
     case kiro        = "kiro-cli"
+    case hermes      = "hermes"
 
     var id: String { rawValue }
 
@@ -45,6 +46,7 @@ enum PixooPreviewAgent: String, CaseIterable, Identifiable, Sendable {
         case .openclaw:    return "OpenClaw"
         case .antigravity: return "Antigravity"
         case .kiro:        return "Kiro"
+        case .hermes:      return "Hermes"
         }
     }
 }

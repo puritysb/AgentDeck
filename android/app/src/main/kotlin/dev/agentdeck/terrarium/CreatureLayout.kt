@@ -226,6 +226,20 @@ fun layoutWorkerCrayfish(
     }
 }
 
+/** Hermes mermaids — left mid-water band; mirror of
+ * shared/src/creature-layout.ts `layoutHermesCreatures`. */
+fun layoutHermesCreatures(count: Int): List<CreatureSlot> = layoutBand(
+    count = count,
+    xMin = 0.21f,
+    xMax = 0.30f,
+    frontY = 0.26f,
+    backY = 0.36f,
+    singleRowLimit = 2,
+    baseScale = 0.96f,
+    minScale = 0.56f,
+    creatureWidth = 0.086f,
+)
+
 /**
  * Per-entry slots for the vector-mark creature list, which holds OpenCode rings
  * and Kiro ghosts together (they share a class, not a band). Each entry is
@@ -239,6 +253,14 @@ fun layoutWorkerCrayfish(
 internal fun isKiroAgentType(type: String?): Boolean =
     type == "kiro-cli" || type == "kiro-ide"
 
+/** Hermes Agent: drawn with the official Nous girl mark in its own band. */
+internal fun isHermesAgentType(type: String?): Boolean = type == "hermes"
+
+/** Agents drawn as a canonical vector brand mark (OpenCode ring, Kiro ghost,
+ * Hermes Nous girl) — one class, three bands. */
+internal fun isVectorMarkAgentType(type: String?): Boolean =
+    type == "opencode" || isKiroAgentType(type) || isHermesAgentType(type)
+
 /** Agent types drawn as the octopus. SSOT-mirrored from CODING_AGENTS in
  * bridge/src/pixoo/pixoo-renderer.ts. Kept an allow-list so an unknown agent
  * renders as nothing rather than as Claude. */
@@ -246,15 +268,22 @@ internal fun isOctopusAgentType(type: String?): Boolean = type == "claude-code"
 
 internal fun vectorMarkSlots(creatures: List<AgentCreatureState>): List<CreatureSlot> {
     val kiroCount = creatures.count { isKiroAgentType(it.agentType) }
-    val openCodeSlots = layoutOpenCodeCreatures(creatures.size - kiroCount)
+    val hermesCount = creatures.count { isHermesAgentType(it.agentType) }
+    val openCodeSlots = layoutOpenCodeCreatures(creatures.size - kiroCount - hermesCount)
     val kiroSlots = layoutKiroCreatures(kiroCount)
+    val hermesSlots = layoutHermesCreatures(hermesCount)
     val fallback = CreatureSlot(0.55f, 0.40f, 1.0f)
     var openCodeIndex = 0
     var kiroIndex = 0
+    var hermesIndex = 0
     return creatures.map { creature ->
         if (isKiroAgentType(creature.agentType)) {
             val slot = kiroSlots.getOrElse(kiroIndex) { kiroSlots.lastOrNull() ?: fallback }
             kiroIndex++
+            slot
+        } else if (isHermesAgentType(creature.agentType)) {
+            val slot = hermesSlots.getOrElse(hermesIndex) { hermesSlots.lastOrNull() ?: fallback }
+            hermesIndex++
             slot
         } else {
             val slot = openCodeSlots.getOrElse(openCodeIndex) { openCodeSlots.lastOrNull() ?: fallback }

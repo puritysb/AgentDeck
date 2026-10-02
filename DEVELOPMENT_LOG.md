@@ -97,6 +97,18 @@ pass log is `assets/terrarium/hermes-head/NOTES.md`.
 
 PR #427.
 
+## 2026-10-02 — Hermes Agent on every surface, and native intake in the macOS daemon
+
+### What changed
+
+Hermes was observed by the Node daemon and drawn only by the Apple aquarium (#427). It now reaches every surface. The surfaces were found by the per-surface audit from the Kiro rollout: every file that enumerates `kiro` but not `hermes`.
+
+- **Identity.** Compact surfaces draw the official Nous girl mark, never an invented creature (#425). Tokens `--brand-hermes: #000000` and `--brand-hermes-on-dark: #FFFFFF` come from the upstream `assets/nous-girl-{black,white}.svg` fills; the white form is used on dark screens and LEDs, and the black form on e-ink paper and the IPS10's white HUD cards. The dot-matrix (24/9/8 px) and ESP32 creature (64 px) masks are generated from `design/brand/hermes.svg` by the existing generators. At 9 and 8 px the mark degrades to a blob, as Kiro's and Claude's do at those sizes; the rule is still "official mark only".
+- **Placement.** `layoutHermesCreatures` (shared + Swift + Kotlin) is a left mid-water band (x 0.21–0.30, y 0.26–0.36), clear of the session-list HUD, the crayfish territory and the floor strip. `singleRowLimit: 2` keeps the crowd shrink monotonic in a band this narrow (3 grew the scale back at the second row).
+- **Surfaces.** Deck slot accent, TUI session list (Hermes CLI's caduceus `☤`), Pixoo/Timebox/iDotMatrix (TS + Swift mirrors), 48 pre-rendered matrix frames, Apple labels/brand/previews and `CreatureGeometry`, Android labels/brand icon/2D vector-mark creature/e-ink renderer, an Android 3D resident (`export-android-hermes.py`: the bundled mermaid in rest pose, decimated to ~13k vertices / 1.8 MB), and the ESP32 terrarium (`hermes.cpp`, a sibling of `kiro.cpp`), HUD/knob/pocket/ticker/workspace/office/e-ink/LED-matrix pages. `PixooPreviewAgent.from` mapped unknown agents to Claude; Hermes now has its own case.
+- **Voice target.** ESP32 `isGeneralAssistantSession` matched any project whose name starts with "hermes", and an observed Hermes row is named `Hermes (cli)`. (The observer used to label it `Hermes · cli`; board fonts have no U+00B7 and drew a missing-glyph box, so the label is ASCII now.) A read-only observer has no prompt route, so `agentType == "hermes"` is now never the auto voice target.
+- **Native intake.** The Swift daemon handles `hermes_*` hooks in their own path (`handleHermesHook`), because its generic pipeline mints Claude rows for unknown events. `HermesObserverGate` mirrors Node's admission rules: opening events or `tool_start` create a row, finalize is final until a new opening event, a gateway pid is probed once, and only ESRCH closes on process exit (EPERM in the App Sandbox is unknown). Rows use Node's id form, `observed:hermes:<id>`; timeline and APME go through the agent-neutral boundary; `/health` advertises `hermesObserver: 1`. The observer still discovers its receiver through `~/.agentdeck/daemon.json`, which the sandboxed App Store daemon does not write, so App Store installs stay "Relay only" (feature matrix).
+
 ## 2026-10-01 — Hermes face sheet, rebuilt app mesh and a turnaround-fit tool
 
 ### Problem

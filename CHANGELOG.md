@@ -47,6 +47,17 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Hermes Agent appears on every surface: the macOS/iOS and Android aquariums
+  (the Nous girl mermaid; Android gets a lightweight 3D resident), the Stream
+  Deck and D200H keys, the TUI session list, Pixoo, Timebox, iDotMatrix, the
+  LED matrix, the ESP32 LCD terrariums, HUDs and cards, and the e-ink screens.
+  Small surfaces draw the official Nous girl mark, generated from
+  `design/brand/hermes.svg`. The macOS app's own daemon now ingests Hermes
+  observer hooks too. An observed Hermes row is never chosen as the ESP32
+  voice target: it is read-only.
+- A Hermes conversation now closes when its Hermes process exits, so
+  `hermes -z` one-shot runs no longer linger as idle sessions for 30 minutes.
+
 - Codex: once a plan window (5h or weekly) is exhausted and the account still
   holds purchased credits, every usage surface shows the remaining balance
   (`62.5K CREDITS LEFT`) in place of the exhausted window, with the time the plan

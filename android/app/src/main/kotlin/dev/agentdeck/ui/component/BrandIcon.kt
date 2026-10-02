@@ -82,6 +82,7 @@ fun brandColorForAgent(agentType: String?): Color = when (agentType) {
     "opencode"    -> Color(0xFFF1ECEC)
     "antigravity" -> Color(0xFF5F6368)
     "kiro-cli", "kiro-ide" -> Color(0xFF7C3AED)
+    "hermes"      -> dev.agentdeck.ui.theme.DesignTokens.Brand.hermesOnDark  // upstream white Nous girl
     "daemon"      -> Color(0xFF8C8C99)
     else          -> Color(0xFF94A3B8)
 }
@@ -103,6 +104,7 @@ fun agentDisplayLabel(agentType: String?): String = when (agentType) {
     "antigravity" -> "Antigravity"
     "kiro-cli" -> "Kiro CLI"
     "kiro-ide" -> "Kiro IDE"
+    "hermes" -> "Hermes"
     "monitor" -> "Monitor"
     "daemon" -> "Daemon"
     null -> ""
@@ -156,6 +158,13 @@ private class BrandIconSpec(
                 viewBox = 24f,
                 color = Color(0xFF7C3AED),
                 einkColor = Color(0xFF444444),
+            )
+            "hermes" -> BrandIconSpec(
+                pathDataList = dev.agentdeck.terrarium.CreatureGeometry.HERMES_PATH_DATA,
+                viewBox = dev.agentdeck.terrarium.CreatureGeometry.HERMES_VIEWBOX,
+                color = dev.agentdeck.ui.theme.DesignTokens.Brand.hermesOnDark,
+                // Paper shows the upstream black Nous girl.
+                einkColor = dev.agentdeck.ui.theme.DesignTokens.Brand.hermes,
             )
             // "zai" is the provider key emitted by zaiLimitRows for the LIMITS
             // surfaces (the z.ai GLM Coding Plan provider, not a session agent

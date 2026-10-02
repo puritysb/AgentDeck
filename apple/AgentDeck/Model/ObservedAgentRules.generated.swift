@@ -35,6 +35,7 @@ enum ObservedAgentRules {
         "antigravity",
         "kiro-cli",
         "kiro-ide",
+        "hermes",
     ]
 
     /// Bare id form — unchanged when the id carries no observed prefix.

@@ -22,6 +22,7 @@ const glyphs = [
   { name: 'CODEX', fileStem: 'codex' },
   { name: 'ANTIGRAVITY', fileStem: 'antigravity' },
   { name: 'KIRO', fileStem: 'kiro' },
+  { name: 'HERMES', fileStem: 'hermes' },
   { name: 'ZAI', fileStem: 'zai' },
 ];
 

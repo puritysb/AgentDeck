@@ -19,7 +19,7 @@ import {
 describe('canonical dot-matrix agent masks', () => {
   it('ships every official agent mark at Pixoo/iDotMatrix and TC001 resolutions', () => {
     expect(Object.keys(OFFICIAL_DOT_GLYPHS).sort()).toEqual([
-      'antigravity', 'claudeCode', 'codex', 'kiro', 'openClaw', 'openCode', 'zai',
+      'antigravity', 'claudeCode', 'codex', 'hermes', 'kiro', 'openClaw', 'openCode', 'zai',
     ]);
     for (const mask of Object.values(OFFICIAL_DOT_GLYPHS)) {
       expect(mask).toHaveLength(OFFICIAL_DOT_GLYPH_SIZE ** 2);

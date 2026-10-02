@@ -165,6 +165,7 @@ fun agentIcon(agentType: String?): String = when (agentType) {
     "opencode" -> "\u25A3"            // ▣ (nested square)
     "antigravity" -> "\u25B2"          // ▲ (Antigravity peak)
     "kiro-cli", "kiro-ide" -> "K"     // compact text fallback; creature uses the canonical ghost asset
+    "hermes" -> "\u2624"              // ☤ (Hermes CLI caduceus); creature uses the Nous girl mark
     else -> "\u25CF"                   // ● bullet
 }
 

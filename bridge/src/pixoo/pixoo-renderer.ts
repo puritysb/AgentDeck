@@ -33,6 +33,7 @@ import {
   type CreatureSlot,
   layoutOctopuses, layoutCloudCreatures, layoutOpenCodeCreatures, layoutAntigravityCreatures,
   layoutKiroCreatures,
+  layoutHermesCreatures,
 } from '@agentdeck/shared';
 import { drawTextCentered } from './pixoo-font.js';
 import {
@@ -103,8 +104,10 @@ const OPENCODE_AGENTS = new Set(['opencode']);
 const ANTIGRAVITY_AGENTS = new Set(['antigravity']);
 /** Kiro CLI/IDE share the official ghost mark. */
 const KIRO_AGENTS = new Set(['kiro-cli', 'kiro-ide']);
+/** Hermes Agent wears the official Nous girl mark (design/brand/hermes.svg). */
+const HERMES_AGENTS = new Set(['hermes']);
 
-type CreatureType = 'octopus' | 'jellyfish' | 'opencode' | 'antigravity' | 'kiro';
+type CreatureType = 'octopus' | 'jellyfish' | 'opencode' | 'antigravity' | 'kiro' | 'hermes';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -176,6 +179,11 @@ function stateYForType(
       else if (state === 'awaiting') y = clamp(baseY + 0.16, 0.42, 0.54);
       else y = clamp(baseY + 0.26, 0.60, 0.70);
       break;
+    case 'hermes':
+      if (state === 'processing') y = clamp(baseY - 0.02, 0.24, 0.38);
+      else if (state === 'awaiting') y = clamp(baseY + 0.14, 0.40, 0.52);
+      else y = clamp(baseY + 0.26, 0.56, 0.64);
+      break;
   }
   if (hudProviderCount > 0) {
     return Math.min(y, (64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight
@@ -191,6 +199,7 @@ function slotsForType(creatureType: CreatureType, count: number): CreatureSlot[]
     case 'opencode': return layoutOpenCodeCreatures(count);
     case 'antigravity': return layoutAntigravityCreatures(count);
     case 'kiro': return layoutKiroCreatures(count);
+    case 'hermes': return layoutHermesCreatures(count);
   }
 }
 
@@ -203,12 +212,13 @@ function slotAt(slots: CreatureSlot[], index: number): CreatureSlot {
 
 /** Check if agent type gets a creature. */
 function isCreatureAgent(agentType: string): boolean {
-  return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType) || KIRO_AGENTS.has(agentType);
+  return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType) || KIRO_AGENTS.has(agentType) || HERMES_AGENTS.has(agentType);
 }
 
 function creatureTypeFor(agentType: string): CreatureType {
   if (ANTIGRAVITY_AGENTS.has(agentType)) return 'antigravity';
   if (KIRO_AGENTS.has(agentType)) return 'kiro';
+  if (HERMES_AGENTS.has(agentType)) return 'hermes';
   if (JELLYFISH_AGENTS.has(agentType)) return 'jellyfish';
   if (OPENCODE_AGENTS.has(agentType)) return 'opencode';
   return 'octopus';
@@ -921,6 +931,7 @@ function renderMicroFrame(
     creature =
       dominant.agentType === 'antigravity' ? 'antigravity'
         : dominant.creatureType === 'kiro' ? 'kiro'
+        : dominant.creatureType === 'hermes' ? 'hermes'
         : dominant.creatureType === 'jellyfish' ? 'jellyfish'
           : dominant.creatureType === 'opencode' ? 'opencode'
             : 'octopus';
@@ -988,7 +999,8 @@ function renderCompact32Frame(
 
   const glyphFor = (kind: CreatureType): OfficialDotGlyphName =>
     kind === 'jellyfish' ? 'codex' : kind === 'opencode' ? 'openCode'
-      : kind === 'antigravity' ? 'antigravity' : kind === 'kiro' ? 'kiro' : 'claudeCode';
+      : kind === 'antigravity' ? 'antigravity' : kind === 'kiro' ? 'kiro'
+        : kind === 'hermes' ? 'hermes' : 'claudeCode';
   const priority = (s: CreatureInstance['state']) => s === 'awaiting' ? 0 : s === 'processing' ? 1 : 2;
   const marks: Array<{
     glyph: OfficialDotGlyphName;
@@ -1032,6 +1044,7 @@ function renderCompact32Frame(
     if (glyph === 'openCode') return [255, 246, 248];
     if (glyph === 'openClaw') return [255, 67, 84];
     if (glyph === 'kiro') return [124, 58, 237];
+    if (glyph === 'hermes') return [255, 255, 255];
     return antigravityBands[Math.min(antigravityBands.length - 1,
       Math.floor(sx * antigravityBands.length / OFFICIAL_DOT_GLYPH_SIZE))];
   };
@@ -1474,6 +1487,7 @@ export function renderFrame(
       : c.creatureType === 'opencode' ? 'openCode'
         : c.creatureType === 'antigravity' ? 'antigravity'
           : c.creatureType === 'kiro' ? 'kiro'
+          : c.creatureType === 'hermes' ? 'hermes'
           : 'claudeCode';
     drawOfficialDotGlyph(
       outputBuf,

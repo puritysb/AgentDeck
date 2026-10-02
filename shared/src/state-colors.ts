@@ -37,7 +37,7 @@ export const AGENT_BRAND_COLORS: Record<string, string> = {
   'kiro-cli':    Brand.kiro,
   'kiro-ide':    Brand.kiro,
   'monitor':     UI.hudSubtext,
-  'hermes': Tide.s100, // monochrome upstream mark on dark product surfaces
+  'hermes':      Brand.hermesOnDark, // upstream white Nous girl on dark product surfaces
 };
 
 /** Get agent brand color. Falls back to the neutral HUD grey for unknown types. */
