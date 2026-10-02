@@ -476,6 +476,17 @@ for o in decals:
 manifest = {'schema': 2, 'boneNames': [b[0] for b in bone_specs],
             'controls': sorted(o.name for o in root.children_recursive if o.type == 'EMPTY'),
             'skinnedMeshes': sorted(o.name for o in rig.children if o.type == 'MESH')}
+# Skin is flat-shaded. RealityKit shaded smooth skin with single NaN-black
+# pixels along curves on the nose side and the shoulders, in every build; they
+# did not move with IOR, roughness, specular, UV layout or the backing, and
+# vanished only without interpolated normals. With the flat-lit skin (albedo
+# 0.35, glow x2.0) the sun barely reaches the colour, so no facets show.
+for o in bpy.data.objects:
+    if o.type == 'MESH' and (o.name in ('face', 'face_backing', 'hermes_body_skin', 'headset_band') or o.name.startswith(('lid_skin_', 'eye_socket_'))):
+        if o.data.has_custom_normals:
+            o.data.normals_split_custom_set([(0, 0, 0)] * len(o.data.loops))
+        for p in o.data.polygons:
+            p.use_smooth = False
 root.rotation_euler.x = math.pi / 2
 bpy.ops.wm.save_as_mainfile(filepath=str(OUT / 'hermes.blend'))
 

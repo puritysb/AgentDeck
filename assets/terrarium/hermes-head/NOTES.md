@@ -783,6 +783,35 @@ painted marks, as in the concept, not through lighting.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-flat/review.png`.
 
+## Flat-shaded skin removes the black pixels (2026-10-02)
+
+**Symptom.** Single NaN-black pixels appeared along curves on the nose side
+and the shoulders, and on the headset band. They were pure 0/0/0 against a
+9/14/17 background, present in every build including e861384.
+
+**Ruled out.** They did not move with any of these:
+
+- IOR, roughness or specular (patched straight into the USD);
+- the UV depth term;
+- the face backing;
+- the bookkeeping attributes.
+
+**Cause.** They vanish when the mesh has no interpolated normals.
+
+**Fix.** The face, face backing, lid patches, eye sockets, body skin and
+headset band are now flat-shaded. With the flat-lit skin the sun barely
+reaches the colour, so no facets show on the skin. The band shows faint
+facet planes, in keeping with the low-poly headband.
+
+**After.** An isolated-dark-pixel scan of the face, 3/4, master, profile,
+nose-zoom and blink renders flags only lash, liner and lip-line pixels.
+
+**Asset.** 155.7k tris in 62 meshes, 7.70 MB; e861384 had 145.7k tris in
+58 meshes, 7.32 MB. The increase is the 3D eyes. HermesAquariumTests pass.
+An on-device frame-time measurement still needs hardware.
+
+Review renders: `diagnostics/hermes-mermaid/nous-v19-flatshade/`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate
