@@ -748,6 +748,41 @@ Review: `diagnostics/hermes-mermaid/nous-v19-eyes3d/review.png`.
 
 Review: `diagnostics/hermes-mermaid/nous-v19-skin/review.png`.
 
+## Flat-lit skin (2026-10-02, "remove the shadows boldly")
+
+**Why.** The user still found the shading awkward. The remaining shadows
+were mostly lighting on geometry, not paint:
+
+- a grey band across the near cheek, where E69's flat front turns into the
+  side plane;
+- the jaw underside;
+- ripples around the mouth;
+- the nose underside.
+
+The concept is lit almost flat.
+
+**Blocker.** A glow texture can't exceed 1.0, which renders at only ~200
+here, so lowering the albedo made the face dark (p50 ~225).
+
+**Fix.** RealityKit honours the `scale` input of `UsdUVTexture`.
+`build-hermes-mermaid.scale_face_glow()` now patches the exported USDZ
+(both the review copy and the installed one) to put `FACE_GLOW` there:
+
+- `FACE_ALBEDO` 0.35: little of the colour depends on the sun;
+- `FACE_GLOW` 2.0 x `GLOW_TINT` (1, .94, .91): the glow carries the colour.
+
+The body skin uses the same constants.
+
+**Result.** Front skin p50 is 249/235/223 vs the sheet's 251/236/226. The
+shade side is 245/229/218, previously 224/208/191. The painted marks stay:
+the crisp nose, the soft jaw/neck tone and the lips. HermesAquariumTests
+pass.
+
+**Trade-off.** The 3D form now reads mainly through the silhouette and the
+painted marks, as in the concept, not through lighting.
+
+Review: `diagnostics/hermes-mermaid/nous-v19-flat/review.png`.
+
 ## After the gate
 
 The order is: hair lock design (fringe splits and flick locks) → deliberate

@@ -360,6 +360,7 @@ face = head_v19.build(head, {'skin': skin, 'hair': hair, 'under': hair, 'white':
 # and shoulders don't glow flat white beside the painted face: albedo scaled
 # down (the sun clipped it) and a peach, colour-matched glow carrying the shade.
 import face_paint as _fp
+face_paint = _fp
 _p = skin.node_tree.nodes['Principled BSDF']
 _base = _p.inputs['Base Color'].default_value[:3]
 _p.inputs['Base Color'].default_value = tuple(c * _fp.FACE_ALBEDO ** 2.2 for c in _base) + (1,)
@@ -486,9 +487,29 @@ def export(usdz, glb):
     if glb:
         bpy.ops.export_scene.gltf(filepath=str(glb), export_format='GLB', use_selection=True, export_animations=False,
                                   export_cameras=False, export_lights=False, export_yup=True)
+def scale_face_glow(usdz):
+    """The face's glow strength. Blender's USD export drops Emission Strength
+    for a textured emissive, and the texture itself can't exceed 1, so the
+    strength goes on the UsdUVTexture `scale` input, which RealityKit honours."""
+    import tempfile, zipfile
+    from pxr import Usd, UsdShade, Sdf, Gf, UsdUtils
+    k = face_paint.FACE_GLOW
+    with tempfile.TemporaryDirectory() as tmp:
+        zipfile.ZipFile(usdz).extractall(tmp)
+        layer = next(Path(tmp).glob('*.usdc'))
+        stage = Usd.Stage.Open(str(layer))
+        tex = UsdShade.Shader(stage.GetPrimAtPath('/root/_materials/Face_skin/Image_Texture_001'))
+        assert tex and 'face_glow' in str(tex.GetInput('file').Get()), 'face glow texture node moved'
+        tex.CreateInput('scale', Sdf.ValueTypeNames.Float4).Set(Gf.Vec4f(k, k, k, 1))
+        stage.GetRootLayer().Save()
+        Path(usdz).unlink()
+        assert UsdUtils.CreateNewUsdzPackage(Sdf.AssetPath(str(layer)), str(usdz))
+
 export(OUT / 'hermes.usdz', None)
+scale_face_glow(OUT / 'hermes.usdz')
 if INSTALL:
     export(ROOT / 'apple/AgentDeck/Resources/Aquarium/hermes-mermaid.usdz', ROOT / 'assets/terrarium/hermes-mermaid.glb')
+    scale_face_glow(ROOT / 'apple/AgentDeck/Resources/Aquarium/hermes-mermaid.usdz')
     (ROOT / 'assets/terrarium/hermes-rig.json').write_text(json.dumps(manifest, indent=2) + '\n')
     bpy.ops.wm.save_as_mainfile(filepath=str(ROOT / 'assets/terrarium/hermes-mermaid.blend'))
 root.rotation_euler.x = 0

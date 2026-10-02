@@ -35,11 +35,15 @@ def smooth(a, b, x):
     return t * t * (3 - 2 * t)
 
 
-FACE_ALBEDO = float(os.environ.get('HERMES_FACE_ALBEDO', 0.80))   # painted albedo scale
-FACE_GLOW = float(os.environ.get('HERMES_FACE_GLOW', 1.0))       # glow, relative to the painted colour
+# The concept is lit almost flat. Little of the colour comes from the app's
+# lights (albedo 0.35) and most from a texture-coloured glow (x2.0, set as the
+# USD texture scale): front skin p50 249/235/223 vs the sheet's 251/236/226,
+# shade side 245/229/218 -- the user asked for the shadows to go (2026-10-02).
+FACE_ALBEDO = float(os.environ.get('HERMES_FACE_ALBEDO', 0.35))   # painted albedo scale
+FACE_GLOW = float(os.environ.get('HERMES_FACE_GLOW', 2.0))       # glow, relative to the painted colour
 # the glow carries the shade side, where RealityKit's lighting goes grey; the
 # sheet's shade is peach (228/202/187 against a 251/236/226 lit face)
-GLOW_TINT = tuple(float(c) for c in os.environ.get('HERMES_GLOW_TINT', '1,0.90,0.83').split(','))
+GLOW_TINT = tuple(float(c) for c in os.environ.get('HERMES_GLOW_TINT', '1,0.94,0.91').split(','))
 TIP = 0.040      # was 0.0330: the profile nose stands further proud of the bridge root
 RECESS = 0.011   # lower-face set-back at the chin (head-frame m)
 
@@ -253,11 +257,14 @@ def uv_and_material(face, skin, im):
     # front render clipped at 255 where the sheet sits at 251/236/226, and the
     # fringe-hem band, nose line and neck shadow vanished. The face glows with
     # its own painting instead.
-    # USD carries a textured emissive at full value (Emission Strength is
-    # dropped), so the strength is baked into a darkened copy of the painting
+    # USD drops Emission Strength for a textured emissive, so the glow is a
+    # second texture whose strength is set on the USD texture node instead
     glow = bpy.data.images.get("face_glow") or bpy.data.images.new("face_glow", im.size[0], im.size[1], alpha=False)
     px = np.array(im.pixels[:], np.float32).reshape(-1, 4)
-    px[:, :3] *= np.array(GLOW_TINT, np.float32) * (FACE_GLOW / FACE_ALBEDO)
+    # the full painting x tint (<= 1, so nothing clips); its strength
+    # (FACE_GLOW, may exceed 1) is applied as the UsdUVTexture `scale` after
+    # export -- see build-hermes-mermaid.py, which RealityKit honours
+    px[:, :3] *= np.array(GLOW_TINT, np.float32) / FACE_ALBEDO
     glow.pixels.foreach_set(px.ravel())
     glow.filepath_raw = GLOW_TEX; glow.file_format = "PNG"; glow.save()
     gtex = nt.nodes.new("ShaderNodeTexImage"); gtex.image = glow; gtex.extension = "EXTEND"
