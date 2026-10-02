@@ -25,7 +25,7 @@
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
 // SYNC-HASH shared/src/d200h-layout.ts 7f5dc168d8a976c727953ad7471ba635c4a377db
-// SYNC-HASH shared/src/session-utils.ts b8edbaa9b578b111b7b63851fe4cbe2e8b6821e0
+// SYNC-HASH shared/src/session-utils.ts 9ff8581b7ce0e779cfd4443a16ba7d85ed7d9964
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -1033,10 +1033,11 @@ public enum D200HLayoutModel {
     // MARK: Session ordering (port of session-utils.ts)
 
     /// agentType rank: openclaw=0, claude-code=1, codex-cli=2, codex-app=3,
-    /// opencode=4, antigravity=5, kiro-cli=6, kiro-ide=7, others=8.
+    /// opencode=4, antigravity=5, kiro-cli=6, kiro-ide=7, others=8; hermes=0 with openclaw.
     static func agentTypeRank(_ agentType: String) -> Int {
         switch agentType {
         case "openclaw": return 0
+        case "hermes": return 0
         case "claude-code": return 1
         case "codex-cli": return 2
         case "codex-app": return 3

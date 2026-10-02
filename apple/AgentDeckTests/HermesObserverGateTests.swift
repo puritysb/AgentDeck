@@ -46,7 +46,7 @@ final class HermesObserverGateTests: XCTestCase {
     func testADeadProcessClosesTheConversationAndBlocksLateCallbacks() {
         var gate = HermesObserverGate()
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": sid, "pid": 4242], now: t0)
-        XCTAssertEqual(gate.sweepDeparted(now: at(5)) { $0 == 4242 ? .dead : .alive }, [HermesObserverGate.sessionPrefix + sid])
+        XCTAssertEqual(gate.sweepDeparted(now: at(5)) { $0 == 4242 ? .dead : .alive }.closed, [HermesObserverGate.sessionPrefix + sid])
         XCTAssertEqual(gate.admit(event: "hermes_stop", payload: ["session_id": sid, "pid": 4242], now: at(6)), .reject)
     }
 
@@ -55,8 +55,8 @@ final class HermesObserverGateTests: XCTestCase {
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": sid, "pid": 4242], now: t0)
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": other], now: t0)
         var probed: [Int32] = []
-        XCTAssertEqual(gate.sweepDeparted(now: at(5)) { probed.append($0); return .alive }, [])
-        XCTAssertEqual(gate.sweepDeparted(now: at(6)) { probed.append($0); return .unknown }, [])
+        XCTAssertEqual(gate.sweepDeparted(now: at(5)) { probed.append($0); return .alive }.closed, [])
+        XCTAssertEqual(gate.sweepDeparted(now: at(6)) { probed.append($0); return .unknown }.closed, [])
         XCTAssertEqual(probed, [4242, 4242], "a row without a pid is never probed")
     }
 
@@ -65,9 +65,18 @@ final class HermesObserverGateTests: XCTestCase {
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": sid, "pid": 7], now: t0)
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": other, "pid": 7], now: t0)
         var probes = 0
-        let closed = gate.sweepDeparted(now: at(5)) { _ in probes += 1; return .dead }
+        let closed = gate.sweepDeparted(now: at(5)) { _ in probes += 1; return .dead }.closed
         XCTAssertEqual(Set(closed), [HermesObserverGate.sessionPrefix + sid, HermesObserverGate.sessionPrefix + other])
         XCTAssertEqual(probes, 1)
+    }
+
+    func testALiveCliConversationStaysButAGatewayOneKeepsTheTTL() {
+        var gate = HermesObserverGate()
+        _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": sid, "pid": 7, "platform": "cli"], now: t0)
+        _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": other, "pid": 8, "platform": "telegram"], now: t0)
+        let sweep = gate.sweepDeparted(now: at(5)) { _ in .alive }
+        XCTAssertEqual(sweep.refreshed, [HermesObserverGate.sessionPrefix + sid])
+        XCTAssertEqual(sweep.closed, [])
     }
 
     func testOnlyNoSuchProcessReadsAsDead() {

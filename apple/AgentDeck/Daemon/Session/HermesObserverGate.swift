@@ -32,7 +32,11 @@ struct HermesObserverGate: Sendable {
         case accept(boundary: String, sessionKey: String)
     }
 
-    private struct Entry: Sendable { var lastAt: Date; var pid: Int32? }
+    private struct Entry: Sendable { var lastAt: Date; var pid: Int32?; var cli: Bool? }
+
+    /// Result of a process sweep: rows closed because their process is gone,
+    /// and live CLI rows whose silence timer was refreshed.
+    struct Sweep: Sendable, Equatable { var closed: [String] = []; var refreshed: [String] = [] }
     private var live: [String: Entry] = [:]
     private var ended: [String: Date] = [:]
 
@@ -68,7 +72,8 @@ struct HermesObserverGate: Sendable {
         if live[sid] == nil && !opening && boundary != "tool_start" { return .reject }
         let reported = (payload["pid"] as? NSNumber)?.int32Value
         let pid = reported.flatMap { $0 > 1 ? $0 : nil } ?? live[sid]?.pid
-        live[sid] = Entry(lastAt: now, pid: pid)
+        let cli = (payload["platform"] as? String).map { $0 == "cli" } ?? live[sid]?.cli
+        live[sid] = Entry(lastAt: now, pid: pid, cli: cli)
         trimLive()
         return .accept(boundary: boundary, sessionKey: key)
     }
@@ -76,20 +81,28 @@ struct HermesObserverGate: Sendable {
     /// Close every conversation whose Hermes process is gone. One-shot mode
     /// (`hermes -z`) hard-exits through `os._exit` without finalizing, so this
     /// is its only end short of the silence TTL. Returns the row ids closed.
-    mutating func sweepDeparted(now: Date, probe: (Int32) -> Liveness = Self.probe) -> [String] {
+    mutating func sweepDeparted(now: Date, probe: (Int32) -> Liveness = Self.probe) -> Sweep {
         var verdicts: [Int32: Liveness] = [:]
-        var closed: [String] = []
+        var result = Sweep()
         for (sid, entry) in live {
             guard let pid = entry.pid else { continue }
             let verdict = verdicts[pid] ?? probe(pid)
             verdicts[pid] = verdict
+            // Like OpenClaw, a running Hermes CLI stays on screen: its live
+            // process keeps the silence TTL from retiring an idle conversation.
+            // Gateway conversations (no finalize per chat) keep the TTL.
+            if verdict == .alive, entry.cli == true {
+                live[sid]?.lastAt = now
+                result.refreshed.append(Self.sessionPrefix + sid)
+                continue
+            }
             guard verdict == .dead else { continue }
             live[sid] = nil
             ended[sid] = now
-            closed.append(Self.sessionPrefix + sid)
+            result.closed.append(Self.sessionPrefix + sid)
         }
         ended = Self.trimmed(ended)
-        return closed
+        return result
     }
 
     /// The daemon evicted the row (silence TTL): forget it here too.

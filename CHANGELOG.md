@@ -55,6 +55,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   `design/brand/hermes.svg`. The macOS app's own daemon now ingests Hermes
   observer hooks too. An observed Hermes row is never chosen as the ESP32
   voice target: it is read-only.
+- Hermes swims as a mermaid in every terrarium without the 3D aquarium
+  (Android 2D and e-ink terrariums, ESP32 boards, Pixoo 64): the official Nous
+  girl head over a kelp tail, instead of a floating head. Keys, lists and
+  cards keep the plain mark.
+- Like OpenClaw, a running Hermes CLI stays on screen while its process
+  lives, and Hermes sorts first with OpenClaw in every session list.
 - A Hermes conversation now closes when its Hermes process exits, so
   `hermes -z` one-shot runs no longer linger as idle sessions for 30 minutes.
 

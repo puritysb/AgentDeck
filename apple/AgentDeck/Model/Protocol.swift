@@ -69,6 +69,7 @@ enum DashboardDataRules {
     static func agentTypeRank(_ agentType: String?) -> Int {
         switch agentType {
         case "openclaw": 0
+        case "hermes": 0     // general-purpose assistant, pinned with OpenClaw
         case "claude-code": 1
         case "codex-cli": 2
         case "codex-app": 3

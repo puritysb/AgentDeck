@@ -129,6 +129,19 @@ describe('Hermes conversations end with their process', () => {
     expect(sessions.applyTo([], 30)).toHaveLength(1);
   });
 
+  it('keeps a running CLI conversation on screen like OpenClaw, but not a gateway one', () => {
+    const sessions = new HermesSessions();
+    sessions.note('hermes_user_prompt_submit', { ...payload, pid: 7, platform: 'cli' }, 0);
+    sessions.note('hermes_user_prompt_submit', { ...payload, session_id: other, pid: 8, platform: 'telegram' }, 0);
+    sessions.note('hermes_stop', { ...payload, pid: 7, platform: 'cli' }, 1);
+    // The live process refreshes the CLI row on every sweep; the gateway row ages out.
+    for (let now = 60_000; now < HERMES_SILENCE_TTL_MS + 120_000; now += 60_000) {
+      sessions.sweepDeparted(() => 'alive', now);
+    }
+    const rows = sessions.applyTo([], HERMES_SILENCE_TTL_MS + 120_000);
+    expect(rows.map((r) => r.id)).toEqual([`observed:hermes:${session_id}`]);
+  });
+
   it('reads only "no such process" as dead', () => {
     expect(hermesPidLiveness(process.pid)).toBe('alive');
     const exited = spawnSync(process.execPath, ['-e', '0']).pid;

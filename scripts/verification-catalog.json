@@ -592,6 +592,7 @@
         "shared/src/__tests__/idotmatrix-identity.test.ts",
         "shared/src/__tests__/mdns-identity.test.ts",
         "shared/src/__tests__/d200h-*.test.ts",
+        "scripts/__tests__/hermes-mermaid-2d.test.ts",
         "shared/src/__tests__/creature-layout.test.ts",
         "shared/src/__tests__/terrarium-rules.test.ts",
         "shared/src/__tests__/collaboration-presentation.test.ts",

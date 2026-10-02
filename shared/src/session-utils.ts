@@ -91,12 +91,14 @@ export function sessionTier(state: string | undefined): SessionTier {
 
 /**
  * Rank agent types for stable ordering.
- * openclaw=0 (always first), claude-code=1, codex-cli=2, codex-app=3,
- * opencode=4, antigravity=5, kiro-cli=6, kiro-ide=7, others=8.
+ * openclaw=0 and hermes=0 (the general-purpose assistants, always first),
+ * claude-code=1, codex-cli=2, codex-app=3, opencode=4, antigravity=5,
+ * kiro-cli=6, kiro-ide=7, others=8.
  */
 export function agentTypeRank(agentType: string | undefined): number {
   switch (agentType) {
     case 'openclaw': return 0;
+    case 'hermes': return 0;
     case 'claude-code': return 1;
     case 'codex-cli': return 2;
     case 'codex-app': return 3;

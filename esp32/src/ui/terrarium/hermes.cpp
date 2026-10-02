@@ -11,7 +11,7 @@
 #include "hermes.h"
 #include "draw.h"
 #include "renderer.h"
-#include "creature_glyphs_generated.h"
+#include "hermes_mermaid_generated.h"
 #include "terrarium_rules_generated.h"
 #include "../theme.h"
 #include "../display.h"
@@ -31,29 +31,29 @@ static float phaseOffset[HERMES_ARR_SIZE];
 static float currentX[HERMES_ARR_SIZE];
 static float currentY[HERMES_ARR_SIZE];
 
-/** Bilinear-sampled alpha mask, filled with one colour — the Nous girl mark is
- *  monochrome upstream, so a flat fill is the faithful rendering. */
-static void drawHermesMask(int x0, int y0, int dstW, int dstH, uint32_t color, uint8_t alpha) {
+/** Bilinear-sampled layer of the generated mermaid sprite (42×60 A8), filled
+ *  with one colour. Layers are drawn tail → rim → fluke → head; the head is
+ *  the official Nous girl mark with its crop faded into the tail
+ *  (scripts/generate-hermes-mermaid-2d.mjs). */
+static void drawLayer(const uint8_t* mask, int x0, int y0, int dstW, int dstH, uint32_t color, uint8_t alpha) {
     if (dstW <= 0 || dstH <= 0 || alpha == 0) return;
-    const float fx = (float)CreatureGlyphs::HERMES_W / dstW;
-    const float fy = (float)CreatureGlyphs::HERMES_H / dstH;
+    const int MW = HermesMermaid::W, MH = HermesMermaid::H;
+    const float fx = (float)MW / dstW;
+    const float fy = (float)MH / dstH;
     for (int py = 0; py < dstH; py++) {
         float sy = (py + 0.5f) * fy - 0.5f;
         int y1 = (int)floorf(sy);
         float wy = sy - y1;
-        int ya = y1 < 0 ? 0 : (y1 >= CreatureGlyphs::HERMES_H ? CreatureGlyphs::HERMES_H - 1 : y1);
-        int yb = (y1 + 1) < 0 ? 0 : ((y1 + 1) >= CreatureGlyphs::HERMES_H ? CreatureGlyphs::HERMES_H - 1 : y1 + 1);
+        int ya = y1 < 0 ? 0 : (y1 >= MH ? MH - 1 : y1);
+        int yb = (y1 + 1) < 0 ? 0 : ((y1 + 1) >= MH ? MH - 1 : y1 + 1);
         for (int px = 0; px < dstW; px++) {
             float sx = (px + 0.5f) * fx - 0.5f;
             int x1 = (int)floorf(sx);
             float wx = sx - x1;
-            int xa = x1 < 0 ? 0 : (x1 >= CreatureGlyphs::HERMES_W ? CreatureGlyphs::HERMES_W - 1 : x1);
-            int xb = (x1 + 1) < 0 ? 0 : ((x1 + 1) >= CreatureGlyphs::HERMES_W ? CreatureGlyphs::HERMES_W - 1 : x1 + 1);
-            const uint8_t* mask = CreatureGlyphs::HERMES_A8;
-            float a00 = mask[ya * CreatureGlyphs::HERMES_W + xa];
-            float a10 = mask[ya * CreatureGlyphs::HERMES_W + xb];
-            float a01 = mask[yb * CreatureGlyphs::HERMES_W + xa];
-            float a11 = mask[yb * CreatureGlyphs::HERMES_W + xb];
+            int xa = x1 < 0 ? 0 : (x1 >= MW ? MW - 1 : x1);
+            int xb = (x1 + 1) < 0 ? 0 : ((x1 + 1) >= MW ? MW - 1 : x1 + 1);
+            float a00 = mask[ya * MW + xa], a10 = mask[ya * MW + xb];
+            float a01 = mask[yb * MW + xa], a11 = mask[yb * MW + xb];
             float top = a00 + (a10 - a00) * wx;
             float bot = a01 + (a11 - a01) * wx;
             int cov = (int)(top + (bot - top) * wy + 0.5f);
@@ -152,8 +152,18 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     currentX[idx] = renderX;
     currentY[idx] = renderY;
 
-    int glyphBox = max(4, (int)(bodyRadius * 2.7f));
-    drawHermesMask(cx - glyphBox / 2, cy - glyphBox / 2, glyphBox, glyphBox, Theme::HermesMark, alpha);
+    // A mermaid, not a floating head: the sprite is taller than the square
+    // mark boxes, with the fluke trailing below and to the right.
+    int spriteH = max(6, (int)(bodyRadius * 3.6f));
+    int spriteW = spriteH * HermesMermaid::W / HermesMermaid::H;
+    int sx0 = cx - spriteW / 2, sy0 = cy - spriteH / 2;
+    // The fluke beats while she swims; one pixel is plenty at LCD scale.
+    int flukeDx = (state == CreatureState::WORKING) ? (int)lroundf(fastSin(t * 3.2f) * 1.2f) : 0;
+    drawLayer(HermesMermaid::TAIL_A8,  sx0, sy0, spriteW, spriteH, HermesMermaid::BODY_COLOR,  alpha);
+    drawLayer(HermesMermaid::RIM_A8,   sx0, sy0, spriteW, spriteH, HermesMermaid::RIM_COLOR,   alpha);
+    drawLayer(HermesMermaid::FLUKE_A8, sx0 + flukeDx, sy0, spriteW, spriteH, HermesMermaid::FLUKE_COLOR, alpha);
+    drawLayer(HermesMermaid::HEAD_A8,  sx0, sy0, spriteW, spriteH, Theme::HermesMark, alpha);
+    int glyphBox = spriteH;  // name tag sits above the head
 
     if (state == CreatureState::ASKING) {
         int bx = cx + (int)(bodyRadius * 1.2f);

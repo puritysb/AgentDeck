@@ -68,14 +68,18 @@ fun stateRank(state: AgentState): Int = when (state) {
     AgentState.DISCONNECTED -> 3
 }
 
+// Mirror of shared/src/session-utils.ts agentTypeRank (it had fallen behind:
+// no Kiro, and "others" at 6 tied with kiro-cli).
 fun agentTypeRank(agentType: String?): Int = when (agentType) {
-    "openclaw" -> 0
+    "openclaw", "hermes" -> 0
     "claude-code" -> 1
     "codex-cli" -> 2
     "codex-app" -> 3
     "opencode" -> 4
     "antigravity" -> 5
-    else -> 6
+    "kiro-cli" -> 6
+    "kiro-ide" -> 7
+    else -> 8
 }
 
 // OpenClaw / Gateway visibility SSOT — hand-mirrored from

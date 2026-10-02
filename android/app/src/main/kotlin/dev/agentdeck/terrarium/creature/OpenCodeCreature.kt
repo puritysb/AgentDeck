@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -17,6 +18,8 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.PathParser
 import dev.agentdeck.terrarium.CreatureGeometry
+import dev.agentdeck.terrarium.HermesMermaid2D
+import dev.agentdeck.ui.theme.DesignTokens
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
 import dev.agentdeck.terrarium.resolveCreatureNameTagLayout
@@ -263,6 +266,31 @@ class OpenCodeCreature(
             else -> listOf(openCodePath)
         }
         val pathScale = size / viewBox
+        if (hermes) {
+            // A mermaid, never a floating head: the generated kelp tail under
+            // the official Nous girl head, whose crop fades into the tail
+            // (scripts/generate-hermes-mermaid-2d.mjs). Head keeps the mark's
+            // scale; the sprite extends below it.
+            val headFade = Brush.verticalGradient(
+                (HermesMermaid2D.FADE_START / HermesMermaid2D.VIEW_H) to frameColor,
+                (HermesMermaid2D.FADE_END / HermesMermaid2D.VIEW_H) to frameColor.copy(alpha = 0f),
+                startY = 0f, endY = HermesMermaid2D.VIEW_H,
+            )
+            val dim = if (visualState == OctopusVisualState.SLEEPING) 0.55f else 1f
+            val flukeDx = if (visualState == OctopusVisualState.WORKING) sin(time * 6f) * 0.5f else 0f
+            scope.withTransform({
+                translate(cx - size / 2f, cy - size / 2f)
+                scale(pathScale, pathScale, pivot = Offset.Zero)
+            }) {
+                drawPath(hermesTail, color = DesignTokens.Kelp.s500, alpha = alpha * dim)
+                drawPath(hermesRim, color = DesignTokens.Kelp.s700, alpha = alpha * dim)
+                withTransform({ translate(flukeDx, 0f) }) {
+                    drawPath(hermesFluke, color = DesignTokens.Kelp.s300, alpha = alpha * dim)
+                }
+                for (path in paths) drawPath(path, brush = headFade, alpha = alpha)
+            }
+            return
+        }
         scope.withTransform({
             translate(cx - size / 2f, cy - size / 2f)
             scale(pathScale, pathScale, pivot = Offset.Zero)
@@ -409,6 +437,9 @@ class OpenCodeCreature(
         private val hermesPaths = CreatureGeometry.HERMES_PATH_DATA.map { data ->
             PathParser().parsePathString(data).toPath().apply { fillType = PathFillType.EvenOdd }
         }
+        private val hermesTail = PathParser().parsePathString(HermesMermaid2D.TAIL).toPath()
+        private val hermesRim = PathParser().parsePathString(HermesMermaid2D.RIM).toPath()
+        private val hermesFluke = PathParser().parsePathString(HermesMermaid2D.FLUKE).toPath()
         // Body size as fraction of canvas width
         private const val BODY_SIZE_FRACTION = 0.064f
 

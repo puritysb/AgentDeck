@@ -82,6 +82,8 @@ class ObserverTests(unittest.TestCase):
         # closes the conversation when this pid is gone.
         self.emit('on_session_start')
         self.assertEqual(self.events[-1][1]['pid'], os.getpid())
+        self.assertEqual(self.events[-1][1]['platform'], 'cli')
+        self.assertEqual(self.events[-1][1]['project_name'], 'Hermes (cli)')
 
     def test_callback_exceptions_are_fail_open(self):
         with patch.object(self.module, '_handle', side_effect=RuntimeError('offline')):

@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r typecheck",
     "generate-icons": "node scripts/generate-icons.mjs",
     "generate-creature-glyphs": "node scripts/generate-creature-glyphs.mjs",
+    "generate-hermes-mermaid-2d": "node scripts/generate-hermes-mermaid-2d.mjs",
     "generate-micro-glyphs": "node scripts/generate-micro-glyphs.mjs",
     "generate-protocol": "bash scripts/generate-protocol.sh",
     "generate-terrarium-rules": "node scripts/generate-terrarium-rules.mjs",

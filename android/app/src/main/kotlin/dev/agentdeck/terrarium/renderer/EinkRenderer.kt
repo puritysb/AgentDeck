@@ -981,7 +981,11 @@ private fun drawEinkOpenCode(
         canvas.translate(cx, cy)
         canvas.scale(svgScale, svgScale)
         canvas.translate(-viewBox / 2f, -viewBox / 2f)
-        for (markPath in markPaths) drawAquariumMark(canvas, paint, markPath)
+        if (isHermes) {
+            drawEinkHermesMermaid(canvas, paint, state)
+        } else {
+            for (markPath in markPaths) drawAquariumMark(canvas, paint, markPath)
+        }
         canvas.restore()
 
         if (displayName != null) {
@@ -1571,6 +1575,10 @@ private const val GRAY_KIRO_SLEEP = 0xFF999999.toInt()
 // Hermes on paper is the upstream BLACK Nous girl (Brand.hermes #000000).
 private const val GRAY_HERMES_BODY = 0xFF222222.toInt()
 private const val GRAY_HERMES_SLEEP = 0xFF999999.toInt()
+// Mermaid tail on B/W paper: mid gray body, dark rim, light fluke.
+private const val GRAY_HERMES_TAIL = 0xFF777777.toInt()
+private const val GRAY_HERMES_RIM = 0xFF444444.toInt()
+private const val GRAY_HERMES_FLUKE = 0xFFAAAAAA.toInt()
 private const val GRAY_ANTIGRAVITY_BODY = 0xFF303030.toInt() // dark peak/arc body for B/W e-ink
 private const val GRAY_ANTIGRAVITY_SLEEP = 0xFF777777.toInt() // sleeping/dormant (faded)
 private const val GRAY_STARBURST  = 0xFF999999.toInt()  // level 9 — WORKING starburst glow
@@ -1643,6 +1651,11 @@ private val COLOR_KIRO_BODY = 0xFF7C3AED.toInt()
 private val COLOR_KIRO_SLEEP = 0xFF7A6A91.toInt()
 private val COLOR_HERMES_BODY = 0xFF1A1A1A.toInt()
 private val COLOR_HERMES_SLEEP = 0xFF8A8A8A.toInt()
+// Kelp tokens (design/tokens.css), the tail colours on Kaleido colour e-ink.
+private val COLOR_HERMES_TAIL = 0xFF2F8A7C.toInt()
+private val COLOR_HERMES_RIM = 0xFF1F6157.toInt()
+private val COLOR_HERMES_FLUKE = 0xFF6FB6A8.toInt()
+private val COLOR_HERMES_TAIL_SLEEP = 0xFF6F8F89.toInt()
 
 // Antigravity (peak/arc mark — rainbow in color mode, gray fallback for B/W e-ink)
 private val COLOR_ANTIGRAVITY_BODY = 0xFF5F6368.toInt()  // Google gray primary
@@ -1664,3 +1677,33 @@ private val COLOR_FISH_STRIPE  = 0xFFD4A040.toInt()  // golden neon stripe
 private val COLOR_BUBBLE       = 0xFFD8E8F0.toInt()  // light blue bubbles
 private val COLOR_STARBURST    = 0xFFDDAA44.toInt()  // golden working glow
 private val COLOR_PARTICLE     = 0xFF55AACC.toInt()  // cyan particles
+
+// --- Hermes 2D mermaid (e-ink) ---------------------------------------------
+// The generated kelp tail (scripts/generate-hermes-mermaid-2d.mjs) under the
+// official Nous girl head, whose crop fades into the tail — a mermaid, never a
+// floating head. Drawn in the head-anchored mark space (viewBox 24, head at
+// the origin), so the name tag and bubble above it stay where they were.
+private val hermesTailPath by lazy { androidx.core.graphics.PathParser.createPathFromPathData(dev.agentdeck.terrarium.HermesMermaid2D.TAIL) }
+private val hermesRimPath by lazy { androidx.core.graphics.PathParser.createPathFromPathData(dev.agentdeck.terrarium.HermesMermaid2D.RIM) }
+private val hermesFlukePath by lazy { androidx.core.graphics.PathParser.createPathFromPathData(dev.agentdeck.terrarium.HermesMermaid2D.FLUKE) }
+
+private fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint, state: OctopusVisualState) {
+    val asleep = state == OctopusVisualState.SLEEPING
+    val headColor = paint.color
+    paint.style = Paint.Style.FILL
+    paint.shader = null
+    paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_TAIL, COLOR_HERMES_TAIL)
+    canvas.drawPath(hermesTailPath, paint)
+    paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_RIM, COLOR_HERMES_RIM)
+    canvas.drawPath(hermesRimPath, paint)
+    paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_FLUKE, COLOR_HERMES_FLUKE)
+    canvas.drawPath(hermesFlukePath, paint)
+    val fade = android.graphics.LinearGradient(
+        0f, dev.agentdeck.terrarium.HermesMermaid2D.FADE_START, 0f, dev.agentdeck.terrarium.HermesMermaid2D.FADE_END,
+        headColor, headColor and 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP,
+    )
+    paint.shader = fade
+    for (markPath in dev.agentdeck.terrarium.CreatureGeometry.hermesNativePaths) canvas.drawPath(markPath, paint)
+    paint.shader = null
+    paint.color = headColor
+}

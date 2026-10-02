@@ -93,6 +93,7 @@
 		23EA982402128EB1158AB6A9 /* MiniTomlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1754EEF69FF454C638CF1C /* MiniTomlTests.swift */; };
 		24342C374127614A2DD3F8D1 /* StateTransitions.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9FBCA5AE4B47A5D67D12207 /* StateTransitions.generated.swift */; };
 		244C343C9D7A724CBC70AD9F /* CollaborationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B987710CFB6B547DB06A21 /* CollaborationModel.swift */; };
+		246443DB7245AD465EF5D00D /* HermesMermaid2D.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC229C52EC306C34CBD07396 /* HermesMermaid2D.generated.swift */; };
 		247508C0278AD531D13420EC /* ScaledToFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576B35DBF88A4E7844E7A99A /* ScaledToFit.swift */; };
 		263F5BDD1FD0077BCCCA5DE8 /* DaemonServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B857A690693DD802AA05429D /* DaemonServer.swift */; };
 		26569551DB80E2C8457E1958 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */; };
@@ -136,6 +137,7 @@
 		33E64126B91B640A48A9D034 /* Trmnl75Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */; };
 		34444319598506828DE09006 /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
 		35437B04ADEC279D861893EF /* GatewayLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A41EA31C51D5B49399A788 /* GatewayLiveActivityTests.swift */; };
+		35E8586B1FEB7DE05853797A /* HermesMermaidSprite.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */; };
 		36121C5F8A2BF0D337CA2ED1 /* GatewayLiveActivity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77F4FA4E17866309859930F /* GatewayLiveActivity.generated.swift */; };
 		36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
 		365E273D40DBDE66988AE8E2 /* MatrixExpression.swift in Sources */ = {isa = PBXBuildFile; fileRef = B938F198829A3AF90F7BE842 /* MatrixExpression.swift */; };
@@ -323,6 +325,7 @@
 		7F2EF2FA2C61302C14EC7D77 /* TopologyRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8FF164B1E859BEE08BBF646 /* TopologyRail.swift */; };
 		7F401B71F68C95DEBD74DAFE /* TUITerrariumRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D80206C489734918E56FB0B /* TUITerrariumRenderer.swift */; };
 		7F7AC94714D1AA6767605207 /* OpenCodeObserverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21073CA63BB9403D46212547 /* OpenCodeObserverTests.swift */; };
+		7F8830A8D7992D6BE9175043 /* HermesMermaidSprite.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */; };
 		7FBCD51766F94FE9BD969378 /* SetupNeededCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC179B8F91EF42F5EBDE911 /* SetupNeededCard.swift */; };
 		7FD70D74C3300CE4E4818E1A /* PairingCredentialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD0E0570EC405C2542D130A1 /* PairingCredentialTests.swift */; };
 		7FE91079BB8AE03AB4F092CD /* WaterEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47A555A3917875178A5B7E5 /* WaterEffect.swift */; };
@@ -635,6 +638,7 @@
 		FCF0A9C4BC88D7255023D2F7 /* DisplayMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F43DCAC6100C73B98139EA /* DisplayMonitor.swift */; };
 		FD7FCF5CF42BE4A918EE5DB4 /* IDotMatrixModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3815BC9679F080521D52D2 /* IDotMatrixModule.swift */; };
 		FD86AF81DA987540254BA326 /* OpenClawAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427B912EBD043285F0A0008D /* OpenClawAdapter.swift */; };
+		FDBC11BBFAADC1E112AD05A0 /* HermesMermaid2D.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC229C52EC306C34CBD07396 /* HermesMermaid2D.generated.swift */; };
 		FDCD49FC590D9C5D0E1A70CD /* BridgeLogStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F9ACDDF739DF572C9280B38 /* BridgeLogStream.swift */; };
 		FDDA6D8721BF7FDEFCCEB729 /* HermesAquariumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F065367613106CF36A21BF2 /* HermesAquariumTests.swift */; };
 		FDE24F470C55939E9503C810 /* IDotMatrixProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */; };
@@ -684,6 +688,7 @@
 		125A43BCFF7E55A34B4C5FC1 /* AgentDeckLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckLogo.swift; sourceTree = "<group>"; };
 		12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentRules.generated.swift; sourceTree = "<group>"; };
 		14A41EA31C51D5B49399A788 /* GatewayLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayLiveActivityTests.swift; sourceTree = "<group>"; };
+		14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMermaidSprite.generated.swift; sourceTree = "<group>"; };
 		15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortDiagnostics.swift; sourceTree = "<group>"; };
 		15B0174D679C9D51A1F21AAF /* MlxSafetyRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MlxSafetyRules.generated.swift; sourceTree = "<group>"; };
 		1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroGlyphs.generated.swift; sourceTree = "<group>"; };
@@ -938,6 +943,7 @@
 		DAF69E65D3118C105A193227 /* OpenClawTokenExtractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawTokenExtractTests.swift; sourceTree = "<group>"; };
 		DB1FB433513319C533AFDD85 /* DeviceIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIdentity.swift; sourceTree = "<group>"; };
 		DBBD731AC01994F5C7C1A78A /* UsageAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageAPIClient.swift; sourceTree = "<group>"; };
+		DC229C52EC306C34CBD07396 /* HermesMermaid2D.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMermaid2D.generated.swift; sourceTree = "<group>"; };
 		DC62763B9E0E57235CFDACED /* NotificationPermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPermission.swift; sourceTree = "<group>"; };
 		DCA36B13CDF6548B698F4C55 /* ApmeDashboardWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeDashboardWindow.swift; sourceTree = "<group>"; };
 		DCB382D6E482410C30E597EC /* AntigravityCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityCreature.swift; sourceTree = "<group>"; };
@@ -1282,6 +1288,7 @@
 			isa = PBXGroup;
 			children = (
 				4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */,
+				DC229C52EC306C34CBD07396 /* HermesMermaid2D.generated.swift */,
 				2DC38F54A1C54AB134DB0535 /* PixooPreview.swift */,
 				599AA0232E126B4B238A4C50 /* SessionSlotRenderer.swift */,
 				A4EB2E51F6EFD29341EB6127 /* StateColors.swift */,
@@ -1526,6 +1533,7 @@
 				CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */,
 				81ECEA1581963132423FB0C8 /* CodexTelemetryModule.swift */,
 				1C62F7ABA6BDEE39F39DBDFA /* ESP32Serial.swift */,
+				14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */,
 				68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */,
 				6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */,
 				3D3815BC9679F080521D52D2 /* IDotMatrixModule.swift */,
@@ -2080,6 +2088,8 @@
 				0347DAE5A86DD416D1666E23 /* HTTPServer.swift in Sources */,
 				3C6B8278B3C44E131BD74639 /* HermesCreature.swift in Sources */,
 				920821ACA214400577D14C04 /* HermesMermaid.swift in Sources */,
+				246443DB7245AD465EF5D00D /* HermesMermaid2D.generated.swift in Sources */,
+				35E8586B1FEB7DE05853797A /* HermesMermaidSprite.generated.swift in Sources */,
 				4BF30B1E7DF06C2220D76A38 /* HermesObserverGate.swift in Sources */,
 				65AA35DBAE5753D637A04865 /* HermesSwim.swift in Sources */,
 				DAD883DE12AFEE958A79595A /* HookInstaller.swift in Sources */,
@@ -2314,6 +2324,8 @@
 				32577E0D7F449489455D0C9D /* HTTPServer.swift in Sources */,
 				7276F296892636D2949C0E5D /* HermesCreature.swift in Sources */,
 				68B0037262A3976232DCD2F7 /* HermesMermaid.swift in Sources */,
+				FDBC11BBFAADC1E112AD05A0 /* HermesMermaid2D.generated.swift in Sources */,
+				7F8830A8D7992D6BE9175043 /* HermesMermaidSprite.generated.swift in Sources */,
 				A7C525ED25F56061A0DF9ADE /* HermesObserverGate.swift in Sources */,
 				9C336A6CBF7BCEA5183CA40F /* HermesSwim.swift in Sources */,
 				C27D39DC0EFEF25A0DE4B685 /* HookInstaller.swift in Sources */,

@@ -62,6 +62,9 @@ def _payload(kwargs, sid=None):
         # ASCII only: board fonts have no U+00B7, so "Hermes · cli" drew a
         # missing-glyph box on every ESP32 name tag.
         "project_name": "Hermes (" + platform + ")",
+        # An interactive CLI conversation stays on screen while its process
+        # lives; gateway conversations keep the silence TTL.
+        "platform": platform.lower(),
         "model": _text(kwargs.get("model"), 200),
         # Lets the daemon close the row when this process is gone. One-shot
         # mode (`hermes -z`) hard-exits through os._exit without firing

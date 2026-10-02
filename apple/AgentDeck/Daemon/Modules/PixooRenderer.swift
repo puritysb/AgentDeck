@@ -1561,6 +1561,37 @@ final class PixooRenderer {
             return lerpColor((183, 92, 182), (36, 126, 255), (t - 0.78) / 0.22)
         }
 
+        // Hermes swims as the generated 2D mermaid (official Nous girl head over
+        // a kelp tail — scripts/generate-hermes-mermaid-2d.mjs), never as a
+        // floating head. Mirror of drawOfficialDotGlyph in pixoo-sprites.ts.
+        if glyph == .hermes {
+            let h = max(10, Int(round(Double(target) * 1.35)))
+            let w = max(7, Int(round(Double(h) * Double(HermesMermaidSprite.width) / Double(HermesMermaidSprite.height))))
+            let mx0 = Int(round(scx - Double(w) / 2))
+            let my0 = Int(round(scy - Double(h) / 2)) + bob
+            let flukeDx = state == .processing ? Int(round(sin(Double(animFrame) * 0.5))) : 0
+            func rgb(_ c: (Int, Int, Int)) -> RGB { (UInt8(c.0), UInt8(c.1), UInt8(c.2)) }
+            let layers: [([UInt8], RGB, Int)] = [
+                (HermesMermaidSprite.tail, rgb(HermesMermaidSprite.bodyColor), 0),
+                (HermesMermaidSprite.rim, rgb(HermesMermaidSprite.rimColor), 0),
+                (HermesMermaidSprite.fluke, rgb(HermesMermaidSprite.flukeColor), flukeDx),
+                (HermesMermaidSprite.head, base, 0),
+            ]
+            let MW = HermesMermaidSprite.width, MH = HermesMermaidSprite.height
+            for (layerMask, color, ox) in layers {
+                for dy in 0..<h {
+                    let sy = min(MH - 1, dy * MH / h)
+                    for dx in 0..<w {
+                        let sx = min(MW - 1, dx * MW / w)
+                        let alpha = Double(layerMask[sy * MW + sx]) / 255
+                        if alpha > 0.02 { blendPixel(&buf, mx0 + dx + ox, my0 + dy, color, alpha) }
+                    }
+                }
+            }
+            if state == .awaiting { drawQuestionBubble(&buf, centerX: mx0 + w + 1, centerY: my0) }
+            return
+        }
+
         for dy in 0..<target {
             let sy = min(OfficialDotGlyphs.size - 1, dy * OfficialDotGlyphs.size / target)
             for dx in 0..<target {

@@ -15,7 +15,7 @@
 // don't change path geometry and only need a pin bump.
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt cec9fad8e298145c7a380ba2c5a0b1b79ac7eda6
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt d1787545b6dc5da690a58475fae851158be4e054
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 776da07134cef654ff773f7d36de96742febb1b4
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 686b7cf1d15b75671fc8ddaa40e0568fc0768941
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)
@@ -242,6 +242,10 @@ struct CanonicalCreatureView: View {
 
     var body: some View {
         Canvas { context, canvasSize in
+            if agentType == "hermes" {
+                Self.drawHermesMermaid(context, canvasSize, headColor: color)
+                return
+            }
             guard let creature = CreatureGeometry.creature(for: agentType) else { return }
             let rect = CGRect(origin: .zero, size: canvasSize)
             let transform = CreatureGeometry.fitTransform(viewBox: creature.viewBox, in: rect)
@@ -259,6 +263,33 @@ struct CanonicalCreatureView: View {
         }
         .frame(width: size, height: size)
         .accessibilityLabel(Self.accessibilityLabel(for: agentType))
+    }
+
+    /// Hermes in a terrarium preview is the 2D mermaid the boards draw: the
+    /// generated kelp tail under the official Nous girl head, whose crop fades
+    /// into it (scripts/generate-hermes-mermaid-2d.mjs) — not a floating head.
+    private static let hermesTail = CrayfishCreature.parseSvgPath(HermesMermaid2D.tail)
+    private static let hermesRim = CrayfishCreature.parseSvgPath(HermesMermaid2D.rim)
+    private static let hermesFluke = CrayfishCreature.parseSvgPath(HermesMermaid2D.fluke)
+
+    private static func drawHermesMermaid(_ context: GraphicsContext, _ size: CGSize, headColor: Color) {
+        let scale = min(size.width / HermesMermaid2D.viewWidth, size.height / HermesMermaid2D.viewHeight)
+        let dx = (size.width - HermesMermaid2D.viewWidth * scale) / 2
+        let dy = (size.height - HermesMermaid2D.viewHeight * scale) / 2
+        let transform = CGAffineTransform(translationX: dx, y: dy).scaledBy(x: scale, y: scale)
+        context.fill(hermesTail.applying(transform), with: .color(DesignTokens.Kelp.s500))
+        context.fill(hermesRim.applying(transform), with: .color(DesignTokens.Kelp.s700))
+        context.fill(hermesFluke.applying(transform), with: .color(DesignTokens.Kelp.s300))
+        let fade = GraphicsContext.Shading.linearGradient(
+            Gradient(stops: [
+                .init(color: headColor, location: HermesMermaid2D.fadeStart / HermesMermaid2D.viewHeight),
+                .init(color: headColor.opacity(0), location: HermesMermaid2D.fadeEnd / HermesMermaid2D.viewHeight),
+            ]),
+            startPoint: CGPoint(x: 0, y: dy),
+            endPoint: CGPoint(x: 0, y: dy + HermesMermaid2D.viewHeight * scale))
+        for path in CreatureGeometry.hermesPaths {
+            context.fill(path.applying(transform), with: fade, style: FillStyle(eoFill: true))
+        }
     }
 
     private static func accessibilityLabel(for agentType: String?) -> String {

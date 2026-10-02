@@ -11777,7 +11777,13 @@ final class DaemonServer {
     /// the App Sandbox `kill(pid, 0)` may be refused — that is `unknown`, and
     /// the silence TTL stays the backstop.
     private func sweepDepartedHermes() {
-        for sessionId in hermesGate.sweepDeparted(now: Date()) {
+        let now = Date()
+        let sweep = hermesGate.sweepDeparted(now: now)
+        // A live Hermes CLI keeps its row: refresh the eviction clock too.
+        for sessionId in sweep.refreshed where pushedSessionsById[sessionId] != nil {
+            lastHookAtByPushedSession[sessionId] = now
+        }
+        for sessionId in sweep.closed {
             if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
                 appendOpenCodeChatEnd(json: [:], sessionId: sessionId, interrupted: true, agentType: "hermes")
             }

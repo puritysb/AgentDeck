@@ -38,13 +38,16 @@ class SessionDisplayOrderingTest {
     @Test
     fun `agentTypeRank places openclaw first`() {
         assertEquals(0, agentTypeRank("openclaw"))
+        assertEquals(0, agentTypeRank("hermes"))
+        assertEquals(6, agentTypeRank("kiro-cli"))
+        assertEquals(8, agentTypeRank("future-agent"))
         assertEquals(1, agentTypeRank("claude-code"))
         assertEquals(2, agentTypeRank("codex-cli"))
         assertEquals(3, agentTypeRank("codex-app"))
         assertEquals(4, agentTypeRank("opencode"))
         assertEquals(5, agentTypeRank("antigravity"))
-        assertEquals(6, agentTypeRank("unknown"))
-        assertEquals(6, agentTypeRank(null))
+        assertEquals(8, agentTypeRank("unknown"))
+        assertEquals(8, agentTypeRank(null))
     }
 
     @Test

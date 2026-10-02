@@ -7,7 +7,7 @@ import type { ObservedSession } from './passive-observer.js';
 export const HERMES_SILENCE_TTL_MS = 30 * 60_000;
 const MAX_SESSIONS = 128;
 const EVENTS = new Set(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end']);
-interface Entry { row: ObservedSession; lastAt: number; pid?: number; }
+interface Entry { row: ObservedSession; lastAt: number; pid?: number; cli?: boolean; }
 
 /** Whether a reported Hermes pid still runs. Three answers: only "no such
  *  process" is `dead`; a refused or failed probe (EPERM…) is `unknown` and
@@ -68,8 +68,9 @@ export class HermesSessions {
     }
     const pid = typeof payload.pid === 'number' && Number.isInteger(payload.pid) && payload.pid > 1
       ? payload.pid : old?.pid;
+    const cli = typeof payload.platform === 'string' ? payload.platform === 'cli' : old?.cli;
     this.sessions.delete(sid);
-    this.sessions.set(sid, { row, lastAt: now, pid });
+    this.sessions.set(sid, { row, lastAt: now, pid, cli });
     while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value!);
     this.onChanged?.();
     return true;
@@ -90,6 +91,10 @@ export class HermesSessions {
       if (entry.pid == null) continue;
       let verdict = verdicts.get(entry.pid);
       if (verdict == null) { verdict = probe(entry.pid); verdicts.set(entry.pid, verdict); }
+      // Like OpenClaw, a running Hermes CLI stays on screen: its live process
+      // keeps the silence TTL from retiring an idle conversation. Gateway
+      // conversations (no finalize per chat) keep the TTL.
+      if (verdict === 'alive' && entry.cli) { entry.lastAt = now; continue; }
       if (verdict !== 'dead') continue;
       this.sessions.delete(sid);
       this.ended.set(sid, now);
