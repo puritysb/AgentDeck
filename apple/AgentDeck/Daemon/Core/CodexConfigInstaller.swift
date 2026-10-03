@@ -375,7 +375,7 @@ enum CodexConfigInstaller {
     /// Keep stdout quiet so Stop/UserPromptSubmit hooks do not accidentally
     /// feed AgentDeck's acknowledgement back into Codex as hook output.
     private static func buildLifecycleHookCommand(event: String) -> String {
-        return "sh -c \(shellSingleQuoted(buildStdinPostSnippet(event: event)))"
+        return "exec sh -c \(shellSingleQuoted(buildStdinPostSnippet(event: event)))"
     }
 
     private static func buildStdinPostSnippet(event: String) -> String {
@@ -390,7 +390,7 @@ enum CodexConfigInstaller {
             #"  done"#,
             #"fi"#,
             #"PORT="${PORT:-9120}""#,
-            "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true",
+            "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -H \"X-AgentDeck-Pid: $PPID\" -d @- >/dev/null 2>&1 || true",
         ]
         return lines.joined(separator: "\n")
     }

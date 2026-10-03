@@ -92,7 +92,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   already configured relay, without an in-app installer or subprocess.
 - Improve Codex hook/OTel ownership and background-thread filtering, fold
   attributable headless work into its parent, and preserve user-owned TOML
-  when configuring observation.
+  when configuring observation. POSIX lifecycle hooks now report the launching
+  Codex process ID so child work can be attributed without an argv guess.
 - Recover OpenCode pending requests across directories and reconnects, and
   improve Kiro transcript observation.
 - Show purchased Codex credits when a plan window is exhausted. Consolidate

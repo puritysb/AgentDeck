@@ -251,12 +251,14 @@ function buildLifecycleHookCommand(event: string, platform: NodeJS.Platform): st
   if (platform === 'win32') {
     return buildWindowsLifecycleHookCommand(event);
   }
-  return `sh -c ${shellSingleQuoted(buildStdinPostSnippet(event))}`;
+  return `exec sh -c ${shellSingleQuoted(buildStdinPostSnippet(event))}`;
 }
 
+// Replace the command runner shell so PPID names Codex, not an extra wrapper.
+// The daemon uses this identity to attribute headless child runs to their launcher.
 function buildStdinPostSnippet(event: string): string {
   return posixPortPreamble().concat([
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
 }
 

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, symlinkSync, lstatSync, chmodSync, statSync } from 'fs';
 import { tmpdir } from 'os';
+import { createServer } from 'node:http';
+import { spawn } from 'node:child_process';
 import { join } from 'path';
 import {
   applyManagedBlock,
@@ -283,6 +285,38 @@ describe('codex-install: managedBlockBody', () => {
     expect(withFence).toContain('"agentdeck-notify"');
   });
 
+  it.skipIf(process.platform === 'win32')('posts the launcher PID through the real command shell', async () => {
+    const body = managedBlockBody({ platform: process.platform, includeNotify: false, includeOtel: false });
+    const command = JSON.parse(body.match(/^command = (".*")$/m)![1]) as string;
+    const payload = '{"session_id":"pid-acceptance","cwd":"/tmp"}';
+    let received: { pid: string | undefined; body: string } | undefined;
+    const server = createServer((req, res) => {
+      let data = '';
+      req.on('data', chunk => { data += chunk; });
+      req.on('end', () => {
+        received = { pid: req.headers['x-agentdeck-pid'] as string | undefined, body: data };
+        res.end('{}');
+      });
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address() as { port: number };
+      const child = spawn('/bin/sh', ['-c', command], {
+        env: { ...process.env, AGENTDECK_PORT: String(address.port) },
+        stdio: ['pipe', 'ignore', 'ignore'],
+      });
+      child.stdin.end(payload);
+      const code = await new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject);
+        child.once('exit', resolve);
+      });
+      expect(code).toBe(0);
+      expect(received).toEqual({ pid: String(process.pid), body: payload });
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
+
   it('uses PowerShell command hooks on Windows', () => {
     const body = managedBlockBody({
       includeNotify: true,
@@ -414,6 +448,23 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     expect(() => uninstallCodexHooks({ configPath, notifyScriptPath })).toThrow('not removed');
     expect(readFileSync(configPath, 'utf8')).toBe(damaged);
     expect(readFileSync(notifyScriptPath, 'utf8')).toBe('keep');
+  });
+
+  it.skipIf(process.platform === 'win32')('refreshes pre-PID hooks while retaining user settings and trust records', () => {
+    writeFileSync(configPath, 'model = "keep"\n');
+    installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    const installed = readFileSync(configPath, 'utf8');
+    const old = installed.replaceAll('exec sh -c', 'sh -c')
+      .replaceAll(' -H \\"X-AgentDeck-Pid: $PPID\\"', '');
+    expect(old).not.toContain('X-AgentDeck-Pid');
+    writeFileSync(configPath, old + '\n[hooks.state."test-hook"]\ntrusted_hash = "old-hash"\n');
+    expect(installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 }).installed).toBe(true);
+    const updated = readFileSync(configPath, 'utf8');
+    expect(updated).toContain('X-AgentDeck-Pid');
+    expect(updated).toContain('model = "keep"');
+    expect(updated).toContain('trusted_hash = "old-hash"');
+    installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120 });
+    expect(readFileSync(configPath, 'utf8')).toBe(updated);
   });
 
   it('preserves settings inserted by Codex between installs and on removal', () => {
