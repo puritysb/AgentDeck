@@ -158,9 +158,14 @@ The schema-2 contract (13 bones, face/hair controls, `mouth_open` and
 `closed_lid_*`) is unchanged, so `HermesMermaid.swift`/`HermesSwim.swift` need
 no edits. All 9 `HermesAquariumTests` pass on macOS against the installed USDZ.
 `render-hermes-character.swift` mirrors the rig's initial hiding and takes
-`blink` to show the closed lid. Still open: an in-app iPad capture and the
-user's visual acceptance of the 3D face. Passing tests is not visual
-acceptance.
+`blink` to show the closed lid. On 2026-10-03, the Debug iOS app rendered the bundled model in the
+actual aquarium on an iPad Air M2 simulator (iPadOS 18.6), pinned to a
+loopback synthetic capture feed. The face, working cue, session roster and
+timeline rendered together; the local evidence is
+`diagnostics/release-acceptance/hermes-ipad-simulator.png`. This is simulator
+rendering evidence, not physical-device acceptance. The physical iPad was
+unavailable, and the user's visual acceptance of the 3D face remains open.
+Passing tests is not visual acceptance.
 
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
 built by `build-hermes-mermaid.py`. Apple bundles its USDZ; the builder also
