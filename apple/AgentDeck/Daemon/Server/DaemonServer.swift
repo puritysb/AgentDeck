@@ -6707,6 +6707,11 @@ final class DaemonServer {
                 // A run that outlives its session sat open until a restart;
                 // a later prompt on a re-engaged TUI opens a fresh run lazily.
                 apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "codex-cli"])
+            } else if sid.hasPrefix(HermesObserverGate.sessionPrefix) {
+                if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
+                    appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true, agentType: "hermes")
+                }
+                apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "hermes"])
             } else if sid.hasPrefix(Self.openCodeSessionPrefix) {
                 if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
                     appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true)

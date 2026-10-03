@@ -11,6 +11,38 @@ final class HermesObserverGateTests: XCTestCase {
 
     private func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
 
+    func testCapturedCliAndGatewayLifecycleKeepsInterruptionsAndFinalizeBoundaries() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-lifecycle.json")
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        var stops = 0, interrupted = 0, finalized = 0
+        for (index, row) in events.enumerated() {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            guard case let .accept(boundary, sessionKey) = gate.admit(event: event, payload: payload, now: at(Double(index))) else {
+                XCTFail("Rejected captured callback: \(event)")
+                continue
+            }
+            let normalized = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: sessionKey))
+            XCTAssertEqual(normalized.event, boundary)
+            if boundary == "stop" {
+                stops += 1
+                XCTAssertEqual(normalized.payload["interrupted"] as? Bool, payload["interrupted"] as? Bool)
+                if normalized.payload["interrupted"] as? Bool == true { interrupted += 1 }
+            }
+            if boundary == "session_end" { finalized += 1 }
+        }
+        XCTAssertEqual(stops, 10)
+        XCTAssertEqual(interrupted, 3)
+        XCTAssertEqual(finalized, 4)
+        // Only the two original Gateway conversations and the second profile
+        // remain after callback replay. Their host exits close them, not Stop.
+        XCTAssertEqual(gate.sweepDeparted(now: at(60)) { _ in .dead }.closed.count, 3)
+    }
+
     func testOnlyObserverIdsAndKnownBoundariesAreAdmitted() {
         var gate = HermesObserverGate()
         XCTAssertEqual(gate.admit(event: "hermes_session_start", payload: ["session_id": "not-a-hermes-id"], now: t0), .reject)

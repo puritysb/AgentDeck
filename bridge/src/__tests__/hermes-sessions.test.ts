@@ -50,8 +50,14 @@ describe('Hermes conversation lifetime', () => {
   });
   it('expires a missing stop without inventing successful completion', () => {
     const sessions = new HermesSessions();
+    const retired: string[] = [];
+    sessions.onExpired = sid => retired.push(sid);
     sessions.note('hermes_user_prompt_submit', payload, 0);
     expect(sessions.applyTo([], HERMES_SILENCE_TTL_MS)).toEqual([]);
+    expect(retired).toEqual([session_id]);
+    expect(sessions.note('hermes_stop', payload, HERMES_SILENCE_TTL_MS + 1)).toBe(false);
+    sessions.applyTo([], HERMES_SILENCE_TTL_MS + 2);
+    expect(retired).toEqual([session_id]);
   });
   it('recovers mid-tool after restart but rejects orphan stops and unknown events', () => {
     const sessions = new HermesSessions();
@@ -148,4 +154,3 @@ describe('Hermes conversations end with their process', () => {
     if (exited) expect(hermesPidLiveness(exited)).toBe('dead');
   });
 });
-

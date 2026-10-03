@@ -22,6 +22,7 @@ _LOCK = threading.RLock()
 _WORKER = None
 _CHILDREN = OrderedDict()
 _TURNS = OrderedDict()
+_CONTEXT = OrderedDict()
 _MAX_TRACKED = 512
 # Ignore proxy env vars and redirects: observation must stay on loopback.
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -55,16 +56,19 @@ def _payload(kwargs, sid=None):
     identity = _identity(sid or kwargs.get("session_id"))
     if not identity or identity in _CHILDREN:
         return None
-    platform = _text(kwargs.get("platform"), 40) or "CLI"
+    # Real Gateway tool callbacks omit platform. Missing context must not
+    # relabel a Gateway conversation as CLI or leak its host's working directory.
+    platform = _text(kwargs.get("platform"), 40)
+    if platform:
+        _remember(_CONTEXT, identity, {
+            "cwd": os.getcwd() if platform.lower() == "cli" else "",
+            # ASCII only: small board fonts lack U+00B7.
+            "project_name": "Hermes (" + platform + ")",
+            "platform": platform.lower(),
+        })
     return {
         "session_id": identity,
-        "cwd": os.getcwd() if platform.lower() == "cli" else "",
-        # ASCII only: board fonts have no U+00B7, so "Hermes · cli" drew a
-        # missing-glyph box on every ESP32 name tag.
-        "project_name": "Hermes (" + platform + ")",
-        # An interactive CLI conversation stays on screen while its process
-        # lives; gateway conversations keep the silence TTL.
-        "platform": platform.lower(),
+        **_CONTEXT.get(identity, {}),
         "model": _text(kwargs.get("model"), 200),
         # Lets the daemon close the row when this process is gone. One-shot
         # mode (`hermes -z`) hard-exits through os._exit without firing
@@ -146,6 +150,7 @@ def _handle(event, **kwargs):
             old = kwargs.get("old_session_id")
             if old:
                 _post("hermes_session_end", _payload(kwargs, old))
+                _CONTEXT.pop(_identity(old), None)
             return
         payload = _payload(kwargs)
         if payload is None:
@@ -176,6 +181,7 @@ def _handle(event, **kwargs):
         elif event == "on_session_finalize":
             _TURNS.pop(sid, None)
             _post("hermes_session_end", payload)
+            _CONTEXT.pop(sid, None)
 
 
 def register(ctx):

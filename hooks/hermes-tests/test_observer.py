@@ -85,6 +85,26 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(self.events[-1][1]['platform'], 'cli')
         self.assertEqual(self.events[-1][1]['project_name'], 'Hermes (cli)')
 
+    def test_gateway_tools_without_platform_keep_conversation_context(self):
+        # Observed in real API-server tool work on Hermes 0a374d167: only
+        # session/turn callbacks carry platform; tool callbacks omit it.
+        self.ctx.hooks['on_session_start'](session_id='gateway', platform='api_server')
+        self.ctx.hooks['pre_tool_call'](session_id='gateway', tool_name='terminal')
+        self.ctx.hooks['post_tool_call'](session_id='gateway', tool_name='terminal')
+        for _, payload in self.events:
+            self.assertEqual(payload['platform'], 'api_server')
+            self.assertEqual(payload['project_name'], 'Hermes (api_server)')
+            self.assertEqual(payload['cwd'], '')
+        self.ctx.hooks['on_session_finalize'](session_id='gateway')
+        self.assertEqual(self.module._CONTEXT, {})
+
+    def test_orphan_tool_does_not_guess_cli_context(self):
+        self.ctx.hooks['pre_tool_call'](session_id='unknown', tool_name='terminal')
+        payload = self.events[-1][1]
+        self.assertNotIn('platform', payload)
+        self.assertNotIn('cwd', payload)
+        self.assertNotIn('project_name', payload)
+
     def test_callback_exceptions_are_fail_open(self):
         with patch.object(self.module, '_handle', side_effect=RuntimeError('offline')):
             self.emit('pre_tool_call')
@@ -92,6 +112,8 @@ class ObserverTests(unittest.TestCase):
     def test_tracking_is_bounded(self):
         for i in range(600): self.module._remember(self.module._TURNS, str(i), True)
         self.assertEqual(len(self.module._TURNS), 512)
+        for i in range(600): self.module._payload({'session_id': str(i), 'platform': 'api_server'})
+        self.assertEqual(len(self.module._CONTEXT), 512)
 
     def test_final_response_waits_for_authoritative_outcome(self):
         self.emit('pre_llm_call')

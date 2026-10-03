@@ -444,13 +444,63 @@ The isolated run disabled Hermes lazy installs after the first launch tried
 automatic source completion; that automatic build was stopped. No tracked
 upstream source or user profile configuration was changed.
 
+On 2026-10-03, the installed managed Hermes runtime was exercised with the
+real classic CLI (`--cli`) and real Gateway API server in temporary homes.
+The checkout was `0a374d167424cdc730ce9761368b62255b551e58`; the managed
+snapshot's CLI entry point, TUI input implementation, Gateway runner and API
+adapter byte-matched that checkout. The configured `zai` / `glm-5.3` provider
+served the successful turns. Lazy dependency installs were disabled.
+
+| Live case | Observed result |
+|---|---|
+| Gateway, two turns in one API conversation | One start, two prompts and exactly two successful Stops; the conversation stayed idle between turns |
+| Interactive CLI, two turns, `/new`, another turn, Ctrl-C mid-turn, `/exit` | Old identity finalized at `/new`; new identity began on its next prompt; cancellation carried `interrupted=true`; exit finalized |
+| Gateway `/v1/runs/{id}/stop` | API settled as `cancelled`; observer emitted one interrupted Stop |
+| Second profile home, terminal tool, SIGTERM mid-turn | One terminal start/end pair; successful reply, then an interrupted Stop on shutdown; process sweep closed the remaining run |
+| CLI with a deliberately invalid model | Exit 1; start → prompt → finalize, with no Stop emitted upstream; no successful response was invented |
+
+The scrubbed ordered capture is
+`bridge/src/__tests__/fixtures/hermes-live-lifecycle.json`. It contains only
+synthetic prompts and replies; session IDs, PIDs and workspace paths are
+replaced. Callback timestamps were not collected. A real Node daemon received
+the unmodified callbacks through `/hooks`, published `sessions_list` and
+`timeline_history`, and stored separate APME turns with `stop` or
+`interrupted` end sources. Successful turns retained `glm-5.3` / `zai`.
+The Gateway's API usage payload is not exported by observer v1, so token/cost
+fields remain unknown rather than inferred from it.
+
+This run exposed a Node timeline bug: empty interrupted responses were labelled
+`Completed` even though APME correctly stored `interrupted`. The close-row label
+now respects the callback outcome. Gateway tool callbacks also omit `platform`;
+the observer used to fill in `CLI`, briefly relabelling a Gateway conversation
+and exporting its host cwd. A bounded per-conversation context now retains the
+explicit platform; an orphan callback omits unknown fields. The original
+capture deliberately preserves the pre-fix payload as evidence.
+A repeat of the real Gateway tool/shutdown case after reinstalling the observer
+kept `api_server`, `Hermes (api_server)` and an empty cwd on every callback.
+After 30 minutes of real Gateway silence, the original Node APME run was still
+open even though its roster TTL had elapsed. TTL retirement now releases the
+APME run in both daemons; Swift also closes an open Hermes chat anchor as
+interrupted. The Node registry tests assert retirement is delivered exactly
+once, including when a delayed Stop arrives after expiry.
+The daemon E2E suite replays this real capture
+through HTTP and checks normal replies and interrupted timeline rows; Swift
+replays the same capture through admission and APME boundary normalization.
+This does not turn unit coverage of dropped callbacks, queue bounds, child
+suppression into live evidence. The corrected TTL closure has regression
+coverage; a second 30-minute live wait has not been performed. Gateway reset through a
+messaging platform and a real child-task callback remain unmeasured.
+
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
 
-Before whole-product support: native Swift ingestion, Android terrarium
-renderers, ESP32/matrix glyphs, profile/channel labels, approval observation and
-explicit capability checks across voice/control surfaces need implementation
-and review. Older firmware can select a project named Hermes as a voice target;
+Native Swift ingestion, Android terrarium renderers and ESP32/matrix glyphs
+are implemented. Physical-device visual review remains open in #425. Hermes
+continues to be observation-only: approval and steering capabilities are not
+advertised. The Node photo path has no Hermes terminal identity and refuses
+delivery instead of typing into another terminal; default focus remains a
+display selection, not permission to steer it. Older firmware can select a
+project named Hermes as a voice target;
 the Node preview has no terminal/command route, so delivery fails visibly.
 No native App Store subprocess or companion-install UI is added.
 A real CLI and gateway conversation capture, including reset, interruption and

@@ -251,6 +251,44 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('replays real Hermes CLI/Gateway captures without calling cancelled turns completed', async () => {
+    const capture = JSON.parse(readFileSync(join(ROOT, 'bridge/src/__tests__/fixtures/hermes-live-lifecycle.json'), 'utf8'));
+    const client = await connect(daemon.port);
+    try {
+      for (const hook of capture.events) {
+        // The capture's scrubbed PID is not a live process on this test host.
+        const payload = { ...hook.payload, pid: daemon.child.pid };
+        const response = await postHook(daemon.port, hook.event, payload);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ received: true });
+      }
+      const cancelled = capture.events.filter((e: { event: string; payload: { interrupted?: boolean } }) =>
+        e.event === 'hermes_stop' && e.payload.interrupted === true);
+      expect(cancelled).toHaveLength(3);
+      await waitFor('all cancelled Hermes turns on the wire', () => {
+        const rows = client.frames.filter(f => f.type === 'timeline_event')
+          .map(f => f.entry as Record<string, unknown>)
+          .filter(e => e.agentType === 'hermes' && e.type === 'chat_end' && String(e.raw).startsWith('Interrupted'));
+        return rows.length >= 3 ? rows : undefined;
+      });
+      const ends = client.frames.filter(f => f.type === 'timeline_event')
+        .map(f => f.entry as Record<string, unknown>)
+        .filter(e => e.agentType === 'hermes' && e.type === 'chat_end');
+      expect(ends.some(e => String(e.raw).startsWith('Completed'))).toBe(false);
+      const replies = client.frames.filter(f => f.type === 'timeline_event')
+        .map(f => f.entry as Record<string, unknown>)
+        .filter(e => e.agentType === 'hermes' && e.type === 'chat_response');
+      expect(replies.map(e => e.raw)).toEqual(expect.arrayContaining([
+        'GATEWAY_ONE', 'GATEWAY_TWO', 'CLI_ONE', 'CLI_TWO', 'CLI_AFTER_RESET', 'GATEWAY_TOOL_OK',
+      ]));
+      for (const hook of capture.events.filter((e: { event: string }) => e.event === 'hermes_session_start')) {
+        await postHook(daemon.port, 'hermes_session_end', hook.payload);
+      }
+    } finally {
+      client.close();
+    }
+  });
+
   it('answers the request-response hooks (PreToolUse, Stop) promptly when no device can approve', async () => {
     // Both hooks block Claude's TUI while they wait. With no approval-capable
     // device connected the daemon must hand the decision straight back
@@ -298,6 +336,8 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
   });
 
   it('shuts down cleanly and replays the persisted timeline after a restart', async () => {
+    const hermes = { session_id: `hermes-${'f'.repeat(32)}`, pid: daemon.child.pid, prompt: 'restart recovery check' };
+    await postHook(daemon.port, 'hermes_user_prompt_submit', hermes);
     expect(await stopDaemon(daemon)).toEqual({ selfExited: true });
     // A clean exit withdraws the discovery record, so hooks stop targeting a dead port.
     expect(existsSync(join(dataDir, 'daemon.json'))).toBe(false);
@@ -310,6 +350,14 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
         client.frames.find((f) => f.type === 'timeline_history' && Array.isArray(f.entries) && f.entries.length > 0));
       const entries = history.entries as Array<Record<string, unknown>>;
       expect(entries.some((e) => e.type === 'chat_start' && e.raw === 'e2e: say hello')).toBe(true);
+      const roster = await waitFor('post-restart roster', () => client.frames.find(f => f.type === 'sessions_list'));
+      expect((roster.sessions as Array<{ agentType?: string }>).some(s => s.agentType === 'hermes')).toBe(false);
+      // History is retained, but an orphan Stop cannot restore old working state.
+      expect(await (await postHook(daemon.port, 'hermes_stop', hermes)).json()).toMatchObject({ received: false });
+      expect(await (await postHook(daemon.port, 'hermes_tool_start', {
+        ...hermes, pid: daemon.child.pid, tool_name: 'terminal',
+      })).json()).toMatchObject({ received: true });
+      await postHook(daemon.port, 'hermes_session_end', hermes);
     } finally {
       client.close();
     }

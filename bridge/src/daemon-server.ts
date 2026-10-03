@@ -3821,9 +3821,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               }
               core.bridgeTimeline.addEntry({
                 ts: now, type: 'chat_end',
-                raw: rolloutOutcome.error
-                  ? `Failed · ${formatDurationSec(durS)}`
-                  : `Completed · ${formatDurationSec(durS)}`,
+                raw: `${json.interrupted === true ? 'Interrupted'
+                  : rolloutOutcome.error || json.aborted === true ? 'Failed'
+                  : 'Completed'} · ${formatDurationSec(durS)}`,
                 summaryKind: 'none',
                 ...base,
               } as TimelineEntry);
@@ -5164,6 +5164,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
   }
   hookCodexSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  hermesSessions.onExpired = (sid) => {
+    // Retiring the row must also release the collector's live-run ownership.
+    // Otherwise a quiet Gateway chat remains exempt from the abandoned-run reaper.
+    core.bridgeTimeline.reapOrphanChatStarts(0, Date.now(), undefined, { onlySessionId: sid });
+    try { apme?.collector.closeRun(sid); }
+    catch (err) { debug('APME', `closeRun for expired hermes ${sid.slice(0, 15)} failed: ${String(err)}`); }
+    log(`[agentdeck] Hermes ${sid.slice(0, 15)}: silence TTL expired; conversation closed`);
+  };
   hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
 
