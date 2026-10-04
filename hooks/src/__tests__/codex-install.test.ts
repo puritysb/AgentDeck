@@ -579,6 +579,28 @@ describe('codex-install: install / uninstall (file I/O)', () => {
     expect(managed).toContain('hooks = true');
   });
 
+  it('refreshes Windows pre-PID commands and sidecar without losing user settings or trust', () => {
+    writeFileSync(configPath, 'model = "user-model"\n');
+    const options = { configPath, platform: 'win32' as const, daemonHttpPort: 9120, notifyScriptPath };
+    installCodexHooksIfNeeded(options);
+    const installed = readFileSync(configPath, 'utf8');
+    const old = installed.replace(/-EncodedCommand ([A-Za-z0-9+/=]+)/g, (_, encoded: string) => {
+      const command = Buffer.from(encoded, 'base64').toString('utf16le')
+        .replace('-Headers $agentDeckHeaders ', '');
+      return '-EncodedCommand ' + Buffer.from(command, 'utf16le').toString('base64');
+    });
+    writeFileSync(configPath, old + '\n[hooks.state."kept"]\ntrusted_hash = "old-hash"\n');
+    writeFileSync(notifyScriptPath, 'old notify');
+    expect(installCodexHooksIfNeeded(options).installed).toBe(true);
+    const refreshed = readFileSync(configPath, 'utf8');
+    expect(refreshed).toContain('model = "user-model"');
+    expect(refreshed).toContain('trusted_hash = "old-hash"');
+    expect(refreshed.split(OPEN_FENCE)).toHaveLength(2);
+    expect(readFileSync(notifyScriptPath, 'utf8')).toContain('-Headers $agentDeckHeaders');
+    expect(installCodexHooksIfNeeded(options).installed).toBe(true);
+    expect(readFileSync(configPath, 'utf8')).toBe(refreshed);
+  });
+
   it('omits OTel by default on Windows installs', () => {
     installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, platform: 'win32', notifyScriptPath });
     const text = readFileSync(configPath, 'utf-8');
