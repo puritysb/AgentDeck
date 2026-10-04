@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -14,7 +14,7 @@ function hookCommand(prefix = ''): string {
     + Buffer.from(prefix + script, 'utf16le').toString('base64');
 }
 
-async function deliver(options: { codexParent?: boolean; prefix?: string } = {}) {
+async function deliver(options: { codexParent?: boolean; prefix?: string; registry?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'agentdeck-windows-codex-'));
   const payload = JSON.stringify({ session_id: 'windows-pid-test', prompt: '한글 résumé' });
   let received: { pid?: string; body: string } | undefined;
@@ -31,6 +31,10 @@ async function deliver(options: { codexParent?: boolean; prefix?: string } = {})
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     const port = (server.address() as { port: number }).port;
+    if (options.registry) {
+      mkdirSync(join(dir, '.agentdeck'));
+      writeFileSync(join(dir, '.agentdeck', 'daemon.json'), JSON.stringify({ port }));
+    }
     // Use a real native process whose executable name matches the upstream
     // Codex binary. No model/account or daemon configuration is involved.
     const executable = options.codexParent ? join(dir, 'codex.exe') : process.execPath;
@@ -46,7 +50,8 @@ hook.on('exit', code => process.exit(code ?? 1));
 `);
     const child = spawn(executable, [script], {
       windowsHide: true,
-      env: { ...process.env, AGENTDECK_PORT: String(port) },
+      env: { ...process.env, AGENTDECK_PORT: options.registry ? '' : String(port),
+        ...(options.registry ? { USERPROFILE: dir } : {}) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let output = '';
@@ -70,6 +75,11 @@ hook.on('exit', code => process.exit(code ?? 1));
 describe.skipIf(process.platform !== 'win32')('Windows Codex hook launcher identity', () => {
   it('crosses cmd.exe and sends the actual Codex launcher PID with UTF-8 stdin', async () => {
     const { received, expectedPid } = await deliver({ codexParent: true });
+    expect(received?.pid).toBe(expectedPid);
+  }, 15_000);
+
+  it('discovers the registry port through the bounded native HTTP health probe', async () => {
+    const { received, expectedPid } = await deliver({ codexParent: true, registry: true });
     expect(received?.pid).toBe(expectedPid);
   }, 15_000);
 

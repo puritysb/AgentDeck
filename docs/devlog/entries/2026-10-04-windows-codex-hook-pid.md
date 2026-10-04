@@ -24,17 +24,23 @@ The Windows CI matrix now includes Codex installer tests and
 [windows-codex-pid.test.ts](hooks/src/__tests__/windows-codex-pid.test.ts).
 It executes generated PowerShell with a real process whose executable is named
 `codex.exe` (a copied Node runtime, not a model session), through `cmd.exe`;
-negative cases cover an unrelated launcher, unavailable CIM and cyclic evidence.
+a registry-port case exercises native HTTP health discovery, and negative cases
+cover an unrelated launcher, unavailable CIM and cyclic evidence.
 This tests native ancestry/transport, not a live Codex model turn or Windows
 hardware. The verification catalogue and Windows reference describe that scope.
 The observation rule also corrects its stale legacy-Kiro wording to reflect #451.
 
 ## Local verification
 
-- Build/typecheck passed; full Vitest 5,124 passed, six skipped (four Windows-only
+- Build/typecheck passed; full Vitest 5,125 passed, seven skipped (five Windows-only
   cases plus two existing skips on macOS).
 - Protocol generation has no drift; token mirrors, docs and design catalogue pass.
 - Raw design lint retains 92 existing violations, with no UI/style changes.
 - Windows native execution is delegated to the existing Node 22/24/26 CI matrix;
   its result must be checked before merging or closing #429.
 - No installed hooks, daemon environment or queued release builds are modified.
+
+The first Windows matrix executed all four new native transport cases successfully,
+but exposed an older configuration-preservation test that assumed POSIX OTel on
+Windows. That case now explicitly exercises Linux and Windows and asserts each
+platform's supported exporter behavior while preserving the user settings.
