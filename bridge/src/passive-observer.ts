@@ -1074,7 +1074,8 @@ export function collectKiroSessionsFromSnapshots(
     if (snapshot) claimed.add(snapshot.sessionId);
 
     const rawState = snapshot?.state ?? 'idle';
-    const state = observedStateAfterSilence(rawState, snapshot?.lastActivityAt, now);
+    // Explicit Kiro turn boundaries survive silent tools; recency is not completion.
+    const state = rawState;
     const sessionKey = snapshot?.sessionId ?? String(proc.pid);
     const realCwd = snapshot?.cwd ?? cwd;
     const agentType = inKiroIde ? 'kiro-ide' as const : 'kiro-cli' as const;

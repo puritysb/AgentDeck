@@ -46,6 +46,30 @@ final class LocalKiroObserverTests: XCTestCase {
         """
     }
 
+    func testLegacyToolUseKeepsTurnOpenUntilFinalAssistant() throws {
+        let tool = #"{"kind":"AssistantMessage","data":{"content":[{"kind":"toolUse","data":{"name":"read"}}]}}"#
+        let file = try write([prompt("inspect", 1786933400), tool])
+        XCTAssertEqual(LocalKiroObserver.readSnapshot(file).state, "processing")
+        try (prompt("inspect", 1786933400) + "\n" + tool + "\n" + assistant("done"))
+            .write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(LocalKiroObserver.readSnapshot(file).state, "idle")
+    }
+
+    func testLateAssistantDoesNotReopenCompletedTurn() throws {
+        let file = try write([
+            #"{"payload":{"type":"turn_start"}}"#,
+            #"{"payload":{"type":"turn_end","reason":"interrupted"}}"#,
+            #"{"timestamp":"2026-09-28T00:00:03Z","payload":{"type":"assistant","operationType":"Say","content":"late"}}"#
+        ])
+        XCTAssertEqual(LocalKiroObserver.readSnapshot(file).state, "idle")
+    }
+
+    func testSilentTurnRemainsProcessingInsideObservationWindow() throws {
+        let file = try write([#"{"payload":{"type":"turn_start"}}"#])
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-11 * 60)], ofItemAtPath: file.path)
+        XCTAssertEqual(LocalKiroObserver.readSnapshot(file).state, "processing")
+    }
+
     func testSharedNestedV3Snapshot() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let data = try Data(contentsOf: root.appendingPathComponent("shared/kiro-observation-vectors.json"))

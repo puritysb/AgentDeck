@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { acceptsDaemonRuntime } from '@agentdeck/shared';
 
 import { Command, InvalidArgumentError } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync, readFileSync, statSync } from 'fs';
@@ -1789,7 +1790,9 @@ daemon
 function reportDaemonWaitFailure(verdict: RestartVerdict, action: 'start' | 'restart'): void {
   const what = action === 'start' ? 'Daemon start' : 'Daemon restart';
   if (verdict.ok) return;
-  if (verdict.reason === 'stop-failed') {
+  if (verdict.reason === 'swift-daemon') {
+    log(`${what} FAILED — Swift daemon PID ${verdict.pid} still serves port ${verdict.port}; Node takeover did not complete.`);
+  } else if (verdict.reason === 'stop-failed') {
     log(`${what} FAILED — the daemon you asked to restart (PID ${verdict.pid}) `
       + `is still answering on port ${verdict.port}. The stop did not take.`);
   } else if (verdict.reason === 'stale-build') {
@@ -1827,6 +1830,8 @@ export interface RestartedDaemon {
 
 export type RestartVerdict =
   | { ok: true; daemon: RestartedDaemon }
+  /** The Swift app answered, but the requested Node daemon did not. */
+  | { ok: false; reason: 'swift-daemon'; pid: number; port: number }
   /** The daemon we asked to go away is still on the port — the stop failed. */
   | { ok: false; reason: 'stop-failed'; pid: number; port: number }
   /** A daemon came up, on code other than the build on this disk. */
@@ -1840,7 +1845,7 @@ export interface RestartedDaemonQuery {
   /** The daemon that was stopped. The one `/health` answer that proves nothing. */
   stoppedPid?: number;
   preferredPort: number;
-  probeHealth: (port: number) => Promise<{ pid?: number; mode?: string; build?: string } | null>;
+  probeHealth: (port: number) => Promise<{ pid?: number; mode?: string; build?: string; isSwift?: boolean } | null>;
   readDaemonInfo: () => { httpPort?: number; port?: number } | null;
   findDaemonPort: () => number | null;
   /** The build id on this disk, when it can be computed. */
@@ -1902,6 +1907,7 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
 
   let announcedWait = false;
   /** Remembered so a timeout can say WHICH failure it was. */
+  let sawSwift: { pid: number; port: number } | null = null;
   let sawStopped: { pid: number; port: number } | null = null;
   let sawStale: { pid: number; port: number; build: string } | null = null;
   const startedAt = Date.now();
@@ -1922,6 +1928,12 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
       // An explicit non-daemon mode (a session bridge's hook server) is not a
       // restarted daemon. An ABSENT mode says nothing and is not held against it.
       if (health?.mode !== undefined && health.mode !== 'daemon') continue;
+      // This command starts Node. A live Swift app is not proof of Node readiness.
+      // Missing legacy identity remains unknown rather than an explicit mismatch.
+      if (!acceptsDaemonRuntime(health?.isSwift, true)) {
+        sawSwift = { pid, port };
+        continue;
+      }
       if (stoppedPid !== undefined && pid === stoppedPid) {
         sawStopped = { pid, port };
         continue;
@@ -1947,6 +1959,7 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
           build: sawStale.build, expected: expectedBuild as string,
         };
       }
+      if (sawSwift) return { ok: false, reason: 'swift-daemon', ...sawSwift };
       if (sawStopped) return { ok: false, reason: 'stop-failed', ...sawStopped };
       return { ok: false, reason: 'no-daemon' };
     }

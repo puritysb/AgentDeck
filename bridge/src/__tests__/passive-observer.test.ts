@@ -587,6 +587,15 @@ describe('passive-observer parsers', () => {
     expect(summary).toMatchObject({ state: 'idle', goal: 'review this code' });
   });
 
+  it('does not complete a Kiro turn after ten minutes of silent tool work', () => {
+    const sessions = collectKiroSessionsFromSnapshots(
+      [{ pid: 777, ppid: 1, rssKb: 100, tty: 'ttys007', command: 'kiro-cli --resume-id silent' }],
+      [{ sessionId: 'silent', transcriptPath: '/tmp/messages.jsonl',
+        lastActivityAt: Date.now() - 11 * 60 * 1000, state: 'processing',
+        recordKinds: ['turn_start'] }], new Map());
+    expect(sessions[0]?.state).toBe('processing');
+  });
+
   it('correlates a naturally launched Kiro process with its newest cwd session', () => {
     const proc = {
       pid: 777,

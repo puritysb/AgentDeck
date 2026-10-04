@@ -55,3 +55,5 @@ export * from './claude-weekly-view.js';
 export * from './zai-pair-view.js';
 export * from './matrix-expression.js';
 export { GatewayLiveActivity, GATEWAY_LIVE_RULES, gatewayToolFoldRaw } from './gateway-live-activity.js';
+
+export * from './daemon-parity.js';

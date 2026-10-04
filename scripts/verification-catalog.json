@@ -31,6 +31,7 @@
       "command": "npx vitest run --coverage",
       "report_suite": "vitest",
       "proves": [
+        "Node/Swift daemon policy mirror drift and common turn-boundary vectors; CLI rejects explicit Swift identity as Node readiness (native policy execution also runs on macOS)",
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup and scripts behave as their tests specify (the domain table below counts them)",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
         "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)"
@@ -435,6 +436,7 @@
       "icon": "◎",
       "match": [
         "bridge/src/__tests__/daemon-*.test.ts",
+        "shared/src/__tests__/daemon-parity.test.ts",
         "bridge/src/__tests__/session-registry.test.ts",
         "bridge/src/__tests__/linux-service.test.ts",
         "bridge/src/__tests__/windows-*.test.ts",

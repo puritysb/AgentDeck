@@ -1,3 +1,4 @@
+import { DAEMON_HANDOVER } from '@agentdeck/shared';
 /**
  * What `agentdeck daemon start` does about a daemon already answering on the
  * port it wants.
@@ -84,11 +85,11 @@ export function isForeignDaemon(
 }
 
 /** 12s: `waitForDaemonExit` only proves the daemon stopped ANSWERING. */
-const EXIT_WAIT_MS = 12_000;
+const EXIT_WAIT_MS = DAEMON_HANDOVER.exitWaitMs;
 /** 30s, and not padding: macOS keeps a NECP reservation on a cancelled
  *  listener's port for ~14s, during which `lsof` shows no sockets at all and
  *  bind() still returns EADDRINUSE (measured 2026-08-06 — bindable at ~17s). */
-const BINDABLE_WAIT_MS = 30_000;
+const BINDABLE_WAIT_MS = DAEMON_HANDOVER.bindableWaitMs;
 
 export async function negotiateIncumbentDaemon(
   args: {
