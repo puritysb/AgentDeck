@@ -198,7 +198,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
 
   it('announces itself on /health and in daemon.json, from the temp data dir only', async () => {
     const h = await health(daemon.port);
-    expect(h).toMatchObject({ status: 'ok', mode: 'daemon', port: daemon.port });
+    expect(h).toMatchObject({ status: 'ok', mode: 'daemon', port: daemon.port, isSwift: false });
     expect(typeof h?.build).toBe('string');
 
     const info = JSON.parse(readFileSync(join(dataDir, 'daemon.json'), 'utf8')) as { port: number; pid: number };

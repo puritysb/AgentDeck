@@ -2038,7 +2038,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const snap = core.stateMachine.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        status: 'ok', mode: 'daemon', state: snap.state,
+        status: 'ok', mode: 'daemon', state: snap.state, isSwift: false,
         hermesObserver: 1,
         gateway: gatewayAdapter?.isAlive() ? 'connected' : 'disconnected',
         // A link that keeps reconnecting reads `connected` at every sample.
