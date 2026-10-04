@@ -104,5 +104,5 @@ jobs:
       - name: Open SQLite through the daemon runtime
         run: node bridge/dist/cli.js diag native --json
 
-      - name: Windows hooks and observer regressions
-        run: pnpm exec vitest run hooks/src/__tests__/install.test.ts hooks/src/__tests__/codex-install.test.ts hooks/src/__tests__/windows-codex-pid.test.ts bridge/src/__tests__/passive-observer.test.ts bridge/src/__tests__/state-machine.test.ts bridge/src/__tests__/daemon-launcher.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/observed-launch.test.ts bridge/src/__tests__/observed-launch-integration.test.ts bridge/src/__tests__/connection-diagnostics.test.ts --maxWorkers=2
+      - name: Windows hooks, observers and Ulanzi transport regressions
+        run: pnpm exec vitest run hooks/src/__tests__/install.test.ts hooks/src/__tests__/codex-install.test.ts hooks/src/__tests__/windows-codex-pid.test.ts bridge/src/__tests__/passive-observer.test.ts bridge/src/__tests__/state-machine.test.ts bridge/src/__tests__/daemon-launcher.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/observed-launch.test.ts bridge/src/__tests__/observed-launch-integration.test.ts bridge/src/__tests__/connection-diagnostics.test.ts plugin-ulanzi/src/__tests__/daemon-discovery.test.ts plugin-ulanzi/src/__tests__/daemon-client.test.ts plugin-ulanzi/src/__tests__/daemon-transport.test.ts --maxWorkers=2

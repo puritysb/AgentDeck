@@ -167,3 +167,40 @@ service itself from the installed plugin folder, so the plugin must be
 Debug the Studio-launched Node service: launch Studio with
 `open "/Applications/Ulanzi Studio.app" --args --nodeRemoteDebug`, then open
 `chrome://inspect`.
+
+## Windows / WSL2 evidence and community verification
+
+The Windows Node 22/24/26 CI matrix runs daemon discovery, client and native
+transport tests. Missing registries fall back to the canonical hub; registry
+PIDs from another process namespace are not checked as Windows processes. Real
+temporary files and loopback HTTP/WebSocket peers verify health gating, plugin
+registration, frame/command exchange and reconnect after a changed registry port.
+These peers model the namespace mismatch; CI does not boot WSL2, run Ulanzi
+Studio's bundled Node, or inspect physical keys.
+
+A discovery fix can be closed after its source and automated gates pass. Track
+physical acceptance separately in the current release delivery issue. Lack of a
+Windows device alone does not hold unrelated platform releases; failing CI or a
+confirmed regression holds the affected delivery until addressed.
+
+For a Windows 11 + WSL2 + D200H/D200X community check:
+
+1. Install the fixed Ulanzi plugin (1.7.0 or newer) from the approved Marketplace
+   listing, or the matching official GitHub Release package. Record Windows, WSL,
+   Node, Studio, daemon and plugin versions and the plugin installation source.
+2. Start the daemon normally inside WSL2 and open Studio on Windows. Do not copy
+   Linux `daemon.json` or spoof a Windows PID. Put AgentDeck actions on device keys.
+3. Confirm the keys leave OFFLINE, show the expected session state, and update
+   after an ordinary session changes state. Record a screenshot or short video.
+4. Restart the WSL daemon with `agentdeck daemon restart`; confirm the plugin
+   reconnects and key updates resume. Also restart Studio and confirm initial
+   discovery still works.
+5. Report pass/fail and elapsed reconnect time on the delivery issue. For a
+   failure, include sanitized Studio plugin logs and whether Windows can reach
+   the daemon health endpoint. Never post the full health JSON: it may contain a
+   pairing token. Exclude tokens, credentials, prompts and private file paths.
+
+A reproducible failure reopens the original bug or gets a linked regression
+issue. A proposed PR should include a reproducer and an automated regression case
+where possible. A community pass extends hardware evidence; it does not change
+what CI proves.

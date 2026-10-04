@@ -123,15 +123,17 @@
       "job": "windows-native-runtime",
       "trigger": "Every PR and push to master",
       "blocking": true,
-      "command": "node bridge/dist/cli.js diag native --json && vitest run <10 Windows-sensitive files>",
+      "command": "node bridge/dist/cli.js diag native --json && vitest run <13 Windows-sensitive files>",
       "proves": [
         "better-sqlite3 opens under each supported Node ABI on Windows",
         "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells",
-        "native Codex hook runner sends the launcher PID through cmd.exe, preserves UTF-8 payloads, and omits guessed identity when CIM evidence is unavailable or cyclic"
+        "native Codex hook runner sends the launcher PID through cmd.exe, preserves UTF-8 payloads, and omits guessed identity when CIM evidence is unavailable or cyclic",
+        "Ulanzi discovery handles missing registries and foreign PIDs; native loopback HTTP/WS registers, exchanges frames and rediscovers a changed port after socket loss"
       ],
       "does_not_prove": [
         "the Scheduled Task autostart on a real login session",
-        "the Stream Deck app on Windows"
+        "the Stream Deck app on Windows",
+        "WSL2 forwarding, the Ulanzi Studio bundled runtime or physical D200 keys"
       ]
     },
     {
