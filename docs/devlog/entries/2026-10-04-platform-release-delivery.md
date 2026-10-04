@@ -27,8 +27,8 @@ acceptance for #445, nor the processed Stream Deck encoder review loop.
 | Google Play | 24 (1.7.0), full rollout submitted; Changes in review / quick checks | [Publishing overview](https://play.google.com/console/u/1/developers/7107476187102902603/app/4975606862124022024/publishing); managed publishing off |
 | Stream Deck | Package 1.7.0.0, Pending review · 1.7 | [Release CI artifact](https://github.com/puritysb/AgentDeck/actions/runs/37164391977); automatic publication off until DRM-processed encoder acceptance |
 | Ulanzi | 1.7.0, Works under review (1) | [Review work](https://ugc.ulanzistudio.com/my/0); [GitHub release CI](https://github.com/puritysb/AgentDeck/actions/runs/37164964246) passed |
-| ESP32 | 1.7.0 tag pushed; sequential board builds running | [Release workflow](https://github.com/puritysb/AgentDeck/actions/runs/37164390316); public delivery unconfirmed |
-| npm | 1.7.0 packed, not tagged or published | Three-mode macOS/CLI soak blocked by locked Mac |
+| ESP32 | 1.7.0 published: 62 assets for 12 boards | [Release workflow](https://github.com/puritysb/AgentDeck/actions/runs/37164390316) succeeded; manifest reports firmwareVersion 1.7.0 |
+| npm | 1.7.0 public on all four packages, each latest 1.7.0 | [Release run](https://github.com/puritysb/AgentDeck/actions/runs/37184235170) succeeded; exact versions/latest/readme read back |
 
 The Stream Deck CI artifact must be uploaded to Maker Console, so its artifact
 release preceded marketplace submission. Neither that GitHub Release nor the
@@ -66,8 +66,51 @@ shared and setup 1.4.2. Rollback to that exact global package set:
 npm install --global @agentdeck/bridge@1.6.0 @agentdeck/hooks@1.4.2 @agentdeck/shared@1.4.2 @agentdeck/setup@1.4.2
 ```
 
-After unlock, use the clean `2ee27840` release source and macOS 7701 candidate,
-complete all three [pre-tag soak rows](RELEASING.md#pre-tag-three-mode-daemon-soak)
-with a real agent turn and visible downstream delivery, record results in the
-release issue, then push `npm-v1.7.0` and verify all four npm versions. Do not
-substitute the older installed macOS 1.5.0 (4) app or a temporary-prefix smoke.
+The initial locked-Mac attempt above is historical. After unlock, TestFlight
+installed exact macOS 1.7.0 (7701) with a valid receipt, and all three
+[pre-tag soak rows](RELEASING.md#pre-tag-three-mode-daemon-soak) passed.
+Measured results and remaining store gates live in [release issue #449](https://github.com/puritysb/AgentDeck/issues/449).
+
+The soak found a missing explicit Node `isSwift: false` in full health.
+[PR #448](https://github.com/puritysb/AgentDeck/pull/448) fixed it and added a
+real-process E2E assertion; all six CI checks passed. Final npm source/tag:
+`5116a2bcfd5498d13507e9590ffaf0666f441ef8`. The corrected tarballs were installed
+on the real global command path, then the required rows were repeated from that
+clean commit. Swift PID 2797 reported `isSwift: true` on 9120; Node PID 10957
+reported `isSwift: false`, startup build `4ecf5e505be9`, and native diagnostic ready
+on Node 26.5.0 / ABI 147. Real directly launched Claude turns reached both the
+app and Lenovo tablet. Coexistence kept exactly one 9120 listener; supported CLI
+stop left the app open, and Swift PID 12177 reclaimed 9120 automatically. A fresh
+real turn reached the recovered app/tablet without hook reinstallation.
+
+Initial TestFlight startup waited for normal Keychain consent; the owner handled
+the prompt and health recovered. Port handoff briefly used 9121 while the
+existing 120-second failed-bind memory expired, then recovered 9120 without
+manual repair. No security bypass was performed. Local build/typecheck, 5,110
+unit tests and ten real-daemon E2E tests passed; protocol generation left no
+drift and token mirrors matched. The existing built-checkout design findings
+remain; CI lint regression passed.
+
+The latest review found no new report among the eleven previously open issues.
+#445 now records the shipped implementation and keeps physical Windows/WSL2
+acceptance open. #414 now records public Elgato/Ulanzi 1.6 delivery while leaving
+the unmeasured old Google Play gallery comparison open.
+
+## Restored runtime
+
+After the required soak, an extra app-first → CLI ownership attempt reported
+that the app yielded but the port remained held, then reported the incumbent
+Swift PID instead of a verified Node owner. This is recorded separately from
+the passing required CLI-first coexistence row. The documented quit-app path
+followed by supported `agentdeck daemon restart` restored the Node owner:
+PID 15859, 9120, `isSwift: false`, build `4ecf5e505be9`. Reopening 7701 attached
+it as a client. The reverse-start-order port-release limitation remains in
+[the release tracker](https://github.com/puritysb/AgentDeck/issues/449); no
+claim of a seamless reverse takeover is made.
+
+## Public npm confirmation
+
+At 16:04 KST, the original OIDC release run succeeded without rerun or retag.
+All four exact 1.7.0 versions and their `latest` tags were read back from npm;
+setup's registry README is non-empty. [npm-v1.7.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.7.0)
+is published. Store submissions remain review states, not public-release claims.

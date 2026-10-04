@@ -303,7 +303,7 @@ advance independently; you do not need to update every device together.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.7.0` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.6.0` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.7.0` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
@@ -312,8 +312,9 @@ advance independently; you do not need to update every device together.
 1.7.0 (24), Elgato 1.7 and Ulanzi 1.7.0 have been submitted for review.
 Android 1.7.0's signed APK and both deck-plugin packages are available on GitHub.
 The last measured public store versions remain Apple 1.6.0 (7501), Google Play
-1.6.1 (23), Elgato 1.6 and Ulanzi 1.6.0. npm remains 1.6.0 pending the required
-macOS/CLI coexistence verification; ESP32 1.7.0's board builds are running.
+1.6.1 (23), Elgato 1.6 and Ulanzi 1.6.0. All four npm packages are public at
+1.7.0 after the macOS/CLI coexistence verification; ESP32 1.7.0 is published
+with firmware for twelve boards.
 See the [delivery receipt](docs/devlog/entries/2026-10-04-platform-release-delivery.md)
 and [previous public readback](docs/devlog/entries/2026-10-03-platform-release-readback.md).
 
