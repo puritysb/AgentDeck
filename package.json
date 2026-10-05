@@ -67,6 +67,7 @@
     "plugin:check": "node plugin/scripts/deploy.mjs --check",
     "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts",
     "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs",
+    "generate-ci-wait": "node scripts/generate-ci-wait.mjs",
     "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs"
   },
   "engines": {

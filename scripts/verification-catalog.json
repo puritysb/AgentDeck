@@ -35,7 +35,7 @@
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup and scripts behave as their tests specify (the domain table below counts them)",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
         "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)",
-        "CI wait command intent classification: explicit background watchers/poll loops, safe identity extraction, and rejection of quoted examples, ambiguous or unsupported shell syntax"
+        "CI wait command intent classification and generated Swift drift; identical command vectors execute in both TS and Swift on macOS, including strict JSON booleans, UTF-16 bounds and safe identity extraction; unsupported or ambiguous input is rejected"
       ],
       "does_not_prove": [
         "anything about native apps, firmware or real devices",
@@ -195,6 +195,7 @@
       "command": "xcodebuild test -scheme AgentDeck_macOS; xcodebuild build -scheme AgentDeck_iOS; validate-appstore-submission.sh",
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "native CI wait command intent classifier replays shared/ci-wait-vectors.json through CiWaitRulesTests",
         "the iOS app builds unsigned",
         "App Store metadata, screenshots and privacy manifest are within submission limits"
       ],
@@ -487,7 +488,7 @@
         "shared/src/__tests__/claude-permission-rules*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
         "shared/src/__tests__/subagent-activity.test.ts",
-        "shared/src/__tests__/ci-wait.test.ts"
+        "shared/src/__tests__/ci-wait*.test.ts"
       ]
     },
     {

@@ -13,6 +13,30 @@ export interface CiWaitIntent {
 }
 
 export const CI_WAIT_MAX_COMMAND_CHARS = 16_384;
+/** Data consumed by the native generator; keep CLI grammar and bounds here. */
+export const CI_WAIT_RULES = {
+  maxCommandChars: CI_WAIT_MAX_COMMAND_CHARS,
+  maxIdentityChars: 255,
+  maxId: Number.MAX_SAFE_INTEGER,
+  whitespace: '\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff',
+  forbidden: '\0`$(){}',
+  numberPattern: '^[1-9][0-9]*$',
+  digitsPattern: '^[0-9]+$',
+  repoPattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$',
+  branchPattern: '^[A-Za-z0-9_./-]+$',
+  assignmentPattern: '^[A-Za-z_][A-Za-z0-9_]*=',
+  urlPattern: '^https://github\\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)/?$',
+  runWatch: { values: ['--interval', '-i'], switches: ['--exit-status', '--compact'] },
+  prChecks: { values: ['--interval', '-i', '--json', '--jq', '-q', '--template', '-t'], switches: ['--fail-fast', '--required'] },
+  runList: { values: ['--branch', '-b', '--json', '--jq', '-q', '--template', '-t', '--limit', '-L',
+    '--workflow', '-w', '--status', '-s', '--event', '-e', '--user', '-u', '--commit', '-c', '--created'], switches: ['--all', '-a'] },
+} as const;
+const patterns = Object.fromEntries(['number', 'digits', 'repo', 'branch', 'assignment', 'url'].map(
+  name => [name, new RegExp(CI_WAIT_RULES[`${name}Pattern` as keyof typeof CI_WAIT_RULES] as string)],
+));
+// `$` may match before a trailing line separator in either regex engine.
+// Metadata must match the entire argument; it never carries that separator.
+const fullMatch = (pattern: RegExp, value: string) => pattern.exec(value)?.[0] === value;
 type Token = { value: string; plain: boolean };
 
 /** Restricted shell lexer. Quoted text stays an argument, comments cannot
@@ -20,7 +44,7 @@ type Token = { value: string; plain: boolean };
  * Redirections are preserved as a boundary so log paths cannot become flags.
  */
 function segments(command: string): Token[][] | null {
-  if (command.length > CI_WAIT_MAX_COMMAND_CHARS || /[\0`$(){}]/.test(command) ||
+  if (command.length > CI_WAIT_MAX_COMMAND_CHARS || [...CI_WAIT_RULES.forbidden].some(c => command.includes(c)) ||
       /(?:&&|\|\||\|)\s*$/.test(command)) return null;
   const out: Token[][] = [];
   let words: Token[] = [], value = '', started = false, plain = true;
@@ -56,7 +80,7 @@ function segments(command: string): Token[][] | null {
         if (c === '<') return null;
         i++;
       }
-    } else if (/\s/.test(c)) word();
+    } else if (CI_WAIT_RULES.whitespace.includes(c)) word();
     else { value += c; started = true; }
   }
   if (quote) return null;
@@ -65,21 +89,21 @@ function segments(command: string): Token[][] | null {
 }
 
 function number(value: string | undefined): number | undefined {
-  if (!value || !/^[1-9]\d*$/.test(value)) return undefined;
+  if (!value || !fullMatch(patterns.number, value)) return undefined;
   const n = Number(value);
   return Number.isSafeInteger(n) ? n : undefined;
 }
 function repo(value: string | undefined): string | undefined {
-  return value && value.length <= 255 && /^[\w.-]+\/[\w.-]+$/.test(value) ? value : undefined;
+  return value && value.length <= CI_WAIT_RULES.maxIdentityChars && fullMatch(patterns.repo, value) ? value : undefined;
 }
 function branch(value: string | undefined): string | undefined {
-  return value && value.length <= 255 && /^[\w./-]+$/.test(value) ? value : undefined;
+  return value && value.length <= CI_WAIT_RULES.maxIdentityChars && fullMatch(patterns.branch, value) ? value : undefined;
 }
 
 function github(tokens: Token[], polling: boolean): CiWaitIntent | null {
   const redirect = tokens.findIndex(t => t.plain && (t.value === '>' || t.value === '<'));
   const executable = [...(redirect < 0 ? tokens : tokens.slice(0, redirect))];
-  while (executable[0]?.plain && /^[A-Za-z_][\w]*=/.test(executable[0].value)) executable.shift();
+  while (executable[0]?.plain && patterns.assignment.test(executable[0].value)) executable.shift();
   const argv = executable.map(t => t.value);
   if (argv[0] === 'command') argv.shift();
   if (argv[0]?.split('/').pop() !== 'gh') return null;
@@ -100,12 +124,9 @@ function github(tokens: Token[], polling: boolean): CiWaitIntent | null {
       !(group === 'pr' && action === 'checks')) return null;
   let watch = action === 'watch';
   let identity: string | undefined, ref: string | undefined;
-  const valueOptions = new Set(action === 'watch' ? ['--interval', '-i'] : group === 'pr'
-    ? ['--interval', '-i', '--json', '--jq', '-q', '--template', '-t']
-    : ['--branch', '-b', '--json', '--jq', '-q', '--template', '-t', '--limit', '-L',
-      '--workflow', '-w', '--status', '-s', '--event', '-e', '--user', '-u', '--commit', '-c', '--created']);
-  const switches = new Set(action === 'watch' ? ['--exit-status', '--compact']
-    : group === 'pr' ? ['--fail-fast', '--required'] : ['--all', '-a']);
+  const grammar = action === 'watch' ? CI_WAIT_RULES.runWatch : group === 'pr' ? CI_WAIT_RULES.prChecks : CI_WAIT_RULES.runList;
+  const valueOptions = new Set<string>(grammar.values);
+  const switches = new Set<string>(grammar.switches);
   while (argv.length) {
     if (takeRepo()) continue;
     const arg = argv.shift()!;
@@ -128,8 +149,9 @@ function github(tokens: Token[], polling: boolean): CiWaitIntent | null {
   if (group === 'run' && action === 'watch' && runId === undefined) return null;
   let pr: number | undefined;
   if (group === 'pr') {
-    const url = identity?.match(/^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/([1-9]\d*)\/?$/);
-    if (url) {
+    const url = identity?.match(patterns.url);
+    if (url && url[0] === identity) {
+      if (!repo(url[1])) return null;
       if (repository !== undefined && repository !== url[1]) return null;
       repository = url[1]; pr = number(url[2]);
       if (pr === undefined) return null;
@@ -137,7 +159,7 @@ function github(tokens: Token[], polling: boolean): CiWaitIntent | null {
     else if (identity !== undefined) {
       pr = number(identity);
       if (pr === undefined) {
-        if (/^\d+$/.test(identity) || !branch(identity)) return null;
+        if (patterns.digits.test(identity) || !branch(identity)) return null;
         ref = branch(identity);
       }
     }
