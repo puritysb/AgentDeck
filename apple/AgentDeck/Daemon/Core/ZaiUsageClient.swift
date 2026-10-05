@@ -144,6 +144,13 @@ final class ZaiUsageState: @unchecked Sendable {
         return true
     }
 
+    func markAuthFailure(revision: Int) {
+        lock.lock(); defer { lock.unlock() }
+        guard generation == revision else { return }
+        if reading == nil { reading = ZaiRateLimits() }
+        reading?.authFailed = true
+    }
+
     func cacheFresh(now: Date, ttl: TimeInterval, slack: TimeInterval) -> Bool {
         lock.lock(); defer { lock.unlock() }
         let age = now.timeIntervalSince(fetchedAt)
@@ -266,11 +273,18 @@ final class ZaiUsageClient: @unchecked Sendable {
                 noteFailure("no HTTP response", revision: revision)
                 return failResult()
             }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                state.markAuthFailure(revision: revision)
+            }
             guard http.statusCode == 200 else {
                 noteFailure("HTTP \(http.statusCode)", revision: revision)
                 return failResult()
             }
-            guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let decoded = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if (decoded?["code"] as? NSNumber)?.intValue == ZaiQuotaRules.authFailureCode {
+                state.markAuthFailure(revision: revision)
+            }
+            guard let body = decoded,
                   let envelope = body["data"] as? [String: Any],
                   (body["code"] as? NSNumber)?.intValue == 200, body["success"] as? Bool == true
             else {
@@ -285,6 +299,7 @@ final class ZaiUsageClient: @unchecked Sendable {
                 level: envelope["level"] as? String
             )
             let reading = ZaiRateLimits(
+                authFailed: false,
                 primary: wireWindow(windows.primary),
                 secondary: wireWindow(windows.secondary),
                 planType: windows.planType,

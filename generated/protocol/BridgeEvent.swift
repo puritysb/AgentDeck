@@ -2973,6 +2973,8 @@ enum ADVoiceAssistantState: String, Codable, Equatable {
 /// same "which limit" axis Codex carries).
 // MARK: - ADZaiRateLimits
 struct ADZaiRateLimits: Codable, Equatable {
+    /// Explicit provider credential rejection; false clears a prior failure.
+    var authFailed: Bool?
     /// ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
     /// clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches
     /// regularly, so an aged stamp means the poll is failing, and the reading dims rather than
@@ -2987,6 +2989,7 @@ struct ADZaiRateLimits: Codable, Equatable {
     var secondary: ADZaiWindow?
 
     enum CodingKeys: String, CodingKey {
+        case authFailed = "authFailed"
         case capturedAt = "capturedAt"
         case limitId = "limitId"
         case planType = "planType"
@@ -3014,6 +3017,7 @@ extension ADZaiRateLimits {
     }
 
     func with(
+        authFailed: Bool?? = nil,
         capturedAt: String?? = nil,
         limitId: String?? = nil,
         planType: String?? = nil,
@@ -3021,6 +3025,7 @@ extension ADZaiRateLimits {
         secondary: ADZaiWindow?? = nil
     ) -> ADZaiRateLimits {
         return ADZaiRateLimits(
+            authFailed: authFailed ?? self.authFailed,
             capturedAt: capturedAt ?? self.capturedAt,
             limitId: limitId ?? self.limitId,
             planType: planType ?? self.planType,

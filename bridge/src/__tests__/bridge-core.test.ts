@@ -83,7 +83,7 @@ describe('BridgeCore Orchestration', () => {
     expect(core.lastZaiFetchTime).toBe(Date.parse(recent));
     expect((core.buildUsage() as UsageEvent).zaiRateLimits?.primary?.usedPercent).toBe(12);
     core.applyZaiUsageResult({ data: null, fresh: false });
-    expect(JSON.parse(JSON.stringify(core.buildUsage())).zaiRateLimits).toEqual({});
+    expect(JSON.parse(JSON.stringify(core.buildUsage())).zaiRateLimits).toEqual({ authFailed: false });
   });
 
   it('expires z.ai on a focused relay without rebuilding usage or extending capture time', () => {
@@ -109,7 +109,7 @@ describe('BridgeCore Orchestration', () => {
       expect(relay().subscriptions).toContainEqual({ name: 'GLM Coding Plan · Max' });
       clock.mockReturnValue(now + 10 * 60_000 + 1);
       const expired = relay();
-      expect(expired.zaiRateLimits).toEqual({ planType: 'max', limitId: 'standard' });
+      expect(expired.zaiRateLimits).toEqual({ planType: 'max', limitId: 'standard', authFailed: false });
       expect(expired.subscriptions).toEqual([{ name: 'Claude' }]);
       expect(expired.inputTokens).toBe(42);
       expect(expired.fiveHourPercent).toBe(63);
@@ -123,7 +123,7 @@ describe('BridgeCore Orchestration', () => {
       } });
       expect(relay().subscriptions).toContainEqual({ name: 'GLM Coding Plan · Lite' });
       core.applyZaiUsageResult({ fresh: false, data: null });
-      expect(relay().zaiRateLimits).toEqual({});
+      expect(relay().zaiRateLimits).toEqual({ authFailed: false });
       expect(relay().subscriptions).toEqual([{ name: 'Claude' }]);
     } finally {
       clock.mockRestore();

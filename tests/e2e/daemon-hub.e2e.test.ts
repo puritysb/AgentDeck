@@ -24,7 +24,7 @@
  * login Keychain through `security`, which can raise a Keychain dialog.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -99,6 +99,8 @@ async function startDaemon(port: number): Promise<Daemon> {
       CLAUDE_CODE_OAUTH_TOKEN: '',
       AGENTDECK_PORT: '',
       AGENTDECK_DAEMON_PORT: '',
+      AGENTDECK_ZAI_API_KEY: '',
+      CLAUDE_CONFIG_DIR: join(home, '.claude'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -205,6 +207,32 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     expect(info).toMatchObject({ port: daemon.port, pid: daemon.child.pid });
     expect(existsSync(join(dataDir, 'auth-token'))).toBe(true);
     expect(daemon.log()).toMatch(/Loopback-only posture/);
+  });
+
+  it('requires a local bearer token for credential edits, preserves settings and never returns or logs keys', async () => {
+    const url = `http://127.0.0.1:${daemon.port}/integrations/zai`;
+    for (const method of ['GET', 'POST', 'DELETE']) {
+      expect((await fetch(url, { method, signal: AbortSignal.timeout(2000) })).status).toBe(403);
+      expect((await fetch(url, { method, headers: { Authorization: 'Bearer wrong-token' }, signal: AbortSignal.timeout(2000) })).status).toBe(403);
+    }
+    const headers = { Authorization: `Bearer ${(await health(daemon.port))?.pairingToken}`,
+      'Content-Type': 'application/json' };
+    writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ unrelated: 'preserved' }));
+    // PAYG skips provider I/O: this is a route/key-custody test, never a live account request.
+    const fakeKey = 'sk-pay-route-test-only';
+    const saved = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ apiKey: fakeKey }),
+      signal: AbortSignal.timeout(15000) });
+    expect(saved.status).toBe(200);
+    const reply = await saved.text();
+    expect(JSON.parse(reply)).toMatchObject({ configured: true, source: 'daemon-settings', editable: true, authFailed: false, verified: true });
+    expect(reply).not.toContain(fakeKey);
+    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ unrelated: 'preserved', zaiApiKey: fakeKey });
+    if (POSIX) expect(statSync(join(dataDir, 'settings.json')).mode & 0o777).toBe(0o600);
+    expect(await (await fetch(url, { headers })).text()).not.toContain(fakeKey);
+    expect((await fetch(url, { method: 'POST', headers, body: JSON.stringify({ apiKey: 'invalid key' }) })).status).toBe(400);
+    expect((await fetch(url, { method: 'DELETE', headers })).status).toBe(200);
+    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ unrelated: 'preserved' });
+    expect(daemon.log()).not.toContain(fakeKey);
   });
 
   it.runIf(LAN_ADDRESS)('binds loopback only: the same port is closed on a LAN address', async () => {

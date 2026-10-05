@@ -10457,6 +10457,7 @@ final class DaemonServer {
             if let p = window(cached.data.primary) { payload["primary"] = p }
             if let s = window(cached.data.secondary) { payload["secondary"] = s }
         }
+        payload["authFailed"] = cached.data.authFailed ?? false
         if let plan = cached.data.planType { payload["planType"] = plan }
         if let limitId = cached.data.limitId { payload["limitId"] = limitId }
         if let capturedAt = cached.data.capturedAt { payload["capturedAt"] = capturedAt }

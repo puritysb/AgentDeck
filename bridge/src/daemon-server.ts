@@ -1,3 +1,5 @@
+import { resolveZaiApiKey } from './zai-usage.js';
+import { updateDaemonSetting } from './daemon-settings.js';
 import { startPersonalVoiceTurn } from './personal-voice-turn.js';
 import { transcribeDeviceAudio, type VoiceTranscriptionSettings } from './device-transcription.js';
 /**
@@ -2223,6 +2225,44 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       });
       return;
     }
+    // Provider credentials never traverse LAN and are never returned.
+    if (pathname === '/integrations/zai' && ['GET', 'POST', 'DELETE'].includes(req.method ?? '')) {
+      const ip = req.socket.remoteAddress ?? '';
+      const bearer = typeof req.headers.authorization === 'string'
+        ? req.headers.authorization.replace(/^Bearer /, '') : '';
+      if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip) || !validateToken(bearer)) {
+        res.writeHead(403); res.end('Local authenticated access required'); return;
+      }
+      void (async () => {
+        try {
+          let verified: boolean | null = null;
+          if (req.method !== 'GET') {
+            if (resolveZaiApiKey()?.source === 'env') {
+              res.writeHead(409); res.end('The key is managed by the daemon environment.'); return;
+            }
+            if (req.method === 'POST') {
+              req.setTimeout(10_000, () => req.destroy());
+              const body = await readJsonBody(req, 8192);
+              req.setTimeout(0);
+              const key = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+              if (!key || key.length > 2048 || /[\s\x00-\x1f\x7f]/.test(key)) {
+                res.writeHead(400); res.end('Enter a valid coding-plan API key.'); return;
+              }
+              updateDaemonSetting('zaiApiKey', key);
+            } else updateDaemonSetting('zaiApiKey', undefined);
+            verified = await core.refreshZaiUsage();
+          }
+          const source = resolveZaiApiKey();
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ configured: source !== null, source: source?.source ?? 'none',
+            editable: source?.source !== 'env', authFailed: core.cachedZaiQuota?.authFailed === true, verified }));
+        } catch {
+          res.writeHead(500); res.end('Could not update z.ai credentials.');
+        }
+      })();
+      return;
+    }
+
     // Display preference only: never changes provider observation or credentials.
     if (pathname === '/dashboard/providers' && (req.method === 'GET' || req.method === 'POST')) {
       void (async () => {

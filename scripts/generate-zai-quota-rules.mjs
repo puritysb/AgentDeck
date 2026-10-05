@@ -48,6 +48,7 @@ import Foundation
 /// \`nextResetTime\` produces no reset instant, and an item with no derivable
 /// percent is skipped entirely rather than guessed.
 enum ZaiQuotaRules {
+    static let authFailureCode: Int = ${rules.authFailureCode}
     /// 5-hour rolling credits window (\`TOKENS_LIMIT\`, or \`CREDIT_LIMIT unit=3\`).
     static let sessionWindowMinutes: Int = ${rules.sessionWindowMinutes}
     /// 7-day credits window, credit schema only (\`CREDIT_LIMIT unit=6\`).
@@ -259,12 +260,14 @@ async function main() {
   let weeklyWindowMinutes;
   let mcpWindowMinutes;
   let planNames;
+  let authFailureCode;
   try {
     ({
       ZAI_SESSION_WINDOW_MINUTES: sessionWindowMinutes,
       ZAI_WEEKLY_WINDOW_MINUTES: weeklyWindowMinutes,
       ZAI_MCP_WINDOW_MINUTES: mcpWindowMinutes,
       ZAI_PLAN_DISPLAY_NAMES: planNames,
+      ZAI_AUTH_FAILURE_CODE: authFailureCode,
     } = await import('../shared/dist/zai-quota.js'));
   } catch {
     console.error('shared/dist not found — run `pnpm --filter @agentdeck/shared build` first');
@@ -274,14 +277,14 @@ async function main() {
   // opaque TypeError — same cause as a missing dist, so give it the same
   // message instead of a stack trace.
   if (sessionWindowMinutes == null || weeklyWindowMinutes == null ||
-      mcpWindowMinutes == null || planNames == null) {
+      mcpWindowMinutes == null || planNames == null || authFailureCode == null) {
     console.error(
       'shared/dist predates this generator (missing ZAI_* window constants or '
         + 'ZAI_PLAN_DISPLAY_NAMES) — run `pnpm --filter @agentdeck/shared build` first',
     );
     process.exit(1);
   }
-  const rules = { sessionWindowMinutes, weeklyWindowMinutes, mcpWindowMinutes, planNames };
+  const rules = { sessionWindowMinutes, weeklyWindowMinutes, mcpWindowMinutes, planNames, authFailureCode };
   const check = process.argv.includes('--check');
   let drifted = false;
   for (const [rel, emit] of OUTPUTS) {

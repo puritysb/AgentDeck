@@ -74,7 +74,7 @@ export function updateDaemonSetting(key: string, value: unknown): void {
   else settings[key] = value;
 
   const tmp = join(dir, `.settings.${randomUUID()}.tmp`);
-  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', { encoding: 'utf-8', mode: 0o600 });
   renameSync(tmp, path);
 }
 

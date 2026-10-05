@@ -32,6 +32,7 @@ import { debug, logTagged } from './logger.js';
 import { loadDaemonSettings } from './daemon-settings.js';
 import {
   zaiKeyLooksPayAsYouGo,
+  ZAI_AUTH_FAILURE_CODE,
   zaiQuotaFromLimits,
   type ZaiQuotaWindows,
 } from '@agentdeck/shared';
@@ -77,6 +78,7 @@ let lastAccountFingerprint: string | undefined;
 let consecutiveFailures = 0;
 let lastAttemptAt = 0;
 let inFlight: Promise<ZaiUsageFetchResult> | null = null;
+let authFailed = false;
 
 function backoffMs(): number {
   if (consecutiveFailures <= 0) return 0;
@@ -182,19 +184,20 @@ async function fetchZaiQuotaOnce(): Promise<ZaiUsageFetchResult> {
     consecutiveFailures = 0;
     lastAttemptAt = 0;
     lastAccountFingerprint = fingerprint;
+    authFailed = false;
   }
   // A missing/replaced key must retire the old account even within the TTL.
   if (!source) return { data: null, fresh: false };
   if (zaiKeyLooksPayAsYouGo(source.key)) {
-    return { data: { limitId: 'payg' }, fresh: true, payg: true };
+    return { data: { limitId: 'payg', authFailed: false }, fresh: true, payg: true };
   }
   const fileCache = readFileCache(fingerprint);
   const stale = (): ZaiUsageFetchResult => ({
     data: resolveZaiApiKey()?.key === source.key && quotaUrl() === url
-      ? (readFileCache(fingerprint) ?? fileCache)?.data ?? {} : {}, fresh: false,
+      ? { ...((readFileCache(fingerprint) ?? fileCache)?.data ?? {}), authFailed } : { authFailed: false }, fresh: false,
   });
   if (fileCache && !zaiCacheExpired(fileCache.fetchedAt)) {
-    return { data: fileCache.data, fresh: true };
+    return { data: { ...fileCache.data, authFailed: false }, fresh: true };
   }
 
   const backoff = backoffMs();
@@ -212,6 +215,7 @@ async function fetchZaiQuotaOnce(): Promise<ZaiUsageFetchResult> {
     });
 
     if (res.status === 401 || res.status === 403) {
+      authFailed = true;
       noteFailure(`auth error ${res.status} — check the z.ai coding-plan key (${source.source})`);
       return stale();
     }
@@ -224,23 +228,26 @@ async function fetchZaiQuotaOnce(): Promise<ZaiUsageFetchResult> {
     // The envelope answers 200 with `{code:500, msg:"404 NOT_FOUND"}` for a
     // moved path — an HTTP-200 failure is still a failure.
     if (body?.code !== 200 || body?.success !== true || !body?.data) {
+      if (body?.code === ZAI_AUTH_FAILURE_CODE) authFailed = true;
       noteFailure('API error envelope');
       return stale();
     }
 
     // The user may replace the key while the request is in flight.
     if (resolveZaiApiKey()?.key !== source.key || quotaUrl() !== url) {
-      return { data: {}, fresh: false };
+      return { data: { authFailed: false }, fresh: false };
     }
     const windows: ZaiQuotaWindows = zaiQuotaFromLimits(body.data.limits, body.data.level);
     const data: ZaiRateLimits = {
       ...windows,
+      authFailed: false,
       capturedAt: new Date().toISOString(),
     };
     if (consecutiveFailures > 0) {
       logTagged('usage', `z.ai usage fetch recovered after ${consecutiveFailures} failure(s)`);
     }
     consecutiveFailures = 0;
+    authFailed = false;
     writeFileCache(data, fingerprint);
     debug('ZaiUsage', `5h: ${windows.primary?.usedPercent}% (family ${windows.limitId ?? '?'}, plan ${windows.planType ?? '?'})`);
     return { data, fresh: true };

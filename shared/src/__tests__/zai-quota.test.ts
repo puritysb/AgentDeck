@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  ZAI_AUTH_FAILURE_CODE,
   ZAI_MCP_WINDOW_MINUTES,
   ZAI_PLAN_DISPLAY_NAMES,
   ZAI_SESSION_WINDOW_MINUTES,
@@ -40,6 +41,7 @@ const rules = {
   weeklyWindowMinutes: ZAI_WEEKLY_WINDOW_MINUTES,
   mcpWindowMinutes: ZAI_MCP_WINDOW_MINUTES,
   planNames: ZAI_PLAN_DISPLAY_NAMES,
+  authFailureCode: ZAI_AUTH_FAILURE_CODE,
 };
 
 describe('zai quota vectors (shared with the Swift suite)', () => {

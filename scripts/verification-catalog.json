@@ -62,7 +62,8 @@
         "PreToolUse and Stop hooks answer immediately when no device can approve, so Claude never stalls",
         "the timeline is persisted to timeline.json and replayed to a new client after a restart",
         "SIGTERM shuts the daemon down on its own and withdraws daemon.json",
-        "loopback posture: the port is closed on the host's LAN address"
+        "loopback posture: the port is closed on the host's LAN address",
+        "z.ai credential edits require a local bearer token, preserve unrelated settings, use private file permissions and never echo or log the key"
       ],
       "does_not_prove": [
         "a real Claude/Codex process (events are posted with the documented payload shape)",

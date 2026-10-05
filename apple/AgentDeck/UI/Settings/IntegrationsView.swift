@@ -383,6 +383,9 @@ enum IntegrationStatusEvaluator {
         // Companion/external-daemon readings are authoritative even without a
         // local Keychain entry. A stored key alone proves no connection.
         if let limits = state.zaiRateLimits {
+            if limits.authFailed == true {
+                return .failed(detail: "Authentication failed. Replace your z.ai coding-plan API key.")
+            }
             if limits.limitId == "payg" {
                 return .notConfigured(detail: "Pay-as-you-go key · no Coding Plan quota.")
             }

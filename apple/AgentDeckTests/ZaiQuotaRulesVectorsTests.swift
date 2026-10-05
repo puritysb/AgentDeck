@@ -156,6 +156,45 @@ final class ZaiUsageLifecycleTests: XCTestCase {
         XCTAssertFalse(state.beginAttempt(now: now, backoffs: [45], revision: b))
     }
 
+    func testHTTP200AuthenticationEnvelopeAndRecovery() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [ZaiAuthProtocol.self]
+        let rejected = ZaiUsageClient(keyLoader: { "test-rejected" }, session: URLSession(configuration: config))
+        let failed = await rejected.fetch()
+        XCTAssertFalse(failed.fresh)
+        XCTAssertEqual(failed.data?.authFailed, true)
+        let recovered = ZaiUsageClient(keyLoader: { "test-valid" }, session: URLSession(configuration: config))
+        let fresh = await recovered.fetch()
+        XCTAssertTrue(fresh.fresh)
+        XCTAssertEqual(fresh.data?.authFailed, false)
+    }
+
+    func testCredentialRejectionSurvivesRetirementButNotReplacementOrLateReply() throws {
+        let state = ZaiUsageState()
+        let old = try XCTUnwrap(state.prepare(key: "old", expectedRevision: state.revision()))
+        state.markAuthFailure(revision: old)
+        XCTAssertEqual(state.cached()?.data.authFailed, true)
+        let next = try XCTUnwrap(state.prepare(key: "replacement", expectedRevision: state.revision()))
+        state.markAuthFailure(revision: old)
+        XCTAssertNotEqual(state.cached()?.data.authFailed, true)
+        XCTAssertTrue(state.store(ZaiRateLimits(authFailed: false), at: Date(), revision: next))
+        XCTAssertEqual(state.cached()?.data.authFailed, false)
+    }
+
+    func testAuthenticationFailureTakesPriorityOverCachedQuota() {
+        var state = DashboardState()
+        state.zaiRateLimits = ZaiRateLimits(authFailed: true, primary: ZaiWindow(usedPercent: 1), planType: "max")
+        XCTAssertEqual(IntegrationStatusEvaluator.zaiStatus(state: state, hasKey: true),
+                       .failed(detail: "Authentication failed. Replace your z.ai coding-plan API key."))
+    }
+
+    func testCredentialEditorRefusesRemoteHostsAndRemovesURLCredentials() {
+        XCTAssertNil(ZaiConfigurationClient.localURL("ws://192.168.1.10:9120", path: "/integrations/zai"))
+        XCTAssertNil(ZaiConfigurationClient.localURL("https://127.0.0.1:9120", path: "/integrations/zai"))
+        XCTAssertEqual(ZaiConfigurationClient.localURL("ws://user:password@127.0.0.1:9120/old?token=secret#fragment", path: "/integrations/zai")?.absoluteString,
+                       "http://127.0.0.1:9120/integrations/zai")
+    }
+
     func testStoredKeyIsNotProofOfConnectionAndRemoteReadingNeedsNoLocalKey() {
         var state = DashboardState()
         XCTAssertEqual(IntegrationStatusEvaluator.zaiStatus(state: state, hasKey: true).label, "Awaiting data")
@@ -164,5 +203,19 @@ final class ZaiUsageLifecycleTests: XCTestCase {
         state.zaiRateLimits = ZaiRateLimits(planType: "max")
         XCTAssertNotEqual(IntegrationStatusEvaluator.zaiStatus(state: state, hasKey: false).label, "Connected")
     }
+}
+private final class ZaiAuthProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let rejected = request.value(forHTTPHeaderField: "Authorization") == "test-rejected"
+        let body = rejected ? "{\"code\":1000,\"success\":false}"
+            : "{\"code\":200,\"success\":true,\"data\":{\"level\":\"max\",\"limits\":[]}}"
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 #endif

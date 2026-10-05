@@ -162,7 +162,7 @@ describe('daemon port — persistence round trip', () => {
       new URL('../daemon-server.ts', import.meta.url),
       'utf-8',
     );
-    expect(source).not.toMatch(/updateDaemonSetting/);
+    expect(source).not.toMatch(/updateDaemonSetting\(\s*(?:DAEMON_PORT_SETTING_KEY|['"`]daemonPort['"`])/);
   });
 });
 

@@ -1630,6 +1630,11 @@ enum class VoiceAssistantState(val value: String) {
  */
 data class ZaiRateLimits (
     /**
+     * Explicit provider credential rejection; false clears a prior failure.
+     */
+    val authFailed: Boolean? = null,
+
+    /**
      * ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
      * clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches
      * regularly, so an aged stamp means the poll is failing, and the reading dims rather than

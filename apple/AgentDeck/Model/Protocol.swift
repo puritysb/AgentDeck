@@ -588,6 +588,7 @@ struct ZaiWindow: Codable, Sendable {
 /// `limitId` carries which quantity the secondary window is (weekly credits
 /// vs the monthly MCP quota). Parsed by the generated `ZaiQuotaRules`.
 struct ZaiRateLimits: Codable, Sendable {
+    var authFailed: Bool? = nil
     var primary: ZaiWindow?
     var secondary: ZaiWindow?
     var planType: String?

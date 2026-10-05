@@ -202,6 +202,8 @@ export interface CodexRateLimits {
  *  schema — `limitId` says which quantity the number belongs to, the same
  *  "which limit" axis Codex carries). */
 export interface ZaiRateLimits {
+  /** Explicit provider credential rejection; false clears a prior failure. */
+  authFailed?: boolean;
   primary?: ZaiWindow;
   secondary?: ZaiWindow;
   /** Plan tier stamped into every snapshot ("lite" | "pro" | "max"). */
