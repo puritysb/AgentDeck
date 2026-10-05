@@ -81,6 +81,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 
 | Canonical source | Generator | Gate / note |
 |---|---|---|
+| `shared/src/ci-wait.ts` (CI wait command intent; #433 preparation) | No native consumer yet; generate mirrors before connecting either daemon | `ci-wait.test.ts` rejects one-shot reads, quoted examples/comments, ambiguous runs and unsupported shell syntax; extracts explicit repo/ref/PR/run only. No wire or visual claim until integration. |
 | `bridge/src/compact-session-labels.ts` | `node bridge/generate-compact-session-labels.mjs` → Swift serial projection | Generator drift check and `shared/compact-session-label-vectors.json` replayed by Node/Swift; names are presentation only, IDs and folding keys unchanged. Firmware `ui/companion/session_glance.h` is consumed directly by the small-screen renderers and host-tested. |
 | `shared/src/matrix-expression.ts` + `bridge/src/pixoo/matrix-art.ts` | `pnpm generate-matrix-expressions` | BLE robot-face/agent-world policy and RLE Swift frames. `matrix-expression.test.ts` gates generated drift and executes Swift and Node against identical wire-event sequences, comparing every RGB pixel. |
 | `shared/project-name-vectors.json` | Existing Node `project-name.ts` / Swift `ProjectNameResolver` filesystem resolvers | Both suites replay the same linked-worktree, relative/absolute pointer, submodule and unreadable-metadata fixtures. Worktrees display `Repository · worktree-folder`; the suffix preserves independent session folding. |

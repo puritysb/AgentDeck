@@ -57,3 +57,4 @@ export * from './matrix-expression.js';
 export { GatewayLiveActivity, GATEWAY_LIVE_RULES, gatewayToolFoldRaw } from './gateway-live-activity.js';
 
 export * from './daemon-parity.js';
+export * from './ci-wait.js';

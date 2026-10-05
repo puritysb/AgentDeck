@@ -34,11 +34,13 @@
         "Node/Swift daemon policy mirror drift and common turn-boundary vectors; CLI rejects explicit Swift identity as Node readiness (native policy execution also runs on macOS)",
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup and scripts behave as their tests specify (the domain table below counts them)",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
-        "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)"
+        "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)",
+        "CI wait command intent classification: explicit background watchers/poll loops, safe identity extraction, and rejection of quoted examples, ambiguous or unsupported shell syntax"
       ],
       "does_not_prove": [
         "anything about native apps, firmware or real devices",
-        "macOS-only halves (Swift toolchain, launchd) — those cases are marked skipped on Linux and appear as skipped in this report"
+        "macOS-only halves (Swift toolchain, launchd) — those cases are marked skipped on Linux and appear as skipped in this report",
+        "CI wait daemon/wire/UI integration or actual GitHub run state; the classifier observes intent only"
       ]
     },
     {
@@ -484,7 +486,8 @@
         "bridge/src/__tests__/remote-sessions.test.ts",
         "shared/src/__tests__/claude-permission-rules*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
-        "shared/src/__tests__/subagent-activity.test.ts"
+        "shared/src/__tests__/subagent-activity.test.ts",
+        "shared/src/__tests__/ci-wait.test.ts"
       ]
     },
     {
