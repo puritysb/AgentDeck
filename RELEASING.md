@@ -72,8 +72,9 @@ CI going green is the first of five, not the last. Keep them apart in your head 
   Available on Google Play, published October 4 at 09:34 in the console.
   The [public listing](https://play.google.com/store/apps/details?id=dev.agentdeck&hl=en)
   serves the Hermes/credits/session-ordering notes and an October 4 update date.
-  Phone aquarium and grayscale attention gallery images were inspected;
-  the complete tablet/Crema file comparison remains tracked in #449.
+  The public Crema pair and four tablet images visually match the retained
+  submission files in `marketplace/play/1.6.1/`; the gallery acceptance in
+  #449 is complete. This is a visual comparison, not a byte-identity claim.
 - **Elgato 1.7 remains Pending review; Ulanzi 1.7.0 remains under review.**
   Their last measured public versions remain 1.6 and 1.6.0 respectively.
   Elgato still needs DRM-processed encoder acceptance after approval and before

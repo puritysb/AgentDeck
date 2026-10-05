@@ -13,9 +13,22 @@ replacement. Nothing in the app changes between them.
 Production's release row now says **Available on Google Play** for **24
 (1.7.0)**, with publication on October 4 at 09:34 in the console. The public
 listing serves the matching Hermes/credits/session-ordering release notes and
-an October 4 update date. The phone aquarium and grayscale attention images
-are visible publicly. Full tablet/Crema comparison with the retained submitted
-files remains open in #449; this readback does not establish a byte match.
+an October 4 update date. The phone aquarium is visible publicly. The public
+gallery's six retained Crema/tablet images were compared with the source files:
+
+| Public gallery position | Visually matching retained file |
+| --- | --- |
+| 5 | [Crema attention](1.6.1/crema-02-attention.png) |
+| 6 | [Crema working](1.6.1/crema-01-working.png) |
+| 7 | [Tablet paper attention](1.6.1/tablet10-03-eink-paper-board.png) |
+| 8 | [Tablet paper working](1.6.1/tablet10-04-eink-working.png) |
+| 9 | [Tablet aquarium](1.6.1/tablet10-01-aquarium.png) |
+| 10 | [Tablet aquarium attention](1.6.1/tablet10-02-attention.png) |
+
+The session text, clock, usage values, creature placement and panel composition
+match visually. This completes #449's retained-gallery check; store resizing or
+encoding is not claimed to preserve source bytes. These are the gallery assets
+retained for 1.7, not the later unsubmitted Crema replacement captures.
 
 ## 1.7.0 — production submission receipt (2026-10-04)
 
@@ -37,8 +50,9 @@ publication and reports the last publication on September 28. Submission 11,
 which contains **23 (1.6.1), full rollout**, and the English listing's **7-inch
 and 10-inch tablet screenshot changes**, reads **Released** (September 28, 09:42
 in the console).
-The individual public screenshot images have not yet been compared with the
-submitted files, so that narrow acceptance item in #414 remains open.
+At this historical readback, the individual public screenshot comparison was
+still pending. It was consolidated into #449 and completed on October 5 against
+the gallery retained for 1.7; no historical September 28 gallery match is inferred.
 
 The replacement Crema captures in [1.6.2/crema-capture.md](1.6.2/crema-capture.md)
 are prepared assets, not a released 1.6.2. Android UI has changed since their
