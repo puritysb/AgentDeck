@@ -2107,7 +2107,7 @@ program
       const target = installHermesObserver(opts.home);
       log(`Hermes observer installed: ${target}`);
       log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
-      log('Restart Hermes after enabling. Requires an AgentDeck Node daemon with Hermes observation support.');
+      log('Restart Hermes after enabling. Requires an AgentDeck daemon advertising Hermes observation support.');
     } catch (error) {
       log(`Hermes observer installation failed: ${String(error)}`);
       process.exitCode = 1;

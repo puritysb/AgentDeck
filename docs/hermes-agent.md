@@ -365,7 +365,9 @@ exports tool names only, so it deliberately makes no “learned a skill” claim
 
 ## Try the preview
 
-Requires a rebuilt Node daemon advertising `hermesObserver: 1` in local health.
+Requires an AgentDeck receiver advertising `hermesObserver: 1` in local health.
+The default registry supports Node and unsandboxed Swift receivers; the App
+Store sandbox/profile-discovery restriction is described below.
 This branch does not restart an existing daemon or modify a Hermes profile.
 Install explicitly into the intended profile:
 
@@ -492,9 +494,9 @@ The daemon E2E suite replays this real capture
 through HTTP and checks normal replies and interrupted timeline rows; Swift
 replays the same capture through admission and APME boundary normalization.
 This does not turn unit coverage of dropped callbacks or queue bounds into
-live evidence. The corrected TTL closure has regression
-coverage; a second 30-minute live wait has not been performed. Gateway reset through a
-messaging platform remains unmeasured.
+live evidence. The corrected TTL closure initially had regression coverage
+only; its subsequent live confirmation is recorded below. Gateway reset through
+a messaging platform remains unmeasured.
 
 On 2026-10-05 (KST), the same managed classic CLI executed a real
 `delegate_task` child against a deterministic loopback OpenAI-compatible
@@ -513,6 +515,32 @@ a loopback HTTP stub, so daemon replay is separate evidence. This verifies
 callback identity and lifecycle, not external-provider quality or messaging
 transport. Native component tests do not prove physical-device appearance.
 
+Further runtime checks on 2026-10-05 used the same pinned Hermes runtime and
+deterministic loopback provider:
+
+| Case | Measured result | Limit |
+|---|---|---|
+| Post-fix real Gateway silence, with Gateway process alive | One previously open APME run closed after 1,819.485 seconds since the last exported callback (30 min 19.5 s) | No accelerated clock/TTL; the isolated API Gateway's optional Unix tick socket reported a long temporary path warning, while HTTP turns and the Gateway process remained functional |
+| Real Gateway stays alive while an isolated Node daemon restarts | First and third prompts reached timeline/APME, both with `end_source=stop`; the middle prompt sent during downtime was absent after restart | Missing callbacks are lost, not durably restored; no messaging adapter was exercised |
+| Classic CLI, 90 actual `terminal` calls against a slow receiver | 184 callback posts, queue peak 128, maximum callback enqueue time 0.508 ms, CLI exit 0; only nine HTTP requests reached the receiver and no final Stop did | Request receipt is not acknowledgement; this verifies bounded/nonblocking loss under congestion, not reliable delivery or post-exit queue drain |
+| Real CLI exit with a congested queue, instrumented around the unchanged flush function | Flush returned in 1.005 seconds; pending events fell from 55 to 30 before process exit | Bounded best effort, not a full drain; callbacks still pending at process exit are lost |
+| Installed CLI observer installer and real Hermes enable/disable/enable commands in a temporary profile | Installer and update preserved Hermes configuration; explicit Hermes commands retained an unrelated configuration marker | Only the tested revision/profile flow is accepted |
+| Public `@agentdeck/hooks@1.7.0` tarball | `__init__.py` and `plugin.yaml` byte-matched current source | This does not verify a future package version |
+| Running Swift QA app receives a real delegated CLI turn | Actual HTTP/WS reply once; one Hermes APME run closed, one turn with `end_source=stop` | Development-signed isolated QA bundle, empty entitlements; not App Store sandbox/profile discovery |
+| Installed macOS TestFlight 1.7.0 (7701), Node relay | Real CLI Hermes row displayed its mark, model and WORKING state in the dashboard/terrarium alongside other sessions | Supported sandbox relay path; no direct sandbox profile discovery or replacement-model approval |
+| Lenovo Tab, official Android 1.7.0 APK, version code 24 | In-place upgrade from 1.6.1; real CLI row displayed Hermes name/mark, fixture model and WORKING state; finalized row left the roster and retained its reply in timeline | UI/routing receipt, not replacement-model visual approval or other-device acceptance |
+
+The 24 px canonical mark, renderer-sampled 16 px mark and actual generated
+9/8 px masks were inspected as a local contact sheet. The smaller masks retain
+the head/hair silhouette but lose facial detail; this is source raster review,
+not a physical matrix-panel acceptance. Android captures remain local because
+the dashboard also contains unrelated sessions. Development executables must
+be launched as app bundles through Launch Services for this runtime check;
+directly executing the locally signed QA binary was terminated by the host.
+No production daemon restart, user Hermes profile edit or paid model call was
+needed for these isolated runtime checks. The Android visual turn used the
+existing production receiver and only synthetic fixture content.
+
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
 
@@ -525,6 +553,6 @@ display selection, not permission to steer it. Older firmware can select a
 project named Hermes as a voice target;
 the Node preview has no terminal/command route, so delivery fails visibly.
 No native App Store subprocess or companion-install UI is added.
-A real CLI and gateway conversation capture, including reset, interruption and
-shutdown, must verify end-to-end behavior before release. None of these gates
-is waived by the preview tests or the existence of an upstream sprite.
+Messaging-platform Gateway reset, remaining native/device acceptance and
+replacement-model approval must still be completed before claiming full rollout
+acceptance. The completed runtime receipts do not waive those gates.
