@@ -35,6 +35,20 @@ class ObserverTests(unittest.TestCase):
     def emit(self, name, **kwargs):
         self.assertIsNone(self.ctx.hooks[name](session_id='conversation-1', platform='cli', **kwargs))
 
+    def test_captured_real_child_callbacks_export_only_one_parent_turn(self):
+        capture = json.loads((SOURCE.parents[2] / 'bridge/src/__tests__/fixtures/hermes-live-child.json').read_text())
+        for row in capture['callbacks']:
+            self.assertIsNone(self.ctx.hooks[row['event']](**row['kwargs']))
+        parent = self.module._identity('parent-conversation')
+        self.assertEqual(len(self.events), len(capture['events']))
+        for (event, payload), expected in zip(self.events, capture['events']):
+            self.assertEqual(event, expected['event'])
+            self.assertEqual(payload['session_id'], parent)
+            actual = {k: v for k, v in payload.items() if k not in ('session_id', 'cwd', 'pid')}
+            wanted = {k: v for k, v in expected['payload'].items() if k not in ('session_id', 'cwd', 'pid')}
+            self.assertEqual(actual, wanted)
+        self.assertEqual(sum(event == 'hermes_stop' for event, _ in self.events), 1)
+
     def test_two_turns_survive_run_end_and_finalize_once(self):
         self.emit('on_session_start')
         for i in range(2):

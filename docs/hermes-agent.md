@@ -491,10 +491,27 @@ once, including when a delayed Stop arrives after expiry.
 The daemon E2E suite replays this real capture
 through HTTP and checks normal replies and interrupted timeline rows; Swift
 replays the same capture through admission and APME boundary normalization.
-This does not turn unit coverage of dropped callbacks, queue bounds, child
-suppression into live evidence. The corrected TTL closure has regression
+This does not turn unit coverage of dropped callbacks or queue bounds into
+live evidence. The corrected TTL closure has regression
 coverage; a second 30-minute live wait has not been performed. Gateway reset through a
-messaging platform and a real child-task callback remain unmeasured.
+messaging platform remains unmeasured.
+
+On 2026-10-05 (KST), the same managed classic CLI executed a real
+`delegate_task` child against a deterministic loopback OpenAI-compatible
+provider in a temporary profile. The CLI entry point and delegation tool
+byte-matched the pinned checkout above. The copied observer recorded
+allow-listed callback fields before its unchanged processing. Upstream sent
+`subagent_start`, followed by the child's start, prompt, response and end;
+the observer exported only six parent hooks, with one successful Stop and
+one finalization. The child did not become a separate observed session.
+The sanitized raw callbacks and exported hooks are preserved in
+`bridge/src/__tests__/fixtures/hermes-live-child.json`. Python replays the raw
+callbacks through the observer; Node unit/E2E tests replay the export through
+the registry and real HTTP/WS daemon; Swift replays the same export through
+admission and APME boundary normalization. The initial capture receiver was
+a loopback HTTP stub, so daemon replay is separate evidence. This verifies
+callback identity and lifecycle, not external-provider quality or messaging
+transport. Native component tests do not prove physical-device appearance.
 
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).

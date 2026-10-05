@@ -11,6 +11,33 @@ final class HermesObserverGateTests: XCTestCase {
 
     private func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
 
+    func testCapturedDelegatedTurnHasOneParentBoundaryAndNoChildRow() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-child.json")
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        var keys = Set<String>(), stops = 0, finalized = 0
+        for (index, row) in events.enumerated() {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            guard case let .accept(boundary, key) = gate.admit(event: event, payload: payload, now: at(Double(index))) else {
+                XCTFail("Rejected captured callback: \(event)")
+                continue
+            }
+            keys.insert(key)
+            let normalized = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: key))
+            XCTAssertEqual(normalized.event, boundary)
+            if boundary == "stop" { stops += 1 }
+            if boundary == "session_end" { finalized += 1 }
+        }
+        XCTAssertEqual(keys.count, 1)
+        XCTAssertEqual(stops, 1)
+        XCTAssertEqual(finalized, 1)
+        XCTAssertTrue(gate.sweepDeparted(now: at(60)) { _ in .dead }.closed.isEmpty)
+    }
+
     func testCapturedCliAndGatewayLifecycleKeepsInterruptionsAndFinalizeBoundaries() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

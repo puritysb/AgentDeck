@@ -6,6 +6,19 @@ const session_id = `hermes-${'a'.repeat(32)}`;
 const payload = { session_id, model: 'custom-model', project_name: 'Hermes (telegram)' };
 
 describe('Hermes conversation lifetime', () => {
+  it('keeps a captured delegated turn as one read-only parent until finalization', () => {
+    const capture = JSON.parse(readFileSync(new URL('./fixtures/hermes-live-child.json', import.meta.url), 'utf8'));
+    const sessions = new HermesSessions();
+    const states: string[] = [];
+    for (const [index, row] of capture.events.entries()) {
+      expect(sessions.note(row.event, row.payload, index)).toBe(true);
+      const roster = sessions.applyTo([], index);
+      expect(roster.length).toBeLessThanOrEqual(1);
+      if (roster[0]) expect(roster[0]).toMatchObject({ agentType: 'hermes', liveAnswerable: false });
+      states.push(roster[0]?.state ?? 'removed');
+    }
+    expect(states).toEqual(['idle', 'processing', 'processing', 'processing', 'idle', 'removed']);
+  });
   it('replays captured real CLI tool work through Stop and finalization', () => {
     const capture = JSON.parse(readFileSync(new URL('./fixtures/hermes-cli-observer.json', import.meta.url), 'utf8'));
     const sessions = new HermesSessions();

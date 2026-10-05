@@ -251,6 +251,33 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('replays a real Hermes delegated turn through HTTP without a child roster row', async () => {
+    const capture = JSON.parse(readFileSync(join(ROOT, 'bridge/src/__tests__/fixtures/hermes-live-child.json'), 'utf8'));
+    const client = await connect(daemon.port);
+    const sid = capture.events[0].payload.session_id;
+    try {
+      for (const hook of capture.events) {
+        const response = await postHook(daemon.port, hook.event, { ...hook.payload, pid: daemon.child.pid });
+        expect(response.status).toBe(200);
+        if (hook.event === 'hermes_session_start') {
+          await waitFor('delegated parent roster', () => client.frames.some(f =>
+            f.type === 'sessions_list' && (f.sessions as Array<{ id: string }>).some(r =>
+              r.id === `observed:hermes:${sid}`)) ? true : undefined);
+        }
+      }
+      await waitFor('delegated parent response', () => client.frames.some(f =>
+        f.type === 'timeline_event' && (f.entry as Record<string, unknown>)?.raw === 'AGENTDECK_LOCAL_CAPTURE_DONE') ? true : undefined);
+      const rosters = client.frames.filter(f => f.type === 'sessions_list')
+        .flatMap(f => f.sessions as Array<{ id: string; agentType?: string }>);
+      const hermesIds = new Set(rosters.filter(r => r.agentType === 'hermes').map(r => r.id));
+      expect([...hermesIds]).toEqual([`observed:hermes:${sid}`]);
+      const replies = client.frames.filter(f => f.type === 'timeline_event')
+        .map(f => f.entry as Record<string, unknown>)
+        .filter(e => e.agentType === 'hermes' && e.type === 'chat_response');
+      expect(replies.filter(e => e.raw === 'AGENTDECK_LOCAL_CAPTURE_DONE')).toHaveLength(1);
+    } finally { client.close(); }
+  });
+
   it('replays real Hermes CLI/Gateway captures without calling cancelled turns completed', async () => {
     const capture = JSON.parse(readFileSync(join(ROOT, 'bridge/src/__tests__/fixtures/hermes-live-lifecycle.json'), 'utf8'));
     const client = await connect(daemon.port);
