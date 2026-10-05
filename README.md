@@ -308,14 +308,15 @@ advance independently; you do not need to update every device together.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**Store status, 2026-10-04:** Apple iOS and macOS 1.7.0 (7701), Google Play
-1.7.0 (24), Elgato 1.7 and Ulanzi 1.7.0 have been submitted for review.
+**Store status, 2026-10-05:** Apple iOS and macOS 1.7.0 (7701) are public;
+Google Play provides 1.7.0 (24). Elgato 1.7 and Ulanzi 1.7.0 remain under review.
 Android 1.7.0's signed APK and both deck-plugin packages are available on GitHub.
-The last measured public store versions remain Apple 1.6.0 (7501), Google Play
-1.6.1 (23), Elgato 1.6 and Ulanzi 1.6.0. All four npm packages are public at
+The last measured public deck-store versions remain Elgato 1.6 and Ulanzi
+1.6.0. All four npm packages are public at
 1.7.0 after the macOS/CLI coexistence verification; ESP32 1.7.0 is published
 with firmware for twelve boards.
-See the [delivery receipt](docs/devlog/entries/2026-10-04-platform-release-delivery.md)
+See the [current store readback](RELEASING.md#store-readback-2026-10-05),
+the [delivery receipt](docs/devlog/entries/2026-10-04-platform-release-delivery.md)
 and [previous public readback](docs/devlog/entries/2026-10-03-platform-release-readback.md).
 
 Mobile apps and hardware are companion surfaces: keep a daemon running on your

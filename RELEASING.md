@@ -59,6 +59,31 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 
 **Never report a state you did not measure.** Each has its own instrument: the workflow log for 1, `gh release list` for 2, the portal or `npm view <pkg> version` for 3, and the portal for 4 and 5. Deriving one from another is how "released" gets claimed for a build sitting in a portal — it happened on 2026-08-09, when CI upload was reported as a completed Stream Deck and Ulanzi release while neither had been submitted.
 
+### Store readback, 2026-10-05
+
+- **Apple iOS and macOS 1.7.0 (7701) are public.** App Store Connect reports
+  Ready for Distribution for each platform, with automatic release selected.
+  The [public Mac page](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
+  serves Version 1.7.0 and its Mac-specific release notes. Apple's iOS lookup
+  reports 1.7.0 in both US and KR, released `2026-10-04T16:52:31Z`.
+  Existing preview videos and screenshot galleries remain attached to both
+  approved platform records; no replacement build or resubmission was needed.
+- **Google Play 24 (1.7.0) is available.** The production release row says
+  Available on Google Play, published October 4 at 09:34 in the console.
+  The [public listing](https://play.google.com/store/apps/details?id=dev.agentdeck&hl=en)
+  serves the Hermes/credits/session-ordering notes and an October 4 update date.
+  Phone aquarium and grayscale attention gallery images were inspected;
+  the complete tablet/Crema file comparison remains tracked in #449.
+- **Elgato 1.7 remains Pending review; Ulanzi 1.7.0 remains under review.**
+  Their last measured public versions remain 1.6 and 1.6.0 respectively.
+  Elgato still needs DRM-processed encoder acceptance after approval and before
+  publication. The remaining store and community hardware gates live in
+  [#449](https://github.com/puritysb/AgentDeck/issues/449).
+
+This readback concerns the existing 1.7 deliveries. Later fixes merged in
+#451–#455 require future versioned artifacts; they are not included merely
+because 1.7 is now public.
+
 ### Every instrument above is keyed from a tag, so audit the tag surface too
 
 `gh release list`, `git log <tag>..HEAD`, and the gap calculation all start from a

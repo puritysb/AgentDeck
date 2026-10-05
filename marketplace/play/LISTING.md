@@ -8,7 +8,16 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
-## 1.7.0 — production submitted (2026-10-04)
+## 1.7.0 public — delivery readback (2026-10-05)
+
+Production's release row now says **Available on Google Play** for **24
+(1.7.0)**, with publication on October 4 at 09:34 in the console. The public
+listing serves the matching Hermes/credits/session-ordering release notes and
+an October 4 update date. The phone aquarium and grayscale attention images
+are visible publicly. Full tablet/Crema comparison with the retained submitted
+files remains open in #449; this readback does not establish a byte match.
+
+## 1.7.0 — production submission receipt (2026-10-04)
 
 Uploaded the signed **24 (1.7.0)** AAB and submitted a full production rollout.
 Publishing overview now shows **Changes in review**, initially running quick
@@ -19,7 +28,7 @@ The console showed one non-blocking native-debug-symbol warning.
 
 The signed APK is already available in the
 [Android GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.7.0).
-Google Play's last verified public version remains 1.6.1 (23).
+At submission time, Google Play's last verified public version was 1.6.1 (23).
 
 ## 1.6.1 public — delivery readback (2026-10-03)
 
