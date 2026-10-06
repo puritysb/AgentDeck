@@ -14,6 +14,13 @@ export const MATRIX_POLICY = {
   replyTypes: ['chat_response'], askTypes: ['chat_start'], closeTypes: ['chat_end', 'chat_response', 'task_end'],
   priority: ['waiting', 'error', 'done', 'working', 'idle'], urgent: ['waiting', 'error'],
   summaryKinds: ['waiting', 'working', 'done', 'idle'],
+  // Timebox face only (the 32×32 world keeps the kinds above). One needs-you
+  // face per awaiting state, in a fixed order so two kinds of question never
+  // alternate on a timer; a CI wait is its own axis (`shared/src/ci-wait.ts`):
+  // pending phases need an explicit agentWaiting, and unknown is never success.
+  awaitingFaces: [['awaiting_permission', 'waiting'], ['awaiting_option', 'choosing'], ['awaiting_diff', 'reviewing']],
+  ciFaces: [['queued', 'ci'], ['running', 'ci'], ['unknown', 'ci-unknown']],
+  gatewayAgent: 'openclaw',
 } as const;
 export const MATRIX_AGENTS: Record<string, string> = {
   'claude-code': 'claudeCode', 'codex-cli': 'codex', 'codex-app': 'codex',
@@ -22,18 +29,55 @@ export const MATRIX_AGENTS: Record<string, string> = {
 };
 export const MATRIX_KINDS = ['waiting', 'error', 'done', 'working', 'idle', 'unknown', 'arrival', 'asked', 'reply'] as const;
 export type MatrixKind = typeof MATRIX_KINDS[number];
-export interface MatrixSession { id: string; alive: boolean; state?: string; agentType?: string }
+/**
+ * The Timebox Mini's 11×11 robot face. It reads more of the desk than the
+ * 32×32 kinds: which question is pending, a CI wait (neither PERM nor
+ * WORKING), children working under an idle parent, a Gateway health error
+ * and an empty roster. Quota is deliberately absent — it is not a session
+ * state and has its own steady surfaces (DESIGN.md §2.8).
+ */
+export const MATRIX_FACES = ['unknown', 'empty', 'idle', 'working', 'delegating', 'ci', 'ci-unknown',
+  'waiting', 'choosing', 'reviewing', 'error', 'done', 'arrival', 'asked', 'reply'] as const;
+export type MatrixFace = typeof MATRIX_FACES[number];
+/** Faces whose class can hold several sessions show a count of pips. */
+export const MATRIX_FACE_PIPS: Partial<Record<MatrixFace, number>> = {
+  // Minimum count that earns pips. Children are the delegating face's whole
+  // meaning, so even one is shown; elsewhere one session is the default case.
+  idle: 2, working: 2, delegating: 1, ci: 2, 'ci-unknown': 2, waiting: 2, choosing: 2, reviewing: 2, error: 2,
+};
+export interface MatrixSession {
+  id: string; alive: boolean; state?: string; agentType?: string;
+  waitingOn?: { phase?: string; agentWaiting?: boolean } | null;
+  subagents?: { active?: number };
+}
 export interface MatrixResult { ts: number; type: string; status?: string; sessionId?: string; automated?: boolean }
 export interface MatrixBroadcast {
   type: string; sessions?: MatrixSession[]; entries?: MatrixResult[];
-  entry?: MatrixResult; upsert?: boolean; status?: string;
+  entry?: MatrixResult; upsert?: boolean; status?: string; gatewayHasError?: boolean;
 }
 export interface MatrixScene {
   kind: MatrixKind; count: number; glyph: string; frame: number; roster: MatrixKind[]; counts: number[];
+  /** Timebox face and its session count (pips). Optional for callers that
+   *  build a 32×32 scene by hand; the 11×11 renderer falls back to `kind`. */
+  face?: MatrixFace; pips?: number;
 }
 export function matrixState(state?: string): MatrixKind {
   return state?.startsWith(MATRIX_POLICY.awaitingPrefix) ? 'waiting'
     : (MATRIX_POLICY.stateKinds as Record<string, MatrixKind>)[state ?? ''] ?? 'idle';
+}
+/** The CI face a session's wait earns, or null (no wait, a terminal verdict,
+ * or a pending phase without an explicit agentWaiting). */
+export function matrixCiFace(session: MatrixSession): MatrixFace | null {
+  const wait = session.waitingOn;
+  if (!wait || wait.agentWaiting !== true) return null;
+  return (MATRIX_POLICY.ciFaces.find(([phase]) => phase === wait.phase)?.[1] ?? null) as MatrixFace | null;
+}
+/** Face-level session class: a CI wait outranks the session's own working
+ * state (it is not WORKING), never its question or failure. */
+export function matrixFaceState(session: MatrixSession): MatrixKind | 'ci' {
+  const state = matrixState(session.state);
+  if (state === 'waiting' || state === 'error') return state;
+  return matrixCiFace(session) ? 'ci' : state;
 }
 export function matrixResults(timeline: MatrixResult[], now: number): MatrixResult[] {
   return timeline.filter(e => (MATRIX_POLICY.resultTypes as readonly string[]).includes(e.type) &&
@@ -86,7 +130,10 @@ export class MatrixExpression {
   private timeline: MatrixResult[] = [];
   private seen = new Set<string>();
   private arrival: { id: string; ts: number } | null = null;
-  reset(): void { this.sessions = null; this.timeline = []; this.arrival = null; this.seen.clear(); }
+  private gatewayHasError = false;
+  reset(): void {
+    this.sessions = null; this.timeline = []; this.arrival = null; this.seen.clear(); this.gatewayHasError = false;
+  }
   updateSessions(sessions: MatrixSession[], now: number): void {
     if (this.sessions !== null) {
       const known = this.seen;
@@ -108,6 +155,8 @@ export class MatrixExpression {
   ingest(event: MatrixBroadcast, now: number): void {
     if (event.type === 'sessions_list' && event.sessions) this.updateSessions(event.sessions, now);
     else if (event.type === 'connection' && event.status === 'disconnected') this.reset();
+    // Retain-on-absent: only an explicit boolean changes the Gateway verdict.
+    else if (event.type === 'state_update' && typeof event.gatewayHasError === 'boolean') this.gatewayHasError = event.gatewayHasError;
     else if (event.type === 'timeline_history') {
       this.updateTimeline([...(event.entries ?? [])].sort((a, b) => a.ts - b.ts));
     } else if (event.type === 'timeline_event' && event.entry) {
@@ -145,9 +194,10 @@ export class MatrixExpression {
         }
       }
     }
+    const { face, pips } = this.face(live, kind, now);
     const frameTime = kind === 'arrival' ? now - this.arrival!.ts : responseAt == null ? now : now - responseAt;
     return { kind, count: kind === 'arrival' || kind === 'asked' || kind === 'reply' ? live.length : signal.count,
-      glyph,
+      glyph, face, pips,
       frame: Math.floor(Math.max(0, frameTime) / MATRIX_RULES.frameMs) % MATRIX_RULES.frames,
       roster: live.map(s => matrixState(s.state)),
       // Fixed semantic rows: waiting, working, explicit results, live (or errors).
@@ -155,5 +205,36 @@ export class MatrixExpression {
         live.filter(s => matrixState(s.state) === 'working').length,
         matrixResults(this.timeline, now).length,
         live.filter(s => matrixState(s.state) === 'error').length || live.length] };
+  }
+  /** Timebox face priority: no roster → needs-you → failure → conversation /
+   * entrance / fresh result → working → children under an idle parent → CI
+   * wait → a result within its window → empty roster → idle. */
+  private face(live: MatrixSession[], kind: MatrixKind, now: number): { face: MatrixFace; pips: number } {
+    if (this.sessions === null) return { face: 'unknown', pips: 0 };
+    const waiting = live.filter(s => matrixState(s.state) === 'waiting');
+    if (waiting.length) {
+      const face = MATRIX_POLICY.awaitingFaces.find(([state]) => waiting.some(s => s.state === state))?.[1] ?? 'waiting';
+      return { face, pips: waiting.length };
+    }
+    // A Gateway health error is shown only while the daemon emits the OpenClaw
+    // session (presence SSOT); it never invents a resident or double-counts one.
+    const errors = live.filter(s => matrixState(s.state) === 'error').length +
+      (this.gatewayHasError && live.some(s => s.agentType === MATRIX_POLICY.gatewayAgent && matrixState(s.state) !== 'error') ? 1 : 0);
+    if (errors) return { face: 'error', pips: errors };
+    if (kind === 'asked' || kind === 'reply' || kind === 'arrival') return { face: kind, pips: 0 };
+    const results = matrixResults(this.timeline, now);
+    if (results.some(e => now - e.ts < MATRIX_RULES.responseMs)) return { face: 'done', pips: 0 };
+    const working = live.filter(s => matrixFaceState(s) === 'working').length;
+    if (working) return { face: 'working', pips: working };
+    const children = live.reduce((sum, s) => {
+      const active = s.subagents?.active;
+      return sum + (typeof active === 'number' && Number.isFinite(active) && active > 0 ? Math.floor(active) : 0);
+    }, 0);
+    if (children) return { face: 'delegating', pips: children };
+    const ci = live.map(matrixCiFace).filter((f): f is MatrixFace => f !== null);
+    if (ci.length) return { face: ci.includes('ci') ? 'ci' : 'ci-unknown', pips: ci.length };
+    // An older result is still news on a quiet desk, never over live work.
+    if (results.length) return { face: 'done', pips: 0 };
+    return live.length ? { face: 'idle', pips: live.length } : { face: 'empty', pips: 0 };
   }
 }

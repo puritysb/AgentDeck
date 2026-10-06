@@ -9,6 +9,11 @@ struct MatrixExpression {
         let alive: Bool
         let state: String
         let agentType: String
+        /// Timebox CI face for this session's wait (`ciFaces`), nil when there is
+        /// no wait, a terminal verdict, or no explicit agentWaiting.
+        var ciFace: String? = nil
+        /// Live children (`subagents.active`), non-negative.
+        var children: Int = 0
     }
     struct Result {
         let ts: Double
@@ -24,13 +29,16 @@ struct MatrixExpression {
         let frame: Int
         let roster: [String]
         let counts: [Int]
+        var face: String = ""
+        var pips: Int = 0
     }
     private var sessions: [Resident]?
     private var timeline: [Result] = []
     private var seen: [String] = []
     private var arrival: (id: String, ts: Double)?
+    private var gatewayHasError = false
 
-    mutating func reset() { sessions = nil; timeline = []; arrival = nil; seen = [] }
+    mutating func reset() { sessions = nil; timeline = []; arrival = nil; seen = []; gatewayHasError = false }
     static func state(_ state: String) -> String {
         state.hasPrefix(MatrixFrames.awaitingPrefix) ? "waiting" : MatrixFrames.stateKinds[state] ?? "idle"
     }
@@ -49,8 +57,14 @@ struct MatrixExpression {
             guard let raw = event["sessions"] as? [[String: Any]] else { return }
             let incoming = raw.compactMap { row -> Resident? in
                 guard let id = row["id"] as? String else { return nil }
-                return Resident(id: id, alive: row["alive"] as? Bool ?? false,
+                var resident = Resident(id: id, alive: row["alive"] as? Bool ?? false,
                     state: row["state"] as? String ?? "", agentType: row["agentType"] as? String ?? "")
+                if let wait = row["waitingOn"] as? [String: Any], wait["agentWaiting"] as? Bool == true,
+                   let phase = wait["phase"] as? String {
+                    resident.ciFace = MatrixFrames.ciFaces[phase]
+                }
+                resident.children = Self.count((row["subagents"] as? [String: Any])?["active"])
+                return resident
             }
             if sessions != nil {
                 let known = Set(seen)
@@ -75,8 +89,18 @@ struct MatrixExpression {
             timeline = Array(timeline.suffix(MatrixFrames.historyLimit))
         case "connection":
             if event["status"] as? String == "disconnected" { reset() }
+        case "state_update":
+            // Retain-on-absent: only an explicit boolean changes the Gateway verdict.
+            if let flag = event["gatewayHasError"] as? Bool { gatewayHasError = flag }
         default: break
         }
+    }
+    /// A finite positive count, floored; anything else is zero. Native rows
+    /// carry Int, decoded JSON carries NSNumber — read both.
+    private static func count(_ raw: Any?) -> Int {
+        let value: Double
+        if let int = raw as? Int { value = Double(int) } else if let double = raw as? Double { value = double } else { return 0 }
+        return value.isFinite && value > 0 ? Int(value.rounded(.down)) : 0
     }
     private static func result(_ raw: [String: Any]) -> Result? {
         guard let ts = raw["ts"] as? Double, ts.isFinite, let type = raw["type"] as? String,
@@ -135,10 +159,38 @@ struct MatrixExpression {
                 frameTime = now - latest.ts
             }
         }
+        let (face, pips) = self.face(live, kind: kind, results: done, now: now)
         return Scene(kind: kind, count: count, glyph: glyph,
             frame: Int(max(0, frameTime) / Double(MatrixFrames.frameMs)) % MatrixFrames.frames,
             roster: live.map { Self.state($0.state) },
-            counts: [waiting, working, done.count, errors > 0 ? errors : live.count])
+            counts: [waiting, working, done.count, errors > 0 ? errors : live.count],
+            face: face, pips: pips)
+    }
+    /// matrix-expression.ts `face`: no roster → needs-you → failure →
+    /// conversation / entrance / fresh result → working → children under an
+    /// idle parent → CI wait → a result within its window → empty → idle.
+    private func face(_ live: [Resident], kind: String, results: [Result], now: Double) -> (String, Int) {
+        if sessions == nil { return ("unknown", 0) }
+        let waiting = live.filter { Self.state($0.state) == "waiting" }
+        if !waiting.isEmpty {
+            let face = MatrixFrames.awaitingFaces.first { pair in waiting.contains { $0.state == pair[0] } }?[1] ?? "waiting"
+            return (face, waiting.count)
+        }
+        let gatewayError = gatewayHasError && live.contains {
+            $0.agentType == MatrixFrames.gatewayAgent && Self.state($0.state) != "error"
+        }
+        let errors = live.filter { Self.state($0.state) == "error" }.count + (gatewayError ? 1 : 0)
+        if errors > 0 { return ("error", errors) }
+        if kind == "asked" || kind == "reply" || kind == "arrival" { return (kind, 0) }
+        if results.contains(where: { now - $0.ts < Double(MatrixFrames.responseMs) }) { return ("done", 0) }
+        let working = live.filter { $0.ciFace == nil && Self.state($0.state) == "working" }.count
+        if working > 0 { return ("working", working) }
+        let children = live.reduce(0) { $0 + $1.children }
+        if children > 0 { return ("delegating", children) }
+        let ci = live.compactMap(\.ciFace)
+        if !ci.isEmpty { return (ci.contains("ci") ? "ci" : "ci-unknown", ci.count) }
+        if !results.isEmpty { return ("done", 0) }
+        return live.isEmpty ? ("empty", 0) : ("idle", live.count)
     }
     func render(size: Int, now: Double) -> Data {
         Self.render(size: size, scene: scene(now: now))
@@ -148,11 +200,22 @@ struct MatrixExpression {
         let summary = scene.glyph.hasPrefix("summary")
         let error = scene.roster.contains("error")
         let glyph = summary && error ? "summary-error" : scene.glyph
-        var out = MatrixFrames.base(size: size, kind: scene.kind, glyph: glyph, frame: scene.frame)
-        if size == 11 { return Data(out) }
+        let face = scene.face.isEmpty ? scene.kind : scene.face
+        var out = MatrixFrames.base(size: size, kind: size == 11 ? face : scene.kind, glyph: glyph, frame: scene.frame)
         func put(_ x: Int, _ y: Int, _ color: [UInt8], _ intensity: Double = 1) {
             guard x >= 0, y >= 0, x < size, y < size else { return }
             for c in 0..<3 { out[(y * size + x) * 3 + c] = UInt8((Double(color[c]) * intensity).rounded()) }
+        }
+        if size == 11 {
+            // Chin pips (matrix-art.ts paintFacePips): steady, centred, at most pipMax.
+            if let minimum = MatrixFrames.facePips[face], scene.pips >= minimum, let color = MatrixFrames.faceColors[face] {
+                let n = min(MatrixFrames.pipMax, scene.pips)
+                let x0 = Double(MatrixFrames.pipCenter) - Double((n - 1) * MatrixFrames.pipStep) / 2
+                for i in 0..<n {
+                    put(Int(x0) + i * MatrixFrames.pipStep, MatrixFrames.pipY, color, MatrixFrames.pipIntensity)
+                }
+            }
+            return Data(out)
         }
         func number(_ value: Int, _ y: Int, _ tone: String) {
             let text = scene.kind == "unknown" ? "-" : value > MatrixFrames.maxCount ? "99+" : String(value)

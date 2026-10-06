@@ -303,15 +303,37 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 - **BLE** — BLE GATT over the ISSC transparent-UART service `49535343-fe7d-…` (write char `49535343-8841-…`, write-without-response, 20-byte chunks). Advertises as `TimeBox-mini-light` (sharing its BD_ADDR with the Classic audio endpoint `TimeBox-mini-audio`). Driven by `sync_ble.py` (bleak) on the CLI daemon **and natively by the App Store Swift daemon over CoreBluetooth** (no subprocess). (The legacy Bluetooth Classic SPP variant was removed — poor macOS compatibility, no App Store path.)
 
 - **Rendering — agent face**: both daemons render the same native 11×11 robot
-  face: cyan eyes glance/blink while working, amber raised brows and wide eyes ask
-  for attention, a red frown represents errors, green smiling eyes acknowledge
-  explicit responses, and dim neutral eyes blink at idle. Unknown data has closed,
-  broken eyes. A new-session greeting is brief. The face represents aggregate
-  agent activity, not a particular provider. Only amber brightness pulses; eye
-  poses and event motion may change without flashing other status colors.
-- **Priority**: waiting → error → new-session greeting → recent explicit result →
-  working → idle. Results retain their original 90-second window; aborted, denied,
-  pending or future events do not count. The BLE packet format is unchanged.
+  face (`renderMatrixFace`, `bridge/src/pixoo/matrix-art.ts`; Swift replays the
+  generated frames). It represents the whole desk, never a particular provider.
+  Fifteen faces, each with its own 4-bit signature:
+
+  | Situation | Face |
+  |---|---|
+  | No roster yet (startup, link reset) | `unknown` — dim broken eyes |
+  | Live daemon, zero sessions | `empty` — sleeping eyes and a "Z" |
+  | Sessions, nothing running | `idle` — dim grey eyes that blink |
+  | Agent working | `working` — cyan eyes that glance |
+  | Parent idle, subagents running | `delegating` — heavy-lidded cyan eyes looking down at the helpers |
+  | CI wait (queued/running) | `ci` — eyes rolled up at a filling ellipsis; a CI wait is neither PERM nor WORKING |
+  | CI wait, phase unknown | `ci-unknown` — the same pose in grey, ellipsis still |
+  | Needs approval | `waiting` — amber raised brows, wide eyes, asking mouth |
+  | Needs a choice | `choosing` — amber brows, pupils darting, pressed lips |
+  | Review a diff | `reviewing` — amber brows, narrowed reading eyes, small "o" |
+  | Failed session, or Gateway health error while the OpenClaw session is present | `error` — red frown |
+  | Explicit result / reply / question / new session | `done` · `reply` · `asked` · `arrival` |
+
+  Faces that can stand for several sessions (idle, working, CI, needs-you,
+  error) show steady chin pips on the bottom row when two or more sessions share
+  them, up to five; `delegating` shows one pip per running child. Only amber
+  pulses. Quota is not on the face (it is not a session state; DESIGN.md §2.8).
+  The daemon gone entirely is the separate OFFLINE badge, and host display
+  sleep scales or blanks brightness without changing the face.
+- **Priority**: no roster → needs you (approval → choice → diff, a fixed order,
+  never a timer) → error → conversation / new session / a result in its first
+  six seconds → working → delegating → CI wait → a result within 90 seconds →
+  empty → idle. Live work replaces a result smile after six seconds; the
+  iDotMatrix result count keeps its 90-second window. Aborted, denied, pending
+  or future events do not count. The BLE packet format is unchanged.
 - **Heartbeat**: polls the frame endpoint (~1.5s) and sends only changed frames.
 - **Config**: `~/.agentdeck/settings.json` — `{ timeboxDevices: [{ address, name?, brightness? }] }`
 - **Source**: `bridge/src/timebox/` (settings, daemon sync manager, `sync_ble.py`/`scan_ble.py`); App Store: `apple/AgentDeck/Daemon/Modules/Timebox{BLE,Module,DivoomPacket}.swift`

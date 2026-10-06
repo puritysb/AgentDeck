@@ -29,6 +29,14 @@ Two measured faults fixed on the way. Every text measure counted UTF-16 code uni
 
 The aquarium gives Antigravity, Kiro and Hermes their canonical marks as residents, adopts the §6.4 status grammar (amber `!` badge, cyan working spark — mirrored into the macOS preview's `TUITerrariumRenderer.swift`), and draws name tags in one priority post-pass so sparks no longer overwrite a tag. Activity "follow" matches the observed roster id to the bare timeline id with `rawSessionId`; OpenClaw, whose roster row (`openclaw-gateway`) and run rows (`openclaw:agent:main:main`) never share an id, falls back to its agent type.
 
+## 2026-10-07 — Timebox face reads the whole desk
+
+The Timebox Mini's 11×11 robot face only had the iDotMatrix kinds to work with, so several situations were wrong or ambiguous at a glance. An empty roster and a roster of idle sessions looked the same. A parent whose turn had closed while its subagents kept working read as idle. A CI wait showed as working or idle, although a CI wait is neither. Approval, choice and diff review all drew one face. A Gateway health error was not shown at all. A finished result kept a green smile over live work for 90 seconds.
+
+The face is now its own axis in the [matrix-expression SSOT](shared/src/matrix-expression.ts) (`MatrixScene.face` and `pips`), while the 32×32 kinds stay unchanged. It adds `empty`, `delegating`, `ci`/`ci-unknown`, `choosing` and `reviewing`, plus steady chin pips that count the sessions sharing a face. Needs-you faces follow a fixed approval → choice → diff order, never a timer. CI waits follow the [CI wait rules](shared/src/ci-wait.ts): pending phases need an explicit `agentWaiting`, and unknown is its own grey face. A Gateway error appears only while the OpenClaw session is present. Live work replaces a result smile after six seconds. Quota stays off the face on purpose, because it is not a session state.
+
+The art lives in [matrix-art.ts](bridge/src/pixoo/matrix-art.ts) and is generated into `MatrixFrames.generated.swift`. The Swift engine mirrors the selection by hand, and the executable parity test now replays CI, subagent, Gateway, needs-you and empty-roster steps byte-for-byte. Not verified: an Xcode app build and the physical panel.
+
 ## 2026-10-07 — EPD47 and NM paint only what changed, say when, and stop holding WiFi on USB
 
 ### Problem
