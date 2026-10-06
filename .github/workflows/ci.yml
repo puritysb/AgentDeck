@@ -105,9 +105,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # bridge imports @agentdeck/shared through its built package entry.
-      - name: Build shared
-        run: pnpm --filter @agentdeck/shared build
+      # bridge imports @agentdeck/shared through its built package entry, and
+      # scripts/generate-tui-creatures.mjs reads bridge/dist (same set as the
+      # Windows job builds).
+      - name: Build shared, hooks and bridge
+        run: |
+          pnpm --filter @agentdeck/shared build
+          pnpm --filter @agentdeck/hooks build
+          pnpm --filter @agentdeck/bridge build
 
       - name: macOS-gated Vitest cases
         run: pnpm exec vitest run shared/src/__tests__/daemon-parity.test.ts shared/src/__tests__/ci-wait-sync.test.ts bridge/src/__tests__/ips10-roster.test.ts bridge/src/__tests__/matrix-expression.test.ts bridge/src/__tests__/tui-terrarium-snapshots.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/fm-helper-build.test.ts
