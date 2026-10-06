@@ -7,10 +7,10 @@ locale: en
 canonical: true
 status: stable
 owner: Quality maintainers
-reviewed: 2026-07-18
-revision: 2026-07-18
+reviewed: 2026-10-07
+revision: 2026-10-07
 source_of_truth: docs/testing.md
-validators: [pnpm test, bash scripts/test-report.sh]
+validators: [pnpm test, pnpm verify:quick]
 ---
 
 # Testing Guide
@@ -25,6 +25,30 @@ AgentDeck currently uses 4 test frameworks across the monorepo:
 The root `pnpm test` command runs only the Vitest suite configured in the repository root. Platform-specific suites are executed separately or through `scripts/test-report.sh`.
 
 **What each gate proves — and does not prove — is catalogued in [`scripts/verification-catalog.json`](../scripts/verification-catalog.json)** and published on the GitHub Pages report's "What we verify" tab. The catalog also assigns every test file to a domain (ordered glob patterns, first match wins). `scripts/__tests__/verification-catalog.test.ts` fails when a workflow is missing from it, a path it names is gone, or a test file matches no domain, so the public page cannot silently drift from the repository. The per-file lists below are illustrative; the catalog is the complete map.
+
+## Verification tiers
+
+Three local tiers run the same steps at three depths. The steps, their tiers, the paths that select them and the toolchain each needs are defined once, in the `tiers` and `steps` of [`scripts/verification-catalog.json`](../scripts/verification-catalog.json). `scripts/verify.mjs` runs them, and the Pages report renders the same list as its "Verification tiers" matrix.
+
+| Tier | Command | When | What it runs |
+|---|---|---|---|
+| Changed-area | `pnpm verify:changed` | While iterating; before pushing a focused fix | Steps whose `paths` match a file changed since the merge base with `origin/master` (committed, staged, unstaged, untracked). Vitest runs `vitest related` on changed sources plus tests that name a changed non-code file. A change to a `package.json`, the lockfile, a tsconfig or a Vitest config runs the whole suite. Android, Apple and ESP32 suites run when their trees change and the toolchain is present. |
+| Quick | `pnpm verify:quick` | Before every push or PR, about 2–3 minutes | The ubuntu PR gates: version sync, build, type check, ESLint and design-lint ratchets, the whole Vitest suite, daemon E2E, protocol and preview-mirror drift, tokens, docs, catalog, devlog and Pages parity. |
+| Pre-release | `pnpm verify:full` | Before any release tag | Quick plus the coverage floor, every native suite this host can run (Android, macOS XCTest, iOS build, App Store bundle, ESP32 host tests, simulator and TTGO builds), the clean npm package acceptance, and the lab gates (ESP32 Robot, device deploy, Swift Codex live acceptance), which a person attests. |
+
+Every run prints a summary and writes a receipt to `coverage/verify/<tier>.json`. A step is `pass`, `fail`, `skip` with its reason (missing toolchain, wrong platform, an opt-in such as the macOS E2E), or `manual` for an unattested lab gate. A skip never counts as a pass. Useful flags:
+
+```bash
+node scripts/verify.mjs --list                      # every tier and step
+pnpm verify:changed -- --dry-run                    # what would run for this diff
+pnpm verify:changed -- --base origin/release-x      # compare against another ref
+pnpm verify:quick -- --only vitest,e2e --allow-keychain   # run the macOS-opt-in E2E too
+pnpm verify:full -- --attest esp32-robot=pass:"box_86, ips_35" --record
+```
+
+`--record` (pre-release tier only, clean tree) also writes `verification/receipts/<date>-<sha>.json`. Commit that file: the published Test Report shows the newest one as "Last recorded pre-release check", including which steps were skipped on that host and which lab gates were attested or left unattested. `--report` (on by default for `verify:full`) renders the Build Health page locally to `coverage/test-report/index.html` from only this run's results.
+
+The tiers do not replace CI. The hosted jobs still run on every PR, including the two no Mac or Linux host can reproduce locally: `windows-native-runtime` (Node 22/24/26) and `macos-native-parity`.
 
 ## End-to-end: the real daemon process
 
@@ -208,23 +232,12 @@ pnpm vitest run --coverage       # Terminal summary + lcov + json-summary
 
 ## Unified Test Report
 
-`scripts/test-report.sh` collects results from all 4 frameworks into a single summary. It runs the suites that are available in the current environment and skips suites whose toolchains are missing.
-
-```bash
-bash scripts/test-report.sh              # Run all + report
-bash scripts/test-report.sh --report     # Report only (from existing results)
-bash scripts/test-report.sh --vitest     # Vitest only
-bash scripts/test-report.sh --android    # Android only
-bash scripts/test-report.sh --apple      # Apple XCTest only
-bash scripts/test-report.sh --robot      # Robot Framework only
-```
+`pnpm test:report` is the pre-release tier with the local report: `node scripts/verify.mjs --tier full --report`. `scripts/test-report.sh` remains as an alias that maps its old flags (`--report`, `--vitest`, `--android`, `--apple`) onto `verify.mjs`. Its previous implementation needed bash 4 associative arrays and failed on its first line under macOS's `/bin/bash` 3.2.
 
 Output includes:
-- Terminal table with pass/fail/skip per suite
-- JSON summary at `coverage/test-report/summary.json`
-- Run metadata at `coverage/test-report/run-metadata.json`
-- Vitest JSON at `coverage/test-report/vitest.json`
-- Robot HTML report at `coverage/test-report/robot/report.html` (if run)
+- Terminal table with pass/fail/skip/manual per step, and the receipt at `coverage/verify/full.json`
+- The Build Health page at `coverage/test-report/index.html`, plus `summary.json` and `run-metadata.json`
+- Vitest and E2E JSON at `coverage/test-report/vitest.json` and `e2e.json`
 
 The GitHub Pages report also renders a scenario coverage mapping. That view is based on explicit file + assertion/case pattern matches from `scripts/scenario-matrix.json`, not raw code coverage percentages.
 
@@ -239,18 +252,20 @@ GitHub Actions currently runs on every push and PR to `master`:
 - pnpm typecheck
 - npx vitest run --coverage    # the whole Vitest suite once, plus the coverage floor
 - pnpm test:e2e                # real daemon process (tests/e2e/)
+- node scripts/check-eslint-baseline.mjs   # ESLint error ratchet (scripts/eslint-baseline.json)
 ```
 
 Current CI details:
 
-- Runner: `ubuntu-latest`, Node 22 (a separate `windows-latest` job covers Node 22/24/26 native runtime)
+- Runner: `ubuntu-latest`, Node 22. A separate `windows-latest` job covers the Node 22/24/26 native runtime, and a `macos-26` job (`macos-native-parity`) runs the Vitest cases gated on `process.platform === 'darwin'`: generated-Swift parity vectors, launchd probes, the Foundation Models helper build. Those cases are skipped on ubuntu and `apple-test.yml` runs XCTest, not Vitest, so before this job they ran on no CI runner. `verification-catalog.test.ts` fails when a platform-gated test file is missing from its job.
+- ESLint runs as a ratchet: the error count may not grow past `scripts/eslint-baseline.json`. It was configured but ran in no workflow, and had grown to 181 errors, 166 of them config noise (the vendored Ulanzi browser SDK linted with Node globals).
 - Included: version sync, build, typecheck, Vitest with coverage floor, daemon E2E, preview-mirror and protocol drift
 - Vitest runs once: `--coverage` executes the same suite as `pnpm test`, so running both only doubled the time
 - Not included: Apple XCTest (own workflow) and physical-hardware ESP32 Robot Framework (lab only)
 
 Android compilation and its JUnit + Robolectric suite are a **separate, path-scoped check** — `.github/workflows/android-test.yml` runs `./gradlew :app:testDebugUnitTest` on pushes and PRs that touch `android/**`, and uploads the HTML/XML reports as an artifact. It exists because `ci.yml` never reads the Android sources: before it, a PR changing only `android/**` could go all-green without anything having compiled its Kotlin, since the Android run inside `test-report.yml` fires only on push to `master`. The debug variant needs no release signing secrets, and the GitHub-hosted runners ship the Android SDK, so the job is just JDK 17 + Gradle.
 
-ESP32 C++ has the same path-scoped shape (#243) — `.github/workflows/esp32-sim.yml` runs `pio run` over every `esp32/sim` env (the native host build of the real `esp32/src` render trees, no Xtensa toolchain) on PRs touching `esp32/**`. Before it, the only job compiling firmware sources was the sim build inside `test-report.yml`, which fires on push to `master` — so a firmware compile error surfaced after merge, or at an `esp32-v*` tag. It shares `test-report.yml`'s `pio-sim-*` cache key so master pushes keep the cache PR runs restore from. It is a compile gate only; the hardware Robot suites stay lab-only as below.
+ESP32 C++ has the same path-scoped shape (#243) — `.github/workflows/esp32-sim.yml` runs `pio run` over every `esp32/sim` env (the native host build of the real `esp32/src` render trees, no Xtensa toolchain) on PRs touching `esp32/**`. Before it, the only job compiling firmware sources was the sim build inside `test-report.yml`, which fires on push to `master` — so a firmware compile error surfaced after merge, or at an `esp32-v*` tag. It shares `test-report.yml`'s `pio-sim-*` cache key so master pushes keep the cache PR runs restore from. The same job runs `esp32/sim/run-tests.sh`, the host-compiled assertions over the firmware's policy headers, which used to be local-only. Behaviour on boards stays with the lab Robot suites, as below.
 
 The Android run inside `test-report.yml` remains a non-blocking diagnostic feeding the Build Health page. Apple XCTest is not yet in the Linux CI job. Robot Framework's meaningful behavioral coverage requires physical hardware and remains a lab/local workflow rather than a GitHub-hosted check.
 

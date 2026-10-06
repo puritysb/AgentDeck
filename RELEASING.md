@@ -422,7 +422,7 @@ Tag prefixes remain because channels ship independently and may point to differe
    `## <YYYY-MM-DD> — <Channel> <version>`; list every channel in one heading
    when a round is cut across several, which is what a simultaneous cut is.
    Verify before tagging: `pnpm verify-release-version <target> <X.Y.Z>`.
-5. Run `pnpm verify-version`, `pnpm build`, and the relevant platform workflows.
+5. Run `pnpm verify:full --record` (the pre-release verification tier; attest the lab gates you ran with `--attest`), commit the receipt it writes under `verification/receipts/`, and confirm the relevant platform workflows are green.
 6. Commit the synchronized release state. Create only the channel tags that are actually being delivered, using the exact target version.
 
 Step 4 used to say "update user-facing release notes" and was skipped without

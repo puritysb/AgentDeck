@@ -93,7 +93,7 @@
         ],
         "e2e": []
       },
-      "gaps": ["No real mDNS discovery test", "No ADB reverse tunnel test", "No auth token rejection test"]
+      "gaps": ["No real mDNS discovery test", "No ADB reverse tunnel test", "No LAN token rejection from a second machine (the gate is a pure function with a truth-table test in http-auth-gate.test.ts)"]
     },
     {
       "id": "timeline-aggregation",
@@ -206,7 +206,7 @@
           {"file": "tests/e2e/daemon-hub.e2e.test.ts", "patterns": ["hook snippet"]}
         ]
       },
-      "gaps": ["No real settings.local.json file test", "No hook execution verification test"]
+      "gaps": ["No test against a real Claude Code process reading ~/.claude/settings.json (the daemon E2E executes the installed snippet with documented payloads)"]
     }
   ]
 }

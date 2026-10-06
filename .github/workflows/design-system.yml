@@ -85,25 +85,7 @@ jobs:
       # lint.sh is baseline-aware. The current count must be ≤ the snapshot
       # recorded in docs/design-lint-baseline.md. Lower is welcome (no action);
       # higher fails the PR with a delta report.
+      # Counts tracked files only, so a built local checkout and this unbuilt
+      # runner give the same number (scripts/check-design-lint-baseline.mjs).
       - name: Lint vs baseline
-        run: |
-          BASELINE=$(grep -m1 -oE 'Total: \*\*[0-9]+ violations\*\*' \
-                     docs/design-lint-baseline.md | grep -oE '[0-9]+')
-          if [ -z "$BASELINE" ]; then
-            echo "::error::Could not parse baseline count from docs/design-lint-baseline.md"
-            exit 1
-          fi
-          bash design/lint.sh --json > /tmp/lint-current.json 2>/dev/null || true
-          CURRENT=$(python3 -c 'import json,sys; print(json.load(open("/tmp/lint-current.json"))["total"])')
-          echo "Lint baseline: $BASELINE"
-          echo "Lint current:  $CURRENT"
-          if [ "$CURRENT" -gt "$BASELINE" ]; then
-            DELTA=$((CURRENT - BASELINE))
-            echo "::error::Design-lint regression — current $CURRENT exceeds baseline $BASELINE by $DELTA"
-            bash design/lint.sh || true
-            exit 1
-          fi
-          if [ "$CURRENT" -lt "$BASELINE" ]; then
-            DELTA=$((BASELINE - CURRENT))
-            echo "::notice::Design-lint improved — current $CURRENT is $DELTA below baseline $BASELINE. Update docs/design-lint-baseline.md to lock in the gain."
-          fi
+        run: node scripts/check-design-lint-baseline.mjs

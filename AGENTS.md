@@ -127,11 +127,11 @@ This repo is built by switching between Claude Code, Codex, OpenCode, and Antigr
 
 | Change | Required local checks before a commit |
 |---|---|
-| Markdown, instructions, or memory only; no executable/template/schema changes | `pnpm docs:check`; `pnpm design-system:check` when cataloged docs or catalog metadata change; `pnpm devlog:build` then `pnpm devlog:check` when entries change; validate any changed skills |
-| Code, build configuration, executable templates, or schemas | `pnpm build && pnpm typecheck && pnpm test`; `pnpm generate-protocol` must leave no drift; `bash design/lint.sh`; `python3 design/verify-tokens-sync.py`; relevant native/domain checks from the indexed rules/workflows |
-| Release or deployment | The applicable release/deploy workflow and domain gates, including the Release archive check for App Store submission |
+| Markdown, instructions, or memory only; no executable/template/schema changes | `pnpm verify:changed` (docs, catalog and devlog gates for the touched files; run `pnpm devlog:build` first when entries change); validate any changed skills |
+| Code, build configuration, executable templates, or schemas | `pnpm verify:quick`, plus `pnpm verify:changed` for the native suites (Android, Apple, ESP32) your diff touches |
+| Release or deployment | `pnpm verify:full --record` and the applicable release/deploy workflow and domain gates, including the Release archive check for App Store submission |
 
-Run the checks for every applicable row. A docs-only local exception does not waive CI or release gates. For code fixes, add regression coverage when it exercises meaningful changed behavior; do not add tests that only restate low-impact edits. If a required check fails, identify whether it is caused by the change or the base and report it explicitly.
+The three tiers and their steps are defined in `scripts/verification-catalog.json` ([docs/testing.md § Verification tiers](docs/testing.md#verification-tiers)). Run the checks for every applicable row. A docs-only local exception does not waive CI or release gates. For code fixes, add regression coverage when it exercises meaningful changed behavior; do not add tests that only restate low-impact edits. If a required check fails, identify whether it is caused by the change or the base and report it explicitly.
 
 ### Test Infrastructure
 

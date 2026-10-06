@@ -34,6 +34,11 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+      # ESLint was configured but ran nowhere, so errors only accumulated.
+      # Ratchet: the count may fall, never rise (scripts/eslint-baseline.json).
+      - name: ESLint error ratchet
+        run: node scripts/check-eslint-baseline.mjs
+
       # One run, not two: `--coverage` executes the same suite as `pnpm test`
       # and additionally enforces the thresholds in vitest.config.ts. Running
       # both cost a full extra pass (~60 s) for no additional signal.
@@ -67,6 +72,43 @@ jobs:
             git diff generated/protocol/ shared/src/command-builders.ts
             exit 1
           fi
+
+  # Cases gated on process.platform === 'darwin' (generated-Swift parity
+  # vectors, launchd probes, the Foundation Models helper build) are skipped on
+  # ubuntu, and apple-test.yml runs XCTest, not Vitest, so before this job they
+  # ran on no CI runner at all. The file list mirrors the macos-native-parity
+  # gate in scripts/verification-catalog.json; verification-catalog.test.ts
+  # fails when a darwin-gated test file is missing from either.
+  macos-native-parity:
+    name: macOS native parity (Swift toolchain)
+    runs-on: macos-26
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Select Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          echo "Using: $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: macOS-gated Vitest cases
+        run: pnpm exec vitest run shared/src/__tests__/daemon-parity.test.ts shared/src/__tests__/ci-wait-sync.test.ts bridge/src/__tests__/ips10-roster.test.ts bridge/src/__tests__/matrix-expression.test.ts bridge/src/__tests__/tui-terrarium-snapshots.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/fm-helper-build.test.ts
+        env:
+          TZ: Asia/Seoul
 
   windows-native-runtime:
     name: Windows native runtime (Node ${{ matrix.node }})
