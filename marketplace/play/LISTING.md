@@ -8,6 +8,22 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.8.0 submitted — production receipt (2026-10-06)
+
+Signed **25 (1.8.0)** was uploaded and submitted for a full production rollout.
+The publishing overview confirms **Changes in review**; managed publishing is
+disabled, so publication follows approval automatically. English, Korean and
+Japanese release notes are saved. Existing screenshot galleries remain attached.
+The native-debug-symbol warning is non-blocking; supported-device coverage is
+unchanged. The last verified public Play version remains **24 (1.7.0)**.
+
+The signed [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.8.0)
+is public and its downloaded signature and SHA-256 were verified. APK SHA-256:
+`c96332e3069a36e43cde5ce23266757d1a22c38100dbcdc9124aa2dcdc20af89`.
+Submitted AAB SHA-256:
+`5dc44f161926731e3b7cb41633cfd563c721f568bafbe74fe03e98c18df92d8c`.
+Both use the registered upload certificate (`10603af8…`).
+
 ## 1.7.0 public — delivery readback (2026-10-05)
 
 Production's release row now says **Available on Google Play** for **24

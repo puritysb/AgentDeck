@@ -10,6 +10,21 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
+## 1.8.0 — submitted for review (2026-10-06)
+
+Updated the existing 1.7.0 review record using **Edit review work**. Reopened it
+and verified version 1.8.0, new CDN ZIP `50eb0d2bd061b72f368cdc58ea24d83b.zip`,
+and all seven saved locale pairs against [1.7.0/listing-locales.json](1.7.0/listing-locales.json).
+The upload again replaced localized copy and selected unsupported devices; both
+were corrected before saving. D200/D200H/D200X and all three OS variants are
+selected; Dial and AU05 remain excluded. Existing banner media is retained.
+
+The update note covers per-session model/effort/mode, NOW cards, conversation-bound
+OpenClaw MODEL/THINKING pickers, visible refusals and CI/creature improvements.
+Claude, Codex and Hermes settings are explicitly read-only. Source is `4168e572`;
+`ulanzi-v1.8.0` was pushed after the review record was verified, and its GitHub
+package is public. Marketplace approval and publication remain pending.
+
 ## 1.7.0 — submitted for review (2026-10-04)
 
 Created a new review version from published 1.6.0. The first submission was

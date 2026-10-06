@@ -47,13 +47,15 @@ Three portal facts worth keeping from the recent Android delivery:
 
 Run `pnpm verify-version` before every build or release. CI rejects a compatibility-major split or a target-internal mismatch. Release CI additionally requires a channel tag's full `X.Y.Z` to equal that target's own declared version; it does not compare the tag's minor or patch with root `VERSION`.
 
-## Next feature release candidate — CI waits and outstanding acceptance
+## 1.8.0 preparation evidence — CI waits and outstanding acceptance
 
 Preparation branch: `codex/release-ci-wait`, based on `b6fa21bf` (2026-10-05).
 The six channel manifests and prepared changelog entry target backward-compatible
-1.8.0; the root compatibility-major anchor remains 1.0.2. The entry is preparation,
-not evidence of publication. Do not tag until candidate receipts are final.
-Distribution signing, uploads and store publication are outside this preparation.
+1.8.0; the root compatibility-major anchor remains 1.0.2. These historical preparation receipts do not prove publication.
+The owner authorized distribution on 2026-10-06 after #460 merged as
+`4168e57239b825c101c61b337c8602a8e3b748ec`; every 1.8.0 channel tag targets
+that exact commit. Current channel delivery is recorded in the
+[delivery readback](#delivery-readback-2026-10-06).
 
 The owner explicitly waived iPhone reinstall verification and physical deck
 operation on 2026-10-06. Deck acceptance for this candidate uses code tests and
@@ -221,6 +223,29 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 5. **Live** — the store distributes it.
 
 **Never report a state you did not measure.** Each has its own instrument: the workflow log for 1, `gh release list` for 2, the portal or `npm view <pkg> version` for 3, and the portal for 4 and 5. Deriving one from another is how "released" gets claimed for a build sitting in a portal — it happened on 2026-08-09, when CI upload was reported as a completed Stream Deck and Ulanzi release while neither had been submitted.
+
+### Delivery readback, 2026-10-06
+
+All six channels target **1.8.0**, from #460's merge commit
+`4168e57239b825c101c61b337c8602a8e3b748ec`. Distribution is authorized;
+store submission and public availability remain distinct.
+
+| Channel | Verified delivery state | Remaining external step |
+| --- | --- | --- |
+| Apple | Distribution CI and both uploads passed; iOS and macOS 7801 are Waiting for Review | Platform review/automatic publication |
+| Android | Signed GitHub APK public; Play 25 (1.8.0) submitted for full production rollout | Play review/automatic publication; last verified public Play version 24 (1.7.0) |
+| Stream Deck | Official CI package public on GitHub; embedded runtime matches tested package | Elgato 1.7 pending review prevents a new version; deletion/replacement awaits owner confirmation; public store remains 1.6 |
+| Ulanzi | 1.8.0 submitted and portal readback verified; GitHub package public | Store review; last verified public version 1.6.0 |
+| ESP32 | Release CI building all twelve boards | Public artifact/manifest and Pages flasher verification |
+| npm | Packaged and production three-mode acceptance passed; reverse-order start verification in progress | Publish after production acceptance and firmware/flasher delivery |
+
+The official Stream Deck CI package's SHA-256 is
+`ec0814da259c8ce8dbecb11d60e23299d84dbe8ad87cf537514db32c1daa3575`;
+its embedded runtime is byte-identical to the tested installed runtime.
+Ulanzi's local submitted ZIP and public CI ZIP differ only in build-path labels
+inside `app.js` and archive metadata; normalizing those labels produces identical
+JavaScript. Seven localized listings and D200/D200H/D200X keypad scope were
+preserved; Dial/AU05 and encoder support are not claimed.
 
 ### Store readback, 2026-10-05
 
