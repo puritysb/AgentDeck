@@ -322,6 +322,20 @@ final class IDotMatrixProtocolTests: XCTestCase {
         )
     }
 
+    /// Mirrors bridge/src/__tests__/pixoo-motion.test.ts: integrated motion
+    /// follows wall time, not the render call rate.
+    func testPixooSimulationClockReplaysElapsedTicks() {
+        let renderer = PixooRenderer()
+        XCTAssertEqual(renderer.consumeSimulationTicks(1_000), [1_000])
+        XCTAssertEqual(renderer.consumeSimulationTicks(1_000), [])
+        let ticks = renderer.consumeSimulationTicks(1_025)
+        XCTAssertEqual(ticks.count, 25)
+        XCTAssertEqual(ticks.first, 1_001)
+        XCTAssertEqual(ticks.last, 1_025)
+        XCTAssertEqual(renderer.consumeSimulationTicks(9_999).count, PixooRenderer.simMaxTicksPerRender)
+        XCTAssertEqual(renderer.consumeSimulationTicks(5), [5])
+    }
+
     func testPixooAdaptivePolicyRefreshesActiveFramesAtTwoPointFiveSeconds() {
         XCTAssertEqual(PixooAdaptivePushPolicy.mode(active: true), .activeSingle)
         XCTAssertEqual(PixooAdaptivePushPolicy.interval(stateChanged: false, mode: .activeSingle), 2.5)

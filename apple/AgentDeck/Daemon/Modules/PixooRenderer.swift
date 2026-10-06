@@ -398,6 +398,14 @@ final class PixooRenderer {
     }
 
     private var lastRenderTimeMs: Double = 0
+    /// Simulation clock — mirrors Node `consumeSimulationTicks`
+    /// (bridge/src/pixoo/pixoo-renderer.ts). Tetras, bubbles and data
+    /// particles integrate one 100 ms tick at a time; each render replays the
+    /// ticks that elapsed since the last one (capped), so their speed follows
+    /// wall time instead of the device push rate (one push per ~2.5 s used to
+    /// run the school at 1/25 of its designed speed).
+    static let simMaxTicksPerRender = 30
+    private var lastSimFrame: Int?
     private var directorState: DirectorState?
     private var creatureInstances: [String: CreatureInstance] = [:]
     private var creatureOrder: [String] = []
@@ -473,6 +481,19 @@ final class PixooRenderer {
         return renderSequence(dashboardState: dashboardState, frameCount: 1).first!
     }
 
+    /// Tick indices to integrate for a render at `animFrame` (consumes them).
+    func consumeSimulationTicks(_ animFrame: Int) -> [Int] {
+        guard let last = lastSimFrame, animFrame >= last else {
+            lastSimFrame = animFrame
+            return [animFrame]
+        }
+        let elapsed = animFrame - last
+        guard elapsed > 0 else { return [] }
+        let n = min(elapsed, Self.simMaxTicksPerRender)
+        lastSimFrame = animFrame
+        return Array((animFrame - n + 1)...animFrame)
+    }
+
     func renderSequence(dashboardState: DashboardState, frameCount: Int, intervalMs: Int = 100) -> [Data] {
         let state = dashboardState.state
         // Crayfish is drawn only when the OpenClaw Gateway is authenticated.
@@ -522,6 +543,7 @@ final class PixooRenderer {
 
         for i in 0..<frameCount {
             let animFrame = baseAnimFrame + i
+            let simTicks = consumeSimulationTicks(animFrame)
             var world = [UInt8](repeating: 0, count: Self.width * Self.height * 3)
             var output = [UInt8](repeating: 0, count: Self.width * Self.height * 3)
 
@@ -543,12 +565,12 @@ final class PixooRenderer {
             let effectiveState: AgentConnectionState = anyCreatureProcessing ? .processing : (anyCreatureAwaiting ? .awaitingOption : state)
 
             let bubbleDensity = effectiveState == .processing ? 10 : (effectiveState == .idle ? 3 : 5)
-            updateBubbles(animFrame: animFrame, surfaceY: Self.surfaceY, density: bubbleDensity)
+            for tick in simTicks { updateBubbles(animFrame: tick, surfaceY: Self.surfaceY, density: bubbleDensity) }
             for bubble in bubbles {
                 blendPixel(&world, Int(round(bubble.x)), Int(round(bubble.y)), bubble.bright ? Self.colors.bubbleBright : Self.colors.bubble, 0.6)
             }
 
-            updateDataParticles(animFrame: animFrame, surfaceY: Self.surfaceY, active: anyCreatureProcessing)
+            for tick in simTicks { updateDataParticles(animFrame: tick, surfaceY: Self.surfaceY, active: anyCreatureProcessing) }
             for particle in dataParticles {
                 let fadeAlpha = min(1, particle.life / 10)
                 let color = particle.green ? Self.colors.dataParticleGreen : Self.colors.dataParticle
@@ -556,7 +578,7 @@ final class PixooRenderer {
             }
 
             let tetraMaxY = hudCount > 0 ? Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - 4 : (Self.sandTop - 3)
-            updateTetras(animFrame: animFrame, surfaceY: Self.surfaceY, maxY: tetraMaxY)
+            for tick in simTicks { updateTetras(animFrame: tick, surfaceY: Self.surfaceY, maxY: tetraMaxY) }
             drawSurface(&world, animFrame: animFrame, surfaceY: Self.surfaceY, palette: palette, state: effectiveState)
 
             blitWithCamera(world: world, output: &output, camera: camera)
