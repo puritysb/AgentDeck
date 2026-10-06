@@ -8,19 +8,23 @@
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 1.8.0 — GitHub package public; store replacement pending (2026-10-06)
+## 1.8.0 — GitHub package public; submitted for review (2026-10-06)
 
 The official [1.8.0 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.0)
 is public (source `4168e572`, package 1.8.0.0, SDK 3). Downloaded package SHA-256:
 `ec0814da259c8ce8dbecb11d60e23299d84dbe8ad87cf537514db32c1daa3575`.
 The embedded runtime matches the locally tested and installed final candidate.
 
-Maker Console still shows **1.7 Pending review** and disables **Create version**.
-Replacing that review requires deletion; the owner confirmation is pending, so
-no deletion or 1.8 submission is claimed. Public 1.6 and the unrelated historical
-1.4 Ready to publish record are unchanged. Physical deck operation is waived for
-1.8.0; code/headless-controller checks passed. Review of the DRM-processed package
-remains distinct from those source checks.
+Maker Console confirms **1.8 Pending review** after the owner-authorized deletion
+of pending 1.7 and upload of the exact official CI package on 2026-10-06.
+Package 1.8.0.0 uses SDK 3 with DRM enabled; automatic publication is **off**.
+A transient withdrawal error toast appeared, but reloading confirmed 1.7 was
+deleted before creating 1.8. Public 1.6 and the unrelated historical 1.4 Ready to
+publish record are unchanged. Physical deck operation remains waived for 1.8.0;
+code/headless-controller checks passed. After approval, review of the DRM-processed
+package through code/simulator checks and final publication remain separate steps.
+The local receipt is `diagnostics/delivery-180/elgato-180-submitted.json`, with the
+matching PNG capture retained alongside it.
 
 ## 1.7.0 — submitted for review (2026-10-04)
 

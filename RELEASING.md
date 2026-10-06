@@ -235,7 +235,7 @@ store submission and public availability remain distinct.
 | --- | --- | --- |
 | Apple | Distribution CI and both uploads passed; iOS and macOS 7801 are Waiting for Review | Platform review/automatic publication |
 | Android | Signed GitHub APK and Play 25 (1.8.0) public; full rollout across 178 countries/regions, published October 6 at 14:52 KST | None for publication |
-| Stream Deck | Official CI package public on GitHub; embedded runtime matches tested package | Elgato 1.7 pending review prevents a new version; deletion/replacement awaits owner confirmation; public store remains 1.6 |
+| Stream Deck | Official CI package public on GitHub; Elgato 1.8 Pending review confirmed after owner-authorized deletion of pending 1.7; package 1.8.0.0, SDK 3, DRM enabled, automatic publication off | Store approval, DRM-processed package code/simulator review and final publication; public store remains 1.6 |
 | Ulanzi | 1.8.0 submitted and portal readback verified; GitHub package public | Store review; last verified public version 1.6.0 |
 | ESP32 | Twelve-board release public with 62 assets; all 60 binaries match manifest/checksum sizes and SHA-256 values; Pages selects 1.8.0 and all five offered merged images match | None for publication; no additional physical reflashes claimed |
 | npm | All four packages public at 1.8.0; all `latest` tags and nonempty setup registry README verified; release CI passed | None for publication |
