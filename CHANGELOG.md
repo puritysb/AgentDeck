@@ -50,7 +50,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 ## 2026-10-06 — npm 1.8.0, Apple 1.8.0, Android 1.8.0, ESP32 1.8.0, Stream Deck 1.8.0, Ulanzi 1.8.0
 
 Coordinated 1.8.0 release. Store review and public availability are tracked
-separately for each channel in [RELEASING.md](RELEASING.md).
+separately for each channel in the
+[release status](https://github.com/puritysb/AgentDeck/blob/master/RELEASING.md#delivery-readback-2026-10-06).
 
 - Stream Deck and D200H show each observed session's reported model, reasoning
   effort and permission mode separately, using the agent's own vocabulary.
@@ -103,6 +104,9 @@ separately for each channel in [RELEASING.md](RELEASING.md).
   Claude has black eyes, OpenClaw has black eyes with its original bright teal highlights, Codex
   has an opaque white `> _`, and OpenCode retains its central opening. Monochrome
   screens preserve the source contours with contrasting ink and paper.
+- ESP32 TTGO pins its validated library versions and gains a real-target Linux
+  compile check, preventing fresh dependency resolution from overflowing static
+  DRAM during release ([#468](https://github.com/puritysb/AgentDeck/pull/468)).
 - Keep the aquarium snail on its authored rock-foraging path and preserve its
   feeler animation, instead of moving it around an unrelated screen-wide circuit.
 - Keep daemon start/stop/restart service control within the configured data

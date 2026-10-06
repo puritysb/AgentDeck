@@ -8,6 +8,13 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.8.0 public — final delivery readback (2026-10-06)
+
+Production **25 (1.8.0)** now reads **Available on Google Play**, published
+October 6 at 14:52 KST across 178 countries/regions. Publishing overview has no
+pending changes and production points to 25. This supersedes the review-pending
+state in the submission receipt below; the signed GitHub APK remains available.
+
 ## 1.8.0 submitted — production receipt (2026-10-06)
 
 Signed **25 (1.8.0)** was uploaded and submitted for a full production rollout.

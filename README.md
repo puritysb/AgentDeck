@@ -313,17 +313,19 @@ advance independently; you do not need to update every device together.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.8.0` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.7.0` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.8.0` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
 **Delivery status, 2026-10-06:** Android 1.8.0's signed APK and Stream Deck/Ulanzi
-1.8.0 packages are public on GitHub. Apple iOS/macOS 1.8.0 (7801), Google Play 1.8.0
-(25) and Ulanzi 1.8.0 are submitted for review. Elgato 1.7 remains pending review, preventing a
-new 1.8 submission. The last verified public store versions remain Apple/Play
-1.7.0, Elgato 1.6 and Ulanzi 1.6.0. ESP32 1.8.0 release CI is running; npm and
-the browser flasher remain at 1.7.0 pending firmware publication and final delivery.
+1.8.0 packages are public on GitHub. Google Play 1.8.0 (25) is also live. Apple
+iOS/macOS 1.8.0 (7801) and Ulanzi 1.8.0 are submitted for review. Elgato 1.7 remains pending review, preventing a
+new 1.8 submission. The last verified public versions for those pending stores remain Apple 1.7.0,
+Elgato 1.6 and Ulanzi 1.6.0. All four npm packages and their `latest` tags are
+public at 1.8.0. ESP32 1.8.0 firmware for twelve boards is public after
+the TTGO dependency fix passed Linux CI; the browser flasher serves the verified
+1.8.0 images.
 See the [current delivery readback](RELEASING.md#delivery-readback-2026-10-06).
 
 Mobile apps and hardware are companion surfaces: keep a daemon running on your

@@ -54,7 +54,7 @@ The six channel manifests and prepared changelog entry target backward-compatibl
 1.8.0; the root compatibility-major anchor remains 1.0.2. These historical preparation receipts do not prove publication.
 The owner authorized distribution on 2026-10-06 after #460 merged as
 `4168e57239b825c101c61b337c8602a8e3b748ec`; every 1.8.0 channel tag targets
-that exact commit. Current channel delivery is recorded in the
+that commit unless the channel-specific delivery readback records a follow-up. Current channel delivery is recorded in the
 [delivery readback](#delivery-readback-2026-10-06).
 
 The owner explicitly waived iPhone reinstall verification and physical deck
@@ -227,17 +227,56 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 ### Delivery readback, 2026-10-06
 
 All six channels target **1.8.0**, from #460's merge commit
-`4168e57239b825c101c61b337c8602a8e3b748ec`. Distribution is authorized;
+`4168e57239b825c101c61b337c8602a8e3b748ec`. ESP32 uses the firmware-only
+follow-up `1940f44eb5a91836e2ec81c02b14c2f38e57164b` (#468). Distribution is authorized;
 store submission and public availability remain distinct.
 
 | Channel | Verified delivery state | Remaining external step |
 | --- | --- | --- |
 | Apple | Distribution CI and both uploads passed; iOS and macOS 7801 are Waiting for Review | Platform review/automatic publication |
-| Android | Signed GitHub APK public; Play 25 (1.8.0) submitted for full production rollout | Play review/automatic publication; last verified public Play version 24 (1.7.0) |
+| Android | Signed GitHub APK and Play 25 (1.8.0) public; full rollout across 178 countries/regions, published October 6 at 14:52 KST | None for publication |
 | Stream Deck | Official CI package public on GitHub; embedded runtime matches tested package | Elgato 1.7 pending review prevents a new version; deletion/replacement awaits owner confirmation; public store remains 1.6 |
 | Ulanzi | 1.8.0 submitted and portal readback verified; GitHub package public | Store review; last verified public version 1.6.0 |
-| ESP32 | Release CI building all twelve boards | Public artifact/manifest and Pages flasher verification |
-| npm | Packaged and production three-mode acceptance passed; reverse-order start verification in progress | Publish after production acceptance and firmware/flasher delivery |
+| ESP32 | Twelve-board release public with 62 assets; all 60 binaries match manifest/checksum sizes and SHA-256 values; Pages selects 1.8.0 and all five offered merged images match | None for publication; no additional physical reflashes claimed |
+| npm | All four packages public at 1.8.0; all `latest` tags and nonempty setup registry README verified; release CI passed | None for publication |
+
+The first ESP32 release run `37416793515` failed TTGO linking with 152 bytes
+of static DRAM overflow. Fresh range resolution selected LVGL 9.6.0 and
+LovyanGFX 1.2.32 instead of TTGO's validated 9.5.0/1.2.21. #468 pins all five
+TTGO libraries to their measured versions and adds a fresh Linux TTGO PR compile
+gate. Clean local and Linux links pass; prior 32-byte linker slack is restored,
+not a claim of runtime heap margin. No firmware had been published, so the
+unpublished `esp32-v1.8.0` tag was moved from `4168e572` to `1940f44e` with an
+explicit expected-old-reference lease. The original failed run remains available;
+replacement run `37422033801` passed all twelve board builds and publication;
+its 62 public assets include the manifest, checksum list and 60 verified binaries. Other channels'
+already submitted binaries are unchanged.
+
+npm publication runs alongside the firmware retry. The board geometry SSOT is
+byte-identical between `esp32-v1.7.0` and npm's `4168e572` source, so the existing
+public manifest remains compatible. This round has no flash-size migration that
+would make firmware-first ordering mandatory; the web flasher still advances
+only after the new firmware manifest and merged images are public.
+
+Pages run `37422008719`, attempt 2 at `1940f44e`, passed after firmware publication.
+The public `/flash/fw/index.json` selects `esp32-v1.8.0`; its manifest is
+byte-identical to the release manifest. All five offered merged images were
+read back from public same-origin URLs and match their expected sizes/hashes.
+This verifies public delivery, separately from earlier local device installations.
+
+Production port 9120 acceptance uses the installed Node build `f698eb52c5e1`
+and macOS 1.8.0/build 5 development candidate. Real direct Claude turns reached
+the Mac timeline and downstream WebSocket frames in CLI-only, Swift-only and
+coexistence modes. On supported CLI stop, Swift automatically recovered 9120
+in about 169 seconds after fallback to 9121 and its existing 120-second
+failed-bind memory; no hook reinstall or manual port repair was needed.
+The separate #451 reverse-order check kept Mac open: supported CLI start
+acquired 9120 as Node in 35.789 seconds, and a new completed turn appeared in
+the Mac timeline. Exactly one canonical listener remained. The original
+Node-owner/Mac-client configuration was restored. This local runtime receipt
+does not claim that the submitted App Store build was installed. All four public
+npm tarballs pass registry SHA-512 integrity verification; their 295 runtime
+JavaScript files and package manifests match the installed candidate exactly.
 
 The official Stream Deck CI package's SHA-256 is
 `ec0814da259c8ce8dbecb11d60e23299d84dbe8ad87cf537514db32c1daa3575`;
