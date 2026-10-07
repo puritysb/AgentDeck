@@ -29,31 +29,37 @@ const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 const catalog = JSON.parse(readFileSync(resolve(root, 'scripts/verification-catalog.json'), 'utf8'));
 const workflows = [...new Set(catalog.gates.map((g) => g.workflow).filter(Boolean))];
 
-async function latestRun(workflow, query) {
-  const file = workflow.split('/').pop();
-  // No status= filter: combined with branch= the API answers from a stale
-  // index (measured 2026-10-07: ci.yml on master came back as 2026-09-01 while
-  // master had run that day), so filter the newest page here instead.
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?per_page=20${query}`;
+// The runs endpoint is not consistent between calls: with status= or branch=
+// it intermittently answers from a stale index (measured 2026-10-07: the same
+// branch=master query for apple-test.yml returned 2026-08-29 and, minutes
+// later, 2026-10-06). Ask twice — branch-filtered, and the newest page
+// unfiltered — and keep whichever completed run is newer.
+async function runs(file, query) {
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?per_page=50${query}`;
   const res = await fetch(url, {
     headers: { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
-  return (await res.json()).workflow_runs?.find((run) => run.status === 'completed') ?? null;
+  return ((await res.json()).workflow_runs ?? []).filter((run) => run.status === 'completed');
 }
+
+const newest = (list) => list.reduce((a, b) => (!a || Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a), null);
 
 const result = { fetched_at: new Date().toISOString(), repository: repo, workflows: {} };
 for (const workflow of workflows) {
   try {
+    const file = workflow.split('/').pop();
+    const recent = await runs(file, '');
+    const onMaster = [...(await runs(file, '&branch=master')), ...recent].filter((run) => run.head_branch === 'master');
     // Master first; PR-only workflows (ESP32 compile) and tag-only release
     // workflows have no master run, so fall back to the latest completed run
     // and say which branch or tag it was.
     let scope = 'master';
-    let run = await latestRun(workflow, '&branch=master');
+    let run = newest(onMaster);
     if (!run) {
       scope = 'latest';
-      run = await latestRun(workflow, '');
+      run = newest(recent);
     }
     if (!run) continue;
     result.workflows[workflow] = {
