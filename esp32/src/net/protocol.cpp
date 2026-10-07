@@ -40,6 +40,7 @@
 #include "../input/power_monitor.h"
 #include "../ui/ticker/ticker_ui.h"
 #include "../ui/pocket/pocket_ui.h"
+#include "../ui/strip_layout.h"
 #include "../camera/photo_capture.h"
 #endif
 #if defined(BOARD_LILYGO_EPD47)
@@ -1422,6 +1423,10 @@ static void sendDeviceInfo() {
         }
     }
 #endif
+#if defined(BOARD_T_DISPLAY_PRO)
+    resp["layout"] = StripLayout::layoutName(StripLayout::portrait());
+    resp["layoutSetting"] = StripLayout::settingName(StripLayout::setting());
+#endif
     OtaCapability::Info ota = OtaCapability::get();
     resp["otaSupported"] = ota.supported;
     resp["otaSlotCount"] = ota.slotCount;
@@ -1618,11 +1623,27 @@ void parseMessage(const char* json, size_t length) {
                           displayOn ? "on" : "off", dimEnabled, dimMode8, scaled);
         }
     } else if (strcmp(type, "set_orientation") == 0) {
+#if defined(BOARD_T_DISPLAY_PRO)
+        // Persisted layout switch (restart-applied): `layout` is
+        // auto|portrait|landscape; the legacy bool maps to an explicit side.
+        StripLayout::Setting next;
+        const char* layout = obj["layout"] | "";
+        if (!StripLayout::parseSetting(layout, &next)) {
+            if (obj["landscape"].is<bool>()) {
+                next = obj["landscape"].as<bool>() ? StripLayout::LANDSCAPE : StripLayout::PORTRAIT;
+            } else {
+                Serial.printf("[Layout] ignored set_orientation (layout=\"%s\")\n", layout);
+                return;
+            }
+        }
+        StripLayout::request(next);
+#else
         bool landscape = obj["landscape"] | true;
         lockState();
         g_state.pendingLandscape = landscape;
         g_state.orientationChanged = true;
         unlockState();
+#endif
     } else if (strcmp(type, "connection") == 0) {
         // Connection status is handled by WS event callbacks
     } else if (strcmp(type, "touch_diag") == 0) {

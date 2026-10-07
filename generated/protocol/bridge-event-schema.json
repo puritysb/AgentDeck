@@ -447,6 +447,9 @@
         },
         {
           "$ref": "#/definitions/Esp32OtaAbortEvent"
+        },
+        {
+          "$ref": "#/definitions/SetOrientationEvent"
         }
       ]
     },
@@ -1626,6 +1629,31 @@
       "required": [
         "type",
         "sessions"
+      ],
+      "type": "object"
+    },
+    "SetOrientationEvent": {
+      "additionalProperties": false,
+      "description": "Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the legacy bool other LCD boards read.",
+      "properties": {
+        "landscape": {
+          "type": "boolean"
+        },
+        "layout": {
+          "enum": [
+            "auto",
+            "portrait",
+            "landscape"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "const": "set_orientation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
       ],
       "type": "object"
     },

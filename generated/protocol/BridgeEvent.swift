@@ -24,6 +24,11 @@ import Foundation
 ///
 /// Additive public-protocol acknowledgement. Legacy WS clients never receive or need this
 /// event.
+///
+/// Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the
+/// T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape
+/// Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
+/// legacy bool other LCD boards read.
 // MARK: - ADBridgeEvent
 struct ADBridgeEvent: Codable, Equatable {
     var agentCapabilities: ADAgentCapabilities?
@@ -180,6 +185,8 @@ struct ADBridgeEvent: Codable, Equatable {
     var data: String?
     var offset: Double?
     var seq: Double?
+    var landscape: Bool?
+    var layout: ADLayout?
 
     enum CodingKeys: String, CodingKey {
         case agentCapabilities = "agentCapabilities"
@@ -290,6 +297,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case data = "data"
         case offset = "offset"
         case seq = "seq"
+        case landscape = "landscape"
+        case layout = "layout"
     }
 }
 
@@ -419,7 +428,9 @@ extension ADBridgeEvent {
         size: Double?? = nil,
         data: String?? = nil,
         offset: Double?? = nil,
-        seq: Double?? = nil
+        seq: Double?? = nil,
+        landscape: Bool?? = nil,
+        layout: ADLayout?? = nil
     ) -> ADBridgeEvent {
         return ADBridgeEvent(
             agentCapabilities: agentCapabilities ?? self.agentCapabilities,
@@ -529,7 +540,9 @@ extension ADBridgeEvent {
             size: size ?? self.size,
             data: data ?? self.data,
             offset: offset ?? self.offset,
-            seq: seq ?? self.seq
+            seq: seq ?? self.seq,
+            landscape: landscape ?? self.landscape,
+            layout: layout ?? self.layout
         )
     }
 
@@ -1642,6 +1655,12 @@ enum ADGatewayAuthStatus: String, Codable, Equatable {
     case pairingRequired = "pairing_required"
     case tokenMismatch = "token_mismatch"
     case unsupportedProtocol = "unsupported_protocol"
+}
+
+enum ADLayout: String, Codable, Equatable {
+    case auto = "auto"
+    case landscape = "landscape"
+    case portrait = "portrait"
 }
 
 //
@@ -3286,6 +3305,7 @@ enum ADType: String, Codable, Equatable {
     case reviewStatus = "review_status"
     case sessionSettings = "session_settings"
     case sessionsList = "sessions_list"
+    case setOrientation = "set_orientation"
     case stateUpdate = "state_update"
     case surfaceWelcome = "surface_welcome"
     case timelineEvent = "timeline_event"

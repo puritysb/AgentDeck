@@ -16,6 +16,7 @@
 #include "../input/light_sensor.h"
 #include "../input/power_monitor.h"
 #include "../camera/photo_capture.h"
+#include "../ui/strip_layout.h"
 #endif
 #if defined(BOARD_LILYGO_EPD47)
 #include "../input/touch_strip.h"
@@ -237,6 +238,10 @@ static void sendDeviceInfoSerial() {
         caps.add("audio_http_pull");
         caps.add("audio");
     }
+#endif
+#if defined(BOARD_T_DISPLAY_PRO)
+    resp["layout"] = StripLayout::layoutName(StripLayout::portrait());
+    resp["layoutSetting"] = StripLayout::settingName(StripLayout::setting());
 #endif
     OtaCapability::Info ota = OtaCapability::get();
     resp["otaSupported"] = ota.supported;

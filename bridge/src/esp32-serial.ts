@@ -169,6 +169,9 @@ export interface SerialConnection {
     otaSlotSize?: number;
     otaFreeSketchSpace?: number;
     otaReason?: string;
+    /** T-Display-S3-Pro running layout and persisted setting. */
+    layout?: 'portrait' | 'landscape';
+    layoutSetting?: 'auto' | 'portrait' | 'landscape';
     timelineCount?: number;
     sessionCount?: number;
     usageFiveH?: number;
@@ -963,6 +966,8 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           otaSlotSize: msg.otaSlotSize,
           otaFreeSketchSpace: msg.otaFreeSketchSpace,
           otaReason: msg.otaReason,
+          layout: msg.layout,
+          layoutSetting: msg.layoutSetting,
           // Board-side reality counters (debug aid — surfaced on /devices so
           // "device shows nothing" can be diagnosed without stealing the port)
           timelineCount: (msg as any).timelineCount,

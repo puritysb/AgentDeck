@@ -842,6 +842,10 @@ export interface DeviceInfoMessage {
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  /** T-Display-S3-Pro: layout of the running render tree. */
+  layout?: 'portrait' | 'landscape';
+  /** T-Display-S3-Pro: persisted layout setting (`auto` follows the camera shield). */
+  layoutSetting?: 'auto' | 'portrait' | 'landscape';
   /** Actual physical panel refreshes since boot; absent on non-e-ink/legacy firmware. */
   repaintCount?: number;
   /** Hard anti-ghost/full-waveform subset of repaintCount since boot. */
@@ -1014,6 +1018,16 @@ export interface Esp32OtaEndEvent {
 export interface Esp32OtaAbortEvent {
   type: 'esp32_ota_abort';
   otaId: string;
+}
+
+/** Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by
+ *  the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or
+ *  the landscape Focus Strip (`auto` = portrait with a camera shield, else
+ *  landscape). `landscape` is the legacy bool other LCD boards read. */
+export interface SetOrientationEvent {
+  type: 'set_orientation';
+  layout?: 'auto' | 'portrait' | 'landscape';
+  landscape?: boolean;
 }
 
 export interface Esp32OtaAckCommand {
@@ -1580,7 +1594,8 @@ export type BridgeEvent =
   | Esp32OtaBeginEvent
   | Esp32OtaChunkEvent
   | Esp32OtaEndEvent
-  | Esp32OtaAbortEvent;
+  | Esp32OtaAbortEvent
+  | SetOrientationEvent;
 
 // ===== Plugin → Bridge (Commands) =====
 

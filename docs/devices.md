@@ -57,11 +57,24 @@ Peripheral breadth is the widest in the fleet — CC1101 sub-GHz, PN532 NFC, IR 
 
 ## T-Display-S3-Pro (Focus Strip / Pocket)
 
-**Shipping since 2026-07-26; desk-awareness default since 2026-09-26.** The
-LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Both camera and
-camera-less units now boot into landscape Focus. A camera shield is still
-probed and adds an explicit CAM page rather than automatically selecting the
-portrait Pocket UI.
+**Shipping since 2026-07-26; switchable layout since 2026-10-07.** The
+LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Its layout is a
+persisted setting (`auto` | `portrait` | `landscape`, NVS) chosen before the
+display starts. `auto` (the default) boots a camera-equipped unit into the
+portrait Pocket UI and a camera-less unit into the landscape Focus Strip; in
+landscape a present camera adds the explicit CAM page. Three ways switch it,
+each saving the setting and restarting the board:
+
+- hold either rocker button while the board powers on or resets (toggles to
+  the other layout);
+- on screen: the **LANDSCAPE** button at the bottom of Pocket's USAGE tab, or a
+  hold on the strip's Usage page (`HOLD = PORTRAIT`);
+- from the host: `agentdeck esp32 orientation t_display_pro <auto|portrait|landscape>`
+  (Node daemon `POST /esp32/orientation`; USB serial first, WiFi fallback).
+
+`device_info` reports `layout` (running) and `layoutSetting` (persisted). The
+Swift in-process daemon does not send the command yet; the two on-device paths
+work under either daemon.
 
 Focus pins the initial task and retains it when the session ends. It shows the
 latest observed activity with a local observation age (not proof of a stalled

@@ -26,6 +26,7 @@ import { BridgeCore, buildCappedTimelineHistory, ESP32_INITIAL_TIMELINE_HISTORY_
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import { prepareForSerial } from './esp32-serial.js';
+import { deliverOrientation, OrientationRequestError, parseEsp32Layout } from './esp32-orientation.js';
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
@@ -361,6 +362,9 @@ interface WifiEsp32Device {
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  /** T-Display-S3-Pro running layout and persisted setting. */
+  layout?: 'portrait' | 'landscape';
+  layoutSetting?: 'auto' | 'portrait' | 'landscape';
   /** Peripheral telemetry/diag from capability-advertising boards. */
   capabilities?: string[];
   batteryPercent?: number;
@@ -789,6 +793,9 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     otaSlotSize: typeof d.otaSlotSize === 'number' ? d.otaSlotSize : undefined,
     otaFreeSketchSpace: typeof d.otaFreeSketchSpace === 'number' ? d.otaFreeSketchSpace : undefined,
     otaReason: typeof d.otaReason === 'string' ? d.otaReason : undefined,
+    layout: d.layout === 'portrait' || d.layout === 'landscape' ? d.layout : undefined,
+    layoutSetting: d.layoutSetting === 'auto' || d.layoutSetting === 'portrait' || d.layoutSetting === 'landscape'
+      ? d.layoutSetting : undefined,
     // Peripheral telemetry/diag — without these the /devices view silently
     // drops what capability-advertising boards report (the t_embed battery
     // fields were invisible here for a day for exactly this reason).
@@ -2683,6 +2690,39 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         board: lease?.board,
         ports: getESP32Ports(),
       }));
+      return;
+    }
+    // Persisted layout switch (T-Display-S3-Pro portrait Pocket ↔ landscape
+    // strip). Same-machine is authenticated; LAN callers need the token.
+    if (req.method === 'POST' && pathname === '/esp32/orientation') {
+      (async () => {
+        const body = await readJsonBody(req);
+        const target = typeof body.target === 'string' ? body.target : '';
+        const layout = parseEsp32Layout(body.layout);
+        return deliverOrientation(target, layout, {
+          serialPortFor: (t) => {
+            const matches = getESP32DeviceInfo().filter((d) =>
+              d.port === t || (d.board && canonicalBoardId(d.board) === canonicalBoardId(t)));
+            if (matches.length > 1) {
+              throw new OrientationRequestError(`Target "${t}" is ambiguous: ${matches.map((m) => m.port).join(', ')}`);
+            }
+            return matches[0]?.port;
+          },
+          sendSerial: (port, event) => sendSerialJson(port, event as unknown as Record<string, unknown>),
+          sendWifi: (t, event) => {
+            const { key, ws } = findWifiOtaTarget(t);
+            core.wsServer.sendTo(ws, event);
+            return key;
+          },
+        });
+      })().then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      }).catch((err) => {
+        const status = err instanceof OrientationRequestError || err instanceof SyntaxError ? 400 : 404;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      });
       return;
     }
     if (req.method === 'POST' && pathname === '/esp32/ota') {

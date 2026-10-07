@@ -53,6 +53,7 @@
 #include "ui/display.h"
 #include "ui/ticker/ticker_ui.h"
 #include "ui/pocket/pocket_ui.h"
+#include "ui/strip_layout.h"
 #include "input/light_sensor.h"
 #include "input/power_monitor.h"
 #include "input/touch_strip.h"
@@ -429,11 +430,35 @@ static void tickerApplyBrightness(uint32_t now) {
 static void uiTask(void* param) {
     Serial.printf("[UI] Ticker task started on core %d\n", xPortGetCoreID());
 
-    // Desk awareness is the default on either unit. A camera shield remains
-    // available in the strip's explicit CAM page; it no longer selects a
-    // different portrait UI before the user can see their pinned task.
-    Camera::init();
-    const bool pocket = false;
+    // Layout is chosen before the display comes up (StripLayout): the camera
+    // unit defaults to portrait Pocket, the camera-less unit to the landscape
+    // Focus Strip, and a persisted override wins over both. Holding either
+    // rocker button through boot toggles that override. The camera probe
+    // manages Wire itself and deinits straight after (power fence).
+    const bool camera = Camera::init();
+    StripLayout::begin(camera);
+    {
+        // GPIO12/16 are not strap pins on the S3 (BOOT/GPIO0 is, so it is
+        // not used here). Require a sustained hold so a bounce never flips
+        // the layout, then wait for release so the loop does not read the
+        // same press as a tab step.
+        pinMode(BOARD_PIN_BTN2, INPUT_PULLUP);
+        pinMode(BOARD_PIN_BTN3, INPUT_PULLUP);
+        auto rockerDown = []() {
+            return digitalRead(BOARD_PIN_BTN2) == LOW || digitalRead(BOARD_PIN_BTN3) == LOW;
+        };
+        uint32_t heldMs = 0;
+        while (rockerDown() && heldMs < 800) { vTaskDelay(pdMS_TO_TICKS(20)); heldMs += 20; }
+        if (heldMs >= 800) {
+            StripLayout::toggleAtBoot(camera);
+            Serial.printf("[Layout] boot hold -> %s\n", StripLayout::layoutName(StripLayout::portrait()));
+            for (uint32_t waited = 0; rockerDown() && waited < 5000; waited += 20) vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    }
+    const bool pocket = StripLayout::portrait();
+    Serial.printf("[Layout] %s (setting %s, camera %s)\n", StripLayout::layoutName(pocket),
+                  StripLayout::settingName(StripLayout::setting()), camera ? "yes" : "no");
+    if (pocket) UI::requestPortrait();
     UI::displayInit();
     Input::lightInit();
     Input::touchInit();
@@ -494,6 +519,20 @@ static void uiTask(void* param) {
             // two pollers would fight over the controller's press state.
             Input::TouchEvent touch = Input::touchPoll(now);
             if (touch.gesture != Input::TouchGesture::NONE) Ticker::onTouch(touch);
+        }
+
+        {
+            // Layout switch requested from screen or daemon: persist, show
+            // the notice for a moment, then restart into the other tree.
+            const char* notice = nullptr;
+            if (StripLayout::poll(now, &notice)) {
+                Serial.flush();
+                ESP.restart();
+            }
+            if (notice) {
+                if (pocket) Pocket::notify(notice);
+                else Ticker::notify(notice);
+            }
         }
 
         Input::powerPoll(now);

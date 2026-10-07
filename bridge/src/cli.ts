@@ -2854,6 +2854,29 @@ program
 const esp32Cmd = program.command('esp32').description('ESP32 firmware and device commands');
 
 esp32Cmd
+  .command('orientation <target> <layout>')
+  .description('Switch a T-Display-S3-Pro between portrait Pocket and the landscape strip (auto|portrait|landscape; persisted, board restarts)')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (target: string, layout: string, opts: { port?: string }) => {
+    const { parseEsp32Layout } = await import('./esp32-orientation.js');
+    const parsed = parseEsp32Layout(layout);
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const info = readDaemonInfo();
+    const port = opts.port != null
+      ? parseInt(opts.port, 10)
+      : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
+    const { statusCode, body } = await postJsonWithTimeout<Record<string, unknown>>(
+      `http://127.0.0.1:${port}/esp32/orientation`, { target, layout: parsed }, 10_000,
+    );
+    if (statusCode !== 200 || body.ok !== true) {
+      console.error(`Orientation request failed (${statusCode}): ${String(body.error ?? 'unknown error')}`);
+      process.exit(1);
+    }
+    log(`Sent layout "${parsed}" to ${target} via ${String(body.transport)} (${String(body.via)}). `
+      + 'The board restarts when its layout changes; device_info reports layout/layoutSetting afterwards.');
+  });
+
+esp32Cmd
   .command('flash <board>')
   .description('Install AgentDeck firmware on an ESP32 over USB serial')
   .option('-p, --port <path>', 'Serial port (auto-detected when only one candidate is present)')

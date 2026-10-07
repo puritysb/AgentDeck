@@ -10,6 +10,7 @@
 // Tabs: SESSIONS (scrollable cards, tap = focus) · CAM (upright viewfinder,
 // SNAP/LED, tap target line to cycle the receiving session) · USAGE (gauges).
 // Physical controls: rocker = tab prev/next, BOOT = go to CAM / shutter.
+// USAGE tab ends with the LANDSCAPE switch (persisted, restarts; StripLayout).
 
 namespace Pocket {
 
@@ -19,6 +20,9 @@ void update(float dt);
 void nextTab();
 void prevTab();
 void primaryAction();
+
+/** Short status toast (e.g. the layout-switch restart notice). */
+void notify(const char* text);
 
 /** Daemon's photo_result for a snap sent from the CAM tab. */
 void onPhotoResult(bool delivered, const char* detail);

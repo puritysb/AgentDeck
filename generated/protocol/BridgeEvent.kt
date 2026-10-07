@@ -24,6 +24,7 @@ private val klaxon = Klaxon()
     .convert(SummaryKind::class,         { SummaryKind.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(TimelineEntryType::class,   { TimelineEntryType.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(GatewayAuthStatus::class,   { GatewayAuthStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
+    .convert(Layout::class,              { Layout.fromValue(it.string!!) },              { "\"${it.value}\"" })
     .convert(OptionKind::class,          { OptionKind.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(PermissionMode::class,      { PermissionMode.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(PromptType::class,          { PromptType.fromValue(it.string!!) },          { "\"${it.value}\"" })
@@ -58,6 +59,11 @@ private val klaxon = Klaxon()
  *
  * Additive public-protocol acknowledgement. Legacy WS clients never receive or need this
  * event.
+ *
+ * Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the
+ * T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape
+ * Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
+ * legacy bool other LCD boards read.
  */
 data class BridgeEvent (
     val agentCapabilities: AgentCapabilities? = null,
@@ -323,7 +329,9 @@ data class BridgeEvent (
     val size: Double? = null,
     val data: String? = null,
     val offset: Double? = null,
-    val seq: Double? = null
+    val seq: Double? = null,
+    val landscape: Boolean? = null,
+    val layout: Layout? = null
 ) {
     public fun toJson() = klaxon.toJsonString(this)
 
@@ -946,6 +954,21 @@ enum class GatewayAuthStatus(val value: String) {
             "token_mismatch"        -> TokenMismatch
             "unsupported_protocol"  -> UnsupportedProtocol
             else                    -> throw IllegalArgumentException()
+        }
+    }
+}
+
+enum class Layout(val value: String) {
+    Auto("auto"),
+    Landscape("landscape"),
+    Portrait("portrait");
+
+    companion object {
+        public fun fromValue(value: String): Layout = when (value) {
+            "auto"      -> Auto
+            "landscape" -> Landscape
+            "portrait"  -> Portrait
+            else        -> throw IllegalArgumentException()
         }
     }
 }
@@ -1733,6 +1756,7 @@ enum class Type(val value: String) {
     ReviewStatus("review_status"),
     SessionSettings("session_settings"),
     SessionsList("sessions_list"),
+    SetOrientation("set_orientation"),
     StateUpdate("state_update"),
     SurfaceWelcome("surface_welcome"),
     TimelineEvent("timeline_event"),
@@ -1762,6 +1786,7 @@ enum class Type(val value: String) {
             "review_status"         -> ReviewStatus
             "session_settings"      -> SessionSettings
             "sessions_list"         -> SessionsList
+            "set_orientation"       -> SetOrientation
             "state_update"          -> StateUpdate
             "surface_welcome"       -> SurfaceWelcome
             "timeline_event"        -> TimelineEvent

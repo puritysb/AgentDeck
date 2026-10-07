@@ -37,6 +37,14 @@ The face is now its own axis in the [matrix-expression SSOT](shared/src/matrix-e
 
 The art lives in [matrix-art.ts](bridge/src/pixoo/matrix-art.ts) and is generated into `MatrixFrames.generated.swift`. The Swift engine mirrors the selection by hand, and the executable parity test now replays CI, subagent, Gateway, needs-you and empty-roster steps byte-for-byte. Not verified: an Xcode app build and the physical panel.
 
+## 2026-10-07 — T-Display-S3-Pro layout becomes a persisted, switchable setting
+
+Since the 2026-09-26 desk-awareness change the firmware hardcoded `pocket = false`, so the camera-equipped unit booted into the landscape Focus Strip even when it was used upright. The layout is now a persisted NVS setting (`strip_layout`: `auto` | `portrait` | `landscape`) resolved before `displayInit()` ([strip_layout.h](esp32/src/ui/strip_layout.h)). `auto` restores the original role split: a camera shield selects portrait Pocket, no camera selects the landscape strip.
+
+Three paths change it, and all of them persist and then restart, because the render tree, touch transform and panel rotation are fixed at boot: holding either rocker button through boot (toggle; BOOT/GPIO0 is a strap pin and is not used), an on-screen control (Pocket USAGE tab button, a hold on the strip's Usage page), and `agentdeck esp32 orientation <target> <layout>` → Node daemon `POST /esp32/orientation` → `set_orientation {layout}` over USB serial first, WiFi as the fallback. `device_info` reports `layout` and `layoutSetting`, and both daemon device views pass them through.
+
+Hardware check on the camera unit: the default boot logged `[Layout] portrait (setting auto, camera yes)` at 222×480; `set_orientation {layout:"landscape"}` sent over serial restarted the board into 480×222 with the setting retained, and `auto` returned it to portrait. Board NVS survived the PlatformIO upload (separate segments, `wifiConfigured: true` afterwards). WiFi OTA of this image timed out at chunk 200 twice with the radio woken from USB parking, and the first USB write died when its 300 s serial lease expired mid-write; a 900 s lease completed in 240 s. The Swift daemon does not send the command yet.
+
 ## 2026-10-07 — Pixoo64 motion: wall-clock simulation and an opt-in device loop
 
 The owner reported that the usage strip looked right but that creature and aquarium motion on the Pixoo64 looked slow and unnatural. Read-only measurement on the running Node daemon showed `animationMode: "single-frame"`, `failures: 0`, and 14 pushes in 40 s at about 2.7–3.1 s each (the 2.5 s active cadence plus the upload). `Channel/GetAllConf` answered in 32–41 ms and ping lost no packets, so WiFi was not the limit. Two problems in the renderer caused the slow look:
