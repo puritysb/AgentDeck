@@ -59,7 +59,9 @@ describe('expressive BLE matrices', () => {
     engine.updateSessions([row('o', 'processing', 'openclaw'), row('c')], 0);
     engine.ingest({ type: 'timeline_event', entry: { ts: 1000, type: 'chat_start', sessionId: 'o' } }, 1000);
     expect(engine.scene(1000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
-    expect(engine.scene(120000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    expect(engine.scene(1000 + MATRIX_RULES.askMs - 1)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    // A long turn reads as work, not as a standing question.
+    expect(engine.scene(1000 + MATRIX_RULES.askMs)).toMatchObject({ kind: 'working', glyph: 'summary' });
     engine.ingest({ type: 'timeline_event', entry: { ts: 130000, type: 'chat_response', sessionId: 'o' } }, 130000);
     expect(engine.scene(130000)).toMatchObject({ kind: 'reply', glyph: 'openClaw' });
     expect(engine.scene(176000).kind).toBe('done');
@@ -76,6 +78,31 @@ describe('expressive BLE matrices', () => {
     expect(quiet.scene(8000).kind).not.toBe('asked');
     engine.updateSessions([row('o', 'awaiting_permission', 'openclaw')], 131000);
     expect(engine.scene(131000).kind).toBe('waiting');
+  });
+  it('matches rows to roster sessions across id forms (observed prefix, OpenClaw Gateway presence)', () => {
+    const uuid = '4ba825fc-72de-485d-9aef-8284ddfd97ce';
+    const engine = new MatrixExpression();
+    engine.updateSessions([row(`observed:claude:${uuid}`), row('openclaw-gateway', 'processing', 'openclaw')], 0);
+    // Observed: the roster is prefixed, the rows are the bare uuid.
+    engine.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'chat_start', sessionId: uuid, agentType: 'claude-code' } }, 10);
+    expect(engine.scene(10)).toMatchObject({ kind: 'asked', glyph: 'claudeCode' });
+    engine.ingest({ type: 'timeline_event', entry: { ts: 20, type: 'chat_response', sessionId: uuid, agentType: 'claude-code' } }, 20);
+    expect(engine.scene(20)).toMatchObject({ kind: 'reply', glyph: 'claudeCode' });
+    // OpenClaw rows carry per-agent keys; the roster has one Gateway presence.
+    const claw = new MatrixExpression();
+    claw.updateSessions([row('openclaw-gateway', 'processing', 'openclaw')], 0);
+    claw.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'chat_start', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } }, 10);
+    expect(claw.scene(10)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    claw.ingest({ type: 'timeline_event', entry: { ts: 20, type: 'task_end', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } }, 20);
+    expect(claw.scene(20)).toMatchObject({ kind: 'done', glyph: 'openClaw' });
+    // A result whose session already left keeps the creature its row names.
+    const gone = new MatrixExpression();
+    gone.updateSessions([row('c', 'idle')], 0);
+    gone.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'task_end', sessionId: 'left', agentType: 'codex-cli' } }, 10);
+    expect(gone.scene(10)).toMatchObject({ kind: 'done', glyph: 'codex' });
+    // An unknown agent on a row is still neutral, never another agent.
+    gone.ingest({ type: 'timeline_event', entry: { ts: 30, type: 'task_end', sessionId: 'left2', agentType: 'future-agent' } }, 30);
+    expect(gone.scene(30)).toMatchObject({ kind: 'done', glyph: 'neutral' });
   });
   it('rotates only the live attention owners and clears attention immediately', () => {
     const engine = new MatrixExpression();
@@ -219,7 +246,8 @@ describe('expressive BLE matrices', () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'matrix-parity-'));
     try {
       const exe = path.join(temp, 'parity');
-      execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
+      execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Model/ObservedAgentRules.generated.swift',
+        'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
         'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
       const steps: { now: number; event?: Record<string, unknown> }[] = [{ now: 0 }];
       const add = (now: number, event?: Record<string, unknown>) => steps.push({ now, event });
@@ -269,6 +297,15 @@ describe('expressive BLE matrices', () => {
       add(155000, { type: 'sessions_list', sessions: [row('a', 'awaiting_diff'), row('c'), row('d')] });
       add(156000, { type: 'sessions_list', sessions: [row('c'), row('d'), row('e'), row('f'), row('g'), row('h'), row('i')] });
       add(157000, { type: 'sessions_list', sessions: [] });
+      // Two id forms: an observed (prefixed) roster with bare-uuid rows, the
+      // OpenClaw Gateway presence with per-agent row keys, and a departed row.
+      add(160000, { type: 'sessions_list', sessions: [row('observed:claude:u1'), row('openclaw-gateway', 'processing', 'openclaw')] });
+      add(160001, { type: 'timeline_event', entry: { ts: 160001, type: 'chat_start', sessionId: 'u1', agentType: 'claude-code' } });
+      add(160751); add(160001 + MATRIX_RULES.askMs);
+      add(230000, { type: 'timeline_event', entry: { ts: 230000, type: 'chat_response', sessionId: 'u1', agentType: 'claude-code' } });
+      add(240000, { type: 'timeline_event', entry: { ts: 240000, type: 'chat_start', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
+      add(250000, { type: 'timeline_event', entry: { ts: 250000, type: 'task_end', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
+      add(260000, { type: 'timeline_event', entry: { ts: 260000, type: 'task_end', sessionId: 'left', agentType: 'codex-cli' } });
       const engine = new MatrixExpression();
       const expected = steps.map(({ now, event }) => {
         if (event) engine.ingest(event as MatrixBroadcast, now);

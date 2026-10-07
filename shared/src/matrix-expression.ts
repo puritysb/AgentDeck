@@ -1,12 +1,15 @@
 /** BLE expression policy SSOT. Swift constants/frames are generated; sequence tests
  * execute both engines. Animation is expressive motion, not a quota alarm. */
+import { sameSession } from './session-utils.js';
+
 export const MATRIX_RULES = {
   frameMs: 750, frames: 8, arrivalMs: 6000, resultMs: 90000,
   responseMs: 6000, historyLimit: 96, rosterDots: 8, seenLimit: 1024,
   // A conversation is what the reader came to see: an agent's reply to a turn
   // holds the stage briefly, and an open question keeps its agent listening
-  // until the reply lands (bounded, so a lost reply cannot pin the scene).
-  replyMs: 6000, askMs: 600000, attentionMs: 6000,
+  // briefly after it lands — then the WORK scene says the rest. It used to
+  // hold for the whole turn (10 min), so a long run read as a question.
+  replyMs: 6000, askMs: 60000, attentionMs: 6000,
 } as const;
 export const MATRIX_POLICY = {
   awaitingPrefix: 'awaiting', stateKinds: { error: 'error', processing: 'working' },
@@ -50,7 +53,23 @@ export interface MatrixSession {
   waitingOn?: { phase?: string; agentWaiting?: boolean } | null;
   subagents?: { active?: number };
 }
-export interface MatrixResult { ts: number; type: string; status?: string; sessionId?: string; automated?: boolean }
+export interface MatrixResult { ts: number; type: string; status?: string; sessionId?: string; agentType?: string; automated?: boolean }
+
+/**
+ * A timeline row belongs to a roster session. Rows and roster use two id
+ * forms (`observed:<agent>:<uuid>` vs the bare uuid), and the OpenClaw roster
+ * entry is one Gateway presence whose rows carry per-agent keys — so OpenClaw
+ * matches by agent. An exact-id comparison made every observed session and
+ * OpenClaw fall back to the neutral face on DONE/SENT/ASK.
+ */
+export function matrixRowSession(s: MatrixSession, e: MatrixResult): boolean {
+  return sameSession(s.id, e.sessionId) ||
+    (e.agentType === MATRIX_POLICY.gatewayAgent && s.agentType === MATRIX_POLICY.gatewayAgent);
+}
+/** Two rows of the same session (same row-side id form). */
+function sameRowSession(a: MatrixResult, b: MatrixResult): boolean {
+  return a.sessionId === b.sessionId || sameSession(a.sessionId, b.sessionId);
+}
 export interface MatrixBroadcast {
   type: string; sessions?: MatrixSession[]; entries?: MatrixResult[];
   entry?: MatrixResult; upsert?: boolean; status?: string; gatewayHasError?: boolean;
@@ -86,27 +105,27 @@ export function matrixResults(timeline: MatrixResult[], now: number): MatrixResu
 }
 /**
  * The conversation on stage, if any: an agent's reply to a turn (held
- * replyMs), else an open user question to a live session (until its reply,
- * at most askMs). Automated turns are not conversations.
+ * replyMs), else a user message just delivered to a live, working session
+ * (until its reply, at most askMs). Automated turns are not conversations.
  */
 export function matrixInteraction(timeline: MatrixResult[], live: MatrixSession[], now: number):
-    { kind: 'asked' | 'reply'; sessionId?: string; ts: number } | null {
+    { kind: 'asked' | 'reply'; row: MatrixResult; ts: number } | null {
   const conversational = (e: MatrixResult) => e.automated !== true && Number.isFinite(e.ts) && now >= e.ts;
-  const reply = timeline.filter(e => conversational(e) && live.some(s => s.id === e.sessionId) &&
-      !timeline.some(next => next.sessionId === e.sessionId && next.ts > e.ts && next.ts <= now &&
+  const reply = timeline.filter(e => conversational(e) && live.some(s => matrixRowSession(s, e)) &&
+      !timeline.some(next => sameRowSession(next, e) && next.ts > e.ts && next.ts <= now &&
         (MATRIX_POLICY.askTypes as readonly string[]).includes(next.type)) &&
       (MATRIX_POLICY.replyTypes as readonly string[]).includes(e.type) &&
       !(MATRIX_POLICY.rejectedStatuses as readonly string[]).includes(e.status ?? '') &&
       now - e.ts < MATRIX_RULES.replyMs)
     .sort((a, b) => b.ts - a.ts)[0];
-  if (reply) return { kind: 'reply', sessionId: reply.sessionId, ts: reply.ts };
+  if (reply) return { kind: 'reply', row: reply, ts: reply.ts };
   const ask = timeline.filter(e => conversational(e) && e.sessionId != null &&
       (MATRIX_POLICY.askTypes as readonly string[]).includes(e.type) && now - e.ts < MATRIX_RULES.askMs)
     .sort((a, b) => b.ts - a.ts)[0];
-  if (!ask || !live.some(s => s.id === ask.sessionId && matrixState(s.state) === 'working')) return null;
-  const answered = timeline.some(e => e.sessionId === ask.sessionId && e.ts >= ask.ts && e.ts <= now &&
+  if (!ask || !live.some(s => matrixRowSession(s, ask) && matrixState(s.state) === 'working')) return null;
+  const answered = timeline.some(e => sameRowSession(e, ask) && e.ts >= ask.ts && e.ts <= now &&
     (MATRIX_POLICY.closeTypes as readonly string[]).includes(e.type));
-  return answered ? null : { kind: 'asked', sessionId: ask.sessionId, ts: ask.ts };
+  return answered ? null : { kind: 'asked', row: ask, ts: ask.ts };
 }
 
 export function deskSignal(sessions: MatrixSession[] | null, timeline: MatrixResult[], now: number) {
@@ -176,6 +195,11 @@ export class MatrixExpression {
     let responseAt: number | undefined;
     const glyphOf = (sessionId?: string) =>
       MATRIX_AGENTS[live.find(s => s.id === sessionId)?.agentType ?? ''] ?? 'neutral';
+    // A row's creature: its roster session's agent, else the agent the row names.
+    const rowGlyph = (e: MatrixResult) => {
+      const owner = live.find(s => matrixRowSession(s, e));
+      return MATRIX_AGENTS[(owner ? owner.agentType : e.agentType) ?? ''] ?? 'neutral';
+    };
     const interaction = matrixInteraction(this.timeline, live, now);
     if ((MATRIX_POLICY.urgent as readonly string[]).includes(kind)) {
       const attention = live.filter(s => matrixState(s.state) === kind);
@@ -183,13 +207,12 @@ export class MatrixExpression {
       glyph = glyphOf(hero?.id);
     } else if (this.sessions !== null) {
       if (interaction) {
-        kind = interaction.kind; glyph = glyphOf(interaction.sessionId); responseAt = interaction.ts;
+        kind = interaction.kind; glyph = rowGlyph(interaction.row); responseAt = interaction.ts;
       } else if (arrival) { kind = 'arrival'; glyph = MATRIX_AGENTS[arrival.agentType ?? ''] ?? 'neutral'; }
       else if (kind === 'done') {
         const latest = matrixResults(this.timeline, now).sort((a, b) => b.ts - a.ts)[0];
         if (latest && now - latest.ts < MATRIX_RULES.responseMs) {
-          const hero = live.find(s => s.id === latest.sessionId);
-          glyph = MATRIX_AGENTS[hero?.agentType ?? ''] ?? 'neutral';
+          glyph = rowGlyph(latest);
           responseAt = latest.ts;
         }
       }

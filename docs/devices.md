@@ -283,12 +283,24 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
   progress percentages, attempt counts, or a claim that all work has completed.
 - **Conversation scenes**: the reader's own turn is what the panel is for. When a
   user message reaches a live session (`chat_start`, not automated), that agent's
-  official creature appears listening under `ASK` until its reply lands (at most
-  10 minutes, while the session is processing; a turn close also clears it). The reply (`chat_response`, not automated) holds the stage for six
-  seconds under `SENT` (answer delivered, not input requested) with a speech bubble. Automated turns (crons) and bare task
-  closes are not conversations; a task close still gets the six-second result scene.
+  official creature appears listening under `HEAR` until its reply lands or one
+  minute passes, while the session is processing (a turn close also clears it);
+  after that the `WORK` summary carries the rest of the turn. `HEAR` reports your
+  message arriving — it never means the agent is asking you anything; a question
+  for you is `WAIT`. It was `ASK` with a ten-minute hold until 2026-10-08, and a
+  long run read as a pending question. The reply (`chat_response`, not automated)
+  holds the stage for six seconds under `SENT` (answer delivered, not input
+  requested) with a speech bubble. Automated turns (crons) and bare task closes
+  are not conversations; a task close still gets the six-second result scene.
   A newer turn or removal from the live roster cancels the reply scene.
   The Timebox face mirrors both: a listening face, then a talking face.
+- **Session identity**: rows and roster use two id forms — an observed session is
+  `observed:<agent>:<uuid>` in the roster and the bare uuid on its timeline rows,
+  and OpenClaw is one `openclaw-gateway` presence whose rows carry per-agent keys
+  (`openclaw:agent:main:main`). Both engines match rows with `matrixRowSession`
+  (either id form; OpenClaw by agent), and a result whose session has already
+  left shows the creature its row names. Until 2026-10-08 an exact-id match sent
+  every observed session and OpenClaw to the neutral square face on DONE/SENT/ASK.
 - **Event scenes**: a new live session gets a six-second official-creature entrance
   (a conversation outranks it). Then the numeric summary
   returns. There is no decorative creature carousel. Waiting/errors preempt both

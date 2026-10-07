@@ -20,6 +20,7 @@ struct MatrixExpression {
         let type: String
         let status: String
         let sessionId: String?
+        var agentType: String? = nil
         let automated: Bool
     }
     struct Scene {
@@ -106,27 +107,44 @@ struct MatrixExpression {
         guard let ts = raw["ts"] as? Double, ts.isFinite, let type = raw["type"] as? String,
               MatrixFrames.closeTypes.contains(type) || MatrixFrames.askTypes.contains(type) else { return nil }
         return Result(ts: ts, type: type, status: raw["status"] as? String ?? "", sessionId: raw["sessionId"] as? String,
-                      automated: raw["automated"] as? Bool ?? false)
+                      agentType: raw["agentType"] as? String, automated: raw["automated"] as? Bool ?? false)
+    }
+    /// matrixRowSession (shared/src/matrix-expression.ts): rows and roster use
+    /// two id forms, and the one OpenClaw roster presence matches by agent.
+    static func rowSession(_ s: Resident, _ e: Result) -> Bool {
+        sameSession(s.id, e.sessionId) ||
+            (e.agentType == MatrixFrames.gatewayAgent && s.agentType == MatrixFrames.gatewayAgent)
+    }
+    private static func sameSession(_ a: String?, _ b: String?) -> Bool {
+        guard let a, let b, !a.isEmpty, !b.isEmpty else { return false }
+        return a == b || ObservedAgentRules.rawSessionId(a) == ObservedAgentRules.rawSessionId(b)
+    }
+    private static func sameRow(_ a: Result, _ b: Result) -> Bool {
+        a.sessionId == b.sessionId || sameSession(a.sessionId, b.sessionId)
+    }
+    private func rowGlyph(_ e: Result, _ live: [Resident]) -> String {
+        let owner = live.first { Self.rowSession($0, e) }
+        return MatrixFrames.agents[owner.map(\.agentType) ?? e.agentType ?? ""] ?? "neutral"
     }
     /// matrixInteraction (shared/src/matrix-expression.ts): an agent's reply to
-    /// a turn holds the stage for replyMs; else an open user question to a live
-    /// session keeps its agent listening until the reply, at most askMs.
-    private func interaction(_ live: [Resident], _ now: Double) -> (kind: String, sessionId: String?, ts: Double)? {
+    /// a turn holds the stage for replyMs; else a user message just delivered to
+    /// a live, working session keeps its agent listening until the reply, at most askMs.
+    private func interaction(_ live: [Resident], _ now: Double) -> (kind: String, row: Result, ts: Double)? {
         let conversational = { (e: Result) in !e.automated && e.ts.isFinite && now >= e.ts }
-        if let reply = timeline.filter({ e in conversational(e) && live.contains(where: { $0.id == e.sessionId }) &&
-                !timeline.contains(where: { $0.sessionId == e.sessionId && $0.ts > e.ts && $0.ts <= now && MatrixFrames.askTypes.contains($0.type) }) &&
+        if let reply = timeline.filter({ e in conversational(e) && live.contains(where: { Self.rowSession($0, e) }) &&
+                !timeline.contains(where: { Self.sameRow($0, e) && $0.ts > e.ts && $0.ts <= now && MatrixFrames.askTypes.contains($0.type) }) &&
                 MatrixFrames.replyTypes.contains(e.type) &&
                 !MatrixFrames.rejectedStatuses.contains(e.status) && now - e.ts < Double(MatrixFrames.replyMs) })
             .max(by: { $0.ts < $1.ts }) {
-            return ("reply", reply.sessionId, reply.ts)
+            return ("reply", reply, reply.ts)
         }
         guard let ask = timeline.filter({ conversational($0) && $0.sessionId != nil &&
                 MatrixFrames.askTypes.contains($0.type) && now - $0.ts < Double(MatrixFrames.askMs) })
             .max(by: { $0.ts < $1.ts }),
-              live.contains(where: { $0.id == ask.sessionId && Self.state($0.state) == "working" }) else { return nil }
-        let answered = timeline.contains { $0.sessionId == ask.sessionId && $0.ts >= ask.ts && $0.ts <= now &&
+              live.contains(where: { Self.rowSession($0, ask) && Self.state($0.state) == "working" }) else { return nil }
+        let answered = timeline.contains { Self.sameRow($0, ask) && $0.ts >= ask.ts && $0.ts <= now &&
             MatrixFrames.closeTypes.contains($0.type) }
-        return answered ? nil : ("asked", ask.sessionId, ask.ts)
+        return answered ? nil : ("asked", ask, ask.ts)
     }
     func scene(now: Double) -> Scene {
         let live = (sessions ?? []).filter(\.alive).sorted { $0.id < $1.id }
@@ -146,16 +164,14 @@ struct MatrixExpression {
         } else if sessions != nil {
             if let conversation = interaction(live, now) {
                 kind = conversation.kind; count = live.count; frameTime = now - conversation.ts
-                let resident = live.first { $0.id == conversation.sessionId }
-                glyph = MatrixFrames.agents[resident?.agentType ?? ""] ?? "neutral"
+                glyph = rowGlyph(conversation.row, live)
             } else if let arrival, now >= arrival.ts, now - arrival.ts < Double(MatrixFrames.arrivalMs),
                let resident = live.first(where: { $0.id == arrival.id }) {
                 kind = "arrival"; count = live.count; frameTime = now - arrival.ts
                 glyph = MatrixFrames.agents[resident.agentType] ?? "neutral"
             } else if kind == "done", let latest = done.sorted(by: { $0.ts > $1.ts }).first,
                       now - latest.ts < Double(MatrixFrames.responseMs) {
-                let resident = live.first { $0.id == latest.sessionId }
-                glyph = MatrixFrames.agents[resident?.agentType ?? ""] ?? "neutral"
+                glyph = rowGlyph(latest, live)
                 frameTime = now - latest.ts
             }
         }
