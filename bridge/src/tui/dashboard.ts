@@ -14,11 +14,12 @@ import type { TimelineEntry } from '@agentdeck/shared';
 import { listActive, findDaemonPort, findDaemonPortAsync, DAEMON_DEFAULT_PORT } from '../session-registry.js';
 import { Screen } from './screen.js';
 import {
-  renderDashboard, getLayout, shouldShowTerrarium, buildHudEntries,
+  renderDashboard, aquariumSize, defaultView, followTarget, type ViewState, type ViewTab,
 } from './renderer.js';
+import { buildRoster, buildTimelineRows } from './model.js';
 import {
   initTerrarium, updateTerrarium, setOctopi, setJellyfish, setOpenCode, setCrayfish,
-  setVoiceAssistantState, renderTerrariumFrame,
+  setResidents, setVoiceAssistantState, renderTerrariumFrame,
 } from './terrarium.js';
 
 // ===== Types =====
@@ -28,6 +29,8 @@ export type LayoutMode = 'wide' | 'standard' | 'narrow';
 export interface DashboardState {
   state: string;
   connectionStatus: 'connected' | 'reconnecting' | 'disconnected';
+  /** A connection succeeded at least once (names the Reconnecting phase). */
+  hasConnected?: boolean;
   isStale: boolean;
   projectName: string | null;
   modelName: string | null;
@@ -140,6 +143,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
   const terrCtx = initTerrarium();
   let frame = 0;
   let scrollOffset = 0;
+  const view: ViewState = defaultView();
   let ws: WebSocket | null = null;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let terrariumTimer: ReturnType<typeof setInterval> | null = null;
@@ -179,6 +183,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
     setOctopi(terrCtx, octSessions);
     setJellyfish(terrCtx, octSessions);
     setOpenCode(terrCtx, octSessions);
+    setResidents(terrCtx, octSessions);
 
     // Crayfish
     const ocSibling = state.sessions.find(s =>
@@ -186,75 +191,85 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
     );
     setCrayfish(terrCtx, state.gatewayAvailable || !!ocSibling, state.crayfishRouting, ocSibling?.projectName, state.gatewayHasError);
 
-    // Render terrarium
-    const layout = getLayout(cols, rows);
-    const showTerr = shouldShowTerrarium(cols, rows);
+    // Render terrarium at the size the layout reserves for it.
+    const aq = aquariumSize(cols, rows);
     let terrLines: string[] = [];
-    if (showTerr) {
-      // Keep terrarium visible, but leave more room for status/timeline in monitoring mode.
-      const tH = layout === 'wide'
-        ? Math.max(3, Math.floor((rows - 3) * (rows >= 40 ? 0.42 : 0.34)))
-        : Math.max(3, Math.min(10, Math.floor((rows - 6) * 0.28)));
-      const tW = layout === 'wide'
-        ? cols - Math.max(20, Math.floor(cols * 0.22)) - 3
-        : cols - 2;
+    if (aq) {
       setVoiceAssistantState(terrCtx, state.voiceAssistantState);
-      terrLines = renderTerrariumFrame(terrCtx, tW, tH, frame);
+      terrLines = renderTerrariumFrame(terrCtx, aq.width, aq.height, frame);
     }
 
-    const output = renderDashboard(state, cols, rows, terrLines, frame, scrollOffset);
+    const output = renderDashboard(state, cols, rows, terrLines, frame, scrollOffset, view);
     screen.write(output);
   }
 
+  const TABS: ViewTab[] = ['sessions', 'usage', 'activity', 'devices'];
+
+  function moveSelection(delta: number): void {
+    const cards = buildRoster(state);
+    if (cards.length === 0) return;
+    const i = Math.max(0, cards.findIndex(c => c.id === view.selectedId));
+    view.selectedId = cards[Math.max(0, Math.min(cards.length - 1, i + delta))]!.id;
+    if (view.follow) scrollOffset = 0;
+  }
+
+  function scrollActivity(delta: number): void {
+    const cards = buildRoster(state);
+    const card = cards.find(c => c.id === view.selectedId);
+    const total = buildTimelineRows(state.timeline, view.follow && card ? followTarget(card) : undefined).length;
+    scrollOffset = Math.max(0, Math.min(Math.max(0, total - 3), scrollOffset + delta));
+  }
+
   function handleKey(key: string): void {
+    if (key === 'q') { shutdown(); return; }
+    if (key === 'h' || key === '?') { state.helpVisible = !state.helpVisible; render(); return; }
+    if (state.helpVisible) {
+      if (key === '\x1b') { state.helpVisible = false; render(); }
+      return;
+    }
+    const narrow = process.stdout.columns < 80;
     switch (key) {
-      case 'q':
-        shutdown();
-        break;
-      case 'h':
-      case '?':
-        state.helpVisible = !state.helpVisible;
-        render();
-        break;
       case '\x1b':
-        if (state.helpVisible) {
-          state.helpVisible = false;
-          render();
-        }
+        view.detail = false;
         break;
-      case 'up':
-      case 'k':
-        if (state.helpVisible) break;
-        scrollOffset = Math.min(scrollOffset + 1, Math.max(0, state.timeline.length - 5));
-        render();
+      case 'up': case 'k':
+        if (view.focus === 'activity' || (narrow && view.tab === 'activity')) scrollActivity(1);
+        else moveSelection(-1);
         break;
-      case 'down':
-      case 'j':
-        if (state.helpVisible) break;
-        scrollOffset = Math.max(0, scrollOffset - 1);
-        render();
+      case 'down': case 'j':
+        if (view.focus === 'activity' || (narrow && view.tab === 'activity')) scrollActivity(-1);
+        else moveSelection(1);
+        break;
+      case '\t':
+        if (narrow) view.tab = TABS[(TABS.indexOf(view.tab) + 1) % TABS.length]!;
+        else view.focus = view.focus === 'roster' ? 'activity' : 'roster';
+        break;
+      case 's': view.tab = 'sessions'; view.focus = 'roster'; break;
+      case 'u': view.tab = 'usage'; break;
+      case 'a': view.tab = 'activity'; view.focus = 'activity'; break;
+      case 'd': view.tab = 'devices'; break;
+      case 'enter':
+        view.detail = !view.detail;
+        if (narrow) view.tab = 'sessions';
+        break;
+      case 'f':
+        view.follow = !view.follow;
+        scrollOffset = 0;
         break;
       default:
-        if (state.helpVisible) break;
-        // 1-9: switch session — uses the same buildHudEntries pipeline as
-        // the renderer so hotkey indices align with what's drawn on screen
-        // (primary self and the virtual OpenClaw row never claim a hotkey).
+        // 1-9: switch to a numbered managed session — the same numbering the
+        // roster draws (observed sessions, primary and virtual rows have none).
         if (key >= '1' && key <= '9') {
-          const idx = parseInt(key, 10) - 1;
-          const focusable = buildHudEntries(state).filter((e) =>
-            !e.isPrimary && !e.isVirtualOpenClaw && e.port !== undefined && e.controlMode !== 'observed'
-          );
-          if (idx < focusable.length) {
-            const sess = focusable[idx]!;
-            if (sess.port !== undefined && sess.port !== targetPort) {
-              targetPort = sess.port;
-              state.currentPort = targetPort;
-              reconnect();
-            }
+          const card = buildRoster(state).find(c => c.hotkey === Number(key));
+          if (card && card.port !== undefined && card.port !== targetPort) {
+            targetPort = card.port;
+            state.currentPort = targetPort;
+            reconnect();
           }
         }
-        break;
+        return render();
     }
+    render();
   }
 
   function shutdown(): void {
@@ -328,6 +343,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
     socket.on('open', () => {
       if (socket !== ws) return;
       state.connectionStatus = 'connected';
+      state.hasConnected = true;
       state.isStale = false;
       state.currentPort = targetPort;
       // Identify as a TUI dashboard so the daemon can surface a topology row
@@ -434,7 +450,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
   function pushTimeline(entry: TimelineEntry): void {
     state.timeline.push(entry);
     if (state.timeline.length > 200) state.timeline = state.timeline.slice(-200);
-    scrollOffset = 0;
+    if (scrollOffset > 0) scrollOffset++;
   }
 
   function handleEvent(event: BridgeEvent): void {
@@ -479,8 +495,9 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
         if (state.timeline.length > 200) {
           state.timeline = state.timeline.slice(-200);
         }
-        // Auto-scroll to bottom on new events
-        scrollOffset = 0;
+        // Live view follows new rows; a scrolled-back view stays where the
+        // reader left it (the new row lands below the window).
+        if (scrollOffset > 0 && !e.upsert) scrollOffset++;
         break;
       }
       case 'timeline_history': {

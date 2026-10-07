@@ -225,7 +225,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`) |
+| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`): sessions with state, model/effort/permission, CI waits and subagents; per-provider usage; aquarium; activity feed. Keys: `↑↓` select, `tab` switch focus (narrow: next panel), `⏎` detail, `f` follow the selected session, `1-9` switch managed session, `?` help |
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |

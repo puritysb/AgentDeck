@@ -1,30 +1,57 @@
 /**
- * TUI Dashboard renderer — layout calculation + panel rendering.
+ * TUI Dashboard renderer — the "tide console".
  *
- * Width invariant: every output line is exactly `cols` characters wide (visually).
- * Box structure:
- *   Wide:     ┌─leftW─┬─rightW─┐  where leftW + rightW + 3 = cols
- *   Std/Nar:  ┌──w────┐         where w + 2 = cols
- *   Split:    │ lh │ rh │       where lh + rh + 3 = cols
+ * One information hierarchy, three arrangements (DESIGN.md §5.13):
+ *   wide     SESSIONS │ AQUARIUM + ACTIVITY │ USAGE + MODELS + DEVICES
+ *   standard SESSIONS + ACTIVITY │ AQUARIUM + USAGE + MODELS + DEVICES
+ *   narrow   one named tab at a time (Sessions / Usage / Activity / Devices)
+ *
+ * Width invariant: every output line is exactly `cols` terminal cells (wide
+ * CJK counts two — see width.ts). Columns stack titled sections; a section
+ * boundary draws a junction-aware divider so borders never cross text.
  */
 
 import {
-  cursor, screen as screenCodes, RESET, BOLD, DIM,
-  colors, box, hLine, sgr, stateColor, stateIcon,
-  truncText, padRight, visLen, terminalCaps, centerText,
-  fg,
+  cursor, screen as screenCodes, RESET, BOLD,
+  box, hLine, truncText, padRight, visLen, terminalCaps, centerText,
 } from './ansi.js';
-import { blockGauge, resetTimeStr, formatTokens } from './gauge.js';
 import type { DashboardState, LayoutMode } from './dashboard.js';
-import type { CodexRateLimitWindow, ModelCatalogEntry, OllamaStatus, SessionInfo, TimelineEntry, TimelineEntryType } from '@agentdeck/shared';
+import type { ModelCatalogEntry, OllamaStatus, TimelineEntryType } from '@agentdeck/shared';
+import { DAEMON_LINK_LABELS, Brand } from '@agentdeck/shared';
 import {
-  stateRank, sortSessions, assignDisplayNames,
-  timelineShouldRenderTaskRow, timelineTaskHeaderDisplay, sessionStateWords,
-} from '@agentdeck/shared';
+  ink, toneColor, stateGlyph, stateChip, quotaColor, brandColor, agentMark, agentName, hex,
+} from './theme.js';
+import {
+  buildRoster, rosterCounts, rosterDensity, summarizeRoster, buildUsageGroups,
+  buildTimelineRows, type RosterCard, type UsageGroupVM, type UsageRowVM,
+} from './model.js';
 
-// ===== Layout Breakpoints =====
+export { buildHudEntries, formatTaskEvalSuffix, type HudEntry } from './model.js';
 
-export function getLayout(cols: number, rows: number): LayoutMode {
+// ===== View state =====
+
+export type ViewTab = 'sessions' | 'usage' | 'activity' | 'devices';
+
+export interface ViewState {
+  /** Roster cursor (session id). Defaults to the most urgent session. */
+  selectedId?: string;
+  /** Which list the arrow keys drive. */
+  focus: 'roster' | 'activity';
+  /** Show the selected session's detail card. */
+  detail: boolean;
+  /** Narrow the activity feed to the selected session. */
+  follow: boolean;
+  /** Narrow layout: the one panel on screen. */
+  tab: ViewTab;
+}
+
+export function defaultView(): ViewState {
+  return { focus: 'roster', detail: false, follow: false, tab: 'sessions' };
+}
+
+// ===== Layout breakpoints =====
+
+export function getLayout(cols: number, _rows: number): LayoutMode {
   if (cols >= 120) return 'wide';
   if (cols >= 80) return 'standard';
   return 'narrow';
@@ -36,388 +63,503 @@ export function shouldShowTerrarium(cols: number, rows: number): boolean {
   return true;
 }
 
-// ===== Border Line Builder =====
-
-function borderFill(prefix: string, suffix: string, targetWidth: number): string {
-  const fillLen = Math.max(0, targetWidth - visLen(prefix) - visLen(suffix));
-  return prefix + `${colors.border}${hLine(fillLen)}${RESET}` + suffix;
+interface Geometry {
+  layout: LayoutMode;
+  /** Column widths (content cells, borders excluded). */
+  widths: number[];
+  /** Body rows between the top and bottom border. */
+  bodyH: number;
+  aquarium: { width: number; height: number } | null;
 }
 
-// ===== Pixel Font (4 wide × 6 tall → 4×3 half-block) =====
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
 
-const FONT: Record<string, string[]> = {
-  A: ['.##.', '#..#', '####', '#..#', '#..#', '....'],
-  G: ['.###', '#...', '#.##', '#..#', '.##.', '....'],
-  E: ['####', '#...', '###.', '#...', '####', '....'],
-  N: ['#..#', '##.#', '#.##', '#..#', '#..#', '....'],
-  T: ['####', '.##.', '.##.', '.##.', '.##.', '....'],
-  D: ['###.', '#..#', '#..#', '#..#', '###.', '....'],
-  C: ['.###', '#...', '#...', '#...', '.###', '....'],
-  K: ['#..#', '#.#.', '##..', '#.#.', '#..#', '....'],
-};
+function geometry(cols: number, rows: number): Geometry {
+  const layout = getLayout(cols, rows);
+  const bodyH = rows - 4; // content rows: minus header, top border, bottom border, footer
+  const showAq = shouldShowTerrarium(cols, rows);
+  if (layout === 'wide') {
+    const left = clamp(Math.floor(cols * 0.30), 36, 54);
+    const right = clamp(Math.floor(cols * 0.24), 32, 42);
+    const center = cols - left - right - 4;
+    const h = clamp(Math.round(bodyH * (rows >= 40 ? 0.46 : 0.40)), 6, 20);
+    return { layout, widths: [left, center, right], bodyH, aquarium: showAq ? { width: center, height: h } : null };
+  }
+  if (layout === 'standard') {
+    const right = clamp(Math.floor(cols * 0.42), 34, 48);
+    const left = cols - right - 3;
+    const h = clamp(Math.round(bodyH * 0.30), 5, 10);
+    return { layout, widths: [left, right], bodyH, aquarium: showAq ? { width: right, height: h } : null };
+  }
+  return { layout, widths: [cols - 2], bodyH, aquarium: null };
+}
 
-/** Render a word in half-block pixel font. Returns 3 terminal lines. */
-function renderPixelFont(word: string): string[] {
-  const result = ['', '', ''];
-  for (let li = 0; li < word.length; li++) {
-    if (li > 0) { result[0] += ' '; result[1] += ' '; result[2] += ' '; }
-    const pixels = FONT[word[li]];
-    if (!pixels) continue;
-    for (let hr = 0; hr < 3; hr++) {
-      const topRow = pixels[hr * 2];
-      const botRow = pixels[hr * 2 + 1];
-      for (let col = 0; col < 4; col++) {
-        const top = topRow[col] === '#';
-        const bot = botRow[col] === '#';
-        if (top && bot) result[hr] += '\u2588';      // █
-        else if (top) result[hr] += '\u2580';          // ▀
-        else if (bot) result[hr] += '\u2584';          // ▄
-        else result[hr] += ' ';
-      }
+/** The terrarium size the dashboard should render for this screen. */
+export function aquariumSize(cols: number, rows: number): { width: number; height: number } | null {
+  return geometry(cols, rows).aquarium;
+}
+
+// ===== Column compositor =====
+
+interface Section {
+  title: string;
+  lines: string[];
+  /** Natural height (content rows). */
+  want: number;
+  min: number;
+  /** Fixed sections never grow past `want`. */
+  fixed?: boolean;
+  /** What the rows are, for an honest "N more <noun>" when they don't fit. */
+  noun?: string;
+}
+
+/** Split `total` content rows across sections; dividers cost one row each. */
+function allocate(sections: Section[], total: number): number[] {
+  const avail = Math.max(0, total - (sections.length - 1));
+  const heights = sections.map(s => Math.min(s.min, s.want));
+  let left = avail - heights.reduce((a, b) => a + b, 0);
+  // Grow toward natural height in order, then give the rest to growable ones.
+  for (let i = 0; i < sections.length && left > 0; i++) {
+    const add = Math.min(left, Math.max(0, sections[i]!.want - heights[i]!));
+    heights[i]! += add;
+    left -= add;
+  }
+  const growable = sections.map((s, i) => (s.fixed ? -1 : i)).filter(i => i >= 0);
+  const last = growable[growable.length - 1];
+  if (left > 0 && last !== undefined) heights[last]! += left;
+  // Over-committed minima: shrink from the end.
+  let over = heights.reduce((a, b) => a + b, 0) - avail;
+  for (let i = heights.length - 1; i >= 0 && over > 0; i--) {
+    const cut = Math.min(over, heights[i]!);
+    heights[i]! -= cut;
+    over -= cut;
+  }
+  return heights;
+}
+
+interface ColumnRow { divider?: string; text?: string }
+
+function columnRows(sections: Section[], bodyH: number): { top: string; rows: ColumnRow[] } {
+  const heights = allocate(sections, bodyH);
+  const rows: ColumnRow[] = [];
+  sections.forEach((s, i) => {
+    if (i > 0) rows.push({ divider: s.title });
+    const h = heights[i]!;
+    const lines = s.lines.slice(0, h);
+    // Bounded collection (DESIGN.md §5.11): never drop rows silently.
+    const hidden = s.lines.slice(h).filter(l => l.trim() !== '').length;
+    if (hidden > 0 && h > 0 && s.noun) {
+      const more = s.lines.slice(h - 1).filter(l => l.trim() !== '').length;
+      lines[h - 1] = `  ${ink.faint}${more} more ${s.noun}${RESET}`;
     }
-  }
-  return result;
+    for (let r = 0; r < h; r++) rows.push({ text: lines[r] ?? '' });
+  });
+  while (rows.length < bodyH) rows.push({ text: '' });
+  return { top: sections[0]?.title ?? '', rows: rows.slice(0, bodyH) };
 }
 
-// Pre-render logo lines — "AGENT" + "DECK" stacked, sky blue
-const LOGO_AGENT = renderPixelFont('AGENT'); // 3 lines, 24 chars wide
-const LOGO_DECK = renderPixelFont('DECK');   // 3 lines, 19 chars wide
+function titleRule(title: string, width: number): string {
+  if (!title) return `${ink.rule}${hLine(width)}${RESET}`;
+  const label = truncText(title, Math.max(0, width - 4));
+  const fill = Math.max(0, width - visLen(label) - 3);
+  return `${ink.rule}${box.h} ${RESET}${label}${ink.rule} ${hLine(fill)}${RESET}`;
+}
 
-// ===== Timeline Icons =====
+function compose(columns: Array<{ width: number; sections: Section[] }>, bodyH: number): string[] {
+  const built = columns.map(c => ({ width: c.width, ...columnRows(c.sections, bodyH) }));
+  const out: string[] = [];
+  const b = (ch: string) => `${ink.rule}${ch}${RESET}`;
+  const uni = terminalCaps.unicode;
+  const cross = uni ? '┼' : '+';
 
-function typeIcon(type: TimelineEntryType): string {
-  if (!terminalCaps.unicode) {
-    switch (type) {
-      case 'chat_start': return '>';
-      case 'chat_end': return '=';
-      case 'chat_response': return ':';
-      case 'tool_request': case 'tool_exec': return '*';
-      case 'tool_resolved': return '+';
-      case 'error': return 'x';
-      case 'model_call': case 'model_response': return 'm';
-      case 'memory_recall': return 'r';
-      case 'scheduled': return 's';
-      case 'user_action': return 'u';
-      case 'eval_result': return '#';
-      // Task hierarchy -- mirrors timelineIconKey() (shared/src/timeline-icons.ts):
-      // task_start/task_end -> task, task_milestone -> success.
-      case 'task_start': case 'task_end': return '=';
-      case 'task_milestone': return '+';
-      default: return '*';
+  let top = b(box.tl);
+  built.forEach((c, i) => {
+    top += titleRule(c.top, c.width) + b(i === built.length - 1 ? box.tr : box.tee);
+  });
+  out.push(top);
+
+  for (let r = 0; r < bodyH; r++) {
+    let line = '';
+    for (let i = 0; i < built.length; i++) {
+      const cur = built[i]!.rows[r]!;
+      const prev = i > 0 ? built[i - 1]!.rows[r]! : undefined;
+      const curDiv = cur.divider !== undefined;
+      const prevDiv = prev?.divider !== undefined;
+      const edge = i === 0 ? (curDiv ? box.lTee : box.v)
+        : curDiv && prevDiv ? cross : curDiv ? box.lTee : prevDiv ? box.rTee : box.v;
+      line += b(edge);
+      line += curDiv ? titleRule(cur.divider!, built[i]!.width) : padRight(truncText(cur.text ?? '', built[i]!.width), built[i]!.width);
     }
+    const last = built[built.length - 1]!.rows[r]!;
+    line += b(last.divider !== undefined ? box.rTee : box.v);
+    out.push(line);
   }
-  switch (type) {
-    case 'chat_start': case 'user_action': return '\u25B6';
-    case 'chat_end': return '\u25A0';
-    case 'chat_response': return '\u25A1';
-    case 'tool_request': case 'tool_exec': return '\u25C6';
-    case 'tool_resolved': return '\u2713';
-    case 'error': return '\u2717';
-    case 'model_call': case 'model_response': return '\u25C8';
-    case 'memory_recall': return '\u25CC';
-    case 'scheduled': return '\u25D1';
-    // Task hierarchy -- mirrors timelineIconKey() (shared/src/timeline-icons.ts).
-    case 'task_start': case 'task_end': return '\u25A3';  // white square w/ centre
-    case 'task_milestone': return '\u2713';               // check mark
-    case 'eval_result': return '\u2605';  // ★
-    default: return '\u25C6';
-  }
+
+  let bottom = b(box.bl);
+  built.forEach((c, i) => {
+    bottom += `${ink.rule}${hLine(c.width)}${RESET}` + b(i === built.length - 1 ? box.br : box.bTee);
+  });
+  out.push(bottom);
+  return out;
 }
 
-function typeColor(type: TimelineEntryType): string {
-  switch (type) {
-    case 'chat_start': case 'user_action': return colors.chat;
-    case 'chat_end': case 'chat_response': return colors.end;
-    case 'tool_request': case 'tool_exec': case 'tool_resolved': return colors.tool;
-    case 'error': return colors.errorTl;
-    case 'model_call': case 'model_response': return sgr(35);
-    case 'memory_recall': return sgr(33);
-    case 'eval_result': return sgr(33);  // yellow/amber
-    default: return colors.dim;
-  }
+// ===== Small text helpers =====
+
+/** Left text and right text on one line of exactly `width` cells. */
+function spread(left: string, right: string, width: number): string {
+  const rw = visLen(right);
+  if (!right) return truncText(left, width);
+  const lw = Math.max(0, width - rw - 1);
+  return padRight(truncText(left, lw), lw) + ' ' + right;
 }
 
-const SPINNER_FRAMES = ['\u280B', '\u2819', '\u2839', '\u2838', '\u283C', '\u2834', '\u2826', '\u2827', '\u2807', '\u280F'];
+function title(label: string, extra = ''): string {
+  return `${ink.accent}${BOLD}${label}${RESET}${extra ? `${ink.faint} ${extra}${RESET}` : ''}`;
+}
 
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 export function spinner(frame: number): string {
-  return SPINNER_FRAMES[Math.floor(frame / 2) % SPINNER_FRAMES.length];
+  return terminalCaps.unicode ? SPINNER_FRAMES[Math.floor(frame / 2) % SPINNER_FRAMES.length]! : '|/-\\'[frame % 4]!;
 }
 
-// ===== Creature Icon Helper =====
+function clock(now = new Date()): string {
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
 
-function creatureEmoji(agentType?: string): string {
-  if (!terminalCaps.emoji) {
-    if ((agentType as string) === 'daemon') return 'D';
-    if ((agentType as string) === 'openclaw') return 'C';
-    if ((agentType as string) === 'codex-cli' || (agentType as string) === 'codex-app') return 'X';
-    if ((agentType as string) === 'opencode') return 'O';
-    if ((agentType as string) === 'antigravity') return 'A';
-    if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return 'K';
-    if ((agentType as string) === 'hermes') return 'H';
-    return '*';
+// ===== Header & footer =====
+
+function linkLabel(state: DashboardState): { dot: string; text: string } {
+  if (state.connectionStatus === 'connected') {
+    return { dot: `${ink.ok}●${RESET}`, text: `${DAEMON_LINK_LABELS.connected} :${state.currentPort ?? ''}` };
   }
-  if ((agentType as string) === 'daemon') return '\u2699\uFE0F';      // ⚙️
-  if ((agentType as string) === 'openclaw') return '\uD83E\uDD9E';    // 🦞
-  if ((agentType as string) === 'codex-cli' || (agentType as string) === 'codex-app') return '\u2601';          // ☁ (cloud — matches creature)
-  if ((agentType as string) === 'opencode') return '\u25A3';           // ▣ (nested square — matches creature)
-  if ((agentType as string) === 'antigravity') return '\u25B2';        // ▲ (Antigravity peak)
-  if ((agentType as string) === 'kiro-cli' || (agentType as string) === 'kiro-ide') return '\uD83D\uDC7B'; // 👻 (official Kiro ghost motif)
-  if ((agentType as string) === 'hermes') return '\u2624';         // ☤ (Hermes CLI's own caduceus)
-  if ((agentType as string) === 'claude-code') return '\u273B';  // ✻ (teardrop-spoked asterisk — Claude sparkle)
-  // An agent this build predates gets a NEUTRAL mark, never Claude's. The
-  // daemon ships on its own schedule and will name agents that were not in
-  // this list when it was written; dressing one as Claude is a wrong view, not
-  // a degraded one — which is exactly how Kiro sessions first read as Claude.
-  return '\u25CB';  // ○
+  const phase = state.hasConnected ? 'reconnecting' : state.connectionStatus === 'reconnecting' ? 'connecting' : 'searching';
+  return { dot: `${ink.attn}◔${RESET}`, text: DAEMON_LINK_LABELS[phase] };
 }
 
-function creatureBrandColor(agentType?: string): string {
-  if (!terminalCaps.trueColor) return '';
-  switch (agentType as string) {
-    case 'claude-code': return fg(192, 112, 88);    // terracotta
-    case 'openclaw': return fg(255, 77, 77);         // red
-    case 'codex-cli':
-    case 'codex-app': return fg(177, 167, 255);      // indigo
-    case 'opencode': return fg(241, 236, 236);       // warm gray (#F1ECEC)
-    case 'antigravity': return fg(210, 214, 220);    // Google gray
-    case 'kiro-cli':
-    case 'kiro-ide': return fg(124, 58, 237);        // Kiro purple
-    case 'hermes': return fg(255, 255, 255);         // white Nous girl (Brand.hermesOnDark)
-    default: return '';
-  }
-}
-
-function compactStateLabel(state: string): string {
-  return sessionStateWords(state).tiny;
-}
-
-function currentSessionSummary(state: DashboardState, width: number): string {
+function renderHeader(state: DashboardState, cards: RosterCard[], cols: number, frame: number): string {
+  const mark = `${ink.accent}${BOLD}${terminalCaps.unicode ? '◈' : '#'} AgentDeck${RESET}`;
+  const link = linkLabel(state);
+  const stale = state.isStale ? ` ${ink.attn}stale${RESET}` : '';
+  const c = rosterCounts(cards);
   const parts: string[] = [];
-  if (state.projectName) parts.push(state.projectName);
-  if (state.modelName) parts.push(state.modelName);
-  if (state.state) parts.push(compactStateLabel(state.state));
-  if (parts.length === 0) return 'No session';
-  return truncText(parts.join(' · '), width);
+  if (c.awaiting) parts.push(`${toneColor('awaiting_permission', frame)}${stateGlyph('awaiting_permission')} ${c.awaiting} need${c.awaiting === 1 ? 's' : ''} you${RESET}`);
+  if (c.working) parts.push(`${ink.accent}${stateGlyph('processing')} ${c.working} working${RESET}`);
+  if (c.ci) parts.push(`${ink.accent}CI ${c.ci} waiting${RESET}`);
+  if (c.idle) parts.push(`${ink.idle}${stateGlyph('idle')} ${c.idle} idle${RESET}`);
+  if (c.offline) parts.push(`${ink.offline}${stateGlyph('disconnected')} ${c.offline} offline${RESET}`);
+  if (state.gatewayHasError) parts.push(`${ink.error}${terminalCaps.unicode ? '⚠' : '!'} Gateway error${RESET}`);
+  const voice = voiceLabel(state);
+  if (voice) parts.push(voice);
+  const left = ` ${mark}  ${link.dot} ${ink.sub}${link.text}${RESET}${stale}`;
+  const mid = parts.length ? `   ${parts.join('  ')}` : (state.connectionStatus === 'connected' ? `   ${ink.faint}No sessions${RESET}` : '');
+  return spread(left + mid, `${ink.faint}${clock()}${RESET} `, cols);
 }
 
-// stateRank, sortSessions imported from @agentdeck/shared
-
-function sessionHotkeyLabel(index: number | null): string {
-  if (index === null || index > 8) return '·';
-  return String(index + 1);
+function voiceLabel(state: DashboardState): string {
+  const v = state.voiceAssistantState;
+  if (!v || v === 'disabled' || v === 'idle') return '';
+  if (v === 'listening') return `${ink.ok}Listening...${RESET}`;
+  if (v === 'processing') return `${ink.accent}${state.voiceAssistantText ? truncText(state.voiceAssistantText, 24) : 'Thinking...'}${RESET}`;
+  if (v === 'speaking') return `${ink.ok}Speaking...${RESET}`;
+  return '';
 }
 
-type SessionRenderInfo = {
-  port?: number;
-  controlMode?: 'managed' | 'observed';
-  currentTask?: string;
-  contextPercent?: number;
-  totalTokens?: number;
-};
-
-// ===== HUD Entry Builder (shared with macOS / iOS / Android) =====
-
-export interface HudEntry {
-  id: string;
-  /** projectName + optional " #N" suffix from assignDisplayNames */
-  displayName: string;
-  projectName: string;
-  agentType: string | undefined;
-  state: string;
-  modelName: string | undefined;
-  startedAt: string | undefined;
-  port: number | undefined;
-  controlMode: 'managed' | 'observed' | undefined;
-  currentTask: string | undefined;
-  contextPercent: number | undefined;
-  totalTokens: number | undefined;
-  /** Self entry promoted from a sibling, or appended synthetic primary. */
-  isPrimary: boolean;
-  /** Gateway placeholder when sessions list lacks an OpenClaw entry. */
-  isVirtualOpenClaw: boolean;
-}
-
-/**
- * Build the unified left-HUD entry list shared with macOS / iOS / Android.
- *
- * Collapses primary + siblings + virtual OpenClaw into one array, sorts via
- * the shared sortSessions (agentType → projectName → startedAt → id), and
- * applies #N suffix via assignDisplayNames so the display order and #N
- * numbering match every other surface.
- *
- * Primary handling mirrors apple/AgentDeck/UI/Monitor/SessionListPanel.swift:
- *   - if a sibling matches our connected port, that sibling becomes the
- *     primary anchor (its startedAt anchors the sort position)
- *   - otherwise primary is appended only when no sibling shares its
- *     agentType (duplicatePrimaryWithoutId guard)
- *   - daemon / openclaw primaries are never appended (they're virtual)
- */
-export function buildHudEntries(state: DashboardState): HudEntry[] {
-  type Item = {
-    id: string;
-    projectName: string;
-    agentType: string | undefined;
-    state: string;
-    modelName: string | undefined;
-    startedAt: string | undefined;
-    port: number | undefined;
-    controlMode: 'managed' | 'observed' | undefined;
-    currentTask: string | undefined;
-    contextPercent: number | undefined;
-    totalTokens: number | undefined;
-    isPrimary: boolean;
-    isVirtualOpenClaw: boolean;
-  };
-
-  const items: Item[] = [];
-  const portToItem = new Map<number, Item>();
-
-  for (const s of state.sessions) {
-    const ri = s as SessionInfo & SessionRenderInfo;
-    const item: Item = {
-      id: s.id,
-      projectName: s.projectName ?? 'unknown',
-      agentType: s.agentType ?? undefined,
-      state: s.state ?? 'idle',
-      modelName: s.modelName ?? undefined,
-      startedAt: s.startedAt ?? undefined,
-      port: s.port ?? undefined,
-      controlMode: ri.controlMode,
-      currentTask: ri.currentTask,
-      contextPercent: ri.contextPercent,
-      totalTokens: ri.totalTokens,
-      isPrimary: false,
-      isVirtualOpenClaw: false,
-    };
-    items.push(item);
-    if (item.port !== undefined) portToItem.set(item.port, item);
+function renderFooter(state: DashboardState, view: ViewState, layout: LayoutMode, cols: number): string {
+  const hints: string[] = [];
+  if (layout === 'narrow') {
+    return ` ${ink.faint}${truncText('tab panel  \u2191\u2193  \u23CE detail  f follow  ? help  q quit', cols - 2)}${RESET}`;
   }
+  hints.push(`tab ${view.focus === 'roster' ? 'activity' : 'sessions'}`);
+  hints.push(view.focus === 'roster' ? '↑↓ select' : '↑↓ scroll');
+  hints.push(`⏎ ${view.detail ? 'close' : 'detail'}`);
+  hints.push(`f ${view.follow ? 'all activity' : 'follow'}`);
+  if (state.sessions.length > 0) hints.push('1-9 switch');
+  hints.push('? help', 'q quit');
+  return ` ${ink.faint}${truncText(hints.join('   '), cols - 2)}${RESET}`;
+}
 
-  if (state.agentType && state.agentType !== 'daemon' && state.agentType !== 'openclaw' && state.state) {
-    const anchor = state.currentPort != null ? portToItem.get(state.currentPort) : undefined;
-    if (anchor) {
-      // Patch anchor with primary's live fields. macOS / Android compose
-      // SessionEntry from primary state and only borrow the anchor sibling's
-      // startedAt; if we left the sibling's snapshot in place the row would
-      // render stale modelName / state / currentTask whenever the sibling
-      // payload lagged the primary state_update. startedAt, port, id, and
-      // controlMode stay with the anchor so sort position and hotkey
-      // identity match every other surface.
-      anchor.isPrimary = true;
-      anchor.projectName = state.projectName ?? anchor.projectName;
-      anchor.agentType = state.agentType;
-      anchor.state = state.state;
-      anchor.modelName = state.modelName ?? undefined;
-      anchor.currentTask = state.currentTool ?? undefined;
-    } else {
-      const duplicateAgentType = state.sessions.some(s => s.agentType === state.agentType);
-      if (!duplicateAgentType) {
-        items.push({
-          id: '__self__',
-          projectName: state.projectName ?? 'unknown',
-          agentType: state.agentType,
-          state: state.state,
-          modelName: state.modelName ?? undefined,
-          startedAt: undefined,
-          port: state.currentPort ?? undefined,
-          controlMode: undefined,
-          currentTask: state.currentTool ?? undefined,
-          contextPercent: undefined,
-          totalTokens: undefined,
-          isPrimary: true,
-          isVirtualOpenClaw: false,
-        });
+// ===== Sessions =====
+
+function cardHead(card: RosterCard, selected: boolean, width: number, frame: number): string {
+  const bar = selected ? `${ink.accent}${terminalCaps.unicode ? '▌' : '>'}${RESET}` : ' ';
+  const key = card.hotkey ? `${ink.faint}${card.hotkey}${RESET}` : ' ';
+  const mark = `${brandColor(card.agentType)}${agentMark(card.agentType)}${RESET}`;
+  const name = `${selected ? BOLD : ''}${ink.text}${card.displayName}${RESET}`;
+  return spread(`${bar}${key} ${mark} ${name}`, stateChip(card.state, frame), width);
+}
+
+function focusLine(card: RosterCard): string {
+  if (!card.focus) return '';
+  switch (card.focus.kind) {
+    case 'question': return `${ink.attn}${card.focus.text}${RESET}`;
+    case 'ci': return ciColor(card) + card.focus.text + RESET;
+    case 'activity': return `${ink.sub}${card.focus.text}${RESET}`;
+    default: return `${ink.faint}${card.focus.text}${RESET}`;
+  }
+}
+
+function ciColor(card: RosterCard): string {
+  const phase = card.ci?.phase;
+  return phase === 'passed' ? ink.ok : phase === 'failed' ? ink.error : phase === 'unknown' ? ink.idle : ink.accent;
+}
+
+function cardBadges(card: RosterCard): string {
+  const parts: string[] = [];
+  if (card.subagents > 0) parts.push(`${ink.accent}+${card.subagents} sub${RESET}`);
+  if (card.ci && card.focus?.kind !== 'ci') parts.push(`${ciColor(card)}${card.ci.label}${RESET}`);
+  if (card.review) parts.push(`${ink.sub}${card.review}${RESET}`);
+  if (card.context !== undefined) parts.push(`${card.context >= 90 ? ink.attn : ink.faint}ctx ${card.context}%${RESET}`);
+  return parts.join(`${ink.faint} · ${RESET}`);
+}
+
+function renderRoster(state: DashboardState, cards: RosterCard[], view: ViewState, width: number, height: number, frame: number): string[] {
+  if (cards.length === 0) {
+    const msg = state.connectionStatus === 'connected' ? 'No sessions yet' : linkLabel(state).text;
+    return ['', `  ${ink.faint}${msg}${RESET}`];
+  }
+  const selected = view.selectedId;
+  const density = rosterDensity(cards.length);
+  const indent = '    ';
+  const blocks: Array<{ id: string; lines: string[] }> = [];
+  const detailed = density === 'detailed' && cards.length * 4 <= height + 1;
+  let list = cards;
+  let hiddenNote = '';
+  if (density === 'summarized') {
+    const sum = summarizeRoster(cards, selected);
+    list = sum.shown;
+    const notes: string[] = [];
+    if (sum.hiddenIdle) notes.push(`${sum.hiddenIdle} idle session${sum.hiddenIdle === 1 ? '' : 's'} hidden`);
+    if (sum.hiddenOffline) notes.push(`${sum.hiddenOffline} offline hidden`);
+    hiddenNote = notes.join(' · ');
+  }
+  for (const card of list) {
+    const isSel = card.id === selected;
+    if (detailed) {
+      const meta = card.meta.join(' · ');
+      const badges = cardBadges(card);
+      const lines = [cardHead(card, isSel, width, frame)];
+      lines.push(spread(`${indent}${ink.faint}${meta}${RESET}`, '', width));
+      const fl = focusLine(card);
+      if (fl || badges) {
+        lines.push(fl ? `${indent}${fl}` : `${indent}${badges}`);
+        if (fl && badges) lines.push(`${indent}${badges}`);
       }
+      lines.push('');
+      blocks.push({ id: card.id, lines });
+    } else {
+      const fl = focusLine(card) || `${ink.faint}${card.meta[0] ?? ''}${RESET}`;
+      const bar = isSel ? `${ink.accent}${terminalCaps.unicode ? '▌' : '>'}${RESET}` : ' ';
+      const key = card.hotkey ? `${ink.faint}${card.hotkey}${RESET}` : ' ';
+      const head = `${bar}${key} ${brandColor(card.agentType)}${agentMark(card.agentType)}${RESET} ${ink.text}${card.displayName}${RESET}`;
+      const chip = stateChip(card.state, frame, 'tiny');
+      const nameW = Math.min(visLen(head), Math.max(14, Math.floor(width * 0.45)));
+      const left = padRight(truncText(head, nameW), nameW);
+      blocks.push({ id: card.id, lines: [spread(`${left} ${fl}`, chip, width)] });
     }
   }
+  // Scroll window keeps the selected block visible.
+  const flat: string[] = [];
+  let selStart = 0;
+  let selEnd = 0;
+  for (const blk of blocks) {
+    if (blk.id === selected) { selStart = flat.length; selEnd = flat.length + blk.lines.length; }
+    flat.push(...blk.lines);
+  }
+  const room = height - (hiddenNote ? 1 : 0);
+  let offset = 0;
+  if (selEnd > room) offset = Math.min(selStart, selEnd - room);
+  const shown = flat.slice(offset, offset + room);
+  const above = offset;
+  const below = Math.max(0, flat.length - offset - room);
+  if (above > 0 && shown.length) shown[0] = `  ${ink.faint}↑ ${above} more line${above === 1 ? '' : 's'}${RESET}`;
+  if (below > 0 && shown.length) shown[shown.length - 1] = `  ${ink.faint}↓ ${below} more line${below === 1 ? '' : 's'}${RESET}`;
+  if (hiddenNote) shown.push(`  ${ink.faint}${hiddenNote}${RESET}`);
+  return shown;
+}
 
-  const hasOpenClaw = items.some(it => it.agentType === 'openclaw' || it.agentType === 'gateway');
-  if (state.gatewayAvailable && !hasOpenClaw) {
-    items.push({
-      id: '__virtual_openclaw__',
-      projectName: 'OpenClaw',
-      agentType: 'openclaw',
-      state: state.crayfishRouting ? 'processing' : 'idle',
-      modelName: undefined,
-      startedAt: undefined,
-      port: undefined,
-      controlMode: undefined,
-      currentTask: undefined,
-      contextPercent: undefined,
-      totalTokens: undefined,
-      isPrimary: false,
-      isVirtualOpenClaw: true,
+function selectedCard(cards: RosterCard[], view: ViewState): RosterCard | undefined {
+  return cards.find(c => c.id === view.selectedId) ?? cards[0];
+}
+
+function renderDetail(card: RosterCard | undefined, width: number, frame: number): string[] {
+  if (!card) return [`  ${ink.faint}Select a session${RESET}`];
+  const s = card.session;
+  const lines: string[] = [];
+  const kind = agentName(card.agentType);
+  const kindLabel = card.displayName.startsWith(kind) ? '' : ` ${ink.faint}${kind}${RESET}`;
+  lines.push(spread(` ${brandColor(card.agentType)}${agentMark(card.agentType)}${RESET} ${BOLD}${ink.text}${card.displayName}${RESET}${kindLabel}`, stateChip(card.state, frame), width));
+  const meta: string[] = [];
+  if (card.modelName) meta.push(`model ${card.modelName}`);
+  if (s?.effortLevel) meta.push(`effort ${s.effortLevel}`);
+  if (s?.permissionMode) meta.push(`mode ${s.permissionMode}`);
+  meta.push(card.controlMode === 'observed' ? 'observed' : card.port ? `managed :${card.port}` : 'managed');
+  lines.push(` ${ink.faint}${meta.join(' · ')}${RESET}`);
+  if (card.tone === 'awaiting') {
+    lines.push(` ${ink.attn}${BOLD}${stateGlyph(card.state)} ${card.focus?.text ?? ''}${RESET}`);
+    if (s?.questionDetail) lines.push(`   ${ink.sub}${s.questionDetail}${RESET}`);
+    (s?.options ?? []).slice(0, 5).forEach((o, i) => {
+      lines.push(`   ${ink.attn}${i + 1}${RESET} ${ink.text}${o.label}${RESET}`);
     });
   }
-
-  const sorted = sortSessions(items);
-  const named = assignDisplayNames(sorted.map(it => ({
-    id: it.id,
-    projectName: it.projectName,
-    agentType: it.agentType,
-    state: it.state,
-  })));
-
-  return sorted.map((it, i) => ({
-    id: it.id,
-    displayName: named[i]!.displayName,
-    projectName: it.projectName,
-    agentType: it.agentType,
-    state: it.state,
-    modelName: it.modelName,
-    startedAt: it.startedAt,
-    port: it.port,
-    controlMode: it.controlMode,
-    currentTask: it.currentTask,
-    contextPercent: it.contextPercent,
-    totalTokens: it.totalTokens,
-    isPrimary: it.isPrimary,
-    isVirtualOpenClaw: it.isVirtualOpenClaw,
-  }));
+  const label = card.subagents > 0 ? `${card.subagents} SUBAGENT${card.subagents === 1 ? '' : 'S'}` : 'NOW';
+  const what = s?.activity ?? s?.currentTask ?? s?.goal;
+  if (what) lines.push(` ${ink.accent}${label}${RESET} ${ink.sub}${what}${RESET}`);
+  if (s?.goal && s.goal !== what) lines.push(` ${ink.faint}GOAL${RESET} ${ink.faint}${s.goal}${RESET}`);
+  if (card.ci) lines.push(` ${ciColor(card)}${card.ci.label}${RESET}${s?.waitingOn?.runUrl ? ` ${ink.faint}${s.waitingOn.runUrl}${RESET}` : ''}`);
+  const stats: string[] = [];
+  if (card.context !== undefined) stats.push(`context ${card.context}%`);
+  if (typeof card.totalTokens === 'number') stats.push(`${formatCount(card.totalTokens)} tokens`);
+  if (typeof s?.elapsedSec === 'number') stats.push(`up ${formatDuration(s.elapsedSec)}`);
+  if (s?.coordination?.backgroundJobs) stats.push(`${s.coordination.backgroundJobs} background`);
+  if (stats.length) lines.push(` ${ink.faint}${stats.join(' · ')}${RESET}`);
+  if (card.review) lines.push(` ${ink.sub}${card.review}${RESET}`);
+  return lines;
 }
 
-function hudHotkeyIndex(entry: HudEntry, nextIndex: number): number | null {
-  if (entry.isPrimary || entry.isVirtualOpenClaw) return null;
-  if (!entry.port || entry.controlMode === 'observed') return null;
-  return nextIndex;
+function formatCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
 }
 
-function observedDetailParts(session?: SessionRenderInfo): string[] {
-  if (!session) return [];
-  const parts: string[] = [];
-  if (session.controlMode === 'observed') parts.push('observed');
-  if (typeof session.contextPercent === 'number') parts.push(`${Math.round(session.contextPercent)}% ctx`);
-  if (session.currentTask) parts.push(session.currentTask);
-  return parts;
+function formatDuration(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const h = Math.floor(m / 60);
+  if (h >= 24) return `${Math.floor(h / 24)}d${h % 24}h`;
+  if (h > 0) return `${h}h${m % 60}m`;
+  return `${Math.max(1, m)}m`;
 }
+
+// ===== Usage =====
+
+function gauge(used: number | undefined, width: number, muted: boolean, inactive?: boolean): string {
+  const pct = typeof used === 'number' && Number.isFinite(used) ? clamp(used, 0, 100) : 0;
+  const filled = Math.round((pct / 100) * width);
+  const color = quotaColor(used, { muted, inactive });
+  const full = terminalCaps.unicode ? '█' : '#';
+  const empty = terminalCaps.unicode ? '░' : '.';
+  return `${color}${full.repeat(filled)}${ink.rule}${empty.repeat(width - filled)}${RESET}`;
+}
+
+const NOTE_W = 8; // '↻23h59m', '42m ago', 'stale'
+
+function usageRow(row: UsageRowVM, width: number): string {
+  const label = padRight(truncText(row.label, 7), 7);
+  if (row.value !== undefined) {
+    return spread(`  ${ink.sub}${label}${RESET} ${ink.text}${row.value}${RESET}`, row.note ? `${ink.faint}${row.note}${RESET}` : '', width);
+  }
+  const pct = typeof row.used === 'number' ? Math.round(row.used) : undefined;
+  const pctText = pct === undefined ? '  ?' : `${String(pct).padStart(3)}%`;
+  // Fixed note column so every gauge in the panel lines up.
+  const gw = clamp(width - 2 - 7 - 1 - 5 - NOTE_W - 1, 4, 18);
+  const pctColored = `${quotaColor(row.used, { muted: row.muted, inactive: row.inactive })}${pctText}${RESET}`;
+  const left = `  ${ink.sub}${label}${RESET} ${gauge(row.used, gw, row.muted, row.inactive)} ${pctColored}`;
+  return spread(left, row.note ? `${ink.faint}${row.note}${RESET}` : '', width);
+}
+
+function providerMark(g: UsageGroupVM): string {
+  if (g.id === 'zai') return `${hex(Brand.zai, 34)}${terminalCaps.unicode ? 'Z' : 'Z'}${RESET}`;
+  return `${brandColor(g.brand)}${agentMark(g.brand)}${RESET}`;
+}
+
+function renderUsage(state: DashboardState, width: number, compact = false): string[] {
+  const groups = buildUsageGroups(state.usage);
+  const lines: string[] = [];
+  if (groups.length === 0) return [`  ${ink.faint}${state.usage ? 'No provider data' : 'Waiting for usage data...'}${RESET}`];
+  groups.forEach((g, i) => {
+    if (i > 0 && !compact) lines.push('');
+    const plan = [g.tier, g.until].filter(Boolean).join(' · ');
+    lines.push(spread(` ${providerMark(g)} ${BOLD}${ink.text}${g.title}${RESET}`, plan ? `${ink.sub}${plan}${RESET}` : '', width));
+    if (g.alert) {
+      const c = g.alert.level === 'error' ? ink.error : g.alert.level === 'warn' ? ink.attn : ink.faint;
+      lines.push(`   ${c}${g.alert.text}${RESET}`);
+    }
+    for (const row of g.rows) lines.push(usageRow(row, width));
+  });
+  const u = state.usage;
+  if (u && (u.inputTokens || u.outputTokens || u.estimatedCostUsd)) {
+    const parts: string[] = [];
+    if (u.inputTokens || u.outputTokens) parts.push(`${formatCount(u.inputTokens)} in / ${formatCount(u.outputTokens)} out`);
+    if (u.estimatedCostUsd) parts.push(`$${u.estimatedCostUsd.toFixed(2)}`);
+    lines.push('', ` ${ink.faint}${parts.join(' · ')}${RESET}`);
+  }
+  return lines;
+}
+
+// ===== Models =====
+
+function renderModels(state: DashboardState, width: number): string[] {
+  const lines: string[] = [];
+  const u = state.usage;
+  if (state.modelName && state.agentType !== 'daemon') {
+    const dot = u?.oauthConnected ? `${ink.ok}●${RESET}` : `${ink.faint}○${RESET}`;
+    lines.push(` ${dot} ${truncText(state.modelName, width - 4)}`);
+  }
+  lines.push(...renderOauthCatalogLines(state.modelCatalog, u?.oauthConnected, width));
+  lines.push(...renderOllamaSummaryLines(u?.ollamaStatus, width));
+  return lines;
+}
+
+function renderOauthCatalogLines(modelCatalog: ModelCatalogEntry[], oauthConnected: boolean | undefined, width: number): string[] {
+  const models = (modelCatalog ?? []).filter((m) => m.available).map((m) => m.name);
+  if (models.length > 0) return wrapCommaList(' OAuth: ', models, width, 4);
+  if (oauthConnected === true) return [`${ink.faint}${truncText(' OAuth: connected', width)}${RESET}`];
+  if (oauthConnected === false) return [`${ink.faint}${truncText(' OAuth: disconnected', width)}${RESET}`];
+  return [];
+}
+
+function wrapCommaList(prefix: string, items: string[], width: number, maxLines: number): string[] {
+  const lines: string[] = [];
+  const indent = ' '.repeat(prefix.length);
+  let current = prefix;
+  for (let i = 0; i < items.length; i++) {
+    const chunk = current === prefix || current === indent ? items[i]! : `, ${items[i]}`;
+    if (visLen(current) + visLen(chunk) <= width || current === prefix || current === indent) {
+      current += chunk;
+      continue;
+    }
+    lines.push(`${ink.faint}${current}${RESET}`);
+    if (lines.length >= maxLines) {
+      const hidden = items.length - i;
+      lines.push(`${ink.faint}${truncText(` ${hidden} more model${hidden === 1 ? '' : 's'}`, width)}${RESET}`);
+      return lines;
+    }
+    current = indent + items[i];
+  }
+  if (current.trim()) lines.push(`${ink.faint}${truncText(current, width)}${RESET}`);
+  return lines;
+}
+
+function renderOllamaSummaryLines(ollamaStatus: OllamaStatus | undefined, width: number): string[] {
+  if (!ollamaStatus) return [];
+  if (!ollamaStatus.available || ollamaStatus.models.length === 0) {
+    return [`${ink.faint}${truncText(' Ollama: stopped', width)}${RESET}`];
+  }
+  return ollamaStatus.models.map((m) => {
+    const size = m.sizeVram > 0 ? m.sizeVram : m.size;
+    const sizeText = size > 0 ? ` ${(size / 1e9).toFixed(1)}G` : '';
+    return `${ink.faint}${truncText(` Ollama: ${m.name}${sizeText}`, width)}${RESET}`;
+  });
+}
+
+// ===== Devices (downstream module health) =====
 
 type ModuleMap = Record<string, unknown>;
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
-}
-
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function moduleStatusIcon(ok: boolean, warning = false): string {
-  if (!terminalCaps.unicode) return ok ? 'o' : warning ? '!' : 'x';
-  return ok ? '\u25CF' : warning ? '\u25C6' : '\u25CB';
-}
+const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : undefined;
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+const asNumber = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 
 function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: number): string[] {
   const lines: string[] = [];
   if (!moduleHealth) return lines;
   const push = (label: string, detail: string, ok: boolean, warning = false) => {
-    const color = ok ? colors.idle : warning ? colors.awaiting : colors.dim;
-    lines.push(` ${color}${moduleStatusIcon(ok, warning)}${RESET} ${truncText(`${label} ${detail}`.trim(), width - 4)}`);
+    const icon = terminalCaps.unicode ? (ok ? '●' : warning ? '◆' : '○') : (ok ? 'o' : warning ? '!' : 'x');
+    const color = ok ? ink.ok : warning ? ink.attn : ink.faint;
+    lines.push(` ${color}${icon}${RESET} ${truncText(`${label} ${detail}`.trim(), width - 4)}`);
   };
 
   const serial = asRecord(moduleHealth.serial);
@@ -429,9 +571,8 @@ function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: num
       .filter((b): b is string => typeof b === 'string' && b.length > 0);
     const count = asNumber(serial.connectionCount) ?? connected.length;
     const shown = boards.slice(0, 3).join(', ');
-    const more = boards.length > 3 ? ` +${boards.length - 3}` : '';
-    const detail = count > 0 ? `${count}${shown ? `: ${shown}${more}` : ''}` : 'none';
-    push('Serial', detail, count > 0, Boolean(serial.lastError));
+    const more = boards.length > 3 ? ` and ${boards.length - 3} more` : '';
+    push('Serial', count > 0 ? `${count}${shown ? `: ${shown}${more}` : ''}` : 'none', count > 0, Boolean(serial.lastError));
   }
 
   const pixoo = asRecord(moduleHealth.pixoo);
@@ -443,11 +584,9 @@ function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: num
     push('Pixoo', `${online}/${configured}${dimmed}`, configured > 0 && online > 0, configured > 0);
   }
 
-  // BLE matrix panels — Divoom Timebox Mini + iDotMatrix. The Swift daemon
-  // reports a live `connected`/`statusReason`; the Node daemon only knows a
-  // panel is configured (the Python BLE sync subprocess owns the link), so a
-  // configured-but-state-unknown panel reads as amber "cfg" rather than a red
-  // offline, which would be a false negative for a working Node-driven panel.
+  // BLE matrix panels. The Node daemon only knows a panel is configured (the
+  // Python BLE worker owns the link), so configured-but-unknown reads amber
+  // "cfg" rather than a false-negative red offline.
   for (const [key, label] of [['timebox', 'Timebox'], ['idotmatrix', 'iDotMatrix']] as const) {
     const m = asRecord(moduleHealth[key]);
     if (!m) continue;
@@ -456,12 +595,10 @@ function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: num
     const connected = m.connected === true;
     const dimmed = m.displayDimmed === true ? ' dim' : '';
     const reason = typeof m.statusReason === 'string' ? m.statusReason : '';
-    const detail = connected ? `ready${dimmed}` : (reason || `${configured} cfg`);
-    push(label, detail, connected, !connected);
+    push(label, connected ? `ready${dimmed}` : (reason || `${configured} cfg`), connected, !connected);
   }
 
-  // The daemon only emits d200h while the Ulanzi Studio plugin is connected —
-  // an absent key means no D200H row at all, not an offline one.
+  // The daemon only emits d200h while the Ulanzi Studio plugin is connected.
   const d200h = asRecord(moduleHealth.d200h);
   if (d200h) {
     const connected = d200h.connected === true;
@@ -476,729 +613,274 @@ function renderModuleHealthLines(moduleHealth: ModuleMap | undefined, width: num
     push('ADB', available ? `${reverse} reverse` : 'missing', available && reverse > 0, available);
   }
 
-  // Stream Deck plugin roster — the plugin registers over WS; the daemon
-  // reports one row per attached deck. Mirrors the macOS TopologyRail /
-  // menubar Stream Deck section (Node-tier row added in bf23fb8e).
   const streamDeck = asRecord(moduleHealth.streamDeck);
   if (streamDeck) {
-    const devices = asArray(streamDeck.devices).map(asRecord).filter(Boolean) as Record<string, unknown>[];
-    for (const dev of devices) {
+    for (const dev of asArray(streamDeck.devices).map(asRecord).filter(Boolean) as Record<string, unknown>[]) {
       const name = typeof dev.name === 'string' && dev.name.length > 0 ? dev.name : 'Stream Deck';
-      const cols = asNumber(dev.columns);
-      const rows = asNumber(dev.rows);
-      const detail = cols && rows ? `${cols}×${rows}` : '';
-      push(name, detail, true);
+      const c = asNumber(dev.columns);
+      const r = asNumber(dev.rows);
+      push(name, c && r ? `${c}×${r}` : '', true);
     }
   }
 
-  // WiFi-only ESP32 boards. Dual-homed boards (also live on USB serial) are
-  // already shown in the Serial row, so filter them out here via the
-  // per-board `serialActive` flag — mirrors TopologyRail.wifiOnlyEsp32Boards.
+  // WiFi-only ESP32 boards; dual-homed boards already appear under Serial.
   const esp32Wifi = asRecord(moduleHealth.esp32Wifi);
   if (esp32Wifi) {
     const devices = asArray(esp32Wifi.devices).map(asRecord).filter(Boolean) as Record<string, unknown>[];
-    const wifiOnly = devices.filter((d) => d.serialActive !== true);
-    for (const dev of wifiOnly) {
+    for (const dev of devices.filter((d) => d.serialActive !== true)) {
       const board = typeof dev.board === 'string' && dev.board.length > 0 ? dev.board : 'esp32';
       const ip = typeof dev.ip === 'string' ? dev.ip : '';
       const stale = dev.stale === true;
-      const detail = [ip, 'WiFi', stale ? 'stale' : ''].filter(Boolean).join(' · ');
-      push(`Wi-Fi ESP32 ${board}`, detail, !stale, stale);
+      push(`Wi-Fi ESP32 ${board}`, [ip, 'WiFi', stale ? 'stale' : ''].filter(Boolean).join(' · '), !stale, stale);
     }
   }
 
-  // Terminal dashboards (`agentdeck dashboard`) attached to the daemon —
-  // presence-only roster, one row per open TUI WS. Mirrors the macOS
-  // TopologyRail "Terminal · TUI Dashboard" section.
   const tuiDashboards = asRecord(moduleHealth.tuiDashboards);
   if (tuiDashboards) {
-    const devices = asArray(tuiDashboards.devices).map(asRecord).filter(Boolean) as Record<string, unknown>[];
-    for (const dev of devices) {
-      const host = typeof dev.name === 'string' ? dev.name : '';
-      push('TUI Dashboard', host, true);
-    }
-  }
-
-  return lines;
-}
-
-// ===== Panel Renderers =====
-
-function renderAgentLines(state: DashboardState, maxWidth: number, useLogo: boolean): string[] {
-  const lines: string[] = [];
-
-  // Big pixel-font logo (AGENT + DECK stacked, sky blue)
-  const logoColor = terminalCaps.trueColor ? fg(100, 180, 255) : colors.header; // sky blue
-  if (useLogo && maxWidth >= 24) {
-    for (const l of LOGO_AGENT) lines.push(`${logoColor}${l}${RESET}`);
-    for (const l of LOGO_DECK) lines.push(`${logoColor} ${l}${RESET}`);
-  } else if (useLogo && maxWidth >= 10) {
-    lines.push(`${logoColor} AgentDeck${RESET}`);
-  }
-  lines.push('');
-
-  // Session list
-  const renderSession = (
-    proj: string, model: string | undefined, sessState: string, agentType: string | undefined,
-    hotkeyIndex: number | null, session?: SessionRenderInfo,
-  ) => {
-    const col = stateColor(sessState);
-    const hotkey = `${colors.dim}[${sessionHotkeyLabel(hotkeyIndex)}]${RESET}`;
-    const name = truncText(proj, maxWidth - 16);
-    const emoji = `${creatureBrandColor(agentType)}${creatureEmoji(agentType)}${RESET}`;
-    const secondary = [model, ...observedDetailParts(session), compactStateLabel(sessState)]
-      .filter(Boolean)
-      .join(' - ');
-    lines.push(` ${hotkey} ${emoji} ${col}${name}${RESET}`);
-    lines.push(`${colors.dim}    ${truncText(secondary, maxWidth - 4)}${RESET}`);
-  };
-
-  // Unified entry list (primary + siblings + virtual OpenClaw). Order and #N
-  // suffix matches macOS / iOS / Android via the shared sortSessions +
-  // assignDisplayNames pipeline inside buildHudEntries.
-  const entries = buildHudEntries(state);
-  let focusableIndex = 0;
-  for (const e of entries) {
-    const hotkeyIndex = hudHotkeyIndex(e, focusableIndex);
-    if (hotkeyIndex !== null) focusableIndex += 1;
-    renderSession(e.displayName, e.modelName, e.state, e.agentType, hotkeyIndex, {
-      port: e.port,
-      controlMode: e.controlMode,
-      currentTask: e.currentTask,
-      contextPercent: e.contextPercent,
-      totalTokens: e.totalTokens,
-    });
-  }
-
-  // Gateway error warning
-  if (state.gatewayHasError) {
-    lines.push(`${colors.error} \u26A0 Gateway Error${RESET}`);
-  }
-
-  const moduleLines = renderModuleHealthLines(state.moduleHealth, maxWidth);
-  if (moduleLines.length > 0) {
-    lines.push('');
-    lines.push(`${colors.header} DOWNSTREAM${RESET}`);
-    lines.push(...moduleLines);
-  }
-
-  // Voice assistant indicator
-  if (state.voiceAssistantState && state.voiceAssistantState !== 'disabled' && state.voiceAssistantState !== 'idle') {
-    lines.push('');
-    if (state.voiceAssistantState === 'listening') {
-      lines.push(` ${colors.idle}\uD83C\uDFA4 Listening...${RESET}`);
-    } else if (state.voiceAssistantState === 'processing') {
-      const text = state.voiceAssistantText ? truncText(state.voiceAssistantText, maxWidth - 6) : '...';
-      lines.push(` ${colors.processing}\uD83C\uDFA4 ${text}${RESET}`);
-    } else if (state.voiceAssistantState === 'speaking') {
-      lines.push(` ${sgr(32)}\uD83D\uDD0A Speaking...${RESET}`);
-    }
-  }
-
-  lines.push('');
-
-  if (state.usage) {
-    const u = state.usage;
-    if (u.inputTokens || u.outputTokens) {
-      lines.push(`${colors.dim} Tokens: ${formatTokens(u.inputTokens)}/${formatTokens(u.outputTokens)}${RESET}`);
-    }
-    if (u.estimatedCostUsd) {
-      lines.push(`${colors.dim} Cost: $${u.estimatedCostUsd.toFixed(2)}${RESET}`);
-    }
-  }
-
-  return lines;
-}
-
-// ===== Status Panel: LIMITS | MODELS =====
-
-/**
- * Per-model scoped weekly caps (e.g. the "Fable" cap) shown beneath the 5h/7d
- * gauges wherever both windows render. The account-wide 5h/7d can read low while
- * a scoped cap is the ACTIVE binding constraint — so surface each one. An inactive
- * cap stays visible in informational cyan; only an active cap gets the percent
- * ramp, mirroring the deck's treatment. `inlineReset` matches the host block's
- * layout (reset on the same line vs a dim line beneath).
- */
-function renderScopedLimitLines(u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean): string[] {
-  const lines: string[] = [];
-  for (const s of u.scopedLimits ?? []) {
-    const pct = Math.round(s.percent);
-    const label = truncText((s.label || 'model').replace(/\s+/g, ' ').trim(), 7);
-    const gauge = blockGauge(pct, gaugeW, u.usageStale === true, !s.active);
-    const reset = resetTimeStr(s.resetsAt);
-    if (inlineReset) {
-      lines.push(` ${label} [${gauge}] ${pct}% ${colors.dim}${reset}${RESET}`);
-    } else {
-      lines.push(` ${label} [${gauge}] ${pct}%`);
-      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
+    for (const dev of asArray(tuiDashboards.devices).map(asRecord).filter(Boolean) as Record<string, unknown>[]) {
+      push('TUI Dashboard', typeof dev.name === 'string' ? dev.name : '', true);
     }
   }
   return lines;
 }
 
-/**
- * Codex windows are labelled by duration, never by primary/secondary slot. A
- * Pro account can report its only weekly window in `primary`; treating that
- * slot as 5h would manufacture a limit the account does not have.
- */
-function codexWindowLabel(window: CodexRateLimitWindow): string {
-  const minutes = window.windowMinutes;
-  if (minutes >= 1440 && minutes % 1440 === 0) return `${minutes / 1440}d`;
-  if (minutes >= 60 && minutes % 60 === 0) return `${minutes / 60}h`;
-  return `${minutes}m`;
-}
+// ===== Activity (timeline) =====
 
-function renderCodexLimitLines(
-  u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean,
-): string[] {
-  const lines: string[] = [];
-  const cx = u.codexRateLimits;
-  const windows = [cx?.primary, cx?.secondary].filter((w): w is CodexRateLimitWindow => w != null);
-  for (const window of windows) {
-    const pct = Math.round(window.usedPercent);
-    const label = `Codex ${codexWindowLabel(window)}`;
-    const gauge = blockGauge(pct, gaugeW, window.stale === true);
-    const reset = window.stale === true ? 'stale' : resetTimeStr(window.resetsAt);
-    if (inlineReset) {
-      lines.push(` ${label} [${gauge}] ${pct}%${reset ? ` ${colors.dim}${reset}${RESET}` : ''}`);
-    } else {
-      lines.push(` ${label} [${gauge}] ${pct}%`);
-      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
+function typeIcon(type: TimelineEntryType): string {
+  if (!terminalCaps.unicode) {
+    switch (type) {
+      case 'chat_start': return '>';
+      case 'chat_end': case 'task_start': case 'task_end': return '=';
+      case 'chat_response': return ':';
+      case 'tool_resolved': case 'task_milestone': return '+';
+      case 'error': return 'x';
+      case 'model_call': case 'model_response': return 'm';
+      case 'memory_recall': return 'r';
+      case 'scheduled': return 's';
+      case 'user_action': return 'u';
+      case 'eval_result': return '#';
+      default: return '*';
     }
   }
-  return lines;
+  switch (type) {
+    case 'chat_start': case 'user_action': return '▶';
+    case 'chat_end': return '■';
+    case 'chat_response': return '□';
+    case 'tool_request': case 'tool_exec': return '◆';
+    case 'tool_resolved': case 'task_milestone': return '✓';
+    case 'error': return '✗';
+    case 'model_call': case 'model_response': return '◈';
+    case 'memory_recall': return '◌';
+    case 'scheduled': return '◑';
+    case 'task_start': case 'task_end': return '▣';
+    case 'eval_result': return '★';
+    default: return '◆';
+  }
 }
 
-/** z.ai GLM Coding Plan usage lines (#348) — same gauge grammar. The secondary
- *  window labels by its QUANTITY ("MCP" for tool calls), never a length. */
-function renderZaiLimitLines(
-  u: NonNullable<DashboardState['usage']>, gaugeW: number, inlineReset: boolean,
-): string[] {
-  const lines: string[] = [];
-  const zr = u.zaiRateLimits;
-  if (!zr) return lines;
-  const windows: Array<{ w: typeof zr.primary; label: string }> = [];
-  if (zr.primary) windows.push({ w: zr.primary, label: 'Z.AI 5h' });
-  if (zr.secondary) {
-    const isMcp = (zr.secondary as { quantity?: string }).quantity === 'mcp';
-    windows.push({ w: zr.secondary, label: isMcp ? 'Z.AI MCP' : 'Z.AI 7d' });
+function typeColor(type: TimelineEntryType): string {
+  switch (type) {
+    case 'chat_start': case 'user_action': return ink.text;
+    case 'chat_end': case 'chat_response': case 'tool_resolved': case 'task_milestone': return ink.ok;
+    case 'tool_request': case 'tool_exec': return ink.accent;
+    case 'error': return ink.error;
+    case 'eval_result': return ink.attn;
+    default: return ink.faint;
   }
-  for (const { w, label } of windows) {
-    if (!w) continue;
-    const pct = Math.round(w.usedPercent);
-    const gauge = blockGauge(pct, gaugeW, w.stale === true);
-    const reset = w.stale === true ? 'stale' : resetTimeStr(w.resetsAt);
-    if (inlineReset) {
-      lines.push(` ${label} [${gauge}] ${pct}%${reset ? ` ${colors.dim}${reset}${RESET}` : ''}`);
-    } else {
-      lines.push(` ${label} [${gauge}] ${pct}%`);
-      if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
-    }
-  }
-  return lines;
 }
 
-function renderStatusLimitsLines(state: DashboardState, width: number): string[] {
-  const lines: string[] = [];
-  const u = state.usage;
-  if (!u) return lines;
-  const gaugeW = Math.min(10, Math.floor(width * 0.3));
-  if (u.fiveHourPercent !== undefined) {
-    const pct = Math.round(u.fiveHourPercent);
-    lines.push(` 5h [${blockGauge(pct, gaugeW)}] ${pct}%`);
-    const reset = resetTimeStr(u.fiveHourResetsAt);
-    if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
-  }
-  if (u.sevenDayPercent !== undefined) {
-    const pct = Math.round(u.sevenDayPercent);
-    lines.push(` 7d [${blockGauge(pct, gaugeW)}] ${pct}%`);
-    const reset = resetTimeStr(u.sevenDayResetsAt);
-    if (reset) lines.push(`${colors.dim}    ${reset}${RESET}`);
-  }
-  lines.push(...renderScopedLimitLines(u, gaugeW, false));
-  lines.push(...renderCodexLimitLines(u, gaugeW, false));
-  lines.push(...renderZaiLimitLines(u, gaugeW, false));
-  if (state.currentTool) {
-    lines.push(` ${colors.tool}${truncText(state.currentTool, width - 2)}${RESET}`);
-  }
-  return lines;
+function activityRows(state: DashboardState, card: RosterCard | undefined, view: ViewState): ReturnType<typeof buildTimelineRows> {
+  return buildTimelineRows(state.timeline, view.follow && card ? followTarget(card) : undefined);
 }
 
-function renderStatusModelsLines(state: DashboardState, width: number): string[] {
-  const lines: string[] = [];
-  const u = state.usage;
-  if (state.modelName) {
-    const dot = u?.oauthConnected ? `${colors.idle}\u25CF${RESET}` : `${colors.dim}\u25CB${RESET}`;
-    lines.push(` ${dot} ${truncText(state.modelName, width - 4)}`);
-  }
-  lines.push(...renderOauthCatalogLines(state.modelCatalog, u?.oauthConnected, width));
-  lines.push(...renderOllamaSummaryLines(u?.ollamaStatus, width));
-  return lines;
+export function followTarget(card: RosterCard): { id: string; agentType?: string } {
+  return { id: card.session?.id ?? card.id, agentType: card.agentType };
 }
 
-function renderStatusLines(state: DashboardState, width: number): string[] {
-  const lines: string[] = [];
-  const u = state.usage;
-  if (u) {
-    const gaugeW = Math.min(12, Math.floor(width * 0.15));
-    if (u.fiveHourPercent !== undefined) {
-      const pct = Math.round(u.fiveHourPercent);
-      lines.push(` 5h [${blockGauge(pct, gaugeW)}] ${pct}% ${colors.dim}${resetTimeStr(u.fiveHourResetsAt)}${RESET}`);
-    }
-    if (u.sevenDayPercent !== undefined) {
-      const pct = Math.round(u.sevenDayPercent);
-      lines.push(` 7d [${blockGauge(pct, gaugeW)}] ${pct}% ${colors.dim}${resetTimeStr(u.sevenDayResetsAt)}${RESET}`);
-    }
-    lines.push(...renderScopedLimitLines(u, gaugeW, true));
-    lines.push(...renderCodexLimitLines(u, gaugeW, true));
-    lines.push(...renderZaiLimitLines(u, gaugeW, true));
-  }
-  if (state.currentTool) lines.push(` ${colors.tool}Tool: ${truncText(state.currentTool, width - 8)}${RESET}`);
-  if (state.modelName) lines.push(`${colors.dim} Model: ${state.modelName}${RESET}`);
-  lines.push(...renderOauthCatalogLines(state.modelCatalog, u?.oauthConnected, width));
-  const ollamaLines = renderOllamaSummaryLines(u?.ollamaStatus, width);
-  lines.push(...ollamaLines);
-  return lines;
-}
-
-function renderOauthCatalogLines(
-  modelCatalog: ModelCatalogEntry[], oauthConnected: boolean | undefined,
-  width: number,
-): string[] {
-  const lines: string[] = [];
-  const models = (modelCatalog ?? []).filter((m) => m.available).map((m) => m.name);
-
-  if (models.length > 0) {
-    return wrapCommaList(' OAuth: ', models, width, 4);
-  }
-  if (oauthConnected === true) {
-    lines.push(`${colors.dim}${truncText(' OAuth: connected', width)}${RESET}`);
-  } else if (oauthConnected === false) {
-    lines.push(`${colors.dim}${truncText(' OAuth: disconnected', width)}${RESET}`);
-  }
-  return lines;
-}
-
-function wrapCommaList(prefix: string, items: string[], width: number, maxLines = Number.POSITIVE_INFINITY): string[] {
-  const lines: string[] = [];
-  const indent = ' '.repeat(prefix.length);
-  let current = prefix;
-  let consumed = 0;
-
-  for (let i = 0; i < items.length; i++) {
-    const chunk = i === 0 ? items[i] : `, ${items[i]}`;
-    if (visLen(current) + visLen(chunk) <= width) {
-      current += chunk;
-      consumed = i + 1;
-      continue;
-    }
-
-    if (visLen(current) > visLen(prefix)) {
-      lines.push(`${colors.dim}${padRight(current, width)}${RESET}`.trimEnd());
-      if (lines.length >= maxLines) {
-        const hidden = items.length - consumed;
-        if (hidden > 0) lines.push(`${colors.dim}${truncText(` ${hidden} more models`, width)}${RESET}`);
-        return lines;
-      }
-      current = indent + items[i];
-      consumed = i + 1;
-      continue;
-    }
-
-    lines.push(`${colors.dim}${truncText(current + chunk, width)}${RESET}`);
-    consumed = i + 1;
-    if (lines.length >= maxLines) {
-      const hidden = items.length - consumed;
-      if (hidden > 0) lines.push(`${colors.dim}${truncText(` ${hidden} more models`, width)}${RESET}`);
-      return lines;
-    }
-    current = indent;
-  }
-
-  if (visLen(current.trim()) > 0) {
-    lines.push(`${colors.dim}${truncText(current, width)}${RESET}`);
-  }
-  return lines;
-}
-
-function renderOllamaSummaryLines(ollamaStatus: OllamaStatus | undefined, width: number): string[] {
-  if (!ollamaStatus) return [];
-  if (!ollamaStatus.available || ollamaStatus.models.length === 0) {
-    return [`${colors.dim}${truncText(' Ollama: stopped', width)}${RESET}`];
-  }
-
-  return ollamaStatus.models.map((m) => {
-    const size = m.sizeVram > 0 ? m.sizeVram : m.size;
-    const sizeText = size > 0 ? ` ${(size / 1e9).toFixed(1)}G` : '';
-    return `${colors.dim}${truncText(` Ollama: ${m.name}${sizeText}`, width)}${RESET}`;
+function renderActivity(state: DashboardState, card: RosterCard | undefined, view: ViewState, width: number, height: number, scrollOffset: number): string[] {
+  const rows = activityRows(state, card, view);
+  if (rows.length === 0) return [`  ${ink.faint}${view.follow ? 'No events for this session yet' : 'No events yet'}${RESET}`];
+  const end = Math.max(0, rows.length - scrollOffset);
+  const start = Math.max(0, end - height);
+  return rows.slice(start, end).map(({ entry, text, pending }) => {
+    const time = rowTime(entry.ts);
+    const mark = entry.agentType ? `${brandColor(entry.agentType)}${agentMark(entry.agentType)}${RESET}` : ' ';
+    const tag = pending ? ` ${ink.attn}PENDING${RESET}` : '';
+    const body = `${typeColor(entry.type)}${typeIcon(entry.type)}${RESET} ${ink.text}${text}${RESET}`;
+    return truncText(` ${ink.faint}${time}${RESET} ${mark} ${body}`, width - visLen(tag)) + tag;
   });
 }
 
-function renderTimelineLines(
-  state: DashboardState, width: number, maxLines: number, scrollOffset: number,
-): string[] {
-  const lines: string[] = [];
-  // One-row-per-task render contract (shared/src/timeline-task-display.ts):
-  // task_end rows are data-only closure records — the task_start header folds
-  // in the closure label + judge verdict instead. Bare "Task N" headers with
-  // no eval payload (including every interrupted reaper closure) drop out.
-  const entries = state.timeline.filter(
-    (e) => timelineShouldRenderTaskRow(e, state.timeline),
-  );
-  if (entries.length === 0) {
-    lines.push(`${colors.dim} No events yet${RESET}`);
-    return lines;
-  }
-  const start = Math.max(0, entries.length - maxLines - scrollOffset);
-  const end = Math.min(entries.length, start + maxLines);
-  for (let i = start; i < end; i++) {
-    const e = entries[i];
-    const time = new Date(e.ts);
-    const timeStr = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`;
-    // Task headers render their folded closure: judge summary as title when
-    // the own title is a bare "Task N", the closure label ("Session end ·
-    // 2 turns · 6m") as a chip, and the score+outcome suffix once the judge
-    // resolves (5–30 s after the boundary itself).
-    let text = e.raw;
-    let evalSuffix = '';
-    if (e.type === 'task_start') {
-      const d = timelineTaskHeaderDisplay(e, state.timeline);
-      text = d.closureText ? `${d.title} · ${d.closureText}` : d.title;
-      if (d.taskOutcome) evalSuffix = formatTaskEvalSuffix(d.taskScore, d.taskOutcome);
-    }
-    const raw = truncText(`${text}${evalSuffix}`, width - 10);
-    const pending = e.status === 'pending' ? `${colors.dim} [PENDING]${RESET}` : '';
-    lines.push(` ${colors.dim}${timeStr}${RESET} ${typeColor(e.type)}${typeIcon(e.type)}${RESET} ${raw}${pending}`);
-  }
-  return lines;
+/** `HH:MM` today; `MM/DD` for earlier days so mixed-day rows never read as one morning. */
+function rowTime(ts: number, now = new Date()): string {
+  const t = new Date(ts);
+  const sameDay = t.getFullYear() === now.getFullYear() && t.getMonth() === now.getMonth() && t.getDate() === now.getDate();
+  return sameDay
+    ? `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+    : `${String(t.getMonth() + 1).padStart(2, '0')}/${String(t.getDate()).padStart(2, '0')}`;
 }
 
-export function formatTaskEvalSuffix(score: number | undefined, outcome: string | undefined): string {
-  // `abandoned` flows from the manual `agentdeck task cancel` path and
-  // must render as its own glyph — not fall through to '' (which would
-  // make the task look pending) and not borrow the fail glyph (which
-  // would read as agent failure rather than user-initiated stop).
-  const glyph = outcome === 'success' ? '✓'
-    : outcome === 'fail' ? '✗'
-    : outcome === 'partial' ? '△'
-    : outcome === 'abandoned' ? '⊘'
-    : '';
-  if (!glyph) return '';
-  const scoreText = typeof score === 'number' ? score.toFixed(2) : '?';
-  return ` · ${scoreText} ${glyph}`;
+function activityTitle(state: DashboardState, card: RosterCard | undefined, view: ViewState, scrollOffset: number, focused: boolean): string {
+  const total = activityRows(state, card, view).length;
+  const scope = view.follow && card ? card.displayName : 'all sessions';
+  const off = scrollOffset > 0 ? ` · -${scrollOffset}` : '';
+  return title(focused ? 'ACTIVITY ◂' : 'ACTIVITY', `${scope} · ${total}${off}`);
 }
 
-function timelineHeader(state: DashboardState, width: number, maxLines: number, scrollOffset: number): string {
-  const total = state.timeline.length;
-  if (total === 0) return `${colors.header} TIMELINE${RESET}`;
-  const shown = Math.min(total, maxLines);
-  const offset = scrollOffset > 0 ? ` · -${scrollOffset}` : '';
-  return truncText(`${colors.header} TIMELINE${RESET}${colors.dim} ${shown}/${total}${offset}${RESET}`, width);
-}
+// ===== Help =====
 
-function renderHelpOverlay(state: DashboardState, cols: number, rows: number): string {
+function renderHelpOverlay(cols: number, rows: number): string {
   const boxW = Math.min(cols - 4, 78);
-  const boxH = Math.min(rows - 4, 18);
+  const boxH = Math.min(rows - 4, 24);
   const left = Math.max(1, Math.floor((cols - boxW) / 2));
   const top = Math.max(1, Math.floor((rows - boxH) / 2));
   const lines = [
-    `${colors.header}AgentDeck TUI Help${RESET}`,
+    `${ink.accent}${BOLD}AgentDeck TUI Help${RESET}`,
     '',
-    `${colors.bold}Navigation${RESET}`,
-    ' q        quit dashboard',
-    ' ? / h    toggle help',
-    ' ↑ ↓      scroll timeline',
-    ' j / k    vim-style timeline scroll',
-    ' 1-9      connect to listed session',
-    ' Esc      close help',
+    `${BOLD}Keys${RESET}`,
+    ' q          quit dashboard',
+    ' ? / h      toggle help',
+    ' ↑ ↓ / j k  select a session (or scroll activity)',
+    ' tab        switch between sessions and activity',
+    '            (narrow: next panel; s u a d jump to one)',
+    ' enter      session detail: question, options, CI, subagents',
+    ' f          follow: activity for the selected session only',
+    ' 1-9        connect to a numbered managed session',
+    ' Esc        close help or detail',
     '',
-    `${colors.bold}Reading The UI${RESET}`,
-    ' Header   current project, model, and state',
-    ' Sessions busiest first, numbered for switching',
-    ' STATUS   limits, models, OAuth, Ollama',
-    ' TIMELINE shown/total and scroll offset',
+    `${BOLD}Reading the UI${RESET}`,
+    ` ${stateChip('awaiting_permission')}  needs you (the only thing that pulses)`,
+    ` ${stateChip('processing')}  working     ${stateChip('idle')}  idle`,
+    ' Usage      green normal · amber 70% · red 90% · grey not current',
     '',
-    `${colors.bold}Terminal${RESET}`,
+    `${BOLD}Terminal${RESET}`,
     ` Unicode: ${terminalCaps.unicode ? 'on' : 'fallback'}  Color: ${terminalCaps.trueColor ? 'truecolor' : '16-color'}  Emoji: ${terminalCaps.emoji ? 'on' : 'fallback'}`,
   ];
-
   let output = cursor.moveTo(1, 1) + screenCodes.clear;
-  output += cursor.moveTo(top, left) + `${colors.border}${box.tl}${hLine(boxW - 2)}${box.tr}${RESET}`;
+  output += cursor.moveTo(top, left) + `${ink.rule}${box.tl}${hLine(boxW - 2)}${box.tr}${RESET}`;
   for (let i = 0; i < boxH - 2; i++) {
     const content = lines[i] ?? '';
-    output += cursor.moveTo(top + 1 + i, left) +
-      `${colors.border}${box.v}${RESET}` +
-      padRight(i === 0 ? centerText(content, boxW - 2) : content, boxW - 2) +
-      `${colors.border}${box.v}${RESET}`;
+    output += cursor.moveTo(top + 1 + i, left) + `${ink.rule}${box.v}${RESET}` +
+      padRight(truncText(i === 0 ? centerText(content, boxW - 2) : content, boxW - 2), boxW - 2) +
+      `${ink.rule}${box.v}${RESET}`;
   }
-  output += cursor.moveTo(top + boxH - 1, left) + `${colors.border}${box.bl}${hLine(boxW - 2)}${box.br}${RESET}`;
-  output += cursor.moveTo(Math.min(rows, top + boxH), left) +
-    `${colors.dim}Press ? or Esc to return${RESET}`;
+  output += cursor.moveTo(top + boxH - 1, left) + `${ink.rule}${box.bl}${hLine(boxW - 2)}${box.br}${RESET}`;
+  output += cursor.moveTo(Math.min(rows, top + boxH), left) + `${ink.faint}Press ? or Esc to return${RESET}`;
   return output;
 }
 
-// ===== Output Helper =====
+// ===== Main render =====
 
-/** Write buf lines to screen. Last row reserved for q quit hint. */
-function flushBuf(buf: string[], cols: number, rows: number, footerHint: string): string {
-  const maxBoxRows = rows - 1;
-  let output = cursor.moveTo(1, 1);
-  const limit = Math.min(buf.length, maxBoxRows);
-  for (let i = 0; i < limit; i++) {
-    output += cursor.moveTo(i + 1, 1) + screenCodes.clearLine + buf[i];
+function flush(lines: string[], cols: number, rows: number): string {
+  let output = '';
+  for (let i = 0; i < rows; i++) {
+    output += cursor.moveTo(i + 1, 1) + screenCodes.clearLine + (lines[i] !== undefined ? padRight(truncText(lines[i]!, cols), cols) : '');
   }
-  for (let i = limit; i < maxBoxRows; i++) {
-    output += cursor.moveTo(i + 1, 1) + screenCodes.clearLine;
-  }
-  // q quit on last row
-  output += cursor.moveTo(rows, 1) + screenCodes.clearLine +
-    ` ${colors.dimCyan}${truncText(footerHint, cols - 2)}${RESET}`;
   return output;
 }
 
-// ===== Main Render =====
+function sessionsSection(state: DashboardState, cards: RosterCard[], view: ViewState, width: number, height: number, frame: number): Section {
+  const focused = view.focus === 'roster';
+  const counts = rosterCounts(cards);
+  const lines = renderRoster(state, cards, view, width, Math.max(1, height), frame);
+  return { title: title(focused ? 'SESSIONS ◂' : 'SESSIONS', String(counts.total)), lines, want: lines.length, min: Math.min(lines.length, 3), noun: 'session lines' };
+}
 
 export function renderDashboard(
   state: DashboardState, cols: number, rows: number,
   terrariumLines: string[], frame: number, scrollOffset: number,
+  view: ViewState = defaultView(),
 ): string {
-  if (state.helpVisible) {
-    return renderHelpOverlay(state, cols, rows);
-  }
-  const layout = getLayout(cols, rows);
+  if (state.helpVisible) return renderHelpOverlay(cols, rows);
   if (cols < 40 || rows < 10) {
-    return cursor.moveTo(1, 1) + screenCodes.clear +
-      `Resize terminal to at least 60\u00D716 (current: ${cols}\u00D7${rows})`;
+    return cursor.moveTo(1, 1) + screenCodes.clear + `Resize terminal to at least 40×10 (current: ${cols}×${rows})`;
   }
-  const connIcon = state.connectionStatus === 'connected' ? `${colors.idle}\u25CF` :
-    state.connectionStatus === 'reconnecting' ? `${colors.processing}\u25D4` :
-    `${colors.disconnected}\u25CB`;
-  const staleTag = state.isStale ? ` ${colors.error}[STALE]${RESET}` : '';
-  const spinnerStr = state.state === 'processing'
-    ? ` ${colors.processing}${spinner(frame)}${RESET}` : '';
-  const footerHint = state.sessions.length > 0
-    ? 'q quit  ↑↓/j k scroll  1-9 switch session'
-    : 'q quit  ↑↓/j k scroll';
+  const g = geometry(cols, rows);
+  const cards = buildRoster(state);
+  if (!view.selectedId || !cards.some(c => c.id === view.selectedId)) view.selectedId = cards[0]?.id;
+  const card = selectedCard(cards, view);
+  const out: string[] = [renderHeader(state, cards, cols, frame)];
+  const activityFocused = view.focus === 'activity';
 
-  if (layout === 'wide') return renderWideLayout(state, cols, rows, terrariumLines, frame, scrollOffset, connIcon, staleTag, spinnerStr, footerHint);
-  if (layout === 'standard') return renderStandardLayout(state, cols, rows, terrariumLines, frame, scrollOffset, connIcon, staleTag, spinnerStr, footerHint);
-  return renderNarrowLayout(state, cols, rows, frame, scrollOffset, connIcon, staleTag, spinnerStr, footerHint);
-}
-
-// ===== Wide Layout =====
-
-function renderWideLayout(
-  state: DashboardState, cols: number, rows: number,
-  terrariumLines: string[], frame: number, scrollOffset: number,
-  connIcon: string, staleTag: string, spinnerStr: string, footerHint: string,
-): string {
-  const leftW = Math.max(20, Math.floor(cols * 0.22));
-  const rightW = cols - leftW - 3;
-  const buf: string[] = [];
-  const summary = currentSessionSummary(state, Math.max(16, rightW - 16));
-
-  // Top border
-  const topLeft = `${colors.border}${box.tl}${RESET}`;
-  const topMid = `${colors.border}${box.tee}${box.h} ${summary} ${RESET}${connIcon}${RESET}${spinnerStr}${staleTag} `;
-  const topRight = `${colors.border}${box.tr}${RESET}`;
-  const leftFillLen = Math.max(0, leftW + 1 - visLen(topLeft));
-  const rightFillLen = Math.max(0, rightW + 2 - visLen(topMid) - visLen(topRight));
-  buf.push(topLeft + `${colors.border}${hLine(leftFillLen)}${RESET}` + topMid + `${colors.border}${hLine(rightFillLen)}${RESET}` + topRight);
-
-  const agentLines = renderAgentLines(state, leftW - 2, true);
-
-  // Status: LIMITS | MODELS
-  const tH = terrariumLines.length;
-  const statusLimitW = Math.floor(rightW * 0.4);
-  const statusModelW = rightW - statusLimitW - 1;
-  const limitsLines = renderStatusLimitsLines(state, statusLimitW);
-  const modelsLines = renderStatusModelsLines(state, statusModelW);
-  const statusH = Math.max(3, Math.max(limitsLines.length, modelsLines.length) + 1);
-
-  const boxContentRows = rows - 3; // top border + bottom border + q quit row
-  const timelineH = Math.max(3, boxContentRows - tH - statusH - 2);
-  const tlLines = renderTimelineLines(state, rightW - 2, timelineH - 1, scrollOffset);
-
-  for (let r = 0; r < boxContentRows; r++) {
-    const leftContent = padRight(r < agentLines.length ? agentLines[r] : '', leftW);
-
-    let rightContent = '';
-    if (r < tH) {
-      rightContent = terrariumLines[r] || '';
-    } else if (r === tH) {
-      rightContent = `${colors.border}${hLine(statusLimitW)}${RESET}` +
-        `${colors.border}\u252C${RESET}` +
-        `${colors.border}${hLine(statusModelW)}${RESET}`;
-    } else if (r < tH + 1 + statusH) {
-      const si = r - tH - 1;
-      if (si === 0) {
-        rightContent = padRight(`${colors.header} LIMITS${RESET}`, statusLimitW) +
-          `${colors.border}${box.v}${RESET}` +
-          padRight(`${colors.header} MODELS${RESET}`, statusModelW);
-      } else {
-        const li = si - 1;
-        rightContent = padRight(li < limitsLines.length ? limitsLines[li] : '', statusLimitW) +
-          `${colors.border}${box.v}${RESET}` +
-          padRight(li < modelsLines.length ? modelsLines[li] : '', statusModelW);
-      }
-    } else if (r === tH + 1 + statusH) {
-      rightContent = `${colors.border}${hLine(rightW)}${RESET}`;
+  if (g.layout === 'wide') {
+    const [lw, cw, rw] = g.widths as [number, number, number];
+    const left = [sessionsSection(state, cards, view, lw, g.bodyH, frame)];
+    const center: Section[] = [];
+    if (g.aquarium) center.push({ title: title('AQUARIUM'), lines: terrariumLines, want: g.aquarium.height, min: 3, fixed: true });
+    if (view.detail) {
+      const d = renderDetail(card, cw, frame);
+      center.push({ title: title('DETAIL', card?.displayName ?? ''), lines: d, want: d.length, min: Math.min(d.length, 4), fixed: true });
+    }
+    const actH = g.bodyH;
+    center.push({ title: activityTitle(state, card, view, scrollOffset, activityFocused), lines: renderActivity(state, card, view, cw, actH, scrollOffset), want: 3, min: 3 });
+    const right = rightSections(state, rw, g.bodyH);
+    // Activity lines are sized after allocation so the newest rows stay visible.
+    const heights = allocate(center, g.bodyH);
+    const last = center[center.length - 1]!;
+    last.lines = renderActivity(state, card, view, cw, heights[heights.length - 1]!, scrollOffset);
+    out.push(...compose([{ width: lw, sections: left }, { width: cw, sections: center }, { width: rw, sections: right }], g.bodyH));
+  } else if (g.layout === 'standard') {
+    const [lw, rw] = g.widths as [number, number];
+    const left: Section[] = [];
+    const roster = sessionsSection(state, cards, view, lw, Math.floor((g.bodyH) * 0.55), frame);
+    roster.fixed = true;
+    left.push(roster);
+    if (view.detail) {
+      const d = renderDetail(card, lw, frame);
+      left.push({ title: title('DETAIL', card?.displayName ?? ''), lines: d, want: d.length, min: Math.min(d.length, 3), fixed: true });
+    }
+    left.push({ title: activityTitle(state, card, view, scrollOffset, activityFocused), lines: [], want: 3, min: 2 });
+    const heights = allocate(left, g.bodyH);
+    left[left.length - 1]!.lines = renderActivity(state, card, view, lw, heights[heights.length - 1]!, scrollOffset);
+    const right: Section[] = [];
+    if (g.aquarium) right.push({ title: title('AQUARIUM'), lines: terrariumLines, want: g.aquarium.height, min: 3, fixed: true });
+    right.push(...rightSections(state, rw, g.bodyH - (g.aquarium ? g.aquarium.height + 1 : 0)));
+    out.push(...compose([{ width: lw, sections: left }, { width: rw, sections: right }], g.bodyH));
+  } else {
+    const w = g.widths[0]!;
+    out.push(tabBar(view, cols));
+    const bodyH = g.bodyH - 1; // tab bar row
+    let sections: Section[];
+    if (view.tab === 'usage') {
+      sections = rightSections(state, w, bodyH).filter(s => !s.title.includes('DEVICES'));
+    } else if (view.tab === 'devices') {
+      const lines = renderModuleHealthLines(state.moduleHealth, w);
+      sections = [{ title: title('DEVICES'), lines: lines.length ? lines : [`  ${ink.faint}No downstream devices${RESET}`], want: 1, min: 1 }];
+    } else if (view.tab === 'activity') {
+      sections = [{ title: activityTitle(state, card, view, scrollOffset, true), lines: renderActivity(state, card, view, w, bodyH, scrollOffset), want: bodyH, min: 1 }];
     } else {
-      const ti = r - tH - statusH - 2;
-      if (ti === 0) rightContent = timelineHeader(state, rightW, timelineH - 1, scrollOffset);
-      else rightContent = ti - 1 < tlLines.length ? tlLines[ti - 1] : '';
+      sections = [sessionsSection(state, cards, view, w, bodyH, frame)];
+      if (view.detail) {
+        const d = renderDetail(card, w, frame);
+        sections[0]!.fixed = true;
+        sections.push({ title: title('DETAIL', card?.displayName ?? ''), lines: d, want: d.length, min: Math.min(d.length, 3) });
+      }
     }
-
-    buf.push(
-      `${colors.border}${box.v}${RESET}${padRight(leftContent, leftW)}` +
-      `${colors.border}${box.v}${RESET}${padRight(rightContent, rightW)}` +
-      `${colors.border}${box.v}${RESET}`
-    );
+    out.push(...compose([{ width: w, sections }], bodyH));
   }
-
-  buf.push(`${colors.border}${box.bl}${hLine(leftW)}${box.bTee}${hLine(rightW)}${box.br}${RESET}`);
-  return flushBuf(buf, cols, rows, footerHint);
+  out.push(renderFooter(state, view, g.layout, cols));
+  return flush(out, cols, rows);
 }
 
-// ===== Standard Layout =====
-
-function renderStandardLayout(
-  state: DashboardState, cols: number, rows: number,
-  terrariumLines: string[], frame: number, scrollOffset: number,
-  connIcon: string, staleTag: string, spinnerStr: string, footerHint: string,
-): string {
-  const w = cols - 2;
-  const buf: string[] = [];
-  const summary = currentSessionSummary(state, Math.max(16, w - 18));
-
-  buf.push(borderFill(
-    `${colors.border}${box.tl}${box.h} ${summary} ${RESET}${connIcon}${RESET}${spinnerStr}${staleTag} `,
-    `${colors.border}${box.tr}${RESET}`, cols));
-
-  for (const tl of terrariumLines) {
-    buf.push(`${colors.border}${box.v}${RESET}${padRight(tl, w)}${colors.border}${box.v}${RESET}`);
-  }
-
-  const leftHalf = Math.floor(w / 2);
-  const rightHalf = w - leftHalf - 1;
-
-  const splitPrefix = `${colors.border}${box.lTee}${box.h} STATUS ${RESET}`;
-  const splitMid = `${colors.border}${box.tee}${RESET}`;
-  const splitSuffix = `${colors.border}${box.rTee}${RESET}`;
-  buf.push(
-    splitPrefix + `${colors.border}${hLine(Math.max(0, leftHalf + 1 - visLen(splitPrefix)))}${RESET}` +
-    splitMid + `${colors.border}${hLine(Math.max(0, rightHalf + 2 - visLen(splitMid) - visLen(splitSuffix)))}${RESET}` + splitSuffix
-  );
-
-  const statusLines = renderStatusLines(state, leftHalf - 1);
-  const agentCompact = renderAgentCompactLines(state, rightHalf - 1);
-  const pairRows = Math.max(statusLines.length, agentCompact.length, 3);
-
-  for (let r = 0; r < pairRows; r++) {
-    buf.push(
-      `${colors.border}${box.v}${RESET}${padRight(r < statusLines.length ? statusLines[r] : '', leftHalf)}` +
-      `${colors.border}${box.v}${RESET}${padRight(r < agentCompact.length ? agentCompact[r] : '', rightHalf)}` +
-      `${colors.border}${box.v}${RESET}`
-    );
-  }
-
-  buf.push(`${colors.border}${box.lTee}${hLine(leftHalf)}${box.bTee}${hLine(rightHalf)}${box.rTee}${RESET}`);
-  const tlAvailable = Math.max(2, rows - buf.length - 2);
-  buf.push(
-    `${colors.border}${box.v}${RESET}${padRight(timelineHeader(state, w, tlAvailable, scrollOffset), w)}` +
-    `${colors.border}${box.v}${RESET}`
-  );
-
-  const tlLines = renderTimelineLines(state, w - 1, tlAvailable, scrollOffset);
-  for (const tl of tlLines) {
-    buf.push(`${colors.border}${box.v}${RESET}${padRight(tl, w)}${colors.border}${box.v}${RESET}`);
-  }
-
-  buf.push(`${colors.border}${box.bl}${hLine(w)}${box.br}${RESET}`);
-  return flushBuf(buf, cols, rows, footerHint);
+function rightSections(state: DashboardState, width: number, budget = Infinity): Section[] {
+  let usage = renderUsage(state, width);
+  const models = renderModels(state, width);
+  const devices = renderModuleHealthLines(state.moduleHealth, width);
+  const need = (u: string[], m: string[]) => u.length + (m.length ? m.length + 1 : 0) + (devices.length ? Math.min(devices.length, 3) + 1 : 0);
+  let showModels = models.length > 0;
+  // Tight column: models are the least glanceable, then blank group gaps go.
+  if (need(usage, showModels ? models : []) > budget) showModels = false;
+  if (need(usage, []) > budget) usage = renderUsage(state, width, true);
+  const sections: Section[] = [{ title: title('USAGE'), lines: usage, want: usage.length, min: Math.min(usage.length, 4), noun: 'usage rows' }];
+  if (showModels) sections.push({ title: title('MODELS'), lines: models, want: models.length, min: 1, noun: 'model lines' });
+  if (devices.length) sections.push({ title: title('DEVICES'), lines: devices, want: devices.length, min: Math.min(devices.length, 3), noun: 'devices' });
+  return sections;
 }
 
-function renderAgentCompactLines(state: DashboardState, width: number): string[] {
-  const lines: string[] = [];
-  // Unified entry list — same ordering and #N suffix as macOS / iOS / Android.
-  const entries = buildHudEntries(state);
-  let focusableIndex = 0;
-  for (const e of entries) {
-    const hotkeyIndex = hudHotkeyIndex(e, focusableIndex);
-    if (hotkeyIndex !== null) focusableIndex += 1;
-    const col = stateColor(e.state);
-    const emoji = `${creatureBrandColor(e.agentType)}${creatureEmoji(e.agentType)}${RESET}`;
-    const status = `${col}${stateIcon(e.state)} ${compactStateLabel(e.state)}${RESET}`;
-    const detail = e.currentTask || e.modelName;
-    const model = detail ? `${colors.dim} · ${truncText(detail, Math.max(8, width - 24))}${RESET}` : '';
-    const marker = e.controlMode === 'observed' ? `${colors.dim} · obs${RESET}` : '';
-    const project = truncText(e.displayName, Math.max(8, width - 20));
-    lines.push(` ${colors.dim}[${sessionHotkeyLabel(hotkeyIndex)}]${RESET} ${emoji} ${project} ${status}${marker}${model}`);
-  }
-  // Gateway error warning
-  if (state.gatewayHasError) {
-    lines.push(`${colors.error} \u26A0 Gateway Error${RESET}`);
-  }
-  const moduleLines = renderModuleHealthLines(state.moduleHealth, width);
-  if (moduleLines.length > 0) {
-    lines.push(`${colors.header} DOWNSTREAM${RESET}`);
-    lines.push(...moduleLines);
-  }
-  // Voice assistant indicator (compact)
-  if (state.voiceAssistantState && state.voiceAssistantState !== 'disabled' && state.voiceAssistantState !== 'idle') {
-    if (state.voiceAssistantState === 'listening') {
-      lines.push(` ${colors.idle}\uD83C\uDFA4 Listening...${RESET}`);
-    } else if (state.voiceAssistantState === 'processing') {
-      const text = state.voiceAssistantText ? truncText(state.voiceAssistantText, width - 6) : '...';
-      lines.push(` ${colors.processing}\uD83C\uDFA4 ${text}${RESET}`);
-    } else if (state.voiceAssistantState === 'speaking') {
-      lines.push(` ${sgr(32)}\uD83D\uDD0A Speaking...${RESET}`);
-    }
-  }
-  if (state.usage) {
-    const u = state.usage;
-    const parts: string[] = [];
-    if (u.inputTokens || u.outputTokens) parts.push(`${formatTokens(u.inputTokens)}/${formatTokens(u.outputTokens)}`);
-    if (u.estimatedCostUsd) parts.push(`$${u.estimatedCostUsd.toFixed(2)}`);
-    if (parts.length > 0) lines.push(`${colors.dim} ${parts.join('  ')}${RESET}`);
-  }
-  return lines;
-}
-
-// ===== Narrow Layout =====
-
-function renderNarrowLayout(
-  state: DashboardState, cols: number, rows: number,
-  frame: number, scrollOffset: number,
-  connIcon: string, staleTag: string, spinnerStr: string, footerHint: string,
-): string {
-  const w = cols - 2;
-  const buf: string[] = [];
-  const summary = currentSessionSummary(state, Math.max(12, w - 18));
-
-  buf.push(borderFill(
-    `${colors.border}${box.tl}${box.h} ${summary} ${RESET}${connIcon}${RESET}${spinnerStr}${staleTag} `,
-    `${colors.border}${box.tr}${RESET}`, cols));
-
-  for (const al of renderAgentCompactLines(state, w - 1)) {
-    buf.push(`${colors.border}${box.v}${RESET}${padRight(al, w)}${colors.border}${box.v}${RESET}`);
-  }
-
-  buf.push(`${colors.border}${box.lTee}${hLine(w)}${box.rTee}${RESET}`);
-
-  for (const sl of renderStatusLines(state, w - 1)) {
-    buf.push(`${colors.border}${box.v}${RESET}${padRight(sl, w)}${colors.border}${box.v}${RESET}`);
-  }
-
-  const tlAvailable = Math.max(2, rows - buf.length - 2);
-  buf.push(`${colors.border}${box.lTee}${hLine(w)}${box.rTee}${RESET}`);
-  buf.push(`${colors.border}${box.v}${RESET}${padRight(timelineHeader(state, w, tlAvailable, scrollOffset), w)}${colors.border}${box.v}${RESET}`);
-  const tlLines = renderTimelineLines(state, w - 1, tlAvailable, scrollOffset);
-  for (const tl of tlLines) {
-    buf.push(`${colors.border}${box.v}${RESET}${padRight(tl, w)}${colors.border}${box.v}${RESET}`);
-  }
-
-  buf.push(`${colors.border}${box.bl}${hLine(w)}${box.br}${RESET}`);
-  return flushBuf(buf, cols, rows, footerHint);
+function tabBar(view: ViewState, cols: number): string {
+  const tabs: Array<[ViewTab, string]> = [['sessions', 'Sessions'], ['usage', 'Usage'], ['activity', 'Activity'], ['devices', 'Devices']];
+  const parts = tabs.map(([id, label]) => id === view.tab
+    ? `${ink.accent}${BOLD}[${label}]${RESET}`
+    : `${ink.faint} ${label} ${RESET}`);
+  return truncText(` ${parts.join(' ')}`, cols);
 }

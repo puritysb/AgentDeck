@@ -19,6 +19,16 @@ Changes:
 - The report adds a Verification tiers section (step × tier matrix, receipts). It lists every skipped case with the runner that executes it. Gate cards name their local tiers and their workflow's latest hosted run, and results from elsewhere get an outlined badge that never enters this page's totals.
 - `verification-catalog.test.ts` now fails when a platform-gated test file is missing from its CI job, a lab gate has no pre-release step, or a changed-area path matches no tracked file.
 
+## 2026-10-07 — TUI dashboard rebuilt as the "tide console"
+
+An audit of `agentdeck dashboard` against the deck, Android and Mac dashboards found it at roughly the late-September spec: no CI-wait readout, no per-session model/effort/permission (#463), no subagent census, Codex shown without plan, credits, Luna reserve or snapshot age, z.ai without plan tier or `authFailed`, no Antigravity, Claude 5h/7d ignoring `usageStale`, and no aquarium creature for Antigravity, Kiro or Hermes.
+
+The TUI now has a pure view model ([bridge/src/tui/model.ts](bridge/src/tui/model.ts)) built only from shared helpers — `sortSessions`/`assignDisplayNames`, session tones and words, `ciWaitPhaseId`/`ciWaitDetail`, `sessionNowSummary`, `selectedCodexCredits`/`selectedLunaReserve`, `codexUsageFootnote`, `usageSubscriptionTier` — and a theme bound to the `--ui-*` tokens ([bridge/src/tui/theme.ts](bridge/src/tui/theme.ts)), so the terminal owns no state→colour or percent→colour switch. Layout follows DESIGN.md §5.13: three columns at 120+ cells, two at 80+, one named tab at a time below that. Collections are bounded per §5.11: a section that cannot fit its rows ends with an exact "N more devices/models/usage rows" line instead of silently cutting.
+
+Two measured faults fixed on the way. Every text measure counted UTF-16 code units, so Korean goals and timeline rows (common on this desk) pushed borders past the right edge; [bridge/src/tui/width.ts](bridge/src/tui/width.ts) is a compact wcwidth and a test renders Korean content at four sizes, every tab and the detail card, asserting each row is exactly the terminal width. The wire's `contextPercent` arrived at 204–271% for live Claude sessions; the TUI treats an out-of-range reading as unknown rather than painting every card "ctx 100%" — the producer fault itself is not fixed here.
+
+The aquarium gives Antigravity, Kiro and Hermes their canonical marks as residents, adopts the §6.4 status grammar (amber `!` badge, cyan working spark — mirrored into the macOS preview's `TUITerrariumRenderer.swift`), and draws name tags in one priority post-pass so sparks no longer overwrite a tag. Activity "follow" matches the observed roster id to the bare timeline id with `rawSessionId`; OpenClaw, whose roster row (`openclaw-gateway`) and run rows (`openclaw:agent:main:main`) never share an id, falls back to its agent type.
+
 ## 2026-10-07 — EPD47 and NM paint only what changed, say when, and stop holding WiFi on USB
 
 ### Problem

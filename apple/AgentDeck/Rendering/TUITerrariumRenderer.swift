@@ -9,7 +9,7 @@
 // Sync pin — verified by `scripts/check-preview-mirror-sync.mjs` (CI). When the
 // origin changes, re-port (or confirm no visual impact given the deliberate
 // simplifications below) and bump the pin in the same commit.
-// SYNC-HASH bridge/src/tui/terrarium.ts 3bbbed48172a588117ae2951bc2a57a3e3d25b8d
+// SYNC-HASH bridge/src/tui/terrarium.ts 8c2841861fc5d5656c151d31554b1fa200ced47b
 //
 // Scope / deliberate simplifications (vs the TS original):
 //   - The four canonical TUI creatures use generated colored half-cells,
@@ -169,7 +169,7 @@ private enum TerrariumPalette {
     static let waveCrest  = Color(red: 100 / 255, green: 149 / 255, blue: 237 / 255)
     static let tetra      = Color(red: 100 / 255, green: 220 / 255, blue: 255 / 255)
     static let nameTag    = Color(red: 180 / 255, green: 180 / 255, blue: 180 / 255)
-    static let awaitQ     = Color(red: 255 / 255, green: 255 / 255, blue: 100 / 255)
+    static let awaitQ     = DesignTokens.UI.attn
 
     /// Creature color = agent brand (StateColors.brand) tinted by state.
     /// Idle → full brand. Processing → brightened. Awaiting → awaiting amber.
@@ -343,12 +343,12 @@ private enum TerrariumGridBuilder {
                 drawGlyph(creatureGlyph(agent: agent, state: state), center: (cx, cy), color: color, into: &grid)
             }
 
-            // "?" indicator when awaiting (above creature, to the right)
+            // Needs-you badge: solid amber "!" (DESIGN.md §6.4), as in the TUI.
             if state == "awaiting" {
                 let qx = canonicalColumns.map { cx + $0 / 2 + 1 } ?? (cx + 2)
                 let qy = canonicalRows.map { cy - $0 / 2 + $0 } ?? (cy - 1)
                 if qy >= 0, qy < height, qx >= 0, qx < width {
-                    grid[qy][qx] = TerrariumCell(char: "?", color: TerrariumPalette.awaitQ)
+                    grid[qy][qx] = TerrariumCell(char: "!", color: TerrariumPalette.awaitQ)
                 }
             }
 
@@ -358,8 +358,8 @@ private enum TerrariumGridBuilder {
                 let sy = max(0, cy - 2)
                 if grid[sy][sx].char == " " {
                     grid[sy][sx] = TerrariumCell(
-                        char: "\u{2727}", // ✧
-                        color: Color(red: 1.0, green: 0.78, blue: 0.39)
+                        char: "\u{2727}", // ✧ — working is a cyan geometric spark
+                        color: DesignTokens.UI.cyan
                     )
                 }
             }
