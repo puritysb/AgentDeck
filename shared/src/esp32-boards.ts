@@ -216,7 +216,7 @@ export const ESP32_BOARDS: Esp32BoardSpec[] = [
     webFlashVerified:
       '2026-08-30 · owned hardware identified as ESP32-S3 rev v0.2 with 16MB flash and 8MB PSRAM; full factory flash backed up before the first AgentDeck write. Browser flashing has not been measured.',
     notes: [
-      'Standard tri-color SKU: every admitted repaint is a full-window refresh; the firmware rate gate is 10 seconds.',
+      'Standard tri-color SKU: every admitted repaint is a full-window refresh (~13 s); routine changes wait for a 15-minute ambient floor and urgent ones for a 30 s post-cycle gap (esp32/src/ui/eink/nm_refresh_policy.h).',
       'BOOT/GPIO0 is RTC wake + primary/PTT; USER/GPIO45 is the invariant escape control. ES8311 is full-duplex I2S and the speaker PA enable is GPIO41.',
       'The huge-app layout has one 3MB app slot; USB is the recovery/update path.',
     ],

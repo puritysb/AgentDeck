@@ -267,6 +267,16 @@ data class BridgeEvent (
     val dim: DisplayDimInstruction? = null,
 
     val displayOn: Boolean? = null,
+
+    /**
+     * Daemon host-local "HH:MM" at send time (same convention as timeline `localHm`).
+     * display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the
+     * wall clock for boards that never reach NTP — a serial-primary board parks its radio — and
+     * for every board that only knows UTC. E-ink panels print it as their "as of HH:MM"
+     * freshness band. Absent ⇒ no information; a client keeps its last estimate.
+     */
+    val hostHm: String? = null,
+
     val sessions: List<SessionInfo>? = null,
     val encoders: List<EncoderSlotState>? = null,
     val takeoverActive: Boolean? = null,

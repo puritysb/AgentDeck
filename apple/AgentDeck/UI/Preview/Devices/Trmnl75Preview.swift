@@ -43,7 +43,11 @@
 // The purchased-credit row the firmware draws once a Codex plan window is
 // exhausted is a data state this schematic's 5H/7D sample never reaches, like
 // the Luna reserve before it; band geometry is unchanged.
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 31948d647a7394a80aaf0f19479ebe03ffec1b83
+// 2026-10-07 re-sync: the EPD47/NM paint-engine overhaul (frame-hash skip,
+// masked EPD47 bands, NM gate, "as of" band on EPD47/NM only, push delivery)
+// does not change the TRMNL dashboard this view mirrors. The OFFLINE subtitle
+// separators became ASCII; this mirror shows only "Searching for AgentDeck…".
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 8ef62fa22684dfa1fc894f350d0f34d26ccbd19c
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI

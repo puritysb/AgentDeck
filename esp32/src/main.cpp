@@ -24,6 +24,7 @@
 #include "net/wifi_manager.h"
 #include "net/mdns_discovery.h"
 #include "net/ws_client.h"
+#include "net/radio_park_policy.h"
 #if defined(BOARD_IPS10)
 #include "net/ips10_sdio_dma.h"
 #endif
@@ -357,27 +358,39 @@ static void networkTask(void* param) {
         //     depend on that band.
         // Park after serial has been stable a few seconds (debounce transient
         // JSON), and restore immediately when serial drops so WiFi + its OTA path
-        // recover fast.
+        // recover fast. The decision reads the radio's real state — see
+        // net/radio_park_policy.h for the private-copy bug that kept two e-ink
+        // panels on WiFi and USB at once.
         {
-            static bool radioParked = false;
             static uint32_t serialStableSince = 0;
-            uint32_t nowMs = millis();
-            bool shouldPark = Net::serialConnected();
-            if (shouldPark) {
+            const uint32_t nowMs = millis();
+            RadioPark::Input park;
+            park.serialPrimary = Net::serialConnected();
+            park.parked = Net::wifiRadioParked();
+            if (park.serialPrimary) {
                 if (serialStableSince == 0) serialStableSince = nowMs;
-                if (!radioParked && (nowMs - serialStableSince) > 4000) {
-                    if (Net::wsConnected() || Net::wsConnecting()) Net::wsDisconnect();
-                    Net::wifiSetRadioParked(true);
-                    radioParked = true;
-                    Serial.println("[WiFi] radio parked — USB serial primary (freeing 2.4GHz airtime)");
-                }
+                park.serialStableMs = nowMs - serialStableSince;
             } else {
                 serialStableSince = 0;
-                if (radioParked) {
+            }
+            park.uptimeMs = nowMs;
+#if defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN)
+            park.deferBootJoin = true;
+#endif
+            switch (RadioPark::decide(park)) {
+                case RadioPark::Action::Park:
+                    if (Net::wsConnected() || Net::wsConnecting()) Net::wsDisconnect();
+                    Net::wifiSetRadioParked(true);
+                    Serial.println("[WiFi] radio parked — USB serial primary (freeing 2.4GHz airtime)");
+                    break;
+                case RadioPark::Action::Restore:
                     Net::wifiSetRadioParked(false);
-                    radioParked = false;
-                    Serial.println("[WiFi] radio restored — serial dropped");
-                }
+                    Serial.println(nowMs < RadioPark::BOOT_GRACE_MS + 1000
+                                       ? "[WiFi] radio restored — no USB serial host"
+                                       : "[WiFi] radio restored — serial dropped");
+                    break;
+                default:
+                    break;
             }
         }
 #endif
@@ -1089,13 +1102,22 @@ static void uiTask(void* param) {
 #endif
 
     uint32_t lastFrameMs = millis();
+    uint32_t lastRenderMs = 0;
     while (true) {
         uint32_t now = millis();
         float dt = (now - lastFrameMs) / 1000.0f;
         lastFrameMs = now;
 
+        // Input every tick (touch needs ~25 ms sampling); the render pass —
+        // a snapshot, hashes and the paint gates — at most every 250 ms unless
+        // input asked for a frame.
         Eink::update(dt);
+        if (!Eink::renderPending() && (uint32_t)(now - lastRenderMs) < 250) {
+            vTaskDelay(pdMS_TO_TICKS(Eink::inputPollMs()));
+            continue;
+        }
         Eink::render();
+        lastRenderMs = millis();
 
 #if defined(BOARD_HAS_SPEAKER)
         // Paper cannot flash or animate, and this panel's repaint takes ~10 s,
@@ -1117,7 +1139,7 @@ static void uiTask(void* param) {
         }
 #endif
 
-        vTaskDelay(pdMS_TO_TICKS(250));
+        vTaskDelay(pdMS_TO_TICKS(Eink::inputPollMs()));
     }
 }
 #endif // board UI fork

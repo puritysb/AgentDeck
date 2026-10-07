@@ -53,8 +53,10 @@ void epd_draw_image(LilyEpdRect area, uint8_t* data, int mode);
 #include "ui/agent_label.h"
 #include "ui/creature_glyph_selection.h"
 #include "ui/eink/eink_dashboard_layout.h"
+#include "ui/eink/epd47_diff.h"
 #include "ui/eink/epd47_page_policy.h"
 #include "ui/eink/epd47_refresh_policy.h"
+#include "ui/eink/nm_refresh_policy.h"
 #include "util/usage_format.h"
 #include "util/usage_rows.h"
 #include <cctype>
@@ -101,39 +103,53 @@ static_assert(BOARD_EINK_ROTATION == 0 || BOARD_EINK_ROTATION == 2,
 // recommends a flashing full refresh roughly every 5 partials. Content-hash
 // gating means these only apply on real change.
 //
-// CRITICAL: the panel is kept in powerOff() (high voltage off, controller RAM
-// RETAINED) between refreshes — NEVER hibernate() during normal operation.
+// CRITICAL (TRMNL): the panel is kept in powerOff() (high voltage off,
+// controller RAM RETAINED) between refreshes — NEVER hibernate() there.
 // hibernate() deep-sleeps the controller and wipes its previous-frame RAM, so
 // the next partial refresh diffs against garbage → faint/ghosted text (the
-// "blurry text" bug on first hardware bring-up).
+// "blurry text" bug on first hardware bring-up). The NM is the exception: it
+// never runs a partial waveform, so it has no previous frame to keep and its
+// controller sleeps between cycles.
 #if defined(BOARD_NM_EPD_420)
 // The on-hand GDEY042Z98 glass is not stable with SSD1683 refresh_bw(), even
 // inside a red-free window: the B/W waveform eventually lifts black pigment
 // across the whole panel. Use only the stock tri-color waveform and treat this
-// as a slow ambient surface. Physical-key actions still bypass this gate.
+// as a slow ambient surface. The gate itself (ambient floor, urgent gap, count
+// settle) is ui/eink/nm_refresh_policy.h.
 //
 // Every admitted repaint is therefore a COMPLETE tri-color cycle — the hardest,
-// longest refresh in the fleet, and 100% of this board's repaints are full
-// (measured 2026-08-30: 93/93). Spending one to advance an elapsed-time string
-// or a percentage by a point is the wrong trade, so the routine floor is an
-// ambient cadence. Only link/page transitions and NEW user attention bypass it;
-// routine working-count churn is exactly the stream that must be coalesced.
-constexpr uint32_t MIN_REFRESH_INTERVAL_MS = 15UL * 60UL * 1000UL;
+// longest refresh in the fleet (13.36 s measured, n=584), and 100% of this
+// board's repaints are full. Spending one to advance an elapsed-time string or
+// a percentage by a point is the wrong trade.
+constexpr uint32_t MIN_REFRESH_INTERVAL_MS = AgentDeckNm::AMBIENT_FLOOR_MS;
 #elif defined(BOARD_LILYGO_EPD47)
+// A masked differential update costs the changed rows only and does not flash,
+// so a one-minute floor keeps the sheet current without strobing.
 constexpr uint32_t MIN_REFRESH_INTERVAL_MS = 60000;
 #else
 constexpr uint32_t MIN_REFRESH_INTERVAL_MS = 3000;
 #endif
 #if defined(BOARD_LILYGO_EPD47)
 // The parallel grayscale driver assumes a white surface before every image
-// write. AgentDeck retains the previous 4-bit frame in PSRAM and drives that
-// ink back to paper before each replacement, then runs a hard anti-ghost sweep
-// after four differential erases or ten minutes.
-constexpr uint8_t  FULL_EVERY_N_PARTIALS   = 4;
-constexpr uint32_t FULL_MAX_AGE_MS         = 10UL * 60UL * 1000UL;
+// write. AgentDeck retains the previous 4-bit frame in PSRAM and drives only
+// the changed pixels (epd47_diff.h). A strip of the panel that has been
+// rewritten four times earns a hard anti-ghost sweep; residue that has sat for
+// an hour gets one too, but a clean panel never does (epd47_refresh_policy.h).
+constexpr uint8_t  EPD47_STRIP_BUDGET      = 4;
+constexpr uint32_t FULL_MAX_AGE_MS         = 60UL * 60UL * 1000UL;
 #else
 constexpr uint8_t  FULL_EVERY_N_PARTIALS   = 5;
 constexpr uint32_t FULL_MAX_AGE_MS         = 10UL * 60UL * 1000UL;
+#endif
+// "as of HH:MM" freshness stamp (E-ink Surface Contract §1). It is drawn at
+// paint time and is deliberately NOT part of any content hash, so it never
+// causes a repaint by itself — except that a panel whose content has not
+// changed for this long re-stamps once, so a living panel can be told from a
+// wedged one. Only while the host display is awake: nobody reads a desk at 3am.
+#if defined(BOARD_NM_EPD_420) || defined(BOARD_SIM_NM)
+constexpr uint32_t STAMP_REFRESH_MS = 60UL * 60UL * 1000UL;   // a 13 s cycle
+#else
+constexpr uint32_t STAMP_REFRESH_MS = 30UL * 60UL * 1000UL;   // a few quiet rows
 #endif
 
 // 16-level grayscale ink. The EPD47's ED047TC2 is the only panel in the fleet
@@ -186,6 +202,27 @@ static_assert(EINK_INK_BODY == GxEPD_BLACK && EINK_INK_MUTED == GxEPD_BLACK &&
               "panels without grey must collapse the ink set at the source");
 #endif
 
+// Order-sensitive hash of every pixel write that builds a frame. Two renders of
+// the same snapshot issue the same writes, so an equal hash means the panel
+// would receive the frame it already shows: the refresh is skipped. That is
+// the net under the semantic content hashes — a hashed field that is not
+// actually drawn (a row past the visible list, a reset countdown on a face
+// that hides it) no longer costs a 13 s NM cycle or an EPD47 update. The
+// freshness stamp pauses it: a minute ticking over is not new content.
+struct FrameHash {
+    uint32_t value = 2166136261u;
+    bool paused = false;
+    void reset() { value = 2166136261u; paused = false; }
+    void mix(uint32_t v) {
+        if (!paused) value = (value ^ v) * 16777619u;
+    }
+    void pixel(int16_t x, int16_t y, uint16_t color) {
+        if (paused) return;
+        mix((uint32_t)(uint16_t)x | ((uint32_t)(uint16_t)y << 16));
+        mix(color);
+    }
+};
+
 #if defined(BOARD_LILYGO_EPD47)
 class LilyEpdCanvas final : public Adafruit_GFX {
 public:
@@ -214,6 +251,16 @@ public:
         if (prev_) memset(prev_, 0xFF, FRAME_BYTES);
         else Serial.println("[Eink] no PSRAM for the previous frame — page "
                             "changes will keep using a full clear");
+        // Third frame: the masked erase/draw images (epd47_diff.h), built one
+        // after the other into the same 259,200 bytes. PSRAM, device lifetime,
+        // allocated once here — never on the render path. Optional: without it
+        // a differential update drives the whole retained/new frame as before.
+        if (prev_) {
+            mask_ = static_cast<uint8_t*>(heap_caps_malloc(
+                FRAME_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+            if (!mask_) Serial.println("[Eink] no PSRAM for the masked frame — "
+                                       "updates will redraw the whole frame");
+        }
         logHeap("lily-epd-framebuffer");
         return true;
     }
@@ -226,6 +273,7 @@ public:
             px = (int16_t)(SCREEN_W - 1 - x);
             py = (int16_t)(SCREEN_H - 1 - y);
         }
+        hash.pixel(x, y, color);
         const size_t i = ((size_t)py * SCREEN_W + (size_t)px) / 2;
         const uint8_t shade = einkInkLevel(color);
         if (px & 1) pixels_[i] = (uint8_t)((pixels_[i] & 0x0F) | (shade << 4));
@@ -233,6 +281,7 @@ public:
     }
 
     void fillScreen(uint16_t color) override {
+        hash.mix(0xF5000000u | color);
         const uint8_t lv = einkInkLevel(color);
         if (pixels_) memset(pixels_, (uint8_t)((lv << 4) | lv),
                             (size_t)SCREEN_W * SCREEN_H / 2);
@@ -240,9 +289,17 @@ public:
 
     uint8_t* pixels() { return pixels_; }
     uint8_t* prev() { return prev_; }
+    uint8_t* mask() { return mask_; }
     void retainFrame() {
         if (pixels_ && prev_)
             memcpy(prev_, pixels_, (size_t)SCREEN_W * SCREEN_H / 2);
+    }
+    // Only the band a masked update drove differs; the rest already matches.
+    void retainRows(int16_t first, int16_t last) {
+        if (!pixels_ || !prev_ || first < 0 || last < first) return;
+        constexpr size_t rowBytes = (size_t)SCREEN_W / 2;
+        memcpy(prev_ + (size_t)first * rowBytes, pixels_ + (size_t)first * rowBytes,
+               (size_t)(last - first + 1) * rowBytes);
     }
     // After a real clear the glass is uniformly white, so the retained frame
     // must say so or the next erase pass would chase ink that is already gone.
@@ -250,19 +307,46 @@ public:
         if (prev_) memset(prev_, 0xFF, (size_t)SCREEN_W * SCREEN_H / 2);
     }
 
+    FrameHash hash;
+
 private:
     uint8_t* pixels_;  // owned for device lifetime; intentionally never freed
     uint8_t* prev_ = nullptr;
+    uint8_t* mask_ = nullptr;  // device lifetime; erase then draw image, in turn
 };
 
 LilyEpdCanvas display;
-#elif defined(BOARD_NM_EPD_420)
+#else
+// GxEPD2 keeps its frame buffer private, so the frame hash is fed from the
+// pixel writes on their way in rather than read back afterwards.
+template <class Base>
+class HashedPanel final : public Base {
+public:
+    using Base::Base;
+    FrameHash hash;
+    void drawPixel(int16_t x, int16_t y, uint16_t color) override {
+        hash.pixel(x, y, color);
+        Base::drawPixel(x, y, color);
+    }
+    void fillScreen(uint16_t color) override {
+        hash.mix(0xF5000000u | color);
+        // Paused so a base fillScreen that falls back to per-pixel writes is
+        // not hashed twice (or slowly).
+        const bool was = hash.paused;
+        hash.paused = true;
+        Base::fillScreen(color);
+        hash.paused = was;
+    }
+};
+#if defined(BOARD_NM_EPD_420)
 using Panel = GxEPD2_420c_GDEY042Z98;
-GxEPD2_3C<Panel, Panel::HEIGHT> display(
+HashedPanel<GxEPD2_3C<Panel, Panel::HEIGHT>> display(
     Panel(PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY));
 #else
 using Panel = GxEPD2_750_GDEY075T7;
-GxEPD2_BW<Panel, Panel::HEIGHT> display(Panel(PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY));
+HashedPanel<GxEPD2_BW<Panel, Panel::HEIGHT>> display(
+    Panel(PIN_EPD_CS, PIN_EPD_DC, PIN_EPD_RST, PIN_EPD_BUSY));
+#endif
 #endif
 // UTF-8/한글 renderer for dynamic text (project names, prompts, activity,
 // ticker). GFX FreeFonts are Latin-only — Korean previously degraded to
@@ -334,6 +418,11 @@ struct Snap {
     uint8_t tickerCount;
     char tickerTime[TICKER_ROWS][8];
     char tickerText[TICKER_ROWS][104];
+    // Freshness band (never hashed — see STAMP_REFRESH_MS). Empty when the host
+    // has not told us its clock: the band then says nothing rather than guess.
+    char asOf[6];          // host-local "HH:MM" at paint time
+    char since[6];         // host-local "HH:MM" of the last host contact
+    bool hostDisplayOn;
 };
 
 void snapshot(Snap& s) {
@@ -513,6 +602,10 @@ void snapshot(Snap& s) {
         }
         s.tickerCount++;
     }
+    const uint32_t clockNow = millis();
+    g_state.hostClock.formatNow(clockNow, s.asOf, sizeof(s.asOf));
+    g_state.hostClock.formatLastObserved(s.since, sizeof(s.since));
+    s.hostDisplayOn = g_state.hostDisplayOn;
     unlockState();
     strncpy(s.ip, Net::wifiLocalIP(), sizeof(s.ip) - 1);
 }
@@ -655,6 +748,24 @@ int16_t textWidth(const char* s, const GFXfont* f) {
 void textRight(int16_t xRight, int16_t y, const char* s, const GFXfont* f) {
     textAt(xRight - textWidth(s, f), y, s, f);
 }
+
+#if defined(AGENTDECK_EPD47_UI) || defined(AGENTDECK_NM_UI)
+#define AGENTDECK_EINK_STAMP 1
+// The freshness band: "as of HH:MM" while the daemon link is up, "since HH:MM"
+// (the last host contact) while it is down. Paper keeps its last image with no
+// power, so without this a wedged board and a quiet desk look identical. Drawn
+// outside the frame hash: a minute ticking over is not new content.
+void drawFreshness(const Snap& s, int16_t xRight, int16_t y, const GFXfont* f) {
+    const char* hm = s.bridgeConnected ? s.asOf : s.since;
+    if (!hm[0]) return;
+    char line[20];
+    snprintf(line, sizeof(line), "%s %s", s.bridgeConnected ? "as of" : "since", hm);
+    const bool was = display.hash.paused;
+    display.hash.paused = true;
+    textRight(xRight, y, line, f);
+    display.hash.paused = was;
+}
+#endif
 
 // Truncate `s` (already ASCII) to fit `maxW` with the given font, appending
 // ".." when cut. Result in `out`.
@@ -1446,16 +1557,13 @@ uint8_t lastPhysicalAttention = 0;
 uint8_t lastPhysicalWorking = 0;
 // Settled-count bypass. The ambient floor exists because turn churn makes the
 // working count flap every few seconds, and every admitted NM repaint is a
-// ~10s full tri-color cycle — but the glance face's whole content IS these
+// 13 s full tri-color cycle — but the glance face's whole content IS these
 // counts, and a number that stays wrong for 15 minutes reads as a frozen
-// panel. A changed count that HOLDS for the settle window is a real state
-// shift and earns the repaint; a flap never settles and stays coalesced.
-// 90s: longer than the between-turns bounce, far under the ambient floor —
-// chosen, not measured. Same shape as the EPD47 page arbiter's settle.
+// panel. A changed count that HOLDS for AgentDeckNm::COUNT_SETTLE_MS is a real
+// state shift and earns the repaint; a flap never settles and stays coalesced.
 uint8_t nmPendingAttention = 255;
 uint8_t nmPendingWorking = 255;
 uint32_t nmCountStableSinceMs = 0;
-constexpr uint32_t NM_COUNT_SETTLE_MS = 90UL * 1000UL;
 #endif
 uint32_t faceHoldUntilMs = 0;
 uint32_t interactiveLeaseUntilMs = 0;
@@ -1483,13 +1591,19 @@ bool epd47TouchAvailable() {
 }
 #endif
 
+// Every e-ink board AgentDeck ships today is continuously reachable: none has
+// a sleep path, so none can promise less than push. The pull face set (DECISION
+// only inside a physical-wake lease) is the contract for a board that actually
+// sleeps; until one does, gating DECISION behind a key press only hid a real
+// question from a panel that was awake and connected the whole time.
+// AGENTDECK_EINK_PULL_MODE is where such a board will opt back in.
 bool interactiveLeaseActive(uint32_t now) {
-#if defined(BOARD_TRMNL_75) && !defined(BOARD_SIM_PULL)
-    (void)now;
-    return true;
-#else
+#if defined(AGENTDECK_EINK_PULL_MODE)
     return interactiveLeaseUntilMs != 0 &&
            (int32_t)(interactiveLeaseUntilMs - now) > 0;
+#else
+    (void)now;
+    return true;
 #endif
 }
 
@@ -1600,6 +1714,10 @@ uint32_t paperHash(const Snap& s, PaperFace face) {
         h = fnvStr(h, s.rows[i].name);
         h = fnvStr(h, s.rows[i].state);
         h = fnvStr(h, s.rows[i].work);
+        // A waiting session's line IS its question, and a new question can
+        // arrive without the state changing. Durable, so it earns a repaint.
+        h = fnvStr(h, s.rows[i].question);
+        h = fnvStr(h, s.rows[i].agentType);
     }
     int fh = (int)s.fiveH, sd = (int)s.sevenD, cp = (int)s.codexP, cs = (int)s.codexS;
     h = fnv(h, &fh, sizeof(fh)); h = fnv(h, &sd, sizeof(sd));
@@ -1674,6 +1792,13 @@ void drawPaperHeader(const Snap& s, PaperFace face) {
         InkScope ink(accentColor());
         textRight(W - pad, W <= 420 ? 34 : 42, "OFFLINE",
                   W <= 420 ? CLASSIC_FONT : &FreeSansBold9pt7b);
+#if defined(AGENTDECK_NM_UI)
+    } else if (W <= 420) {
+        // The NM's header corner is otherwise empty chrome; it carries the
+        // freshness band on every face, because a 13 s full cycle is what
+        // makes "is this current?" a real question on this panel.
+        drawFreshness(s, W - pad, 34, &FreeSans9pt7b);
+#endif
     } else if (W > 420 && face != PaperFace::Glance && s.totalSessions > 0) {
         // A held page (DECISION, DIGEST) still says what the other
         // sessions are doing, so a held page never hides that
@@ -1759,24 +1884,28 @@ void drawEp47Chrome(const Snap& s, AgentDeckEpd47::Page selected) {
     drawAgentDeckMark(20, 14, 38);
     textAt(72, 45, "AgentDeck", &FreeSansBold18pt7b);
 
-    if (selected != AgentDeckEpd47::Page::Home || renderFace != PaperFace::Glance) {
+    // One tab: LIMITS from the resting home, HOME from anywhere else. None
+    // while offline — there is nothing behind it.
+    if (s.bridgeConnected) {
+        const bool atHome = selected == AgentDeckEpd47::Page::Home && renderFace == PaperFace::Glance;
         display.drawRoundRect(EPD47_TAB_X, 14, EPD47_TAB_W, 48, 4, GxEPD_BLACK);
-        textAt(EPD47_TAB_X + 24, 45, "HOME", &FreeSansBold12pt7b);
-    }
-    if (selected == AgentDeckEpd47::Page::Home && renderFace == PaperFace::Glance) {
-        display.drawRoundRect(EPD47_TAB_X, 14, EPD47_TAB_W, 48, 4, GxEPD_BLACK);
-        textAt(EPD47_TAB_X + 18, 45, "LIMITS", &FreeSansBold12pt7b);
+        textAt(EPD47_TAB_X + (atHome ? 18 : 24), 45, atHome ? "LIMITS" : "HOME", &FreeSansBold12pt7b);
     }
     // Exception-based, like the paper header: silence means healthy. A live
     // link instead says what the sessions are doing, non-zero counts only.
     if (!s.bridgeConnected) {
-        textRight(W - 20, 42, "OFFLINE", &FreeSansBold9pt7b);
+        textRight(W - 20, 38, "OFFLINE", &FreeSansBold9pt7b);
     } else if (s.totalSessions > 0) {
         char counts[72];
         boardCountSummary(s, counts, sizeof(counts));
         if (textWidth(counts, &FreeSansBold9pt7b) > W - 20 - (EPD47_TAB_X + EPD47_TAB_W + 24))
             boardCountSummary(s, counts, sizeof(counts), true);
-        textRight(W - 20, 42, counts, &FreeSansBold9pt7b);
+        textRight(W - 20, 38, counts, &FreeSansBold9pt7b);
+    }
+    {
+        // Under the counts on every page, including DECISION and OFFLINE.
+        InkScope ink(EINK_INK_MUTED);
+        drawFreshness(s, W - 20, 62, &FreeSans9pt7b);
     }
     display.drawFastHLine(20, headerH, W - 40, EINK_INK_RULE);
 }
@@ -1973,7 +2102,7 @@ void drawEp47Focus(const Snap& s) {
         s.zaiP >= 0 ? s.zaiP : s.zaiS, 46);
     if (awaiting) {
         textAt(752, 430,
-               epd47TouchAvailable() ? "TAP CARD · DECIDE" : "GPIO21 · DECIDE",
+               epd47TouchAvailable() ? "TAP CARD / DECIDE" : "GPIO21 / DECIDE",
                &FreeSansBold9pt7b);
     }
     drawEp47Footer(s);
@@ -2088,23 +2217,90 @@ void drawEp47Queue(const Snap& s) {
     drawEp47Footer(s);
 }
 
+// HOME right-column sheet geometry, SHARED with the tap hit test in update():
+// a row binds to the session identity painted in it, never to a sort index.
+constexpr int16_t EPD47_SHEET_TOP  = 122;
+constexpr int16_t EPD47_SHEET_ROW  = 70;
+constexpr uint8_t EPD47_SHEET_ROWS = 5;
+char epd47SheetRows[EPD47_SHEET_ROWS][32] = {};
+
+const char* epd47StateWord(AgentDeckEink::StatusKind kind) {
+    return kind == AgentDeckEink::StatusKind::Attention ? "NEEDS YOU" :
+           kind == AgentDeckEink::StatusKind::Processing ? "WORKING" : "IDLE";
+}
+
+// The line under a session's name: its question when it is waiting on the
+// reader, otherwise its latest durable milestone ("HH:MM · task · text").
+// Live tool/activity text is the desktop's job; this sheet changes on
+// meaningful progress only (desk awareness, 2026-09-26), and paperHash is
+// keyed on exactly these fields so what is drawn is what earns a repaint.
+const char* epd47DetailLine(const RowSnap& r) {
+    if (AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0])
+        return r.question;
+    return r.work;
+}
+
+// The session the HOME's left column belongs to. Plain primarySession() takes
+// the FIRST working session, and on a busy desk sessions flip working <-> idle
+// every turn, so the primary — and with it the whole left card and the sheet
+// that excludes it — swapped every minute: measured 1.45 s updates on the 60 s
+// floor and a hard clear every ~5 minutes right after flashing. The painted
+// primary is kept while it works or waits; a newly waiting session still takes
+// it at once (the reader must see the question), and one that went idle yields
+// only after it has stayed idle for EPD47_PRIMARY_IDLE_YIELD_MS.
+constexpr uint32_t EPD47_PRIMARY_IDLE_YIELD_MS = 3UL * 60UL * 1000UL;
+char epd47PrimaryId[32] = {};
+uint32_t epd47PrimaryIdleSinceMs = 0;
+
+int epd47HomePrimary(const Snap& s) {
+    const uint32_t now = millis();
+    int kept = -1;
+    for (uint8_t n = 0; n < s.rowCount && epd47PrimaryId[0]; n++)
+        if (strcmp(s.rows[n].id, epd47PrimaryId) == 0) { kept = n; break; }
+    const int waiting = primarySession(s, AgentDeckEink::StatusKind::Attention);
+    int pick = -1;
+    if (waiting >= 0 && (kept < 0 || AgentDeckEink::classifyStatus(s.rows[kept].state) !=
+                                         AgentDeckEink::StatusKind::Attention)) {
+        pick = waiting;
+    } else if (kept >= 0) {
+        const bool idle = AgentDeckEink::classifyStatus(s.rows[kept].state) ==
+                          AgentDeckEink::StatusKind::Idle;
+        if (!idle) epd47PrimaryIdleSinceMs = 0;
+        else if (!epd47PrimaryIdleSinceMs) epd47PrimaryIdleSinceMs = now ? now : 1;
+        const bool yield = idle && (uint32_t)(now - epd47PrimaryIdleSinceMs) >= EPD47_PRIMARY_IDLE_YIELD_MS &&
+                           primarySession(s, AgentDeckEink::StatusKind::Processing) >= 0;
+        pick = yield ? primarySession(s) : kept;
+    } else {
+        pick = primarySession(s);
+    }
+    if (pick >= 0 && strcmp(s.rows[pick].id, epd47PrimaryId) != 0) {
+        strncpy(epd47PrimaryId, s.rows[pick].id, sizeof(epd47PrimaryId) - 1);
+        epd47PrimaryIdleSinceMs = 0;
+    }
+    if (pick < 0) epd47PrimaryId[0] = '\0';
+    return pick;
+}
+
 // The home stays in place as sessions start/stop. Only explicit input opens details.
 void drawEp47Home(const Snap& s) {
     drawEp47Chrome(s, AgentDeckEpd47::Page::Home);
     constexpr int16_t split = 562, right = 590, rightW = 346;
     display.drawFastVLine(split, 92, 414, EINK_INK_RULE);
     textAt(24, 108, "WORK", &FreeSansBold9pt7b);
-    textAt(right, 108, "ALL WORK", &FreeSansBold9pt7b);
-    const int i = primarySession(s);
+    const int i = epd47HomePrimary(s);
     if (i >= 0) {
         const auto& r = s.rows[i];
-        char name[64]; smartFitText(name, sizeof(name), r.name, 480, &FreeSansBold18pt7b);
-        smartTextAt(24, 148, name, &FreeSansBold18pt7b);
+        const auto kind = AgentDeckEink::classifyStatus(r.state);
+        drawAgentGlyph(r.agentType, 24, 120, 40);
+        char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "AgentDeck", 452,
+                                    &FreeSansBold18pt7b);
+        smartTextAt(76, 146, name, &FreeSansBold18pt7b);
+        {
+            InkScope ink(kind == AgentDeckEink::StatusKind::Attention ? GxEPD_BLACK : EINK_INK_MUTED);
+            textAt(76, 170, epd47StateWord(kind), &FreeSansBold9pt7b);
+        }
         // Real content or nothing: no "Working. Waiting for the next result."
-        const char* body = AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
-            AgentDeckEink::classifyStatus(r.state) == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
-            r.work[0] ? r.work : r.activity;
-        drawParagraph(24, 181, 500, 26, 3, body, &FreeSansBold12pt7b);
+        drawParagraph(24, 204, 510, 26, 2, epd47DetailLine(r), &FreeSansBold12pt7b);
         textAt(24, 268, "Open work >", &FreeSans9pt7b);
     } else {
         textAt(24, 158, "No active work", &FreeSansBold18pt7b);
@@ -2162,24 +2358,63 @@ void drawEp47Home(const Snap& s) {
             smartTextAt(86, ly, event, &FreeSans9pt7b);
         }
     }
-    // One "All work >" — under the roster it opens — not one per column.
-    // Stable roster at glance distance. Detailed quotas stay on LIMITS.
-    for (uint8_t row = 0; row < min(s.rowCount, (uint8_t)3); ++row) {
-        const auto& r = s.rows[row];
-        const int16_t y = 146 + row * 112;
-        char name[64]; smartFitText(name, sizeof(name), r.name, rightW, &FreeSansBold12pt7b);
-        smartTextAt(right, y, name, &FreeSansBold12pt7b);
+
+    // Every OTHER session — the primary already owns the left column, and
+    // repeating it here was the first thing a reader saw twice. Sessions that
+    // need the reader first, the rest in the daemon's own order: sorting
+    // working above idle moved rows on every turn and repainted the sheet.
+    // Glyph, name and state on one line, the detail line under it; what does
+    // not fit is counted, not dropped.
+    uint8_t order[MAX_ROWS];
+    uint8_t total = 0;
+    for (uint8_t pass = 0; pass < 2; pass++)
+        for (uint8_t k = 0; k < s.rowCount; k++) {
+            const bool asks = AgentDeckEink::classifyStatus(s.rows[k].state) ==
+                              AgentDeckEink::StatusKind::Attention;
+            if (asks == (pass == 0)) order[total++] = k;
+        }
+    uint8_t others = 0, shown = 0;
+    memset(epd47SheetRows, 0, sizeof(epd47SheetRows));
+    textAt(right, 108, i >= 0 ? "OTHER WORK" : "ALL WORK", &FreeSansBold9pt7b);
+    for (uint8_t k = 0; k < total; k++) {
+        if (order[k] == i) continue;
+        others++;
+        if (shown >= EPD47_SHEET_ROWS) continue;
+        const RowSnap& r = s.rows[order[k]];
         const auto kind = AgentDeckEink::classifyStatus(r.state);
-        const char* state = kind == AgentDeckEink::StatusKind::Attention ? "NEEDS YOU" :
-            kind == AgentDeckEink::StatusKind::Processing ? "WORKING" : "IDLE";
-        textAt(right, y + 23, state, &FreeSansBold9pt7b);
-        const char* activity = kind == AgentDeckEink::StatusKind::Attention && r.question[0] ? r.question :
-            kind == AgentDeckEink::StatusKind::Processing && r.activity[0] ? r.activity :
-            r.work[0] ? r.work : r.activity;
-        drawParagraph(right, y + 46, rightW, 20, 2, activity, &FreeSans9pt7b);
+        const int16_t y = EPD47_SHEET_TOP + shown * EPD47_SHEET_ROW;
+        strncpy(epd47SheetRows[shown], r.id, sizeof(epd47SheetRows[shown]) - 1);
+        if (kind == AgentDeckEink::StatusKind::Attention)
+            display.fillRect(right - 14, y + 4, 5, EPD47_SHEET_ROW - 14, GxEPD_BLACK);
+        drawAgentGlyph(r.agentType, right, y + 6, 24);
+        const char* state = epd47StateWord(kind);
+        const int16_t stateW = textWidth(state, &FreeSansBold9pt7b);
+        char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "session",
+                                    rightW - 34 - stateW - 10, &FreeSansBold12pt7b);
+        smartTextAt(right + 34, y + 25, name, &FreeSansBold12pt7b);
+        {
+            InkScope ink(kind == AgentDeckEink::StatusKind::Attention ? GxEPD_BLACK : EINK_INK_MUTED);
+            textRight(right + rightW, y + 24, state, &FreeSansBold9pt7b);
+        }
+        const char* detail = epd47DetailLine(r);
+        if (detail[0]) {
+            char fitted[116]; smartFitText(fitted, sizeof(fitted), detail, rightW, &FreeSans9pt7b);
+            InkScope ink(kind == AgentDeckEink::StatusKind::Attention ? GxEPD_BLACK : EINK_INK_BODY);
+            smartTextAt(right, y + 50, fitted, &FreeSans9pt7b);
+        }
+        shown++;
     }
     if (!s.rowCount) textAt(right, 146, "No sessions", &FreeSans9pt7b);
-    textAt(right, 496, "All work >", &FreeSans9pt7b);
+    else if (!others) {
+        InkScope ink(EINK_INK_MUTED);
+        textAt(right, 146, "Nothing else running", &FreeSans9pt7b);
+    }
+    // One "All work >" — under the sheet it opens — not one per column. It
+    // names what the sheet could not hold.
+    char all[32];
+    if (others > shown) snprintf(all, sizeof(all), "+%u more  /  All work >", (unsigned)(others - shown));
+    else snprintf(all, sizeof(all), "All work >");
+    textAt(right, 496, all, &FreeSans9pt7b);
     if (!epd47TouchAvailable()) {
         const char* choices[] = {"Work", "All work", "Usage"};
         char hint[64]; snprintf(hint, sizeof(hint), ">%s  /  Tap next, hold open", choices[epd47HomeSelection]);
@@ -2259,8 +2494,10 @@ void drawGlanceFace(const Snap& s) {
             if (y > floorY) break;
             char name[48]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "(unnamed)", 150, &FreeSansBold9pt7b);
             { InkScope ink(asks ? accentColor() : GxEPD_BLACK); smartTextAt(14, y, name, &FreeSansBold9pt7b); }
-            const char* detail = asks ? r.question
-                : (anyActive ? (r.activity[0] ? r.activity : r.tool) : r.work);
+            // The latest durable milestone, not the live tool line: at a 15
+            // minute ambient floor a tool line is stale by the time it is read,
+            // and only the milestone is in the content hash.
+            const char* detail = asks ? r.question : r.work;
             if (detail && detail[0]) {
                 const int16_t dx = (int16_t)(14 + smartWidth(name, &FreeSansBold9pt7b) + 10);
                 if (asks && y + rowH <= floorY) {
@@ -2514,9 +2751,9 @@ void drawDecisionFace(const Snap& s) {
                &FreeSansBold12pt7b);
         textRight(W - pad, 472, "GPIO21 BACK", CLASSIC_FONT);
     } else if (epd47TouchAvailable()) {
-        textRight(W - pad, 472, "TAP AN OPTION  ·  GPIO21 BACK", CLASSIC_FONT);
+        textRight(W - pad, 472, "TAP AN OPTION  /  GPIO21 BACK", CLASSIC_FONT);
     } else {
-        textRight(W - pad, 472, "GPIO21 TAP NEXT  ·  HOLD CONFIRM", CLASSIC_FONT);
+        textRight(W - pad, 472, "GPIO21 TAP NEXT  /  HOLD CONFIRM", CLASSIC_FONT);
     }
     return;
     }
@@ -2532,14 +2769,20 @@ void drawDecisionFace(const Snap& s) {
     }
     const RowSnap& r = s.rows[i];
     smartTextAt(pad, top + 20, r.name, &FreeSansBold9pt7b);
-    const int questionLines = W <= 420 ? 3 : 5;
+    // At 400x300 three options and a three-line question do not both fit, and
+    // the old layout let the LAST option fall off the panel — on a permission
+    // prompt that is "Deny", the one answer the reader must always have. The
+    // options are the answer path, so the question yields lines to them.
+    const uint8_t options = s.optionCount < 3 ? s.optionCount : 3;
+    const bool compact = W <= 420 && options >= 3;
+    const int questionLines = W <= 420 ? (compact ? 2 : 3) : 5;
     int used = drawParagraph(pad, top + (W <= 420 ? 50 : 62), W - pad * 2,
                              W <= 420 ? 24 : 30, questionLines,
                              r.question[0] ? r.question : "Agent is waiting for your decision.",
                              W <= 420 ? &FreeSansBold12pt7b : &FreeSansBold18pt7b);
-    int16_t oy = top + (W <= 420 ? 62 : 78) + used * (W <= 420 ? 24 : 30);
-    for (uint8_t o = 0; o < s.optionCount && o < 3 && oy < H - 48; o++) {
-        const int16_t oh = W <= 420 ? 31 : 42;
+    int16_t oy = top + (W <= 420 ? (compact ? 42 : 62) : 78) + used * (W <= 420 ? 24 : 30);
+    for (uint8_t o = 0; o < options && oy < H - 48; o++) {
+        const int16_t oh = W <= 420 ? (compact ? 28 : 31) : 42;
         // Keep red geometry fixed across DECISION content so option text can
         // update through the panel's B/W differential waveform.
 #if defined(AGENTDECK_NM_UI) || defined(AGENTDECK_TRMNL_75_UI)
@@ -2559,11 +2802,11 @@ void drawDecisionFace(const Snap& s) {
 #endif
         char option[56]; snprintf(option, sizeof(option), "%u  %s", (unsigned)(o + 1), s.options[o]);
         char fitted[64]; smartFitText(fitted, sizeof(fitted), option, W - pad * 2 - 20, &FreeSans9pt7b);
-        smartTextAt(pad + 10, oy + (W <= 420 ? 21 : 28), fitted, &FreeSans9pt7b);
+        smartTextAt(pad + 10, oy + (W <= 420 ? (compact ? 19 : 21) : 28), fitted, &FreeSans9pt7b);
 #if defined(AGENTDECK_NM_UI) || defined(AGENTDECK_TRMNL_75_UI)
         if (selected) setInk(false);
 #endif
-        oy += oh + 7;
+        oy += oh + (compact ? 5 : 7);
     }
 #if defined(AGENTDECK_NM_UI)
     display.drawFastHLine(pad, H - 29, W - pad * 2, GxEPD_BLACK);
@@ -2660,7 +2903,7 @@ void drawSearching(const Snap& s) {
                                              : "CONNECT USB OR PROVISION WIFI";
     textAt(W / 2 - textWidth(msg, &FreeSans9pt7b) / 2, 342, msg, &FreeSans9pt7b);
     if (s.wifiUp && s.ip[0]) {
-        char line[64]; snprintf(line, sizeof(line), "PANEL %s  ·  mDNS _agentdeck._tcp", s.ip);
+        char line[64]; snprintf(line, sizeof(line), "PANEL %s  /  mDNS _agentdeck._tcp", s.ip);
         textAt(W / 2 - textWidth(line, CLASSIC_FONT) / 2, 372, line, CLASSIC_FONT);
     }
     display.drawFastHLine(20, 478, W - 40, GxEPD_BLACK);
@@ -2690,6 +2933,14 @@ void drawSearching(const Snap& s) {
         char line[48]; snprintf(line, sizeof(line), "PANEL %s", s.ip);
         textAt(W / 2 - textWidth(line, CLASSIC_FONT) / 2, 230, line, CLASSIC_FONT);
     }
+    if (s.since[0]) {
+        // When the link was last alive — the one fact this frozen face can add.
+        char line[32]; snprintf(line, sizeof(line), "LAST UPDATE %s", s.since);
+        const bool was = display.hash.paused;
+        display.hash.paused = true;
+        textAt(W / 2 - textWidth(line, &FreeSansBold9pt7b) / 2, 254, line, &FreeSansBold9pt7b);
+        display.hash.paused = was;
+    }
     display.drawFastHLine(pad, H - 39, W - pad * 2, GxEPD_BLACK);
     const char* reconnect = "AUTO RECONNECTING";
     textAt(W / 2 - textWidth(reconnect, CLASSIC_FONT) / 2,
@@ -2708,10 +2959,10 @@ void drawSearching(const Snap& s) {
     textAt(W / 2 - textWidth(title, &FreeSansBold18pt7b) / 2,
            centerY + 42, title, &FreeSansBold18pt7b);
     const char* msg = s.wifiUp || s.serialUp ? "Searching for AgentDeck..."
-                                             : "No WiFi · connect USB or provision WiFi";
+                                             : "No WiFi - connect USB or provision WiFi";
     textAt(W / 2 - textWidth(msg, &FreeSans9pt7b) / 2, centerY + 70, msg, &FreeSans9pt7b);
     if (s.wifiUp && s.ip[0]) {
-        char line[64]; snprintf(line, sizeof(line), "panel %s · auto reconnecting", s.ip);
+        char line[64]; snprintf(line, sizeof(line), "panel %s - auto reconnecting", s.ip);
         textAt(W / 2 - textWidth(line, CLASSIC_FONT) / 2, centerY + 94, line, CLASSIC_FONT);
     }
     // Usage is cached data at this point. Hiding it is safer than presenting
@@ -2767,7 +3018,10 @@ void drawDashboard(const Snap& s) {
 // ===== Refresh engine =====
 
 uint32_t lastHash = 0;
-uint32_t lastDrawMs = 0;
+uint32_t lastDrawMs = 0;       // start of the last PHYSICAL paint (coalescing floor)
+uint32_t lastPaintEndMs = 0;   // end of the last physical paint (NM urgent gap)
+uint32_t lastFrameHash = 0;    // FrameHash of the frame on the glass
+bool frameHashValid = false;
 #if defined(BOARD_LILYGO_EPD47)
 AgentDeckEpd47::RefreshState epd47RefreshState;
 #else
@@ -2791,58 +3045,110 @@ uint32_t refreshRead = 0;
 bool key1Prev = true, key2Prev = true;
 uint32_t keyLastMs = 0;
 
-void refresh(void (*draw)(const Snap&), const Snap& s, bool full,
+void recordCompletion(bool actualFull, uint32_t startedMs) {
+    // Count at the one choke point that performs physical panel I/O, not at
+    // render requests (most of which content-hash/rate/frame gates discard).
+    // Relaxed atomics keep device_info reads race-free across the network and
+    // UI tasks without putting a lock around a multi-second draw.
+    __atomic_add_fetch(&repaintCountValue, 1u, __ATOMIC_RELAXED);
+    if (actualFull) __atomic_add_fetch(&fullRefreshCountValue, 1u, __ATOMIC_RELAXED);
+    const uint32_t write = __atomic_load_n(&refreshWrite, __ATOMIC_RELAXED);
+    const uint32_t read = __atomic_load_n(&refreshRead, __ATOMIC_ACQUIRE);
+    // Drop diagnostics if the consumer stalls; count gaps invalidate intervals.
+    if ((uint32_t)(write - read) < 4u) {
+        refreshCompletions[write % 4u] = {
+            __atomic_load_n(&repaintCountValue, __ATOMIC_RELAXED),
+            uint32_t(actualFull), startedMs,
+            uint32_t(millis() - startedMs)};
+        __atomic_store_n(&refreshWrite, write + 1u, __ATOMIC_RELEASE);
+    }
+}
+
+// Renders `draw` into the frame buffer and puts it on the glass. Returns false
+// when the panel was left alone because the frame is pixel-identical to the
+// one already shown (`allowSkip`), in which case nothing is counted.
+bool refresh(void (*draw)(const Snap&), const Snap& s, bool full, bool allowSkip,
              AgentDeckEpd47::Erase erase = AgentDeckEpd47::Erase::ClearAll) {
     const uint32_t refreshStartedMs = millis();
-    bool actualFull = full;
-    // Count at the one choke point that performs physical panel I/O, not at
-    // render requests (most of which content-hash/rate gates intentionally
-    // discard). Relaxed atomics keep device_info reads race-free across the
-    // network and UI tasks without putting a lock around a multi-second draw.
-    __atomic_add_fetch(&repaintCountValue, 1u, __ATOMIC_RELAXED);
 #if defined(BOARD_LILYGO_EPD47)
+    display.hash.reset();
+    display.fillScreen(GxEPD_WHITE);
+    draw(s);
+    const uint32_t frame = display.hash.value;
+    if (allowSkip && frameHashValid && frame == lastFrameHash) return false;
+
     // If the optional retained frame allocation failed, degrade every update
     // to the safe hard-clear path. Record the mode that physically ran, not the
     // requested one, so the anti-ghost schedule and telemetry stay truthful.
     const AgentDeckEpd47::Erase mode = display.prev()
         ? erase : AgentDeckEpd47::Erase::ClearAll;
-    const bool hardClear = AgentDeckEpd47::isHardClear(mode);
-    actualFull = hardClear;
-    if (hardClear)
-        __atomic_add_fetch(&fullRefreshCountValue, 1u, __ATOMIC_RELAXED);
-    display.fillScreen(GxEPD_WHITE);
-    draw(s);
-    epd_poweron();
-    const LilyEpdRect fullArea{0, 0, SCREEN_W, SCREEN_H};
-    // epd_draw_grayscale_image() does not erase prior ink and explicitly
-    // requires a white surface. Therefore EVERY replacement first removes the
-    // retained frame. Only the scheduled anti-ghost modes use a hard waveform.
-    switch (mode) {
-        case AgentDeckEpd47::Erase::Differential:
-            epd_draw_image(fullArea, display.prev(), 1 << 1);  // WHITE_ON_WHITE
-            break;
-        default:
-            epd_clear();
-            display.forgetFrame();
-            break;
+    constexpr uint16_t rowBytes = SCREEN_W / 2;
+    // Up to three bands of changed rows. Cost model from the pinned driver: a
+    // band pays a fixed ~185 ms (2 passes x 15 phases x the 5 ms vTaskDelay in
+    // provide_out, plus a skip pulse for every row outside it), and every row
+    // inside costs ~2 ms (30 driven row outputs; a full 540-row band measured
+    // 1.31 s). Splitting therefore pays only across a gap of ~95+ rows: a header
+    // stamp and one changed sheet row far below it, not two adjacent lines.
+    constexpr uint8_t MAX_BANDS = 3;
+    constexpr uint16_t BAND_SPLIT_GAP_ROWS = 96;
+    AgentDeckEpd47::Band bands[MAX_BANDS];
+    uint8_t bandCount = 0;
+    if (mode == AgentDeckEpd47::Erase::Differential) {
+        bandCount = AgentDeckEpd47::changedBands(display.prev(), display.pixels(), rowBytes,
+                                                 SCREEN_H, bands, MAX_BANDS,
+                                                 BAND_SPLIT_GAP_ROWS);
+        if (bandCount == 0) {
+            // Different writes, same pixels (the freshness stamp excepted, it is
+            // paused out of the hash). The glass already shows this frame.
+            lastFrameHash = frame;
+            frameHashValid = true;
+            return false;
+        }
     }
-    epd_draw_grayscale_image(fullArea, display.pixels());
-    display.retainFrame();
-    AgentDeckEpd47::recordErase(epd47RefreshState, mode, millis());
+    (void)full;
+    epd_poweron();
+    // epd_draw_grayscale_image() does not erase prior ink and explicitly
+    // requires a white surface, so every replacement first drives the old ink
+    // out. Only the scheduled anti-ghost sweep uses the hard waveform.
+    if (mode == AgentDeckEpd47::Erase::Differential) {
+        for (uint8_t b = 0; b < bandCount; b++) {
+            const AgentDeckEpd47::Band& band = bands[b];
+            const LilyEpdRect area{0, band.first, SCREEN_W, (int32_t)band.rows()};
+            const size_t offset = (size_t)band.first * rowBytes;
+            if (uint8_t* mask = display.mask()) {
+                // Only the changed pixels, only the changed rows (epd47_diff.h).
+                AgentDeckEpd47::buildMasked(display.prev(), display.pixels(), mask, rowBytes, band, true);
+                epd_draw_image(area, mask + offset, 1 << 1);           // WHITE_ON_WHITE
+                AgentDeckEpd47::buildMasked(display.prev(), display.pixels(), mask, rowBytes, band, false);
+                epd_draw_grayscale_image(area, mask + offset);
+            } else {
+                epd_draw_image(area, display.prev() + offset, 1 << 1);  // WHITE_ON_WHITE
+                epd_draw_grayscale_image(area, display.pixels() + offset);
+            }
+            display.retainRows(band.first, band.last);
+            AgentDeckEpd47::recordDifferential(epd47RefreshState, (uint16_t)band.first,
+                                               (uint16_t)band.last);
+        }
+    } else {
+        epd_clear();
+        display.forgetFrame();
+        const LilyEpdRect fullArea{0, 0, SCREEN_W, SCREEN_H};
+        epd_draw_grayscale_image(fullArea, display.pixels());
+        display.retainFrame();
+        AgentDeckEpd47::recordHardClear(epd47RefreshState, millis());
+    }
     epd_poweroff();
+    const bool actualFull = AgentDeckEpd47::isHardClear(mode);
 #else
+    (void)erase;
 #if defined(BOARD_NM_EPD_420)
     // hasPartialUpdate on this driver means partial RAM addressing, not a safe
     // physical partial waveform for the installed tri-color glass. Never call
     // refresh_bw(): every admitted NM repaint is a stock full-color cycle.
     full = true;
 #endif
-    actualFull = full;
-    if (full) __atomic_add_fetch(&fullRefreshCountValue, 1u, __ATOMIC_RELAXED);
     if (full) {
         display.setFullWindow();
-        partialCount = 0;
-        lastFullMs = millis();
     } else {
 #if defined(AGENTDECK_TRMNL_75_UI)
         if (renderFace == PaperFace::Aquarium && lastPaintedFace == PaperFace::Aquarium)
@@ -2850,24 +3156,37 @@ void refresh(void (*draw)(const Snap&), const Snap& s, bool full,
         else
 #endif
             display.setPartialWindow(0, 0, display.width(), display.height());
+    }
+    // One full-height page: firstPage() opens it, draw fills it, and nextPage()
+    // is what actually writes and refreshes the panel — so the frame can be
+    // judged between the two without touching the glass.
+    display.firstPage();
+    display.hash.reset();
+    draw(s);
+    const uint32_t frame = display.hash.value;
+    if (allowSkip && frameHashValid && frame == lastFrameHash) return false;
+    if (full) {
+        partialCount = 0;
+        lastFullMs = millis();
+    } else {
         partialCount++;
     }
-    display.firstPage();
-    do { draw(s); } while (display.nextPage());
+    while (display.nextPage()) draw(s);
+#if defined(BOARD_NM_EPD_420)
+    // No partial waveform means no previous frame worth keeping: let the
+    // controller deep-sleep between cycles; GxEPD2 resets it on the next write.
+    display.hibernate();
+#else
     // powerOff (NOT hibernate): high voltage off, controller previous-frame
     // RAM retained so the next partial refresh diffs cleanly. See note above.
     display.powerOff();
 #endif
-    const uint32_t write = __atomic_load_n(&refreshWrite, __ATOMIC_RELAXED);
-    const uint32_t read = __atomic_load_n(&refreshRead, __ATOMIC_ACQUIRE);
-    // Drop diagnostics if the consumer stalls; count gaps invalidate intervals.
-    if ((uint32_t)(write - read) < 4u) {
-        refreshCompletions[write % 4u] = {
-            __atomic_load_n(&repaintCountValue, __ATOMIC_RELAXED),
-            uint32_t(actualFull), refreshStartedMs,
-            uint32_t(millis() - refreshStartedMs)};
-        __atomic_store_n(&refreshWrite, write + 1u, __ATOMIC_RELEASE);
-    }
+    const bool actualFull = full;
+#endif
+    lastFrameHash = frame;
+    frameHashValid = true;
+    recordCompletion(actualFull, refreshStartedMs);
+    return true;
 }
 
 }  // namespace
@@ -2894,6 +3213,19 @@ uint32_t repaintCount() {
 
 uint32_t fullRefreshCount() {
     return __atomic_load_n(&fullRefreshCountValue, __ATOMIC_RELAXED);
+}
+
+uint32_t inputPollMs() {
+#if defined(BOARD_LILYGO_EPD47)
+    // 250 ms sampling saw a ~100 ms tap only when a sample happened to land
+    // inside the contact. A GT911 read is ~0.5 ms of I2C.
+    if (Input::touchReady()) return 25;
+#endif
+    return 250;
+}
+
+bool renderPending() {
+    return forceFull || forceRefresh;
 }
 
 void init() {
@@ -2940,12 +3272,15 @@ void init() {
     const bool initialSearching = !s.bridgeConnected;
     renderFace = initialSearching ? PaperFace::Roster : PaperFace::Glance;
 #if defined(BOARD_NM_EPD_420)
-    // Recondition both pigment planes after any prior experimental B/W cycle.
-    // The extended stock color waveform writes the complete intended frame;
-    // subsequent repaints use the normal fast full-color waveform only.
+    // Stock full-colour waveform, from the first cycle on. The driver's
+    // fast-full LUT forces a synthetic high-temperature profile; on the on-hand
+    // GDEY042Z98 that makes red weak and muddy, and the stock cycle also
+    // reconditions both pigment planes after any earlier experimental B/W run.
+    // Repaints are gated to an ambient cadence, so fidelity is worth the time.
     display.epd2.selectFastFullUpdate(false);
 #endif
-    refresh(initialSearching ? drawSearching : drawDashboard, s, true);
+    refresh(initialSearching ? drawSearching : drawDashboard, s, true, false);
+    lastPaintEndMs = millis();
 #if defined(AGENTDECK_EPD47_UI)
     lastPhysicalEpd47Page = epd47Page;
     physicalEpd47PageReady = true;
@@ -2960,11 +3295,6 @@ void init() {
     logHeap("lily-epd-touch");
 #endif
 #if defined(BOARD_NM_EPD_420)
-    // Keep the stock full-colour waveform. The driver's fast-full LUT forces a
-    // synthetic high-temperature profile; on the on-hand GDEY042Z98 that makes
-    // red weak and muddy. Refreshes are now coalesced at an ambient cadence, so
-    // pigment fidelity is worth the slower admitted cycle.
-    display.epd2.selectFastFullUpdate(false);
     lastPhysicalFace = renderFace;
     for (uint8_t i = 0; i < s.rowCount; i++) {
         const auto kind = AgentDeckEink::classifyStatus(s.rows[i].state);
@@ -3004,7 +3334,8 @@ void update(float /*dt*/) {
                 manualFace = PaperFace::Decision;
             } else if (epd47Page != AgentDeckEpd47::Page::Home) epd47Page = AgentDeckEpd47::Page::Home;
             else if (heldMs >= 850) {
-                epd47FocusedId[0] = '\0';
+                strncpy(epd47FocusedId, epd47PrimaryId, sizeof(epd47FocusedId) - 1);
+                epd47FocusedId[sizeof(epd47FocusedId) - 1] = '\0';
                 epd47Page = epd47HomeSelection == 0 ? AgentDeckEpd47::Page::Focus :
                     epd47HomeSelection == 1 ? AgentDeckEpd47::Page::Queue : AgentDeckEpd47::Page::Limits;
             } else epd47HomeSelection = (epd47HomeSelection + 1) % 3;
@@ -3197,9 +3528,20 @@ void update(float /*dt*/) {
             handled = true;
         } else if (!handled && renderFace == PaperFace::Glance &&
                    epd47Page == AgentDeckEpd47::Page::Home && touch.y > 86 && touch.y < 520) {
-            epd47Page = touch.x >= 562 ? AgentDeckEpd47::Page::Queue :
-                (touch.y >= 470 ? AgentDeckEpd47::Page::Queue : AgentDeckEpd47::Page::Focus);
-            epd47FocusedId[0] = '\0';
+            // Left column: the primary the HOME painted, not a fresh pick.
+            strncpy(epd47FocusedId, epd47PrimaryId, sizeof(epd47FocusedId) - 1);
+            epd47FocusedId[sizeof(epd47FocusedId) - 1] = '\0';
+            epd47Page = AgentDeckEpd47::Page::Focus;
+            if (touch.x >= 562) {
+                // A sheet row opens THAT session; the footer line opens the list.
+                const int row = (touch.y - EPD47_SHEET_TOP) / EPD47_SHEET_ROW;
+                if (touch.y >= EPD47_SHEET_TOP && row < EPD47_SHEET_ROWS && epd47SheetRows[row][0])
+                    strncpy(epd47FocusedId, epd47SheetRows[row], sizeof(epd47FocusedId) - 1);
+                else
+                    epd47Page = AgentDeckEpd47::Page::Queue;
+            } else if (touch.y >= 470) {
+                epd47Page = AgentDeckEpd47::Page::Queue;
+            }
             manualFace = PaperFace::Glance;
             handled = true;
         } else if (!handled && renderFace == PaperFace::Glance &&
@@ -3236,7 +3578,7 @@ void update(float /*dt*/) {
     // leave grayscale residue, and the flash costs least attention when the
     // user has already stopped touching.
     if (AgentDeckEpd47::postInteractionSweepDue(
-            epd47LastTouchMs, epd47RefreshState.differentialCount, now,
+            epd47LastTouchMs, epd47RefreshState, now,
             EPD47_POST_TOUCH_SWEEP_QUIET_MS)) {
         epd47LastTouchMs = 0;
         epd47PostTouchSweepDue = true;
@@ -3314,7 +3656,20 @@ void render() {
         renderFace = PaperFace::Glance;
     }
     uint32_t h = paperHash(s, renderFace);
-    if (h == lastHash && !forceFull && !forceRefresh) return;
+    // Re-stamp a panel whose content has sat unchanged for STAMP_REFRESH_MS,
+    // so "as of" keeps proving the board alive (see STAMP_REFRESH_MS).
+#if defined(AGENTDECK_EINK_STAMP)
+    const bool stampDue = !firstDraw && s.asOf[0] && s.bridgeConnected && s.hostDisplayOn &&
+                          (uint32_t)(now - lastDrawMs) >= STAMP_REFRESH_MS;
+#else
+    const bool stampDue = false;
+#endif
+#if defined(BOARD_LILYGO_EPD47)
+    const bool sweepDue = epd47PostTouchSweepDue;
+#else
+    const bool sweepDue = false;
+#endif
+    if (h == lastHash && !forceFull && !forceRefresh && !stampDue && !sweepDue) return;
     bool urgentTransition = searching != wasSearching;
 #if defined(BOARD_NM_EPD_420)
     uint8_t nmAttention = 0, nmWorking = 0;
@@ -3323,24 +3678,32 @@ void render() {
         if (kind == AgentDeckEink::StatusKind::Attention) nmAttention++;
         else if (kind == AgentDeckEink::StatusKind::Processing) nmWorking++;
     }
-    urgentTransition = urgentTransition || !physicalFaceReady ||
-                       renderFace != lastPhysicalFace ||
-                       nmAttention > lastPhysicalAttention;
-    // Settled-count bypass (see NM_COUNT_SETTLE_MS above): render() runs every
-    // loop tick, so this re-evaluates until the pending change either settles
-    // into a repaint or the counts bounce back and clear the candidate.
+    // Settled-count bypass: render() runs every loop tick, so this re-evaluates
+    // until the pending change either settles into a repaint or the counts
+    // bounce back and clear the candidate. A flap never settles.
+    bool countSettled = false;
     if (nmAttention != lastPhysicalAttention || nmWorking != lastPhysicalWorking) {
         if (nmAttention != nmPendingAttention || nmWorking != nmPendingWorking) {
             nmPendingAttention = nmAttention;
             nmPendingWorking = nmWorking;
             nmCountStableSinceMs = now;
-        } else if ((uint32_t)(now - nmCountStableSinceMs) >= NM_COUNT_SETTLE_MS) {
-            urgentTransition = true;
+        } else if ((uint32_t)(now - nmCountStableSinceMs) >= AgentDeckNm::COUNT_SETTLE_MS) {
+            countSettled = true;
         }
     } else {
         nmPendingAttention = 255;
         nmPendingWorking = 255;
     }
+    AgentDeckNm::GateInput gate;
+    gate.userAction = forceFull || forceRefresh;
+    gate.firstPaint = firstDraw || !physicalFaceReady;
+    gate.linkChanged = urgentTransition;
+    gate.faceChanged = renderFace != lastPhysicalFace;
+    gate.attentionRose = nmAttention > lastPhysicalAttention;
+    gate.countSettled = countSettled;
+    gate.sincePaintStartMs = (uint32_t)(now - lastDrawMs);
+    gate.sincePaintEndMs = (uint32_t)(now - lastPaintEndMs);
+    if (!AgentDeckNm::shouldPaint(gate)) return;
 #endif
     const bool galleryTransition = renderFace != lastPaintedFace &&
         (renderFace == PaperFace::Aquarium || lastPaintedFace == PaperFace::Aquarium);
@@ -3348,24 +3711,29 @@ void render() {
     if (renderFace == PaperFace::Aquarium) {
         for (uint8_t i = 0; i < s.rowCount; i++) if (isAwaiting(s.rows[i].state)) aquariumAttention++;
     }
+#if !defined(BOARD_NM_EPD_420)
     urgentTransition = urgentTransition || galleryTransition ||
         (renderFace == PaperFace::Aquarium && aquariumAttention > lastAquariumAttention);
     const uint32_t interval = renderFace == PaperFace::Aquarium ? 60000UL : MIN_REFRESH_INTERVAL_MS;
-    if (!forceFull && !forceRefresh && !urgentTransition &&
+    if (!forceFull && !forceRefresh && !urgentTransition && !stampDue && !sweepDue &&
         (now - lastDrawMs) < interval) return;  // coalesce bursts
+#endif
 
+    bool painted;
 #if defined(BOARD_LILYGO_EPD47)
     // A logical page transition is not a pigment reset. It gets the same quiet
-    // differential erase as every other content replacement, and crucially it
-    // does not reset the hard-clear count or age.
+    // masked update as every other content replacement, and it does not reset
+    // the residue the next hard clear is scheduled from.
     const bool epd47HardClear = AgentDeckEpd47::hardClearDue(
-        epd47RefreshState, firstDraw, now, FULL_EVERY_N_PARTIALS,
-        FULL_MAX_AGE_MS) || epd47PostTouchSweepDue;
+        epd47RefreshState, firstDraw, now, EPD47_STRIP_BUDGET,
+        FULL_MAX_AGE_MS) || sweepDue;
     epd47PostTouchSweepDue = false;
     const AgentDeckEpd47::Erase epd47Erase =
         AgentDeckEpd47::chooseErase(epd47HardClear);
-    refresh(searching ? drawSearching : drawDashboard, s,
-            epd47HardClear, epd47Erase);
+    // An identical frame is left alone, except for the post-touch sweep (its
+    // whole point is a clean glass) and a due re-stamp (the stamp is the change).
+    painted = refresh(searching ? drawSearching : drawDashboard, s,
+                      epd47HardClear, !sweepDue && !stampDue, epd47Erase);
 #else
     // A milestone ticker row replacing another under a partial waveform
     // leaves the old text ghosted beneath the new — on the panel it reads as
@@ -3393,7 +3761,11 @@ void render() {
     // Keep transport-offline distinct from a live daemon with an empty roster.
     // init() already uses this split; subsequent refreshes must preserve it or
     // the first timed repaint replaces OFFLINE with "no active sessions".
-    refresh(searching && renderFace != PaperFace::Aquarium ? drawSearching : drawDashboard, s, full);
+    // A key press is the reader asking for a clean panel, so it always cycles
+    // the glass (KEY1/KEY2 on TRMNL, BOOT/USER on NM); everything else skips a
+    // pixel-identical frame.
+    painted = refresh(searching && renderFace != PaperFace::Aquarium ? drawSearching : drawDashboard,
+                      s, full, !forceFull && !firstDraw && !stampDue);
 #endif
 
 #if defined(AGENTDECK_EPD47_UI)
@@ -3412,7 +3784,12 @@ void render() {
     lastHash = h;
     lastPaintedFace = renderFace;
     lastAquariumAttention = aquariumAttention;
-    lastDrawMs = now;
+    if (painted) {
+        // The coalescing floor and the re-stamp clock run from physical paints;
+        // a skipped identical frame changed nothing on the glass.
+        lastDrawMs = now;
+        lastPaintEndMs = millis();
+    }
     firstDraw = false;
     forceFull = false;
     forceRefresh = false;

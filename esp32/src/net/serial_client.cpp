@@ -276,16 +276,22 @@ void serialLoop() {
                     // native USB CDC endpoint with a small TX FIFO.
                     const bool requestedDeviceInfo =
                         strstr(serialBuf, "\"device_info_request\"") != nullptr;
-                    Protocol::parseMessage(serialBuf, serialBufPos);
+                    // The link is alive BEFORE the message is handled: handlers
+                    // branch on serialConnected() (a wifi_provision that arrives
+                    // over USB is persisted, not joined), and the first line
+                    // after boot or a serial-suspend lease must not be judged as
+                    // if it came from nowhere.
                     uint32_t nowMs = millis();
                     lastSerialJsonMs = nowMs;
+                    const bool firstContact = !hasReceivedJson;
+                    hasReceivedJson = true;
+                    Protocol::parseMessage(serialBuf, serialBufPos);
 
                     lockState();
                     g_state.lastMessageMs = nowMs;
                     unlockState();
 
-                    if (!hasReceivedJson) {
-                        hasReceivedJson = true;
+                    if (firstContact) {
                         Serial.println("[Serial] First JSON received — bridge connected via USB");
 
                         lockState();

@@ -468,6 +468,13 @@ export interface DisplayStateEvent {
   displayOn: boolean;
   /** How to dim on sleep. Absent ⇒ legacy full-off. */
   dim?: DisplayDimInstruction;
+  /** Daemon host-local "HH:MM" at send time (same convention as timeline
+   *  `localHm`). display_state is re-sent every 5 s over serial and 15 s over
+   *  WebSocket, so this is the wall clock for boards that never reach NTP —
+   *  a serial-primary board parks its radio — and for every board that only
+   *  knows UTC. E-ink panels print it as their "as of HH:MM" freshness band.
+   *  Absent ⇒ no information; a client keeps its last estimate. */
+  hostHm?: string;
 }
 
 // ===== Multi-session Discovery =====

@@ -959,13 +959,15 @@ static void handleWifiProvision(JsonObject& obj) {
     Net::wifiSaveAuthToken(authToken);
 
     bool ok = false;
-#if defined(BOARD_T_DISPLAY_PRO) || \
+#if defined(BOARD_T_DISPLAY_PRO) || defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN) || \
     (defined(BOARD_IPS10) && !defined(BOARD_HAS_VOICE_CAPTURE))
     if (Net::serialConnected()) {
         // USB serial is the primary transport on these boards. Persist the
         // credentials/endpoint but do not join now: on the IPS10 that avoids
         // waking the hosted C6 radio; on the T-Display-S3-Pro a join while on
-        // the desk cable browned out the 3.3 V rail (E BOD loop, 2026-07-27).
+        // the desk cable browned out the 3.3 V rail (E BOD loop, 2026-07-27);
+        // on the e-ink panels a join here was the radio that never parked
+        // again (net/radio_park_policy.h).
         // WiFi comes up from the serial-death path when USB actually goes away.
         Net::wifiSaveProvisionedCredentials(ssid, password);
         Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
@@ -1597,13 +1599,24 @@ void parseMessage(const char* json, size_t length) {
         if (scaled < 1) scaled = 1;
         if (scaled > 255) scaled = 255;
         lockState();
+        // The daemons re-send display_state every 5 s (serial) / 15 s (WiFi);
+        // log only what changed instead of narrating every heartbeat.
+        const bool changed = g_state.hostDisplayOn != displayOn ||
+                             g_state.hostDimEnabled != dimEnabled ||
+                             g_state.hostDimMode != dimMode8 ||
+                             g_state.hostDimLevel != (uint8_t)scaled;
         g_state.hostDisplayOn = displayOn;
         g_state.hostDimEnabled = dimEnabled;
         g_state.hostDimMode = dimMode8;
         g_state.hostDimLevel = (uint8_t)scaled;
+        // Optional host-local "HH:MM" riding the same re-sync: the wall clock
+        // for boards that never reach NTP (util/host_clock.h). Absent ⇒ keep.
+        g_state.hostClock.observe(obj["hostHm"] | "", millis());
         unlockState();
-        Serial.printf("[Host] display %s (dim=%d mode=%d level=%d)\n",
-                      displayOn ? "on" : "off", dimEnabled, dimMode8, scaled);
+        if (changed) {
+            Serial.printf("[Host] display %s (dim=%d mode=%d level=%d)\n",
+                          displayOn ? "on" : "off", dimEnabled, dimMode8, scaled);
+        }
     } else if (strcmp(type, "set_orientation") == 0) {
         bool landscape = obj["landscape"] | true;
         lockState();

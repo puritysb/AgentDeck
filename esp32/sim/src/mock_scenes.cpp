@@ -4,6 +4,7 @@
 // derivation (session → octopus/cloud/opencode/antigravity/kiro + crayfish
 // gateway).
 #include "sim.h"
+#include <Arduino.h>
 #include "config.h"
 #include "state/agent_state.h"
 #include <cstdio>
@@ -83,6 +84,9 @@ void base(CreatureState cs) {
   setStr(g_state.projectName, sizeof(g_state.projectName), "AgentDeck");
   setStr(g_state.modelName, sizeof(g_state.modelName), "opus-4.8");
   g_state.hostDisplayOn = true;      // host-awake baseline for display-sync scenes
+  // Host-local wall clock as display_state.hostHm delivers it, so the e-ink
+  // freshness band ("as of" / "since") renders in previews.
+  g_state.hostClock.observe("14:32", (uint32_t)millis());
   g_state.userBrightness = 255;
   // Usage — drives the 5H/7D rate gauges (matrix usage page, HUD, e-ink).
   g_state.fiveHourPercent = 42.0f;

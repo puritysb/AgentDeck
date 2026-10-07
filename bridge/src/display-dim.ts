@@ -47,14 +47,22 @@ export function loadDisplayDimInstruction(): DisplayDimInstruction {
   return normalizeDisplayDimInstruction(best?.parsed.displaySleepDim);
 }
 
-export function buildDisplayStateEvent(displayOn: boolean): {
+/** Host-local "HH:MM" — the `localHm` convention, for `display_state.hostHm`. */
+export function hostLocalHm(now: Date = new Date()): string {
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+}
+
+export function buildDisplayStateEvent(displayOn: boolean, now: Date = new Date()): {
   type: 'display_state';
   displayOn: boolean;
   dim: DisplayDimInstruction;
+  hostHm: string;
 } {
   return {
     type: 'display_state',
     displayOn,
     dim: loadDisplayDimInstruction(),
+    // Stamped per call: every re-sync carries the clock at ITS send time.
+    hostHm: hostLocalHm(now),
   };
 }

@@ -593,8 +593,8 @@
       "blocking": true,
       "required": true,
       "command": "bash esp32/sim/run-tests.sh",
-      "evidence": ["esp32/sim/run-tests.sh", "esp32/sim/tests/creature_glyph_selection_test.cpp", "esp32/sim/tests/ci_companion_ttgo_test.cpp"],
-      "proves": ["firmware policy headers execute on the host, including strict unknown-agent glyph refusal and source feature selection"],
+      "evidence": ["esp32/sim/run-tests.sh", "esp32/sim/tests/creature_glyph_selection_test.cpp", "esp32/sim/tests/ci_companion_ttgo_test.cpp", "esp32/sim/tests/eink_refresh_policy_test.cpp"],
+      "proves": ["firmware policy headers execute on the host, including strict unknown-agent glyph refusal and source feature selection", "e-ink paint policies: EPD47 masked differential bands and strip residue, the NM paint gate, the host clock behind \"as of\", and serial-primary radio parking from the radio's real state"],
       "does_not_prove": ["pixel output, physical firmware memory pressure, or an installed board update"]
     },
     {

@@ -604,6 +604,16 @@ enum ClaudeTranscriptTailReader {
     }
 }
 
+/// Host-local "HH:MM" now — the `localHm` convention, for `display_state.hostHm`.
+/// Stamped wherever a display_state dict is built so every re-sync carries
+/// the clock at ITS send time (Node parity: display-dim.ts `hostLocalHm`).
+/// E-ink boards print it as their "as of HH:MM" band; a serial-primary board
+/// parks its radio and has no other wall clock.
+func displayStateHostHm(_ now: Date = Date()) -> String {
+    let c = Calendar.current.dateComponents([.hour, .minute], from: now)
+    return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+}
+
 /// ESP32 heartbeat callbacks run from the `ESP32Serial` actor, not from the
 /// daemon's `@MainActor` context. Store serial-facing event snapshots here so
 /// heartbeat code never reaches back into `DaemonServer` actor state.
@@ -673,7 +683,8 @@ private final class SerialEventSnapshot: @unchecked Sendable {
     func currentDisplayStateEvent() -> [String: Any] {
         lock.lock()
         defer { lock.unlock() }
-        return ["type": "display_state", "displayOn": displayOn, "dim": displayDim]
+        return ["type": "display_state", "displayOn": displayOn, "dim": displayDim,
+                "hostHm": displayStateHostHm()]
     }
 
     func initialEvents() -> [[String: Any]] {
@@ -705,7 +716,8 @@ private final class SerialEventSnapshot: @unchecked Sendable {
         if !seed.isEmpty {
             events.append(["type": "timeline_history", "entries": Array(seed)])
         }
-        events.append(["type": "display_state", "displayOn": display, "dim": dim])
+        events.append(["type": "display_state", "displayOn": display, "dim": dim,
+                       "hostHm": displayStateHostHm()])
         return events
     }
 }
@@ -2115,6 +2127,7 @@ final class DaemonServer {
                     "type": "display_state",
                     "displayOn": displayOn,
                     "dim": self.currentDimDict(),
+                    "hostHm": displayStateHostHm(),
                 ] as [String: Any])
                 if displayOn {
                     DaemonLogger.shared.info("Display wake — recovering modules and state")
@@ -2522,6 +2535,7 @@ final class DaemonServer {
                         "type": "display_state",
                         "displayOn": false,
                         "dim": self.currentDimDict(),
+                        "hostHm": displayStateHostHm(),
                     ] as [String: Any])
                 }
             }

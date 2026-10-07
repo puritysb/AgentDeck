@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Surface maintainers
-reviewed: 2026-08-30
-revision: 2026-08-30
+reviewed: 2026-10-07
+revision: 2026-10-07
 source_of_truth: docs/eink-surface-contract.md
 validators: [pnpm docs:check, node scripts/build-design-system-viewer.mjs --check]
 ---
@@ -34,6 +34,17 @@ does not earn a panel refresh.
   current transport/activity state, and an absolute `as of HH:MM` timestamp.
   `PROCESSING`, tool churn, reconnecting, and similar transients are band words,
   never faces.
+
+The timestamp is the host's wall clock, not the board's: both daemons stamp
+`display_state.hostHm` (host-local `HH:MM`) on the re-sync they already send
+every 5 s over serial and 15 s over WebSocket, and the board extrapolates
+between stamps (`esp32/src/util/host_clock.h`). A serial-primary board parks its
+radio and never reaches NTP, and NTP is UTC anyway. The stamp is drawn at paint
+time and is never part of a content hash; a panel whose content has not changed
+re-stamps once per hour (NM) or half hour (EPD47) while the host display is
+awake, so a living panel can be told from a wedged one. While the link is down
+the band reads `since HH:MM` — the last host contact. With no stamp ever
+received the band says nothing rather than guess.
 
 ## 2. Face definitions
 
@@ -68,6 +79,13 @@ battery board into USB for development does not make it push-capable unless its
 firmware or configuration explicitly declares a continuously reachable push
 mode.
 
+**Every board AgentDeck ships today declares push** (2026-10-07). Pull is the
+contract for a board that actually sleeps, and none does yet: the NM and EPD47
+firmware stays awake and connected, so the pull set only hid real decisions from
+a panel that could have shown them, without saving any power. A firmware that
+adds a sleep path opts back into pull with `AGENTDECK_EINK_PULL_MODE`, and the
+lease rules above apply to it unchanged.
+
 ## 4. Arbitration and holds
 
 1. Admit only content that satisfies its face contract, then select the highest
@@ -87,34 +105,45 @@ mode.
 | Board | Delivery mode | Deep-sleep wake | PTT | Physical controls |
 |---|---|---|---|---|
 | TRMNL 7.5" / Seeed TRMNL 7.5 | **Push**; USB-powered and continuously reachable | Not used by current firmware | None (no microphone) | `KEY1` cycles board → aquarium → digest → board; `KEY2` returns to the live AgentDeck board. No face replaces the board on its own except `DECISION`. |
-| RockBase NM-EPD-420 | **Pull** by default; explicit tethered configuration may promote it to push | `BOOT` / GPIO0 | `BOOT` hold remains reserved until the ES8311 capture path is enabled. Playback is live: the codec answers at 0x18 (probed 2026-08-30) and the board advertises `audio_out`. | Home: `BOOT` opens/pages, `USER` returns home. Decision: `BOOT` advances the highlighted option; `USER` selects, then confirms it. |
-| LilyGo T5 ePaper S3 / EPD47 | **Pull** | User button / GPIO21; `BOOT` / GPIO0 is recovery fallback. Touch IRQ GPIO47 is not a wake source without a hardware reroute. | None (no onboard microphone) | Detected touch opens work/usage details from the stable home and selects options; the owned unit answers at 0x5D once its P6 FPC is seated. Decision options drop their numeric prefix when a controller is present. Without touch, a short GPIO21 press selects a home target; a hold opens it. In a detail, a short GPIO21 press returns home; holding a focused actionable request opens its decision. Decision input remains tap-next / hold-confirm. |
+| RockBase NM-EPD-420 | **Push** (no sleep path yet; see §3) | `BOOT` / GPIO0, unused until a sleep path exists | `BOOT` hold remains reserved until the ES8311 capture path is enabled. Playback is live: the codec answers at 0x18 (probed 2026-08-30) and the board advertises `audio_out`. | Home: `BOOT` opens/pages, `USER` returns home. Decision: `BOOT` advances the highlighted option; `USER` selects, then confirms it. |
+| LilyGo T5 ePaper S3 / EPD47 | **Push** (no sleep path yet; see §3) | Unused until a sleep path exists; then user button / GPIO21; `BOOT` / GPIO0 is recovery fallback. Touch IRQ GPIO47 is not a wake source without a hardware reroute. | None (no onboard microphone) | Detected touch opens work/usage details from the stable home and selects options; the owned unit answers at 0x5D once its P6 FPC is seated. Decision options drop their numeric prefix when a controller is present. Without touch, a short GPIO21 press selects a home target; a hold opens it. In a detail, a short GPIO21 press returns home; holding a focused actionable request opens its decision. Decision input remains tap-next / hold-confirm. |
 
-On pull boards, a physical primary/wake action starts the eight-minute
+On a pull board, a physical primary/wake action starts the eight-minute
 interactive lease. Outside that lease, `DECISION` and `ANSWER` are ineligible;
-loss of the daemon selects the static `ROSTER` fallback. The current NM build
+loss of the daemon selects the static `ROSTER` fallback (OFFLINE, with the
+`since` stamp). The current NM build
 reserves a fresh `BOOT` hold for PTT but does not yet enable the ES8311 capture
 driver. Until capture lands, the retained footer documents only implemented
 short-press controls and does not advertise a non-working talk action.
 
-EPD47 presents one stable `GLANCE` home: work, actual usage windows with their
-reset times, and recent durable results on its left; the session roster on its
-right; non-zero state counts in the header. Session counts
-never switch pages. Tapping work, all-work, or usage opens a detail for eight
-minutes; explicit Home or hold expiry returns to the same home. Work-list taps
-bind to the session identity painted in that row, not its current sort index.
+EPD47 presents one stable `GLANCE` home: the primary session (agent, state, its
+question or latest durable milestone), actual usage windows with their reset
+times, and recent durable results on its left; every *other* session on its
+right — glyph, name, state and the same detail line, attention first, then
+working, then idle, overflow counted ("+2 more") — and non-zero state counts
+plus the freshness band in the header. Detail lines are durable milestones,
+never live tool text, so the sheet changes on progress, not on every tool
+event. Session counts never switch pages. Tapping work, a sheet row, all-work, or usage opens a detail for eight
+minutes; explicit Home or hold expiry returns to the same home. Work-list and
+sheet taps bind to the session identity painted in that row, not its current
+sort index.
 Only actual structured options admit an automatic decision face. Option sends
 are rejected if the current decision identity/content differs from the painted
 request. Displayed-page holds retain the existing face priority boundary.
 
 NM uses the full width for a ranked list — the session that needs the reader
-with its question, then working sessions with their activity, overflow named by
-kind ("+3 working") — under a census of non-zero counts, with actual usage
-windows below. Its speaker plays a two-note chime when a session starts waiting,
+with its question, then working sessions with their latest durable milestone,
+overflow named by kind ("+3 working") — under a census of non-zero counts, with
+actual usage windows below and the freshness band in the header corner. Its
+DECISION face keeps every option on the panel: with three options the question
+yields lines to them, because the last option of a permission prompt is the
+"Deny" the reader must always have. Its speaker plays a two-note chime when a session starts waiting,
 because a ~10 s repaint cannot flash. Up to four windows reclaim space from the
 summary/recent-result band rather than overprinting it. The standard tri-color
-SKU retains the stock full-color refresh waveform and coalescing policy; it
-never uses the EPD47 touch navigation or experimental BW partial updates.
+SKU retains the stock full-color refresh waveform; its paint gate (15-minute
+ambient floor, urgent transitions after a 30 s post-cycle gap, user keys
+immediately) is `esp32/src/ui/eink/nm_refresh_policy.h`. It never uses the
+EPD47 touch navigation or experimental BW partial updates.
 
 TRMNL reserves a readable subscription column alongside actual quota windows.
 A plan with no quota windows gets a subscription row rather than tiny corner
@@ -132,9 +161,10 @@ release from a fresh capture hold.
 E-ink firmware that owns the panel SHOULD emit two optional `device_info`
 counters, both monotonic since boot:
 
-- `repaintCount`: actual physical panel refreshes after content and rate gates;
+- `repaintCount`: actual physical panel refreshes after content, rate and
+  frame gates (a frame pixel-identical to the glass is skipped and not counted);
 - `fullRefreshCount`: the hard anti-ghost/full-waveform subset of `repaintCount`
-  (EPD47 differential frame replacements do not increment it).
+  (EPD47 masked differential updates do not increment it).
 
 The counters reset on reboot and may be absent on older or non-e-ink firmware.
 Both daemons expose them over serial and WiFi so a redesign can be evaluated

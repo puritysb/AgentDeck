@@ -142,6 +142,12 @@ struct ADBridgeEvent: Codable, Equatable {
     /// How to dim on sleep. Absent ⇒ legacy full-off.
     var dim: ADDisplayDimInstruction?
     var displayOn: Bool?
+    /// Daemon host-local "HH:MM" at send time (same convention as timeline `localHm`).
+    /// display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the
+    /// wall clock for boards that never reach NTP — a serial-primary board parks its radio — and
+    /// for every board that only knows UTC. E-ink panels print it as their "as of HH:MM"
+    /// freshness band. Absent ⇒ no information; a client keeps its last estimate.
+    var hostHm: String?
     var sessions: [ADSessionInfo]?
     var encoders: [ADEncoderSlotState]?
     var takeoverActive: Bool?
@@ -255,6 +261,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case timestamp = "timestamp"
         case dim = "dim"
         case displayOn = "displayOn"
+        case hostHm = "hostHm"
         case sessions = "sessions"
         case encoders = "encoders"
         case takeoverActive = "takeoverActive"
@@ -384,6 +391,7 @@ extension ADBridgeEvent {
         timestamp: Double?? = nil,
         dim: ADDisplayDimInstruction?? = nil,
         displayOn: Bool?? = nil,
+        hostHm: String?? = nil,
         sessions: [ADSessionInfo]?? = nil,
         encoders: [ADEncoderSlotState]?? = nil,
         takeoverActive: Bool?? = nil,
@@ -493,6 +501,7 @@ extension ADBridgeEvent {
             timestamp: timestamp ?? self.timestamp,
             dim: dim ?? self.dim,
             displayOn: displayOn ?? self.displayOn,
+            hostHm: hostHm ?? self.hostHm,
             sessions: sessions ?? self.sessions,
             encoders: encoders ?? self.encoders,
             takeoverActive: takeoverActive ?? self.takeoverActive,
