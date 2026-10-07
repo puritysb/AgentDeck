@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
@@ -89,6 +90,154 @@ afterAll(() => {
 const styleBlock = () => /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
 const withoutRoot = (css: string) => css.replace(/:root\s*\{[^}]*\}/g, '');
 
+describe('QA decision and accounting', () => {
+  it.each([
+    { name: 'empty results', statuses: [], suite: 'pass', all: false, decision: 'off', executed: 0, skipped: 0 },
+    { name: 'skipped only', statuses: ['skipped'], suite: 'pass', all: false, decision: 'off', executed: 0, skipped: 1 },
+    { name: 'partial platform scope', statuses: ['passed'], suite: 'pass', all: false, decision: 'partial', executed: 1, skipped: 0 },
+    { name: 'skip excluded from execution', statuses: ['passed', 'skipped'], suite: 'pass', all: true, decision: 'partial', executed: 1, skipped: 1 },
+    { name: 'suite error without failing case', statuses: ['passed'], suite: 'fail', all: true, decision: 'fail', executed: 1, skipped: 0 },
+    { name: 'failed assertion despite pass metadata', statuses: ['failed'], suite: 'pass', all: true, decision: 'fail', executed: 1, skipped: 0 },
+    { name: 'metadata alone cannot prove native cases', statuses: ['passed'], suite: 'pass', all: true, decision: 'partial', executed: 1, skipped: 0 },
+  ])('$name keeps HTML and summary consistent', ({ statuses, suite, all, decision, executed, skipped }) => {
+    const report = mkdtempSync(join(tmpdir(), 'qa-decision-'));
+    try {
+      // Deliberately incorrect reporter aggregate: authoritative case outcomes win.
+      const input = vitestJson([{ file: 'bridge/src/__tests__/state-machine.test.ts',
+        assertions: statuses.map((status) => assertion('public fixture', status as 'passed' | 'failed' | 'skipped')) }]);
+      input.numTotalTests = 999;
+      input.numPassedTests = 998;
+      writeFileSync(join(report, 'vitest.json'), JSON.stringify(input));
+      writeFileSync(join(report, 'run-metadata.json'), JSON.stringify({ run_profile: 'synthetic-fixture', suites:
+        Object.fromEntries(['vitest', 'e2e', 'android', 'apple', 'robot'].map((name) => [name,
+          { executed: name === 'vitest' || all, status: name === 'vitest' ? suite : all ? 'pass' : 'not-run' }])) }));
+      execFileSync('python3', [join(ROOT, 'scripts/generate-html-report.py')], { env: { ...process.env,
+        BUILD_HEALTH_REPORT_DIR: report, BUILD_HEALTH_COVERAGE_JSON: join(report, 'absent'),
+        BUILD_HEALTH_ANDROID_DIR: join(report, 'absent'),
+        GITHUB_SHA: 'abc1234',
+      } });
+      const summary = JSON.parse(readFileSync(join(report, 'summary.json'), 'utf8'));
+      expect(summary.decision).toBe(decision);
+      expect(summary.total).toMatchObject({ executed, skipped, total: executed + skipped });
+      const page = readFileSync(join(report, 'index.html'), 'utf8');
+      expect(page).toContain(`<span class="dot ${decision}">`);
+      expect(page).toContain(`<dd>${executed} / ${executed + skipped}</dd>`);
+      expect(page).not.toContain('href="#coverage"');
+      const ids = new Set([...page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+      for (const [, target] of page.matchAll(/href="#([^"]+)"/g)) expect(ids.has(target), target).toBe(true);
+      const history = JSON.parse(readFileSync(join(report, 'history.json'), 'utf8'));
+      expect(history.at(-1).total).toBe(summary.total.total);
+      if (all) {
+        for (const name of ['e2e', 'android', 'apple', 'robot']) {
+          expect(summary.suites.find((s: { name: string }) => s.name === name).status).toBe('unknown');
+        }
+        expect(page).toMatch(/<h3>Apple \(XCTest\)<\/h3><span class="badge off"><span data-i18n="[^"]+">No case evidence<\/span><\/span>/);
+        expect(page).not.toContain('<h3>Apple (XCTest)</h3><span class="badge pass">');
+      }
+    } finally { rmSync(report, { recursive: true, force: true }); }
+  });
+
+  it('puts the readable judgment before details and provides actual reproduction inputs', () => {
+    expect(html.indexOf('id="qa-summary"')).toBeLessThan(html.indexOf('class="jump"'));
+    expect(html).toContain('검증 결론부터');
+    expect(html).toContain('수동 QA가 필요한 이유');
+    expect(html).toContain('BUILD_HEALTH_COVERAGE_JSON=');
+    expect(html).toContain('No QA execution video is attached');
+    expect(html).toContain("node.getAttribute('data-i18n')");
+    expect(html).toMatch(/<html lang="en">/);
+    expect(html).toMatch(/<h1><span data-i18n="[^"]+">Test Report<\/span><\/h1>/);
+    expect(html).not.toContain('data-en=');
+    expect(html).toContain('id="run" tabindex="-1"');
+    expect(styleBlock()).toContain(':focus-visible');
+  });
+
+  it.each(['e2e-only', 'file-setup-failure', 'skipped-native'])('%s cannot manufacture a passing suite', (kind) => {
+    const report = mkdtempSync(join(tmpdir(), 'qa-evidence-'));
+    try {
+      let androidDir = join(report, 'absent');
+      if (kind === 'e2e-only') {
+        writeFileSync(join(report, 'e2e.json'), JSON.stringify(vitestJson([
+          { file: 'tests/e2e/daemon-hub.e2e.test.ts', assertions: [assertion('public fixture', 'passed')] },
+        ])));
+      } else {
+        const input = vitestJson([{ file: 'bridge/src/__tests__/state-machine.test.ts', assertions: [] }]);
+        if (kind === 'file-setup-failure') input.testResults[0]!.status = 'failed';
+        writeFileSync(join(report, 'vitest.json'), JSON.stringify(input));
+        if (kind === 'skipped-native') {
+          androidDir = join(report, 'android'); mkdirSync(androidDir);
+          writeFileSync(join(androidDir, 'TEST-fixture.xml'), '<testsuite name="public.FixtureTest" tests="1" failures="0" errors="0" skipped="1" time="0"><testcase name="requires target" time="0"><skipped/></testcase></testsuite>');
+        }
+      }
+      execFileSync('python3', [join(ROOT, 'scripts/generate-html-report.py')], { env: { ...process.env,
+        BUILD_HEALTH_REPORT_DIR: report, BUILD_HEALTH_COVERAGE_JSON: join(report, 'absent'),
+        BUILD_HEALTH_ANDROID_DIR: androidDir,
+      } });
+      const summary = JSON.parse(readFileSync(join(report, 'summary.json'), 'utf8'));
+      const page = readFileSync(join(report, 'index.html'), 'utf8');
+      if (kind === 'e2e-only') {
+        expect(summary.total.executed).toBe(1);
+        expect(summary.suites.find((s: { name: string }) => s.name === 'vitest').executed).toBe(false);
+        expect(page).toContain('<h3>Vitest</h3><span class="badge off">');
+      } else if (kind === 'file-setup-failure') {
+        expect(summary.total.failed).toBe(0);
+        expect(summary.decision).toBe('fail');
+        expect(page).toContain('<h3>Vitest</h3><span class="badge fail">');
+      } else {
+        expect(summary.total).toMatchObject({ executed: 0, skipped: 1 });
+        expect(summary.decision).toBe('off');
+        expect(page).toMatch(/<h3>Android<\/h3><span class="badge off"><span data-i18n="[^"]+">No executed cases<\/span><\/span>/);
+      }
+    } finally { rmSync(report, { recursive: true, force: true }); }
+  });
+
+  it.each(['ko', 'en', 'ja', null, 'invalid'])('language choice %s changes reader copy without touching evidence', (saved) => {
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)?.[1];
+    expect(script).toBeTruthy();
+    let change = () => {};
+    const selector = { value: 'en', addEventListener: (_event: string, fn: () => void) => { change = fn; } };
+    const key = /<h1><span data-i18n="([^"]+)">Test Report/.exec(html)![1];
+    const copy = { textContent: 'Test Report', getAttribute: () => key };
+    const document = { documentElement: { lang: 'ko' }, getElementById: () => selector,
+      querySelectorAll: (query: string) => { expect(query).toBe('[data-i18n]'); return [copy]; } };
+    runInNewContext(script!, { document, localStorage: { getItem: () => saved, setItem: () => {} } });
+    expect(copy.textContent).toBe(saved === 'ko' ? '테스트 보고서' : saved === 'ja' ? 'テストレポート' : 'Test Report');
+    expect(selector.value).toBe(saved && ['en', 'ko', 'ja'].includes(saved) ? saved : 'en');
+    expect(document.documentElement.lang).toBe(selector.value);
+    selector.value = 'en'; change();
+    expect(copy.textContent).toBe('Test Report');
+    expect(document.documentElement.lang).toBe('en');
+    selector.value = 'ko'; change();
+    expect(copy.textContent).toBe('테스트 보고서');
+    expect(document.documentElement.lang).toBe('ko');
+  });
+
+  it('provides Korean for every authored report string and preserves the Pages locale contract', () => {
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].at(-1)![1]!;
+    const dictionaries = JSON.parse(/var I18N = ([\s\S]*?);\n/.exec(script)![1]!);
+    const nodes = [...html.matchAll(/<span data-i18n="([^"]+)">([^<]*)<\/span>/g)].map(([, key, text]) => ({
+      key, textContent: text, getAttribute: () => key,
+    }));
+    expect(nodes.length).toBeGreaterThan(30);
+    for (const node of nodes) expect(dictionaries.ko[node.key!], node.key).toBeTruthy();
+    let change = () => {};
+    const selector = { value: 'en', addEventListener: (_event: string, fn: () => void) => { change = fn; } };
+    const document = { documentElement: { lang: 'en' }, getElementById: () => selector,
+      querySelectorAll: () => nodes };
+    const stored: Array<[string, string]> = [];
+    runInNewContext(script, { document, localStorage: { getItem: (key: string) => {
+      expect(key).toBe('agentdeck-design-locale'); return 'ko';
+    }, setItem: (key: string, value: string) => { stored.push([key, value]); } } });
+    for (const node of nodes) expect(node.textContent).toBe(dictionaries.ko[node.key!]);
+    expect(nodes.some((node) => node.textContent === '실패 — 원인 확인 필요')).toBe(true);
+    expect(nodes.some((node) => node.textContent === '수동 QA가 필요한 이유')).toBe(true);
+    selector.value = 'ja'; change();
+    expect(document.documentElement.lang).toBe('ja');
+    expect(stored.at(-1)).toEqual(['agentdeck-design-locale', 'ja']);
+    // Missing Japanese strings retain the canonical English source, as other Pages do.
+    expect(nodes.some((node) => node.textContent === 'Manual QA still needed')).toBe(true);
+  });
+});
+
 describe('Build Health page — design rules on the generated output', () => {
   it('keeps every colour literal inside :root (R1, R2)', () => {
     const outsideRoot = withoutRoot(styleBlock()) + html.replace(/<style>[\s\S]*?<\/style>/, '');
@@ -140,7 +289,7 @@ describe('Build Health page — design rules on the generated output', () => {
 
 describe('Build Health page — what it states', () => {
   it('reports a failing run as failing, with the escaped failure', () => {
-    expect(html).toMatch(/class="run-chip"><span class="dot fail"><\/span>Fail/);
+    expect(html).toMatch(/class="run-chip"><span class="dot fail"><\/span><span data-i18n="[^"]+">Fail/);
     expect(html).toContain('keeps &lt;script&gt; &amp; &quot;quotes&quot; escaped');
     expect(html).toContain('expected &lt;b&gt;401&lt;/b&gt;');
     expect(html).not.toContain('<script> &');
