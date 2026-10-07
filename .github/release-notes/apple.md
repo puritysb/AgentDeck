@@ -2,8 +2,8 @@ Universal dashboard app for monitoring coding agent sessions — macOS, iPhone a
 
 ### Install from the App Store
 
-- **Mac** — [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
-- **iPhone / iPad** — [AgentDeck Dashboard on the App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497)
+- **Mac** — [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac&pt=128040795&ct=release-202610&mt=8)
+- **iPhone / iPad** — [AgentDeck Dashboard on the App Store](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?pt=128040795&ct=release-202610&mt=8)
 
 The Mac app is standalone: its sandboxed, built-in Swift daemon handles session tracking, hook events and local pairing, with no Node.js install required. The iPhone/iPad app is a companion — it pairs with a Mac running AgentDeck on the same network rather than running on its own.
 
