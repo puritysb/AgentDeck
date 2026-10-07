@@ -212,16 +212,22 @@ describe('expressive BLE matrices', () => {
     expect(engine.scene(20000).face).toBe('done');
     expect(engine.scene(100 + MATRIX_RULES.resultMs).face).toBe('idle');
   });
-  it('draws chin pips only when the face carries a count, capped at five', () => {
-    const lit = (face: Parameters<typeof renderMatrixFace>[0], pips: number) => {
+  it('draws dim chin pips only on the delegating face, capped at five', () => {
+    const chin = (face: Parameters<typeof renderMatrixFace>[0], pips: number) => {
       const out = renderMatrixFace(face, 0); paintFacePips(out, face as never, pips);
-      return Array.from({ length: 11 }, (_, x) => out[(10 * 11 + x) * 3 + 1] > 0 ? 1 : 0).join('');
+      return Array.from({ length: 11 }, (_, x) => out[(10 * 11 + x) * 3 + 1]);
     };
-    expect(lit('working', 1)).toBe('00000000000');
-    expect(lit('working', 2)).toBe('00001010000');
+    const lit = (face: Parameters<typeof renderMatrixFace>[0], pips: number) => chin(face, pips).map(g => g > 0 ? 1 : 0).join('');
+    // A same-hue row under the mouth read as teeth on the device: no other face counts.
+    for (const face of ['working', 'idle', 'waiting', 'choosing', 'reviewing', 'error', 'ci', 'done'] as const) {
+      expect(lit(face, 4)).toBe('00000000000');
+    }
     expect(lit('delegating', 1)).toBe('00000100000');
-    expect(lit('idle', 9)).toBe('01010101010');
-    expect(lit('done', 4)).toBe('00000000000');
+    expect(lit('delegating', 9)).toBe('01010101010');
+    // Dimmer than any feature, so the count reads as an indicator, not a mouth.
+    const face = renderMatrixFace('delegating', 0);
+    const featureMax = Math.max(...Array.from({ length: 11 * 10 }, (_, i) => face[i * 3 + 1]));
+    expect(Math.max(...chin('delegating', 3))).toBeLessThan(featureMax / 2);
   });
   it('routes live Node endpoint frames through the same event state (preview does not replay entrances)', () => {
     vi.useFakeTimers(); vi.setSystemTime(10000);

@@ -21,7 +21,7 @@ export const MATRIX_FACE_COLORS: Record<MatrixFace, string> = {
   arrival: UI.cyan, asked: UI.cyan, reply: UI.ok,
 };
 /** Chin pips: how many sessions share the face (centred, step 2, at most 5). */
-export const MATRIX_FACE_LAYOUT = { pipY: 10, pipStep: 2, pipCenter: 5, pipMax: 5, pipIntensity: .7 };
+export const MATRIX_FACE_LAYOUT = { pipY: 10, pipStep: 2, pipCenter: 5, pipMax: 5, pipIntensity: .35 };
 export const MATRIX_LAYOUT = { countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, maxCount: 99 };
 export const MATRIX_GLYPHS = ['summary', 'summary-error', 'neutral', ...Object.keys(OFFICIAL_DOT_GLYPHS)];
 export function rgb(hex: string): number[] { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }

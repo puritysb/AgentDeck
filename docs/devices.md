@@ -348,9 +348,11 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
   | Failed session, or Gateway health error while the OpenClaw session is present | `error` — red frown |
   | Explicit result / reply / question / new session | `done` · `reply` · `asked` · `arrival` |
 
-  Faces that can stand for several sessions (idle, working, CI, needs-you,
-  error) show steady chin pips on the bottom row when two or more sessions share
-  them, up to five; `delegating` shows one pip per running child. Only amber
+  Only `delegating` carries a count: one dim chin pip per running child on the
+  bottom row, up to five. Until 2026-10-08 every multi-session face (idle,
+  working, CI, needs-you, error) also drew same-hue pips under the mouth; on the
+  device that row read as teeth rather than a session count, and those counts
+  are already on every other surface. Only amber
   pulses. Quota is not on the face (it is not a session state; DESIGN.md §2.8).
   The daemon gone entirely is the separate OFFLINE badge, and host display
   sleep scales or blanks brightness without changing the face.

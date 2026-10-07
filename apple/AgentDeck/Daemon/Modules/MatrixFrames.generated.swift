@@ -31,7 +31,7 @@ enum MatrixFrames {
     static let pipStep = 2
     static let pipCenter = 5
     static let pipMax = 5
-    static let pipIntensity = 0.7
+    static let pipIntensity = 0.35
     static let awaitingPrefix = "awaiting"
     static let stateKinds: [String: String] = ["error": "error", "processing": "working"]
     static let resultTypes: [String] = ["chat_response","task_end"]
@@ -46,7 +46,7 @@ enum MatrixFrames {
     static let awaitingFaces: [[String]] = [["awaiting_permission","waiting"],["awaiting_option","choosing"],["awaiting_diff","reviewing"]]
     static let ciFaces: [String: String] = ["queued": "ci", "running": "ci", "unknown": "ci-unknown"]
     static let gatewayAgent = "openclaw"
-    static let facePips: [String: Int] = ["idle": 2, "working": 2, "delegating": 1, "ci": 2, "ci-unknown": 2, "waiting": 2, "choosing": 2, "reviewing": 2, "error": 2]
+    static let facePips: [String: Int] = ["delegating": 1]
     static let faceColors: [String: [UInt8]] = ["unknown": [122,138,156], "empty": [154,154,162], "idle": [154,154,162], "working": [62,214,232], "delegating": [62,214,232], "ci": [62,214,232], "ci-unknown": [154,154,162], "waiting": [255,169,61], "choosing": [255,169,61], "reviewing": [255,169,61], "error": [255,107,107], "done": [82,217,136], "arrival": [62,214,232], "asked": [62,214,232], "reply": [82,217,136]]
     static let colors: [String: [UInt8]] = ["waiting": [255,169,61], "error": [255,107,107], "done": [82,217,136], "working": [62,214,232], "idle": [154,154,162], "unknown": [122,138,156], "arrival": [62,214,232], "asked": [62,214,232], "reply": [82,217,136]]
     static let overflow: [UInt8] = [226,232,240]

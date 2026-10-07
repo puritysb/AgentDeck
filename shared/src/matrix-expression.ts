@@ -42,11 +42,13 @@ export type MatrixKind = typeof MATRIX_KINDS[number];
 export const MATRIX_FACES = ['unknown', 'empty', 'idle', 'working', 'delegating', 'ci', 'ci-unknown',
   'waiting', 'choosing', 'reviewing', 'error', 'done', 'arrival', 'asked', 'reply'] as const;
 export type MatrixFace = typeof MATRIX_FACES[number];
-/** Faces whose class can hold several sessions show a count of pips. */
+/** The one face that shows a count of pips (its running children). */
 export const MATRIX_FACE_PIPS: Partial<Record<MatrixFace, number>> = {
-  // Minimum count that earns pips. Children are the delegating face's whole
-  // meaning, so even one is shown; elsewhere one session is the default case.
-  idle: 2, working: 2, delegating: 1, ci: 2, 'ci-unknown': 2, waiting: 2, choosing: 2, reviewing: 2, error: 2,
+  // Minimum count that earns pips. Only the delegating face carries a count:
+  // its children ARE its meaning. On the other faces a row of same-hue dots
+  // under the mouth read as teeth, not as "four sessions" (2026-10-08, on the
+  // device), and those counts already live on every other surface.
+  delegating: 1,
 };
 export interface MatrixSession {
   id: string; alive: boolean; state?: string; agentType?: string;
