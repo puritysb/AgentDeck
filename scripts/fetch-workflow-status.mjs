@@ -31,13 +31,16 @@ const workflows = [...new Set(catalog.gates.map((g) => g.workflow).filter(Boolea
 
 async function latestRun(workflow, query) {
   const file = workflow.split('/').pop();
-  const url = `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?status=completed&per_page=1${query}`;
+  // No status= filter: combined with branch= the API answers from a stale
+  // index (measured 2026-10-07: ci.yml on master came back as 2026-09-01 while
+  // master had run that day), so filter the newest page here instead.
+  const url = `https://api.github.com/repos/${repo}/actions/workflows/${file}/runs?per_page=20${query}`;
   const res = await fetch(url, {
     headers: { Accept: 'application/vnd.github+json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
-  return (await res.json()).workflow_runs?.[0] ?? null;
+  return (await res.json()).workflow_runs?.find((run) => run.status === 'completed') ?? null;
 }
 
 const result = { fetched_at: new Date().toISOString(), repository: repo, workflows: {} };
