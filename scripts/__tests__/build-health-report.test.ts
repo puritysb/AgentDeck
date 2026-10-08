@@ -368,7 +368,7 @@ describe('report Korean locale', () => {
     for (const text of copy) expect(ko[String(text)], String(text)).toMatch(/[가-힣]/);
   });
 
-  function localeFixture(storageBlocked = false, initialLocale: string | null = 'ko') {
+  function localeFixture(storageBlocked = false, initialLocale: string | null = 'ko', extraTexts: string[] = []) {
     let handler = () => {};
     const control = {
       value: 'en',
@@ -393,7 +393,7 @@ describe('report Korean locale', () => {
       'Not run or no parsed case evidence here: apple, robot.',
       ': Run missing suites and review manual QA before a release decision. ',
       'Parsed input scope: vitest, e2e, android. Only supplied cases are counted; this is not release approval.',
-    ];
+    ].concat(extraTexts);
     const nodes = texts.map((text, index) => ({ nodeValue: text, parentElement: { closest: () => index === 6 } }));
     const attributes = new Map([['aria-label', 'Language']]);
     const attributeNode = {
@@ -488,6 +488,21 @@ describe('report Korean locale', () => {
       expect(f.nodes[9].nodeValue).toBe('Decision first');
       expect(f.nodes[6].nodeValue).toBe('Pass');
     }
+  });
+
+  it('translates leading separators from generated scenario DOM and restores them verbatim', () => {
+    const texts: string[] = JSON.parse(execFileSync('python3', ['-c',
+      `import runpy,json\nfrom html.parser import HTMLParser\nm=runpy.run_path(${JSON.stringify(join(ROOT, 'scripts/generate-html-report.py'))})\nclass Texts(HTMLParser):\n def __init__(self): super().__init__(); self.texts=[]\n def handle_data(self,text):\n  if text.lstrip().startswith('— '): self.texts.append(text)\np=Texts()\np.feed(m['_scenario_cell'](dict(passed=4,failed=0,missing=0,not_run=0,total=4)))\np.feed(m['_scenario_cell'](dict(passed=0,failed=0,missing=0,not_run=0,partial=1,total=1)))\nprint(json.dumps(p.texts))`,
+    ], { encoding: 'utf8' }));
+    expect(texts).toEqual([' — 4 passed', ' — 1 partially executed']);
+    const f = localeFixture(false, 'ko', texts);
+    expect(f.nodes.slice(-2).map((n) => n.nodeValue)).toEqual([' — 4개 통과', ' — 1개 부분 실행']);
+    f.change('en');
+    expect(f.nodes.slice(-2).map((n) => n.nodeValue)).toEqual(texts);
+    f.change('ko');
+    expect(f.nodes.at(-1)?.nodeValue).toBe(' — 1개 부분 실행');
+    f.change('ja');
+    expect(f.nodes.slice(-2).map((n) => n.nodeValue)).toEqual(texts);
   });
 
   it('switches language even when localStorage is unavailable', () => {
