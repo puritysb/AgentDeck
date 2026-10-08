@@ -364,4 +364,57 @@ final class CoordinationTracker {
             lastPeerName: e.lastPeerName, lastRelationAt: e.lastRelationAt)
     }
 }
+// BEGIN GENERATED CLAUDE BACKGROUND — bridge/generate-claude-background.mjs
+// Source SHA256: 0451a943bf0f3bd567539ee40950a0e022011e1a786f01f42df9e7162bf1ce59
+// Parent turns remain idle; only the session-work projection stays working.
+struct ClaudeBackgroundTasks {
+    private var counts: [String: Int] = [:]
+    private var order: [String] = []
+
+    static func taskCount(_ payload: [String: Any], excluding: String? = nil) -> Int? {
+        guard let tasks = payload["background_tasks"] as? [Any], tasks.count <= 4096 else { return nil }
+        let finished: Set<String> = ["completed", "failed", "cancelled", "canceled", "killed", "stopped", "done"]
+        var ids: Set<String> = []
+        for value in tasks {
+            guard let task = value as? [String: Any], let id = task["id"] as? String, !id.isEmpty,
+                  let status = task["status"] as? String else { return nil }
+            if id == excluding || finished.contains(status) { continue }
+            guard status == "running" else { return nil }
+            ids.insert(id)
+        }
+        return ids.count
+    }
+
+    @discardableResult
+    mutating func note(_ event: String, payload: [String: Any]) -> Bool {
+        guard let sid = payload["session_id"] as? String,
+              !sid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        if event != "SubagentStop", let child = payload["agent_id"] as? String, !child.isEmpty { return false }
+        if event == "SessionStart" || event == "SessionEnd" {
+            order.removeAll { $0 == sid }
+            return counts.removeValue(forKey: sid) != nil
+        }
+        guard ["Stop", "StopFailure", "SubagentStop", "Notification"].contains(event) else { return false }
+        if event == "Notification" && payload["notification_type"] as? String != "idle_prompt" { return false }
+        guard let count = Self.taskCount(payload, excluding: event == "SubagentStop" ? payload["agent_id"] as? String : nil) else { return false }
+        let changed = counts[sid] != count
+        order.removeAll { $0 == sid }
+        order.append(sid)
+        counts[sid] = count
+        if order.count > 4096 { counts.removeValue(forKey: order.removeFirst()) }
+        return changed
+    }
+
+    func project(_ sid: String, session: [String: Any]) -> [String: Any] {
+        guard session["state"] as? String == "idle", let count = counts[sid], count > 0 else { return session }
+        var result = session
+        let activity = "Waiting for \(count) background task" + (count == 1 ? "" : "s")
+        result["state"] = "processing"
+        result["currentTool"] = "Background tasks"
+        result["currentTask"] = activity
+        result["activity"] = activity
+        return result
+    }
+}
+// END GENERATED CLAUDE BACKGROUND
 #endif

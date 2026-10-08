@@ -32,6 +32,7 @@ import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
+import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
@@ -1977,6 +1978,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Cross-session coordination (spawned workers, peer messages, background
   // jobs) — the second census axis beside `subagents`. See coordination-evidence.ts.
   const coordination = new CoordinationTracker();
+  const claudeBackgroundTasks = new ClaudeBackgroundTasks();
   const ciWaits = new CiWaitTracker();
   const ciWaitOwners = new Map<string, number>();
   const ciWaitProcesses = new CiWaitProcesses();
@@ -3430,6 +3432,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const earlyHookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
         const earlyHookProject = hookPayloadProjectName(json, earlyHookCwd);
+        if (claudeBackgroundTasks.note(eventName, json)) core.maybeBroadcastSessionsList();
         const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
@@ -5445,7 +5448,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id)
         ? s.waitingOn : ciWaits.snapshot(rawSessionId(s.id), now);
       const ciLabel = !s.state?.startsWith('awaiting') ? ciWaitLabel(waitingOn) : null;
-      const withCensus = { ...withSubagents, ...(coord ? { coordination: coord } : {}),
+      const withBackground = s.id.startsWith('observed:claude:')
+        ? claudeBackgroundTasks.project(rawSessionId(s.id), withSubagents) : withSubagents;
+      const withCensus = { ...withBackground, ...(coord ? { coordination: coord } : {}),
         ...(waitingOn !== undefined ? { waitingOn } : {}), ...(ciLabel ? { activity: ciLabel } : {}) };
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
       const sec = Math.round((now - Date.parse(withCensus.startedAt)) / 1000);

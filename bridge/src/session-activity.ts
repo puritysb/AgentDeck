@@ -12,6 +12,7 @@
 //      explicit re-broadcast needed). Falls back to the heuristic when FM is
 //      unavailable or errors. Cost-free (on-device), see feedback_cost_sensitive_defaults.
 //
+import { CLAUDE_BACKGROUND_POLICY } from './claude-background-tasks.js';
 import { callFoundationModelsHelper, probeFoundationModelsHelper } from './foundation-models-helper.js';
 import { stripUnsafeText, ciWaitDetail } from '@agentdeck/shared';
 import { debug } from './logger.js';
@@ -135,6 +136,7 @@ function maybeSummarize(s: EnrichedSession): void {
  * kicks off an async FM summarization whose result surfaces on a later broadcast.
  */
 export function activityFor(s: EnrichedSession): string | undefined {
+  if (s.state === 'processing' && s.currentTool === CLAUDE_BACKGROUND_POLICY.tool && s.activity) return s.activity;
   if (s.waitingOn && !s.state?.startsWith('awaiting')) return ciWaitDetail(s.waitingOn) ?? undefined;
   const quick = quickActivity(s);
   const cached = cache.get(s.id);

@@ -1271,6 +1271,7 @@ final class DaemonServer {
     /// jobs) — the second census axis beside `subagentCensus`. Fed by the hook
     /// pid header + hook payloads, reconciled against `sysctl` every 5 s.
     private let coordinationTracker = CoordinationTracker()
+    private var claudeBackgroundTasks = ClaudeBackgroundTasks()
     private let ciWaits = CiWaitTracker()
     private var coordinationTickTask: Task<Void, Never>?
     private var subagentBurstSeq = 0
@@ -5772,6 +5773,13 @@ final class DaemonServer {
                 openCodeWaits.removeValue(forKey: sessionId)
             }
         }
+
+        // Background snapshots describe parent session work even on SubagentStop.
+        // Read before the child-only return; this never changes turn/APME state.
+        let backgroundEvent = ["stop": "Stop", "stop_failure": "StopFailure",
+            "subagent_stop": "SubagentStop", "notification": "Notification",
+            "session_start": "SessionStart", "session_end": "SessionEnd"][event] ?? event
+        if claudeBackgroundTasks.note(backgroundEvent, payload: json) { broadcastSessionsList() }
 
         // Child lifecycle is telemetry-only. Consume it before resurrection,
         // state, APME, and steering bookkeeping so a child's tool hooks can
@@ -11314,6 +11322,9 @@ final class DaemonServer {
             d["reviewStatus"] = badge.status
             if let risk = badge.risk { d["reviewRisk"] = risk }
             if let findings = badge.findings { d["reviewFindings"] = findings }
+        }
+        if s.agentType == "claude-code", s.controlMode == "observed" {
+            return claudeBackgroundTasks.project(ObservedAgentRules.rawSessionId(s.id), session: d)
         }
         return d
     }
