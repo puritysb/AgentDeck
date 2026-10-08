@@ -110,6 +110,108 @@ afterAll(() => {
 const styleBlock = () => /<style>([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
 const withoutRoot = (css: string) => css.replace(/:root\s*\{[^}]*\}/g, '');
 
+describe('QA decision and accounting', () => {
+  it.each([
+    { name: 'empty results', statuses: [], suite: 'pass', all: false, decision: 'off', executed: 0, skipped: 0 },
+    { name: 'skipped only', statuses: ['skipped'], suite: 'pass', all: false, decision: 'off', executed: 0, skipped: 1 },
+    { name: 'partial platform scope', statuses: ['passed'], suite: 'pass', all: false, decision: 'partial', executed: 1, skipped: 0 },
+    { name: 'skip excluded from execution', statuses: ['passed', 'skipped'], suite: 'pass', all: true, decision: 'partial', executed: 1, skipped: 1 },
+    { name: 'suite error without failing case', statuses: ['passed'], suite: 'fail', all: true, decision: 'fail', executed: 1, skipped: 0 },
+    { name: 'failed assertion despite pass metadata', statuses: ['failed'], suite: 'pass', all: true, decision: 'fail', executed: 1, skipped: 0 },
+    { name: 'metadata alone cannot prove native cases', statuses: ['passed'], suite: 'pass', all: true, decision: 'partial', executed: 1, skipped: 0 },
+  ])('$name keeps HTML and summary consistent', ({ statuses, suite, all, decision, executed, skipped }) => {
+    const report = mkdtempSync(join(tmpdir(), 'qa-decision-'));
+    try {
+      // Deliberately incorrect reporter aggregate: authoritative case outcomes win.
+      const input = vitestJson([{ file: 'bridge/src/__tests__/state-machine.test.ts',
+        assertions: statuses.map((status) => assertion('public fixture', status as 'passed' | 'failed' | 'skipped')) }]);
+      input.numTotalTests = 999;
+      input.numPassedTests = 998;
+      writeFileSync(join(report, 'vitest.json'), JSON.stringify(input));
+      writeFileSync(join(report, 'run-metadata.json'), JSON.stringify({ run_profile: 'synthetic-fixture', suites:
+        Object.fromEntries(['vitest', 'e2e', 'android', 'apple', 'robot'].map((name) => [name,
+          { executed: name === 'vitest' || all, status: name === 'vitest' ? suite : all ? 'pass' : 'not-run' }])) }));
+      execFileSync('python3', [join(ROOT, 'scripts/generate-html-report.py')], { env: { ...process.env,
+        BUILD_HEALTH_REPORT_DIR: report, BUILD_HEALTH_COVERAGE_JSON: join(report, 'absent'),
+        BUILD_HEALTH_ANDROID_DIR: join(report, 'absent'),
+        GITHUB_SHA: 'abc1234',
+      } });
+      const summary = JSON.parse(readFileSync(join(report, 'summary.json'), 'utf8'));
+      expect(summary.decision).toBe(decision);
+      const history = JSON.parse(readFileSync(join(report, 'history.json'), 'utf8')).at(-1);
+      expect(history).toMatchObject(summary.total);
+      expect(summary.total).toMatchObject({ executed, skipped, total: executed + skipped });
+      const page = readFileSync(join(report, 'index.html'), 'utf8');
+      expect(page).toContain(`<span class="dot ${decision}">`);
+      expect(page).toContain(`<dd>${executed} / ${executed + skipped}</dd>`);
+      expect(page).not.toContain('href="#coverage"');
+      const ids = new Set([...page.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]));
+      for (const [, target] of page.matchAll(/href="#([^"]+)"/g)) expect(ids.has(target), target).toBe(true);
+      if (all) {
+        for (const name of ['e2e', 'android', 'apple', 'robot']) {
+          expect(summary.suites.find((s: { name: string }) => s.name === name).status).toBe('unknown');
+        }
+        expect(page).toMatch(/<h3>Apple \(XCTest\)<\/h3><span class="badge off">No case evidence<\/span>/);
+        expect(page).not.toContain('<h3>Apple (XCTest)</h3><span class="badge pass">');
+      }
+    } finally { rmSync(report, { recursive: true, force: true }); }
+  });
+
+  it('puts the readable judgment before details and provides actual reproduction inputs', () => {
+    expect(html.indexOf('id="qa-summary"')).toBeLessThan(html.indexOf('class="jump"'));
+    expect(html).toContain('검증 결론부터');
+    expect(html).toContain('수동 QA가 필요한 이유');
+    expect(html).toContain('BUILD_HEALTH_COVERAGE_JSON=');
+    expect(html).toContain('No QA execution video is attached');
+    expect(html).toContain("document.createTreeWalker");
+    expect(html).toMatch(/<html lang="en">/);
+    expect(html).toContain("<h1>Test Report</h1>");
+    expect(html).not.toContain('data-en=');
+    expect(html).toContain('id="run" tabindex="-1"');
+    expect(styleBlock()).toContain(':focus-visible');
+  });
+
+  it.each(['e2e-only', 'file-setup-failure', 'skipped-native'])('%s cannot manufacture a passing suite', (kind) => {
+    const report = mkdtempSync(join(tmpdir(), 'qa-evidence-'));
+    try {
+      let androidDir = join(report, 'absent');
+      if (kind === 'e2e-only') {
+        writeFileSync(join(report, 'e2e.json'), JSON.stringify(vitestJson([
+          { file: 'tests/e2e/daemon-hub.e2e.test.ts', assertions: [assertion('public fixture', 'passed')] },
+        ])));
+      } else {
+        const input = vitestJson([{ file: 'bridge/src/__tests__/state-machine.test.ts', assertions: [] }]);
+        if (kind === 'file-setup-failure') input.testResults[0]!.status = 'failed';
+        writeFileSync(join(report, 'vitest.json'), JSON.stringify(input));
+        if (kind === 'skipped-native') {
+          androidDir = join(report, 'android'); mkdirSync(androidDir);
+          writeFileSync(join(androidDir, 'TEST-fixture.xml'), '<testsuite name="public.FixtureTest" tests="1" failures="0" errors="0" skipped="1" time="0"><testcase name="requires target" time="0"><skipped/></testcase></testsuite>');
+        }
+      }
+      execFileSync('python3', [join(ROOT, 'scripts/generate-html-report.py')], { env: { ...process.env,
+        BUILD_HEALTH_REPORT_DIR: report, BUILD_HEALTH_COVERAGE_JSON: join(report, 'absent'),
+        BUILD_HEALTH_ANDROID_DIR: androidDir,
+      } });
+      const summary = JSON.parse(readFileSync(join(report, 'summary.json'), 'utf8'));
+      const page = readFileSync(join(report, 'index.html'), 'utf8');
+      if (kind === 'e2e-only') {
+        expect(summary.total.executed).toBe(1);
+        expect(summary.suites.find((s: { name: string }) => s.name === 'vitest').executed).toBe(false);
+        expect(page).toContain('<h3>Vitest</h3><span class="badge off">');
+      } else if (kind === 'file-setup-failure') {
+        expect(summary.total.failed).toBe(0);
+        expect(summary.decision).toBe('fail');
+        expect(page).toContain('<h3>Vitest</h3><span class="badge fail">');
+      } else {
+        expect(summary.total).toMatchObject({ executed: 0, skipped: 1 });
+        expect(summary.decision).toBe('off');
+        expect(page).toMatch(/<h3>Android<\/h3><span class="badge off">No executed cases<\/span>/);
+      }
+    } finally { rmSync(report, { recursive: true, force: true }); }
+  });
+
+});
+
 describe('Build Health page — design rules on the generated output', () => {
   it('keeps every colour literal inside :root (R1, R2)', () => {
     const outsideRoot = withoutRoot(styleBlock()) + html.replace(/<style>[\s\S]*?<\/style>/, '');
@@ -266,7 +368,7 @@ describe('report Korean locale', () => {
     for (const text of copy) expect(ko[String(text)], String(text)).toMatch(/[가-힣]/);
   });
 
-  function localeFixture(storageBlocked = false) {
+  function localeFixture(storageBlocked = false, initialLocale: string | null = 'ko') {
     let handler = () => {};
     const control = {
       value: 'en',
@@ -284,6 +386,9 @@ describe('report Korean locale', () => {
       'Pass',
       'While iterating, and before pushing a focused fix · Seconds to a few minutes, depending on what changed',
       'Before cutting any release tag · 20–40 minutes on a Mac with every toolchain, plus lab time',
+      'Decision first', 'Manual QA still needed', 'Partial verification',
+      'Partial verification · 19 tests · commit abc1234 · generated 2026-10-08 UTC',
+      'Example cases: 19 passed, 0 failed, 0 skipped.',
     ];
     const nodes = texts.map((text, index) => ({ nodeValue: text, parentElement: { closest: () => index === 6 } }));
     const attributes = new Map([['aria-label', 'Language']]);
@@ -308,7 +413,7 @@ describe('report Korean locale', () => {
       createTreeWalker: () => walker,
       querySelectorAll: () => [attributeNode],
     };
-    let stored = 'ko';
+    let stored = initialLocale;
     const localStorage = {
       getItem: () => {
         if (storageBlocked) throw Error('denied');
@@ -348,6 +453,10 @@ describe('report Korean locale', () => {
     expect(f.nodes[7].nodeValue).toBe('수정 중 및 범위가 작은 수정의 푸시 전 · 변경 범위에 따라 수 초에서 수 분');
     expect(f.nodes[8].nodeValue).toBe('모든 릴리스 태그 생성 전 · 모든 도구를 갖춘 Mac에서 20~40분 + 실험실 검증 시간');
     expect(f.attributes.get('aria-label')).toBe('언어');
+    expect(f.nodes[9].nodeValue).toBe('검증 결론부터');
+    expect(f.nodes[10].nodeValue).toBe('수동 QA가 필요한 이유');
+    expect(f.nodes[12].nodeValue).toContain('부분 검증');
+    expect(f.nodes[13].nodeValue).toContain('19 통과');
     f.change('en');
     expect(f.nodes[0].nodeValue).toBe('Test Report');
     expect(f.document.documentElement.lang).toBe('en');
@@ -359,11 +468,28 @@ describe('report Korean locale', () => {
     expect(f.nodes[0].nodeValue).toBe('Test Report');
   });
 
+  it.each([null, 'invalid', 'en', 'ja'])('uses English source for initial locale %s', (initial) => {
+    const f = localeFixture(false, initial);
+    expect(f.nodes[0].nodeValue).toBe('Test Report');
+    expect(f.document.documentElement.lang).toBe('en');
+    for (let cycle = 0; cycle < 5; cycle++) {
+      f.change('ko');
+      expect(f.nodes[9].nodeValue).toBe('검증 결론부터');
+      f.change('en');
+      expect(f.nodes[9].nodeValue).toBe('Decision first');
+      expect(f.nodes[6].nodeValue).toBe('Pass');
+    }
+  });
+
   it('switches language even when localStorage is unavailable', () => {
     const f = localeFixture(true);
     f.change('ko');
     expect(f.nodes[0].nodeValue).toBe('테스트 리포트');
     expect(f.document.documentElement.lang).toBe('ko');
+    f.change('en');
+    expect(f.nodes[9].nodeValue).toBe('Decision first');
+    f.change('ko');
+    expect(f.nodes[9].nodeValue).toBe('검증 결론부터');
   });
 });
 
@@ -380,6 +506,24 @@ describe('report evidence calculations', () => {
       ),
     );
   }
+  it('keeps skip-only hardware input outside executed evidence', () => {
+    const result = python(
+      `r=dict(passed=0,failed=0,skipped=2)\nmdata=m['reconcile_case_evidence'](dict(suites=dict(robot=dict(status='pass',executed=True))),None,[],r)\nc=m['result_counts'](None,[],r)\nprint(json.dumps(dict(counts=c,meta=mdata,decision=m['run_decision'](c,mdata))))`,
+    );
+    expect(result.counts).toMatchObject({ passed: 0, failed: 0, skipped: 2, executed: 0, total: 2 });
+    expect(result.meta.suites.robot.status).toBe('unknown');
+    expect(result.decision).toBe('off');
+  });
+
+  it('provides Korean for every authored QA explanation', () => {
+    const copy = python(
+      `import ast\nt=ast.parse((m['ROOT']/'scripts/generate-html-report.py').read_text())\nf=[n for n in t.body if isinstance(n,ast.FunctionDef) and n.name in ('_render_qa_summary','_render_qa_method')]\nlabels=[n.args[0].value for item in f for n in ast.walk(item) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='_esc' and n.args and isinstance(n.args[0],ast.Constant) and isinstance(n.args[0].value,str)]\nlabels += [a.value for item in f for n in ast.walk(item) if isinstance(n,ast.Tuple) and len(n.elts)==2 and all(isinstance(a,ast.Constant) and isinstance(a.value,str) for a in n.elts) for a in n.elts]\nprint(json.dumps(labels))`,
+    );
+    const ko = JSON.parse(readFileSync(join(ROOT, 'scripts/report-locales/ko.json'), 'utf8'));
+    expect(copy.length).toBeGreaterThan(25);
+    for (const text of copy) expect(ko[text], text).toBeTruthy();
+  });
+
   it('preserves JUnit errors and skipped cases instead of calling them passed', () => {
     const result = python(
       `d=pathlib.Path(tempfile.mkdtemp())\n(d/'TEST-fixture.xml').write_text('<testsuite tests="3" errors="1" failures="0" skipped="1"><testcase name="ok"/><testcase name="error"><error>boom</error></testcase><testcase name="skip"><skipped/></testcase></testsuite>')\nm['load_android_xml'].__globals__['ANDROID_XML_DIR']=d\nprint(json.dumps(m['load_android_xml']()))`,

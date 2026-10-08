@@ -46,11 +46,13 @@
       'JVM(ubuntu)에서 JUnit + Robolectric · 테스트 모음 $1개.',
     ],
     [
-      /^(Pass|Fail|Not run) · ([\d,]+) tests(.*) · generated (.*)$/,
+      /^(Pass|Fail|Not run|Partial verification) · ([\d,]+) tests(.*) · generated (.*)$/,
       function (_, result, count, commit, date) {
         return REPORT_KO[result] + ' · 테스트 ' + count + '개' + commit.replace('commit', '커밋') + ' · 생성 ' + date;
       },
     ],
+    [/^Example cases: (\d+) passed, (\d+) failed, (\d+) skipped\.$/, '이번 실행 예시 결과: $1 통과, $2 실패, $3 건너뜀.'],
+    [/^(\d+) partially executed$/, '$1개 부분 실행'],
     [/^(\d+) passed$/, '$1개 통과'],
     [/^(\d+) failed$/, '$1개 실패'],
     [/^(\d+) not found in this run$/, '이번 실행에서 $1개 찾지 못함'],
