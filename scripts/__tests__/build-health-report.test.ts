@@ -389,6 +389,10 @@ describe('report Korean locale', () => {
       'Decision first', 'Manual QA still needed', 'Partial verification',
       'Partial verification · 19 tests · commit abc1234 · generated 2026-10-08 UTC',
       'Example cases: 19 passed, 0 failed, 0 skipped.',
+      'Review the decision, remaining risk and next action first; inspect the exact test evidence below.',
+      'Not run or no parsed case evidence here: apple, robot.',
+      ': Run missing suites and review manual QA before a release decision. ',
+      'Parsed input scope: vitest, e2e, android. Only supplied cases are counted; this is not release approval.',
     ];
     const nodes = texts.map((text, index) => ({ nodeValue: text, parentElement: { closest: () => index === 6 } }));
     const attributes = new Map([['aria-label', 'Language']]);
@@ -457,6 +461,11 @@ describe('report Korean locale', () => {
     expect(f.nodes[10].nodeValue).toBe('수동 QA가 필요한 이유');
     expect(f.nodes[12].nodeValue).toContain('부분 검증');
     expect(f.nodes[13].nodeValue).toContain('19 통과');
+    expect(f.nodes[14].nodeValue).toContain('검증 결론과 남은 위험');
+    expect(f.nodes[15].nodeValue).toBe('이 실행에서 미실행 또는 케이스 근거 없음: apple, robot.');
+    expect(f.nodes[16].nodeValue).toBe(': 누락된 suite와 수동 QA를 확인한 뒤 릴리스를 판단하세요. ');
+    expect(f.nodes[17].nodeValue).toBe('결과 입력 범위: vitest, E2E, android. 입력된 케이스만 집계하며 릴리스 승인은 아닙니다.');
+
     f.change('en');
     expect(f.nodes[0].nodeValue).toBe('Test Report');
     expect(f.document.documentElement.lang).toBe('en');

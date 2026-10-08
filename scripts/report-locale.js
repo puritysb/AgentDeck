@@ -74,7 +74,7 @@
     if (!translated) {
       // Split the outer separator first so known phrases containing commas
       // still match whole dictionary entries in the recursive call.
-      const separator = [' · ', ' — ', ', '].find((value) => text.includes(value));
+      const separator = [' · ', ' — ', '. ', ': ', ', '].find((value) => text.includes(value));
       if (separator) {
         translated = text.split(separator).map((part) => translate(part, locale)).join(separator);
         if (translated === text) translated = null;
