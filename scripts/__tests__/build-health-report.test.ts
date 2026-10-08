@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '../..');
@@ -233,6 +234,173 @@ describe('Build Health page — what it states', () => {
   });
 
   it('leaks no Python or JS placeholders', () => {
-    expect(html).not.toMatch(/\bNone\b|\bundefined\b|\bNaN\b|\{\{|\}\}/);
+    expect(html.replace(/<script>[\s\S]*?<\/script>/g, "")).not.toMatch(/\bNone\b(?! recorded)|\bundefined\b|\bNaN\b|\{\{|\}\}/);
+  });
+});
+
+describe('report Korean locale', () => {
+  const ko = JSON.parse(readFileSync(join(ROOT, 'scripts/report-locales/ko.json'), 'utf8')) as Record<string, string>;
+  it('covers catalog explanations, domains, tiers, steps and scenario gaps', () => {
+    const catalog = JSON.parse(readFileSync(join(ROOT, 'scripts/verification-catalog.json'), 'utf8')) as {
+      merge_policy: { summary: string };
+      levels: Record<string, string>;
+      domains: Array<{ name: string; question: string }>;
+      gates: Array<{ name: string; trigger: string; proves: string[]; does_not_prove: string[] }>;
+      steps: Array<{ name: string }>;
+      tiers: Array<{ name: string; when: string; budget: string; selects: string; does_not_replace: string }>;
+      not_verified: Array<{ what: string; why: string; instead: string }>;
+    };
+    const { scenarios } = JSON.parse(readFileSync(join(ROOT, 'scripts/scenario-matrix.json'), 'utf8')) as {
+      scenarios: Array<{ name: string; description: string; gaps: string[] }>;
+    };
+    const copy = [
+      catalog.merge_policy.summary,
+      ...Object.values(catalog.levels),
+      ...catalog.domains.flatMap((d) => [d.name, d.question]),
+      ...catalog.gates.flatMap((g) => [g.name, g.trigger, ...g.proves, ...g.does_not_prove]),
+      ...catalog.steps.map((s) => s.name),
+      ...catalog.tiers.flatMap((t) => [t.name, t.when, t.budget, t.selects, t.does_not_replace]),
+      ...catalog.not_verified.flatMap((g) => [g.what, g.why, g.instead]),
+      ...scenarios.flatMap((s) => [s.name, s.description, ...s.gaps]),
+    ];
+    for (const text of copy) expect(ko[String(text)], String(text)).toMatch(/[가-힣]/);
+  });
+
+  function localeFixture(storageBlocked = false) {
+    let handler = () => {};
+    const control = {
+      value: 'en',
+      addEventListener: (_: string, fn: () => void) => {
+        handler = fn;
+      },
+    };
+    const texts = [
+      'Test Report',
+      'Pass',
+      '5 tests executed',
+      'floor 52% · BELOW',
+      'Pass · 5 tests · commit abc1234 · generated 2026-10-08 UTC',
+      'LAN security & pairing',
+      'Pass',
+      'While iterating, and before pushing a focused fix · Seconds to a few minutes, depending on what changed',
+      'Before cutting any release tag · 20–40 minutes on a Mac with every toolchain, plus lab time',
+    ];
+    const nodes = texts.map((text, index) => ({ nodeValue: text, parentElement: { closest: () => index === 6 } }));
+    const attributes = new Map([['aria-label', 'Language']]);
+    const attributeNode = {
+      closest: () => false,
+      hasAttribute: (k: string) => attributes.has(k),
+      getAttribute: (k: string) => attributes.get(k),
+      setAttribute: (k: string, v: string) => attributes.set(k, v),
+    };
+    let cursor = -1;
+    const walker = {
+      nextNode: () => ++cursor < nodes.length,
+      get currentNode() {
+        return nodes[cursor];
+      },
+    };
+    const document = {
+      body: {},
+      documentElement: { lang: 'en' },
+      title: '',
+      getElementById: () => control,
+      createTreeWalker: () => walker,
+      querySelectorAll: () => [attributeNode],
+    };
+    let stored = 'ko';
+    const localStorage = {
+      getItem: () => {
+        if (storageBlocked) throw Error('denied');
+        return stored;
+      },
+      setItem: (_: string, v: string) => {
+        if (storageBlocked) throw Error('denied');
+        stored = v;
+      },
+    };
+    runInNewContext(
+      'const REPORT_KO = ' + JSON.stringify(ko) + ';' + readFileSync(join(ROOT, 'scripts/report-locale.js'), 'utf8'),
+      { document, localStorage, NodeFilter: { SHOW_TEXT: 4 } },
+    );
+    return {
+      document,
+      nodes,
+      attributes,
+      change(locale: string) {
+        control.value = locale;
+        handler();
+      },
+      stored: () => stored,
+    };
+  }
+
+  it('restores Korean, translates counts and accessibility, preserves evidence, and reverses to English', () => {
+    const f = localeFixture();
+    expect(f.document.documentElement.lang).toBe('ko');
+    expect(f.nodes[0].nodeValue).toBe('테스트 리포트');
+    expect(f.nodes[1].nodeValue).toBe('통과');
+    expect(f.nodes[2].nodeValue).toBe('5개 테스트 실행');
+    expect(f.nodes[3].nodeValue).toBe('기준 52% · 미달');
+    expect(f.nodes[4].nodeValue).toContain('테스트 5개 · 커밋 abc1234');
+    expect(f.nodes[5].nodeValue).toBe('LAN 보안과 페어링');
+    expect(f.nodes[6].nodeValue).toBe('Pass');
+    expect(f.nodes[7].nodeValue).toBe('수정 중 및 범위가 작은 수정의 푸시 전 · 변경 범위에 따라 수 초에서 수 분');
+    expect(f.nodes[8].nodeValue).toBe('모든 릴리스 태그 생성 전 · 모든 도구를 갖춘 Mac에서 20~40분 + 실험실 검증 시간');
+    expect(f.attributes.get('aria-label')).toBe('언어');
+    f.change('en');
+    expect(f.nodes[0].nodeValue).toBe('Test Report');
+    expect(f.document.documentElement.lang).toBe('en');
+    expect(f.stored()).toBe('en');
+    f.change('ko');
+    expect(f.nodes[0].nodeValue).toBe('테스트 리포트');
+    f.change('ja');
+    expect(f.document.documentElement.lang).toBe('en');
+    expect(f.nodes[0].nodeValue).toBe('Test Report');
+  });
+
+  it('switches language even when localStorage is unavailable', () => {
+    const f = localeFixture(true);
+    f.change('ko');
+    expect(f.nodes[0].nodeValue).toBe('테스트 리포트');
+    expect(f.document.documentElement.lang).toBe('ko');
+  });
+});
+
+describe('report evidence calculations', () => {
+  function python(body: string) {
+    return JSON.parse(
+      execFileSync(
+        'python3',
+        [
+          '-c',
+          `import runpy,json,tempfile,pathlib\nm=runpy.run_path(${JSON.stringify(join(ROOT, 'scripts/generate-html-report.py'))})\n${body}`,
+        ],
+        { encoding: 'utf8' },
+      ),
+    );
+  }
+  it('preserves JUnit errors and skipped cases instead of calling them passed', () => {
+    const result = python(
+      `d=pathlib.Path(tempfile.mkdtemp())\n(d/'TEST-fixture.xml').write_text('<testsuite tests="3" errors="1" failures="0" skipped="1"><testcase name="ok"/><testcase name="error"><error>boom</error></testcase><testcase name="skip"><skipped/></testcase></testsuite>')\nm['load_android_xml'].__globals__['ANDROID_XML_DIR']=d\nprint(json.dumps(m['load_android_xml']()))`,
+    );
+    expect(result[0].cases.map((c: { status: string }) => c.status)).toEqual(['passed', 'failed', 'skipped']);
+    expect(result[0].passed).toBe(1);
+  });
+  it('plots pass percentages and normalizes legacy test totals to executed counts', () => {
+    const result = python(
+      `h=[dict(passed=5,failed=0,total=9),dict(passed=10,failed=0,total=14)]\nprint(json.dumps([m['sparkline_svg'](h,'passed','Pass rate'),m['sparkline_svg'](h,'total','Tests')]))`,
+    );
+    expect(result[0]).toContain('100.0%');
+    expect(result[0]).toContain('4.0,42.0 236.0,42.0');
+    expect(result[1]).toContain('>10</p>');
+  });
+  it('does not show coverage or runner failures as an overall pass even with no failing assertions', () => {
+    const result = python(
+      `v=dict(testResults=[dict(name=str(m['ROOT']/'bridge/src/__tests__/state-machine.test.ts'),startTime=0,endTime=2,assertionResults=[dict(title='ok',status='passed')])])\nmeta=dict(suites=dict(vitest=dict(status='fail',executed=True)))\nprint(json.dumps(m['generate_html'](v,[],None,[],[],[],meta)))`,
+    );
+    expect(result).toContain('class="dot fail"></span>Fail');
+    expect(result).toContain('Cumulative test time');
+    expect(result).not.toContain('href="#coverage"');
   });
 });

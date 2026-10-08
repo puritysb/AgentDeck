@@ -125,11 +125,14 @@ def load_android_xml():
         }
         for tc in root.findall("testcase"):
             failure = tc.find("failure")
+            if failure is None:
+                failure = tc.find("error")
+            skipped = tc.find("skipped") is not None
             case = {
                 "name": tc.get("name", ""),
                 "classname": tc.get("classname", ""),
                 "time": float(tc.get("time", 0)),
-                "status": "failed" if failure is not None else "passed",
+                "status": "failed" if failure is not None else ("skipped" if skipped else "passed"),
                 "failure": failure.text if failure is not None else None,
             }
             suite["cases"].append(case)
@@ -405,6 +408,8 @@ def update_history(history, total_passed, total_failed, total_all, lines_pct, me
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
         "commit": commit_sha,
         "total": total_all,
+        "executed": total_passed + total_failed,
+        "skipped": max(0, total_all - total_passed - total_failed),
         "passed": total_passed,
         "failed": total_failed,
         "coverage": round(lines_pct, 1),
@@ -719,13 +724,23 @@ def write_summary(metadata, total_passed, total_failed, total_all):
             "passed": total_passed,
             "failed": total_failed,
             "total": total_all,
+            "executed": total_passed + total_failed,
+            "skipped": max(0, total_all - total_passed - total_failed),
         },
     }
     SUMMARY_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 def sparkline_svg(history, key, label):
     """A small trend line for one history metric. Needs two or more runs."""
-    values = [entry.get(key, 0) for entry in history]
+    if key == "passed":
+        # Plot percentages, not pass counts: suite growth is not a pass-rate trend.
+        history = [e for e in history if e.get("passed", 0) + e.get("failed", 0) > 0]
+        values = [e.get("passed", 0) / (e.get("passed", 0) + e.get("failed", 0)) * 100 for e in history]
+    elif key == "total":
+        # Historical totals include skips; derive executed for old and new entries.
+        values = [e.get("passed", 0) + e.get("failed", 0) for e in history]
+    else:
+        values = [entry.get(key, 0) for entry in history]
     if len(values) < 2:
         return ""
     w, h = 240, 48
@@ -741,7 +756,7 @@ def sparkline_svg(history, key, label):
         # Of the tests that ran: skipped cases are not failures (a run with 0
         # failed and 16 skipped read 99.7% when divided by the total).
         executed = history[-1].get("passed", 0) + history[-1].get("failed", 0)
-        display = f"{last / executed * 100:.1f}%" if executed else "—"
+        display = f"{last:.1f}%" if executed else "—"
     else:
         display = f"{last:,}"
     lx, ly = pts[-1]
@@ -1313,18 +1328,20 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     total_passed = vt_p + e2_p + an_p + rb_p
     total_failed = vt_f + e2_f + an_f + rb_f
     total_all = total_passed + total_failed
-    overall = "fail" if total_failed else "pass"
+    suite_failed = any(_state(suite_meta(metadata, n)["status"]) == "fail"
+                       for n in ("vitest", "e2e", "android", "robot"))
+    overall = "fail" if total_failed or suite_failed else ("pass" if total_all else "off")
 
     cov_total = cov_data.get("total", {}) if cov_data else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
     pkg_cov = extract_package_coverage(cov_data) if cov_data else {}
 
     stats = [
-        ("Result", "Pass" if overall == "pass" else "Fail", "ok-text" if overall == "pass" else "bad-text",
+        ("Result", _STATE_LABEL[overall], "ok-text" if overall == "pass" else ("bad-text" if overall == "fail" else ""),
          f"{total_all:,} tests executed"),
         ("Passed", f"{total_passed:,}", "", f"{(total_passed / total_all * 100) if total_all else 0:.2f}% of executed"),
         ("Failed", f"{total_failed:,}", "bad-text" if total_failed else "", "across every suite run here"),
-        ("Wall time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
+        ("Cumulative test time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
         ("Line coverage", f"{lines_pct:.1f}%" if cov_data else "—", "", "TypeScript packages"),
     ]
     suites = [
@@ -1357,6 +1374,8 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         ("coverage", "Coverage", "TypeScript coverage against the enforced floor."),
         ("history", "History", "Trends across recent master runs."),
     ]
+    if not cov_data:
+        sections = [s for s in sections if s[0] != "coverage"]
     if not scenario_results:
         sections = [s for s in sections if s[0] != "scenarios"]
     jump = "".join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title, _ in sections)
@@ -1374,6 +1393,11 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     body += f'<section>{_section_head("history", "Trend", "History", "Totals from the last runs of this page on master.")}{history_html}</section>'
 
     commit_bit = f" · commit {_esc(commit)}" if commit else ""
+    translations = _load_json(ROOT / "scripts" / "report-locales" / "ko.json", {})
+    # Inline assets keep the report self-contained. Escaping < prevents a locale
+    # entry from ending the script element; all rendering uses text nodes.
+    locale_script = "const REPORT_KO = " + json.dumps(translations, ensure_ascii=False).replace("<", "\\u003c") + ";\n"
+    locale_script += (ROOT / "scripts" / "report-locale.js").read_text(encoding="utf-8")
     gnb = render_gnb()
     gnb_css = render_gnb_css()
     return f'''<!DOCTYPE html>
@@ -1554,7 +1578,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
     <p class="kicker">AgentDeck · Build health</p>
     <h1>Test Report</h1>
     <p class="lede">The latest master run, in full: what passed, what each check proves and does not prove, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
-    <p class="run-chip"><span class="dot {overall}"></span>{"Pass" if overall == "pass" else "Fail"} · {total_all:,} tests{commit_bit} · generated {now}</p>
+    <p class="run-chip"><span class="dot {overall}"></span>{_STATE_LABEL[overall]} · {total_all:,} tests{commit_bit} · generated {now}</p>
   </header>
   <nav class="jump" aria-label="Sections">{jump}</nav>
   {body}
@@ -1564,18 +1588,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   Machine-readable: <a href="summary.json">summary.json</a> · <a href="run-metadata.json">run-metadata.json</a> · <a href="history.json">history.json</a> · <a href="verification-catalog.json">verification-catalog.json</a>.
 </footer>
 <script>
-// Site-wide language choice (Build Health's body stays English — CI evidence,
-// not authored copy); the selector only persists the choice for other routes.
-(function () {{
-  var el = document.getElementById('lang');
-  if (!el) return;
-  var KEY = 'agentdeck-design-locale';
-  try {{
-    var saved = localStorage.getItem(KEY) || 'en';
-    if (['en', 'ko', 'ja'].indexOf(saved) >= 0) el.value = saved;
-  }} catch (e) {{}}
-  el.addEventListener('change', function () {{ try {{ localStorage.setItem(KEY, el.value); }} catch (e) {{}} }});
-}})();
+{locale_script}
 </script>
 </body>
 </html>
