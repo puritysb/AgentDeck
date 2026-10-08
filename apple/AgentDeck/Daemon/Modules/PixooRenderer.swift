@@ -15,9 +15,9 @@ func dotMatrixCodexRateLimits(from raw: Any?) -> CodexRateLimits? {
 }
 
 final class PixooRenderer {
-    private typealias RGB = (UInt8, UInt8, UInt8)
+    typealias RGB = (UInt8, UInt8, UInt8)
 
-    private struct Camera {
+    struct Camera {
         var cx: Double
         var cy: Double
         var zoom: Double
@@ -65,7 +65,7 @@ final class PixooRenderer {
         case hermes
     }
 
-    private enum CreatureState {
+    enum CreatureState {
         case idle
         case processing
         case awaiting
@@ -90,7 +90,7 @@ final class PixooRenderer {
         let toneIndex: Int
         var sessionId: String? = nil
     }
-    private struct CiCueAnchor { let sessionId: String; let x: Double; let y: Double; let bodySize: Double }
+    struct CiCueAnchor { let sessionId: String; let x: Double; let y: Double; let bodySize: Double }
     private struct CiCueMemo { var phase: String; let openedAt: Int; var waiting: Bool; var changedAt: Double; var lastAt: Double; var angle: Double; var speed: Double }
 
     private struct Bubble {
@@ -420,7 +420,7 @@ final class PixooRenderer {
         return Double(hash % TerrariumRules.ciCompanionSeedModulus) / Double(TerrariumRules.ciCompanionSeedModulus)
     }
 
-    private func drawCiCue(_ buf: inout [UInt8], size: Int, state: DashboardState, now: Double,
+    func drawCiCue(_ buf: inout [UInt8], size: Int, state: DashboardState, now: Double,
                            anchors: [CiCueAnchor], tiny: Bool = false, bottom: Int? = nil) {
         ciCueResults = ciCueResults.filter { id, _ in state.siblingSessions.contains { $0.alive && $0.id == id && $0.waitingOn != nil } }
         guard !state.siblingSessions.contains(where: { $0.alive && ($0.state ?? "").hasPrefix("awaiting") }) else { return }
@@ -1432,7 +1432,7 @@ final class PixooRenderer {
         }
     }
 
-    private func drawUsageHUD(_ buf: inout [UInt8], dashboardState: DashboardState, animFrame: Int) {
+    func drawUsageHUD(_ buf: inout [UInt8], dashboardState: DashboardState, animFrame: Int) {
         struct UsageWindow {
             let percent: Double
             let resetsAt: String?
@@ -1606,7 +1606,7 @@ final class PixooRenderer {
 
     /// Canonical dot-matrix mark generated from design/brand/*.svg.
     /// Geometry is shared with the Node renderer; state only changes motion/color.
-    private func drawOfficialDotGlyph(
+    func drawOfficialDotGlyph(
         _ buf: inout [UInt8],
         glyph: OfficialDotGlyph,
         worldX: Double,
@@ -2124,6 +2124,22 @@ final class PixooRenderer {
             || Self.hermesAgents.contains(agentType)
     }
 
+    /// The official mark for an agent type, or nil for one the panel cannot show —
+    /// an allow-list, so a future agent renders as nothing rather than as another
+    /// agent (see the unknown-agentType rule in devices-and-wire.md). The Tide
+    /// scene's mark picker; the same buckets the aquarium sorts creatures into.
+    func officialGlyph(forAgentType agentType: String) -> OfficialDotGlyph? {
+        guard isCreatureAgent(agentType) else { return nil }
+        switch creatureType(for: agentType) {
+        case .cloud: return .codex
+        case .opencode: return .openCode
+        case .antigravity: return .antigravity
+        case .kiro: return .kiro
+        case .hermes: return .hermes
+        case .octopus: return .claudeCode
+        }
+    }
+
     private func simplifiedState(_ state: AgentConnectionState) -> CreatureState {
         switch state {
         case .processing: return .processing
@@ -2140,7 +2156,7 @@ final class PixooRenderer {
         }
     }
 
-    private func hudProviderCount(from dashboardState: DashboardState) -> Int {
+    func hudProviderCount(from dashboardState: DashboardState) -> Int {
         var count = 0
         if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             count += 1
@@ -2253,7 +2269,7 @@ final class PixooRenderer {
         return base.date(from: value)
     }
 
-    private func drawText(_ buf: inout [UInt8], text: String, rightX: Int, y: Int, color: RGB) {
+    func drawText(_ buf: inout [UInt8], text: String, rightX: Int, y: Int, color: RGB) {
         var cursorX = rightX
         for ch in text.reversed() {
             guard let glyph = Self.pixelFont[ch] else {
@@ -2271,7 +2287,7 @@ final class PixooRenderer {
         }
     }
 
-    private func setPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB) {
+    func setPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height else { return }
         let idx = (y * Self.width + x) * 3
         buf[idx] = color.0
@@ -2279,7 +2295,7 @@ final class PixooRenderer {
         buf[idx + 2] = color.2
     }
 
-    private func blendPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ alpha: Double) {
+    func blendPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ alpha: Double) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height, alpha > 0 else { return }
         let idx = (y * Self.width + x) * 3
         let a = min(1.0, alpha)
@@ -2289,7 +2305,7 @@ final class PixooRenderer {
         buf[idx + 2] = UInt8(min(255, Int(round(Double(buf[idx + 2]) * inv + Double(color.2) * a))))
     }
 
-    private func glowPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ intensity: Double) {
+    func glowPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ intensity: Double) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height, intensity > 0 else { return }
         let idx = (y * Self.width + x) * 3
         buf[idx] = UInt8(min(255, Int(buf[idx]) + Int(round(Double(color.0) * intensity))))

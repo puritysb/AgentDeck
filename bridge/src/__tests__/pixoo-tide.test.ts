@@ -2,6 +2,7 @@
 // panel, the marks it shows, and the upload policy that keeps the device's
 // loading hourglass away (upload on visible change; otherwise verify, never
 // re-upload).
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   TIDE_LOOP, TIDE_POLICY, renderTideFrame, renderTideLoop, resolveTideMarks, tideDecision, tideSignature,
@@ -174,7 +175,54 @@ describe('tide upload policy', () => {
   });
 });
 
+// The Swift twin (apple/AgentDeckTests/PixooTideTests.swift) pins the SAME table:
+// changing either renderer fails the other side until it is ported. Scenarios use
+// percentage-only usage because the reset countdown reads the wall clock.
+describe('tide frame digests (shared with the Swift daemon)', () => {
+  const sess = (id: string, agentType: string, s: string) => session(id, agentType, s);
+  const usagePct = (a: number, b: number) =>
+    ({ type: 'usage_update', fiveHourPercent: a, sevenDayPercent: b }) as unknown as UsageEvent;
+  const AT = 1_900_000_000_000;
+  const digests = (st: StateUpdateEvent | null, us: UsageEvent | null, ss: SessionInfo[]) =>
+    renderTideLoop(st, us, ss, AT).map(f => createHash('sha256').update(f).digest('hex').slice(0, 16));
+
+  it('renders the pinned frames', () => {
+    expect(digests(null, null, [])).toEqual([
+      '8e96cc0790f21a1c', 'da28e790ad7d69e9', 'a453a44fd386fe72', '530f2353682c7241', '28c12d7dc8082fc6', 'df20752288cb3b5a',
+    ]);
+    expect(digests(state('processing'), usagePct(40, 10), [sess('a', 'claude-code', 'processing'), sess('b', 'codex-cli', 'idle')])).toEqual([
+      'ef10d2eec5397d22', 'bffb22733ae0dbc9', 'f5bb5a64dfc0e3f6', 'cd9bc59de2d38266', '3759377e4b50bc2c', 'c1e53456a471ad46',
+    ]);
+    expect(digests(null, usagePct(80, 55), [
+      sess('a', 'claude-code', 'awaiting_option'), sess('b', 'codex-cli', 'processing'), sess('c', 'opencode', 'idle'),
+      sess('d', 'kiro-cli', 'idle'), sess('e', 'antigravity', 'idle'),
+    ])).toEqual([
+      'ce012f11674a2f5a', '8c946089abbad979', '40fc2cafa7507dec', '751c59863b57e79b', 'df6317eb87be52f7', '712f340a76381e38',
+    ]);
+    expect(digests(null, null, [
+      sess('a', 'hermes', 'processing'), sess('b', 'antigravity', 'awaiting_permission'), sess('c', 'kiro-cli', 'idle'),
+    ])).toEqual([
+      '9085f818d08955c5', '147d2c6650d316b0', '7fda6973b235b9ed', '7a2b1e39d3467039', '9db620dc5b0bd4ca', '81e4477f85c99b54',
+    ]);
+    expect(digests(state('idle', { gatewayHasError: true }), usagePct(5, 5), [
+      sess('o', 'openclaw', 'idle'), sess('a', 'claude-code', 'idle'),
+    ])).toEqual([
+      '0478aa3b8c7bdded', '37b8c3c88423629e', '2ba6bc92ed86f12b', '2bd550cc0f04d291', '0e717bd9b73473a5', 'aecfeab96cf57020',
+    ]);
+  });
+});
+
 describe('tide signature', () => {
+  it('sees a z.ai row and the Codex subscription date, which the strip draws too', () => {
+    const sessions = [session('a', 'claude-code', 'idle')];
+    const base = tideSignature(null, usage(40, 10), sessions);
+    const zai = tideSignature(null, { ...usage(40, 10), zaiRateLimits: { primary: { usedPercent: 30 } } } as unknown as UsageEvent, sessions);
+    const sub = tideSignature(null, { ...usage(40, 10), codexSubscriptionActiveUntil: '2030-02-01T00:00:00Z' } as unknown as UsageEvent, sessions);
+    expect(zai.hud).not.toBe(base.hud);
+    expect(sub.hud).not.toBe(base.hud);
+    expect(zai.scene).toBe(base.scene);
+  });
+
   const sessions = [session('a', 'claude-code', 'processing'), session('b', 'codex-cli', 'idle')];
 
   it('ignores a session the panel cannot show and a usage-only difference in the scene part', () => {

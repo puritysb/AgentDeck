@@ -346,11 +346,17 @@ export function tideSignature(
   ].join('|');
   const pct = (v: number | null | undefined) => (v == null ? '-' : String(Math.floor(v)));
   const cx = usageEvent?.codexRateLimits;
+  const zai = usageEvent?.zaiRateLimits;
   const hud = usageEvent ? [
     pct(usageEvent.fiveHourPercent), pct(usageEvent.sevenDayPercent),
     usageEvent.fiveHourResetsAt ?? '', usageEvent.sevenDayResetsAt ?? '',
     pct(cx?.primary?.usedPercent), pct(cx?.secondary?.usedPercent),
     usageEvent.usageStale === true, cx?.primary?.stale === true, cx?.secondary?.stale === true,
+    // The z.ai row and the Codex subscription date are on the strip too; without
+    // them a change there never reached the panel until the scene next changed.
+    pct(zai?.primary?.usedPercent), pct(zai?.secondary?.usedPercent),
+    zai?.primary?.stale === true, zai?.secondary?.stale === true,
+    usageEvent.codexSubscriptionActiveUntil ?? '',
   ].join('|') : '';
   return { scene, hud };
 }
