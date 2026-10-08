@@ -93,9 +93,15 @@ final class DotHost {
         guard activeOwner != nil else { throw DotFailure.message("The local AgentDeck daemon is not active.") }
         if config == nil { try load() }
         guard let config, let bytes = try DotVault.load("identity") else { throw DotFailure.message("Configure the public hostname and certificate first.") }
+        guard let publicURL = URLComponents(string: config.origin), publicURL.scheme == "https",
+              let hostname = publicURL.host, !hostname.isEmpty, publicURL.user == nil, publicURL.password == nil,
+              publicURL.query == nil, publicURL.fragment == nil, publicURL.path.isEmpty,
+              config.port >= 1024, !(9120...9139).contains(Int(config.port)) else {
+            throw DotFailure.message("Stored HTTPS configuration is invalid. Configure the connection again.")
+        }
         stop(); error = nil
         let envelope = try JSONDecoder().decode(DotCertificateEnvelope.self, from: bytes)
-        let identity = try DotIdentity.validate(envelope, hostname: URL(string: config.origin)!.host!)
+        let identity = try DotIdentity.validate(envelope, hostname: hostname)
         let authData = try DotVault.load("authorization")
         let auth = try DotOAuth(config: config.oauth, data: authData?.isEmpty == false ? authData : nil) { try DotVault.save($0, account: "authorization") }
         guard let contractURL = Bundle.main.url(forResource: "dot-mcp-contract", withExtension: "json") else { throw DotFailure.message("MCP contract resource is missing.") }
@@ -113,7 +119,7 @@ final class DotHost {
             while !Task.isCancelled {
                 guard let self, self.generation == run else { return }
                 if Date().timeIntervalSince(validatedAt) >= 60 {
-                    do { _ = try DotIdentity.validate(envelope, hostname: URL(string: config.origin)!.host!); validatedAt = Date() }
+                    do { _ = try DotIdentity.validate(envelope, hostname: hostname); validatedAt = Date() }
                     catch { self.stop(); self.error = "HTTPS identity expired or is no longer trusted. Import a renewed certificate."; return }
                 }
                 do { if self.listener.isReady { try await database.deliver() } } catch { self.error = "Dot delivery or persistence failed. Restart after checking configuration." }

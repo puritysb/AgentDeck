@@ -25,7 +25,7 @@ export function readDotConfiguration(directory: string): DotHostConfiguration | 
 export async function startConfiguredDotHost(directory: string, loopbackOnly: boolean) {
   const config = readDotConfiguration(directory);
   if (!config?.enabled) return undefined;
-  if (loopbackOnly && config.bind && !['127.0.0.1', '::1'].includes(config.bind)) {
+  if (loopbackOnly && !['127.0.0.1', '::1'].includes(config.bind ?? '0.0.0.0')) {
     throw new Error('Dot public binding conflicts with the daemon loopback posture');
   }
   const runtime = await import(new URL('./dot-runtime.mjs', import.meta.url).href) as {
