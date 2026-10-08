@@ -801,7 +801,7 @@
       "name": "Dot direct HTTPS MCP",
       "question": "Do direct HTTPS, local OAuth consent/revocation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.",
       "icon": "◉",
-      "match": ["services/dot-relay/src/__tests__/*.test.ts"]
+      "match": ["services/dot-relay/src/__tests__/*.test.ts", "bridge/src/__tests__/dot-*.test.ts"]
     },
     {
       "id": "security",
