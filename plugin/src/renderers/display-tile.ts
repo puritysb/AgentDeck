@@ -125,6 +125,7 @@ export function renderSessionReadout(
   modelName?: string,
   displayName?: string,
   effortLevel?: string,
+  mode?: string,
 ): string {
   const agent = (session.agentType as AgentType) || 'claude-code';
   const accent = agentSlotAccent(agent);
@@ -143,6 +144,13 @@ export function renderSessionReadout(
   if (showModel) {
     els.push(
       `<text x="16" y="60" font-family="${FONT}" font-size="12" font-weight="600" fill="#94a3b8">${escXml(formatModelEffort(modelName, effortLevel, 17))}</text>`,
+    );
+  }
+  // Permission mode in the agent's own word (Claude `auto`/`plan`, Codex
+  // `workspace-write`/`plan`); the literal `default` says nothing extra.
+  if (mode && mode !== 'default' && agent !== 'openclaw') {
+    els.push(
+      `<text x="16" y="80" font-family="${FONT}" font-size="11" font-weight="700" fill="#a78bfa">${escXml(truncate(mode.toUpperCase(), 17))}</text>`,
     );
   }
   els.push(

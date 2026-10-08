@@ -8,6 +8,7 @@
  */
 
 import type { AgentType } from '../adapter.js';
+import { BRAND_FEATURES, creatureFeatureLayers, featureRgbHex, type CreatureFeatureAgent } from '../brand-features.js';
 import { HERMES_BRAND_PATHS } from './hermes-brand.js';
 import { dimColor, agentBrandColor } from '../state-colors.js';
 
@@ -60,6 +61,15 @@ export const ZAI_LOGO_PATHS = [
   'M24.3,7.1L13.14,22.91L5.7,22.91L16.86,7.1Z',
 ];
 
+const FEATURE_PATHS = {
+  claudecode: [ROBOT_CREATURE_PATH], codex: [CODEX_LOGO_PATH],
+  openclaw: OPENCLAW_LOGO_PATHS, opencode: [OPENCODE_RING_PATH],
+};
+function featureSvg(agent: CreatureFeatureAgent, mono?: { ink: string; paper: string; literal?: boolean }): string {
+  return creatureFeatureLayers(agent, FEATURE_PATHS[agent]).filter(layer => layer.mode === 'fill')
+    .map(layer => `<path d="${layer.paths.join(' ')}" fill="${mono ? ((mono.literal ? layer.monochromeCreature === 'ink' : layer.monochrome === 'ink') ? mono.ink : mono.paper) : featureRgbHex(layer.rgb!)}"/>`).join('');
+}
+
 function officialPathIcon(path: string, fill: string, size: number, opacity: number, cx: number, cy: number): string {
   const s = size / 24;
   return `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(-12,-12)" opacity="${opacity}"><path d="${path}" fill="${fill}" fill-rule="evenodd" clip-rule="evenodd"/></g>`;
@@ -106,7 +116,7 @@ function gradientPathIcon(path: string, size: number, opacity: number, cx: numbe
 }
 
 function robotCreatureIcon(fill: string, size: number, opacity: number, cx: number, cy: number): string {
-  return officialPathIcon(ROBOT_CREATURE_PATH, fill, size, opacity, cx, cy);
+  return officialPathIcon(ROBOT_CREATURE_PATH, fill, size, opacity, cx, cy).replace('</g>', featureSvg('claudecode') + '</g>');
 }
 
 function codexCloudCreatureIcon(size: number, opacity: number, cx: number, cy: number): string {
@@ -123,6 +133,7 @@ function codexCloudCreatureIcon(size: number, opacity: number, cx: number, cy: n
     `</defs>`,
     `<g transform="translate(${cx},${cy}) scale(${s.toFixed(3)}) translate(-12,-12)" opacity="${opacity}">`,
     `<path d="${CODEX_LOGO_PATH}" fill="url(#${gradId})" fill-rule="evenodd" clip-rule="evenodd"/>`,
+    featureSvg('codex'),
     `</g>`,
   ].join('');
 }
@@ -143,10 +154,7 @@ function openClawCreatureIcon(size: number, opacity: number, cx: number, cy: num
     `<g fill="url(#${gradId})" fill-rule="evenodd" clip-rule="evenodd">`,
     ...OPENCLAW_BODY_PATHS.map((p) => `<path d="${p}"/>`),
     `</g>`,
-    `<circle cx="8.835" cy="7.843" r="1.266" fill="#050810"/>`,
-    `<circle cx="15.165" cy="7.843" r="1.266" fill="#050810"/>`,
-    `<circle cx="9.046" cy="7.632" r="0.527" fill="#00E5CC" opacity="0.9"/>`,
-    `<circle cx="15.376" cy="7.632" r="0.527" fill="#00E5CC" opacity="0.9"/>`,
+    featureSvg('openclaw'),
     `</g>`,
   ].join('');
 }
@@ -175,30 +183,32 @@ function kiroCreatureIcon(fill: string, size: number, opacity: number, cx: numbe
 
 // ===== 1-bit monochrome glyph (e-ink / TRMNL) =====
 
-/** Canonical brand-path glyph per agent, plus optional white "eye" cutouts that
- * aren't part of the fill path (openClaw). Faithful to the design/brand marks
+/** Canonical brand-path glyph per agent, plus source-grounded feature layers.
+ * Large paper creatures retain literal feature colors; tiny ink-body UI marks
+ * use the explicit contrast adaptation. Faithful to the design/brand marks
  * (robot / cloud-prompt / lobster / ring) so 1-bit surfaces don't drift. */
 interface MonoGlyph {
   paths: string[];
-  eyes?: Array<[number, number, number]>; // cx, cy, r in the 24-unit viewBox
+  featureAgent?: CreatureFeatureAgent;
 }
 const AGENT_MONO_GLYPH: Record<string, MonoGlyph> = {
   hermes: { paths: [...HERMES_BRAND_PATHS] },
-  'claude-code': { paths: [ROBOT_CREATURE_PATH] },
-  'codex-cli': { paths: [CODEX_LOGO_PATH] },
-  'codex-app': { paths: [CODEX_LOGO_PATH] },
-  codex: { paths: [CODEX_LOGO_PATH] },
+  'claude-code': { paths: [ROBOT_CREATURE_PATH], featureAgent: 'claudecode' },
+  'codex-cli': { paths: [CODEX_LOGO_PATH], featureAgent: 'codex' },
+  'codex-app': { paths: [CODEX_LOGO_PATH], featureAgent: 'codex' },
+  codex: { paths: [CODEX_LOGO_PATH], featureAgent: 'codex' },
   opencode: { paths: [OPENCODE_RING_PATH] },
   antigravity: { paths: [ANTIGRAVITY_PATH] },
   'kiro-cli': { paths: [KIRO_GHOST_PATH] },
   'kiro-ide': { paths: [KIRO_GHOST_PATH] },
-  openclaw: { paths: OPENCLAW_BODY_PATHS, eyes: [[8.835, 7.843, 1.05], [15.165, 7.843, 1.05]] },
+  openclaw: { paths: OPENCLAW_BODY_PATHS, featureAgent: 'openclaw' },
 };
 
 /**
  * Render the agent's canonical brand mark as a 1-bit glyph: the path(s) filled
  * with `ink` (evenodd so in-path holes — robot eyes, opencode ring, codex prompt —
- * read as paper), plus any separate `paper` eye cutouts. 24-unit viewBox scaled to
+ * read as paper). Large Claude/OpenClaw creatures instead use light outlined
+ * bodies with black eyes and white glints. 24-unit viewBox scaled to
  * `size`, centered on (cx,cy). Used by the TRMNL e-ink layout; mirrored in Swift.
  */
 export function agentGlyphMono(
@@ -209,12 +219,15 @@ export function agentGlyphMono(
   ink: string,
   paper: string,
 ): string {
-  const g = AGENT_MONO_GLYPH[(agent || '').toLowerCase()] ?? AGENT_MONO_GLYPH.openclaw;
+  const g = AGENT_MONO_GLYPH[(agent || '').toLowerCase()];
+  if (!g) return '';
   const s = size / 24;
   const agentClass = (agent || '').toLowerCase();
   const out: string[] = [`<g class="agent-mono-glyph-${agentClass}" transform="translate(${cx.toFixed(2)},${cy.toFixed(2)}) scale(${s.toFixed(4)}) translate(-12,-12)">`];
-  for (const p of g.paths) out.push(`<path d="${p}" fill="${ink}" fill-rule="evenodd"/>`);
-  if (g.eyes) for (const [ex, ey, er] of g.eyes) out.push(`<circle cx="${ex}" cy="${ey}" r="${er}" fill="${paper}"/>`);
+  const creature = size >= BRAND_FEATURES.monochromeCreature.minSize;
+  const lightBody = creature && g.featureAgent && (BRAND_FEATURES.monochromeCreature.lightBodyAgents as readonly string[]).includes(g.featureAgent);
+  for (const p of g.paths) out.push(`<path d="${p}" fill="${lightBody ? paper : ink}" fill-rule="evenodd"${lightBody ? ` stroke="${ink}" stroke-width="${BRAND_FEATURES.monochromeCreature.outlineWidth}"` : ''}/>`);
+  if (g.featureAgent) out.push(featureSvg(g.featureAgent, { ink, paper, literal: !!lightBody }));
   out.push('</g>');
   return out.join('');
 }
@@ -253,7 +266,7 @@ export function agentLogoIcon(
   if (agent === 'kiro-cli' || agent === 'kiro-ide') {
     return kiroCreatureIcon(brandColor, size, opacity, cx, cy);
   }
-  return openClawCreatureIcon(size, opacity, cx, cy);
+  return agent === 'openclaw' ? openClawCreatureIcon(size, opacity, cx, cy) : '';
 }
 
 // ===== Low-opacity watermark (background mark) =====
@@ -287,5 +300,5 @@ export function agentLogoWatermark(
   if (agent === 'kiro-cli' || agent === 'kiro-ide') {
     return kiroCreatureIcon(fill, 72, markOpacity, 72, 72);
   }
-  return openClawCreatureIcon(72, markOpacity, 72, 72);
+  return agent === 'openclaw' ? openClawCreatureIcon(72, markOpacity, 72, 72) : '';
 }

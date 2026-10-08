@@ -33,6 +33,63 @@ fun timelineDisplayGroups(groups: List<GroupedEntry>): List<GroupedEntry> =
         }
     }
 
+/** Finish chronological turn attribution before selecting recent visible rows.
+ * A folded execution keeps its first-call timestamp, so endedAt also carries
+ * activity. Sorting is stable: equal activity times retain source group order. */
+fun recentTimelineDisplayGroups(entries: List<TimelineEntry>, limit: Int): List<GroupedEntry> {
+    val chronological = timelineDisplayGroups(groupConsecutive(entries))
+    val keys = timelineGroupItemKeys(chronological)
+    return chronological.mapIndexed { index, group -> group.copy(presentationKey = keys[index]) }
+        .sortedBy(::timelineGroupActivityAt)
+        .takeLast(limit)
+}
+
+private fun timelineEntryActivityAt(entry: TimelineEntry): Long =
+    maxOf(entry.timestamp, entry.endedAt ?: entry.timestamp)
+
+fun timelineGroupActivityAt(group: GroupedEntry): Long =
+    timelineGroupActivityEntries(group).maxOf(::timelineEntryActivityAt).coerceAtLeast(group.lastTs)
+
+private fun timelineGroupActivityEntries(group: GroupedEntry): List<TimelineEntry> =
+    listOf(group.entry) + group.toolActivity + listOfNotNull(group.mergedResponse, group.mergedCompletion)
+
+/** E-ink has no detail pane: show the newest meaningful child rather than
+ * always preferring a reply over a tool whose result arrived later. Progress
+ * metadata advances recency but does not replace meaningful glance text. */
+fun timelineLatestActivityEntry(group: GroupedEntry): TimelineEntry {
+    val entry = timelineGroupActivityEntries(group)
+        .filterNot { isProgressChatResponse(it) || (it.type == "chat_end" && it.summaryKind == "progress") }
+        .sortedBy(::timelineEntryActivityAt)
+        .lastOrNull() ?: group.entry
+    return entry.copy(timestamp = timelineGroupActivityAt(group))
+}
+
+/** Stable presentation identity excludes mutable summaries and child updates. */
+fun timelineGroupKey(group: GroupedEntry): String = group.presentationKey ?: with(group.entry) {
+    listOf(timestamp.toString(), type, sessionId.orEmpty(), runId.orEmpty(), taskId.orEmpty(), subagentId.orEmpty(),
+        startedAt?.toString().orEmpty(), agentType.orEmpty(), projectName.orEmpty())
+        .joinToString("|") { "${it.length}:$it" }
+}
+
+fun timelineSelectedGroupIndex(groups: List<GroupedEntry>, key: String?): Int {
+    if (key == null) return -1
+    val matches = groups.indices.filter { timelineGroupKey(groups[it]) == key }
+    return matches.singleOrNull() ?: -1 // Legacy rows may lack a unique identity.
+}
+
+/** Assign collision ordinals in chronological grouping order before sorting.
+ * Legacy peers can omit all identity fields and emit several rows in one ms. */
+fun timelineGroupItemKeys(groups: List<GroupedEntry>): List<String> {
+    val ordinals = mutableMapOf<String, Int>()
+    return groups.map { group ->
+        group.presentationKey?.let { return@map it }
+        val key = timelineGroupKey(group)
+        val ordinal = ordinals.getOrDefault(key, 0)
+        ordinals[key] = ordinal + 1
+        "$key|$ordinal" // Ordinal zero stays stable when a second legacy row arrives.
+    }
+}
+
 /**
  * True when the chat_start row has user-meaningful content (a real prompt) —
  * synthetic starters that the bridge inserts for lifecycle tracking are

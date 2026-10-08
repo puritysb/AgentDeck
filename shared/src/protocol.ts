@@ -202,6 +202,8 @@ export interface CodexRateLimits {
  *  schema — `limitId` says which quantity the number belongs to, the same
  *  "which limit" axis Codex carries). */
 export interface ZaiRateLimits {
+  /** Explicit provider credential rejection; false clears a prior failure. */
+  authFailed?: boolean;
   primary?: ZaiWindow;
   secondary?: ZaiWindow;
   /** Plan tier stamped into every snapshot ("lite" | "pro" | "max"). */
@@ -466,6 +468,13 @@ export interface DisplayStateEvent {
   displayOn: boolean;
   /** How to dim on sleep. Absent ⇒ legacy full-off. */
   dim?: DisplayDimInstruction;
+  /** Daemon host-local "HH:MM" at send time (same convention as timeline
+   *  `localHm`). display_state is re-sent every 5 s over serial and 15 s over
+   *  WebSocket, so this is the wall clock for boards that never reach NTP —
+   *  a serial-primary board parks its radio — and for every board that only
+   *  knows UTC. E-ink panels print it as their "as of HH:MM" freshness band.
+   *  Absent ⇒ no information; a client keeps its last estimate. */
+  hostHm?: string;
 }
 
 // ===== Multi-session Discovery =====
@@ -528,7 +537,24 @@ export interface CoordinationSummary {
   lastRelationAt?: number;
 }
 
+export interface CiWaitStatus {
+  kind: 'ci';
+  provider: 'github-actions';
+  phase: 'unknown' | 'queued' | 'running' | 'passed' | 'failed';
+  agentWaiting: boolean;
+  evidence: 'tool_input' | 'github';
+  checks?: { total: number; passed: number; failed: number; pending: number };
+  runUrl?: string;
+  openedAt: number;
+  repo?: string;
+  ref?: string;
+  pr?: number;
+  runId?: number;
+}
+
 export interface SessionInfo {
+  /** CI is a separate axis from agent state. Explicit null clears a prior wait. */
+  waitingOn?: CiWaitStatus | null;
   /** Optional compact device label; never a session identity or folding key. */
   displayName?: string;
   id: string;
@@ -539,7 +565,15 @@ export interface SessionInfo {
   alive: boolean;
   state?: string;  // sibling's current state from /health query
   modelName?: string;  // sibling's current model from /health query
-  effortLevel?: string;  // sibling's current effort (max/xhigh/high/medium/low/default/fast)
+  /** The agent's own reasoning-effort word, verbatim (Claude `effort.level`,
+   *  Codex `turn_context.effort`). An open set: each agent and model has its
+   *  own levels, so surfaces render it as-is and never assume which one is the
+   *  default. Absent means the agent has not reported one. */
+  effortLevel?: string;
+  /** The agent's own permission-mode word, verbatim — Claude `permission_mode`
+   *  (default / acceptEdits / plan / auto / …), Codex `plan` or its
+   *  `sandbox_policy.type`. Open set, rendered as-is; absent = not reported. */
+  permissionMode?: string;
   startedAt?: string;  // ISO 8601 session start time
   weight?: number;  // explicit deck/tab sort override (integer in SESSION_WEIGHT_MIN..MAX, default 0); lower sorts first — see sortSessions
   currentTool?: string;
@@ -612,6 +646,9 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
+  /** Claude background_tasks snapshot count, separate from the child-agent census.
+   * Explicit zero clears prior work; absent means the producer has no snapshot. */
+  backgroundTaskCount?: number;
   /** Cross-session coordination census — see CoordinationSummary. Same
    *  emission rule as `subagents`: present with zeros once observed, absent
    *  only when this session has never had a relation. */
@@ -819,6 +856,10 @@ export interface DeviceInfoMessage {
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  /** T-Display-S3-Pro: layout of the running render tree. */
+  layout?: 'portrait' | 'landscape';
+  /** T-Display-S3-Pro: persisted layout setting (`auto` follows the camera shield). */
+  layoutSetting?: 'auto' | 'portrait' | 'landscape';
   /** Actual physical panel refreshes since boot; absent on non-e-ink/legacy firmware. */
   repaintCount?: number;
   /** Hard anti-ghost/full-waveform subset of repaintCount since boot. */
@@ -991,6 +1032,16 @@ export interface Esp32OtaEndEvent {
 export interface Esp32OtaAbortEvent {
   type: 'esp32_ota_abort';
   otaId: string;
+}
+
+/** Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by
+ *  the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or
+ *  the landscape Focus Strip (`auto` = portrait with a camera shield, else
+ *  landscape). `landscape` is the legacy bool other LCD boards read. */
+export interface SetOrientationEvent {
+  type: 'set_orientation';
+  layout?: 'auto' | 'portrait' | 'landscape';
+  landscape?: boolean;
 }
 
 export interface Esp32OtaAckCommand {
@@ -1461,6 +1512,47 @@ export type ESP32ToHostMessage =
  * and reports risk findings. Needs no agent control, so it works for every
  * session type including observed codex.
  */
+/** One value an agent offers for a session setting, in the agent's own words. */
+export interface SessionSettingOption {
+  /** The id the agent accepts back (OpenClaw thinking id, `provider/model`). */
+  id: string;
+  /** The agent's own display label when it gives one; render `id` otherwise. */
+  label?: string;
+}
+
+/**
+ * A session setting the deck can switch, as the agent itself describes it (#463).
+ * Every value comes from the agent at request time — the deck never invents a
+ * level, a list or a default, so an agent update cannot drift away from it.
+ */
+export interface SessionSetting {
+  key: 'model' | 'effort';
+  /** The value in effect now (an override or the inherited one). */
+  current?: string;
+  /** The agent's own default for this session/model; absent when it gives none. */
+  default?: string;
+  /** True when `current` is an explicit session override (clearing returns to `default`). */
+  overridden?: boolean;
+  options: SessionSettingOption[];
+}
+
+/**
+ * Answer to `query_session_settings` / `set_session_setting`. Kept off
+ * `sessions_list` on purpose: option lists are large and every board receives
+ * that frame. `error` carries the agent's rejection (e.g. a level the model no
+ * longer accepts); `settings` is then the freshest known state, possibly empty.
+ */
+export interface SessionSettingsEvent {
+  type: 'session_settings';
+  sessionId: string;
+  /** Echoed request identity; clients ignore stale/uncorrelated responses. */
+  requestId: string;
+  /** Concrete Gateway conversation read or patched, never the virtual row id. */
+  targetSessionKey?: string;
+  settings: SessionSetting[];
+  error?: string;
+}
+
 export interface ReviewStatusEvent {
   type: 'review_status';
   sessionId: string;
@@ -1511,11 +1603,13 @@ export type BridgeEvent =
   | ApmeRecommendationEvent
   | ReviewStatusEvent
   | ReviewResultEvent
+  | SessionSettingsEvent
   | SurfaceWelcomeEvent
   | Esp32OtaBeginEvent
   | Esp32OtaChunkEvent
   | Esp32OtaEndEvent
-  | Esp32OtaAbortEvent;
+  | Esp32OtaAbortEvent
+  | SetOrientationEvent;
 
 // ===== Plugin → Bridge (Commands) =====
 
@@ -1697,6 +1791,28 @@ export interface PermissionDecisionCommand {
   decision: 'allow' | 'deny';
 }
 
+/** Ask the daemon which settings this session can switch (→ `session_settings`). */
+export interface QuerySessionSettingsCommand {
+  type: 'query_session_settings';
+  sessionId: string;
+  requestId: string;
+}
+
+/**
+ * Switch a session setting to one of the agent-offered option ids. `null`
+ * clears the override and returns to the agent's own default. Answered with a
+ * fresh `session_settings` event (with `error` when the agent refused).
+ */
+export interface SetSessionSettingCommand {
+  type: 'set_session_setting';
+  sessionId: string;
+  requestId: string;
+  /** Echo the queried conversation. A changed active target refuses the write. */
+  targetSessionKey: string;
+  key: 'model' | 'effort';
+  value: string | null;
+}
+
 export type PluginCommand =
   | ResponseCommand
   | SelectOptionCommand
@@ -1719,6 +1835,8 @@ export type PluginCommand =
   | ApmeRecommendCommand
   | PermissionDecisionCommand
   | ReviewRunCommand
+  | QuerySessionSettingsCommand
+  | SetSessionSettingCommand
   | Esp32OtaAckCommand
   | Esp32OtaErrorCommand;
 

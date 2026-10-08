@@ -33,7 +33,6 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
 
     uint32_t shellColor = Theme::CrayfishShell;
     uint32_t shellDark = Theme::CrayfishDark;
-    uint32_t eyeColor = Theme::CrayfishEye;
     uint8_t alpha = 255;
     float vertBob = 0;
 
@@ -67,10 +66,6 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
             shellColor = lerpColor(Theme::CrayfishShell, Theme::CrayfishBodyLight, colorPulse);
             shellDark = lerpColor(Theme::CrayfishDark, Theme::CrayfishShell, colorPulse);
 
-            // Eye flash
-            float eyeFlash = fastSin(time * 2 * M_PI / 0.8f) * 0.5f + 0.5f;
-            eyeColor = lerpColor(Theme::CrayfishEye, 0xFFFFFF, eyeFlash * 0.5f);
-
             // Shell glow
             float glow = fastSin(time * 4.0f) * 0.5f + 0.5f;
             int glowR = (int)(bodyW * (0.4f + glow * 0.15f));
@@ -98,7 +93,6 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
             alpha = 178;
             shellColor = lerpColor(Theme::CrayfishShell, 0x8B7B7B, 0.55f);
             shellDark = lerpColor(Theme::CrayfishDark, 0x5A4A4A, 0.55f);
-            eyeColor = lerpColor(Theme::CrayfishEye, 0x5A4A4A, 0.55f);
             break;
         }
 
@@ -117,10 +111,10 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
     Draw::alphaMaskGradient(CreatureGlyphs::OPENCLAW_MARK_A8,
                             CreatureGlyphs::OPENCLAW_MARK_W, CreatureGlyphs::OPENCLAW_MARK_H,
                             bodyX0, bodyY0, bodyBox, bodyBox, shellColor, shellDark, alpha);
-    int eyeY = bodyY0 + (int)(bodyBox * (7.63f / 24.0f));
-    int eyeR = max(1, (int)(bodyBox * (0.53f / 24.0f)));
-    Draw::circle(bodyX0 + (int)(bodyBox * (9.05f / 24.0f)), eyeY, eyeR, eyeColor, alpha);
-    Draw::circle(bodyX0 + (int)(bodyBox * (15.38f / 24.0f)), eyeY, eyeR, eyeColor, alpha);
+    Draw::featureLayers(CreatureGlyphs::OPENCLAW_MARK_FEATURES, CreatureGlyphs::OPENCLAW_MARK_FEATURE_COUNT,
+                        CreatureGlyphs::OPENCLAW_MARK_W, CreatureGlyphs::OPENCLAW_MARK_H,
+                        bodyX0, bodyY0, bodyBox, bodyBox, alpha);
+
 }
 
 }  // namespace Crayfish

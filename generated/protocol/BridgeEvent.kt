@@ -24,7 +24,8 @@ private val klaxon = Klaxon()
     .convert(SummaryKind::class,         { SummaryKind.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(TimelineEntryType::class,   { TimelineEntryType.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(GatewayAuthStatus::class,   { GatewayAuthStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
-    .convert(Kind::class,                { Kind.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(Layout::class,              { Layout.fromValue(it.string!!) },              { "\"${it.value}\"" })
+    .convert(OptionKind::class,          { OptionKind.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(PermissionMode::class,      { PermissionMode.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(PromptType::class,          { PromptType.fromValue(it.string!!) },          { "\"${it.value}\"" })
     .convert(Risk::class,                { Risk.fromValue(it.string!!) },                { "\"${it.value}\"" })
@@ -32,6 +33,11 @@ private val klaxon = Klaxon()
     .convert(Outcome::class,             { Outcome.fromValue(it.string!!) },             { "\"${it.value}\"" })
     .convert(ControlMode::class,         { ControlMode.fromValue(it.string!!) },         { "\"${it.value}\"" })
     .convert(ReviewStatus::class,        { ReviewStatus.fromValue(it.string!!) },        { "\"${it.value}\"" })
+    .convert(Evidence::class,            { Evidence.fromValue(it.string!!) },            { "\"${it.value}\"" })
+    .convert(CiWaitStatusKind::class,    { CiWaitStatusKind.fromValue(it.string!!) },    { "\"${it.value}\"" })
+    .convert(Phase::class,               { Phase.fromValue(it.string!!) },               { "\"${it.value}\"" })
+    .convert(Provider::class,            { Provider.fromValue(it.string!!) },            { "\"${it.value}\"" })
+    .convert(Key::class,                 { Key.fromValue(it.string!!) },                 { "\"${it.value}\"" })
     .convert(State::class,               { State.fromValue(it.string!!) },               { "\"${it.value}\"" })
     .convert(BridgeEventStatus::class,   { BridgeEventStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
     .convert(TokenStatus::class,         { TokenStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
@@ -46,13 +52,18 @@ private val klaxon = Klaxon()
  *
  * Bridge → clients — model recommendation for the next task (on-demand / context-aware).
  *
- * On-demand independent review lifecycle. Triggered by the REVIEW deck button
- * (ReviewRunCommand) — the daemon reviews the session's latest work with an independent
- * judge model (Node: working-tree diff; Swift: APME trajectory) and reports risk findings.
- * Needs no agent control, so it works for every session type including observed codex.
+ * Answer to `query_session_settings` / `set_session_setting`. Kept off `sessions_list` on
+ * purpose: option lists are large and every board receives that frame. `error` carries the
+ * agent's rejection (e.g. a level the model no longer accepts); `settings` is then the
+ * freshest known state, possibly empty.
  *
  * Additive public-protocol acknowledgement. Legacy WS clients never receive or need this
  * event.
+ *
+ * Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the
+ * T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape
+ * Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
+ * legacy bool other LCD boards read.
  */
 data class BridgeEvent (
     val agentCapabilities: AgentCapabilities? = null,
@@ -148,6 +159,8 @@ data class BridgeEvent (
      * Set when the focused session has a gated PreToolUse permission pending device approval —
      * clients reply with `permission_decision { requestId }` instead of `select_option`. See
      * bridge/src/permission-resolver.ts.
+     *
+     * Echoed request identity; clients ignore stale/uncorrelated responses.
      */
     @Json(name = "requestId")
     val requestID: String? = null,
@@ -262,6 +275,15 @@ data class BridgeEvent (
     val displayOn: Boolean? = null,
 
     /**
+     * Daemon host-local "HH:MM" at send time (same convention as timeline `localHm`).
+     * display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the
+     * wall clock for boards that never reach NTP — a serial-primary board parks its radio — and
+     * for every board that only knows UTC. E-ink panels print it as their "as of HH:MM"
+     * freshness band. Absent ⇒ no information; a client keeps its last estimate.
+     */
+    val hostHm: String? = null,
+
+    /**
      * Full snapshot: null clears Dot; absent from older daemons also clears it.
      */
     val dot: DotDeckSnapshot? = null,
@@ -287,6 +309,13 @@ data class BridgeEvent (
 
     val risk: Risk? = null,
     val summary: String? = null,
+    val settings: List<SessionSetting>? = null,
+
+    /**
+     * Concrete Gateway conversation read or patched, never the virtual row id.
+     */
+    val targetSessionKey: String? = null,
+
     val capabilities: List<String>? = null,
     val profile: String? = null,
 
@@ -305,7 +334,9 @@ data class BridgeEvent (
     val size: Double? = null,
     val data: String? = null,
     val offset: Double? = null,
-    val seq: Double? = null
+    val seq: Double? = null,
+    val landscape: Boolean? = null,
+    val layout: Layout? = null
 ) {
     public fun toJson() = klaxon.toJsonString(this)
 
@@ -943,6 +974,21 @@ enum class GatewayAuthStatus(val value: String) {
     }
 }
 
+enum class Layout(val value: String) {
+    Auto("auto"),
+    Landscape("landscape"),
+    Portrait("portrait");
+
+    companion object {
+        public fun fromValue(value: String): Layout = when (value) {
+            "auto"      -> Auto
+            "landscape" -> Landscape
+            "portrait"  -> Portrait
+            else        -> throw IllegalArgumentException()
+        }
+    }
+}
+
 /**
  * A completed residency observation. Unknown is explicit; [] with known=true means none.
  *
@@ -984,19 +1030,19 @@ data class OllamaModel (
 
 data class PromptOption (
     val index: Double,
-    val kind: Kind? = null,
+    val kind: OptionKind? = null,
     val label: String,
     val recommended: Boolean? = null,
     val selected: Boolean? = null,
     val shortcut: String? = null
 )
 
-enum class Kind(val value: String) {
+enum class OptionKind(val value: String) {
     Choice("choice"),
     FreeformInput("freeform_input");
 
     companion object {
-        public fun fromValue(value: String): Kind = when (value) {
+        public fun fromValue(value: String): OptionKind = when (value) {
             "choice"         -> Choice
             "freeform_input" -> FreeformInput
             else             -> throw IllegalArgumentException()
@@ -1238,6 +1284,12 @@ data class SessionInfo (
      */
     val askGroupIndex: Double? = null,
 
+    /**
+     * Claude background_tasks snapshot count, separate from the child-agent census. Explicit
+     * zero clears prior work; absent means the producer has no snapshot.
+     */
+    val backgroundTaskCount: Double? = null,
+
     val contextPercent: Double? = null,
     val controlMode: ControlMode? = null,
 
@@ -1257,6 +1309,12 @@ data class SessionInfo (
      */
     val displayName: String? = null,
 
+    /**
+     * The agent's own reasoning-effort word, verbatim (Claude `effort.level`, Codex
+     * `turn_context.effort`). An open set: each agent and model has its own levels, so surfaces
+     * render it as-is and never assume which one is the default. Absent means the agent has not
+     * reported one.
+     */
     val effortLevel: String? = null,
 
     @Json(name = "elapsedSec")
@@ -1287,6 +1345,14 @@ data class SessionInfo (
 
     val modelName: String? = null,
     val options: List<PromptOption>? = null,
+
+    /**
+     * The agent's own permission-mode word, verbatim — Claude `permission_mode` (default /
+     * acceptEdits / plan / auto / …), Codex `plan` or its `sandbox_policy.type`. Open set,
+     * rendered as-is; absent = not reported.
+     */
+    val permissionMode: String? = null,
+
     val pid: Double? = null,
     val port: Double,
     val projectName: String,
@@ -1349,6 +1415,12 @@ data class SessionInfo (
     val subagents: SubagentSummary? = null,
 
     val totalTokens: Double? = null,
+
+    /**
+     * CI is a separate axis from agent state. Explicit null clears a prior wait.
+     */
+    val waitingOn: CiWaitStatus? = null,
+
     val weight: Double? = null
 )
 
@@ -1478,6 +1550,139 @@ data class SubagentSummary (
     val peak: Double
 )
 
+data class CiWaitStatus (
+    val agentWaiting: Boolean,
+    val checks: Checks? = null,
+    val evidence: Evidence,
+    val kind: CiWaitStatusKind,
+    val openedAt: Double,
+    val phase: Phase,
+    val pr: Double? = null,
+    val provider: Provider,
+    val ref: String? = null,
+    val repo: String? = null,
+
+    @Json(name = "runId")
+    val runID: Double? = null,
+
+    @Json(name = "runUrl")
+    val runURL: String? = null
+)
+
+data class Checks (
+    val failed: Double,
+    val passed: Double,
+    val pending: Double,
+    val total: Double
+)
+
+enum class Evidence(val value: String) {
+    Github("github"),
+    ToolInput("tool_input");
+
+    companion object {
+        public fun fromValue(value: String): Evidence = when (value) {
+            "github"     -> Github
+            "tool_input" -> ToolInput
+            else         -> throw IllegalArgumentException()
+        }
+    }
+}
+
+enum class CiWaitStatusKind(val value: String) {
+    Ci("ci");
+
+    companion object {
+        public fun fromValue(value: String): CiWaitStatusKind = when (value) {
+            "ci" -> Ci
+            else -> throw IllegalArgumentException()
+        }
+    }
+}
+
+enum class Phase(val value: String) {
+    Failed("failed"),
+    Passed("passed"),
+    Queued("queued"),
+    Running("running"),
+    Unknown("unknown");
+
+    companion object {
+        public fun fromValue(value: String): Phase = when (value) {
+            "failed"  -> Failed
+            "passed"  -> Passed
+            "queued"  -> Queued
+            "running" -> Running
+            "unknown" -> Unknown
+            else      -> throw IllegalArgumentException()
+        }
+    }
+}
+
+enum class Provider(val value: String) {
+    GithubActions("github-actions");
+
+    companion object {
+        public fun fromValue(value: String): Provider = when (value) {
+            "github-actions" -> GithubActions
+            else             -> throw IllegalArgumentException()
+        }
+    }
+}
+
+/**
+ * A session setting the deck can switch, as the agent itself describes it (#463). Every
+ * value comes from the agent at request time — the deck never invents a level, a list or a
+ * default, so an agent update cannot drift away from it.
+ */
+data class SessionSetting (
+    /**
+     * The value in effect now (an override or the inherited one).
+     */
+    val current: String? = null,
+
+    /**
+     * The agent's own default for this session/model; absent when it gives none.
+     */
+    val default: String? = null,
+
+    val key: Key,
+    val options: List<SessionSettingOption>,
+
+    /**
+     * True when `current` is an explicit session override (clearing returns to `default`).
+     */
+    val overridden: Boolean? = null
+)
+
+enum class Key(val value: String) {
+    Effort("effort"),
+    Model("model");
+
+    companion object {
+        public fun fromValue(value: String): Key = when (value) {
+            "effort" -> Effort
+            "model"  -> Model
+            else     -> throw IllegalArgumentException()
+        }
+    }
+}
+
+/**
+ * One value an agent offers for a session setting, in the agent's own words.
+ */
+data class SessionSettingOption (
+    /**
+     * The id the agent accepts back (OpenClaw thinking id, `provider/model`).
+     */
+    val id: String,
+
+    /**
+     * The agent's own display label when it gives one; render `id` otherwise.
+     */
+    val label: String? = null
+)
+
 /**
  * Voice assistant pipeline state (wake word → STT → LLM → TTS)
  */
@@ -1571,7 +1776,9 @@ enum class Type(val value: String) {
     PromptOptions("prompt_options"),
     ReviewResult("review_result"),
     ReviewStatus("review_status"),
+    SessionSettings("session_settings"),
     SessionsList("sessions_list"),
+    SetOrientation("set_orientation"),
     StateUpdate("state_update"),
     SurfaceWelcome("surface_welcome"),
     TimelineEvent("timeline_event"),
@@ -1599,7 +1806,9 @@ enum class Type(val value: String) {
             "prompt_options"        -> PromptOptions
             "review_result"         -> ReviewResult
             "review_status"         -> ReviewStatus
+            "session_settings"      -> SessionSettings
             "sessions_list"         -> SessionsList
+            "set_orientation"       -> SetOrientation
             "state_update"          -> StateUpdate
             "surface_welcome"       -> SurfaceWelcome
             "timeline_event"        -> TimelineEvent
@@ -1646,6 +1855,11 @@ enum class VoiceAssistantState(val value: String) {
  * same "which limit" axis Codex carries).
  */
 data class ZaiRateLimits (
+    /**
+     * Explicit provider credential rejection; false clears a prior failure.
+     */
+    val authFailed: Boolean? = null,
+
     /**
      * ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
      * clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { registerDotCommands } from './dot-cli.js';
+import { acceptsDaemonRuntime } from '@agentdeck/shared';
 
 import { Command, InvalidArgumentError } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync, readFileSync, statSync } from 'fs';
 import { homedir } from 'os';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { execFileSync, execSync, spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
@@ -59,6 +60,7 @@ import {
   disableUnit,
   getUnitPath,
   getDataDir,
+  escapeUnitEnvAssignment,
 } from './linux-service.js';
 
 const require = createRequire(import.meta.url);
@@ -338,7 +340,98 @@ export function buildPlist(extraArgs: string[] = []): string {
  * This is a stop, not an uninstall: the unit stays installed and starts again
  * at the next login, or at the next `agentdeck daemon start`.
  */
-async function stopDaemon(
+/** Match the installed unit's data scope before controlling it. A unit on the
+ * machine is not proof that it owns an explicitly isolated daemon. Ports are
+ * deliberately absent from this decision: the real service can fall back. */
+export function selectLifecycleSupervisor(
+  supervisor: SupervisorFacts | null,
+  opts: {
+    env?: NodeJS.ProcessEnv; home?: string; unitContent?: string | null;
+    info?: { pid?: number; startedBy?: string } | null;
+    health?: { pid?: number; isSwift?: boolean } | null;
+  } = {},
+): SupervisorFacts | null {
+  if (!supervisor || opts.health?.isSwift) return null;
+  if (opts.info?.startedBy && opts.info.startedBy !== supervisor.kind) return null;
+  if (opts.info?.pid && opts.health?.pid && opts.info.pid !== opts.health.pid) return null;
+  const defaultDir = join(opts.home ?? homedir(), '.agentdeck');
+  const requested = (opts.env ?? process.env).AGENTDECK_DATA_DIR || defaultDir;
+  const canonical = (path: string): string => {
+    try { return realpathSync(path); } catch { return resolve(path); }
+  };
+  // The scheduled task does not inherit a shell's custom data-dir environment.
+  if (supervisor.kind === 'schtasks') {
+    return canonical(requested) === canonical(defaultDir) ? supervisor : null;
+  }
+  let content = opts.unitContent;
+  if (content === undefined) {
+    try { content = readFileSync(supervisor.unitPath ?? '', 'utf8'); } catch { return null; }
+  }
+  if (content === null) return null; // Unknown configuration is not this unit's scope.
+  if (supervisor.kind === 'systemd') {
+    const lines = content.split(/\r?\n/).map(line => line.trim())
+      .filter(line => line && !/^[#;]/.test(line));
+    // Only the active Service section supplies the daemon environment. Avoid
+    // interpreting continuation, reset and override semantics as ownership.
+    if (lines.some(line => line.endsWith('\\'))
+        || lines.filter(line => line === '[Service]').length !== 1) return null;
+    const serviceStart = lines.indexOf('[Service]') + 1;
+    const serviceEnd = lines.findIndex((line, index) => index >= serviceStart && line.startsWith('['));
+    const service = lines.slice(serviceStart, serviceEnd < 0 ? undefined : serviceEnd);
+    const execStarts = service.filter(line => /^ExecStart\s*=/.test(line));
+    const environments = service.filter(line => /^Environment\s*=/.test(line));
+    const execStart = execStarts[0]?.split('=').slice(1).join('=') ?? '';
+    if (execStarts.length !== 1 || !/\bdaemon[\s"]+start\b/.test(execStart)
+        || !execStart.includes('--foreground') || environments.length > 1
+        || service.some(line => /^(EnvironmentFile|PassEnvironment|UnsetEnvironment)\s*=/.test(line))) return null;
+    if (service.some(line => line.includes('AGENTDECK_DATA_DIR'))) {
+      // Accept only the writer's one exact assignment, never a commented,
+      // overridden or partially understood environment expression.
+      try {
+        return environments[0] === 'Environment=' + escapeUnitEnvAssignment('AGENTDECK_DATA_DIR', requested) ? supervisor : null;
+      } catch { return null; }
+    }
+    return canonical(requested) === canonical(defaultDir) ? supervisor : null;
+  }
+  // Read active XML only. A commented override has no ownership meaning;
+  // preserve normal default-unit routing when harmless comments are present.
+  content = content.replace(/<!--[\s\S]*?-->/g, '');
+  if (content.includes('<!--') || content.includes('-->')) return null;
+  const keyCount = (key: string): number => [...content.matchAll(new RegExp(`<key>${key}</key>`, 'g'))].length;
+  if (keyCount('Label') !== 1 || keyCount('ProgramArguments') !== 1
+      || keyCount('EnvironmentVariables') > 1 || keyCount('AGENTDECK_DATA_DIR') > 1) return null;
+  const rootXml = content.replace(/<\?xml[^>]*\?>|<!DOCTYPE[^>]*>/g, '').trim();
+  if (!/^<plist\b[^>]*>\s*<dict>[\s\S]*<\/dict>\s*<\/plist>$/.test(rootXml)) return null;
+  for (const key of ['Label', 'ProgramArguments', 'EnvironmentVariables']) {
+    const position = content.indexOf(`<key>${key}</key>`);
+    if (position < 0) continue;
+    const containers = [...content.slice(0, position).matchAll(/<(\/)?(?:dict|array)>/g)];
+    const depth = containers.reduce((value, match) => value + (match[1] ? -1 : 1), 0);
+    if (depth !== 1) return null; // Only root dictionary keys configure launchd.
+  }
+  const xmlText = (value: string): string => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const label = content.match(/<key>Label<\/key>\s*<string>([^<]*)<\/string>/)?.[1];
+  const argumentsXml = content.match(/<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/)?.[1];
+  const words = argumentsXml ? [...argumentsXml.matchAll(/<string>([^<]*)<\/string>/g)].map(match => xmlText(match[1])) : [];
+  const daemonIndex = words.indexOf('daemon');
+  if (!content.includes('<plist') || !label || xmlText(label) !== supervisor.label
+      || daemonIndex < 0 || words[daemonIndex + 1] !== 'start' || !words.includes('--foreground')) return null;
+  let unitDir = defaultDir;
+  if (content.includes('AGENTDECK_DATA_DIR')) {
+    const environment = content.match(/<key>EnvironmentVariables<\/key>\s*<dict>([\s\S]*?)<\/dict>/)?.[1];
+    // Nested/non-string environment values are unsupported, so cannot prove
+    // that this unit owns the requested scope.
+    if (!environment || environment.replace(/<key>[^<]*<\/key>\s*<string>[^<]*<\/string>/g, '').trim()) return null;
+    const match = environment.match(/<key>AGENTDECK_DATA_DIR<\/key>\s*<string>([^<]*)<\/string>/);
+    if (!match || (content.match(/AGENTDECK_DATA_DIR/g)?.length ?? 0) !== 1) return null;
+    unitDir = xmlText(match[1]);
+    if (!unitDir) return null;
+  }
+  return canonical(requested) === canonical(unitDir) ? supervisor : null;
+}
+
+export async function stopDaemon(
   port: number,
   opts: { supervisor?: SupervisorFacts | null; handover?: boolean } = {},
 ): Promise<void> {
@@ -347,10 +440,20 @@ async function stopDaemon(
   } = await import('./session-registry.js');
   const { isForeignDaemon } = await import('./daemon-takeover.js');
 
-  // First, because the alternative is a race with the daemon's own parent: a
-  // `/shutdown` that lands while the unit is still armed is answered by a
-  // respawn a few seconds later.
-  const supervisor = opts.supervisor !== undefined ? opts.supervisor : detectSupervisor();
+  const info = readDaemonInfo();
+  const targetPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? port;
+  const incumbent = await probeDaemonHealth(targetPort);
+  if (isForeignDaemon(incumbent)) {
+    log(`Port ${targetPort} is held by another user's daemon — refusing to stop it.`);
+    log(`You have no daemon of your own running.`);
+    return;
+  }
+  // Disarm only the unit proven to share this target's data scope, before
+  // /shutdown so its KeepAlive cannot race the requested stop/restart.
+  const supervisor = selectLifecycleSupervisor(
+    opts.supervisor !== undefined ? opts.supervisor : detectSupervisor(),
+    { info, health: incumbent },
+  );
   if (supervisor) {
     const result = runSupervisorPlan(supervisorStopPlan(supervisor));
     if (!await waitForSupervisorUnload(supervisor)) {
@@ -368,17 +471,6 @@ async function stopDaemon(
     }
   }
 
-  const info = readDaemonInfo();
-  const targetPort = info?.httpPort ?? info?.port ?? findDaemonPort() ?? port;
-  // The registry resolves to this user's own daemon, but the `-p` fallback
-  // resolves to whatever is on that port — which on a shared host is somebody
-  // else's daemon, and `/shutdown` is trusted purely for being local.
-  const incumbent = await probeDaemonHealth(targetPort);
-  if (isForeignDaemon(incumbent)) {
-    log(`Port ${targetPort} is held by another user's daemon — refusing to stop it.`);
-    log(`You have no daemon of your own running.`);
-    return;
-  }
   // `handover` says a daemon is coming BACK on this port, which changes what an
   // app-owned Swift incumbent should be told. `/stand-down` names the port it
   // must become a client of; `/shutdown` leaves it resolving that from a
@@ -1468,7 +1560,7 @@ daemon
       //
       // `--foreground` is deliberately NOT routed: that spelling IS the unit's
       // own ExecStart, and routing it would make the unit ask itself to start.
-      const supervisor = detectSupervisor();
+      const supervisor = selectLifecycleSupervisor(detectSupervisor());
       // No posture pair here on purpose: `daemon start` has no running daemon
       // to inherit from, so the unit's own posture is the right answer.
       const route = routeDaemonLifecycle({
@@ -1559,9 +1651,10 @@ daemon
 daemon
   .command('stop')
   .description('Stop the daemon')
-  .option('-p, --port <port>', 'Server port', String(BRIDGE_WS_PORT))
+  .option('-p, --port <port>', 'Server port (default: the persisted daemonPort)')
   .action(async (opts) => {
-    await stopDaemon(parseInt(opts.port, 10));
+    const { resolveDaemonPort } = await import('./daemon-port.js');
+    await stopDaemon(resolveDaemonPort({ flag: opts.port }).port);
   });
 
 daemon
@@ -1602,6 +1695,11 @@ daemon
     // posture in its argv, and this command does not read those three files.
     // Explicit flags still win; inheritance only fills in what wasn't asked for.
     const running = await probeHealth(runningPort);
+    const { isForeignDaemon } = await import('./daemon-takeover.js');
+    if (isForeignDaemon(running)) {
+      log(`Port ${runningPort} is held by another user's daemon — refusing to restart it.`);
+      return;
+    }
     const inheritedLocal = running?.posture?.noDeviceModules === true;
     const inheritedLoopback = running?.posture?.loopbackOnly === true;
     const useLocal = !!opts.local || inheritedLocal;
@@ -1627,7 +1725,7 @@ daemon
     // the inheritance above exists to prevent — handing the restart to a
     // default-posture unit would rewrite a loopback-only daemon into an
     // advertising one, silently.
-    const supervisor = detectSupervisor();
+    const supervisor = selectLifecycleSupervisor(detectSupervisor(), { info, health: running });
     const route = routeDaemonLifecycle({
       supervisor,
       oneOffFlags: oneOffFlagsBlockingSupervisor(opts),
@@ -1792,7 +1890,9 @@ daemon
 function reportDaemonWaitFailure(verdict: RestartVerdict, action: 'start' | 'restart'): void {
   const what = action === 'start' ? 'Daemon start' : 'Daemon restart';
   if (verdict.ok) return;
-  if (verdict.reason === 'stop-failed') {
+  if (verdict.reason === 'swift-daemon') {
+    log(`${what} FAILED — Swift daemon PID ${verdict.pid} still serves port ${verdict.port}; Node takeover did not complete.`);
+  } else if (verdict.reason === 'stop-failed') {
     log(`${what} FAILED — the daemon you asked to restart (PID ${verdict.pid}) `
       + `is still answering on port ${verdict.port}. The stop did not take.`);
   } else if (verdict.reason === 'stale-build') {
@@ -1830,6 +1930,8 @@ export interface RestartedDaemon {
 
 export type RestartVerdict =
   | { ok: true; daemon: RestartedDaemon }
+  /** The Swift app answered, but the requested Node daemon did not. */
+  | { ok: false; reason: 'swift-daemon'; pid: number; port: number }
   /** The daemon we asked to go away is still on the port — the stop failed. */
   | { ok: false; reason: 'stop-failed'; pid: number; port: number }
   /** A daemon came up, on code other than the build on this disk. */
@@ -1843,7 +1945,7 @@ export interface RestartedDaemonQuery {
   /** The daemon that was stopped. The one `/health` answer that proves nothing. */
   stoppedPid?: number;
   preferredPort: number;
-  probeHealth: (port: number) => Promise<{ pid?: number; mode?: string; build?: string } | null>;
+  probeHealth: (port: number) => Promise<{ pid?: number; mode?: string; build?: string; isSwift?: boolean } | null>;
   readDaemonInfo: () => { httpPort?: number; port?: number } | null;
   findDaemonPort: () => number | null;
   /** The build id on this disk, when it can be computed. */
@@ -1905,6 +2007,7 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
 
   let announcedWait = false;
   /** Remembered so a timeout can say WHICH failure it was. */
+  let sawSwift: { pid: number; port: number } | null = null;
   let sawStopped: { pid: number; port: number } | null = null;
   let sawStale: { pid: number; port: number; build: string } | null = null;
   const startedAt = Date.now();
@@ -1925,6 +2028,12 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
       // An explicit non-daemon mode (a session bridge's hook server) is not a
       // restarted daemon. An ABSENT mode says nothing and is not held against it.
       if (health?.mode !== undefined && health.mode !== 'daemon') continue;
+      // This command starts Node. A live Swift app is not proof of Node readiness.
+      // Missing legacy identity remains unknown rather than an explicit mismatch.
+      if (!acceptsDaemonRuntime(health?.isSwift, true)) {
+        sawSwift = { pid, port };
+        continue;
+      }
       if (stoppedPid !== undefined && pid === stoppedPid) {
         sawStopped = { pid, port };
         continue;
@@ -1950,6 +2059,7 @@ export async function waitForRestartedDaemon(q: RestartedDaemonQuery): Promise<R
           build: sawStale.build, expected: expectedBuild as string,
         };
       }
+      if (sawSwift) return { ok: false, reason: 'swift-daemon', ...sawSwift };
       if (sawStopped) return { ok: false, reason: 'stop-failed', ...sawStopped };
       return { ok: false, reason: 'no-daemon' };
     }
@@ -2097,7 +2207,7 @@ program
       const target = installHermesObserver(opts.home);
       log(`Hermes observer installed: ${target}`);
       log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
-      log('Restart Hermes after enabling. Requires an AgentDeck Node daemon with Hermes observation support.');
+      log('Restart Hermes after enabling. Requires an AgentDeck daemon advertising Hermes observation support.');
     } catch (error) {
       log(`Hermes observer installation failed: ${String(error)}`);
       process.exitCode = 1;
@@ -2745,6 +2855,29 @@ program
 // existing top-level `esp32-ota` without a second rename. `esp32-ota` is
 // untouched in this change.
 const esp32Cmd = program.command('esp32').description('ESP32 firmware and device commands');
+
+esp32Cmd
+  .command('orientation <target> <layout>')
+  .description('Switch a T-Display-S3-Pro between portrait Pocket and the landscape strip (auto|portrait|landscape; persisted, board restarts)')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (target: string, layout: string, opts: { port?: string }) => {
+    const { parseEsp32Layout } = await import('./esp32-orientation.js');
+    const parsed = parseEsp32Layout(layout);
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const info = readDaemonInfo();
+    const port = opts.port != null
+      ? parseInt(opts.port, 10)
+      : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
+    const { statusCode, body } = await postJsonWithTimeout<Record<string, unknown>>(
+      `http://127.0.0.1:${port}/esp32/orientation`, { target, layout: parsed }, 10_000,
+    );
+    if (statusCode !== 200 || body.ok !== true) {
+      console.error(`Orientation request failed (${statusCode}): ${String(body.error ?? 'unknown error')}`);
+      process.exit(1);
+    }
+    log(`Sent layout "${parsed}" to ${target} via ${String(body.transport)} (${String(body.via)}). `
+      + 'The board restarts when its layout changes; device_info reports layout/layoutSetting afterwards.');
+  });
 
 esp32Cmd
   .command('flash <board>')

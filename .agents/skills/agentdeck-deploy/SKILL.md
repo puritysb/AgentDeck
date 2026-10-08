@@ -1,6 +1,6 @@
 ---
 name: agentdeck-deploy
-description: Build, install, launch, and configure AgentDeck on connected Android, Apple, ESP32, Stream Deck, or daemon targets. Use when the user asks to deploy AgentDeck or names target devices such as pantone, crema, lenovo, iphone, ipad, macos, esp32, tc001, bridge, daemon, or plugin.
+description: Build, install, launch, and configure AgentDeck on connected Android, Apple, ESP32, Stream Deck, Ulanzi Studio, or daemon targets. Use when the user asks to deploy AgentDeck or names target devices such as pantone, crema, lenovo, iphone, ipad, macos, esp32, tc001, d200h, bridge, daemon, or plugin.
 ---
 
 # AgentDeck Deploy
@@ -31,6 +31,14 @@ Parse the argument string to determine target(s). Multiple targets can be combin
 | `ulanzi` / `tc001` | Ulanzi TC001 LED matrix only |
 | `bridge` / `daemon` | Daemon restart only |
 | `plugin` / `sd` | Stream Deck plugin only |
+| `d200h` / `ulanzi-plugin` | Ulanzi Studio keypad plugin; separate from TC001 firmware |
+| `esp32_c6_147` | Waveshare C6-LCD-1.47; USB only, no OTA |
+
+The default `all` sequence above does not include ESP32 or the D200H Studio
+plugin. When reviewing release coverage, list those channels explicitly; when
+deploying, follow the requested target scope. `ulanzi` means TC001 firmware,
+whereas `d200h` / `ulanzi-plugin` means the Studio plugin. A firmware build or a
+plugin package does not update the installed runtime.
 
 ## Device Registry
 
@@ -70,7 +78,12 @@ only when the user explicitly requests that device.
 | **LilyGo T5 ePaper S3** (960×540 e-ink) | `lilygo_epd47` | `lilygo_epd47` | `/dev/cu.usbmodem*` | ESP32-S3 N16R8, native USB |
 | **T-Embed CC1101** (170×320 + encoder) | `t_embed` | `t_embed` | `/dev/cu.usbmodem*` | ESP32-S3, native USB |
 | **T-Display-S3-Pro** (222×480) | `t_display_pro` | `t_display_pro` | `/dev/cu.usbmodem*` | ESP32-S3, native USB |
+| **Waveshare C6-LCD-1.47** (172×320) | `esp32_c6_147` | `esp32_c6_147` | `/dev/cu.usbmodem*` | ESP32-C6, native USB, no OTA |
 | **Ulanzi TC001** (8×32 LED) | `led_8x32` | `led8x32` | `/dev/cu.usbserial-*` | ESP32-D0WD classic, CH340 |
+
+## Main merge trigger
+
+The owner’s Mac uses `.github/workflows/local-deploy.yml`: a push to `master` (including a merged PR) queues the `agentdeck-local-deploy` runner. It runs `scripts/deploy-local-main.mjs` against the persistent checkout configured by `AGENTDECK_MAIN_CHECKOUT`, builds and tests before installation, replaces the macOS app with a preserved backup, restarts the supervised Node daemon, and deploys/verifies the Stream Deck plugin. The runner is a login LaunchAgent; the Mac must be awake and connected. No schedule or Codex heartbeat is involved. Runs queue while the Mac is offline. The workflow never accepts pull-request events or deploys public releases. A dirty or divergent main checkout fails without removing another session’s work. Receipts are in `diagnostics/latest-main-deployment.json` and logs in `diagnostics/logs/local-main-*.log`. A failed deployment is visible in the workflow run; inspect its log before retrying with workflow dispatch on `master`. Native mobile apps and firmware retain the target-specific procedures below.
 
 ## Execution Steps
 
@@ -232,11 +245,22 @@ After a Marketplace/DRM validation session, restore the development installation
 with `pnpm plugin:deploy` and record `pnpm plugin:check` before finishing. A
 failed switch restores the prior installation; do not delete its backup.
 
+### Ulanzi Studio / D200H plugin
+
+Use `pnpm --filter @agentdeck/plugin-ulanzi package` to prepare a package;
+`package:install` additionally installs it into Studio when deployment is in
+scope. Read [the verification procedure](../../../plugin-ulanzi/VERIFY.md) and
+[the packaging contract](../../../.claude/rules/devices-and-wire.md#ulanzi-plugin-packaging).
+Retain WASM resvg and the bundled fonts. Restart the installed plugin and verify
+its path, version, bundle hash and process start after replacement, then inspect
+actual D200H keys and reconnect behaviour. A file hash alone does not prove the
+running process loaded it. D200X keypad support does not imply encoder support.
+
 ### Step 7: ESP32 Firmware
 
 **CRITICAL: Build and flash ONE AT A TIME** — PlatformIO lock + serial port conflicts.
 
-**Ulanzi TC001 is a separate target.** The `esp32` target deploys display boards only (86 Box, IPS 3.5", Round AMOLED, T-Embed CC1101, T-Display-S3-Pro, TRMNL 7.5", NM-EPD-420, and LilyGo EPD47). Use `ulanzi`, `tc001`, or `esp32-all` to include the Ulanzi TC001. This separation exists because:
+**Ulanzi TC001 is a separate target.** The `esp32` target deploys connected display boards from the [board SSOT](../../../shared/src/esp32-boards.ts), excluding TC001: 86 Box, IPS 3.5", IPS 10.1", Round AMOLED, TTGO, T-Embed CC1101, T-Display-S3-Pro, C6-LCD-1.47, TRMNL 7.5", NM-EPD-420, and LilyGo EPD47. Use `ulanzi`, `tc001`, or `esp32-all` to include the Ulanzi TC001. This separation exists because:
 - Ulanzi uses a different chip (ESP32-D0WD classic vs ESP32-S3)
 - Ulanzi uses FastLED matrix rendering, not LVGL — UI changes to cloud.cpp/theme.h don't affect it
 - Ulanzi requires a different flash procedure (esptool full-flash vs PIO upload)

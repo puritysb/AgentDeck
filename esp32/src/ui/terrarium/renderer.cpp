@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "draw.h"
+#include "creature_glyphs_generated.h"
 #include "water.h"
 #include "terrain.h"
 #include "kelp.h"
@@ -15,6 +16,7 @@
 #include "bubbles.h"
 #include "../../state/agent_state.h"
 #include "../../util/memory.h"
+#include "../companion/ci_companion.h"
 #include "../theme.h"
 #include "config.h"
 
@@ -36,6 +38,15 @@ static uint16_t* baseCache = nullptr;
 static bool baseCacheDirty = true;
 #endif
 static float totalTime = 0;
+
+enum class CiOwner : uint8_t { none, octopus, cloud, opencode, antigravity, kiro, hermes, openclaw };
+struct CiCueSnapshot { uint32_t key; CiOwner owner; uint8_t index; uint8_t phase; };
+constexpr size_t CI_CUE_SLOTS = sizeof(g_state.sessions) / sizeof(g_state.sessions[0]);
+// Renderer-lifetime cache: <=240 B in static storage, zero heap/render allocations.
+// The roster already bounds ownership to ten entries; no prompt/session text is retained.
+static CiCompanion::Memo ciMemos[CI_CUE_SLOTS];
+static_assert(sizeof(ciMemos) <= 256, "CI helper memo budget must remain bounded");
+static_assert(sizeof(CiCueSnapshot) * CI_CUE_SLOTS <= 128, "CI frame snapshot belongs on the stack");
 
 // Sin lookup table for fast sin/cos
 static float sinTable[SIN_TABLE_SIZE];
@@ -117,6 +128,35 @@ static constexpr int IPS10_TERRARIUM_W = 408;  // 800 − ~372px treemap sidebar
 #endif
 
 // Inline pixel setter for direct buffer manipulation
+static void drawCiCompanion(float x, float y, const CiCueSnapshot& cue, float now, bool paint = true) {
+    CiCompanion::Memo* memo = nullptr;
+    for (auto& candidate : ciMemos) if (candidate.occupied && candidate.key == cue.key) { memo = &candidate; break; }
+    if (!memo) for (auto& candidate : ciMemos) if (!candidate.occupied) { memo = &candidate; break; }
+    if (!memo || !CiCompanion::visible(*memo, cue.key, cue.phase, now) || !paint) return;
+    const int minSide = min(int(canvasW), int(canvasH));
+    const int side = max(int(sizeof(CiWaitVisual::GITHUB)), int(minSide * TerrariumRules::CiCompanionSizeFrac));
+    // Creature footprints use the existing layout radii. A helper clears the
+    // owner rather than covering its face; it never adds a controllable resident.
+    const float bodyRadius = cue.owner == CiOwner::octopus ? Layout::OctBodyRadiusFrac
+        : cue.owner == CiOwner::cloud ? Layout::CloudRadiusFrac
+        : cue.owner == CiOwner::opencode ? Layout::OpenCodeRadiusFrac
+        : cue.owner == CiOwner::antigravity ? Layout::AntigravityRadiusFrac
+        : cue.owner == CiOwner::kiro ? Layout::KiroRadiusFrac
+        : cue.owner == CiOwner::hermes ? Layout::HermesRadiusFrac : Layout::CfWidthFrac / 2;
+    const float clearance = sqrtf(2.0f) * (canvasW * bodyRadius + side / 2.0f + 1);
+    const float rx = max(minSide * TerrariumRules::CiCompanionOrbitRadiusX, clearance);
+    const float ry = max(minSide * TerrariumRules::CiCompanionOrbitRadiusY, clearance);
+    const int inset = int(minSide * TerrariumRules::CiCompanionEdgeInset);
+    const int left = max(inset, min(canvasW - inset - side, int(x * canvasW + fastCos(memo->angle) * rx - side / 2)));
+    const int top = max(inset, min(canvasH - inset - side, int(y * canvasH + fastSin(memo->angle) * ry - side / 2)));
+    Draw::alphaMask(CiWaitVisual::GITHUB_ALPHA, CiWaitVisual::GITHUB_ALPHA_SIZE, CiWaitVisual::GITHUB_ALPHA_SIZE,
+                    left, top, side, side, CiWaitVisual::HELPER_COLOR, 255);
+    const uint32_t phaseColor = cue.phase == CiWaitVisual::FAILED ? ProductPalette::UiError
+        : cue.phase == CiWaitVisual::PASSED ? ProductPalette::UiOk
+        : cue.phase == CiWaitVisual::UNKNOWN ? ProductPalette::UiIdle : ProductPalette::UiCyan;
+    Draw::circle(left + side, top + side, max(1, side / int(sizeof(CiWaitVisual::GITHUB))), phaseColor, 255);
+}
+
 static inline void setPixel(int x, int y, uint16_t color) {
     if (x >= 0 && x < canvasW && y >= 0 && y < canvasH) {
         canvas_buf[y * canvasW + x] = color;
@@ -358,6 +398,9 @@ void render(float dt) {
     if (!canvas_buf) return;
 
     totalTime += dt;
+    CiCueSnapshot ciCues[CI_CUE_SLOTS] = {};
+    uint8_t ciCueCount = 0;
+    bool ciPermissionPriority = false;
 
     // Read state snapshot
     lockState();
@@ -401,6 +444,26 @@ void render(float dt) {
     // missing, which made the board read as "OpenClaw wired up" when it
     // wasn't. Parity with the iOS/Android terrariums.
     bool showCrayfish = hasData && (g_state.gatewayConnected || g_state.gatewayHasError || g_state.crayfishCount > 0);
+    // Copy only bounded scalar ownership while the state lock is held. The
+    // actual glyph anchor is resolved after its creature has rendered/moved.
+    uint8_t ciOwnerIndices[8] = {};
+    for (uint8_t s = 0; s < g_state.sessionCount; ++s) {
+        const SessionInfo& session = g_state.sessions[s];
+        if (!session.alive) continue;
+        if (strstr(session.state, "awaiting")) ciPermissionPriority = true;
+        CiOwner owner = CiOwner::none;
+        if (!strcmp(session.agentType, "claude-code")) owner = CiOwner::octopus;
+        else if (isCodexAgentType(session.agentType)) owner = CiOwner::cloud;
+        else if (!strcmp(session.agentType, "opencode")) owner = CiOwner::opencode;
+        else if (!strcmp(session.agentType, "antigravity")) owner = CiOwner::antigravity;
+        else if (!strcmp(session.agentType, "kiro-cli") || !strcmp(session.agentType, "kiro-ide") || !strcmp(session.agentType, "kiro")) owner = CiOwner::kiro;
+        else if (!strcmp(session.agentType, "hermes")) owner = CiOwner::hermes;
+        else if (!strcmp(session.agentType, "openclaw")) owner = CiOwner::openclaw;
+        if (owner == CiOwner::none) continue;
+        const uint8_t index = ciOwnerIndices[uint8_t(owner)]++;
+        if (!session.ciPhase || !session.id[0] || ciCueCount >= CI_CUE_SLOTS) continue;
+        ciCues[ciCueCount++] = { CiCompanion::sessionHash(session.id), owner, index, session.ciPhase };
+    }
 
     // Per-creature state arrays
     CreatureState octStates[MAX_OCTOPUS];
@@ -682,6 +745,23 @@ void render(float dt) {
         drawSubagentOrbit(Hermes::getX(i), Hermes::getY(i), hermesSubagents[i], totalTime);
     }
 
+    for (auto& memo : ciMemos) memo.seen = false;
+    for (uint8_t i = 0; i < ciCueCount; ++i) {
+        const auto& cue = ciCues[i];
+        switch (cue.owner) {
+            case CiOwner::octopus: if (cue.index < octCount && cue.index < MAX_OCTOPUS) drawCiCompanion(Octopus::getX(cue.index), Octopus::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::cloud: if (cue.index < cloudCount && cue.index < MAX_CLOUD) drawCiCompanion(Cloud::getX(cue.index), Cloud::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::opencode: if (cue.index < opencodeCount && cue.index < MAX_OPENCODE) drawCiCompanion(OpenCode::getX(cue.index), OpenCode::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::antigravity: if (cue.index < antigravityCount && cue.index < MAX_ANTIGRAVITY) drawCiCompanion(Antigravity::getX(cue.index), Antigravity::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::kiro: if (cue.index < kiroCount && cue.index < MAX_KIRO) drawCiCompanion(Kiro::getX(cue.index), Kiro::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::hermes: if (cue.index < hermesCount && cue.index < MAX_HERMES) drawCiCompanion(Hermes::getX(cue.index), Hermes::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::openclaw: if (showCrayfish) drawCiCompanion(Layout::CfHomeX, cfState == CrayfishState::ROUTING ? Layout::CfRoutingY : Layout::CfSittingY, cue, totalTime, !ciPermissionPriority); break;
+            default: break;
+        }
+    }
+    // Explicit phase0 or a departed owner clears the renderer-lifetime memo.
+    for (auto& memo : ciMemos) if (!memo.seen) memo.occupied = false;
+
     // 8. Data particles (food crumbs from working agents)
     Particles::update(dt, totalTime, cState, octCount, cfState, showCrayfish, octStates);
     Particles::render(canvas_buf, canvasW, canvasH, totalTime);
@@ -745,6 +825,21 @@ namespace Draw {
     void alphaMask(const uint8_t* mask, int maskW, int maskH, int x0, int y0,
                    int dstW, int dstH, uint32_t color24, uint8_t alpha) {
         fillAlphaMask(mask, maskW, maskH, x0, y0, dstW, dstH, color24, alpha);
+    }
+    void featureLayers(const CreatureGlyphs::FeatureLayer* layers, size_t count, int maskW, int maskH,
+                       int x0, int y0, int dstW, int dstH, uint8_t alpha) {
+        if (maskW <= 0 || maskH <= 0 || dstW <= 0 || dstH <= 0 || alpha == 0) return;
+        for (size_t i = 0; i < count; ++i) {
+            const auto& layer = layers[i];
+            const int left = layer.x * dstW / maskW;
+            const int top = layer.y * dstH / maskH;
+            const int right = (layer.x + layer.width) * dstW / maskW;
+            const int bottom = (layer.y + layer.height) * dstH / maskH;
+            const uint32_t color = (uint32_t(layer.red) << 16) | (uint32_t(layer.green) << 8) | layer.blue;
+            // Black is a real source feature, so draw it just like white coverage.
+            fillAlphaMask(layer.alpha, layer.width, layer.height, x0 + left, y0 + top,
+                          max(1, right - left), max(1, bottom - top), color, alpha);
+        }
     }
     void alphaMaskGradient(const uint8_t* mask, int maskW, int maskH, int x0, int y0,
                            int dstW, int dstH, uint32_t colorTop, uint32_t colorBottom, uint8_t alpha) {

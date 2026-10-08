@@ -85,6 +85,7 @@ export type GatewayMethodName =
   | 'plugin.approval.resolve'
   | 'plugin.approval.list'
   | 'sessions.list'
+  | 'sessions.patch'
   | 'sessions.subscribe'
   | 'sessions.messages.subscribe'
   | 'sessions.messages.unsubscribe'
@@ -102,6 +103,7 @@ export type GatewayMethodParams =
   | PluginApprovalResolveParams
   | PluginApprovalListParams
   | SessionsListParams
+  | SessionsPatchParams
   | SessionsSubscribeParams
   | SessionsMessagesSubscribeParams
   | SystemPresenceParams;
@@ -118,6 +120,7 @@ export type GatewayMethodResult =
   | PluginApprovalResolveResult
   | PluginApprovalListResult
   | SessionsListResult
+  | SessionsPatchResult
   | SessionsSubscribeResult
   | SessionsMessagesSubscribeResult
   | SystemPresenceResult;
@@ -329,6 +332,21 @@ export interface SessionsListParams {
 
 export interface SessionsListResult {
   sessions: GatewaySession[];
+  /** Agent-level defaults for rows that do not state their own (model, thinking). */
+  defaults?: GatewaySessionSettingsFields;
+}
+
+/** sessions.patch — per-session overrides for subsequent turns. `null` clears an
+ *  override back to inheritance. `model`, `thinkingLevel` and `fastMode` need
+ *  only `operator.write` (OpenClaw docs/gateway/protocol/rpc-session-control.md). */
+export interface SessionsPatchParams {
+  key: string;
+  model?: string | null;
+  thinkingLevel?: string | null;
+}
+
+export interface SessionsPatchResult {
+  [key: string]: unknown;
 }
 
 export interface SessionsSubscribeParams {}
@@ -354,7 +372,18 @@ export interface SystemPresenceResult {
   [key: string]: unknown;
 }
 
-export interface GatewaySession {
+/** Model / thinking facts a session row (or the list `defaults`) carries. */
+export interface GatewaySessionSettingsFields {
+  model?: string;
+  modelProvider?: string;
+  modelOverrideSource?: string | null;
+  thinkingLevel?: string;
+  thinkingLevels?: Array<{ id: string; label?: string }>;
+  thinkingOptions?: string[];
+  thinkingDefault?: string;
+}
+
+export interface GatewaySession extends GatewaySessionSettingsFields {
   key: string;
   kind?: string;
   label?: string;
@@ -384,6 +413,7 @@ export interface GatewayMethodMap {
   'plugin.approval.resolve': { params: PluginApprovalResolveParams; result: PluginApprovalResolveResult };
   'plugin.approval.list': { params: PluginApprovalListParams; result: PluginApprovalListResult };
   'sessions.list': { params: SessionsListParams; result: SessionsListResult };
+  'sessions.patch': { params: SessionsPatchParams; result: SessionsPatchResult };
   'sessions.subscribe': { params: SessionsSubscribeParams; result: SessionsSubscribeResult };
   'sessions.messages.subscribe': { params: SessionsMessagesSubscribeParams; result: SessionsMessagesSubscribeResult };
   'sessions.messages.unsubscribe': { params: SessionsMessagesSubscribeParams; result: { ok: boolean; key: string; subscribed: boolean } };

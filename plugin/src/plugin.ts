@@ -80,7 +80,7 @@ import {
 } from './actions/session-slot-button.js';
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
 import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
-import { voiceCommandForAction } from '@agentdeck/shared';
+import { voiceCommandForAction, type SessionSetting } from '@agentdeck/shared';
 
 let runtimeIdentity: ReturnType<typeof captureRuntimeIdentity> | undefined;
 try { runtimeIdentity = captureRuntimeIdentity(import.meta.url); }
@@ -216,16 +216,32 @@ initSessionSlots((result) => {
       });
       break;
 
-    case 'switch-model': {
-      const mgr = getSessionSlotManager();
-      mgr.startModelSwitch();
-      sendFocusedSessionCommand({ type: 'send_prompt', text: '/model' });
-      // Refresh to show loading state immediately
-      if (isInDetailView()) {
-        primeDetailViewFromSession(getFocusedSession());
+    // Agent-native setting picker (#463): open asks the daemon for the agent's
+    // own values; a choice is sent back verbatim (null = the agent's default).
+    case 'open-setting-picker': {
+      const focused = getFocusedSession();
+      if (focused && result.settingKey) {
+        const command = getSessionSlotManager().openPicker(result.settingKey);
+        if (command) connMgr.send(command);
+        refreshSessionSlots();
       }
       break;
     }
+
+    case 'set-setting': {
+      const focused = getFocusedSession();
+      if (focused && result.settingKey && result.settingValue !== undefined) {
+        const command = getSessionSlotManager().beginSettingMutation(result.settingKey, result.settingValue);
+        if (command) connMgr.send(command);
+        refreshSessionSlots();
+      }
+      break;
+    }
+
+    case 'close-picker':
+      getSessionSlotManager().closePicker();
+      refreshSessionSlots();
+      break;
 
     case 'review-run': {
       // Independent on-demand eval — a daemon-level command (the daemon
@@ -443,6 +459,13 @@ connMgr.on('review_status', (ev: { type: 'review_status'; sessionId: string; sta
   if (ev.status === 'error' && ev.sessionId) clearSessionReviewPending(ev.sessionId);
 });
 
+// Agent-native settings (#463): the answer to a picker query or a switch.
+getSessionSlotManager().onSettingsChanged = () => refreshSessionSlots();
+connMgr.on('session_settings', (ev: import('@agentdeck/shared').SessionSettingsEvent) => {
+  dlog('Plugin', `session_settings: ${ev.sessionId} ${ev.settings?.length ?? 0}${ev.error ? ` (${ev.error})` : ''}`);
+  if (getSessionSlotManager().applySessionSettings(ev) && isInDetailView()) refreshSessionSlots();
+});
+
 // Host push-to-talk progress -> VOICE key facelift. Error is transient by
 // design: the daemon parks on 'error' after a failed capture, and without the
 // reset the key would read "no speech" forever.
@@ -547,6 +570,7 @@ connMgr.on('stale-changed', (stale: boolean) => {
 });
 
 connMgr.on('disconnected', () => {
+  getSessionSlotManager().disconnectSettings();
   dinfo('Plugin', `disconnected (agentType=${proxiedAgentType} prevState=${currentState})`);
   setDaemonConnected(false);
   setEncoderDaemonConnected(false);

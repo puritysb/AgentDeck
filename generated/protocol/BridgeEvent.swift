@@ -17,13 +17,18 @@ import Foundation
 ///
 /// Bridge → clients — model recommendation for the next task (on-demand / context-aware).
 ///
-/// On-demand independent review lifecycle. Triggered by the REVIEW deck button
-/// (ReviewRunCommand) — the daemon reviews the session's latest work with an independent
-/// judge model (Node: working-tree diff; Swift: APME trajectory) and reports risk findings.
-/// Needs no agent control, so it works for every session type including observed codex.
+/// Answer to `query_session_settings` / `set_session_setting`. Kept off `sessions_list` on
+/// purpose: option lists are large and every board receives that frame. `error` carries the
+/// agent's rejection (e.g. a level the model no longer accepts); `settings` is then the
+/// freshest known state, possibly empty.
 ///
 /// Additive public-protocol acknowledgement. Legacy WS clients never receive or need this
 /// event.
+///
+/// Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the
+/// T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape
+/// Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
+/// legacy bool other LCD boards read.
 // MARK: - ADBridgeEvent
 struct ADBridgeEvent: Codable, Equatable {
     var agentCapabilities: ADAgentCapabilities?
@@ -71,6 +76,8 @@ struct ADBridgeEvent: Codable, Equatable {
     /// Set when the focused session has a gated PreToolUse permission pending device approval —
     /// clients reply with `permission_decision { requestId }` instead of `select_option`. See
     /// bridge/src/permission-resolver.ts.
+    ///
+    /// Echoed request identity; clients ignore stale/uncorrelated responses.
     var requestId: String?
     /// Session ID associated with this state payload; may move with hook activity.
     ///
@@ -140,6 +147,12 @@ struct ADBridgeEvent: Codable, Equatable {
     /// How to dim on sleep. Absent ⇒ legacy full-off.
     var dim: ADDisplayDimInstruction?
     var displayOn: Bool?
+    /// Daemon host-local "HH:MM" at send time (same convention as timeline `localHm`).
+    /// display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the
+    /// wall clock for boards that never reach NTP — a serial-primary board parks its radio — and
+    /// for every board that only knows UTC. E-ink panels print it as their "as of HH:MM"
+    /// freshness band. Absent ⇒ no information; a client keeps its last estimate.
+    var hostHm: String?
     /// Full snapshot: null clears Dot; absent from older daemons also clears it.
     var dot: ADDotDeckSnapshot?
     var sessions: [ADSessionInfo]?
@@ -159,6 +172,9 @@ struct ADBridgeEvent: Codable, Equatable {
     var reportPath: String?
     var risk: ADRisk?
     var summary: String?
+    var settings: [ADSessionSetting]?
+    /// Concrete Gateway conversation read or patched, never the virtual row id.
+    var targetSessionKey: String?
     var capabilities: [String]?
     var profile: String?
     /// Negotiated major. Runtime v1 emits exactly `1`; modeled as a number here so the
@@ -171,6 +187,8 @@ struct ADBridgeEvent: Codable, Equatable {
     var data: String?
     var offset: Double?
     var seq: Double?
+    var landscape: Bool?
+    var layout: ADLayout?
 
     enum CodingKeys: String, CodingKey {
         case agentCapabilities = "agentCapabilities"
@@ -252,6 +270,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case timestamp = "timestamp"
         case dim = "dim"
         case displayOn = "displayOn"
+        case hostHm = "hostHm"
         case dot = "dot"
         case sessions = "sessions"
         case encoders = "encoders"
@@ -269,6 +288,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case reportPath = "reportPath"
         case risk = "risk"
         case summary = "summary"
+        case settings = "settings"
+        case targetSessionKey = "targetSessionKey"
         case capabilities = "capabilities"
         case profile = "profile"
         case bridgeEventProtocol = "protocol"
@@ -279,6 +300,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case data = "data"
         case offset = "offset"
         case seq = "seq"
+        case landscape = "landscape"
+        case layout = "layout"
     }
 }
 
@@ -380,6 +403,7 @@ extension ADBridgeEvent {
         timestamp: Double?? = nil,
         dim: ADDisplayDimInstruction?? = nil,
         displayOn: Bool?? = nil,
+        hostHm: String?? = nil,
         dot: ADDotDeckSnapshot?? = nil,
         sessions: [ADSessionInfo]?? = nil,
         encoders: [ADEncoderSlotState]?? = nil,
@@ -397,6 +421,8 @@ extension ADBridgeEvent {
         reportPath: String?? = nil,
         risk: ADRisk?? = nil,
         summary: String?? = nil,
+        settings: [ADSessionSetting]?? = nil,
+        targetSessionKey: String?? = nil,
         capabilities: [String]?? = nil,
         profile: String?? = nil,
         bridgeEventProtocol: Double?? = nil,
@@ -406,7 +432,9 @@ extension ADBridgeEvent {
         size: Double?? = nil,
         data: String?? = nil,
         offset: Double?? = nil,
-        seq: Double?? = nil
+        seq: Double?? = nil,
+        landscape: Bool?? = nil,
+        layout: ADLayout?? = nil
     ) -> ADBridgeEvent {
         return ADBridgeEvent(
             agentCapabilities: agentCapabilities ?? self.agentCapabilities,
@@ -488,6 +516,7 @@ extension ADBridgeEvent {
             timestamp: timestamp ?? self.timestamp,
             dim: dim ?? self.dim,
             displayOn: displayOn ?? self.displayOn,
+            hostHm: hostHm ?? self.hostHm,
             dot: dot ?? self.dot,
             sessions: sessions ?? self.sessions,
             encoders: encoders ?? self.encoders,
@@ -505,6 +534,8 @@ extension ADBridgeEvent {
             reportPath: reportPath ?? self.reportPath,
             risk: risk ?? self.risk,
             summary: summary ?? self.summary,
+            settings: settings ?? self.settings,
+            targetSessionKey: targetSessionKey ?? self.targetSessionKey,
             capabilities: capabilities ?? self.capabilities,
             profile: profile ?? self.profile,
             bridgeEventProtocol: bridgeEventProtocol ?? self.bridgeEventProtocol,
@@ -514,7 +545,9 @@ extension ADBridgeEvent {
             size: size ?? self.size,
             data: data ?? self.data,
             offset: offset ?? self.offset,
-            seq: seq ?? self.seq
+            seq: seq ?? self.seq,
+            landscape: landscape ?? self.landscape,
+            layout: layout ?? self.layout
         )
     }
 
@@ -1696,6 +1729,12 @@ enum ADGatewayAuthStatus: String, Codable, Equatable {
     case unsupportedProtocol = "unsupported_protocol"
 }
 
+enum ADLayout: String, Codable, Equatable {
+    case auto = "auto"
+    case landscape = "landscape"
+    case portrait = "portrait"
+}
+
 //
 // Hashable or Equatable:
 // The compiler will not be able to synthesize the implementation of Hashable or Equatable
@@ -1946,7 +1985,7 @@ extension ADOllamaModel {
 // MARK: - ADPromptOption
 struct ADPromptOption: Codable, Equatable {
     var index: Double
-    var kind: ADKind?
+    var kind: ADOptionKind?
     var label: String
     var recommended: Bool?
     var selected: Bool?
@@ -1982,7 +2021,7 @@ extension ADPromptOption {
 
     func with(
         index: Double? = nil,
-        kind: ADKind?? = nil,
+        kind: ADOptionKind?? = nil,
         label: String? = nil,
         recommended: Bool?? = nil,
         selected: Bool?? = nil,
@@ -2007,7 +2046,7 @@ extension ADPromptOption {
     }
 }
 
-enum ADKind: String, Codable, Equatable {
+enum ADOptionKind: String, Codable, Equatable {
     case choice = "choice"
     case freeformInput = "freeform_input"
 }
@@ -2491,6 +2530,9 @@ struct ADSessionInfo: Codable, Equatable {
     /// unsafe index space. These are present only while a multi-group prompt is pending, and let
     /// a surface render "Q 2/3". Absent ⇒ a single-question prompt.
     var askGroupIndex: Double?
+    /// Claude background_tasks snapshot count, separate from the child-agent census. Explicit
+    /// zero clears prior work; absent means the producer has no snapshot.
+    var backgroundTaskCount: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
     /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
@@ -2502,6 +2544,10 @@ struct ADSessionInfo: Codable, Equatable {
     var cwd: String?
     /// Optional compact device label; never a session identity or folding key.
     var displayName: String?
+    /// The agent's own reasoning-effort word, verbatim (Claude `effort.level`, Codex
+    /// `turn_context.effort`). An open set: each agent and model has its own levels, so surfaces
+    /// render it as-is and never assume which one is the default. Absent means the agent has not
+    /// reported one.
     var effortLevel: String?
     var elapsedSec: Double?
     var foldedSessionIds: [String]?
@@ -2523,6 +2569,10 @@ struct ADSessionInfo: Codable, Equatable {
     var liveAnswerable: Bool?
     var modelName: String?
     var options: [ADPromptOption]?
+    /// The agent's own permission-mode word, verbatim — Claude `permission_mode` (default /
+    /// acceptEdits / plan / auto / …), Codex `plan` or its `sandbox_policy.type`. Open set,
+    /// rendered as-is; absent = not reported.
+    var permissionMode: String?
     var pid: Double?
     var port: Double
     var projectName: String
@@ -2562,6 +2612,8 @@ struct ADSessionInfo: Codable, Equatable {
     /// running` on the row forever — the same one-way latch that `usageStale` hit twice.
     var subagents: ADSubagentSummary?
     var totalTokens: Double?
+    /// CI is a separate axis from agent state. Explicit null clears a prior wait.
+    var waitingOn: ADCiWaitStatus?
     var weight: Double?
 
     enum CodingKeys: String, CodingKey {
@@ -2570,6 +2622,7 @@ struct ADSessionInfo: Codable, Equatable {
         case alive = "alive"
         case askGroupCount = "askGroupCount"
         case askGroupIndex = "askGroupIndex"
+        case backgroundTaskCount = "backgroundTaskCount"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
         case coordination = "coordination"
@@ -2586,6 +2639,7 @@ struct ADSessionInfo: Codable, Equatable {
         case liveAnswerable = "liveAnswerable"
         case modelName = "modelName"
         case options = "options"
+        case permissionMode = "permissionMode"
         case pid = "pid"
         case port = "port"
         case projectName = "projectName"
@@ -2602,6 +2656,7 @@ struct ADSessionInfo: Codable, Equatable {
         case stopRequested = "stopRequested"
         case subagents = "subagents"
         case totalTokens = "totalTokens"
+        case waitingOn = "waitingOn"
         case weight = "weight"
     }
 }
@@ -2630,6 +2685,7 @@ extension ADSessionInfo {
         alive: Bool? = nil,
         askGroupCount: Double?? = nil,
         askGroupIndex: Double?? = nil,
+        backgroundTaskCount: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
         coordination: ADCoordinationSummary?? = nil,
@@ -2646,6 +2702,7 @@ extension ADSessionInfo {
         liveAnswerable: Bool?? = nil,
         modelName: String?? = nil,
         options: [ADPromptOption]?? = nil,
+        permissionMode: String?? = nil,
         pid: Double?? = nil,
         port: Double? = nil,
         projectName: String? = nil,
@@ -2662,6 +2719,7 @@ extension ADSessionInfo {
         stopRequested: Bool?? = nil,
         subagents: ADSubagentSummary?? = nil,
         totalTokens: Double?? = nil,
+        waitingOn: ADCiWaitStatus?? = nil,
         weight: Double?? = nil
     ) -> ADSessionInfo {
         return ADSessionInfo(
@@ -2670,6 +2728,7 @@ extension ADSessionInfo {
             alive: alive ?? self.alive,
             askGroupCount: askGroupCount ?? self.askGroupCount,
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
+            backgroundTaskCount: backgroundTaskCount ?? self.backgroundTaskCount,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
             coordination: coordination ?? self.coordination,
@@ -2686,6 +2745,7 @@ extension ADSessionInfo {
             liveAnswerable: liveAnswerable ?? self.liveAnswerable,
             modelName: modelName ?? self.modelName,
             options: options ?? self.options,
+            permissionMode: permissionMode ?? self.permissionMode,
             pid: pid ?? self.pid,
             port: port ?? self.port,
             projectName: projectName ?? self.projectName,
@@ -2702,6 +2762,7 @@ extension ADSessionInfo {
             stopRequested: stopRequested ?? self.stopRequested,
             subagents: subagents ?? self.subagents,
             totalTokens: totalTokens ?? self.totalTokens,
+            waitingOn: waitingOn ?? self.waitingOn,
             weight: weight ?? self.weight
         )
     }
@@ -2908,6 +2969,317 @@ extension ADSubagentSummary {
     }
 }
 
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADCiWaitStatus
+struct ADCiWaitStatus: Codable, Equatable {
+    var agentWaiting: Bool
+    var checks: ADChecks?
+    var evidence: ADEvidence
+    var kind: ADCiWaitStatusKind
+    var openedAt: Double
+    var phase: ADPhase
+    var pr: Double?
+    var provider: ADProvider
+    var ref: String?
+    var repo: String?
+    var runId: Double?
+    var runUrl: String?
+
+    enum CodingKeys: String, CodingKey {
+        case agentWaiting = "agentWaiting"
+        case checks = "checks"
+        case evidence = "evidence"
+        case kind = "kind"
+        case openedAt = "openedAt"
+        case phase = "phase"
+        case pr = "pr"
+        case provider = "provider"
+        case ref = "ref"
+        case repo = "repo"
+        case runId = "runId"
+        case runUrl = "runUrl"
+    }
+}
+
+// MARK: ADCiWaitStatus convenience initializers and mutators
+
+extension ADCiWaitStatus {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADCiWaitStatus.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        agentWaiting: Bool? = nil,
+        checks: ADChecks?? = nil,
+        evidence: ADEvidence? = nil,
+        kind: ADCiWaitStatusKind? = nil,
+        openedAt: Double? = nil,
+        phase: ADPhase? = nil,
+        pr: Double?? = nil,
+        provider: ADProvider? = nil,
+        ref: String?? = nil,
+        repo: String?? = nil,
+        runId: Double?? = nil,
+        runUrl: String?? = nil
+    ) -> ADCiWaitStatus {
+        return ADCiWaitStatus(
+            agentWaiting: agentWaiting ?? self.agentWaiting,
+            checks: checks ?? self.checks,
+            evidence: evidence ?? self.evidence,
+            kind: kind ?? self.kind,
+            openedAt: openedAt ?? self.openedAt,
+            phase: phase ?? self.phase,
+            pr: pr ?? self.pr,
+            provider: provider ?? self.provider,
+            ref: ref ?? self.ref,
+            repo: repo ?? self.repo,
+            runId: runId ?? self.runId,
+            runUrl: runUrl ?? self.runUrl
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADChecks
+struct ADChecks: Codable, Equatable {
+    var failed: Double
+    var passed: Double
+    var pending: Double
+    var total: Double
+
+    enum CodingKeys: String, CodingKey {
+        case failed = "failed"
+        case passed = "passed"
+        case pending = "pending"
+        case total = "total"
+    }
+}
+
+// MARK: ADChecks convenience initializers and mutators
+
+extension ADChecks {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADChecks.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        failed: Double? = nil,
+        passed: Double? = nil,
+        pending: Double? = nil,
+        total: Double? = nil
+    ) -> ADChecks {
+        return ADChecks(
+            failed: failed ?? self.failed,
+            passed: passed ?? self.passed,
+            pending: pending ?? self.pending,
+            total: total ?? self.total
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADEvidence: String, Codable, Equatable {
+    case github = "github"
+    case toolInput = "tool_input"
+}
+
+enum ADCiWaitStatusKind: String, Codable, Equatable {
+    case ci = "ci"
+}
+
+enum ADPhase: String, Codable, Equatable {
+    case failed = "failed"
+    case passed = "passed"
+    case queued = "queued"
+    case running = "running"
+    case unknown = "unknown"
+}
+
+enum ADProvider: String, Codable, Equatable {
+    case githubActions = "github-actions"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// A session setting the deck can switch, as the agent itself describes it (#463). Every
+/// value comes from the agent at request time — the deck never invents a level, a list or a
+/// default, so an agent update cannot drift away from it.
+// MARK: - ADSessionSetting
+struct ADSessionSetting: Codable, Equatable {
+    /// The value in effect now (an override or the inherited one).
+    var current: String?
+    /// The agent's own default for this session/model; absent when it gives none.
+    var sessionSettingDefault: String?
+    var key: ADKey
+    var options: [ADSessionSettingOption]
+    /// True when `current` is an explicit session override (clearing returns to `default`).
+    var overridden: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case current = "current"
+        case sessionSettingDefault = "default"
+        case key = "key"
+        case options = "options"
+        case overridden = "overridden"
+    }
+}
+
+// MARK: ADSessionSetting convenience initializers and mutators
+
+extension ADSessionSetting {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADSessionSetting.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        current: String?? = nil,
+        sessionSettingDefault: String?? = nil,
+        key: ADKey? = nil,
+        options: [ADSessionSettingOption]? = nil,
+        overridden: Bool?? = nil
+    ) -> ADSessionSetting {
+        return ADSessionSetting(
+            current: current ?? self.current,
+            sessionSettingDefault: sessionSettingDefault ?? self.sessionSettingDefault,
+            key: key ?? self.key,
+            options: options ?? self.options,
+            overridden: overridden ?? self.overridden
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADKey: String, Codable, Equatable {
+    case effort = "effort"
+    case model = "model"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// One value an agent offers for a session setting, in the agent's own words.
+// MARK: - ADSessionSettingOption
+struct ADSessionSettingOption: Codable, Equatable {
+    /// The id the agent accepts back (OpenClaw thinking id, `provider/model`).
+    var id: String
+    /// The agent's own display label when it gives one; render `id` otherwise.
+    var label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case label = "label"
+    }
+}
+
+// MARK: ADSessionSettingOption convenience initializers and mutators
+
+extension ADSessionSettingOption {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADSessionSettingOption.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        id: String? = nil,
+        label: String?? = nil
+    ) -> ADSessionSettingOption {
+        return ADSessionSettingOption(
+            id: id ?? self.id,
+            label: label ?? self.label
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)
 enum ADState: String, Codable, Equatable {
     case awaitingDiff = "awaiting_diff"
@@ -3009,7 +3381,9 @@ enum ADType: String, Codable, Equatable {
     case promptOptions = "prompt_options"
     case reviewResult = "review_result"
     case reviewStatus = "review_status"
+    case sessionSettings = "session_settings"
     case sessionsList = "sessions_list"
+    case setOrientation = "set_orientation"
     case stateUpdate = "state_update"
     case surfaceWelcome = "surface_welcome"
     case timelineEvent = "timeline_event"
@@ -3045,6 +3419,8 @@ enum ADVoiceAssistantState: String, Codable, Equatable {
 /// same "which limit" axis Codex carries).
 // MARK: - ADZaiRateLimits
 struct ADZaiRateLimits: Codable, Equatable {
+    /// Explicit provider credential rejection; false clears a prior failure.
+    var authFailed: Bool?
     /// ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
     /// clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches
     /// regularly, so an aged stamp means the poll is failing, and the reading dims rather than
@@ -3059,6 +3435,7 @@ struct ADZaiRateLimits: Codable, Equatable {
     var secondary: ADZaiWindow?
 
     enum CodingKeys: String, CodingKey {
+        case authFailed = "authFailed"
         case capturedAt = "capturedAt"
         case limitId = "limitId"
         case planType = "planType"
@@ -3086,6 +3463,7 @@ extension ADZaiRateLimits {
     }
 
     func with(
+        authFailed: Bool?? = nil,
         capturedAt: String?? = nil,
         limitId: String?? = nil,
         planType: String?? = nil,
@@ -3093,6 +3471,7 @@ extension ADZaiRateLimits {
         secondary: ADZaiWindow?? = nil
     ) -> ADZaiRateLimits {
         return ADZaiRateLimits(
+            authFailed: authFailed ?? self.authFailed,
             capturedAt: capturedAt ?? self.capturedAt,
             limitId: limitId ?? self.limitId,
             planType: planType ?? self.planType,

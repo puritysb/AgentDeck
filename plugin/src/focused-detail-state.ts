@@ -72,6 +72,7 @@ export class FocusedDetailState {
       tool: session.currentTool ?? session.currentTask,
       question: session.question,
       modelName: session.modelName,
+      mode: session.permissionMode,
       effortLevel: session.effortLevel,
     };
     return this.current;
@@ -105,7 +106,7 @@ export class FocusedDetailState {
       // SessionInfo is the only safe fallback. Never retain the preceding
       // global model (the GLM→Claude contamination reproduced in device logs).
       modelName: ev.modelName ?? focused.modelName,
-      mode: ev.permissionMode,
+      mode: ev.permissionMode ?? focused.permissionMode,
       effortLevel: ev.effortLevel ?? focused.effortLevel,
       suggestedPrompt: ev.state === State.IDLE ? ev.suggestedPrompt : undefined,
     };

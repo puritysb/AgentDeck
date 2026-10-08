@@ -5,6 +5,48 @@ import XCTest
 
 final class TimelineTests: XCTestCase {
 
+    func testTurnOwnsToolsAndReplyAcrossBusyDashboard() {
+        for agent in ["openclaw", "claude-code", "codex-cli", "opencode", "kiro-cli", "antigravity", "hermes"] {
+            let start = TimelineEntry(ts: 1000, type: .chatStart, raw: "Inspect disk usage",
+                agentType: agent, sessionId: "own", runId: "run", startedAt: 1000)
+            let noise = (0..<80).map { i in
+                TimelineEntry(ts: Double(2000 + i), type: .chatStart, raw: "Other request \(i)", sessionId: "other-\(i)")
+            }
+            let tool = TimelineEntry(ts: 5000, type: .toolExec, raw: "exec ×2", detail: "Result: disk usage",
+                agentType: agent, sessionId: "own", runId: "run", startedAt: 4500)
+            let reply = TimelineEntry(ts: 6000, type: .chatResponse, raw: "Disk report",
+                agentType: agent, sessionId: "own", runId: "run", startedAt: 1000)
+            let groups = groupConsecutive([start] + noise + [tool, reply])
+            XCTAssertEqual(groups.count, 81, agent)
+            XCTAssertEqual(groups[0].toolActivity.count, 1, agent)
+            XCTAssertEqual(groups[0].toolDetail, "Result: disk usage", agent)
+            XCTAssertEqual(groups[0].mergedResponse?.raw, "Disk report", agent)
+        }
+    }
+
+    func testToolGroupingKeepsApprovalsSubagentsOrphansAndOtherRunsVisible() {
+        let start = TimelineEntry(ts: 1000, type: .chatStart, raw: "Inspect disk", sessionId: "s", runId: "a", taskId: "task")
+        let entries = [start,
+            TimelineEntry(ts: 2000, type: .toolRequest, raw: "Approve", sessionId: "s", runId: "a"),
+            TimelineEntry(ts: 3000, type: .toolExec, raw: "Subagent dispatched", sessionId: "s", runId: "a", subagentId: "child"),
+            TimelineEntry(ts: 4000, type: .toolExec, raw: "Other run", sessionId: "s", runId: "b", taskId: "task"),
+            TimelineEntry(ts: 5000, type: .toolExec, raw: "Other session", sessionId: "other", taskId: "task")]
+        XCTAssertEqual(groupConsecutive(entries).count, entries.count)
+        XCTAssertEqual(groupConsecutive([entries[3]]).count, 1)
+        let q2 = TimelineEntry(ts: 6000, type: .chatStart, raw: "Next request", sessionId: "s", runId: "next")
+        let late = TimelineEntry(ts: 7000, type: .toolExec, raw: "Late result", sessionId: "s", runId: "a")
+        let groups = groupConsecutive([start, q2, late])
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0].toolActivity.count, 1)
+        XCTAssertTrue(groups[1].toolActivity.isEmpty)
+        // Without a run id, an old tool's late completion cannot attach to Q2.
+        let unscoped = TimelineEntry(ts: 8000, type: .toolExec, raw: "Old tool completed", sessionId: "s", startedAt: 1500)
+        let next = TimelineEntry(ts: 6000, type: .chatStart, raw: "New turn", sessionId: "s")
+        XCTAssertEqual(groupConsecutive([next, unscoped]).count, 2)
+        let synthetic = TimelineEntry(ts: 1000, type: .chatStart, raw: "Prompt sent", sessionId: "s")
+        XCTAssertEqual(groupConsecutive([synthetic, unscoped]).count, 2)
+    }
+
     func testObservedSessionFilterMatchesRawTimelineSessionId() {
         let entry = TimelineEntry(
             ts: 1,

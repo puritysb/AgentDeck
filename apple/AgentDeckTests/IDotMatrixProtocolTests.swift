@@ -289,6 +289,29 @@ final class IDotMatrixProtocolTests: XCTestCase {
         XCTAssertNotEqual(pixel64(38, 57), pixel64(63, 57))
     }
 
+    func testSourceFeaturePaintPreservesOpaqueColorsAndOpenCodeHoleAcrossWater() {
+        for background: [UInt8] in [[40, 73, 105], [212, 231, 171]] {
+            for glyph: OfficialDotGlyph in [.claudeCode, .codex, .openClaw, .openCode] {
+                var bytes = (0..<(32 * 32 * 3)).map { background[$0 % 3] }
+                OfficialFeaturePaint.paint(&bytes, canvasSize: 32,
+                    layers: OfficialStandardFeatures.layers[glyph] ?? [], sourceSize: OfficialDotGlyphs.size,
+                    x0: 4, y0: 4, target: OfficialDotGlyphs.size)
+                func pixel(_ x: Int, _ y: Int) -> [UInt8] {
+                    let offset = (y * 32 + x) * 3
+                    return Array(bytes[offset..<(offset + 3)])
+                }
+                switch glyph {
+                case .claudeCode: XCTAssertEqual(pixel(10, 13), [0, 0, 0])
+                case .codex: XCTAssertEqual(pixel(18, 19), [255, 255, 255])
+                case .openClaw: XCTAssertEqual(pixel(12, 11), [3, 79, 76])
+                case .openCode: XCTAssertEqual(pixel(16, 16), background)
+                default: XCTFail("Unexpected test glyph")
+                }
+                XCTAssertEqual(pixel(0, 0), background) // bounded compositor
+            }
+        }
+    }
+
     // MARK: - Pixoo adaptive animation transport
 
     func testPixooAdaptivePolicyUsesSafeMovingSingleFrames() {
@@ -297,6 +320,20 @@ final class IDotMatrixProtocolTests: XCTestCase {
             PixooAdaptivePushPolicy.interval(stateChanged: false, mode: .activeSingle),
             PixooAdaptivePushPolicy.activeFrameRefreshSec
         )
+    }
+
+    /// Mirrors bridge/src/__tests__/pixoo-motion.test.ts: integrated motion
+    /// follows wall time, not the render call rate.
+    func testPixooSimulationClockReplaysElapsedTicks() {
+        let renderer = PixooRenderer()
+        XCTAssertEqual(renderer.consumeSimulationTicks(1_000), [1_000])
+        XCTAssertEqual(renderer.consumeSimulationTicks(1_000), [])
+        let ticks = renderer.consumeSimulationTicks(1_025)
+        XCTAssertEqual(ticks.count, 25)
+        XCTAssertEqual(ticks.first, 1_001)
+        XCTAssertEqual(ticks.last, 1_025)
+        XCTAssertEqual(renderer.consumeSimulationTicks(9_999).count, PixooRenderer.simMaxTicksPerRender)
+        XCTAssertEqual(renderer.consumeSimulationTicks(5), [5])
     }
 
     func testPixooAdaptivePolicyRefreshesActiveFramesAtTwoPointFiveSeconds() {

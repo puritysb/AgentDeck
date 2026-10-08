@@ -14,6 +14,7 @@ import type {
   WifiProvisionMessage,
 } from '@agentdeck/shared/protocol';
 import { State, PermissionMode } from '@agentdeck/shared';
+import ciProjection from '../../../shared/ci-wait-projection-vectors.json';
 import {
   prepareForSerial,
   roundRobinByAgentType,
@@ -41,6 +42,19 @@ import {
   __resetForeignPortState,
   type SerialConnection,
 } from '../esp32-serial.js';
+
+describe('CI waiting evidence projection', () => {
+  it('serializes the same pending/terminal evidence as the full waitingOn policy', () => {
+    for (const vector of ciProjection) {
+      const frame = prepareForSerial({ type: 'sessions_list', sessions: [{
+        id: 'evidence-session', alive: true, state: 'idle', agentType: 'codex-cli',
+        projectName: 'fixture', port: 0, waitingOn: vector.wait,
+      }] } as never);
+      const wire = JSON.parse(JSON.stringify(frame));
+      expect(wire.sessions[0].ciPhase).toBe(vector.expected);
+    }
+  });
+});
 
 // ─── Event filtering ────────────────────────────────────────────────
 

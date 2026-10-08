@@ -115,6 +115,10 @@ struct HermesCreatureState: Identifiable {
 // MARK: - Terrarium State (aggregate)
 
 struct TerrariumState {
+    var backgroundTaskCounts: [String: Int] = [:]
+    var ciWaits: [String: CiWaitStatus] = [:]
+    var ciWaitLabels: [String: String] = [:]
+    var ciWaitingIDs: Set<String> = []
     var creatures: [AgentCreatureState] = []
     var cloudCreatures: [CloudCreatureState] = []
     var opencodeCreatures: [OpenCodeCreatureState] = []
@@ -145,6 +149,16 @@ extension DashboardState {
         subagentActivityBySession: [String: SubagentVisualActivity] = [:]
     ) -> TerrariumState {
         var result = TerrariumState()
+        for session in siblingSessions where session.state == "processing" {
+            if let count = session.backgroundTaskCount, count > 0 {
+                result.backgroundTaskCounts[session.id] = count
+            }
+        }
+        for session in siblingSessions where session.waitingOn != nil && !(session.state ?? "").hasPrefix("awaiting") {
+            result.ciWaits[session.id] = session.waitingOn
+            if let wait = session.waitingOn { result.ciWaitLabels[session.id] = CiCompanionPresentation.label(wait) }
+            if session.waitingOn?.agentWaiting == true || (session.waitingOn?.phase == "failed" && session.state == "idle") { result.ciWaitingIDs.insert(session.id) }
+        }
 
         // Primary session creature (skip daemon/openclaw/codex-cli/opencode/antigravity — they're not octopuses)
         // ALLOW-list, not a deny-list. This bucket used to be spelled as
@@ -306,12 +320,12 @@ extension DashboardState {
 
         if let p = cloudPrimary {
             let type = agentType ?? "codex-cli"
-            let key = "\(type):\(cloudGroupKey(projectName: p.projectName))"
+            let key = result.ciWaits[p.id] != nil ? "ci:\(p.id)" : "\(type):\(cloudGroupKey(projectName: p.projectName))"
             cloudGroupOrder.append(key)
             cloudGroups[key, default: []].append((id: p.id, projectName: p.projectName, modelName: p.modelName, cloudState: p.cloudState, startedAt: p.startedAt))
         }
         for sibling in cloudSiblingsRaw {
-            let key = "\(sibling.agentType ?? "codex-cli"):\(cloudGroupKey(projectName: sibling.projectName))"
+            let key = sibling.waitingOn != nil ? "ci:\(sibling.id)" : "\(sibling.agentType ?? "codex-cli"):\(cloudGroupKey(projectName: sibling.projectName))"
             if cloudGroups[key] == nil { cloudGroupOrder.append(key) }
             cloudGroups[key, default: []].append((
                 id: sibling.id,
@@ -555,6 +569,13 @@ extension DashboardState {
             .filter { $0.exitedAsking }
             .map { (x: $0.homeX, y: $0.homeY) }
 
+        // The focused state_update can arrive before its sibling roster row.
+        // Permission activity owns the final projection even if that row still
+        // carries an idle CI wait from the previous full snapshot.
+        let permissionIDs = Set(AquariumResident.project(result).filter { $0.activity == .waiting }.map(\.id))
+        result.ciWaits = result.ciWaits.filter { !permissionIDs.contains($0.key) }
+        result.ciWaitLabels = result.ciWaitLabels.filter { !permissionIDs.contains($0.key) }
+        result.ciWaitingIDs.subtract(permissionIDs)
         return result
     }
 

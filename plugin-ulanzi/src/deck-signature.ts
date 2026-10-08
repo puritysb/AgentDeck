@@ -29,6 +29,7 @@ export function deckSignature(ev: Record<string, unknown>): string {
   //    deck keeps offering the first — whose indices now mean something else.
   const sessions = ((ev.allSessions as Array<Record<string, unknown>>) ?? [])
     .map((s) => `${s.id}:${s.state ?? ''}:${s.currentTool ?? ''}:${s.modelName ?? ''}`
+      + `:${JSON.stringify([s.effortLevel, s.permissionMode, s.activity, s.goal, s.contextPercent, s.subagents])}`
       + `:${s.reviewStatus ?? ''}:${s.reviewRisk ?? ''}:${s.reviewFindings ?? ''}`
       + `:${s.liveAnswerable ?? ''}:${s.question ?? ''}:${s.promptType ?? ''}`
       + `:${s.askGroupIndex ?? ''}`
@@ -50,6 +51,6 @@ export function deckSignature(ev: Record<string, unknown>): string {
 
 /** Local preferences and placed keys change pixels even without a daemon tick. */
 export function deckViewSignature(ev: Record<string, unknown>, view: import('@agentdeck/shared').DeckView, positions: string[]): string {
-  return JSON.stringify([view.mode, view.openSessionId, view.page ?? 0,
+  return JSON.stringify([view.mode, view.openSessionId, view.page ?? 0, view.picker ?? '', view.settings ?? null,
     view.voiceState ?? 'idle', view.claudeWeeklyMode ?? 'both', view.zaiPairMode ?? 'both', [...positions].sort()]) + deckSignature(ev);
 }

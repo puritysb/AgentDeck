@@ -1,3 +1,4 @@
+import { paintOfficialFeatures } from './official-features.js';
 /**
  * Pixoo64 Creature Sprites + Environment — pixel art for 64×64 LED matrix.
  *
@@ -1340,15 +1341,7 @@ export function drawOfficialDotGlyph(
     }
   }
 
-  // OpenClaw's official mark has eye cutouts too small to survive every 32px
-  // camera position. Re-light the canonical eye coordinates without changing
-  // the silhouette so the hardware keeps its teal OpenClaw signature.
-  if (glyph === 'openClaw' && !sick) {
-    const eye: RGB = COLORS.crayfishEye;
-    for (const [vx, vy] of [[9.05, 7.63], [15.38, 7.63]] as const) {
-      setPixel(buf, x0 + Math.round(vx / 24 * target), y0 + Math.round(vy / 24 * target), eye);
-    }
-  }
+  paintOfficialFeatures(buf, canvasW, glyph, x0, y0, target);
 
   if (state === 'asking') {
     drawQuestionBubble(buf, x0 + target + 1, y0);

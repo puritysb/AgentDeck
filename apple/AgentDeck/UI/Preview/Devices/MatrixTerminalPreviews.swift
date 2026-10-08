@@ -161,7 +161,7 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp fc8d3d6187b3d3944463c162f6d9ab02a75da5f1
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 2945bf6831d56497731b4a3843aae22e23373f1d
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -249,17 +249,25 @@ struct UlanziMatrixPreview: View {
             guard cursorX <= agentMaxX else { break }
             let agent = session.agent
             let state = session.state
+            let ci = state == .awaitingPrompt ? nil : session.ciWait
+            let ciRGB = CiWaitVisual.rgb(ci?.phase ?? "unknown")
             drawSprite(
                 ctx: &ctx, atX: cursorX,
-                alpha: Tc001Sprites.mask(for: agent),
-                bodyRGB: Tc001Sprites.bodyRGB255(agent: agent, state: state, instanceIdx: index),
-                rainbow: agent == .antigravity,
+                alpha: session.ciWait != nil && state != .awaitingPrompt ? CiWaitVisual.github.flatMap { bits in (0..<8).map { col -> UInt8 in bits & (1 << (7 - col)) != 0 ? 255 : 0 } } : Tc001Sprites.mask(for: agent),
+                bodyRGB: ci != nil ? (Double(CiWaitVisual.helperRGB.0), Double(CiWaitVisual.helperRGB.1), Double(CiWaitVisual.helperRGB.2)) : Tc001Sprites.bodyRGB255(agent: agent, state: state, instanceIdx: index),
+                rainbow: ci == nil && agent == .antigravity,
+                features: ci == nil ? Tc001Sprites.features(for: agent) : [],
                 cellW: cellW, cellH: cellH
             )
             drawSubagentSatellites(
                 ctx: &ctx, atX: cursorX, count: session.subagentCount,
                 cellW: cellW, cellH: cellH
             )
+            if ci != nil {
+                plot(ctx: &ctx, x: cursorX + 7, y: 7,
+                     color: Color(red: Double(ciRGB.0) / 255, green: Double(ciRGB.1) / 255, blue: Double(ciRGB.2) / 255),
+                     cellW: cellW, cellH: cellH)
+            }
             cursorX += 8
         }
 
@@ -272,6 +280,7 @@ struct UlanziMatrixPreview: View {
                 alpha: Tc001Sprites.mask(for: .openclaw),
                 bodyRGB: Tc001Sprites.bodyRGB255(agent: .openclaw, state: ocState, instanceIdx: 0),
                 rainbow: false,
+                features: Tc001Sprites.features(for: .openclaw),
                 cellW: cellW, cellH: cellH
             )
         }
@@ -284,6 +293,7 @@ struct UlanziMatrixPreview: View {
                 alpha: Tc001Sprites.mask(for: .claudeCode),
                 bodyRGB: (64, 38, 29),
                 rainbow: false,
+                features: Tc001Sprites.features(for: .claudeCode),
                 cellW: cellW, cellH: cellH
             )
         }
@@ -370,23 +380,33 @@ struct UlanziMatrixPreview: View {
         ctx: inout GraphicsContext,
         atX x: Int,
         alpha: [UInt8], bodyRGB: (Double, Double, Double), rainbow: Bool,
+        features: [OfficialFeatureLayer] = [],
         cellW: CGFloat, cellH: CGFloat
     ) {
-        for row in 0..<OfficialTc001Glyphs.size {
-            for col in 0..<OfficialTc001Glyphs.size {
-                let coverage = Double(alpha[row * OfficialTc001Glyphs.size + col]) / 255
-                guard coverage >= 12.0 / 255.0 else { continue }
-                let source = rainbow ? Self.rainbowBands[col] : bodyRGB
-                let envelope = rainbow ? min(1, max(bodyRGB.0, bodyRGB.1, bodyRGB.2) / 255 * 1.45) : 1
-                let color = Color(
-                    red: source.0 / 255 * envelope * coverage,
-                    green: source.1 / 255 * envelope * coverage,
-                    blue: source.2 / 255 * envelope * coverage
-                )
-                drawLED(ctx: &ctx, x: x + col, y: row, color: color,
-                        cellW: cellW, cellH: cellH)
+        let brightness = max(bodyRGB.0, bodyRGB.1, bodyRGB.2)
+        for row in 0..<OfficialTc001Glyphs.size { for col in 0..<OfficialTc001Glyphs.size {
+            let coverage = Double(alpha[row * OfficialTc001Glyphs.size + col]) / 255
+            let source = rainbow ? Self.rainbowBands[col] : bodyRGB
+            let envelope = rainbow ? min(1, brightness / 255 * 1.45) : 1
+            var rgb = [source.0, source.1, source.2].map { coverage >= 12.0 / 255 ? floor($0 * envelope * coverage) : 0 }
+            var visible = coverage >= 12.0 / 255
+            for layer in features {
+                let x = col - layer.x, y = row - layer.y
+                guard x >= 0, y >= 0, x < layer.width, y < layer.height else { continue }
+                let a = Double(layer.alpha[y * layer.width + x])
+                guard a > 0 else { continue }
+                visible = true
+                for (c, channel) in [layer.red, layer.green, layer.blue].enumerated() {
+                    let feature = floor(Double(channel) * brightness / 255)
+                    rgb[c] = floor((feature * a + rgb[c] * (255 - a)) / 255)
+                }
             }
-        }
+            guard visible else { continue }
+            drawLED(ctx: &ctx, x: x + col, y: row,
+                    color: Color(red: rgb[0] / 255, green: rgb[1] / 255, blue: rgb[2] / 255),
+                    cellW: cellW, cellH: cellH)
+        } }
+
     }
 
     private func drawLED(
@@ -420,7 +440,7 @@ struct UlanziMatrixPreview: View {
 /// TC001 preview adapter. Geometry comes from generated OfficialTc001Glyphs;
 /// only the firmware state-color model remains hand-written here.
 private enum Tc001Sprites {
-    static func mask(for agent: PixooPreviewAgent) -> [UInt8] {
+    static func key(for agent: PixooPreviewAgent) -> OfficialDotGlyph {
         let key: OfficialDotGlyph
         switch agent {
         case .claudeCode: key = .claudeCode
@@ -431,7 +451,13 @@ private enum Tc001Sprites {
         case .kiro: key = .kiro
         case .hermes: key = .hermes
         }
-        return OfficialTc001Glyphs.masks[key] ?? []
+        return key
+    }
+    static func mask(for agent: PixooPreviewAgent) -> [UInt8] {
+        OfficialTc001Glyphs.masks[key(for: agent)] ?? []
+    }
+    static func features(for agent: PixooPreviewAgent) -> [OfficialFeatureLayer] {
+        OfficialTc001Features.layers[key(for: agent)] ?? []
     }
 
     /// Raw 0–255 body tone behind `bodyColor` — used directly by the antigravity

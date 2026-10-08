@@ -24,7 +24,7 @@ import type { SessionEntry } from '../session-registry.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeRunRow, ApmeTaskRow } from './types.js';
 import type { AgentType, TelemetrySpan, ApmeSampleEventRow, SampleModelConfig, TrajectoryEventKind, TurnEndSource } from '@agentdeck/shared';
-import { AGENT_IDLE_GAP_MS, deriveTaskTitle, isPricedModel, normalizeModelProvider, priceUsd } from '@agentdeck/shared';
+import { CiWaitTracker, ciWaitForegroundMs, AGENT_IDLE_GAP_MS, deriveTaskTitle, isPricedModel, normalizeModelProvider, priceUsd } from '@agentdeck/shared';
 import type { ApmeHwSampler } from './hw-sampler.js';
 import { classifyRunSmart, computeSignals, classify } from './classifier.js';
 import { readOpenTurnEvidence, claudeTurnCompletionSince, type OpenTurnEvidence, type ClaudeTurnCompletion } from './claude-transcript-reader.js';
@@ -228,6 +228,7 @@ export class ApmeCollector {
   private readonly sessionToRun = new Map<string, string>(); // sessionId → runId
   private readonly sessionToAgentType = new Map<string, AgentType>(); // sessionId → agentType (survives closeRun for late-attributed timeline rows)
   private readonly sessionToTurn = new Map<string, ActiveTurn>(); // sessionId → current turn
+  private readonly ciWaits = new CiWaitTracker();
   private readonly sessionToLastTurnId = new Map<string, string>(); // survives closeTurn()
   private readonly sessionToTask = new Map<string, ActiveTask>(); // sessionId → current task
   private readonly runTaskCount = new Map<string, number>();      // runId → next task_index
@@ -476,6 +477,7 @@ export class ApmeCollector {
     const runId = this.sessionToRun.get(sessionId);
     if (!runId) return;
     this.heard(sessionId);
+    this.noteCiWaitHook(sessionId, rawEvent, data);
     const event = normalizeHookEventName(rawEvent);
     const toolName = typeof data.tool_name === 'string' ? data.tool_name : null;
 
@@ -667,6 +669,22 @@ export class ApmeCollector {
     }
   }
 
+  private noteCiWaitHook(sessionId: string, rawEvent: string, data: Record<string, unknown>): void {
+    const event = ({ PreToolUse: 'tool_start', PostToolUse: 'tool_end', PostToolUseFailure: 'tool_failure',
+      UserPromptSubmit: 'user_prompt_submit', SessionEnd: 'session_end', Stop: 'stop' } as Record<string, string>)[rawEvent] ?? rawEvent;
+    const now = Date.now(), before = this.ciWaits.waitsFor(sessionId, now);
+    this.ciWaits.note(sessionId, event, data, now);
+    const after = this.ciWaits.waitsFor(sessionId, now);
+    for (const wait of before) if (!after.some(w => w.token === wait.token)) {
+      this.noteRelation(sessionId, { relation: 'waiting_on', direction: 'out', phase: 'closed',
+        evidence: wait.background ? 'ci_wait_background' : 'ci_wait_foreground', peerName: 'GitHub CI', key: `ci:${wait.status.openedAt}:${wait.token}`, ts: now });
+    }
+    for (const wait of after) if (!before.some(w => w.token === wait.token)) {
+      this.noteRelation(sessionId, { relation: 'waiting_on', direction: 'out', phase: 'open',
+        evidence: wait.background ? 'ci_wait_background' : 'ci_wait_foreground', peerName: 'GitHub CI', key: `ci:${wait.status.openedAt}:${wait.token}`, ts: wait.status.openedAt });
+    }
+  }
+
   /** Public wrapper for the private `closeTurn`. Used by adapters that
    *  see an explicit turn-end signal (Codex `codex_stop` hook) and want
    *  to finalize the turn row immediately rather than wait for the next
@@ -793,6 +811,9 @@ export class ApmeCollector {
     const run = this.store.getRun(turn.runId);
     const projectPath = run?.projectPath ?? undefined;
     const gitAfter = readGitHead(projectPath);
+    const task = this.sessionToTask.get(sessionId);
+    const ciWaitMs = task ? ciWaitForegroundMs(this.store.listSampleEvents(task.id), turn.index, turn.startedAt, endedAt) : 0;
+    const wallMs = Math.max(0, endedAt - turn.startedAt);
     try {
       this.store.updateTurn(turn.id, {
         endedAt,
@@ -801,6 +822,9 @@ export class ApmeCollector {
         filesCreated: turn.filesCreated,
         gitAfter,
         endSource: source,
+        efficiencyJson: mergeEfficiencyJson(this.store.getTurn(turn.id), {
+          wall_time_ms: wallMs, ci_wait_ms: ciWaitMs, agent_active_ms: Math.max(0, wallMs - ciWaitMs),
+        }),
       });
       debug('APME', `closeTurn ${turn.id.slice(0, 8)} index=${turn.index} tools=${turn.toolCalls} src=${source}`);
     } catch (err) {

@@ -30,10 +30,14 @@ import {
   renderDisconnectedSlot,
   svgFrame,
   escSvgText,
+  renderStatusCard,
+  aliasModelName,
+  type StatusIconKind,
 } from './svg-renderers/index.js';
+import { sessionNowSummary, sessionSettingOptionLabel } from './session-settings.js';
 import { State, type PromptOption } from './states.js';
 import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
-import type { SessionInfo, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, CodexLunaReserve, ScopedUsageLimit, ZaiRateLimits, ZaiWindow } from './protocol.js';
+import type { SessionInfo, SessionSetting, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, CodexLunaReserve, ScopedUsageLimit, ZaiRateLimits, ZaiWindow } from './protocol.js';
 import { Brand, Tide, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
 import { CLAUDE_LOGO_PATH, CODEX_LOGO_PATH, ZAI_LOGO_PATHS, ZAI_LOGO_VIEWBOX } from './svg-renderers/agent-logos.js';
@@ -188,6 +192,11 @@ export function parseState(evt: any): DashState {
 // Shared sanitizer: strips ANSI/control chars (resvg rejects the whole SVG on
 // any raw control char → blank tile) before entity-escaping.
 const escXml = escSvgText;
+
+/** Bound a label to `max` characters with an ellipsis. */
+function truncateLabel(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1))}…`;
+}
 
 function gaugeBar(pct: number, width = 8): string {
   const filled = Math.round(Math.min(pct, 100) / 100 * width);
@@ -885,6 +894,9 @@ export type DeckAction =
   | { kind: 'page'; delta: number }       // paginate current view
   | { kind: 'command'; command: ButtonCommand }
   | { kind: 'launch' }                    // daemon down → open the companion app locally
+  | { kind: 'picker-open'; key: SessionSetting['key'] }  // open an agent-native setting picker (#463)
+  | { kind: 'setting-select'; sessionId: string; key: SessionSetting['key']; value: string | null }
+  | { kind: 'picker-close' }              // leave the picker, stay on the session
   | null;
 
 export interface SessionDeckCell { svg: string; action: DeckAction; }
@@ -893,6 +905,10 @@ export interface DeckView {
   mode: 'list' | 'detail';
   openSessionId?: string;
   page?: number;
+  /** Open agent-native setting picker on the detail view (#463). */
+  picker?: SessionSetting['key'];
+  /** The open session's latest `session_settings` answer — the agent's own values. */
+  settings?: import('./session-settings-client.js').SessionSettingsSnapshot;
   animFrame?: number;
   animated?: boolean;
   /**
@@ -961,6 +977,73 @@ function voiceTile(view: DeckView, sid: string): SessionDeckCell {
         action: { kind: 'command', command: { type: 'voice', action: 'start', sessionId: sid } },
       };
   }
+}
+
+/** "What is it doing right now" readout (#463) from row facts; null when the row says nothing. */
+function nowTile(sess: SessionInfo | undefined, processing = false): SessionDeckCell | null {
+  const now = sessionNowSummary(sess, processing);
+  if (!now) return null;
+  return {
+    svg: renderInfoSlot(now.label, now.subtitle ? truncateLabel(now.subtitle, 22) : undefined, 'activity', 'info', now.detail),
+    action: null,
+  };
+}
+
+/** The value in effect for `key`, in the agent's own words. */
+function settingCurrentLabel(key: SessionSetting['key'], settings: DeckView['settings']): string | undefined {
+  const setting = settings?.settings.find((x) => x.key === key);
+  if (!setting?.current) return undefined;
+  return sessionSettingOptionLabel(setting.options.find((o) => o.id === setting.current) ?? { id: setting.current });
+}
+
+function settingOpenTile(key: SessionSetting['key'], settings: DeckView['settings'], fallbackModel?: string): SessionDeckCell {
+  const current = settingCurrentLabel(key, settings) ?? (key === 'model' ? fallbackModel : undefined);
+  const subtitle = current ? truncateLabel(key === 'model' ? aliasModelName(current) : current, 16) : 'choose';
+  return {
+    svg: actionTile(key === 'model' ? 'MODEL' : 'THINKING', '#e9d5ff', escXml(subtitle)),
+    action: { kind: 'picker-open', key },
+  };
+}
+
+/** Picker cells: LOADING until the agent answers; then DEFAULT (clears the
+ *  override) when the agent names a default, and every option it offers. */
+function settingPickerCells(key: SessionSetting['key'], settings: DeckView['settings'], sid: string): SessionDeckCell[] {
+  const icon: StatusIconKind = key === 'model' ? 'model' : 'mode';
+  const setting = settings?.settings.find((x) => x.key === key);
+  if (settings?.pending) return [{ svg: renderInfoSlot(settings.pending === 'set' ? 'SAVING' : 'LOADING', 'waiting for daemon', icon, 'info'), action: null }];
+  if (!setting) {
+    return [{
+      svg: settings
+        ? renderInfoSlot('UNAVAILABLE', settings.error ? truncateLabel(settings.error, 22) : 'not offered', icon, 'muted')
+        : renderInfoSlot('LOADING', key === 'model' ? 'models' : 'levels', icon, 'info'),
+      action: null,
+    }];
+  }
+  const labelOf = (id: string) => sessionSettingOptionLabel(setting.options.find((o) => o.id === id) ?? { id });
+  const choose = (value: string | null): DeckAction => ({
+    kind: 'setting-select', sessionId: sid, key, value,
+  });
+  const cells: SessionDeckCell[] = [];
+  if (settings?.error) {
+    cells.push({ svg: renderInfoSlot('REFUSED', truncateLabel(settings.error, 22), icon, 'warning'), action: null });
+  }
+  if (setting.default) {
+    cells.push({ svg: renderStatusCard({ icon, label: 'DEFAULT', subtitle: truncateLabel(labelOf(setting.default), 18), tone: 'idle' }), action: choose(null) });
+  }
+  for (const option of setting.options) {
+    const isCurrent = option.id === setting.current;
+    const raw = sessionSettingOptionLabel(option);
+    cells.push({
+      svg: renderStatusCard({
+        icon,
+        label: truncateLabel(key === 'model' ? aliasModelName(raw) : raw, 14),
+        subtitle: isCurrent ? 'current' : option.id === setting.default ? 'default' : undefined,
+        tone: isCurrent ? 'ready' : 'info',
+      }),
+      action: choose(option.id),
+    });
+  }
+  return cells;
 }
 
 function actionTile(label: string, color: string, subtitle?: string): string {
@@ -1232,7 +1315,13 @@ function buildDetail(
   const last = slots[slots.length - 1];
   out.set(first, { svg: renderBackButton(), action: { kind: 'back' } });
   out.set(slots[1] ?? first, {
-    svg: renderDetailInfo(heroSess, sState as State, tool, model, undefined),
+    // Mode and effort come from the session's own row (#463). The global
+    // `state.mode` belongs to whichever session last drove the state machine,
+    // so it is only a fallback for a focused session that reports none.
+    svg: renderDetailInfo(
+      heroSess, sState as State, tool, model,
+      sess?.permissionMode ?? (focused && sess?.controlMode !== 'observed' ? state.mode || undefined : undefined),
+      undefined, sess?.effortLevel),
     action: null,
   });
 
@@ -1284,7 +1373,11 @@ function buildDetail(
   const content = slots.slice(2, slots.length - 1);
   const cells: SessionDeckCell[] = [];
 
-  if (awaitingState(sState)) {
+  if (view.picker) {
+    // BACK leaves the picker, not the session.
+    out.set(first, { svg: renderBackButton(), action: { kind: 'picker-close' } });
+    cells.push(...settingPickerCells(view.picker, view.settings, sid));
+  } else if (awaitingState(sState)) {
     // A focused PTY session reports `navigable` on the live state_update; a
     // non-focused SessionInfo never carries it (and rarely carries options).
     const navigable = Boolean(focused ? stateEvt?.navigable : false);
@@ -1352,6 +1445,8 @@ function buildDetail(
     // live status + STOP so users cannot mistake a future directive for the
     // agent's current work. Keep the
     // REVIEWING spinner / last-verdict badge visible as inert status.
+    const now = nowTile(sess, true);
+    if (now) cells.push(now);
     const badge = reviewBadgeTile(sess);
     if (badge) cells.push(badge);
   } else if (isObserved) {
@@ -1375,12 +1470,17 @@ function buildDetail(
       // the Swift daemon).
       cells.push(reviewTile(sess, sid));
       cells.push(voiceTile(view, sid));
-      cells.push({ svg: renderInfoSlot('OBSERVED', 'control in terminal', 'status', 'info'), action: null });
+      cells.push(nowTile(sess) ?? { svg: renderInfoSlot('OBSERVED', 'control in terminal', 'status', 'info'), action: null });
     }
   } else {
     // Managed idle quick-actions. REVIEW routes to the independent eval
     // (uniform semantics across every session type); the rest type into the
-    // PTY as before.
+    // PTY as before. OpenClaw leads with its agent-native MODEL / THINKING
+    // pickers (#463) — the Gateway's own values, applied via sessions.patch.
+    if (sess?.agentType === 'openclaw') {
+      cells.push(settingOpenTile('model', view.settings, sess?.modelName));
+      cells.push(settingOpenTile('effort', view.settings));
+    }
     cells.push({
       svg: actionTile('GO ON', '#cbd5e1'),
       action: { kind: 'command', command: { type: 'send_prompt', text: 'continue' } },

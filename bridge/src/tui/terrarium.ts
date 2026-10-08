@@ -1,5 +1,5 @@
 /**
- * TUI Terrarium — Unicode Braille aquarium animation.
+ * TUI Terrarium — canonical colored-cell aquarium animation.
  * Creature behavior matches Android/iOS/ESP32:
  * - IDLE/SLEEPING: octopus rests on sea floor (touching sand), gentle bob
  * - PROCESSING: octopus swims upward with starburst, tetra school converges
@@ -9,271 +9,104 @@
  * - Scaling: small (default) / large (2×) based on terminal size
  */
 
-import { fg, bg, RESET, DIM, colors } from './ansi.js';
-import { TERRARIUM_RULES } from '@agentdeck/shared';
-
-// ===== Braille Renderer =====
-
-const BRAILLE_BASE = 0x2800;
-const BRAILLE_MAP = [
-  [0x01, 0x02, 0x04, 0x40],
-  [0x08, 0x10, 0x20, 0x80],
-];
-
-function gridToBraille(grid: boolean[][], width: number, height: number): string[] {
-  const charRows = Math.ceil(height / 4);
-  const charCols = Math.ceil(width / 2);
-  const result: string[] = [];
-  for (let cr = 0; cr < charRows; cr++) {
-    let row = '';
-    for (let cc = 0; cc < charCols; cc++) {
-      let code = 0;
-      for (let dx = 0; dx < 2; dx++) {
-        for (let dy = 0; dy < 4; dy++) {
-          const gx = cc * 2 + dx;
-          const gy = cr * 4 + dy;
-          if (gy < height && gx < width && grid[gy]?.[gx]) {
-            code |= BRAILLE_MAP[dx][dy];
-          }
-        }
-      }
-      row += String.fromCharCode(BRAILLE_BASE + code);
-    }
-    result.push(row);
-  }
-  return result;
-}
+import { fg, bg, RESET, DIM, BOLD, colors, sgr } from './ansi.js';
+import { TERRARIUM_RULES, UI, agentBrandColor, type AgentType } from '@agentdeck/shared';
+import { OFFICIAL_DOT_GLYPHS, OFFICIAL_DOT_GLYPH_SIZE, OFFICIAL_STANDARD_FEATURES } from '../pixoo/official-dot-glyphs.generated.js';
 
 // ===== Sprite Scaling =====
 
 type SpriteScale = 'small' | 'large' | 'xlarge';
 
+export const TUI_SPRITE_SCALE_RULES = [
+  { scale: 'xlarge', minWidth: 160, minHeight: 35 },
+  { scale: 'large', minWidth: 100, minHeight: 20 },
+] as const;
 function getSpriteScale(width: number, height: number): SpriteScale {
-  if (width >= 160 && height >= 35) return 'xlarge';
-  if (width >= 100 && height >= 20) return 'large';
-  return 'small';
+  return TUI_SPRITE_SCALE_RULES.find(rule => width >= rule.minWidth && height >= rule.minHeight)?.scale ?? 'small';
 }
 
-function scaleGridN(grid: number[][], n: number): number[][] {
-  const scaled: number[][] = [];
-  for (const row of grid) {
-    const scaledRow: number[] = [];
-    for (const cell of row) {
-      for (let i = 0; i < n; i++) scaledRow.push(cell);
+// Existing terminal footprints are retained. Two colored half-block samples per
+// cell preserve original materials; tiny details are area sampled, never enlarged
+// into invented eyes. A terminal cell cannot independently color 8 braille dots.
+const TERMINAL_FOOTPRINTS = {
+  claudeCode: { small: [7, 2], large: [14, 3], xlarge: [21, 4] },
+  codex: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+  openClaw: { small: [8, 2], large: [16, 4], xlarge: [24, 6] },
+  openCode: { small: [5, 3], large: [5, 5], xlarge: [6, 7] },
+  // Square marks sampled at the Codex footprint. Native previews mirror only
+  // the four creatures above (scripts/generate-tui-creatures.mjs).
+  antigravity: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+  kiro: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+  hermes: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+} as const;
+const GLYPH_AGENT: Record<keyof typeof TERMINAL_FOOTPRINTS, string> = {
+  claudeCode: 'claude-code', codex: 'codex-cli', openClaw: 'openclaw', openCode: 'opencode',
+  antigravity: 'antigravity', kiro: 'kiro-cli', hermes: 'hermes',
+};
+interface TerminalPixel { rgb: number[]; alpha: number; }
+interface TerminalCell { char: string; top: TerminalPixel | null; bottom: TerminalPixel | null; }
+interface TerminalSprite { braille: string[]; cells: TerminalCell[][]; color: string; }
+export interface OctopusInstance { id: string; x: number; y: number; homeX: number; state: string; name?: string; phaseOffset: number; }
+export interface JellyfishInstance { id: string; x: number; y: number; homeX: number; state: string; name?: string; phaseOffset: number; }
+interface CrayfishState { visible: boolean; routing: boolean; sick: boolean; x: number; y: number; name?: string; }
+
+export function canonicalTerminalSprite(glyph: string, scale: SpriteScale, color: string): TerminalSprite {
+  if (!Object.hasOwn(TERMINAL_FOOTPRINTS, glyph)) return { braille: [], cells: [], color };
+  const key = glyph as keyof typeof TERMINAL_FOOTPRINTS;
+  const [cols, rows] = TERMINAL_FOOTPRINTS[key][scale];
+  const n = OFFICIAL_DOT_GLYPH_SIZE;
+  const hex = agentBrandColor(GLYPH_AGENT[key] as AgentType);
+  const sourceRGB = color.match(/38;2;(\d+);(\d+);(\d+)m/);
+  const rgb = sourceRGB ? sourceRGB.slice(1).map(Number) : [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const mask = OFFICIAL_DOT_GLYPHS[key];
+  // Premultiplied sourceRGBA, followed by the exact semantic feature contours.
+  const alpha = Array.from(mask, a => a / 255);
+  const channels = alpha.map(a => rgb.map(c => c * a));
+  for (const layer of OFFICIAL_STANDARD_FEATURES[key]) for (let y = 0; y < layer.height; y++) for (let x = 0; x < layer.width; x++) {
+    const i = (layer.y + y) * n + layer.x + x, a = layer.alpha[y * layer.width + x] / 255;
+    channels[i] = channels[i].map((c, channel) => c * (1 - a) + layer.rgb[channel] * a);
+    alpha[i] = alpha[i] * (1 - a) + a;
+  }
+  const side = Math.min(cols, rows * 2), left = Math.floor((cols - side) / 2), top = Math.floor((rows * 2 - side) / 2);
+  const sample = (x: number, y: number): TerminalPixel | null => {
+    x -= left; y -= top;
+    if (x < 0 || y < 0 || x >= side || y >= side) return null;
+    const x0 = x * n / side, x1 = (x + 1) * n / side, y0 = y * n / side, y1 = (y + 1) * n / side;
+    const sum = [0, 0, 0]; let a = 0;
+    for (let sy = Math.floor(y0); sy < Math.ceil(y1); sy++) for (let sx = Math.floor(x0); sx < Math.ceil(x1); sx++) {
+      const weight = (Math.min(x1, sx + 1) - Math.max(x0, sx)) * (Math.min(y1, sy + 1) - Math.max(y0, sy));
+      const i = sy * n + sx; a += alpha[i] * weight;
+      channels[i].forEach((c, k) => { sum[k] += c * weight; });
     }
-    for (let i = 0; i < n; i++) scaled.push([...scaledRow]);
-  }
-  return scaled;
+    if (a === 0) return null;
+    return { rgb: sum.map(c => c / a), alpha: Math.min(1, a / ((x1 - x0) * (y1 - y0))) };
+  };
+  const cells = Array.from({ length: rows }, (_, row) => Array.from({ length: cols }, (_, col) => {
+    const upper = sample(col, row * 2), lower = sample(col, row * 2 + 1);
+    return { char: upper ? '▀' : lower ? '▄' : ' ', top: upper, bottom: lower };
+  }));
+  return { braille: cells.map(row => row.map(c => c.char).join('')), cells, color };
+}
+function renderOctopus(inst: OctopusInstance, _frame: number, scale: SpriteScale): TerminalSprite {
+  return canonicalTerminalSprite('claudeCode', scale, inst.state === 'disconnected' ? DIM + colors.octopus : colors.octopus);
+}
+function renderJellyfish(inst: JellyfishInstance, frame: number, scale: SpriteScale): TerminalSprite {
+  const color = inst.state === 'disconnected' ? DIM + colors.jellyfish : inst.state === 'processing' && Math.sin((frame + inst.phaseOffset) * .2) > 0 ? colors.jellyfishGlow : colors.jellyfish;
+  return canonicalTerminalSprite('codex', scale, color);
+}
+function renderCrayfish(state: CrayfishState, frame: number, scale: SpriteScale): TerminalSprite {
+  const t = frame % 50, pulse = t < 5 || (t > 8 && t < 13);
+  const color = state.sick ? DIM + fg(180, 140, 140) : state.routing || pulse ? colors.crayfish : DIM + colors.crayfish;
+  return canonicalTerminalSprite('openClaw', scale, color);
 }
 
-// ===== Octopus Sprite =====
-// Small: 14×5 pixel → 7×2 braille, Large: 28×10 → 14×3 braille
-
-const OCTOPUS_GRID_SMALL: number[][] = [
-  [0,0,0,0,1,1,1,1,1,1,0,0,0,0],
-  [0,0,0,1,1,2,1,1,2,1,1,0,0,0],
-  [0,0,3,1,1,1,1,1,1,1,1,4,0,0],
-  [0,0,0,5,1,1,1,1,1,1,6,0,0,0],
-  [0,0,0,0,5,0,5,6,0,6,0,0,0,0],
-];
-
-export interface OctopusInstance {
-  id: string;   // unique session identifier
-  x: number;
-  y: number;
-  homeX: number;
-  state: string;
-  name?: string;
-  phaseOffset: number;
+// Creature status grammar (DESIGN.md §6.4): input-needed is a solid amber
+// `!`, working adds a cyan geometric spark. Colour stays redundant with shape.
+function tokenFg(hex: string): string {
+  return fg(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16));
 }
-
-function renderOctopus(inst: OctopusInstance, frame: number, scale: SpriteScale): { braille: string[]; color: string } {
-  const f = frame + inst.phaseOffset;
-  const srcGrid = scale === 'xlarge' ? OCTOPUS_GRID_XLARGE :
-                  scale === 'large' ? OCTOPUS_GRID_LARGE : OCTOPUS_GRID_SMALL;
-  const gh = srcGrid.length;
-  const gw = srcGrid[0].length;
-  const grid: boolean[][] = [];
-  for (let y = 0; y < gh; y++) {
-    grid[y] = [];
-    for (let x = 0; x < gw; x++) {
-      const cell = srcGrid[y][x];
-      if (cell === 0) {
-        grid[y][x] = false;
-      } else if (cell === 2) {
-        grid[y][x] = (f % 40) > 3;
-      } else if (cell === 3 || cell === 4) {
-        if (inst.state === 'processing') {
-          const armPhase = cell === 3 ? 0 : Math.PI;
-          grid[y][x] = Math.sin(f * 0.3 + armPhase) > -0.3;
-        } else {
-          grid[y][x] = true;
-        }
-      } else if (cell === 5 || cell === 6) {
-        const legPhase = cell === 5 ? 0 : Math.PI * 0.5;
-        grid[y][x] = Math.sin(f * 0.1 + legPhase) > -0.7;
-      } else {
-        grid[y][x] = true;
-      }
-    }
-  }
-  const braille = gridToBraille(grid, gw, gh);
-  const color = inst.state === 'disconnected' ? DIM + colors.octopus : colors.octopus;
-  return { braille, color };
-}
-
-// ===== Crayfish Sprite =====
-// Small: 16×8 pixel → 8×2 braille, Large: 32×16 → 16×4 braille
-
-const CRAYFISH_GRID_SMALL: number[][] = [
-  [0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0], // antennae
-  [0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0], // antenna stems
-  [0,1,1,0,0,0,0,0,0,0,0,1,1,0,0,0], // claws open
-  [0,0,1,1,1,1,1,1,1,1,1,1,0,0,0,0], // body top
-  [0,0,0,1,1,1,1,1,1,1,1,0,0,0,0,0], // body mid
-  [0,0,0,0,1,1,1,1,1,1,0,0,0,0,0,0], // body bottom
-  [0,0,0,1,0,1,0,0,1,0,1,0,0,0,0,0], // legs
-  [0,0,1,0,0,0,1,1,0,0,0,1,0,0,0,0], // tail legs
-];
-
-// Pre-compute scaled grids (2× and 3× each axis)
-const OCTOPUS_GRID_LARGE = scaleGridN(OCTOPUS_GRID_SMALL, 2);
-const OCTOPUS_GRID_XLARGE = scaleGridN(OCTOPUS_GRID_SMALL, 3);
-const CRAYFISH_GRID_LARGE = scaleGridN(CRAYFISH_GRID_SMALL, 2);
-const CRAYFISH_GRID_XLARGE = scaleGridN(CRAYFISH_GRID_SMALL, 3);
-
-interface CrayfishState {
-  visible: boolean;
-  routing: boolean;
-  sick: boolean;
-  x: number;
-  y: number;
-  name?: string;
-}
-
-function renderCrayfish(state: CrayfishState, frame: number, scale: SpriteScale): { braille: string[]; color: string } {
-  const srcGrid = scale === 'xlarge' ? CRAYFISH_GRID_XLARGE :
-                  scale === 'large' ? CRAYFISH_GRID_LARGE : CRAYFISH_GRID_SMALL;
-  const gh = srcGrid.length;
-  const gw = srcGrid[0].length;
-  const grid: boolean[][] = [];
-  for (let y = 0; y < gh; y++) {
-    grid[y] = [];
-    for (let x = 0; x < gw; x++) {
-      const cell = srcGrid[y][x];
-      if (!cell) { grid[y][x] = false; continue; }
-      // Map back to original row/col for animation logic
-      const sf = scale === 'xlarge' ? 3 : scale === 'large' ? 2 : 1;
-      const origY = Math.floor(y / sf);
-      const origX = Math.floor(x / sf);
-      // Antennae wiggle (original rows 0-1)
-      if (origY <= 1 && (origX === 3 || origX === 10)) {
-        grid[y][x] = state.routing || Math.sin(frame * 0.1 + origX) > -0.3;
-      }
-      // Claw clap when routing (original row 2)
-      else if (origY === 2 && (origX === 1 || origX === 12)) {
-        grid[y][x] = !state.routing || (frame % 20 > 5);
-      }
-      // Leg movement (original rows 6-7)
-      else if (origY >= 6) {
-        const legPhase = origX * 0.5;
-        grid[y][x] = Math.sin(frame * 0.08 + legPhase) > -0.5;
-      } else {
-        grid[y][x] = true;
-      }
-    }
-  }
-  const braille = gridToBraille(grid, gw, gh);
-  let color: string;
-  if (state.sick) {
-    color = DIM + fg(180, 140, 140); // desaturated dim red
-  } else if (state.routing) {
-    color = colors.crayfish;
-  } else {
-    // Heartbeat: double-pulse every ~50 frames
-    const t = frame % 50;
-    const pulse = (t < 5 || (t > 8 && t < 13));
-    color = pulse ? colors.crayfish : DIM + colors.crayfish;
-  }
-  return { braille, color };
-}
-
-// ===== Jellyfish Sprite =====
-// Codex CLI creature — 6-lobe cloud (matches Android CloudCreature / Apple JellyfishCreature)
-// Small: 10×8 pixel → 5×2 braille, Large: 20×16 → 10×4 braille
-
-// Cell types: 0=empty, 1=cloud body, 2=marking(>_), 3=cloud edge(breathe)
-const JELLYFISH_GRID_SMALL: number[][] = [
-  [0,0,1,1,0,0,1,1,0,0], // top-left + top-right lobes
-  [0,1,1,1,1,1,1,1,1,0], // upper body merge
-  [1,1,1,1,1,1,1,1,1,1], // widest — side lobes
-  [3,1,2,2,1,1,2,1,1,3], // center with >_ + breathe edges
-  [3,1,1,1,1,1,1,1,1,3], // center body + breathe edges
-  [1,1,1,1,1,1,1,1,1,1], // widest — side lobes
-  [0,1,1,1,1,1,1,1,1,0], // lower body taper
-  [0,0,1,1,0,0,1,1,0,0], // bottom-left + bottom-right lobes
-];
-
-const JELLYFISH_GRID_LARGE = scaleGridN(JELLYFISH_GRID_SMALL, 2);
-const JELLYFISH_GRID_XLARGE = scaleGridN(JELLYFISH_GRID_SMALL, 3);
-
-export interface JellyfishInstance {
-  id: string;
-  x: number;
-  y: number;
-  homeX: number;
-  state: string;
-  name?: string;
-  phaseOffset: number;
-}
-
-function renderJellyfish(inst: JellyfishInstance, frame: number, scale: SpriteScale): { braille: string[]; color: string } {
-  const f = frame + inst.phaseOffset;
-  const srcGrid = scale === 'xlarge' ? JELLYFISH_GRID_XLARGE :
-                  scale === 'large' ? JELLYFISH_GRID_LARGE : JELLYFISH_GRID_SMALL;
-  const gh = srcGrid.length;
-  const gw = srcGrid[0].length;
-  const sf = scale === 'xlarge' ? 3 : scale === 'large' ? 2 : 1;
-  const grid: boolean[][] = [];
-
-  // Bell pulse: contracts/expands based on state
-  const pulseSpeed = inst.state === 'processing' ? 0.25 : 0.06;
-  const pulsePhase = Math.sin(f * pulseSpeed);
-  const contracting = pulsePhase < 0;
-
-  for (let y = 0; y < gh; y++) {
-    grid[y] = [];
-    for (let x = 0; x < gw; x++) {
-      const cell = srcGrid[y][x];
-
-      if (cell === 0) {
-        grid[y][x] = false;
-      } else if (cell === 2) {
-        // >_ marking — blinks subtly
-        grid[y][x] = (f % 60) > 5;
-      } else if (cell === 3) {
-        // Cloud edge — contracts during pulse
-        grid[y][x] = !contracting;
-      } else {
-        grid[y][x] = true; // cloud body
-      }
-    }
-  }
-  const braille = gridToBraille(grid, gw, gh);
-
-  // Color: dim when disconnected, glow when processing
-  let color: string;
-  if (inst.state === 'disconnected') {
-    color = DIM + colors.jellyfish;
-  } else if (inst.state === 'processing') {
-    // Bioluminescent pulse
-    const glow = Math.sin(f * 0.2) > 0;
-    color = glow ? colors.jellyfishGlow : colors.jellyfish;
-  } else {
-    color = colors.jellyfish;
-  }
-  return { braille, color };
-}
+const ATTN_BADGE = tokenFg(UI.attn);
+const WORK_SPARK = tokenFg(UI.cyan);
 
 // ===== Neon Tetra =====
 
@@ -349,37 +182,11 @@ export interface OpenCodeInstance {
   phaseOffset: number;
 }
 
-function renderOpenCode(_inst: OpenCodeInstance, frame: number, scale: SpriteScale): { lines: string[]; color: string } {
-  const isSleeping = _inst.state === 'sleeping' || _inst.state === 'paused';
-  const isProcessing = _inst.state === 'processing';
-  const outerColor = isSleeping ? DIM + fg(160, 158, 158) : fg(241, 236, 236);
-  const pulse = isProcessing && ((frame + _inst.phaseOffset) % 30 < 15);
-  const oc = pulse ? fg(207, 206, 205) : outerColor;
-  if (scale === 'xlarge') {
-    return { lines: [
-      `${oc}\u250c\u2500\u2500\u2500\u2500\u2510${RESET}`,
-      `${oc}\u2502    \u2502${RESET}`,
-      `${oc}\u2502    \u2502${RESET}`,
-      `${oc}\u2502    \u2502${RESET}`,
-      `${oc}\u2502    \u2502${RESET}`,
-      `${oc}\u2502    \u2502${RESET}`,
-      `${oc}\u2514\u2500\u2500\u2500\u2500\u2518${RESET}`,
-    ], color: outerColor };
-  }
-  if (scale === 'large') {
-    return { lines: [
-      `${oc}\u250c\u2500\u2500\u2500\u2510${RESET}`,
-      `${oc}\u2502   \u2502${RESET}`,
-      `${oc}\u2502   \u2502${RESET}`,
-      `${oc}\u2502   \u2502${RESET}`,
-      `${oc}\u2514\u2500\u2500\u2500\u2518${RESET}`,
-    ], color: outerColor };
-  }
-  return { lines: [
-    `${oc}\u250c\u2500\u2500\u2500\u2510${RESET}`,
-    `${oc}\u2502   \u2502${RESET}`,
-    `${oc}\u2514\u2500\u2500\u2500\u2518${RESET}`,
-  ], color: outerColor };
+function renderOpenCode(inst: OpenCodeInstance, frame: number, scale: SpriteScale): TerminalSprite & { lines: string[] } {
+  const sleeping = inst.state === 'sleeping' || inst.state === 'paused';
+  const color = sleeping ? DIM + fg(160, 158, 158) : inst.state === 'processing' && ((frame + inst.phaseOffset) % 30 < 15) ? fg(207, 206, 205) : fg(241, 236, 236);
+  const sprite = canonicalTerminalSprite('openCode', scale, color);
+  return { ...sprite, lines: sprite.braille };
 }
 
 interface TerrariumContext {
@@ -388,9 +195,24 @@ interface TerrariumContext {
   octopi: OctopusInstance[];
   jellyfish: JellyfishInstance[];
   opencode: OpenCodeInstance[];
+  residents: ResidentInstance[];
   crayfish: CrayfishState;
   voiceAssistantState: string;
 }
+
+/**
+ * Agents whose creature is their canonical mark drawn as-is: Antigravity, Kiro
+ * and Hermes. Before these existed the TUI drew nothing for them (the correct
+ * polarity for an UNKNOWN agent, wrong for a known one).
+ */
+export type ResidentGlyph = 'antigravity' | 'kiro' | 'hermes';
+export interface ResidentInstance {
+  id: string; glyph: ResidentGlyph; x: number; y: number; homeX: number;
+  state: string; name?: string; phaseOffset: number;
+}
+const RESIDENT_GLYPH: Record<string, ResidentGlyph> = {
+  antigravity: 'antigravity', 'kiro-cli': 'kiro', 'kiro-ide': 'kiro', hermes: 'hermes',
+};
 
 export function initTerrarium(): TerrariumContext {
   const bubbles: Bubble[] = [];
@@ -408,6 +230,7 @@ export function initTerrarium(): TerrariumContext {
     octopi: [],
     jellyfish: [],
     opencode: [],
+    residents: [],
     crayfish: { visible: false, routing: false, sick: false, x: 0.75, y: 0.88 },
     voiceAssistantState: 'disabled',
   };
@@ -478,6 +301,16 @@ export function updateTerrarium(ctx: TerrariumContext, frame: number): void {
     if (oc.state === 'processing') {
       oc.y += Math.sin((frame + oc.phaseOffset) * 0.08) * 0.006;
     }
+  }
+
+  // Mark residents — same state→depth grammar as the octopus, gentle drift.
+  for (const r of ctx.residents) {
+    const working = r.state === 'processing';
+    const targetY = working ? 0.32 : r.state.startsWith('awaiting') ? 0.50 : 0.86;
+    r.y += (targetY - r.y) * 0.04;
+    r.y += Math.sin((frame + r.phaseOffset) * (working ? 0.12 : 0.04)) * (working ? 0.012 : 0.004);
+    const drift = working ? Math.sin((frame + r.phaseOffset) * 0.03) * 0.04 : 0;
+    r.x = Math.max(0.06, Math.min(TERRARIUM_RULES.crayfish.clearMaxX, r.homeX + drift));
   }
 
   // Crayfish Y: routing swims up, sitting rests on floor
@@ -620,6 +453,33 @@ export function setOpenCode(
   ctx.opencode = newOc;
 }
 
+export function setResidents(
+  ctx: TerrariumContext,
+  sessions: Array<{ id?: string; state: string; name?: string; agentType?: string }>,
+): void {
+  const list = sessions.filter(s => RESIDENT_GLYPH[s.agentType ?? ''] !== undefined);
+  const count = list.length;
+  const next: ResidentInstance[] = [];
+  for (let i = 0; i < count; i++) {
+    const s = list[i]!;
+    const sid = s.id || `res-${i}`;
+    // Spread across the open water left of the crayfish's floor territory.
+    const homeX = Math.min(
+      TERRARIUM_RULES.crayfish.clearMaxX,
+      count === 1 ? 0.40 : 0.16 + (i * 0.44) / Math.max(1, count - 1),
+    );
+    const glyph = RESIDENT_GLYPH[s.agentType!]!;
+    const existing = ctx.residents.find(r => r.id === sid);
+    if (existing) {
+      Object.assign(existing, { glyph, state: s.state, name: s.name || undefined, homeX });
+      next.push(existing);
+    } else {
+      next.push({ id: sid, glyph, x: homeX, y: 0.86, homeX, state: s.state, name: s.name || undefined, phaseOffset: Math.floor(Math.random() * 40) });
+    }
+  }
+  ctx.residents = next;
+}
+
 export function setVoiceAssistantState(ctx: TerrariumContext, state: string): void {
   ctx.voiceAssistantState = state;
 }
@@ -630,23 +490,28 @@ function stripAnsiCodes(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-function drawLabelIfClear(
-  chars: string[],
-  charColors: string[],
-  text: string,
-  centerX: number,
-  color: string,
+/** Priority for tag placement: needs-you, working, then quiet. */
+function labelRank(state: string): number {
+  return state.startsWith('awaiting') ? 0 : state === 'processing' ? 1 : 2;
+}
+
+function placeLabel(
+  chars: string[], charColors: string[], charBackgrounds: string[], taken: boolean[],
+  text: string, centerX: number, color: string,
 ): void {
   const plain = stripAnsiCodes(text);
   const startX = centerX - Math.floor(plain.length / 2);
   for (let i = 0; i < plain.length; i++) {
     const px = startX + i;
-    if (px < 0 || px >= chars.length || chars[px] !== ' ') return;
+    if (px < 0 || px >= chars.length || taken[px]) return;
+    // A creature cell (half-block body) is never covered by a tag.
+    if (chars[px] === '\u2580' || chars[px] === '\u2584' || charBackgrounds[px]) return;
   }
   for (let i = 0; i < plain.length; i++) {
     const px = startX + i;
-    chars[px] = plain[i];
+    chars[px] = plain[i]!;
     charColors[px] = color;
+    taken[px] = true;
   }
 }
 
@@ -657,6 +522,11 @@ export function renderTerrariumFrame(
   const scale = getSpriteScale(width, height);
   const scaleFactor = scale === 'xlarge' ? 3 : scale === 'large' ? 2 : 1;
   const lines: string[] = [];
+  const octopusSprites = ctx.octopi.map(o => renderOctopus(o, frame, scale));
+  const codexSprites = ctx.jellyfish.map(o => renderJellyfish(o, frame, scale));
+  const openCodeSprites = ctx.opencode.map(o => renderOpenCode(o, frame, scale));
+  const residentSprites = ctx.residents.map(r => canonicalTerminalSprite(r.glyph, scale, r.state === 'disconnected' ? DIM : ''));
+  const clawSprite = renderCrayfish(ctx.crayfish, frame, scale);
   const sandRow = height - 2; // sand starts at this row
 
   for (let row = 0; row < height; row++) {
@@ -667,6 +537,19 @@ export function renderTerrariumFrame(
     const bgColor = bg(r, g, bv);
     const chars: string[] = new Array(width).fill(' ');
     const charColors: string[] = new Array(width).fill('');
+    const charBackgrounds: string[] = new Array(width).fill('');
+    // Name tags are collected and drawn after every creature (DESIGN.md §6.4:
+    // one post-creature pass, priority order, a tag never hides a body).
+    const labels: Array<{ text: string; x: number; color: string; rank: number }> = [];
+    const placeCell = (px: number, cell: TerminalCell, color: string) => {
+      if (px < 0 || px >= width || (!cell.top && !cell.bottom)) return;
+      const paint = (p: TerminalPixel) => p.rgb.map((c, i) => Math.round(c * p.alpha + [r, g, bv][i] * (1 - p.alpha)));
+      const upper = cell.top ? paint(cell.top) : null, lower = cell.bottom ? paint(cell.bottom) : null;
+      const foreground = upper ?? lower!;
+      chars[px] = cell.char;
+      charColors[px] = sgr(22) + (color.includes(DIM) ? DIM : '') + fg(foreground[0], foreground[1], foreground[2]);
+      charBackgrounds[px] = upper && lower ? bg(lower[0], lower[1], lower[2]) : '';
+    };
 
     // Water surface wave (row 0)
     if (row === 0) {
@@ -733,8 +616,8 @@ export function renderTerrariumFrame(
     }
 
     // Octopi (scale-aware braille)
-    for (const oct of ctx.octopi) {
-      const { braille, color } = renderOctopus(oct, frame, scale);
+    for (const [index, oct] of ctx.octopi.entries()) {
+      const { braille, color, cells } = octopusSprites[index];
       const octHalfW = Math.floor(braille[0]?.length / 2) || 3;
       const ox = Math.floor(oct.x * width) - octHalfW;
       const oy = Math.floor(oct.y * height) - Math.floor(braille.length / 2);
@@ -743,8 +626,7 @@ export function renderTerrariumFrame(
           for (let bc = 0; bc < braille[br].length; bc++) {
             const px = ox + bc;
             if (px >= 0 && px < width) {
-              chars[px] = braille[br][bc];
-              charColors[px] = color;
+              placeCell(px, cells[br][bc], color);
             }
           }
         }
@@ -752,12 +634,12 @@ export function renderTerrariumFrame(
       // Name tag — directly above braille sprite
       if (oct.name && oy - 1 === row) {
         const name = oct.name.length > 12 ? oct.name.slice(0, 11) + '\u2026' : oct.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(oct.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(oct.x * width), color: fg(180, 180, 180), rank: labelRank(oct.state) });
       }
       // "?" bubble — below sprite (not on name tag row, to avoid overlap)
       if (oct.state.startsWith('awaiting') && oy + braille.length === row) {
         const qx = Math.floor(oct.x * width) + octHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
       }
       // Voice assistant indicator — above active octopus (first octopus or processing one)
       if (ctx.voiceAssistantState !== 'disabled' && ctx.voiceAssistantState !== 'idle') {
@@ -819,16 +701,17 @@ export function renderTerrariumFrame(
           const angle = (p / 6) * Math.PI * 2 + frame * 0.15;
           const px = Math.floor(oct.x * width + Math.cos(angle) * burstR);
           const py = Math.floor(oct.y * height + Math.sin(angle) * burstR * 0.5);
-          if (py === row && px >= 0 && px < width) {
-            chars[px] = '\u2727'; charColors[px] = fg(255, 200, 100);
+          // Sparks fill open water only — never over a name tag or a body.
+          if (py === row && px >= 0 && px < width && chars[px] === ' ') {
+            chars[px] = '\u2727'; charColors[px] = WORK_SPARK;
           }
         }
       }
     }
 
     // Jellyfish (scale-aware braille)
-    for (const jf of ctx.jellyfish) {
-      const { braille, color } = renderJellyfish(jf, frame, scale);
+    for (const [index, jf] of ctx.jellyfish.entries()) {
+      const { braille, color, cells } = codexSprites[index];
       const jfHalfW = Math.floor(braille[0]?.length / 2) || 3;
       const jx = Math.floor(jf.x * width) - jfHalfW;
       const jy = Math.floor(jf.y * height) - Math.floor(braille.length / 2);
@@ -837,8 +720,7 @@ export function renderTerrariumFrame(
           for (let bc = 0; bc < braille[br].length; bc++) {
             const px = jx + bc;
             if (px >= 0 && px < width) {
-              chars[px] = braille[br][bc];
-              charColors[px] = color;
+              placeCell(px, cells[br][bc], color);
             }
           }
         }
@@ -846,12 +728,12 @@ export function renderTerrariumFrame(
       // Name tag
       if (jf.name && jy - 1 === row) {
         const name = jf.name.length > 12 ? jf.name.slice(0, 11) + '\u2026' : jf.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(jf.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(jf.x * width), color: fg(180, 180, 180), rank: labelRank(jf.state) });
       }
       // "?" bubble when awaiting
       if (jf.state.startsWith('awaiting') && jy + braille.length === row) {
         const qx = Math.floor(jf.x * width) + jfHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
       }
       // Bioluminescent glow particles when processing
       if (jf.state === 'processing') {
@@ -869,8 +751,8 @@ export function renderTerrariumFrame(
     }
 
     // OpenCode (single-color hollow vertical ring)
-    for (const oc of ctx.opencode) {
-      const { lines, color } = renderOpenCode(oc, frame, scale);
+    for (const [index, oc] of ctx.opencode.entries()) {
+      const { lines, color, cells } = openCodeSprites[index];
       const ocHalfW = Math.floor((lines[0]?.replace(/\x1b\[[^m]*m/g, '').length ?? 5) / 2);
       const ox = Math.floor(oc.x * width) - ocHalfW;
       const oy = Math.floor(oc.y * height) - Math.floor(lines.length / 2);
@@ -880,25 +762,56 @@ export function renderTerrariumFrame(
           for (let ci = 0; ci < stripped.length; ci++) {
             const px = ox + ci;
             if (px >= 0 && px < width) {
-              chars[px] = stripped[ci];
-              charColors[px] = color;
+              placeCell(px, cells[lr][ci], color);
             }
           }
         }
       }
       if (oc.name && oy - 1 === row) {
         const name = oc.name.length > 12 ? oc.name.slice(0, 11) + '\u2026' : oc.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(oc.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(oc.x * width), color: fg(180, 180, 180), rank: labelRank(oc.state) });
       }
       if (oc.state.startsWith('awaiting') && oy + lines.length === row) {
         const qx = Math.floor(oc.x * width) + ocHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
+      }
+    }
+
+    // Mark residents (Antigravity, Kiro, Hermes)
+    for (const [index, res] of ctx.residents.entries()) {
+      const { braille, color, cells } = residentSprites[index]!;
+      const halfW = Math.floor((braille[0]?.length ?? 5) / 2);
+      const rx = Math.floor(res.x * width) - halfW;
+      const ry = Math.floor(res.y * height) - Math.floor(braille.length / 2);
+      for (let br = 0; br < braille.length; br++) {
+        if (ry + br !== row) continue;
+        for (let bc = 0; bc < braille[br]!.length; bc++) {
+          const px = rx + bc;
+          if (px >= 0 && px < width) placeCell(px, cells[br]![bc]!, color);
+        }
+      }
+      if (res.name && ry - 1 === row) {
+        const name = res.name.length > 12 ? res.name.slice(0, 11) + '\u2026' : res.name;
+        labels.push({ text: name, x: Math.floor(res.x * width), color: fg(180, 180, 180), rank: labelRank(res.state) });
+      }
+      if (res.state.startsWith('awaiting') && ry + braille.length === row) {
+        const qx = Math.floor(res.x * width) + halfW + 1;
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
+      }
+      if (res.state === 'processing') {
+        const r = (1.6 + (frame % 10) * 0.2) * (scaleFactor * 0.75);
+        for (let p = 0; p < 4; p++) {
+          const angle = (p / 4) * Math.PI * 2 + frame * 0.12;
+          const px = Math.floor(res.x * width + Math.cos(angle) * r);
+          const py = Math.floor(res.y * height + Math.sin(angle) * r * 0.5);
+          if (py === row && px >= 0 && px < width && chars[px] === ' ') { chars[px] = '\u2727'; charColors[px] = WORK_SPARK; }
+        }
       }
     }
 
     // Crayfish (scale-aware braille)
     if (ctx.crayfish.visible) {
-      const { braille, color } = renderCrayfish(ctx.crayfish, frame, scale);
+      const { braille, color, cells } = clawSprite;
       const cfHalfW = Math.floor(braille[0]?.length / 2) || 4;
       const cx = Math.floor(ctx.crayfish.x * width) - cfHalfW;
       const cy = Math.floor(ctx.crayfish.y * height) - Math.floor(braille.length / 2);
@@ -907,8 +820,7 @@ export function renderTerrariumFrame(
           for (let bc = 0; bc < braille[br].length; bc++) {
             const px = cx + bc;
             if (px >= 0 && px < width) {
-              chars[px] = braille[br][bc];
-              charColors[px] = color;
+              placeCell(px, cells[br][bc], color);
             }
           }
         }
@@ -918,7 +830,7 @@ export function renderTerrariumFrame(
       const cfName = ctx.crayfish.sick ? `\u26A0 ${cfBaseName}` : cfBaseName;
       const cfNameColor = ctx.crayfish.sick ? fg(200, 120, 120) : fg(180, 180, 180);
       if (cy - 1 === row) {
-        drawLabelIfClear(chars, charColors, cfName, Math.floor(ctx.crayfish.x * width), cfNameColor);
+        labels.push({ text: cfName, x: Math.floor(ctx.crayfish.x * width), color: cfNameColor, rank: ctx.crayfish.sick ? 0 : ctx.crayfish.routing ? 1 : 2 });
       }
 
       // Signal wave rings + orbiting dots when ROUTING
@@ -964,10 +876,18 @@ export function renderTerrariumFrame(
       }
     }
 
+    // Tags last: most urgent first; a tag yields to bodies and to a tag
+    // already placed, but is drawn over water, fish, bubbles and sparks.
+    labels.sort((a, b) => a.rank - b.rank);
+    const taken = new Array<boolean>(width).fill(false);
+    for (const l of labels) placeLabel(chars, charColors, charBackgrounds, taken, l.text, l.x, l.color);
+
     // Build line
     let line = bgColor;
     for (let x = 0; x < width; x++) {
-      line += charColors[x] ? charColors[x] + chars[x] : chars[x];
+      line += (charColors[x] || '') + charBackgrounds[x] + chars[x];
+      if (charBackgrounds[x]) line += bgColor;
+      if (charColors[x].includes(DIM) || charColors[x].includes(BOLD)) line += sgr(22);
     }
     line += RESET;
     lines.push(line);

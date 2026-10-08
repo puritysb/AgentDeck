@@ -61,6 +61,13 @@ enum CodexExecChildEvent: Sendable, Equatable {
 struct CodexRolloutSessionMeta: Sendable, Equatable {
     let originator: String?
     let cwd: String?
+    let isSubagent: Bool?
+
+    init(originator: String?, cwd: String?, isSubagent: Bool? = nil) {
+        self.originator = originator
+        self.cwd = cwd
+        self.isSubagent = isSubagent
+    }
 }
 
 enum CodexExecChildRules {

@@ -225,7 +225,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`) |
+| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`): sessions with state, model/effort/permission, CI waits and subagents; per-provider usage; aquarium; activity feed. Keys: `↑↓` select, `tab` switch focus (narrow: next panel), `⏎` detail, `f` follow the selected session, `1-9` switch managed session, `?` help |
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
@@ -376,6 +376,7 @@ not the same act as finding one you never asked for.
 | `agentdeck timebox test [target]` | Send one frame (BLE) |
 | `agentdeck timebox sync [target]` | Run foreground Timebox frame sync (BLE) |
 | `agentdeck wifi-setup` | ESP32 WiFi provisioning (serial) |
+| `agentdeck esp32 orientation <target> <auto\|portrait\|landscape>` | Persist a T-Display-S3-Pro layout (portrait Pocket ↔ landscape Focus Strip); the board restarts when the layout changes. `auto` = portrait with a camera shield, else landscape. Node daemon only. |
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 
 ---

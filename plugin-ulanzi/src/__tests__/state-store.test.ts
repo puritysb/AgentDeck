@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { PermissionMode, State, type BridgeEvent, type SessionInfo } from '@agentdeck/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { buildSessionDeck, SESSION_SETTINGS_RULES, PermissionMode, State, type BridgeEvent, type SessionInfo } from '@agentdeck/shared';
 import { StateStore } from '../state-store.js';
 
 const claude: SessionInfo = {
@@ -172,6 +172,42 @@ describe('D200H StateStore — observed rows are not shadowed by the focus reply
       question: 'Allow Edit?',
       options: [{ index: 0, label: 'Yes' }],
     });
+  });
+});
+
+
+describe('D200H settings transport', () => {
+  afterEach(() => vi.useRealTimers());
+  const sid = 'openclaw-gateway';
+  const settings = [{ key: 'effort' as const, options: [{ id: 'high' }] }];
+  const positions = ['0_0', '1_0', '2_0', '3_0', '4_0', '0_1', '1_1', '2_1'];
+  it('renders bounded silence instead of keeping LOADING forever', () => {
+    vi.useFakeTimers();
+    const store = new StateStore();
+    store.onSettingsChanged = vi.fn();
+    const query = store.beginSettingsQuery(sid);
+    vi.advanceTimersByTime(SESSION_SETTINGS_RULES.requestTimeoutMs);
+    const cells = buildSessionDeck({ daemonConnected: true, state: 'idle', allSessions: [{ id: sid, projectName: 'OpenClaw', agentType: 'openclaw', state: 'idle', alive: true, port: 18789 }] }, { mode: 'detail', openSessionId: sid, picker: 'effort', settings: store.settingsFor(sid) }, positions);
+    const svg = [...cells.values()].map(c => c.svg).join('');
+    expect(svg).toContain('UNAVAILABLE');
+    expect(svg).not.toContain('LOADING');
+    expect(store.onSettingsChanged).toHaveBeenCalled();
+    expect(store.apply({ ...query, type: 'session_settings', settings })).toBe(false);
+  });
+
+  it('matches mutations, retains refusal text, and rejects late focus replies', () => {
+    const store = new StateStore();
+    const query = store.beginSettingsQuery(sid);
+    expect(store.apply({ ...query, type: 'session_settings', targetSessionKey: 'agent:main', settings })).toBe(true);
+    const set = store.beginSettingMutation(sid, 'effort', null)!;
+    expect(store.settingsFor(sid)?.pending).toBe('set');
+    expect(store.apply({ ...set, type: 'session_settings', targetSessionKey: 'agent:other', settings })).toBe(false);
+    expect(store.apply({ ...set, type: 'session_settings', settings, error: 'not allowed' })).toBe(true);
+    const cells = buildSessionDeck({ daemonConnected: true, state: 'idle', allSessions: [{ id: sid, projectName: 'OpenClaw', agentType: 'openclaw', state: 'idle', alive: true, port: 18789 }] }, { mode: 'detail', openSessionId: sid, picker: 'effort', settings: store.settingsFor(sid) }, positions);
+    expect([...cells.values()].map(c => c.svg).join('')).toContain('not allowed');
+    const retry = store.beginSettingMutation(sid, 'effort', 'high')!;
+    store.prepareFocus('other');
+    expect(store.apply({ ...retry, type: 'session_settings', settings })).toBe(false);
   });
 });
 

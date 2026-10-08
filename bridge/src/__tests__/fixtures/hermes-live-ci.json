@@ -1,0 +1,109 @@
+{
+  "source": {
+    "capturedAt": "2026-10-05 KST",
+    "upstreamCommit": "0a374d167424cdc730ce9761368b62255b551e58",
+    "surface": "Actual installed Hermes classic CLI --oneshot terminal tool",
+    "provider": "Deterministic local OpenAI-compatible provider with SSE",
+    "model": "agentdeck-ci-fixture",
+    "watcher": "Local gh-named fixture sleeps one second then exits zero; no GitHub request or verdict",
+    "transport": "Observer plugin loopback HTTP through capture proxy to actual isolated Node daemon; sessions_list captured",
+    "sanitized": [
+      "session_id",
+      "tool_call_id",
+      "cwd",
+      "pid"
+    ],
+    "limits": "Proves real tool invocation and observer lifecycle; not messaging Gateway, real GitHub result, paid model quality or hardware"
+  },
+  "events": [
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-ci-fixture",
+        "pid": 4242
+      },
+      "afterMs": 7669
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-ci-fixture",
+        "pid": 4242,
+        "prompt": "Run the supplied local synthetic CI watch and report completion."
+      },
+      "afterMs": 7723
+    },
+    {
+      "event": "hermes_tool_start",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4242,
+        "tool_name": "terminal",
+        "tool_call_id": "hermes-tool-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "ci_wait_intent": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "mode": "watch",
+          "repo": "example/project",
+          "runId": 4242
+        },
+        "ci_wait_background": false
+      },
+      "afterMs": 8180
+    },
+    {
+      "event": "hermes_tool_end",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4242,
+        "tool_name": "terminal",
+        "tool_call_id": "hermes-tool-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "is_error": false
+      },
+      "afterMs": 9818
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-ci-fixture",
+        "pid": 4242,
+        "last_assistant_message": "HERMES_CI_COMPLETE",
+        "interrupted": false,
+        "aborted": false
+      },
+      "afterMs": 9861
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "cwd": "/synthetic/hermes-ci-workspace",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4242
+      },
+      "afterMs": 10062
+    }
+  ]
+}

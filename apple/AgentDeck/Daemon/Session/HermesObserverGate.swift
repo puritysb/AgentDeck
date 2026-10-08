@@ -70,7 +70,9 @@ struct HermesObserverGate: Sendable {
         }
         // Recover from a daemon restart only on real progress, never a stray Stop.
         if live[sid] == nil && !opening && boundary != "tool_start" { return .reject }
-        let reported = (payload["pid"] as? NSNumber)?.int32Value
+        // Reject fractional/out-of-range values instead of truncating or wrapping
+        // them into an unrelated process identity.
+        let reported = (payload["pid"] as? NSNumber).flatMap { Int32(exactly: $0.doubleValue) }
         let pid = reported.flatMap { $0 > 1 ? $0 : nil } ?? live[sid]?.pid
         let cli = (payload["platform"] as? String).map { $0 == "cli" } ?? live[sid]?.cli
         live[sid] = Entry(lastAt: now, pid: pid, cli: cli)

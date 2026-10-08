@@ -186,6 +186,23 @@ describe('passive-observer parsers', () => {
     expect(summary.goal).toBe('run the build');
   });
 
+  it('reads Codex effort and permission mode verbatim from turn_context', () => {
+    const base = { model: 'gpt-6-astra', effort: 'ultra' };
+    const sandboxed = parseCodexRollout(jsonl([
+      { type: 'turn_context', payload: { ...base, sandbox_policy: { type: 'workspace-write' }, collaboration_mode: { mode: 'default' } } },
+    ]));
+    // An effort level this code has never heard of passes through untouched.
+    expect(sandboxed).toEqual(expect.objectContaining({ modelName: 'gpt-6-astra', effort: 'ultra', permissionMode: 'workspace-write' }));
+    const planning = parseCodexRollout(jsonl([
+      { type: 'turn_context', payload: { ...base, sandbox_policy: { type: 'danger-full-access' }, collaboration_mode: { mode: 'plan' } } },
+    ]));
+    expect(planning.permissionMode).toBe('plan');
+    const silent = parseCodexRollout(jsonl([{ type: 'turn_context', payload: { model: 'gpt-6-astra' } }]));
+    // Nothing reported means nothing shown — never a default of our own.
+    expect(silent.effort).toBeUndefined();
+    expect(silent.permissionMode).toBeUndefined();
+  });
+
   it('summarizes Codex rollout metadata, context, and pending tool calls', () => {
     const summary = parseCodexRollout(jsonl([
       {
@@ -226,7 +243,7 @@ describe('passive-observer parsers', () => {
     expect(summary).toEqual(expect.objectContaining({
       sessionId: 'codex-session-1',
       cwd: '/Users/example/github/AgentDeck',
-      modelName: 'gpt-5.4 high',
+      modelName: 'gpt-5.4',
       effort: 'high',
       state: 'processing',
       currentTask: 'exec_command pnpm typecheck',
@@ -585,6 +602,15 @@ describe('passive-observer parsers', () => {
       ]),
     );
     expect(summary).toMatchObject({ state: 'idle', goal: 'review this code' });
+  });
+
+  it('does not complete a Kiro turn after ten minutes of silent tool work', () => {
+    const sessions = collectKiroSessionsFromSnapshots(
+      [{ pid: 777, ppid: 1, rssKb: 100, tty: 'ttys007', command: 'kiro-cli --resume-id silent' }],
+      [{ sessionId: 'silent', transcriptPath: '/tmp/messages.jsonl',
+        lastActivityAt: Date.now() - 11 * 60 * 1000, state: 'processing',
+        recordKinds: ['turn_start'] }], new Map());
+    expect(sessions[0]?.state).toBe('processing');
   });
 
   it('correlates a naturally launched Kiro process with its newest cwd session', () => {

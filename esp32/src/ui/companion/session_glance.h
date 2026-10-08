@@ -6,6 +6,7 @@
 namespace Companion {
 template <typename Session> inline const char* glanceText(const Session& s) {
     if (strstr(s.state, "awaiting")) return s.question[0] ? s.question : "Needs your input";
+    if (s.ciPhase && s.activity[0]) return s.activity;
     if (!strcmp(s.state, "processing")) {
         if (s.activity[0]) return s.activity;
         if (s.currentTool[0]) return s.currentTool;

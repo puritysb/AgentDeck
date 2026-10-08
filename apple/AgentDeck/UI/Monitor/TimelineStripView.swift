@@ -44,6 +44,16 @@ private func resolveTimelineLayoutMode(
 #endif
 
 struct TimelineStripView: View {
+    var usesMetalHabitat = false
+
+    private var allowsNativeSelection: Bool {
+        #if os(macOS)
+        !usesMetalHabitat
+        #else
+        true
+        #endif
+    }
+
     @EnvironmentObject private var stateHolder: AgentStateHolder
 
     @State private var focusedIndex: Int = -1
@@ -517,6 +527,18 @@ struct TimelineStripView: View {
                 }
             }
 
+            if !group.toolActivity.isEmpty {
+                HStack(spacing: 4) {
+                    Spacer().frame(width: isNested ? 64 : 56)
+                    Image(systemName: "wrench.and.screwdriver")
+                    Text(group.toolSummary).lineLimit(1)
+                    Spacer(minLength: 0)
+                }
+                .font(.system(size: fontScale.label, design: .monospaced))
+                .foregroundStyle(TerrariumHUD.subtext)
+                .accessibilityLabel("Tool activity: \(group.toolSummary)")
+            }
+
             // Sub-line: assistant response body. Indented + dimmed so the
             // user prompt above stays the primary reading anchor. Hidden
             // while this row's inline detail pane is expanded showing the
@@ -686,10 +708,11 @@ struct TimelineStripView: View {
                     .font(.system(size: fontScale.label, design: .monospaced))
                     .foregroundStyle(TerrariumHUD.subtext.opacity(0.75))
             }
+            toolActivityDetail(group)
             let detailEntry = timelineDetailEntryForDashboard(bodyGroup)
             if let detail = detailEntry.detail,
                shouldShowDetail(entry: detailEntry, detail: detail) {
-                TimelineMarkdownPreview(text: detail)
+                TimelineMarkdownPreview(text: detail, allowsSelection: allowsNativeSelection)
             } else {
                 Text("Tap collapse · summary only")
                     .font(.system(size: fontScale.label, design: .monospaced))
@@ -699,7 +722,7 @@ struct TimelineStripView: View {
         .background(Color.black.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
         // Same pane-wide selection as the regular detail pane — without it
         // only the markdown body was copyable.
-        .textSelection(.enabled)
+        .modifier(TimelineTextSelection(enabled: allowsNativeSelection))
         .padding(.vertical, 2)
     }
 
@@ -827,6 +850,21 @@ struct TimelineStripView: View {
         return tag.isEmpty ? "" : "[\(tag)]"
     }
 
+    @ViewBuilder
+    private func toolActivityDetail(_ group: GroupedEntry) -> some View {
+        if !group.toolActivity.isEmpty {
+            DisclosureGroup("Tool activity") {
+                // Tool output is literal text: do not interpret shell output as Markdown.
+                Text(group.toolDetail)
+                    .font(.system(size: fontScale.label, design: .monospaced))
+                    .foregroundStyle(TerrariumHUD.text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.system(size: fontScale.label, design: .monospaced))
+            .foregroundStyle(TerrariumHUD.subtext)
+        }
+    }
+
     // MARK: - Detail Pane
 
     private func detailPane(_ group: GroupedEntry?) -> some View {
@@ -887,6 +925,15 @@ struct TimelineStripView: View {
                     Text(formatTimeSeconds(group.entry.date))
                         .font(.system(size: fontScale.label, design: .monospaced))
                         .foregroundStyle(TerrariumHUD.subtext)
+                    #if os(macOS)
+                    if usesMetalHabitat {
+                        Button { copyDetail(group) } label: { Image(systemName: "doc.on.doc") }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(TerrariumHUD.subtext)
+                            .help("Copy event details")
+                            .accessibilityLabel("Copy event details")
+                    }
+                    #endif
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 4)
@@ -1007,10 +1054,15 @@ struct TimelineStripView: View {
                         .padding(.top, 2)
                 }
 
-                if let detail = shownDetail {
+                if shownDetail != nil || !group.toolActivity.isEmpty {
                     Spacer().frame(height: 4)
                     ScrollView {
-                        TimelineMarkdownPreview(text: detail)
+                        VStack(alignment: .leading, spacing: 4) {
+                            toolActivityDetail(group)
+                            if let detail = shownDetail {
+                                TimelineMarkdownPreview(text: detail, allowsSelection: allowsNativeSelection)
+                            }
+                        }
                     }
                     .padding(.horizontal, 8)
                 }
@@ -1028,10 +1080,27 @@ struct TimelineStripView: View {
         .background(Color.black.opacity(0.19), in: RoundedRectangle(cornerRadius: 4))
         // Selection was only enabled on the markdown body, so the summary,
         // timestamps, and lifecycle rows — the lines users most often copy —
-        // silently ignored drag-selection. Enable it pane-wide; Text views
-        // inherit it via the environment.
-        .textSelection(.enabled)
+        // silently ignored drag-selection. Enable it pane-wide except over
+        // the macOS Metal habitat, where the explicit Copy action owns copying.
+        .modifier(TimelineTextSelection(enabled: allowsNativeSelection))
     }
+
+    #if os(macOS)
+    /// Metal-backed RealityView exposes an AppKit selectable-text flip in this
+    /// overlay. Keep visible details copyable without that native text backing.
+    private func copyDetail(_ group: GroupedEntry) {
+        let bodyGroup = group.entry.type == .chatStart
+            ? timelineSupersedingGroup(for: group, in: grouped) ?? group : group
+        let entry = timelineDetailEntryForDashboard(bodyGroup)
+        var lines = [formatTimeSeconds(group.entry.date), sourceLabel(for: group.entry)]
+        lines += lifecycleDetailRows(for: group.entry).map { "\($0.label) \($0.value)" }
+        lines.append(timelineSummaryTextForDashboard(group))
+        if !group.toolActivity.isEmpty { lines.append("Tool activity\n" + group.toolDetail) }
+        if let detail = entry.detail, shouldShowDetail(entry: entry, detail: detail) { lines.append(detail) }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.filter { !$0.isEmpty }.joined(separator: "\n"),forType: .string)
+    }
+    #endif
 
     /// Whether a detail blob duplicates the summary row enough to suppress.
     /// Mirrors `timelineDetailIsRedundant` in
@@ -2023,6 +2092,7 @@ extension TimelineEntry {
 
 private struct TimelineMarkdownPreview: View {
     let text: String
+    var allowsSelection = true
 
     /// Parsed lines with consecutive plain-text / code lines coalesced into
     /// one node. macOS drag-selection cannot cross Text view boundaries, so
@@ -2050,7 +2120,7 @@ private struct TimelineMarkdownPreview: View {
                 lineView(line)
             }
         }
-        .textSelection(.enabled)
+        .modifier(TimelineTextSelection(enabled: allowsSelection))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -2637,5 +2707,14 @@ func timelineTypeIcon(for type: TimelineEntryType, status: String? = nil) -> Str
     case .task:      return type == .taskEnd ? "▣" : "▢"
     case .scheduled: return "⏰"
     case .memory:    return "⦿"
+    }
+}
+
+/// Selectable AppKit text backing needs a separate path from Metal overlays.
+private struct TimelineTextSelection: ViewModifier {
+    let enabled: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if enabled { content.textSelection(.enabled) }
+        else { content.textSelection(.disabled) }
     }
 }

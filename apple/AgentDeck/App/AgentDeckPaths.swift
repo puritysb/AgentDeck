@@ -97,14 +97,28 @@ enum AgentDeckPaths {
     /// entitlement so the source is unreadable), returns immediately.
     @discardableResult
     static func migrateLegacyDataIfNeeded() -> Int {
+        migrateLegacyData(
+            from: legacyRealHomeDirectory,
+            to: baseDirectory,
+            isSandboxed: AgentDeckRuntime.isSandboxed,
+            hasExplicitDataDirectory: ProcessInfo.processInfo.environment["AGENTDECK_DATA_DIR"] != nil
+        )
+    }
+
+    /// An explicit data directory is an isolation boundary, not a migration
+    /// destination. In particular, never import the user's daemon registry or
+    /// credentials into a QA instance that chose an empty directory.
+    @discardableResult
+    static func migrateLegacyData(from legacy: URL?, to destination: URL,
+                                  isSandboxed: Bool, hasExplicitDataDirectory: Bool) -> Int {
         // Sandboxed App Store builds cannot read `~/.agentdeck/` — the
         // home-relative-path entitlement was removed on 2026-04-17, so
         // `contentsOfDirectory` will always throw NSCocoaErrorDomain 257 here.
         // `fileExists` returns true via cross-container stat(2), so we can't
         // rely on it to early-exit. Skip explicitly to avoid logging a
         // recurring failure on every launch.
-        guard !AgentDeckRuntime.isSandboxed else { return 0 }
-        guard let legacy = legacyRealHomeDirectory else { return 0 }
+        guard !isSandboxed, !hasExplicitDataDirectory else { return 0 }
+        guard let legacy else { return 0 }
         let fm = FileManager.default
         guard fm.fileExists(atPath: legacy.path) else { return 0 }
 
@@ -112,14 +126,14 @@ enum AgentDeckPaths {
         // active), nothing to do. We canonicalize by resolving symlinks and
         // comparing standardized paths.
         let legacyStd = legacy.standardizedFileURL.resolvingSymlinksInPath().path
-        let baseStd = baseDirectory.standardizedFileURL.resolvingSymlinksInPath().path
+        let baseStd = destination.standardizedFileURL.resolvingSymlinksInPath().path
         if legacyStd == baseStd { return 0 }
 
         var copied = 0
         do {
             let items = try fm.contentsOfDirectory(at: legacy, includingPropertiesForKeys: nil)
             for src in items {
-                let dst = baseDirectory.appendingPathComponent(src.lastPathComponent)
+                let dst = destination.appendingPathComponent(src.lastPathComponent)
                 if fm.fileExists(atPath: dst.path) { continue }
                 do {
                     try fm.copyItem(at: src, to: dst)
@@ -132,7 +146,7 @@ enum AgentDeckPaths {
             NSLog("[AgentDeckPaths] Migration listing failed: \(error.localizedDescription)")
         }
         if copied > 0 {
-            NSLog("[AgentDeckPaths] Migrated \(copied) file(s) from \(legacy.path) → \(baseDirectory.path)")
+            NSLog("[AgentDeckPaths] Migrated \(copied) file(s) from \(legacy.path) → \(destination.path)")
         }
         return copied
     }

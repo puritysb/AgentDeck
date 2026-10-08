@@ -24,6 +24,8 @@ import { readdirSync, readFileSync, openSync, readSync, closeSync, fstatSync } f
 import { homedir } from 'os';
 import { join } from 'path';
 import { debug } from './logger.js';
+import { open as openAsync, readdir as readdirAsync } from 'fs/promises';
+import { CODEX_OTEL_METADATA_RULES, codexSessionMetaSubagentVerdict } from '@agentdeck/shared';
 
 /** Max day directories to inspect, newest first. */
 const MAX_DAY_DIRS = 30;
@@ -64,6 +66,40 @@ export function locateCodexRollout(sessionId: string, sessionsRoot?: string): st
     }
   }
   return null;
+}
+
+/** OTel must not walk/read the rollout on the span dispatch executor. Read
+ * only the immutable first line asynchronously; undefined means unreadable. */
+export async function codexRolloutIsSubagent(sessionId: string, sessionsRoot?: string): Promise<boolean | undefined> {
+  if (!/^[0-9a-f-]{8,}$/i.test(sessionId)) return undefined;
+  const root = sessionsRoot ?? join(homedir(), '.codex', 'sessions');
+  const list = async (path: string): Promise<string[]> => readdirAsync(path).catch(() => []);
+  let checked = 0;
+  for (const year of numericDesc(await list(root))) {
+    for (const month of numericDesc(await list(join(root, year)))) {
+      for (const day of numericDesc(await list(join(root, year, month)))) {
+        if (++checked > MAX_DAY_DIRS) return undefined;
+        const dir = join(root, year, month, day);
+        const name = (await list(dir)).find(name => name.startsWith('rollout-') && name.endsWith(`-${sessionId}.jsonl`));
+        if (!name) continue;
+        try {
+          const handle = await openAsync(join(dir, name), 'r');
+          try {
+            const buffer = Buffer.alloc(CODEX_OTEL_METADATA_RULES.headBytes);
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+            const bytes = buffer.subarray(0, bytesRead);
+            const newline = bytes.indexOf(10);
+            if (newline < 0 && bytesRead === buffer.length) return undefined;
+            const record = JSON.parse(bytes.subarray(0, newline < 0 ? bytesRead : newline).toString('utf8'));
+            if (record?.type !== 'session_meta' || !record.payload || typeof record.payload !== 'object' || Array.isArray(record.payload)) return undefined;
+            if (typeof record.payload.id !== 'string' || record.payload.id !== sessionId) return undefined;
+            return codexSessionMetaSubagentVerdict(record.payload);
+          } finally { await handle.close(); }
+        } catch { return undefined; }
+      }
+    }
+  }
+  return undefined;
 }
 
 function readTail(path: string, maxBytes: number): string {

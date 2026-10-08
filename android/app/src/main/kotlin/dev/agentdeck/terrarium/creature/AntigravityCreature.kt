@@ -101,7 +101,8 @@ class AntigravityCreature(
     }
 
     /** Current live position for tetra attractor tracking. */
-    fun currentPosition(): Pair<Float, Float> = currentX to currentY
+    fun simulationPosition(): Pair<Float, Float> = currentX to currentY
+    fun currentPosition(): Pair<Float, Float> = simulationPosition()
 
     /** Whether this Antigravity is currently working (swimming, scattering data). */
     fun isWorking(): Boolean = visualState == OctopusVisualState.WORKING

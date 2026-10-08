@@ -318,6 +318,7 @@ function renderSlotSvg(config: SessionSlotConfig, _slot: number, layout?: DeckLa
       state: manager.detailState,
       modelName: manager.detailModelName,
       effortLevel: manager.detailEffortLevel,
+      mode: manager.detailMode,
     },
   });
 }

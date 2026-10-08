@@ -217,6 +217,8 @@ export class HookCodexSessions {
         cwd,
         appName: desktop ? 'ChatGPT' : undefined,
         modelName: rollout?.modelName,
+        ...(rollout?.effort ? { effortLevel: rollout.effort } : {}),
+        ...(rollout?.permissionMode ? { permissionMode: rollout.permissionMode } : {}),
         currentTask: rollout?.currentTask ?? session.currentTool,
         goal: rollout?.goal,
         contextPercent: rollout?.contextPercent,

@@ -112,6 +112,22 @@ describe('AgentDeckObserver event sequencing', () => {
     properties: { info: { id: 'm1', sessionID: 's1', role: 'user', text: 'hi' } },
   };
 
+  it('forwards bounded shell watch evidence with matching tool IDs and errors', async () => {
+    const { event } = await observer();
+    for (const status of ['pending', 'running', 'error']) {
+      await event({ event: { type: 'message.part.updated', properties: { part: {
+        type: 'tool', sessionID: 's1', callID: 'watch-1', tool: 'bash',
+        state: { status, input: status === 'pending' ? undefined : { command: 'gh pr checks 460 --watch', secret: 'must-not-forward' } },
+      } } } });
+    }
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_tool_start')?.body).toMatchObject({
+      tool_use_id: 'watch-1', tool_input: { command: 'gh pr checks 460 --watch' },
+    });
+    expect(JSON.stringify(posts)).not.toContain('must-not-forward');
+    expect(posts.find(p => p.event === 'opencode_tool_end')?.body).toMatchObject({ tool_use_id: 'watch-1', is_error: true });
+  });
+
   it('forwards current permission and question request identities', async () => {
     const { event } = await observer();
     for (const wire of [

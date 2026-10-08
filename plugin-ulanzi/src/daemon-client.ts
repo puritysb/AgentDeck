@@ -5,15 +5,14 @@
  *  - discover the daemon port from daemon.json (Node CLI ~/.agentdeck or the
  *    App Store Swift sandbox / Group Container paths) on every (re)connect, so
  *    it attaches to whichever daemon owns 9120 (Swift OR Node) and survives drift;
+ *    when the registry is absent (Windows Studio + WSL2), probe loopback 9120;
  *  - reconnect with backoff + a wake/activity watchdog;
  *  - announce itself via `client_register` with clientType `ulanzi-plugin`
  *    (the daemon uses this presence as the D200H health signal).
  */
 import WebSocket from 'ws';
 import { EventEmitter } from 'node:events';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { discoverDaemonPort } from './daemon-discovery.js';
 import {
   BridgeEvent,
   RECONNECT_BACKOFF_MS,
@@ -35,6 +34,7 @@ export class DaemonClient extends EventEmitter {
   private connected = false;
   private port: number | null = null;
   private gen = 0;
+  private attemptId = 0;
   private backoffIdx = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private watchdog: ReturnType<typeof setInterval> | null = null;
@@ -42,9 +42,23 @@ export class DaemonClient extends EventEmitter {
   private lastTick = 0;
 
   start(): void {
-    this.gen++;
+    this.stop();
     this.backoffIdx = 0;
     this.attempt(this.gen);
+  }
+
+  stop(): void {
+    this.gen++;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.stopWatchdog();
+    this.connected = false;
+    if (this.ws) {
+      this.ws.removeAllListeners();
+      this.ws.on('error', () => {});
+      this.ws.terminate();
+      this.ws = null;
+    }
   }
 
   isConnected(): boolean {
@@ -61,35 +75,6 @@ export class DaemonClient extends EventEmitter {
     }
   }
 
-  /** Read daemon.json across Node-CLI + App-Store-sandbox + Group-Container paths. */
-  private findDaemonPort(): number | null {
-    const override = process.env.AGENTDECK_DATA_DIR;
-    const home = homedir();
-    const candidates = override
-      ? [join(override, 'daemon.json')]
-      : [
-          join(home, '.agentdeck', 'daemon.json'),
-          join(
-            home, 'Library', 'Containers', 'bound.serendipity.agent.deck',
-            'Data', 'Library', 'Application Support', 'AgentDeck', 'daemon.json',
-          ),
-          join(
-            home, 'Library', 'Group Containers',
-            'group.bound.serendipity.agent.deck', 'daemon.json',
-          ),
-        ];
-    for (const file of candidates) {
-      try {
-        const info = JSON.parse(readFileSync(file, 'utf-8')) as { port: number; pid: number };
-        try { process.kill(info.pid, 0); } catch { continue; }
-        return info.port;
-      } catch {
-        continue;
-      }
-    }
-    return null;
-  }
-
   private scheduleReconnect(gen: number): void {
     if (gen !== this.gen) return;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
@@ -102,12 +87,14 @@ export class DaemonClient extends EventEmitter {
     }, delay);
   }
 
-  private attempt(gen: number): void {
+  private async attempt(gen: number): Promise<void> {
     if (gen !== this.gen) return;
 
-    const resolved = this.findDaemonPort();
+    const attemptId = ++this.attemptId;
+    const resolved = await discoverDaemonPort();
+    if (gen !== this.gen || attemptId !== this.attemptId) return;
     if (resolved == null) {
-      dlog(TAG, 'daemon.json not found / pid dead — retrying');
+      dlog(TAG, 'no healthy local daemon found — retrying');
       if (this.connected) { try { this.ws?.close(); } catch { /* ignore */ } }
       this.scheduleReconnect(gen);
       return;
@@ -121,7 +108,8 @@ export class DaemonClient extends EventEmitter {
       const stale = this.ws;
       this.ws = null;
       stale.removeAllListeners();
-      try { stale.close(); } catch { /* ignore */ }
+      stale.on('error', () => {});
+      try { stale.terminate(); } catch { /* ignore */ }
     }
 
     try {
@@ -130,7 +118,7 @@ export class DaemonClient extends EventEmitter {
       // to IPv6 `::1` first. Ulanzi Studio's bundled Node lacks the Happy-Eyeballs
       // IPv4 fallback that the Stream Deck runtime has, so `localhost` lands on
       // `::1`, gets ECONNREFUSED, and the deck shows OFFLINE despite a live daemon.
-      this.ws = new WebSocket(`ws://127.0.0.1:${this.port}`);
+      this.ws = new WebSocket(`ws://127.0.0.1:${this.port}`, { handshakeTimeout: 3000 });
       this.ws.on('open', () => {
         if (gen !== this.gen) return;
         this.connected = true;
@@ -152,6 +140,7 @@ export class DaemonClient extends EventEmitter {
       });
       this.ws.on('close', () => {
         if (gen !== this.gen) return;
+        this.stopWatchdog();
         const was = this.connected;
         this.connected = false;
         if (was) { dwarn(TAG, 'disconnected'); this.emit('disconnected'); }

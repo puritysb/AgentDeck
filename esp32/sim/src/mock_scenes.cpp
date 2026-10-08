@@ -4,6 +4,7 @@
 // derivation (session → octopus/cloud/opencode/antigravity/kiro + crayfish
 // gateway).
 #include "sim.h"
+#include <Arduino.h>
 #include "config.h"
 #include "state/agent_state.h"
 #include <cstdio>
@@ -83,6 +84,9 @@ void base(CreatureState cs) {
   setStr(g_state.projectName, sizeof(g_state.projectName), "AgentDeck");
   setStr(g_state.modelName, sizeof(g_state.modelName), "opus-4.8");
   g_state.hostDisplayOn = true;      // host-awake baseline for display-sync scenes
+  // Host-local wall clock as display_state.hostHm delivers it, so the e-ink
+  // freshness band ("as of" / "since") renders in previews.
+  g_state.hostClock.observe("14:32", (uint32_t)millis());
   g_state.userBrightness = 255;
   // Usage — drives the 5H/7D rate gauges (matrix usage page, HUD, e-ink).
   g_state.fiveHourPercent = 42.0f;
@@ -327,6 +331,13 @@ bool SimScenes::apply(const char* name) {
     setStr(g_state.sessions[2].question,sizeof(g_state.sessions[2].question),"Install the tested firmware on the connected boards?");
     return true;
   }
+  if (std::strcmp(name, "ci-wait") == 0) {
+    base(CreatureState::FLOATING);
+    addSession("codex-cli", "idle", "release checks");
+    g_state.sessions[0].ciPhase = 3;
+    setStr(g_state.sessions[0].activity, sizeof(g_state.sessions[0].activity), "CI running #460 - 8/10");
+    return true;
+  }
   if (std::strcmp(name, "working") == 0) {
     base(CreatureState::WORKING);
     addSession("claude-code", "processing", "AgentDeck");
@@ -506,6 +517,6 @@ bool SimScenes::apply(const char* name) {
 }
 
 const char* SimScenes::catalog() {
-  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, working, multi, crowd, crowded, dense, permission, attention, "
+  return "quota-colors, usage-all, zai-only, usage-none, usage-zero, usage-stale, codex-only, codex-luna, codex-credits, live-mix, empty, idle, display-off, worktree-glance, ci-wait, working, multi, crowd, crowded, dense, permission, attention, "
          "demo:<agent>:<state>";
 }

@@ -5,11 +5,102 @@ import XCTest
 /// Swift mirror of bridge/src/__tests__/hermes-sessions.test.ts: the same
 /// admission rules and process-lifetime close for the native daemon.
 final class HermesObserverGateTests: XCTestCase {
+    @DaemonActor
+    func testCapturedRealCiInvocationUsesNormalizedEvidenceAndExactEnd() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let data = try Data(contentsOf: root.appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-ci.json"))
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        let waits = CiWaitTracker()
+        for row in events {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            let at = try XCTUnwrap(row["afterMs"] as? Int)
+            guard case let .accept(boundary, sessionId) = gate.admit(event: event, payload: payload,
+                now: Date(timeIntervalSince1970: Double(at) / 1000)) else { return XCTFail("Captured hook rejected") }
+            let rawSid = ObservedAgentRules.rawSessionId(sessionId)
+            waits.note(rawSid, event: boundary, json: payload, now: at)
+            if event == "hermes_tool_start" {
+                let wait = try XCTUnwrap(waits.snapshot(rawSid, now: at))
+                XCTAssertEqual(wait["runId"] as? Int, 4242)
+                XCTAssertEqual(wait["phase"] as? String, "unknown")
+                XCTAssertNil(payload["tool_input"])
+                let hook = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: sessionId))
+                XCTAssertNotNil(hook.payload["ci_wait_intent"])
+                XCTAssertEqual(hook.payload["tool_call_id"] as? String, payload["tool_call_id"] as? String)
+            } else { XCTAssertNil(waits.snapshot(rawSid, now: at)) }
+        }
+    }
+
     private let sid = "hermes-" + String(repeating: "a", count: 32)
     private let other = "hermes-" + String(repeating: "b", count: 32)
     private let t0 = Date(timeIntervalSince1970: 1_000)
 
     private func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
+
+    func testCapturedDelegatedTurnHasOneParentBoundaryAndNoChildRow() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-child.json")
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        var keys = Set<String>(), stops = 0, finalized = 0
+        for (index, row) in events.enumerated() {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            guard case let .accept(boundary, key) = gate.admit(event: event, payload: payload, now: at(Double(index))) else {
+                XCTFail("Rejected captured callback: \(event)")
+                continue
+            }
+            keys.insert(key)
+            let normalized = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: key))
+            XCTAssertEqual(normalized.event, boundary)
+            if let model = payload["model"] as? String, !model.isEmpty {
+                XCTAssertEqual(normalized.payload["model_name"] as? String, model)
+            }
+            if boundary == "stop" { stops += 1 }
+            if boundary == "session_end" { finalized += 1 }
+        }
+        XCTAssertEqual(keys.count, 1)
+        XCTAssertEqual(stops, 1)
+        XCTAssertEqual(finalized, 1)
+        XCTAssertTrue(gate.sweepDeparted(now: at(60)) { _ in .dead }.closed.isEmpty)
+    }
+
+    func testCapturedCliAndGatewayLifecycleKeepsInterruptionsAndFinalizeBoundaries() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-lifecycle.json")
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        var stops = 0, interrupted = 0, finalized = 0
+        for (index, row) in events.enumerated() {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            guard case let .accept(boundary, sessionKey) = gate.admit(event: event, payload: payload, now: at(Double(index))) else {
+                XCTFail("Rejected captured callback: \(event)")
+                continue
+            }
+            let normalized = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: sessionKey))
+            XCTAssertEqual(normalized.event, boundary)
+            if boundary == "stop" {
+                stops += 1
+                XCTAssertEqual(normalized.payload["interrupted"] as? Bool, payload["interrupted"] as? Bool)
+                if normalized.payload["interrupted"] as? Bool == true { interrupted += 1 }
+            }
+            if boundary == "session_end" { finalized += 1 }
+        }
+        XCTAssertEqual(stops, 10)
+        XCTAssertEqual(interrupted, 3)
+        XCTAssertEqual(finalized, 4)
+        // Only the two original Gateway conversations and the second profile
+        // remain after callback replay. Their host exits close them, not Stop.
+        XCTAssertEqual(gate.sweepDeparted(now: at(60)) { _ in .dead }.closed.count, 3)
+    }
 
     func testOnlyObserverIdsAndKnownBoundariesAreAdmitted() {
         var gate = HermesObserverGate()
@@ -77,6 +168,27 @@ final class HermesObserverGateTests: XCTestCase {
         let sweep = gate.sweepDeparted(now: at(5)) { _ in .alive }
         XCTAssertEqual(sweep.refreshed, [HermesObserverGate.sessionPrefix + sid])
         XCTAssertEqual(sweep.closed, [])
+    }
+
+    func testMalformedPidNeverProbesAnUnrelatedProcess() {
+        for invalid in [7.5, 4_294_967_303.0, -4_294_967_289.0, Double.infinity, Double.nan] {
+            var gate = HermesObserverGate()
+            _ = gate.admit(event: "hermes_session_start", payload: ["session_id": sid, "pid": invalid], now: t0)
+            let sweep = gate.sweepDeparted(now: at(5)) { _ in
+                XCTFail("Malformed PID must not reach a process probe")
+                return .dead
+            }
+            XCTAssertEqual(sweep.closed, [])
+        }
+    }
+
+    func testMalformedPidUpdateRetainsTheLastValidIdentity() {
+        var gate = HermesObserverGate()
+        _ = gate.admit(event: "hermes_session_start", payload: ["session_id": sid, "pid": 7], now: t0)
+        _ = gate.admit(event: "hermes_tool_start", payload: ["session_id": sid, "pid": 8.5], now: at(1))
+        var probed: [Int32] = []
+        _ = gate.sweepDeparted(now: at(5)) { probed.append($0); return .alive }
+        XCTAssertEqual(probed, [7])
     }
 
     func testOnlyNoSuchProcessReadsAsDead() {

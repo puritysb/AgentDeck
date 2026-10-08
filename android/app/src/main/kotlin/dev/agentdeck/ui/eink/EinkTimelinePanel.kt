@@ -24,8 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.agentdeck.state.TimelineEntry
-import dev.agentdeck.state.groupConsecutive
-import dev.agentdeck.state.timelineDisplayGroups
+import dev.agentdeck.state.recentTimelineDisplayGroups
+import dev.agentdeck.state.timelineLatestActivityEntry
 import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.component.agentDisplayLabel
 import dev.agentdeck.ui.timeline.stripMarkdownInline
@@ -63,9 +63,8 @@ fun EinkTimelinePanel(
     // element is a real work unit rather than a stray tool row. Cap at 3 — the
     // most this glance surface renders even for the shortest messages.
     val recent = remember(entries) {
-        timelineDisplayGroups(groupConsecutive(entries.takeLast(40)))
-            .takeLast(3)
-            .map { it.entry }
+        recentTimelineDisplayGroups(entries, 3)
+            .map(::timelineLatestActivityEntry)
             .asReversed()
     }
 

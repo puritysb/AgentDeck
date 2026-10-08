@@ -126,7 +126,7 @@ describe('fetchZaiQuota', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { fetchZaiQuota } = await loadModule();
     const result = await fetchZaiQuota();
-    expect(result).toEqual({ data: { limitId: 'payg' }, fresh: true, payg: true });
+    expect(result).toEqual({ data: { limitId: 'payg', authFailed: false }, fresh: true, payg: true });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -138,7 +138,7 @@ describe('fetchZaiQuota', () => {
     const { fetchZaiQuota } = await loadModule();
     await fetchZaiQuota();
     process.env.AGENTDECK_ZAI_API_KEY = 'account-b';
-    expect(await fetchZaiQuota()).toEqual({ data: {}, fresh: false });
+    expect(await fetchZaiQuota()).toEqual({ data: { authFailed: true }, fresh: false });
     process.env.AGENTDECK_ZAI_API_KEY = 'account-c';
     expect((await fetchZaiQuota()).fresh).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -152,7 +152,7 @@ describe('fetchZaiQuota', () => {
     const { fetchZaiQuota } = await loadModule();
     await fetchZaiQuota();
     process.env.AGENTDECK_ZAI_API_KEY = 'sk-pay-replacement';
-    expect((await fetchZaiQuota()).data).toEqual({ limitId: 'payg' });
+    expect((await fetchZaiQuota()).data).toEqual({ limitId: 'payg', authFailed: false });
     expect(fetch).toHaveBeenCalledOnce();
   });
 
@@ -162,7 +162,28 @@ describe('fetchZaiQuota', () => {
       process.env.AGENTDECK_ZAI_API_KEY = 'account-b';
       return jsonResponse(MAX_PLAN_BODY);
     }));
-    expect(await (await loadModule()).fetchZaiQuota()).toEqual({ data: {}, fresh: false });
+    expect(await (await loadModule()).fetchZaiQuota()).toEqual({ data: { authFailed: false }, fresh: false });
+  });
+
+  it('reports HTTP-200 credential rejection, retains it during backoff, and clears it after replacement', async () => {
+    process.env.AGENTDECK_ZAI_API_KEY = 'rejected-account';
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ code: 1000, success: false }))
+      .mockResolvedValueOnce(jsonResponse(MAX_PLAN_BODY));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchZaiQuota } = await loadModule();
+    expect(await fetchZaiQuota()).toEqual({ data: { authFailed: true }, fresh: false });
+    expect((await fetchZaiQuota()).data?.authFailed).toBe(true);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    process.env.AGENTDECK_ZAI_API_KEY = 'replacement-account';
+    const recovered = await fetchZaiQuota();
+    expect(recovered.fresh).toBe(true);
+    expect(recovered.data?.authFailed).toBe(false);
+  });
+
+  it('does not label transport failure as credential rejection', async () => {
+    process.env.AGENTDECK_ZAI_API_KEY = 'unverified-account';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('timeout')));
+    expect((await (await loadModule()).fetchZaiQuota()).data?.authFailed).toBe(false);
   });
 
   it('discovers the key from the Claude Code settings hint only when the base URL is z.ai', async () => {

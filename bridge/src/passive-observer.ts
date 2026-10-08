@@ -30,7 +30,7 @@ import {
 } from './codex-exec-children.js';
 import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 import { redactSecrets } from './utils/redact-secrets.js';
-import { stripUnsafeText, rawSessionId } from '@agentdeck/shared';
+import { stripUnsafeText, rawSessionId, codexSessionMetaIsSubagent } from '@agentdeck/shared';
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
 // see claude-interrupt-marker.ts for why it must not be spelled twice.
 import { isClaudeInterruptMessage } from './claude-interrupt-marker.js';
@@ -74,6 +74,10 @@ export interface CodexRolloutSummary extends TranscriptSummary {
   cwd?: string;
   startedAt?: number;
   effort?: string;
+  /** Codex's own words from `turn_context`: `plan` while the collaboration
+   *  mode is plan, otherwise `sandbox_policy.type` (read-only /
+   *  workspace-write / danger-full-access). */
+  permissionMode?: string;
   hasPendingCalls?: boolean;
   /** Internal companion rollouts never become top-level dashboard sessions. */
   isSubagent: boolean;
@@ -271,6 +275,10 @@ export class PassiveSessionObserver {
    *  ancestry or argv (the coordination tracker) can reuse the `ps` this
    *  observer already pays for instead of running a second one per tick. */
   private lastProcesses: ProcInfo[] = [];
+  private processSnapshotAt = 0;
+  processSnapshot(): { processes: ProcInfo[]; capturedAt: number } {
+    return { processes: this.lastProcesses, capturedAt: this.processSnapshotAt };
+  }
   processes(): ProcInfo[] { return this.lastProcesses; }
 
   /** Headless `codex exec` rollouts the last scan found, each with the
@@ -327,6 +335,7 @@ export class PassiveSessionObserver {
     // alternative is concluding that every observed session ended at once.
     if (processes.length === 0) return;
     this.lastProcesses = processes;
+    this.processSnapshotAt = Date.now();
     const observed = [
       ...collectClaudeSessions(processes),
       ...(await collectCodexSessions(processes, this.codexRolloutCache)),
@@ -540,6 +549,7 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
   let startedAt: number | undefined;
   let modelName: string | undefined;
   let effort: string | undefined;
+  let permissionMode: string | undefined;
   let currentTask: string | undefined;
   let goal: string | undefined;
   let totalTokens = 0;
@@ -566,8 +576,7 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
       cwd = stringAt(payload, 'cwd') ?? cwd;
       originator = stringAt(payload, 'originator') ?? originator;
       startedAt = timestampMs(stringAt(payload, 'timestamp')) ?? startedAt;
-      const source = payload.source;
-      isSubagent = isSubagent || (isRecord(source) && 'subagent' in source);
+      isSubagent = isSubagent || codexSessionMetaIsSubagent(payload);
     } else if (type === 'event_msg') {
       const payload = objectAt(value, 'payload');
       if (!payload) continue;
@@ -635,6 +644,11 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
       if (!payload) continue;
       modelName = stringAt(payload, 'model') ?? modelName;
       effort = stringAt(payload, 'effort') ?? effort;
+      const sandbox = objectAt(payload, 'sandbox_policy');
+      const collaboration = objectAt(payload, 'collaboration_mode');
+      permissionMode = (collaboration && stringAt(collaboration, 'mode') === 'plan')
+        ? 'plan'
+        : (sandbox ? stringAt(sandbox, 'type') : undefined) ?? permissionMode;
       contextWindow = numberAt(payload, 'model_context_window') || contextWindow;
     }
   }
@@ -647,8 +661,11 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
     sessionId,
     cwd,
     startedAt,
-    modelName: effort && modelName ? `${modelName} ${effort}` : modelName,
+    // Effort rides its own field; folding it into the model string hid it from
+    // every surface that renders `effortLevel`.
+    modelName,
     effort,
+    permissionMode,
     state,
     currentTask,
     goal,
@@ -900,6 +917,8 @@ export async function collectCodexSessionsFromRollouts(
         alive: true,
         state,
         modelName: parsed.modelName,
+        ...(parsed.effort ? { effortLevel: parsed.effort } : {}),
+        ...(parsed.permissionMode ? { permissionMode: parsed.permissionMode } : {}),
         startedAt: parsed.startedAt ? new Date(parsed.startedAt).toISOString() : new Date().toISOString(),
         controlMode: 'observed',
         cwd,
@@ -1074,7 +1093,8 @@ export function collectKiroSessionsFromSnapshots(
     if (snapshot) claimed.add(snapshot.sessionId);
 
     const rawState = snapshot?.state ?? 'idle';
-    const state = observedStateAfterSilence(rawState, snapshot?.lastActivityAt, now);
+    // Explicit Kiro turn boundaries survive silent tools; recency is not completion.
+    const state = rawState;
     const sessionKey = snapshot?.sessionId ?? String(proc.pid);
     const realCwd = snapshot?.cwd ?? cwd;
     const agentType = inKiroIde ? 'kiro-ide' as const : 'kiro-cli' as const;

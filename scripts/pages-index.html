@@ -219,6 +219,11 @@
     background: var(--tide-100); border-top: 1px solid var(--tide-200); text-align: left;
   }
 
+  .showcase-media video { aspect-ratio: auto; }
+  .showcase-stills { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--s-4); }
+  .showcase-stills .hero-shot { margin-top: var(--s-4); }
+  .showcase-stills img { aspect-ratio: auto; height: auto; }
+
   /* ── Section ── */
   h2 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -0.02em; margin: var(--s-20) 0 var(--s-2); }
   .section-lede { color: var(--ink-500); max-width: 60ch; margin: 0 0 var(--s-6); }
@@ -308,7 +313,7 @@
         <track kind="captions" src="media/aquarium-story.ja.vtt" srclang="ja" label="日本語">
         <a href="media/aquarium-demo.mp4" data-i18n="video.download">Download the aquarium demo</a>
       </video>
-      <figcaption id="aquarium-caption" data-i18n="video.caption">One coding task, five sessions: watch agents join, edit, test, wait for permission, and finish as the timeline fills. Recorded in the native iPad app with fictional sample activity. Silent, 43 seconds, 2752 × 2000; expand to full screen for detail.</figcaption>
+      <figcaption id="aquarium-caption" data-i18n="video.caption">Earlier introduction: one coding task, five sessions. Watch agents join, edit, test, wait for permission, and finish as the timeline fills. Recorded in the native iPad app with fictional sample activity. Silent, 43 seconds, 2752 × 2000; expand to full screen for detail.</figcaption>
     </figure>
     <section id="get-agentdeck" class="get-started" aria-labelledby="get-agentdeck-title">
       <div class="get-started-head">
@@ -322,7 +327,7 @@
           <h3 data-i18n="hub.h">Run AgentDeck</h3>
           <p data-i18n="hub.p">Choose the native Mac app, or use the CLI on macOS, Windows, and Linux.</p>
           <div class="access-actions">
-            <a class="btn btn-primary" href="https://apps.apple.com/app/id6784822497" data-i18n="hub.appstore">Mac App Store</a>
+            <a class="btn btn-primary" href="https://apps.apple.com/app/id6784822497?pt=128040795&amp;ct=website-202610&amp;mt=8" data-i18n="hub.appstore">Mac App Store</a>
             <a class="btn btn-ghost" href="https://www.npmjs.com/package/@agentdeck/setup" data-i18n="hub.npm">CLI · macOS / Windows / Linux</a>
           </div>
         </article>
@@ -331,7 +336,7 @@
           <h3 data-i18n="companion.h">Keep sessions in view</h3>
           <p data-i18n="companion.p">iPhone, iPad, and Android mirror the hub over your local network. They do not run the hub themselves.</p>
           <div class="access-actions">
-            <a class="btn btn-ghost" href="https://apps.apple.com/app/id6784822497" data-i18n="companion.apple">iPhone &amp; iPad</a>
+            <a class="btn btn-ghost" href="https://apps.apple.com/app/id6784822497?pt=128040795&amp;ct=website-202610&amp;mt=8" data-i18n="companion.apple">iPhone &amp; iPad</a>
             <a class="btn btn-ghost" href="https://play.google.com/store/apps/details?id=dev.agentdeck" data-i18n="companion.android">Android · Google Play</a>
             <a class="btn btn-ghost" href="https://github.com/puritysb/AgentDeck/blob/master/docs/android.md#quick-start-google-play-or-github-apk" data-i18n="companion.guide">Setup guide</a>
           </div>
@@ -357,6 +362,26 @@
       <figcaption data-i18n="hero.caption">One daemon across the desk. Photographed September 28, 2026; open the photo for the full setup.</figcaption>
     </figure>
   </header>
+
+  <section id="showcase-180" aria-labelledby="showcase-title">
+    <h2 id="showcase-title" data-i18n="showcase.h">More agents, one living workspace</h2>
+    <p class="section-lede" data-i18n="showcase.p">Hermes Agent joins the aquarium. GitHub CI companions orbit the sessions waiting for checks, then leave when checks finish.</p>
+    <figure class="hero-shot showcase-media">
+      <video controls playsinline preload="none" poster="media/aquarium-180-overview.jpg" width="1920" height="1334" aria-describedby="showcase-caption">
+        <source src="media/aquarium-180-showcase.mp4" type="video/mp4">
+        <track kind="captions" src="media/aquarium-180.en.vtt" srclang="en" label="English" default>
+        <track kind="captions" src="media/aquarium-180.ko.vtt" srclang="ko" label="한국어">
+        <track kind="captions" src="media/aquarium-180.ja.vtt" srclang="ja" label="日本語">
+        <a href="media/aquarium-180-showcase.mp4" data-i18n="showcase.download">Download the 1.8.0 showcase</a>
+      </video>
+      <figcaption id="showcase-caption" data-i18n="showcase.caption">AgentDeck 1.8.0, recorded in the native iPad simulator with fictional activity. Real app rendering; silent, 36 seconds, 1920 × 1334. The earlier introduction above is retained.</figcaption>
+    </figure>
+    <div class="showcase-stills">
+      <figure class="hero-shot"><a href="media/aquarium-180-overview.jpg"><img src="media/aquarium-180-overview.jpg" alt="Native AgentDeck 1.8.0 aquarium with Hermes Agent and multiple coding agents" loading="lazy"></a><figcaption data-i18n="showcase.overview">Hermes Agent alongside the coding agents.</figcaption></figure>
+      <figure class="hero-shot"><a href="media/aquarium-180-ci.jpg"><img src="media/aquarium-180-ci.jpg" alt="GitHub CI companion orbiting a session waiting for checks" loading="lazy"></a><figcaption data-i18n="showcase.ci">GitHub CI waiting stays attached to its session.</figcaption></figure>
+      <figure class="hero-shot"><a href="media/aquarium-180-complete.jpg"><img src="media/aquarium-180-complete.jpg" alt="Native aquarium after the fictional checks finish" loading="lazy"></a><figcaption data-i18n="showcase.complete">Checks finish and the aquarium settles.</figcaption></figure>
+    </div>
+  </section>
 
   <h2 data-i18n="aquarium.h">Your agents, in view</h2>
   <p class="section-lede" data-i18n="aquarium.p">Choose a dashboard that fits your screen and the way you work. Existing appearance choices stay yours.</p>
@@ -500,10 +525,18 @@
   (function () {
     var I18N = {
       ko: {
+        "showcase.h": "더 다양한 에이전트, 하나의 작업 공간",
+        "showcase.p": "Hermes Agent가 수족관에 합류합니다. GitHub CI 크리처는 검증을 기다리는 세션 주위를 공전하고, 검증이 끝나면 떠납니다.",
+        "showcase.download": "1.8.0 소개 영상 다운로드",
+        "showcase.caption": "가상의 작업으로 네이티브 iPad 시뮬레이터에서 촬영한 AgentDeck 1.8.0입니다. 실제 앱 렌더링이며 무음, 36초, 1920 × 1334 영상입니다. 위의 기존 소개 영상도 유지했습니다.",
+        "showcase.overview": "코딩 에이전트들과 함께하는 Hermes Agent.",
+        "showcase.ci": "GitHub CI 대기가 해당 세션 곁에 표시됩니다.",
+        "showcase.complete": "검증이 끝나고 수족관이 잔잔해집니다.",
+
         "stat.agents": "공통 세션 모델",
         "stat.local": "컴퓨터에서 실행하는 허브",
         "video.download": "수족관 데모 다운로드",
-        "video.caption": "하나의 코딩 작업에 다섯 세션이 합류해 수정·테스트·권한 대기·완료로 이어지고, 타임라인이 채워집니다. 가상의 샘플 작업으로 실제 iPad 앱을 촬영했습니다. 무음, 43초, 2752 × 2000. 전체 화면으로 자세히 보세요.",
+        "video.caption": "기존 소개 영상: 하나의 코딩 작업에 다섯 세션이 합류해 수정·테스트·권한 대기·완료로 이어지고, 타임라인이 채워집니다. 가상의 샘플 작업으로 실제 iPad 앱을 촬영했습니다. 무음, 43초, 2752 × 2000. 전체 화면으로 자세히 보세요.",
         "aquarium.h": "에이전트가 한눈에",
         "aquarium.p": "화면과 작업 방식에 맞는 대시보드를 선택하세요. 기존 화면 설정은 그대로 유지됩니다.",
         "view.ci": "네이티브 수족관",
@@ -558,10 +591,18 @@
         'policy.canonical': '개인정보 처리방침은 영어 원문이 정본입니다.'
       },
       ja: {
+        "showcase.h": "多彩なエージェントを、ひとつのワークスペースに",
+        "showcase.p": "Hermes Agentが水槽に参加。GitHub CIのクリーチャーはチェック待ちのセッションを周回し、完了すると離れます。",
+        "showcase.download": "1.8.0紹介動画をダウンロード",
+        "showcase.caption": "架空の作業を使い、ネイティブiPadシミュレーターで撮影したAgentDeck 1.8.0です。実際のアプリ描画による無音動画。36秒、1920 × 1334。従来の紹介動画も上に残しています。",
+        "showcase.overview": "コーディングエージェントと一緒に動くHermes Agent。",
+        "showcase.ci": "GitHub CIの待機状態を対象セッションのそばに表示。",
+        "showcase.complete": "チェックが完了し、水槽が落ち着きます。",
+
         "stat.agents": "共通セッションモデル",
         "stat.local": "コンピューター上のハブ",
         "video.download": "水槽デモをダウンロード",
-        "video.caption": "ひとつの開発タスクに5つのセッションが参加。編集・テスト・許可待ち・完了の流れがタイムラインに並びます。架空のサンプル作業を実際のiPadアプリで撮影。無音、43秒、2752 × 2000。全画面で詳細をご覧ください。",
+        "video.caption": "従来の紹介動画：ひとつの開発タスクに5つのセッションが参加。編集・テスト・許可待ち・完了の流れがタイムラインに並びます。架空のサンプル作業を実際のiPadアプリで撮影。無音、43秒、2752 × 2000。全画面で詳細をご覧ください。",
         "aquarium.h": "エージェントをひと目で",
         "aquarium.p": "画面と作業スタイルに合うダッシュボードを選べます。既存の表示設定は保持されます。",
         "view.ci": "ネイティブ水槽",

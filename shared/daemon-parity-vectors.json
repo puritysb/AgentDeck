@@ -1,0 +1,89 @@
+{
+  "turns": [
+    {
+      "name": "start without end remains processing",
+      "events": [
+        "turn_start",
+        "assistant",
+        "Reasoning",
+        "tool_result"
+      ],
+      "expected": "processing"
+    },
+    {
+      "name": "interrupted end closes turn",
+      "events": [
+        "turn_start",
+        "turn_end",
+        "assistant"
+      ],
+      "expected": "idle"
+    },
+    {
+      "name": "resumed activity starts another turn",
+      "events": [
+        "turn_start",
+        "turn_end",
+        "turn_start",
+        "assistant"
+      ],
+      "expected": "processing"
+    },
+    {
+      "name": "user text alone is not a boundary",
+      "events": [
+        "user"
+      ],
+      "expected": "idle"
+    }
+  ],
+  "takeoverYieldMs": 147000,
+  "runtimes": [
+    {
+      "isSwift": true,
+      "expectingNode": true,
+      "expected": false
+    },
+    {
+      "isSwift": false,
+      "expectingNode": true,
+      "expected": true
+    },
+    {
+      "expectingNode": true,
+      "expected": true
+    },
+    {
+      "isSwift": true,
+      "expectingNode": false,
+      "expected": true
+    }
+  ],
+  "legacy": [
+    {
+      "event": "Prompt",
+      "hasToolUse": false,
+      "expected": "processing"
+    },
+    {
+      "event": "AssistantMessage",
+      "hasToolUse": true,
+      "expected": "processing"
+    },
+    {
+      "event": "AssistantMessage",
+      "hasToolUse": false,
+      "expected": "idle"
+    },
+    {
+      "event": "ToolResults",
+      "hasToolUse": false,
+      "expected": "processing"
+    },
+    {
+      "event": "TurnEnd",
+      "hasToolUse": false,
+      "expected": "idle"
+    }
+  ]
+}

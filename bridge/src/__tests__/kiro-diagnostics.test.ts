@@ -399,3 +399,17 @@ describe('Kiro privacy-safe diagnostics', () => {
     expect(applyKiroPendingTurnMarker([base], NOW - 11 * 60_000, NOW)[0].state).toBe('idle');
   });
 });
+
+describe('native Kiro explicit turn boundaries', () => {
+  it('does not reopen a completed or interrupted turn for a delayed assistant record', () => {
+    const raw = ['turn_start', 'turn_end', 'assistant'].map(type =>
+      JSON.stringify({ payload: { type, operationType: 'Say', content: 'late response' } })).join('\n');
+    expect(parseKiroTranscript(raw).state).toBe('idle');
+  });
+  it('keeps an unmatched start processing through silent tools and reasoning', () => {
+    const raw = ['turn_start', 'assistant'].map(type =>
+      JSON.stringify({ payload: { type, operationType: 'Reasoning', content: 'hidden' } })).join('\n');
+    expect(parseKiroTranscript(raw)).toMatchObject({ state: 'processing' });
+    expect(parseKiroTranscript(raw).response).toBeUndefined();
+  });
+});

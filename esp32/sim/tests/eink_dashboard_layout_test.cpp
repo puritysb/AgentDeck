@@ -2,7 +2,6 @@
 
 #include "ui/eink/eink_dashboard_layout.h"
 #include "ui/eink/epd47_page_policy.h"
-#include "ui/eink/epd47_refresh_policy.h"
 
 using AgentDeckEink::LayoutInput;
 using AgentDeckEink::makeLayout;
@@ -15,44 +14,7 @@ int main() {
             assert(AgentDeckEpd47::automaticPage(attention, working) == Page::Home);
         }
     }
-    // EPD47 refresh policy. Differential frame replacements must accumulate
-    // toward — never postpone — the next real pigment reset.
-    using AgentDeckEpd47::Erase;
-    {
-        AgentDeckEpd47::RefreshState state;
-        constexpr uint8_t EVERY = 4;
-        constexpr uint32_t MAX_AGE = 600000;
-        assert(AgentDeckEpd47::hardClearDue(state, true, 10, EVERY, MAX_AGE));
-        AgentDeckEpd47::recordErase(state, Erase::ClearAll, 10);
-        assert(state.differentialCount == 0);
-        assert(state.lastHardClearMs == 10);
-
-        for (uint8_t i = 0; i < EVERY; ++i) {
-            AgentDeckEpd47::recordErase(state, Erase::Differential, 20 + i);
-            if (i + 1 < EVERY)
-                assert(!AgentDeckEpd47::hardClearDue(state, false, 100, EVERY, MAX_AGE));
-        }
-        assert(state.differentialCount == EVERY);
-        assert(state.lastHardClearMs == 10);  // page/content changes never reset age
-        assert(AgentDeckEpd47::hardClearDue(state, false, 100, EVERY, MAX_AGE));
-        assert(AgentDeckEpd47::chooseErase(true) == Erase::ClearAll);
-        assert(AgentDeckEpd47::chooseErase(false) == Erase::Differential);
-    }
-    {
-        // A stream of page replacements cannot starve the ten-minute clear.
-        AgentDeckEpd47::RefreshState state;
-        AgentDeckEpd47::recordErase(state, Erase::ClearAll, 1000);
-        AgentDeckEpd47::recordErase(state, Erase::Differential, 590000);
-        assert(state.lastHardClearMs == 1000);
-        assert(AgentDeckEpd47::hardClearDue(state, false, 601001, 255, 600000));
-    }
-    {
-        // Unsigned age calculation remains correct across millis() rollover.
-        AgentDeckEpd47::RefreshState state;
-        state.lastHardClearMs = 0xFFFFFFFFu - 1000u;
-        assert(!AgentDeckEpd47::hardClearDue(state, false, 500u, 4, 2000u));
-        assert(AgentDeckEpd47::hardClearDue(state, false, 1500u, 4, 2000u));
-    }
+    // The EPD47 refresh policy lives in eink_refresh_policy_test.cpp.
 
     const auto trmnl_75 = makeLayout(LayoutInput{800, 480, 68, 0, 28, 21, 2, 1, 6, 2});
     assert(!trmnl_75.portrait);

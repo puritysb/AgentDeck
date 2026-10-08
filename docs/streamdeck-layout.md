@@ -50,7 +50,22 @@ No daemon: single recovery hero. The geometric center key (`floor(rows/2) * colu
 
 No session while daemon is connected: healthy idle dashboard, not recovery UI. Slot 0 = **HUB READY / CONNECTED**, slot 1 = **NO SESSION / WAITING**, slot 2 = **AgentDeck / IDLE**, rest intentionally dark. These are icon-rich image cards; they must not fall back to text-only `Empty` buttons.
 
-**OpenClaw presets** (detail view): STATUS, MODEL (dynamic model name + switch), GATEWAY (browser). In PROCESSING, current tool/status is shown before these presets.
+**OpenClaw presets** (detail view): STATUS, MODEL, GATEWAY (browser), THINKING. In PROCESSING, current tool/status is shown before these presets, so a 4-content-key deck drops THINKING mid-turn (the Gateway applies it to subsequent turns anyway).
+
+**Agent-native setting picker** ([#463](https://github.com/puritysb/AgentDeck/issues/463)): MODEL and THINKING open a picker page instead of typing `/model`. The deck sends `query_session_settings`; the daemon reads the Gateway session the deck talks to (`currentSessionKey`) — its own `thinkingLevels` / `thinkingDefault` and the `models.list` catalog — and answers `session_settings`. Each value is one key (MORE pages), marked `current` / `default`; a leading DEFAULT key clears the override (`null`), and BACK leaves the picker, not the session. A choice is sent as `set_session_setting` and applied with Gateway `sessions.patch`; a refusal comes back as `error` and renders as REFUSED. Option lists stay off `sessions_list` (every board receives that frame). The D200H shows the same picker from MODEL / THINKING tiles at the head of the OpenClaw idle detail. Claude Code and Codex answer an empty list — their running sessions have no external switch, so the deck shows their model · effort · mode as a readout only; OpenCode offers only per-prompt overrides, so it is not offered as a session switch either.
+
+Each query and mutation has a unique `requestId`; a query returns the concrete
+`targetSessionKey`, which the deck echoes on mutation. A changed active Gateway
+conversation is refused instead of applying the old choice to a different chat.
+Only an explicit `null` clears an override; unknown keys and missing, non-string
+or overlong values are refused. The picker remains open while applying and on
+refusal. Stale responses cannot overwrite a newer request. A bounded request
+deadline makes old or silent daemons show UNAVAILABLE, with BACK still usable.
+Settings replies go only to the authenticated requesting WebSocket; catalogs
+are never broadcast to other dashboards or firmware/serial sinks. The shared
+settings policy generates the Swift bounds. Activity-only changes
+also invalidate the D200H NOW card, even when the session's state is unchanged.
+
 
 ## Agent Session UX Scenarios
 
@@ -60,6 +75,8 @@ No session while daemon is connected: healthy idle dashboard, not recovery UI. S
 
 - **List**: 각 키는 하나의 세션이다. AgentDeck terrarium creature mark + 상태 링으로 빠르게 훑는다.
 - **Press session**: 먼저 선택 세션의 list-state 로 상세 화면을 즉시 표시하고, daemon focus relay 가 도착하면 tool/options/current model 을 갱신한다. 사용자는 빈 화면이나 다른 세션 옵션을 보지 않는다.
+- **INFO readout** (Stream Deck·D200H 공통): 프로젝트, `model · effort`, permission mode, 상태. 값은 세션 row 의 `modelName`/`effortLevel`/`permissionMode` 를 **에이전트 고유 단어 그대로** 표시한다 — Claude hook 의 `model`·`effort.level`·`permission_mode`, Codex rollout `turn_context` 의 `effort` 와 `plan` 또는 `sandbox_policy.type`. 레벨 집합과 기본값은 에이전트·모델마다 다르므로 덱이 단계나 기본값을 만들지 않고, 리터럴 `default` 만 생략한다. 다른 세션이나 daemon-global 값을 빌려 오지 않는다 ([#463](https://github.com/puritysb/AgentDeck/issues/463)).
+- **NOW card** (observed 세션, Stream Deck·D200H 공통): "지금 무엇을 하는지"를 row 사실로만 보여준다 — 라벨은 진행 중 subagent 수(`2 SUBAGENTS`) 또는 `NOW`, 부제는 idle 에선 공유 `activity`(없으면 `goal`), 처리 중에는 RUNNING 카드가 이미 도구를 말하므로 `goal` 우선, 상세는 `context N%`. row 에 아무 사실이 없으면 카드를 만들지 않고 기존 OBSERVED 카드를 둔다 ([#463](https://github.com/puritysb/AgentDeck/issues/463)).
 - **Detail idle**: GO ON / REVIEW / COMMIT / CLEAR 를 1-tap 명령으로 두고, 남는 칸은 MODEL/MODE/READY 이미지 카드로 채운다.
 - **Detail awaiting**: 실제 parser options 를 아이콘이 붙은 선택 카드로 노출한다. overflow 는 MORE 로 페이지 전환한다.
 - **Detail processing**: 현재 tool/status 를 첫 content 키에 고정하고, STOP 을 항상 기기의 마지막 버튼에 둔다. OpenClaw 도 STATUS/MODEL/GATEWAY 보다 현재 작업 문맥을 먼저 보여준다.
@@ -87,11 +104,12 @@ No session while daemon is connected: healthy idle dashboard, not recovery UI. S
 | E3 | Codex Usage | Cycle view (both/5h/7d/session) | Refresh usage data |
 | E4 | Launcher | Select agent | Open agent |
 
-E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai).
-An explicit selection wins: when it collides with the other dial, the other dial moves
-to the vacated provider or another available provider. With only one provider, both
-may show it. Choices persist across plugin restarts. E2 starts in automatic mode,
-following current activity while avoiding E3; hold its LCD to resume automatic mode.
+E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai,
+Antigravity). The dials select independently, so both may show the same provider.
+An explicit choice stays on that provider across plugin restarts and temporary usage-data
+gaps; its page shows an empty state until data returns. E2 defaults to Claude and a
+long touch switches it to automatic mode, which follows current activity and may
+select E3's provider. A tap pins E2 to the selected provider again.
 Rotation chooses a view within the selected provider; pressing refreshes usage.
 
 **Usage encoders rotate only through the windows the provider actually reports.**

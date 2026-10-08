@@ -1,3 +1,4 @@
+import ciDedupVectors from '../../timeline-ci-dedup-vectors.json';
 import { describe, it, expect } from 'vitest';
 import {
   cleanDetailText,
@@ -632,5 +633,12 @@ describe('deduplicateEntry — interrupted close + cross-session guards', () => 
     const b = mk({ ts: 500_000, raw: 'Interrupted · ~2m', sessionId: 'A' });
     const result = deduplicateEntry(b, [a]);
     expect(result.action).toBe('add');
+  });
+});
+
+
+describe('session-scoped CI timeline exact dedup parity', () => {
+  for (const vector of ciDedupVectors) it(vector.name, () => {
+    expect(deduplicateEntry(vector.incoming as TimelineEntry, [vector.before as TimelineEntry]).action).toBe(vector.action);
   });
 });

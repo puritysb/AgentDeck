@@ -100,8 +100,10 @@ final class TimeboxProtocolTests: XCTestCase {
         MicroGlyphs.paintBeacon(&openCode, creature: .opencode, aggregate: .idle, animFrame: 0)
         MicroGlyphs.paintBeacon(&openClaw, creature: .crayfish, aggregate: .idle, animFrame: 0)
         XCTAssertEqual(pixel(openCode, 5, 5), [2, 6, 10])
-        XCTAssertEqual(pixel(openClaw, 4, 4), [0, 211, 188])
-        XCTAssertEqual(pixel(openClaw, 7, 4), [0, 211, 188])
+        // Original dark eyes + teal glints are area-sampled at 9 px; each
+        // highlight occupies less than a whole LED and blends with its body.
+        XCTAssertEqual(pixel(openClaw, 4, 3), [117, 59, 60])
+        XCTAssertEqual(pixel(openClaw, 6, 3), [118, 60, 60])
     }
 
     func testBeaconProcessingMovesOnlyPerimeter() {

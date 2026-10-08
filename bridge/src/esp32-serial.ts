@@ -1,3 +1,4 @@
+import { ciWaitPhaseId, type CiWaitStatus } from '@agentdeck/shared';
 import { compactSessionLabels } from './compact-session-labels.js';
 import { compactProjectName } from './utils/project-name.js';
 import { ips10RosterIndices } from './ips10-roster.js';
@@ -168,6 +169,9 @@ export interface SerialConnection {
     otaSlotSize?: number;
     otaFreeSketchSpace?: number;
     otaReason?: string;
+    /** T-Display-S3-Pro running layout and persisted setting. */
+    layout?: 'portrait' | 'landscape';
+    layoutSetting?: 'auto' | 'portrait' | 'landscape';
     timelineCount?: number;
     sessionCount?: number;
     usageFiveH?: number;
@@ -532,6 +536,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         // Shared activity one-liner — the glanceable "what is it doing" line
         // (TRMNL 7.5" session cards render it; other boards ignore it).
         activity: limitString(s.activity, 79),
+        ciPhase: ciWaitPhaseId(s.waitingOn as CiWaitStatus | null | undefined),
         // Daemon-computed latest milestone (TIMELINE parity for the IPS10
         // cards). Omitted when absent to spare the 4KB serial line budget.
         ...(typeof s.lastEventText === 'string' && s.lastEventText
@@ -961,6 +966,8 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           otaSlotSize: msg.otaSlotSize,
           otaFreeSketchSpace: msg.otaFreeSketchSpace,
           otaReason: msg.otaReason,
+          layout: msg.layout,
+          layoutSetting: msg.layoutSetting,
           // Board-side reality counters (debug aid — surfaced on /devices so
           // "device shows nothing" can be diagnosed without stealing the port)
           timelineCount: (msg as any).timelineCount,

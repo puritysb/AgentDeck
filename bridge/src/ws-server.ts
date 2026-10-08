@@ -67,7 +67,7 @@ export class WsServer {
     };
   }
 
-  private commandCallback: ((cmd: PluginCommand) => void) | null = null;
+  private commandCallback: ((cmd: PluginCommand, sender?: WebSocket) => void) | null = null;
   private rawMessageCallback: ((msg: Record<string, unknown>, sender: WebSocket) => boolean) | null = null;
   private binaryCallback: ((data: Buffer, sender: WebSocket) => void) | null = null;
   private onPongCallback: ((ws: WebSocket) => void) | null = null;
@@ -350,7 +350,7 @@ export class WsServer {
             return; // handled
           }
           if (this.commandCallback) {
-            this.commandCallback(msg as unknown as PluginCommand);
+            this.commandCallback(msg as unknown as PluginCommand, ws);
           }
         } catch (err) {
           debug('WS', `Failed to parse message: ${err}`);
@@ -433,7 +433,7 @@ export class WsServer {
     }
   }
 
-  onCommand(callback: (cmd: PluginCommand) => void): void {
+  onCommand(callback: (cmd: PluginCommand, sender?: WebSocket) => void): void {
     this.commandCallback = callback;
   }
 

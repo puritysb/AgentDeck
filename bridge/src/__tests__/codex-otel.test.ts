@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
 import {
   ANONYMOUS_OTEL_THREAD_ID,
   CodexOtelTracker,
+  CodexOtelSubagentFilter,
   parseCodexSpans,
   spanNameSummary,
 } from '../codex-otel.js';
@@ -370,5 +372,58 @@ describe('CodexOtelTracker', () => {
     const claude: ObservedSession = { ...observedCodex, id: 'observed:claude:x', agentType: 'claude-code' };
     const rows = tracker.applyTo([claude], 1_100);
     expect(rows[0]).toBe(claude);
+  });
+});
+
+
+describe('Codex OTel rollout subagent exclusion', () => {
+  const span = () => envelope([{ name: 'codex.turn.start', attributes: { 'thread.id': THREAD, 'turn.id': 'sample-turn' } }]);
+  it('retracts a late-classified phantom and does not promote later spans', async () => {
+    let resolve!: (value: boolean) => void;
+    const lookup = vi.fn(() => new Promise<boolean>(done => { resolve = done; }));
+    const tracker = new CodexOtelTracker(lookup);
+    const changed = vi.fn(); tracker.onChanged = changed;
+    tracker.ingest(span(), 1000);
+    expect(lookup).not.toHaveBeenCalled(); // First span does not execute the resolver.
+    expect(tracker.applyTo([], 1001)).toHaveLength(1); // Unknown stays permissive.
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
+    resolve(true);
+    await vi.waitFor(() => expect(tracker.snapshot()).toEqual([]));
+    expect(changed).toHaveBeenCalledTimes(2); // Admission and late retraction.
+    tracker.ingest(span(), 2000);
+    expect(tracker.applyTo([], 2001)).toEqual([]);
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+  it.each([false, undefined])('retains standalone or unreadable metadata (%s)', async verdict => {
+    const lookup = vi.fn(async () => verdict);
+    const tracker = new CodexOtelTracker(lookup);
+    tracker.ingest(span(), 1000);
+    await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(1));
+    expect(tracker.applyTo([], 1100)).toHaveLength(1);
+    tracker.ingest(span(), 2000);
+    expect(tracker.applyTo([], 2100)).toHaveLength(1);
+    expect(lookup).toHaveBeenCalledTimes(1);
+  });
+  it('retries only unknown metadata after the canonical retry period', async () => {
+    const lookup = vi.fn(async () => undefined as boolean | undefined);
+    const filter = new CodexOtelSubagentFilter(lookup);
+    filter.check(THREAD, 1000);
+    await vi.waitFor(() => expect(filter.pendingCount).toBe(0));
+    filter.check(THREAD, 1000 + CODEX_OTEL_METADATA_RULES.retryMs - 1);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    lookup.mockResolvedValueOnce(true);
+    filter.check(THREAD, 1000 + CODEX_OTEL_METADATA_RULES.retryMs);
+    await vi.waitFor(() => expect(filter.check(THREAD, 1001 + CODEX_OTEL_METADATA_RULES.retryMs)).toBe(true));
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+  it('bounds concurrent reads and cached identities', async () => {
+    const lookup = vi.fn(() => new Promise<boolean | undefined>(() => {}));
+    const filter = new CodexOtelSubagentFilter(lookup);
+    for (let i = 0; i < CODEX_OTEL_METADATA_RULES.maxCachedThreads * 2; i++) filter.check(`sample-thread-${i}`, 1000);
+    expect(lookup).not.toHaveBeenCalled();
+    await Promise.resolve();
+    expect(lookup).toHaveBeenCalledTimes(CODEX_OTEL_METADATA_RULES.maxInFlight);
+    expect(filter.pendingCount).toBe(CODEX_OTEL_METADATA_RULES.maxInFlight);
+    expect(filter.cachedCount).toBe(CODEX_OTEL_METADATA_RULES.maxCachedThreads);
   });
 });

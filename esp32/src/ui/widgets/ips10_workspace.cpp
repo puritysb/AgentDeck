@@ -3,6 +3,7 @@
 #include "config.h"
 #if defined(BOARD_IPS10)
 #include "ips10_workspace.h"
+#include "../terrarium/creature_glyphs_generated.h"
 #include "ips10_ocean_generated.h"
 #include "ips10_relief_claude_generated.h"
 #include "ips10_relief_codex_generated.h"
@@ -173,6 +174,70 @@ static const lv_image_dsc_t* reliefFor(const char* agent) {
     if(!strcmp(agent,"openclaw"))return &IPS10Relief_openclaw::image;
     return nullptr;
 }
+// Feature descriptors have renderer lifetime: LVGL queues draw tasks, so their
+// source must never point at a callback-local image descriptor. Masks stay in flash.
+static lv_image_dsc_t claudeFeatures[CreatureGlyphs::OCTOPUS_FEATURE_COUNT];
+static lv_image_dsc_t codexFeatures[CreatureGlyphs::CODEX_FEATURE_COUNT];
+static lv_image_dsc_t openclawFeatures[CreatureGlyphs::OPENCLAW_MARK_FEATURE_COUNT];
+struct FeatureSet {
+    const char* agent;
+    const CreatureGlyphs::FeatureLayer* layers;
+    size_t count;
+    lv_image_dsc_t* images;
+};
+static const FeatureSet featureSets[] = {
+    {"claude-code", CreatureGlyphs::OCTOPUS_FEATURES, CreatureGlyphs::OCTOPUS_FEATURE_COUNT, claudeFeatures},
+    {"codex-cli", CreatureGlyphs::CODEX_FEATURES, CreatureGlyphs::CODEX_FEATURE_COUNT, codexFeatures},
+    {"openclaw", CreatureGlyphs::OPENCLAW_MARK_FEATURES, CreatureGlyphs::OPENCLAW_MARK_FEATURE_COUNT, openclawFeatures},
+};
+static_assert(sizeof(claudeFeatures) + sizeof(codexFeatures) + sizeof(openclawFeatures) <= 512,
+              "Feature image descriptors must stay bounded in internal static RAM");
+static void initFeatureImages() {
+    for (auto& set : featureSets) {
+        for (size_t i = 0; i < set.count; ++i) {
+            const auto& layer = set.layers[i];
+            auto& image = set.images[i];
+            image.header.magic = LV_IMAGE_HEADER_MAGIC;
+            image.header.cf = LV_COLOR_FORMAT_A8;
+            image.header.w = layer.width; image.header.h = layer.height;
+            image.header.stride = layer.width;
+            image.data_size = layer.width * layer.height;
+            image.data = layer.alpha;
+        }
+    }
+}
+static void drawBrandFeatures(lv_event_t* event) {
+    auto* image = static_cast<lv_obj_t*>(lv_event_get_target(event));
+    const void* source = lv_image_get_src(image);
+    if (!source || lv_image_src_get_type(source) != LV_IMAGE_SRC_VARIABLE) return;
+    const auto* body = static_cast<const lv_image_dsc_t*>(source);
+    if (body->header.cf != LV_COLOR_FORMAT_A8) return; // baked reliefs already contain their features
+    for (const auto& set : featureSets) {
+        // Match the provider descriptor, not header-local static mask addresses.
+        if (!glyphFor || glyphFor(set.agent) != body) continue;
+        lv_point_t pivot; lv_image_get_pivot(image, &pivot);
+        lv_area_t bounds; lv_obj_get_coords(image, &bounds);
+        const int sx = lv_image_get_scale_x(image), sy = lv_image_get_scale_y(image);
+        for (size_t i = 0; i < set.count; ++i) {
+            const auto& feature = set.layers[i];
+            lv_draw_image_dsc_t draw; lv_draw_image_dsc_init(&draw);
+            lv_obj_init_draw_image_dsc(image, LV_PART_MAIN, &draw);
+            draw.src = &set.images[i];
+            draw.recolor = lv_color_make(feature.red, feature.green, feature.blue);
+            draw.recolor_opa = LV_OPA_COVER;
+            draw.scale_x = sx; draw.scale_y = sy; draw.pivot = {0, 0};
+            const int x = bounds.x1 + pivot.x + (int(feature.x) - pivot.x) * sx / LV_SCALE_NONE;
+            const int y = bounds.y1 + pivot.y + (int(feature.y) - pivot.y) * sy / LV_SCALE_NONE;
+            lv_area_t area = {x, y, x + feature.width - 1, y + feature.height - 1};
+            draw.image_area = area;
+            lv_draw_image(lv_event_get_layer(event), &draw, &area);
+        }
+        return;
+    }
+}
+static void bindBrandFeatures(lv_obj_t* image) {
+    lv_obj_add_event_cb(image, drawBrandFeatures, LV_EVENT_DRAW_MAIN_END, nullptr);
+}
 static portMUX_TYPE diagMux=portMUX_INITIALIZER_UNLOCKED;
 static Diagnostics diag{};
 
@@ -286,6 +351,7 @@ static void updateVoice(uint32_t now,bool force=false) {
 }
 
 lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
+    initFeatureImages();
     presentedId[0]=0;
     glyphFor=glyph; count=0; filter=0; history=false; voiceOpen=false;lastUpdate=0;
     overviewMode=true;page=0;pageSince=millis();pageHeld=false;
@@ -330,7 +396,7 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     for(int i=0;i<10;++i) {
         cards[i]=box(rail,0,i*110,railW,100,Theme::MidWater);
         lv_obj_set_style_border_width(cards[i],2,0);
-        marks[i]=lv_image_create(cards[i]);lv_obj_set_pos(marks[i],0,4);
+        marks[i]=lv_image_create(cards[i]);bindBrandFeatures(marks[i]);lv_obj_set_pos(marks[i],0,4);
         lv_obj_set_style_image_recolor_opa(marks[i],LV_OPA_COVER,0);
         label(rowTitle[i],cards[i],64,16,railW-80,&font_studio_20,Theme::HUDText);
         label(rowState[i],cards[i],64,44,railW-80,&font_studio_16,Theme::HUDDim);
@@ -343,7 +409,7 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     lv_obj_add_flag(detail,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(detail,LV_DIR_VER);
     label(heading,detail,24,16,detailW-124,&font_studio_20,Theme::HUDText);
     label(identity,detail,24,54,detailW-124,&font_studio_16,Theme::HUDDim);
-    focusGlyph=lv_image_create(detail);lv_obj_set_pos(focusGlyph,detailW-88,8);
+    focusGlyph=lv_image_create(detail);bindBrandFeatures(focusGlyph);lv_obj_set_pos(focusGlyph,detailW-88,8);
     lv_obj_set_style_image_recolor_opa(focusGlyph,LV_OPA_COVER,0);
     // These are reported collaboration counts, never inferred progress. The
     // raised tiles provide a glanceable map of active/completed/background work.
@@ -387,7 +453,7 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
         auto& c=usageCards[p];
         c.card=box(resourcePane,0,44,252,160,Theme::DeepSea);lv_obj_set_style_bg_opa(c.card,LV_OPA_80,0);
         lv_obj_set_style_border_width(c.card,1,0);lv_obj_set_style_border_color(c.card,lv_color_hex(Theme::ShallowWater),0);
-        c.mark=lv_image_create(c.card);lv_obj_set_pos(c.mark,12,8);lv_obj_clear_flag(c.mark,LV_OBJ_FLAG_CLICKABLE);
+        c.mark=lv_image_create(c.card);bindBrandFeatures(c.mark);lv_obj_set_pos(c.mark,12,8);lv_obj_clear_flag(c.mark,LV_OBJ_FLAG_CLICKABLE);
         lv_image_set_pivot(c.mark,0,0);lv_image_set_scale(c.mark,112);   // 64px mark → 28px
         const auto* mark=glyphFor?glyphFor(usageAgents[p]):nullptr;visible(c.mark,mark);
         if(mark){lv_image_set_src(c.mark,mark);
@@ -419,7 +485,7 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
         lv_label_set_long_mode(podLatest[i].obj,LV_LABEL_LONG_DOT);lv_obj_set_height(podLatest[i].obj,72);
         seats[i]=box(overview,0,0,100,126,Theme::DeepSea);lv_obj_set_style_bg_opa(seats[i],LV_OPA_TRANSP,0);
         lv_obj_add_event_cb(seats[i],selectCb,LV_EVENT_CLICKED,reinterpret_cast<void*>(static_cast<intptr_t>(i)));
-        creatures[i]=lv_image_create(seats[i]);lv_image_set_pivot(creatures[i],0,0);lv_obj_clear_flag(creatures[i],LV_OBJ_FLAG_CLICKABLE);
+        creatures[i]=lv_image_create(seats[i]);bindBrandFeatures(creatures[i]);lv_image_set_pivot(creatures[i],0,0);lv_obj_clear_flag(creatures[i],LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_style_image_recolor_opa(creatures[i],LV_OPA_COVER,0);
         label(seatState[i],seats[i],0,104,100,&font_studio_16,Theme::HUDText);
         label(childLabel[i],seats[i],20,124,90,&font_studio_16,Theme::StatusCyan);

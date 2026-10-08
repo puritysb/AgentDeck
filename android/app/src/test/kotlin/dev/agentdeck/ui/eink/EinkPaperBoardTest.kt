@@ -10,6 +10,28 @@ import org.junit.Test
 
 class EinkPaperBoardTest {
 
+    @Test fun `CI waits stay readable in quiet paper chips and clear without inventing an outcome`() {
+        val wait = dev.agentdeck.net.CiWaitStatus(phase = "unknown",agentWaiting = true,pr = 432,
+            checks = dev.agentdeck.net.CiWaitChecks(10,7,0,3))
+        val row = session("ci","idle","CI QA").copy(waitingOn = wait,activity = null)
+        val state = DashboardState(agentType = "daemon",siblingSessions = listOf(row))
+        val board = buildPaperBoard(state)
+        assertEquals("CI UNKNOWN #432 · 7/10",paperCiLine(board.quiet.single()))
+        assertEquals("1 CI wait",paperMastheadSummary(board))
+        val cleared = buildPaperBoard(state.copy(siblingSessions = listOf(row.copy(waitingOn = null))))
+        assertEquals(null,paperCiLine(cleared.quiet.single()))
+        assertEquals("1 idle",paperMastheadSummary(cleared))
+    }
+
+    @Test fun `paper permission row outranks a stale primary CI roster and keeps its question`() {
+        val row = session("self","idle").copy(waitingOn = dev.agentdeck.net.CiWaitStatus(phase = "running",agentWaiting = true),question = "Approve edit?")
+        val board = buildPaperBoard(DashboardState(sessionId = "self",agentType = "claude-code",agentState = AgentState.AWAITING_PERMISSION,siblingSessions = listOf(row)))
+        assertEquals(1,board.needsYou.size)
+        assertEquals("Approve edit?",board.needsYou.single().question)
+        assertEquals(null,paperCiLine(board.needsYou.single()))
+        assertTrue(board.quiet.isEmpty())
+    }
+
     private fun session(id: String, state: String, project: String = "AgentDeck", agent: String = "claude-code") =
         SessionInfo(
             id = id, port = 9120, projectName = project, agentType = agent,

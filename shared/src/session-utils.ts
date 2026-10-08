@@ -7,6 +7,37 @@
  * The Swift value is emitted by generate-observed-agent-rules.mjs. */
 export const OPENCODE_PENDING_REQUEST_LIMIT = 64;
 
+/** Bounded asynchronous rollout metadata checks used by both daemon OTel fallbacks. */
+export const CODEX_OTEL_METADATA_RULES = {
+  headBytes: 128 * 1024,
+  maxCachedThreads: 256,
+  maxInFlight: 8,
+  retryMs: 60_000,
+} as const;
+
+/** Explicit rollout discriminators, never an inferred process/project parent. */
+export function codexSessionMetaIsSubagent(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  const meta = payload as Record<string, unknown>;
+  const source = meta.source;
+  if (source && typeof source === 'object' && !Array.isArray(source) && 'subagent' in source) return true;
+  return meta.thread_source === 'subagent'
+    && typeof meta.parent_thread_id === 'string' && meta.parent_thread_id.trim().length > 0;
+}
+
+/** Missing discriminators are unreadable ownership evidence, not a parent verdict. */
+export function codexSessionMetaSubagentVerdict(payload: unknown): boolean | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
+  if (codexSessionMetaIsSubagent(payload)) return true;
+  const meta = payload as Record<string, unknown>;
+  if (meta.thread_source === 'subagent') return undefined; // Incomplete child discriminator is not a parent.
+  const source = meta.source;
+  const readableSource = typeof source === 'string' ? source.trim().length > 0
+    : source !== null && typeof source === 'object' && !Array.isArray(source) && Object.keys(source).length > 0;
+  const readableThreadSource = typeof meta.thread_source === 'string' && meta.thread_source.trim().length > 0;
+  return readableSource || readableThreadSource ? false : undefined;
+}
+
 // ===== State Ranking =====
 
 /**

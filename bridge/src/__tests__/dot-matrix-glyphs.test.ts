@@ -1,3 +1,5 @@
+import { drawOfficialDotGlyph } from '../pixoo/pixoo-sprites.js';
+import { paintOfficialFeatures } from '../pixoo/official-features.js';
 import { usageRgb } from '@agentdeck/shared';
 import { describe, expect, it } from 'vitest';
 import {
@@ -80,14 +82,16 @@ describe('Timebox Mini Agent Beacon', () => {
     expect(changed).toBeGreaterThan(8);
   });
 
-  it('keeps OpenCode hollow and OpenClaw teal-eyed at physical resolution', () => {
+  it('keeps OpenCode hollow and OpenClaw source teal highlights at physical resolution', () => {
     const openCode = new Uint8Array(MICRO_SIZE * MICRO_SIZE * 3);
     const openClaw = new Uint8Array(MICRO_SIZE * MICRO_SIZE * 3);
     paintTimeboxBeacon(openCode, 'opencode', 'idle', 0);
     paintTimeboxBeacon(openClaw, 'crayfish', 'idle', 0);
     expect(pixel(openCode, 5, 5)).toEqual(background);
-    expect(pixel(openClaw, 4, 4)).toEqual([0, 211, 188]); // idle intensity 0.92
-    expect(pixel(openClaw, 7, 4)).toEqual([0, 211, 188]);
+    // Exact downsampled original glints; no invented full-strength eye pixels.
+    // At9px the source eye/glint spans less than a whole LED and mixes with red.
+    expect(pixel(openClaw, 4, 3)).toEqual([117, 59, 60]);
+    expect(pixel(openClaw, 6, 3)).toEqual([118, 60, 60]);
   });
 
   it('keeps identity fixed and moves only the perimeter rail while processing', () => {
@@ -236,5 +240,39 @@ describe('Pixoo adaptive push policy', () => {
 
   it('keeps the safe active cadence at 2.5 seconds', () => {
     expect(PIXOO_PUSH_POLICY.activeFrameRefreshMs).toBe(2_500);
+  });
+});
+
+
+describe('opaque compact creature features', () => {
+  const pixel = (buf: Uint8Array, x: number, y: number) => [...buf.slice((y * 64 + x) * 3, (y * 64 + x) * 3 + 3)];
+  for (const glyph of ['claudeCode', 'codex', 'openClaw', 'openCode'] as const) {
+    it(`${glyph} actual Pixoo sprite preserves feature color across contrasting water`, () => {
+      const render = (rgb: number[]) => {
+        const buf = Uint8Array.from(Array.from({ length: 64 * 64 * 3 }, (_, i) => rgb[i % 3]));
+        drawOfficialDotGlyph(buf, glyph, .5, .5, 'idle', 0, { cx: .5, cy: .5, zoom: 2 });
+        return buf;
+      };
+      const a = render([40, 73, 105]), b = render([212, 231, 171]);
+      const samples = { claudeCode: [[26, 29]], codex: [[34, 35]], openClaw: [[28, 27], [35, 27]], openCode: [[32, 32]] };
+      for (const [x, y] of samples[glyph]) {
+        if (glyph === 'openCode') { expect(pixel(a, x, y)).toEqual([40, 73, 105]); expect(pixel(b, x, y)).toEqual([212, 231, 171]); }
+        else { expect(pixel(a, x, y)).toEqual(pixel(b, x, y)); }
+      }
+      if (glyph === 'claudeCode') expect(pixel(a, 26, 29)).toEqual([0, 0, 0]);
+      if (glyph === 'codex') expect(pixel(a, 34, 35)).toEqual([255, 255, 255]);
+      if (glyph === 'openClaw') {
+        // At24px, antialiased source glints occupy the fully covered eye pixels.
+        // Their original teal comes over opaque source black, independent of water.
+        expect(pixel(a, 28, 27)).toEqual([3, 79, 76]);
+        const highlight = pixel(a, 35, 27);
+        expect(highlight).toEqual([2, 155, 141]);
+      }
+    });
+  }
+  it('zero alpha OpenCode leaves every arbitrary background pixel untouched', () => {
+    const buf = Uint8Array.from(Array.from({ length: 32 * 32 * 3 }, (_, i) => i % 251));
+    const before = buf.slice(); paintOfficialFeatures(buf, 32, 'openCode', 4, 4, 24);
+    expect(buf).toEqual(before);
   });
 });

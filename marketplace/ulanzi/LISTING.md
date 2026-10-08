@@ -10,13 +10,43 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
-## Current review status — owner report (2026-09-24)
+## 1.8.0 — submitted for review (2026-10-06)
 
-Ulanzi is the remaining unapproved non-Apple store submission. The pending
-version is 1.4.0, which replaced the 1.3.0 review in place as recorded below.
-No duplicate review or replacement upload was created during this triage.
-The last independently verified public version remains 1.2.0; public delivery
-has not been rechecked. Follow [#314](https://github.com/puritysb/AgentDeck/issues/314).
+Updated the existing 1.7.0 review record using **Edit review work**. Reopened it
+and verified version 1.8.0, new CDN ZIP `50eb0d2bd061b72f368cdc58ea24d83b.zip`,
+and all seven saved locale pairs against [1.7.0/listing-locales.json](1.7.0/listing-locales.json).
+The upload again replaced localized copy and selected unsupported devices; both
+were corrected before saving. D200/D200H/D200X and all three OS variants are
+selected; Dial and AU05 remain excluded. Existing banner media is retained.
+
+The update note covers per-session model/effort/mode, NOW cards, conversation-bound
+OpenClaw MODEL/THINKING pickers, visible refusals and CI/creature improvements.
+Claude, Codex and Hermes settings are explicitly read-only. Source is `4168e572`;
+`ulanzi-v1.8.0` was pushed after the review record was verified, and its GitHub
+package is public. Marketplace approval and publication remain pending.
+
+## 1.7.0 — submitted for review (2026-10-04)
+
+Created a new review version from published 1.6.0. The first submission was
+interrupted by session expiry; after signing in again, one review record was
+created and verified under **Works under review (1)**. All seven saved locale
+pairs match [1.7.0/listing-locales.json](1.7.0/listing-locales.json). The uploader
+replaced locale copy and selected unsupported devices; the final saved review
+has D200/D200H/D200X selected and **Dial/AU05 excluded**. Hermes is explicitly
+read-only. The existing banner and regenerated equivalent cover are retained.
+
+Source `2ee27840`; tag `ulanzi-v1.7.0` was pushed after submission. The public
+listing remains last verified at 1.6.0; review submission is not publication.
+
+## 1.6.0 public — listing verification (2026-10-03)
+
+The signed-in published-work record and the normal public listing at
+<https://ugc.ulanzistudio.com/contentView/1141> both show **Version 1.6.0**,
+category **AI**, Windows/Mac and **D200, D200H, D200X**; Dial is not listed.
+This confirms delivery of the [1.6.0 submission](../../docs/devlog/entries/2026-09-28-store-submissions-160.md).
+No new upload or review replacement was needed. The exact approval time was not
+exposed by the listing, so this is the verification date, not an approval date.
+The older review receipts below are historical.
 
 ## 1.4.0 — existing review updated (2026-09-21)
 

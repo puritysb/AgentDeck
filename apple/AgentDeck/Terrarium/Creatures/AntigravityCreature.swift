@@ -30,8 +30,11 @@ final class AntigravityCreature: Creature {
     var scale: Float
 
     private var time: Float = 0
-    private(set) var currentX: Float
-    private(set) var currentY: Float
+    var currentX: Float { simulationX }
+    var currentY: Float { simulationY }
+    var simulationPosition: SIMD2<Float> { [simulationX, simulationY] }
+    private(set) var simulationX: Float
+    private(set) var simulationY: Float
     private var phaseOffset: Float
     private var driftPhase: Float
 
@@ -58,8 +61,8 @@ final class AntigravityCreature: Creature {
         self.homeX = homeX
         self.homeY = homeY
         self.scale = scale
-        self.currentX = homeX
-        self.currentY = homeY
+        self.simulationX = homeX
+        self.simulationY = homeY
         self.phaseOffset = Float.random(in: 0...Float.pi * 2)
         self.driftPhase = Float.random(in: 0...Float.pi * 2)
     }
@@ -106,7 +109,7 @@ final class AntigravityCreature: Creature {
         let pulseSpeed: Float = visualState == .working ? 1.5 : 0.5
         let pulseAmp: Float = visualState == .working ? 0.012 : 0.006
         let pulseBob = sin((time + phaseOffset) * pulseSpeed) * pulseAmp
-        currentY += (targetY + pulseBob - currentY) * dt * lerpRate
+        simulationY += (targetY + pulseBob - simulationY) * dt * lerpRate
 
         let driftAmp: Float = visualState == .working ? min(0.04, 0.015 + scale * 0.025) : 0.005
         let driftSpeed: Float = visualState == .working ? 0.15 : 0.25
@@ -116,12 +119,12 @@ final class AntigravityCreature: Creature {
         let anchorX = visualState == .sleeping
             ? min(homeX, TerrariumLayout.crayfishClearMaxX)
             : homeX
-        currentX += (anchorX + driftX - currentX) * dt * lerpRate
+        simulationX += (anchorX + driftX - simulationX) * dt * lerpRate
 
         let minX = max(0.50, anchorX - 0.07)
         let maxX = min(0.88, anchorX + 0.07)
-        currentX = min(maxX, max(minX, currentX))
-        currentY = min(0.72, max(0.08, currentY))
+        simulationX = min(maxX, max(minX, simulationX))
+        simulationY = min(0.72, max(0.08, simulationY))
     }
 
     func currentPosition() -> (x: Float, y: Float) { (currentX, currentY) }

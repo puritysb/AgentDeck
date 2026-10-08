@@ -194,7 +194,7 @@ fun EinkMonitorScreen(
 
             // Stable key that captures session count + individual states (for refresh triggers)
             val sessionsKey = state.siblingSessions.joinToString(",") {
-                "${it.id}:${it.agentType}:${it.state}:${it.projectName}"
+                "${it.id}:${it.agentType}:${it.state}:${it.projectName}:${it.waitingOn}"
             }
 
             Column(modifier = Modifier.fillMaxSize()) {
@@ -291,12 +291,12 @@ fun EinkMonitorScreen(
     }
 }
 
-private fun buildEinkTerrariumRefreshKey(
+internal fun buildEinkTerrariumRefreshKey(
     state: DashboardState,
     terrariumState: dev.agentdeck.terrarium.TerrariumState,
 ): List<Any?> {
     val sessionProjection = state.siblingSessions.map {
-        "${it.id}:${it.agentType}:${it.state}:${it.projectName}"
+        "${it.id}:${it.agentType}:${it.state}:${it.projectName}:${it.waitingOn}"
     }
     return listOf(
         state.sessionId,
@@ -314,6 +314,8 @@ private fun buildEinkTerrariumRefreshKey(
         state.antigravityStatus?.planName,
         state.antigravityStatus?.availableCredits,
         state.antigravityStatus?.minimumCreditAmountForUsage,
+        terrariumState.ciWaits,
+        terrariumState.ciWaitingIds,
         terrariumState.agents.map { "${it.sessionId}:${it.agentType}:${it.visualState}" },
         terrariumState.cloudCreatures.map { "${it.sessionId}:${it.agentType}:${it.visualState}" },
         terrariumState.openCodeCreatures.map { "${it.sessionId}:${it.agentType}:${it.visualState}" },
@@ -872,7 +874,7 @@ private fun EinkPortraitLayout(
     }
     val featuredAttention = remember(state) { buildEinkAttentionFeatured(state) }
     val sessionsKey = state.siblingSessions.joinToString(",") {
-        "${it.id}:${it.agentType}:${it.state}:${it.projectName}"
+        "${it.id}:${it.agentType}:${it.state}:${it.projectName}:${it.waitingOn}"
     }
 
     Column(modifier = Modifier.fillMaxSize()) {

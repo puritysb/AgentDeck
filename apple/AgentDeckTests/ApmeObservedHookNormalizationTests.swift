@@ -3,6 +3,26 @@ import XCTest
 @testable import AgentDeck
 
 final class ApmeObservedHookNormalizationTests: XCTestCase {
+    func testHermesModelFeedsCollectorIdentityWithoutInventingUnknownModels() {
+        let sid = "observed:hermes:hermes-" + String(repeating: "a", count: 32)
+        for event in ["hermes_session_start", "hermes_user_prompt_submit", "hermes_stop"] {
+            let hook = DaemonServer.normalizeApmeObservedHook(
+                event: event, json: ["model": "agentdeck-ci-fixture"], sessionId: sid)
+            XCTAssertEqual(hook?.payload["model_name"] as? String, "agentdeck-ci-fixture")
+        }
+        for model: Any in ["", " \n", 42] {
+            let hook = DaemonServer.normalizeApmeObservedHook(
+                event: "hermes_tool_start", json: ["model": model], sessionId: sid)
+            XCTAssertNil(hook?.payload["model_name"])
+        }
+        let bounded = DaemonServer.normalizeApmeObservedHook(
+            event: "hermes_session_start", json: ["model": String(repeating: "x", count: 201)], sessionId: sid)
+        XCTAssertEqual((bounded?.payload["model_name"] as? String)?.count, 200)
+        let codex = DaemonServer.normalizeApmeObservedHook(
+            event: "codex_session_start", json: ["model": "unmapped"], sessionId: "codex:thread-1")
+        XCTAssertNil(codex?.payload["model_name"], "The field alias belongs to the Hermes contract")
+    }
+
     func testCodexPromptBecomesAgentNeutralBoundaryWithDurableSession() {
         let hook = DaemonServer.normalizeApmeObservedHook(
             event: "codex_user_prompt_submit",

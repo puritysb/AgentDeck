@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Android maintainers
 reviewed: 2026-07-21
-revision: 2026-07-21
+revision: 2026-10-06
 source_of_truth: docs/android-ui.md
 validators: [bash design/lint.sh, pnpm test:android]
 ---
@@ -25,11 +25,20 @@ validators: [bash design/lint.sh, pnpm test:android]
 - **Ollama Status**: ollama 프로세스 상태 (running/stopped) + 실행 중 모델 목록
 - **Creature Animation**: 도트/픽셀 아트 형태의 에이전트 캐릭터 애니메이션
 
-Timeline 은 raw event feed 가 아니라 의미 단위 projection 이다. `chat_start` 는 같은
-session/project 의 completion 이 생기기 전까지만 진행 중 row 로 남고, completion 이후에는
-`chat_response` / `chat_end` / `eval_result` 가 요약된 단위 session row 를 대표한다. Android tablet 과
-e-ink 는 `TimelineDisplay.kt` 의 같은 projection 을 사용하며, 그룹화는 `runId → sessionId →
-projectName+agentType` context 가 같을 때만 허용한다.
+Timeline 은 raw event feed 가 아니라 의미 단위 projection 이다. 실제 사용자 요청인
+`chat_start` 아래에 같은 실행의 일반 툴 활동과 `chat_response` / `chat_end`를 묶는다.
+툴 요약은 요청 아래에 표시하고 상세 결과는 펼쳐서 확인한다. 승인 요청, 하위 에이전트 기록,
+부모 요청을 확인할 수 없는 활동은 독립 행을 유지한다. 저장된 전체 범위를 그룹화한 뒤 화면
+행 수를 제한하므로 다른 세션의 로그가 많아도 요청과 응답이 분리되지 않는다. 명시된
+`sessionId`나 `runId`가 다르면 같은 `taskId`여도 툴 활동은 합치지 않는다.
+
+Android selects the most recently updated groups after chronological grouping:
+50 on LCD and three on e-ink. Tool result `endedAt`, merged reply and completion
+timestamps contribute to recency; equal activity timestamps preserve source
+group order. E-ink shows the latest meaningful child at the group's latest
+activity time, so a late tool result can supersede an older reply. Progress-only
+metadata updates recency without replacing meaningful glance text. Explicit
+selection and inline expansion follow the originating turn as rows move.
 
 ## E-ink (Crema/Pantone/Kobo) — shared Dashboard model, readable projection
 

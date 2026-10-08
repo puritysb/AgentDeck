@@ -1,3 +1,4 @@
+import { DAEMON_HANDOVER } from '@agentdeck/shared';
 /**
  * The CLI daemon's **preferred port** — the port it intends to serve, as
  * opposed to the port it ended up on.
@@ -49,7 +50,7 @@ export const DAEMON_PORT_MAX = 65535;
  * macOS measurement bound successfully at ~17s; #370 exceeded this 20s budget.
  * The listener's platform-specific budget below is separate from that floor.
  */
-export const PREFERRED_PORT_RECLAIM_MS = 20_000;
+export const PREFERRED_PORT_RECLAIM_MS = DAEMON_HANDOVER.preferredPortReclaimMs;
 
 /**
  * #370 exhausted 20s on macOS; a subsequent restart bound the preferred port
@@ -58,7 +59,7 @@ export const PREFERRED_PORT_RECLAIM_MS = 20_000;
  * other platforms retain 20s. A successful real bind ends the wait immediately.
  */
 export function preferredPortReclaimBudgetMs(platform: NodeJS.Platform = process.platform): number {
-  return platform === 'darwin' ? 90_000 : PREFERRED_PORT_RECLAIM_MS;
+  return platform === 'darwin' ? DAEMON_HANDOVER.darwinPortReclaimMs : PREFERRED_PORT_RECLAIM_MS;
 }
 
 export type DaemonPortSource = 'flag' | 'env' | 'settings' | 'default';

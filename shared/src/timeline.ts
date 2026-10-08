@@ -686,6 +686,9 @@ export function deduplicateEntry(
     if (entry.ts - e.ts > 8_000) break;
     if (Math.abs(entry.ts - e.ts) > 8_000) continue;
     if (e.type !== entry.type || e.raw !== entry.raw) continue;
+    // Scheduled evidence belongs to its session. Concurrent CI waits can
+    // share identical labels without describing the same observation.
+    if (entry.type === 'scheduled' && entry.sessionId && e.sessionId && entry.sessionId !== e.sessionId) continue;
     if (entry.type === 'chat_end' && (entry.startedAt != null || e.startedAt != null)
       && entry.startedAt !== e.startedAt) continue;
     return { action: 'skip' };

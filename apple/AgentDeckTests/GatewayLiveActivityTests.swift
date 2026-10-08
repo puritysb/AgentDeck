@@ -33,7 +33,8 @@ final class GatewayLiveActivityTests: XCTestCase {
         let rendered = try JSONDecoder().decode([TimelineEntry].self,
             from: JSONEncoder().encode(rows.map { $0.entry }))
         let groups = groupConsecutive(rendered)
-        XCTAssertEqual(groups.count, 2) // one request/answer group and one tool
+        XCTAssertEqual(groups.count, 1) // prompt, tool activity and answer form one turn
+        XCTAssertEqual(groups.first?.toolActivity.count, 1)
         XCTAssertEqual(groups.first?.mergedResponse?.raw, "AGENTDECK_OC_CHAT_DONE")
         XCTAssertEqual(Set(rows.compactMap { $0.entry.runId }).count, 1)
         XCTAssertTrue(rows.allSatisfy { $0.entry.automated == false })
@@ -66,9 +67,28 @@ final class GatewayLiveActivityTests: XCTestCase {
         _ = call("3", "messages.groupChat", 30)
         let fourth = call("4", ".", 40, failed: true)
         XCTAssertEqual(fourth[0].entry.raw, "openclaw ×4 · channels, agents.main, messages.groupChat, … · 1 failed")
-        XCTAssertEqual(fourth[0].entry.detail?.components(separatedBy: "\n").count, 4)
+        XCTAssertTrue(fourth[0].entry.detail?.contains("FAILED · openclaw\nInput: .") == true)
+        XCTAssertTrue(fourth[0].entry.detail?.contains("Input: channels") == true)
         XCTAssertEqual(GatewayLiveActivity.toolFoldRaw(["exec · a", "read · b", "exec · c", "openclaw · d · failed"]),
                        "4 tools · exec ×2, read, openclaw · 1 failed")
+    }
+
+    func testFoldPreservesFailureEvidenceAndRecentResultsWithinBudget() {
+        var live = GatewayLiveActivity()
+        var last: DaemonTimelineEntry?
+        for i in 0..<60 {
+            last = live.ingest("session.tool", ["sessionKey": "agent:main:test", "runId": "evidence",
+                "data": ["phase": "result", "name": "exec", "toolCallId": "call-\(i)",
+                         "args": ["command": "inspect-\(i) " + String(repeating: "x", count: 300)],
+                         "isError": i == 1,
+                         "result": i == 1 ? "Permission denied: fixture directory" : "result-\(i)"]], now: Double(i + 10)).first?.entry
+        }
+        XCTAssertTrue(last?.raw.contains("1 failed") == true)
+        XCTAssertTrue(last?.detail?.contains("FAILED · exec") == true)
+        XCTAssertTrue(last?.detail?.contains("Permission denied: fixture directory") == true)
+        XCTAssertTrue(last?.detail?.contains("result-59") == true)
+        XCTAssertTrue(last?.detail?.contains("additional tool details omitted") == true)
+        XCTAssertLessThanOrEqual(last?.detail?.count ?? 0, 1000)
     }
 
     func testConcurrentRunsAndLateToolResults() {

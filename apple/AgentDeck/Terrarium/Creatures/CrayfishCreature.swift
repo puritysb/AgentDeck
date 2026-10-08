@@ -14,7 +14,6 @@ final class CrayfishCreature {
         "M21.193 9.753c2.574-.5 3.378 1.433 2.411 3.365-.58 1.159-1.476 1.361-2.342.96l-.011-.005a2.419 2.419 0 01-.114-.056l-.019-.01a2.751 2.751 0 01-.115-.067l-.023-.014c-.035-.022-.071-.044-.106-.068l-.05-.035c-.55-.388-1.062-1.007-1.44-1.76-.276-.647-.311-1.132-.174-1.472.176-.439.636-.639 1.23-.639.032-.011.066-.02.099-.03.08-.026.16-.05.238-.072l.117-.03a5.502 5.502 0 01.3-.067z",
     ]
     private lazy var bodyPaths = Self.bodyPathData.map(Self.parseSvgPath)
-    private lazy var eyePaths = Self.eyePathData.map(Self.parseSvgPath)
 
     // MARK: - State
 
@@ -166,8 +165,7 @@ final class CrayfishCreature {
             for path in bodyPaths {
                 ctx.fill(path, with: .color(fillColor.opacity(alpha)), style: FillStyle(eoFill: true))
             }
-            let eyeColor = eyeHighlightColor().opacity(alpha)
-            for path in eyePaths { ctx.fill(path, with: .color(eyeColor)) }
+            CreatureBrandFeatures.draw("openclaw", context: ctx)
         }
     }
 
@@ -201,24 +199,6 @@ final class CrayfishCreature {
             return side * (-8 + sin(time * 0.5) * 2)
         case .dormant:
             return 0
-        }
-    }
-
-    private func eyeHighlightColor() -> Color {
-        switch visualState {
-        case .routing:
-            let period = TerrariumTiming.eyeFlashPeriod
-            let flash = sin(time * 2 * Float.pi / period)
-            let intensity = (flash * 0.5 + 0.5) * 0.5
-            return lerpColor(TerrariumColors.crayfishEye, .white, Float(intensity))
-        case .sitting:
-            let breath = sin(time * 0.6) * 0.15 + 0.85
-            return TerrariumColors.crayfishEye.opacity(Double(breath))
-        case .sick:
-            let flicker = sin(time * 1.2) * 0.1 + 0.45
-            return TerrariumColors.crayfishEye.opacity(Double(flicker))
-        default:
-            return TerrariumColors.crayfishEye
         }
     }
 

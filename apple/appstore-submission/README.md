@@ -1,17 +1,40 @@
 # AgentDeck App Store submission package
 
-This directory contains the assets that are safe to upload to App Store Connect.
+This directory contains prepared media and dated prior submission assets. Select
+the appropriate release set before uploading.
 
 ## Screenshot sets
 
 Localized screenshots live under `screenshots/{en,ko,ja}/{macOS,iPhone,iPad}/`.
-The current set contains five macOS images and four images per mobile platform.
+The retained historical set contains five macOS images and four images per mobile
+platform for each locale (39 images).
 Raw source captures are under `screenshots-raw/`. Use only privacy-reviewed
 captures of the actual app with synthetic sessions; never publish real workspace
 names, conversations, desktop chrome or network addresses.
 
 Do not upload from `apple/appstore-screenshots/`: it is a historical archive,
 not the current submission package.
+
+## 1.8.0 supplement selection
+
+[Readiness and provenance](media-1.8.0-readiness.json) selects 12 new localized
+screenshots: `06-hermes-fleet` and `07-github-ci` for iPad, plus
+`06-native-attention` and `07-ci-context` for macOS, in English, Korean and Japanese.
+The [contact sheet](screenshots-raw/1.8.0-supplement/contact-sheet.jpg) shows all 12.
+The original 39 images remain unchanged.
+
+The iPad images reuse approved fictional native simulator captures. Mac images
+reuse prior actual native QA with four synthetic agents and no Hermes. The CI
+frame shows UNKNOWN evidence; its exact capture commit was not retained. These
+frames preserve current aquarium assets but do not demonstrate new settings
+dialogs. Captions reflect these limits. New iPhone frames showed onboarding or
+pairing and were rejected, so no new iPhone supplement is selected.
+
+This supplement is prepared locally, not submitted. Play, Elgato and Ulanzi retain
+dated listing media; current Android QA and rendered key previews remain
+acceptance evidence. The manifest identifies remaining listing selection/review
+work. Public showcase media is not an upload-ready Apple App Preview; the existing
+preview files below retain their documented 1.5 provenance.
 
 ## App Preview videos
 

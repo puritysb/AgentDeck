@@ -3,7 +3,7 @@
  * shared layout engine (`buildLayoutMap`) consumes. Focused-session selection
  * follows the AgentDeck rule: focusedSessionId ?? sessionId.
  */
-import type { BridgeEvent, SessionInfo } from '@agentdeck/shared';
+import { SessionSettingsRequestTracker, type BridgeEvent, type SessionInfo, type SessionSetting } from '@agentdeck/shared';
 
 export class StateStore {
   /** Last raw state_update event (carries focused session's project/model/etc). */
@@ -24,6 +24,17 @@ export class StateStore {
    * error (refusal) or the TTL (daemon dead / message lost).
    */
   private pendingReviewUntil = new Map<string, number>();
+  /** Latest `session_settings` answer per session (#463) — the agent's own values. */
+  private sessionSettings = new SessionSettingsRequestTracker();
+  onSettingsChanged?: () => void;
+  constructor() { this.sessionSettings.onChanged = () => this.onSettingsChanged?.(); }
+  beginSettingsQuery(sessionId: string) { return this.sessionSettings.query(sessionId); }
+  beginSettingMutation(sessionId: string, key: SessionSetting['key'], value: string | null) { return this.sessionSettings.set(sessionId, key, value); }
+  cancelSettings() { this.sessionSettings.cancel(); }
+
+  settingsFor(sessionId: string): import('@agentdeck/shared').SessionSettingsSnapshot | undefined {
+    return this.sessionSettings.snapshot(sessionId);
+  }
 
   /** Local press-ack for REVIEW — show REVIEWING before the daemon round trip. */
   markReviewPending(sessionId: string): void {
@@ -36,10 +47,12 @@ export class StateStore {
   setConnected(connected: boolean): void {
     this.connected = connected;
     if (!connected) this.dot = null;
+    if (!connected) this.sessionSettings.disconnect();
   }
 
   /** Start a focus handshake from the selected sessions_list row, not stale detail. */
   prepareFocus(sessionId: string): void {
+    this.sessionSettings.cancel();
     this.sessionStates.delete(sessionId);
   }
 
@@ -65,6 +78,9 @@ export class StateStore {
       projectName: session.projectName,
       agentType: session.agentType,
       modelName: session.modelName,
+      effortLevel: session.effortLevel,
+      permissionMode: session.permissionMode,
+      mode: session.permissionMode,
       currentTool: session.currentTool,
       question: session.question,
       promptType: session.promptType,
@@ -123,6 +139,9 @@ export class StateStore {
         if (state === this.voiceState) return false;
         this.voiceState = state as typeof this.voiceState;
         return true;
+      }
+      case 'session_settings': {
+        return this.sessionSettings.accept(ev as import('@agentdeck/shared').SessionSettingsEvent) !== undefined;
       }
       case 'review_status': {
         // Refusal / failure ends the optimistic REVIEWING flip immediately;

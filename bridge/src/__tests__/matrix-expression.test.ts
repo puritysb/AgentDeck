@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { MatrixExpression, MATRIX_RULES, type MatrixSession, type MatrixBroadcast, type BridgeEvent } from '@agentdeck/shared';
-import { renderMatrixScene } from '../pixoo/matrix-art.js';
+import { MatrixExpression, MATRIX_RULES, MATRIX_FACES, type MatrixSession, type MatrixBroadcast, type BridgeEvent } from '@agentdeck/shared';
+import { renderMatrixScene, renderMatrixFace, paintFacePips } from '../pixoo/matrix-art.js';
 import { swiftMatrixSource } from '../../../scripts/generate-matrix-expressions.mts';
 import { broadcastMatrix, getLastFrame, renderPreviewFrame } from '../pixoo/pixoo-bridge.js';
 
@@ -59,7 +59,9 @@ describe('expressive BLE matrices', () => {
     engine.updateSessions([row('o', 'processing', 'openclaw'), row('c')], 0);
     engine.ingest({ type: 'timeline_event', entry: { ts: 1000, type: 'chat_start', sessionId: 'o' } }, 1000);
     expect(engine.scene(1000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
-    expect(engine.scene(120000)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    expect(engine.scene(1000 + MATRIX_RULES.askMs - 1)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    // A long turn reads as work, not as a standing question.
+    expect(engine.scene(1000 + MATRIX_RULES.askMs)).toMatchObject({ kind: 'working', glyph: 'summary' });
     engine.ingest({ type: 'timeline_event', entry: { ts: 130000, type: 'chat_response', sessionId: 'o' } }, 130000);
     expect(engine.scene(130000)).toMatchObject({ kind: 'reply', glyph: 'openClaw' });
     expect(engine.scene(176000).kind).toBe('done');
@@ -76,6 +78,31 @@ describe('expressive BLE matrices', () => {
     expect(quiet.scene(8000).kind).not.toBe('asked');
     engine.updateSessions([row('o', 'awaiting_permission', 'openclaw')], 131000);
     expect(engine.scene(131000).kind).toBe('waiting');
+  });
+  it('matches rows to roster sessions across id forms (observed prefix, OpenClaw Gateway presence)', () => {
+    const uuid = '4ba825fc-72de-485d-9aef-8284ddfd97ce';
+    const engine = new MatrixExpression();
+    engine.updateSessions([row(`observed:claude:${uuid}`), row('openclaw-gateway', 'processing', 'openclaw')], 0);
+    // Observed: the roster is prefixed, the rows are the bare uuid.
+    engine.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'chat_start', sessionId: uuid, agentType: 'claude-code' } }, 10);
+    expect(engine.scene(10)).toMatchObject({ kind: 'asked', glyph: 'claudeCode' });
+    engine.ingest({ type: 'timeline_event', entry: { ts: 20, type: 'chat_response', sessionId: uuid, agentType: 'claude-code' } }, 20);
+    expect(engine.scene(20)).toMatchObject({ kind: 'reply', glyph: 'claudeCode' });
+    // OpenClaw rows carry per-agent keys; the roster has one Gateway presence.
+    const claw = new MatrixExpression();
+    claw.updateSessions([row('openclaw-gateway', 'processing', 'openclaw')], 0);
+    claw.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'chat_start', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } }, 10);
+    expect(claw.scene(10)).toMatchObject({ kind: 'asked', glyph: 'openClaw' });
+    claw.ingest({ type: 'timeline_event', entry: { ts: 20, type: 'task_end', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } }, 20);
+    expect(claw.scene(20)).toMatchObject({ kind: 'done', glyph: 'openClaw' });
+    // A result whose session already left keeps the creature its row names.
+    const gone = new MatrixExpression();
+    gone.updateSessions([row('c', 'idle')], 0);
+    gone.ingest({ type: 'timeline_event', entry: { ts: 10, type: 'task_end', sessionId: 'left', agentType: 'codex-cli' } }, 10);
+    expect(gone.scene(10)).toMatchObject({ kind: 'done', glyph: 'codex' });
+    // An unknown agent on a row is still neutral, never another agent.
+    gone.ingest({ type: 'timeline_event', entry: { ts: 30, type: 'task_end', sessionId: 'left2', agentType: 'future-agent' } }, 30);
+    expect(gone.scene(30)).toMatchObject({ kind: 'done', glyph: 'neutral' });
   });
   it('rotates only the live attention owners and clears attention immediately', () => {
     const engine = new MatrixExpression();
@@ -117,12 +144,84 @@ describe('expressive BLE matrices', () => {
     expect(engine.scene(100).glyph).toBe('neutral');
     const signatures = new Set<string>();
     for (const kind of ['working', 'waiting', 'error', 'done', 'idle', 'unknown', 'asked', 'reply'] as const) {
-      const pixels = renderMatrixScene(11, { ...engine.scene(100), kind });
+      const pixels = renderMatrixScene(11, { ...engine.scene(100), kind, face: undefined, pips: 0 });
       const packed = pixels.map(n => Math.round(n / 17));
       expect(packed.some(n => n > 0)).toBe(true);
       signatures.add(Buffer.from(packed).toString('base64'));
     }
     expect(signatures.size).toBe(8);
+  });
+  it('gives every Timebox face its own 4-bit signature in every frame', () => {
+    for (let frame = 0; frame < MATRIX_RULES.frames; frame++) {
+      const signatures = new Set(MATRIX_FACES.map(face =>
+        Buffer.from(renderMatrixFace(face, frame).map(n => Math.round(n / 17))).toString('base64')));
+      expect(signatures.size).toBe(MATRIX_FACES.length);
+    }
+    // Only needs-you faces change brightness between frames (the only pulse).
+    for (const face of MATRIX_FACES) {
+      const peak = (frame: number) => Math.max(...renderMatrixFace(face, frame));
+      if (!['waiting', 'choosing', 'reviewing'].includes(face)) expect(peak(1)).toBe(peak(0));
+    }
+  });
+  it('selects the face from more of the desk than the 32x32 kind', () => {
+    const face = (sessions: MatrixSession[], now = 100, setup?: (e: MatrixExpression) => void) => {
+      const engine = new MatrixExpression(); engine.updateSessions(sessions, 0); setup?.(engine);
+      const { face, pips } = engine.scene(now); return { face, pips };
+    };
+    expect(new MatrixExpression().scene(0).face).toBe('unknown');
+    // An empty roster is not an idle one.
+    expect(face([])).toEqual({ face: 'empty', pips: 0 });
+    expect(face([row('a', 'idle'), row('b', 'idle')])).toEqual({ face: 'idle', pips: 2 });
+    // One working session is the default case; several earn chin pips.
+    expect(face([row('a')])).toEqual({ face: 'working', pips: 1 });
+    expect(face([row('a'), row('b', 'processing', 'codex-cli'), row('c', 'idle')])).toEqual({ face: 'working', pips: 2 });
+    // Each needs-you state has its own face, in a fixed (not rotating) order.
+    expect(face([row('a', 'awaiting_diff'), row('b', 'awaiting_option')])).toEqual({ face: 'choosing', pips: 2 });
+    expect(face([row('a', 'awaiting_diff'), row('b', 'awaiting_permission')], 6000)).toEqual({ face: 'waiting', pips: 2 });
+    expect(face([row('a', 'awaiting_diff')])).toEqual({ face: 'reviewing', pips: 1 });
+    expect(face([row('a', 'awaiting_future')]).face).toBe('waiting');
+    // A CI wait is neither PERM nor WORKING; it needs explicit agentWaiting, and unknown is its own face.
+    const ci = (phase: string, agentWaiting?: boolean): MatrixSession => ({ ...row('c'), waitingOn: { phase, agentWaiting } });
+    expect(face([ci('running', true)])).toEqual({ face: 'ci', pips: 1 });
+    expect(face([ci('queued', true), ci('unknown', true)])).toEqual({ face: 'ci', pips: 2 });
+    expect(face([ci('unknown', true)]).face).toBe('ci-unknown');
+    expect(face([ci('running')]).face).toBe('working');
+    expect(face([ci('passed', true)]).face).toBe('working');
+    expect(face([ci('running', true), row('w')])).toEqual({ face: 'working', pips: 1 });
+    expect(face([{ ...ci('running', true), state: 'awaiting_permission' }]).face).toBe('waiting');
+    // Children working under an idle parent are work, not idleness.
+    expect(face([{ ...row('p', 'idle'), subagents: { active: 3 } }])).toEqual({ face: 'delegating', pips: 3 });
+    expect(face([{ ...row('p', 'idle'), subagents: { active: 0 } }]).face).toBe('idle');
+    expect(face([{ ...row('p', 'idle'), subagents: { active: 2 } }, ci('running', true)]).face).toBe('delegating');
+    // Gateway health is an error only while the daemon emits the OpenClaw session.
+    const gateway = (e: MatrixExpression) => e.ingest({ type: 'state_update', gatewayHasError: true }, 50);
+    expect(face([row('o', 'idle', 'openclaw')], 100, gateway)).toEqual({ face: 'error', pips: 1 });
+    expect(face([row('c', 'idle')], 100, gateway).face).toBe('idle');
+    expect(face([row('o', 'error', 'openclaw')], 100, gateway)).toEqual({ face: 'error', pips: 1 });
+    expect(face([row('o', 'idle', 'openclaw')], 100, e => { gateway(e); e.ingest({ type: 'state_update' }, 60); }).face).toBe('error');
+    expect(face([row('o', 'idle', 'openclaw')], 100, e => { gateway(e); e.ingest({ type: 'state_update', gatewayHasError: false }, 60); }).face).toBe('idle');
+  });
+  it('lets live work replace a result smile after the response window', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('a'), row('b', 'idle')], 0);
+    engine.updateTimeline([{ ts: 100, type: 'task_end', sessionId: 'b' }]);
+    expect(engine.scene(200)).toMatchObject({ kind: 'done', face: 'done' });
+    // The 32x32 keeps its 90 s result count; the face returns to the work.
+    expect(engine.scene(100 + MATRIX_RULES.responseMs)).toMatchObject({ kind: 'done', face: 'working' });
+    engine.updateSessions([row('a', 'idle'), row('b', 'idle')], 20000);
+    expect(engine.scene(20000).face).toBe('done');
+    expect(engine.scene(100 + MATRIX_RULES.resultMs).face).toBe('idle');
+  });
+  it('draws chin pips only when the face carries a count, capped at five', () => {
+    const lit = (face: Parameters<typeof renderMatrixFace>[0], pips: number) => {
+      const out = renderMatrixFace(face, 0); paintFacePips(out, face as never, pips);
+      return Array.from({ length: 11 }, (_, x) => out[(10 * 11 + x) * 3 + 1] > 0 ? 1 : 0).join('');
+    };
+    expect(lit('working', 1)).toBe('00000000000');
+    expect(lit('working', 2)).toBe('00001010000');
+    expect(lit('delegating', 1)).toBe('00000100000');
+    expect(lit('idle', 9)).toBe('01010101010');
+    expect(lit('done', 4)).toBe('00000000000');
   });
   it('routes live Node endpoint frames through the same event state (preview does not replay entrances)', () => {
     vi.useFakeTimers(); vi.setSystemTime(10000);
@@ -147,7 +246,8 @@ describe('expressive BLE matrices', () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'matrix-parity-'));
     try {
       const exe = path.join(temp, 'parity');
-      execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
+      execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Model/ObservedAgentRules.generated.swift',
+        'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
         'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
       const steps: { now: number; event?: Record<string, unknown> }[] = [{ now: 0 }];
       const add = (now: number, event?: Record<string, unknown>) => steps.push({ now, event });
@@ -182,11 +282,35 @@ describe('expressive BLE matrices', () => {
       add(140002, { type: 'timeline_event', entry: { ts: 140002, type: 'chat_start', sessionId: 'a' } });
       add(140003, { type: 'timeline_event', entry: { ts: 140003, type: 'chat_end', sessionId: 'a' } });
       add(140004, { type: 'sessions_list', sessions: [] });
+      // Timebox face inputs: CI waits, children, Gateway health, needs-you kinds, an empty roster.
+      add(150000, { type: 'sessions_list', sessions: [{ ...row('c'), waitingOn: { phase: 'running', agentWaiting: true } },
+        { ...row('k', 'idle'), waitingOn: { phase: 'unknown', agentWaiting: true } }] });
+      add(150750);
+      add(151000, { type: 'sessions_list', sessions: [{ ...row('c', 'idle'), waitingOn: { phase: 'unknown', agentWaiting: true } }, row('d', 'idle')] });
+      add(152000, { type: 'sessions_list', sessions: [{ ...row('c', 'idle'), subagents: { active: 7, peak: 7, completed: 0 } }, row('d', 'idle')] });
+      add(153000, { type: 'sessions_list', sessions: [{ ...row('c', 'idle'), subagents: { active: 0, peak: 7, completed: 7 } }, row('o', 'idle', 'openclaw')] });
+      add(153001, { type: 'state_update', state: 'idle', gatewayHasError: true });
+      add(153002, { type: 'state_update', state: 'idle' });
+      add(153003, { type: 'state_update', state: 'idle', gatewayHasError: false });
+      add(154000, { type: 'sessions_list', sessions: [row('a', 'awaiting_diff'), row('b', 'awaiting_option'), row('c'), row('d'), row('e')] });
+      add(154750);
+      add(155000, { type: 'sessions_list', sessions: [row('a', 'awaiting_diff'), row('c'), row('d')] });
+      add(156000, { type: 'sessions_list', sessions: [row('c'), row('d'), row('e'), row('f'), row('g'), row('h'), row('i')] });
+      add(157000, { type: 'sessions_list', sessions: [] });
+      // Two id forms: an observed (prefixed) roster with bare-uuid rows, the
+      // OpenClaw Gateway presence with per-agent row keys, and a departed row.
+      add(160000, { type: 'sessions_list', sessions: [row('observed:claude:u1'), row('openclaw-gateway', 'processing', 'openclaw')] });
+      add(160001, { type: 'timeline_event', entry: { ts: 160001, type: 'chat_start', sessionId: 'u1', agentType: 'claude-code' } });
+      add(160751); add(160001 + MATRIX_RULES.askMs);
+      add(230000, { type: 'timeline_event', entry: { ts: 230000, type: 'chat_response', sessionId: 'u1', agentType: 'claude-code' } });
+      add(240000, { type: 'timeline_event', entry: { ts: 240000, type: 'chat_start', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
+      add(250000, { type: 'timeline_event', entry: { ts: 250000, type: 'task_end', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
+      add(260000, { type: 'timeline_event', entry: { ts: 260000, type: 'task_end', sessionId: 'left', agentType: 'codex-cli' } });
       const engine = new MatrixExpression();
       const expected = steps.map(({ now, event }) => {
         if (event) engine.ingest(event as MatrixBroadcast, now);
         const scene = engine.scene(now);
-        return { kind: scene.kind, count: scene.count, glyph: scene.glyph, counts: scene.counts,
+        return { kind: scene.kind, count: scene.count, glyph: scene.glyph, faceKind: scene.face, pips: scene.pips, counts: scene.counts,
           face: Buffer.from(renderMatrixScene(11, scene)).toString('base64'), world: Buffer.from(renderMatrixScene(32, scene)).toString('base64') };
       });
       const actual = JSON.parse(execFileSync(exe, { input: JSON.stringify(steps), maxBuffer: 4 * 1024 * 1024 }).toString());

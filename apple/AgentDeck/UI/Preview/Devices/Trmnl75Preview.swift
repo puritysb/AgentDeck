@@ -43,7 +43,11 @@
 // The purchased-credit row the firmware draws once a Codex plan window is
 // exhausted is a data state this schematic's 5H/7D sample never reaches, like
 // the Luna reserve before it; band geometry is unchanged.
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 361688d6d7cdf9c18d831db389295fc80a09d61a
+// 2026-10-07 re-sync: the EPD47/NM paint-engine overhaul (frame-hash skip,
+// masked EPD47 bands, NM gate, "as of" band on EPD47/NM only, push delivery)
+// does not change the TRMNL dashboard this view mirrors. The OFFLINE subtitle
+// separators became ASCII; this mirror shows only "Searching for AgentDeck…".
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 8ef62fa22684dfa1fc894f350d0f34d26ccbd19c
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -266,7 +270,7 @@ struct Trmnl75Preview: View {
                 ForEach(quiet) { session in
                     HStack(spacing: 3) {
                         PreviewCreatureGlyph(agent: session.agent, state: session.state,
-                                             size: 12, tintOverride: ink)
+                                             size: 12, tintOverride: ink, monochrome: true)
                         Text(session.projectName)
                             .font(.system(size: 9))
                             .foregroundStyle(ink)
@@ -288,7 +292,8 @@ struct Trmnl75Preview: View {
                 agent: session.agent,
                 state: state,
                 size: 34,
-                tintOverride: cardInk
+                tintOverride: cardInk,
+                monochrome: true
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.projectName)
@@ -299,7 +304,7 @@ struct Trmnl75Preview: View {
                 // longer shares it with the state word, which pushed long text
                 // into the CP437 fallback font); the state word only when there
                 // is no activity or the session waits on the reader.
-                Text(stateLine(for: state))
+                Text(!awaiting && session.ciWait != nil ? (session.activity ?? "CI wait") : stateLine(for: state))
                     .font(.system(size: 8, weight: state == .processing ? .regular : .semibold))
                     .foregroundStyle(cardInk.opacity(0.72))
                     .lineLimit(1)

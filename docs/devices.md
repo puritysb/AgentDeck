@@ -57,11 +57,24 @@ Peripheral breadth is the widest in the fleet — CC1101 sub-GHz, PN532 NFC, IR 
 
 ## T-Display-S3-Pro (Focus Strip / Pocket)
 
-**Shipping since 2026-07-26; desk-awareness default since 2026-09-26.** The
-LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Both camera and
-camera-less units now boot into landscape Focus. A camera shield is still
-probed and adds an explicit CAM page rather than automatically selecting the
-portrait Pocket UI.
+**Shipping since 2026-07-26; switchable layout since 2026-10-07.** The
+LilyGO T-Display-S3-Pro V1.1 is a 2.33″ 480×222 touch strip. Its layout is a
+persisted setting (`auto` | `portrait` | `landscape`, NVS) chosen before the
+display starts. `auto` (the default) boots a camera-equipped unit into the
+portrait Pocket UI and a camera-less unit into the landscape Focus Strip; in
+landscape a present camera adds the explicit CAM page. Three ways switch it,
+each saving the setting and restarting the board:
+
+- hold either rocker button while the board powers on or resets (toggles to
+  the other layout);
+- on screen: the **LANDSCAPE** button at the bottom of Pocket's USAGE tab, or a
+  hold on the strip's Usage page (`HOLD = PORTRAIT`);
+- from the host: `agentdeck esp32 orientation t_display_pro <auto|portrait|landscape>`
+  (Node daemon `POST /esp32/orientation`; USB serial first, WiFi fallback).
+
+`device_info` reports `layout` (running) and `layoutSetting` (persisted). The
+Swift in-process daemon does not send the command yet; the two on-device paths
+work under either daemon.
 
 Focus pins the initial task and retains it when the session ends. It shows the
 latest observed activity with a local observation age (not proof of a stalled
@@ -250,8 +263,10 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
 - **Events**: 4 types (`DISPLAY_FORWARDED_EVENTS`)
 - **Rendering**: state → native 64×64 RGB scene with official agent masks and matched Claude/Codex provider rows; 9×7 official-mask creature silhouettes identify the rows, which show primary/5h and secondary/7d percentage fills with reset countdowns → Divoom HTTP API. Each row is a seven-pixel band and a provider with no live window claims none: two providers occupy rows 50-63, one sits on 57-63, and with neither the tank keeps the full height. (An account whose Codex snapshot was voided by a plan change loses its band — see [§ Codex usage](#codex-usage-is-a-passive-read-of-your-own-rollout-files).)
 - **Offline rendering**: all pixel targets keep a static, mostly dark badge with sparse dim-cyan accents to minimize LED draw. Pixoo64/iDotMatrix use the same diagonal 3×5 `N` in `OFFLINE`; Timebox uses a sparse 11×11 no-link glyph because the word is not legible at that resolution.
-- **Adaptive push**: active states advance through moving single frames every 2.5s, idle refreshes every 10s, and user-visible state changes use a 1s load floor. Multi-frame GIF upload is deliberately disabled: on the tested Pixoo64 firmware it caused REST timeout and 60–87.5% ping loss. Failed attempts are rate-limited and a fresh one-shot probe immediately replaces a wedged long-lived URLSession.
-- **Why HTTP**: Pixoo64's supported control surface is Divoom's LAN REST API; no supported raw-frame BLE path is published. The safe practical improvement is a faster bounded single-frame cadence, not an undocumented BLE transport or a GIF request that destabilizes the device.
+- **Adaptive push**: active states advance through moving single frames every 2.5s, idle refreshes every 10s, and user-visible state changes use a 1s load floor. Failed attempts are rate-limited and a fresh one-shot probe immediately replaces a wedged long-lived URLSession. Integrated scene motion (tetra school, bubbles, data particles) follows wall time — each render replays the 100 ms ticks elapsed since the last one, capped at 30 — so one push per 2.5s no longer runs the school at 1/25 speed.
+- **Device-side loop (opt-in, Node daemon only, not yet hardware-validated)**: `"animation": "loop"` on a device entry (`pixooDevices` in `~/.agentdeck/settings.json`) uploads a closed palindrome loop — 8 unique frames rendered 200 ms apart, 14 frames played at 200 ms (5 fps) — on state change (3s floor) and every 10s, and the panel animates between uploads with no HTTP traffic. Frames go up one request per frame (shared `PicID`/`PicNum`, `PicOffset` = index, one 12,288-byte frame per `PicData`, 120 ms apart), so each body is the size of a proven single-frame push. The multi-frame attempts that caused REST timeout and 60–87.5% ping loss on the tested firmware (2026-06/07) concatenated every frame into one `PicData` at offset 0, which the Divoom API does not document. A failed loop upload drops that device to single frames for 15 minutes. The Swift daemon stays single-frame.
+- **Tide scene (opt-in, Node daemon only)**: `"animation": "tide"` on a device entry replaces the aquarium with a scene drawn for the 64×64 matrix (`bridge/src/pixoo/pixoo-tide.ts`): flat dithered depth bands and a travelling waterline instead of a murky gradient, the official 24×24 agent masks at native size (18 px for three sessions, 14 px for four, `+N` beyond four) instead of a ~58 px zoom, a light sweep over a working mark, the amber dotted ring on a needs-you mark, bubbles, ambient fish, kelp and sand. The usage HUD on rows 50–63 is the unchanged `drawUsageHUD`. It is one closed 6-frame loop at 500 ms (3 s); every animated value is a function of `tick / 6`, nothing uses `Math.random`, and `pixoo-tide.test.ts` fails if the last-to-first step is larger than any other. **Upload policy** (measured on the Pixoo64, 2026-10-08): an upload costs ~0.27 s per frame (6 frames ≈ 1.6 s) and the panel shows its loading hourglass for that ingest, once per content change, so uploads are justified only by what the panel would show differently. `tideSignature` splits that into the marks/states/CI cue (`scene`) and the usage strip (`hud`); a scene change re-bakes at most every 15 s, a usage-only change at most every 5 min (the reset countdown ticks every minute), and otherwise the bridge asks `Channel/GetIndex` + `Draw/GetHttpGifId` every 30 s and re-uploads only when the answer is `stale` (channel ≠ Custom, or the PicID counter fell — a reboot). The check is `>=`, not equality: the device counter does not track the uploaded ID one-for-one. `unknown` (a failed query) retains. A failed upload backs off tide uploads for 60 s and **never falls back to single frames**: a one-frame upload after a multi-frame one tangled the panel's picture and colours. The Swift daemon draws the same scene and follows the same policy (`apple/AgentDeck/Daemon/Modules/PixooTide.swift`, a hand-ported twin; `"animation": "tide"` in the app's own `settings.json`): both renderers are pinned to one table of frame digests (`pixoo-tide.test.ts` and `PixooTideTests.swift`), so a change to either fails the other until it is ported.
+- **Why HTTP**: Pixoo64's supported control surface is Divoom's LAN REST API; no supported raw-frame BLE path is published. Single-frame cadence cannot go much faster safely, so smooth motion has to come from the device playing a loop, not from more requests or an undocumented BLE transport.
 - **Config**: `~/.agentdeck/pixoo.json` — `{ devices: [{ ip, name? }] }`
 - **Source**: `bridge/src/pixoo/` (6 files: client, bridge, renderer, sprites, font, settings)
 
@@ -269,12 +284,24 @@ passive-only — see [appstore-feature-matrix.md](appstore-feature-matrix.md).
   progress percentages, attempt counts, or a claim that all work has completed.
 - **Conversation scenes**: the reader's own turn is what the panel is for. When a
   user message reaches a live session (`chat_start`, not automated), that agent's
-  official creature appears listening under `ASK` until its reply lands (at most
-  10 minutes, while the session is processing; a turn close also clears it). The reply (`chat_response`, not automated) holds the stage for six
-  seconds under `SENT` (answer delivered, not input requested) with a speech bubble. Automated turns (crons) and bare task
-  closes are not conversations; a task close still gets the six-second result scene.
+  official creature appears listening under `HEAR` until its reply lands or one
+  minute passes, while the session is processing (a turn close also clears it);
+  after that the `WORK` summary carries the rest of the turn. `HEAR` reports your
+  message arriving — it never means the agent is asking you anything; a question
+  for you is `WAIT`. It was `ASK` with a ten-minute hold until 2026-10-08, and a
+  long run read as a pending question. The reply (`chat_response`, not automated)
+  holds the stage for six seconds under `SENT` (answer delivered, not input
+  requested) with a speech bubble. Automated turns (crons) and bare task closes
+  are not conversations; a task close still gets the six-second result scene.
   A newer turn or removal from the live roster cancels the reply scene.
   The Timebox face mirrors both: a listening face, then a talking face.
+- **Session identity**: rows and roster use two id forms — an observed session is
+  `observed:<agent>:<uuid>` in the roster and the bare uuid on its timeline rows,
+  and OpenClaw is one `openclaw-gateway` presence whose rows carry per-agent keys
+  (`openclaw:agent:main:main`). Both engines match rows with `matrixRowSession`
+  (either id form; OpenClaw by agent), and a result whose session has already
+  left shows the creature its row names. Until 2026-10-08 an exact-id match sent
+  every observed session and OpenClaw to the neutral square face on DONE/SENT/ASK.
 - **Event scenes**: a new live session gets a six-second official-creature entrance
   (a conversation outranks it). Then the numeric summary
   returns. There is no decorative creature carousel. Waiting/errors preempt both
@@ -303,15 +330,37 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 - **BLE** — BLE GATT over the ISSC transparent-UART service `49535343-fe7d-…` (write char `49535343-8841-…`, write-without-response, 20-byte chunks). Advertises as `TimeBox-mini-light` (sharing its BD_ADDR with the Classic audio endpoint `TimeBox-mini-audio`). Driven by `sync_ble.py` (bleak) on the CLI daemon **and natively by the App Store Swift daemon over CoreBluetooth** (no subprocess). (The legacy Bluetooth Classic SPP variant was removed — poor macOS compatibility, no App Store path.)
 
 - **Rendering — agent face**: both daemons render the same native 11×11 robot
-  face: cyan eyes glance/blink while working, amber raised brows and wide eyes ask
-  for attention, a red frown represents errors, green smiling eyes acknowledge
-  explicit responses, and dim neutral eyes blink at idle. Unknown data has closed,
-  broken eyes. A new-session greeting is brief. The face represents aggregate
-  agent activity, not a particular provider. Only amber brightness pulses; eye
-  poses and event motion may change without flashing other status colors.
-- **Priority**: waiting → error → new-session greeting → recent explicit result →
-  working → idle. Results retain their original 90-second window; aborted, denied,
-  pending or future events do not count. The BLE packet format is unchanged.
+  face (`renderMatrixFace`, `bridge/src/pixoo/matrix-art.ts`; Swift replays the
+  generated frames). It represents the whole desk, never a particular provider.
+  Fifteen faces, each with its own 4-bit signature:
+
+  | Situation | Face |
+  |---|---|
+  | No roster yet (startup, link reset) | `unknown` — dim broken eyes |
+  | Live daemon, zero sessions | `empty` — sleeping eyes and a "Z" |
+  | Sessions, nothing running | `idle` — dim grey eyes that blink |
+  | Agent working | `working` — cyan eyes that glance |
+  | Parent idle, subagents running | `delegating` — heavy-lidded cyan eyes looking down at the helpers |
+  | CI wait (queued/running) | `ci` — eyes rolled up at a filling ellipsis; a CI wait is neither PERM nor WORKING |
+  | CI wait, phase unknown | `ci-unknown` — the same pose in grey, ellipsis still |
+  | Needs approval | `waiting` — amber raised brows, wide eyes, asking mouth |
+  | Needs a choice | `choosing` — amber brows, pupils darting, pressed lips |
+  | Review a diff | `reviewing` — amber brows, narrowed reading eyes, small "o" |
+  | Failed session, or Gateway health error while the OpenClaw session is present | `error` — red frown |
+  | Explicit result / reply / question / new session | `done` · `reply` · `asked` · `arrival` |
+
+  Faces that can stand for several sessions (idle, working, CI, needs-you,
+  error) show steady chin pips on the bottom row when two or more sessions share
+  them, up to five; `delegating` shows one pip per running child. Only amber
+  pulses. Quota is not on the face (it is not a session state; DESIGN.md §2.8).
+  The daemon gone entirely is the separate OFFLINE badge, and host display
+  sleep scales or blanks brightness without changing the face.
+- **Priority**: no roster → needs you (approval → choice → diff, a fixed order,
+  never a timer) → error → conversation / new session / a result in its first
+  six seconds → working → delegating → CI wait → a result within 90 seconds →
+  empty → idle. Live work replaces a result smile after six seconds; the
+  iDotMatrix result count keeps its 90-second window. Aborted, denied, pending
+  or future events do not count. The BLE packet format is unchanged.
 - **Heartbeat**: polls the frame endpoint (~1.5s) and sends only changed frames.
 - **Config**: `~/.agentdeck/settings.json` — `{ timeboxDevices: [{ address, name?, brightness? }] }`
 - **Source**: `bridge/src/timebox/` (settings, daemon sync manager, `sync_ble.py`/`scan_ble.py`); App Store: `apple/AgentDeck/Daemon/Modules/Timebox{BLE,Module,DivoomPacket}.swift`

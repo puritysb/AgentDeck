@@ -13,6 +13,7 @@ import Foundation
 /// `nextResetTime` produces no reset instant, and an item with no derivable
 /// percent is skipped entirely rather than guessed.
 enum ZaiQuotaRules {
+    static let authFailureCode: Int = 1000
     /// 5-hour rolling credits window (`TOKENS_LIMIT`, or `CREDIT_LIMIT unit=3`).
     static let sessionWindowMinutes: Int = 300
     /// 7-day credits window, credit schema only (`CREDIT_LIMIT unit=6`).

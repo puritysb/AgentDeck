@@ -29,7 +29,8 @@
 // Ingest cost on that traffic is ~0.44 ms per batch, so serving the route is
 // cheap even while it yields nothing.
 
-import { rawSessionId } from '@agentdeck/shared';
+import { rawSessionId, CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
+import { codexRolloutIsSubagent } from './codex-rollout-response.js';
 import type { ObservedSession } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 
@@ -356,8 +357,51 @@ const STATE_OVERLAY_TTL_MS = 2 * 60_000;
  *     a Codex the process scan can't see), synthesize a `codex-app` row so the
  *     session still appears. This is the Swift-parity path.
  */
+/** Non-blocking first-line classification. Unknown metadata remains permissive.
+ * Keep one lookup per identity in flight, and bounded LRU/retry state. */
+export class CodexOtelSubagentFilter {
+  private readonly entries = new Map<string, { value?: boolean; attemptedAt?: number }>();
+  private readonly pending = new Set<string>();
+  onSubagent: ((threadId: string) => void) | undefined;
+  constructor(private readonly resolve: (threadId: string) => Promise<boolean | undefined> = codexRolloutIsSubagent) {}
+
+  check(threadId: string, now = Date.now()): boolean | undefined {
+    let entry = this.entries.get(threadId);
+    if (!entry) {
+      if (this.entries.size >= CODEX_OTEL_METADATA_RULES.maxCachedThreads) {
+        const oldest = [...this.entries.keys()].find(id => !this.pending.has(id));
+        if (oldest === undefined) return undefined;
+        this.entries.delete(oldest);
+      }
+      entry = {};
+    }
+    this.entries.delete(threadId);
+    this.entries.set(threadId, entry);
+    if (entry.value !== undefined) return entry.value;
+    if (this.pending.has(threadId) || this.pending.size >= CODEX_OTEL_METADATA_RULES.maxInFlight
+      || (entry.attemptedAt !== undefined && now - entry.attemptedAt < CODEX_OTEL_METADATA_RULES.retryMs)) return undefined;
+    entry.attemptedAt = now;
+    this.pending.add(threadId);
+    const record = entry;
+    // Promise scheduling keeps even an injected resolver outside span dispatch.
+    void Promise.resolve().then(() => this.resolve(threadId)).catch(() => undefined).then(value => {
+      record.value = value;
+      this.pending.delete(threadId);
+      if (value === true) this.onSubagent?.(threadId);
+    });
+    return undefined;
+  }
+  get cachedCount(): number { return this.entries.size; }
+  get pendingCount(): number { return this.pending.size; }
+}
+
 export class CodexOtelTracker {
   private readonly threads = new Map<string, CodexOtelThread>();
+  private readonly subagents: CodexOtelSubagentFilter;
+  constructor(resolveIsSubagent?: (threadId: string) => Promise<boolean | undefined>) {
+    this.subagents = new CodexOtelSubagentFilter(resolveIsSubagent);
+    this.subagents.onSubagent = threadId => this.forget(threadId);
+  }
 
   /** Fired when ingestion changed something worth broadcasting. */
   onChanged: (() => void) | undefined;
@@ -390,7 +434,7 @@ export class CodexOtelTracker {
       // must never synthesize or drive a session row (Swift parity —
       // `shouldUseCodexOtelThreadForSessionState`).
       if (event.threadId === ANONYMOUS_OTEL_THREAD_ID) continue;
-      if (this.isBackgroundThread?.(event.threadId)) {
+      if (this.isBackgroundThread?.(event.threadId) || this.subagents.check(event.threadId, now) === true) {
         changed = this.threads.delete(event.threadId) || changed;
         continue;
       }
@@ -500,7 +544,7 @@ export class CodexOtelTracker {
     const overlaid = observed.map((session) => {
       if (session.agentType !== 'codex-cli' && session.agentType !== 'codex-app') return session;
       const thread = this.threads.get(rawSessionId(session.id));
-      if (!thread) return session;
+      if (!thread || this.subagents.check(thread.threadId, now) === true) return session;
       matched.add(thread.threadId);
       if (now - thread.lastEventAt > STATE_OVERLAY_TTL_MS) return session;
       return {
@@ -516,7 +560,7 @@ export class CodexOtelTracker {
     const synthesized: ObservedSession[] = [];
     for (const thread of this.threads.values()) {
       if (matched.has(thread.threadId)) continue;
-      if (this.isBackgroundThread?.(thread.threadId)) continue;
+      if (this.isBackgroundThread?.(thread.threadId) || this.subagents.check(thread.threadId, now) === true) continue;
       if (this.isHookOwnedThread?.(thread.threadId)) continue;
       const cwd = thread.cwd;
       synthesized.push({

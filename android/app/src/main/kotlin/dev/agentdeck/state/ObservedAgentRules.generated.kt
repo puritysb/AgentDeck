@@ -1,6 +1,7 @@
 // GENERATED FILE — DO NOT EDIT.
 // Source of truth: shared/src/session-utils.ts (OBSERVED_SESSION_AGENT_KEYS)
 //                  shared/src/timeline.ts      (TOOL_EXEC_SUPPRESSED_AGENTS)
+//                  shared/src/timeline-task-display.ts (TIMELINE_TURN_RULES)
 // Regenerate: pnpm generate-observed-agent-rules (drift gated by shared/src/__tests__/observed-agent-rules.test.ts)
 package dev.agentdeck.state
 
@@ -10,6 +11,8 @@ package dev.agentdeck.state
  * rather than written twice.
  */
 object ObservedAgentRules {
+    const val TURN_MERGE_MAX_GAP_MS: Long = 43200000L
+    val TURN_ACTIVITY_TYPES: Set<String> = setOf("tool_exec")
     /** A passively-observed session is keyed `observed:<agent>:<uuid>` in
      *  `sessions_list` and on devices, while timeline rows, hook payloads and
      *  transcripts use the bare uuid. */

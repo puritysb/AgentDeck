@@ -888,6 +888,7 @@
         "plugin.approval.resolve",
         "plugin.approval.list",
         "sessions.list",
+        "sessions.patch",
         "sessions.subscribe",
         "sessions.messages.subscribe",
         "sessions.messages.unsubscribe",
@@ -929,6 +930,9 @@
         },
         {
           "$ref": "#/definitions/SessionsListParams"
+        },
+        {
+          "$ref": "#/definitions/SessionsPatchParams"
         },
         {
           "$ref": "#/definitions/SessionsSubscribeParams"
@@ -975,6 +979,9 @@
         },
         {
           "$ref": "#/definitions/SessionsListResult"
+        },
+        {
+          "$ref": "#/definitions/SessionsPatchResult"
         },
         {
           "$ref": "#/definitions/SessionsSubscribeResult"
@@ -1089,8 +1096,50 @@
         "label": {
           "type": "string"
         },
+        "model": {
+          "type": "string"
+        },
+        "modelOverrideSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": "string"
+        },
         "sessionId": {
           "type": "string"
+        },
+        "thinkingDefault": {
+          "type": "string"
+        },
+        "thinkingLevel": {
+          "type": "string"
+        },
+        "thinkingLevels": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "thinkingOptions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "updatedAt": {
           "type": "number"
@@ -1099,6 +1148,55 @@
       "required": [
         "key"
       ],
+      "type": "object"
+    },
+    "GatewaySessionSettingsFields": {
+      "additionalProperties": false,
+      "description": "Model / thinking facts a session row (or the list `defaults`) carries.",
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "modelOverrideSource": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": "string"
+        },
+        "thinkingDefault": {
+          "type": "string"
+        },
+        "thinkingLevel": {
+          "type": "string"
+        },
+        "thinkingLevels": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "thinkingOptions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
       "type": "object"
     },
     "HealthParams": {
@@ -1831,6 +1929,10 @@
     "SessionsListResult": {
       "additionalProperties": false,
       "properties": {
+        "defaults": {
+          "$ref": "#/definitions/GatewaySessionSettingsFields",
+          "description": "Agent-level defaults for rows that do not state their own (model, thinking)."
+        },
         "sessions": {
           "items": {
             "$ref": "#/definitions/GatewaySession"
@@ -1869,6 +1971,35 @@
         "subscribed",
         "key"
       ],
+      "type": "object"
+    },
+    "SessionsPatchParams": {
+      "additionalProperties": false,
+      "description": "sessions.patch — per-session overrides for subsequent turns. `null` clears an override back to inheritance. `model`, `thinkingLevel` and `fastMode` need only `operator.write` (OpenClaw docs/gateway/protocol/rpc-session-control.md).",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "thinkingLevel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "SessionsPatchResult": {
+      "additionalProperties": {},
       "type": "object"
     },
     "SessionsSubscribeParams": {

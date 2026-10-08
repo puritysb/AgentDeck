@@ -7,6 +7,7 @@
 #include <math.h>
 #include <string.h>
 #include "creature_glyphs_generated.h"
+#include "../creature_glyph_selection.h"
 
 // ── AgentDeck 10" "Pixel Office" (canonical: tenin/office.js) ────────────────────────────
 // Agents are workers on a tile grid, clustered by project huddle. Each worker STAYS at its
@@ -74,18 +75,7 @@ static uint32_t agentColor(const char* t) {
 // one (0x7a8a9c here vs 0x9fb0ac inline), which is what a copy nothing reads does.
 // They were hand-maintained anyway, which is how the Kiro round paid to add a
 // `kiro` row to a table nothing read.
-static const uint8_t* agentGlyphA8(const char* t) {
-    using namespace CreatureGlyphs;
-    if (!t) return nullptr;
-    if (strstr(t, "openclaw")) return OPENCLAW_MARK_A8;
-    if (strstr(t, "opencode")) return OPENCODE_A8;
-    if (strstr(t, "codex"))    return CODEX_A8;
-    if (strstr(t, "antigravity")) return ANTIGRAVITY_A8;
-    if (strstr(t, "kiro"))    return KIRO_A8;
-    if (strstr(t, "hermes"))  return HERMES_A8;
-    if (strstr(t, "claude"))   return OCTOPUS_A8;
-    return nullptr;
-}
+
 
 // ── canvas ──
 static lv_obj_t* canvas = nullptr;
@@ -179,7 +169,8 @@ static inline uint16_t hue565(float h) {
     return rgb565((uint8_t)(r * 255), (uint8_t)(g * 255), (uint8_t)(b * 255));
 }
 
-static void blitGlyph(const uint8_t* a8, int cx, int cy, int dw, int dh, uint16_t col, bool flipX, uint8_t ga) {
+static void blitGlyph(CreatureGlyphs::Selection glyph, int cx, int cy, int dw, int dh, uint16_t col, bool flipX, uint8_t ga) {
+    const uint8_t* a8 = glyph.alpha;
     if (!a8 || dw <= 0 || dh <= 0) return;
     // The Antigravity mark is a spectral gradient, not a single colour — paint it
     // per-pixel via a colour wheel (the A8 mask only carries the shape/alpha).
@@ -201,6 +192,20 @@ static void blitGlyph(const uint8_t* a8, int cx, int cy, int dw, int dh, uint16_
                 pcol = hue565(ang - 60.0f);
             }
             blendPx(x0 + dx, y0 + dy, pcol, (uint8_t)((m * ga) / 255));
+        }
+    }
+    for (size_t i = 0; i < glyph.featureCount; ++i) {
+        const auto& layer = glyph.features[i];
+        const uint16_t color = rgb565(layer.red, layer.green, layer.blue);
+        for (int dy = 0; dy < dh; ++dy) {
+            const int sy = dy * 64 / dh - layer.y;
+            if (sy < 0 || sy >= layer.height) continue;
+            for (int dx = 0; dx < dw; ++dx) {
+                const int sx = (flipX ? 63 - dx * 64 / dw : dx * 64 / dw) - layer.x;
+                if (sx < 0 || sx >= layer.width) continue;
+                const uint8_t coverage = layer.alpha[sy * layer.width + sx];
+                if (coverage) blendPx(x0 + dx, y0 + dy, color, uint16_t(coverage) * ga / 255);
+            }
         }
     }
 }
@@ -645,7 +650,7 @@ static void drawWorker(Worker& w, uint32_t now) {
             float e = (float)(dx*dx)/(shW*shW/4.0f+1) + (float)(dy*dy)/(shH*shH/4.0f+1);
             if (e <= 1.0f) blendPx((int)(d.cx+d.jit)+dx, (int)(d.cyT + tile*0.32f)+dy, HEX565(0x06120f), 120);
         }
-    blitGlyph(agentGlyphA8(w.agent), d.icx, d.icy, d.dw, d.dh, HEX565((uint32_t)w.accent), w.facing == 'L', d.galpha);
+    blitGlyph(CreatureGlyphs::selectAgent(w.agent), d.icx, d.icy, d.dw, d.dh, HEX565((uint32_t)w.accent), w.facing == 'L', d.galpha);
     if (d.bub) drawStatusMark(d.icx + (int)(d.sz * 0.3f),
                               d.icy - (int)(d.sz * 0.6f) - 5 * u,
                               d.bub, d.bubCol);

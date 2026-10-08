@@ -460,6 +460,16 @@ describe('display-tile snapshots', () => {
     expect(svg).toMatchSnapshot();
   });
 
+  it('renderSessionReadout shows the agent\'s own mode word, never the literal default (#463)', () => {
+    const auto = renderSessionReadout(makeSession(), State.IDLE, 'claude-sonnet-5-5', 'AgentDeck', 'low', 'auto');
+    expect(auto).toContain('sonnet 5.5 · low');
+    expect(auto).toContain('AUTO');
+    const codex = renderSessionReadout(makeSession({ agentType: 'codex-cli' }), State.IDLE, 'gpt-6-astra', 'Repo', 'max', 'workspace-write');
+    expect(codex).toContain('WORKSPACE-WRITE');
+    const plain = renderSessionReadout(makeSession(), State.IDLE, 'claude-sonnet-5-5', 'AgentDeck', undefined, 'default');
+    expect(plain).not.toContain('DEFAULT');
+  });
+
   it('renderSessionReadout openclaw hides model, shows STANDBY', () => {
     const svg = renderSessionReadout(
       makeSession({ agentType: 'openclaw', state: State.IDLE, projectName: 'Gateway' }),

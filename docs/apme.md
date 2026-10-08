@@ -1247,3 +1247,14 @@ DB read-only는 GPU 부하가 없다는 뜻이 아니다. 실험은 별도 endpo
 회귀 검증: `pnpm build && pnpm typecheck && pnpm test`, `pnpm generate-mlx-safety --check`,
 macOS `MlxSafetyTests`와 `ApmeJudgeCrossDaemonTests`. 서버 어댑터의 교체 거부·OOM 종료·
 메모리 예산 테스트는 fake loader/allocator로 검증하며 CI에서 대형 모델을 로드하지 않는다.
+
+## CI wait timing
+
+Observed CI watches create `waiting_on` relation events with invocation identity.
+`ci_wait_foreground` spans are unioned and clipped to the actual turn boundaries;
+`ci_wait_background` remains visible evidence but never reduces active time.
+Turn `efficiency_json` retains `wall_time_ms`, `ci_wait_ms`, and `agent_active_ms`.
+The run dashboard shows CI and active time alongside elapsed time when a
+foreground wait occurred. `end_source` still records the actual Stop, interruption,
+next prompt or session boundary; a green provider check does not synthesize Stop.
+The shared accounting fixtures run in TypeScript and native Swift tests.

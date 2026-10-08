@@ -274,11 +274,14 @@ export const AgentDeckObserver = async ({ directory, client }) => {
             if (status === "completed" || status === "error") {
               if (phase !== "end") {
                 toolPhase.set(part.callID, "end");
-                post("opencode_tool_end", { session_id: sessionID, tool_name: part.tool || "tool", cwd });
+                post("opencode_tool_end", { session_id: sessionID, tool_name: part.tool || "tool", tool_use_id: part.callID, is_error: status === "error", cwd });
               }
-            } else if (!phase) {
+            } else if (!phase && status !== "pending") {
               toolPhase.set(part.callID, "start");
-              post("opencode_tool_start", { session_id: sessionID, tool_name: part.tool || "tool", cwd });
+              const command = part.state?.input?.command;
+              const tool_input = part.tool === "bash" && typeof command === "string" && command.length <= 4096
+                ? { command } : undefined;
+              post("opencode_tool_start", { session_id: sessionID, tool_name: part.tool || "tool", tool_use_id: part.callID, tool_input, cwd });
             }
             if (toolPhase.size > 512) toolPhase.clear();
           }

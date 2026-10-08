@@ -104,24 +104,14 @@ final class DaemonService: ObservableObject {
     /// Takeover-yield deadline. While set and in the future, promotion is
     /// suppressed so an incoming CLI (Node) daemon that asked us to stand down
     /// (POST /stand-down) can bind the canonical port without us racing it back.
+    private var takeoverRetryTask: Task<Void, Never>?
     private var yieldUntil: Date?
     /// How long to keep hands off the canonical port after yielding it.
     ///
-    /// Sized against a MEASURED platform behaviour, not a guess. Cancelling an
-    /// NWListener does not make its port bindable again: macOS holds a NECP
-    /// reservation on it for ~14s afterwards, during which `lsof` shows *zero*
-    /// sockets on the port and `bind()` still returns EADDRINUSE (measured
-    /// 2026-08-06 — free at ~17s from stand-down, with every connection already
-    /// gone by 3s). This is the same NECP quirk `failedBindPortsAt` exists for,
-    /// seen from the other side.
-    ///
-    /// At the old 15s this window expired at almost exactly the moment the port
-    /// came back, so this app's own retry re-grabbed it a heartbeat before the
-    /// CLI daemon could — `agentdeck daemon start` then reported "the app did
-    /// not yield port 9120 in time" while the app sat on 9120, three runs in a
-    /// row. The window must comfortably OUTLAST the reservation and the CLI's
-    /// own wait for it, so the incoming daemon wins the port uncontested.
-    private static let takeoverYieldSeconds: TimeInterval = 45
+    /// The shared lease covers CLI stand-down negotiation, macOS preferred-port
+    /// reclaim (90 seconds after #370), and startup. Expiry permits recovery
+    /// when the requesting CLI never arrives; successful attachment consumes it.
+    private static let takeoverYieldSeconds = Double(DaemonParityRules.takeoverYieldMs) / 1000
     private var signalSource: DispatchSourceSignal?
     private var sigintSource: DispatchSourceSignal?
     private var listenerFailureRetries = 0
@@ -230,6 +220,18 @@ final class DaemonService: ObservableObject {
     /// Start daemon in-process
     func start() {
         guard !isRunning, !isUsingExternalDaemon, !isStarting else { return }
+        // Every promotion path respects the bounded incoming-daemon lease.
+        if let until = yieldUntil, until > Date() {
+            if takeoverRetryTask == nil {
+                takeoverRetryTask = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .seconds(until.timeIntervalSinceNow)) }
+                    catch { return }
+                    self?.takeoverRetryTask = nil
+                    self?.start()
+                }
+            }
+            return
+        }
         isStarting = true
         errorMessage = nil
         bindFailureReason = nil; blockingProcesses = []
@@ -351,6 +353,8 @@ final class DaemonService: ObservableObject {
 
     /// Stop daemon
     func stop() async {
+        takeoverRetryTask?.cancel()
+        takeoverRetryTask = nil
         healthMonitorTask?.cancel()
         healthMonitorTask = nil
         await server?.shutdown()
@@ -460,7 +464,7 @@ final class DaemonService: ObservableObject {
             canonicalPort: AppPreferences.shared.daemonPort
         )
 
-        guard let resolvedPort else {
+        guard var resolvedPort else {
             if abandonIfStale("port lookup") { return }
             await self.releaseInProcessDaemon()
             self.isRunning = false
@@ -503,16 +507,27 @@ final class DaemonService: ObservableObject {
         let deadline = max(yieldUntil ?? .distantPast, Date().addingTimeInterval(baseBudget))
         var health: [String: Any]?
         while true {
+            // The incoming Node daemon can legitimately use a fallback port.
+            // Follow its local registry during takeover, retaining ownership
+            // validation below before adopting any credential or client state.
+            if yieldUntil != nil, let incomingPort = registry.findDaemonPort(),
+               incomingPort != resolvedPort {
+                resolvedPort = incomingPort
+            }
             health = await registry.probeDaemonHealth(port: resolvedPort)
-            if health?["mode"] as? String == "daemon" { break }
+            let isIncomingDaemon = health?["mode"] as? String == "daemon"
+                && DaemonParityRules.acceptsDaemonRuntime(isSwift: health?["isSwift"] as? Bool, expectingNode: yieldUntil != nil)
+            if isIncomingDaemon { break }
             if Date() >= deadline { break }
             try? await Task.sleep(for: .milliseconds(knownPort != nil ? 300 : 200))
         }
         // Consumed: a takeover that has been answered must not lengthen an
         // unrelated reconnect later.
-        if health?["mode"] as? String == "daemon" { yieldUntil = nil }
+        let answered = health?["mode"] as? String == "daemon"
+            && DaemonParityRules.acceptsDaemonRuntime(isSwift: health?["isSwift"] as? Bool, expectingNode: yieldUntil != nil)
+        if answered { yieldUntil = nil }
 
-        guard let health, health["mode"] as? String == "daemon" else {
+        guard let health, answered else {
             // External daemon never responded — stale registry. Clean up and start our own.
             if abandonIfStale("stale-registry check") { return }
             DaemonLogger.shared.info("External daemon on port \(resolvedPort) is stale — starting local daemon instead")

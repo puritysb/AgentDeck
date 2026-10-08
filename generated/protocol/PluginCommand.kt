@@ -19,6 +19,7 @@ private val klaxon = Klaxon()
     .convert(Agent::class,     { Agent.fromValue(it.string!!) },     { "\"${it.value}\"" })
     .convert(Decision::class,  { Decision.fromValue(it.string!!) },  { "\"${it.value}\"" })
     .convert(Direction::class, { Direction.fromValue(it.string!!) }, { "\"${it.value}\"" })
+    .convert(Key::class,       { Key.fromValue(it.string!!) },       { "\"${it.value}\"" })
     .convert(Mode::class,      { Mode.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(Type::class,      { Type.fromValue(it.string!!) },      { "\"${it.value}\"" })
     .convert(Verdict::class,   { Verdict.fromValue(it.string!!) },   { "\"${it.value}\"" })
@@ -52,6 +53,12 @@ private val klaxon = Klaxon()
  * button). Daemon-side eval with an independent judge model — no agent control involved, so
  * every session type qualifies. Results flow back as review_status / review_result events
  * plus SessionInfo badge fields.
+ *
+ * Ask the daemon which settings this session can switch (→ `session_settings`).
+ *
+ * Switch a session setting to one of the agent-offered option ids. `null` clears the
+ * override and returns to the agent's own default. Answered with a fresh `session_settings`
+ * event (with `error` when the agent refused).
  */
 data class PluginCommand (
     val type: Type,
@@ -127,6 +134,13 @@ data class PluginCommand (
 
     @Json(name = "requestId")
     val requestID: String? = null,
+
+    val key: Key? = null,
+
+    /**
+     * Echo the queried conversation. A changed active target refuses the write.
+     */
+    val targetSessionKey: String? = null,
 
     val offset: Double? = null,
 
@@ -232,6 +246,19 @@ enum class Direction(val value: String) {
     }
 }
 
+enum class Key(val value: String) {
+    Effort("effort"),
+    Model("model");
+
+    companion object {
+        public fun fromValue(value: String): Key = when (value) {
+            "effort" -> Effort
+            "model"  -> Model
+            else     -> throw IllegalArgumentException()
+        }
+    }
+}
+
 enum class Mode(val value: String) {
     AcceptEdits("acceptEdits"),
     Default("default"),
@@ -282,6 +309,7 @@ enum class Type(val value: String) {
     Interrupt("interrupt"),
     NavigateOption("navigate_option"),
     PermissionDecision("permission_decision"),
+    QuerySessionSettings("query_session_settings"),
     QuerySessionTimeline("query_session_timeline"),
     QueryUsage("query_usage"),
     Respond("respond"),
@@ -289,6 +317,7 @@ enum class Type(val value: String) {
     SelectOption("select_option"),
     SendPrompt("send_prompt"),
     SessionCommand("session_command"),
+    SetSessionSetting("set_session_setting"),
     SwitchAgent("switch_agent"),
     SwitchMode("switch_mode"),
     Utility("utility"),
@@ -308,6 +337,7 @@ enum class Type(val value: String) {
             "interrupt"              -> Interrupt
             "navigate_option"        -> NavigateOption
             "permission_decision"    -> PermissionDecision
+            "query_session_settings" -> QuerySessionSettings
             "query_session_timeline" -> QuerySessionTimeline
             "query_usage"            -> QueryUsage
             "respond"                -> Respond
@@ -315,6 +345,7 @@ enum class Type(val value: String) {
             "select_option"          -> SelectOption
             "send_prompt"            -> SendPrompt
             "session_command"        -> SessionCommand
+            "set_session_setting"    -> SetSessionSetting
             "switch_agent"           -> SwitchAgent
             "switch_mode"            -> SwitchMode
             "utility"                -> Utility
@@ -327,16 +358,19 @@ enum class Type(val value: String) {
 sealed class Value {
     class DoubleValue(val value: Double) : Value()
     class StringValue(val value: String) : Value()
+    class NullValue()                    : Value()
 
     public fun toJson(): String = klaxon.toJsonString(when (this) {
         is DoubleValue -> this.value
         is StringValue -> this.value
+        is NullValue   -> "null"
     })
 
     companion object {
         public fun fromJson(jv: JsonValue): Value = when (jv.inside) {
             is Double -> DoubleValue(jv.double!!)
             is String -> StringValue(jv.string!!)
+            null      -> NullValue()
             else      -> throw IllegalArgumentException()
         }
     }

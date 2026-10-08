@@ -95,7 +95,8 @@ class OctopusCreature(
     }
 
     /** Current live position for tetra attractor tracking. */
-    fun currentPosition(): Pair<Float, Float> = currentX to currentY
+    fun simulationPosition(): Pair<Float, Float> = currentX to currentY
+    fun currentPosition(): Pair<Float, Float> = simulationPosition()
 
     /** Floor position after the shared spacing pass; null while swimming. */
     var restX: Float? = null
@@ -265,23 +266,7 @@ class OctopusCreature(
         }) {
             drawPath(robotPath, color = bodyColor, alpha = alpha)
 
-            // Eye glow when sleeping (half-closed effect: overlay rectangles on eye cutouts)
-            if (visualState == OctopusVisualState.SLEEPING) {
-                // Left eye (6, 8.102) to (7.488, 10.949) — cover top half
-                drawRect(
-                    color = bodyColor,
-                    alpha = alpha * 0.7f,
-                    topLeft = Offset(6f, 8.102f),
-                    size = Size(1.488f, 1.4f),
-                )
-                // Right eye (10.51, 8.102) to (18, 10.949) — cover top half
-                drawRect(
-                    color = bodyColor,
-                    alpha = alpha * 0.7f,
-                    topLeft = Offset(10.51f, 8.102f),
-                    size = Size(1.49f, 1.4f),
-                )
-            }
+            dev.agentdeck.terrarium.CreatureBrandFeatures.draw(this, "claudecode")
         }
     }
 

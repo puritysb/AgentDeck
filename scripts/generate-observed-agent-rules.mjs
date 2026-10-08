@@ -26,6 +26,7 @@ const HEADER =
   'GENERATED FILE — DO NOT EDIT.\n' +
   'Source of truth: shared/src/session-utils.ts (OBSERVED_SESSION_AGENT_KEYS)\n' +
   '                 shared/src/timeline.ts      (TOOL_EXEC_SUPPRESSED_AGENTS)\n' +
+  '                 shared/src/timeline-task-display.ts (TIMELINE_TURN_RULES)\n' +
   'Regenerate: pnpm generate-observed-agent-rules (drift gated by shared/src/__tests__/observed-agent-rules.test.ts)';
 
 function comment(prefix) {
@@ -44,6 +45,36 @@ import Foundation
 /// rather than written twice.
 enum ObservedAgentRules {
     static let openCodePendingRequestLimit = ${rules.openCodePendingLimit}
+    #if os(macOS)
+    static let codexMetadataHeadBytes = ${rules.codexMetadata.headBytes}
+    static let codexMetadataCacheLimit = ${rules.codexMetadata.maxCachedThreads}
+    static let codexMetadataInFlightLimit = ${rules.codexMetadata.maxInFlight}
+    static let codexMetadataRetryMs: Double = ${rules.codexMetadata.retryMs}
+    #endif
+    static let turnMergeMaxGapMs: Double = ${rules.turn.maxGapMs}
+    static let turnActivityTypes: Set<String> = [${rules.turn.activityTypes.map(x => JSON.stringify(x)).join(', ')}]
+
+    #if os(macOS)
+    /// Explicit rollout discriminators; a parent id alone does not prove a child.
+    static func codexSessionMetaIsSubagent(_ payload: [String: Any]) -> Bool {
+        if let source = payload["source"] as? [String: Any], source.keys.contains("subagent") { return true }
+        guard payload["thread_source"] as? String == "subagent",
+              let parent = payload["parent_thread_id"] as? String else { return false }
+        return !parent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    static func codexSessionMetaSubagentVerdict(_ payload: [String: Any]) -> Bool? {
+        if codexSessionMetaIsSubagent(payload) { return true }
+        if payload["thread_source"] as? String == "subagent" { return nil }
+        let sourceString = payload["source"] as? String
+        let sourceObject = payload["source"] as? [String: Any]
+        let threadSource = payload["thread_source"] as? String
+        if sourceString?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || sourceObject?.isEmpty == false
+            || threadSource?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false { return false }
+        return nil
+    }
+    #endif
 
     /// A passively-observed session is keyed \`observed:<agent>:<uuid>\` in
     /// \`sessions_list\` and on devices, while timeline rows, hook payloads and
@@ -82,6 +113,8 @@ package dev.agentdeck.state
  * rather than written twice.
  */
 object ObservedAgentRules {
+    const val TURN_MERGE_MAX_GAP_MS: Long = ${rules.turn.maxGapMs}L
+    val TURN_ACTIVITY_TYPES: Set<String> = setOf(${rules.turn.activityTypes.map(x => JSON.stringify(x)).join(', ')})
     /** A passively-observed session is keyed \`observed:<agent>:<uuid>\` in
      *  \`sessions_list\` and on devices, while timeline rows, hook payloads and
      *  transcripts use the bare uuid. */
@@ -114,10 +147,13 @@ async function main() {
   try {
     const sessionUtils = await import('../shared/dist/session-utils.js');
     const timeline = await import('../shared/dist/timeline.js');
+    const { TIMELINE_TURN_RULES } = await import('../shared/dist/timeline-task-display.js');
     rules = {
       prefixes: [...sessionUtils.OBSERVED_SESSION_PREFIXES],
       openCodePendingLimit: sessionUtils.OPENCODE_PENDING_REQUEST_LIMIT,
+      codexMetadata: sessionUtils.CODEX_OTEL_METADATA_RULES,
       suppressed: [...timeline.TOOL_EXEC_SUPPRESSED_AGENTS],
+      turn: TIMELINE_TURN_RULES,
     };
   } catch {
     console.error('shared/dist not found — run `pnpm --filter @agentdeck/shared build` first');

@@ -37,8 +37,8 @@ android {
         applicationId = "dev.agentdeck"
         minSdk = 29
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.6.1"
+        versionCode = 25
+        versionName = "1.8.0"
         buildConfigField("boolean", "APK_UPDATES", "false")
     }
 

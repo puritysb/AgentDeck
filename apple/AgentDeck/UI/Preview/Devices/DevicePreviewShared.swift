@@ -89,6 +89,7 @@ struct PreviewCreatureGlyph: View {
     let state: PixooPreviewState
     var size: CGFloat = 40
     var tintOverride: Color? = nil
+    var monochrome = false
 
     private var tint: Color { tintOverride ?? StateColors.brand(agent: agent.rawValue) }
 
@@ -96,7 +97,8 @@ struct PreviewCreatureGlyph: View {
         CanonicalCreatureView(
             agentType: agent.rawValue,
             size: size,
-            color: tint
+            color: tint,
+            monochrome: monochrome
         )
         .opacity(state == .disconnected ? 0.3 : 1.0)
         .accessibilityLabel("\(agent.displayName) \(state.displayName)")
@@ -153,6 +155,8 @@ struct PreviewDisplaySession: Identifiable {
     /// e-ink, perimeter satellite pixels on the LED matrix — never as another
     /// session. Zero means "draw nothing", not "unknown".
     var subagentCount: Int = 0
+    var ciWait: CiWaitStatus? = nil
+    var activity: String? = nil
 }
 
 /// Providers without a session creature use their official brand mark.
@@ -227,7 +231,7 @@ extension DevicePreviewSelection {
                     // draws no satellites yet. Plumbing them through
                     // LivePreviewData is a separate change; leaving it at 0 is
                     // honest (nothing drawn) rather than invented.
-                    subagentCount: 0
+                    subagentCount: 0, ciWait: s.waitingOn, activity: s.activity
                 )
             }
         }

@@ -1,0 +1,157 @@
+[
+  {
+    "name": "overlap clipped at turn",
+    "start": 10,
+    "end": 100,
+    "turnIndex": 0,
+    "events": [
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "open",
+        "ts": 0
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "b",
+        "phase": "open",
+        "ts": 40
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "closed",
+        "ts": 50
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "b",
+        "phase": "closed",
+        "ts": 75
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "c",
+        "phase": "open",
+        "ts": 90
+      }
+    ],
+    "expected": 75
+  },
+  {
+    "name": "background stays active",
+    "start": 0,
+    "end": 100,
+    "turnIndex": 0,
+    "events": [
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_background",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "open",
+        "ts": 10
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "name": "other turn ignored",
+    "start": 0,
+    "end": 100,
+    "turnIndex": 0,
+    "events": [
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 1,
+        "relationId": "a",
+        "phase": "open",
+        "ts": 10
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "name": "orphan close proves no span",
+    "start": 0,
+    "end": 100,
+    "turnIndex": 0,
+    "events": [
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "closed",
+        "ts": 90
+      }
+    ],
+    "expected": 0
+  },
+  {
+    "name": "duplicate open does not reset beginning",
+    "start": 0,
+    "end": 100,
+    "turnIndex": 0,
+    "events": [
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "open",
+        "ts": 10
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "open",
+        "ts": 50
+      },
+      {
+        "kind": "relation",
+        "relation": "waiting_on",
+        "evidence": "ci_wait_foreground",
+        "direction": "out",
+        "turnIndex": 0,
+        "relationId": "a",
+        "phase": "closed",
+        "ts": 60
+      }
+    ],
+    "expected": 50
+  }
+]

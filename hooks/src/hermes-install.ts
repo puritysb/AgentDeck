@@ -9,7 +9,7 @@ export const hermesObserverSource = resolve(dirname(fileURLToPath(import.meta.ur
 /** Explicit installation only; Hermes remains responsible for plugin enablement. */
 export function installHermesObserver(home = process.env.HERMES_HOME || join(homedir(), '.hermes')): string {
   const target = join(resolve(home), 'plugins', 'agentdeck-observer');
-  const files = ['__init__.py', 'plugin.yaml'];
+  const files = ['__init__.py', 'plugin.yaml', 'ci-wait-rules.json'];
   const marker = join(target, '.agentdeck-owned');
   if (existsSync(target) && !existsSync(marker)) {
     throw new Error(`Refusing to overwrite unowned Hermes plugin: ${target}`);

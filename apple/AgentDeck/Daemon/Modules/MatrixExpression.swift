@@ -9,12 +9,18 @@ struct MatrixExpression {
         let alive: Bool
         let state: String
         let agentType: String
+        /// Timebox CI face for this session's wait (`ciFaces`), nil when there is
+        /// no wait, a terminal verdict, or no explicit agentWaiting.
+        var ciFace: String? = nil
+        /// Live children (`subagents.active`), non-negative.
+        var children: Int = 0
     }
     struct Result {
         let ts: Double
         let type: String
         let status: String
         let sessionId: String?
+        var agentType: String? = nil
         let automated: Bool
     }
     struct Scene {
@@ -24,13 +30,16 @@ struct MatrixExpression {
         let frame: Int
         let roster: [String]
         let counts: [Int]
+        var face: String = ""
+        var pips: Int = 0
     }
     private var sessions: [Resident]?
     private var timeline: [Result] = []
     private var seen: [String] = []
     private var arrival: (id: String, ts: Double)?
+    private var gatewayHasError = false
 
-    mutating func reset() { sessions = nil; timeline = []; arrival = nil; seen = [] }
+    mutating func reset() { sessions = nil; timeline = []; arrival = nil; seen = []; gatewayHasError = false }
     static func state(_ state: String) -> String {
         state.hasPrefix(MatrixFrames.awaitingPrefix) ? "waiting" : MatrixFrames.stateKinds[state] ?? "idle"
     }
@@ -49,8 +58,14 @@ struct MatrixExpression {
             guard let raw = event["sessions"] as? [[String: Any]] else { return }
             let incoming = raw.compactMap { row -> Resident? in
                 guard let id = row["id"] as? String else { return nil }
-                return Resident(id: id, alive: row["alive"] as? Bool ?? false,
+                var resident = Resident(id: id, alive: row["alive"] as? Bool ?? false,
                     state: row["state"] as? String ?? "", agentType: row["agentType"] as? String ?? "")
+                if let wait = row["waitingOn"] as? [String: Any], wait["agentWaiting"] as? Bool == true,
+                   let phase = wait["phase"] as? String {
+                    resident.ciFace = MatrixFrames.ciFaces[phase]
+                }
+                resident.children = Self.count((row["subagents"] as? [String: Any])?["active"])
+                return resident
             }
             if sessions != nil {
                 let known = Set(seen)
@@ -75,34 +90,61 @@ struct MatrixExpression {
             timeline = Array(timeline.suffix(MatrixFrames.historyLimit))
         case "connection":
             if event["status"] as? String == "disconnected" { reset() }
+        case "state_update":
+            // Retain-on-absent: only an explicit boolean changes the Gateway verdict.
+            if let flag = event["gatewayHasError"] as? Bool { gatewayHasError = flag }
         default: break
         }
+    }
+    /// A finite positive count, floored; anything else is zero. Native rows
+    /// carry Int, decoded JSON carries NSNumber — read both.
+    private static func count(_ raw: Any?) -> Int {
+        let value: Double
+        if let int = raw as? Int { value = Double(int) } else if let double = raw as? Double { value = double } else { return 0 }
+        return value.isFinite && value > 0 ? Int(value.rounded(.down)) : 0
     }
     private static func result(_ raw: [String: Any]) -> Result? {
         guard let ts = raw["ts"] as? Double, ts.isFinite, let type = raw["type"] as? String,
               MatrixFrames.closeTypes.contains(type) || MatrixFrames.askTypes.contains(type) else { return nil }
         return Result(ts: ts, type: type, status: raw["status"] as? String ?? "", sessionId: raw["sessionId"] as? String,
-                      automated: raw["automated"] as? Bool ?? false)
+                      agentType: raw["agentType"] as? String, automated: raw["automated"] as? Bool ?? false)
+    }
+    /// matrixRowSession (shared/src/matrix-expression.ts): rows and roster use
+    /// two id forms, and the one OpenClaw roster presence matches by agent.
+    static func rowSession(_ s: Resident, _ e: Result) -> Bool {
+        sameSession(s.id, e.sessionId) ||
+            (e.agentType == MatrixFrames.gatewayAgent && s.agentType == MatrixFrames.gatewayAgent)
+    }
+    private static func sameSession(_ a: String?, _ b: String?) -> Bool {
+        guard let a, let b, !a.isEmpty, !b.isEmpty else { return false }
+        return a == b || ObservedAgentRules.rawSessionId(a) == ObservedAgentRules.rawSessionId(b)
+    }
+    private static func sameRow(_ a: Result, _ b: Result) -> Bool {
+        a.sessionId == b.sessionId || sameSession(a.sessionId, b.sessionId)
+    }
+    private func rowGlyph(_ e: Result, _ live: [Resident]) -> String {
+        let owner = live.first { Self.rowSession($0, e) }
+        return MatrixFrames.agents[owner.map(\.agentType) ?? e.agentType ?? ""] ?? "neutral"
     }
     /// matrixInteraction (shared/src/matrix-expression.ts): an agent's reply to
-    /// a turn holds the stage for replyMs; else an open user question to a live
-    /// session keeps its agent listening until the reply, at most askMs.
-    private func interaction(_ live: [Resident], _ now: Double) -> (kind: String, sessionId: String?, ts: Double)? {
+    /// a turn holds the stage for replyMs; else a user message just delivered to
+    /// a live, working session keeps its agent listening until the reply, at most askMs.
+    private func interaction(_ live: [Resident], _ now: Double) -> (kind: String, row: Result, ts: Double)? {
         let conversational = { (e: Result) in !e.automated && e.ts.isFinite && now >= e.ts }
-        if let reply = timeline.filter({ e in conversational(e) && live.contains(where: { $0.id == e.sessionId }) &&
-                !timeline.contains(where: { $0.sessionId == e.sessionId && $0.ts > e.ts && $0.ts <= now && MatrixFrames.askTypes.contains($0.type) }) &&
+        if let reply = timeline.filter({ e in conversational(e) && live.contains(where: { Self.rowSession($0, e) }) &&
+                !timeline.contains(where: { Self.sameRow($0, e) && $0.ts > e.ts && $0.ts <= now && MatrixFrames.askTypes.contains($0.type) }) &&
                 MatrixFrames.replyTypes.contains(e.type) &&
                 !MatrixFrames.rejectedStatuses.contains(e.status) && now - e.ts < Double(MatrixFrames.replyMs) })
             .max(by: { $0.ts < $1.ts }) {
-            return ("reply", reply.sessionId, reply.ts)
+            return ("reply", reply, reply.ts)
         }
         guard let ask = timeline.filter({ conversational($0) && $0.sessionId != nil &&
                 MatrixFrames.askTypes.contains($0.type) && now - $0.ts < Double(MatrixFrames.askMs) })
             .max(by: { $0.ts < $1.ts }),
-              live.contains(where: { $0.id == ask.sessionId && Self.state($0.state) == "working" }) else { return nil }
-        let answered = timeline.contains { $0.sessionId == ask.sessionId && $0.ts >= ask.ts && $0.ts <= now &&
+              live.contains(where: { Self.rowSession($0, ask) && Self.state($0.state) == "working" }) else { return nil }
+        let answered = timeline.contains { Self.sameRow($0, ask) && $0.ts >= ask.ts && $0.ts <= now &&
             MatrixFrames.closeTypes.contains($0.type) }
-        return answered ? nil : ("asked", ask.sessionId, ask.ts)
+        return answered ? nil : ("asked", ask, ask.ts)
     }
     func scene(now: Double) -> Scene {
         let live = (sessions ?? []).filter(\.alive).sorted { $0.id < $1.id }
@@ -122,23 +164,49 @@ struct MatrixExpression {
         } else if sessions != nil {
             if let conversation = interaction(live, now) {
                 kind = conversation.kind; count = live.count; frameTime = now - conversation.ts
-                let resident = live.first { $0.id == conversation.sessionId }
-                glyph = MatrixFrames.agents[resident?.agentType ?? ""] ?? "neutral"
+                glyph = rowGlyph(conversation.row, live)
             } else if let arrival, now >= arrival.ts, now - arrival.ts < Double(MatrixFrames.arrivalMs),
                let resident = live.first(where: { $0.id == arrival.id }) {
                 kind = "arrival"; count = live.count; frameTime = now - arrival.ts
                 glyph = MatrixFrames.agents[resident.agentType] ?? "neutral"
             } else if kind == "done", let latest = done.sorted(by: { $0.ts > $1.ts }).first,
                       now - latest.ts < Double(MatrixFrames.responseMs) {
-                let resident = live.first { $0.id == latest.sessionId }
-                glyph = MatrixFrames.agents[resident?.agentType ?? ""] ?? "neutral"
+                glyph = rowGlyph(latest, live)
                 frameTime = now - latest.ts
             }
         }
+        let (face, pips) = self.face(live, kind: kind, results: done, now: now)
         return Scene(kind: kind, count: count, glyph: glyph,
             frame: Int(max(0, frameTime) / Double(MatrixFrames.frameMs)) % MatrixFrames.frames,
             roster: live.map { Self.state($0.state) },
-            counts: [waiting, working, done.count, errors > 0 ? errors : live.count])
+            counts: [waiting, working, done.count, errors > 0 ? errors : live.count],
+            face: face, pips: pips)
+    }
+    /// matrix-expression.ts `face`: no roster → needs-you → failure →
+    /// conversation / entrance / fresh result → working → children under an
+    /// idle parent → CI wait → a result within its window → empty → idle.
+    private func face(_ live: [Resident], kind: String, results: [Result], now: Double) -> (String, Int) {
+        if sessions == nil { return ("unknown", 0) }
+        let waiting = live.filter { Self.state($0.state) == "waiting" }
+        if !waiting.isEmpty {
+            let face = MatrixFrames.awaitingFaces.first { pair in waiting.contains { $0.state == pair[0] } }?[1] ?? "waiting"
+            return (face, waiting.count)
+        }
+        let gatewayError = gatewayHasError && live.contains {
+            $0.agentType == MatrixFrames.gatewayAgent && Self.state($0.state) != "error"
+        }
+        let errors = live.filter { Self.state($0.state) == "error" }.count + (gatewayError ? 1 : 0)
+        if errors > 0 { return ("error", errors) }
+        if kind == "asked" || kind == "reply" || kind == "arrival" { return (kind, 0) }
+        if results.contains(where: { now - $0.ts < Double(MatrixFrames.responseMs) }) { return ("done", 0) }
+        let working = live.filter { $0.ciFace == nil && Self.state($0.state) == "working" }.count
+        if working > 0 { return ("working", working) }
+        let children = live.reduce(0) { $0 + $1.children }
+        if children > 0 { return ("delegating", children) }
+        let ci = live.compactMap(\.ciFace)
+        if !ci.isEmpty { return (ci.contains("ci") ? "ci" : "ci-unknown", ci.count) }
+        if !results.isEmpty { return ("done", 0) }
+        return live.isEmpty ? ("empty", 0) : ("idle", live.count)
     }
     func render(size: Int, now: Double) -> Data {
         Self.render(size: size, scene: scene(now: now))
@@ -148,11 +216,22 @@ struct MatrixExpression {
         let summary = scene.glyph.hasPrefix("summary")
         let error = scene.roster.contains("error")
         let glyph = summary && error ? "summary-error" : scene.glyph
-        var out = MatrixFrames.base(size: size, kind: scene.kind, glyph: glyph, frame: scene.frame)
-        if size == 11 { return Data(out) }
+        let face = scene.face.isEmpty ? scene.kind : scene.face
+        var out = MatrixFrames.base(size: size, kind: size == 11 ? face : scene.kind, glyph: glyph, frame: scene.frame)
         func put(_ x: Int, _ y: Int, _ color: [UInt8], _ intensity: Double = 1) {
             guard x >= 0, y >= 0, x < size, y < size else { return }
             for c in 0..<3 { out[(y * size + x) * 3 + c] = UInt8((Double(color[c]) * intensity).rounded()) }
+        }
+        if size == 11 {
+            // Chin pips (matrix-art.ts paintFacePips): steady, centred, at most pipMax.
+            if let minimum = MatrixFrames.facePips[face], scene.pips >= minimum, let color = MatrixFrames.faceColors[face] {
+                let n = min(MatrixFrames.pipMax, scene.pips)
+                let x0 = Double(MatrixFrames.pipCenter) - Double((n - 1) * MatrixFrames.pipStep) / 2
+                for i in 0..<n {
+                    put(Int(x0) + i * MatrixFrames.pipStep, MatrixFrames.pipY, color, MatrixFrames.pipIntensity)
+                }
+            }
+            return Data(out)
         }
         func number(_ value: Int, _ y: Int, _ tone: String) {
             let text = scene.kind == "unknown" ? "-" : value > MatrixFrames.maxCount ? "99+" : String(value)

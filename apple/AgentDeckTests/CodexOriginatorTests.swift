@@ -100,6 +100,59 @@ final class CodexOriginatorTests: XCTestCase {
             CodexRolloutResponseReader.originatorIsDesktop(sessionId: id, sessionsRoot: root),
             false)
     }
+
+    func testSubagentSourceInRealSizedHeadIsExplicitChildEvidence() throws {
+        let id = "01a10bf8-45c3-72c0-a7fc-9d8334961f5d"
+        let line = metaLine(originator: "Codex Desktop", id: id, instructionBytes: 22_952)
+            .replacingOccurrences(of: #""source":"vscode""#,
+                with: #""source":{"subagent":{"thread_spawn":{"parent_thread_id":"019f364e-d68c-7c33-9215-069c76458d62"}}}"#)
+        try writeRollout(id: id, firstLine: line)
+        let meta = try XCTUnwrap(CodexRolloutResponseReader.sessionMeta(sessionId: id, sessionsRoot: root))
+        XCTAssertEqual(meta.isSubagent, true)
+        XCTAssertEqual(meta.originator, "Codex Desktop")
+        XCTAssertEqual(meta.cwd, "/Users/u/project")
+    }
+
+    func testStandaloneAndUnknownMetadataRemainDistinct() throws {
+        let id = "55a05885-c5e3-7ce0-9c45-06ec2f04a6fd"
+        try writeRollout(id: id, firstLine: metaLine(originator: "codex_exec", id: id))
+        XCTAssertEqual(CodexRolloutResponseReader.sessionMeta(sessionId: id, sessionsRoot: root)?.isSubagent, false)
+        XCTAssertNil(CodexRolloutSessionMeta(originator: "codex_exec", cwd: "/repo").isSubagent)
+        for extra: [String: Any] in [[:], ["source": [:]], ["parent_thread_id": "parent"], ["thread_source": "subagent"]] {
+            var payload = extra
+            payload["id"] = id
+            XCTAssertNil(CodexRolloutResponseReader.subagentVerdict(payload: payload, sessionId: id))
+        }
+        XCTAssertEqual(CodexRolloutResponseReader.subagentVerdict(
+            payload: ["id": id, "thread_source": "subagent", "parent_thread_id": "parent"], sessionId: id), true)
+    }
+
+    func testMissingOrMismatchedIdCannotClassifyTheRequestedThread() {
+        let id = "66a05885-c5e3-7ce0-9c45-06ec2f04a6fd"
+        XCTAssertNil(CodexRolloutResponseReader.subagentVerdict(payload: ["source": ["subagent": [:]]], sessionId: id))
+        XCTAssertNil(CodexRolloutResponseReader.subagentVerdict(
+            payload: ["id": "77a05885-c5e3-7ce0-9c45-06ec2f04a6fd", "source": ["subagent": [:]]], sessionId: id))
+        XCTAssertEqual(CodexRolloutResponseReader.subagentVerdict(
+            payload: ["id": id, "source": "cli"], sessionId: "codex:\(id)"), false)
+    }
+
+    func testTruncatedSubagentHeadMakesNoClaim() throws {
+        let id = "88a05885-c5e3-7ce0-9c45-06ec2f04a6fd"
+        try writeRollout(id: id, firstLine: metaLine(originator: "Codex Desktop", id: id,
+            instructionBytes: ObservedAgentRules.codexMetadataHeadBytes + 1))
+        XCTAssertNil(CodexRolloutResponseReader.sessionMeta(sessionId: id, sessionsRoot: root))
+    }
+
+    func testLegacyOriginatorAndCwdRemainReadableWhenIdCannotProveClassification() throws {
+        let id = "99a05885-c5e3-7ce0-9c45-06ec2f04a6fd"
+        try writeRollout(id: id, firstLine:
+            #"{"type":"session_meta","payload":{"originator":"Codex Desktop","cwd":"/legacy","source":{"subagent":{}}}}"#)
+        let meta = try XCTUnwrap(CodexRolloutResponseReader.sessionMeta(sessionId: id, sessionsRoot: root))
+        XCTAssertEqual(meta.originator, "Codex Desktop")
+        XCTAssertEqual(meta.cwd, "/legacy")
+        XCTAssertNil(meta.isSubagent)
+        XCTAssertEqual(CodexRolloutResponseReader.originatorIsDesktop(sessionId: id, sessionsRoot: root), true)
+    }
 }
 
 /// Replays shared/codex-ambient-vectors.json — the same file the Node suite

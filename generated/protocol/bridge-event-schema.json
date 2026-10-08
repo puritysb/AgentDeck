@@ -431,6 +431,9 @@
           "$ref": "#/definitions/ReviewResultEvent"
         },
         {
+          "$ref": "#/definitions/SessionSettingsEvent"
+        },
+        {
           "$ref": "#/definitions/SurfaceWelcomeEvent"
         },
         {
@@ -444,6 +447,9 @@
         },
         {
           "$ref": "#/definitions/Esp32OtaAbortEvent"
+        },
+        {
+          "$ref": "#/definitions/SetOrientationEvent"
         }
       ]
     },
@@ -507,6 +513,90 @@
       "required": [
         "type",
         "buttons"
+      ],
+      "type": "object"
+    },
+    "CiWaitStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "agentWaiting": {
+          "type": "boolean"
+        },
+        "checks": {
+          "additionalProperties": false,
+          "properties": {
+            "failed": {
+              "type": "number"
+            },
+            "passed": {
+              "type": "number"
+            },
+            "pending": {
+              "type": "number"
+            },
+            "total": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "total",
+            "passed",
+            "failed",
+            "pending"
+          ],
+          "type": "object"
+        },
+        "evidence": {
+          "enum": [
+            "tool_input",
+            "github"
+          ],
+          "type": "string"
+        },
+        "kind": {
+          "const": "ci",
+          "type": "string"
+        },
+        "openedAt": {
+          "type": "number"
+        },
+        "phase": {
+          "enum": [
+            "unknown",
+            "queued",
+            "running",
+            "passed",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "pr": {
+          "type": "number"
+        },
+        "provider": {
+          "const": "github-actions",
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "number"
+        },
+        "runUrl": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "provider",
+        "phase",
+        "agentWaiting",
+        "evidence",
+        "openedAt"
       ],
       "type": "object"
     },
@@ -768,6 +858,10 @@
         },
         "displayOn": {
           "type": "boolean"
+        },
+        "hostHm": {
+          "description": "Daemon host-local \"HH:MM\" at send time (same convention as timeline `localHm`). display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the wall clock for boards that never reach NTP — a serial-primary board parks its radio — and for every board that only knows UTC. E-ink panels print it as their \"as of HH:MM\" freshness band. Absent ⇒ no information; a client keeps its last estimate.",
+          "type": "string"
         },
         "type": {
           "const": "display_state",
@@ -1225,7 +1319,6 @@
     },
     "ReviewStatusEvent": {
       "additionalProperties": false,
-      "description": "On-demand independent review lifecycle. Triggered by the REVIEW deck button (ReviewRunCommand) — the daemon reviews the session's latest work with an independent judge model (Node: working-tree diff; Swift: APME trajectory) and reports risk findings. Needs no agent control, so it works for every session type including observed codex.",
       "properties": {
         "message": {
           "type": "string"
@@ -1307,6 +1400,10 @@
           "description": "A single AskUserQuestion call may carry up to four question groups. The daemon presents them ONE AT A TIME (`question`/`options` above are the active group's projection) and advances as each is answered, so a device never has to flatten unrelated groups into one unsafe index space. These are present only while a multi-group prompt is pending, and let a surface render \"Q 2/3\". Absent ⇒ a single-question prompt.",
           "type": "number"
         },
+        "backgroundTaskCount": {
+          "description": "Claude background_tasks snapshot count, separate from the child-agent census. Explicit zero clears prior work; absent means the producer has no snapshot.",
+          "type": "number"
+        },
         "contextPercent": {
           "type": "number"
         },
@@ -1335,6 +1432,7 @@
           "type": "string"
         },
         "effortLevel": {
+          "description": "The agent's own reasoning-effort word, verbatim (Claude `effort.level`, Codex `turn_context.effort`). An open set: each agent and model has its own levels, so surfaces render it as-is and never assume which one is the default. Absent means the agent has not reported one.",
           "type": "string"
         },
         "elapsedSec": {
@@ -1367,6 +1465,10 @@
             "$ref": "#/definitions/PromptOption"
           },
           "type": "array"
+        },
+        "permissionMode": {
+          "description": "The agent's own permission-mode word, verbatim — Claude `permission_mode` (default / acceptEdits / plan / auto / …), Codex `plan` or its `sandbox_policy.type`. Open set, rendered as-is; absent = not reported.",
+          "type": "string"
         },
         "pid": {
           "type": "number"
@@ -1438,6 +1540,17 @@
         "totalTokens": {
           "type": "number"
         },
+        "waitingOn": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CiWaitStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "CI is a separate axis from agent state. Explicit null clears a prior wait."
+        },
         "weight": {
           "type": "number"
         }
@@ -1447,6 +1560,97 @@
         "port",
         "projectName",
         "alive"
+      ],
+      "type": "object"
+    },
+    "SessionSetting": {
+      "additionalProperties": false,
+      "description": "A session setting the deck can switch, as the agent itself describes it (#463). Every value comes from the agent at request time — the deck never invents a level, a list or a default, so an agent update cannot drift away from it.",
+      "properties": {
+        "current": {
+          "description": "The value in effect now (an override or the inherited one).",
+          "type": "string"
+        },
+        "default": {
+          "description": "The agent's own default for this session/model; absent when it gives none.",
+          "type": "string"
+        },
+        "key": {
+          "enum": [
+            "model",
+            "effort"
+          ],
+          "type": "string"
+        },
+        "options": {
+          "items": {
+            "$ref": "#/definitions/SessionSettingOption"
+          },
+          "type": "array"
+        },
+        "overridden": {
+          "description": "True when `current` is an explicit session override (clearing returns to `default`).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "options"
+      ],
+      "type": "object"
+    },
+    "SessionSettingOption": {
+      "additionalProperties": false,
+      "description": "One value an agent offers for a session setting, in the agent's own words.",
+      "properties": {
+        "id": {
+          "description": "The id the agent accepts back (OpenClaw thinking id, `provider/model`).",
+          "type": "string"
+        },
+        "label": {
+          "description": "The agent's own display label when it gives one; render `id` otherwise.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "SessionSettingsEvent": {
+      "additionalProperties": false,
+      "description": "Answer to `query_session_settings` / `set_session_setting`. Kept off `sessions_list` on purpose: option lists are large and every board receives that frame. `error` carries the agent's rejection (e.g. a level the model no longer accepts); `settings` is then the freshest known state, possibly empty.",
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "requestId": {
+          "description": "Echoed request identity; clients ignore stale/uncorrelated responses.",
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "settings": {
+          "items": {
+            "$ref": "#/definitions/SessionSetting"
+          },
+          "type": "array"
+        },
+        "targetSessionKey": {
+          "description": "Concrete Gateway conversation read or patched, never the virtual row id.",
+          "type": "string"
+        },
+        "type": {
+          "const": "session_settings",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId",
+        "settings"
       ],
       "type": "object"
     },
@@ -1478,6 +1682,31 @@
       "required": [
         "type",
         "sessions"
+      ],
+      "type": "object"
+    },
+    "SetOrientationEvent": {
+      "additionalProperties": false,
+      "description": "Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the legacy bool other LCD boards read.",
+      "properties": {
+        "landscape": {
+          "type": "boolean"
+        },
+        "layout": {
+          "enum": [
+            "auto",
+            "portrait",
+            "landscape"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "const": "set_orientation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
       ],
       "type": "object"
     },
@@ -2183,6 +2412,10 @@
       "additionalProperties": false,
       "description": "Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's monitor endpoint with the account's coding-plan key — an active account query like the Claude OAuth usage read, not a passive local-file snapshot. Same slot grammar as `CodexRateLimits`: `primary` is the 5-hour credits window, `secondary` the long window when the plan reports one (weekly credits on the credit schema, or the monthly MCP tool quota on the standard schema — `limitId` says which quantity the number belongs to, the same \"which limit\" axis Codex carries).",
       "properties": {
+        "authFailed": {
+          "description": "Explicit provider credential rejection; false clears a prior failure.",
+          "type": "boolean"
+        },
         "capturedAt": {
           "description": "ISO-8601 instant this reading was fetched. Consumers derive age from it against their own clock — same contract as `CodexRateLimits.capturedAt`: an active poll re-fetches regularly, so an aged stamp means the poll is failing, and the reading dims rather than reading as live.",
           "type": "string"

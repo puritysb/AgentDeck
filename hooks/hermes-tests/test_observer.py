@@ -1,4 +1,4 @@
-"""Contract cases grounded in upstream observer-hooks.md (16c59d0e)."""
+"""Contract cases grounded in pinned upstream observer-hooks.md (0a374d167)."""
 import importlib.util
 import json
 import os
@@ -34,6 +34,20 @@ class ObserverTests(unittest.TestCase):
         self.host.stop()
     def emit(self, name, **kwargs):
         self.assertIsNone(self.ctx.hooks[name](session_id='conversation-1', platform='cli', **kwargs))
+
+    def test_captured_real_child_callbacks_export_only_one_parent_turn(self):
+        capture = json.loads((SOURCE.parents[2] / 'bridge/src/__tests__/fixtures/hermes-live-child.json').read_text())
+        for row in capture['callbacks']:
+            self.assertIsNone(self.ctx.hooks[row['event']](**row['kwargs']))
+        parent = self.module._identity('parent-conversation')
+        self.assertEqual(len(self.events), len(capture['events']))
+        for (event, payload), expected in zip(self.events, capture['events']):
+            self.assertEqual(event, expected['event'])
+            self.assertEqual(payload['session_id'], parent)
+            actual = {k: v for k, v in payload.items() if k not in ('session_id', 'cwd', 'pid', 'tool_call_id', 'is_error')}
+            wanted = {k: v for k, v in expected['payload'].items() if k not in ('session_id', 'cwd', 'pid', 'tool_call_id', 'is_error')}
+            self.assertEqual(actual, wanted)
+        self.assertEqual(sum(event == 'hermes_stop' for event, _ in self.events), 1)
 
     def test_two_turns_survive_run_end_and_finalize_once(self):
         self.emit('on_session_start')
@@ -77,6 +91,69 @@ class ObserverTests(unittest.TestCase):
         self.emit('pre_llm_call', user_message='x' * 10000)
         self.assertEqual(len(self.events[-1][1]['prompt']), 8192)
 
+    def test_ci_evidence_is_normalized_private_and_matches_tool_end(self):
+        secret = "private-api-token"
+        args = {"command": "gh run watch 42 --repo example/project --interval 2", "background": True,
+                "api_key": secret, "workdir": "/private/workspace"}
+        self.emit('pre_tool_call', tool_name='terminal', args=args, tool_call_id=secret)
+        start = self.events[-1][1]
+        self.assertEqual(start['ci_wait_intent'], {"kind": "ci", "provider": "github-actions", "mode": "watch",
+                                                 "runId": 42, "repo": "example/project"})
+        self.assertTrue(start['ci_wait_background'])
+        self.emit('post_tool_call', tool_name='terminal', args=args, tool_call_id=secret,
+                  status='success', result={"secret": secret}, error_message=secret)
+        end = self.events[-1][1]
+        self.assertEqual(start['tool_call_id'], end['tool_call_id'])
+        self.assertFalse(end['is_error'])
+        self.assertNotIn(secret, json.dumps([start, end]))
+        self.assertNotIn('command', start)
+        self.assertNotIn('args', start)
+        self.assertNotIn('result', end)
+        self.assertNotIn('ci_wait_intent', end)
+
+    def test_ci_commands_fail_closed_and_arguments_never_leak(self):
+        for command in ('gh auth login --with-token', 'gh run watch 42; echo secret',
+                        'TOKEN=secret gh run watch 42', 'gh run watch $(secret)',
+                        'gh run watch 42 --repo secret=value', 'gh run watch',
+                        'gh run watch 9007199254740992', 'gh pr checks 1',
+                        'gh run watch 42 --unknown secret', 'gh run watch 42 | cat',
+                        'gh run watch 42 > /private/log', 'x' * 16385):
+            self.emit('pre_tool_call', tool_name='terminal', args={'command': command}, tool_call_id='a')
+            payload = self.events[-1][1]
+            self.assertNotIn('ci_wait_intent', payload, command)
+            self.assertNotIn('args', payload)
+            self.assertNotIn('tool_input', payload)
+        self.emit('pre_tool_call', tool_name='memory', args={'command': 'gh run watch 42'}, tool_call_id='a')
+        self.assertNotIn('ci_wait_intent', self.events[-1][1])
+
+    def test_ci_pr_identity_and_explicit_background_boolean(self):
+        for command, expected in (
+            ('gh pr checks https://github.com/example/project/pull/4 --watch', {'repo': 'example/project', 'pr': 4}),
+            ('gh --repo example/project pr checks topic/ci --watch', {'repo': 'example/project', 'ref': 'topic/ci'}),
+            ('gh pr checks --watch', {}),
+        ):
+            self.emit('pre_tool_call', tool_name='terminal', args={'command': command, 'background': 1}, tool_call_id='a')
+            payload = self.events[-1][1]
+            self.assertEqual(payload['ci_wait_intent'], {"kind": "ci", "provider": "github-actions", "mode": "watch", **expected})
+            self.assertFalse(payload['ci_wait_background'])
+        self.emit('pre_tool_call', tool_name='terminal', args={'command': 'gh pr checks https://github.com/example/project/pull/4 --repo other/project --watch'}, tool_call_id='a')
+        self.assertNotIn('ci_wait_intent', self.events[-1][1])
+
+    def test_missing_tool_id_never_invents_a_ci_invocation(self):
+        for value in (None, '', 'x' * 16385, 42):
+            self.emit('pre_tool_call', tool_name='terminal', args={'command': 'gh run watch 42'}, tool_call_id=value)
+            self.assertNotIn('tool_call_id', self.events[-1][1])
+            self.assertNotIn('ci_wait_intent', self.events[-1][1])
+        first = self.module._tool_id('one', 'same')
+        self.assertNotEqual(first, self.module._tool_id('two', 'same'))
+
+    def test_upstream_error_status_clears_wait_without_exporting_error_text(self):
+        for status in ('error', 'blocked', 'cancelled', 'timeout', 'ok', None):
+            self.emit('post_tool_call', tool_name='terminal', tool_call_id='a', status=status, error_message='secret')
+            payload = self.events[-1][1]
+            self.assertEqual(payload['is_error'], status in ('error', 'blocked', 'cancelled', 'timeout'))
+            self.assertNotIn('secret', json.dumps(payload))
+
     def test_payload_names_the_hosting_process(self):
         # One-shot mode hard-exits without on_session_finalize; the daemon
         # closes the conversation when this pid is gone.
@@ -85,6 +162,26 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(self.events[-1][1]['platform'], 'cli')
         self.assertEqual(self.events[-1][1]['project_name'], 'Hermes (cli)')
 
+    def test_gateway_tools_without_platform_keep_conversation_context(self):
+        # Observed in real API-server tool work on Hermes 0a374d167: only
+        # session/turn callbacks carry platform; tool callbacks omit it.
+        self.ctx.hooks['on_session_start'](session_id='gateway', platform='api_server')
+        self.ctx.hooks['pre_tool_call'](session_id='gateway', tool_name='terminal')
+        self.ctx.hooks['post_tool_call'](session_id='gateway', tool_name='terminal')
+        for _, payload in self.events:
+            self.assertEqual(payload['platform'], 'api_server')
+            self.assertEqual(payload['project_name'], 'Hermes (api_server)')
+            self.assertEqual(payload['cwd'], '')
+        self.ctx.hooks['on_session_finalize'](session_id='gateway')
+        self.assertEqual(self.module._CONTEXT, {})
+
+    def test_orphan_tool_does_not_guess_cli_context(self):
+        self.ctx.hooks['pre_tool_call'](session_id='unknown', tool_name='terminal')
+        payload = self.events[-1][1]
+        self.assertNotIn('platform', payload)
+        self.assertNotIn('cwd', payload)
+        self.assertNotIn('project_name', payload)
+
     def test_callback_exceptions_are_fail_open(self):
         with patch.object(self.module, '_handle', side_effect=RuntimeError('offline')):
             self.emit('pre_tool_call')
@@ -92,6 +189,8 @@ class ObserverTests(unittest.TestCase):
     def test_tracking_is_bounded(self):
         for i in range(600): self.module._remember(self.module._TURNS, str(i), True)
         self.assertEqual(len(self.module._TURNS), 512)
+        for i in range(600): self.module._payload({'session_id': str(i), 'platform': 'api_server'})
+        self.assertEqual(len(self.module._CONTEXT), 512)
 
     def test_final_response_waits_for_authoritative_outcome(self):
         self.emit('pre_llm_call')

@@ -1,0 +1,486 @@
+{
+  "version": "1.8.0",
+  "status": "prepared-not-submitted",
+  "selectedImages": [
+    {
+      "platform": "iPad",
+      "locale": "en",
+      "path": "apple/appstore-submission/screenshots/en/iPad/06-hermes-fleet.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "72cb9e50a229fc5fa16cff9d38d3a6d35b4cae7426ee31a0885d789bc98b28ad",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/06-hermes-fleet.jpg",
+      "sourceSha256": "bcb3ae76daa80e966ac9ba2d410067781c7b1440a6c7b3d9da600a2226878c72",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator capture; reused 1.8.0 showcase",
+      "caption": [
+        "Hermes joins\nyour workspace",
+        "Fictional activity, captured in the native iPad app."
+      ],
+      "bytes": 978542
+    },
+    {
+      "platform": "iPad",
+      "locale": "ko",
+      "path": "apple/appstore-submission/screenshots/ko/iPad/06-hermes-fleet.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "aaa9a23788229c5265d0948e13a258f0f4b268a89f9c7f945ca696c0e9b3e42a",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/06-hermes-fleet.jpg",
+      "sourceSha256": "bcb3ae76daa80e966ac9ba2d410067781c7b1440a6c7b3d9da600a2226878c72",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator capture; reused 1.8.0 showcase",
+      "caption": [
+        "Hermes도 함께하는\n작업 공간",
+        "허구의 활동을 실제 iPad 앱에서 촬영했습니다."
+      ],
+      "bytes": 976823
+    },
+    {
+      "platform": "iPad",
+      "locale": "ja",
+      "path": "apple/appstore-submission/screenshots/ja/iPad/06-hermes-fleet.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "5aaaaffb2dd07040efbcc929530cf614c93285c3971de07e8fafdfa36bd4d224",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/06-hermes-fleet.jpg",
+      "sourceSha256": "bcb3ae76daa80e966ac9ba2d410067781c7b1440a6c7b3d9da600a2226878c72",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator capture; reused 1.8.0 showcase",
+      "caption": [
+        "Hermesも並ぶ\nワークスペース",
+        "架空の活動をネイティブiPadアプリで撮影。"
+      ],
+      "bytes": 991026
+    },
+    {
+      "platform": "iPad",
+      "locale": "en",
+      "path": "apple/appstore-submission/screenshots/en/iPad/07-github-ci.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "5420bed25c45651d8d7731c71417b04dc8cdc586ff777d8e07f533d48a2c2171",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/07-github-ci.jpg",
+      "sourceSha256": "41394b445c02395009db4e632657b78fe5add9079018bdf4109abf1f69eae648",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator CI capture; reused 1.8.0 showcase",
+      "caption": [
+        "CI stays beside\nits waiting session",
+        "GitHub companions in a fictional native-app scenario."
+      ],
+      "bytes": 976880
+    },
+    {
+      "platform": "iPad",
+      "locale": "ko",
+      "path": "apple/appstore-submission/screenshots/ko/iPad/07-github-ci.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "78894822884f08f3cbf4b930da0a97f58120f92a5a56e3d9670baac2ce51e196",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/07-github-ci.jpg",
+      "sourceSha256": "41394b445c02395009db4e632657b78fe5add9079018bdf4109abf1f69eae648",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator CI capture; reused 1.8.0 showcase",
+      "caption": [
+        "기다리는 세션 곁에\n머무는 CI",
+        "허구의 네이티브 앱 시나리오 속 GitHub 보조 크리처."
+      ],
+      "bytes": 964290
+    },
+    {
+      "platform": "iPad",
+      "locale": "ja",
+      "path": "apple/appstore-submission/screenshots/ja/iPad/07-github-ci.png",
+      "width": 2752,
+      "height": 2064,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "a28c6637358cf5b8234ca40c6d096bffa9bc98e9322f7b6a21e447bde2c98392",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/iPad/07-github-ci.jpg",
+      "sourceSha256": "41394b445c02395009db4e632657b78fe5add9079018bdf4109abf1f69eae648",
+      "sourceDimensions": [
+        2360,
+        1640
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Approved fictional native iPad simulator CI capture; reused 1.8.0 showcase",
+      "caption": [
+        "待つセッションに\n寄り添うCI",
+        "架空のネイティブアプリシナリオのGitHubクリーチャー。"
+      ],
+      "bytes": 989832
+    },
+    {
+      "platform": "macOS",
+      "locale": "en",
+      "path": "apple/appstore-submission/screenshots/en/macOS/06-native-attention.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "28abc0a448b60e13c16da28e4b989b1998990e20f1b8313f3469a8d5656d7bca",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/06-native-attention.jpg",
+      "sourceSha256": "ef1be093896bfade38e1e1d8dd180399c1756eeb6560a18ad5a85977323e0b13",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; source 497e1ebe; four synthetic agents, no Hermes",
+      "caption": [
+        "Know when\nyou are needed",
+        "Prior native QA capture with four synthetic agents."
+      ],
+      "bytes": 479782
+    },
+    {
+      "platform": "macOS",
+      "locale": "ko",
+      "path": "apple/appstore-submission/screenshots/ko/macOS/06-native-attention.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "17a28154cf9820a9da873c1d6365bfe9c0dc16191974b68fb4c3e3600cd9cc91",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/06-native-attention.jpg",
+      "sourceSha256": "ef1be093896bfade38e1e1d8dd180399c1756eeb6560a18ad5a85977323e0b13",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; source 497e1ebe; four synthetic agents, no Hermes",
+      "caption": [
+        "당신이 필요한\n순간을 한눈에",
+        "네 합성 에이전트를 담은 이전 네이티브 QA 캡처."
+      ],
+      "bytes": 479199
+    },
+    {
+      "platform": "macOS",
+      "locale": "ja",
+      "path": "apple/appstore-submission/screenshots/ja/macOS/06-native-attention.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "a712069dee95d4aa82a3d392e3ed71f6cdd10db553a9952d925a510b25021153",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/06-native-attention.jpg",
+      "sourceSha256": "ef1be093896bfade38e1e1d8dd180399c1756eeb6560a18ad5a85977323e0b13",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; source 497e1ebe; four synthetic agents, no Hermes",
+      "caption": [
+        "呼ばれた瞬間を\nひと目で",
+        "4つの架空エージェントを含む既存ネイティブQA画像。"
+      ],
+      "bytes": 496011
+    },
+    {
+      "platform": "macOS",
+      "locale": "en",
+      "path": "apple/appstore-submission/screenshots/en/macOS/07-ci-context.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "45a92fb018538cf3357cb6404fb77b1ee8d475fed63bfae2088db01e4c159657",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/07-ci-context.jpg",
+      "sourceSha256": "9cc64478d1b9c8401bb2e7d67bbc14e99592f7fe422c7523788580660b3b30dd",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; exact capture head not recorded; four synthetic agents, CI UNKNOWN, no Hermes",
+      "caption": [
+        "CI context belongs\nto its session",
+        "Prior native QA: UNKNOWN CI evidence, four synthetic agents."
+      ],
+      "bytes": 503970
+    },
+    {
+      "platform": "macOS",
+      "locale": "ko",
+      "path": "apple/appstore-submission/screenshots/ko/macOS/07-ci-context.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "ef85bb38725a71042d0613d552e7a4f68e43e56714ccc930c46e7cba35acd112",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/07-ci-context.jpg",
+      "sourceSha256": "9cc64478d1b9c8401bb2e7d67bbc14e99592f7fe422c7523788580660b3b30dd",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; exact capture head not recorded; four synthetic agents, CI UNKNOWN, no Hermes",
+      "caption": [
+        "CI 맥락은\n해당 세션에",
+        "이전 네이티브 QA: UNKNOWN CI 관측과 네 합성 에이전트."
+      ],
+      "bytes": 495399
+    },
+    {
+      "platform": "macOS",
+      "locale": "ja",
+      "path": "apple/appstore-submission/screenshots/ja/macOS/07-ci-context.png",
+      "width": 2560,
+      "height": 1600,
+      "mode": "RGB",
+      "encoding": "PNG",
+      "sha256": "b38c8074700f6264ba0304ec12d193fb256ce7da009e1aa7e28c4ec2ea57ceb9",
+      "source": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/macOS/07-ci-context.jpg",
+      "sourceSha256": "9cc64478d1b9c8401bb2e7d67bbc14e99592f7fe422c7523788580660b3b30dd",
+      "sourceDimensions": [
+        2560,
+        1680
+      ],
+      "sourceEncoding": "JPEG",
+      "provenance": "Prior actual native 1.8.0 QA; exact capture head not recorded; four synthetic agents, CI UNKNOWN, no Hermes",
+      "caption": [
+        "CIの情報は\nそのセッションに",
+        "既存ネイティブQA：UNKNOWNのCI情報と4つの架空エージェント。"
+      ],
+      "bytes": 517123
+    }
+  ],
+  "contactSheet": "apple/appstore-submission/screenshots-raw/1.8.0-supplement/contact-sheet.jpg",
+  "composition": "Canonical marketing composition; native screenshot uniformly downscaled without cropping, UI redraw or upscaling.",
+  "privacyReview": "Selected actual native captures show fictional/synthetic sessions, no real weather, private prompts, paths or tokens. Contact sheet and full-frame sample reviewed.",
+  "sourceLimits": {
+    "iPad": "Reused approved 1.8 native simulator overview and CI captures from docs/media/aquarium-180-{overview,ci}.jpg.",
+    "macOSAttention": "Prior actual native QA, source 497e1ebe; four synthetic agents, no Hermes.",
+    "macOSCI": "Prior actual native QA; exact capture HEAD unrecorded; four synthetic agents, CI UNKNOWN, no Hermes. Preserved native resident/CI assets unchanged. Not proof of new settings dialogs.",
+    "iPhone": "No new supplement. Fresh simulator frames showed onboarding/pairing and were rejected."
+  },
+  "retainedHistorical": {
+    "count": 39,
+    "sha256Unchanged": true,
+    "images": [
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPad/01-fleet.png",
+        "sha256": "13d34d0217eb0ecea9322333621530849ff2fe8e95270586adc8aeab6afed747"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPad/02-all-sessions.png",
+        "sha256": "14046f77ba4bf9c30d575d022305191faafbde8c75ef5d414ef6cd0e44c4b5e7"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPad/03-attention.png",
+        "sha256": "0917fd60aa5292546760fe0d09c484efcd07eeed754db5908c9835237d553501"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPad/04-complete.png",
+        "sha256": "e58502c230a9cb7bc185b5d5f1c9c58cd5c5085976a641054cd5c34f961f7068"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPhone/01-fleet.png",
+        "sha256": "7e063967dd13fd5e7cc684f8d78e25def66aa26a4c763ae0c31bd44ef099aa26"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPhone/02-all-sessions.png",
+        "sha256": "8d5c57c69193255f28dbe033e98cac128e98cb3896df8aa938d97358249a8a5f"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPhone/03-attention.png",
+        "sha256": "69e8f8b655ddf3d3b62c45b70c5ad6536d7d9d28f655ccb2dbe28d7b15b5cd11"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/iPhone/04-complete.png",
+        "sha256": "2d8d1a963dbb47b409bb6dc5cbea198706d9f559a9bf7eb305e98bf46caaa39f"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/macOS/01-fleet.png",
+        "sha256": "c0fafa7aa51903b97b42b31cb8a08e517258b8ab7f28ee59d678ec167b307b9d"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/macOS/02-all-sessions.png",
+        "sha256": "3c392a479abae706c862736d3bf518c58c60f7d5db85144e605fb7ae95c06713"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/macOS/03-attention.png",
+        "sha256": "e57ffa1dfef3ed6c652c569096571d4cffff708d971c7f2d495a306eb5e0c664"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/macOS/04-complete.png",
+        "sha256": "b5d58502753128ba1e5520c3c58751666ac44f2c8757788c6fabe789dc92329d"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/en/macOS/05-devices.png",
+        "sha256": "f84a5713c62d59c2088f4d5cb1336883a6527a42bb7e0ab140fd0503d822a2d6"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPad/01-fleet.png",
+        "sha256": "409dda04deb55cfd48209a4141b9bd27f1ed0e04ab73c88a1abeac1b898f4fef"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPad/02-all-sessions.png",
+        "sha256": "f21b7d870e476340c7b9423df4051c208cce181f08e5b60c356feb33b7dc97bd"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPad/03-attention.png",
+        "sha256": "80beae8023d56c445aa93d9453c2c6ceb2b33927e44b780938d9fe07b6393142"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPad/04-complete.png",
+        "sha256": "95a8b8a49c81b13249042e6cb62392f0347b64c7f8022bee3227e522e2f2c799"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPhone/01-fleet.png",
+        "sha256": "001da914abfb0b679447fd843128803c37c60d29de9a1a492b254ee5d32f7937"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPhone/02-all-sessions.png",
+        "sha256": "17a20b5709ba5d5e477f7430561a02ff573f58e127fde06ee12815eaab782204"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPhone/03-attention.png",
+        "sha256": "d617bfaf77a5c63ddb62cc96cdd9a09518f8fe1032b2d4f8471627b8569214c7"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/iPhone/04-complete.png",
+        "sha256": "b08da0376ac8e625d98317fb7a9e81c865f2fed450ff3fa2ac531eaf03044c23"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/macOS/01-fleet.png",
+        "sha256": "6ba25cbe61443bdfe160f24b28cd8c3ef9b079df4c97ab03d1993dbd07c2851b"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/macOS/02-all-sessions.png",
+        "sha256": "82497d34f9935530a818f057916096107e88dfe9bf6c3a79752946bfca23c3f5"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/macOS/03-attention.png",
+        "sha256": "d6b572088da5def2a42338474a94c1a5415f1fc78a2000211ae906b1c9c73757"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/macOS/04-complete.png",
+        "sha256": "ce60673dce9a7fbc401bb4b559c49a2d5bd3152f734f94285c3947cf29776b17"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ja/macOS/05-devices.png",
+        "sha256": "23d684a9fadde8d059fb0c0033ab8b89a2e779f3cde550c96909305fb49f6d00"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPad/01-fleet.png",
+        "sha256": "3ee097a4b1923c90db134f3219be474406099da0a2888bc9fd01882180ce1f46"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPad/02-all-sessions.png",
+        "sha256": "9a8efcba1c4850a07db27c510bf737104dbdcb83a6b7c0660974ef0744190462"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPad/03-attention.png",
+        "sha256": "c78ada3aeca6f8f88436d9e4c03a044f6b14e2bf09992be459c65d4ab0abedb7"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPad/04-complete.png",
+        "sha256": "8e3dd4a628e74e0b3f872027d3edd6c64fa4911bc45ea6459793d3cd620615af"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPhone/01-fleet.png",
+        "sha256": "15d2a18ec1d23eae59c4dc784c9aebb4056c941103afb1079c18a9971a0be81f"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPhone/02-all-sessions.png",
+        "sha256": "adeebf913dbdc8b7a3bd3c15e4ed951da4f3e0e178c4a3e0f8596680a26e7d4d"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPhone/03-attention.png",
+        "sha256": "bdee3ba365c88113ff327cc106212849ffc8ed71777af4a11aa9f5fc2d1b9b71"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/iPhone/04-complete.png",
+        "sha256": "4d4f7a1c74eb53f104e3e2c8779b13bccf3ebbde05c27d513e684c43ab5810da"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/macOS/01-fleet.png",
+        "sha256": "387d76e119926d3650fea77d15e79619f2033c52202372270f5666bb49779715"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/macOS/02-all-sessions.png",
+        "sha256": "e031900aa216cf43a979c6dee312264d2d68cb2021dc69f809feb16138db11e2"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/macOS/03-attention.png",
+        "sha256": "6ab536ee5648427d674e197c9c1c0dbabfd601f6dcebb9a253dd33f94cae6607"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/macOS/04-complete.png",
+        "sha256": "55bf31df78d991d79ad6660e89e39c634961ef5071beb7394fe01f1139ae6bc9"
+      },
+      {
+        "path": "apple/appstore-submission/screenshots/ko/macOS/05-devices.png",
+        "sha256": "5fb30872e440abca0dbbe229b99740a4d592e1d6f9aec1e8d002c79063c875d7"
+      }
+    ]
+  },
+  "channels": {
+    "apple": {
+      "prepared": "12 selected localized PNGs: six iPad 2752×2064, six Mac 2560×1600; en/ko/ja. Existing 39 retained separately.",
+      "deferred": "New iPhone supplement; current App Preview cuts. Existing previews retain their 1.5 provenance. Public showcase is not an upload-ready App Preview."
+    },
+    "pages": {
+      "prepared": "docs/media/aquarium-180-showcase.mp4, aquarium-180-{overview,ci,complete}.jpg and aquarium-180.{en,ko,ja}.vtt: approved fictional native iPad showcase."
+    },
+    "play": {
+      "retained": "marketplace/play/1.6.1/ listing images remain historical; valid setup/hardware photographs retained.",
+      "deferred": "Current localized Play carousel not generated. Current Android QA captures remain acceptance evidence, not selected upload-ready listing media."
+    },
+    "elgato": {
+      "retained": "marketplace/elgato/1.6.0/ remains historical; genuine hardware photos retained.",
+      "preparedEvidence": "diagnostics/release-180/media-audit-final/prepared-assets/deck-four-brands.png",
+      "deferred": "Current listing carousel selection and SDK3/DRM-processed encoder review. Generated key previews do not prove physical deck runtime."
+    },
+    "ulanzi": {
+      "retained": "Existing dated hardware photographs, including docs/media/d200h-hero.jpg, remain valid; earlier UI listing images remain historical.",
+      "preparedEvidence": "diagnostics/release-180/media-audit-final/prepared-assets/deck-four-brands.png",
+      "deferred": "Current listing carousel selection. Rendered key previews are not new physical D200H photographs."
+    },
+    "npm": "No store screenshot gallery; current README/Pages media available.",
+    "esp32": "No store screenshot gallery; retain dated actual hardware photos. No new hardware photography claimed."
+  },
+  "validation": {
+    "preparedImages": 12,
+    "newImageBytes": 8848877,
+    "format": "RGB PNG, opaque",
+    "historicalUnchanged": 39,
+    "storeUploadPerformed": false,
+    "shippingCodeChanged": false
+  }
+}

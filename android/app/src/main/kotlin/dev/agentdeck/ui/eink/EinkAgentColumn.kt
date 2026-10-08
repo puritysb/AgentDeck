@@ -1,5 +1,6 @@
 package dev.agentdeck.ui.eink
 
+import dev.agentdeck.terrarium.ciCompanionLabel
 import android.content.res.Configuration
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -131,7 +132,8 @@ fun EinkAgentPanel(
             startedAt = null,
             sessionId = state.sessionId,
             activity = state.sessionId?.let { sid ->
-                state.siblingSessions.firstOrNull { it.id == sid }?.activity
+                state.siblingSessions.firstOrNull { it.id == sid }?.let { row ->
+                    row.waitingOn?.takeUnless { state.agentState.isAwaitingInput() }?.let(::ciCompanionLabel) ?: row.activity }
             },
         )
     }
@@ -156,11 +158,11 @@ fun EinkAgentPanel(
                 agentType = session.agentType,
                 modelName = session.modelName,
                 effortLevel = null,
-                agentState = mapSessionState(session),
+                agentState = einkBoardState(state,session),
                 startedAt = session.startedAt,
                 sessionId = session.id,
                 weight = session.weight,
-                activity = session.activity,
+                activity = session.waitingOn?.takeUnless { einkBoardState(state,session).isAwaitingInput() }?.let(::ciCompanionLabel) ?: session.activity,
             )
         }
     val displayEntries = entries.sortedWith(::compareEntries)

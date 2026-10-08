@@ -45,6 +45,7 @@ const FORWARDED_EVENTS = [
   'display_state',
   'sessions_list',
   'review_status',
+  'session_settings',
   'voice_state',
 ] as const;
 

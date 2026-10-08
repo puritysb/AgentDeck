@@ -15,9 +15,9 @@ func dotMatrixCodexRateLimits(from raw: Any?) -> CodexRateLimits? {
 }
 
 final class PixooRenderer {
-    private typealias RGB = (UInt8, UInt8, UInt8)
+    typealias RGB = (UInt8, UInt8, UInt8)
 
-    private struct Camera {
+    struct Camera {
         var cx: Double
         var cy: Double
         var zoom: Double
@@ -65,7 +65,7 @@ final class PixooRenderer {
         case hermes
     }
 
-    private enum CreatureState {
+    enum CreatureState {
         case idle
         case processing
         case awaiting
@@ -88,7 +88,10 @@ final class PixooRenderer {
         let glyph: OfficialDotGlyph
         let state: CreatureState
         let toneIndex: Int
+        var sessionId: String? = nil
     }
+    struct CiCueAnchor { let sessionId: String; let x: Double; let y: Double; let bodySize: Double }
+    private struct CiCueMemo { var phase: String; let openedAt: Int; var waiting: Bool; var changedAt: Double; var lastAt: Double; var angle: Double; var speed: Double }
 
     private struct Bubble {
         var x: Double
@@ -395,15 +398,100 @@ final class PixooRenderer {
     }
 
     private var lastRenderTimeMs: Double = 0
+    /// Simulation clock — mirrors Node `consumeSimulationTicks`
+    /// (bridge/src/pixoo/pixoo-renderer.ts). Tetras, bubbles and data
+    /// particles integrate one 100 ms tick at a time; each render replays the
+    /// ticks that elapsed since the last one (capped), so their speed follows
+    /// wall time instead of the device push rate (one push per ~2.5 s used to
+    /// run the school at 1/25 of its designed speed).
+    static let simMaxTicksPerRender = 30
+    private var lastSimFrame: Int?
     private var directorState: DirectorState?
     private var creatureInstances: [String: CreatureInstance] = [:]
     private var creatureOrder: [String] = []
     private var bubbles: [Bubble] = []
     private var dataParticles: [DataParticle] = []
     private var tetras: [TetraState]?
+    private var ciCueResults: [String: CiCueMemo] = [:]
+
+    private func ciCueSeed(_ id: String) -> Double {
+        var hash = TerrariumRules.ciCompanionSeedOffset
+        for byte in id.utf8 { hash = (hash ^ UInt32(byte)) &* TerrariumRules.ciCompanionSeedPrime }
+        return Double(hash % TerrariumRules.ciCompanionSeedModulus) / Double(TerrariumRules.ciCompanionSeedModulus)
+    }
+
+    func drawCiCue(_ buf: inout [UInt8], size: Int, state: DashboardState, now: Double,
+                           anchors: [CiCueAnchor], tiny: Bool = false, bottom: Int? = nil) {
+        ciCueResults = ciCueResults.filter { id, _ in state.siblingSessions.contains { $0.alive && $0.id == id && $0.waitingOn != nil } }
+        guard !state.siblingSessions.contains(where: { $0.alive && ($0.state ?? "").hasPrefix("awaiting") }) else { return }
+        let glyphSize = CiWaitVisual.github.count
+        let lowerEdge = bottom ?? size
+        for anchor in anchors {
+            guard anchor.x + anchor.bodySize / 2 >= 0, anchor.x - anchor.bodySize / 2 < Double(size),
+                  anchor.y + anchor.bodySize / 2 >= 0, anchor.y - anchor.bodySize / 2 < Double(lowerEdge),
+                  let wait = state.siblingSessions.first(where: { $0.alive && $0.id == anchor.sessionId })?.waitingOn else { continue }
+            let moving = wait.agentWaiting && wait.phase != "passed" && wait.phase != "failed"
+            let terminal = wait.phase == "passed" || wait.phase == "failed"
+            if !moving && !terminal { ciCueResults.removeValue(forKey: anchor.sessionId); continue }
+            let speed = wait.phase == "queued" ? Double(TerrariumRules.ciCompanionQueuedSpeed)
+                : wait.phase == "unknown" ? Double(TerrariumRules.ciCompanionUnknownSpeed) : 1
+            var memo = ciCueResults[anchor.sessionId]
+            if memo == nil || memo?.openedAt != wait.openedAt || now < (memo?.lastAt ?? now) {
+                memo = CiCueMemo(phase: wait.phase, openedAt: wait.openedAt, waiting: moving, changedAt: now, lastAt: now,
+                    angle: ciCueSeed(anchor.sessionId) * .pi * 2 + (moving ? 0 : Double(TerrariumRules.ciCompanionStaticAngle)), speed: speed)
+            } else if var current = memo {
+                if current.waiting { current.angle += (now - current.lastAt) / 1000 * Double(TerrariumRules.ciCompanionRadiansPerSecond) * current.speed }
+                if current.phase != wait.phase || current.waiting != moving { current.changedAt = now }
+                current.phase = wait.phase; current.waiting = moving; current.lastAt = now; current.speed = speed
+                memo = current
+            }
+            ciCueResults[anchor.sessionId] = memo
+            if !moving && now - (memo?.changedAt ?? now) >= Double(TerrariumRules.ciCompanionResultSeconds) * 1000 { continue }
+            if tiny && Int(now) % CiWaitVisual.cycleMs < CiWaitVisual.showAfterMs { continue }
+            let angle = memo?.angle ?? 0
+            let clearance = sqrt(2) * (anchor.bodySize / 2 + Double(glyphSize) / 2 + 1)
+            let radiusX = max(Double(size) * Double(TerrariumRules.ciCompanionOrbitRadiusX), clearance)
+            let radiusY = max(Double(size) * Double(TerrariumRules.ciCompanionOrbitRadiusY), clearance)
+            var left = 1, top = 1
+            if !tiny {
+                var placed = false
+                for step in 0..<glyphSize {
+                    let a = angle + Double(step) * Double(TerrariumRules.ciCompanionStaticAngle)
+                    left = max(0, min(size - glyphSize, Int(round(anchor.x + cos(a) * radiusX - Double(glyphSize) / 2))))
+                    top = max(0, min(lowerEdge - glyphSize, Int(round(anchor.y + sin(a) * radiusY - Double(glyphSize) / 2))))
+                    let overlaps = anchors.contains { other in
+                        Double(left) < other.x + other.bodySize / 2 + 1 && Double(left + glyphSize) > other.x - other.bodySize / 2 - 1
+                        && Double(top) < other.y + other.bodySize / 2 + 1 && Double(top + glyphSize) > other.y - other.bodySize / 2 - 1
+                    }
+                    if !overlaps { placed = true; break }
+                }
+                if !placed { continue }
+            }
+            let color = CiWaitVisual.rgb(wait.phase), markColor = CiWaitVisual.helperRGB
+            for y in 0..<glyphSize { for x in 0..<glyphSize {
+                if CiWaitVisual.github[y] & (1 << (glyphSize - 1 - x)) != 0 {
+                    setPixel(&buf, left + x, top + y, markColor)
+                } else if tiny { setPixel(&buf, left + x, top + y, (0, 0, 0)) }
+            } }
+            setPixel(&buf, left + glyphSize - 1, top + glyphSize - 1, color)
+        }
+    }
 
     func render(dashboardState: DashboardState) -> Data {
         return renderSequence(dashboardState: dashboardState, frameCount: 1).first!
+    }
+
+    /// Tick indices to integrate for a render at `animFrame` (consumes them).
+    func consumeSimulationTicks(_ animFrame: Int) -> [Int] {
+        guard let last = lastSimFrame, animFrame >= last else {
+            lastSimFrame = animFrame
+            return [animFrame]
+        }
+        let elapsed = animFrame - last
+        guard elapsed > 0 else { return [] }
+        let n = min(elapsed, Self.simMaxTicksPerRender)
+        lastSimFrame = animFrame
+        return Array((animFrame - n + 1)...animFrame)
     }
 
     func renderSequence(dashboardState: DashboardState, frameCount: Int, intervalMs: Int = 100) -> [Data] {
@@ -455,6 +543,7 @@ final class PixooRenderer {
 
         for i in 0..<frameCount {
             let animFrame = baseAnimFrame + i
+            let simTicks = consumeSimulationTicks(animFrame)
             var world = [UInt8](repeating: 0, count: Self.width * Self.height * 3)
             var output = [UInt8](repeating: 0, count: Self.width * Self.height * 3)
 
@@ -476,12 +565,12 @@ final class PixooRenderer {
             let effectiveState: AgentConnectionState = anyCreatureProcessing ? .processing : (anyCreatureAwaiting ? .awaitingOption : state)
 
             let bubbleDensity = effectiveState == .processing ? 10 : (effectiveState == .idle ? 3 : 5)
-            updateBubbles(animFrame: animFrame, surfaceY: Self.surfaceY, density: bubbleDensity)
+            for tick in simTicks { updateBubbles(animFrame: tick, surfaceY: Self.surfaceY, density: bubbleDensity) }
             for bubble in bubbles {
                 blendPixel(&world, Int(round(bubble.x)), Int(round(bubble.y)), bubble.bright ? Self.colors.bubbleBright : Self.colors.bubble, 0.6)
             }
 
-            updateDataParticles(animFrame: animFrame, surfaceY: Self.surfaceY, active: anyCreatureProcessing)
+            for tick in simTicks { updateDataParticles(animFrame: tick, surfaceY: Self.surfaceY, active: anyCreatureProcessing) }
             for particle in dataParticles {
                 let fadeAlpha = min(1, particle.life / 10)
                 let color = particle.green ? Self.colors.dataParticleGreen : Self.colors.dataParticle
@@ -489,7 +578,7 @@ final class PixooRenderer {
             }
 
             let tetraMaxY = hudCount > 0 ? Self.height - hudCount * TerrariumRules.pixooUsageRowHeight - 4 : (Self.sandTop - 3)
-            updateTetras(animFrame: animFrame, surfaceY: Self.surfaceY, maxY: tetraMaxY)
+            for tick in simTicks { updateTetras(animFrame: tick, surfaceY: Self.surfaceY, maxY: tetraMaxY) }
             drawSurface(&world, animFrame: animFrame, surfaceY: Self.surfaceY, palette: palette, state: effectiveState)
 
             blitWithCamera(world: world, output: &output, camera: camera)
@@ -547,6 +636,17 @@ final class PixooRenderer {
             }
 
             drawUsageHUD(&output, dashboardState: dashboardState, animFrame: animFrame)
+            var ciAnchors = creatureOrder.compactMap { id -> CiCueAnchor? in
+                guard let creature = creatureInstances[id] else { return nil }
+                let (x, y) = worldToScreen(creature.worldX, creature.worldY, camera)
+                return CiCueAnchor(sessionId: id, x: x, y: y, bodySize: max(Double(CiWaitVisual.github.count), round(0.1875 * creature.sizeScale * camera.zoom * Double(Self.width))))
+            }
+            for s in dashboardState.siblingSessions where s.alive && s.agentType == "openclaw" {
+                let (x, y) = worldToScreen(Self.cfDefaultX, crayfishY, camera)
+                ciAnchors.append(CiCueAnchor(sessionId: s.id, x: x, y: y, bodySize: max(Double(CiWaitVisual.github.count), round(0.1875 * camera.zoom * Double(Self.width)))))
+            }
+            drawCiCue(&output, size: 64, state: dashboardState, now: nowMs + Double(i * intervalMs), anchors: ciAnchors,
+                      bottom: Self.width - hudCount * TerrariumRules.pixooUsageRowHeight)
             frames.append(Data(output))
         }
 
@@ -599,6 +699,9 @@ final class PixooRenderer {
         }
         MicroGlyphs.paintBeacon(&out, creature: creature, aggregate: aggregate, animFrame: animFrame)
 
+        let selected = dominant?.sessionId ?? dashboardState.siblingSessions.first { $0.alive && $0.agentType == "openclaw" }?.id
+        drawCiCue(&out, size: n, state: dashboardState, now: Date().timeIntervalSince1970 * 1000,
+                  anchors: selected.map { [CiCueAnchor(sessionId: $0, x: Double(n) / 2, y: Double(n) / 2, bodySize: Double(CiWaitVisual.github.count))] } ?? [], tiny: true)
         return Data(out)
     }
 
@@ -667,12 +770,13 @@ final class PixooRenderer {
         var marks = creatureOrder.compactMap { id -> CompactMark? in
             guard let c = creatureInstances[id] else { return nil }
             let tone = max(0, creatureOrder.firstIndex(of: id) ?? 0)
-            return CompactMark(glyph: glyph(for: c.creatureType), state: c.state, toneIndex: tone)
+            return CompactMark(glyph: glyph(for: c.creatureType), state: c.state, toneIndex: tone, sessionId: id)
         }
         let hasGateway = dashboardState.gatewayConnected || dashboardState.siblingSessions.contains { $0.agentType == "openclaw" }
         if hasGateway {
             let routing = dashboardState.siblingSessions.contains { $0.agentType == "openclaw" && $0.state == "processing" }
-            marks.append(CompactMark(glyph: .openClaw, state: routing ? .processing : .idle, toneIndex: 0))
+            marks.append(CompactMark(glyph: .openClaw, state: routing ? .processing : .idle, toneIndex: 0,
+                sessionId: dashboardState.siblingSessions.first { $0.alive && $0.agentType == "openclaw" }?.id))
         }
         marks.sort { priority($0.state) < priority($1.state) }
         marks = Array(marks.prefix(3))
@@ -733,10 +837,7 @@ final class PixooRenderer {
                     blend(x0 + dx, y0 + dy, lit, coverage)
                 }
             }
-            if mark.glyph == .openClaw {
-                set(x0 + Int(round(9.05 / 24 * Double(slot.size))), y0 + Int(round(7.63 / 24 * Double(slot.size))), Self.colors.crayfishEye)
-                set(x0 + Int(round(15.38 / 24 * Double(slot.size))), y0 + Int(round(7.63 / 24 * Double(slot.size))), Self.colors.crayfishEye)
-            }
+            OfficialFeaturePaint.paint(&out, canvasSize: n, layers: OfficialStandardFeatures.layers[mark.glyph] ?? [], sourceSize: OfficialDotGlyphs.size, x0: x0, y0: y0, target: slot.size)
             if mark.state == .processing {
                 for spark in 0..<3 {
                     let angle = Double(animFrame) * 0.24 + Double(spark) * Double.pi * 2 / 3
@@ -781,6 +882,11 @@ final class PixooRenderer {
             if let raw = candidate.0 { telemetry.append((raw, candidate.1)) }
         }
         let firstRailY = 32 - telemetry.count
+        let ciAnchors = marks.enumerated().compactMap { index, mark -> CiCueAnchor? in
+            guard let id = mark.sessionId else { return nil }
+            return CiCueAnchor(sessionId: id, x: Double(slots[index].x), y: Double(slots[index].y), bodySize: Double(slots[index].size))
+        }
+        drawCiCue(&out, size: 32, state: dashboardState, now: Date().timeIntervalSince1970 * 1000, anchors: ciAnchors, bottom: firstRailY)
         for (row, item) in telemetry.enumerated() {
             let y = firstRailY + row
             for x in 0..<n { set(x, y, (5, 8, 14)) }
@@ -1326,7 +1432,7 @@ final class PixooRenderer {
         }
     }
 
-    private func drawUsageHUD(_ buf: inout [UInt8], dashboardState: DashboardState, animFrame: Int) {
+    func drawUsageHUD(_ buf: inout [UInt8], dashboardState: DashboardState, animFrame: Int) {
         struct UsageWindow {
             let percent: Double
             let resetsAt: String?
@@ -1500,7 +1606,7 @@ final class PixooRenderer {
 
     /// Canonical dot-matrix mark generated from design/brand/*.svg.
     /// Geometry is shared with the Node renderer; state only changes motion/color.
-    private func drawOfficialDotGlyph(
+    func drawOfficialDotGlyph(
         _ buf: inout [UInt8],
         glyph: OfficialDotGlyph,
         worldX: Double,
@@ -1603,11 +1709,7 @@ final class PixooRenderer {
             }
         }
 
-        if glyph == .openClaw && !sick {
-            for (vx, vy) in [(9.05, 7.63), (15.38, 7.63)] {
-                setPixel(&buf, x0 + Int(round(vx / 24 * Double(target))), y0 + Int(round(vy / 24 * Double(target))), Self.colors.crayfishEye)
-            }
-        }
+        OfficialFeaturePaint.paint(&buf, canvasSize: Int(sqrt(Double(buf.count / 3))), layers: OfficialStandardFeatures.layers[glyph] ?? [], sourceSize: OfficialDotGlyphs.size, x0: x0, y0: y0, target: target)
 
         if state == .awaiting {
             drawQuestionBubble(&buf, centerX: x0 + target + 1, centerY: y0)
@@ -2022,6 +2124,22 @@ final class PixooRenderer {
             || Self.hermesAgents.contains(agentType)
     }
 
+    /// The official mark for an agent type, or nil for one the panel cannot show —
+    /// an allow-list, so a future agent renders as nothing rather than as another
+    /// agent (see the unknown-agentType rule in devices-and-wire.md). The Tide
+    /// scene's mark picker; the same buckets the aquarium sorts creatures into.
+    func officialGlyph(forAgentType agentType: String) -> OfficialDotGlyph? {
+        guard isCreatureAgent(agentType) else { return nil }
+        switch creatureType(for: agentType) {
+        case .cloud: return .codex
+        case .opencode: return .openCode
+        case .antigravity: return .antigravity
+        case .kiro: return .kiro
+        case .hermes: return .hermes
+        case .octopus: return .claudeCode
+        }
+    }
+
     private func simplifiedState(_ state: AgentConnectionState) -> CreatureState {
         switch state {
         case .processing: return .processing
@@ -2038,7 +2156,7 @@ final class PixooRenderer {
         }
     }
 
-    private func hudProviderCount(from dashboardState: DashboardState) -> Int {
+    func hudProviderCount(from dashboardState: DashboardState) -> Int {
         var count = 0
         if dashboardState.usageStale != true, dashboardState.fiveHourPercent != nil || dashboardState.sevenDayPercent != nil {
             count += 1
@@ -2151,7 +2269,7 @@ final class PixooRenderer {
         return base.date(from: value)
     }
 
-    private func drawText(_ buf: inout [UInt8], text: String, rightX: Int, y: Int, color: RGB) {
+    func drawText(_ buf: inout [UInt8], text: String, rightX: Int, y: Int, color: RGB) {
         var cursorX = rightX
         for ch in text.reversed() {
             guard let glyph = Self.pixelFont[ch] else {
@@ -2169,7 +2287,7 @@ final class PixooRenderer {
         }
     }
 
-    private func setPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB) {
+    func setPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height else { return }
         let idx = (y * Self.width + x) * 3
         buf[idx] = color.0
@@ -2177,7 +2295,7 @@ final class PixooRenderer {
         buf[idx + 2] = color.2
     }
 
-    private func blendPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ alpha: Double) {
+    func blendPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ alpha: Double) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height, alpha > 0 else { return }
         let idx = (y * Self.width + x) * 3
         let a = min(1.0, alpha)
@@ -2187,7 +2305,7 @@ final class PixooRenderer {
         buf[idx + 2] = UInt8(min(255, Int(round(Double(buf[idx + 2]) * inv + Double(color.2) * a))))
     }
 
-    private func glowPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ intensity: Double) {
+    func glowPixel(_ buf: inout [UInt8], _ x: Int, _ y: Int, _ color: RGB, _ intensity: Double) {
         guard x >= 0, x < Self.width, y >= 0, y < Self.height, intensity > 0 else { return }
         let idx = (y * Self.width + x) * 3
         buf[idx] = UInt8(min(255, Int(buf[idx]) + Int(round(Double(color.0) * intensity))))

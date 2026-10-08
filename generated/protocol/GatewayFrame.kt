@@ -120,6 +120,7 @@ enum class GatewayMethodName(val value: String) {
     SessionsList("sessions.list"),
     SessionsMessagesSubscribe("sessions.messages.subscribe"),
     SessionsMessagesUnsubscribe("sessions.messages.unsubscribe"),
+    SessionsPatch("sessions.patch"),
     SessionsSubscribe("sessions.subscribe"),
     SystemPresence("system-presence");
 
@@ -138,6 +139,7 @@ enum class GatewayMethodName(val value: String) {
             "sessions.list"                 -> SessionsList
             "sessions.messages.subscribe"   -> SessionsMessagesSubscribe
             "sessions.messages.unsubscribe" -> SessionsMessagesUnsubscribe
+            "sessions.patch"                -> SessionsPatch
             "sessions.subscribe"            -> SessionsSubscribe
             "system-presence"               -> SystemPresence
             else                            -> throw IllegalArgumentException()
@@ -145,6 +147,11 @@ enum class GatewayMethodName(val value: String) {
     }
 }
 
+/**
+ * sessions.patch — per-session overrides for subsequent turns. `null` clears an override
+ * back to inheritance. `model`, `thinkingLevel` and `fastMode` need only `operator.write`
+ * (OpenClaw docs/gateway/protocol/rpc-session-control.md).
+ */
 data class GatewayMethodParams (
     /**
      * Bearer token issued during device pairing.
@@ -196,7 +203,9 @@ data class GatewayMethodParams (
     val decision: ExecApprovalDecision? = null,
     val id: String? = null,
     val kind: String? = null,
-    val key: String? = null
+    val key: String? = null,
+    val model: String? = null,
+    val thinkingLevel: String? = null
 )
 
 /**
@@ -623,6 +632,12 @@ data class ConnectResult (
 
     val aborted: Boolean? = null,
     val resolved: Boolean? = null,
+
+    /**
+     * Agent-level defaults for rows that do not state their own (model, thinking).
+     */
+    val defaults: GatewaySessionSettingsFields? = null,
+
     val sessions: List<GatewaySession>? = null,
     val subscribed: Boolean? = null,
     val key: String? = null,
@@ -837,6 +852,26 @@ data class Data (
     val toolCallID: String? = null
 )
 
+/**
+ * Agent-level defaults for rows that do not state their own (model, thinking).
+ *
+ * Model / thinking facts a session row (or the list `defaults`) carries.
+ */
+data class GatewaySessionSettingsFields (
+    val model: String? = null,
+    val modelOverrideSource: String? = null,
+    val modelProvider: String? = null,
+    val thinkingDefault: String? = null,
+    val thinkingLevel: String? = null,
+    val thinkingLevels: List<DefaultsThinkingLevel>? = null,
+    val thinkingOptions: List<String>? = null
+)
+
+data class DefaultsThinkingLevel (
+    val id: String,
+    val label: String? = null
+)
+
 data class GatewayPresenceEntry (
     @Json(name = "clientId")
     val clientID: String? = null,
@@ -982,11 +1017,23 @@ data class GatewaySession (
     val key: String,
     val kind: String? = null,
     val label: String? = null,
+    val model: String? = null,
+    val modelOverrideSource: String? = null,
+    val modelProvider: String? = null,
 
     @Json(name = "sessionId")
     val sessionID: String? = null,
 
+    val thinkingDefault: String? = null,
+    val thinkingLevel: String? = null,
+    val thinkingLevels: List<SessionThinkingLevel>? = null,
+    val thinkingOptions: List<String>? = null,
     val updatedAt: Double? = null
+)
+
+data class SessionThinkingLevel (
+    val id: String,
+    val label: String? = null
 )
 
 enum class State(val value: String) {

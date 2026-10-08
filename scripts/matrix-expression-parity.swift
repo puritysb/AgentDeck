@@ -10,7 +10,7 @@ import Foundation
             let now = step["now"] as! Double
             if let event = step["event"] as? [String: Any] { expression.ingest(event, now: now) }
             let scene = expression.scene(now: now)
-            frames.append(["kind": scene.kind, "count": scene.count, "glyph": scene.glyph,
+            frames.append(["kind": scene.kind, "count": scene.count, "glyph": scene.glyph, "faceKind": scene.face, "pips": scene.pips,
                 "counts": scene.counts, "face": expression.render(size: 11, now: now).base64EncodedString(),
                 "world": expression.render(size: 32, now: now).base64EncodedString()])
         }

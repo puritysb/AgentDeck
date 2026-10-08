@@ -543,6 +543,9 @@ async function selectRun(id){
       for(const t of turns){
         const pr=t.prompt?esc(t.prompt.slice(0,150)):'(no prompt)';
         const d2=t.ended_at&&t.started_at?fd((t.ended_at-t.started_at)):'open';
+        let timing={};try{timing=JSON.parse(t.efficiency_json??t.efficiencyJson??'{}')}catch{}
+        const ciTime=Number.isFinite(timing.ci_wait_ms)&&timing.ci_wait_ms>0
+          ? ' · CI '+fd(timing.ci_wait_ms)+' · active '+fd(timing.agent_active_ms) : '';
         const tc=t.tool_calls||0;const fm=t.files_modified||0;const fc=t.files_created||0;
         const resp=t.response?esc(t.response.slice(0,300)):'';
         // Turn-level judge score (mid-session eval)
@@ -556,7 +559,7 @@ async function selectRun(id){
         h+='<div class="turn-prompt">"'+pr+'"</div>';
         if(resp)h+='<div style="color:var(--muted);font-size:12px;margin:4px 0;padding:6px 8px;background:var(--bg);border-radius:4px;border-left:2px solid var(--accent)">'+resp+(t.response&&t.response.length>300?'...':'')+'</div>';
         if(tRaw?.reasoning)h+='<div class="reasoning" style="font-size:11px;margin-top:4px">'+esc(tRaw.reasoning.slice(0,300))+'</div>';
-        h+='<div class="turn-stats"><span>'+tc+' tools</span><span>'+fm+' edits</span><span>'+fc+' creates</span><span>'+d2+'</span></div>';
+        h+='<div class="turn-stats"><span>'+tc+' tools</span><span>'+fm+' edits</span><span>'+fc+' creates</span><span>'+d2+ciTime+'</span></div>';
         h+='</div>';
       }
       h+='</div>';

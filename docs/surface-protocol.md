@@ -307,6 +307,9 @@ The read baseline is `connection`, `sessions_list`, `usage_update`,
 until the daemon confirms a new state and invalidates all pending control on
 disconnect or stale timeout. Arbitrary `session_command.command.type` values are
 outside v1 even though the internal daemon currently accepts an open object.
+`query_session_settings` / `set_session_setting` (#463, first-party decks) map
+to no capability, so a negotiated v1 surface cannot send them — control stays
+fail-closed until a profile revision adds one.
 
 ### portable-reader/v1
 

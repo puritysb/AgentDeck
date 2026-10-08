@@ -681,4 +681,99 @@ final class CodexOtelParserTests: XCTestCase {
             servicedOtelTurn: nil, endTurnId: "u1", hookTurnOpen: false))
     }
 }
+/// The resolver intentionally suspends, proving span admission never waits on
+/// filesystem work and late results can retract only through the callback.
+private actor CodexMetadataLookupProbe {
+    private var continuations: [String: CheckedContinuation<Bool?, Never>] = [:]
+    private(set) var calls = 0
+    func resolve(_ id: String) async -> Bool? {
+        calls += 1
+        return await withCheckedContinuation { continuations[id] = $0 }
+    }
+    var pendingIDs: Set<String> { Set(continuations.keys) }
+    func finish(_ id: String, value: Bool?) { continuations.removeValue(forKey: id)?.resume(returning: value) }
+}
+
+@DaemonActor
+final class CodexOtelSubagentFilterTests: XCTestCase {
+    private let id = "01a10bf8-45c3-72c0-a7fc-9d8334961f5d"
+    private func waitUntil(_ condition: () async -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(2)
+        while !(await condition()) {
+            guard Date() < deadline else { XCTFail("metadata worker failed to settle"); return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func testUnknownAdmitsImmediatelyThenExplicitChildRetractsOnce() async throws {
+        let probe = CodexMetadataLookupProbe()
+        let filter = CodexOtelSubagentFilter { await probe.resolve($0) }
+        var retracted: [String] = []
+        filter.onSubagent = { retracted.append($0) }
+        XCTAssertNil(filter.check(id))
+        XCTAssertNil(filter.check(id))
+        XCTAssertEqual(filter.pendingCount, 1)
+        try await waitUntil { await probe.pendingIDs.contains(self.id) }
+        await probe.finish(id, value: true)
+        try await waitUntil { filter.pendingCount == 0 }
+        XCTAssertEqual(filter.check(id), true)
+        XCTAssertEqual(retracted, [id])
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    func testUnknownRetriesAfterBoundWhileStandaloneVerdictStaysPermissive() async throws {
+        let probe = CodexMetadataLookupProbe()
+        let filter = CodexOtelSubagentFilter { await probe.resolve($0) }
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertNil(filter.check(id, now: now))
+        try await waitUntil { await probe.pendingIDs.contains(self.id) }
+        await probe.finish(id, value: nil)
+        try await waitUntil { filter.pendingCount == 0 }
+        let retrySeconds = ObservedAgentRules.codexMetadataRetryMs / 1000
+        XCTAssertNil(filter.check(id, now: now.addingTimeInterval(retrySeconds - 0.001)))
+        XCTAssertEqual(filter.pendingCount, 0)
+        XCTAssertNil(filter.check(id, now: now.addingTimeInterval(retrySeconds)))
+        try await waitUntil { await probe.pendingIDs.contains(self.id) }
+        await probe.finish(id, value: false)
+        try await waitUntil { filter.pendingCount == 0 }
+        XCTAssertEqual(filter.check(id, now: now.addingTimeInterval(retrySeconds * 2)), false)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testBurstBoundsCacheAndActualWorkers() async throws {
+        let probe = CodexMetadataLookupProbe()
+        let filter = CodexOtelSubagentFilter { await probe.resolve($0) }
+        for index in 0..<(ObservedAgentRules.codexMetadataCacheLimit * 2) {
+            XCTAssertNil(filter.check(String(format: "00000000-0000-4000-8000-%012d", index)))
+        }
+        XCTAssertEqual(filter.cachedCount, ObservedAgentRules.codexMetadataCacheLimit)
+        XCTAssertEqual(filter.pendingCount, ObservedAgentRules.codexMetadataInFlightLimit)
+        try await waitUntil { await probe.pendingIDs.count == ObservedAgentRules.codexMetadataInFlightLimit }
+        filter.close()
+        let pending = await probe.pendingIDs
+        for id in pending { await probe.finish(id, value: false) }
+        try await waitUntil { filter.pendingCount == 0 }
+        XCTAssertEqual(filter.cachedCount, 0)
+    }
+
+    func testTeardownCannotRetractFromLateLookupOrStartAnotherWorker() async throws {
+        let probe = CodexMetadataLookupProbe()
+        let filter = CodexOtelSubagentFilter { await probe.resolve($0) }
+        var retracted = false
+        filter.onSubagent = { _ in retracted = true }
+        XCTAssertNil(filter.check(id))
+        try await waitUntil { await probe.pendingIDs.contains(self.id) }
+        filter.close()
+        XCTAssertEqual(filter.pendingCount, 1)
+        XCTAssertNil(filter.check("019f364e-d68c-7c33-9215-069c76458d62"))
+        await probe.finish(id, value: true)
+        try await waitUntil { filter.pendingCount == 0 }
+        XCTAssertFalse(retracted)
+        XCTAssertEqual(filter.cachedCount, 0)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+    }
+}
 #endif

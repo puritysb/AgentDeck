@@ -96,10 +96,10 @@ export function findSourceCheckout(startDir = selfPackageDir()): string | null {
  *
  * `shared` and `hooks` are separate packages reached through node_modules
  * symlinks, so hashing `bridge/dist` alone would call a daemon "current" while
- * it ran a stale `shared`. Both layouts resolve here: the workspace sibling
- * (`<root>/shared/dist`) and the installed copy
- * (`bridge/node_modules/@agentdeck/shared/dist`). In a pnpm workspace the two
- * are the same directory through a symlink, which `realpathSync` collapses.
+ * it ran a stale `shared`. Resolve the workspace sibling (`<root>/shared/dist`)
+ * and each dependency's actual ESM-resolved entry. npm can hoist dependencies
+ * beside bridge rather than beneath it; resolution also respects a nearer
+ * nested copy. In a pnpm workspace realpathSync deduplicates the symlink.
  */
 function distTrees(): string[] {
   const trees: string[] = [];
@@ -114,9 +114,18 @@ function distTrees(): string[] {
   for (const pkg of DAEMON_BUILD_PACKAGES) {
     if (pkg === 'bridge') continue;
     if (root) add(join(root, pkg, 'dist'));
-    add(join(selfPackageDir(), 'node_modules', '@agentdeck', pkg, 'dist'));
+    try {
+      // Resolve only the allow-listed runtime dependencies, without importing
+      // (executing) them or scanning unrelated node_modules trees. Use ESM's
+      // import condition, matching the daemon and our import-only exports.
+      add(dirname(fileURLToPath(import.meta.resolve(`@agentdeck/${pkg}`))));
+    } catch { /* An unavailable dependency contributes no invented identity. */ }
   }
-  return trees.sort();
+  // Package order, not absolute path order: a nested shared dependency sorts
+  // before hoisted hooks on disk, but equivalent runtime contents must hash
+  // identically in a source checkout and either npm installation layout.
+  const label = (dir: string): string => dir.split(sep).slice(-2).join('/');
+  return trees.sort((a, b) => label(a).localeCompare(label(b)) || a.localeCompare(b));
 }
 
 /** Every `.js` under `dir`, relative and sorted, skipping test output. */

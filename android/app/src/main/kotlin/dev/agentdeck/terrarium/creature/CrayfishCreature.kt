@@ -44,7 +44,6 @@ class CrayfishCreature(
     private val bodyPaths by lazy {
         CreatureGeometry.OPENCLAW_BODY_PATHS.map { parseSvgPath(it).apply { fillType = PathFillType.EvenOdd } }
     }
-    private val eyePaths by lazy { CreatureGeometry.OPENCLAW_EYE_PATHS.map(::parseSvgPath) }
 
     fun setState(newState: CrayfishVisualState) {
         if (newState != visualState) {
@@ -176,8 +175,7 @@ class CrayfishCreature(
             }
         }) {
             for (path in bodyPaths) drawPath(path, brush = brush, alpha = alpha)
-            val highlightColor = eyeColorForState()
-            for (path in eyePaths) drawPath(path, color = highlightColor, alpha = alpha)
+            dev.agentdeck.terrarium.CreatureBrandFeatures.draw(this, "openclaw")
         }
     }
 
@@ -238,26 +236,6 @@ class CrayfishCreature(
             CrayfishVisualState.OBSERVING -> side * (3f + sin(time * 2f) * 5f)
             CrayfishVisualState.SICK -> side * (-8f + sin(time * 0.5f) * 2f)  // claws droop
             else -> 0f
-        }
-    }
-
-    private fun eyeColorForState(): Color {
-        return when (visualState) {
-            CrayfishVisualState.ROUTING -> {
-                val flash = sin(time * 2f * PI.toFloat() / (TerrariumTiming.EYE_FLASH_PERIOD_MS / 1000f))
-                val intensity = flash * 0.5f + 0.5f
-                lerpColor(TerrariumColors.CrayfishEye, Color.White, intensity * 0.5f)
-            }
-            CrayfishVisualState.SITTING -> {
-                val breath = sin(time * 0.6f) * 0.15f + 0.85f
-                TerrariumColors.CrayfishEye.copy(alpha = breath)
-            }
-            CrayfishVisualState.SICK -> {
-                // Dim, flickering eyes
-                val flicker = sin(time * 1.2f) * 0.1f + 0.45f
-                TerrariumColors.CrayfishEye.copy(alpha = flicker)
-            }
-            else -> TerrariumColors.CrayfishEye
         }
     }
 

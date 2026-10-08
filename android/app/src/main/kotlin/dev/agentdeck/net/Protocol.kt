@@ -411,6 +411,7 @@ data class SessionInfo(
     // daemon keeps emitting an explicit zero once a session has had children,
     // because a field that vanishes when the last child exits latches its last
     // count forever under retain-on-absent merging.
+    val waitingOn: CiWaitStatus? = null,
     val subagents: SubagentSummary? = null,
     /** Cross-session coordination census — see [CoordinationSummary]. Same
      *  emission rule as [subagents]: zeros once observed, absent only when the
@@ -817,3 +818,24 @@ fun parseBridgeMessage(text: String): BridgeEvent? {
         null
     }
 }
+
+
+@Serializable
+data class CiWaitStatus(
+    val kind: String = "ci",
+    val provider: String = "github-actions",
+    val phase: String = "unknown",
+    val agentWaiting: Boolean = false,
+    val evidence: String = "tool_input",
+    @Serializable(with = FlexibleLongSerializer::class)
+    val openedAt: Long = 0,
+    val checks: CiWaitChecks? = null,
+    val runUrl: String? = null,
+    val repo: String? = null,
+    val ref: String? = null,
+    val pr: Long? = null,
+    val runId: Long? = null,
+)
+
+@Serializable
+data class CiWaitChecks(val total: Int, val passed: Int, val failed: Int, val pending: Int)

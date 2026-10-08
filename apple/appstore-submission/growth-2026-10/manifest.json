@@ -1,0 +1,98 @@
+{
+  "prepared_on": "2026-10-08",
+  "source": "docs/media/aquarium-180-showcase.mp4",
+  "source_segment_seconds": [
+    23,
+    35
+  ],
+  "source_context": "Native iPad simulator, synthetic sessions; 1.8.0 showcase. No production data or new UI composition.",
+  "processing": "Crop 44px system bar and 20px bottom chrome, preserve aspect ratio, pad from design/tokens.css ink-900, fade at both ends, silent AAC. Creative assets, not App Preview replacements.",
+  "assets": [
+    {
+      "file": "search-results.mp4",
+      "sha256": "11a4394323c18be1a6d86342f27ad7383067a5d6719ad0dae7f9783d115a6b93",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 1920,
+            "height": 1280,
+            "pix_fmt": "yuv420p",
+            "r_frame_rate": "30/1"
+          },
+          {
+            "codec_name": "aac",
+            "r_frame_rate": "0/0"
+          }
+        ],
+        "format": {
+          "duration": "12.000000",
+          "size": "2975368"
+        }
+      }
+    },
+    {
+      "file": "header.mp4",
+      "sha256": "abd1978eddae4c7b2957296d267808c4e6d290c8990f3b08b6e47ee78a5d6598",
+      "probe": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "h264",
+            "width": 3840,
+            "height": 1646,
+            "pix_fmt": "yuv420p",
+            "r_frame_rate": "30/1"
+          },
+          {
+            "codec_name": "aac",
+            "r_frame_rate": "0/0"
+          }
+        ],
+        "format": {
+          "duration": "12.000000",
+          "size": "4442995"
+        }
+      }
+    }
+  ],
+  "provider_token": "128040795",
+  "campaign_tokens": [
+    "github-readme-202610",
+    "website-202610",
+    "release-202610"
+  ],
+  "pages": [
+    {
+      "name": "Developer Workflow · 2026-10",
+      "portal_id": "8a5d08a8-a276-4dfa-99b2-459f31c18385",
+      "product_page_id": "389194c5-821f-47fb-ba6d-964071ac27d4",
+      "intended_keywords_en": [
+        "claude code",
+        "codex",
+        "developer"
+      ]
+    },
+    {
+      "name": "iPad Second Screen · 2026-10",
+      "portal_id": "a40f6f00-6257-4f39-b4a2-f8381e6e5a41",
+      "product_page_id": "aa612b95-f60a-4c64-9d30-970dbb6926bb",
+      "intended_keywords_en": [
+        "ipad",
+        "dashboard",
+        "monitoring"
+      ]
+    }
+  ],
+  "submission": {
+    "id": "c02055ac-1dd7-4034-aa64-b976a82c2f2b",
+    "status": "Waiting for Review",
+    "submitted_at": "2026-10-08T01:40:00+09:00",
+    "platform": "iOS",
+    "items": 2,
+    "portal_url": "https://appstoreconnect.apple.com/apps/6784822497/distribution/reviewsubmissions/details/c02055ac-1dd7-4034-aa64-b976a82c2f2b"
+  }
+}

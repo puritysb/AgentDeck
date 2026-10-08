@@ -532,7 +532,7 @@ export class BridgeCore {
   zaiQuotaForWire(): import('./types.js').ZaiRateLimits | null {
     if (!this.cachedZaiQuota) return null;
     if (this.lastZaiFetchTime <= 0 || Date.now() - this.lastZaiFetchTime > BridgeCore.USAGE_STALE_TTL) {
-      return { planType: this.cachedZaiQuota.planType, limitId: this.cachedZaiQuota.limitId };
+      return { planType: this.cachedZaiQuota.planType, limitId: this.cachedZaiQuota.limitId, authFailed: this.cachedZaiQuota.authFailed ?? false };
     }
     return normalizeZaiRateLimits(this.cachedZaiQuota) ?? null;
   }
@@ -674,15 +674,15 @@ export class BridgeCore {
       const capturedAt = Date.parse(result.data.capturedAt ?? '');
       this.lastZaiFetchTime = Number.isFinite(capturedAt) && capturedAt <= Date.now() ? capturedAt : 0;
     } else if (this.cachedZaiQuota) {
-      this.cachedZaiQuota = {};
+      this.cachedZaiQuota = { authFailed: false };
       this.lastZaiFetchTime = 0;
     }
     this.broadcastUsage();
     return result.fresh;
   }
 
-  async refreshZaiUsage(): Promise<void> {
-    this.applyZaiUsageResult(await fetchZaiQuota());
+  async refreshZaiUsage(): Promise<boolean> {
+    return this.applyZaiUsageResult(await fetchZaiQuota());
   }
 
   /** Start the z.ai provider-account poll. Daemon-side only — a session bridge

@@ -61,6 +61,8 @@ struct SettingsScreen: View {
     @State private var zaiApiKeySaved: Bool = false
     @State private var zaiApiKeyError: String?
     @State private var zaiApiKeySaving = false
+    @State private var zaiExternalEditable = true
+    @State private var zaiConfigurationLoading = false
     #if os(macOS)
     @State private var portInput: String = ""
     @StateObject private var weatherLocationPicker = WeatherLocationPicker()
@@ -1743,8 +1745,11 @@ struct SettingsScreen: View {
                 .controlSize(.small)
                 .disabled(!zaiApiKeySaved && zaiApiKeyInput.isEmpty)
 
+                if zaiApiKeySaving || zaiConfigurationLoading {
+                    ProgressView().controlSize(.small)
+                }
                 if zaiApiKeySaved {
-                    Text("Saved in Keychain")
+                    Text(daemonService.isUsingExternalDaemon ? "Saved on this Mac" : "Saved in Keychain")
                         .font(.system(size: 10))
                         .foregroundStyle(DesignTokens.Status.idle)
                 }
@@ -1760,12 +1765,36 @@ struct SettingsScreen: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .disabled(zaiApiKeySaving)
+        .disabled(zaiApiKeySaving || (daemonService.isUsingExternalDaemon && !zaiExternalEditable))
         .onChange(of: stateHolder.state.zaiRateLimits?.capturedAt) { _, stamp in
-            if stamp != nil { zaiApiKeyError = nil }
+            if stamp != nil && stateHolder.state.zaiRateLimits?.authFailed != true { zaiApiKeyError = nil }
         }
         #else
         EmptyView()
+        #endif
+    }
+
+    @MainActor private func refreshZaiConfiguration() async {
+        #if os(macOS) && AGENTDECK_APP_STORE
+        guard daemonService.isUsingExternalDaemon else {
+            zaiApiKeySaved = await Task.detached { ZaiUsageApiKeyStore.loadKey() != nil }.value
+            zaiApiKeyError = nil
+            return
+        }
+        guard let raw = stateHolder.connection.url else { return }
+        zaiExternalEditable = false
+        zaiConfigurationLoading = true
+        defer { zaiConfigurationLoading = false }
+        do {
+            let result = try await ZaiConfigurationClient.request(connectionURL: raw)
+            guard stateHolder.connection.url == raw else { return }
+            zaiApiKeySaved = result.configured; zaiExternalEditable = result.editable
+            zaiApiKeyError = result.authFailed ? "Authentication failed. Replace your coding-plan API key."
+                : result.editable ? nil : "This key is managed by the daemon environment."
+        } catch {
+            guard stateHolder.connection.url == raw else { return }
+            zaiApiKeyError = error.localizedDescription
+        }
         #endif
     }
 
@@ -1777,6 +1806,15 @@ struct SettingsScreen: View {
         Task {
             defer { zaiApiKeySaving = false }
             do {
+                if daemonService.isUsingExternalDaemon {
+                    guard let raw = stateHolder.connection.url else { return }
+                    let result = try await ZaiConfigurationClient.request(connectionURL: raw, method: "POST", key: key)
+                    guard stateHolder.connection.url == raw else { return }
+                    zaiApiKeyInput = ""; zaiApiKeySaved = result.configured
+                    zaiApiKeyError = result.authFailed ? "Authentication failed. Check or replace your coding-plan API key."
+                        : result.verified == true ? nil : "Key saved. Usage could not be verified; AgentDeck will retry automatically."
+                    return
+                }
                 try await Task.detached(priority: .userInitiated) {
                     try ZaiUsageApiKeyStore.saveKey(key)
                 }.value
@@ -1799,6 +1837,14 @@ struct SettingsScreen: View {
         Task {
             defer { zaiApiKeySaving = false }
             do {
+                if daemonService.isUsingExternalDaemon {
+                    guard let raw = stateHolder.connection.url else { return }
+                    let result = try await ZaiConfigurationClient.request(connectionURL: raw, method: "DELETE")
+                    guard stateHolder.connection.url == raw else { return }
+                    zaiApiKeyInput = ""; zaiApiKeySaved = result.configured
+                    zaiApiKeyError = result.configured ? "A key is still provided by another configuration." : nil
+                    return
+                }
                 try await Task.detached(priority: .userInitiated) {
                     try ZaiUsageApiKeyStore.deleteKey()
                 }.value
@@ -1947,6 +1993,7 @@ struct SettingsScreen: View {
                 anthropicAdminApiKeyError = nil
                 zaiApiKeySaved = za
                 zaiApiKeyError = nil
+                await refreshZaiConfiguration()
                 #endif
             }
         }
@@ -2041,7 +2088,8 @@ struct SettingsScreen: View {
             #endif
         case "zai":
             #if os(macOS) && AGENTDECK_APP_STORE
-            if !daemonService.isUsingExternalDaemon { zaiApiKeyEditor }
+            zaiApiKeyEditor
+                .task(id: "\(stateHolder.connection.url ?? "")|\(daemonService.isUsingExternalDaemon)") { await refreshZaiConfiguration() }
             #else
             Text("Configure on macOS to add a z.ai coding-plan key.")
                 .font(.system(size: 10))

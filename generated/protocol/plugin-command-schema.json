@@ -408,12 +408,40 @@
           "$ref": "#/definitions/ReviewRunCommand"
         },
         {
+          "$ref": "#/definitions/QuerySessionSettingsCommand"
+        },
+        {
+          "$ref": "#/definitions/SetSessionSettingCommand"
+        },
+        {
           "$ref": "#/definitions/Esp32OtaAckCommand"
         },
         {
           "$ref": "#/definitions/Esp32OtaErrorCommand"
         }
       ]
+    },
+    "QuerySessionSettingsCommand": {
+      "additionalProperties": false,
+      "description": "Ask the daemon which settings this session can switch (→ `session_settings`).",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "query_session_settings",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId"
+      ],
+      "type": "object"
     },
     "QuerySessionTimelineCommand": {
       "additionalProperties": false,
@@ -554,6 +582,48 @@
         "type",
         "sessionId",
         "command"
+      ],
+      "type": "object"
+    },
+    "SetSessionSettingCommand": {
+      "additionalProperties": false,
+      "description": "Switch a session setting to one of the agent-offered option ids. `null` clears the override and returns to the agent's own default. Answered with a fresh `session_settings` event (with `error` when the agent refused).",
+      "properties": {
+        "key": {
+          "enum": [
+            "model",
+            "effort"
+          ],
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "targetSessionKey": {
+          "description": "Echo the queried conversation. A changed active target refuses the write.",
+          "type": "string"
+        },
+        "type": {
+          "const": "set_session_setting",
+          "type": "string"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "sessionId",
+        "requestId",
+        "targetSessionKey",
+        "key",
+        "value"
       ],
       "type": "object"
     },

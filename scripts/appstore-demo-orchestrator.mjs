@@ -17,10 +17,11 @@ import { readFileSync } from 'node:fs';
 import { WebSocketServer } from '../bridge/node_modules/ws/wrapper.mjs';
 import { createServer } from 'node:http';
 import { aquariumStory } from './aquarium-demo-story.mjs';
+import { showcaseStory, showcaseEventsForPhase } from './aquarium-showcase-story.mjs';
 
 const options = parseArgs(process.argv.slice(2));
 
-const CYCLE_MS = options.story ? aquariumStory.durationMs : 30_000;
+const CYCLE_MS = options.showcase ? showcaseStory.durationMs : options.story ? aquariumStory.durationMs : 30_000;
 const DEFAULT_PORT = Number(process.env.AGENTDECK_DEMO_PORT || 9220);
 const productVersion = readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim();
 
@@ -180,7 +181,7 @@ const storePhases = [
   },
 ];
 
-const phases = options.story ? aquariumStory.phases : storePhases;
+const phases = options.showcase ? showcaseStory.phases : options.story ? aquariumStory.phases : storePhases;
 
 const agents = {
   claude: {
@@ -282,6 +283,7 @@ function parseArgs(argv) {
     const arg = rest[index];
     if (arg === '--once') options.once = true;
     else if (arg === '--story') options.story = true;
+    else if (arg === '--showcase') options.showcase = true;
     else if (arg === '--port') options.port = Number(rest[++index]);
     else if (arg === '--epoch-ms') options.epochMs = Number(rest[++index]);
     else if (arg === '--agent') options.agent = rest[++index];
@@ -291,6 +293,8 @@ function parseArgs(argv) {
     else throw new Error(`Unknown argument: ${arg}`);
   }
   if (options.story && command !== 'serve') throw new Error('--story supports serve only');
+  if (options.showcase && command !== 'serve') throw new Error('--showcase supports serve only');
+  if (options.story && options.showcase) throw new Error('Choose either --story or --showcase');
   return options;
 }
 
@@ -462,6 +466,7 @@ const moduleHealth = {
 };
 
 function eventsForPhase(index, cycleStartedAt, includeHistory, relayUsage = false) {
+  if (options.showcase) return showcaseEventsForPhase(index, cycleStartedAt, includeHistory, options.port || DEFAULT_PORT);
   const phase = phases[index];
   const focusedKey = Object.keys(agents).find((key) => agents[key].id === phase.focus);
   const focused = agents[focusedKey];

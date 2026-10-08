@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TERRARIUM_RULES } from '../terrarium-rules.js';
+import { TERRARIUM_RULES, ciCompanionSeed } from '../terrarium-rules.js';
 import { OUTPUTS } from '../../../scripts/generate-terrarium-rules.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
@@ -16,6 +16,24 @@ describe('terrarium rules invariants', () => {
     const { crayfish, resterMaxWidthFrac } = TERRARIUM_RULES;
     const clawLeftEdge = crayfish.homeX - crayfish.widthFrac;
     expect(crayfish.clearMaxX + resterMaxWidthFrac / 2).toBeLessThan(clawLeftEdge);
+  });
+
+  it('CI companion motion and footprint fit the visible session surface', () => {
+    const orbit = TERRARIUM_RULES.ciCompanion;
+    expect(orbit.orbitRadiusX).toBeGreaterThan(orbit.sizeFrac);
+    expect(orbit.orbitRadiusY).toBeGreaterThan(orbit.sizeFrac);
+    expect(orbit.edgeInset).toBeGreaterThanOrEqual(orbit.sizeFrac / 2);
+    expect(orbit.nativeRadiusX).toBeGreaterThan(orbit.nativeSize);
+    expect(orbit.resultSeconds).toBeGreaterThan(0);
+    expect(orbit.unknownSpeed).toBeLessThan(orbit.queuedSpeed);
+    expect(orbit.queuedSpeed).toBeLessThan(1);
+  });
+
+  it('identity phase uses deterministic unsigned FNV-1a over UTF-8', () => {
+    expect(ciCompanionSeed('hello')).toBe(0.1723);
+    expect(ciCompanionSeed('')).toBe(0.6261);
+    expect(ciCompanionSeed('ci:한글')).toBe(0.1909);
+    expect(ciCompanionSeed('ci:한글')).not.toBe(ciCompanionSeed('ci:다른'));
   });
 
   it('rest strips sit above the crayfish, below mid-water', () => {

@@ -68,10 +68,39 @@ describe('Gateway live activity', () => {
     call('3', 'messages.groupChat', 30);
     const fourth = call('4', '.', 40, { isError: true });
     expect(fourth[0].entry.raw).toBe('openclaw ×4 · channels, agents.main, messages.groupChat, … · 1 failed');
-    expect(fourth[0].entry.detail!.split('\n')).toEqual([
-      'openclaw · channels', 'openclaw · agents.main', 'openclaw · messages.groupChat', 'openclaw · . · failed',
-    ]);
+    expect(fourth[0].entry.detail).toContain('FAILED · openclaw\nInput: .');
+    expect(fourth[0].entry.detail).toContain('Input: channels');
     expect(fourth[0].entry).toMatchObject({ startedAt: 10, endedAt: 41 });
+  });
+  it('retains failure and result evidence after a long run, and discloses omitted details', () => {
+    const live = new GatewayLiveActivity();
+    let last;
+    for (let i = 0; i < 60; i++) {
+      last = live.ingest('session.tool', frame('evidence', { data: {
+        phase: 'result', name: 'exec', toolCallId: `call-${i}`,
+        args: { command: `inspect-${i} ` + 'x'.repeat(300) },
+        isError: i === 1,
+        result: i === 1 ? 'Permission denied: fixture directory' : `result-${i}`,
+      } }), i + 10)[0].entry;
+    }
+    expect(last!.raw).toContain('1 failed');
+    expect(last!.detail).toContain('FAILED · exec');
+    expect(last!.detail).toContain('Permission denied: fixture directory');
+    expect(last!.detail).toContain('result-59');
+    expect(last!.detail).toContain('additional tool details omitted');
+    expect(last!.detail!.length).toBeLessThanOrEqual(GATEWAY_LIVE_RULES.detailLimit);
+  });
+  it('retains both outputs when two successful tools are folded', () => {
+    const live = new GatewayLiveActivity();
+    for (const id of ['one', 'two']) {
+      const rows = live.ingest('session.tool', frame('outputs', { data: {
+        phase: 'result', name: 'read', toolCallId: id, result: `output ${id}`,
+      } }), id === 'one' ? 10 : 20);
+      if (id === 'two') {
+        expect(rows[0].entry.detail).toContain('output one');
+        expect(rows[0].entry.detail).toContain('output two');
+      }
+    }
   });
   it('labels a folded row by its calls', () => {
     expect(gatewayToolFoldRaw(['exec · ls'])).toBe('exec · ls');

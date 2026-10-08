@@ -16,6 +16,61 @@ class TimelineStoreTest {
         store.clear()
     }
 
+    @Test
+    fun `turn owns tools and reply across a busy dashboard for every agent`() {
+        for (agent in listOf("openclaw", "claude-code", "codex-cli", "opencode", "kiro-cli", "antigravity", "hermes")) {
+            val start = TimelineEntry(1000, "chat_start", "Inspect disk usage", agentType = agent, sessionId = "own", runId = "run", startedAt = 1000)
+            val noise = (0 until 80).map { TimelineEntry(2000L + it, "chat_start", "Other request $it", sessionId = "other-$it") }
+            val tool = TimelineEntry(5000, "tool_exec", "exec ×2", detail = "Result: disk usage", agentType = agent, sessionId = "own", runId = "run", startedAt = 4500)
+            val reply = TimelineEntry(6000, "chat_response", "Disk report", agentType = agent, sessionId = "own", runId = "run", startedAt = 1000)
+            val groups = groupConsecutive(listOf(start) + noise + listOf(tool, reply))
+            assertEquals(agent, 81, groups.size)
+            assertEquals(agent, 1, groups[0].toolActivity.size)
+            assertEquals(agent, "Result: disk usage", groups[0].toolDetail)
+            assertEquals(agent, "Disk report", groups[0].mergedResponse?.summary)
+        }
+    }
+
+    @Test
+    fun `tools never swallow approvals subagents or unrelated runs`() {
+        val start = TimelineEntry(1000, "chat_start", "Inspect disk", sessionId = "s", runId = "a", taskId = "task")
+        val entries = listOf(start,
+            TimelineEntry(2000, "tool_request", "Approve", sessionId = "s", runId = "a"),
+            TimelineEntry(3000, "tool_exec", "Subagent dispatched", sessionId = "s", runId = "a", subagentId = "child"),
+            TimelineEntry(4000, "tool_exec", "Other run", sessionId = "s", runId = "b", taskId = "task"),
+            TimelineEntry(5000, "tool_exec", "Other session", sessionId = "other", taskId = "task"))
+        assertEquals(entries.size, groupConsecutive(entries).size)
+        assertEquals(1, groupConsecutive(listOf(entries[3])).size)
+        val q2 = TimelineEntry(6000, "chat_start", "Next request", sessionId = "s", runId = "next")
+        val late = TimelineEntry(7000, "tool_exec", "Late result", sessionId = "s", runId = "a")
+        val groups = groupConsecutive(listOf(start, q2, late))
+        assertEquals(2, groups.size)
+        assertEquals(1, groups[0].toolActivity.size)
+        assertTrue(groups[1].toolActivity.isEmpty())
+        val unscoped = TimelineEntry(8000, "tool_exec", "Old tool completed", sessionId = "s", startedAt = 1500)
+        val next = TimelineEntry(6000, "chat_start", "New turn", sessionId = "s")
+        assertEquals(2, groupConsecutive(listOf(next, unscoped)).size)
+        val synthetic = TimelineEntry(1000, "chat_start", "Prompt sent", sessionId = "s")
+        assertEquals(2, groupConsecutive(listOf(synthetic, unscoped)).size)
+    }
+
+    @Test
+    fun `upsert and dedup keep simultaneous runs and sessions independent`() {
+        val a = TimelineEntry(1000, "tool_exec", "exec", agentType = "openclaw", sessionId = "s", runId = "a")
+        val b = a.copy(timestamp = 1100, runId = "b")
+        val c = a.copy(timestamp = 1200, sessionId = "other")
+        store.addEntry(a)
+        store.addEntry(b)
+        store.addEntry(c)
+        store.upsertEntry(a.copy(summary = "exec ×2", detail = "a result"))
+        assertEquals(3, store.entries.value.size)
+        assertEquals("exec ×2", store.entries.value[0].summary)
+        assertEquals("exec", store.entries.value[1].summary)
+        assertEquals("exec", store.entries.value[2].summary)
+        store.replaceSnapshot(listOf(a, a.copy(runId = "b"), a.copy(sessionId = "other")))
+        assertEquals(3, store.entries.value.size)
+    }
+
     // --- addEntry ---
 
     @Test

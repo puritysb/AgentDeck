@@ -12,6 +12,9 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  # Read the latest run of every other gate's workflow for the report
+  # (scripts/fetch-workflow-status.mjs).
+  actions: read
 
 jobs:
   report:
@@ -98,6 +101,15 @@ jobs:
           curl -sf "${PAGES_URL}/reports/history.json" -o coverage/test-report/history.json || echo '[]' > coverage/test-report/history.json
         continue-on-error: true
 
+      # Apple XCTest, the macOS/Windows runtime jobs, the ESP32 compile and the
+      # release workflows run elsewhere; the page links their latest result
+      # instead of saying only "not run here". Fail-soft: no data, no claim.
+      - name: Fetch latest result of every other workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/fetch-workflow-status.mjs --out coverage/test-report/workflow-status.json || true
+
       - name: Generate HTML report
         if: always()
         run: |
@@ -121,7 +133,7 @@ jobs:
                   "e2e": suite(os.environ["E2E_OUTCOME"], True, "Real daemon process, loopback, temp HOME"),
                   "android": suite(os.environ["ANDROID_OUTCOME"], True, "JUnit + Robolectric on ubuntu"),
                   "apple": suite("not-run", False, "Runs in the Apple Tests workflow (macos-26) on apple/** changes; not re-run here"),
-                  "robot": suite("not-run", False, "Physical hardware suite; run in the maintainer's lab, not on GitHub-hosted runners"),
+                  "robot": suite("not-run", False, "Physical boards in the maintainer's lab; the pre-release receipt records the last attested result"),
               },
           }
           (report_dir / "run-metadata.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -186,6 +198,7 @@ jobs:
           cp docs/media/*.jpg _site/media/ 2>/dev/null || true
           # Required real-app motion demo for the overview (fail on missing media).
           cp docs/media/aquarium-demo.mp4 docs/media/aquarium-preview.gif docs/media/aquarium-story.*.vtt _site/media/
+          cp docs/media/aquarium-180-showcase.mp4 docs/media/aquarium-180.*.vtt _site/media/
           cp docs/media/macos-dashboard.png _site/media/ 2>/dev/null || true
           cp docs/media/android-eink.png _site/media/ 2>/dev/null || true
           cp docs/media/tui-dashboard.png _site/media/ 2>/dev/null || true
@@ -206,6 +219,7 @@ jobs:
           cp coverage/test-report/history.json _site/reports/history.json 2>/dev/null || true
           cp coverage/test-report/summary.json _site/reports/summary.json 2>/dev/null || true
           cp coverage/test-report/run-metadata.json _site/reports/run-metadata.json 2>/dev/null || true
+          cp coverage/test-report/workflow-status.json _site/reports/workflow-status.json 2>/dev/null || true
           cp scripts/verification-catalog.json _site/reports/verification-catalog.json
 
       - name: Configure Pages

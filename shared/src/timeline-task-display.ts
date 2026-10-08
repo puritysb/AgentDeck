@@ -131,3 +131,13 @@ export function timelineTaskHeaderDisplay(
     ...(closedAtMs != null ? { closedAtMs } : {}),
   };
 }
+
+/** Native turn projection contract. Scan the retained buffer, never a fixed
+ * number of intervening groups. Activity without a trustworthy prompt remains
+ * standalone; approvals and subagent lifecycle are never folded as tools.
+ * Generated via generate-observed-agent-rules into both native clients.
+ */
+export const TIMELINE_TURN_RULES = {
+  maxGapMs: 12 * 60 * 60 * 1000,
+  activityTypes: ['tool_exec'],
+} as const;

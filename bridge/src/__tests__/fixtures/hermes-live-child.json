@@ -1,0 +1,201 @@
+{
+  "source": {
+    "capturedAt": "2026-10-05 KST",
+    "upstreamCommit": "0a374d167424cdc730ce9761368b62255b551e58",
+    "surface": "Actual managed-runtime classic CLI and delegate_task child",
+    "provider": "custom loopback fixed response",
+    "model": "agentdeck-fixture",
+    "transport": "Real observer callbacks and loopback HTTP receiver; daemon replay is a separate test",
+    "instrumentation": "Copied observer wraps _handle to record allow-listed callback fields before unchanged processing",
+    "sanitized": [
+      "session_id",
+      "child_session_id",
+      "parent_session_id",
+      "cwd",
+      "pid"
+    ],
+    "limits": "No paid provider, messaging platform, visual hardware or model-quality acceptance"
+  },
+  "callbacks": [
+    {
+      "event": "on_session_start",
+      "kwargs": {
+        "session_id": "parent-conversation",
+        "model": "agentdeck-fixture",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "pre_llm_call",
+      "kwargs": {
+        "session_id": "parent-conversation",
+        "user_message": "AGENTDECK_CHILD_CAPTURE: delegate one harmless child, then finish.",
+        "model": "agentdeck-fixture",
+        "platform": "cli",
+        "parent_session_id": ""
+      }
+    },
+    {
+      "event": "pre_tool_call",
+      "kwargs": {
+        "tool_name": "delegate_task",
+        "session_id": "parent-conversation"
+      }
+    },
+    {
+      "event": "subagent_start",
+      "kwargs": {
+        "parent_session_id": "parent-conversation",
+        "child_session_id": "child-conversation"
+      }
+    },
+    {
+      "event": "on_session_start",
+      "kwargs": {
+        "session_id": "child-conversation",
+        "model": "agentdeck-fixture",
+        "platform": "subagent"
+      }
+    },
+    {
+      "event": "pre_llm_call",
+      "kwargs": {
+        "session_id": "child-conversation",
+        "user_message": "Reply AGENTDECK_CHILD_DONE. Do not use any tools.",
+        "model": "agentdeck-fixture",
+        "platform": "subagent",
+        "parent_session_id": "parent-conversation"
+      }
+    },
+    {
+      "event": "post_llm_call",
+      "kwargs": {
+        "session_id": "child-conversation",
+        "user_message": "Reply AGENTDECK_CHILD_DONE. Do not use any tools.",
+        "assistant_response": "AGENTDECK_LOCAL_CAPTURE_DONE",
+        "model": "agentdeck-fixture",
+        "platform": "subagent"
+      }
+    },
+    {
+      "event": "on_session_end",
+      "kwargs": {
+        "session_id": "child-conversation",
+        "completed": true,
+        "failed": false,
+        "interrupted": false,
+        "model": "agentdeck-fixture",
+        "platform": "subagent"
+      }
+    },
+    {
+      "event": "post_tool_call",
+      "kwargs": {
+        "tool_name": "delegate_task",
+        "session_id": "parent-conversation"
+      }
+    },
+    {
+      "event": "post_llm_call",
+      "kwargs": {
+        "session_id": "parent-conversation",
+        "user_message": "AGENTDECK_CHILD_CAPTURE: delegate one harmless child, then finish.",
+        "assistant_response": "AGENTDECK_LOCAL_CAPTURE_DONE",
+        "model": "agentdeck-fixture",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "on_session_end",
+      "kwargs": {
+        "session_id": "parent-conversation",
+        "completed": true,
+        "failed": false,
+        "interrupted": false,
+        "model": "agentdeck-fixture",
+        "platform": "cli"
+      }
+    },
+    {
+      "event": "on_session_finalize",
+      "kwargs": {
+        "session_id": "parent-conversation",
+        "platform": "cli"
+      }
+    }
+  ],
+  "events": [
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-fixture",
+        "pid": 4100
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-fixture",
+        "pid": 4100,
+        "prompt": "AGENTDECK_CHILD_CAPTURE: delegate one harmless child, then finish."
+      }
+    },
+    {
+      "event": "hermes_tool_start",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4100,
+        "tool_name": "delegate_task"
+      }
+    },
+    {
+      "event": "hermes_tool_end",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4100,
+        "tool_name": "delegate_task"
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-fixture",
+        "pid": 4100,
+        "last_assistant_message": "AGENTDECK_LOCAL_CAPTURE_DONE",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-cccccccccccccccccccccccccccccccc",
+        "cwd": "/workspace/hermes-child-fixture",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4100
+      }
+    }
+  ]
+}

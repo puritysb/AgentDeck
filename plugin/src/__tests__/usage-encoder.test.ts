@@ -388,11 +388,26 @@ describe('provider pages and the auto selection', () => {
     resetE2UsageProvider(DATA);
   });
 
-  it('falls back on data loss and permits one-provider duplication independently', () => {
+  it('keeps manual choices through data loss and restores them after a restart', () => {
     selectUsageDialProvider('e2', 'zai', DATA);
-    expect(resolveE2UsageProvider({ fiveHourPercent: 0 })).toBe('claude');
-    selectUsageDialProvider('e3', 'claude', { fiveHourPercent: 0 });
-    expect(getUsageDialSelections()).toEqual({ e2: 'claude', e3: 'claude' });
+    selectUsageDialProvider('e3', 'claude', DATA);
+    expect(resolveE2UsageProvider({ fiveHourPercent: 0 })).toBe('zai');
+    expect(getUsageDialSelections()).toEqual({ e2: 'zai', e3: 'claude' });
+    const saved = usageDialPreferences();
+    restoreUsageDialPreferences(saved);
+    expect(resolveE2UsageProvider({ codexRateLimits: DATA.codexRateLimits })).toBe('zai');
+    expect(getUsageDialSelections().e3).toBe('claude');
+    expect(resolveE2UsageProvider(DATA)).toBe('zai');
+    expect(usageDialPreferences()).toEqual(saved);
+    resetE2UsageProvider(DATA);
+  });
+
+  it('does not replace a pinned Claude page with Codex when Claude usage turns stale', () => {
+    selectUsageDialProvider('e2', 'claude', DATA);
+    selectUsageDialProvider('e3', 'codex', DATA);
+    expect(resolveE2UsageProvider({ ...DATA, usageStale: true })).toBe('claude');
+    expect(getUsageDialSelections()).toEqual({ e2: 'claude', e3: 'codex' });
+    expect(usageDialPreferences()).toEqual({ e2: 'claude', e3: 'codex' });
     resetE2UsageProvider(DATA);
   });
 
@@ -408,7 +423,7 @@ describe('provider pages and the auto selection', () => {
     noteUsageProviderActivity('codex', 0, 300);
     noteUsageProviderActivity('zai', 2, 200); // z.ai has live working sessions
     expect(pickAutoUsageProvider(DATA)).toBe('zai');
-    // E3 sits on z.ai → E2 falls to the next-best (codex), never the same page.
+    // Automatic E2 selection may match E3; the dials are independent.
     expect(pickAutoUsageProvider(DATA)).toBe('zai');
     // Processing outranks recency.
     noteUsageProviderActivity('claude', 1, 50);

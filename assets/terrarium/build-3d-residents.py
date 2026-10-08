@@ -2,12 +2,61 @@
 No added eyes, shells, fins, tentacles, insignia, or substitute body shapes.
 """
 from pathlib import Path
-import bpy, bmesh, math, re
+import bpy, bmesh, math, re, json, hashlib, sys
+from mathutils.bvhtree import BVHTree
 from mathutils import Vector
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'assets/terrarium'))
+from brand_materials import linear_rgb
 scene=bpy.data.scenes.new('AgentDeck 3D Residents');bpy.context.window.scene=scene
 tokens=(ROOT/'design/tokens.css').read_text()
 brands=['claudecode','codex','openclaw','opencode','antigravity','kiro']
+features = json.loads((ROOT/'design/creatures/brand-features.generated.json').read_text())['agents']
+feature_meshes = []
+feature_materials = {}
+
+def feature_material(rgb):
+    key = tuple(rgb)
+    if key not in feature_materials:
+        mat = bpy.data.materials.new('Canonical opaque RGB ' + '-'.join(map(str, rgb)))
+        mat.diffuse_color = (*linear_rgb(rgb), 1)
+        mat.use_nodes = True
+        nodes = mat.node_tree.nodes
+        nodes.clear()
+        # Principled emission converts to USD Preview Surface on RealityKit;
+        # an unsupported standalone Emission node becomes a gray fallback.
+        shader = nodes.new('ShaderNodeBsdfPrincipled')
+        shader.inputs['Base Color'].default_value = (0, 0, 0, 1)
+        shader.inputs['Emission Color'].default_value = mat.diffuse_color
+        shader.inputs['Emission Strength'].default_value = 1
+        shader.inputs['Specular IOR Level'].default_value = 0
+        shader.inputs['Roughness'].default_value = 1
+        output = nodes.new('ShaderNodeOutputMaterial')
+        mat.node_tree.links.new(shader.outputs['BSDF'], output.inputs['Surface'])
+        feature_materials[key] = mat
+    return feature_materials[key]
+
+
+def fill_feature(source, descriptor, brand, root):
+    inlay = source.copy()
+    inlay.data = source.data.copy()
+    scene.collection.objects.link(inlay)
+    selected = set(descriptor['subpathIndices'])
+    for index, spline in reversed(list(enumerate(inlay.data.splines))):
+        if index not in selected:
+            inlay.data.splines.remove(spline)
+    # Exact source contours are opaque front details, not see-through cutouts.
+    inlay.location.z += source.data.extrude + source.data.bevel_depth + .014
+    inlay.data.extrude = .004
+    inlay.data.bevel_depth = 0
+    inlay.data.materials.clear()
+    inlay.data.materials.append(feature_material(descriptor['rgb']))
+    inlay = convert(inlay)
+    inlay.name = brand + '_feature_' + descriptor['role'] + '_' + str(descriptor['pathIndex'])
+    inlay.parent = root
+    feature_meshes.append((inlay, descriptor['rgb']))
+    return inlay
+
 def color(name):
     value=re.search(r'--brand-'+name+r':\s*#([0-9a-fA-F]{6})',tokens).group(1)
     rgb=[int(value[i:i+2],16)/255 for i in (0,2,4)]
@@ -80,6 +129,11 @@ def clipped(source,name,planes):
     o.data.materials.append(source.data.materials[0]);return o
 for brand in brands:
     root=bpy.data.objects.new('resident_'+brand,None);scene.collection.objects.link(root)
+    contract = features.get(brand)
+    if contract:
+        source = ROOT / contract['sourcePath']
+        if hashlib.sha256(source.read_bytes()).hexdigest() != contract['sourceHash']:
+            raise RuntimeError(brand + ': regenerate canonical feature contract after source changes')
     rgb=color('claude-code' if brand=='claudecode' else brand)
     mat=bpy.data.materials.new(brand+' original');mat.diffuse_color=(*rgb,1);mat.use_nodes=True
     shader=mat.node_tree.nodes.get('Principled BSDF');shader.inputs['Base Color'].default_value=mat.diffuse_color
@@ -102,9 +156,21 @@ for brand in brands:
         o.data.bevel_depth=.006 if brand in {'claudecode','opencode'} else .012
         o.data.bevel_resolution=4;o.data.resolution_u=16
         o.data.materials.clear();o.data.materials.append(mat)
+        descriptors = [item for item in (contract['features'] if contract else []) if item['pathIndex'] == n]
+        for descriptor in descriptors:
+            if descriptor['mode'] == 'fill':
+                # Existing OpenClaw highlight paths sit above the exact black eye inlay.
+                if set(descriptor['subpathIndices']) == set(range(len(o.data.splines))):
+                    o.data.materials.clear()
+                    o.data.materials.append(feature_material(descriptor['rgb']))
+                    o.location.z += o.data.extrude + o.data.bevel_depth + .030
+                    o.data.extrude = .004
+                    o.data.bevel_depth = 0
+                else:
+                    fill_feature(o, descriptor, brand, root)
         # Close facial cutouts only at the rear. The back follows the exact
         # outer outline, without a convex hull, dorsal bumps or a second body.
-        if len(o.data.splines)>1:
+        if len(o.data.splines)>1 and not any(item['mode'] == 'hole' for item in descriptors):
             back=o.copy();back.data=o.data.copy();scene.collection.objects.link(back)
             def area(sp):
                 pts=[p.co for p in (sp.bezier_points if sp.type=='BEZIER' else sp.points)]
@@ -116,6 +182,10 @@ for brand in brands:
             back.location.z=-.089-o.data.bevel_depth
             back=convert(back);back.name=brand+'_rear';back.parent=root;meshes.append(back)
         o=convert(o);o.name=brand+'_canonical_'+str(n);o.parent=root;meshes.append(o)
+        for descriptor in descriptors:
+            if descriptor['mode'] == 'fill' and descriptor['role'] == 'eye-highlight':
+                o.name = brand + '_feature_eye-highlight_' + str(n)
+                feature_meshes.append((o, descriptor['rgb']))
     if brand=='claudecode':
         # Split only existing limbs from the source; neutral pose is unchanged.
         # Fuse the rear closure before cutting limbs. Object-join leaves two
@@ -195,6 +265,45 @@ mat=bpy.data.materials.new('Substrate ink stone');mat.use_nodes=True
 mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value=(*rgb,1)
 mat.node_tree.nodes['Principled BSDF'].inputs['Roughness'].default_value=.9
 mesh.materials.append(mat)
+# Probe generated geometry rather than merely checking a declared material name.
+bpy.context.view_layer.update()
+def nearest_hit(root, origin, direction):
+    hits = []
+    for obj in root.children_recursive:
+        if obj.type != 'MESH':
+            continue
+        inverse = obj.matrix_world.inverted()
+        local_origin = inverse @ origin
+        local_direction = inverse.to_3x3() @ direction
+        hit, normal, index, distance = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get()).ray_cast(local_origin, local_direction)
+        if hit is not None:
+            point = obj.matrix_world @ hit
+            hits.append(((point - origin).length, obj, index))
+    return min(hits, key=lambda hit: hit[0]) if hits else None
+
+for obj, expected_rgb in feature_meshes:
+    front = max(obj.data.polygons, key=lambda face: face.center.z)
+    normal = obj.matrix_world.to_3x3() @ Vector((0, 0, 1))
+    point = obj.matrix_world @ front.center
+    hit = nearest_hit(obj.parent, point + normal, -normal)
+    if hit is None or hit[1] != obj:
+        raise RuntimeError(obj.name + ': canonical feature is hidden behind the body')
+    actual = list(obj.data.materials[0].diffuse_color[:3])
+    if any(abs(value - expected) > .00001 for value, expected in zip(actual, linear_rgb(expected_rgb))):
+        raise RuntimeError(obj.name + ': wrong opaque feature material')
+    print('VERIFIED_VISIBLE_FEATURE', obj.name, expected_rgb)
+
+opencode = bpy.data.objects['resident_opencode']
+for local_direction in [Vector((0, 0, -1)), Vector((0, 0, 1)), Vector((.2, 0, -1)).normalized()]:
+    direction = opencode.matrix_world.to_3x3() @ local_direction
+    center = opencode.matrix_world @ Vector((0, 0, 0))
+    if nearest_hit(opencode, center - direction, direction) is not None:
+        raise RuntimeError('OpenCode center must remain a true front/back/oblique through-hole')
+rim = opencode.matrix_world @ Vector((.3, 0, 1))
+direction = opencode.matrix_world.to_3x3() @ Vector((0, 0, -1))
+if nearest_hit(opencode, rim, direction) is None:
+    raise RuntimeError('OpenCode outer frame disappeared while opening the center')
+print('VERIFIED_OPENCODE_THROUGH_HOLE front back oblique with opaque rim')
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'assets/terrarium/3d-residents.blend'))
 for o in scene.objects:
     if o.name.startswith('resident_'):o.location.x=0

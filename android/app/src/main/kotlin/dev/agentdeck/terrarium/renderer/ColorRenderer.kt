@@ -2,6 +2,16 @@ package dev.agentdeck.terrarium.renderer
 
 import dev.agentdeck.terrarium.CreatureNameTagLayer
 import dev.agentdeck.terrarium.CreatureNameTagRequest
+import dev.agentdeck.terrarium.CiCompanionMotion
+import dev.agentdeck.terrarium.ciCompanionPosition
+import dev.agentdeck.terrarium.ciCompanionBitmap
+import dev.agentdeck.terrarium.ciCompanionActive
+import dev.agentdeck.terrarium.drawCiCompanion
+import androidx.compose.ui.platform.LocalContext
+import dev.agentdeck.terrarium.aquariumResidents
+import dev.agentdeck.terrarium.visibleAquariumResidents
+import androidx.compose.runtime.remember
+import dev.agentdeck.ui.theme.DesignTokens
 import dev.agentdeck.terrarium.TerrariumRules
 
 import android.graphics.Paint
@@ -66,6 +76,15 @@ fun ColorTerrariumCanvas(
     drawMainCrayfish: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val ciSprite = remember(context) { ciCompanionBitmap(context) }
+    val ciMotions = remember { mutableMapOf<String,CiCompanionMotion>() }
+    var lastCiFrame = remember { longArrayOf(0L) }
+    val ciPaint = remember(context) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = dev.agentdeck.terrarium.ciCompanionTypeface(context)
+        }
+    }
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
@@ -94,6 +113,17 @@ fun ColorTerrariumCanvas(
         // Layer 6: LED cables on rocks
         rockFormation.drawLEDs(this, state.environment)
 
+        val visibleIDs = visibleAquariumResidents(aquariumResidents(state),state.focusedSessionId).map { it.id }.toSet()
+        val originals = mutableMapOf<String, Pair<Float, Float>>()
+        octopuses.forEachIndexed { i,c -> state.agents.getOrNull(i)?.let { originals[it.sessionId] = c.simulationPosition() } }
+        cloudCreatures.forEachIndexed { i,c -> state.cloudCreatures.getOrNull(i)?.let { originals[it.sessionId] = c.simulationPosition() } }
+        openCodeCreatures.forEachIndexed { i,c -> state.openCodeCreatures.getOrNull(i)?.let { originals[it.sessionId] = c.simulationPosition() } }
+        antigravityCreatures.forEachIndexed { i,c -> state.antigravityCreatures.getOrNull(i)?.let { originals[it.sessionId] = c.simulationPosition() } }
+        originals.keys.retainAll(visibleIDs)
+        val now=System.nanoTime();val dt=if(lastCiFrame[0]==0L)0f else ((now-lastCiFrame[0])/1_000_000_000f).coerceIn(0f,.05f);lastCiFrame[0]=now
+        ciMotions.keys.retainAll(originals.keys.intersect(state.ciWaits.keys))
+        for ((id,_) in originals) state.ciWaits[id]?.let { wait -> ciMotions.getOrPut(id){CiCompanionMotion(id)}.update(wait,dt) }
+
         // Layer 6.5: Back-layer fish (behind creatures for 3D depth)
         dataParticles.drawBackLayer(this)
 
@@ -101,7 +131,7 @@ fun ColorTerrariumCanvas(
         for (wc in workerCrayfish) wc.draw(this)
 
         // Layer 7b: Main crayfish (on rocks, bottom-right)
-        if (drawMainCrayfish) {
+        if (drawMainCrayfish && "openclaw-gateway" in visibleIDs) {
             mainCrayfish.draw(this)
         }
 
@@ -114,6 +144,7 @@ fun ColorTerrariumCanvas(
             cloudCreatures = cloudCreatures,
             openCodeCreatures = openCodeCreatures,
             antigravityCreatures = antigravityCreatures,
+            visibleIDs = visibleIDs,
         )
 
         // Name tags are collected while creatures draw and painted once, in
@@ -126,20 +157,27 @@ fun ColorTerrariumCanvas(
         spreadFloorOctopuses(octopuses)
 
         // Layer 9: Octopuses (all coding agent avatars)
-        for (oct in octopuses) oct.draw(this)
+        for ((i,oct) in octopuses.withIndex()) if (state.agents.getOrNull(i)?.sessionId in visibleIDs) oct.draw(this)
 
         // Layer 9.2: Cloud creatures (Codex CLI agents — float above octopuses)
-        for (cloud in cloudCreatures) cloud.draw(this)
+        for ((i,cloud) in cloudCreatures.withIndex()) if (state.cloudCreatures.getOrNull(i)?.sessionId in visibleIDs) cloud.draw(this)
 
         // Layer 9.3: OpenCode creatures (geometric nested-square logo)
-        for (oc in openCodeCreatures) oc.draw(this)
+        for ((i,oc) in openCodeCreatures.withIndex()) if (state.openCodeCreatures.getOrNull(i)?.sessionId in visibleIDs) oc.draw(this)
 
         // Layer 9.4: Antigravity creatures (peak/arc logo)
-        for (ag in antigravityCreatures) ag.draw(this)
+        for ((i,ag) in antigravityCreatures.withIndex()) if (state.antigravityCreatures.getOrNull(i)?.sessionId in visibleIDs) ag.draw(this)
 
         // Layer 9.45: name tags, resolved together so none hides a resident.
         CreatureNameTagLayer.active = null
         CreatureNameTagLayer.flush(this, nameTags)
+        for ((id,motion) in ciMotions) {
+            val wait=state.ciWaits[id] ?: continue;val center=originals[id] ?: continue
+            if(!motion.visible(wait))continue
+            val angle=motion.angle
+            drawCiCompanion(drawContext.canvas.nativeCanvas,ciPaint,ciSprite,center,ciCompanionPosition(center,angle,w,h),wait,textScale=density)
+        }
+
 
         // Layer 9.5: Front-layer fish (in front of creatures for 3D depth)
         dataParticles.drawFrontLayer(this)
@@ -180,24 +218,29 @@ private fun DrawScope.drawSubagentOrbits(
     cloudCreatures: List<CloudCreature>,
     openCodeCreatures: List<OpenCodeCreature>,
     antigravityCreatures: List<AntigravityCreature>,
+    visibleIDs: Set<String>,
 ) {
     for (index in octopuses.indices) {
         val visual = state.agents.getOrNull(index) ?: continue
+        if (visual.sessionId !in visibleIDs) continue
         val pos = octopuses[index].currentPosition()
         drawSubagentOrbit(pos.first, pos.second, visual.subagentActivity)
     }
     for (index in cloudCreatures.indices) {
         val visual = state.cloudCreatures.getOrNull(index) ?: continue
+        if (visual.sessionId !in visibleIDs) continue
         val pos = cloudCreatures[index].currentPosition()
         drawSubagentOrbit(pos.first, pos.second, visual.subagentActivity)
     }
     for (index in openCodeCreatures.indices) {
         val visual = state.openCodeCreatures.getOrNull(index) ?: continue
+        if (visual.sessionId !in visibleIDs) continue
         val pos = openCodeCreatures[index].currentPosition()
         drawSubagentOrbit(pos.first, pos.second, visual.subagentActivity)
     }
     for (index in antigravityCreatures.indices) {
         val visual = state.antigravityCreatures.getOrNull(index) ?: continue
+        if (visual.sessionId !in visibleIDs) continue
         val pos = antigravityCreatures[index].currentPosition()
         drawSubagentOrbit(pos.first, pos.second, visual.subagentActivity)
     }

@@ -44,6 +44,8 @@ jobs:
   compile:
     name: ESP32 Sim Compile
     runs-on: ubuntu-latest
+    outputs:
+      esp32_changed: ${{ steps.scope.outputs.run }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,7 +62,7 @@ jobs:
             exit 0
           fi
           changed=$(git diff --name-only "$base" HEAD)
-          if grep -qE '^(esp32/|\.github/workflows/esp32-sim\.yml$)' <<<"$changed"; then
+          if grep -qE '^(esp32/|\.github/workflows/esp32-(sim|release)\.yml$)' <<<"$changed"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
@@ -86,3 +88,33 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: esp32/sim
         run: pio run
+
+      # Plain assert() mains over the firmware's policy headers (e-ink geometry,
+      # glyph selection, usage rows, …). Host compiler only, a few seconds; they
+      # used to be local-only, so a broken policy header could merge green.
+      - name: Host policy assertions
+        if: steps.scope.outputs.run == 'true'
+        run: bash esp32/sim/run-tests.sh
+
+  # The native simulator cannot catch target linker DRAM overflow. Resolve the
+  # pinned TTGO dependencies freshly on the same toolchain as the release.
+  ttgo:
+    name: ESP32 TTGO Compile
+    needs: compile
+    if: needs.compile.outputs.esp32_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install release PlatformIO
+        run: |
+          python -m venv "$HOME/.platformio/penv"
+          "$HOME/.platformio/penv/bin/python" -m pip install "pioarduino==6.1.19"
+          echo "$HOME/.platformio/penv/bin" >> "$GITHUB_PATH"
+          "$HOME/.platformio/penv/bin/pio" --version
+      - name: Compile and link TTGO firmware
+        working-directory: esp32
+        run: pio run -e ttgo

@@ -8,6 +8,80 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Nothing in the app changes between them.
 
+## 1.8.0 public — final delivery readback (2026-10-06)
+
+Production **25 (1.8.0)** now reads **Available on Google Play**, published
+October 6 at 14:52 KST across 178 countries/regions. Publishing overview has no
+pending changes and production points to 25. This supersedes the review-pending
+state in the submission receipt below; the signed GitHub APK remains available.
+
+## 1.8.0 submitted — production receipt (2026-10-06)
+
+Signed **25 (1.8.0)** was uploaded and submitted for a full production rollout.
+The publishing overview confirms **Changes in review**; managed publishing is
+disabled, so publication follows approval automatically. English, Korean and
+Japanese release notes are saved. Existing screenshot galleries remain attached.
+The native-debug-symbol warning is non-blocking; supported-device coverage is
+unchanged. The last verified public Play version remains **24 (1.7.0)**.
+
+The signed [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.8.0)
+is public and its downloaded signature and SHA-256 were verified. APK SHA-256:
+`c96332e3069a36e43cde5ce23266757d1a22c38100dbcdc9124aa2dcdc20af89`.
+Submitted AAB SHA-256:
+`5dc44f161926731e3b7cb41633cfd563c721f568bafbe74fe03e98c18df92d8c`.
+Both use the registered upload certificate (`10603af8…`).
+
+## 1.7.0 public — delivery readback (2026-10-05)
+
+Production's release row now says **Available on Google Play** for **24
+(1.7.0)**, with publication on October 4 at 09:34 in the console. The public
+listing serves the matching Hermes/credits/session-ordering release notes and
+an October 4 update date. The phone aquarium is visible publicly. The public
+gallery's six retained Crema/tablet images were compared with the source files:
+
+| Public gallery position | Visually matching retained file |
+| --- | --- |
+| 5 | [Crema attention](1.6.1/crema-02-attention.png) |
+| 6 | [Crema working](1.6.1/crema-01-working.png) |
+| 7 | [Tablet paper attention](1.6.1/tablet10-03-eink-paper-board.png) |
+| 8 | [Tablet paper working](1.6.1/tablet10-04-eink-working.png) |
+| 9 | [Tablet aquarium](1.6.1/tablet10-01-aquarium.png) |
+| 10 | [Tablet aquarium attention](1.6.1/tablet10-02-attention.png) |
+
+The session text, clock, usage values, creature placement and panel composition
+match visually. This completes #449's retained-gallery check; store resizing or
+encoding is not claimed to preserve source bytes. These are the gallery assets
+retained for 1.7, not the later unsubmitted Crema replacement captures.
+
+## 1.7.0 — production submission receipt (2026-10-04)
+
+Uploaded the signed **24 (1.7.0)** AAB and submitted a full production rollout.
+Publishing overview now shows **Changes in review**, initially running quick
+checks. Managed publishing is disabled. The three-language release copy is
+saved in [1.7.0/release-notes.json](1.7.0/release-notes.json). Existing gallery
+assets were retained; the older pre-release Crema captures were not uploaded.
+The console showed one non-blocking native-debug-symbol warning.
+
+The signed APK is already available in the
+[Android GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.7.0).
+At submission time, Google Play's last verified public version was 1.6.1 (23).
+
+## 1.6.1 public — delivery readback (2026-10-03)
+
+The public listing serves 1.6.1. Play Console's publishing overview has no pending
+publication and reports the last publication on September 28. Submission 11,
+which contains **23 (1.6.1), full rollout**, and the English listing's **7-inch
+and 10-inch tablet screenshot changes**, reads **Released** (September 28, 09:42
+in the console).
+At this historical readback, the individual public screenshot comparison was
+still pending. It was consolidated into #449 and completed on October 5 against
+the gallery retained for 1.7; no historical September 28 gallery match is inferred.
+
+The replacement Crema captures in [1.6.2/crema-capture.md](1.6.2/crema-capture.md)
+are prepared assets, not a released 1.6.2. Android UI has changed since their
+source commit `142f002c`; recapture from the next release APK before uploading
+those assets with a new release.
+
 ## 1.5.0 live — console verification (2026-09-24)
 
 Signed-in Play Console confirms production **active**, latest release **21

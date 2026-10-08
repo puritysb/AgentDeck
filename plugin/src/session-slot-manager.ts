@@ -9,7 +9,8 @@ import { nextZaiPairMode, zaiPairReadings, type ZaiPairMode } from '@agentdeck/s
  * - List View: each button shows one session (OC first, then CC by startedAt)
  * - Detail View: button 1=BACK, button 2=session info, buttons 3-7=options, button 8=ESC/STOP
  */
-import type { SessionInfo, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, SelectedCodexCredits, ScopedUsageLimit } from '@agentdeck/shared';
+import type { SessionInfo, SessionSetting, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, SelectedCodexCredits, ScopedUsageLimit } from '@agentdeck/shared';
+import { sessionNowSummary, sessionSettingOptionLabel, SessionSettingsRequestTracker } from '@agentdeck/shared';
 import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageStripRank, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
@@ -63,12 +64,15 @@ export interface PresetAction {
   textColor: string;
   subtitle?: string;       // secondary text below label (e.g. model name)
   prompt?: string;         // send_prompt text
-  localAction?: string;    // local action: 'open_gateway', 'switch_model'
+  localAction?: string;    // local action: 'open_gateway', 'pick_model', 'pick_effort', …
   loading?: boolean;       // show loading indicator
 }
 
 export interface SessionSlotConfig {
-  type: 'dot' | 'session' | 'back' | 'info' | 'status' | 'option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'empty';
+  type: 'dot' | 'session' | 'back' | 'info' | 'status' | 'option' | 'setting-option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'empty';
+  /** For type 'setting-option': which setting, and the agent id a press applies (null = back to the agent's default). */
+  settingKey?: SessionSetting['key'];
+  settingValue?: string | null;
   dot?: DotDeckSnapshot;
   session?: SessionInfo;
   option?: PromptOption;
@@ -153,11 +157,16 @@ const GATEWAY_ICON_SVG = [
 ].join('');
 
 // OpenClaw preset definitions (iconSvg + action)
-// MODEL iconSvg is built dynamically with current model name
-const OC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; dynamicIcon?: 'model' }> = [
+// MODEL / THINKING open a picker of the Gateway's own values (#463); their
+// subtitles show the value in effect, in the Gateway's words.
+const OC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; dynamicIcon?: 'model' | 'effort' }> = [
   { label: 'STATUS', iconSvg: SUMMARIZE_ICON_SVG, color: '#1a1a3e', textColor: '#93c5fd', prompt: 'status' },
-  { label: 'MODEL', dynamicIcon: 'model', color: '#2d1f3d', textColor: '#e9d5ff', localAction: 'switch_model' },
+  { label: 'MODEL', dynamicIcon: 'model', color: '#2d1f3d', textColor: '#e9d5ff', localAction: 'pick_model' },
   { label: 'GATEWAY', iconSvg: GATEWAY_ICON_SVG, color: '#1a0f2e', textColor: '#c084fc', localAction: 'open_gateway' },
+  // Last: a processing row spends its first content key on the tool status, and
+  // the Gateway applies thinking to subsequent turns only, so this is the one
+  // a small deck drops mid-turn.
+  { label: 'THINKING', dynamicIcon: 'effort', color: '#2d1f3d', textColor: '#e9d5ff', localAction: 'pick_effort' },
 ];
 
 // Claude Code quick actions (IDLE detail view)
@@ -271,8 +280,6 @@ function normalizeLayout(layout?: Partial<DeckLayout>): DeckLayout {
 }
 
 export class SessionSlotManager {
-  private static readonly MODEL_SWITCH_TIMEOUT_MS = 12000;
-
   private _view: SlotView = 'list';
   private _currentPage = 0;
   private _detailPage = 0;
@@ -346,9 +353,13 @@ export class SessionSlotManager {
   get detailQuestion(): string | undefined { return this._detailQuestion; }
   /** Host push-to-talk capture state, mirrored from daemon voice_state events. */
   private _voiceState: SlotVoiceState = 'idle';
-  private _modelSwitching = false;
-  private _prevModelName: string | undefined;
-  private _modelSwitchStartedAt = 0;
+  /** Latest `session_settings` answer per session (#463) — the agent's own values. */
+  private _settings = new SessionSettingsRequestTracker();
+  onSettingsChanged?: () => void;
+  constructor() { this._settings.onChanged = () => this.onSettingsChanged?.(); }
+  /** Open setting picker in the detail view, and its page. */
+  private _picker: SessionSetting['key'] | null = null;
+  private _pickerPage = 0;
 
   get view(): SlotView { return this._view; }
   get currentPage(): number { return this._currentPage; }
@@ -362,36 +373,41 @@ export class SessionSlotManager {
   get detailState(): State { return this._detailState; }
   get detailOptions(): PromptOption[] { return this._detailOptions; }
   get detailModelName(): string | undefined { return this._detailModelName; }
+  get detailMode(): string | undefined { return this._detailMode; }
   get detailEffortLevel(): string | undefined { return this._detailEffortLevel; }
-  get modelSwitching(): boolean { return this._modelSwitching; }
+  get pickerOpen(): SessionSetting['key'] | null { return this._picker; }
 
-  startModelSwitch(): void {
-    this._prevModelName = this._detailModelName;
-    this._modelSwitching = true;
-    this._modelSwitchStartedAt = Date.now();
+  /** Store a `session_settings` answer. True when it concerns the focused session. */
+  applySessionSettings(ev: import('@agentdeck/shared').SessionSettingsEvent): boolean {
+    const operation = this._settings.accept(ev);
+    if (!operation) return false;
+    this._pickerPage = 0;
+    if (operation === 'set' && !ev.error) this.closePicker();
+    return ev.sessionId === this._focusedSessionId;
   }
 
-  /** Called when model name changes after switch — auto-detects completion */
-  private checkModelSwitchDone(): void {
-    if (!this._modelSwitching) return;
-    const timedOut = Date.now() - this._modelSwitchStartedAt >= SessionSlotManager.MODEL_SWITCH_TIMEOUT_MS;
-    const enteredInteractiveModelPicker =
-      this._detailState === State.AWAITING_OPTION
-      || this._detailState === State.AWAITING_PERMISSION
-      || this._detailState === State.AWAITING_DIFF;
-    const leftIdle = this._detailState !== State.IDLE;
+  openPicker(key: SessionSetting['key']): import('@agentdeck/shared').QuerySessionSettingsCommand | undefined {
+    this._picker = key;
+    this._pickerPage = 0;
+    return this._focusedSessionId ? this._settings.query(this._focusedSessionId) : undefined;
+  }
 
-    if (timedOut || enteredInteractiveModelPicker || leftIdle) {
-      this._modelSwitching = false;
-      this._prevModelName = undefined;
-      this._modelSwitchStartedAt = 0;
-      return;
-    }
-    if (this._modelSwitching && this._detailModelName && this._detailModelName !== this._prevModelName) {
-      this._modelSwitching = false;
-      this._prevModelName = undefined;
-      this._modelSwitchStartedAt = 0;
-    }
+  beginSettingMutation(key: SessionSetting['key'], value: string | null): import('@agentdeck/shared').SetSessionSettingCommand | undefined {
+    return this._focusedSessionId ? this._settings.set(this._focusedSessionId, key, value) : undefined;
+  }
+
+  disconnectSettings(): void { this._settings.disconnect(); this.closePicker(); }
+
+  closePicker(): void {
+    this._settings.cancel();
+    this._picker = null;
+    this._pickerPage = 0;
+  }
+
+  /** The focused session's setting for `key`, as the agent last reported it. */
+  private focusedSetting(key: SessionSetting['key']): SessionSetting | undefined {
+    if (!this._focusedSessionId) return undefined;
+    return this._settings.snapshot(this._focusedSessionId)?.settings.find((x) => x.key === key);
   }
 
   // ---- Session list updates ----
@@ -671,7 +687,6 @@ export class SessionSlotManager {
     } else {
       this._detailPage = Math.min(this._detailPage, Math.max(0, this.detailOptionPages() - 1));
     }
-    this.checkModelSwitchDone();
   }
 
   // ---- View transitions ----
@@ -711,18 +726,21 @@ export class SessionSlotManager {
     this._detailQuestion = session?.question;
     this._detailModelName = session?.modelName;
     this._detailEffortLevel = session?.effortLevel;
-    // sessions_list carries no permission mode, and the previous session's is
-    // worse than none — the MODE card renders its own fallback.
-    this._detailMode = undefined;
+    // The row's own mode, never the previous session's (#463).
+    this._detailMode = session?.permissionMode;
     // A suggestion belongs to a turn, not to a session row — never seed one.
     this._detailSuggestedPrompt = undefined;
-    this._modelSwitching = false;
-    this._prevModelName = undefined;
-    this._modelSwitchStartedAt = 0;
+    // A picker belongs to the session it was opened on.
+    this.closePicker();
   }
 
   nextPage(layout?: DeckLayout): void {
     const deck = normalizeLayout(layout);
+    if (this._view === 'detail' && this._picker) {
+      const total = this.pickerPages(deck);
+      if (total > 1) this._pickerPage = (this._pickerPage + 1) % total;
+      return;
+    }
     if (this._view === 'detail') {
       const total = this.detailOptionPages(deck);
       if (total <= 1) return;
@@ -750,12 +768,14 @@ export class SessionSlotManager {
 
   /** Handle button press. Returns action to take. */
   handleSlotPress(slot: number, layout?: DeckLayout): {
-    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'switch-model' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'cycle-weekly-mode' | 'cycle-zai-mode' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
+    action: 'enter-detail' | 'exit-detail' | 'select-option' | 'stop' | 'esc' | 'next-page' | 'send-prompt' | 'open-gateway' | 'open-setting-picker' | 'set-setting' | 'close-picker' | 'review-run' | 'refresh-usage' | 'cycle-usage-page' | 'cycle-weekly-mode' | 'cycle-zai-mode' | 'voice-ptt-begin' | 'voice-ptt-end' | 'voice-ptt-cancel' | 'none';
     sessionId?: string;
     sessionPort?: number;
     optionIndex?: number;
     optionValue?: string;
     promptText?: string;
+    settingKey?: SessionSetting['key'];
+    settingValue?: string | null;
   } {
     const deck = normalizeLayout(layout);
     const config = this.getSlotConfig(slot, deck);
@@ -772,7 +792,13 @@ export class SessionSlotManager {
         return { action: 'none' };
 
       case 'back':
-        return { action: 'exit-detail' };
+        return this._picker ? { action: 'close-picker' } : { action: 'exit-detail' };
+
+      case 'setting-option':
+        if (config.settingKey && (typeof config.settingValue === 'string' || config.settingValue === null)) {
+          return { action: 'set-setting', settingKey: config.settingKey, settingValue: config.settingValue };
+        }
+        return { action: 'none' };
 
       case 'option':
         if (config.option && config.optionIndex != null) {
@@ -788,8 +814,8 @@ export class SessionSlotManager {
         if (config.preset?.localAction === 'open_gateway') {
           return { action: 'open-gateway' };
         }
-        if (config.preset?.localAction === 'switch_model') {
-          return { action: 'switch-model' };
+        if (config.preset?.localAction === 'pick_model' || config.preset?.localAction === 'pick_effort') {
+          return { action: 'open-setting-picker', settingKey: config.preset.localAction === 'pick_model' ? 'model' : 'effort' };
         }
         if (config.preset?.localAction === 'review_run') {
           return { action: 'review-run' };
@@ -987,6 +1013,81 @@ export class SessionSlotManager {
     }
 
     return { type: 'empty' };
+  }
+
+  /** "What is it doing right now" readout (#463) from row facts; null when the row says nothing. */
+  private nowCard(session: SessionInfo | undefined, processing = false): SessionSlotConfig | null {
+    const now = sessionNowSummary(session, processing);
+    if (!now) return null;
+    return {
+      type: 'status',
+      label: now.label,
+      ...(now.subtitle ? { subtitle: truncateStr(now.subtitle, 22) } : {}),
+      ...(now.detail ? { detail: now.detail } : {}),
+      icon: 'activity',
+      tone: 'info',
+    };
+  }
+
+  /** MODEL / THINKING preset subtitle: the value in effect, in the agent's words. */
+  private presetSettingSubtitle(key: SessionSetting['key'], session: SessionInfo | undefined): string | undefined {
+    const setting = this.focusedSetting(key);
+    const current = setting?.current
+      ? sessionSettingOptionLabel(setting.options.find((o) => o.id === setting.current) ?? { id: setting.current })
+      : undefined;
+    if (key === 'model') return truncateStr(aliasModelName(current ?? this._detailModelName ?? session?.modelName ?? 'model'), 14);
+    return current ? truncateStr(current, 14) : undefined;
+  }
+
+  /** Picker cells: "DEFAULT" (clear the override) when the agent names one, then every option it offers. */
+  private pickerCells(): SessionSlotConfig[] {
+    if (!this._picker) return [];
+    const entry = this._focusedSessionId ? this._settings.snapshot(this._focusedSessionId) : undefined;
+    const setting = entry?.settings.find((x) => x.key === this._picker);
+    const icon: StatusIconKind = this._picker === 'model' ? 'model' : 'mode';
+    if (entry?.pending) return [{ type: 'status', label: entry.pending === 'set' ? 'SAVING' : 'LOADING', subtitle: 'waiting for daemon', icon, tone: 'info' }];
+    if (!setting) {
+      return [entry
+        ? { type: 'status', label: 'UNAVAILABLE', subtitle: entry.error ? truncateStr(entry.error, 22) : 'not offered', icon, tone: 'muted' }
+        : { type: 'status', label: 'LOADING', subtitle: this._picker === 'model' ? 'models' : 'levels', icon, tone: 'info' }];
+    }
+    const labelOf = (id: string) => sessionSettingOptionLabel(setting.options.find((o) => o.id === id) ?? { id });
+    const cells: SessionSlotConfig[] = [];
+    if (setting.default) {
+      cells.push({
+        type: 'setting-option', settingKey: setting.key, settingValue: null,
+        label: 'DEFAULT', subtitle: truncateStr(labelOf(setting.default), 18), icon, tone: 'idle',
+      });
+    }
+    for (const option of setting.options) {
+      const isCurrent = option.id === setting.current;
+      cells.push({
+        type: 'setting-option', settingKey: setting.key, settingValue: option.id,
+        label: truncateStr(setting.key === 'model' ? aliasModelName(sessionSettingOptionLabel(option)) : sessionSettingOptionLabel(option), 14),
+        subtitle: isCurrent ? 'current' : option.id === setting.default ? 'default' : undefined,
+        icon, tone: isCurrent ? 'ready' : 'info',
+      });
+    }
+    if (entry?.error) cells.unshift({ type: 'status', label: 'REFUSED', subtitle: truncateStr(entry.error, 22), icon, tone: 'warning' });
+    return cells;
+  }
+
+  private pickerPages(layout: DeckLayout): number {
+    const capacity = Math.max(1, this.detailContentSlots(layout, true).length);
+    return Math.max(1, Math.ceil(this.pickerCells().length / capacity));
+  }
+
+  private pickerSlot(slot: number, layout: DeckLayout, controls: { more: number }): SessionSlotConfig {
+    const cells = this.pickerCells();
+    const pages = this.pickerPages(layout);
+    const reserveMore = pages > 1;
+    if (slot === controls.more && reserveMore) {
+      return { type: 'next-page', label: `${this._pickerPage + 1}/${pages}` };
+    }
+    const content = this.detailContentSlots(layout, reserveMore);
+    const idx = content.indexOf(slot);
+    if (idx < 0) return { type: 'empty' };
+    return cells[this._pickerPage * Math.max(1, content.length) + idx] ?? { type: 'empty' };
   }
 
   private modelStatusCard(session: SessionInfo | undefined): SessionSlotConfig | null {
@@ -1233,6 +1334,8 @@ export class SessionSlotManager {
       // glanceable and only STOP is actionable; review remains an inert
       // status badge.
       const cells: SessionSlotConfig[] = [];
+      const now = this.nowCard(session, true);
+      if (now) cells.push(now);
       const reviewBadge = this.reviewBadgeSlotConfig(session);
       if (reviewBadge) cells.push(reviewBadge);
       const cellIdx = idx - 1;
@@ -1256,7 +1359,8 @@ export class SessionSlotManager {
       return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
     }
     if (idx === 2) {
-      return { type: 'status', label: 'OBSERVED', subtitle: 'control in terminal', icon: 'ready', tone: 'info' };
+      return this.nowCard(session)
+        ?? { type: 'status', label: 'OBSERVED', subtitle: 'control in terminal', icon: 'ready', tone: 'info' };
     }
     return this.idleStatusCard(session, idx - 3, false, false);
   }
@@ -1316,6 +1420,8 @@ export class SessionSlotManager {
     if (slot === controls.info) {
       return { type: 'info', session, label: session ? this.displayNameFor(session) : 'Session' };
     }
+
+    if (this._picker) return this.pickerSlot(slot, layout, controls);
 
     if (slot === controls.more && reserveMore) {
       return { type: 'next-page', label: `${this._detailPage + 1}/${detailOptionPages}` };
@@ -1389,17 +1495,16 @@ export class SessionSlotManager {
       if (presetIdx >= 0 && presetIdx < OC_PRESET_DEFS.length) {
         const def = OC_PRESET_DEFS[presetIdx];
         const iconSvg = def.dynamicIcon === 'model'
-          ? buildModelIcon(this._detailModelName, this._modelSwitching)
-          : (def.iconSvg ?? '');
+          ? buildModelIcon(this._detailModelName, false)
+          : def.dynamicIcon === 'effort' ? buildModelIcon(undefined, false) : (def.iconSvg ?? '');
         const preset: PresetAction = {
           label: def.label,
           iconSvg,
           color: def.color,
           textColor: def.textColor,
-          subtitle: def.dynamicIcon === 'model' ? truncateStr(aliasModelName(this._detailModelName ?? session?.modelName ?? 'model'), 14) : undefined,
+          subtitle: def.dynamicIcon ? this.presetSettingSubtitle(def.dynamicIcon, session) : undefined,
           prompt: def.prompt,
           localAction: def.localAction,
-          loading: def.dynamicIcon === 'model' ? this._modelSwitching : undefined,
         };
         return { type: 'preset', preset };
       }

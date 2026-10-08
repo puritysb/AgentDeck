@@ -1534,16 +1534,54 @@ actor OpenClawAdapter {
         return dict
     }
 
-    private func rpcRequest(method: String, params: [String: Any]) async -> RPCResponse {
+    /// Deck-switchable settings (#463) of the session the deck talks to — the
+    /// `currentSessionKey` that `chat.send` targets — read fresh from the
+    /// Gateway row and `models.list`. Returns the wire `SessionSetting` list,
+    /// or an error message when the Gateway could not be read.
+    func querySessionSettings(targetSessionKey: String? = nil) async -> OpenClawSessionSettings.Read {
+        // Snapshot before the first await. Post-write readback passes its fixed
+        // target explicitly, so another session becoming newest cannot retarget it.
+        let target = targetSessionKey ?? currentSessionKey
+        return await OpenClawSessionSettings.query(targetSessionKey: target) { request in
+            await self.sessionSettingsRPC(request)
+        }
+    }
+
+    /// `sessions.patch` on the deck's session; a nil value clears the override.
+    /// Returns the Gateway's error message on refusal.
+    func setSessionSetting(targetSessionKey: String, key: String, value: String?) async -> String? {
+        return await OpenClawSessionSettings.set(targetSessionKey: targetSessionKey,
+            activeSessionKey: currentSessionKey, key: key, value: value) { request in
+            await self.sessionSettingsRPC(request)
+        }
+    }
+
+    private func sessionSettingsRPC(_ request: OpenClawSessionSettings.RPCRequest) async -> OpenClawSessionSettings.RPCReply {
+        // Recheck on the actor immediately before sending. The injected
+        // operation can resume on another executor after the initial guard.
+        if request.method == "sessions.patch", request.params["key"] as? String != currentSessionKey {
+            return .init(ok: false, payload: nil, error: "OpenClaw session changed; query settings again")
+        }
+        let response = await rpcRequest(method: request.method, params: request.params,
+            timeoutNanoseconds: UInt64(SessionSettingsRules.rpcTimeoutMs) * 1_000_000)
+        return .init(ok: response.ok, payload: response.payload, error: Self.rpcErrorMessage(response.error))
+    }
+
+    private static func rpcErrorMessage(_ error: [String: Any]?) -> String? {
+        (error?["message"] as? String) ?? (error?["code"] as? String)
+    }
+
+    private func rpcRequest(method: String, params: [String: Any], timeoutNanoseconds: UInt64? = nil) async -> RPCResponse {
         await withCheckedContinuation { continuation in
-            sendRPC(method: method, params: params, continuation: continuation)
+            sendRPC(method: method, params: params, continuation: continuation, timeoutNanoseconds: timeoutNanoseconds)
         }
     }
 
     private func sendRPC(
         method: String,
         params: [String: Any],
-        continuation: CheckedContinuation<RPCResponse, Never>?
+        continuation: CheckedContinuation<RPCResponse, Never>?,
+        timeoutNanoseconds: UInt64? = nil
     ) {
         guard let wsTask else {
             DaemonLogger.shared.debug("OpenClaw", "Skipping RPC \(method): gateway socket is not connected")
@@ -1628,7 +1666,7 @@ actor OpenClawAdapter {
             return
         }
         pendingMethods[requestId] = PendingRPC(method: method, task: wsTask, continuation: continuation)
-        let timeoutNanoseconds = rpcResponseTimeoutNanoseconds(for: method)
+        let timeoutNanoseconds = timeoutNanoseconds ?? rpcResponseTimeoutNanoseconds(for: method)
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: timeoutNanoseconds)
             guard !Task.isCancelled else { return }
@@ -2013,11 +2051,15 @@ actor OpenClawAdapter {
 
     private func fetchModelCatalog() async -> ([[String: Any]], String?)? {
         let response = await rpcRequest(method: "models.list", params: [:])
-        guard response.ok, let payload = response.payload,
-              let models = payload["models"] as? [[String: Any]] else {
+        guard response.ok, let payload = response.payload else {
             DaemonLogger.shared.debug("OpenClaw", "Model catalog RPC failed: \(response.error ?? [:])")
             return nil
         }
+        return Self.projectModelCatalog(payload)
+    }
+
+    static func projectModelCatalog(_ payload: [String: Any]) -> ([[String: Any]], String?)? {
+        guard let models = payload["models"] as? [[String: Any]] else { return nil }
         let entries = models.compactMap { model -> [String: Any]? in
             // Live Gateway shape: bare `id` + `provider`. Join them the way the
             // CLI `key` was (`zai/glm-5.3`, provider prefixed even when the id

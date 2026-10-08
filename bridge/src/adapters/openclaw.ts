@@ -32,6 +32,7 @@ import type {
   DeviceAuthToken,
 } from '../types.js';
 import type { AdapterContext, ChatEventPayload } from '@agentdeck/shared';
+import { openClawSessionSettings, isSessionSettingsTargetKey, isSessionSettingKey, isSessionSettingValue, SESSION_SETTINGS_RULES, type SessionSetting } from '@agentdeck/shared';
 import {
   isApprovalGoneError,
   parseExecApprovalRequest,
@@ -1545,6 +1546,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private rpcCall<M extends keyof GatewayMethodMap>(
     method: M,
     params: GatewayMethodMap[M]['params'],
+    timeoutMs = OpenClawAdapter.RPC_TIMEOUT,
   ): Promise<GatewayMethodMap[M]['result']> {
     return new Promise((resolve, reject) => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -1566,7 +1568,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           this.pendingRpc.delete(id);
           reject(new Error(`RPC timeout: ${method} (id=${id})`));
         }
-      }, OpenClawAdapter.RPC_TIMEOUT);
+      }, timeoutMs);
 
       try {
         this.ws.send(JSON.stringify(message));
@@ -2415,6 +2417,35 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     }
   }
 
+  /**
+   * Deck-switchable settings (#463) of the session the deck talks to — the
+   * same `currentSessionKey` that `send_prompt` targets — read fresh from the
+   * Gateway: the row's own thinking levels/default and the `models.list`
+   * catalog. Nothing is defaulted here; see `openClawSessionSettings`.
+   */
+  async querySessionSettings(targetSessionKey = this.currentSessionKey): Promise<{ targetSessionKey: string; settings: SessionSetting[] }> {
+    // Capture before any await. Chat events can change currentSessionKey while
+    // a read is pending; neither that read nor post-write readback may retarget.
+    if (!isSessionSettingsTargetKey(targetSessionKey)) throw new Error('No OpenClaw session to read');
+    const result = await this.rpcCall('sessions.list', {}, SESSION_SETTINGS_RULES.rpcTimeoutMs);
+    const rows = Array.isArray(result?.sessions) ? result.sessions : [];
+    const row = rows.find((r) => r.key === targetSessionKey);
+    if (!row) throw new Error('The OpenClaw session the deck targets is not listed');
+    const catalog = await this.fetchCatalogViaGateway(SESSION_SETTINGS_RULES.rpcTimeoutMs);
+    return { targetSessionKey, settings: openClawSessionSettings(row, result.defaults, catalog) };
+  }
+
+  /** Only an explicit null clears. Validate even direct adapter callers. */
+  async setSessionSetting(targetSessionKey: string, key: SessionSetting['key'], value: string | null): Promise<void> {
+    if (!isSessionSettingsTargetKey(targetSessionKey)) throw new Error('Invalid settings target');
+    if (!isSessionSettingKey(key)) throw new Error('Unknown session setting');
+    if (!isSessionSettingValue(value)) throw new Error('Invalid session setting value');
+    if (targetSessionKey !== this.currentSessionKey) throw new Error('OpenClaw conversation changed; reopen the picker');
+    await this.rpcCall('sessions.patch', key === 'model'
+      ? { key: targetSessionKey, model: value }
+      : { key: targetSessionKey, thinkingLevel: value }, SESSION_SETTINGS_RULES.rpcTimeoutMs);
+  }
+
   private clearCatalogRetry(): void {
     if (this.catalogRetryTimer) {
       clearTimeout(this.catalogRetryTimer);
@@ -2435,7 +2466,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   }
 
   /** The Gateway's own `models.list` — the socket we already hold, no subprocess. */
-  private async fetchCatalogViaGateway(): Promise<ResolvedModelCatalog | null> {
+  private async fetchCatalogViaGateway(timeoutMs = OpenClawAdapter.RPC_TIMEOUT): Promise<ResolvedModelCatalog | null> {
     // A Gateway that advertised its methods and left this one out is asked
     // nothing: a build that drops unknown methods on the floor would cost the
     // full RPC timeout on every retry tick, forever.
@@ -2444,7 +2475,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       return null;
     }
     try {
-      const result = await this.rpcCall('models.list', {});
+      const result = await this.rpcCall('models.list', {}, timeoutMs);
       const catalog = catalogFromModelsList(result);
       if (!catalog) debug('adapter:openclaw', 'models.list answered without a usable model list');
       return catalog;

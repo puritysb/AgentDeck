@@ -53,12 +53,14 @@ import androidx.compose.ui.unit.sp
 import dev.agentdeck.state.GroupedEntry
 import dev.agentdeck.state.TimelineEntry
 import dev.agentdeck.state.TimelineSessionFilter
-import dev.agentdeck.state.groupConsecutive
+import dev.agentdeck.state.recentTimelineDisplayGroups
+import dev.agentdeck.state.timelineGroupKey
+import dev.agentdeck.state.timelineGroupItemKeys
+import dev.agentdeck.state.timelineSelectedGroupIndex
 import dev.agentdeck.state.isProgressChatResponse
 import dev.agentdeck.state.matchesTimelineFilter
 import dev.agentdeck.state.taskHeaderDisplay
 import dev.agentdeck.state.timelineAbsorbsQueuedPrompt
-import dev.agentdeck.state.timelineDisplayGroups
 import dev.agentdeck.state.timelineLifecycleBounds
 import dev.agentdeck.state.timelineSupersededSharedResponse
 import dev.agentdeck.terrarium.TerrariumColors
@@ -101,13 +103,15 @@ fun TimelineStrip(
     val filteredEntries = remember(entries, filter) {
         if (filter == null) entries else entries.filter { it.matchesTimelineFilter(filter) }
     }
-    val displayEntries = remember(filteredEntries) { filteredEntries.takeLast(80) }
+    val displayEntries = filteredEntries // Group before applying the visible-row cap.
     val grouped = remember(displayEntries) {
-        timelineDisplayGroups(groupConsecutive(displayEntries)).takeLast(50)
+        recentTimelineDisplayGroups(displayEntries, 50)
     }
 
-    var focusedIndex by remember { mutableIntStateOf(-1) }
-    var expandedIndex by remember { mutableIntStateOf(-1) }
+    var focusedKey by remember { mutableStateOf<String?>(null) }
+    var expandedKey by remember { mutableStateOf<String?>(null) }
+    val focusedIndex = timelineSelectedGroupIndex(grouped, focusedKey)
+    val expandedIndex = timelineSelectedGroupIndex(grouped, expandedKey)
     // Sticky-bottom: the list follows new rows until the user scrolls away from
     // the bottom, and re-engages the moment they scroll back. Selection
     // deliberately does NOT gate this — when auto-scroll hung off
@@ -117,11 +121,11 @@ fun TimelineStrip(
     var stickToBottom by remember { mutableStateOf(true) }
     var stickyLayoutCount by remember { mutableIntStateOf(-1) }
 
-    // Reset selection/expansion when the filter changes so a row index from the
-    // all-sessions view doesn't point at an unrelated row after narrowing.
+    // Keep explicit selection/expansion on the originating turn as recency
+    // moves rows. A different session filter resets both identities.
     LaunchedEffect(filter) {
-        focusedIndex = -1
-        expandedIndex = -1
+        focusedKey = null
+        expandedKey = null
     }
 
     val focusedGroup: GroupedEntry? = when {
@@ -161,7 +165,7 @@ fun TimelineStrip(
     }
     // When the device rotates between Compact and Regular, reset expand state
     // so we don't carry an inline expansion into a layout that doesn't render it.
-    LaunchedEffect(layoutMode) { expandedIndex = -1 }
+    LaunchedEffect(layoutMode) { expandedKey = null }
 
     Column(modifier = modifier.fillMaxWidth()) {
         when (layoutMode) {
@@ -187,7 +191,7 @@ fun TimelineStrip(
                         allowExpand = false,
                         displayEntries = displayEntries,
                         scale = scale,
-                        onClick = { idx -> focusedIndex = idx },
+                        onClick = { idx -> focusedKey = timelineGroupKey(grouped[idx]) },
                         modifier = Modifier.weight(1f, fill = false),
                         filter = filter,
                     )
@@ -224,8 +228,9 @@ fun TimelineStrip(
                     displayEntries = displayEntries,
                     scale = scale,
                     onClick = { idx ->
-                        expandedIndex = if (expandedIndex == idx) -1 else idx
-                        focusedIndex = idx
+                        val key = timelineGroupKey(grouped[idx])
+                        expandedKey = if (expandedKey == key) null else key
+                        focusedKey = key
                     },
                     modifier = Modifier.weight(1f, fill = false),
                     filter = filter,
@@ -340,12 +345,13 @@ private fun TimelineList(
             modifier = modifier,
         )
     } else {
+        val itemKeys = remember(grouped) { timelineGroupItemKeys(grouped) }
         LazyColumn(
             state = listState,
             verticalArrangement = Arrangement.spacedBy(0.dp),
             modifier = modifier,
         ) {
-            itemsIndexed(grouped) { index, group ->
+            itemsIndexed(grouped, key = { index, _ -> itemKeys[index] }) { index, group ->
                 val isSelected = index == focusedIndex ||
                     (focusedIndex < 0 && index == grouped.lastIndex)
                 Column {
@@ -647,6 +653,17 @@ private fun TurnRow(
                     modifier = Modifier.width(11.dp).height(11.dp),
                 )
             }
+        }
+        if (group.toolActivity.isNotEmpty()) {
+            Text(
+                text = "↳ ${group.toolSummary}",
+                modifier = Modifier.padding(start = subIndent),
+                color = TerrariumColors.HUDSubtext,
+                fontSize = scale.fontSub,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
         group.mergedResponse?.let { resp ->
             if (!isProgressChatResponse(resp)) {
@@ -1131,7 +1148,7 @@ private fun DetailPane(
                 )
             }
 
-            if (showDetail && detailText != null) {
+            if (showDetail || focusedGroup.toolActivity.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 LazyColumn(
                     modifier = Modifier
@@ -1139,8 +1156,9 @@ private fun DetailPane(
                         .weight(1f, fill = false)
                         .padding(horizontal = 8.dp),
                 ) {
-                    item {
-                        TimelineMarkdownView(text = detailText)
+                    item { ToolActivityDetail(focusedGroup, scale) }
+                    if (showDetail && detailText != null) {
+                        item { TimelineMarkdownView(text = detailText) }
                     }
                 }
             }
@@ -1174,6 +1192,29 @@ private fun shouldShowDetailForDashboard(entry: TimelineEntry, detail: String): 
  * single-column layout. Mirrors the right-side `DetailPane` content shape
  * but laid out vertically without the type badge / timestamp header.
  */
+@Composable
+private fun ToolActivityDetail(group: GroupedEntry, scale: MonitorLayoutScale) {
+    if (group.toolActivity.isEmpty()) return
+    var expanded by remember(group.entry.timestamp, group.entry.sessionId, group.entry.runId) { mutableStateOf(false) }
+    Column {
+        Text(
+            text = if (expanded) "▾ Tool activity" else "▸ Tool activity",
+            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 4.dp),
+            color = TerrariumColors.HUDSubtext,
+            fontSize = scale.fontSub,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (expanded) {
+            Text(
+                text = group.toolDetail,
+                color = TerrariumColors.HUDText,
+                fontSize = scale.fontSub,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+    }
+}
+
 @Composable
 private fun InlineDetailPane(
     group: GroupedEntry,
@@ -1221,6 +1262,7 @@ private fun InlineDetailPane(
                 style = tight,
             )
         }
+        ToolActivityDetail(group, scale)
         val detailText = bodyEntry.detail
         if (!detailText.isNullOrEmpty() && shouldShowDetailForDashboard(bodyEntry, detailText)) {
             TimelineMarkdownView(text = detailText)

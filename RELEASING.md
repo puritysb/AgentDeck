@@ -47,6 +47,171 @@ Three portal facts worth keeping from the recent Android delivery:
 
 Run `pnpm verify-version` before every build or release. CI rejects a compatibility-major split or a target-internal mismatch. Release CI additionally requires a channel tag's full `X.Y.Z` to equal that target's own declared version; it does not compare the tag's minor or patch with root `VERSION`.
 
+## 1.8.0 preparation evidence — CI waits and outstanding acceptance
+
+Preparation branch: `codex/release-ci-wait`, based on `b6fa21bf` (2026-10-05).
+The six channel manifests and prepared changelog entry target backward-compatible
+1.8.0; the root compatibility-major anchor remains 1.0.2. These historical preparation receipts do not prove publication.
+The owner authorized distribution on 2026-10-06 after #460 merged as
+`4168e57239b825c101c61b337c8602a8e3b748ec`; every 1.8.0 channel tag targets
+that commit unless the channel-specific delivery readback records a follow-up. Current channel delivery is recorded in the
+[delivery readback](#delivery-readback-2026-10-06).
+
+The owner explicitly waived iPhone reinstall verification and physical deck
+operation on 2026-10-06. Deck acceptance for this candidate uses code tests and
+simulator scenarios; these waivers are not claims that hardware was tested.
+The final deck acceptance uses production controllers and loopback WebSocket
+peers on Classic (15 keys), XL (32), SD+ keypad (8) and D200H (14). Eight new
+integration cases plus existing timeout/correlation tests pass (199 focused
+checks); twenty production-renderer frames were inspected. Catalog paging,
+stale-target refusals, explicit-default retry, BACK/late replies and observed
+NOW/readout updates are covered. This is headless controller simulation, not an
+official host/device simulator. The final full suite passes 5,423 tests (8 skipped),
+with build/typecheck and protocol/token drift checks passing. Test-only additions
+do not change the installed executable inputs.
+
+| Work | Prepared 1.8.0 scope | Separate or external acceptance |
+| --- | --- | --- |
+| [#463](https://github.com/puritysb/AgentDeck/issues/463) deck settings | #464–#466: per-session model/effort/mode, OpenClaw setting pickers and observed NOW cards, with final-review corrections | Integrated in #460 with target binding, strict validation, correlated replies, bounded waits and visible errors; OpenCode steering remains separate; the owner accepts code/simulator verification instead of physical deck operation for 1.8.0 (2026-10-06) |
+| [#433](https://github.com/puritysb/AgentDeck/issues/433) CI waits | Claude/Codex/OpenCode/Hermes lifecycle, explicit clearing, bounded Node evidence/counts, session-bound GitHub companion orbit/result cues, readable Canvas/native cues, firmware activity, foreground APME accounting | Physical fleet/phone acceptance remains distinct from source and fixture tests; unknown evidence never claims a provider verdict |
+| [#449](https://github.com/puritysb/AgentDeck/issues/449) delivery | #451, #452, #459 plus clean installed-tarball acceptance, versioned plugin packages and unsigned Android artifacts | Distribution signing, upload, store review/publication and DRM-processed encoder acceptance are outside this preparation |
+| [#423](https://github.com/puritysb/AgentDeck/issues/423) Hermes umbrella | Observer-only support retained; pinned upstream CLI callbacks and real read-only GitHub watcher captured | Remains open while child acceptance is incomplete |
+| [#425](https://github.com/puritysb/AgentDeck/issues/425) Hermes surfaces | Actual macOS 3D, Lenovo Canvas/Filament CI rendering, iPad native rendering, crowded-profile and package tests | iPhone 14 Pro Max passed the prior appearance build; latest-candidate reinstall verification is explicitly waived by the owner (2026-10-06); physical matrix/firmware optical acceptance is not inferred from compiled images |
+| [#426](https://github.com/puritysb/AgentDeck/issues/426) Hermes lifecycle | Pinned CLI tool/Stop/finalization, private CI intent, independent sessions and Swift model attribution | A test-only messaging Gateway channel and permission to send test messages are still needed for real `/new`/reset capture |
+| [#428](https://github.com/puritysb/AgentDeck/issues/428) Hermes model | Existing renderer retained without claiming visual approval; no replacement asset is bundled | Replacement face/rig/export and owner visual acceptance remain a separate artwork task |
+| [#273](https://github.com/puritysb/AgentDeck/issues/273) managed replacement | All managed contracts retained; no PTY removal in 1.8.0 | Remote relay/two-machine and terminal-only replacement gates apply to future removal work |
+| [#272](https://github.com/puritysb/AgentDeck/issues/272) e-ink | Existing readable CI activity retained | Repaint/optical measurements, audio hardware and Swift pull-path decisions remain research; no redesign is claimed |
+
+Candidate checks include
+`pnpm test:packaged --soak-seconds 60 --keep-artifacts --report diagnostics/release-180/packaged-daemon.json`. It packs all four npm
+packages, installs them outside the workspace and proves native bindings,
+installed hooks, failed-to-repaired CI evidence, twelve independent conversations,
+compact device frames, reconnects, soak health and restart persistence. Its GitHub
+responses are fixtures; the separate pinned Hermes CLI receipt uses a real `gh`
+watch against completed PR CI, with a deterministic local model provider.
+Neither receipt proves a messaging-platform Gateway session. The installed 1.8.0
+CLI also passed Swift-to-Node takeover, Node-only operation, app relaunch as a
+Node client and automatic Swift recovery on an isolated port, with production
+listeners unchanged.
+
+Native QA found and fixed canceled asset loads being shown as permanent failure,
+macOS selectable Timeline text flipping over the Metal scene, stale sibling
+frames overriding permission priority, and missing Hermes model attribution in
+Swift runs/turns/tasks. Accepted CI timeline annotations now broadcast live,
+while deduplicated rows stay suppressed. Explicit QA data directories no longer import the real
+daemon registry or credentials. CLI lifecycle commands also verify installed
+service data scope before controlling launchd/systemd/Scheduled Task units. Device QA uses development execution only; it
+is not distribution signing or App Store sandbox acceptance. The superseded
+station candidate compiled all twelve firmware targets and packaged 62 assets.
+Its IPS10 image had 68,544 bytes of app-partition headroom; that receipt is
+superseded. The final appearance/orbit candidate passed all twelve board builds
+and packaged 62 files. Six targets were rebuilt for the TTGO memo change; actual
+compiler dependencies prove the six retained outputs had unchanged inputs.
+All merged headers, artifact hashes and partition bounds passed. The final padded
+IPS10 application uses 6,225,408 of 6,291,456 bytes, leaving 66,048 bytes (98.95%
+used). Per-board source stamps and compiler-input receipts retain this distinction.
+
+The current appearance pass distinguishes Claude’s black eyes, OpenClaw’s black
+eyes and original teal pupils, Codex’s filled white prompt and OpenCode’s actual central
+opening. It covers both 2D and 3D rendering, including generated device glyphs
+and canonical terminal cells. Very small LED/terminal samples can average away
+fine details; terminal hues require true-color support.
+The prior candidate `41803e5c` passed all ten GitHub checks, 5,363 Vitest tests,
+473 Android tests and 82 focused Swift tests. The integrated #463 stack and final
+Ulanzi pagination correction are now executable candidate `9d0ccf2c` (all ten
+GitHub checks pass): build and
+typecheck pass, with 5,415 Vitest tests (8 skipped), 14 real-daemon E2E tests and
+16 focused Swift tests. Protocol, generated settings rules, tokens and design
+lint remain in sync. Android and ESP32 tracked sources and all 225 measured
+firmware compiler inputs are unchanged, so their prior artifact receipts remain
+applicable. Fresh macOS/iOS archives pass invariant checks; four clean-installed npm
+tarballs pass all ten acceptance checks and a 60-second soak. Affected runtime
+installations are recorded separately below.
+Archive invariant checks use local verification signatures only; no distribution
+signing or store delivery is part of this preparation.
+
+The final fixes include #462/#461 Timeline grouping and Android recency/selection,
+natural Android HUD leading, resolved npm dependency build identity, and bounded
+Codex subagent filtering in Node and Swift. Re-running the previously misclassified
+child did not recreate the phantom project. These are candidate/runtime receipts,
+not public deployment evidence.
+
+TTGO's CI memo preserves ten owners in 160 bytes rather than 240, fixing the
+48-byte static DRAM overflow. The linked image has only 32 bytes of static
+region slack; that is not runtime heap headroom. The installed board observed
+69–72 KB internal free heap and a 37 KB largest block over 63 seconds without
+reboot. Longer performance and physical panel/touch acceptance remain separate.
+
+The local delivery inventory is `dist/RELEASE-1.8.0-PREFLIGHT.txt`; the matching
+hash manifest is `dist/RELEASE-1.8.0-ARTIFACTS.json`. It identifies 75 current
+artifact records, including 62 firmware files and both current archive trees.
+Use `apple-1.8.0-pr463-final/` for Apple source verification; the preserved
+`apple-1.8.0-preflight/` archives are superseded.
+
+Previously built archives/packages are superseded wherever their inputs change.
+The deployment audit separately records source changes, package contents and
+installed/runtime identity for ESP32, Stream Deck and D200H; compilation alone
+does not update a connected device.
+
+The completed local deployment audit on 2026-10-06 records the following.
+These are local test-fleet installations, not public release versions:
+
+| Target | Verified candidate installation | Remaining boundary |
+| --- | --- | --- |
+| Node daemon | Four fresh 1.8.0 npm packages; restarted runtime content identity `f698eb52c5e1`; real target-bound catalog query succeeds without broadcasting to other clients | No npm publication or release tag |
+| Apple | Fresh #463 macOS 1.8.0/build 5 and iPad Air M2 app installed/launched; both new Release archives pass invariant checks | iPhone 14 Pro Max retains the prior 1.8.0 candidate; the owner waived latest-candidate reinstall verification on 2026-10-06, so it is not a release-preparation blocker. Distribution signing/store delivery excluded |
+| Android | Lenovo and Crema 1.8.0/code 25 installed in place with final Timeline/typography fixes | Pantone unavailable; Play upload excluded |
+| ESP32 | All eleven connected ESP32/TC001 boards updated; twelve-target artifacts prepared | C6 unavailable; final 225 firmware inputs unchanged, so later fixes need no reflash |
+| Stream Deck | 1.8.0.0 rebuilt with #463, installed and restarted; loaded runtime hash matches validated package | Physical button-operation acceptance is waived in favor of code/simulator checks; DRM-processed artifact review remains a later marketplace step |
+| D200H | Ulanzi 1.8.0 rebuilt with #463 and later-page refusal fix; WASM/fonts validated, installed and restarted | Fresh process launches matching installed bytes; no in-process hash attestation. Code/simulator acceptance replaces physical deck operation for this release; long-term hardware-link behavior remains unmeasured |
+
+A retained Stream Deck host preview showed an old extra Codex row even though
+the live daemon roster contained four expected rows. Restarting the host cleared
+that image and restored matching live usage values; no source regression was
+confirmed.
+
+User data and device preferences were preserved. Five USB firmware updates also
+verified identical NVS before and after installation. The local receipts are
+kept under `diagnostics/release-463-integration/`, `diagnostics/pr463-integration/`,
+`diagnostics/pr462-fix/` and `diagnostics/release-180/`; private captures
+and credentials are not public release media.
+
+D200H uses the Studio plugin; TC001 uses ESP32 firmware. Pixoo, Timebox and
+iDotMatrix receive daemon-rendered pixels and use the updated Node/Swift renderer.
+The public web flasher still selects ESP32 1.7.0; update it to the eventual 1.8.0
+manifest and images only after publication. Existing public 1.7 delivery and local
+1.8 candidate installation must be reported separately.
+
+Existing aquarium/key gallery images depict the prior creature treatment.
+Representative final synthetic-session native captures and generated deck-key
+assets are prepared separately for release media review. Preserve unchanged
+setup/pairing and real hardware-shell photographs; historical screenshots are
+not proof of the 1.8.0 appearance, and generated key assets are not device photos.
+The live preview uses canonical renderer frames, including terminal background
+colors and exact half cells, with explicit placeholders if frame data is absent.
+The earlier 39-image store gallery and aquarium movie/GIF are historical media,
+not proof of current 1.8.0 appearance. The new 36-second native iPad introduction
+and three full-frame screenshots show fictional Hermes and GitHub CI scenarios.
+Twelve localized supplement images (English/Korean/Japanese; two iPad and two
+Mac views per locale) use verified native captures. The iPad views show Hermes
+and GitHub CI; the earlier Mac QA views show four agents with permission/unknown
+CI context, without Hermes. Source and channel limits must be followed when
+selecting submission images; see the
+[media readiness manifest](apple/appstore-submission/media-1.8.0-readiness.json).
+The failed new iPhone
+captures are excluded, and no complete recapture of every store gallery is claimed.
+
+Other follow-ups: IPS10 wake-word 3-to-5-frame candidate needs a new controlled
+false-positive/missed-trigger/latency comparison before firmware inclusion;
+GitHub removal of historical exposed PR artifacts remains an external cleanup
+request after credential incident containment. Neither historical installation
+state nor a passing source test is a fresh runtime receipt.
+
+Unavailable hardware does not hold unrelated channels. A confirmed regression
+holds the affected artifact. Missing visual approval does not authorize replacing
+the Hermes model. Record source, artifact, upload, submission and public state
+separately; the existing public 1.7 builds do not contain later source changes.
+
 ## A release has five states, and only one of them is "released"
 
 CI going green is the first of five, not the last. Keep them apart in your head and in anything you write down:
@@ -58,6 +223,94 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 5. **Live** — the store distributes it.
 
 **Never report a state you did not measure.** Each has its own instrument: the workflow log for 1, `gh release list` for 2, the portal or `npm view <pkg> version` for 3, and the portal for 4 and 5. Deriving one from another is how "released" gets claimed for a build sitting in a portal — it happened on 2026-08-09, when CI upload was reported as a completed Stream Deck and Ulanzi release while neither had been submitted.
+
+### Delivery readback, 2026-10-06
+
+All six channels target **1.8.0**, from #460's merge commit
+`4168e57239b825c101c61b337c8602a8e3b748ec`. ESP32 uses the firmware-only
+follow-up `1940f44eb5a91836e2ec81c02b14c2f38e57164b` (#468). Distribution is authorized;
+store submission and public availability remain distinct.
+
+| Channel | Verified delivery state | Remaining external step |
+| --- | --- | --- |
+| Apple | Distribution CI and both uploads passed; iOS and macOS 7801 are Waiting for Review | Platform review/automatic publication |
+| Android | Signed GitHub APK and Play 25 (1.8.0) public; full rollout across 178 countries/regions, published October 6 at 14:52 KST | None for publication |
+| Stream Deck | Official CI package public on GitHub; embedded runtime matches tested package | Elgato 1.7 pending review prevents a new version; deletion/replacement awaits owner confirmation; public store remains 1.6 |
+| Ulanzi | 1.8.0 submitted and portal readback verified; GitHub package public | Store review; last verified public version 1.6.0 |
+| ESP32 | Twelve-board release public with 62 assets; all 60 binaries match manifest/checksum sizes and SHA-256 values; Pages selects 1.8.0 and all five offered merged images match | None for publication; no additional physical reflashes claimed |
+| npm | All four packages public at 1.8.0; all `latest` tags and nonempty setup registry README verified; release CI passed | None for publication |
+
+The first ESP32 release run `37416793515` failed TTGO linking with 152 bytes
+of static DRAM overflow. Fresh range resolution selected LVGL 9.6.0 and
+LovyanGFX 1.2.32 instead of TTGO's validated 9.5.0/1.2.21. #468 pins all five
+TTGO libraries to their measured versions and adds a fresh Linux TTGO PR compile
+gate. Clean local and Linux links pass; prior 32-byte linker slack is restored,
+not a claim of runtime heap margin. No firmware had been published, so the
+unpublished `esp32-v1.8.0` tag was moved from `4168e572` to `1940f44e` with an
+explicit expected-old-reference lease. The original failed run remains available;
+replacement run `37422033801` passed all twelve board builds and publication;
+its 62 public assets include the manifest, checksum list and 60 verified binaries. Other channels'
+already submitted binaries are unchanged.
+
+npm publication runs alongside the firmware retry. The board geometry SSOT is
+byte-identical between `esp32-v1.7.0` and npm's `4168e572` source, so the existing
+public manifest remains compatible. This round has no flash-size migration that
+would make firmware-first ordering mandatory; the web flasher still advances
+only after the new firmware manifest and merged images are public.
+
+Pages run `37422008719`, attempt 2 at `1940f44e`, passed after firmware publication.
+The public `/flash/fw/index.json` selects `esp32-v1.8.0`; its manifest is
+byte-identical to the release manifest. All five offered merged images were
+read back from public same-origin URLs and match their expected sizes/hashes.
+This verifies public delivery, separately from earlier local device installations.
+
+Production port 9120 acceptance uses the installed Node build `f698eb52c5e1`
+and macOS 1.8.0/build 5 development candidate. Real direct Claude turns reached
+the Mac timeline and downstream WebSocket frames in CLI-only, Swift-only and
+coexistence modes. On supported CLI stop, Swift automatically recovered 9120
+in about 169 seconds after fallback to 9121 and its existing 120-second
+failed-bind memory; no hook reinstall or manual port repair was needed.
+The separate #451 reverse-order check kept Mac open: supported CLI start
+acquired 9120 as Node in 35.789 seconds, and a new completed turn appeared in
+the Mac timeline. Exactly one canonical listener remained. The original
+Node-owner/Mac-client configuration was restored. This local runtime receipt
+does not claim that the submitted App Store build was installed. All four public
+npm tarballs pass registry SHA-512 integrity verification; their 295 runtime
+JavaScript files and package manifests match the installed candidate exactly.
+
+The official Stream Deck CI package's SHA-256 is
+`ec0814da259c8ce8dbecb11d60e23299d84dbe8ad87cf537514db32c1daa3575`;
+its embedded runtime is byte-identical to the tested installed runtime.
+Ulanzi's local submitted ZIP and public CI ZIP differ only in build-path labels
+inside `app.js` and archive metadata; normalizing those labels produces identical
+JavaScript. Seven localized listings and D200/D200H/D200X keypad scope were
+preserved; Dial/AU05 and encoder support are not claimed.
+
+### Store readback, 2026-10-05
+
+- **Apple iOS and macOS 1.7.0 (7701) are public.** App Store Connect reports
+  Ready for Distribution for each platform, with automatic release selected.
+  The [public Mac page](https://apps.apple.com/us/app/agentdeck-dashboard/id6784822497?platform=mac)
+  serves Version 1.7.0 and its Mac-specific release notes. Apple's iOS lookup
+  reports 1.7.0 in both US and KR, released `2026-10-04T16:52:31Z`.
+  Existing preview videos and screenshot galleries remain attached to both
+  approved platform records; no replacement build or resubmission was needed.
+- **Google Play 24 (1.7.0) is available.** The production release row says
+  Available on Google Play, published October 4 at 09:34 in the console.
+  The [public listing](https://play.google.com/store/apps/details?id=dev.agentdeck&hl=en)
+  serves the Hermes/credits/session-ordering notes and an October 4 update date.
+  The public Crema pair and four tablet images visually match the retained
+  submission files in `marketplace/play/1.6.1/`; the gallery acceptance in
+  #449 is complete. This is a visual comparison, not a byte-identity claim.
+- **Elgato 1.7 remains Pending review; Ulanzi 1.7.0 remains under review.**
+  Their last measured public versions remain 1.6 and 1.6.0 respectively.
+  Elgato still needs DRM-processed encoder acceptance after approval and before
+  publication. The remaining store and community hardware gates live in
+  [#449](https://github.com/puritysb/AgentDeck/issues/449).
+
+This readback concerns the existing 1.7 deliveries. Later fixes merged in
+#451–#455 require future versioned artifacts; they are not included merely
+because 1.7 is now public.
 
 ### Every instrument above is keyed from a tag, so audit the tag surface too
 
@@ -130,7 +383,7 @@ So when a channel first goes live, sweep the surfaces that state its status: the
 | Surface                                                   | Target version                               | Independent monotonic value                                                | Tag / delivery                             |
 | --------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------ |
 | **Apple** (iOS+macOS)                                     | `apple/project.yml` `MARKETING_VERSION`      | `CURRENT_PROJECT_VERSION` (CI-owned)                                       | `apple-v*` → TestFlight / App Store        |
-| **Android**                                               | `android/app/build.gradle.kts` `versionName` | `versionCode` (currently 17)                                               | `android-v*` → APK Release / optional Play |
+| **Android**                                               | `android/app/build.gradle.kts` `versionName` | `versionCode` (candidate 25; public 1.7.0 used 24)                                               | `android-v*` → APK Release / optional Play |
 | **npm** (`@agentdeck/hooks`, `shared`, `bridge`, `setup`) | public `package.json` files                  | npm registry version floor                                                 | `npm-v*` → OIDC publish                  |
 | **ESP32**                                                 | `esp32/src/config.h` `FIRMWARE_VERSION`      | build hash / epoch in firmware metadata                                    | `esp32-v*` → firmware Release              |
 | **Stream Deck**                                           | plugin manifest `Version` as `X.Y.Z.0`       | fourth component if a same-product-version plugin rebuild is ever required | `streamdeck-v*` → Elgato Maker portal      |
@@ -169,7 +422,7 @@ Tag prefixes remain because channels ship independently and may point to differe
    `## <YYYY-MM-DD> — <Channel> <version>`; list every channel in one heading
    when a round is cut across several, which is what a simultaneous cut is.
    Verify before tagging: `pnpm verify-release-version <target> <X.Y.Z>`.
-5. Run `pnpm verify-version`, `pnpm build`, and the relevant platform workflows.
+5. Run `pnpm verify:full --record` (the pre-release verification tier; attest the lab gates you ran with `--attest`), commit the receipt it writes under `verification/receipts/`, and confirm the relevant platform workflows are green.
 6. Commit the synchronized release state. Create only the channel tags that are actually being delivered, using the exact target version.
 
 Step 4 used to say "update user-facing release notes" and was skipped without
@@ -388,7 +641,13 @@ Assets are named by the board's **canonical id** (`agentdeck-<board>.bin`) — t
 
 ### Stream Deck plugin
 
-`1.0.2` was approved and published on 2026-07-28, `1.0.3` — the Windows compatibility correction — on 2026-07-31, and `1.0.4` on 2026-08-05. `1.0.5` was published on 2026-08-10T18:03:56Z. **`1.0.6` was published on 2026-08-18T16:46Z** and is now the latest public version at [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — the product page's `versions` payload reports `status: published` and `latest_version_number: 1.0.6`. For `1.0.5` the uploaded CI artifact was the `streamdeck-v1.0.5` GitHub Release asset (`SHA-256 5cde49b7f79a2551c04113d1662b59720de3caa7929e2e8072dbcb3e458f6528`), not a locally rebuilt package; the same rule applies to every submission. The Marketplace's **monotonic-version rule applies** — every subsequent submission needs a version above the latest published version, and same-version resubmission (which pre-publication review revisions allowed) is unavailable once that version is published. **`1.2` was approved on 2026-09-02T09:31Z and published at 2026-09-02T21:39:41Z** (2026-09-03 KST) from Maker Console's Versions tab (`Release` on the *Ready to publish* row — one press, no confirmation dialog; the row reads *Published* immediately and the public payload follows). It had been uploaded with auto-publish off so the DRM-processed build could go through the encoder review loop (docs/streamdeck-layout.md) first; that loop was skipped on the owner's instruction, so any encoder regression reported against 1.2 should be checked on the Marketplace-served build before anything else.
+**Current verified delivery, 2026-10-03: 1.6 is public.** Maker Console's approved
+1.6 was released after the recorded physical acceptance, and the public listing
+reports Version 1.6 (Oct 3, 2026), 758.41 KB. See the
+[current listing receipt](marketplace/elgato/LISTING.md#16-published-and-public-2026-10-03).
+The older 1.4 review entry was not published. The following records are historical.
+
+`1.0.2` was approved and published on 2026-07-28, `1.0.3` — the Windows compatibility correction — on 2026-07-31, and `1.0.4` on 2026-08-05. `1.0.5` was published on 2026-08-10T18:03:56Z. **`1.0.6` was published on 2026-08-18T16:46Z** and was then the latest public version at [AgentDeck on the Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) — the product page's `versions` payload reports `status: published` and `latest_version_number: 1.0.6`. For `1.0.5` the uploaded CI artifact was the `streamdeck-v1.0.5` GitHub Release asset (`SHA-256 5cde49b7f79a2551c04113d1662b59720de3caa7929e2e8072dbcb3e458f6528`), not a locally rebuilt package; the same rule applies to every submission. The Marketplace's **monotonic-version rule applies** — every subsequent submission needs a version above the latest published version, and same-version resubmission (which pre-publication review revisions allowed) is unavailable once that version is published. **`1.2` was approved on 2026-09-02T09:31Z and published at 2026-09-02T21:39:41Z** (2026-09-03 KST) from Maker Console's Versions tab (`Release` on the *Ready to publish* row — one press, no confirmation dialog; the row reads *Published* immediately and the public payload follows). It had been uploaded with auto-publish off so the DRM-processed build could go through the encoder review loop (docs/streamdeck-layout.md) first; that loop was skipped on the owner's instruction, so any encoder regression reported against 1.2 should be checked on the Marketplace-served build before anything else.
 
 The live version is verifiable without signing in to the Maker Console: the product page is a client-rendered SPA, but its Next.js payload carries the version array verbatim, so `curl -s <product-url> | grep -oE '\\"versions\\":\[.{0,1200}'` reports `version_number`, `status`, and `publish_date` for every submission. Check it there before writing a release-status claim into this file — a portal upload that succeeds leaves no trace in the repository, which is exactly how these paragraphs fell a version behind between 2026-07-31 and 2026-08-06.
 
@@ -405,6 +664,12 @@ is independently READY_FOR_SALE on both platforms in
 [ASC status run 34909305043](https://github.com/puritysb/AgentDeck/actions/runs/34909305043).
 
 ### Ulanzi plugin
+
+**Current verified delivery, 2026-10-03: 1.6.0 is public.** The published-work
+record and normal public listing both show 1.6.0, D200/D200H/D200X, without Dial.
+No further upload was needed. See the
+[current listing receipt](marketplace/ulanzi/LISTING.md#160-public-listing-verification-2026-10-03).
+The following records are historical.
 
 `1.0.3` was uploaded on 2026-08-07 and **published on or before 2026-08-24** — the first AgentDeck version ever live on this Marketplace. `1.0.4` was **submitted the same day** as a *Create review version* (D200X keypad, the three agents the published build predates, three new locales, `AI` sub-category, restored seven-language copy, refreshed media); 1.0.3 keeps serving while it is reviewed, verified on the public page after the press. **`1.0.5` replaced that review record in place on 2026-08-25**, so 1.0.4 never reached a user: the Ulanzi Studio team reported macOS Gatekeeper flagging `resvgjs.darwin-arm64.node` on Apple Silicon, and 1.0.5 removes every native binary by moving the rasterizer to `@resvg/resvg-wasm`. Replacing rather than stacking a second review version is the path Ulanzi confirmed on 2026-08-08 ("it's also possible to re-edit and update the file"), and it is the right one here because the reviewer was testing the very build that was wrong. 1.0.5 was in turn replaced in place by **1.2.0 on 2026-09-02**, and **1.2.0 was published within a day**: on 2026-09-03 the public listing reads `Version：1.2.0`. Note the Ulanzi page is client-rendered — `curl` returns no version string at all, so this one is read in a browser (or with the extension's DOM tools), unlike the Elgato payload above.
 

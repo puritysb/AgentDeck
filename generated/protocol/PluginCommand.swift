@@ -38,6 +38,12 @@ import Foundation
 /// button). Daemon-side eval with an independent judge model — no agent control involved, so
 /// every session type qualifies. Results flow back as review_status / review_result events
 /// plus SessionInfo badge fields.
+///
+/// Ask the daemon which settings this session can switch (→ `session_settings`).
+///
+/// Switch a session setting to one of the agent-offered option ids. `null` clears the
+/// override and returns to the agent's own default. Answered with a fresh `session_settings`
+/// event (with `error` when the agent refused).
 // MARK: - ADPluginCommand
 struct ADPluginCommand: Codable, Equatable {
     var type: ADType
@@ -80,6 +86,9 @@ struct ADPluginCommand: Codable, Equatable {
     var taskKind: String?
     var decision: ADDecision?
     var requestId: String?
+    var key: ADKey?
+    /// Echo the queried conversation. A changed active target refuses the write.
+    var targetSessionKey: String?
     var offset: Double?
     var otaId: String?
     var seq: Double?
@@ -113,6 +122,8 @@ struct ADPluginCommand: Codable, Equatable {
         case taskKind = "taskKind"
         case decision = "decision"
         case requestId = "requestId"
+        case key = "key"
+        case targetSessionKey = "targetSessionKey"
         case offset = "offset"
         case otaId = "otaId"
         case seq = "seq"
@@ -166,6 +177,8 @@ extension ADPluginCommand {
         taskKind: String?? = nil,
         decision: ADDecision?? = nil,
         requestId: String?? = nil,
+        key: ADKey?? = nil,
+        targetSessionKey: String?? = nil,
         offset: Double?? = nil,
         otaId: String?? = nil,
         seq: Double?? = nil,
@@ -199,6 +212,8 @@ extension ADPluginCommand {
             taskKind: taskKind ?? self.taskKind,
             decision: decision ?? self.decision,
             requestId: requestId ?? self.requestId,
+            key: key ?? self.key,
+            targetSessionKey: targetSessionKey ?? self.targetSessionKey,
             offset: offset ?? self.offset,
             otaId: otaId ?? self.otaId,
             seq: seq ?? self.seq,
@@ -363,6 +378,11 @@ enum ADDirection: String, Codable, Equatable {
     case up = "up"
 }
 
+enum ADKey: String, Codable, Equatable {
+    case effort = "effort"
+    case model = "model"
+}
+
 enum ADMode: String, Codable, Equatable {
     case acceptEdits = "acceptEdits"
     case modeDefault = "default"
@@ -504,6 +524,7 @@ enum ADType: String, Codable, Equatable {
     case interrupt = "interrupt"
     case navigateOption = "navigate_option"
     case permissionDecision = "permission_decision"
+    case querySessionSettings = "query_session_settings"
     case querySessionTimeline = "query_session_timeline"
     case queryUsage = "query_usage"
     case respond = "respond"
@@ -511,6 +532,7 @@ enum ADType: String, Codable, Equatable {
     case selectOption = "select_option"
     case sendPrompt = "send_prompt"
     case sessionCommand = "session_command"
+    case setSessionSetting = "set_session_setting"
     case switchAgent = "switch_agent"
     case switchMode = "switch_mode"
     case utility = "utility"
@@ -520,6 +542,7 @@ enum ADType: String, Codable, Equatable {
 enum ADValue: Codable, Equatable {
     case double(Double)
     case string(String)
+    case null
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -529,6 +552,10 @@ enum ADValue: Codable, Equatable {
         }
         if let x = try? container.decode(String.self) {
             self = .string(x)
+            return
+        }
+        if container.decodeNil() {
+            self = .null
             return
         }
         throw DecodingError.typeMismatch(ADValue.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for ADValue"))
@@ -541,6 +568,8 @@ enum ADValue: Codable, Equatable {
             try container.encode(x)
         case .string(let x):
             try container.encode(x)
+        case .null:
+            try container.encodeNil()
         }
     }
 }

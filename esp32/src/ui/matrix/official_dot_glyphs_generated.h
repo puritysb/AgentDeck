@@ -6,6 +6,16 @@
 namespace OfficialDotGlyphs {
 constexpr int SIZE = 8;
 
+// Offsets are in this namespace's master-mask coordinates. Immutable flash
+// coverage is composited after the body; black RGB is an opaque paint operation.
+struct FeatureLayer {
+    uint8_t x, y, width, height;
+    const uint8_t* alpha;
+    uint8_t red, green, blue;
+    bool monochromeInk;
+    bool creatureMonochromeInk;
+};
+
 static const uint8_t CLAUDE_CODE[SIZE * SIZE] = {
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 85, 85, 85, 85, 85, 85, 0,
@@ -15,6 +25,13 @@ static const uint8_t CLAUDE_CODE[SIZE * SIZE] = {
     0, 216, 216, 177, 177, 216, 216, 0,
     0, 86, 86, 0, 0, 86, 86, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
+};
+static const uint8_t CLAUDE_CODE_FEATURE_0_A8[8] = {
+    38, 0, 0, 38, 82, 0, 0, 82
+};
+constexpr int CLAUDE_CODE_FEATURE_COUNT = 1;
+static const FeatureLayer CLAUDE_CODE_FEATURES[1] = {
+    {2, 2, 4, 2, CLAUDE_CODE_FEATURE_0_A8, 0, 0, 0, false, true},
 };
 
 static const uint8_t CODEX[SIZE * SIZE] = {
@@ -26,6 +43,13 @@ static const uint8_t CODEX[SIZE * SIZE] = {
     105, 250, 210, 255, 157, 154, 247, 176,
     43, 243, 255, 255, 255, 255, 159, 12,
     0, 38, 109, 170, 242, 171, 12, 0,
+};
+static const uint8_t CODEX_FEATURE_0_A8[24] = {
+    5, 38, 0, 0, 0, 0, 2, 161, 3, 0, 0, 0, 1, 160, 4, 31, 34, 1, 5, 45, 0, 98, 101, 8
+};
+constexpr int CODEX_FEATURE_COUNT = 1;
+static const FeatureLayer CODEX_FEATURES[1] = {
+    {1, 2, 6, 4, CODEX_FEATURE_0_A8, 255, 255, 255, false, false},
 };
 
 static const uint8_t OPEN_CODE[SIZE * SIZE] = {
@@ -39,6 +63,11 @@ static const uint8_t OPEN_CODE[SIZE * SIZE] = {
     0, 56, 85, 85, 85, 85, 56, 0,
 };
 
+constexpr int OPEN_CODE_FEATURE_COUNT = 0;
+static const FeatureLayer OPEN_CODE_FEATURES[1] = {
+    {0, 0, 0, 0, nullptr, 0, 0, 0, false, false},
+};
+
 static const uint8_t OPEN_CLAW[SIZE * SIZE] = {
     0, 9, 39, 16, 16, 39, 9, 0,
     0, 26, 201, 255, 255, 200, 26, 0,
@@ -48,6 +77,17 @@ static const uint8_t OPEN_CLAW[SIZE * SIZE] = {
     0, 196, 255, 255, 255, 255, 194, 0,
     0, 38, 226, 255, 255, 226, 37, 0,
     0, 0, 20, 162, 161, 20, 0, 0,
+};
+static const uint8_t OPEN_CLAW_FEATURE_0_A8[4] = {
+    76, 53, 50, 73
+};
+static const uint8_t OPEN_CLAW_FEATURE_1_A8[4] = {
+    6, 9, 1, 15
+};
+constexpr int OPEN_CLAW_FEATURE_COUNT = 2;
+static const FeatureLayer OPEN_CLAW_FEATURES[2] = {
+    {2, 2, 4, 1, OPEN_CLAW_FEATURE_0_A8, 5, 8, 16, false, true},
+    {2, 2, 4, 1, OPEN_CLAW_FEATURE_1_A8, 0, 229, 204, true, false},
 };
 
 static const uint8_t ANTIGRAVITY[SIZE * SIZE] = {
@@ -61,6 +101,11 @@ static const uint8_t ANTIGRAVITY[SIZE * SIZE] = {
     131, 12, 0, 0, 0, 0, 10, 130,
 };
 
+constexpr int ANTIGRAVITY_FEATURE_COUNT = 0;
+static const FeatureLayer ANTIGRAVITY_FEATURES[1] = {
+    {0, 0, 0, 0, nullptr, 0, 0, 0, false, false},
+};
+
 static const uint8_t KIRO[SIZE * SIZE] = {
     0, 0, 85, 219, 245, 172, 19, 0,
     0, 43, 252, 255, 255, 255, 182, 0,
@@ -70,6 +115,11 @@ static const uint8_t KIRO[SIZE * SIZE] = {
     58, 255, 255, 255, 255, 255, 241, 8,
     15, 113, 255, 255, 255, 255, 153, 0,
     0, 36, 229, 192, 197, 188, 17, 0,
+};
+
+constexpr int KIRO_FEATURE_COUNT = 0;
+static const FeatureLayer KIRO_FEATURES[1] = {
+    {0, 0, 0, 0, nullptr, 0, 0, 0, false, false},
 };
 
 static const uint8_t HERMES[SIZE * SIZE] = {
@@ -83,6 +133,11 @@ static const uint8_t HERMES[SIZE * SIZE] = {
     0, 95, 247, 147, 110, 38, 107, 67,
 };
 
+constexpr int HERMES_FEATURE_COUNT = 0;
+static const FeatureLayer HERMES_FEATURES[1] = {
+    {0, 0, 0, 0, nullptr, 0, 0, 0, false, false},
+};
+
 static const uint8_t ZAI[SIZE * SIZE] = {
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 12, 34, 34, 21, 34, 15, 0,
@@ -92,6 +147,11 @@ static const uint8_t ZAI[SIZE * SIZE] = {
     0, 28, 237, 226, 122, 136, 48, 0,
     0, 15, 34, 21, 34, 34, 12, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
+};
+
+constexpr int ZAI_FEATURE_COUNT = 0;
+static const FeatureLayer ZAI_FEATURES[1] = {
+    {0, 0, 0, 0, nullptr, 0, 0, 0, false, false},
 };
 
 }  // namespace OfficialDotGlyphs

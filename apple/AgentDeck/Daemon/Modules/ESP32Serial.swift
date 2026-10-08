@@ -1491,6 +1491,7 @@ actor ESP32Serial {
                             // Without it the device falls back to "Bash". Mirrors the Node
                             // bridge serial map (bridge/src/esp32-serial.ts activity cap 79).
                             "activity": lim(s["activity"], 79),
+                            "ciPhase": CiWaitVisual.compactPhase(s["waitingOn"] as? [String: Any]),
                             "promptType": lim(s["promptType"], 19),
                             "question": lim(s["question"], 159)
                         ]

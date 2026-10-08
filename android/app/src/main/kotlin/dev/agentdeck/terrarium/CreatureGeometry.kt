@@ -7,6 +7,8 @@ import androidx.core.graphics.PathParser
  * high-fidelity Compose tablet renderer ([dev.agentdeck.terrarium.creature]) and
  * the low-fidelity e-ink renderer ([dev.agentdeck.terrarium.renderer.EinkRenderer]).
  *
+ * CreatureBrandFeatures.generated.kt adds exact opaque source features to these unchanged base paths.
+ *
  * Previously each surface duplicated these SVG path strings (OctopusCreature,
  * CrayfishCreature and a manually-transcribed copy in EinkRenderer),
  * which let the e-ink/ESP32 silhouettes drift from the canonical robot/crayfish.
@@ -56,7 +58,7 @@ object CreatureGeometry {
     const val OPENCODE_PATH_DATA = "M16 6H8v12h8V6zm4 16H4V2h16v20z"
 
     // --- OpenClaw mark (design/brand/openclaw.svg, viewBox 0 0 24 24) ---
-    // Keep the eye dots separate so color renderers can retain the official teal accent.
+    // Keep original eye dots separate; generated creature features bind them to opaque white glints.
     const val OPENCLAW_VIEWBOX = 24f
     const val OPENCLAW_LEFT_EYE_PATH_DATA =
         "M9.046 7.104a.527.527 0 110 1.055.527.527 0 010-1.055z"

@@ -402,3 +402,50 @@ enum OfficialTc001Glyphs {
         ],
     ]
 }
+
+struct OfficialFeatureLayer {
+    let x, y, width, height: Int
+    let alpha: [UInt8]
+    let red, green, blue: UInt8
+    let monochromeInk: Bool
+    let creatureMonochromeInk: Bool
+}
+
+enum OfficialStandardFeatures {
+    static let layers: [OfficialDotGlyph: [OfficialFeatureLayer]] = [
+        .claudeCode: [OfficialFeatureLayer(x: 6, y: 8, width: 12, height: 3, alpha: [230, 112, 0, 0, 0, 0, 0, 0, 0, 0, 112, 230, 255, 125, 0, 0, 0, 0, 0, 0, 0, 0, 125, 255, 243, 118, 0, 0, 0, 0, 0, 0, 0, 0, 118, 243], red: 0, green: 0, blue: 0, monochromeInk: false, creatureMonochromeInk: true)],
+        .codex: [OfficialFeatureLayer(x: 5, y: 7, width: 14, height: 10, alpha: [0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 43, 252, 92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 236, 232, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 107, 255, 137, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 212, 248, 31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 187, 254, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 82, 255, 166, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 223, 243, 27, 0, 0, 0, 81, 119, 119, 119, 119, 107, 10, 44, 254, 116, 0, 0, 0, 3, 243, 255, 255, 255, 255, 255, 70, 0, 30, 0, 0, 0, 0, 0, 34, 68, 68, 68, 68, 55, 0], red: 255, green: 255, blue: 255, monochromeInk: false, creatureMonochromeInk: false)],
+        .openCode: [],
+        .openClaw: [OfficialFeatureLayer(x: 7, y: 6, width: 10, height: 4, alpha: [1, 82, 49, 0, 0, 0, 0, 50, 79, 1, 84, 255, 244, 10, 0, 0, 13, 247, 255, 75, 51, 246, 209, 3, 0, 0, 4, 213, 243, 44, 0, 10, 3, 0, 0, 0, 0, 2, 9, 0], red: 5, green: 8, blue: 16, monochromeInk: false, creatureMonochromeInk: true), OfficialFeatureLayer(x: 8, y: 7, width: 8, height: 2, alpha: [82, 102, 0, 0, 0, 0, 15, 170, 6, 9, 0, 0, 0, 0, 0, 15], red: 0, green: 229, blue: 204, monochromeInk: true, creatureMonochromeInk: false)],
+        .antigravity: [],
+        .kiro: [],
+        .hermes: [],
+        .zai: [],
+    ]
+}
+
+enum OfficialTimeboxFeatures {
+    static let layers: [OfficialDotGlyph: [OfficialFeatureLayer]] = [
+        .claudeCode: [OfficialFeatureLayer(x: 2, y: 3, width: 5, height: 2, alpha: [137, 0, 0, 0, 137, 15, 0, 0, 0, 15], red: 0, green: 0, blue: 0, monochromeInk: false, creatureMonochromeInk: true)],
+        .codex: [OfficialFeatureLayer(x: 2, y: 2, width: 5, height: 5, alpha: [1, 0, 0, 0, 0, 159, 12, 0, 0, 0, 85, 99, 0, 0, 0, 159, 17, 63, 136, 113, 5, 0, 6, 17, 12], red: 255, green: 255, blue: 255, monochromeInk: false, creatureMonochromeInk: false)],
+        .openCode: [],
+        .openClaw: [OfficialFeatureLayer(x: 2, y: 2, width: 5, height: 2, alpha: [10, 85, 0, 82, 9, 5, 61, 0, 60, 5], red: 5, green: 8, blue: 16, monochromeInk: false, creatureMonochromeInk: true), OfficialFeatureLayer(x: 3, y: 2, width: 3, height: 2, alpha: [19, 0, 19, 1, 0, 1], red: 0, green: 229, blue: 204, monochromeInk: true, creatureMonochromeInk: false)],
+        .antigravity: [],
+        .kiro: [],
+        .hermes: [],
+        .zai: [],
+    ]
+}
+
+enum OfficialTc001Features {
+    static let layers: [OfficialDotGlyph: [OfficialFeatureLayer]] = [
+        .claudeCode: [OfficialFeatureLayer(x: 2, y: 2, width: 4, height: 2, alpha: [38, 0, 0, 38, 82, 0, 0, 82], red: 0, green: 0, blue: 0, monochromeInk: false, creatureMonochromeInk: true)],
+        .codex: [OfficialFeatureLayer(x: 1, y: 2, width: 6, height: 4, alpha: [5, 38, 0, 0, 0, 0, 2, 161, 3, 0, 0, 0, 1, 160, 4, 31, 34, 1, 5, 45, 0, 98, 101, 8], red: 255, green: 255, blue: 255, monochromeInk: false, creatureMonochromeInk: false)],
+        .openCode: [],
+        .openClaw: [OfficialFeatureLayer(x: 2, y: 2, width: 4, height: 1, alpha: [76, 53, 50, 73], red: 5, green: 8, blue: 16, monochromeInk: false, creatureMonochromeInk: true), OfficialFeatureLayer(x: 2, y: 2, width: 4, height: 1, alpha: [6, 9, 1, 15], red: 0, green: 229, blue: 204, monochromeInk: true, creatureMonochromeInk: false)],
+        .antigravity: [],
+        .kiro: [],
+        .hermes: [],
+        .zai: [],
+    ]
+}

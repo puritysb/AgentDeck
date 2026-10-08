@@ -47,6 +47,7 @@ struct SessionCreatureIcon: View {
     let tint: Color
     let size: CGFloat
     var contentInset: CGFloat = 0
+    var monochrome: Bool = false
 
     var body: some View {
         Group {
@@ -55,7 +56,8 @@ struct SessionCreatureIcon: View {
                     agentType: agentType,
                     tint: tint,
                     size: size,
-                    contentInset: contentInset
+                    contentInset: contentInset,
+                    monochrome: monochrome
                 )
             } else {
                 Image(systemName: "questionmark.circle")
@@ -96,6 +98,7 @@ struct AgentBrandIcon: View {
     let tint: Color
     let size: CGFloat
     var contentInset: CGFloat = 0
+    var monochrome: Bool = false
 
     var body: some View {
         Group {
@@ -116,9 +119,19 @@ struct AgentBrandIcon: View {
                     context.drawLayer { layer in
                         layer.translateBy(x: originX, y: originY)
                         layer.scaleBy(x: scale, y: scale)
+                        let largeMonochrome = monochrome && size >= CreatureBrandFeatures.monochromeMinimumSize
+                        let canonical = CreatureBrandFeatures.canonical(agentType)
+                        let bodyTint = largeMonochrome && CreatureBrandFeatures.monochromeLightBodyAgents.contains(canonical) ? DesignTokens.Tide.s50 : tint
                         for path in spec.paths {
-                            layer.fill(path, with: .color(tint), style: fillStyle)
+                            layer.fill(path, with: .color(bodyTint), style: fillStyle)
+                            if largeMonochrome {
+                                layer.stroke(path, with: .color(DesignTokens.Ink.s900),
+                                    lineWidth: CreatureBrandFeatures.monochromeOutlineWidth)
+                            }
                         }
+                        CreatureBrandFeatures.draw(agentType, context: layer,
+                            compactInkMonochrome: monochrome && !largeMonochrome,
+                            monochromeCreature: largeMonochrome)
                     }
                 }
             } else {

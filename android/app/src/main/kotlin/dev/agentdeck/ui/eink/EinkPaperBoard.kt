@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.agentdeck.net.CiWaitStatus
+import dev.agentdeck.terrarium.ciCompanionLabel
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.state.TimelineEntry
@@ -65,6 +67,7 @@ internal data class BoardSession(
     val state: AgentState,
     val activity: String?,
     val question: String?,
+    val ciWait: CiWaitStatus? = null,
 )
 
 internal data class PaperBoard(
@@ -85,7 +88,7 @@ internal fun buildPaperBoard(state: DashboardState): PaperBoard {
     if (!isAggregate && state.agentType != null) {
         val sibling = state.siblingSessions.firstOrNull { it.id == state.sessionId }
         raw += Raw(BoardSession(state.sessionId, state.projectName ?: "Agent", state.agentType, state.modelName,
-            state.agentState, sibling?.activity, sibling?.question), null, null)
+            state.agentState, sibling?.activity, sibling?.question, sibling?.waitingOn?.takeUnless { state.agentState.isAwaiting() }), null, null)
     }
     val primaryId = if (!isAggregate) state.sessionId else null
     state.siblingSessions
@@ -93,7 +96,7 @@ internal fun buildPaperBoard(state: DashboardState): PaperBoard {
         .sortedWith(::compareSessionsForDisplay)
         .forEach {
             raw += Raw(BoardSession(it.id, it.projectName ?: "Agent", it.agentType, it.modelName,
-                mapSessionState(it), it.activity, it.question), it.weight, it.startedAt)
+                einkBoardState(state,it), it.activity, it.question, it.waitingOn?.takeUnless { _ -> einkBoardState(state,it).isAwaiting() }), it.weight, it.startedAt)
         }
     // Same project and agent twice: number them so a row names one session.
     val counts = raw.groupingBy { it.s.name to it.s.agentType }.eachCount()
@@ -187,9 +190,16 @@ internal fun paperHeadline(summary: String, detail: String?): String? {
 internal fun paperMastheadSummary(board: PaperBoard): String = buildList {
     if (board.needsYou.isNotEmpty()) add("${board.needsYou.size} need you")
     if (board.working.isNotEmpty()) add("${board.working.size} working")
-    if (board.quiet.isNotEmpty()) add("${board.quiet.size} idle")
+    val ci = board.quiet.count { it.ciWait?.agentWaiting == true }
+    if (ci > 0) add("$ci CI wait")
+    if (board.quiet.size > ci) add("${board.quiet.size-ci} idle")
     if (board.offline > 0) add("${board.offline} offline")
 }.ifEmpty { listOf("No sessions") }.joinToString(" · ")
+
+internal fun einkBoardState(state: DashboardState, session: dev.agentdeck.net.SessionInfo): AgentState =
+    if (session.id == state.sessionId && state.agentType == session.agentType && state.agentState.isAwaiting()) state.agentState else mapSessionState(session)
+
+internal fun paperCiLine(session: BoardSession): String? = session.ciWait?.takeUnless { session.state.isAwaiting() }?.let(::ciCompanionLabel)
 
 private fun AgentState.isAwaiting() = this == AgentState.AWAITING_PERMISSION ||
     this == AgentState.AWAITING_OPTION || this == AgentState.AWAITING_DIFF
@@ -256,7 +266,7 @@ private fun BoardRow(session: BoardSession, scale: EinkLayoutScale, onFocus: (St
                 )
             }
         }
-        val line = (if (waiting) session.question else session.activity)?.trim()?.takeIf { it.isNotEmpty() }
+        val line = (if (waiting) session.question else paperCiLine(session) ?: session.activity)?.trim()?.takeIf { it.isNotEmpty() }
             ?: session.modelName?.takeIf { it.isNotBlank() }
         if (line != null) {
             Text(
@@ -289,7 +299,9 @@ private fun NowZones(board: PaperBoard, scale: EinkLayoutScale, onFocus: (String
     if (board.quiet.isNotEmpty() || board.offline > 0) {
         if (active.isNotEmpty()) BoardDivider()
         val label = buildList {
-            if (board.quiet.isNotEmpty()) add("IDLE · ${board.quiet.size}")
+            val ci = board.quiet.count { it.ciWait?.agentWaiting == true }
+            if (ci > 0) add("CI WAIT · $ci")
+            if (board.quiet.size > ci) add("IDLE · ${board.quiet.size-ci}")
             if (board.offline > 0) add("OFFLINE · ${board.offline}")
         }.joinToString("   ")
         ZoneLabel(label, scale)
@@ -306,13 +318,17 @@ private fun NowZones(board: PaperBoard, scale: EinkLayoutScale, onFocus: (String
                         modifier = if (q.id != null) Modifier.clickable { onFocus(q.id) } else Modifier,
                     ) {
                         BrandIcon(agentType = q.agentType, isEink = !einkColorEnabled, size = 14.dp, tint = markTint())
-                        Text(
-                            text = q.name,
-                            fontSize = scale.sessionTitleFont,
-                            color = Ink,
-                            maxLines = 1,
-                            modifier = Modifier.padding(start = 5.dp),
-                        )
+                        Column {
+                            Text(
+                                text = q.name,
+                                fontSize = scale.sessionTitleFont,
+                                color = Ink,
+                                maxLines = 1,
+                                modifier = Modifier.padding(start = 5.dp),
+                            )
+                            paperCiLine(q)?.let { ci -> Text(ci,fontSize = scale.sessionMetaFont,fontFamily = FontFamily.Monospace,
+                                color = Ink,modifier = Modifier.padding(start = 5.dp),maxLines = 1) }
+                        }
                     }
                 }
             }
@@ -575,7 +591,7 @@ internal fun EinkPaperBoard(
     val pad = scale.contentPadding + 4.dp
     val nowKey = remember(board) {
         (board.needsYou + board.working + board.quiet).joinToString("|") {
-            "${it.id}:${it.state}:${it.name}:${it.activity}:${it.question}"
+            "${it.id}:${it.state}:${it.name}:${it.activity}:${it.question}:${it.ciWait}"
         } + ":${board.offline}"
     }
     val hasRecent = remember(timelineEntries) { paperRecent(timelineEntries, 1).isNotEmpty() }

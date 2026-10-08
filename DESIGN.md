@@ -244,6 +244,10 @@ never add a third design — no SF Rounded, no serif, no LVGL Montserrat where a
 Plex font is already built for that board. ESP32 boards that render Korean use
 the Plex-derived bitmap fonts in `esp32/src/ui/fonts/`.
 
+Compact native HUD text derives line metrics from its selected font size,
+rather than inheriting another role's fixed leading. Body tracking remains
+normal; explicit mono kicker and tier-badge tracking keeps its own role.
+
 ### 3.4 Rules
 - Use `font-feature-settings: "ss01", "cv11"` on sans body — Plex's stylistic alternates make Korean and Latin sit at consistent x‑height.
 - Use `font-feature-settings: "zero", "ss01"` on mono — slashed zero, single‑story `a`.
@@ -542,7 +546,7 @@ Each panel has its own pixel grid, dynamic range, and refresh rate. Designs MUST
 | TRMNL 7.5" native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
 | ESP32 round AMOLED   | 360×360      | Round mask, low brightness          | Single creature centered           |
 
-Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention, responses and errors. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the asked agent listening (`ASK`) until its reply, then the reply held for six seconds (`SENT`, meaning delivered) — and a new session earns a brief entrance; attention/errors preempt both with the affected creature and count, rotating affected sessions every six seconds. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
+Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention (approval, choice and diff review each have their own amber face), responses, errors, delegated subagent work, CI waits and an empty desk, with steady chin pips counting sessions that share a face. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the agent that just received your message listening (`HEAR`, never a question to you) for up to a minute or until its reply, then the reply held for six seconds (`SENT`, meaning delivered) — and a new session earns a brief entrance; attention/errors preempt both with the affected creature and count, rotating affected sessions every six seconds. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
 
 ---
 

@@ -114,7 +114,8 @@ class CloudCreature(
     }
 
     /** Current live position for tetra attractor tracking. */
-    fun currentPosition(): Pair<Float, Float> = currentX to currentY
+    fun simulationPosition(): Pair<Float, Float> = currentX to currentY
+    fun currentPosition(): Pair<Float, Float> = simulationPosition()
 
     /** Whether this cloud is currently working (swimming, scattering data). */
     fun isWorking(): Boolean = visualState == OctopusVisualState.WORKING
@@ -279,6 +280,7 @@ class CloudCreature(
             scale(markScale, markScale, pivot = Offset.Zero)
         }) {
             drawPath(codexPath, brush = gradient, alpha = alpha)
+            dev.agentdeck.terrarium.CreatureBrandFeatures.draw(this, "codex")
         }
     }
 

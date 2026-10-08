@@ -188,3 +188,6 @@ export function zaiQuotaFromLimits(limits: unknown, level: unknown): ZaiQuotaWin
   if (long) out.secondary = toWindow(long);
   return out;
 }
+
+/** Provider monitor rejection observed with HTTP 200 as well as 401/403. */
+export const ZAI_AUTH_FAILURE_CODE = 1000;

@@ -1,0 +1,794 @@
+[
+  {
+    "name": "background wait survives Stop and unrelated tool completion; prompt clears explicitly",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_end",
+        "payload": {
+          "tool_use_id": "other"
+        },
+        "at": 110,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_end",
+        "payload": {
+          "tool_use_id": "a"
+        },
+        "at": 120,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "stop",
+        "payload": {},
+        "at": 130,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "user_prompt_submit",
+        "payload": {},
+        "at": 140,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "foreground watch closes on its own tool id without inferring success",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch"
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_end",
+        "payload": {
+          "tool_use_id": "other"
+        },
+        "at": 120,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_end",
+        "payload": {
+          "tool_use_id": "a",
+          "exit_code": 0
+        },
+        "at": 130,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "failed launch clears background wait",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_failure",
+        "payload": {
+          "tool_use_id": "a"
+        },
+        "at": 120,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "interrupt closes background wait",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "interrupt",
+        "payload": {},
+        "at": 120,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "session end closes background wait",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "session_end",
+        "payload": {},
+        "at": 120,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "missing invocation identity and one-shot reads cannot create a wait",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": null
+      },
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433"
+          }
+        },
+        "at": 120,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "duplicate hooks preserve start and expiration clears without result",
+    "steps": [
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "Bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 120,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "notification",
+        "payload": {},
+        "at": 86400100,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized evidence matches the exact foreground invocation",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": false
+        },
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 11,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": false
+        },
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 12,
+        "event": "tool_end",
+        "payload": {
+          "tool_call_id": "unrelated"
+        },
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 13,
+        "event": "tool_end",
+        "payload": {
+          "tool_call_id": "hermes-tool-a",
+          "is_error": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes background Stop retention and authoritative tool error clearing",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": true
+        },
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 11,
+        "event": "tool_end",
+        "payload": {
+          "tool_call_id": "hermes-tool-a",
+          "is_error": false
+        },
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 12,
+        "event": "stop",
+        "payload": {},
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "repo": "example/project",
+          "runId": 42,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 10
+        }
+      },
+      {
+        "at": 13,
+        "event": "tool_end",
+        "payload": {
+          "tool_call_id": "hermes-tool-a",
+          "is_error": true
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects extra secret field",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42,
+            "secret": "redact"
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects fractional run",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 1.5
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects boolean run",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": true
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects oversized run",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 9007199254740992
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects unsafe ref",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42,
+            "ref": "token=secret"
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects unknown provider",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "other",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects invalid repo",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project\n",
+            "runId": 42
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized intent rejects oversized ref",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "tool_call_id": "hermes-tool-a",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42,
+            "ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes missing invocation id fails closed",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": "watch",
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": false
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "Hermes normalized mode never coerces an array into a string",
+    "steps": [
+      {
+        "at": 10,
+        "event": "tool_start",
+        "payload": {
+          "tool_name": "terminal",
+          "ci_wait_intent": {
+            "kind": "ci",
+            "provider": "github-actions",
+            "mode": [
+              "watch"
+            ],
+            "repo": "example/project",
+            "runId": 42
+          },
+          "ci_wait_background": false,
+          "tool_call_id": "hermes-tool-a"
+        },
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "opencode raw hook boundaries retain background wait through Stop and clear on interrupt",
+    "steps": [
+      {
+        "event": "opencode_session_start",
+        "payload": {},
+        "at": 90,
+        "expected": null
+      },
+      {
+        "event": "opencode_tool_start",
+        "payload": {
+          "tool_name": "bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "opencode_stop",
+        "payload": {},
+        "at": 120,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "opencode_interrupt",
+        "payload": {},
+        "at": 130,
+        "expected": null
+      }
+    ]
+  },
+  {
+    "name": "codex raw hook boundaries retain background wait through Stop and clear on interrupt",
+    "steps": [
+      {
+        "event": "codex_session_start",
+        "payload": {},
+        "at": 90,
+        "expected": null
+      },
+      {
+        "event": "codex_tool_start",
+        "payload": {
+          "tool_name": "bash",
+          "tool_use_id": "a",
+          "tool_input": {
+            "command": "gh pr checks 433 --watch",
+            "run_in_background": true
+          }
+        },
+        "at": 100,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "codex_stop",
+        "payload": {},
+        "at": 120,
+        "expected": {
+          "kind": "ci",
+          "provider": "github-actions",
+          "pr": 433,
+          "phase": "unknown",
+          "agentWaiting": true,
+          "evidence": "tool_input",
+          "openedAt": 100
+        }
+      },
+      {
+        "event": "codex_interrupt",
+        "payload": {},
+        "at": 130,
+        "expected": null
+      }
+    ]
+  }
+]

@@ -272,6 +272,10 @@ struct GroupedEntry: Identifiable, Sendable {
     /// Terminator metadata (chat_end) merged into this group. Carries the
     /// "Completed · Ns · topic" suffix + `summaryKind` backend pill.
     var mergedCompletion: TimelineEntry? = nil
+    /// Ordinary tool activity belongs to the prompt, without closing the turn.
+    var toolActivity: [TimelineEntry] = []
+    var toolSummary: String { toolActivity.map(\.raw).joined(separator: " · ") }
+    var toolDetail: String { toolActivity.map { $0.detail ?? $0.raw }.joined(separator: "\n\n") }
 
     /// True when the assistant has delivered something for this turn —
     /// either the response body or the completion metadata. UIs use this
@@ -295,16 +299,8 @@ struct GroupedEntry: Identifiable, Sendable {
 
 // MARK: - Timeline Grouping
 
-/// How many prior groups a turn child (chat_response/chat_end) may scan back
-/// through to find its chat_start. With several agents running concurrently,
-/// other sessions' rows interleave between a prompt and its completion —
-/// merging only into the immediately-previous group (the old behaviour) made
-/// every busy-dashboard turn render as 2-3 scattered rows. Bounded so a
-/// pathological backlog can't go quadratic. Mirrors TURN_MERGE_LOOKBACK in
-/// android TimelineStore.kt.
-private let turnMergeLookback = 40
-private let turnMergeMaxGapMs: Double = 12 * 60 * 60 * 1000
-
+// Scan the already bounded store so unrelated sessions cannot exhaust a
+// lookback budget. The shared age bound still limits legacy attribution.
 func groupConsecutive(_ entries: [TimelineEntry], windowSeconds: Double = 60) -> [GroupedEntry] {
     guard !entries.isEmpty else { return [] }
 
@@ -315,7 +311,7 @@ func groupConsecutive(_ entries: [TimelineEntry], windowSeconds: Double = 60) ->
             // Turn merge: a chat_response/chat_end folds into the most recent
             // same-context turn group, looking past interleaved rows from
             // other sessions.
-            if tryMergeTurnChild(&groups, entry) { continue }
+            if tryMergeToolActivity(&groups, entry) || tryMergeTurnChild(&groups, entry) { continue }
 
             // Same-type consecutive run collapse (×count).
             // Task hierarchy entries never group — they're unique markers.
@@ -361,13 +357,10 @@ private func tryMergeTurnChild(_ groups: inout [GroupedEntry], _ entry: Timeline
     let isCompletion = entry.type == .chatEnd
     if !isResponse && !isCompletion { return false }
 
-    var scanned = 0
     for i in stride(from: groups.count - 1, through: 0, by: -1) {
-        scanned += 1
-        if scanned > turnMergeLookback { return false }
         let g = groups[i]
         let ge = g.entry
-        if entry.ts - ge.ts > turnMergeMaxGapMs { return false }
+        if entry.ts - ge.ts > ObservedAgentRules.turnMergeMaxGapMs { return false }
         guard sameTimelineContext(ge, entry) else { continue }
 
         switch ge.type {
@@ -400,6 +393,37 @@ private func tryMergeTurnChild(_ groups: inout [GroupedEntry], _ entry: Timeline
             // Any other same-context row (chat_end, task marker…) is a turn
             // boundary for this session — stop scanning.
             return false
+        }
+    }
+    return false
+}
+
+/// Only ordinary tools fold. An absent prompt, synthetic prompt or a later
+/// turn boundary leaves the tool visible on its own; approvals/subagents keep
+/// their own rows. Tool startedAt is the tool's start, not the turn anchor.
+private func tryMergeToolActivity(_ groups: inout [GroupedEntry], _ entry: TimelineEntry) -> Bool {
+    guard ObservedAgentRules.turnActivityTypes.contains(entry.type.rawValue),
+          entry.subagentId == nil, !entry.raw.hasPrefix("Subagent "),
+          timelineNonBlank(entry.sessionId) != nil || timelineNonBlank(entry.runId) != nil else { return false }
+    for i in groups.indices.reversed() {
+        let parent = groups[i].entry
+        if entry.ts - parent.ts > ObservedAgentRules.turnMergeMaxGapMs { return false }
+        // A task may span runs, but a tool must belong to this execution.
+        if timelineNonBlank(parent.sessionId) != timelineNonBlank(entry.sessionId) { continue }
+        if timelineNonBlank(parent.runId) != timelineNonBlank(entry.runId) { continue }
+        guard sameTimelineContext(parent, entry) else { continue }
+        if parent.type == .chatStart {
+            guard timelineIsMeaningfulChatStart(parent),
+                  (entry.startedAt ?? entry.ts) >= parent.ts else { return false }
+            if let end = groups[i].mergedCompletion ?? groups[i].mergedResponse,
+               entry.ts > (end.endedAt ?? end.ts),
+               timelineNonBlank(entry.runId) == nil || entry.runId != parent.runId { return false }
+            groups[i].toolActivity.append(entry)
+            return true
+        }
+        switch parent.type {
+        case .toolRequest, .toolResolved, .toolExec, .modelCall, .memoryRecall: continue
+        default: return false
         }
     }
     return false

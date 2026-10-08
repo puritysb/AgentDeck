@@ -11,6 +11,20 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class TerrariumStateTest {
+    @Test fun `primary permission frame overrides a still idle CI roster for every creature kind`() {
+        for (kind in listOf("claude-code","codex-cli","opencode","hermes","kiro-cli","antigravity")) {
+            for (permission in listOf(AgentState.AWAITING_PERMISSION,AgentState.AWAITING_OPTION,AgentState.AWAITING_DIFF)) {
+                val state = DashboardState(agentState = permission,agentType = kind,sessionId = "self",
+                    siblingSessions = listOf(SessionInfo(id = "self",port = 0,projectName = "Work",agentType = kind,state = "idle",
+                        waitingOn = dev.agentdeck.net.CiWaitStatus(phase = "running",agentWaiting = true)))).toTerrariumState()
+                assertEquals(kind,OctopusVisualState.ASKING,aquariumResidents(state).single().state)
+                assertTrue(kind,state.ciWaits.isEmpty())
+                assertTrue(kind,state.ciWaitLabels.isEmpty())
+                assertTrue(kind,state.ciWaitingIds.isEmpty())
+            }
+        }
+    }
+
 
     @Test
     fun `primary Kiro session routes to the canonical vector-mark creature`() {

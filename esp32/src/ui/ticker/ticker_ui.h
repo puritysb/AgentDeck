@@ -3,7 +3,8 @@
 // T-Display-S3-Pro "Focus Strip" — a 480x222 always-on desk strip.
 // Pages: prioritized focus, Claude/Codex usage, and high-value session rows.
 // Physical controls: split rocker = previous/next, BOOT = focus/select,
-// RST = hardware recovery. Touch provides tabs, swipes and explicit actions.
+// RST = hardware recovery. Touch provides tabs, swipes and explicit actions;
+// a hold on the Usage page switches to portrait Pocket (StripLayout).
 
 #include "../../input/touch_strip.h"
 
@@ -16,6 +17,8 @@ void nextPage();
 void prevPage();
 void primaryAction();
 void buttonFeedback(uint8_t button);
+/** Short status flash (e.g. the layout-switch restart notice). */
+void notify(const char* text);
 
 void onTouch(const Input::TouchEvent& event);
 

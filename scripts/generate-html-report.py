@@ -6,6 +6,8 @@ Reads Vitest + E2E JSON, Android JUnit XML, Robot output.xml, coverage-summary.j
 scripts/scenario-matrix.json and scripts/verification-catalog.json, and writes one
 self-contained page in the Pages design language (aquarium-tide tokens only):
   - Latest run: result tiles + one card per suite (run here, or linked)
+  - Verification tiers: the changed / quick / pre-release step matrix and the
+    last recorded pre-release receipt (verification/receipts/)
   - What we verify: every gate, what it proves and does not prove, known gaps
   - Test domains: every test file grouped by the question it answers
   - Platforms (Android / Apple / ESP32 Robot), scenario matrix, coverage, history
@@ -39,6 +41,13 @@ HISTORY_JSON = REPORT_DIR / "history.json"
 METADATA_JSON = REPORT_DIR / "run-metadata.json"
 SUMMARY_JSON = REPORT_DIR / "summary.json"
 OUTPUT_HTML = REPORT_DIR / "index.html"
+# Latest hosted run per workflow, fetched by scripts/fetch-workflow-status.mjs in
+# test-report.yml. Absent locally and in fixtures: then nothing is claimed.
+WORKFLOW_STATUS_JSON = REPORT_DIR / "workflow-status.json"
+# Pre-release receipts committed by `pnpm verify:full --record`.
+RECEIPTS_DIR = Path(os.environ.get("BUILD_HEALTH_RECEIPTS_DIR") or ROOT / "verification" / "receipts")
+# The receipt of the local verify run that is rendering this page, if any.
+THIS_RUN_RECEIPT = os.environ.get("BUILD_HEALTH_RECEIPT")
 
 # ===== Data collection =====
 
@@ -70,6 +79,28 @@ def merge_e2e(vitest, e2e):
         merged[key] = vitest.get(key, 0) + e2e.get(key, 0)
     return merged
 
+def _load_json(path, default):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError, ValueError):
+        return default
+
+def load_workflow_status():
+    """{workflow path: latest completed run} — empty when it was not fetched."""
+    data = _load_json(WORKFLOW_STATUS_JSON, {})
+    return data.get("workflows", {}) if isinstance(data, dict) else {}
+
+def load_recorded_receipt():
+    """The newest committed pre-release receipt, or None."""
+    if not RECEIPTS_DIR.is_dir():
+        return None
+    receipts = [r for r in (_load_json(p, None) for p in sorted(RECEIPTS_DIR.glob("*.json"))) if isinstance(r, dict) and r.get("steps")]
+    return max(receipts, key=lambda r: r.get("finished_at", "")) if receipts else None
+
+def load_this_run_receipt():
+    return _load_json(THIS_RUN_RECEIPT, None) if THIS_RUN_RECEIPT else None
+
 def load_coverage():
     if not COVERAGE_JSON.exists():
         return None
@@ -94,11 +125,14 @@ def load_android_xml():
         }
         for tc in root.findall("testcase"):
             failure = tc.find("failure")
+            if failure is None:
+                failure = tc.find("error")
+            skipped = tc.find("skipped") is not None
             case = {
                 "name": tc.get("name", ""),
                 "classname": tc.get("classname", ""),
                 "time": float(tc.get("time", 0)),
-                "status": "failed" if failure is not None else "passed",
+                "status": "failed" if failure is not None else ("skipped" if skipped else "passed"),
                 "failure": failure.text if failure is not None else None,
             }
             suite["cases"].append(case)
@@ -374,6 +408,8 @@ def update_history(history, total_passed, total_failed, total_all, lines_pct, me
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
         "commit": commit_sha,
         "total": total_all,
+        "executed": total_passed + total_failed,
+        "skipped": max(0, total_all - total_passed - total_failed),
         "passed": total_passed,
         "failed": total_failed,
         "coverage": round(lines_pct, 1),
@@ -489,11 +525,11 @@ def build_default_metadata(vitest, android, robot, e2e=None):
     return {
         "run_profile": "ad-hoc",
         "suites": {
-            "vitest": {"status": "pass" if vitest else "not-run", "executed": bool(vitest), "note": ""},
+            "vitest": {"status": ("fail" if vitest.get("numFailedTests", 0) or vitest.get("numFailedTestSuites", 0) or any(r.get("status") == "failed" for r in vitest.get("testResults", [])) else "pass") if vitest else "not-run", "executed": bool(vitest), "note": ""},
             "e2e": {"status": ("pass" if e2e.get("numFailedTests", 0) == 0 else "fail") if e2e else "not-run", "executed": bool(e2e), "note": ""},
-            "android": {"status": "pass" if android else "not-run", "executed": bool(android), "note": ""},
+            "android": {"status": ("fail" if any(x["failures"] or x["errors"] for x in android) else "pass") if android else "not-run", "executed": bool(android), "note": ""},
             "apple": {"status": "not-run", "executed": False, "note": "No Apple result parser input"},
-            "robot": {"status": "pass" if robot else "not-run", "executed": bool(robot), "note": ""},
+            "robot": {"status": ("fail" if robot["failed"] else "pass") if robot else "not-run", "executed": bool(robot), "note": ""},
         },
     }
 
@@ -556,13 +592,13 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
             if not suite_status["vitest"]["executed"]:
                 return {"status": "not-run", "passed": 0, "failed": 0}
             if "*" in patterns:
-                return {"status": "fail" if found["failed"] else "pass", "passed": found["passed"], "failed": found["failed"]}
+                return {"status": "fail" if found["failed"] else "pass" if found["passed"] and all(a["status"] == "passed" for a in found["assertions"]) else "partial" if found["passed"] else "not-run", "passed": found["passed"], "failed": found["failed"]}
             matched = [a for a in found.get("assertions", []) if pattern_matches(full_assertion_name(a), patterns)]
             if not matched:
                 return {"status": "missing", "passed": 0, "failed": 0}
             passed = sum(1 for a in matched if a["status"] == "passed")
             failed = sum(1 for a in matched if a["status"] == "failed")
-            return {"status": "fail" if failed else "pass", "passed": passed, "failed": failed}
+            return {"status": "fail" if failed else "pass" if passed == len(matched) else "partial" if passed else "not-run", "passed": passed, "failed": failed}
 
         found = None
         for aname, adata in and_lookup.items():
@@ -596,7 +632,7 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
 
         for cat in ("unit", "integration", "platform", "e2e"):
             test_entries = sc.get("tests", {}).get(cat, [])
-            cat_result = {"tests": [], "passed": 0, "failed": 0, "missing": 0, "not_run": 0, "total": len(test_entries)}
+            cat_result = {"tests": [], "passed": 0, "failed": 0, "missing": 0, "not_run": 0, "partial": 0, "total": len(test_entries)}
 
             for entry in test_entries:
                 resolved = resolve_entry(entry)
@@ -606,6 +642,8 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
                     cat_result["failed"] += 1
                 elif resolved["status"] == "pass":
                     cat_result["passed"] += 1
+                elif resolved["status"] == "partial":
+                    cat_result["partial"] += 1
                 elif resolved["status"] == "not-run":
                     cat_result["not_run"] += 1
                 else:
@@ -632,6 +670,120 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
 
 def _esc(text):
     return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+def result_counts(vitest, android, robot):
+    assertions = [a for r in (vitest or {}).get("testResults", []) for a in r.get("assertionResults", [])]
+    passed = sum(a.get("status") == "passed" for a in assertions) + sum(s["passed"] for s in android) + (robot or {}).get("passed", 0)
+    failed = sum(a.get("status") == "failed" for a in assertions) + sum(s["failures"] + s["errors"] for s in android) + (robot or {}).get("failed", 0)
+    skipped = sum(a.get("status") not in ("passed", "failed") for a in assertions) + sum(s.get("skipped", 0) for s in android) + (robot or {}).get("skipped", 0)
+    available = []
+    for r in (vitest or {}).get("testResults", []):
+        name = r.get("name", "").replace(str(ROOT) + "/", "")
+        suite = "e2e" if name.startswith("tests/e2e/") else "vitest"
+        if suite not in available:
+            available.append(suite)
+    if android:
+        available.append("android")
+    if robot:
+        available.append("robot")
+    return {"passed": passed, "failed": failed, "skipped": skipped, "executed": passed + failed, "total": passed + failed + skipped, "available_suites": available}
+
+def run_decision(counts, metadata):
+    metas = [suite_meta(metadata, name) for name in ("vitest", "e2e", "android", "apple", "robot")]
+    if counts["failed"] or any(_state(m["status"]) == "fail" for m in metas):
+        return "fail"
+    if not counts["executed"]:
+        return "off"
+    if counts["skipped"] or len(counts["available_suites"]) < 5 or any(not m["executed"] or _state(m["status"]) != "pass" for m in metas):
+        return "partial"
+    return "pass"
+
+def reconcile_case_evidence(metadata, vitest, android, robot):
+    """A reported command outcome alone cannot prove passing test cases."""
+    result = json.loads(json.dumps(metadata))
+    suites = result.setdefault("suites", {})
+    parsed = {}
+    for entry in (vitest or {}).get("testResults", []):
+        name = entry.get("name", "").replace(str(ROOT) + "/", "")
+        suite = "e2e" if name.startswith("tests/e2e/") else "vitest"
+        info = parsed.setdefault(suite, {"executed": 0, "failed": False})
+        cases = entry.get("assertionResults", [])
+        info["executed"] += sum(a.get("status") in ("passed", "failed") for a in cases)
+        info["failed"] |= entry.get("status") == "failed" or any(a.get("status") == "failed" for a in cases)
+    if android:
+        parsed["android"] = {"executed": sum(s["passed"] + s["failures"] + s["errors"] for s in android),
+                             "failed": any(s["failures"] or s["errors"] for s in android)}
+    if robot:
+        parsed["robot"] = {"executed": robot["passed"] + robot["failed"], "failed": bool(robot["failed"])}
+    for name in ("vitest", "e2e", "android", "apple", "robot"):
+        meta = suites.setdefault(name, {"status": "not-run", "executed": False, "note": ""})
+        info = parsed.get(name)
+        if info and info["failed"]:
+            meta.update(status="fail", executed=True)
+        elif _state(meta.get("status")) == "fail":
+            # Preserve reported setup/coverage failures even without failing cases.
+            continue
+        elif info and info["executed"]:
+            meta.update(status="pass", executed=True)
+        elif meta.get("executed") or info:
+            meta.update(status="unknown", executed=True)
+            note = "No parsed executed test cases; reported command completion is not case evidence."
+            if note not in meta.get("note", ""):
+                meta["note"] = " ".join(x for x in (meta.get("note", ""), note) if x)
+    return result
+
+_DECISION_LABEL = {"pass": "Pass", "fail": "Fail", "off": "Not run", "partial": "Partial verification"}
+
+def _render_qa_summary(counts, metadata):
+    decision = run_decision(counts, metadata)
+    missing = [name for name in ("vitest", "e2e", "android", "apple", "robot") if not suite_meta(metadata, name)["executed"] or suite_meta(metadata, name)["status"] == "unknown" or name not in counts["available_suites"]]
+    action = (_esc("Inspect failed cases and suite notes, fix the cause, then rerun the same scope.") if decision == "fail" else
+              _esc("Run missing suites and review manual QA before a release decision."))
+    return f'''<section id="qa-summary" tabindex="-1" class="card qa-summary" aria-labelledby="qa-title">
+      <h2 id="qa-title">{_esc("Decision first")}</h2>
+      <p><strong>{_esc(_DECISION_LABEL[decision])}</strong></p>
+      <dl class="specs">
+        <div><dt>{_esc("Passed")}</dt><dd>{counts["passed"]:,}</dd></div>
+        <div><dt>{_esc("Failed cases")}</dt><dd>{counts["failed"]:,}</dd></div>
+        <div><dt>{_esc("Skipped cases")}</dt><dd>{counts["skipped"]:,}</dd></div>
+        <div><dt>{_esc("Executed / collected")}</dt><dd>{counts["executed"]:,} / {counts["total"]:,}</dd></div>
+      </dl>
+      <p>{_esc("Not run or no parsed case evidence here")}: {_esc(", ".join(missing) or "—")}.</p>
+      <p>{_esc("Remaining risk: mocked inputs do not prove physical readability, real permission flows or device recovery. Evidence from other runs keeps its own commit and date.")}</p>
+      <p><strong>{_esc("Next action")}</strong>: {action} <a href="#qa-method">{_esc("Method and manual QA")}</a></p>
+      <details><summary>{_esc("Input scope and counting rules")}</summary>
+      <p class="fine">{_esc("Run profile")}: {_esc(metadata.get("run_profile", "unknown"))} · <a href="summary.json">summary.json</a></p>
+      <p>{_esc("Parsed input scope")}: {_esc(", ".join(counts["available_suites"]) or "—")}. {_esc("Only supplied cases are counted; this is not release approval.")}</p>
+      <p class="fine">{_esc("Setup errors or coverage failures can fail a suite with zero failed cases. Skipped cases are excluded from executed tests.")}</p></details>
+    </section>'''
+
+def _render_qa_method(vt_file_data, include_scenarios=True):
+    source = "https://github.com/puritysb/AgentDeck/blob/" + (os.environ.get("GITHUB_SHA") or "master")
+    example = next((data for path, data in vt_file_data.items() if path.endswith("/http-auth-gate.test.ts")), None)
+    observed = (_esc(f'Example cases: {example["passed"]} passed, {example["failed"]} failed, {example["skipped"]} skipped.') if example else
+                _esc("No case evidence for this example in the supplied inputs."))
+    cards = [
+      ("Why automate?", "Repeated state transitions, access boundaries and protocol mirrors have deterministic expectations. Fast regression tests are appropriate; scenario gaps show what remains unproven."),
+      ("Manual QA still needed", "On the target app and device, observe real permission approval/denial, disconnect/reconnect and text readability. Compare expected state/options with the screen; record app/firmware version, device, date, result and evidence. Not executed by this report."),
+      ("Public test example", "Risk: unauthenticated LAN access. Input: unauthorized GET /status. Expected: deny; GET /health exposes public health only. Inspect the access-control cases in Test domains when they are included in this run. Unit inputs do not prove a physical network or UI."),
+      ("AI and evidence limits", "Aggregation uses deterministic parsers, not an LLM verdict. Mock hooks do not assess model quality or hallucinations. Review AI-authored code and regression results; missing evidence stays unknown. Only public AgentDeck sources and synthetic fixtures belong here; confidential cases are excluded even when blurred."),
+    ]
+    scenario_link = ' · <a href="#scenarios">Scenario basis and gaps</a>' if include_scenarios else ""
+    rendered = "".join(f'<article class="card gap"><h3>{_esc(en)}</h3><p>{_esc(body_en)}</p></article>' for en, body_en in cards)
+    return f'''<section id="qa-method" tabindex="-1"><h2>{_esc("Test basis and QA judgment")}</h2>
+      <div class="grid gaps">{rendered}</div>
+      <p>{observed}</p>
+      <p><a href="{_esc(source)}/bridge/src/__tests__/http-auth-gate.test.ts">http-auth-gate.test.ts</a> · <a href="#domains">{_esc("Observed results")}</a>{scenario_link}</p>
+      <details class="card files"><summary>{_esc("Reproduce: inputs → execution → evaluation → report")}</summary>
+        <p>{_esc("Use Node 22, 24 or 26, locked pnpm dependencies and a POSIX shell. In a fresh checkout, collect a focused public example; JSON results feed the report. This is a narrow example, not full acceptance. Coverage and native evidence require separate runs.")}</p>
+        <p class="cmd"><code>pnpm install --frozen-lockfile
+pnpm build
+example_dir=$(mktemp -d)
+pnpm vitest run bridge/src/__tests__/http-auth-gate.test.ts --reporter=json --outputFile="$example_dir/vitest.json"
+BUILD_HEALTH_REPORT_DIR="$example_dir" BUILD_HEALTH_COVERAGE_JSON="$example_dir/no-coverage" BUILD_HEALTH_ANDROID_DIR="$example_dir/no-android" python3 scripts/generate-html-report.py</code></p>
+        <p><a href="{_esc(source)}/.github/workflows/test-report.yml">{_esc("Published pipeline")}</a> · <a href="summary.json">summary.json</a> · <a href="run-metadata.json">{_esc("Run scope and suite notes")}</a></p>
+        <p>{_esc("Troubleshooting: HTML previously counted pass+fail while summary.json included skips. Both now use the same assertions; regression fixtures exercise skip-only runs, suite errors and missing suites. Focused results cannot substitute for release/device evidence. No QA execution video is attached to this run.")}</p>
+      </details></section>'''
 
 def _state(status):
     """Normalize a suite/test status to one of pass / fail / off."""
@@ -669,7 +821,7 @@ def _bar(passed, failed, total):
             f'<span class="ok" style="width:{p:.2f}%"></span>'
             f'<span class="bad" style="width:{f:.2f}%"></span></div>')
 
-def write_summary(metadata, total_passed, total_failed, total_all):
+def write_summary(metadata, total_passed, total_failed, total_all, counts=None):
     suites_meta = metadata.get("suites", {}) if metadata else {}
     suites = []
     for name in ("vitest", "e2e", "android", "apple", "robot"):
@@ -681,6 +833,7 @@ def write_summary(metadata, total_passed, total_failed, total_all):
             "note": meta.get("note", ""),
         })
     report = {
+        "decision": run_decision(counts, metadata) if counts else "unknown",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_profile": metadata.get("run_profile", "unknown") if metadata else "unknown",
         "suites": suites,
@@ -688,13 +841,23 @@ def write_summary(metadata, total_passed, total_failed, total_all):
             "passed": total_passed,
             "failed": total_failed,
             "total": total_all,
+            "skipped": (counts or {}).get("skipped", 0),
+            "executed": (counts or {}).get("executed", total_passed + total_failed),
         },
     }
     SUMMARY_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 def sparkline_svg(history, key, label):
     """A small trend line for one history metric. Needs two or more runs."""
-    values = [entry.get(key, 0) for entry in history]
+    if key == "passed":
+        # Plot percentages, not pass counts: suite growth is not a pass-rate trend.
+        history = [e for e in history if e.get("passed", 0) + e.get("failed", 0) > 0]
+        values = [e.get("passed", 0) / (e.get("passed", 0) + e.get("failed", 0)) * 100 for e in history]
+    elif key == "total":
+        # Historical totals include skips; derive executed for old and new entries.
+        values = [e.get("passed", 0) + e.get("failed", 0) for e in history]
+    else:
+        values = [entry.get(key, 0) for entry in history]
     if len(values) < 2:
         return ""
     w, h = 240, 48
@@ -707,8 +870,10 @@ def sparkline_svg(history, key, label):
     if key == "coverage":
         display = f"{last:.1f}%"
     elif key == "passed":
-        total = history[-1].get("total", 0)
-        display = f"{last / total * 100:.1f}%" if total else "—"
+        # Of the tests that ran: skipped cases are not failures (a run with 0
+        # failed and 16 skipped read 99.7% when divided by the total).
+        executed = history[-1].get("passed", 0) + history[-1].get("failed", 0)
+        display = f"{last:.1f}%" if executed else "—"
     else:
         display = f"{last:,}"
     lx, ly = pts[-1]
@@ -784,14 +949,47 @@ def render_gnb_css():
     return re.sub(r"/\*[\s\S]*?\*/\s*", "", css, count=1).rstrip()
 
 def _section_head(sid, kicker, title, lede):
-    return f'''<div class="section-head" id="{sid}">
+    return f'''<div class="section-head" id="{sid}" tabindex="-1">
       <div><p class="kicker">{_esc(kicker)}</p><h2>{_esc(title)}</h2></div>
       <p>{lede}</p>
     </div>'''
 
 # --- Latest run --------------------------------------------------------------
 
-def _render_run(stats, suites):
+def _elsewhere_badge(elsewhere):
+    """A result recorded by another workflow or the pre-release receipt. Outlined,
+    never the solid pass badge, and never added to this page's totals."""
+    st = elsewhere["state"]
+    cls = {"pass": "elsewhere", "fail": "fail"}.get(st, "off")
+    return f'<span class="badge {cls}">{_esc(elsewhere["label"])}</span>'
+
+def _skipped_cases(vt_file_data, catalog):
+    """Every case skipped in this run, with the gate (if any) whose runner executes it."""
+    owners = {}
+    for gate in catalog.get("gates", []):
+        for f in gate.get("files", []):
+            owners.setdefault(f, []).append(gate)
+    rows = []
+    for f in sorted(vt_file_data):
+        for a in vt_file_data[f]["assertions"]:
+            if a.get("status") in ("passed", "failed"):
+                continue
+            rows.append((f, " › ".join([*a.get("ancestorTitles", []), a.get("title", "")]), owners.get(f, [])))
+    return rows
+
+def _render_skipped(rows):
+    if not rows:
+        return ""
+    body = ""
+    for f, name, gates in rows:
+        runs = ("; ".join(f'{_esc(g["name"])} <span class="fine">({_esc(g["workflow"].rsplit("/", 1)[-1])} › {_esc(g.get("job") or "")})</span>' for g in gates)
+                if gates else '<span class="quiet">no CI runner: runs on a developer host whose platform or toolchain matches</span>')
+        body += f'<tr><td><code>{_esc(f)}</code><span class="fine">{_esc(name)}</span></td><td>{runs}</td></tr>'
+    hosted = sum(1 for _, _, g in rows if g)
+    return f'''<details class="card files skipped"><summary>{_n(len(rows), "case")} skipped here: {hosted} run on another CI runner, {len(rows) - hosted} on no CI runner</summary>
+      <div class="scroll"><table class="data"><thead><tr><th>Skipped case</th><th>Where it runs</th></tr></thead><tbody>{body}</tbody></table></div></details>'''
+
+def _render_run(stats, suites, skipped_html=""):
     tiles = "".join(f'''<div class="card tile">
         <p class="kicker">{_esc(label)}</p>
         <p class="tile-value {cls}">{value}</p>
@@ -801,6 +999,10 @@ def _render_run(stats, suites):
     for s in suites:
         meta = s["meta"]
         st = _state(meta["status"]) if meta["executed"] else "off"
+        if st == "pass" and not (s["passed"] + s["failed"]):
+            st = "off"
+        elsewhere = None if meta["executed"] else s.get("elsewhere")
+        badge = _elsewhere_badge(elsewhere) if elsewhere else status_badge(st, "No case evidence" if meta["executed"] and st == "off" else None)
         figures = ""
         if meta["executed"]:
             figures = f'''<dl class="specs">
@@ -810,25 +1012,165 @@ def _render_run(stats, suites):
               <div><dt>Time</dt><dd>{duration_fmt(s["ms"]) if s["ms"] else "—"}</dd></div>
             </dl>'''
         note = f'<p class="fine">{_esc(meta["note"])}</p>' if meta.get("note") else ""
+        if elsewhere:
+            note += elsewhere["line"]
         cards += f'''<article class="card suite">
-          <div class="card-top"><h3>{_esc(s["name"])}</h3>{status_badge(st)}</div>
+          <div class="card-top"><h3>{_esc(s["name"])}</h3>{badge}</div>
           <p class="sub">{_esc(s["what"])}</p>
           {_bar(s["passed"], s["failed"], s["passed"] + s["failed"]) if meta["executed"] else ""}
           {figures}{note}
         </article>'''
-    return f'<div class="grid tiles">{tiles}</div><div class="grid suites">{cards}</div>'
+    return f'<div class="grid tiles">{tiles}</div><div class="grid suites">{cards}</div>{skipped_html}'
+
+# --- Verification tiers ------------------------------------------------------
+
+TIER_LABEL = {"changed": "Changed", "quick": "Quick", "full": "Pre-release"}
+_RUN_STATE = {"success": "pass", "failure": "fail", "timed_out": "fail", "startup_failure": "fail"}
+
+def _steps_by_gate(catalog):
+    out = {}
+    for step in catalog.get("steps", []):
+        out.setdefault(step["gate"], []).append(step)
+    return out
+
+def _hosted_run(workflow_status, gate):
+    wf = gate.get("workflow") if gate else None
+    return workflow_status.get(wf) if wf else None
+
+def _hosted_line(run, commit):
+    """One line naming the latest completed hosted run of a gate's workflow."""
+    if not run:
+        return ""
+    st = _RUN_STATE.get(run.get("conclusion"), "off")
+    verdict = {"pass": "passed", "fail": "failed"}.get(st, run.get("conclusion") or "unknown")
+    sha = (run.get("head_sha") or "")[:7]
+    if commit and (run.get("head_sha") or "").startswith(commit):
+        where = "this commit"
+    elif run.get("scope") == "master":
+        where = "master"
+    else:
+        where = f'{run.get("event", "run")} on {run.get("head_branch", "?")}'
+    return (f'<p class="hosted"><span class="dot {st}"></span>Latest hosted run {_esc(verdict)} · '
+            f'<a href="{_esc(run.get("html_url", ""))}">{_esc(sha)}</a> · {_esc(where)} · {_esc((run.get("created_at") or "")[:10])}</p>')
+
+def _receipt_step(receipt, gate_id):
+    if not receipt:
+        return None
+    return next((s for s in receipt.get("steps", []) if s.get("gate") == gate_id), None)
+
+def _needs_text(step):
+    req = step.get("requires", {})
+    bits = []
+    plat = req.get("platform")
+    if plat:
+        bits.append({"darwin": "macOS", "win32": "Windows", "posix": "macOS or Linux"}.get(plat, plat))
+    bits += [c for c in req.get("commands", []) if c != "python3"]
+    if req.get("jdk"):
+        bits.append(f'JDK {req["jdk"]}')
+    if step.get("opt_in"):
+        bits.append("opt-in on macOS (--allow-keychain)")
+    if step.get("manual"):
+        bits.append("a person and the lab hardware")
+    return ", ".join(_esc(b) for b in bits) or '<span class="quiet">Node only</span>'
+
+def _matrix_cell(step, tier):
+    if tier not in step.get("tiers", []):
+        return '<td class="c quiet">–</td>'
+    if step.get("manual"):
+        return '<td class="c"><span class="in">●</span><span class="fine">attested</span></td>'
+    if tier == "changed" and step.get("paths"):
+        paths = step["paths"]
+        more = f" +{len(paths) - 1}" if len(paths) > 1 else ""
+        return f'<td class="c" title="{_esc(", ".join(paths))}"><span class="in">●</span><span class="fine">{_esc(paths[0])}{more}</span></td>'
+    note = "related tests" if step.get("builtin") == "vitest-related" else "always"
+    return f'<td class="c"><span class="in">●</span><span class="fine">{note}</span></td>'
+
+_RECEIPT_MARK = {"pass": ("pass", "✓"), "fail": ("fail", "×"), "skip": ("off", "○"), "manual": ("off", "?")}
+_RECEIPT_VERB = {"pass": "passed", "fail": "failed", "skip": "skipped", "manual": "not attested"}
+
+def _render_receipt(receipt, title, empty_text):
+    if not receipt:
+        return (f'<article class="card receipt"><div class="card-top"><h3>{_esc(title)}</h3>{status_badge("off", "None recorded")}</div>'
+                f'<p class="sub">{empty_text}</p></article>')
+    steps = receipt.get("steps", [])
+    counts = {k: sum(1 for x in steps if x.get("status") == k) for k in ("pass", "fail", "skip", "manual")}
+    tier = next((t for t in CATALOG.get("tiers", []) if t["id"] == receipt.get("tier")), {})
+    host = receipt.get("host", {})
+    rows = ""
+    for x in steps:
+        st, mark = _RECEIPT_MARK.get(x.get("status"), ("off", "○"))
+        detail = x.get("reason") or x.get("note") or ""
+        if x.get("attested"):
+            detail = f'attested {_RECEIPT_VERB.get(x.get("status"), "")}' + (f' — {x["note"]}' if x.get("note") else "")
+        dur = x.get("duration_ms")
+        rows += (f'<li class="t {st}"><span class="mark">{mark}</span>'
+                 f'<span class="tname">{_esc(x.get("name") or x.get("id"))}<span class="fine"> {_esc(detail)}</span></span>'
+                 f'<span class="tdur">{duration_fmt(dur) if dur else ""}</span></li>')
+    dirty = ' · <span class="bad-text">uncommitted changes</span>' if receipt.get("dirty") else ""
+    when = (receipt.get("finished_at") or "")[:16].replace("T", " ")
+    sub = (f'{_esc(tier.get("name", receipt.get("tier", "")))} · commit <code>{_esc((receipt.get("commit") or "")[:7])}</code>{dirty}'
+           f' · {_esc(when)} UTC · {_esc(host.get("platform", ""))}/{_esc(host.get("arch", ""))}, Node {_esc(host.get("node", ""))}')
+    return f'''<article class="card receipt">
+      <div class="card-top"><h3>{_esc(title)}</h3>{status_badge("fail" if counts["fail"] else "pass")}</div>
+      <p class="sub">{sub}</p>
+      <dl class="specs">
+        <div><dt>Passed</dt><dd>{counts["pass"]}</dd></div>
+        <div><dt>Failed</dt><dd class="{"bad-text" if counts["fail"] else ""}">{counts["fail"]}</dd></div>
+        <div><dt>Skipped</dt><dd>{counts["skip"]}</dd></div>
+        <div><dt>Lab, unattested</dt><dd>{counts["manual"]}</dd></div>
+      </dl>
+      <details class="files"{" open" if counts["fail"] else ""}><summary>{_n(len(steps), "step")} · {duration_fmt(receipt.get("duration_ms") or 0)}</summary><ul class="tests">{rows}</ul></details>
+    </article>'''
+
+def _render_tiers(catalog, recorded, this_run):
+    gates = {g["id"]: g for g in catalog.get("gates", [])}
+    cards = ""
+    for tier in catalog.get("tiers", []):
+        cards += f'''<article class="card tier">
+          <p class="kicker">{_esc(TIER_LABEL.get(tier["id"], tier["id"]))}</p>
+          <h3>{_esc(tier["name"])}</h3>
+          <p class="sub">{_esc(tier["when"])} · {_esc(tier["budget"])}</p>
+          <p class="cmd"><code>{_esc(tier["command"])}</code></p>
+          <p class="label">Runs</p><p class="prose">{_esc(tier["selects"])}</p>
+          <p class="label">Does not replace</p><p class="prose quiet">{_esc(tier["does_not_replace"])}</p>
+        </article>'''
+    rows = ""
+    for step in catalog.get("steps", []):
+        gate = gates.get(step["gate"], {})
+        wf = gate.get("workflow")
+        hosted = (f'{_esc(wf.rsplit("/", 1)[-1])} › {_esc(gate.get("job") or "")}<span class="fine">{_esc(gate.get("trigger", ""))}</span>'
+                  if wf else '<span class="quiet">no hosted runner</span>')
+        cmd = "" if step.get("manual") else (step.get("run") or step.get("builtin") or "")
+        rows += f'''<tr><th scope="row"><strong>{_esc(step["name"])}</strong><span class="fine"><code>{_esc(step["id"])}</code>{" · " + _esc(cmd) if cmd else ""}</span></th>
+          {_matrix_cell(step, "changed")}{_matrix_cell(step, "quick")}{_matrix_cell(step, "full")}
+          <td>{hosted}</td><td>{_needs_text(step)}</td></tr>'''
+    matrix = f'''<div class="card flush"><div class="scroll"><table class="data matrix">
+      <thead><tr><th>Step</th><th class="c">Changed</th><th class="c">Quick</th><th class="c">Pre-release</th><th>Hosted CI</th><th>Needs</th></tr></thead>
+      <tbody>{rows}</tbody></table></div></div>'''
+    receipts = _render_receipt(recorded, "Last recorded pre-release check",
+                               "Run <code>pnpm verify:full --record</code> on a clean tree before a release tag and commit the file it writes under <code>verification/receipts/</code>. This card then lists every step's result, including the lab gates a person attested.")
+    if this_run:
+        receipts = _render_receipt(this_run, "This run (local)", "") + receipts
+    return f'''<div class="grid tiers">{cards}</div>
+      <h3 class="sub-head">Which step runs in which tier</h3>
+      {matrix}
+      <p class="fine matrix-note">A changed-area step runs when a file matching one of its paths (hover a cell for all of them) changed since the merge base. Each selected step runs, is skipped with its reason (missing toolchain, other platform), or, for a lab gate, waits for a person to attest it. Nothing counts as passing without running.</p>
+      <h3 class="sub-head">Receipts</h3>
+      <div class="grid receipts">{receipts}</div>'''
 
 # --- What we verify ----------------------------------------------------------
 
-def _render_verify(catalog, metadata):
+def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commit=""):
     repo = os.environ.get("GITHUB_REPOSITORY", "puritysb/AgentDeck")
     levels = catalog.get("levels", {})
+    steps_by_gate = _steps_by_gate(catalog)
     cards = ""
     for gate in catalog.get("gates", []):
         suite = gate.get("report_suite")
         meta = suite_meta(metadata, suite) if suite else None
         if meta and meta["executed"]:
-            badge = status_badge(meta["status"], "Passed here" if _state(meta["status"]) == "pass" else "Failed here")
+            label = {"pass": "Passed here", "fail": "Failed here", "off": "No case evidence"}[_state(meta["status"])]
+            badge = status_badge(meta["status"], label)
         else:
             # Only a check branch protection requires stops a merge; a red
             # workflow alone does not (catalog `required` vs `blocking`).
@@ -841,7 +1183,15 @@ def _render_verify(catalog, metadata):
         not_proves = "".join(f"<li>{_esc(x)}</li>" for x in gate.get("does_not_prove", []))
         wf = gate.get("workflow")
         link = (f'<a href="https://github.com/{repo}/actions/workflows/{_esc(wf.rsplit("/", 1)[-1])}">{_esc(wf.rsplit("/", 1)[-1])} runs</a>'
-                if wf else '<span class="quiet">Lab only — results are not recorded here</span>')
+                if wf else '<span class="quiet">No hosted runner — the pre-release receipt records it</span>')
+        tiers = sorted({t for st in steps_by_gate.get(gate["id"], []) for t in st["tiers"]}, key=list(TIER_LABEL).index)
+        tier_tags = "".join(f'<span class="tag">{_esc(TIER_LABEL[t])}</span>' for t in tiers) or '<span class="quiet">hosted only</span>'
+        evidence = "" if gate["id"] == "pages-report" else _hosted_line(_hosted_run(workflow_status or {}, gate), commit)
+        attested = None if wf else _receipt_step(recorded, gate["id"])
+        if attested:
+            st = _RECEIPT_MARK.get(attested.get("status"), ("off", ""))[0]
+            evidence = (f'<p class="hosted"><span class="dot {st}"></span>Last pre-release check: {_esc(_RECEIPT_VERB.get(attested.get("status"), ""))}'
+                        f' · <code>{_esc((recorded.get("commit") or "")[:7])}</code> · {_esc((recorded.get("finished_at") or "")[:10])}</p>')
         cards += f'''<article class="card gate">
           <div class="card-top"><div class="tags">{tags}</div>{badge}</div>
           <h3>{_esc(gate["name"])}</h3>
@@ -851,7 +1201,8 @@ def _render_verify(catalog, metadata):
             <div><p class="label">Does not prove</p><ul class="ticks no">{not_proves}</ul></div>
           </div>
           <p class="cmd"><code>{_esc(gate.get("command", ""))}</code></p>
-          <p class="card-foot">{link}</p>
+          <p class="tierline"><span class="label">Local tiers</span>{tier_tags}</p>
+          <div class="card-foot">{evidence}<p>{link}</p></div>
         </article>'''
     gaps = "".join(f'''<article class="card gap">
         <h3>{_esc(g["what"])}</h3>
@@ -899,9 +1250,9 @@ def _render_domains(vt_file_data):
               <summary><span class="fpath">{_esc(f)}</span><span class="fcount {"bad-text" if d["failed"] else ""}">{d["passed"]}/{d["passed"] + d["failed"]}</span></summary>
               <ul class="tests">{_test_rows(d["assertions"])}</ul>
             </details>'''
-        st = "fail" if failed else ("pass" if files else "off")
+        st = "fail" if failed else ("pass" if passed and not skipped else "off")
         cards += f'''<article class="card domain" id="domain-{_esc(layer["id"])}">
-          <div class="card-top"><p class="kicker"><span aria-hidden="true">{_esc(layer.get("icon", ""))}</span> {_n(len(files), "file")}</p>{status_badge(st, f"{failed} failing" if failed else None)}</div>
+          <div class="card-top"><p class="kicker"><span aria-hidden="true">{_esc(layer.get("icon", ""))}</span> {_n(len(files), "file")}</p>{status_badge(st, f"{failed} failing" if failed else "Partial verification" if passed and skipped else None)}</div>
           <h3>{_esc(layer["name"])}</h3>
           <p class="sub">{_esc(layer.get("question", ""))}</p>
           {_bar(passed, failed, passed + failed)}
@@ -922,7 +1273,7 @@ def _render_domains(vt_file_data):
 
 # --- Platform suites ---------------------------------------------------------
 
-def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta):
+def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta, apple_elsewhere=None, robot_elsewhere=None):
     # Android
     if android_suites:
         rows = ""
@@ -937,7 +1288,7 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
         a_p = sum(s["passed"] for s in android_suites)
         a_f = sum(s["failures"] + s["errors"] for s in android_suites)
         android = f'''<article class="card platform">
-          <div class="card-top"><h3>Android</h3>{status_badge("fail" if a_f else "pass")}</div>
+          <div class="card-top"><h3>Android</h3>{status_badge("fail" if a_f else "pass" if a_p else "off", "No executed cases" if not (a_f or a_p) else None)}</div>
           <p class="sub">JUnit + Robolectric on the JVM (ubuntu), {_n(len(android_suites), "suite")}.</p>
           {_bar(a_p, a_f, a_p + a_f)}
           <details class="files"{" open" if a_f else ""}><summary>{_n(len(android_suites), "suite")}</summary>{rows}</details>
@@ -948,8 +1299,8 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
           <p class="sub">{_esc(android_meta.get("note") or "No JUnit results in this run.")}</p></article>'''
     # Apple
     apple = f'''<article class="card platform">
-      <div class="card-top"><h3>Apple (XCTest)</h3>{status_badge("pass" if apple_meta["executed"] and apple_meta["status"] == "pass" else "off")}</div>
-      <p class="sub">{_esc(apple_meta.get("note") or "Runs in the Apple Tests workflow on a macOS runner.")}</p></article>'''
+      <div class="card-top"><h3>Apple (XCTest)</h3>{_elsewhere_badge(apple_elsewhere) if apple_elsewhere and not apple_meta["executed"] else status_badge(_state(apple_meta["status"]) if apple_meta["executed"] else "off", "No case evidence" if apple_meta["executed"] and _state(apple_meta["status"]) == "off" else None)}</div>
+      <p class="sub">{_esc(apple_meta.get("note") or "Runs in the Apple Tests workflow on a macOS runner.")}</p>{apple_elsewhere["line"] if apple_elsewhere and not apple_meta["executed"] else ""}</article>'''
     # Robot
     if robot:
         suites = ""
@@ -961,7 +1312,7 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
                                                "failureMessages": [c["message"]] if c["status"] == "failed" and c.get("message") else []} for c in cases])}</ul>
             </details>'''
         robot_card = f'''<article class="card platform wide">
-          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("fail" if robot["failed"] else "pass")}</div>
+          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("fail" if robot["failed"] else "pass" if robot["passed"] else "off", "No executed cases" if not (robot["failed"] or robot["passed"]) else None)}</div>
           <p class="sub">Physical boards in the maintainer's lab: {", ".join(_esc(BOARD_LABELS.get(b, b)) for b in robot["boards"]) or "no board tags"}.</p>
           {_bar(robot["passed"], robot["failed"], robot["passed"] + robot["failed"])}
           {_build_robot_perf_table(robot)}
@@ -969,8 +1320,8 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
         </article>'''
     else:
         robot_card = f'''<article class="card platform">
-          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("off")}</div>
-          <p class="sub">{_esc(robot_meta.get("note") or "Physical hardware suite; not run on GitHub-hosted runners.")}</p></article>'''
+          <div class="card-top"><h3>ESP32 Robot Framework</h3>{_elsewhere_badge(robot_elsewhere) if robot_elsewhere else status_badge("off")}</div>
+          <p class="sub">{_esc(robot_meta.get("note") or "Physical hardware suite; not run on GitHub-hosted runners.")}</p>{robot_elsewhere["line"] if robot_elsewhere else ""}</article>'''
     return f'<div class="grid platforms">{android}{apple}{robot_card}</div>'
 
 # --- Scenarios ---------------------------------------------------------------
@@ -982,8 +1333,8 @@ def _scenario_cell(cat):
     p, f, m, nr = cat["passed"], cat["failed"], cat["missing"], cat.get("not_run", 0)
     st = "fail" if f else ("pass" if p == t else "off")
     parts = [x for x in (f"{p} passed" if p else "", f"{f} failed" if f else "",
-                         f"{m} not found in this run" if m else "", f"{nr} not executed here" if nr else "") if x]
-    return f'<td class="num"><span class="dot {st}"></span>{p}/{t}<span class="sr"> — {", ".join(parts)}</span></td>'
+                         f"{m} not found in this run" if m else "", f"{nr} not executed here" if nr else "", f'{cat.get("partial", 0)} partially executed' if cat.get("partial") else "") if x]
+    return f'<td class="num"><span class="dot {st}"></span>{p}/{t}<span class="fine"> — {", ".join(parts)}</span></td>'
 
 def _render_scenarios(scenario_results):
     rows = ""
@@ -1038,9 +1389,32 @@ def _render_coverage(cov_total, pkg_cov):
 
 # --- Page --------------------------------------------------------------------
 
-def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results, history, metadata, robot=None):
+def _apple_elsewhere(workflow_status, commit):
+    run = workflow_status.get(".github/workflows/apple-test.yml")
+    if not run:
+        return None
+    st = _RUN_STATE.get(run.get("conclusion"), "off")
+    label = {"pass": "Passed in CI", "fail": "Failed in CI"}.get(st, "Apple Tests: " + (run.get("conclusion") or "unknown"))
+    return {"state": st, "label": label, "line": _hosted_line(run, commit)}
+
+def _robot_elsewhere(recorded):
+    step = _receipt_step(recorded, "esp32-robot")
+    if not step or not step.get("attested"):
+        return None
+    st = {"pass": "pass", "fail": "fail"}.get(step.get("status"), "off")
+    label = {"pass": "Attested pass", "fail": "Attested fail"}.get(st, "Attested skip")
+    line = (f'<p class="hosted"><span class="dot {st}"></span>Pre-release check <code>{_esc((recorded.get("commit") or "")[:7])}</code>'
+            f' · {_esc((recorded.get("finished_at") or "")[:10])}{" · " + _esc(step["note"]) if step.get("note") else ""}</p>')
+    return {"state": st, "label": label, "line": line}
+
+def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results, history, metadata, robot=None,
+                  workflow_status=None, recorded=None, this_run=None):
+    metadata = reconcile_case_evidence(metadata, vitest, android_suites, robot)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     commit = os.environ.get("GITHUB_SHA", "")[:7]
+    workflow_status = workflow_status or {}
+    apple_elsewhere = _apple_elsewhere(workflow_status, commit)
+    robot_elsewhere = _robot_elsewhere(recorded)
     vitest_meta = suite_meta(metadata, "vitest")
     e2e_meta = suite_meta(metadata, "e2e")
     android_meta = suite_meta(metadata, "android")
@@ -1072,21 +1446,22 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     rb_p = robot["passed"] if robot else 0
     rb_f = robot["failed"] if robot else 0
 
-    total_passed = vt_p + e2_p + an_p + rb_p
-    total_failed = vt_f + e2_f + an_f + rb_f
-    total_all = total_passed + total_failed
-    overall = "fail" if total_failed else "pass"
+    counts = result_counts(vitest, android_suites, robot)
+    total_passed, total_failed = counts["passed"], counts["failed"]
+    total_all = counts["executed"]
+    overall = run_decision(counts, metadata)
 
     cov_total = cov_data.get("total", {}) if cov_data else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
     pkg_cov = extract_package_coverage(cov_data) if cov_data else {}
 
     stats = [
-        ("Result", "Pass" if overall == "pass" else "Fail", "ok-text" if overall == "pass" else "bad-text",
+        ("Result", _DECISION_LABEL[overall], "ok-text" if overall == "pass" else ("bad-text" if overall == "fail" else ""),
          f"{total_all:,} tests executed"),
         ("Passed", f"{total_passed:,}", "", f"{(total_passed / total_all * 100) if total_all else 0:.2f}% of executed"),
         ("Failed", f"{total_failed:,}", "bad-text" if total_failed else "", "across every suite run here"),
-        ("Wall time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
+        ("Skipped", f'{counts["skipped"]:,}', "", "excluded from executed tests"),
+        ("Cumulative test time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
         ("Line coverage", f"{lines_pct:.1f}%" if cov_data else "—", "", "TypeScript packages"),
     ]
     suites = [
@@ -1097,9 +1472,10 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         {"name": "Android", "what": "JUnit + Robolectric.", "meta": android_meta,
          "passed": an_p, "failed": an_f, "files": len(android_suites), "unit": "Suites", "ms": an_ms},
         {"name": "Apple (XCTest)", "what": "macOS app and in-process Swift daemon.", "meta": apple_meta,
-         "passed": 0, "failed": 0, "files": 0, "unit": "Suites", "ms": 0},
+         "passed": 0, "failed": 0, "files": 0, "unit": "Suites", "ms": 0, "elsewhere": apple_elsewhere},
         {"name": "ESP32 Robot", "what": "Flash, boot and serial protocol on real boards.", "meta": robot_meta,
-         "passed": rb_p, "failed": rb_f, "files": len(robot["suites"]) if robot else 0, "unit": "Suites", "ms": 0},
+         "passed": rb_p, "failed": rb_f, "files": len(robot["suites"]) if robot else 0, "unit": "Suites", "ms": 0,
+         "elsewhere": robot_elsewhere},
     ]
 
     sparks = "".join(x for x in (sparkline_svg(history, "total", "Tests"),
@@ -1110,6 +1486,7 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
 
     sections = [
         ("run", "Latest run", "Every suite this page executed, and the ones it only links to."),
+        ("tiers", "Verification tiers", "Changed-area, quick and pre-release checks, and the last receipt."),
         ("verify", "What we verify", "Each gate, where it runs, and what it does not prove."),
         ("domains", "Test domains", "Every test file, grouped by the question it answers."),
         ("platforms", "Platforms", "Android, Apple and hardware suites."),
@@ -1117,22 +1494,33 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         ("coverage", "Coverage", "TypeScript coverage against the enforced floor."),
         ("history", "History", "Trends across recent master runs."),
     ]
+    if not cov_data:
+        sections = [s for s in sections if s[0] != "coverage"]
     if not scenario_results:
         sections = [s for s in sections if s[0] != "scenarios"]
+    sections += [("qa-method", "Method / manual QA", "")]
     jump = "".join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title, _ in sections)
 
     body = ""
-    body += f'<section>{_section_head("run", "Build health", "Latest run", "What this page ran on the merged master commit. Suites that need a macOS runner or physical boards run elsewhere and are marked as not run here — never counted as passing.")}{_render_run(stats, suites)}</section>'
-    body += f'<section>{_section_head("verify", "Transparency", "What we verify", "Every check the project runs, where it runs, and what it does <em>not</em> prove. Generated from <code>scripts/verification-catalog.json</code>; CI fails if that file stops matching the repository.")}{_render_verify(CATALOG, metadata)}</section>'
+    body += f'<section>{_section_head("run", "Build health", "Latest run", "What this page ran on the merged master commit. Suites that need a macOS runner or physical boards run elsewhere and are marked as not run here — never counted as passing.")}{_render_run(stats, suites, _render_skipped(_skipped_cases(vt_file_data, CATALOG)))}</section>'
+    body += f'<section>{_section_head("tiers", "Layers", "Verification tiers", "Three local tiers run the same catalog steps at three depths: <code>pnpm verify:changed</code> while iterating, <code>pnpm verify:quick</code> before a push, <code>pnpm verify:full</code> before a release. The pre-release receipt is committed, so this page shows what the last release check ran, skipped and attested.")}{_render_tiers(CATALOG, recorded, this_run)}</section>'
+    body += f'<section>{_section_head("verify", "Transparency", "What we verify", "Every check the project runs, where it runs, and what it does <em>not</em> prove. Generated from <code>scripts/verification-catalog.json</code>; CI fails if that file stops matching the repository.")}{_render_verify(CATALOG, metadata, workflow_status, recorded, commit)}</section>'
     body += f'<section>{_section_head("domains", "Vitest + E2E", "Test domains", "Every TypeScript and end-to-end test file, grouped by the question it answers. Open a domain for its files and each test.")}{_render_domains(vt_file_data)}</section>'
-    body += f'<section>{_section_head("platforms", "Native and hardware", "Platforms", "Suites outside the TypeScript toolchain. Apple and hardware results are recorded by their own workflows and the lab.")}{_render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta)}</section>'
+    body += f'<section>{_section_head("platforms", "Native and hardware", "Platforms", "Suites outside the TypeScript toolchain. Apple and hardware results are recorded by their own workflows and the lab.")}{_render_platforms(android_suites, android_meta, apple_meta, robot, robot_meta, apple_elsewhere, robot_elsewhere)}</section>'
     if scenario_results:
         body += f'<section>{_section_head("scenarios", "User flows", "Scenarios", "Each flow maps to specific tests by file and case name (<code>scripts/scenario-matrix.json</code>). A dash means no test at that level — listed with the known gaps.")}{_render_scenarios(scenario_results)}</section>'
     if cov_data:
         body += f'<section>{_section_head("coverage", "Vitest --coverage", "Coverage", "Line, statement, function and branch coverage of bridge, shared, plugin and hooks. The floors are read from <code>vitest.config.ts</code> and enforced on every pull request.")}{_render_coverage(cov_total, pkg_cov)}</section>'
     body += f'<section>{_section_head("history", "Trend", "History", "Totals from the last runs of this page on master.")}{history_html}</section>'
 
+    body += _render_qa_method(vt_file_data, bool(scenario_results))
+
     commit_bit = f" · commit {_esc(commit)}" if commit else ""
+    translations = _load_json(ROOT / "scripts" / "report-locales" / "ko.json", {})
+    # Inline assets keep the report self-contained. Escaping < prevents a locale
+    # entry from ending the script element; all rendering uses text nodes.
+    locale_script = "const REPORT_KO = " + json.dumps(translations, ensure_ascii=False).replace("<", "\\u003c") + ";\n"
+    locale_script += (ROOT / "scripts" / "report-locale.js").read_text(encoding="utf-8")
     gnb = render_gnb()
     gnb_css = render_gnb_css()
     return f'''<!DOCTYPE html>
@@ -1206,12 +1594,30 @@ h2 {{ font-size:clamp(30px,4vw,var(--t-h2)); letter-spacing:var(--tr-h2); line-h
 .badge.fail {{ background:var(--coral-500); color:var(--tide-50); }}
 .badge.off {{ background:var(--tide-200); color:var(--ink-700); }}
 .badge.gate {{ background:var(--ink-800); color:var(--tide-50); }}
+.badge.elsewhere {{ background:transparent; color:var(--kelp-700); box-shadow:inset 0 0 0 1px var(--kelp-700); }}
+.tiers, .receipts {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+.receipts {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+.tier .cmd {{ margin:0 0 var(--s-2); }}
+.prose {{ margin:0; font-size:var(--t-caption); color:var(--ink-700); }}
+.prose.quiet {{ color:var(--ink-500); }}
+table.matrix td.c, table.matrix th.c {{ text-align:center; white-space:nowrap; }}
+table.matrix .in {{ color:var(--kelp-700); font-size:var(--t-caption); }}
+table.matrix td .fine, table.matrix th .fine {{ display:block; font-size:11px; }}
+table.matrix td.c .fine {{ max-width:16ch; margin:0 auto; overflow:hidden; text-overflow:ellipsis; }}
+.matrix-note {{ margin:var(--s-3) 0 0; max-width:96ch; }}
+.hosted {{ margin:0 0 4px; font-size:var(--t-caption); color:var(--ink-700); }}
+.card-foot p {{ margin:0; }}
+.tierline {{ display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:var(--s-3) 0 0; }}
+.tierline .label {{ margin:0 var(--s-2) 0 0; }}
+details.skipped {{ margin-top:var(--s-4); }}
+details.skipped > summary {{ padding:0; }}
+details.skipped td .fine {{ display:block; }}
 .tags {{ display:flex; flex-wrap:wrap; gap:4px; }}
 .tag {{ font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:var(--tr-chip); text-transform:uppercase; padding:2px 6px; border-radius:var(--r-sm); background:var(--tide-200); color:var(--ink-700); }}
 .dot {{ display:inline-block; width:6px; height:6px; border-radius:var(--r-pill); margin-right:6px; vertical-align:middle; }}
 .dot.pass {{ background:var(--status-processing); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-processing) 33%, transparent); }}
 .dot.fail {{ background:var(--status-error); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-error) 33%, transparent); }}
-.dot.off {{ background:var(--status-idle); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-idle) 33%, transparent); }}
+.dot.partial, .dot.off {{ background:var(--status-idle); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-idle) 33%, transparent); }}
 .rail, .meter {{ position:relative; display:flex; height:6px; border-radius:var(--r-pill); background:var(--tide-200); overflow:hidden; margin:0 0 var(--s-3); }}
 .rail .ok, .meter .ok {{ background:var(--kelp-500); }}
 .rail .bad, .meter .bad {{ background:var(--coral-500); }}
@@ -1231,6 +1637,11 @@ h2 {{ font-size:clamp(30px,4vw,var(--t-h2)); letter-spacing:var(--tr-h2); line-h
 .cmd {{ margin:var(--s-3) 0 0; }}
 .cmd code {{ display:block; font-size:11.5px; color:var(--tide-50); background:var(--ink-900); padding:var(--s-2) var(--s-3); border-radius:var(--r-md); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }}
 .gap p:not(.label) {{ margin:0; color:var(--ink-700); font-size:var(--t-caption); }}
+.qa-summary {{ margin-top:var(--s-6); }}
+.qa-summary h2 {{ margin:0; }}
+.qa-summary .specs dt {{ font-family:var(--font-sans); font-size:var(--t-caption); letter-spacing:normal; text-transform:none; }}
+.qa-summary .specs dd {{ font-size:var(--t-card-title); color:var(--ink-900); }}
+:focus-visible {{ outline:2px solid var(--kelp-700); outline-offset:4px; }}
 .legend {{ margin-top:var(--s-6); }}
 .legend + .grid {{ margin-top:var(--s-6); }}
 .legend dl {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3) var(--s-6); margin:0; }}
@@ -1270,10 +1681,12 @@ table.data code {{ font-size:11.5px; }}
 footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var(--container-pad) var(--s-16); border-top:2px solid var(--tide-200); color:var(--ink-500); font-size:var(--t-caption); }}
 @media (max-width:1100px) {{
   .tiles, .suites {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+  .tiers {{ grid-template-columns:1fr; }}
   .legend dl {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
 }}
 @media (max-width:900px) {{
   .gates, .domains, .platforms, .gaps, .tiles.four, .tiles.three {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+  .receipts {{ grid-template-columns:1fr; }}
   .section-head {{ grid-template-columns:1fr; gap:var(--s-2); }}
 }}
 @media (max-width:640px) {{
@@ -1292,9 +1705,10 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   <header>
     <p class="kicker">AgentDeck · Build health</p>
     <h1>Test Report</h1>
-    <p class="lede">The latest master run, in full: what passed, what each check proves and does not prove, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
-    <p class="run-chip"><span class="dot {overall}"></span>{"Pass" if overall == "pass" else "Fail"} · {total_all:,} tests{commit_bit} · generated {now}</p>
+    <p class="lede">Review the decision, remaining risk and next action first; inspect the exact test evidence below.</p>
+    <p class="run-chip"><span class="dot {overall}"></span>{_DECISION_LABEL[overall]} · {total_all:,} tests{commit_bit} · generated {now}</p>
   </header>
+  {_render_qa_summary(counts, metadata)}
   <nav class="jump" aria-label="Sections">{jump}</nav>
   {body}
 </main>
@@ -1303,18 +1717,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   Machine-readable: <a href="summary.json">summary.json</a> · <a href="run-metadata.json">run-metadata.json</a> · <a href="history.json">history.json</a> · <a href="verification-catalog.json">verification-catalog.json</a>.
 </footer>
 <script>
-// Site-wide language choice (Build Health's body stays English — CI evidence,
-// not authored copy); the selector only persists the choice for other routes.
-(function () {{
-  var el = document.getElementById('lang');
-  if (!el) return;
-  var KEY = 'agentdeck-design-locale';
-  try {{
-    var saved = localStorage.getItem(KEY) || 'en';
-    if (['en', 'ko', 'ja'].indexOf(saved) >= 0) el.value = saved;
-  }} catch (e) {{}}
-  el.addEventListener('change', function () {{ try {{ localStorage.setItem(KEY, el.value); }} catch (e) {{}} }});
-}})();
+{locale_script}
 </script>
 </body>
 </html>
@@ -1325,7 +1728,8 @@ def main():
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
     e2e = load_e2e()
-    vitest = merge_e2e(load_vitest(), e2e)
+    raw_vitest = load_vitest()
+    vitest = merge_e2e(raw_vitest, e2e)
     android = load_android_xml()
     cov = load_coverage()
     robot = load_robot_xml()
@@ -1333,20 +1737,9 @@ def main():
     history = load_history()
     metadata = load_metadata()
     if not metadata:
-        metadata = build_default_metadata(vitest, android, robot, e2e)
-        METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    else:
-        # Reconcile metadata with actual data presence — override stale not-run flags
-        suites = metadata.setdefault("suites", {})
-        if vitest and not suites.get("vitest", {}).get("executed"):
-            suites["vitest"] = {"status": "pass" if vitest.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
-        if e2e and not suites.get("e2e", {}).get("executed"):
-            suites["e2e"] = {"status": "pass" if e2e.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
-        if android and not suites.get("android", {}).get("executed"):
-            af = sum(s["failures"] + s["errors"] for s in android)
-            suites["android"] = {"status": "pass" if af == 0 else "fail", "executed": True, "note": ""}
-        if robot and not suites.get("robot", {}).get("executed"):
-            suites["robot"] = {"status": "pass" if robot["failed"] == 0 else "fail", "executed": True, "note": ""}
+        metadata = build_default_metadata(raw_vitest, android, robot, e2e)
+    metadata = reconcile_case_evidence(metadata, vitest, android, robot)
+    METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     if not vitest and not android and not robot:
         print("No test results found. Run 'pnpm test:report' first.")
@@ -1355,27 +1748,18 @@ def main():
     # Build scenario cross-reference
     scenario_results = build_scenario_results(scenarios, vitest, android, metadata) if scenarios else []
 
-    # Compute stats for history
-    vt_passed = vitest["numPassedTests"] if vitest else 0
-    vt_failed = vitest["numFailedTests"] if vitest else 0
-    vt_total = vitest["numTotalTests"] if vitest else 0
-    and_passed = sum(s["passed"] for s in android)
-    and_failed = sum(s["failures"] + s["errors"] for s in android)
-    and_total = sum(s["tests"] for s in android)
-    rob_passed = robot["passed"] if robot else 0
-    rob_failed = robot["failed"] if robot else 0
-    rob_total = robot["total"] if robot else 0
-    total_passed = vt_passed + and_passed + rob_passed
-    total_failed = vt_failed + and_failed + rob_failed
-    total_all = vt_total + and_total + rob_total
+    # The same parsed assertions feed HTML, summary and history.
+    counts = result_counts(vitest, android, robot)
+    total_passed, total_failed, total_all = counts["passed"], counts["failed"], counts["total"]
     cov_total = cov.get("total", {}) if cov else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
 
     # Update history
     history = update_history(history, total_passed, total_failed, total_all, lines_pct, metadata)
 
-    write_summary(metadata, total_passed, total_failed, total_all)
-    html = generate_html(vitest, android, cov, scenarios, scenario_results, history, metadata, robot)
+    write_summary(metadata, total_passed, total_failed, total_all, counts)
+    html = generate_html(vitest, android, cov, scenarios, scenario_results, history, metadata, robot,
+                         load_workflow_status(), load_recorded_receipt(), load_this_run_receipt())
     OUTPUT_HTML.write_text(html, encoding="utf-8")
     print(f"HTML report: {OUTPUT_HTML}")
 

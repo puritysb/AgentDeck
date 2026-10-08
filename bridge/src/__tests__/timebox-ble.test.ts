@@ -119,7 +119,7 @@ describe('micro layout (Timebox 11×11)', () => {
     else expect(vivid.some((p) => p[0] > p[1] * 1.8)).toBe(true);
   });
 
-  it('preserves OpenCode negative space and OpenClaw teal eyes', () => {
+  it('preserves OpenCode negative space and OpenClaw original area-sampled eye highlights', () => {
     const openCode = renderFrame(
       { state: State.IDLE, agentType: 'opencode' } as never,
       null, openCodeSession('idle'), 1000, 11, 'micro',
@@ -129,8 +129,8 @@ describe('micro layout (Timebox 11×11)', () => {
       null, openClawSession('idle'), 1000, 11, 'micro',
     );
     expect(pixel(openCode, 5, 5)).toEqual([2, 6, 10]);
-    expect(pixel(openClaw, 4, 4)).toEqual([0, 211, 188]);
-    expect(pixel(openClaw, 7, 4)).toEqual([0, 211, 188]);
+    expect(pixel(openClaw, 4, 3)).toEqual([117, 59, 60]);
+    expect(pixel(openClaw, 6, 3)).toEqual([118, 60, 60]);
   });
 
   it('renders the generated Antigravity mark as a multicolor open arc', () => {

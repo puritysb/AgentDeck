@@ -13,9 +13,9 @@
 // origin changes, re-port (or confirm no visual impact) and bump its pin in the
 // same commit. Note: Kotlin-side parser workarounds (e.g. normalizeSvgArcFlags)
 // don't change path geometry and only need a pin bump.
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt cec9fad8e298145c7a380ba2c5a0b1b79ac7eda6
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt d1787545b6dc5da690a58475fae851158be4e054
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 686b7cf1d15b75671fc8ddaa40e0568fc0768941
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt d2814a37171c40b66ea48baeae8371257c70bb8f
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt 3c1a7b95ccd64f601a2a2a35d6073683559a3ece
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt d0d4d202f814ce1d01c575d2ee32766919b86ace
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)
@@ -232,13 +232,14 @@ struct CanonicalCreatureShape: Shape {
 }
 
 /// Drop-in preview view that renders an agent's canonical creature (all layers, with the
-/// correct fill rules) tinted a single `color`. Mirrors the
-/// single-tint silhouette treatment used by the terrarium/e-ink surfaces. All five agents
+/// correct fill rules) with a body tint and source-grounded opaque feature colors.
+/// Monochrome large creatures use light bodies and outlines while retaining black eyes. All agents
 /// render: robot, cloud+`>_`, ring, crayfish, peak. Unknown agents render nothing.
 struct CanonicalCreatureView: View {
     let agentType: String?
     var size: CGFloat = 64
     var color: Color = .primary
+    var monochrome: Bool = false
 
     var body: some View {
         Canvas { context, canvasSize in
@@ -249,16 +250,26 @@ struct CanonicalCreatureView: View {
             guard let creature = CreatureGeometry.creature(for: agentType) else { return }
             let rect = CGRect(origin: .zero, size: canvasSize)
             let transform = CreatureGeometry.fitTransform(viewBox: creature.viewBox, in: rect)
+            let canonical = CreatureBrandFeatures.canonical(agentType)
+            let largeMonochrome = monochrome && min(canvasSize.width, canvasSize.height) >= CreatureBrandFeatures.monochromeMinimumSize
+            let bodyColor = largeMonochrome && CreatureBrandFeatures.monochromeLightBodyAgents.contains(canonical) ? DesignTokens.Tide.s50 : color
             context.drawLayer { layerCtx in
                 for layer in creature.layers {
                     let transformed = layer.path.applying(transform)
                     switch layer.role {
                     case .fill:
-                        layerCtx.fill(transformed, with: .color(color))
+                        layerCtx.fill(transformed, with: .color(bodyColor))
                     case .evenOddFill:
-                        layerCtx.fill(transformed, with: .color(color), style: FillStyle(eoFill: true))
+                        layerCtx.fill(transformed, with: .color(bodyColor), style: FillStyle(eoFill: true))
+                    }
+                    if largeMonochrome {
+                        let scale = min(canvasSize.width, canvasSize.height) / creature.viewBox
+                        layerCtx.stroke(transformed, with: .color(DesignTokens.Ink.s900),
+                            lineWidth: CreatureBrandFeatures.monochromeOutlineWidth * scale)
                     }
                 }
+                CreatureBrandFeatures.draw(agentType, context: layerCtx, transform: transform,
+                    compactInkMonochrome: monochrome && !largeMonochrome, monochromeCreature: largeMonochrome)
             }
         }
         .frame(width: size, height: size)

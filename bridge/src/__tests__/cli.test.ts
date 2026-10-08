@@ -531,6 +531,29 @@ describe('waitForRestartedDaemon — `daemon restart` reports what it measured',
       ...over,
     });
 
+  it('reports an incumbent Swift daemon rather than false Node readiness', async () => {
+    expect(await wait({ probeHealth: async () => ({ pid: 7701, mode: 'daemon', isSwift: true }) }))
+      .toEqual({ ok: false, reason: 'swift-daemon', pid: 7701, port: 9120 });
+  });
+
+  it('waits through Swift health until Node takes ownership', async () => {
+    let calls = 0;
+    const verdict = await wait({ probeHealth: async () => ++calls === 1
+      ? { pid: 7701, mode: 'daemon', isSwift: true }
+      : { pid: 4242, mode: 'daemon', isSwift: false }, timeoutMs: 2000 });
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(verdict.daemon.pid).toBe(4242);
+    expect(calls).toBeGreaterThan(1);
+  });
+
+  it('finds Node on a fallback while Swift still answers on the preferred port', async () => {
+    const verdict = await wait({ findDaemonPort: () => 9121,
+      probeHealth: async port => ({ pid: port === 9120 ? 7701 : 4242,
+        mode: 'daemon', isSwift: port === 9120 }) });
+    expect(verdict.ok).toBe(true);
+    if (verdict.ok) expect(verdict.daemon.port).toBe(9121);
+  });
+
   it('returns no-daemon when nothing ever answers', async () => {
     // The defect this replaced: `spawn()` resolving a pid was treated as proof
     // the daemon started, so a child that died on EADDRINUSE was still

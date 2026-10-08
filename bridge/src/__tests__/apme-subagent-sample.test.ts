@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -95,6 +95,32 @@ describe('subagent census → SessionSample producer', () => {
       weight: 1,
     }));
     expect(runId).toBeTruthy();
+  });
+
+  it.each([false, true])('accounts for foreground CI blocking without changing Stop attribution (background=%s)', (background) => {
+    const collector = new ApmeCollector(store);
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      clock.mockReturnValue(100_000);
+      const runId = collector.openRun({ sessionId: 'ci', agentType: 'claude-code', projectName: 'CI' })!;
+      collector.ingestHook('ci', 'UserPromptSubmit', { prompt: 'watch the checks' });
+      // An earlier background watcher must not hide a later foreground span.
+      collector.ingestHook('ci', 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'background-first',
+        tool_input: { command: 'gh run watch 12', run_in_background: true } });
+      clock.mockReturnValue(101_000);
+      collector.ingestHook('ci', 'PreToolUse', { tool_name: 'Bash', tool_use_id: 'watch',
+        tool_input: { command: 'gh pr checks 460 --watch --repo puritysb/AgentDeck', run_in_background: background } });
+      clock.mockReturnValue(105_000);
+      collector.ingestHook('ci', 'PostToolUse', { tool_name: 'Bash', tool_use_id: 'watch' });
+      clock.mockReturnValue(106_000);
+      collector.noteTurnStop('ci');
+      const turn = store.listTurns(runId)[0];
+      expect(turn.end_source).toBe('stop');
+      expect(JSON.parse(turn.efficiency_json as string)).toMatchObject({
+        wall_time_ms: 6000, ci_wait_ms: background ? 0 : 4000, agent_active_ms: background ? 6000 : 2000,
+      });
+      collector.closeRun('ci');
+    } finally { clock.mockRestore(); }
   });
 
   it('refuses to guess a parent task edge when no task is active', () => {

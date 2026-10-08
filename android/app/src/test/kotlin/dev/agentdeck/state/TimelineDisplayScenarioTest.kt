@@ -8,6 +8,126 @@ import org.junit.Test
 
 class TimelineDisplayScenarioTest {
 
+
+    @Test
+    fun `eink projection retains latest tool after three unrelated prompts`() {
+        val prompt = TimelineEntry(1000, "chat_start", "Inspect disk usage", sessionId = "own", runId = "r")
+        val noise = (0 until 3).map { TimelineEntry(2000L + it, "chat_start", "Other prompt $it", sessionId = "other-$it") }
+        val tool = TimelineEntry(5000, "tool_exec", "Latest disk result", detail = "Disk evidence", sessionId = "own", runId = "r")
+        val entries = listOf(prompt) + noise + tool
+        val recent = recentTimelineDisplayGroups(entries, 3)
+        assertEquals(3, recent.size)
+        assertEquals(prompt, recent.last().entry)
+        assertEquals(listOf(tool), recent.last().toolActivity)
+        assertEquals("Latest disk result", timelineLatestActivityEntry(recent.last()).summary)
+        assertEquals(5000L, timelineLatestActivityEntry(recent.last()).timestamp)
+        // Attribution still runs in source order, before the projection sort.
+        assertEquals(prompt, groupConsecutive(entries).first().entry)
+    }
+
+    @Test
+    fun `lcd projection retains latest reply after eighty unrelated turns`() {
+        val prompt = TimelineEntry(1000, "chat_start", "Inspect disk usage", sessionId = "own", runId = "r")
+        val noise = (0 until 80).map { TimelineEntry(2000L + it, "chat_start", "Other prompt $it", sessionId = "other-$it") }
+        val tool = TimelineEntry(5000, "tool_exec", "Disk evidence", sessionId = "own", runId = "r")
+        val reply = TimelineEntry(6000, "chat_response", "Latest disk reply", sessionId = "own", runId = "r", startedAt = 1000)
+        val recent = recentTimelineDisplayGroups(listOf(prompt) + noise + listOf(tool, reply), 50)
+        assertEquals(50, recent.size)
+        assertEquals(prompt, recent.last().entry)
+        assertEquals(reply, recent.last().mergedResponse)
+        assertEquals(listOf(tool), recent.last().toolActivity)
+        assertEquals("Latest disk reply", timelineLatestActivityEntry(recent.last()).summary)
+    }
+
+    @Test
+    fun `folded tool result endedAt outranks a reply without changing the turn identity`() {
+        val prompt = TimelineEntry(1000, "chat_start", "Inspect disk", sessionId = "own", runId = "r")
+        val tool = TimelineEntry(1500, "tool_exec", "exec ×42", detail = "Failure evidence", sessionId = "own", runId = "r", endedAt = 9000)
+        val reply = TimelineEntry(7000, "chat_response", "Earlier reply", sessionId = "own", runId = "r", startedAt = 1000)
+        val other = TimelineEntry(8000, "chat_start", "Other request", sessionId = "other")
+        val group = recentTimelineDisplayGroups(listOf(prompt, tool, reply, other), 3).last()
+        assertEquals(prompt, group.entry)
+        assertEquals(reply, group.mergedResponse)
+        assertEquals("exec ×42", timelineLatestActivityEntry(group).summary)
+        assertEquals("Failure evidence", timelineLatestActivityEntry(group).detail)
+        assertEquals(9000L, timelineLatestActivityEntry(group).timestamp)
+    }
+
+    @Test
+    fun `merged completion and progressive responses advance recency`() {
+        val prompt = TimelineEntry(1000, "chat_start", "Inspect disk", sessionId = "own", runId = "r")
+        val tool = TimelineEntry(1500, "tool_exec", "Disk evidence", sessionId = "own", runId = "r", endedAt = 7000)
+        val other = TimelineEntry(8000, "chat_start", "Other request", sessionId = "other")
+        val completion = TimelineEntry(2000, "chat_end", "Completed disk check", sessionId = "own", runId = "r", startedAt = 1000, endedAt = 9000)
+        val completeGroup = recentTimelineDisplayGroups(listOf(prompt, tool, completion, other), 3).last()
+        assertEquals(completion, completeGroup.mergedCompletion)
+        assertEquals(9000L, timelineGroupActivityAt(completeGroup))
+        assertEquals("Completed disk check", timelineLatestActivityEntry(completeGroup).summary)
+        val progress = TimelineEntry(9000, "chat_response", "Still checking", sessionId = "own", runId = "r", startedAt = 1000, summaryKind = "progress")
+        val progressGroup = recentTimelineDisplayGroups(listOf(prompt, tool, other, progress), 3).last()
+        assertEquals(9000L, timelineGroupActivityAt(progressGroup))
+        assertEquals("Disk evidence", timelineLatestActivityEntry(progressGroup).summary)
+        assertEquals(9000L, timelineLatestActivityEntry(progressGroup).timestamp)
+    }
+
+    @Test
+    fun `equal activity timestamps preserve chronological group order before the cap`() {
+        val a = TimelineEntry(1000, "chat_start", "Request A", sessionId = "a")
+        val b = TimelineEntry(2000, "chat_start", "Request B", sessionId = "b")
+        val entries = listOf(a, b,
+            TimelineEntry(3000, "tool_exec", "A result", sessionId = "a"),
+            TimelineEntry(3000, "tool_exec", "B result", sessionId = "b"))
+        assertEquals(listOf("a", "b"), recentTimelineDisplayGroups(entries, 3).map { it.entry.sessionId })
+        assertEquals("b", recentTimelineDisplayGroups(entries, 1).single().entry.sessionId)
+    }
+
+    @Test
+    fun `selected and expanded turns keep their identity when activity reorders rows`() {
+        val a = TimelineEntry(1000, "chat_start", "Request A", sessionId = "a")
+        val b = TimelineEntry(2000, "chat_start", "Request B", sessionId = "b")
+        val before = recentTimelineDisplayGroups(listOf(a, b), 50)
+        val selected = timelineGroupKey(before[1])
+        val expanded = timelineGroupKey(before[0])
+        val after = recentTimelineDisplayGroups(listOf(a.copy(summary = "Enriched A"), b,
+            TimelineEntry(5000, "tool_exec", "A result", sessionId = "a")), 50)
+        assertEquals(0, timelineSelectedGroupIndex(after, selected))
+        assertEquals("b", after[timelineSelectedGroupIndex(after, selected)].entry.sessionId)
+        assertEquals(1, timelineSelectedGroupIndex(after, expanded))
+        assertEquals("a", after[timelineSelectedGroupIndex(after, expanded)].entry.sessionId)
+        assertEquals(timelineGroupItemKeys(before).toSet(), timelineGroupItemKeys(after).toSet())
+        val legacy = listOf(GroupedEntry(TimelineEntry(1000, "error", "One")), GroupedEntry(TimelineEntry(1000, "error", "Two")))
+        assertEquals(2, timelineGroupItemKeys(legacy).toSet().size)
+        assertEquals(-1, timelineSelectedGroupIndex(legacy, timelineGroupKey(legacy[0])))
+    }
+
+    @Test
+    fun `legacy collision keys are assigned before recency sorting and remain selectable`() {
+        val a = TimelineEntry(1000, "tool_exec", "Legacy A", endedAt = 2000)
+        val b = TimelineEntry(1000, "tool_exec", "Legacy B", endedAt = 3000)
+        val initial = recentTimelineDisplayGroups(listOf(a), 50)
+        val initialSelection = timelineGroupKey(initial.single())
+        val before = recentTimelineDisplayGroups(listOf(a, b), 50)
+        assertEquals(0, timelineSelectedGroupIndex(before, initialSelection))
+        val selected = timelineGroupKey(before[1])
+        val after = recentTimelineDisplayGroups(listOf(a.copy(endedAt = 4000), b), 50)
+        assertEquals(2, timelineGroupItemKeys(after).toSet().size)
+        assertEquals(after.map(::timelineGroupKey), timelineGroupItemKeys(after))
+        assertEquals(0, timelineSelectedGroupIndex(after, selected))
+        assertEquals("Legacy B", after[timelineSelectedGroupIndex(after, selected)].entry.summary)
+        val contexts = recentTimelineDisplayGroups(listOf(a.copy(agentType = "openclaw", projectName = "A"),
+            b.copy(agentType = "claude-code", projectName = "B")), 50)
+        assertEquals(2, timelineGroupItemKeys(contexts).toSet().size)
+    }
+
+    @Test
+    fun `same millisecond child content wins over the prompt on eink`() {
+        val prompt = TimelineEntry(1000, "chat_start", "Inspect disk", sessionId = "own", runId = "r")
+        val reply = TimelineEntry(1000, "chat_response", "Disk reply", sessionId = "own", runId = "r", startedAt = 1000)
+        val group = recentTimelineDisplayGroups(listOf(prompt, reply), 3).single()
+        assertEquals("Disk reply", timelineLatestActivityEntry(group).summary)
+        assertEquals(prompt, group.entry)
+    }
+
     @Test
     fun `multi-agent dashboard timeline projects meaningful session rows`() {
         val entries = listOf(

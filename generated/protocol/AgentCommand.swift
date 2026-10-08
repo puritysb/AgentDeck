@@ -29,6 +29,8 @@ public enum AgentCommand: Equatable {
     case apmeRecommend(taskKind: String?, budgetUsd: Int?, latencyBudgetMs: Int?, preferLocal: Bool?)
     case permissionDecision(requestId: String, decision: String)
     case reviewRun(sessionId: String)
+    case querySessionSettings(sessionId: String, requestId: String)
+    case setSessionSetting(sessionId: String, requestId: String, targetSessionKey: String, key: String, value: String)
     case esp32OtaAck(otaId: String, stage: String, seq: Int?, offset: Int?, written: Int?)
     case esp32OtaError(error: String, otaId: String?, stage: String?)
 
@@ -123,6 +125,19 @@ public enum AgentCommand: Equatable {
             var dict: [String: Any] = ["type": "review_run"]
             dict["sessionId"] = sessionId
             return dict
+        case .querySessionSettings(let sessionId, let requestId):
+            var dict: [String: Any] = ["type": "query_session_settings"]
+            dict["sessionId"] = sessionId
+            dict["requestId"] = requestId
+            return dict
+        case .setSessionSetting(let sessionId, let requestId, let targetSessionKey, let key, let value):
+            var dict: [String: Any] = ["type": "set_session_setting"]
+            dict["sessionId"] = sessionId
+            dict["requestId"] = requestId
+            dict["targetSessionKey"] = targetSessionKey
+            dict["key"] = key
+            dict["value"] = value
+            return dict
         case .esp32OtaAck(let otaId, let stage, let seq, let offset, let written):
             var dict: [String: Any] = ["type": "esp32_ota_ack"]
             dict["otaId"] = otaId
@@ -164,6 +179,8 @@ public enum AgentCommand: Equatable {
         case .apmeRecommend: return "apme_recommend"
         case .permissionDecision: return "permission_decision"
         case .reviewRun: return "review_run"
+        case .querySessionSettings: return "query_session_settings"
+        case .setSessionSetting: return "set_session_setting"
         case .esp32OtaAck: return "esp32_ota_ack"
         case .esp32OtaError: return "esp32_ota_error"
         }

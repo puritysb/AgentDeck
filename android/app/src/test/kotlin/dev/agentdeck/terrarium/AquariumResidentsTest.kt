@@ -14,6 +14,49 @@ import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 class AquariumResidentsTest {
+    @Test fun `shared habitat keeps a closed rock foraging clip and moving feelers`() {
+        val bytes = RuntimeEnvironment.getApplication().assets.open("living-aquarium.glb").use { it.readBytes() }
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val jsonLength = buffer.getInt(12)
+        val json = JSONObject(String(bytes, 20, jsonLength, Charsets.UTF_8))
+        val nodes = json.getJSONArray("nodes")
+        val snail = (0 until nodes.length()).single { nodes.getJSONObject(it).optString("name") == "Fauna snail" }
+        val feelers = (0 until nodes.length()).filter { nodes.getJSONObject(it).optString("name").startsWith("Snail feeler") }
+        val tracks = mutableMapOf<Pair<Int, String>, List<FloatArray>>()
+        val animations = json.getJSONArray("animations")
+        for (i in 0 until animations.length()) {
+            val animation = animations.getJSONObject(i)
+            val channels = animation.getJSONArray("channels")
+            for (c in 0 until channels.length()) {
+                val channel = channels.getJSONObject(c)
+                val target = channel.getJSONObject("target")
+                if (target.getInt("node") != snail && target.getInt("node") !in feelers) continue
+                val sampler = animation.getJSONArray("samplers").getJSONObject(channel.getInt("sampler"))
+                val accessor = json.getJSONArray("accessors").getJSONObject(sampler.getInt("output"))
+                val view = json.getJSONArray("bufferViews").getJSONObject(accessor.getInt("bufferView"))
+                val width = if (accessor.getString("type") == "VEC3") 3 else 4
+                val start = 20 + jsonLength + 8 + view.optInt("byteOffset") + accessor.optInt("byteOffset")
+                tracks[target.getInt("node") to target.getString("path")] = (0 until accessor.getInt("count")).map { frame ->
+                    FloatArray(width) { axis -> buffer.getFloat(start + frame * width * 4 + axis * 4) }
+                }
+            }
+        }
+        val positions = tracks.getValue(snail to "translation")
+        assertTrue(positions.size > 2)
+        assertTrue("Foraging moves instead of freezing", positions.any { !it.contentEquals(positions.first()) })
+        assertArrayEquals(positions.first(), positions.last(), 0.0001f)
+        assertTrue("The authored animal stays near its rock, not across the aquarium", positions.all { p ->
+            kotlin.math.abs(p[0] - positions.first()[0]) < 1f && kotlin.math.abs(p[2] - positions.first()[2]) < 1f
+        })
+        assertArrayEquals(tracks.getValue(snail to "rotation").first(), tracks.getValue(snail to "rotation").last(), 0.0001f)
+        assertEquals(2, feelers.size)
+        for (feeler in feelers) {
+            val rotation = tracks.getValue(feeler to "rotation")
+            assertTrue(rotation.any { !it.contentEquals(rotation.first()) })
+            assertArrayEquals(rotation.first(), rotation.last(), 0.0001f)
+        }
+    }
+
     @Test fun `Kiro gets its own model while unknown types never borrow another mark`() {
         for (kind in listOf("kiro-cli", "kiro-ide")) {
             val state = DashboardState(agentState = AgentState.PROCESSING, agentType = kind,

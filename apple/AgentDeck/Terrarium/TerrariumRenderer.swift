@@ -2,6 +2,7 @@
 // 17-layer rendering order matching Android ColorRenderer.kt
 
 import SwiftUI
+import simd
 
 final class TerrariumRenderer {
     // MARK: - Creatures
@@ -13,6 +14,10 @@ final class TerrariumRenderer {
     private var kiroCreatures: [String: KiroCreature] = [:]
     private var hermesCreatures: [String: HermesCreature] = [:]
     var animateHermes = true
+    var animateCompanions = true
+    private var ciMotions: [String: CiCompanionMotion] = [:]
+    private var ciCenters: [String: SIMD2<Float>] = [:]
+    private var ciPoints: [String: SIMD2<Float>] = [:]
     private let crayfish = CrayfishCreature()
     private let tetra = DataParticleSystem()
     private let bubbles = BubbleSystem()
@@ -45,6 +50,7 @@ final class TerrariumRenderer {
     private var focusedSessionId: String?
     private var focusPulse: Float = 0
     private var subagentOrbitPhase: Float = 0
+    private(set) var backgroundOrbitPhase: Float = 0
     private var currentTimeMs: Double = 0
     /// 0..1 envelope. Ramps up when a creature gains focus, fades down when
     /// the focused creature has no on-screen sprite (or focus cleared).
@@ -67,7 +73,19 @@ final class TerrariumRenderer {
 
     // MARK: - Update
 
-    func update(dt: Float, state: TerrariumState) {
+    func update(dt: Float, state sourceState: TerrariumState) {
+        if animateCompanions {
+            backgroundOrbitPhase += min(max(dt, 0), 0.05) * BackgroundWorkPresentation.radiansPerSecond
+        }
+        var state = sourceState
+        let visibleIDs = Set(AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId).map(\.id))
+        state.creatures = state.creatures.filter { visibleIDs.contains($0.id) }
+        state.cloudCreatures = state.cloudCreatures.filter { visibleIDs.contains($0.id) }
+        state.opencodeCreatures = state.opencodeCreatures.filter { visibleIDs.contains($0.id) }
+        state.antigravityCreatures = state.antigravityCreatures.filter { visibleIDs.contains($0.id) }
+        state.kiroCreatures = state.kiroCreatures.filter { visibleIDs.contains($0.id) }
+        state.hermesCreatures = state.hermesCreatures.filter { visibleIDs.contains($0.id) }
+        state.crayfishVisible = state.crayfishVisible && visibleIDs.contains("crayfish")
         // Environment state propagation
         envState = state.environment
         waterEffect.setState(envState)
@@ -224,6 +242,19 @@ final class TerrariumRenderer {
         }
         crayfish.update(dt: dt, state: state)
 
+        ciCenters = octopuses.mapValues { [ $0.currentX,$0.currentY ] }
+            .merging(clouds.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
+            .merging(opencodeCreatures.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
+            .merging(antigravityCreatures.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
+            .merging(kiroCreatures.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
+            .merging(hermesCreatures.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
+        for id in ciCenters.keys {
+            guard let wait = state.ciWaits[id] else { ciMotions.removeValue(forKey:id);continue }
+            var motion = ciMotions[id] ?? CiCompanionMotion(id:id)
+            motion.update(wait,dt:animateCompanions ? dt : 0)
+            ciMotions[id] = motion
+        }
+        ciMotions = ciMotions.filter { ciCenters[$0.key] != nil && state.ciWaits[$0.key] != nil }
         lastState = state
     }
 
@@ -282,6 +313,7 @@ final class TerrariumRenderer {
         // and wired satellites belong to the parent creature and never enter
         // hit testing, session selection, approval, or steering paths.
         drawSubagentOrbits(context: &context, size: size)
+        drawBackgroundWork(context: &context, size: size)
 
         // Name tags are collected while creatures draw and painted once, in
         // priority order, after the last creature (DESIGN.md §6.4).
@@ -322,6 +354,17 @@ final class TerrariumRenderer {
         // Layer 9.46: name tags, resolved together so none hides a resident.
         TerrariumNameTagLayer.active = nil
         nameTags.flush(context: &context)
+        ciPoints.removeAll()
+        if let state = lastState {
+            for (id,motion) in ciMotions {
+                guard let wait=state.ciWaits[id],motion.visible(wait),let center=ciCenters[id] else { continue }
+                let angle=motion.angle
+                let point=CiCompanionPresentation.position(center:center,angle:angle,size:size)
+                ciPoints[id]=point
+                CiCompanionPresentation.draw(context:&context,size:size,center:center,position:point,wait:wait)
+            }
+        }
+
 
         if includeHabitat {
             // Layer 9.5: Front-layer fish
@@ -417,6 +460,28 @@ final class TerrariumRenderer {
 
     private func isCrayfishFocusId(_ id: String) -> Bool {
         id == "openclaw-gateway" || id == "crayfish"
+    }
+
+    // MARK: - Background work (separate from the child-agent orbits)
+
+    private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
+        guard let state = lastState else { return }
+        for creature in state.creatures {
+            guard let count = state.backgroundTaskCounts[creature.id], count > 0,
+                  creature.state == .working, let live = octopuses[creature.id] else { continue }
+            let center = CGPoint(x: CGFloat(live.currentX) * size.width, y: CGFloat(live.currentY) * size.height)
+            let radius = max(26, CGFloat(live.scale) * min(size.width, size.height) * 0.14)
+            for index in 0..<BackgroundWorkPresentation.visibleCount(count) {
+                let offset = BackgroundWorkPresentation.offset(index: index, count: count, phase: backgroundOrbitPhase)
+                let point = CGPoint(x: center.x + CGFloat(offset.x) * radius, y: center.y + CGFloat(offset.y) * radius)
+                let tile = CGRect(x: point.x - 4, y: point.y - 3, width: 8, height: 6)
+                context.fill(Path(roundedRect: tile, cornerRadius: 2), with: .color(DesignTokens.Session.working))
+            }
+            context.draw(Text(BackgroundWorkPresentation.label(count))
+                .font(.custom("IBMPlexSans", size: 10))
+                .foregroundStyle(DesignTokens.Session.working),
+                at: CGPoint(x: center.x, y: center.y + radius * 0.5 + 8))
+        }
     }
 
     // MARK: - Subagent Orbits
@@ -804,6 +869,14 @@ final class TerrariumRenderer {
             if distance < bestDist { bestId = id; bestDist = distance }
         }
 
+        for (id, k) in kiroCreatures {
+            let distance = hypot(k.currentX-nx, k.currentY-ny)
+            if distance < bestDist { bestId = id; bestDist = distance }
+        }
+        for (id,point) in ciPoints {
+            let distance=hypot(point.x-nx,point.y-ny)
+            if distance<bestDist { bestId=id;bestDist=distance }
+        }
         return bestId
     }
 

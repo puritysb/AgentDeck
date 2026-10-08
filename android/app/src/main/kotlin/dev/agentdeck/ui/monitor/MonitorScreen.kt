@@ -318,38 +318,40 @@ fun MonitorScreen(
                 },
             )
         } else {
-            // Layer 2: Timeline over sand area
-            if (showTimeline && (!nativeAquarium || !hudHidden)) {
-                TimelineStrip(
-                    entries = timelineEntries,
-                    filter = timelineFilter,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .fillMaxHeight(TerrariumLayout.SAND_HEIGHT_FRACTION)
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                )
-
-                // Layer 3: Tablet foreground. Keep OpenClaw visible over the
-                // lower TIMELINE detail pane without lifting all fish/canvas
-                // layers above the text.
-                if (drawCrayfishForeground) {
-                    OpenClawForegroundLayer(
-                        mainCrayfish = mainCrayfish,
-                        modifier = Modifier.fillMaxSize(),
+            DashboardHudTypography {
+                // Layer 2: Timeline over sand area
+                if (showTimeline && (!nativeAquarium || !hudHidden)) {
+                    TimelineStrip(
+                        entries = timelineEntries,
+                        filter = timelineFilter,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .fillMaxHeight(TerrariumLayout.SAND_HEIGHT_FRACTION)
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
                     )
-                }
-            }
 
-            // Layer 4: HUD overlay panels. Draw after the foreground crayfish
-            // so right-side topology text remains readable when their areas
-            // intersect.
-            MonitorHUD(
-                dashState = dashState,
-                hudHidden = hudHidden,
-                showSessionList = showSessionList,
-                showTopologyRail = showTankStatus || showDeviceDiagnostic,
-            )
+                    // Layer 3: Tablet foreground. Keep OpenClaw visible over the
+                    // lower TIMELINE detail pane without lifting all fish/canvas
+                    // layers above the text.
+                    if (drawCrayfishForeground) {
+                        OpenClawForegroundLayer(
+                            mainCrayfish = mainCrayfish,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+
+                // Layer 4: HUD overlay panels. Draw after the foreground crayfish
+                // so right-side topology text remains readable when their areas
+                // intersect.
+                MonitorHUD(
+                    dashState = dashState,
+                    hudHidden = hudHidden,
+                    showSessionList = showSessionList,
+                    showTopologyRail = showTankStatus || showDeviceDiagnostic,
+                )
+            }
         }
 
         // Layer 5: Rotation + settings controls. Rotation stays available

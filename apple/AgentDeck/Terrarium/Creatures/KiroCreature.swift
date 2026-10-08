@@ -40,8 +40,11 @@ final class KiroCreature: Creature {
     var scale: Float
 
     private var time: Float = 0
-    private(set) var currentX: Float
-    private(set) var currentY: Float
+    var currentX: Float { simulationX }
+    var currentY: Float { simulationY }
+    var simulationPosition: SIMD2<Float> { [simulationX, simulationY] }
+    private(set) var simulationX: Float
+    private(set) var simulationY: Float
     private var phaseOffset: Float
     private var driftPhase: Float
 
@@ -70,8 +73,8 @@ final class KiroCreature: Creature {
         self.homeX = homeX
         self.homeY = homeY
         self.scale = scale
-        self.currentX = homeX
-        self.currentY = homeY
+        self.simulationX = homeX
+        self.simulationY = homeY
         self.phaseOffset = Float.random(in: 0...Float.pi * 2)
         self.driftPhase = Float.random(in: 0...Float.pi * 2)
     }
@@ -119,19 +122,19 @@ final class KiroCreature: Creature {
         let pulseSpeed: Float = visualState == .working ? 1.4 : 0.42
         let pulseAmp: Float = visualState == .working ? 0.013 : 0.008
         let pulseBob = sin((time + phaseOffset) * pulseSpeed) * pulseAmp
-        currentY += (targetY + pulseBob - currentY) * dt * lerpRate
+        simulationY += (targetY + pulseBob - simulationY) * dt * lerpRate
 
         let driftAmp: Float = visualState == .working ? min(0.045, 0.018 + scale * 0.025) : 0.009
         let driftSpeed: Float = visualState == .working ? 0.18 : 0.22
         let driftX = sin((time + driftPhase) * driftSpeed) * driftAmp
-        currentX += (homeX + driftX - currentX) * dt * lerpRate
+        simulationX += (homeX + driftX - simulationX) * dt * lerpRate
 
         // Stays clear of the session-list HUD on the left and the Codex cloud
         // band on the right; the vertical cap keeps it out of the octopus band.
         let minX = max(0.19, homeX - 0.05)
         let maxX = min(0.36, homeX + 0.05)
-        currentX = min(maxX, max(minX, currentX))
-        currentY = min(0.42, max(0.05, currentY))
+        simulationX = min(maxX, max(minX, simulationX))
+        simulationY = min(0.42, max(0.05, simulationY))
     }
 
     func currentPosition() -> (x: Float, y: Float) { (currentX, currentY) }

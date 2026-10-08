@@ -216,18 +216,52 @@ function httpPost(ip: string, body: Record<string, unknown>, timeoutMs = REQUEST
   });
 }
 
+/** Max frames in one device-side animation (Divoom documents PicNum < 60). */
+export const PIXOO_MAX_ANIMATION_FRAMES = 40;
+/** Pause between the per-frame POSTs of one animation upload. */
+export const PIXOO_ANIMATION_FRAME_GAP_MS = 120;
+
 /**
- * Push a single 64×64 RGB frame to the device.
- * PicID increments per frame so the device renders each new image.
- * @param buffer - 12,288 bytes (64 * 64 * 3) raw RGB
+ * Build the `Draw/SendHttpGif` requests for one animation, as the Divoom LAN
+ * API specifies it: ONE request per frame, every request carrying the same
+ * `PicID` and `PicNum`, with `PicOffset` = that frame's index and `PicData` =
+ * exactly one 64×64 RGB frame (12,288 bytes → 16,384 base64 chars).
+ *
+ * The multi-frame attempts recorded in 2026-06/07 (REST timeout and 60–87.5%
+ * ping loss right after the request) sent every frame concatenated into ONE
+ * `PicData` at `PicOffset: 0` — an N× oversized body the API never documents.
+ * A single-frame command stays byte-identical to the proven path.
  */
+export function buildSendHttpGifCommands(
+  buffers: Uint8Array[],
+  picId: number,
+  speedMs: number,
+): Array<Record<string, unknown>> {
+  return buffers.map((buffer, offset) => {
+    const boosted = new Uint8Array(buffer.length);
+    for (let i = 0; i < buffer.length; i++) boosted[i] = gammaLUT[buffer[i]];
+    return {
+      Command: 'Draw/SendHttpGif',
+      PicNum: buffers.length,
+      PicWidth: 64,
+      PicOffset: offset,
+      PicID: picId,
+      PicSpeed: speedMs,
+      PicData: Buffer.from(boosted).toString('base64'),
+    };
+  });
+}
+
 /**
- * Push an animation sequence of 64x64 RGB frames to the device.
- * @param buffers - Array of raw RGB buffers, each 12,288 bytes (64 * 64 * 3)
- * @param speed - Playback speed in ms per frame (default 100ms)
+ * Push one image (1 buffer) or one device-side looping animation (N buffers).
+ * Frames of an animation are uploaded strictly sequentially, each awaited and
+ * spaced by `PIXOO_ANIMATION_FRAME_GAP_MS`; the first failed frame aborts the
+ * upload and forces a PicID re-sync on the next push.
+ * @param buffers - Raw RGB buffers, each 12,288 bytes (64 * 64 * 3)
+ * @param speed - Playback speed in ms per frame
  */
 export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100): Promise<boolean> {
-  if (buffers.length === 0) return false;
+  if (buffers.length === 0 || buffers.length > PIXOO_MAX_ANIMATION_FRAMES) return false;
   for (const buffer of buffers) {
     if (buffer.length !== 64 * 64 * 3) {
       debug(TAG, `Invalid frame size: ${buffer.length} (expected 12288)`);
@@ -248,7 +282,7 @@ export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100)
     debug(TAG, `Synced PicID for ${ip}: ${picId}`);
   }
 
-  // Increment PicID per frame (device renders new image only on new sequential ID)
+  // One PicID per image/animation (device shows new content only on a new sequential ID)
   picId++;
 
   // Prevent counter overflow (~300 causes device lockup) — reset gracefully
@@ -261,28 +295,19 @@ export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100)
 
   devicePicId.set(ip, picId);
 
-  // Apply gamma boost for LED display and concatenate all frames
-  const totalLength = buffers.length * 64 * 64 * 3;
-  const boostedCombined = new Uint8Array(totalLength);
-  let offset = 0;
-
-  for (const buffer of buffers) {
-    for (let i = 0; i < buffer.length; i++) {
-      boostedCombined[offset + i] = gammaLUT[buffer[i]];
+  const commands = buildSendHttpGifCommands(buffers, picId, speed);
+  for (let i = 0; i < commands.length; i++) {
+    if (i > 0) await new Promise(resolve => setTimeout(resolve, PIXOO_ANIMATION_FRAME_GAP_MS));
+    const ok = await postCommand(ip, commands[i], 5000);
+    if (!ok) {
+      if (commands.length > 1) {
+        devicePicId.delete(ip);
+        debug(TAG, `Animation upload to ${ip} failed at frame ${i + 1}/${commands.length}`);
+      }
+      return false;
     }
-    offset += buffer.length;
   }
-
-  const base64 = Buffer.from(boostedCombined).toString('base64');
-  return postCommand(ip, {
-    Command: 'Draw/SendHttpGif',
-    PicNum: buffers.length,
-    PicWidth: 64,
-    PicOffset: 0,
-    PicID: picId,
-    PicSpeed: speed,
-    PicData: base64,
-  }, 5000);
+  return true;
 }
 
 /**
@@ -343,6 +368,33 @@ export async function getHttpGifId(ip: string): Promise<number | null> {
     return (data as any)?.PicId ?? 0;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Is the panel still showing what WE last uploaded? Two tiny queries, no upload
+ * (so no loading hourglass): the active channel is Custom (3) and the device's
+ * PicID counter has not fallen below ours. NOT equality: measured 2026-10-08 on
+ * the Pixoo64, the counter does not track the uploaded ID one-for-one (215 →
+ * 217 after one single-frame upload, → 218 after a four-frame one), so equality
+ * called every healthy device stale. A reboot resets the counter (lower), a
+ * button press changes the channel — those are the two things worth catching.
+ * Three answers, not two: `unknown` (a query failed,
+ * or the device is backed off) must never read as `stale`, or a flaky link
+ * re-uploads forever — the caller retains and asks again later.
+ */
+export type DeviceContent = 'ours' | 'stale' | 'unknown';
+export async function checkDeviceContent(ip: string): Promise<DeviceContent> {
+  if (isBackedOff(ip)) return 'unknown';
+  const expected = devicePicId.get(ip);
+  if (expected === undefined) return 'stale';
+  try {
+    const channel = await httpPost(ip, { Command: 'Channel/GetIndex' });
+    const picId = await getHttpGifId(ip);
+    if (!channel || picId === null) return 'unknown';
+    return channel.SelectIndex === 3 && picId >= expected ? 'ours' : 'stale';
+  } catch {
+    return 'unknown';
   }
 }
 

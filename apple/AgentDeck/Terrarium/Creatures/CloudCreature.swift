@@ -26,8 +26,11 @@ final class CloudCreature: Creature {
     var scale: Float
 
     private var time: Float = 0
-    private(set) var currentX: Float
-    private(set) var currentY: Float
+    var currentX: Float { simulationX }
+    var currentY: Float { simulationY }
+    var simulationPosition: SIMD2<Float> { [simulationX, simulationY] }
+    private(set) var simulationX: Float
+    private(set) var simulationY: Float
     private var phaseOffset: Float
     private var driftPhase: Float
     private var stateNeighborGap: Float = 1
@@ -44,8 +47,8 @@ final class CloudCreature: Creature {
         self.homeX = homeX
         self.homeY = homeY
         self.scale = scale
-        self.currentX = homeX
-        self.currentY = homeY
+        self.simulationX = homeX
+        self.simulationY = homeY
         self.phaseOffset = Float.random(in: 0...Float.pi * 2)
         self.driftPhase = Float.random(in: 0...Float.pi * 2)
     }
@@ -90,7 +93,7 @@ final class CloudCreature: Creature {
         let pulseSpeed: Float = visualState == .pulsing ? 1.5 : 0.5
         let pulseAmp: Float = visualState == .pulsing ? 0.015 : 0.008
         let pulseBob = sin((time + phaseOffset) * pulseSpeed) * pulseAmp
-        currentY += (targetY + pulseBob - currentY) * dt * lerpRate
+        simulationY += (targetY + pulseBob - simulationY) * dt * lerpRate
 
         // Processing: wider horizontal drift (floating near surface, drifting side to side)
         let neighborGap = stateNeighborGap
@@ -98,12 +101,12 @@ final class CloudCreature: Creature {
         let driftAmp: Float = min(visualState == .pulsing ? 0.025 : 0.006, driftLimit)
         let driftSpeed: Float = visualState == .pulsing ? 0.15 : 0.3
         let driftX = sin((time + driftPhase) * driftSpeed) * driftAmp
-        currentX += (homeX + driftX - currentX) * dt * lerpRate
+        simulationX += (homeX + driftX - simulationX) * dt * lerpRate
 
         let minX = max(0.18, homeX - 0.08)
         let maxX = min(0.72, homeX + 0.08)
-        currentX = min(maxX, max(minX, currentX))
-        currentY = min(0.62, max(0.08, currentY))
+        simulationX = min(maxX, max(minX, simulationX))
+        simulationY = min(0.62, max(0.08, simulationY))
     }
 
     func currentPosition() -> (x: Float, y: Float) { (currentX, currentY) }
@@ -179,6 +182,8 @@ final class CloudCreature: Creature {
                 startPoint: .zero,
                 endPoint: CGPoint(x: 24, y: 24)
             ), style: FillStyle(eoFill: true))
+            bodyCtx.opacity = 1
+            CreatureBrandFeatures.draw("codex", context: bodyCtx)
         }
     }
 

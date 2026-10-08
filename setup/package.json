@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/setup",
-  "version": "1.6.0",
+  "version": "1.8.0",
   "engines": {
     "node": "22.x || 24.x || 26.x"
   },
@@ -28,7 +28,8 @@
     "agentdeck-setup": "./dist/setup.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/__tests__"
   ],
   "scripts": {
     "build": "tsc",

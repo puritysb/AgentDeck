@@ -47,6 +47,104 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- EPD47 and NM-EPD-420 e-ink panels refresh less and say when they last did.
+  EPD47 updates drive only the pixels that changed, in the rows that changed,
+  instead of erasing and redrawing every inked pixel; a clean panel no longer
+  flashes just because ten minutes passed. NM no longer runs two 13-second
+  cycles back to back, and neither panel repaints a frame identical to the one
+  already shown. Both print an "as of HH:MM" stamp from the host clock
+  (`display_state.hostHm`, sent by both daemons), and "since HH:MM" while
+  offline.
+- EPD47 and NM show a waiting decision without a key press first, and the NM
+  decision page keeps all three options on screen (the last one, usually Deny,
+  used to fall off). The EPD47 home lists every other session with its agent
+  and state instead of repeating the primary one.
+- ESP32 boards on USB serial keep their WiFi radio off again after the daemon
+  re-sends credentials; the two e-ink panels had stayed on WiFi and USB at once.
+  The e-ink panels also stay off WiFi at boot while USB serial is present.
+
+## 2026-10-06 — npm 1.8.0, Apple 1.8.0, Android 1.8.0, ESP32 1.8.0, Stream Deck 1.8.0, Ulanzi 1.8.0
+
+Coordinated 1.8.0 release. Store review and public availability are tracked
+separately for each channel in the
+[release status](https://github.com/puritysb/AgentDeck/blob/master/RELEASING.md#delivery-readback-2026-10-06).
+
+- Stream Deck and D200H show each observed session's reported model, reasoning
+  effort and permission mode separately, using the agent's own vocabulary.
+  Activity cards show available task, subagent and context information without
+  borrowing another session's state.
+- OpenClaw MODEL and THINKING keys open a paged picker of values reported by the
+  Gateway. Changes apply to the conversation whose settings were displayed;
+  clearing an override returns to the reported default. Refusals and unavailable
+  connections stay visible. Claude and Codex remain readout-only.
+- Timeline on Apple and Android keeps ordinary tool activity beneath its
+  originating request, alongside the final response. Tool details expand inside
+  the turn; approvals, subagent events and activity without a known prompt stay
+  separate. Busy concurrent sessions no longer split a request from its reply
+  after 40 intervening groups, and Android updates no longer overwrite another
+  known session or run within the same second ([#461](https://github.com/puritysb/AgentDeck/issues/461)).
+- Android Timeline selects visible turns by their latest activity, so a new
+  response remains visible even when its request is older. Selection and expanded
+  details stay attached to the same turn after reordering.
+- Android tablet HUD text uses natural line height instead of inheriting the
+  larger body-text spacing, while preserving font size and accessibility scaling.
+- Node and macOS exclude confirmed Codex subagents from fallback telemetry
+  discovery and remove early phantom project rows without hiding normal sessions.
+- Installed npm build identity includes resolved shared and hooks dependencies,
+  including hoisted package layouts, so restart checks identify the actual code.
+- OpenClaw folds the tool calls of one turn into one updating summary, with
+  bounded command and result evidence. Failures take priority over successful
+  calls in the detail budget, and omitted details are explicitly marked.
+- Show observed Claude/Codex/OpenCode/Hermes CI watch requests separately from agent activity.
+  Background waits survive the end of an agent turn; foreground tool completion,
+  tool failure, re-invocation and session end clear the applicable wait explicitly.
+  Hook evidence alone has unknown CI status. The Node daemon can query explicitly identified GitHub
+  checks with bounded requests and recognize owned watcher-process exit.
+  Session lists and deck keys include complete check counts when available.
+  The original GitHub Octocat orbits the waiting agent in native 3D and Canvas
+  aquariums; small matrix displays use its generated compact glyph. LCD/e-ink
+  keep readable CI activity, with permission requests retaining priority.
+  APME records CI relations and separates foreground blocking time from active
+  turn time; background checks never subtract active time or alter `end_source`.
+  Hermes exports bounded CI intent and hashed invocation identities without raw
+  commands or tool arguments. Concurrent sessions retain independent CI timeline rows;
+  Swift broadcasts accepted annotations immediately and retains model attribution
+  on runs, turns and tasks.
+- Keep canceled 3D asset loads retryable instead of leaving a permanent error
+  after initial dashboard updates. Explicit development data-directory overrides
+  no longer import the user's existing daemon registry or credentials. Keep macOS
+  Timeline details upright over the 3D scene with an explicit Copy action, and
+  scale Android CI captions to device density above the Timeline. E-ink paper
+  dashboards show CI waits even for idle rows and refresh when CI evidence changes.
+- Preserve the original creature features across 2D, native 3D and device glyphs:
+  Claude has black eyes, OpenClaw has black eyes with its original bright teal highlights, Codex
+  has an opaque white `> _`, and OpenCode retains its central opening. Monochrome
+  screens preserve the source contours with contrasting ink and paper.
+- ESP32 TTGO pins its validated library versions and gains a real-target Linux
+  compile check, preventing fresh dependency resolution from overflowing static
+  DRAM during release ([#468](https://github.com/puritysb/AgentDeck/pull/468)).
+- Keep the aquarium snail on its authored rock-foraging path and preserve its
+  feeler animation, instead of moving it around an unrelated screen-wide circuit.
+- Keep daemon start/stop/restart service control within the configured data
+  directory, so an isolated QA daemon cannot unload the user’s global service.
+  Refuse foreign-owned targets before touching their supervisor.
+- Verify clean npm tarball installation, native bindings, installed hooks,
+  concurrent sessions, device reconnects and restart persistence with the new
+  packaged acceptance command. Setup tarballs no longer include compiled tests.
+- Recover rejected z.ai credentials through Integrations, including when the
+  Mac app follows the local Node daemon. Distinguish invalid credentials from
+  transport failure and verified usage from successful key storage (#459).
+- Keep Swift-to-Node daemon handover within a shared yield budget, reject a
+  Swift process as successful Node startup, and align Kiro turn-state policy
+  across both daemons (#451).
+- Windows Codex hooks report the actual launcher PID through bounded native
+  ancestry lookup; unrelated or unreadable evidence does not invent identity
+  (#452).
+- Clarify the Hermes-capable receiver requirement and expand live lifecycle,
+  delegated-child and Windows Ulanzi transport regression evidence (#453–#455).
+
+## 2026-10-04 — npm 1.7.0, Android 1.7.0, ESP32 1.7.0, Stream Deck 1.7.0, Ulanzi 1.7.0
+
 - ESP32 WiFi OTA reaches boards the daemon is driving over USB. Those boards
   turn their WiFi radio off while serial is active, so `agentdeck esp32-ota`
   used to fail with "No online WiFi ESP32 target". The daemon now closes that
@@ -84,6 +182,33 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   share one key. Each press switches it between both readings, 5H only and MCP
   only, the same way the Claude weekly key switches with its per-model cap. A
   row with room still gives each window its own key.
+
+- Stream Deck remembers an explicitly selected usage provider across temporary
+  missing data and reconnects, including Claude Extra and Codex Credits.
+- Ulanzi connects to a healthy WSL2 daemon on loopback port 9120 even without a
+  Windows daemon registry. Registry ports are checked through bounded health
+  requests instead of treating a Linux PID as a Windows process. Custom ports
+  still use daemon.json; unrelated port scanning is not enabled.
+- Codex POSIX lifecycle hooks send their actual launching PID. Hermes cancelled
+  turns retain their interruption label, Gateway tools retain conversation
+  context, and expired Gateway sessions close their pending evaluation run.
+
+## 2026-10-03 — Apple 1.7.0
+
+- Add Hermes mermaid rendering to Apple aquariums and device previews. Hermes
+  sessions are read-only; App Store installations receive them through an
+  already configured relay, without an in-app installer or subprocess.
+- Improve Codex hook/OTel ownership and background-thread filtering, fold
+  attributable headless work into its parent, and preserve user-owned TOML
+  when configuring observation. POSIX lifecycle hooks now report the launching
+  Codex process ID so child work can be attributed without an argv guess.
+- Recover OpenCode pending requests across directories and reconnects, and
+  improve Kiro transcript observation.
+- Show purchased Codex credits when a plan window is exhausted. Consolidate
+  each OpenClaw run's tool activity into one timeline row.
+- Wake USB-connected ESP32 displays for Wi-Fi OTA and improve matrix displays.
+- Reject malformed Hermes process IDs instead of probing a truncated or
+  wrapped process number.
 
 ## 2026-09-28 — npm 1.6.0 · Apple 1.6.0 · ESP32 1.6.0 · Stream Deck 1.6.0 · Ulanzi 1.6.0
 

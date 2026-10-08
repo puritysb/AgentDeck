@@ -52,13 +52,23 @@ fun BrandIcon(
         // Pivot at the origin: the default (center) pivot shifts the scaled
         // path up-left by center*(s-1), pushing large icons out of their box.
         scale(s, s, pivot = Offset.Zero) {
+            val features = dev.agentdeck.terrarium.CreatureBrandFeatures
+            val largeMonochrome = isEink && size.value >= features.MONOCHROME_MINIMUM_SIZE
+            val canonical = features.canonical(agentType)
+            val bodyTint = if (largeMonochrome && canonical in features.monochromeLightBodyAgents) dev.agentdeck.ui.theme.DesignTokens.Tide.s50 else color
             for (path in paths) {
                 if (rainbowBrush != null) {
                     drawPath(path, rainbowBrush)
                 } else {
-                    drawPath(path, color)
+                    drawPath(path, bodyTint)
+                }
+                if (largeMonochrome) {
+                    drawPath(path, dev.agentdeck.ui.theme.DesignTokens.Ink.s900,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(features.MONOCHROME_OUTLINE_WIDTH))
                 }
             }
+            features.draw(this, agentType, compactInkMonochrome = isEink && !largeMonochrome,
+                monochromeCreature = largeMonochrome)
         }
     }
 }

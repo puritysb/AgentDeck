@@ -1,6 +1,21 @@
 import SwiftUI
 import RealityKit
 
+/// Shared by the Apple Canvas and RealityKit accents. Work tiles are tasks,
+/// never extra residents or a second count of child agents.
+enum BackgroundWorkPresentation {
+    static let maxTiles = 3
+    static let radiansPerSecond: Float = 0.85
+    static func visibleCount(_ count: Int) -> Int { min(maxTiles, max(0, count)) }
+    static func label(_ count: Int) -> String {
+        "BG · \(count) task" + (count == 1 ? "" : "s")
+    }
+    static func offset(index: Int, count: Int, phase: Float) -> SIMD3<Float> {
+        let angle = phase + Float(index) * 2 * .pi / Float(max(1, visibleCount(count)))
+        return [cos(angle), sin(angle) * 0.32, sin(angle) * 0.42]
+    }
+}
+
 /// A presentation projection of canonical live residents, never inferred providers.
 struct AquariumResident: Equatable {
     enum Activity: String { case idle = "IDLE", working = "WORKING", waiting = "WAITING", error = "ERROR" }
@@ -9,17 +24,26 @@ struct AquariumResident: Equatable {
     let title: String
     let activity: Activity
     var helpers: Int = 0
+    var backgroundTasks: Int = 0
+    var ciWaitLabel: String? = nil
+    var ciWait: CiWaitStatus? = nil
 
     static func foreground(_ items: [Self], focusedID: String?) -> [Self] {
         func priority(_ item: Self) -> Int {
             if item.id == focusedID || (item.id == "crayfish" && focusedID == "openclaw-gateway") { return 0 }
             if item.activity == .waiting { return 1 }
-            if item.activity == .working { return 2 }
-            return 3
+            if item.ciWait?.agentWaiting == true || item.ciWait?.phase == "failed" { return 2 }
+            if item.activity == .working { return 3 }
+            return 4
         }
         return Array(items.sorted {
             let a = priority($0), b = priority($1)
-            return a == b ? $0.id < $1.id : a < b
+            if a != b { return a < b }
+            if a == 2 {
+                let first = $0.ciWait?.openedAt ?? 0, second = $1.ciWait?.openedAt ?? 0
+                if first != second { return first < second }
+            }
+            return $0.id < $1.id
         }.prefix(TerrariumRules.nativeResidentLimit))
     }
 
@@ -47,7 +71,13 @@ struct AquariumResident: Equatable {
         if state.crayfishVisible {
             items.append(Self(id: "crayfish", kind: "openclaw", title: "OpenClaw", activity: state.crayfishState == .sick ? .error : state.crayfishState == .waiting ? .waiting : state.crayfishState == .routing ? .working : .idle))
         }
-        return items.sorted { $0.id < $1.id }
+        return items.map { item in
+            var copy = item
+            copy.backgroundTasks = item.activity == .working ? state.backgroundTaskCounts[item.id] ?? 0 : 0
+            copy.ciWaitLabel = state.ciWaitLabels[item.id]
+            copy.ciWait = state.ciWaits[item.id]
+            return copy
+        }.sorted { $0.id < $1.id }
     }
 }
 
@@ -55,6 +85,15 @@ struct AquariumResident: Equatable {
 @MainActor
 final class AquariumResidents {
     let root = Entity()
+    private var ciTemplate: Entity?
+    private var ciMotions: [String: CiCompanionMotion] = [:]
+    var ciClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    func loadCiCompanion(_ library: Entity) {
+        let imported = library.findEntity(named: "ci_companion") ?? library
+        let template = imported.clone(recursive: true)
+        template.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
+        ciTemplate = template
+    }
     private var templates: [String: Entity] = [:]
     private var substrateTemplate: Entity?
     private(set) var residents: [String: Entity] = [:]
@@ -87,6 +126,7 @@ final class AquariumResidents {
     private var footHeights: [String: Float] = [:]
     let shoal = AquariumShoal()
     private var time: Double = 0
+    private var backgroundPhase: Float = 0
     private var size: Float = 0.85
     var animate = true
     var labelsVisible = true {
@@ -143,6 +183,7 @@ final class AquariumResidents {
             labelDrawOrder.removeValue(forKey: id)
             labelCompact.removeValue(forKey: id)
             motions.removeValue(forKey: id)
+            ciMotions.removeValue(forKey: id)
             hermesSwims.removeValue(forKey: id)
             hermesRigs.removeValue(forKey: id)
             joints.removeValue(forKey: id)
@@ -181,6 +222,7 @@ final class AquariumResidents {
                 position.y += 0.5
                 targets[item.id] = position
             }
+            supports[item.id]?.isEnabled = true
             if residents[item.id] == nil, let template = templates[item.kind] {
                 let resident = Entity()
                 resident.name = "session|" + item.id
@@ -202,6 +244,7 @@ final class AquariumResidents {
                 }
                 resident.addChild(focus)
                 resident.addChild(makeActivityIndicator())
+                resident.addChild(makeBackgroundWork())
                 resident.position = targets[item.id]!
                 root.addChild(resident)
                 residents[item.id] = resident
@@ -217,7 +260,8 @@ final class AquariumResidents {
             }
             guard let resident = residents[item.id] else { continue }
             // Canonical state controls visibility immediately, even while paused.
-            resident.findEntity(named: "activity")?.isEnabled = item.activity == .working
+            resident.findEntity(named: "activity")?.isEnabled = item.activity == .working && item.backgroundTasks == 0
+            updateBackgroundWork(resident, count: item.backgroundTasks)
             resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
             if !animate {
                 resident.position = targets[item.id]!
@@ -225,6 +269,33 @@ final class AquariumResidents {
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)
+                resident.findEntity(named: "ci-cue")?.removeFromParent()
+                if let wait = item.ciWait, item.activity != .waiting {
+                    let mark = wait.phase == "passed" ? "✓" : wait.phase == "failed" ? "!" : wait.phase == "unknown" ? "?" : "CI"
+                    let mesh = MeshResource.generateText(mark, extrusionDepth: 0.002,
+                        font: .init(name: "IBMPlexSans-Bold",size: 0.22) ?? .systemFont(ofSize: 0.22))
+                    let cue = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: nativeColor(CiCompanionPresentation.color(wait)),applyPostProcessToneMap: false)])
+                    cue.name = "ci-cue"
+                    cue.position = [TerrariumRules.nativeActivityBarX,0,0.44]
+                    resident.addChild(cue)
+                }
+            }
+            if let wait = item.ciWait, item.activity != .waiting {
+                var motion = ciMotions[item.id] ?? CiCompanionMotion(id:item.id)
+                motion.update(wait,dt:0,now:ciClock())
+                ciMotions[item.id] = motion
+                if motion.visible(wait,now:ciClock()), resident.findEntity(named:"ci-companion") == nil, let ciTemplate {
+                    let helper = Entity();helper.name="ci-companion"
+                    helper.addChild(ciTemplate.clone(recursive:true));helper.scale = .init(repeating:TerrariumRules.ciCompanionNativeSize)
+                    helper.generateCollisionShapes(recursive:true)
+                    resident.addChild(helper)
+                }
+                resident.findEntity(named:"ci-companion")?.isEnabled = motion.visible(wait,now:ciClock())
+                let angle = motion.angle
+                resident.findEntity(named:"ci-companion")?.position = [cos(angle)*TerrariumRules.ciCompanionNativeRadiusX,
+                    sin(angle)*TerrariumRules.ciCompanionNativeRadiusY,0.44+sin(angle)*TerrariumRules.ciCompanionNativeDepth]
+            } else {
+                resident.findEntity(named:"ci-companion")?.removeFromParent();ciMotions.removeValue(forKey:item.id)
             }
             resident.findEntity(named: "focus")?.isEnabled = state.focusedSessionId == item.id || (item.id == "crayfish" && state.focusedSessionId == "openclaw-gateway")
         }
@@ -236,7 +307,7 @@ final class AquariumResidents {
 
     private func rebuildLabel(for item: AquariumResident, on resident: Entity, compact: Bool) {
         resident.findEntity(named: "label")?.removeFromParent()
-        let label = makeLabel(String(item.title.prefix(22)), activity: item.activity, helpers: item.helpers, compact: compact)
+        let label = makeLabel(String(item.title.prefix(22)), activity: item.activity, helpers: item.helpers, backgroundTasks: item.backgroundTasks, compact: compact, ciWaitLabel: item.ciWaitLabel, ciWait: item.ciWait)
         label.isEnabled = labelsVisible && labelDecisions[item.id]?.mode != .hidden
         resident.addChild(label)
         labelCompact[item.id] = compact
@@ -320,22 +391,39 @@ final class AquariumResidents {
     }
 
     func step(_ delta: Double) {
+        // Result lifetime is monotonic time, independent of animation/sleep.
+        for item in descriptors {
+            if let wait = item.ciWait, let motion = ciMotions[item.id] {
+                residents[item.id]?.findEntity(named: "ci-companion")?.isEnabled = motion.visible(wait,now:ciClock())
+            }
+        }
         guard animate else { return }
         // Bound integration after occlusion/sleep; no wall-clock jump on resume.
         let dt = min(max(delta, 0), 1.0 / 20)
         time += dt
+        backgroundPhase += Float(dt) * BackgroundWorkPresentation.radiansPerSecond
         let blend = Float(1 - exp(-dt * 3))
         var wakes: [AquariumShoal.WorkWake] = []
         let snapshot = residents.keys.sorted().compactMap { id in residents[id].map { (id, $0.position) } }
         let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
+            updateBackgroundWork(entity, count: item.backgroundTasks)
             motion.effort += ((item.activity == .working ? 1 : 0) - motion.effort) * blend
             motion.attention += ((item.activity == .waiting ? 1 : 0) - motion.attention) * blend
             motion.fatigue += ((item.activity == .error ? 1 : 0) - motion.fatigue) * blend
             // Integrate phase rather than multiplying time by a state-dependent rate.
             // State transitions and changes in the roster must never snap a pose.
             motion.phase += Float(dt) * (TerrariumRules.nativeActivityIdleRate + motion.effort * TerrariumRules.nativeActivityWorkRate)
+            if let wait = item.ciWait, var companion = ciMotions[item.id] {
+                companion.update(wait,dt:Float(dt),now:ciClock());ciMotions[item.id] = companion
+                if let helper=entity.findEntity(named:"ci-companion") {
+                    helper.isEnabled=companion.visible(wait,now:ciClock())
+                    let angle=companion.angle
+                    helper.position=[cos(angle)*TerrariumRules.ciCompanionNativeRadiusX,
+                        sin(angle)*TerrariumRules.ciCompanionNativeRadiusY,0.44+sin(angle)*TerrariumRules.ciCompanionNativeDepth]
+                }
+            }
             let phase = motion.phase
             motions[item.id] = motion
             // A short power stroke followed by a longer recovery. The same stroke
@@ -506,17 +594,41 @@ final class AquariumResidents {
         return group
     }
 
-    private func makeLabel(_ title: String, activity: AquariumResident.Activity, helpers: Int, compact: Bool = false) -> Entity {
+    private func makeBackgroundWork() -> Entity {
+        let group = Entity()
+        group.name = "background-work"
+        // Allocate a fixed pool once; frame updates only move existing entities.
+        for index in 0..<BackgroundWorkPresentation.maxTiles {
+            let tile = ModelEntity(mesh: .generateBox(size: [0.14, 0.11, 0.035], cornerRadius: 0.025),
+                materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
+            tile.name = "background-tile-\(index)"
+            group.addChild(tile)
+        }
+        return group
+    }
+
+    private func updateBackgroundWork(_ resident: Entity, count: Int) {
+        guard let group = resident.findEntity(named: "background-work") else { return }
+        group.isEnabled = count > 0
+        for (index, tile) in group.children.enumerated() {
+            tile.isEnabled = index < BackgroundWorkPresentation.visibleCount(count)
+            let offset = BackgroundWorkPresentation.offset(index: index, count: count, phase: backgroundPhase)
+            tile.position = [offset.x * 0.95, offset.y - 0.10, offset.z + 0.12]
+        }
+    }
+
+    private func makeLabel(_ title: String, activity: AquariumResident.Activity, helpers: Int, backgroundTasks: Int = 0, compact: Bool = false, ciWaitLabel: String? = nil, ciWait: CiWaitStatus? = nil) -> Entity {
         let group = Entity()
         group.name = "label"
         let active = activity == .working
         // Session state colours (DESIGN.md §2.7), never the marketing Status palette.
-        let color: Color = switch activity {
+        let stateColor: Color = switch activity {
         case .waiting: DesignTokens.Session.awaiting
         case .working: DesignTokens.Session.working
         case .error: DesignTokens.Session.error
         case .idle: DesignTokens.Session.idle
         }
+        let color = ciWait.map { CiCompanionPresentation.color($0) } ?? stateColor
         func text(_ string: String, name: String, bold: Bool, size: Float, ink: Color, y: Float, maxWidth: Float) -> Entity {
             let mesh = MeshResource.generateText(string, extrusionDepth: 0.002,
                 font: .init(name: bold ? "IBMPlexSans-Bold" : "IBMPlexSans", size: CGFloat(size))
@@ -554,7 +666,8 @@ final class AquariumResidents {
             group.addChild(badge)
         }
         group.addChild(text(title, name: "title", bold: false, size: 0.16, ink: TerrariumColors.hudText, y: 0.96, maxWidth: 1.82))
-        group.addChild(text(activity.rawValue + (helpers > 0 ? " · \(helpers) agents" : ""), name: "status", bold: active, size: 0.16,
+        let status = backgroundTasks > 0 ? BackgroundWorkPresentation.label(backgroundTasks) : activity.rawValue
+        group.addChild(text((ciWaitLabel ?? status) + (helpers > 0 ? " · \(helpers) agents" : ""), name: "status", bold: active, size: 0.16,
                             ink: active ? DesignTokens.Ink.s900 : color, y: 0.70, maxWidth: 1.82))
         return group
     }

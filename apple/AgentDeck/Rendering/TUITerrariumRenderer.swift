@@ -9,11 +9,12 @@
 // Sync pin — verified by `scripts/check-preview-mirror-sync.mjs` (CI). When the
 // origin changes, re-port (or confirm no visual impact given the deliberate
 // simplifications below) and bump the pin in the same commit.
-// SYNC-HASH bridge/src/tui/terrarium.ts 0b5becb6538ee3f5e78aff254a935fef7f4ad488
+// SYNC-HASH bridge/src/tui/terrarium.ts 8c2841861fc5d5656c151d31554b1fa200ced47b
 //
 // Scope / deliberate simplifications (vs the TS original):
-//   - No Braille sprites: creatures render as 3-char ASCII glyphs colored by
-//     agent brand (via StateColors.brand). Preserves silhouette/position.
+//   - The four canonical TUI creatures use generated colored half-cells,
+//     with the source sampler and footprints. Other preview-only glyphs retain
+//     their existing ASCII simplification. Tiny details are area sampled.
 //   - Deterministic only: no Math.random(), no Boids, no Lissajous. Bubble
 //     positions and fish positions are seeded from (index + frame).
 //   - No voice/starburst/signal-wave particle systems. First-pass preview.
@@ -103,6 +104,17 @@ struct TUITerrariumRenderer: View {
             for row in 0..<config.height {
                 for col in 0..<config.width {
                     let cell = grid[row][col]
+                    if cell.topPixel != nil || cell.bottomPixel != nil {
+                        for (half, pixel) in [cell.topPixel, cell.bottomPixel].enumerated() {
+                            guard let pixel else { continue }
+                            let rect = CGRect(x: CGFloat(col) * cellWidth,
+                                y: CGFloat(row) * cellHeight + CGFloat(half) * cellHeight / 2,
+                                width: cellWidth, height: cellHeight / 2)
+                            ctx.fill(Path(rect), with: .color(Color(red: pixel.rgb[0] / 255,
+                                green: pixel.rgb[1] / 255, blue: pixel.rgb[2] / 255).opacity(pixel.alpha)))
+                        }
+                        continue
+                    }
                     guard cell.char != " " else { continue }
                     let text = Text(String(cell.char))
                         .font(.system(size: cellHeight * 0.85,
@@ -137,9 +149,16 @@ enum TerrariumPreview {
 
 // MARK: - Grid model
 
+private struct TerrariumPaintPixel {
+    let rgb: [Double]
+    let alpha: Double
+}
+
 private struct TerrariumCell {
     var char: Character = " "
     var color: Color = .white
+    var topPixel: TerrariumPaintPixel? = nil
+    var bottomPixel: TerrariumPaintPixel? = nil
 }
 
 private enum TerrariumPalette {
@@ -150,7 +169,7 @@ private enum TerrariumPalette {
     static let waveCrest  = Color(red: 100 / 255, green: 149 / 255, blue: 237 / 255)
     static let tetra      = Color(red: 100 / 255, green: 220 / 255, blue: 255 / 255)
     static let nameTag    = Color(red: 180 / 255, green: 180 / 255, blue: 180 / 255)
-    static let awaitQ     = Color(red: 255 / 255, green: 255 / 255, blue: 100 / 255)
+    static let awaitQ     = DesignTokens.UI.attn
 
     /// Creature color = agent brand (StateColors.brand) tinted by state.
     /// Idle → full brand. Processing → brightened. Awaiting → awaiting amber.
@@ -298,16 +317,38 @@ private enum TerrariumGridBuilder {
             let cx = Int(fracX * Double(width))
             let cy = max(1, min(sandRow - 1, Int(fracY * Double(height))))
 
-            let glyph = creatureGlyph(agent: agent, state: state)
             let color = TerrariumPalette.creatureColor(agent: agent, state: state)
-            drawGlyph(glyph, center: (cx, cy), color: color, into: &grid)
+            var canonicalRows: Int? = nil
+            var canonicalColumns: Int? = nil
+            if let key = canonicalKey(agent: agent) {
+                let scale = TuiCanonicalCells.scale(width: width, height: height)
+                let cells = TuiCanonicalCells.cells[key + "." + scale] ?? []
+                canonicalRows = cells.count
+                canonicalColumns = cells.first?.count ?? 0
+                let source = color.cgColor?.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!,
+                    intent: .defaultIntent, options: nil)?.components ?? []
+                let body = source.count >= 3 ? source.prefix(3).map { Double($0) * 255 } : Array(repeating: Double(source.first ?? 0) * 255, count: 3)
+                let x0 = cx - (cells.first?.count ?? 0) / 2, y0 = cy - cells.count / 2
+                for (y, row) in cells.enumerated() { for (x, cell) in row.enumerated() {
+                    let px = x0 + x, py = y0 + y
+                    guard px >= 0, py >= 0, px < width, py < height,
+                          cell.top != nil || cell.bottom != nil else { continue }
+                    let paint: (TuiCanonicalPixel?) -> TerrariumPaintPixel? = { pixel in
+                        pixel.map { TerrariumPaintPixel(rgb: $0.rgb(body: body), alpha: $0.alpha) }
+                    }
+                    grid[py][px] = TerrariumCell(char: cell.top != nil ? "▀" : "▄", color: color,
+                        topPixel: paint(cell.top), bottomPixel: paint(cell.bottom))
+                } }
+            } else {
+                drawGlyph(creatureGlyph(agent: agent, state: state), center: (cx, cy), color: color, into: &grid)
+            }
 
-            // "?" indicator when awaiting (above creature, to the right)
+            // Needs-you badge: solid amber "!" (DESIGN.md §6.4), as in the TUI.
             if state == "awaiting" {
-                let qx = cx + 2
-                let qy = cy - 1
+                let qx = canonicalColumns.map { cx + $0 / 2 + 1 } ?? (cx + 2)
+                let qy = canonicalRows.map { cy - $0 / 2 + $0 } ?? (cy - 1)
                 if qy >= 0, qy < height, qx >= 0, qx < width {
-                    grid[qy][qx] = TerrariumCell(char: "?", color: TerrariumPalette.awaitQ)
+                    grid[qy][qx] = TerrariumCell(char: "!", color: TerrariumPalette.awaitQ)
                 }
             }
 
@@ -317,17 +358,18 @@ private enum TerrariumGridBuilder {
                 let sy = max(0, cy - 2)
                 if grid[sy][sx].char == " " {
                     grid[sy][sx] = TerrariumCell(
-                        char: "\u{2727}", // ✧
-                        color: Color(red: 1.0, green: 0.78, blue: 0.39)
+                        char: "\u{2727}", // ✧ — working is a cyan geometric spark
+                        color: DesignTokens.UI.cyan
                     )
                 }
             }
 
-            // Agent label underneath the creature (short form).
+            // Canonical labels sit above their retained footprint; other preview
+            // glyphs keep the existing short-form label placement.
             let label = shortLabel(for: agent, index: i)
             let lx = cx - label.count / 2
-            let ly = cy + 2
-            if ly < sandRow {
+            let ly = canonicalRows.map { cy - $0 / 2 - 1 } ?? (cy + 2)
+            if ly >= 0, ly < sandRow {
                 for (k, ch) in label.enumerated() {
                     let px = lx + k
                     if px >= 0, px < width {
@@ -338,6 +380,16 @@ private enum TerrariumGridBuilder {
         }
 
         return grid
+    }
+
+    private static func canonicalKey(agent: String) -> String? {
+        switch agent {
+        case "claude-code": return "claudeCode"
+        case "codex-cli", "codex-app": return "codex"
+        case "openclaw": return "openClaw"
+        case "opencode": return "openCode"
+        default: return nil
+        }
     }
 
     /// Single-row 3-char glyph per agent. Kept small so it fits at 60×20.

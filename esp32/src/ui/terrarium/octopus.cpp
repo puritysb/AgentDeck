@@ -14,7 +14,7 @@
 
 // Claude Code robot silhouette rendered from the canonical 24×24 SVG path,
 // rasterized at build time into CreatureGlyphs::OCTOPUS_A8 (alpha mask, EvenOdd eye
-// cutouts) by scripts/generate-creature-glyphs.mjs. Replaces the old 12×8 block grid
+// cutouts) with generated original eye feature layers. Replaces the old 12×8 block grid
 // so ESP32 matches the Apple/Android/StreamDeck robot.
 
 // Per-instance jitter (seeded by index)
@@ -182,6 +182,9 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     // Render canonical robot silhouette from the rasterized alpha mask
     Draw::alphaMask(CreatureGlyphs::OCTOPUS_A8, CreatureGlyphs::OCTOPUS_W, CreatureGlyphs::OCTOPUS_H,
                     startX, startY, glyphPxW, glyphPxH, bodyColor, alpha);
+    Draw::featureLayers(CreatureGlyphs::OCTOPUS_FEATURES, CreatureGlyphs::OCTOPUS_FEATURE_COUNT,
+                        CreatureGlyphs::OCTOPUS_W, CreatureGlyphs::OCTOPUS_H,
+                        startX, startY, glyphPxW, glyphPxH, alpha);
 
     // Speech bubble for ASKING state — positioned beside body (not above, to avoid name tag overlap)
     if (state == CreatureState::ASKING) {

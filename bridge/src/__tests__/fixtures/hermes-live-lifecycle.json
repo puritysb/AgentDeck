@@ -1,0 +1,444 @@
+{
+  "source": {
+    "capturedAt": "2026-10-03",
+    "checkoutCommit": "0a374d167424cdc730ce9761368b62255b551e58",
+    "runtime": "Hermes managed environment snapshot; cli.py, hermes_cli/main.py, cli_tui_mixin.py, gateway/run.py and gateway/platforms/api_server.py byte-match the checkout",
+    "provider": "zai",
+    "model": "glm-5.3",
+    "transport": "Actual plugin callbacks captured at a loopback proxy and forwarded unchanged to an isolated Node daemon",
+    "sanitized": [
+      "session_id",
+      "cwd",
+      "pid"
+    ],
+    "timing": "Ordered capture only; no callback timestamps were collected",
+    "cases": [
+      "Gateway same-session two turns",
+      "CLI initial turn and Ctrl-C exit",
+      "CLI two turns then /new",
+      "Gateway explicit run cancellation",
+      "CLI after /new, Ctrl-C mid-turn and /exit",
+      "Second profile Gateway terminal tool then SIGTERM mid-turn",
+      "CLI invalid model: start, prompt and finalize; upstream emitted no Stop"
+    ]
+  },
+  "events": [
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000001",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000001",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "prompt": "This is an isolated release verification. Reply exactly GATEWAY_ONE. Do not access files or tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000001",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "last_assistant_message": "GATEWAY_ONE",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000001",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "prompt": "Reply exactly GATEWAY_TWO. Do not access files or tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000001",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "last_assistant_message": "GATEWAY_TWO",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000002",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4001
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000002",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4001,
+        "prompt": "Reply exactly CLI_ONE. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000002",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4001,
+        "last_assistant_message": "CLI_ONE",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000002",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4001
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "prompt": "Reply exactly CLI_ONE. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "last_assistant_message": "CLI_ONE",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "prompt": "Reply exactly CLI_TWO. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "last_assistant_message": "CLI_TWO",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000003",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4002
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000004",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000004",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "prompt": "For a cancellation test, write a long original story of at least 10000 words about the ocean. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000004",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4000,
+        "last_assistant_message": "",
+        "interrupted": true,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "prompt": "Reply exactly CLI_AFTER_RESET. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "last_assistant_message": "CLI_AFTER_RESET",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "prompt": "For a cancellation test, write a long original story of at least 10000 words about the ocean. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "glm-5.3",
+        "pid": 4002,
+        "last_assistant_message": "",
+        "interrupted": true,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000005",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4002
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4003
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4003,
+        "prompt": "Use the terminal tool exactly once for the harmless shell command printf GATEWAY_TOOL_OK. Then reply GATEWAY_TOOL_OK. Do not use other tools."
+      }
+    },
+    {
+      "event": "hermes_tool_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (CLI)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4003,
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "event": "hermes_tool_end",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (CLI)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4003,
+        "tool_name": "terminal"
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4003,
+        "last_assistant_message": "GATEWAY_TOOL_OK",
+        "interrupted": false,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4003,
+        "prompt": "For shutdown testing, write an original ocean story of at least 10000 words. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_stop",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000006",
+        "cwd": "",
+        "project_name": "Hermes (api_server)",
+        "platform": "api_server",
+        "model": "glm-5.3",
+        "pid": 4003,
+        "last_assistant_message": "",
+        "interrupted": true,
+        "aborted": false
+      }
+    },
+    {
+      "event": "hermes_session_start",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000007",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-nonexistent-model-for-failure-test",
+        "pid": 4004
+      }
+    },
+    {
+      "event": "hermes_user_prompt_submit",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000007",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "agentdeck-nonexistent-model-for-failure-test",
+        "pid": 4004,
+        "prompt": "This is a release verification of the model failure path. Do not use tools."
+      }
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-00000000000000000000000000000007",
+        "cwd": "/workspace/hermes-release-check",
+        "project_name": "Hermes (cli)",
+        "platform": "cli",
+        "model": "",
+        "pid": 4004
+      }
+    }
+  ]
+}

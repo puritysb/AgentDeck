@@ -13,9 +13,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, utimesSync } from 'fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, utimesSync } from 'fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import {
   computeDistBuildIdentity,
   distBuildIdentity,
@@ -146,6 +147,103 @@ describe('distBuildIdentity', () => {
     expect(identity.files).toBeGreaterThan(0);
     expect(identity.id).toMatch(/^[0-9a-f]{12}$/);
     expect(identity.trees.length).toBeGreaterThan(0);
+  });
+});
+
+describe('installed runtime build identity', () => {
+  function packageAt(scope: string, name: string, code: string) {
+    const pkg = join(scope, name);
+    mkdirSync(join(pkg, 'dist'), { recursive: true });
+    // These are the real public packages' import-only export conditions.
+    writeFileSync(join(pkg, 'package.json'), JSON.stringify({
+      name: `@agentdeck/${name}`, type: 'module', exports: { '.': { import: './dist/index.js' } },
+    }));
+    writeFileSync(join(pkg, 'dist', 'index.js'), code);
+    return join(pkg, 'dist');
+  }
+
+  function installedLayout() {
+    const scope = join(root, 'installed', 'node_modules', '@agentdeck');
+    const bridge = packageAt(scope, 'bridge', 'export const bridge = 1;');
+    // Execute the compiled shipping module from the installed layout, not a
+    // mocked resolver or an identity helper still anchored in the workspace.
+    writeFileSync(join(bridge, 'daemon-build-identity.js'), readFileSync(
+      resolve(__dirname, '../../dist/daemon-build-identity.js'), 'utf8',
+    ));
+    const shared = packageAt(scope, 'shared', 'throw new Error("dependency must not be evaluated");');
+    const hooks = packageAt(scope, 'hooks', 'throw new Error("dependency must not be evaluated");');
+    packageAt(scope, 'unrelated', 'export const noise = 1;');
+    return { bridge, shared, hooks };
+  }
+
+  function run(bridge: string, body: string) {
+    const modulePath = join(bridge, 'daemon-build-identity.js');
+    const script = `import {pathToFileURL} from 'node:url';
+      import {writeFileSync} from 'node:fs';
+      const {computeDistBuildIdentity: fresh, distBuildIdentity: captured} = await import(pathToFileURL(${JSON.stringify(modulePath)}));
+      ${body}`;
+    // windows-hide-exempt: a short-lived pure filesystem regression; no daemon
+    // lifecycle command, port, installed application or real configuration.
+    return JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: root, encoding: 'utf8', timeout: 10_000,
+    }));
+  }
+
+  it('hashes hoisted shared/hooks without executing them and retains the startup snapshot', () => {
+    const { bridge, shared, hooks } = installedLayout();
+    const result = run(bridge, `
+      const initial = captured();
+      writeFileSync(${JSON.stringify(join(shared, 'index.js'))}, 'export const shared = 2;');
+      const sharedChanged = fresh();
+      writeFileSync(${JSON.stringify(join(hooks, 'index.js'))}, 'export const hooks = 3;');
+      console.log(JSON.stringify({initial, sharedChanged, hooksChanged: fresh(), captured: captured()}));`);
+    expect(result.initial.trees).toHaveLength(3);
+    expect(result.initial.trees.every((path: string) => /(?:bridge|shared|hooks)[/\\]dist$/.test(path))).toBe(true);
+    expect(result.sharedChanged.id).not.toBe(result.initial.id);
+    expect(result.hooksChanged.id).not.toBe(result.sharedChanged.id);
+    expect(result.captured.id).toBe(result.initial.id);
+  });
+
+  it('hashes the resolved nested dependency rather than an unused hoisted copy', () => {
+    const { bridge, shared } = installedLayout();
+    const nested = packageAt(join(bridge, '..', 'node_modules', '@agentdeck'), 'shared', 'export const shared = 4;');
+    const result = run(bridge, `
+      const initial = fresh();
+      writeFileSync(${JSON.stringify(join(shared, 'index.js'))}, 'export const unused = 5;');
+      const unrelatedChange = fresh();
+      writeFileSync(${JSON.stringify(join(nested, 'index.js'))}, 'export const shared = 6;');
+      console.log(JSON.stringify({initial, unrelatedChange, nestedChanged: fresh()}));`);
+    expect(result.initial.trees).toHaveLength(3);
+    expect(result.unrelatedChange.id).toBe(result.initial.id);
+    expect(result.nestedChanged.id).not.toBe(result.initial.id);
+  });
+
+  it('preserves the digest when identical runtime packages move from hoisted to nested layout', () => {
+    const { bridge, shared } = installedLayout();
+    const hoisted = run(bridge, 'console.log(JSON.stringify(fresh()));');
+    packageAt(join(bridge, '..', 'node_modules', '@agentdeck'), 'shared', readFileSync(join(shared, 'index.js'), 'utf8'));
+    const nested = run(bridge, 'console.log(JSON.stringify(fresh()));');
+    expect(nested.trees).not.toEqual(hoisted.trees);
+    expect(nested.files).toBe(hoisted.files);
+    expect(nested.bytes).toBe(hoisted.bytes);
+    expect(nested.id).toBe(hoisted.id);
+  });
+
+  it('matches the source checkout digest for byte-equivalent installed package dist trees', () => {
+    const source = resolve(__dirname, '../../..');
+    const scope = join(root, 'equivalent', 'node_modules', '@agentdeck');
+    for (const name of ['shared', 'hooks', 'bridge']) {
+      const pkg = join(scope, name);
+      mkdirSync(pkg, { recursive: true });
+      cpSync(join(source, name, 'dist'), join(pkg, 'dist'), { recursive: true });
+      writeFileSync(join(pkg, 'package.json'), readFileSync(join(source, name, 'package.json')));
+    }
+    const installed = run(join(scope, 'bridge', 'dist'), 'console.log(JSON.stringify(fresh()));');
+    const workspace = computeDistBuildIdentity();
+    expect(installed.trees).toHaveLength(3);
+    expect(installed.files).toBe(workspace.files);
+    expect(installed.bytes).toBe(workspace.bytes);
+    expect(installed.id).toBe(workspace.id);
   });
 });
 

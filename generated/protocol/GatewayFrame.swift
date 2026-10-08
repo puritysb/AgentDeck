@@ -176,10 +176,14 @@ enum ADGatewayMethodName: String, Codable {
     case sessionsList = "sessions.list"
     case sessionsMessagesSubscribe = "sessions.messages.subscribe"
     case sessionsMessagesUnsubscribe = "sessions.messages.unsubscribe"
+    case sessionsPatch = "sessions.patch"
     case sessionsSubscribe = "sessions.subscribe"
     case systemPresence = "system-presence"
 }
 
+/// sessions.patch — per-session overrides for subsequent turns. `null` clears an override
+/// back to inheritance. `model`, `thinkingLevel` and `fastMode` need only `operator.write`
+/// (OpenClaw docs/gateway/protocol/rpc-session-control.md).
 // MARK: - ADGatewayMethodParams
 struct ADGatewayMethodParams: Codable {
     /// Bearer token issued during device pairing.
@@ -213,6 +217,8 @@ struct ADGatewayMethodParams: Codable {
     var id: String?
     var kind: String?
     var key: String?
+    var model: String?
+    var thinkingLevel: String?
 
     enum CodingKeys: String, CodingKey {
         case auth = "auth"
@@ -240,6 +246,8 @@ struct ADGatewayMethodParams: Codable {
         case id = "id"
         case kind = "kind"
         case key = "key"
+        case model = "model"
+        case thinkingLevel = "thinkingLevel"
     }
 }
 
@@ -286,7 +294,9 @@ extension ADGatewayMethodParams {
         decision: ADExecApprovalDecision?? = nil,
         id: String?? = nil,
         kind: String?? = nil,
-        key: String?? = nil
+        key: String?? = nil,
+        model: String?? = nil,
+        thinkingLevel: String?? = nil
     ) -> ADGatewayMethodParams {
         return ADGatewayMethodParams(
             auth: auth ?? self.auth,
@@ -313,7 +323,9 @@ extension ADGatewayMethodParams {
             decision: decision ?? self.decision,
             id: id ?? self.id,
             kind: kind ?? self.kind,
-            key: key ?? self.key
+            key: key ?? self.key,
+            model: model ?? self.model,
+            thinkingLevel: thinkingLevel ?? self.thinkingLevel
         )
     }
 
@@ -1261,6 +1273,8 @@ struct ADConnectResult: Codable {
     var runId: String?
     var aborted: Bool?
     var resolved: Bool?
+    /// Agent-level defaults for rows that do not state their own (model, thinking).
+    var defaults: ADGatewaySessionSettingsFields?
     var sessions: [ADGatewaySession]?
     var subscribed: Bool?
     var key: String?
@@ -1376,6 +1390,7 @@ struct ADConnectResult: Codable {
         case runId = "runId"
         case aborted = "aborted"
         case resolved = "resolved"
+        case defaults = "defaults"
         case sessions = "sessions"
         case subscribed = "subscribed"
         case key = "key"
@@ -1483,6 +1498,7 @@ extension ADConnectResult {
         runId: String?? = nil,
         aborted: Bool?? = nil,
         resolved: Bool?? = nil,
+        defaults: ADGatewaySessionSettingsFields?? = nil,
         sessions: [ADGatewaySession]?? = nil,
         subscribed: Bool?? = nil,
         key: String?? = nil,
@@ -1570,6 +1586,7 @@ extension ADConnectResult {
             runId: runId ?? self.runId,
             aborted: aborted ?? self.aborted,
             resolved: resolved ?? self.resolved,
+            defaults: defaults ?? self.defaults,
             sessions: sessions ?? self.sessions,
             subscribed: subscribed ?? self.subscribed,
             key: key ?? self.key,
@@ -1867,6 +1884,125 @@ extension ADData {
             phase: phase ?? self.phase,
             result: result ?? self.result,
             toolCallId: toolCallId ?? self.toolCallId
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+/// Agent-level defaults for rows that do not state their own (model, thinking).
+///
+/// Model / thinking facts a session row (or the list `defaults`) carries.
+// MARK: - ADGatewaySessionSettingsFields
+struct ADGatewaySessionSettingsFields: Codable {
+    var model: String?
+    var modelOverrideSource: String?
+    var modelProvider: String?
+    var thinkingDefault: String?
+    var thinkingLevel: String?
+    var thinkingLevels: [ADDefaultsThinkingLevel]?
+    var thinkingOptions: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case model = "model"
+        case modelOverrideSource = "modelOverrideSource"
+        case modelProvider = "modelProvider"
+        case thinkingDefault = "thinkingDefault"
+        case thinkingLevel = "thinkingLevel"
+        case thinkingLevels = "thinkingLevels"
+        case thinkingOptions = "thinkingOptions"
+    }
+}
+
+// MARK: ADGatewaySessionSettingsFields convenience initializers and mutators
+
+extension ADGatewaySessionSettingsFields {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADGatewaySessionSettingsFields.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        model: String?? = nil,
+        modelOverrideSource: String?? = nil,
+        modelProvider: String?? = nil,
+        thinkingDefault: String?? = nil,
+        thinkingLevel: String?? = nil,
+        thinkingLevels: [ADDefaultsThinkingLevel]?? = nil,
+        thinkingOptions: [String]?? = nil
+    ) -> ADGatewaySessionSettingsFields {
+        return ADGatewaySessionSettingsFields(
+            model: model ?? self.model,
+            modelOverrideSource: modelOverrideSource ?? self.modelOverrideSource,
+            modelProvider: modelProvider ?? self.modelProvider,
+            thinkingDefault: thinkingDefault ?? self.thinkingDefault,
+            thinkingLevel: thinkingLevel ?? self.thinkingLevel,
+            thinkingLevels: thinkingLevels ?? self.thinkingLevels,
+            thinkingOptions: thinkingOptions ?? self.thinkingOptions
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+// MARK: - ADDefaultsThinkingLevel
+struct ADDefaultsThinkingLevel: Codable {
+    var id: String
+    var label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case label = "label"
+    }
+}
+
+// MARK: ADDefaultsThinkingLevel convenience initializers and mutators
+
+extension ADDefaultsThinkingLevel {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDefaultsThinkingLevel.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        id: String? = nil,
+        label: String?? = nil
+    ) -> ADDefaultsThinkingLevel {
+        return ADDefaultsThinkingLevel(
+            id: id ?? self.id,
+            label: label ?? self.label
         )
     }
 
@@ -2440,7 +2576,14 @@ struct ADGatewaySession: Codable {
     var key: String
     var kind: String?
     var label: String?
+    var model: String?
+    var modelOverrideSource: String?
+    var modelProvider: String?
     var sessionId: String?
+    var thinkingDefault: String?
+    var thinkingLevel: String?
+    var thinkingLevels: [ADSessionThinkingLevel]?
+    var thinkingOptions: [String]?
     var updatedAt: Double?
 
     enum CodingKeys: String, CodingKey {
@@ -2448,7 +2591,14 @@ struct ADGatewaySession: Codable {
         case key = "key"
         case kind = "kind"
         case label = "label"
+        case model = "model"
+        case modelOverrideSource = "modelOverrideSource"
+        case modelProvider = "modelProvider"
         case sessionId = "sessionId"
+        case thinkingDefault = "thinkingDefault"
+        case thinkingLevel = "thinkingLevel"
+        case thinkingLevels = "thinkingLevels"
+        case thinkingOptions = "thinkingOptions"
         case updatedAt = "updatedAt"
     }
 }
@@ -2476,7 +2626,14 @@ extension ADGatewaySession {
         key: String? = nil,
         kind: String?? = nil,
         label: String?? = nil,
+        model: String?? = nil,
+        modelOverrideSource: String?? = nil,
+        modelProvider: String?? = nil,
         sessionId: String?? = nil,
+        thinkingDefault: String?? = nil,
+        thinkingLevel: String?? = nil,
+        thinkingLevels: [ADSessionThinkingLevel]?? = nil,
+        thinkingOptions: [String]?? = nil,
         updatedAt: Double?? = nil
     ) -> ADGatewaySession {
         return ADGatewaySession(
@@ -2484,8 +2641,63 @@ extension ADGatewaySession {
             key: key ?? self.key,
             kind: kind ?? self.kind,
             label: label ?? self.label,
+            model: model ?? self.model,
+            modelOverrideSource: modelOverrideSource ?? self.modelOverrideSource,
+            modelProvider: modelProvider ?? self.modelProvider,
             sessionId: sessionId ?? self.sessionId,
+            thinkingDefault: thinkingDefault ?? self.thinkingDefault,
+            thinkingLevel: thinkingLevel ?? self.thinkingLevel,
+            thinkingLevels: thinkingLevels ?? self.thinkingLevels,
+            thinkingOptions: thinkingOptions ?? self.thinkingOptions,
             updatedAt: updatedAt ?? self.updatedAt
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+// MARK: - ADSessionThinkingLevel
+struct ADSessionThinkingLevel: Codable {
+    var id: String
+    var label: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case label = "label"
+    }
+}
+
+// MARK: ADSessionThinkingLevel convenience initializers and mutators
+
+extension ADSessionThinkingLevel {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADSessionThinkingLevel.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        id: String? = nil,
+        label: String?? = nil
+    ) -> ADSessionThinkingLevel {
+        return ADSessionThinkingLevel(
+            id: id ?? self.id,
+            label: label ?? self.label
         )
     }
 

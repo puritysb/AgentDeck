@@ -220,6 +220,16 @@ Separately, the Codex Integrations row offers an optional **usage display** that
 
 AgentDeck observes Codex and OpenCode only through the opt-in Swift paths described above; users start their chosen agent independently.
 
+## Hermes observation (1.7.0)
+
+Hermes sessions render as a mermaid in the aquarium and previews. They are
+read-only: no approval, prompt injection, voice target or installer is exposed.
+The Swift receiver understands the observer hooks, but the observer's automatic
+endpoint discovery uses the CLI data directory outside the App Sandbox. The
+App Store app therefore receives live Hermes sessions only through an already
+configured external relay. Standalone review does not require this integration;
+the built-in previews work without it.
+
 ## APME evaluation module
 
 AgentDeck can evaluate finished agent turns against configurable rubrics (and, on demand, run an independent "REVIEW" risk check). In the App Store build:
@@ -443,10 +453,13 @@ Contact: admin@foundby.kr
 
 ### macOS Notes field
 
-<!-- notes-field:begin (3,698 chars — recount with `wc -m` after any edit) -->
+<!-- notes-field:begin -->
 
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed — no external process or terminal setup is part of these instructions.
+
+NEW IN 1.7.0
+Hermes mermaid previews and read-only relayed sessions, safer Codex configuration, more reliable session observation, purchased-credit display, and consolidated OpenClaw activity. Hermes live input requires an already configured relay; it is optional and the app offers no installer.
 
 WHAT IT DOES
 AgentDeck Dashboard monitors and evaluates AI coding-agent sessions (Claude Code, opt-in Codex hooks, opt-in OpenCode events, OpenClaw Gateway). Its built-in sandboxed Swift daemon owns the dashboard server, hook ingestion, session state, local-network pairing, and evaluation. Users start their agent independently; AgentDeck receives only the integrations they explicitly enable.

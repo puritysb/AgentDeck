@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { State, type SessionInfo } from '@agentdeck/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_SETTINGS_RULES, State, type SessionInfo } from '@agentdeck/shared';
 import { SessionSlotManager, isPlusFamily, type DeckLayout } from '../session-slot-manager.js';
 
 const SD_PLUS_LAYOUT: DeckLayout = {
@@ -1144,6 +1144,119 @@ describe('SessionSlotManager scoped cap vs the Codex usage keys', () => {
   it('shows the scoped cap for a Codex-less, Claude-only user too', () => {
     const tiles = gauges({ fiveHourPercent: 42, sevenDayPercent: 17, scopedLimits: [FABLE] });
     expect(tiles.map((t) => t.usageLabel)).toEqual(['5H', '7D']);
+  });
+});
+
+describe('OpenClaw setting picker (#463)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('times out a silent daemon and ignores its late answer', () => {
+    vi.useFakeTimers();
+    const manager = openClaw();
+    const query = manager.openPicker('effort')!;
+    vi.advanceTimersByTime(SESSION_SETTINGS_RULES.requestTimeoutMs);
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ label: 'UNAVAILABLE', subtitle: expect.stringContaining('No response from daem') });
+    expect(manager.applySessionSettings({ ...query, type: 'session_settings', settings: [] })).toBe(false);
+  });
+
+  it('keeps a refused mutation visible and closes only after matching success', () => {
+    const manager = openClaw();
+    const query = manager.openPicker('effort')!;
+    const settings = [{ key: 'effort' as const, options: LEVELS }];
+    manager.applySessionSettings({ ...query, type: 'session_settings', targetSessionKey: 'agent:main', settings });
+    const set = manager.beginSettingMutation('effort', null)!;
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ label: 'SAVING' });
+    manager.applySessionSettings({ ...set, type: 'session_settings', settings, error: 'not allowed' });
+    expect(manager.pickerOpen).toBe('effort');
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ label: 'REFUSED', subtitle: 'not allowed' });
+    const retry = manager.beginSettingMutation('effort', 'high')!;
+    expect(manager.applySessionSettings({ ...set, type: 'session_settings', settings })).toBe(false);
+    manager.applySessionSettings({ ...retry, type: 'session_settings', settings });
+    expect(manager.pickerOpen).toBeNull();
+  });
+
+
+  const LEVELS = ['off', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((id) => ({ id }));
+  function openClaw(): SessionSlotManager {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({ id: 'openclaw-gateway', port: 18789, agentType: 'openclaw', state: State.IDLE, modelName: 'zai/glm-5.3' })]);
+    manager.enterDetailView('openclaw-gateway');
+    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'zai/glm-5.3');
+    return manager;
+  }
+
+  it('idle shows STATUS · MODEL · GATEWAY · THINKING, and THINKING opens the picker', () => {
+    const manager = openClaw();
+    expect([2, 3, 4, 5].map((slot) => (manager.getSlotConfig(slot, SD_PLUS_LAYOUT) as any).preset?.label))
+      .toEqual(['STATUS', 'MODEL', 'GATEWAY', 'THINKING']);
+    expect(manager.handleSlotPress(5, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'effort' });
+    expect(manager.handleSlotPress(3, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'model' });
+  });
+
+  it('pages the agent\'s own levels, marks current/default, and sends ids verbatim (null = default)', () => {
+    const manager = openClaw();
+    const query = manager.openPicker('effort')!;
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'status', label: 'LOADING' });
+    manager.applySessionSettings({
+      type: 'session_settings', requestId: query.requestId, targetSessionKey: 'agent:main',
+      sessionId: 'openclaw-gateway',
+      settings: [{ key: 'effort', current: 'medium', default: 'high', options: LEVELS }],
+    });
+    // 8 cells (DEFAULT + 7 levels) over SD+ content keys 2-5 with MORE reserved.
+    expect(manager.getSlotConfig(6, SD_PLUS_LAYOUT)).toMatchObject({ type: 'next-page', label: '1/2' });
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'setting-option', label: 'DEFAULT', subtitle: 'high', settingValue: null });
+    expect(manager.handleSlotPress(2, SD_PLUS_LAYOUT)).toEqual({ action: 'set-setting', settingKey: 'effort', settingValue: null });
+    expect(manager.getSlotConfig(5, SD_PLUS_LAYOUT)).toMatchObject({ label: 'medium', subtitle: 'current', tone: 'ready' });
+    manager.nextPage(SD_PLUS_LAYOUT);
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ label: 'high', subtitle: 'default' });
+    expect(manager.handleSlotPress(4, SD_PLUS_LAYOUT)).toEqual({ action: 'set-setting', settingKey: 'effort', settingValue: 'max' });
+    // BACK leaves the picker, not the session.
+    expect(manager.handleSlotPress(0, SD_PLUS_LAYOUT)).toEqual({ action: 'close-picker' });
+  });
+
+  it('shows the agent\'s refusal instead of a value, and the THINKING subtitle follows the agent', () => {
+    const manager = openClaw();
+    const effortQuery = manager.openPicker('effort')!;
+    manager.applySessionSettings({ type: 'session_settings', requestId: effortQuery.requestId, targetSessionKey: 'agent:main', sessionId: 'openclaw-gateway', settings: [{ key: 'effort', current: 'xhigh', options: LEVELS }] });
+    manager.closePicker();
+    expect((manager.getSlotConfig(5, SD_PLUS_LAYOUT) as any).preset.subtitle).toBe('xhigh');
+    const modelQuery = manager.openPicker('model')!;
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'status', label: 'LOADING' });
+    manager.applySessionSettings({ type: 'session_settings', requestId: modelQuery.requestId, targetSessionKey: 'agent:main', sessionId: 'openclaw-gateway', settings: [], error: 'model not allowed' });
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'status', label: 'UNAVAILABLE', subtitle: 'model not allowed' });
+  });
+
+  it('a picker never survives a session switch', () => {
+    const manager = openClaw();
+    manager.openPicker('effort');
+    manager.exitDetailView();
+    expect(manager.pickerOpen).toBeNull();
+  });
+});
+
+describe('Observed NOW card (#463)', () => {
+  it('idle shows the row\'s activity, subagent fan-out and context in place of OBSERVED', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({
+      id: 'observed:claude:a', port: 0, controlMode: 'observed', agentType: 'claude-code', state: State.IDLE,
+      activity: 'Reviewing picker', contextPercent: 63, subagents: { active: 1, peak: 1, completed: 0 },
+    })]);
+    manager.enterDetailView('observed:claude:a');
+    // SD+ content keys 2-5: REVIEW, VOICE, NOW, …
+    expect(manager.getSlotConfig(4, SD_PLUS_LAYOUT)).toMatchObject({
+      type: 'status', label: '1 SUBAGENT', subtitle: 'Reviewing picker', detail: 'context 63%',
+    });
+  });
+
+  it('mid-turn adds the goal next to the running tool', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([makeSession({
+      id: 'observed:claude:a', port: 0, controlMode: 'observed', agentType: 'claude-code', state: State.PROCESSING,
+      currentTool: 'Edit', activity: 'Editing deck.ts', goal: 'add the picker',
+    })]);
+    manager.enterDetailView('observed:claude:a');
+    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ label: 'Edit' });
+    expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ label: 'NOW', subtitle: 'add the picker' });
   });
 });
 

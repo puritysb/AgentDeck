@@ -5,7 +5,7 @@
 # AgentDeck
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6784822497"><img src="https://img.shields.io/badge/App%20Store-Mac%20%C2%B7%20iPhone%20%C2%B7%20iPad-1f6157.svg?logo=apple" alt="App Store — Mac, iPhone, and iPad"></a>
+  <a href="https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8"><img src="https://img.shields.io/badge/App%20Store-Mac%20%C2%B7%20iPhone%20%C2%B7%20iPad-1f6157.svg?logo=apple" alt="App Store — Mac, iPhone, and iPad"></a>
   <a href="https://play.google.com/store/apps/details?id=dev.agentdeck"><img src="https://img.shields.io/badge/Google%20Play-Android-1f6157.svg?logo=googleplay" alt="Google Play — Android"></a>
   <a href="https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464"><img src="https://img.shields.io/badge/Elgato%20Marketplace-Stream%20Deck%20plugin-1f6157.svg" alt="Elgato Marketplace"></a>
   <a href="https://ugc.ulanzistudio.com/contentView/1141"><img src="https://img.shields.io/badge/Ulanzi%20Marketplace-Studio%20plugin-1f6157.svg" alt="Ulanzi Marketplace"></a>
@@ -203,6 +203,16 @@ edit code, run tests, wait for permission, and finish. No private workspace data
 is shown. [Watch the high-resolution story](https://puritysb.github.io/AgentDeck/#aquarium)
 or take the [hardware desk tour](https://youtu.be/s-f8ICBcC4o).
 
+**New in the 1.8.0 showcase:** Hermes Agent joins the other agents while GitHub CI
+companions orbit sessions waiting for checks. Captured in the native iPad simulator
+with fictional activity; the earlier introduction and hardware photos remain available.
+
+[![AgentDeck 1.8.0 with Hermes Agent and the coding agents](docs/media/aquarium-180-overview.jpg)](https://puritysb.github.io/AgentDeck/#showcase-180)
+
+[Watch the new scenario](https://puritysb.github.io/AgentDeck/#showcase-180) ·
+[CI waiting](docs/media/aquarium-180-ci.jpg) ·
+[Checks complete](docs/media/aquarium-180-complete.jpg)
+
 ## What it does
 
 - **Follow parallel work.** Session names, current tools, and a shared timeline
@@ -224,7 +234,7 @@ or take the [hardware desk tour](https://youtu.be/s-f8ICBcC4o).
 
 ### Mac, iPhone, and iPad
 
-[Install from the App Store](https://apps.apple.com/app/id6784822497).
+[Install from the App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8).
 The Mac app includes its own daemon and needs no Node.js. Enable your agent
 integrations in Settings, then run your agents normally. iPhone/iPad pair with
 an AgentDeck daemon on your network.
@@ -301,19 +311,22 @@ advance independently; you do not need to update every device together.
 
 | Product | Install / update | Release tag |
 |---|---|---|
-| Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.5.0` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.4.2` |
+| Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.8.0` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.8.0` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**Store status, 2026-09-24:** iOS 1.5.0 is released and macOS 1.5.0 remains
-under review (owner report). Google Play 1.5.0 (21) is live in production,
-confirmed in Play Console. Elgato 1.4 is ready to publish but remains held for
-processed-package encoder verification. Ulanzi 1.4.0 remains under review.
-See [delivery tracking](https://github.com/puritysb/AgentDeck/issues/314)
-for remaining publication and verification work.
+**Delivery status, 2026-10-06:** Android 1.8.0's signed APK and Stream Deck/Ulanzi
+1.8.0 packages are public on GitHub. Google Play 1.8.0 (25) is also live. Apple
+iOS/macOS 1.8.0 (7801) and Ulanzi 1.8.0 are submitted for review. Elgato 1.7 remains pending review, preventing a
+new 1.8 submission. The last verified public versions for those pending stores remain Apple 1.7.0,
+Elgato 1.6 and Ulanzi 1.6.0. All four npm packages and their `latest` tags are
+public at 1.8.0. ESP32 1.8.0 firmware for twelve boards is public after
+the TTGO dependency fix passed Linux CI; the browser flasher serves the verified
+1.8.0 images.
+See the [current delivery readback](RELEASING.md#delivery-readback-2026-10-06).
 
 Mobile apps and hardware are companion surfaces: keep a daemon running on your
 computer. Supported ESP32 boards offer Wi-Fi OTA after the first USB flash;

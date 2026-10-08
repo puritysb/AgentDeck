@@ -1,3 +1,5 @@
+import Foundation
+
 #if os(macOS)
 // MicroGlyphs.swift — Timebox Mini 11×11 "Agent Beacon" renderer.
 //
@@ -101,10 +103,8 @@ enum MicroGlyphs {
             }
         }
 
-        if glyph == .openClaw {
-            setPixel(&buf, x: 4, y: 4, color: (0, 229, 204), intensity: stateIntensity)
-            setPixel(&buf, x: 7, y: 4, color: (0, 229, 204), intensity: stateIntensity)
-        }
+        OfficialFeaturePaint.paint(&buf, canvasSize: size, layers: OfficialTimeboxFeatures.layers[glyph] ?? [], sourceSize: n, x0: 1, y0: 1, target: n, intensity: stateIntensity)
+
     }
 
     private static func paintStandby(_ buf: inout [UInt8], animFrame: Int) {
@@ -199,3 +199,22 @@ enum MicroGlyphs {
     }
 }
 #endif
+
+// Shared by daemon pixels and cross-platform device previews.
+enum OfficialFeaturePaint {
+    static func paint(_ buf: inout [UInt8], canvasSize: Int, layers: [OfficialFeatureLayer], sourceSize: Int,
+                      x0: Int, y0: Int, target: Int, intensity: Double = 1) {
+        guard target > 0 else { return }
+        for layer in layers { for dy in 0..<target { for dx in 0..<target {
+            let sx = dx * sourceSize / target - layer.x, sy = dy * sourceSize / target - layer.y
+            guard sx >= 0, sy >= 0, sx < layer.width, sy < layer.height else { continue }
+            let alpha = Double(layer.alpha[sy * layer.width + sx]) / 255
+            let x = x0 + dx, y = y0 + dy
+            guard alpha > 0, x >= 0, y >= 0, x < canvasSize, y < canvasSize else { continue }
+            let offset = (y * canvasSize + x) * 3
+            for (c, value) in [layer.red, layer.green, layer.blue].enumerated() {
+                buf[offset + c] = UInt8(min(255, max(0, Int(round(Double(buf[offset + c]) * (1 - alpha) + Double(value) * intensity * alpha)))))
+            }
+        } } }
+    }
+}

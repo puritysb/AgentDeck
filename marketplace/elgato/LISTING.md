@@ -2,11 +2,48 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the last independently verified public version is `1.3` (verified 2026-09-15 at 12:43 KST,
-> 748.66 KB), following `1.2` (2026-09-02) and `1.0.6`
+> and the independently verified public version is **1.6** (2026-10-03,
+> 758.41 KB), following `1.3`, `1.2` and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
+
+## 1.8.0 — GitHub package public; store replacement pending (2026-10-06)
+
+The official [1.8.0 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.0)
+is public (source `4168e572`, package 1.8.0.0, SDK 3). Downloaded package SHA-256:
+`ec0814da259c8ce8dbecb11d60e23299d84dbe8ad87cf537514db32c1daa3575`.
+The embedded runtime matches the locally tested and installed final candidate.
+
+Maker Console still shows **1.7 Pending review** and disables **Create version**.
+Replacing that review requires deletion; the owner confirmation is pending, so
+no deletion or 1.8 submission is claimed. Public 1.6 and the unrelated historical
+1.4 Ready to publish record are unchanged. Physical deck operation is waived for
+1.8.0; code/headless-controller checks passed. Review of the DRM-processed package
+remains distinct from those source checks.
+
+## 1.7.0 — submitted for review (2026-10-04)
+
+Uploaded the exact package from successful
+[Stream Deck release CI](https://github.com/puritysb/AgentDeck/actions/runs/37164391977),
+source `2ee27840`, package version **1.7.0.0**, SDK 3 and DRM enabled.
+Maker Console shows **Pending review · 1.7**. Automatic publication is off;
+the processed-package encoder review loop remains required before publication.
+Published 1.6 remains available, and the unrelated old 1.4 Ready to publish entry
+was left untouched.
+
+Release notes describe Hermes read-only sessions, Codex credits, compact z.ai
+cards, Luna labels and persistence of manually selected usage providers.
+
+## 1.6 published and public (2026-10-03)
+
+Maker Console showed **Ready to publish · 1.6**. The processed-package checks
+and subsequent owner confirmation of physical operation are recorded in the
+[1.6 submission receipt](../../docs/devlog/entries/2026-09-28-store-submissions-160.md#follow-up-physical-confirmation-and-crema-captures).
+The authorized Release action changed the 1.6 row to **Published**. The public
+Marketplace immediately showed **Version 1.6 · Oct 3, 2026 · 758.41 KB** and the
+1.6.0 release notes. The older 1.4 review entry was left untouched. No new binary
+was uploaded or rebuilt for this publication.
 
 ## 1.4.0 ready to publish — processed-package check (2026-09-24)
 

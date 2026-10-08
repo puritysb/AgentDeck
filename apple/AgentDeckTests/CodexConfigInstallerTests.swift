@@ -170,6 +170,8 @@ final class CodexConfigInstallerTests: XCTestCase {
         XCTAssertFalse(interrupt.contains("timeout = 5"))
         XCTAssertTrue(withFence.contains("--connect-timeout 0.2 --max-time 0.8"))
         XCTAssertTrue(withFence.contains("*[!0-9]*"))
+        XCTAssertTrue(withFence.contains("X-AgentDeck-Pid: $PPID"))
+        XCTAssertTrue(withFence.contains("exec sh -c"))
         XCTAssertTrue(withFence.contains("type(p) is int and 1 <= p <= 65535"))
         XCTAssertTrue(withFence.contains("notify ="))
         XCTAssertTrue(withFence.contains("[otel.trace_exporter.otlp-http]"))

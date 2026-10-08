@@ -109,13 +109,24 @@ rejected by the user and is superseded by this restoration.
 `build-3d-residents.py` imports the original six SVGs from `design/brand` as the
 actual full-size character geometry. It adds restrained extrusion and edge
 softening; rear closures follow the original outer contour without convex
-casings, bumps or a second body. Facial details stay on the front. No invented
+casings, bumps or a second body. OpenCode's central opening stays a real
+through-hole, with no rear closure. Facial details stay on the front. No invented
 eyes, fins, tentacles, shells or chest badges are added. It writes editable
 `3d-residents.blend` and bundled `3d-residents.usdz`:
 
 ```sh
 blender --background --python assets/terrarium/build-3d-residents.py
 ```
+
+The supplementary creature feature contract in
+`shared/src/brand-features.ts` generates `design/creatures/brand-features.generated.json`.
+The builder verifies source SVG hashes and uses the exact selected source contours:
+Claude's eyes are opaque black, Codex's `> _` is opaque white, and OpenClaw's
+original eye openings are black with its two original bright pupil paths.
+Supported Principled materials preserve these features in both USD and glTF.
+Generated mesh ray checks verify visible front details and OpenCode's open
+center from the front, back and oblique directions, while its rim remains solid.
+Native resource tests preserve feature materials across working, idle and permission.
 
 Claude's original pixel arms and four feet are split at their existing body
 junctions, retaining the rest silhouette. OpenClaw's original SVG claw paths
@@ -164,16 +175,14 @@ back-face loss and body-centered tail orbiting. An edge-on fin may still look
 thin naturally; no billboard or always-facing-camera replacement is used.
 
 The native garden includes one rounded spiral-shell snail. The shrimp experiment
-was removed following visual feedback; do not restore it when rebuilding. Apple
-extracts a single runtime snail from the asset and hides its authored counterpart.
-It is rendered at 60% of the authored size. `AquariumShoal` replaces the short
-baked rock loop with a six-minute continuous ground circuit, passing in front of
-and behind both planted islands. Position follows the authored bowl/sand height;
-heading and pitch follow the path tangent. Ordinary depth occlusion can hide it
-behind rocks or plants. There is no forced visibility or visibility teleport.
-The native controller inherits the resident scene's pause/Reduce Motion behavior.
-This is a bounded authored route, not arbitrary-mesh surface navigation. The
-Blender rock loop remains an authoring preview, not the native movement source.
+was removed following visual feedback; do not restore it when rebuilding. Both
+native renderers keep the snail in the habitat hierarchy and play its authored
+rock-foraging and feeler animation. `enhance-garden-fauna.py` is the motion source
+for both USDZ and GLB; the runtimes do not replace it with a separate aquarium-wide
+route, detach it from the rock, or change its authored scale. Ordinary depth
+occlusion can hide it behind rocks or plants. There is no forced visibility or
+visibility teleport. The scene's animation playback owns pause/Reduce Motion.
+This is a bounded authored rock route, not arbitrary-mesh surface navigation.
 
 The Apple import regression checks actual exported fin volume and hinge position,
 fauna counts and animation availability. Blender mesh inspection verifies closed
@@ -358,3 +367,34 @@ blender --background --python-exit-code 1 --python assets/terrarium/build-hermes
 - Triangles: 148k (v18 142k). USDZ: 7.5 MB (v18 6.8 MB), including the 1024² face shading texture.
 
 **Not established:** physical-device frame time, and the user's visual acceptance.
+
+## Per-session GitHub CI companion
+
+The original GitHub Octocat artwork is preserved byte-for-byte in
+`ci-companion-source.png`, retrieved from
+[GitHub Octodex](https://octodex.github.com/images/original.png). Octocat artwork
+and trademarks belong to GitHub. This is a secondary GitHub Actions integration
+indicator, not AgentDeck's identity or a redistributed private Mona model.
+
+`build-ci-companion.py` adds shallow silhouette depth while preserving the source
+face, arms, whiskers, colors and UV mapping. The front texture uses supported
+Principled emission so USD Preview Surface contains the original image; a bare
+Blender Emission node exports an empty material and RealityKit's gray fallback.
+The bundled-resource test verifies the actual imported emission texture.
+Coplanar interior cells are dissolved
+without changing the outer profile. Regenerate with Blender's background Python
+entry point; the saved authoring source is `ci-companion.blend`. The exports are
+Apple's `Resources/Aquarium/ci-companion.usdz`, Android's
+`residents/ci-companion.glb`, and unmodified source PNG copies for Canvas/e-ink.
+
+Each observed waiting session keeps its own agent and normal lane. Its small
+companion orbits that actual identity; there is no fixed station, sign or
+permanent CI resident. Unknown evidence remains neutral. Permission suppresses
+the CI helper, cleared/null waits remove it, and passed/failed results stop motion
+and expire from the animated helper after a bounded monotonic-time cue. E-ink
+uses a static associated companion plus observed CI text and change-driven
+refresh. Geometry, integer UTF-8 FNV phase seeds and rhythm live in
+`shared/src/terrarium-rules.ts` and its generated native mirrors.
+
+Source/render previews establish appearance and source fidelity. Physical-device
+frame time, crowded-scene readability and owner acceptance are separate evidence.

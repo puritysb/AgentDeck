@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CI wait — concept comparison</title>
+<link rel="stylesheet" href="../../design/tokens.css">
+<style>
+body{margin:24px;
+background:var(--tide-50);
+color:var(--ink-900);
+font-family:"IBM Plex Sans",sans-serif}
+main{max-width:1300px;
+margin:auto}
+h1{margin-bottom:8px}
+p{max-width:85ch}
+button,select{font:inherit;
+padding:8px;
+border:1px solid var(--ink-300);
+border-radius:8px;
+background:var(--tide-100);
+color:var(--ink-900)}
+.grid{display:grid;
+grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+gap:16px;
+margin-top:24px}
+article{padding:16px;
+border:1px solid var(--ink-300);
+border-radius:12px;
+background:var(--tide-100)}
+svg{width:100%;
+height:auto;
+background:var(--ink-800);
+border-radius:8px;
+color:var(--tide-50)}
+.key{width:144px;
+height:144px;
+display:grid;
+place-content:center;
+text-align:center;
+border:2px solid var(--ink-500);
+border-radius:12px;
+background:var(--ink-900);
+color:var(--tide-50);
+margin-top:16px;
+font:16px "JetBrains Mono",monospace}
+.small{font-size:12px}
+.eink{border:1px solid var(--ink-900);
+margin-top:16px;
+padding:8px;
+font:12px "JetBrains Mono",monospace}
+.matrix{font:14px "JetBrains Mono",monospace;
+margin-top:16px}
+label{display:inline-block;
+margin-right:16px}
+footer{margin:24px 0}
+.phase{font-weight:600}
+
+</style><main>
+<h1>CI wait: four visual concepts</h1>
+<p>Design comparison for issue 433. These are concept sketches with simulated events, not hardware captures or release acceptance. The shipped agent creature remains unchanged. A CI wait is separate from a request for your input.</p>
+<label>Replay state <select id="phase"><option value="unknown">Wait observed · result unknown</option><option value="queued">Queued</option><option value="running">Running</option><option value="failed">Failed · agent resumes</option><option value="passed">Passed</option><option value="clear">Wait cleared</option></select></label>
+<label>Concurrent waits <select id="count"><option>1</option><option>3</option></select></label>
+<button id="replay">Replay fail → retry → pass</button><span id="status" role="status"></span>
+<div class="grid" id="cards"></div>
+<footer>Review criteria: legibility at a 144 px key; several simultaneous waits; calm during a long wait; no false “needs you” alarm. Choose a concept before commissioning the 3D station. Firmware and 8×32 sketches need their own native renderer and physical acceptance.</footer>
+</main><script>
+const concepts=[['Cleaner shrimp station','The agent pauses beside an inspection station.','<path d="M175 115q-30-28-45-4q16 25 45 4m-4-8 18-16m-23 14 13-23m-25 29-2 17m-9-18-7 15"/>'],['Courier crab','Work is handed to a courier; the agent stays nearby.','<path d="M135 112q15-20 32 0q-15 23-32 0m1-3-15-18m-2 0-7-12m7 12 8-10m38 30 14-20m0 0-7-10m7 10 9-9m-46 33-9 10m21-10 10 10"/>'],['Beacon','A steady station signal shows whether checks are known.','<path d="m139 125 7-55h15l8 55zm4-39h21m-17-14V59h12v13m-28-4-16-8m60 8 16-8"/>'],['Badge on agent','A compact label stays next to the agent; no new resident.','<rect x="123" y="77" width="70" height="35" rx="8"/><text x="158" y="100" text-anchor="middle" fill="currentColor" stroke="none" font-size="17">CI</text>']];
+const phases={unknown:'CI WAIT · ?',queued:'CI QUEUED',running:'CI RUNNING',failed:'CI FAILED',passed:'CI PASSED',clear:'IDLE'};let timer;
+function render(){let phase=document.querySelector('#phase').value,n=Number(document.querySelector('#count').value);document.querySelector('#cards').innerHTML=concepts.map(([name,description,shape])=>`<article><h2>${name}</h2><p>${description}</p><svg viewBox="0 0 280 170" aria-label="${name} concept"><path d="M0 140H280" stroke="currentColor" opacity=".3"/>${phase==='clear'?'':Array.from({length:n},(_,i)=>`<circle cx="${54+i*27}" cy="${100-i*12}" r="10" fill="currentColor"/><path d="M${64+i*27} ${100-i*12}L132 111" stroke="currentColor" stroke-dasharray="3 4" opacity=".4"/>`).join('')}<g fill="none" stroke="currentColor" stroke-width="2">${shape}</g><text x="140" y="158" text-anchor="middle" fill="currentColor" font-size="12">${phases[phase]}</text></svg><div class="key"><strong>${phase==='unknown'?'CI WAIT':phases[phase]}</strong><span>Project</span><span class="small">${phase==='failed'?'Agent can resume':phase==='unknown'?'Result unknown':n+' wait'+(n>1?'s':'')}</span></div><div class="eink">Project · ${phases[phase]}${n>1?' · +2':''}</div><div class="matrix">8×32 concept: ${phase==='clear'?'idle':phase==='passed'?'OK':phase==='failed'?'X':'?'} CI${n>1?' ×3':''}</div></article>`).join('')}
+document.querySelectorAll('select').forEach(e=>e.onchange=render);document.querySelector('#replay').onclick=()=>{clearInterval(timer);let steps=['unknown','queued','running','failed','clear','unknown','running','passed','clear'],i=0;function next(){document.querySelector('#phase').value=steps[i++];render();document.querySelector('#status').textContent=' Simulation '+i+'/'+steps.length;if(i===steps.length)clearInterval(timer)}next();timer=setInterval(next,1800)};render();
+</script></html>

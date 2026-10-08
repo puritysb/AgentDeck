@@ -48,6 +48,58 @@ final class ApmeTaskBoundaryTests: XCTestCase {
 
     // MARK: - allTodosCompleted (helper unit)
 
+    func testCapturedHermesIngestionPersistsModelOnRunTurnAndTask() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        let collector = ApmeCollector(store: tmp.store)
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("bridge/src/__tests__/fixtures/hermes-live-ci.json")
+        let capture = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let events = try XCTUnwrap(capture["events"] as? [[String: Any]])
+        var gate = HermesObserverGate()
+        for row in events {
+            let event = try XCTUnwrap(row["event"] as? String)
+            let payload = try XCTUnwrap(row["payload"] as? [String: Any])
+            guard case let .accept(_, sid) = gate.admit(event: event, payload: payload, now: Date()) else {
+                return XCTFail("Captured hook rejected: \(event)")
+            }
+            let hook = DaemonServer.normalizeApmeObservedHook(event: event, json: payload, sessionId: sid)
+            DaemonServer.recordHermesApmeHook(hook, sessionId: sid, collector: collector)
+        }
+        let run = try XCTUnwrap(tmp.store.listRuns().first)
+        let turn = try XCTUnwrap(tmp.store.listTurns(runId: run.id).first)
+        let task = try XCTUnwrap(tmp.store.listTasksForRun(run.id).first)
+        XCTAssertEqual(run.modelId, "agentdeck-ci-fixture")
+        XCTAssertEqual(turn["model_id"] as? String, "agentdeck-ci-fixture")
+        XCTAssertEqual(task.modelId, "agentdeck-ci-fixture")
+        XCTAssertEqual(turn["end_source"] as? String, "stop")
+        XCTAssertNil(run.provider, "An unrecognized custom provider stays unknown")
+        XCTAssertNil(turn["provider"] as? String)
+        XCTAssertNil(task.provider)
+    }
+
+    func testHermesTurnIdentityUsesExplicitMetadataAndKeepsUnknownSessionSeparate() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        let collector = ApmeCollector(store: tmp.store)
+        for (sid, model) in [("known", "first-model"), ("unknown", "")] {
+            for (event, extra) in [("hermes_session_start", [:]), ("hermes_user_prompt_submit", ["prompt": "go"])] {
+                let hook = DaemonServer.normalizeApmeObservedHook(event: event,
+                    json: ["model": model].merging(extra) { _, new in new }, sessionId: sid)
+                DaemonServer.recordHermesApmeHook(hook, sessionId: sid, collector: collector)
+            }
+        }
+        let stop = DaemonServer.normalizeApmeObservedHook(event: "hermes_stop",
+            json: ["model": "reported-at-stop"], sessionId: "known")
+        DaemonServer.recordHermesApmeHook(stop, sessionId: "known", collector: collector)
+        let known = try XCTUnwrap(tmp.store.listRuns().first { $0.sessionId == "known" })
+        let unknown = try XCTUnwrap(tmp.store.listRuns().first { $0.sessionId == "unknown" })
+        XCTAssertEqual(tmp.store.listTurns(runId: known.id).first?["model_id"] as? String, "reported-at-stop")
+        XCTAssertNil(tmp.store.listTurns(runId: unknown.id).first?["model_id"] as? String)
+        XCTAssertNil(unknown.modelId)
+    }
+
     func testAllTodosCompleted_trueWhenEveryStatusIsCompleted() async {
         let data: [String: Any] = [
             "tool_name": "TodoWrite",

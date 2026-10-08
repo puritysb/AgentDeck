@@ -661,84 +661,38 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import "./brand-features.generated.js";
+    // Exact source contours and material roles are generated from the shared contract.
+    const originalCreatures = globalThis.CREATURE_BRAND_FEATURES.agents;
+    const featureColor = rgb => `rgb(${rgb.join(', ')})`;
+
     const SVG_NS = "http://www.w3.org/2000/svg";
 
-    const CLAUDE_PATH = "M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z";
-    const CODEX_PATH = "M9.064 3.344a4.578 4.578 0 012.285-.312c1 .115 1.891.54 2.673 1.275.01.01.024.017.037.021a.09.09 0 00.043 0 4.55 4.55 0 013.046.275l.047.022.116.057a4.581 4.581 0 012.188 2.399c.209.51.313 1.041.315 1.595a4.24 4.24 0 01-.134 1.223.123.123 0 00.03.115c.594.607.988 1.33 1.183 2.17.289 1.425-.007 2.71-.887 3.854l-.136.166a4.548 4.548 0 01-2.201 1.388.123.123 0 00-.081.076c-.191.551-.383 1.023-.74 1.494-.9 1.187-2.222 1.846-3.711 1.838-1.187-.006-2.239-.44-3.157-1.302a.107.107 0 00-.105-.024c-.388.125-.78.143-1.204.138a4.441 4.441 0 01-1.945-.466 4.544 4.544 0 01-1.61-1.335c-.152-.202-.303-.392-.414-.617a5.81 5.81 0 01-.37-.961 4.582 4.582 0 01-.014-2.298.124.124 0 00.006-.056.085.085 0 00-.027-.048 4.467 4.467 0 01-1.034-1.651 3.896 3.896 0 01-.251-1.192 5.189 5.189 0 01.141-1.6c.337-1.112.982-1.985 1.933-2.618.212-.141.413-.251.601-.33.215-.089.43-.164.646-.227a.098.098 0 00.065-.066 4.51 4.51 0 01.829-1.615 4.535 4.535 0 011.837-1.388z";
     const ANTIGRAVITY_PATH = "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z";
-    const OPENCLAW_BODY = "M12 2.568c-6.33 0-9.495 5.275-9.495 9.495 0 4.22 3.165 8.44 6.33 9.494v2.11h2.11v-2.11s1.055.422 2.11 0v2.11h2.11v-2.11c3.165-1.055 6.33-5.274 6.33-9.494S18.33 2.568 12 2.568z";
-    const OPENCLAW_CLAW_L = "M3.56 9.953C.396 8.898-.66 11.008.396 13.118c1.055 2.11 3.164 1.055 4.22-1.055.632-1.477 0-2.11-1.056-2.11z";
-    const OPENCLAW_CLAW_R = "M20.44 9.953c3.164-1.055 4.22 1.055 3.164 3.165-1.055 2.11-3.164 1.055-4.22-1.055-.632-1.477 0-2.11 1.056-2.11z";
-    const OPENCLAW_ANT_L = "M5.507 1.875c.476-.285 1.036-.233 1.615.037.577.27 1.223.774 1.937 1.488";
-    const OPENCLAW_ANT_R = "M16.877 1.913c.58-.27 1.14-.323 1.616-.038.476.285.43.91-.326.542-.227-.136-.547-.153-1.022.069-.478.223-1.064.668-1.756 1.361";
-
-    const PIXEL_GRIDS = {
-      claude: [
-        "001111111100",
-        "001101101100",
-        "111101101111",
-        "111111111111",
-        "111111111111",
-        "011111111110",
-        "001010010100",
-        "001010010100",
-      ],
-      codex: [
-        "000111111000",
-        "001111111100",
-        "011111111110",
-        "111111111111",
-        "111111111111",
-        "111111111111",
-        "111111111111",
-        "111111111111",
-        "001111111100",
-        "000111111000",
-      ],
-      opencode: [
-        "1111111111",
-        "1000000001",
-        "1011111101",
-        "1010000101",
-        "1010000101",
-        "1010000101",
-        "1011111101",
-        "1000000001",
-        "1111111111",
-      ],
-      openclaw: [
-        "00100100",
-        "01000010",
-        "11111111",
-        "01100110",
-        "00111100",
-        "01011010",
-      ],
-    };
 
     const AGENTS = {
       claude: {
         label: "Claude Code",
-        referenceCopy: "Use claudecode-color.svg directly: flat terracotta glyph with two eye cutouts and a lower peg. No rear sparkle.",
+        referenceCopy: "Original Claude Code contours with opaque black eyes; no added facial details.",
         tabletCopy: "Tablets can keep the aquarium scene, but the creature itself should match the asset more closely and asking should use a soft ellipsis chip instead of a question mark.",
         deviceCopy: "Pixoo, iDotMatrix, and TC001 now rasterize the official Claude Code robot mark; motion and state color never rewrite its geometry.",
       },
       codex: {
         label: "Codex",
-        referenceCopy: "Use codex-color.svg shape language: one continuous knot/clover body with a larger, more legible >_ emphasis.",
+        referenceCopy: "Original Codex clover and opaque white >_ contours; the prompt is not a cutout.",
         tabletCopy: "The tablet version should stop feeling like overlapping blobs. Use a seamless clover silhouette and a bigger, more natural >_ placement.",
-        deviceCopy: "Pixoo, iDotMatrix, and TC001 now rasterize the official continuous Codex knot, including its >_ cutout at the resolution the panel can preserve.",
+        deviceCopy: "Pixoo, iDotMatrix, and TC001 now rasterize the official continuous Codex knot, including its white >_ detail at the resolution the panel can preserve.",
       },
       opencode: {
         label: "OpenCode",
-        referenceCopy: "Use the opencode nested-square logo directly: outer frame and inner cutout block, no creature-like reinterpretation.",
+        referenceCopy: "Original OpenCode frame with a transparent central opening; no filled inner plate.",
         tabletCopy: "Tablets can animate position and emphasis, but the mark itself should remain the nested-square glyph from the asset.",
         deviceCopy: "OpenCode works well as a square-within-square chip across e-ink, LCD, Pixoo, matrix, watch, and Stream Deck without turning into a mascot.",
       },
       openclaw: {
         label: "OpenClaw",
-        referenceCopy: "Use openclaw-color.svg directly: rounded front-facing body, compact claws, antennae, and teal eye highlights.",
+        referenceCopy: "Original OpenClaw body, claws and antennae with black eyes and bright teal source highlights.",
         tabletCopy: "OpenClaw can stay more character-like than the logo-only agents, but the body and claws should still read as the front-facing openclaw mark rather than a generic lobster.",
         deviceCopy: "Pixoo and matrix should preserve claw/body recognizability first. LCD, e-ink, watch, TUI, and Stream Deck can keep the front-facing silhouette and simple claw motion.",
       },
@@ -819,27 +773,39 @@
       svg.appendChild(defs);
     }
 
-    function drawClaudeLogo(svg, cx, cy, size, palette = {}, state = "idle", t = 0) {
-      const style = STATE_STYLE[state];
-      const bob = state === "working" ? Math.sin(t * 2.3) * size * 0.012 : state === "idle" ? Math.sin(t * 0.9) * size * 0.004 : 0;
-      const scale = size / 24;
-      const fill = palette.fill || "#D97757";
-      const opacity = palette.opacity ?? style.opacity;
+    function drawOriginalCreature(svg, agent, cx, cy, size, fill, opacity, bob, monochrome = false) {
       const group = el("g", {
-        transform: `translate(${cx} ${cy + bob}) scale(${scale}) translate(-12 -12)`,
+        transform: `translate(${cx} ${cy + bob}) scale(${size / 24}) translate(-12 -12)`,
         opacity,
       });
-      group.appendChild(el("path", {
-        d: CLAUDE_PATH,
-        fill,
-        "fill-rule": "evenodd",
-        "clip-rule": "evenodd",
-      }));
+      const definition = originalCreatures[agent];
+      const policy = globalThis.CREATURE_BRAND_FEATURES.monochromeCreature;
+      const lightBody = monochrome && size >= policy.minSize && policy.lightBodyAgents.includes(agent);
+      for (const d of definition.bodyPaths) {
+        group.appendChild(el('path', {
+          d, fill: lightBody ? 'white' : fill, 'fill-rule': 'evenodd',
+          ...(lightBody ? {stroke: 'black', 'stroke-width': policy.outlineWidth} : {}),
+        }));
+      }
+      for (const feature of definition.features) {
+        if (feature.mode !== 'fill') continue; // OpenCode stays open to the background.
+        group.appendChild(el('path', {
+          d: feature.paths.join(' '),
+          fill: monochrome
+            ? ((lightBody ? feature.monochromeCreature : feature.monochrome) === 'ink' ? 'black' : 'white')
+            : featureColor(feature.rgb),
+        }));
+      }
       svg.appendChild(group);
     }
 
+    function drawClaudeLogo(svg, cx, cy, size, palette = {}, state = "idle", t = 0) {
+      const bob = state === "working" ? Math.sin(t * 2.3) * size * 0.012 : state === "idle" ? Math.sin(t * 0.9) * size * 0.004 : 0;
+      drawOriginalCreature(svg, 'claudecode', cx, cy, size, palette.fill || "#D97757",
+        palette.opacity ?? STATE_STYLE[state].opacity, bob);
+    }
+
     function drawCodexLogo(svg, cx, cy, size, palette = {}, promptStyle = {}, state = "idle", t = 0) {
-      const style = STATE_STYLE[state];
       const bob = promptStyle.bob ?? (state === "working" ? Math.sin(t * 2.1) * size * 0.01 : Math.sin(t * 0.8) * size * 0.003);
       const gradId = `codex-${svg.id}-${Math.round(cx)}-${Math.round(cy)}-${Math.round(size)}`;
       addLinearGradient(svg, gradId, [
@@ -847,118 +813,25 @@
         { offset: "48%", "stop-color": palette.mid || "#7A9DFF" },
         { offset: "100%", "stop-color": palette.bottom || "#3941FF" },
       ]);
-      const scale = size / 24;
-      const group = el("g", {
-        transform: `translate(${cx} ${cy + bob}) scale(${scale}) translate(-12 -12)`,
-        opacity: palette.opacity ?? style.opacity,
-      });
-      group.appendChild(el("path", { d: CODEX_PATH, fill: `url(#${gradId})` }));
-      svg.appendChild(group);
-
-      const fontSize = promptStyle.fontSize || size * 0.28;
-      const py = cy + bob + (promptStyle.yOffset ?? size * 0.08);
-      const pColor = promptStyle.color || "#EEF1FF";
-      const pOpacity = promptStyle.opacity ?? (state === "sleeping" ? 0.64 : 1);
-      const workingFrame = Math.floor((t * 4) % 4);
-      const leftChar = state === "working" && workingFrame === 2 ? "|" : ">";
-      const rightChar = state === "working" && workingFrame === 2 ? "<" : "_";
-      const xShift = state === "working" ? Math.sin(t * 8) * size * 0.01 : 0;
-      const yShift = state === "working" ? Math.sin(t * 6) * size * 0.008 : 0;
-      svg.appendChild(textNode(leftChar, {
-        x: cx - fontSize * 0.22 + xShift,
-        y: py + yShift,
-        "font-size": fontSize,
-        "font-weight": promptStyle.fontWeight || 650,
-        "text-anchor": "middle",
-        "font-family": "SF Mono, ui-monospace, Menlo, monospace",
-        fill: pColor,
-        opacity: pOpacity,
-      }));
-      svg.appendChild(textNode(rightChar, {
-        x: cx + fontSize * 0.22 - xShift,
-        y: py - yShift,
-        "font-size": fontSize,
-        "font-weight": promptStyle.fontWeight || 650,
-        "text-anchor": "middle",
-        "font-family": "SF Mono, ui-monospace, Menlo, monospace",
-        fill: pColor,
-        opacity: pOpacity,
-      }));
+      drawOriginalCreature(svg, 'codex', cx, cy, size, `url(#${gradId})`,
+        palette.opacity ?? STATE_STYLE[state].opacity, bob);
     }
 
     function drawOpenCodeLogo(svg, cx, cy, size, palette = {}, state = "idle", t = 0) {
-      const style = STATE_STYLE[state];
       const bob = state === "working" ? Math.sin(t * 2.0) * size * 0.006 : 0;
-      const opacity = palette.opacity ?? style.opacity;
-      const outer = size;
-      const inner = size * 0.5;
-      const ring = size * 0.18;
-      svg.appendChild(el("rect", {
-        x: cx - outer / 2,
-        y: cy - outer / 2 + bob,
-        width: outer,
-        height: outer,
-        fill: palette.outer || "#F1ECEC",
-        opacity,
-      }));
-      svg.appendChild(el("rect", {
-        x: cx - (outer - ring * 2) / 2,
-        y: cy - (outer - ring * 2) / 2 + bob,
-        width: outer - ring * 2,
-        height: outer - ring * 2,
-        fill: palette.bg || "#4B4646",
-        opacity,
-      }));
-      svg.appendChild(el("rect", {
-        x: cx - inner / 2,
-        y: cy - inner / 2 + bob,
-        width: inner,
-        height: inner,
-        fill: palette.inner || "#4B4646",
-        opacity,
-      }));
+      drawOriginalCreature(svg, 'opencode', cx, cy, size, palette.outer || "#F1ECEC",
+        palette.opacity ?? STATE_STYLE[state].opacity, bob);
     }
 
     function drawOpenClawLogo(svg, cx, cy, size, palette = {}, state = "idle", t = 0) {
-      const style = STATE_STYLE[state];
       const bob = state === "working" ? Math.sin(t * 3.2) * size * 0.018 : state === "idle" ? Math.sin(t * 0.9) * size * 0.004 : 0;
       const bodyId = `oc-${svg.id}-${Math.round(cx)}-${Math.round(cy)}-${Math.round(size)}`;
       addLinearGradient(svg, bodyId, [
         { offset: "0%", "stop-color": palette.top || "#FF4D4D" },
         { offset: "100%", "stop-color": palette.bottom || "#991B1B" },
       ]);
-      const scale = size / 24;
-      const clawAngle = state === "working" ? Math.sin(t * 8) * 8 : 0;
-      const group = el("g", {
-        transform: `translate(${cx} ${cy + bob}) scale(${scale}) translate(-12 -12)`,
-        opacity: palette.opacity ?? style.opacity,
-      });
-      group.appendChild(el("path", { d: OPENCLAW_BODY, fill: `url(#${bodyId})` }));
-      const leftClaw = el("g", { transform: `rotate(${-clawAngle} 4.5 11.5)` });
-      leftClaw.appendChild(el("path", { d: OPENCLAW_CLAW_L, fill: `url(#${bodyId})` }));
-      group.appendChild(leftClaw);
-      const rightClaw = el("g", { transform: `rotate(${clawAngle} 19.5 11.5)` });
-      rightClaw.appendChild(el("path", { d: OPENCLAW_CLAW_R, fill: `url(#${bodyId})` }));
-      group.appendChild(rightClaw);
-      group.appendChild(el("path", {
-        d: OPENCLAW_ANT_L,
-        stroke: palette.antenna || "#FF6B6B",
-        "stroke-width": 0.8,
-        "stroke-linecap": "round",
-        fill: "none",
-      }));
-      group.appendChild(el("path", {
-        d: OPENCLAW_ANT_R,
-        stroke: palette.antenna || "#FF6B6B",
-        "stroke-width": 0.8,
-        "stroke-linecap": "round",
-        fill: "none",
-      }));
-      group.appendChild(el("circle", { cx: 8.835, cy: 7.843, r: 1.266, fill: "#050810" }));
-      group.appendChild(el("circle", { cx: 15.165, cy: 7.843, r: 1.266, fill: "#050810" }));
-      group.appendChild(el("circle", { cx: 9.046, cy: 7.633, r: 0.527, fill: palette.eye || "#00E5CC" }));
-      group.appendChild(el("circle", { cx: 15.376, cy: 7.633, r: 0.527, fill: palette.eye || "#00E5CC" }));
-      svg.appendChild(group);
+      drawOriginalCreature(svg, 'openclaw', cx, cy, size, `url(#${bodyId})`,
+        palette.opacity ?? STATE_STYLE[state].opacity, bob);
     }
 
     function drawAntigravityLogo(svg, cx, cy, size, palette = {}, state = "idle", t = 0) {
@@ -985,6 +858,12 @@
 
     function drawAgentMark(svg, agent, cx, cy, size, options = {}) {
       const { palette = {}, promptStyle = {}, state = "idle", t = 0 } = options;
+      const originalAgent = agent === 'claude' ? 'claudecode' : agent;
+      if (options.monochrome && originalCreatures[originalAgent]) {
+        drawOriginalCreature(svg, originalAgent, cx, cy, size, 'black',
+          palette.opacity ?? STATE_STYLE[state].opacity, 0, true);
+        return;
+      }
       if (agent === "claude") drawClaudeLogo(svg, cx, cy, size, palette, state, t);
       else if (agent === "codex") drawCodexLogo(svg, cx, cy, size, palette, promptStyle, state, t);
       else if (agent === "opencode") drawOpenCodeLogo(svg, cx, cy, size, palette, state, t);
@@ -1172,6 +1051,8 @@
     }
 
     function renderInlineSvg(svg, rawSvg) {
+      if (svg._canonicalInlineSvg === rawSvg && svg.childElementCount) return true;
+      svg._canonicalInlineSvg = rawSvg;
       const doc = new DOMParser().parseFromString(rawSvg, "image/svg+xml");
       const source = doc.documentElement;
       if (!source || source.nodeName.toLowerCase() === "parsererror" || source.querySelector("parsererror")) {
@@ -1216,6 +1097,9 @@
     }
 
     function renderTuiActual(svg, frame) {
+      if (svg._canonicalTuiFrame === frame && svg.childElementCount) return;
+      svg._canonicalTuiFrame = frame;
+      delete svg.dataset.tuiMissing;
       clear(svg);
       const [w, h] = svgSize(svg);
 
@@ -1282,40 +1166,38 @@
       if (Array.isArray(frame.spans) && frame.spans.length) {
         frame.spans.forEach((rowSpans, rowIdx) => {
           if (!Array.isArray(rowSpans)) return;
-          const y = padY + rowIdx * cellH + cellH * 0.84;
+          const y = padY + rowIdx * cellH;
           rowSpans.forEach((span) => {
-            if (!span?.text?.trim()) return;
-            svg.appendChild(textNode(span.text, {
-              x: padX + (span.x || 0) * cellW,
-              y,
-              fill: span.color || colorForLine(lines[rowIdx] || '', rowIdx),
-              'font-size': fontSize,
-              'font-family': fontFam,
-              'xml:space': 'preserve',
-              'letter-spacing': '0',
-              'dominant-baseline': 'auto',
+            if (!span?.text) return;
+            const x = padX + (span.x || 0) * cellW;
+            if (span.background) svg.appendChild(el('rect', {
+              x, y, width: span.text.length * cellW, height: cellH, fill: span.background,
             }));
+            if (!/[▀▄]/.test(span.text)) {
+              if (span.text.trim()) svg.appendChild(textNode(span.text, {
+                x, y: y + cellH * 0.84, fill: span.color || colorForLine(lines[rowIdx] || '', rowIdx),
+                opacity: span.dim ? 0.5 : 1, 'font-size': fontSize, 'font-family': fontFam,
+                'xml:space': 'preserve', 'letter-spacing': '0',
+                textLength: span.text.length * cellW, lengthAdjust: 'spacingAndGlyphs',
+              }));
+              return;
+            }
+            for (const [col, char] of Array.from(span.text).entries()) {
+              const foreground = span.color || colorForLine(lines[rowIdx] || '', rowIdx);
+              if (char === '▀' || char === '▄') {
+                svg.appendChild(el('rect', { x: x + col * cellW,
+                  y: y + (char === '▄' ? cellH / 2 : 0), width: cellW, height: cellH / 2,
+                  fill: foreground, opacity: span.dim ? 0.5 : 1 }));
+              } else if (char !== ' ') svg.appendChild(textNode(char, {
+                x: x + col * cellW, y: y + cellH * 0.84, fill: foreground,
+                opacity: span.dim ? 0.5 : 1, 'font-size': fontSize, 'font-family': fontFam,
+                'xml:space': 'preserve', 'letter-spacing': '0',
+              }));
+            }
           });
         });
       } else {
-        lines.forEach((rawLine, rowIdx) => {
-          const visLine = (rawLine || '');
-          if (!visLine.trim() && rowIdx > 0) return;
-
-          const y = padY + rowIdx * cellH + cellH * 0.84; // text baseline
-          const color = colorForLine(visLine, rowIdx);
-
-          svg.appendChild(textNode(visLine, {
-            x: padX,
-            y,
-            fill: color,
-            'font-size': fontSize,
-            'font-family': fontFam,
-            'xml:space': 'preserve',
-            'letter-spacing': '0',
-            'dominant-baseline': 'auto',
-          }));
-        });
+        drawHatchPlaceholder(svg, w, h, 'TUI color frame not generated');
       }
 
       // Scanline vignette overlay for terminal feel
@@ -1766,21 +1648,21 @@
       const creatureY = y + (state === "working" ? h * 0.44 : state === "asking" ? h * 0.56 : h * 0.70);
       const creatureSize = Math.min(w, h) * 0.18;
       if (agent === "claude") {
-        drawAgentMark(svg, agent, creatureX, creatureY, creatureSize, { state, t, palette: { fill: opts.claude || "#D97757" } });
+        drawAgentMark(svg, agent, creatureX, creatureY, creatureSize, { state, t, monochrome: opts.monochrome, palette: { fill: opts.claude || "#D97757" } });
       } else if (agent === "codex") {
         drawAgentMark(svg, agent, creatureX, creatureY, creatureSize * 1.02, {
-          state, t,
+          state, t, monochrome: opts.monochrome,
           palette: opts.codexPalette || { top: "#CEC4FF", mid: "#89A7FF", bottom: "#3941FF" },
           promptStyle: { color: opts.codexText || "#EEF1FF", fontSize: creatureSize * 0.30, yOffset: creatureSize * 0.09 },
         });
       } else if (agent === "opencode") {
         drawAgentMark(svg, agent, creatureX, creatureY, creatureSize * 0.82, {
-          state, t,
+          state, t, monochrome: opts.monochrome,
           palette: { outer: "#F1ECEC", inner: opts.opencodeInner || "#4B4646", bg: waterTop },
         });
       } else {
         drawAgentMark(svg, agent, creatureX, creatureY, creatureSize * 1.02, {
-          state, t,
+          state, t, monochrome: opts.monochrome,
           palette: opts.openclawPalette || { top: "#FF4D4D", bottom: "#991B1B", eye: "#00E5CC" },
         });
       }
@@ -1889,62 +1771,9 @@
     }
 
     function renderGridGlyph(svg, agent, state, cx, cy, targetW, t = 0) {
-      const grid = PIXEL_GRIDS[agent];
-      const rows = grid.length;
-      const cols = grid[0].length;
-      const style = STATE_STYLE[state];
-      const cell = Math.max(1, Math.floor(targetW / cols));
-      const pulse = 1 + style.pulse * (0.45 + (Math.sin(t * 3) + 1) * 0.25);
-      const bob = state === "working" ? Math.sin(t * 2.1) * 1.2 : state === "idle" ? Math.sin(t) * 0.5 : 0;
-      const startX = cx - (cols * cell * pulse) / 2;
-      const startY = cy - (rows * cell * pulse) / 2 + bob;
-      const palette = {
-        claude: { body: "#D97757", shade: "#BE6D52", mark: "#F2E6E0" },
-        codex: { body: "#7A9DFF", shade: "#3941FF", mark: "#EEF1FF" },
-        opencode: { body: "#F1ECEC", shade: "#4B4646", mark: "#4B4646" },
-        openclaw: { body: "#FF4D4D", shade: "#991B1B", mark: "#00E5CC" },
-      }[agent];
-
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const value = grid[r][c];
-          if (value === "0") continue;
-          const fill = value === "1" ? palette.body : palette.mark;
-          svg.appendChild(el("rect", {
-            x: startX + c * cell * pulse,
-            y: startY + r * cell * pulse,
-            width: cell * pulse - 1,
-            height: cell * pulse - 1,
-            rx: 1.4,
-            fill,
-            opacity: state === "sleeping" ? 0.52 : 1,
-          }));
-        }
-      }
-
-      if (agent === "codex") {
-          const prompt = textNode(">_", {
-          x: cx,
-          y: cy + cell * 1.45 + bob,
-          "font-size": cell * 3.8,
-          "font-weight": 700,
-          "text-anchor": "middle",
-          "font-family": "SF Mono, ui-monospace, Menlo, monospace",
-          "letter-spacing": "-1px",
-          fill: "#EEF1FF",
-          opacity: state === "sleeping" ? 0.6 : 1,
-        });
-        svg.appendChild(prompt);
-      } else if (agent === "openclaw") {
-        svg.appendChild(el("rect", {
-          x: cx - cell * 0.45,
-          y: cy - cell * 0.4 + bob,
-          width: cell * 0.9,
-          height: cell * 0.9,
-          fill: "#00E5CC",
-          opacity: state === "sleeping" ? 0.55 : 1,
-        }));
-      }
+      // Only a fallback when canonical pixel frames are unavailable. Preserve the
+      // same source contours instead of inventing another hand-drawn creature.
+      drawAgentMark(svg, agent, cx, cy, targetW, {state, t});
     }
 
     function renderTabletDevice(svg, agent, state, platform, t) {
@@ -1989,6 +1818,7 @@
       const aqY = 0;
       const aqH = h * 0.50;
       drawTabletTerrarium(svg, rightX, aqY, rightW, aqH, agent, state, t, {
+        monochrome: !colorMode,
         waterTop: tank,
         waterBottom: colorMode ? "#B5D0DE" : "#CFC8BD",
         sand: colorMode ? "#D4B896" : "#C7BEB0",
@@ -2026,98 +1856,12 @@
 
     function renderPixooDevice(svg, agent, state, t) {
       const actual = getPixooActual(agent, state);
-      if (actual) {
-        clear(svg);
-        renderRgbFrame(svg, actual);
-        return;
-      }
+      if (actual) { clear(svg); renderRgbFrame(svg, actual); return; }
       clear(svg);
       const [w, h] = svgSize(svg);
-      const scale = w / 64;
-      svg.appendChild(el("rect", { x: 0, y: 0, width: w, height: h, fill: "#14243C" }));
-      for (let y = 0; y < 64; y++) {
-        for (let x = 0; x < 64; x++) {
-          svg.appendChild(el("circle", { cx: x + 0.5, cy: y + 0.5, r: 0.18, fill: "#050A11", opacity: 0.8 }));
-        }
-      }
-      const scene = el("g", { transform: `scale(${scale})` });
-      svg.appendChild(scene);
-      scene.appendChild(el("rect", { x: 0, y: 0, width: 64, height: 6, fill: "#203E60", opacity: 0.9 }));
-      scene.appendChild(el("rect", { x: 0, y: 54, width: 64, height: 10, fill: "#2A2118" }));
-      scene.appendChild(el("rect", { x: 0, y: 50, width: 64, height: 4, fill: "#3A2C1E" }));
-
-      const creatures = [
-        { agent: "claude", state: agent === "claude" ? state : "idle", sx: 18, sy: agent === "claude" && state !== "idle" ? 25 : 31 },
-        { agent: "codex", state: agent === "codex" ? state : "idle", sx: 32, sy: agent === "codex" && state !== "idle" ? 22 : 28 },
-        { agent: "opencode", state: agent === "opencode" ? state : "idle", sx: 46, sy: agent === "opencode" && state !== "idle" ? 25 : 33 },
-        { agent: "openclaw", state: agent === "openclaw" ? state : "idle", sx: 55, sy: agent === "openclaw" && state === "working" ? 42 : 50 },
-      ];
-      for (const creature of creatures) {
-        const sx = creature.sx;
-        const sy = creature.sy;
-        const bob = creature.state === "working" ? Math.sin(t * 6 + sx) * 1.2 : 0;
-        renderGridGlyph(
-          scene,
-          creature.agent,
-          creature.state,
-          sx,
-          sy + bob,
-          creature.agent === agent
-            ? (creature.agent === "codex" ? 22 : creature.agent === "openclaw" ? 16 : 20)
-            : (creature.agent === "codex" ? 12 : creature.agent === "openclaw" ? 9 : 10),
-          t,
-        );
-        if (creature.state === "asking") {
-          const bx = sx + (creature.agent === "openclaw" ? 3 : 4);
-          const by = sy - (creature.agent === "codex" ? 5 : 4);
-          scene.appendChild(el("circle", { cx: bx, cy: by, r: 2.4, fill: "#F4F7FB", opacity: 0.84 }));
-          scene.appendChild(textNode("?", {
-            x: bx,
-            y: by + 0.9,
-            "font-size": 4.2,
-            "font-weight": 800,
-            "text-anchor": "middle",
-            "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-            fill: "#F5B942",
-          }));
-        }
-      }
-      for (let i = 0; i < 3; i++) {
-        scene.appendChild(el("circle", {
-          cx: 8 + i * 4,
-          cy: 3,
-          r: 1,
-          fill: i === 1 && state === "working" ? "#34D399" : "#7AA0C6",
-          opacity: 0.9,
-        }));
-      }
-      if (state === "working") {
-        for (let i = 0; i < 4; i++) {
-          scene.appendChild(el("circle", {
-            cx: 22 + i * 5,
-            cy: 44 - ((t * 12 + i * 3) % 12),
-            r: 0.7,
-            fill: "#9BC9FF",
-            opacity: 0.8,
-          }));
-        }
-      }
-      // Usage HUD bar at bottom (matching actual Pixoo renderer)
-      const pct5h = state === "working" ? 72 : state === "asking" ? 46 : 34;
-      const pct7d = state === "working" ? 38 : state === "asking" ? 25 : 18;
-      scene.appendChild(el("rect", { x: 0, y: 57, width: 64, height: 7, fill: "#000000", opacity: 0.55 }));
-      // 5H gauge (left half)
-      const fill5h = Math.round((pct5h / 100) * 30);
-      const color5h = pct5h >= 90 ? "#EF4444" : pct5h >= 70 ? "#F59E0B" : pct5h >= 50 ? "#00C8B4" : "#3B82F6";
-      scene.appendChild(el("rect", { x: 1, y: 58, width: fill5h, height: 5, fill: color5h, opacity: 0.35 }));
-      // 7D gauge (right half)
-      const fill7d = Math.round((pct7d / 100) * 30);
-      const color7d = pct7d >= 90 ? "#EF4444" : pct7d >= 70 ? "#F59E0B" : pct7d >= 50 ? "#00C8B4" : "#3B82F6";
-      scene.appendChild(el("rect", { x: 33, y: 58, width: fill7d, height: 5, fill: color7d, opacity: 0.35 }));
+      drawHatchPlaceholder(svg, w, h, 'Pixoo frame not generated');
     }
 
-    // TC001 pages come straight from the firmware's matrix_pages.cpp via the
-    // esp32/sim led8x32 env — no hand-coded page layout in the demo.
     function renderMatrixUsageDevice(svg, agent, state) {
       renderFirmwareFrame(svg, `tc001-${agent}-${state}-usage.png`);
     }
@@ -2129,350 +1873,36 @@
     function renderStreamDeckDevice(svg, agent, state, t) {
       const actual = getStreamDeckActual(agent, state);
       if (actual?.svg && renderInlineSvg(svg, actual.svg)) return;
-
       clear(svg);
-      const isWorking = state === "working";
-      const isAsking = state === "asking";
-      
-      const p1 = agent === "claude" ? "#D97757" : agent === "codex" ? "#8BA4FF" : agent === "openclaw" ? "#FF6B6B" : "#F1ECEC";
-      const p2 = agent === "claude" ? "#BE6D52" : agent === "codex" ? "#5981FF" : agent === "openclaw" ? "#CC3333" : "#AFAFAF";
-
-      // Widget Layout Depth Banding
-      const gradId = `sd-bg-${agent}-${state}`;
-      addLinearGradient(svg, gradId, [
-        { offset: "0%", "stop-color": "#1C1C1E" },
-        { offset: "100%", "stop-color": "#0C0C0E" },
-      ]);
-      svg.appendChild(el("rect", { x: 0, y: 0, width: 144, height: 144, rx: 16, fill: `url(#${gradId})` }));
-      
-      // Floating Panel
-      svg.appendChild(el("rect", { x: 8, y: 8, width: 128, height: 128, rx: 12, fill: "#2C2C2E", opacity: 0.8 }));
-      
-      // Left Edge Color Strip
-      svg.appendChild(el("rect", { x: 8, y: 8, width: 4, height: 128, rx: 2, fill: isWorking ? "#F5B942" : isAsking ? "#F87171" : p1 }));
-
-      // Left-aligned Typography 
-      const labelStr = isWorking ? "RUNNING" : isAsking ? "PERMIT?" : "IDLE";
-      const modelStr = agent === "claude" ? "opus-4" : agent === "codex" ? "gpt-5" : "opencode";
-      const colorText = isWorking ? "#FDE68A" : isAsking ? "#FECACA" : p1;
-
-      svg.appendChild(textNode(labelStr, {
-        x: 20, y: 32, "font-size": 17, "font-weight": 800, "text-anchor": "start",
-        fill: colorText, "font-family": "Inter, sans-serif",
-      }));
-      
-      svg.appendChild(textNode("AgentDeck", {
-        x: 20, y: 52, "font-size": 13, "font-weight": 600, "text-anchor": "start",
-        fill: "#E2E8F0", "font-family": "Inter, sans-serif",
-      }));
-
-      // Agent mark simplified inside
-      if (agent === "claude") {
-        drawAgentMark(svg, agent, 114, 114, 40, { state: "idle", t, palette: { fill: p1, opacity: 0.46 } });
-      } else if (agent === "codex") {
-        drawAgentMark(svg, agent, 114, 114, 40, {
-          state: "idle", t,
-          palette: { top: p1, mid: p1, bottom: p2, opacity: 0.46 },
-          promptStyle: { color: "#FFF", fontSize: 10, yOffset: 3, opacity: 0.72 },
-        });
-      } else if (agent === "openclaw") {
-        drawAgentMark(svg, agent, 114, 114, 36, {
-          state: "idle", t,
-          palette: { top: p1, bottom: p2, eye: "#00E5CC", opacity: 0.48 },
-        });
-      } else {
-        drawAgentMark(svg, agent, 114, 114, 34, {
-          state: "idle", t,
-          palette: { outer: p1, inner: p2, bg: "#2C2C2E", opacity: 0.48 },
-        });
-      }
-
-      // Sparkle on running
-      if (isWorking) {
-        const angle = (t * 100) % 360;
-        const spinner = el("g", { transform: `translate(114 34) rotate(${angle}) scale(1) translate(-8,-8)` });
-        spinner.appendChild(el("path", { d: "M8,0 L10,5 L16,8 L10,11 L8,16 L6,11 L0,8 L6,5 Z", fill: colorText }));
-        svg.appendChild(spinner);
-        
-        svg.appendChild(textNode("Read file", {
-          x: 20, y: 120, "font-size": 13, "text-anchor": "start",
-          fill: colorText, opacity: 0.8, "font-family": "Inter, sans-serif",
-        }));
-      } else {
-        svg.appendChild(textNode(modelStr, {
-          x: 20, y: 120, "font-size": 14, "text-anchor": "start",
-          fill: colorText, opacity: 0.8, "font-family": "Inter, sans-serif",
-        }));
-      }
-
-      // Badge
-      if (!isAsking) {
-        svg.appendChild(el("rect", { x: 100, y: 16, width: 28, height: 16, rx: 8, fill: "rgba(255,255,255,0.1)" }));
-        svg.appendChild(textNode("1/3", {
-          x: 114, y: 27, "font-size": 10, "font-weight": 700, "text-anchor": "middle",
-          fill: "#A1A1AA", "font-family": "Inter, sans-serif",
-        }));
-      }
-
-      if (isAsking) drawAskIndicator(svg, "streamdeck", 114, 24, 1, t);
+      const [w, h] = svgSize(svg);
+      drawHatchPlaceholder(svg, w, h, 'Stream Deck frame not generated');
     }
 
     function renderD200HDevice(svg, agent, state, t) {
+      const actual = getStreamDeckActual(agent, state);
+      if (actual?.svg && renderInlineSvg(svg, actual.svg)) return;
       clear(svg);
-      // The D200H session key uses the same shared session renderer as Stream Deck
-      // (buildSessionDeck / renderSessionSlot). Reuse the real slot SVG so the key
-      // is canonical (144×144), not an approximation.
-      const slot = getStreamDeckActual(agent, state);
-      if (slot && renderInlineSvg(svg, slot.svg)) return;
-      svg.setAttribute("viewBox", "0 0 196 196");
-      const isWorking = state === "working";
-      const isAsking = state === "asking";
-      const p1 = agent === "claude" ? "#D97757" : agent === "codex" ? "#8BA4FF" : agent === "openclaw" ? "#FF6B6B" : "#F1ECEC";
-      const p2 = agent === "claude" ? "#BE6D52" : agent === "codex" ? "#5981FF" : agent === "openclaw" ? "#CC3333" : "#AFAFAF";
-      const stateColor = isWorking ? "#3B82F6" : isAsking ? "#F59E0B" : "#22C55E";
-      const stripColor = isWorking || isAsking ? stateColor : p1;
-      const stateLabel = isWorking ? (agent === "openclaw" ? "ROUTING" : "WORKING") : isAsking ? "AWAITING" : agent === "openclaw" ? "STANDBY" : "IDLE";
-      const modelStr = agent === "claude" ? "opus-4" : agent === "codex" ? "gpt-5" : agent === "openclaw" ? "" : "opencode";
-      const nameStr = agent === "claude" ? "Claude" : agent === "codex" ? "Codex" : agent === "openclaw" ? "OpenClaw" : "OpenCode";
-      const hasModel = modelStr.length > 0;
-      const d200hFont = "\"Helvetica Neue\", Helvetica, Arial, sans-serif";
-
-      const gradId = `d200h-bg-${agent}-${state}`;
-      addLinearGradient(svg, gradId, [
-        { offset: "0%", "stop-color": "#141417" },
-        { offset: "100%", "stop-color": "#08090C" },
-      ]);
-      svg.appendChild(el("rect", { x: 0, y: 0, width: 196, height: 196, fill: `url(#${gradId})` }));
-
-      const pad = 18;
-      const inner = 196 - pad * 2;
-      svg.appendChild(el("rect", { x: pad, y: pad, width: inner, height: inner, rx: 13, fill: "#1C1C1E" }));
-      svg.appendChild(el("rect", { x: pad, y: pad, width: inner, height: 34, rx: 13, fill: "#FFFFFF", opacity: 0.08 }));
-      svg.appendChild(el("rect", { x: pad, y: 134, width: inner, height: 44, rx: 13, fill: "#000000", opacity: 0.12 }));
-      svg.appendChild(el("rect", { x: pad, y: pad, width: inner, height: inner, rx: 13, fill: "none", stroke: "#FFFFFF", "stroke-width": 1.5, opacity: 0.24 }));
-      if (isWorking || isAsking) {
-        svg.appendChild(el("rect", { x: pad, y: pad, width: inner, height: inner, rx: 13, fill: "none", stroke: stateColor, "stroke-width": 3, opacity: 0.72 }));
-      }
-      svg.appendChild(el("rect", { x: pad + 3, y: pad + 34, width: 5, height: inner - 68, rx: 2.5, fill: stripColor, opacity: 0.78 }));
-
-      if (agent === "claude") {
-        drawAgentMark(svg, agent, 62, 54, 54, { state: "idle", t, palette: { fill: p1, opacity: 0.82 } });
-      } else if (agent === "codex") {
-        drawAgentMark(svg, agent, 62, 56, 56, {
-          state: "idle", t,
-          palette: { top: p1, mid: p1, bottom: p2, opacity: 0.88 },
-          promptStyle: { color: "#FFF", fontSize: 13, yOffset: 4, opacity: 0.6 },
-        });
-      } else if (agent === "openclaw") {
-        drawAgentMark(svg, agent, 62, 52, 64, {
-          state: "idle", t,
-          palette: { top: p1, bottom: p2, eye: "#00E5CC", opacity: 0.9 },
-        });
-      } else {
-        drawAgentMark(svg, agent, 62, 56, 48, {
-          state: "idle", t,
-          palette: { outer: p1, inner: p2, bg: "#1C1C1E", opacity: 0.9 },
-        });
-      }
-
-      svg.appendChild(el("circle", { cx: 163, cy: 33, r: 8, fill: stateColor, opacity: 0.9 }));
-      svg.appendChild(textNode(nameStr, {
-        x: 34, y: hasModel ? 104 : 112, "font-size": nameStr.length >= 8 ? 20 : 22, "font-weight": 800, "text-anchor": "start",
-        fill: "#FFFFFF", "font-family": d200hFont,
-      }));
-      if (hasModel) {
-        svg.appendChild(textNode(modelStr, {
-          x: 34, y: 126, "font-size": 15, "font-weight": 700, "text-anchor": "start",
-          fill: "#94A3B8", "font-family": d200hFont,
-        }));
-      }
-      svg.appendChild(textNode(stateLabel, {
-        x: 34, y: hasModel ? 148 : 140, "font-size": 14, "font-weight": 800, "text-anchor": "start",
-        fill: stateColor, "font-family": d200hFont,
-      }));
-
-      if (isAsking) drawAskIndicator(svg, "streamdeck", 163, 33, 0.85, t);
+      const [w, h] = svgSize(svg);
+      drawHatchPlaceholder(svg, w, h, 'D200H frame not generated');
     }
 
     function renderD200HUsageDevice(svg, state, t) {
-      clear(svg);
-      // Prefer the real 288×144 shared renderer (shared/src/d200h-layout.ts).
       const actual = getD200HUsageActual();
-      if (actual && renderInlineSvg(svg, actual.svg)) return;
-      // Fallback: hand-drawn approximation (only if sim-data is missing).
-      const pct5 = 46;
-      const pct7 = 72;
-      const colorForPct = (pct) => pct > 80 ? "#EF4444" : pct > 50 ? "#EAB308" : "#22C55E";
-      const color5 = colorForPct(pct5);
-      const color7 = colorForPct(pct7);
-      const w = 392;
-      const h = 196;
-      const d200hFont = "\"Helvetica Neue\", Helvetica, Arial, sans-serif";
-      svg.appendChild(el("rect", { x: 0, y: 0, width: w, height: h, fill: "#0F172A" }));
-
-      const segmentGauge = (x, y, pct, color) => {
-        const segments = 8;
-        const segmentWidth = 20;
-        const segmentHeight = 18;
-        const gap = 5;
-        const filled = Math.round(Math.max(0, Math.min(100, pct)) / 100 * segments);
-        for (let i = 0; i < segments; i++) {
-          svg.appendChild(el("rect", {
-            x: x + i * (segmentWidth + gap), y, width: segmentWidth, height: segmentHeight, rx: 4,
-            fill: i < filled ? color : "#1E293B", opacity: i < filled ? 0.88 : 0.78,
-          }));
-        }
-      };
-      segmentGauge(78, 53, pct5, color5);
-      segmentGauge(78, 105, pct7, color7);
-
-      svg.appendChild(textNode("USAGE", {
-        x: w / 2, y: 22, "font-size": 22, "font-weight": 800, "text-anchor": "middle",
-        fill: "#94A3B8", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode("5H", {
-        x: 34, y: 49, "font-size": 22, "font-weight": 800, "text-anchor": "start",
-        fill: "#94A3B8", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode(`${pct5}%`, {
-        x: 334, y: 44, "font-size": 26, "font-weight": 800, "text-anchor": "middle",
-        fill: "#FFFFFF", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode("1h24m", {
-        x: 327, y: 74, "font-size": 17, "font-weight": 800, "text-anchor": "middle",
-        fill: "#94A3B8", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode("7D", {
-        x: 34, y: 101, "font-size": 22, "font-weight": 800, "text-anchor": "start",
-        fill: "#94A3B8", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode(`${pct7}%`, {
-        x: 334, y: 96, "font-size": 26, "font-weight": 800, "text-anchor": "middle",
-        fill: "#FFFFFF", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode("1d4h", {
-        x: 327, y: 126, "font-size": 17, "font-weight": 800, "text-anchor": "middle",
-        fill: "#94A3B8", "font-family": d200hFont,
-      }));
-      svg.appendChild(textNode("ChatGPT Plus Apr 27", {
-        x: w / 2, y: 140, "font-size": 16, "font-weight": 800, "text-anchor": "middle",
-        fill: "#64748B", "font-family": d200hFont,
-      }));
+      if (actual?.svg && renderInlineSvg(svg, actual.svg)) return;
+      clear(svg);
+      const [w, h] = svgSize(svg);
+      drawHatchPlaceholder(svg, w, h, 'D200H usage frame not generated');
     }
-
 
     function renderTuiDevice(svg, agent, state, t) {
       const actual = getTuiActual(agent, state);
-      if (actual) {
-        renderTuiActual(svg, actual);
-        return;
-      }
+      if (actual) { renderTuiActual(svg, actual); return; }
+      if (svg.dataset.tuiMissing === 'true') return;
+      svg._canonicalTuiFrame = null;
       clear(svg);
       const [w, h] = svgSize(svg);
-      const focus = svg.id === "tui-focus";
-      const bg = "#0B1118";
-      const panel = "#101923";
-      const line = "#203040";
-      const accent = agent === "claude" ? "#D97757" : agent === "codex" ? "#8BA4FF" : agent === "openclaw" ? "#FF6B6B" : "#F1ECEC";
-      const dim = "#8FA4B7";
-      const bright = "#DDE7F0";
-      svg.appendChild(el("rect", { x: 0, y: 0, width: w, height: h, rx: 18, fill: bg }));
-      svg.appendChild(el("rect", { x: 16, y: 16, width: w - 32, height: 36, rx: 10, fill: panel }));
-      svg.appendChild(textNode("agentdeck dashboard", {
-        x: 34, y: 39, fill: bright, "font-size": focus ? 24 : 20, "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }));
-      svg.appendChild(textNode(state.toUpperCase(), {
-        x: w - (focus ? 132 : 112), y: 39, fill: accent, "font-size": focus ? 24 : 20, "font-weight": 700, "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }));
-      svg.appendChild(el("rect", { x: 20, y: 70, width: w * (focus ? 0.24 : 0.28), height: h - 92, rx: 12, fill: panel }));
-      svg.appendChild(el("rect", { x: w * (focus ? 0.28 : 0.32), y: 70, width: w * (focus ? 0.69 : 0.64) - 24, height: h - 92, rx: 12, fill: panel }));
-      svg.appendChild(el("line", { x1: w * (focus ? 0.28 : 0.32), y1: 94, x2: w - 24, y2: 94, stroke: line, "stroke-width": 1 }));
-      svg.appendChild(textNode("AGENT", {
-        x: 36, y: 94, fill: dim, "font-size": focus ? 20 : 18, "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }));
-      svg.appendChild(textNode("TERRARIUM", {
-        x: w * (focus ? 0.28 : 0.32) + 16, y: 94, fill: dim, "font-size": focus ? 20 : 18, "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }));
-
-      const lines = [
-        "[1] " + AGENTS[agent].label,
-        "    model · " + (agent === "claude" ? "opus-4" : agent === "codex" ? "gpt-5-codex" : "opencode"),
-        "    state · " + state,
-        "",
-        "limits 5h ███░ 72%",
-        "limits 7d ██░░ 38%",
-      ];
-      lines.forEach((str, i) => {
-        svg.appendChild(textNode(str, {
-          x: 36,
-          y: 126 + i * (focus ? 30 : 28),
-          fill: i === 0 ? bright : dim,
-          "font-size": focus ? 20 : 18,
-          "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-        }));
-      });
-
-      const sprites = {
-        claude: ["  ⢠⣶⣶⡄ ", " ⢸⣿⣿⣿⡇", "  ⠸⠇⠸⠇ "],
-        codex:  ["  ⣠⣶⣦  ", " ⣾⠟⠻⣷ ", "  ⠻⣦⠟  "],
-        opencode:["  ┌────┐  ", "  │ ┌┐ │  ", "  └────┘  "],
-        openclaw:["  ╭╮  ╭╮ ", "  ├╯██╰┤ ", "   ╵╰──╯  "],
-      };
-      const octopi = [
-        { agent: "claude", x: 0.28, y: agent === "claude" ? (state === "working" ? 0.30 : state === "asking" ? 0.50 : 0.88) : 0.88 },
-        { agent: "opencode", x: 0.52, y: agent === "opencode" ? (state === "working" ? 0.30 : state === "asking" ? 0.50 : 0.88) : 0.88 },
-      ];
-      const jellyfish = { agent: "codex", x: 0.50, y: agent === "codex" ? (state === "working" ? 0.10 : state === "asking" ? 0.50 : 0.85) : 0.85 };
-      const crayfish = { agent: "openclaw", x: 0.75, y: agent === "openclaw" && state === "working" ? 0.50 : 0.85 };
-      const terrCreatures = [...octopi, jellyfish, crayfish].map(creature => ({
-        ...creature,
-        x: w * ((focus ? 0.30 : 0.32) + creature.x * (focus ? 0.60 : 0.56)),
-        y: 110 + creature.y * (h - (focus ? 170 : 210)),
-      }));
-      for (const creature of terrCreatures) {
-        const isSelected = creature.agent === agent;
-        const selectedAccent = creature.agent === "claude" ? "#D97757" : creature.agent === "codex" ? "#8BA4FF" : creature.agent === "openclaw" ? "#FF6B6B" : "#F1ECEC";
-        const sprite = sprites[creature.agent];
-        sprite.forEach((row, i) => {
-          svg.appendChild(textNode(row, {
-            x: creature.x - (focus ? 58 : 42),
-            y: creature.y - (focus ? 18 : 12) + i * (focus ? 28 : 20) + (isSelected && state === "working" ? Math.sin(t * 4 + i) * 2 : 0),
-            fill: selectedAccent,
-            opacity: isSelected ? 1 : 0.62,
-            "font-size": focus ? 24 : 18,
-            "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-          }));
-        });
-        if (isSelected && state === "asking") {
-          svg.appendChild(textNode("?", {
-            x: creature.x + (focus ? 42 : 28),
-            y: creature.y + (focus ? 18 : 12),
-            fill: "#F5B942",
-            "font-size": focus ? 24 : 18,
-            "font-weight": 700,
-            "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-          }));
-        }
-        if (isSelected && state === "working") {
-          const burst = creature.agent === "codex" ? ["•", "•", "•", "•"] : ["✧", "✧", "✧", "✧"];
-          burst.forEach((mark, i) => {
-            svg.appendChild(textNode(mark, {
-              x: creature.x + Math.cos(t * 2 + i * Math.PI / 2) * (focus ? 34 : 26),
-              y: creature.y + Math.sin(t * 2 + i * Math.PI / 2) * (focus ? 20 : 14),
-              fill: creature.agent === "codex" ? "#AFC0FF" : "#F2C182",
-              "font-size": focus ? 18 : 14,
-              "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-            }));
-          });
-        }
-      }
-      svg.appendChild(textNode("~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~ ~", {
-        x: w * 0.37,
-        y: h - 68,
-        fill: "#5E7D98",
-        "font-size": 20,
-        "font-family": "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }));
+      drawHatchPlaceholder(svg, w, h, 'TUI frame not generated');
+      svg.dataset.tuiMissing = 'true';
     }
 
     function effectiveState() {

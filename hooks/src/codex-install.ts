@@ -251,12 +251,14 @@ function buildLifecycleHookCommand(event: string, platform: NodeJS.Platform): st
   if (platform === 'win32') {
     return buildWindowsLifecycleHookCommand(event);
   }
-  return `sh -c ${shellSingleQuoted(buildStdinPostSnippet(event))}`;
+  return `exec sh -c ${shellSingleQuoted(buildStdinPostSnippet(event))}`;
 }
 
+// Replace the command runner shell so PPID names Codex, not an extra wrapper.
+// The daemon uses this identity to attribute headless child runs to their launcher.
 function buildStdinPostSnippet(event: string): string {
   return posixPortPreamble().concat([
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' -d @- >/dev/null 2>&1 || true`,
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${event}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
 }
 
@@ -285,10 +287,34 @@ export function windowsNotifyScriptContent(event = 'codex_turn_complete'): strin
   return buildWindowsPostSnippet(event, `$(if ($args.Count -gt 0) { [string]$args[$args.Count - 1] } else { '' })`) + '\n';
 }
 
+/** One bounded native process snapshot; cross only command-runner shells.
+ * An unavailable or unrelated ancestry is unknown, not a guessed Codex PID. */
+function windowsCodexPidPreamble(): string[] {
+  return [
+    `$agentDeckHeaders = @{}`,
+    `try {`,
+    `  $agentDeckProcesses = @{}`,
+    `  Get-CimInstance -ClassName Win32_Process -Filter "Name = 'codex.exe' OR Name = 'cmd.exe' OR Name = 'powershell.exe' OR Name = 'pwsh.exe'" -Property ProcessId,ParentProcessId,Name -OperationTimeoutSec 1 -ErrorAction Stop | ForEach-Object { $agentDeckProcesses[[int]$_.ProcessId] = $_ }`,
+    `  $agentDeckProcess = $agentDeckProcesses[[int]$PID]`,
+    `  $agentDeckSeen = @{}`,
+    `  for ($agentDeckDepth = 0; $agentDeckDepth -lt 8 -and $null -ne $agentDeckProcess; $agentDeckDepth++) {`,
+    `    $agentDeckParent = [int]$agentDeckProcess.ParentProcessId`,
+    `    if ($agentDeckParent -le 0 -or $agentDeckSeen.ContainsKey($agentDeckParent)) { break }`,
+    `    $agentDeckSeen[$agentDeckParent] = $true`,
+    `    $agentDeckProcess = $agentDeckProcesses[$agentDeckParent]`,
+    `    if ($null -eq $agentDeckProcess) { break }`,
+    `    if ($agentDeckProcess.Name -ieq 'codex.exe') { $agentDeckHeaders['X-AgentDeck-Pid'] = [string]$agentDeckParent; break }`,
+    `    if (@('cmd.exe', 'powershell.exe', 'pwsh.exe') -notcontains $agentDeckProcess.Name) { break }`,
+    `  }`,
+    `} catch {}`,
+  ];
+}
+
 function buildWindowsPostSnippet(event: string, bodyExpression: string): string {
   return [
     `$ErrorActionPreference = 'SilentlyContinue'`,
     `$ProgressPreference = 'SilentlyContinue'`,
+    ...windowsCodexPidPreamble(),
     `[int]$port = 0`,
     `[int]$candidate = 0`,
     `if (!([int]::TryParse([string]$env:AGENTDECK_PORT, [ref]$candidate)) -or $candidate -lt 1 -or $candidate -gt 65535) { $candidate = 0 }`,
@@ -301,7 +327,13 @@ function buildWindowsPostSnippet(event: string, bodyExpression: string): string 
     `      $rawCandidate = if ($daemon.httpPort) { $daemon.httpPort } else { $daemon.port }`,
     `      $candidate = 0`,
     `      if ([int]::TryParse([string]$rawCandidate, [ref]$candidate) -and $candidate -ge 1 -and $candidate -le 65535) {`,
-    `        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $candidate + '/health') | Out-Null; $port = $candidate } catch {}`,
+    // Match the POSIX 300ms health budget, leaving room for the one-second
+    // process query and POST inside Codex Interrupt's three-second ceiling.
+    `        try {`,
+    `          $agentDeckProbe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + $candidate + '/health')`,
+    `          $agentDeckProbe.Timeout = 300; $agentDeckProbe.ReadWriteTimeout = 300`,
+    `          $agentDeckResponse = $agentDeckProbe.GetResponse(); $agentDeckResponse.Close(); $port = $candidate`,
+    `        } catch {}`,
     `      }`,
     `    } catch {}`,
     `  }`,
@@ -312,7 +344,7 @@ function buildWindowsPostSnippet(event: string, bodyExpression: string): string 
     // ISO-8859-1 when the content type carries no charset, replacing
     // non-ASCII payload characters with '?'.
     `$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
-    `try { Invoke-RestMethod -Method Post -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $port + '/hooks/${event}') -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null } catch {}`,
+    `try { Invoke-RestMethod -Method Post -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $port + '/hooks/${event}') -ContentType 'application/json; charset=utf-8' -Headers $agentDeckHeaders -Body $bytes | Out-Null } catch {}`,
     `exit 0`,
   ].join('\n');
 }

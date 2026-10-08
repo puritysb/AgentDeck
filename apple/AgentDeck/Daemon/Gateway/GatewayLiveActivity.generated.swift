@@ -27,9 +27,27 @@ struct GatewayLiveActivity {
         var automated = false
         /// Completed tool calls of this run, folded into ONE timeline row.
         var toolRows: [String] = []
+        var toolDetails: [ToolDetail] = []
         var toolRowTs: Double?
         var toolRowStart: Double?
     }
+    private static func toolFoldDetail(_ items: [ToolDetail], total: Int, sessionKey: String) -> String {
+        let ordered = Array(items.filter { $0.failed }.reversed()) + Array(items.filter { !$0.failed }.reversed())
+        let omitted = "\n… additional tool details omitted"
+        let header = "session: \(String(sessionKey.prefix(rawLimit)))\n"
+        var chunks: [String] = []
+        var length = header.count
+        for item in ordered {
+            if length + item.text.count + (chunks.isEmpty ? 0 : 2) > detailLimit - omitted.count { break }
+            chunks.append(item.text)
+            length += item.text.count + (chunks.count > 1 ? 2 : 0)
+        }
+        return header + chunks.joined(separator: "\n\n") + (chunks.count < total ? omitted : "")
+    }
+    private static func clipToolEvidence(_ value: String) -> String {
+        value.count > rawLimit ? String(value.prefix(rawLimit - 1)) + "…" : value
+    }
+    private struct ToolDetail { var text: String; var failed: Bool }
     private struct Tool { var name: String; var input: Any?; var ts: Double; var done = false }
     private var runs: [String: Run] = [:]
     private var order: [String] = []
@@ -169,18 +187,25 @@ struct GatewayLiveActivity {
                     let args = object(tool.input), action = string(args["action"])
                     if failed || tool.name != "process" || !Self.quietActions.contains(action ?? "") {
                         let command = string(args["command"]) ?? string(args["path"]) ?? action
-                        let output = string(text(object(result)["content"])) ?? (result as? String) ?? ""
+                        let output = string(text(object(result)["content"])) ?? (result as? String)
+                            ?? string(object(result)["error"]) ?? string(object(object(result)["details"])["error"]) ?? ""
                         let compactCommand = command?.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-                        let raw = tool.name + (compactCommand.map { " · \($0)" } ?? "") + (failed ? " · failed" : "")
+                        let suffix = failed ? " · failed" : ""
+                        let raw = String((tool.name + (compactCommand.map { " · \($0)" } ?? "")).prefix(Self.rawLimit - suffix.count)) + suffix
                         // Fold every completed call of this run into one row: the
                         // first call adds it, later calls upsert it in place.
                         run.toolRows.append(String(raw.prefix(Self.rawLimit)))
                         if run.toolRowTs == nil { run.toolRowTs = now }
                         if run.toolRowStart == nil { run.toolRowStart = tool.ts }
                         let items = run.toolRows
-                        let detail = items.count == 1
-                            ? (["session: \(sessionKey)", command, output].compactMap { $0 }).joined(separator: "\n")
-                            : items.suffix(Self.foldDetailItems).joined(separator: "\n")
+                        let evidence = ["\(failed ? "FAILED" : "OK") · \(tool.name)",
+                            command.map { "Input: \(Self.clipToolEvidence($0))" },
+                            output.isEmpty ? nil : "Result: \(Self.clipToolEvidence(output))"].compactMap { $0 }.joined(separator: "\n")
+                        run.toolDetails.append(ToolDetail(text: evidence, failed: failed))
+                        while run.toolDetails.count > Self.foldDetailItems {
+                            run.toolDetails.remove(at: run.toolDetails.firstIndex { !$0.failed } ?? 0)
+                        }
+                        let detail = Self.toolFoldDetail(run.toolDetails, total: items.count, sessionKey: sessionKey)
                         var entry = row(run, "tool_exec", run.toolRowTs ?? now, Self.toolFoldRaw(items), detail)
                         entry.startedAt = run.toolRowStart; entry.endedAt = now
                         out.append(.init(entry: entry, upsert: items.count > 1))

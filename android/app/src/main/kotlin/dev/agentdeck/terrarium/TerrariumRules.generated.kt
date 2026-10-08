@@ -9,6 +9,24 @@ package dev.agentdeck.terrarium
  */
 object TerrariumRules {
     const val NATIVE_RESIDENT_LIMIT = 8
+    const val CI_COMPANION_ORBIT_RADIUS_X = 0.08f
+    const val CI_COMPANION_ORBIT_RADIUS_Y = 0.07f
+    const val CI_COMPANION_SIZE_FRAC = 0.05f
+    const val CI_COMPANION_EDGE_INSET = 0.035f
+    const val CI_COMPANION_RADIANS_PER_SECOND = 0.9f
+    const val CI_COMPANION_QUEUED_SPEED = 0.55f
+    const val CI_COMPANION_UNKNOWN_SPEED = 0.35f
+    const val CI_COMPANION_NATIVE_RADIUS_X = 1.0f
+    const val CI_COMPANION_NATIVE_RADIUS_Y = 0.36f
+    const val CI_COMPANION_NATIVE_DEPTH = 0.45f
+    const val CI_COMPANION_NATIVE_SIZE = 0.32f
+    const val CI_COMPANION_STATIC_ANGLE = 0.7853981633974483f
+    const val CI_COMPANION_RESULT_SECONDS = 4.0f
+    const val CI_COMPANION_HOP_HEIGHT = 0.035f
+    const val CI_COMPANION_HOP_SECONDS = 1.2f
+    const val CI_COMPANION_SEED_OFFSET = 2166136261L
+    const val CI_COMPANION_SEED_PRIME = 16777619L
+    const val CI_COMPANION_SEED_MODULUS = 10000L
     const val NATIVE_ACTIVITY_IDLE_RATE = 0.65f
     const val NATIVE_ACTIVITY_WORK_RATE = 2.5f
     const val NATIVE_ACTIVITY_GROUND_TRAVEL = 0.32f

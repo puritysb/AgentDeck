@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCreatureLayoutSnapshot } from '../pixoo/pixoo-renderer.js';
+import { getCreatureLayoutSnapshot, getCiCueSnapshot, renderFrame, resetDirector } from '../pixoo/pixoo-renderer.js';
 import { State } from '../types.js';
 import type { SessionInfo } from '@agentdeck/shared/protocol';
 import type { StateUpdateEvent } from '../types.js';
@@ -265,3 +265,66 @@ describe('pixoo creature sync — Usage HUD safe area floor', () => {
   });
 });
 
+
+describe('CI micro cue', () => {
+  it('alternates a separate CI glyph and preserves permission priority', () => {
+    const wait = { kind: 'ci' as const, provider: 'github-actions' as const, phase: 'failed' as const,
+      agentWaiting: false, openedAt: 1, evidence: 'github' as const };
+    const row = session({ id: 'ci', waitingOn: wait });
+    // Phase dot is separate from the monochrome GitHub mark.
+    const pixel = (buf: Uint8Array) => Array.from(buf.slice((8 * 11 + 8) * 3, (8 * 11 + 8) * 3 + 3));
+    expect(pixel(renderFrame(null, null, [row], 3500, 11, 'micro'))).toEqual([255, 107, 107]);
+    expect(pixel(renderFrame(null, null, [row], 500, 11, 'micro'))).not.toEqual([255, 107, 107]);
+    expect(pixel(renderFrame(null, null, [row, session({ id: 'permission', state: 'awaiting_permission' })], 3500, 11, 'micro'))).not.toEqual([255, 107, 107]);
+  });
+  it('never assigns another session\'s CI helper to the dominant tiny beacon', () => {
+    const ci = { kind: 'ci' as const, provider: 'github-actions' as const, phase: 'running' as const,
+      agentWaiting: true, openedAt: 1, evidence: 'github' as const };
+    renderFrame(null, null, [session({ id: 'working', agentType: 'claude-code', state: 'processing' }),
+      session({ id: 'waiting-other', agentType: 'hermes', waitingOn: ci })], 3500, 11, 'micro');
+    expect(getCiCueSnapshot()).toEqual([]);
+  });
+  it('keeps crowded same-project helpers tied to actual session IDs, stops outcomes and clears null', () => {
+    resetDirector();
+    const ci = { kind: 'ci' as const, provider: 'github-actions' as const, phase: 'running' as const,
+      agentWaiting: true, openedAt: 1, evidence: 'github' as const };
+    const rows = ['orbit-a', 'orbit-b'].map(id => session({ id, agentType: 'hermes', waitingOn: ci }));
+    renderFrame(null, null, rows, 1000, 64);
+    expect(getCiCueSnapshot().map(c => c.sessionId).sort()).toEqual(['orbit-a', 'orbit-b']);
+    expect(getCiCueSnapshot().every(c => c.moving)).toBe(true);
+    const before = getCiCueSnapshot();
+    renderFrame(null, null, rows, 3000, 64);
+    expect(getCiCueSnapshot()).not.toEqual(before);
+    const result = [{ ...rows[0], waitingOn: { ...ci, phase: 'passed' as const, agentWaiting: false } }];
+    renderFrame(null, null, result, 4000, 64);
+    expect(getCiCueSnapshot()).toHaveLength(1);
+    expect(getCiCueSnapshot()[0].moving).toBe(false);
+    renderFrame(null, null, result, 9000, 64);
+    expect(getCiCueSnapshot()).toEqual([]);
+    renderFrame(null, null, [{ ...result[0], waitingOn: null }], 9100, 64);
+    expect(getCiCueSnapshot()).toEqual([]);
+  });
+  it('renders an unrecognized future CI phase without crashing the matrix frame', () => {
+    resetDirector();
+    const row = session({ id: 'future-phase', agentType: 'hermes', waitingOn: {
+      kind: 'ci', provider: 'github-actions', phase: 'future' as never,
+      agentWaiting: true, openedAt: 1, evidence: 'github',
+    } });
+    expect(() => renderFrame(null, null, [row], 1000, 64)).not.toThrow();
+    expect(getCiCueSnapshot()).toHaveLength(1);
+  });
+  it('keeps queued-to-running phase continuous and hides inactive non-results', () => {
+    resetDirector();
+    const ci = { kind: 'ci' as const, provider: 'github-actions' as const, phase: 'queued' as const,
+      agentWaiting: true, openedAt: 1, evidence: 'github' as const };
+    const row = session({ id: 'continuous-orbit', agentType: 'hermes', waitingOn: ci });
+    renderFrame(null, null, [row], 1000, 64);
+    const angle = getCiCueSnapshot()[0].angle;
+    renderFrame(null, null, [{ ...row, waitingOn: { ...ci, phase: 'running' } }], 1000, 64);
+    expect(getCiCueSnapshot()[0].angle).toBe(angle);
+    renderFrame(null, null, [{ ...row, waitingOn: { ...ci, phase: 'running' } }], 2000, 64);
+    expect(getCiCueSnapshot()[0].angle).toBeGreaterThan(angle);
+    renderFrame(null, null, [{ ...row, waitingOn: { ...ci, agentWaiting: false } }], 2100, 64);
+    expect(getCiCueSnapshot()).toEqual([]);
+  });
+});

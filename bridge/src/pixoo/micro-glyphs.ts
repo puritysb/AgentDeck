@@ -1,3 +1,4 @@
+import { paintOfficialFeatures } from './official-features.js';
 /**
  * Timebox Mini 11×11 "Agent Beacon" renderer.
  *
@@ -97,12 +98,7 @@ function paintOfficialMark(buf: Uint8Array, creature: MicroCreature, aggregate: 
     }
   }
 
-  // The official silhouette carries the lobster identity; two cyan eye pixels
-  // remain a device-tuned accessibility accent on the 9px reduction.
-  if (name === 'openClaw') {
-    setPixel(buf, 4, 4, [0, 229, 204], stateIntensity);
-    setPixel(buf, 7, 4, [0, 229, 204], stateIntensity);
-  }
+  paintOfficialFeatures(buf, MICRO_SIZE, name, 1, 1, OFFICIAL_TIMEBOX_GLYPH_SIZE, 'timebox', stateIntensity);
 }
 
 function paintStandby(buf: Uint8Array, animFrame: number): void {

@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/plugin-ulanzi",
-  "version": "1.6.0",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "AgentDeck plugin for Ulanzi Studio (D200H and D200X LCD keys) — official UlanziDeckPlugin-SDK",

@@ -14,6 +14,286 @@
     "hardware": "Runs against a connected physical device.",
     "release": "Packaging, signing and store-submission checks on a release tag."
   },
+  "tiers": [
+    {
+      "id": "changed",
+      "name": "Changed-area check",
+      "command": "pnpm verify:changed",
+      "when": "While iterating, and before pushing a focused fix",
+      "budget": "Seconds to a few minutes, depending on what changed",
+      "selects": "Only the steps whose paths match a file changed since the merge base with origin/master (committed, staged, unstaged or untracked). Vitest runs the tests that import a changed file, plus tests that name a changed non-code file; a change to package.json, the lockfile, a tsconfig or vitest.config.ts runs the whole suite.",
+      "does_not_replace": "The quick check. An import graph cannot see every test that depends on a change, and an unaffected step is not run at all."
+    },
+    {
+      "id": "quick",
+      "name": "Quick check",
+      "command": "pnpm verify:quick",
+      "when": "Before every push and every pull request",
+      "budget": "About 2–3 minutes; no native toolchain needed",
+      "selects": "Every fast gate the ubuntu jobs of ci.yml and design-system.yml run: version sync, build, type check, the ESLint and design-lint ratchets, the whole Vitest suite, the daemon E2E, protocol and mirror drift, docs and Pages parity.",
+      "does_not_replace": "Path-scoped CI for Android, Apple and ESP32, the Windows and macOS runtime jobs, or the pre-release check."
+    },
+    {
+      "id": "full",
+      "name": "Pre-release check",
+      "command": "pnpm verify:full",
+      "when": "Before cutting any release tag",
+      "budget": "20–40 minutes on a Mac with every toolchain, plus lab time",
+      "selects": "Everything in the quick check, with the coverage floor; every native suite whose toolchain this host has (Android, Apple macOS + iOS, App Store bundle, ESP32 host tests, simulator and TTGO builds); the clean npm package acceptance; and the lab gates, which a person attests with --attest. pnpm verify:full --record commits the receipt that this page shows.",
+      "does_not_replace": "The release workflows (signing, upload, store review) or hosted Windows CI; a step whose toolchain is missing is recorded as skipped, never as passed."
+    }
+  ],
+  "steps": [
+    {
+      "id": "version",
+      "name": "Version sync",
+      "gate": "typecheck",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm verify-version",
+      "paths": [
+        "VERSION", "package.json", "*/package.json", "bridge/src/daemon.ts", "apple/project.yml",
+        "apple/AgentDeck.xcodeproj/project.pbxproj", "android/app/build.gradle.kts", "esp32/src/config.h",
+        "plugin/bound.serendipity.agentdeck.sdPlugin/manifest.json",
+        "plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/manifest.json", "scripts/verify-version-sync.mjs"
+      ]
+    },
+    {
+      "id": "build",
+      "name": "Build every workspace package",
+      "gate": "typecheck",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm build",
+      "paths": ["shared/**", "bridge/**", "plugin/**", "plugin-ulanzi/**", "hooks/**", "setup/**", "package.json", "pnpm-lock.yaml", "tsconfig*.json"]
+    },
+    {
+      "id": "typecheck",
+      "name": "Strict type check",
+      "gate": "typecheck",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm typecheck",
+      "needs": ["build"],
+      "paths": ["shared/**", "bridge/**", "plugin/**", "plugin-ulanzi/**", "hooks/**", "setup/**", "package.json", "pnpm-lock.yaml", "tsconfig*.json"]
+    },
+    {
+      "id": "eslint",
+      "name": "ESLint error ratchet",
+      "gate": "eslint",
+      "tiers": ["changed", "quick", "full"],
+      "run": "node scripts/check-eslint-baseline.mjs",
+      "paths": ["**/*.ts", "**/*.js", "**/*.mjs", "eslint.config.js", "scripts/eslint-baseline.json", "pnpm-lock.yaml"]
+    },
+    {
+      "id": "vitest-related",
+      "name": "Vitest, tests related to the change",
+      "gate": "vitest",
+      "tiers": ["changed"],
+      "builtin": "vitest-related",
+      "report_suite": "vitest"
+    },
+    {
+      "id": "vitest",
+      "name": "Vitest, whole suite",
+      "gate": "vitest",
+      "tiers": ["quick"],
+      "run": "npx vitest run",
+      "report_suite": "vitest"
+    },
+    {
+      "id": "vitest-coverage",
+      "name": "Vitest, whole suite + coverage floor",
+      "gate": "vitest",
+      "tiers": ["full"],
+      "run": "npx vitest run --coverage",
+      "report_suite": "vitest"
+    },
+    {
+      "id": "e2e",
+      "name": "Daemon hub end-to-end",
+      "gate": "daemon-e2e",
+      "tiers": ["changed", "quick", "full"],
+      "run": "npx vitest run --config vitest.e2e.config.ts",
+      "report_suite": "e2e",
+      "needs": ["build"],
+      "opt_in": {
+        "platform": "darwin",
+        "env": "AGENTDECK_E2E_ALLOW_DARWIN",
+        "why": "on macOS the daemon's usage poller reads the login Keychain; pass --allow-keychain to run it"
+      },
+      "paths": ["bridge/**", "shared/**", "hooks/**", "tests/e2e/**", "vitest.e2e.config.ts"]
+    },
+    {
+      "id": "protocol-drift",
+      "name": "Generated protocol types match protocol.ts",
+      "gate": "typecheck",
+      "tiers": ["changed", "quick", "full"],
+      "builtin": "protocol-drift",
+      "run": "pnpm generate-protocol (no diff)",
+      "paths": ["shared/src/*protocol*.ts", "shared/src/command-builders.ts", "generated/protocol/**", "scripts/generate-protocol.sh", "scripts/generate-command-builders.mjs"]
+    },
+    {
+      "id": "preview-mirror",
+      "name": "Preview mirror SYNC-HASH pins",
+      "gate": "typecheck",
+      "tiers": ["changed", "quick", "full"],
+      "run": "node scripts/check-preview-mirror-sync.mjs"
+    },
+    {
+      "id": "tokens",
+      "name": "Design token mirrors",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "python3 design/verify-tokens-sync.py && python3 design/verify-tokens-sync.py --self-test",
+      "requires": { "commands": ["python3"] },
+      "paths": ["design/**", "**/*.css", "**/*.html", "**/*.swift", "**/*.kt", "esp32/src/**", "shared/src/design-tokens.ts", "scripts/generate-html-report.py", "agentdeck-design-system/**"]
+    },
+    {
+      "id": "design-lint",
+      "name": "Design-lint ratchet",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "node scripts/check-design-lint-baseline.mjs",
+      "paths": ["**/*.html", "**/*.css", "**/*.js", "**/*.jsx", "design/**", "docs/design-lint-baseline.md"]
+    },
+    {
+      "id": "docs",
+      "name": "Markdown links, anchors and the AGENTS.md budget",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm docs:check",
+      "paths": ["**/*.md", "scripts/check-docs.mjs", "docs/**"]
+    },
+    {
+      "id": "design-catalog",
+      "name": "Design-system catalog and translations",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm design-system:check",
+      "paths": ["docs/**", "design/**", "agentdeck-design-system/**", "**/*.md", "scripts/build-design-system-viewer.mjs"]
+    },
+    {
+      "id": "devlog",
+      "name": "Development-log aggregates",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "pnpm devlog:check",
+      "paths": ["docs/devlog/**", "DEVELOPMENT_LOG.md", "scripts/devlog-build.mjs"]
+    },
+    {
+      "id": "pages-parity",
+      "name": "Board table, GNB, spec-card and surface-count parity",
+      "gate": "design-docs",
+      "tiers": ["changed", "quick", "full"],
+      "run": "node scripts/generate-esp32-board-matrix.mjs --check && node scripts/sync-pages-nav.mjs --check && node scripts/sync-hardware-spec-cards.mjs --check && node scripts/check-surface-mirrors.mjs",
+      "needs": ["build"],
+      "paths": [
+        "shared/src/esp32-boards.ts", "docs/**", "README.md", "tools/**", "agentdeck-design-system/**",
+        "scripts/pages-*", "scripts/sync-*.mjs", "scripts/check-surface-mirrors.mjs", "scripts/generate-esp32-board-matrix.mjs"
+      ]
+    },
+    {
+      "id": "android",
+      "name": "Android compile + JUnit + Robolectric",
+      "gate": "android-unit",
+      "tiers": ["changed", "full"],
+      "run": "cd android && ./gradlew :app:testDebugUnitTest",
+      "report_suite": "android",
+      "requires": { "jdk": 17 },
+      "paths": ["android/**"]
+    },
+    {
+      "id": "apple-macos",
+      "name": "macOS app build + XCTest",
+      "gate": "apple-unit",
+      "tiers": ["changed", "full"],
+      "run": "xcodebuild test -project apple/AgentDeck.xcodeproj -scheme AgentDeck_macOS -configuration Debug -destination platform=macOS -derivedDataPath \"${TMPDIR:-/tmp}/agentdeck-verify/DerivedData\" CODE_SIGNING_ALLOWED=NO",
+      "report_suite": "apple",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild"] },
+      "paths": ["apple/**", "generated/protocol/**"]
+    },
+    {
+      "id": "apple-ios",
+      "name": "iOS app build (simulator, unsigned)",
+      "gate": "apple-unit",
+      "tiers": ["full"],
+      "run": "xcodebuild build -project apple/AgentDeck.xcodeproj -scheme AgentDeck_iOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath \"${TMPDIR:-/tmp}/agentdeck-verify/DerivedData\" CODE_SIGNING_ALLOWED=NO",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild"] }
+    },
+    {
+      "id": "apple-submission",
+      "name": "App Store submission bundle limits",
+      "gate": "apple-unit",
+      "tiers": ["changed", "full"],
+      "run": "bash apple/scripts/validate-appstore-submission.sh",
+      "requires": { "commands": ["ffprobe", "python3"] },
+      "paths": ["apple/appstore-submission/**", "apple/AgentDeck/Resources/**", "docs/appstore-metadata-draft.md", "apple/scripts/validate-appstore-submission.sh"]
+    },
+    {
+      "id": "esp32-host",
+      "name": "ESP32 host policy assertions",
+      "gate": "esp32-host-policy",
+      "tiers": ["changed", "full"],
+      "run": "bash esp32/sim/run-tests.sh",
+      "requires": { "commands": ["c++"] },
+      "paths": ["esp32/**"]
+    },
+    {
+      "id": "esp32-sim",
+      "name": "ESP32 firmware simulator compile",
+      "gate": "esp32-sim",
+      "tiers": ["changed", "full"],
+      "run": "cd esp32/sim && pio run",
+      "requires": { "commands": ["pio"] },
+      "paths": ["esp32/**"]
+    },
+    {
+      "id": "esp32-ttgo",
+      "name": "ESP32 TTGO target build",
+      "gate": "esp32-ttgo",
+      "tiers": ["full"],
+      "run": "cd esp32 && pio run -e ttgo",
+      "requires": { "commands": ["pio"] }
+    },
+    {
+      "id": "npm-packaged",
+      "name": "Clean npm candidate package acceptance",
+      "gate": "npm-candidate-acceptance",
+      "tiers": ["full"],
+      "run": "pnpm test:packaged --soak-seconds 60",
+      "needs": ["build"],
+      "requires": { "platform": "posix" }
+    },
+    {
+      "id": "windows-runtime",
+      "name": "Windows native runtime",
+      "gate": "windows-runtime",
+      "tiers": ["full"],
+      "run": "node bridge/dist/cli.js diag native --json",
+      "needs": ["build"],
+      "requires": { "platform": "win32" },
+      "hosted": "ci.yml › windows-native-runtime runs this on Node 22, 24 and 26 for every pull request"
+    },
+    {
+      "id": "esp32-robot",
+      "name": "ESP32 boards: flash, boot, serial protocol, performance",
+      "gate": "esp32-robot",
+      "tiers": ["full"],
+      "manual": "Run bash esp32/robot/run.sh hw, protocol and perf against the boards on USB, then pass --attest esp32-robot=pass (or fail:<note>, skip:<why>)."
+    },
+    {
+      "id": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "gate": "device-deploy",
+      "tiers": ["full"],
+      "manual": "Deploy with the agentdeck-deploy skill (preflight: bash scripts/macos-preflight.sh) and confirm each device connects, then pass --attest device-deploy=pass."
+    },
+    {
+      "id": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "gate": "swift-codex-live",
+      "tiers": ["full"],
+      "manual": "With the signed sandboxed app running, run node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app, then pass --attest swift-codex-live=pass."
+    }
+  ],
   "gates": [
     {
       "id": "vitest",
@@ -32,13 +312,20 @@
       "report_suite": "vitest",
       "proves": [
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)",
+        "Node/Swift daemon policy mirror drift and common turn-boundary vectors; CLI rejects explicit Swift identity as Node readiness (native policy execution also runs on macOS)",
+        "Deck settings preserve conversation targets and request correlation, reject malformed mutation values, and share generated Node/Swift bounds; picker timeout/refusal and D200H activity redraw regressions are covered",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
-        "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)"
+        "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)",
+        "CI wait command intent classification and generated Swift drift; identical command vectors execute in both TS and Swift on macOS, including strict JSON booleans, UTF-16 bounds and safe identity extraction; unsupported or ambiguous input is rejected; Hermes normalized CI evidence is allow-listed, bounded and matched by opaque invocation ID in both trackers",
+        "CI compact transport requires explicit agentWaiting=true for pending phases while preserving terminal verdicts; common vectors execute in Node and Swift, plus the firmware ArduinoJson projection when its build dependency is installed",
+        "README/overview 1.8.0 supplement references resolve to real assets, user-controlled captioned video, and Pages assembly paths; WebVTT cues are nonempty and ordered"
       ],
       "does_not_prove": [
         "anything about native apps, firmware or real devices",
         "real Dot subscription/report execution, hosted OAuth-provider interoperability or public relay deployment (the relay tests use a local receiver and test JWTs)",
         "macOS-only halves (Swift toolchain, launchd) — those cases are marked skipped on Linux and appear as skipped in this report"
+        "CI wait daemon/wire/UI integration or actual GitHub run state; the classifier observes intent only",
+        "public video pixel fidelity, duration, browser subtitle playback, or actual Pages publication"
       ]
     },
     {
@@ -55,17 +342,45 @@
       "evidence": ["tests/e2e/daemon-hub.e2e.test.ts"],
       "proves": [
         "the real agentdeck daemon start process boots in an empty HOME and answers /health",
+        "privacy-scrubbed real Hermes CI terminal callbacks open an unknown foreground wait and clear its matching invocation through actual daemon HTTP/WS; the capture used a local fixture watcher, not a GitHub verdict",
         "Claude hook events posted to /hooks/* drive the WebSocket state stream (idle → processing → idle)",
         "the exact hook shell snippet the installer writes finds the daemon through daemon.json and delivers events",
         "PreToolUse and Stop hooks answer immediately when no device can approve, so Claude never stalls",
         "the timeline is persisted to timeline.json and replayed to a new client after a restart",
         "SIGTERM shuts the daemon down on its own and withdraws daemon.json",
-        "loopback posture: the port is closed on the host's LAN address"
+        "loopback posture: the port is closed on the host's LAN address",
+        "z.ai credential edits require a local bearer token, preserve unrelated settings, use private file permissions and never echo or log the key"
       ],
       "does_not_prove": [
         "a real Claude/Codex process (events are posted with the documented payload shape)",
         "LAN pairing and default-deny from another machine (every same-host address is trusted by design; the gate itself is unit-tested in http-auth-gate.test.ts)",
         "device modules (all disabled with --local)"
+      ]
+    },
+    {
+      "id": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "level": ["integration", "e2e"],
+      "where": "Local POSIX host with Node 22, 24 or 26",
+      "workflow": null,
+      "trigger": "Before npm candidate delivery, after pnpm build",
+      "blocking": false,
+      "command": "pnpm test:packaged --soak-seconds 60 --keep-artifacts",
+      "evidence": ["scripts/verify-packaged-daemon.mjs", "setup/package.json"],
+      "proves": [
+        "all four coordinated npm tarballs install in an empty prefix without workspace links or compiled test payloads",
+        "the installed daemon boots under the exact native-binding executable on an isolated port and temporary data directory",
+        "installed Claude shell hooks discover that daemon through its registry and deliver a turn",
+        "a locally fixtured GitHub API process drives failed CI, explicit re-invocation clear, a repair tool and passed rerun over real HTTP/WebSocket interfaces",
+        "captured Hermes child/cancelled-turn hooks replay correctly and twelve concurrent read-only conversations retain independent labels and identities",
+        "four volunteered device kinds appear in health; dashboard/reader/plugin peers depart, a WiFi board reconnect updates its retained identity, and compact roster frames parse below the smallest firmware JSON guard",
+        "the packaged daemon survives the requested soak and replays persisted timeline and credentials after isolated shutdown/restart"
+      ],
+      "does_not_prove": [
+        "a live GitHub CI run or real agent execution (the subprocess and hook payloads are fixtures)",
+        "physical device rendering, hardware transport or optical acceptance",
+        "Swift/Node ownership handover, store signing or publication",
+        "a long-term production soak (duration is selected by the operator)"
       ]
     },
     {
@@ -106,13 +421,34 @@
       "job": "test",
       "trigger": "Every PR and push to master",
       "blocking": true,
-      "command": "pnpm verify-version && pnpm build && pnpm typecheck && pnpm generate-protocol (no diff)",
+      "command": "pnpm verify-version && pnpm build && pnpm typecheck && pnpm generate-protocol (no diff) && check-preview-mirror-sync.mjs",
       "proves": [
         "every workspace package compiles under strict TypeScript",
         "target versions agree with the repository compatibility major",
-        "generated protocol types (Swift, Kotlin, JSON Schema) are committed in sync with shared/src/protocol.ts"
+        "generated protocol types (Swift, Kotlin, JSON Schema) are committed in sync with shared/src/protocol.ts",
+        "every hand-maintained preview mirror still pins the current blob of the renderer it copies (SYNC-HASH)"
       ],
       "does_not_prove": ["runtime behaviour"]
+    },
+    {
+      "id": "eslint",
+      "name": "ESLint error ratchet",
+      "level": ["static"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "test",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "node scripts/check-eslint-baseline.mjs",
+      "evidence": ["scripts/check-eslint-baseline.mjs", "scripts/eslint-baseline.json"],
+      "proves": [
+        "the number of ESLint errors in the TypeScript and JavaScript sources does not grow past scripts/eslint-baseline.json",
+        "vendored upstream SDK code and gitignored generated files are excluded, so the count is the same on every checkout"
+      ],
+      "does_not_prove": [
+        "that the recorded errors are fixed: the baseline still carries them",
+        "anything about warnings, which are not counted"
+      ]
     },
     {
       "id": "windows-runtime",
@@ -123,14 +459,61 @@
       "job": "windows-native-runtime",
       "trigger": "Every PR and push to master",
       "blocking": true,
-      "command": "node bridge/dist/cli.js diag native --json && vitest run <8 Windows-sensitive files>",
+      "command": "node bridge/dist/cli.js diag native --json && vitest run <the files below>",
+      "files": [
+        "hooks/src/__tests__/install.test.ts",
+        "hooks/src/__tests__/codex-install.test.ts",
+        "hooks/src/__tests__/windows-codex-pid.test.ts",
+        "bridge/src/__tests__/passive-observer.test.ts",
+        "bridge/src/__tests__/state-machine.test.ts",
+        "bridge/src/__tests__/daemon-launcher.test.ts",
+        "bridge/src/__tests__/daemon-supervisor.test.ts",
+        "bridge/src/__tests__/observed-launch.test.ts",
+        "bridge/src/__tests__/observed-launch-integration.test.ts",
+        "bridge/src/__tests__/connection-diagnostics.test.ts",
+        "plugin-ulanzi/src/__tests__/daemon-discovery.test.ts",
+        "plugin-ulanzi/src/__tests__/daemon-client.test.ts",
+        "plugin-ulanzi/src/__tests__/daemon-transport.test.ts"
+      ],
       "proves": [
         "better-sqlite3 opens under each supported Node ABI on Windows",
-        "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells"
+        "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells",
+        "native Codex hook runner sends the launcher PID through cmd.exe, preserves UTF-8 payloads, and omits guessed identity when CIM evidence is unavailable or cyclic",
+        "Ulanzi discovery handles missing registries and foreign PIDs; native loopback HTTP/WS registers, exchanges frames and rediscovers a changed port after socket loss"
       ],
       "does_not_prove": [
         "the Scheduled Task autostart on a real login session",
-        "the Stream Deck app on Windows"
+        "the Stream Deck app on Windows",
+        "WSL2 forwarding, the Ulanzi Studio bundled runtime or physical D200 keys"
+      ]
+    },
+    {
+      "id": "macos-native-parity",
+      "name": "macOS-only Vitest cases (Swift parity, launchd, native helpers)",
+      "level": ["contract", "integration"],
+      "where": "macos-26",
+      "workflow": ".github/workflows/ci.yml",
+      "job": "macos-native-parity",
+      "trigger": "Every PR and push to master",
+      "blocking": true,
+      "command": "vitest run <the files below>",
+      "files": [
+        "shared/src/__tests__/daemon-parity.test.ts",
+        "shared/src/__tests__/ci-wait-sync.test.ts",
+        "bridge/src/__tests__/ips10-roster.test.ts",
+        "bridge/src/__tests__/claude-background-tasks.test.ts",
+        "bridge/src/__tests__/matrix-expression.test.ts",
+        "bridge/src/__tests__/tui-terrarium-snapshots.test.ts",
+        "bridge/src/__tests__/daemon-supervisor.test.ts",
+        "bridge/src/__tests__/fm-helper-build.test.ts"
+      ],
+      "proves": [
+        "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions and the native TUI samples",
+        "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain"
+      ],
+      "does_not_prove": [
+        "how the Swift app uses those mirrors (that is apple-test.yml)",
+        "the ESP32 ArduinoJson projection case, which needs the board's PlatformIO libdeps and stays skipped"
       ]
     },
     {
@@ -188,8 +571,12 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "xcodebuild test -scheme AgentDeck_macOS; xcodebuild build -scheme AgentDeck_iOS; validate-appstore-submission.sh",
+      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
+        "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
+        "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
         "the iOS app builds unsigned",
         "App Store metadata, screenshots and privacy manifest are within submission limits"
       ],
@@ -197,6 +584,21 @@
         "UI flows (there is no UI-test target)",
         "behaviour on a signed build with real TCC grants"
       ]
+    },
+    {
+      "id": "esp32-host-policy",
+      "name": "ESP32 host policy assertions",
+      "level": ["unit", "contract"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/esp32-sim.yml",
+      "job": "compile",
+      "trigger": "PRs touching esp32/**",
+      "blocking": true,
+      "required": true,
+      "command": "bash esp32/sim/run-tests.sh",
+      "evidence": ["esp32/sim/run-tests.sh", "esp32/sim/tests/creature_glyph_selection_test.cpp", "esp32/sim/tests/ci_companion_ttgo_test.cpp", "esp32/sim/tests/eink_refresh_policy_test.cpp"],
+      "proves": ["firmware policy headers execute on the host, including strict unknown-agent glyph refusal and source feature selection", "e-ink paint policies: EPD47 masked differential bands and strip residue, the NM paint gate, the host clock behind \"as of\", and serial-primary radio parking from the radio's real state"],
+      "does_not_prove": ["pixel output, physical firmware memory pressure, or an installed board update"]
     },
     {
       "id": "esp32-sim",
@@ -211,6 +613,21 @@
       "command": "pio run (every esp32/sim env)",
       "proves": ["the real esp32/src render trees compile for the native simulator"],
       "does_not_prove": ["the Xtensa build, flashing, or behaviour on a board"]
+    },
+    {
+      "id": "esp32-ttgo",
+      "name": "ESP32 TTGO target firmware build",
+      "level": ["compile"],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/esp32-sim.yml",
+      "job": "ttgo",
+      "trigger": "PRs touching esp32/** or the ESP32 compile/release workflows",
+      "blocking": true,
+      "required": false,
+      "command": "pio run -e ttgo",
+      "evidence": ["esp32/platformio.ini"],
+      "proves": ["a fresh dependency install compiles and links TTGO on the release Xtensa toolchain without static DRAM overflow"],
+      "does_not_prove": ["runtime heap headroom, firmware boot, rendering, flashing, or other board targets"]
     },
     {
       "id": "pages-report",
@@ -348,6 +765,7 @@
     }
   ],
   "not_a_gate": {
+    ".github/workflows/local-deploy.yml": "Post-merge deployment to the owner’s Mac: builds and tests before replacing the app, restarts the supervised daemon and verifies build identity and plugin runtime. Not a pre-merge gate or public release.",
     ".github/workflows/asc-certificates.yml": "Manual App Store Connect certificate maintenance; verifies nothing about the product."
   },
   "not_verified": [
@@ -443,6 +861,7 @@
       "icon": "◎",
       "match": [
         "bridge/src/__tests__/daemon-*.test.ts",
+        "shared/src/__tests__/daemon-parity.test.ts",
         "bridge/src/__tests__/session-registry.test.ts",
         "bridge/src/__tests__/linux-service.test.ts",
         "bridge/src/__tests__/windows-*.test.ts",
@@ -458,7 +877,7 @@
     {
       "id": "observed",
       "name": "Agent observation & hooks",
-      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts?",
+      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts, including captured Hermes child suppression and Claude background-task snapshots with executable Node/Swift parity?",
       "icon": "◈",
       "match": [
         "hooks/src/__tests__/*.test.ts",
@@ -487,7 +906,9 @@
         "bridge/src/__tests__/remote-sessions.test.ts",
         "shared/src/__tests__/claude-permission-rules*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
-        "shared/src/__tests__/subagent-activity.test.ts"
+        "shared/src/__tests__/subagent-activity.test.ts",
+        "shared/src/__tests__/ci-wait*.test.ts",
+        "bridge/src/__tests__/ci-wait*.test.ts"
       ]
     },
     {
@@ -560,6 +981,7 @@
       "icon": "◬",
       "match": [
         "bridge/src/__tests__/openclaw-*.test.ts",
+        "bridge/src/__tests__/session-settings-command.test.ts",
         "bridge/src/__tests__/gateway-*.test.ts",
         "shared/src/__tests__/openclaw-*.test.ts",
         "shared/src/__tests__/gateway-*.test.ts",
@@ -630,9 +1052,11 @@
       "icon": "▧",
       "match": [
         "plugin/src/__tests__/*.test.ts",
+        "shared/src/__tests__/session-settings*.test.ts",
         "plugin-ulanzi/src/__tests__/*.test.ts",
         "shared/src/__tests__/svg-renderers/*.test.ts",
         "shared/src/__tests__/brand-assets-contract.test.ts",
+        "shared/src/__tests__/brand-features.test.ts",
         "shared/src/__tests__/hermes-brand.test.ts",
         "scripts/__tests__/plugin-deployment.test.ts"
       ]
@@ -642,12 +1066,12 @@
       "name": "Terminal dashboard",
       "question": "Does the TUI dashboard render sessions and the terrarium stably?",
       "icon": "▨",
-      "match": ["bridge/src/__tests__/tui-*.test.ts"]
+      "match": ["bridge/src/__tests__/tui-*.test.ts", "scripts/__tests__/tui-demo-frame.test.ts"]
     },
     {
       "id": "release",
       "name": "Release & repository policy",
-      "question": "Do versions, release notes, runtime support and palette ratchets hold?",
+      "question": "Do versions, release notes, runtime support, palette ratchets and the verification tiers hold?",
       "icon": "◻",
       "match": [
         "scripts/__tests__/version-policy.test.ts",
@@ -656,7 +1080,11 @@
         "scripts/__tests__/npm-registry-visibility.test.ts",
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
-        "scripts/__tests__/build-health-report.test.ts"
+        "scripts/__tests__/local-main-deploy.test.ts",
+        "scripts/__tests__/verify-tiers.test.ts",
+        "scripts/__tests__/build-health-report.test.ts",
+        "scripts/__tests__/public-media.test.ts",
+        "scripts/__tests__/aquarium-showcase-story.test.ts"
       ]
     }
   ]

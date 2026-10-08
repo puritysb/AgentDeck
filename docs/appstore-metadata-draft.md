@@ -155,6 +155,26 @@ AgentDeck은 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,companion,developer
 ```
 
+### What's New (v1.7.0)
+
+**macOS App**
+
+```
+• Hermes 세션을 수족관과 기기 미리보기에서 새로운 인어 캐릭터로 표시합니다. 연결된 세션은 읽기 전용입니다.
+• Codex·OpenCode·Kiro 세션 관찰과 재연결을 개선했습니다. Codex 설정 시 기존 사용자 설정을 더 안전하게 보존합니다.
+• Codex 사용 한도를 소진한 경우 구매한 크레딧 잔액을 표시합니다.
+• OpenClaw의 한 실행에 속한 도구 활동을 하나의 타임라인 항목으로 묶습니다.
+• USB 연결 ESP32의 Wi-Fi 업데이트 전환과 픽셀 디스플레이 표시를 개선했습니다.
+```
+
+**iOS App**
+
+```
+• 페어링된 Mac에서 전달받은 Hermes 세션을 새로운 인어 캐릭터로 표시합니다.
+• Codex 구매 크레딧 잔액과 정리된 OpenClaw 타임라인을 표시합니다.
+• 세션 상태 표시와 기기 미리보기를 개선했습니다.
+```
+
 ### What's New (v1.4.0)
 
 **macOS App**
@@ -506,6 +526,26 @@ AgentDeckは独立したプロジェクトであり、Anthropic、OpenAI、Googl
 claude code,ai,エージェント,ダッシュボード,stream deck,monitoring,apme,openclaw,codex,ipad,developer
 ```
 
+### What's New (v1.7.0)
+
+**macOS App**
+
+```
+• Hermesのセッションを水槽とデバイスプレビューに新しい人魚のキャラクターで表示します。セッションの表示は読み取り専用です。
+• Codex、OpenCode、Kiroのセッション監視と再接続を改善しました。Codexの設定時に既存のユーザー設定をより安全に保持します。
+• Codexの利用枠を使い切った際に、購入済みクレジットの残高を表示します。
+• OpenClawの同じ実行に属するツールの動作を一つのタイムライン項目にまとめます。
+• USB接続のESP32をWi-Fi更新に切り替える処理と、ピクセルディスプレイの表示を改善しました。
+```
+
+**iOS App**
+
+```
+• ペアリングしたMacから受信したHermesのセッションを、新しい人魚のキャラクターで表示します。
+• Codexの購入済みクレジット残高と、整理されたOpenClawタイムラインを表示します。
+• セッション状態の表示とデバイスプレビューを改善しました。
+```
+
 ### What's New (v1.4.0)
 
 **macOS App**
@@ -855,6 +895,26 @@ AgentDeck is independent and is not affiliated with or endorsed by Anthropic, Op
 claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,developer
 ```
 
+### What's New (v1.7.0)
+
+**macOS App**
+
+```
+• Adds a new mermaid character for Hermes sessions in the aquarium and device previews. Connected Hermes sessions are read-only.
+• Improves Codex, OpenCode and Kiro observation and reconnect handling. Codex configuration preserves existing user settings more safely.
+• Shows purchased Codex credits when a plan window is exhausted.
+• Groups each OpenClaw run's tool activity into one timeline entry.
+• Improves Wi-Fi updates for USB-connected ESP32 displays and pixel-display rendering.
+```
+
+**iOS App**
+
+```
+• Displays Hermes sessions received from your paired Mac with a new mermaid character.
+• Shows purchased Codex credit balances and the consolidated OpenClaw timeline.
+• Improves session-state presentation and device previews.
+```
+
 ### What's New (v1.4.0)
 
 **macOS App**
@@ -1079,7 +1139,7 @@ Feedback welcome: admin@foundby.kr
 
 The upload-ready set is in `apple/appstore-submission/screenshots/`. Do not upload the older raw captures in `apple/appstore-screenshots/`; several are duplicate onboarding frames or non-App-Store desktop captures.
 
-Current upload-ready set: 3 macOS + 3 iPhone + 3 iPad screenshots. The mobile dashboards use deterministic sample sessions and contain no real project names, auth tokens, local IP addresses, or USB paths.
+Current upload-ready set per locale: 5 macOS + 4 iPhone + 4 iPad screenshots (English, Korean, Japanese). The mobile dashboards use deterministic sample sessions and contain no real project names, auth tokens, local IP addresses, or USB paths.
 
 ### macOS upload order (2880×1800)
 
@@ -1141,7 +1201,7 @@ No demo account required — the app doesn't have user accounts.
 
 **macOS review**: reviewer can open "Preview Devices" to see the Swift app's 17 built-in layouts without a real session, then enable only the agent integrations they want to test.
 
-**iOS/iPadOS review**: the iOS app is a companion only — it has no local demo/sample-session mode in the release build (that path is `#if DEBUG`-only, used solely to capture App Store screenshots; see `apple/appstore-submission/RECORDING_RUNBOOK.md`). It shows nothing meaningful until it pairs with a Mac on the same Wi-Fi network running AgentDeck (App Store) or the `agentdeck` CLI with a live Claude Code/Codex session. Since this app record submits macOS and iOS together, ask the reviewer to test both builds on the same network so the iOS app can pair with the macOS build via Bonjour or the in-app QR code (Settings → Pair iPad). If Apple's review environment can't run two devices on one network, offer a short screen-recording link demonstrating the pairing flow and live dashboard as a fallback in the Review Notes field.
+**iOS/iPadOS review**: with no Mac present, discovery settles into a bounded no-Mac state. Tap **Explore without a Mac** to open the built-in synthetic Device Preview; its device, agent, state and session-count controls work offline in the release build. For live sessions, pair with AgentDeck on a Mac on the same network using Bonjour or the in-app QR flow. Reviewers can assess the preview without any agent or hardware installation.
 
 ---
 

@@ -24,6 +24,7 @@
 #include "net/wifi_manager.h"
 #include "net/mdns_discovery.h"
 #include "net/ws_client.h"
+#include "net/radio_park_policy.h"
 #if defined(BOARD_IPS10)
 #include "net/ips10_sdio_dma.h"
 #endif
@@ -52,6 +53,7 @@
 #include "ui/display.h"
 #include "ui/ticker/ticker_ui.h"
 #include "ui/pocket/pocket_ui.h"
+#include "ui/strip_layout.h"
 #include "input/light_sensor.h"
 #include "input/power_monitor.h"
 #include "input/touch_strip.h"
@@ -357,27 +359,39 @@ static void networkTask(void* param) {
         //     depend on that band.
         // Park after serial has been stable a few seconds (debounce transient
         // JSON), and restore immediately when serial drops so WiFi + its OTA path
-        // recover fast.
+        // recover fast. The decision reads the radio's real state — see
+        // net/radio_park_policy.h for the private-copy bug that kept two e-ink
+        // panels on WiFi and USB at once.
         {
-            static bool radioParked = false;
             static uint32_t serialStableSince = 0;
-            uint32_t nowMs = millis();
-            bool shouldPark = Net::serialConnected();
-            if (shouldPark) {
+            const uint32_t nowMs = millis();
+            RadioPark::Input park;
+            park.serialPrimary = Net::serialConnected();
+            park.parked = Net::wifiRadioParked();
+            if (park.serialPrimary) {
                 if (serialStableSince == 0) serialStableSince = nowMs;
-                if (!radioParked && (nowMs - serialStableSince) > 4000) {
-                    if (Net::wsConnected() || Net::wsConnecting()) Net::wsDisconnect();
-                    Net::wifiSetRadioParked(true);
-                    radioParked = true;
-                    Serial.println("[WiFi] radio parked — USB serial primary (freeing 2.4GHz airtime)");
-                }
+                park.serialStableMs = nowMs - serialStableSince;
             } else {
                 serialStableSince = 0;
-                if (radioParked) {
+            }
+            park.uptimeMs = nowMs;
+#if defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN)
+            park.deferBootJoin = true;
+#endif
+            switch (RadioPark::decide(park)) {
+                case RadioPark::Action::Park:
+                    if (Net::wsConnected() || Net::wsConnecting()) Net::wsDisconnect();
+                    Net::wifiSetRadioParked(true);
+                    Serial.println("[WiFi] radio parked — USB serial primary (freeing 2.4GHz airtime)");
+                    break;
+                case RadioPark::Action::Restore:
                     Net::wifiSetRadioParked(false);
-                    radioParked = false;
-                    Serial.println("[WiFi] radio restored — serial dropped");
-                }
+                    Serial.println(nowMs < RadioPark::BOOT_GRACE_MS + 1000
+                                       ? "[WiFi] radio restored — no USB serial host"
+                                       : "[WiFi] radio restored — serial dropped");
+                    break;
+                default:
+                    break;
             }
         }
 #endif
@@ -416,11 +430,35 @@ static void tickerApplyBrightness(uint32_t now) {
 static void uiTask(void* param) {
     Serial.printf("[UI] Ticker task started on core %d\n", xPortGetCoreID());
 
-    // Desk awareness is the default on either unit. A camera shield remains
-    // available in the strip's explicit CAM page; it no longer selects a
-    // different portrait UI before the user can see their pinned task.
-    Camera::init();
-    const bool pocket = false;
+    // Layout is chosen before the display comes up (StripLayout): the camera
+    // unit defaults to portrait Pocket, the camera-less unit to the landscape
+    // Focus Strip, and a persisted override wins over both. Holding either
+    // rocker button through boot toggles that override. The camera probe
+    // manages Wire itself and deinits straight after (power fence).
+    const bool camera = Camera::init();
+    StripLayout::begin(camera);
+    {
+        // GPIO12/16 are not strap pins on the S3 (BOOT/GPIO0 is, so it is
+        // not used here). Require a sustained hold so a bounce never flips
+        // the layout, then wait for release so the loop does not read the
+        // same press as a tab step.
+        pinMode(BOARD_PIN_BTN2, INPUT_PULLUP);
+        pinMode(BOARD_PIN_BTN3, INPUT_PULLUP);
+        auto rockerDown = []() {
+            return digitalRead(BOARD_PIN_BTN2) == LOW || digitalRead(BOARD_PIN_BTN3) == LOW;
+        };
+        uint32_t heldMs = 0;
+        while (rockerDown() && heldMs < 800) { vTaskDelay(pdMS_TO_TICKS(20)); heldMs += 20; }
+        if (heldMs >= 800) {
+            StripLayout::toggleAtBoot(camera);
+            Serial.printf("[Layout] boot hold -> %s\n", StripLayout::layoutName(StripLayout::portrait()));
+            for (uint32_t waited = 0; rockerDown() && waited < 5000; waited += 20) vTaskDelay(pdMS_TO_TICKS(20));
+        }
+    }
+    const bool pocket = StripLayout::portrait();
+    Serial.printf("[Layout] %s (setting %s, camera %s)\n", StripLayout::layoutName(pocket),
+                  StripLayout::settingName(StripLayout::setting()), camera ? "yes" : "no");
+    if (pocket) UI::requestPortrait();
     UI::displayInit();
     Input::lightInit();
     Input::touchInit();
@@ -481,6 +519,20 @@ static void uiTask(void* param) {
             // two pollers would fight over the controller's press state.
             Input::TouchEvent touch = Input::touchPoll(now);
             if (touch.gesture != Input::TouchGesture::NONE) Ticker::onTouch(touch);
+        }
+
+        {
+            // Layout switch requested from screen or daemon: persist, show
+            // the notice for a moment, then restart into the other tree.
+            const char* notice = nullptr;
+            if (StripLayout::poll(now, &notice)) {
+                Serial.flush();
+                ESP.restart();
+            }
+            if (notice) {
+                if (pocket) Pocket::notify(notice);
+                else Ticker::notify(notice);
+            }
         }
 
         Input::powerPoll(now);
@@ -1089,13 +1141,22 @@ static void uiTask(void* param) {
 #endif
 
     uint32_t lastFrameMs = millis();
+    uint32_t lastRenderMs = 0;
     while (true) {
         uint32_t now = millis();
         float dt = (now - lastFrameMs) / 1000.0f;
         lastFrameMs = now;
 
+        // Input every tick (touch needs ~25 ms sampling); the render pass —
+        // a snapshot, hashes and the paint gates — at most every 250 ms unless
+        // input asked for a frame.
         Eink::update(dt);
+        if (!Eink::renderPending() && (uint32_t)(now - lastRenderMs) < 250) {
+            vTaskDelay(pdMS_TO_TICKS(Eink::inputPollMs()));
+            continue;
+        }
         Eink::render();
+        lastRenderMs = millis();
 
 #if defined(BOARD_HAS_SPEAKER)
         // Paper cannot flash or animate, and this panel's repaint takes ~10 s,
@@ -1117,7 +1178,7 @@ static void uiTask(void* param) {
         }
 #endif
 
-        vTaskDelay(pdMS_TO_TICKS(250));
+        vTaskDelay(pdMS_TO_TICKS(Eink::inputPollMs()));
     }
 }
 #endif // board UI fork

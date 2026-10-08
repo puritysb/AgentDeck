@@ -1,6 +1,7 @@
 #if os(macOS)
 import XCTest
 import RealityKit
+import SwiftUI
 @testable import AgentDeck
 
 /// Verify the render-time Codex creature fold introduced to suppress phantom
@@ -9,6 +10,111 @@ import RealityKit
 /// simultaneous Cloud sprites; the fold collapses them to one creature per
 /// `(agentType=codex-cli, projectName)` group.
 final class TerrariumCloudFoldTests: XCTestCase {
+
+    func testBackgroundSnapshotDecodesProjectsAndClearsWithoutInventingAgents() throws {
+        let data = Data(#"{"id":"observed:claude:bg","port":0,"projectName":"Render","agentType":"claude-code","alive":true,"state":"processing","backgroundTaskCount":7}"#.utf8)
+        var row = try JSONDecoder().decode(SessionInfo.self, from: data)
+        var dashboard = DashboardState()
+        dashboard.siblingSessions = [row]
+        let projected = AquariumResident.project(dashboard.toTerrariumState())
+        XCTAssertEqual(projected.count, 1)
+        XCTAssertEqual(projected.first?.backgroundTasks, 7)
+        XCTAssertEqual(projected.first?.helpers, 0)
+        XCTAssertEqual(projected.first?.activity, .working)
+        for state in ["awaiting_permission", "awaiting_option", "idle", "disconnected"] {
+            row.state = state
+            dashboard.siblingSessions = [row]
+            XCTAssertTrue(dashboard.toTerrariumState().backgroundTaskCounts.isEmpty)
+        }
+        row.state = "processing"
+        for count: Int? in [0, nil, -1] {
+            row.backgroundTaskCount = count
+            dashboard.siblingSessions = [row]
+            XCTAssertTrue(dashboard.toTerrariumState().backgroundTaskCounts.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testBackgroundTilesMoveFreezeAndClearOnRealSceneReconciliation() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = ["claude": 12]
+        scene.sync(state, aspect: 1.6)
+        let resident = try XCTUnwrap(scene.residents["claude"])
+        let group = try XCTUnwrap(resident.findEntity(named: "background-work"))
+        XCTAssertTrue(group.isEnabled)
+        XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, false, "Background tiles replace the foreground bars")
+        XCTAssertEqual(group.children.count, 3, "Large task counts cannot allocate an unbounded effect")
+        // Keep a render of the actual production scene for visual review.
+        let view = ARView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        window.setFrameOrigin(NSPoint(x: -2000, y: -2000))
+        window.orderFront(nil)
+        defer { window.orderOut(nil) }
+        view.environment.background = .color(NSColor(DesignTokens.Ink.s900))
+        let anchor = AnchorEntity(world: .zero)
+        anchor.addChild(scene.root)
+        let camera = PerspectiveCamera()
+        camera.camera.fieldOfViewInDegrees = 38
+        camera.look(at: resident.position + [0, 0.15, 0], from: resident.position + [0, 0.9, 4.5], relativeTo: nil)
+        anchor.addChild(camera)
+        let light = DirectionalLight()
+        light.light.intensity = 3000
+        light.look(at: resident.position, from: resident.position + [-2, 3, 4], relativeTo: nil)
+        anchor.addChild(light)
+        view.scene.addAnchor(anchor)
+        try await Task.sleep(for: .seconds(2))
+        let image: NSImage? = await withCheckedContinuation { continuation in
+            view.snapshot(saveToHDR: false) { continuation.resume(returning: $0) }
+        }
+        let attachment = XCTAttachment(image: try XCTUnwrap(image))
+        attachment.name = "Background work - native 3D"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let preview = TerrariumRenderer()
+        preview.animateCompanions = false
+        preview.update(dt: 0.016, state: state)
+        let canvasImage = ImageRenderer(content: Canvas { context, size in
+            preview.draw(context: &context, size: size, includeHabitat: false)
+        }.frame(width: 640, height: 480).background(DesignTokens.Ink.s900))
+        let canvasAttachment = XCTAttachment(image: try XCTUnwrap(canvasImage.nsImage))
+        canvasAttachment.name = "Background work - native Canvas"
+        canvasAttachment.lifetime = .keepAlways
+        add(canvasAttachment)
+        let tile = try XCTUnwrap(group.children.first)
+        let initial = tile.position
+        scene.step(0.05)
+        XCTAssertNotEqual(tile.position, initial)
+        scene.animate = false
+        let frozen = tile.position
+        scene.step(60)
+        XCTAssertEqual(tile.position, frozen)
+        state.backgroundTaskCounts["claude"] = 1
+        scene.sync(state, aspect: 1.6)
+        XCTAssertEqual(group.children.filter(\.isEnabled).count, 1)
+        XCTAssertEqual(tile.position, frozen, "Reduced Motion keeps the phase fixed even when counts change")
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .asking, homeX: 0.5, homeY: 0.5, scale: 1)]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(group.isEnabled, "Approval takes priority even with retained task metadata")
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = [:]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(group.isEnabled, "Completion clears without requiring an animation frame")
+        XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, true, "Foreground work keeps its own cue after background tasks end")
+        scene.sync(TerrariumState(), aspect: 1.6)
+        XCTAssertTrue(scene.residents.isEmpty)
+
+        let canvas = TerrariumRenderer()
+        canvas.update(dt: 0.05, state: state)
+        XCTAssertGreaterThan(canvas.backgroundOrbitPhase, 0)
+        canvas.animateCompanions = false
+        let phase = canvas.backgroundOrbitPhase
+        canvas.update(dt: 60, state: state)
+        XCTAssertEqual(canvas.backgroundOrbitPhase, phase)
+    }
 
     func testCrowdedForegroundKeepsFocusAndWaitingSessionsWithoutProjectMerging() {
         let items = (0..<48).map {
@@ -168,30 +274,27 @@ final class TerrariumCloudFoldTests: XCTestCase {
     }
 
     @MainActor
-    func testSmallSnailTraversesFrontAndHiddenRearGroundWithoutLoopJump() async throws {
+    func testSnailKeepsAuthoredRockForagingHierarchyAndTransforms() async throws {
         let habitat = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "living-aquarium", withExtension: "usdz")))
+        func find(_ node: Entity) -> Entity? {
+            if node.name.replacingOccurrences(of: "_", with: " ").lowercased() == "fauna snail" { return node }
+            return node.children.compactMap { find($0) }.first
+        }
+        let authored = try XCTUnwrap(find(habitat))
+        let parent = try XCTUnwrap(authored.parent)
+        let transform = authored.transform
         let shoal = AquariumShoal()
         shoal.load(habitat)
         let snail = try XCTUnwrap(shoal.snail)
-        XCTAssertEqual(snail.children.first?.scale.x ?? 0, 0.6, accuracy: 0.01)
-        var front = false, rear = false, left = false, right = false
-        for second in 0..<3600 {
-            let t = Double(second) / 10
-            let p = AquariumShoal.snailPosition(at: t)
-            let next = AquariumShoal.snailPosition(at: t + 0.1)
-            XCTAssertLessThan(simd_distance(p, next), 0.025, "Slow continuous ground motion, including the loop seam")
-            XCTAssertGreaterThanOrEqual(p.y, -0.093)
-            XCTAssertLessThan(abs(p.x), 6.2)
-            front = front || p.z > 2; rear = rear || p.z < -3
-            left = left || p.x < -4; right = right || p.x > 4
-        }
-        XCTAssertTrue(front && rear && left && right)
-        XCTAssertLessThan(simd_distance(AquariumShoal.snailPosition(at: 0), AquariumShoal.snailPosition(at: 360)), 0.0001)
-        let before = snail.position
+        XCTAssertTrue(snail === authored, "Do not replace the animated habitat animal with a detached clone")
+        XCTAssertTrue(snail.parent === parent)
+        XCTAssertTrue(snail.isEnabled)
+        XCTAssertFalse(habitat.availableAnimations.isEmpty, "The shared asset owns rock contact and feeler motion")
         for _ in 0..<120 { shoal.step(1.0 / 60, residents: []) }
-        let forward = snail.orientation.act(SIMD3<Float>(1,0,0))
-        XCTAssertGreaterThan(simd_dot(snail.position - before, forward), 0)
-        XCTAssertEqual(shoal.root.children.filter { $0.name == "wandering-snail" }.count, 1)
+        XCTAssertEqual(snail.position, transform.translation, "School steering must not overwrite authored animation")
+        XCTAssertEqual(snail.scale, transform.scale)
+        XCTAssertEqual(snail.orientation.vector, transform.rotation.vector)
+        XCTAssertNil(shoal.root.findEntity(named: "wandering-snail"))
     }
 
     @MainActor
@@ -357,6 +460,126 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(resident.position.y, initialY, accuracy: 0.0001)
         XCTAssertGreaterThan(abs((initialFin.inverse * fin.orientation).angle), 0.03)
         XCTAssertNil(scene.root.findEntity(named: "substrate|swimmer"))
+    }
+
+    @MainActor
+    func testSidebarSessionCreatureIconKeepsFilledWhiteCodexPromptOnBothBackgrounds() throws {
+        for background in [Color.blue, Color.yellow] {
+            let view = SessionCreatureIcon(agentType: "codex-cli", tint: .purple, size: 240)
+                .background(background)
+            let image = ImageRenderer(content: view)
+            image.scale = 1
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image.nsImage?.tiffRepresentation)))
+            for (x,y) in [(79,110),(150,153)] {
+                let pixel = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB))
+                XCTAssertEqual(pixel.redComponent, 1, accuracy: 0.01)
+                XCTAssertEqual(pixel.greenComponent, 1, accuracy: 0.01)
+                XCTAssertEqual(pixel.blueComponent, 1, accuracy: 0.01)
+                XCTAssertEqual(pixel.alphaComponent, 1, accuracy: 0.01)
+            }
+        }
+    }
+
+    @MainActor
+    func testTinyMonochromeLogoExceptionKeepsInkBodyEyeContrast() throws {
+        let size = CreatureBrandFeatures.monochromeMinimumSize / 2
+        let view = CanonicalCreatureView(agentType: "claudecode", size: size, color: .black, monochrome: true)
+            .background(Color.blue)
+        let image = ImageRenderer(content: view)
+        image.scale = 240 / size
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image.nsImage?.tiffRepresentation)))
+        let eye = try XCTUnwrap(bitmap.colorAt(x: 65, y: 94)?.usingColorSpace(.sRGB))
+        XCTAssertEqual(eye.redComponent, 1, accuracy: 0.01)
+        XCTAssertEqual(eye.greenComponent, 1, accuracy: 0.01)
+        XCTAssertEqual(eye.blueComponent, 1, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testCanvasCreatureFeaturesAreOpaqueOnDifferentBackgroundsAndMonoKeepsBlackEyes() throws {
+        let samples: [(agent: String, x: Int, y: Int, rgb: [CGFloat]?, mono: CGFloat)] = [
+            ("claudecode", 65, 94, [0, 0, 0], 0), ("claudecode", 173, 94, [0, 0, 0], 0),
+            ("codex", 79, 110, [255, 255, 255], 1), ("codex", 150, 153, [255, 255, 255], 1),
+            ("openclaw", 80, 81, [5, 8, 16], 0), ("openclaw", 90, 76, [0, 229, 204], 1),
+            ("opencode", 120, 120, nil, 0),
+        ]
+        for monochrome in [false, true] {
+            for background in [Color.blue, Color.yellow] {
+                for sample in samples {
+                    let view = CanonicalCreatureView(agentType: sample.agent, size: 240,
+                        color: monochrome ? .black : .red, monochrome: monochrome).background(background)
+                    let reference = sample.rgb.map { rgb in
+                        monochrome ? Color(white: Double(sample.mono)) :
+                            Color(.sRGB, red: Double(rgb[0]/255), green: Double(rgb[1]/255), blue: Double(rgb[2]/255))
+                    }
+                    let content = view.overlay(alignment: .topLeading) {
+                        if let reference { reference.frame(width: 4, height: 4) }
+                    }
+                    let image = ImageRenderer(content: content)
+                    image.scale = 1
+                    let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image.nsImage?.tiffRepresentation)))
+                    let pixel = try XCTUnwrap(bitmap.colorAt(x: sample.x, y: sample.y)?.usingColorSpace(.sRGB))
+                    // Compare a literal sRGB reference through the same renderer/color profile.
+                    // The hole sample uses an untouched background pixel instead.
+                    let referencePoint = sample.rgb == nil ? 239 : 1
+                    let rgb = try XCTUnwrap(bitmap.colorAt(x: referencePoint, y: referencePoint)?.usingColorSpace(.sRGB))
+                    XCTAssertEqual(pixel.redComponent, rgb.redComponent, accuracy: 0.03, sample.agent)
+                    XCTAssertEqual(pixel.greenComponent, rgb.greenComponent, accuracy: 0.03, sample.agent)
+                    XCTAssertEqual(pixel.blueComponent, rgb.blueComponent, accuracy: 0.03, sample.agent)
+                    XCTAssertEqual(pixel.alphaComponent, 1, accuracy: 0.01, sample.agent)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testCanonicalFeatureMaterialsSurviveWorkingIdleAndPermission() async throws {
+        let library = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz")))
+        XCTAssertNil(library.findEntity(named: "opencode_rear"), "A rear plate must not close OpenCode's real opening")
+        let scene = AquariumResidents()
+        scene.loadTemplates(library)
+        scene.animate = false
+        let expected: [(id: String, name: String, agent: String, role: String)] = [
+            ("claude", "claudecode_feature_eyes_0", "claudecode", "eyes"),
+            ("codex", "codex_feature_prompt_0", "codex", "prompt"),
+            ("crayfish", "openclaw_feature_eyes_2", "openclaw", "eyes"),
+            ("crayfish", "openclaw_feature_eye_highlight_0", "openclaw", "eye-highlight"),
+            ("crayfish", "openclaw_feature_eye_highlight_1", "openclaw", "eye-highlight"),
+        ]
+        for phase in ["working", "idle", "permission"] {
+            var state = TerrariumState()
+            state.creatures = [.init(id: "claude", projectName: "Claude", modelName: nil,
+                state: phase == "working" ? .working : phase == "permission" ? .asking : .sleeping,
+                homeX: 0, homeY: 0, scale: 1)]
+            state.cloudCreatures = [.init(id: "codex", projectName: "Codex", modelName: nil,
+                state: phase == "working" ? .pulsing : phase == "permission" ? .waiting : .drifting,
+                homeX: 0, homeY: 0, scale: 1)]
+            state.opencodeCreatures = [.init(id: "opencode", projectName: "OpenCode", modelName: nil,
+                state: phase == "working" ? .pulsing : phase == "permission" ? .waiting : .drifting,
+                homeX: 0, homeY: 0, scale: 1)]
+            state.crayfishVisible = true
+            state.crayfishState = phase == "working" ? .routing : phase == "permission" ? .waiting : .sitting
+            scene.sync(state, aspect: 1.6)
+            for feature in expected {
+                let resident = try XCTUnwrap(scene.residents[feature.id])
+                let importedFeature = try XCTUnwrap(resident.findEntity(named: feature.name), feature.name)
+                func firstMesh(_ node: Entity) -> ModelEntity? {
+                    if let model = node as? ModelEntity { return model }
+                    return node.children.compactMap { firstMesh($0) }.first
+                }
+                let model = try XCTUnwrap(firstMesh(importedFeature))
+                XCTAssertTrue(importedFeature.isEnabled && model.isEnabled, phase + ": " + feature.name)
+                let material = try XCTUnwrap(model.model?.materials.first as? PhysicallyBasedMaterial)
+                let rgb = try XCTUnwrap(material.emissiveColor.__color.converted(
+                    to: CGColorSpace(name: CGColorSpace.linearSRGB)!, intent: .defaultIntent, options: nil)?.components)
+                let sourceColor = try XCTUnwrap(CreatureBrandFeatures.layers[feature.agent]?.first { $0.role == feature.role }?.color)
+                let source = try XCTUnwrap(NSColor(sourceColor).cgColor.converted(
+                    to: CGColorSpace(name: CGColorSpace.linearSRGB)!, intent: .defaultIntent, options: nil)?.components)
+                for (actual, expected) in zip(rgb.prefix(3), source.prefix(3)) {
+                    XCTAssertEqual(actual, expected, accuracy: 0.005,
+                        phase + ": preserve source RGB with correct linear material conversion " + feature.name)
+                }
+            }
+        }
     }
 
     @MainActor
@@ -773,6 +996,163 @@ final class TerrariumCloudFoldTests: XCTestCase {
 
         let terrarium = state.toTerrariumState()
         XCTAssertEqual(terrarium.creatures.count, 3, "Claude Code sessions must remain unfolded")
+    }
+    @MainActor
+    func testNativeCiCompanionUsesOriginalAssetAndRealSessionParentWithoutRelocation() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource:"3d-residents",withExtension:"usdz"))))
+        scene.loadCiCompanion(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource:"ci-companion",withExtension:"usdz"))))
+        scene.animate = false
+        scene.sync(TerrariumState(),aspect:1.6)
+        XCTAssertNil(scene.root.findEntity(named:"ci-companion"),"No permanent resident without CI")
+        var state = TerrariumState()
+        state.cloudCreatures = [.init(id:"ci",projectName:"Work",modelName:nil,state:.drifting,homeX:0.4,homeY:0.5,scale:1)]
+        scene.sync(state,aspect:1.6)
+        let resident = try XCTUnwrap(scene.residents["ci"])
+        let home = resident.position
+        state.ciWaits = ["ci":ciWait("unknown")]
+        scene.sync(state,aspect:1.6)
+        XCTAssertEqual(resident.position,home)
+        let companion = try XCTUnwrap(resident.findEntity(named:"ci-companion"))
+        XCTAssertEqual(AquariumResidents.sessionID(for:companion),"ci")
+        XCTAssertFalse(companion.visualBounds(relativeTo:resident).isEmpty)
+        var clock: TimeInterval = 10
+        scene.ciClock = { clock }
+        state.ciWaits = ["ci":ciWait("passed",waiting:false)]
+        scene.sync(state,aspect:1.6)
+        XCTAssertTrue(companion.isEnabled)
+        clock = 15
+        scene.step(0)
+        XCTAssertFalse(companion.isEnabled,"Paused native controller still expires the result cue")
+        state.ciWaits = [:]
+        scene.sync(state,aspect:1.6)
+        XCTAssertNil(resident.findEntity(named:"ci-companion"))
+    }
+
+    func testCiOrbitUsesUtf8IdentityAndPassiveBoundedResultsWhenMotionIsPaused() {
+        XCTAssertEqual(CiCompanionPresentation.seed("hello"),0.1723,accuracy:0.00001)
+        XCTAssertEqual(CiCompanionPresentation.seed("ci:한글"),0.1909,accuracy:0.00001)
+        var motion = CiCompanionMotion(id:"ci")
+        let unknown = ciWait("unknown")
+        let initial = motion.angle
+        motion.update(unknown,dt:1,now:10)
+        XCTAssertNotEqual(motion.angle,initial,"An evidenced unknown wait moves without claiming success")
+        let last = motion.angle
+        let passed = ciWait("passed",waiting:false)
+        motion.update(passed,dt:0,now:11)
+        XCTAssertEqual(motion.angle,last,"Result keeps the final orbit pose")
+        XCTAssertTrue(motion.visible(passed,now:12))
+        XCTAssertFalse(motion.visible(passed,now:16),"Expiry is independent of animation dt")
+        XCTAssertFalse(CiCompanionPresentation.active(ciWait("failed",waiting:false)))
+        XCTAssertFalse(CiCompanionPresentation.active(ciWait("running",waiting:false)))
+        XCTAssertFalse(CiCompanionPresentation.active(ciWait("queued",waiting:false)))
+        for phase in ["unknown", "queued", "running"] {
+            var fresh = CiCompanionMotion(id: "ci")
+            fresh.update(passed,dt:0,now:20)
+            let inactive=ciWait(phase,waiting:false,openedAt:2)
+            fresh.update(inactive,dt:0,now:21)
+            XCTAssertFalse(fresh.visible(inactive,now:21),"Old result cannot leak into a different nonwaiting record")
+        }
+    }
+
+    private func ciWait(_ phase: String, waiting: Bool = true, openedAt: Int = 1) -> CiWaitStatus {
+        .init(kind: "ci", provider: "github-actions", phase: phase, agentWaiting: waiting,
+              evidence: "github", openedAt: openedAt, checks: .init(total: 10, passed: 7, failed: 0, pending: 3), pr: 432)
+    }
+
+    func testPrimaryPermissionFrameOverridesStaleIdleCiRosterForEveryCreatureKind() {
+        for kind in ["claude-code", "codex-cli", "opencode", "hermes", "kiro-cli", "antigravity"] {
+            for permission in [AgentConnectionState.awaitingPermission, .awaitingOption, .awaitingDiff] {
+                var dashboard = DashboardState()
+                dashboard.state = permission; dashboard.agentType = kind; dashboard.sessionId = "self"
+                dashboard.siblingSessions = [SessionInfo(id: "self",port: 0,projectName: "Work",agentType: kind,state: "idle")]
+                dashboard.siblingSessions[0].waitingOn = ciWait("running")
+                let state = dashboard.toTerrariumState()
+                XCTAssertEqual(AquariumResident.project(state).first?.activity,.waiting,kind)
+                XCTAssertNil(state.ciWaits["self"],kind)
+                XCTAssertNil(state.ciWaitLabels["self"],kind)
+                XCTAssertFalse(state.ciWaitingIDs.contains("self"),kind)
+            }
+        }
+    }
+
+    func testCiStationVisitsKeepSeparateCodexIdentitiesAndPermissionPriority() {
+        var dashboard = DashboardState()
+        dashboard.state = .idle
+        dashboard.siblingSessions = [session(id: "a", project: "Same"), session(id: "b", project: "Same"), session(id: "permission", project: "Same", state: "awaiting_permission")]
+        for i in dashboard.siblingSessions.indices { dashboard.siblingSessions[i].waitingOn = ciWait("running", openedAt: 3-i) }
+        let state = dashboard.toTerrariumState()
+        XCTAssertEqual(Set(state.cloudCreatures.map(\.id)), ["a", "b", "permission"])
+        XCTAssertEqual(state.ciWaitingIDs, ["a", "b"])
+        XCTAssertNil(state.ciWaitLabels["permission"])
+        XCTAssertEqual(Set(state.ciWaits.keys),["a","b"])
+        XCTAssertEqual(state.ciWaitLabels["a"], "CI RUNNING #432 · 7/10")
+        let items = AquariumResident.project(state)
+        XCTAssertEqual(AquariumResident.foreground(items, focusedID: nil).first?.id, "permission")
+    }
+
+    @MainActor
+    func testCanvasCiCompanionLeavesSessionAtItsNormalHomeAndClearsOnNull() {
+        let plain = TerrariumRenderer(), waiting = TerrariumRenderer()
+        plain.animateHermes = false; waiting.animateHermes = false; waiting.animateCompanions = false
+        var state = TerrariumState()
+        state.hermesCreatures = [.init(id:"ci",projectName:"Work",activity:.idle)]
+        plain.update(dt:0,state:state)
+        state.ciWaits = ["ci":ciWait("unknown")]
+        waiting.update(dt:0,state:state)
+        XCTAssertEqual(plain.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
+        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
+        state.ciWaits = [:]; waiting.update(dt:0,state:state)
+        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
+    }
+
+    @MainActor
+    func testOriginalOctocatCanvasMotionPreviewAndSpriteResource() throws {
+        XCTAssertEqual(CiCompanionPresentation.sprite?.width,896)
+        let renderer = TerrariumRenderer()
+        var state = TerrariumState()
+        state.creatures = [.init(id:"ci-preview",projectName:"Agent session",modelName:nil,state:.floating,homeX:0.50,homeY:0.50,scale:1)]
+        state.ciWaits = ["ci-preview":ciWait("running")]
+        let folder = URL(fileURLWithPath:"/tmp/ci-orbit-preview",isDirectory:true)
+        try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
+        for frame in 0..<32 {
+            for _ in 0..<10 { renderer.update(dt:0.025,state:state) }
+            let image = ImageRenderer(content:Canvas { c,size in renderer.draw(context:&c,size:size) }.frame(width:800,height:500))
+            image.scale = 1
+            let data = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+            let png = try XCTUnwrap(NSBitmapImageRep(data:data)?.representation(using:.png,properties:[:]))
+            try png.write(to:folder.appendingPathComponent(String(format:"canvas-%02d.png",frame)))
+        }
+    }
+
+    @MainActor
+    func testCiCompanionCanvasCrowdsRenderEveryPhaseAndAbsent() throws {
+        for count in [0, 1, 8, 48] {
+            for phase in ["unknown", "queued", "running", "passed", "failed"] {
+                for (width,height) in [(1200,750), (600,900)] {
+                    let renderer = TerrariumRenderer()
+                    renderer.animateCompanions = false; renderer.animateHermes = false
+                    var state = TerrariumState()
+                    let slots = CreatureLayout.layoutOctopuses(count: count)
+                    state.creatures = (0..<count).map { .init(id: "s\($0)", projectName: "Work \($0)", modelName: nil,
+                        state: .floating, homeX: slots[$0].x, homeY: slots[$0].y, scale: slots[$0].scale) }
+                    state.ciWaits = Dictionary(uniqueKeysWithValues: state.creatures.map { ($0.id, ciWait(phase, waiting: phase != "passed" && phase != "failed", openedAt: Int($0.id.dropFirst()) ?? 0)) })
+                    state.ciWaitingIDs = phase == "passed" ? [] : Set(state.creatures.map(\.id))
+                    renderer.update(dt: 0, state: state)
+                    let image = ImageRenderer(content: Canvas { context,size in renderer.draw(context: &context,size: size) }.frame(width: CGFloat(width),height: CGFloat(height)))
+                    image.scale = 1
+                    let bitmap = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+                    XCTAssertGreaterThan(bitmap.count, 100)
+                    do {
+                        let output = ProcessInfo.processInfo.environment["AGENTDECK_CI_VISUAL_OUTPUT"] ?? "/tmp/ci-orbit-visuals"
+                        let folder = URL(fileURLWithPath: output, isDirectory: true)
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        let data = try XCTUnwrap(NSBitmapImageRep(data: bitmap)?.representation(using: .png, properties: [:]))
+                        try data.write(to: folder.appendingPathComponent("canvas-\(count)-\(phase)-\(width)x\(height).png"))
+                    }
+                }
+            }
+        }
     }
 }
 #endif

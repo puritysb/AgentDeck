@@ -24,7 +24,7 @@ interface Run {
   sessionKey: string; runId?: string; startedAt: number; prompt?: string;
   response: string; closed: boolean; responseEmitted: boolean; automated: boolean;
   /** Completed tool calls of this run, folded into ONE timeline row. */
-  toolRows?: string[]; toolRowTs?: number; toolRowStart?: number;
+  toolRows?: string[]; toolDetails?: ToolDetail[]; toolRowTs?: number; toolRowStart?: number;
 }
 
 /**
@@ -33,7 +33,7 @@ interface Run {
  * 2026-10-03), and one row per call buried the user's own question and the
  * reply. A single call keeps its own label; several read
  * `openclaw ×16 · channels, agents.main, messages.groupChat, …` (or
- * `5 tools · exec ×2, read, openclaw ×2`), and the full list stays in detail.
+ * `5 tools · exec ×2, read, openclaw ×2`), and bounded input/result evidence stays in detail (failures first).
  */
 export function gatewayToolFoldRaw(items: readonly string[]): string {
   if (items.length === 1) return items[0];
@@ -55,6 +55,26 @@ export function gatewayToolFoldRaw(items: readonly string[]): string {
   const counts = names.map((n) => { const c = parsed.filter((p) => p.name === n).length; return c > 1 ? `${n} ×${c}` : n; });
   return `${items.length} tools · ${counts.join(', ')}${tail}`;
 }
+interface ToolDetail { text: string; failed: boolean }
+
+/** Keep failures first, then recent successes, within the wire detail budget.
+ * Results are literal diagnostic evidence, not a list of tool names. The
+ * omission marker is reserved before truncation so loss is never silent.
+ */
+export function gatewayToolFoldDetail(items: readonly ToolDetail[], total: number, sessionKey: string): string {
+  const ordered = [...items.filter(x => x.failed).reverse(), ...items.filter(x => !x.failed).reverse()];
+  const omitted = '\n… additional tool details omitted';
+  const header = `session: ${sessionKey.slice(0, GATEWAY_LIVE_RULES.rawLimit)}\n`;
+  const chunks: string[] = [];
+  let length = header.length;
+  for (const item of ordered) {
+    if (length + item.text.length + (chunks.length ? 2 : 0) > GATEWAY_LIVE_RULES.detailLimit - omitted.length) break;
+    chunks.push(item.text);
+    length += item.text.length + (chunks.length > 1 ? 2 : 0);
+  }
+  return header + chunks.join('\n\n') + (chunks.length < total ? omitted : '');
+}
+
 interface Tool { name: string; input: unknown; ts: number; done: boolean }
 export interface GatewayLiveUpdate { entry: TimelineEntry; upsert?: boolean }
 
@@ -164,17 +184,29 @@ export class GatewayLiveActivity {
           // Process polling is progress bookkeeping. Errors remain visible.
           if (failed || tool.name !== 'process' || !GATEWAY_LIVE_RULES.quietProcessActions.includes(action as never)) {
             const command = string(gatewayObject(tool.input).command) ?? string(gatewayObject(tool.input).path) ?? string(action);
-            const output = gatewayMessageText(gatewayObject(result).content) || (typeof result === 'string' ? result : '');
-            const raw = `${tool.name}${command ? ` · ${command.replace(/\s+/g, ' ')}` : ''}${failed ? ' · failed' : ''}`;
+            const output = gatewayMessageText(gatewayObject(result).content) || (typeof result === 'string' ? result : '')
+              || string(gatewayObject(result).error) || string(gatewayObject(gatewayObject(result).details).error) || '';
+            const suffix = failed ? ' · failed' : '';
+            const raw = `${tool.name}${command ? ` · ${command.replace(/\s+/g, ' ')}` : ''}`.slice(0, GATEWAY_LIVE_RULES.rawLimit - suffix.length) + suffix;
             // Fold every completed call of this run into one row: the first
             // call adds it, later calls upsert it in place (same ts + runId).
             run.toolRows = [...(run.toolRows ?? []), raw.slice(0, GATEWAY_LIVE_RULES.rawLimit)];
             run.toolRowTs ??= now;
             run.toolRowStart ??= tool.ts;
             const items = run.toolRows;
-            const detail = items.length === 1
-              ? [`session: ${sessionKey}`, command, output].filter(Boolean).join('\n')
-              : items.slice(-GATEWAY_LIVE_RULES.foldDetailItems).join('\n');
+            const clip = (value: string): string => value.length > GATEWAY_LIVE_RULES.rawLimit
+              ? value.slice(0, GATEWAY_LIVE_RULES.rawLimit - 1) + '…' : value;
+            const evidence = [`${failed ? 'FAILED' : 'OK'} · ${tool.name}`,
+              command ? `Input: ${clip(command)}` : undefined,
+              output ? `Result: ${clip(output)}` : undefined].filter(Boolean).join('\n');
+            const retained = [...(run.toolDetails ?? []), { text: evidence, failed }];
+            // Evict success evidence before failures. Counts still include all calls.
+            while (retained.length > GATEWAY_LIVE_RULES.foldDetailItems) {
+              const success = retained.findIndex(item => !item.failed);
+              retained.splice(success < 0 ? 0 : success, 1);
+            }
+            run.toolDetails = retained;
+            const detail = gatewayToolFoldDetail(retained, items.length, sessionKey);
             out.push({
               entry: { ...this.row(run, 'tool_exec', run.toolRowTs, gatewayToolFoldRaw(items), detail),
                 startedAt: run.toolRowStart, endedAt: now },

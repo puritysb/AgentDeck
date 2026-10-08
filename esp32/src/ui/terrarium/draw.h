@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 #include <cmath>
 #include <algorithm>
 
@@ -14,6 +15,8 @@ using std::max;
 // Fast sin/cos using lookup table
 float fastSin(float rad);
 float fastCos(float rad);
+
+namespace CreatureGlyphs { struct FeatureLayer; }
 
 // Drawing primitives — direct pixel buffer writes (no LVGL overhead)
 namespace Draw {
@@ -37,6 +40,11 @@ void line(int x0, int y0, int x1, int y1, uint32_t color24, uint8_t alpha);
  *  Bilinear sampling. Used for rasterized creature silhouettes (creature_glyphs_generated.h). */
 void alphaMask(const uint8_t* mask, int maskW, int maskH, int x0, int y0,
                int dstW, int dstH, uint32_t color24, uint8_t alpha);
+
+/** Paint generated brand feature layers over a body in the same source coordinate box.
+ *  Layer masks remain in flash; no render buffer/cache allocation. */
+void featureLayers(const CreatureGlyphs::FeatureLayer* layers, size_t count, int maskW, int maskH,
+                   int x0, int y0, int dstW, int dstH, uint8_t alpha);
 
 /** alphaMask with a vertical color gradient (colorTop → colorBottom across dst height). */
 void alphaMaskGradient(const uint8_t* mask, int maskW, int maskH, int x0, int y0,

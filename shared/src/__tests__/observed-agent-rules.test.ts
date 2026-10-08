@@ -15,6 +15,9 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   OPENCODE_PENDING_REQUEST_LIMIT,
+  CODEX_OTEL_METADATA_RULES,
+  codexSessionMetaIsSubagent,
+  codexSessionMetaSubagentVerdict,
   OBSERVED_SESSION_AGENT_KEYS,
   OBSERVED_SESSION_PREFIXES,
   OBSERVED_SESSION_PREFIX_RE,
@@ -22,6 +25,7 @@ import {
   sameSession,
 } from '../session-utils.js';
 import { TOOL_EXEC_SUPPRESSED_AGENTS, isToolExecSuppressedAgent } from '../timeline.js';
+import { TIMELINE_TURN_RULES } from '../timeline-task-display.js';
 import { OUTPUTS } from '../../../scripts/generate-observed-agent-rules.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -79,7 +83,9 @@ describe('generated mirrors', () => {
     const rules = {
       prefixes: [...OBSERVED_SESSION_PREFIXES],
       openCodePendingLimit: OPENCODE_PENDING_REQUEST_LIMIT,
+      codexMetadata: CODEX_OTEL_METADATA_RULES,
       suppressed: [...TOOL_EXEC_SUPPRESSED_AGENTS],
+      turn: TIMELINE_TURN_RULES,
     };
     for (const [rel, emit] of OUTPUTS as Array<[string, (r: unknown) => string]>) {
       const onDisk = readFileSync(join(repoRoot, rel), 'utf8');
@@ -117,5 +123,22 @@ describe('generated mirrors', () => {
       }
     }
     expect(offenders, 'inlined observed-prefix list — use the generated ObservedAgentRules').toEqual([]);
+  });
+});
+
+
+describe('Codex rollout subagent metadata', () => {
+  it('accepts explicit source and thread discriminators without inferring arbitrary parents', () => {
+    expect(codexSessionMetaIsSubagent({ source: { subagent: { thread_spawn: { parent_thread_id: 'sample-parent' } } }, thread_source: 'subagent', parent_thread_id: 'sample-parent' })).toBe(true);
+    expect(codexSessionMetaIsSubagent({ thread_source: 'subagent', parent_thread_id: 'sample-parent' })).toBe(true);
+    expect(codexSessionMetaIsSubagent({ parent_thread_id: 'sample-parent', thread_source: 'exec' })).toBe(false);
+    expect(codexSessionMetaIsSubagent({ thread_source: 'subagent', parent_thread_id: ' ' })).toBe(false);
+    expect(codexSessionMetaIsSubagent({ source: 'vscode' })).toBe(false);
+    expect(codexSessionMetaIsSubagent(null)).toBe(false);
+    expect(codexSessionMetaSubagentVerdict({ parent_thread_id: 'sample-parent' })).toBeUndefined();
+    expect(codexSessionMetaSubagentVerdict({ source: [] })).toBeUndefined();
+    expect(codexSessionMetaSubagentVerdict({ thread_source: 'subagent' })).toBeUndefined();
+    expect(codexSessionMetaSubagentVerdict({ source: 'cli' })).toBe(false);
+    expect(codexSessionMetaSubagentVerdict({ source: { subagent: 'review' } })).toBe(true);
   });
 });

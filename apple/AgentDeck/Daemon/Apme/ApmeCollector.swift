@@ -52,6 +52,7 @@ final class ApmeCollector {
     /// events that carry no `session_id` (gateway tool events, legacy tests)
     /// and for `updateModel`/`updateUsage`, which arrive without session
     /// context.
+    private let ciWaits = CiWaitTracker()
     private var activeHookSession: String?
 
     /// Counter for generating fallback session keys.
@@ -246,6 +247,7 @@ final class ApmeCollector {
 
     func handleHook(event: String, data: [String: Any]) {
         guard store.isOpen else { return }
+        if let sid = payloadSessionKey(data) { noteCiWaitHook(sessionId: sid, event: event, data: data) }
         let isPrompt = event.lowercased() == "user_prompt_submit" || event == "UserPromptSubmit"
 
         switch event.lowercased() {
@@ -912,11 +914,35 @@ final class ApmeCollector {
 
     // MARK: - Private
 
+    private func noteCiWaitHook(sessionId: String, event: String, data: [String: Any]) {
+        let normalized = ["PreToolUse": "tool_start", "PostToolUse": "tool_end", "PostToolUseFailure": "tool_failure",
+            "UserPromptSubmit": "user_prompt_submit", "SessionEnd": "session_end", "Stop": "stop"][event] ?? event
+        let now = nowMs(), before = ciWaits.waitsFor(sessionId, now: now)
+        ciWaits.note(sessionId, event: normalized, json: data, now: now)
+        let after = ciWaits.waitsFor(sessionId, now: now)
+        for wait in before where !after.contains(where: { $0.token == wait.token }) {
+            noteRelation(sessionId: sessionId, relation: "waiting_on", direction: "out", phase: "closed",
+                peerSessionId: nil, peerName: "GitHub CI", evidence: wait.background ? "ci_wait_background" : "ci_wait_foreground",
+                detail: nil, ts: now, key: "ci:\(wait.openedAt):\(wait.token)")
+        }
+        for wait in after where !before.contains(where: { $0.token == wait.token }) {
+            noteRelation(sessionId: sessionId, relation: "waiting_on", direction: "out", phase: "open",
+                peerSessionId: nil, peerName: "GitHub CI", evidence: wait.background ? "ci_wait_background" : "ci_wait_foreground",
+                detail: nil, ts: wait.openedAt, key: "ci:\(wait.openedAt):\(wait.token)")
+        }
+    }
+
     private func closeTurn(sessionKey: String, source: String = "next_prompt") {
         guard let turn = sessionToTurn.removeValue(forKey: sessionKey) else { return }
         lastClosedTurnByRun[turn.runId] = turn.id
+        let endedAt = nowMs(), wallMs = max(0, endedAt - turn.startedAt)
+        let events = sessionToTask[sessionKey].map { store.listSampleEventRows($0.id).map(ApmeStore.sampleEventRowToDict) } ?? []
+        let ciMs = CiWaitAccounting.foregroundMs(events, turnIndex: turn.index, start: turn.startedAt, end: endedAt)
         store.updateTurn(id: turn.id, fields: [
-            "endedAt": nowMs(),
+            "endedAt": endedAt,
+            "efficiencyJson": Self.mergeEfficiencyJson(existing: store.getTurn(id: turn.id), patch: [
+                "wall_time_ms": wallMs, "ci_wait_ms": ciMs, "agent_active_ms": max(0, wallMs - ciMs),
+            ]),
             "toolCalls": turn.toolCalls,
             "filesModified": turn.filesModified,
             "filesCreated": turn.filesCreated,

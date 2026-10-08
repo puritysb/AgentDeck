@@ -52,6 +52,29 @@ describe('collector rehydration after a restart', () => {
   beforeEach(async () => { store = await makeStore(); vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); cleanup(store); });
 
+  it('keeps distinct CI wait spans when a collector restarts during the same turn', () => {
+    vi.setSystemTime(100_000);
+    const first = makeCollector(store);
+    const runId = first.openRun({ sessionId: 'ci-restart', agentType: 'claude-code' })!;
+    prompt(first, 'ci-restart', 'watch CI');
+    const start = { tool_name: 'Bash', tool_use_id: 'watch', tool_input: { command: 'gh run watch 12' } };
+    vi.setSystemTime(101_000);
+    first.ingestHook('ci-restart', 'PreToolUse', start);
+    vi.setSystemTime(102_000);
+    first.ingestHook('ci-restart', 'PostToolUse', { tool_name: 'Bash', tool_use_id: 'watch' });
+    const second = makeCollector(store);
+    second.rehydrateOpenRuns();
+    vi.setSystemTime(103_000);
+    second.ingestHook('ci-restart', 'PreToolUse', start);
+    vi.setSystemTime(105_000);
+    second.ingestHook('ci-restart', 'PostToolUse', { tool_name: 'Bash', tool_use_id: 'watch' });
+    vi.setSystemTime(106_000);
+    second.noteTurnStop('ci-restart');
+    expect(JSON.parse(store.listTurns(runId)[0].efficiency_json as string)).toMatchObject({
+      wall_time_ms: 6000, ci_wait_ms: 3000, agent_active_ms: 3000,
+    });
+  });
+
   it('the next prompt continues the SAME run and task instead of opening a fresh run', () => {
     const first = makeCollector(store);
     const runId = first.openRun({ sessionId: 's1', agentType: 'claude-code', projectName: 'demo' })!;

@@ -15,8 +15,8 @@
 /**
  * Cloud creature — represents Codex CLI agent.
  *
- * Body is the canonical design/brand/codex.svg alpha mask, including its
- * terminal-prompt cutouts.
+ * Body and terminal features come from canonical design/brand/codex.svg
+ * generated masks; white prompt details remain visible above the tint.
  * Color: indigo/blue (#5561E0) with lighter highlights.
  *
  * States map to Y positions the same as octopus:
@@ -173,6 +173,9 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
                             CreatureGlyphs::CODEX_W, CreatureGlyphs::CODEX_H,
                             bodyX0, bodyY0, bodyBox, bodyBox,
                             Theme::CloudBodyLight, bodyColor, alpha);
+    Draw::featureLayers(CreatureGlyphs::CODEX_FEATURES, CreatureGlyphs::CODEX_FEATURE_COUNT,
+                        CreatureGlyphs::CODEX_W, CreatureGlyphs::CODEX_H,
+                        bodyX0, bodyY0, bodyBox, bodyBox, alpha);
 
     // Speech bubble for ASKING state
     if (state == CreatureState::ASKING) {

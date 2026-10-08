@@ -72,3 +72,38 @@ describe('Claude lifecycle roster merge (#367)', () => {
     }
   });
 });
+
+describe('Claude hook settings readout (#463)', () => {
+  // Payload shapes measured on Claude Code 2.1.289: SessionStart carries
+  // `model`, Stop carries `effort.level` (following a live /effort), and every
+  // event carries `permission_mode`.
+  it('surfaces model, effort and permission mode in Claude\'s own words', () => {
+    const tracker = new HookClaudeSessions();
+    const bare = [{ id: 'observed:claude:a', state: 'idle', currentTool: undefined as string | undefined }];
+    tracker.note('SessionStart', { session_id: 'a', source: 'startup', model: 'claude-sonnet-5-5' });
+    tracker.note('UserPromptSubmit', { session_id: 'a', permission_mode: 'auto' });
+    expect(tracker.applyTo(bare)[0]).toMatchObject({ modelName: 'claude-sonnet-5-5', permissionMode: 'auto' });
+    expect(tracker.applyTo(bare)[0].effortLevel).toBeUndefined();
+    tracker.note('Stop', { session_id: 'a', permission_mode: 'auto', effort: { level: 'low' } });
+    expect(tracker.applyTo(bare)[0].effortLevel).toBe('low');
+    tracker.note('UserPromptSubmit', { session_id: 'a', permission_mode: 'plan' });
+    tracker.note('Stop', { session_id: 'a', permission_mode: 'plan', effort: { level: 'xhigh' } });
+    expect(tracker.applyTo(bare)[0]).toMatchObject({ effortLevel: 'xhigh', permissionMode: 'plan' });
+  });
+
+  it('prefers the transcript model (it follows /model) over the opening SessionStart model', () => {
+    const tracker = new HookClaudeSessions();
+    tracker.note('SessionStart', { session_id: 'a', model: 'claude-haiku-4-5' });
+    expect(tracker.applyTo(rows())[0].modelName).toBe('opus');
+  });
+
+  it('does not carry settings across a new SessionStart', () => {
+    const tracker = new HookClaudeSessions();
+    const bare = [{ id: 'observed:claude:a', state: 'idle' }];
+    tracker.note('Stop', { session_id: 'a', permission_mode: 'plan', effort: { level: 'max' } });
+    tracker.note('SessionStart', { session_id: 'a', source: 'clear' });
+    const row = tracker.applyTo(bare)[0] as Record<string, unknown>;
+    expect(row.effortLevel).toBeUndefined();
+    expect(row.permissionMode).toBeUndefined();
+  });
+});

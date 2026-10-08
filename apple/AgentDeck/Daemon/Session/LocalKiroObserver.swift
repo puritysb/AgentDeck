@@ -36,7 +36,7 @@ enum LocalKiroObserver {
     /// Deliberately generous: a user reading a long reply can leave a live
     /// session idle for minutes, and showing a stale row costs less than
     /// dropping a live one. Turn state comes from explicit records below.
-    static let liveWindow: TimeInterval = 30 * 60
+    static let liveWindow = Double(DaemonParityRules.kiroObservationWindowMs) / 1000
 
     /// Transcript bytes read for the tail scan. Kiro records are large (a
     /// `thinking` block per turn), so this is a few dozen turns.
@@ -216,8 +216,7 @@ enum LocalKiroObserver {
             guard let lineData = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else { continue }
             if let envelope = obj["payload"] as? [String: Any], let kind = envelope["type"] as? String {
-                if kind == "turn_start" { state = "processing" }
-                if kind == "turn_end" { state = "idle" }
+                state = DaemonParityRules.kiroTurnState(state, event: kind)
                 guard kind == "user" || kind == "assistant",
                       envelope["operationType"] as? String != "Reasoning",
                       let stamp = obj["timestamp"] as? String,
@@ -227,8 +226,14 @@ enum LocalKiroObserver {
                 turns.append(Turn(isPrompt: kind == "user", text: text, ts: date.timeIntervalSince1970 * 1000))
                 continue
             }
-            guard let kind = obj["kind"] as? String,
-                  let payload = obj["data"] as? [String: Any] else { continue }
+            guard let kind = obj["kind"] as? String else { continue }
+            let payload = obj["data"] as? [String: Any] ?? [:]
+            let blocks = payload["content"] as? [[String: Any]] ?? []
+            let hasToolUse = blocks.contains { block in
+                let kind = (block["kind"] ?? block["type"]) as? String
+                return kind == "toolUse" || kind == "tool_use"
+            }
+            state = DaemonParityRules.kiroLegacyTurnState(state, event: kind, hasToolUse: hasToolUse)
             let text = self.text(from: payload["content"])
             if kind == "Prompt" {
                 if let meta = payload["meta"] as? [String: Any],

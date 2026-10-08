@@ -2,7 +2,7 @@ import { open, readdir, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
-import { stripUnsafeText } from '@agentdeck/shared';
+import { kiroLegacyTurnState, kiroTurnState, stripUnsafeText } from '@agentdeck/shared';
 import { redactSecrets } from './utils/redact-secrets.js';
 
 const MAX_SESSION_FILES = 200;
@@ -212,6 +212,20 @@ export function parseKiroTranscript(raw: string): KiroTranscriptSummary {
     const kind = firstString(envelope, ['kind', 'type']);
     const data = objectAt(envelope, 'data') ?? envelope;
 
+    // Native v3 has explicit boundaries. Text, including a delayed assistant
+    // record after turn_end, cannot reopen or complete the turn.
+    if (objectAt(value, 'payload') && kind) {
+      turnOpen = kiroTurnState(turnOpen ? 'processing' : 'idle', kind) === 'processing';
+      if (kind === 'user') {
+        const cleaned = cleanKiroGoal(contentText(data));
+        if (!goal && cleaned) goal = cleaned;
+      }
+      if (kind === 'assistant' && firstString(envelope, ['operationType']) !== 'Reasoning') {
+        noteAssistant(contentText(data));
+      }
+      if (kind === 'turn_end') currentTask = undefined;
+      continue;
+    }
     if (kind === 'user') {
       notePrompt(contentText(data));
       continue;
@@ -242,6 +256,7 @@ export function parseKiroTranscript(raw: string): KiroTranscriptSummary {
 
     if (kind === 'Prompt') {
       notePrompt(contentText(data));
+      turnOpen = kiroLegacyTurnState(turnOpen ? 'processing' : 'idle', kind, false) === 'processing';
       continue;
     }
     if (kind === 'AssistantMessage') {
@@ -258,11 +273,11 @@ export function parseKiroTranscript(raw: string): KiroTranscriptSummary {
       }
       // A final text-only AssistantMessage closes a 2.x turn. Tool-use
       // messages remain open until a later assistant message completes it.
-      turnOpen = hasToolUse;
+      turnOpen = kiroLegacyTurnState(turnOpen ? 'processing' : 'idle', kind, hasToolUse) === 'processing';
       continue;
     }
     if (kind === 'ToolResults' || kind === 'ToolResult') {
-      turnOpen = true;
+      turnOpen = kiroLegacyTurnState(turnOpen ? 'processing' : 'idle', kind, false) === 'processing';
       continue;
     }
     if (kind === 'TurnEnd' || kind === 'turn_end') {

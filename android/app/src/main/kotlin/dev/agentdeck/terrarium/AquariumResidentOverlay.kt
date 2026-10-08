@@ -16,6 +16,12 @@ internal class AquariumResidentOverlay(context: Context) {
     private val bold = Typeface.create(regular, Typeface.BOLD)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
+    fun drawCompanionCaption(canvas: Canvas,wait: dev.agentdeck.net.CiWaitStatus,x: Float,y: Float,size: Float) {
+        paint.typeface=regular;paint.textAlign=Paint.Align.CENTER;paint.textSize=11f*density
+        paint.color=ciCompanionColor(wait).toArgb();paint.alpha=255;paint.style=Paint.Style.FILL
+        canvas.drawText(ciCompanionBadge(wait),x,y+size/2+8f*density,paint)
+    }
+
     /** Selection rails and the working bars — body cues, drawn whether or not tags are. */
     fun drawCues(canvas: Canvas, item: AquariumResident, bodyX: Float, bodyY: Float, unit: Float,
         phase: Float, selected: Boolean) {
@@ -29,7 +35,13 @@ internal class AquariumResidentOverlay(context: Context) {
                     railX + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_WIDTH / 2f, bodyY + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_HEIGHT / 2f, paint)
             }
         }
-        if (item.state == OctopusVisualState.WORKING) {
+        if (item.ciWait != null && item.state != OctopusVisualState.ASKING) {
+            paint.color = ciCompanionColor(item.ciWait).toArgb()
+            paint.textAlign = Paint.Align.CENTER; paint.typeface = bold; paint.textSize = max(12f*density, unit*.3f)
+            val mark = when (item.ciWait.phase) { "passed" -> "✓"; "failed" -> "!"; "unknown" -> "?"; else -> "CI" }
+            canvas.drawText(mark, bodyX+unit*.8f, bodyY, paint)
+        }
+        if (item.state == OctopusVisualState.WORKING && item.ciWait?.agentWaiting != true) {
             // Neutral bars move; the semantic WORKING badge stays steady.
             paint.color = DesignTokens.Tide.s50.toArgb()
             for (index in 0 until TerrariumRules.NATIVE_ACTIVITY_BAR_COUNT.toInt()) {
@@ -46,18 +58,18 @@ internal class AquariumResidentOverlay(context: Context) {
 
     private fun title(item: AquariumResident) = item.title.take(22)
 
-    private fun status(item: AquariumResident) = when (item.state) {
+    private fun status(item: AquariumResident) = item.ciWaitLabel ?: (when (item.state) {
         OctopusVisualState.WORKING -> "WORKING"
         OctopusVisualState.ASKING -> "WAITING"
         else -> "IDLE"
-    } + if (item.helpers > 0) " · ${item.helpers} agents" else ""
+    } + if (item.helpers > 0) " · ${item.helpers} agents" else "")
 
     /** Session state colour (DESIGN.md §2.7), never the marketing Status palette. */
-    private fun stateColor(item: AquariumResident) = when (item.state) {
+    private fun stateColor(item: AquariumResident) = (if (item.state != OctopusVisualState.ASKING && item.ciWait != null) ciCompanionColor(item.ciWait) else when (item.state) {
         OctopusVisualState.WORKING -> DesignTokens.Session.working
         OctopusVisualState.ASKING -> DesignTokens.Session.awaiting
         else -> DesignTokens.Session.idle
-    }.toArgb()
+    }).toArgb()
 
     /** Full two-line tag, anchored above the body at (x, y). */
     fun fullTagBox(item: AquariumResident, x: Float, y: Float): LabelBox {

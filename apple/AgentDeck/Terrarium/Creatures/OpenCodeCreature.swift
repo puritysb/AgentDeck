@@ -24,8 +24,11 @@ final class OpenCodeCreature: Creature {
     var scale: Float
 
     private var time: Float = 0
-    private(set) var currentX: Float
-    private(set) var currentY: Float
+    var currentX: Float { simulationX }
+    var currentY: Float { simulationY }
+    var simulationPosition: SIMD2<Float> { [simulationX, simulationY] }
+    private(set) var simulationX: Float
+    private(set) var simulationY: Float
     private var phaseOffset: Float
     private var driftPhase: Float
 
@@ -41,8 +44,8 @@ final class OpenCodeCreature: Creature {
         self.homeX = homeX
         self.homeY = homeY
         self.scale = scale
-        self.currentX = homeX
-        self.currentY = homeY
+        self.simulationX = homeX
+        self.simulationY = homeY
         self.phaseOffset = Float.random(in: 0...Float.pi * 2)
         self.driftPhase = Float.random(in: 0...Float.pi * 2)
     }
@@ -84,7 +87,7 @@ final class OpenCodeCreature: Creature {
         let pulseSpeed: Float = visualState == .pulsing ? 1.5 : 0.5
         let pulseAmp: Float = visualState == .pulsing ? 0.012 : 0.006
         let pulseBob = sin((time + phaseOffset) * pulseSpeed) * pulseAmp
-        currentY += (targetY + pulseBob - currentY) * dt * lerpRate
+        simulationY += (targetY + pulseBob - simulationY) * dt * lerpRate
 
         let driftAmp: Float = visualState == .pulsing ? min(0.04, 0.015 + scale * 0.025) : 0.005
         let driftSpeed: Float = visualState == .pulsing ? 0.15 : 0.25
@@ -94,12 +97,12 @@ final class OpenCodeCreature: Creature {
         let anchorX = visualState == .drifting
             ? min(homeX, TerrariumLayout.crayfishClearMaxX)
             : homeX
-        currentX += (anchorX + driftX - currentX) * dt * lerpRate
+        simulationX += (anchorX + driftX - simulationX) * dt * lerpRate
 
         let minX = max(0.20, anchorX - 0.07)
         let maxX = min(0.70, anchorX + 0.07)
-        currentX = min(maxX, max(minX, currentX))
-        currentY = min(0.60, max(0.10, currentY))
+        simulationX = min(maxX, max(minX, simulationX))
+        simulationY = min(0.60, max(0.10, simulationY))
     }
 
     func currentPosition() -> (x: Float, y: Float) { (currentX, currentY) }

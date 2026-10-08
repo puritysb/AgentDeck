@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { locateCodexRollout, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
+import { CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
+import { locateCodexRollout, codexRolloutIsSubagent, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
 
 /**
  * Observed Codex response capture: codex_stop's payload rarely carries the
@@ -30,6 +31,28 @@ describe('codex rollout response reader', () => {
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('classifies the sanitized actual desktop thread_spawn metadata from a bounded head', async () => {
+    writeRollout([{ type: 'session_meta', payload: { id: SID, originator: 'Codex Desktop', cwd: '/sample/workspace',
+      source: { subagent: { thread_spawn: { parent_thread_id: 'sample-parent' } } },
+      thread_source: 'subagent', parent_thread_id: 'sample-parent', base_instructions: 'x'.repeat(23000) } }]);
+    expect(await codexRolloutIsSubagent(SID, root)).toBe(true);
+    writeRollout([{ type: 'session_meta', payload: { id: SID, thread_source: 'subagent', parent_thread_id: 'sample-parent' } }]);
+    expect(await codexRolloutIsSubagent(SID, root)).toBe(true);
+    writeRollout([{ type: 'session_meta', payload: { id: SID, source: 'exec', parent_thread_id: 'sample-parent' } }]);
+    expect(await codexRolloutIsSubagent(SID, root)).toBe(false); // Standalone codex exec remains a session.
+  });
+
+  it('keeps missing malformed or oversized head evidence unknown', async () => {
+    expect(await codexRolloutIsSubagent(SID, root)).toBeUndefined();
+    for (const payload of [[], {}, { id: 'other-id', source: { subagent: 'review' } }, { id: SID }, { id: SID, thread_source: 'subagent' }]) {
+      writeRollout([{ type: 'session_meta', payload }]);
+      expect(await codexRolloutIsSubagent(SID, root)).toBeUndefined();
+    }
+    writeRollout([{ type: 'session_meta', payload: { id: SID, source: { subagent: 'review' },
+      base_instructions: 'x'.repeat(CODEX_OTEL_METADATA_RULES.headBytes) } }]);
+    expect(await codexRolloutIsSubagent(SID, root)).toBeUndefined();
   });
 
   it('locates a rollout by the session uuid embedded in the filename', () => {

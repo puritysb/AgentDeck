@@ -588,6 +588,7 @@ struct ZaiWindow: Codable, Sendable {
 /// `limitId` carries which quantity the secondary window is (weekly credits
 /// vs the monthly MCP quota). Parsed by the generated `ZaiQuotaRules`.
 struct ZaiRateLimits: Codable, Sendable {
+    var authFailed: Bool? = nil
     var primary: ZaiWindow?
     var secondary: ZaiWindow?
     var planType: String?
@@ -704,6 +705,8 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// SSOT for the session summary line — render this instead of hand-rolling
     /// model/state strings so all surfaces (TRMNL 7.5"/Android/Apple) agree.
     var activity: String?
+    /// Observed CI wait. Nil clears the optional display axis.
+    var waitingOn: CiWaitStatus?
     /// Live child-agent census. A SECOND axis to `state`, not a correction to
     /// it: a parent whose turn closed is genuinely `idle` while its subagents
     /// keep working, and the row said "idle" through a half-hour fan-out.
@@ -713,6 +716,9 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// because a field that vanishes when the last child exits latches its last
     /// count forever under retain-on-absent merging.
     var subagents: SubagentSummary?
+    /// Claude background task snapshot; explicit zero clears, nil is unknown.
+    /// Includes shell jobs and is not an additional child-agent count.
+    var backgroundTaskCount: Int?
     /// Cross-session coordination census — see `CoordinationSummary`. Same
     /// emission rule as `subagents`: zeros once observed, absent only when the
     /// session has never had a relation.
@@ -1121,4 +1127,28 @@ struct AnyCodable: Codable, @unchecked Sendable {
         default: try container.encodeNil()
         }
     }
+}
+
+
+/// CI evidence is independent of agent state; a full session row clears nil.
+struct CiWaitStatus: Codable, Equatable, Sendable {
+    var kind: String
+    var provider: String
+    var phase: String
+    var agentWaiting: Bool
+    var evidence: String
+    var openedAt: Int
+    var checks: CiWaitChecks?
+    var runUrl: String?
+    var repo: String?
+    var ref: String?
+    var pr: Int?
+    var runId: Int?
+}
+
+struct CiWaitChecks: Codable, Equatable, Sendable {
+    var total: Int
+    var passed: Int
+    var failed: Int
+    var pending: Int
 }

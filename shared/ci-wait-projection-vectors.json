@@ -1,0 +1,17 @@
+[
+  { "wait": null, "expected": 0 },
+  { "wait": { "phase": "unknown", "agentWaiting": true }, "expected": 1 },
+  { "wait": { "phase": "unknown", "agentWaiting": false }, "expected": 0 },
+  { "wait": { "phase": "queued", "agentWaiting": true }, "expected": 2 },
+  { "wait": { "phase": "queued", "agentWaiting": false }, "expected": 0 },
+  { "wait": { "phase": "running", "agentWaiting": true }, "expected": 3 },
+  { "wait": { "phase": "running", "agentWaiting": false }, "expected": 0 },
+  { "wait": { "phase": "running" }, "expected": 0 },
+  { "wait": { "phase": "running", "agentWaiting": 1 }, "expected": 0 },
+  { "wait": { "phase": "running", "agentWaiting": "true" }, "expected": 0 },
+  { "wait": { "phase": "passed", "agentWaiting": false }, "expected": 4 },
+  { "wait": { "phase": "failed", "agentWaiting": false }, "expected": 5 },
+  { "wait": { "phase": "passed" }, "expected": 4 },
+  { "wait": { "phase": "future", "agentWaiting": true }, "expected": 1 },
+  { "wait": { "phase": "future", "agentWaiting": false }, "expected": 0 }
+]

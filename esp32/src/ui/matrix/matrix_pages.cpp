@@ -7,6 +7,8 @@
 #include "official_dot_glyphs_generated.h"
 #include "config.h"
 #include "state/agent_state.h"
+#include "state/ci_wait_generated.h"
+#include "ui/product_palette.generated.h"
 #include "../../../boards/board_config.h"
 #include "net/wifi_manager.h"
 #include "net/serial_client.h"
@@ -202,6 +204,42 @@ static void drawOfficialMatrixGlyph(CRGB* leds, int x0, const uint8_t* alpha,
                 (uint8_t)((uint16_t)color.g * a / 255),
                 (uint8_t)((uint16_t)color.b * a / 255));
             setPixel(leds, x0 + col, row, color);
+        }
+    }
+    // Source feature masks preserve eyes and terminal marks rather than treating
+    // every opaque source pixel as the same body tint. Fixed flash data only.
+    const OfficialDotGlyphs::FeatureLayer* layers = nullptr;
+    size_t count = 0;
+    if (alpha == OfficialDotGlyphs::CLAUDE_CODE) {
+        layers = OfficialDotGlyphs::CLAUDE_CODE_FEATURES;
+        count = OfficialDotGlyphs::CLAUDE_CODE_FEATURE_COUNT;
+    } else if (alpha == OfficialDotGlyphs::CODEX) {
+        layers = OfficialDotGlyphs::CODEX_FEATURES;
+        count = OfficialDotGlyphs::CODEX_FEATURE_COUNT;
+    } else if (alpha == OfficialDotGlyphs::OPEN_CLAW) {
+        layers = OfficialDotGlyphs::OPEN_CLAW_FEATURES;
+        count = OfficialDotGlyphs::OPEN_CLAW_FEATURE_COUNT;
+    }
+    uint8_t brightness = bodyColor.r;
+    if (bodyColor.g > brightness) brightness = bodyColor.g;
+    if (bodyColor.b > brightness) brightness = bodyColor.b;
+    for (size_t i = 0; i < count; ++i) {
+        const auto& layer = layers[i];
+        for (int y = 0; y < layer.height; ++y) {
+            for (int x = 0; x < layer.width; ++x) {
+                const uint8_t a = layer.alpha[y * layer.width + x];
+                if (a == 0) continue;
+                const int idx = xyToIdx(x0 + layer.x + x, layer.y + y);
+                if (idx < 0) continue;
+                const CRGB feature(uint16_t(layer.red) * brightness / 255,
+                                   uint16_t(layer.green) * brightness / 255,
+                                   uint16_t(layer.blue) * brightness / 255);
+                const CRGB body = leds[idx];
+                // Alpha composite black features too; black never means absent.
+                leds[idx] = CRGB((uint16_t(feature.r) * a + uint16_t(body.r) * (255 - a)) / 255,
+                                 (uint16_t(feature.g) * a + uint16_t(body.g) * (255 - a)) / 255,
+                                 (uint16_t(feature.b) * a + uint16_t(body.b) * (255 - a)) / 255);
+            }
         }
     }
 }
@@ -442,6 +480,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         AgentKind kind;
         int instanceIdx;
         uint8_t subagentCount;
+        uint8_t ciPhase;
     };
     AgentInfo agents[6];
     int agentCount = 0;
@@ -470,6 +509,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         }
         if (strcmp(g_state.sessions[i].agentType, "daemon") == 0) continue;
         strncpy(agents[agentCount].state, g_state.sessions[i].state, 19);
+        agents[agentCount].ciPhase = g_state.sessions[i].ciPhase;
         agents[agentCount].state[19] = '\0';
         agents[agentCount].subagentCount =
             g_state.activeSubagentsForSession(g_state.sessions[i].id);
@@ -674,8 +714,19 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         for (int i = 0; i < agentCount; i++) {
             int x = i * spacing;
             CRGB bc = agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx);
-            drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
-                                    agents[i].kind == AGENT_ANTIGRAVITY);
+            if (agents[i].ciPhase && !strstr(agents[i].state, "awaiting") && fmodf(animTime * 1000.0f, CiWaitVisual::CYCLE_MS) >= CiWaitVisual::SHOW_AFTER_MS) {
+                // Alternate with the real agent mark, never replace its identity.
+                const uint8_t phase = agents[i].ciPhase;
+                CRGB color(phase == CiWaitVisual::FAILED ? ProductPalette::UiError :
+                    phase == CiWaitVisual::PASSED ? ProductPalette::UiOk :
+                    phase == CiWaitVisual::UNKNOWN ? ProductPalette::UiIdle : ProductPalette::UiCyan);
+                for (uint8_t y = 0; y < 8; y++) for (uint8_t dx = 0; dx < 8; dx++)
+                    if (CiWaitVisual::GITHUB[y] & (0x80 >> dx)) setPixel(leds, x + dx, y, CRGB(CiWaitVisual::HELPER_COLOR));
+                setPixel(leds, x + 7, 7, color);
+            } else {
+                drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
+                                        agents[i].kind == AGENT_ANTIGRAVITY);
+            }
             drawSubagentSatellites(x, agents[i].subagentCount);
         }
     } else {
@@ -706,8 +757,19 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
             int x = i * spacing - scrollOffset;
             if (x > agentMaxX || x < -7) continue;
             CRGB bc = agentColor(agents[i].state, agents[i].kind, agents[i].instanceIdx);
-            drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
-                                    agents[i].kind == AGENT_ANTIGRAVITY);
+            if (agents[i].ciPhase && !strstr(agents[i].state, "awaiting") && fmodf(animTime * 1000.0f, CiWaitVisual::CYCLE_MS) >= CiWaitVisual::SHOW_AFTER_MS) {
+                // Alternate with the real agent mark, never replace its identity.
+                const uint8_t phase = agents[i].ciPhase;
+                CRGB color(phase == CiWaitVisual::FAILED ? ProductPalette::UiError :
+                    phase == CiWaitVisual::PASSED ? ProductPalette::UiOk :
+                    phase == CiWaitVisual::UNKNOWN ? ProductPalette::UiIdle : ProductPalette::UiCyan);
+                for (uint8_t y = 0; y < 8; y++) for (uint8_t dx = 0; dx < 8; dx++)
+                    if (CiWaitVisual::GITHUB[y] & (0x80 >> dx)) setPixel(leds, x + dx, y, CRGB(CiWaitVisual::HELPER_COLOR));
+                setPixel(leds, x + 7, 7, color);
+            } else {
+                drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
+                                        agents[i].kind == AGENT_ANTIGRAVITY);
+            }
             drawSubagentSatellites(x, agents[i].subagentCount);
         }
     }

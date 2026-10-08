@@ -31,10 +31,13 @@ index. If a location or gate changes, update this file in the same commit.
 | Component & pattern CSS | `design/components.css`, `design/patterns.css` | consumed verbatim by generators |
 | Icons | `design/icons.jsx` | `scripts/design-sync-gen.mjs` transform |
 | Brand marks (agents) | `design/brand/*.svg` | `pnpm generate-creature-glyphs` / `generate-micro-glyphs` regression tests |
+| Creature feature materials | `shared/src/brand-features.ts` selects exact contours from unchanged `design/brand/*.svg`; `scripts/generate-brand-features.mjs` emits JSON selectors and Swift/Kotlin feature data; creature/micro-glyph generators emit browser and cropped A8 layers | Source hashes, generated-data drift and two-background pixel checks distinguish opaque black eyes, teal highlights and white prompts from OpenCode’s true opening; shared monochrome policy preserves black eyes on light outlined creature bodies |
+| Terminal creature cells | Canonical feature masks/materials → `bridge/src/tui/terrarium.ts` area sampler → `pnpm generate-tui-creatures` → Swift Device Preview cells | Generated-data drift and actual Swift/Node sample parity; same footprint and scale thresholds, bounded by terminal resolution |
 | Brand type (Latin) | `bridge/assets/fonts/` (IBM Plex Sans, JetBrains Mono) | first consumer: bridge renderers |
 | Brand type (CJK) | `design/fonts/` (IBM Plex Sans KR/JP, OFL) | `design/fonts/README.md` records origin |
 | IPS10 underwater background | `design/ips10/ocean.png` (image generation; prompt in adjacent README) | `python3 design/ips10/encode_ocean.py --check` verifies the RGB565 flash consumer; native IPS10 previews verify live overlays |
-| IPS10 creature reliefs | `design/ips10/creatures.py` → three `*-relief.png` images, derived from canonical creature masks | `python3 design/ips10/encode_creatures.py --check`; native geometry and interaction checks |
+| IPS10 creature reliefs | Canonical native `3d-residents.blend` plus `design/creatures/brand-features.generated.json` → `design/ips10/creatures.py` → three `*-relief.png` images and RGB565+A8 headers | `python3 design/ips10/encode_creatures.py --check`; baked feature pixels, native geometry and interaction checks |
+| GitHub CI companion | Official Octodex original `assets/terrarium/ci-companion-source.png` → `build-ci-companion.py` / `ci-companion.blend` → Apple USDZ, Android GLB and Canvas sprite; official `design/brand/github.svg` feeds compact glyph generation; `shared/src/terrarium-rules.ts` owns session-bound orbit geometry | CI visual/micro-glyph drift, lifecycle/accounting vectors and native builds; actual visual acceptance remains separate |
 | Real photography / captures | `assets/` (sources: `assets/hardware-photos/`) | `scripts/crop-hardware-images.mjs` crop table |
 | Android LCD aquarium habitat | `assets/terrarium/aquarium-habitat.blend` | `assets/terrarium/export-habitat.py`; manual Blender export and on-device visual review |
 | Native 3D aquarium study / TRMNL plate | `assets/terrarium/living-aquarium.blend` | `export-living-aquarium.py` / `export-paper-aquarium.py` in the same directory; native preview and panel review |
@@ -89,9 +92,19 @@ asked for anything beyond that.
 | Antigravity full-color texture | [Official press PNG](https://antigravity.google/assets/image/brand/antigravity-icon__full-color.png), captured 2026-09-23; `antigravity-color.png` is byte-identical | Google |
 | Kiro ghost | `icons/kiro.svg` | Amazon.com, Inc. or its affiliates |
 | opencode | `icons/opencode.svg` | the opencode project |
-| OpenClaw | `icons/openclaw.svg` | the OpenClaw project |
+| OpenClaw | `icons/openclaw.svg`; full-color `icons/openclaw-color.svg` pins teal pupil color (`#00E5CC`) while the monochrome file remains the geometry source | the OpenClaw project |
 | z.ai | `https://z-cdn.chatglm.cn/z-ai/static/logo.svg` (captured 2026-09-20; `zai.svg` stores the Z strokes verbatim, mark without the upstream app-icon plate) | Z.ai / Zhipu AI |
 | Hermes Agent / Nous girl | `icons/hermesagent.svg` | Nous Research |
+| GitHub CI helper / Invertocat | [Official logo archive](https://brand.github.com/GitHub_Logos.zip), `GitHub Logos/SVG/GitHub_Invertocat_Black.svg`, captured 2026-10-05; `design/brand/github.svg` is byte-identical | GitHub, Inc. |
+
+The GitHub source is the current Invertocat integration mark linked from the
+[GitHub Brand Toolkit](https://brand.github.com/foundations/logo). Its SHA-256 is
+`693d7abe6f899646cc2e96856723b45e95f71885a54910b2749f6decdf7e1ee1`;
+the downloaded archive is
+`e2a67d6cc51d990a52c46c1cf6bcab688db4830982174bca50e0be7a5c2f3194`.
+Keep the source geometry and aspect ratio intact when generating compact CI
+helper masks. The helper represents GitHub CI associated with an existing
+session; it is not an agent or a separately controllable session.
 
 Hermes was verified against the same pinned tarball on 2026-09-30. The
 current upstream desktop brand component and icon generator use the Nous girl

@@ -26,6 +26,7 @@ export class HermesSessions {
   private readonly sessions = new Map<string, Entry>();
   private readonly ended = new Map<string, number>();
   onChanged?: () => void;
+  onExpired?: (sessionId: string) => void;
 
   /** False means this payload must not enter the generic timeline/APME path. */
   note(event: string, payload: Record<string, unknown>, now = Date.now()): boolean {
@@ -107,7 +108,10 @@ export class HermesSessions {
 
   private reap(now: number): void {
     for (const [sid, entry] of this.sessions) {
-      if (now - entry.lastAt >= HERMES_SILENCE_TTL_MS) this.sessions.delete(sid);
+      if (now - entry.lastAt >= HERMES_SILENCE_TTL_MS) {
+        this.sessions.delete(sid);
+        this.onExpired?.(sid);
+      }
     }
     for (const [sid, at] of this.ended) {
       if (now - at >= HERMES_SILENCE_TTL_MS) this.ended.delete(sid);

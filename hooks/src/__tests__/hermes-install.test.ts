@@ -18,6 +18,7 @@ describe('explicit Hermes observer installation', () => {
     expect(readFileSync(join(target, '__init__.py'), 'utf8')).toBe(first);
     expect(readFileSync(join(home, 'config.yaml'), 'utf8')).toContain('enabled: [personal]');
     expect(readFileSync(join(target, 'plugin.yaml'), 'utf8')).toContain('name: agentdeck-observer');
+    expect(JSON.parse(readFileSync(join(target, 'ci-wait-rules.json'), 'utf8')).maxId).toBe(Number.MAX_SAFE_INTEGER);
   });
   it('refuses a directory it does not own', () => {
     const home = mkdtempSync(join(tmpdir(), 'hermes-install-')); homes.push(home);

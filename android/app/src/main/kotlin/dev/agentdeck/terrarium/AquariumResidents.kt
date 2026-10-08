@@ -14,7 +14,7 @@ import kotlin.math.*
 
 /** Uses the canonical state projection, including its observed child census. */
 internal data class AquariumResident(val id: String, val kind: String, val title: String,
-    val state: OctopusVisualState, val helpers: Int = 0)
+    val state: OctopusVisualState, val helpers: Int = 0, val ciWaitLabel: String? = null, val ciWait: dev.agentdeck.net.CiWaitStatus? = null)
 
 internal fun aquariumResidents(state: TerrariumState): List<AquariumResident> {
     fun project(item: AgentCreatureState, kind: String) = AquariumResident(
@@ -44,15 +44,15 @@ internal fun aquariumResidents(state: TerrariumState): List<AquariumResident> {
             CrayfishVisualState.WAITING -> OctopusVisualState.ASKING
             else -> OctopusVisualState.FLOATING
         }, state.workerCrayfishCount))
-    return (result + claw).distinctBy { it.id }
+    return (result + claw).distinctBy { it.id }.map { it.copy(ciWaitLabel = state.ciWaitLabels[it.id], ciWait = state.ciWaits[it.id]) }
 }
 
 /** Keep readable models bounded; every session remains accessible in the roster. */
 internal fun visibleAquariumResidents(items: List<AquariumResident>, focusedId: String?): List<AquariumResident> =
     items.sortedWith(compareBy<AquariumResident> {
         when { it.id == focusedId -> 0; it.state == OctopusVisualState.ASKING -> 1
-            it.state == OctopusVisualState.WORKING -> 2; else -> 3 }
-    }.thenBy { it.id }).take(TerrariumRules.NATIVE_RESIDENT_LIMIT)
+            it.ciWait?.agentWaiting == true || it.ciWait?.phase == "failed" -> 2; it.state == OctopusVisualState.WORKING -> 3; else -> 4 }
+    }.thenBy { if (it.ciWait?.agentWaiting == true || it.ciWait?.phase == "failed") it.ciWait?.openedAt ?: 0L else 0L }.thenBy { it.id }).take(TerrariumRules.NATIVE_RESIDENT_LIMIT)
 
 /** Filament resources live and die with the surface's engine, never with recomposition. */
 internal class AquariumResidents(private val context: Context, private val viewer: ModelViewer) {
@@ -65,10 +65,17 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private data class Joint(val entity: Int, val name: String, val rest: FloatArray)
     private data class Body(val asset: FilamentAsset, val support: FilamentAsset?, val joints: List<Joint>,
         var item: AquariumResident, var phase: Float, var effort: Float = 0f,
-        var attention: Float = 0f, var size: Float = .78f, val footHeight: Float = 0f, var x: Float = 0f, var y: Float = 0f, var z: Float = 0f,
+        var attention: Float = 0f, var initialized: Boolean = false, var companion: FilamentAsset? = null, var ciMotion: CiCompanionMotion = CiCompanionMotion(item.id), var size: Float = .78f, val footHeight: Float = 0f, var x: Float = 0f, var y: Float = 0f, var z: Float = 0f,
         /** Model-space silhouette bounds, for keeping tags off other residents. */
         val centerX: Float = 0f, val centerY: Float = 0f, val halfX: Float = .5f, val halfY: Float = .5f)
     private val bodies = linkedMapOf<String, Body>()
+    private var ciSource: ByteArray? = null
+    private fun loadCompanion(): FilamentAsset {
+        val bytes=ciSource ?: context.assets.open("residents/ci-companion.glb").use { it.readBytes() }.also { ciSource=it }
+        val buffer=ByteBuffer.allocateDirect(bytes.size).apply { put(bytes);flip() }
+        val asset=requireNotNull(loader.createAsset(buffer));resources.loadResources(asset);asset.releaseSourceData()
+        return asset
+    }
     private var all = emptyList<AquariumResident>()
     private var focusedId: String? = null
     private val matrix = FloatArray(16)
@@ -82,27 +89,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private val overlay = AquariumResidentOverlay(context)
     private var screenX = 0f
     private var screenY = 0f
-    private var snailTime = 0.0
-    private val snailEntity = viewer.asset?.getFirstEntityByName("Fauna snail") ?: 0
-
-    /** A slow continuous circuit in the substrate plane, with heading from its tangent. */
-    private fun stepSnail(dt: Float) {
-        val snailInstance = transforms.getInstance(snailEntity)
-        if (snailInstance == 0) return
-        snailTime += dt
-        val angle = (snailTime / 400.0 * 2.0 * PI).toFloat()
-        val x = 5.2f * cos(angle)
-        val z = 2.8f * sin(angle)
-        val dx = -5.2f * sin(angle)
-        val dz = 2.8f * cos(angle)
-        // The rear bowl rises behind the planted islands; the foreground is flat.
-        val y = max(0f, -z - 2f).pow(2) * .16f - .09f
-        Matrix.setIdentityM(pose, 0)
-        Matrix.translateM(pose, 0, x, y, z)
-        Matrix.rotateM(pose, 0, atan2(-dz, dx) * 180f / PI.toFloat(), 0f, 1f, 0f)
-        Matrix.scaleM(pose, 0, .6f, .6f, .6f)
-        transforms.setTransform(snailInstance, pose)
-    }
+    // Fauna snail remains in the shared habitat hierarchy. Its authored
+    // animation follows the rock surface and feelers; applyAnimation owns it.
     private data class Fish(val entity: Int, var dx: Float = 0f, var dy: Float = 0f, var dz: Float = 0f)
     private val fish = viewer.asset?.entities?.map { entity ->
         if (viewer.asset?.getName(entity)?.startsWith("Fish yaw") == true)
@@ -136,7 +124,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
 
     fun sync(state: TerrariumState, focus: String?) {
         val next = aquariumResidents(state)
-        if (all == next && focusedId == focus) return
+        if(all==next && focusedId==focus)return
         all = next
         focusedId = focus
         val visible = visibleAquariumResidents(all, focus)
@@ -146,10 +134,19 @@ internal class AquariumResidents(private val context: Context, private val viewe
             viewer.scene.removeEntities(old.asset.entities)
             loader.destroyAsset(old.asset)
             old.support?.let { viewer.scene.removeEntities(it.entities); loader.destroyAsset(it) }
+            old.companion?.let { viewer.scene.removeEntities(it.entities); loader.destroyAsset(it) }
         }
         for (item in visible) {
             val existing = bodies[item.id]
-            if (existing != null) { existing.item = item; continue }
+            if (existing != null) {
+                existing.item = item
+                existing.support?.let { viewer.scene.addEntities(it.entities) }
+                if(item.ciWait==null) {
+                    existing.companion?.let { viewer.scene.removeEntities(it.entities);loader.destroyAsset(it) }
+                    existing.companion=null;existing.ciMotion=CiCompanionMotion(item.id)
+                }
+                continue
+            }
             fun load(kind: String): FilamentAsset {
                 val bytes = context.assets.open("residents/$kind.glb").use { it.readBytes() }
                 val buffer = ByteBuffer.allocateDirect(bytes.size).apply { put(bytes); flip() }
@@ -186,11 +183,12 @@ internal class AquariumResidents(private val context: Context, private val viewe
         var groundIndex = 0
         var waterIndex = 0
         bodies.values.forEach { body ->
+            val oldX = body.x; val oldY = body.y; val oldZ = body.z
             body.effort += ((if (body.item.state == OctopusVisualState.WORKING) 1f else 0f) - body.effort) * blend
             body.attention += ((if (body.item.state == OctopusVisualState.ASKING) 1f else 0f) - body.attention) * blend
             body.phase += dt * (TerrariumRules.NATIVE_ACTIVITY_IDLE_RATE + body.effort * TerrariumRules.NATIVE_ACTIVITY_WORK_RATE)
             val grounded = body.item.kind == "claudecode" || body.item.kind == "openclaw"
-            val scale = if (grounded) min(baseScale, 1.8f / sqrt(groundedCount.toFloat())) else baseScale
+            var scale = if (grounded) min(baseScale, 1.8f / sqrt(groundedCount.toFloat())) else baseScale
             body.size = scale
             val index = if (grounded) groundIndex++ else waterIndex++
             val row = index / columns
@@ -210,6 +208,10 @@ internal class AquariumResidents(private val context: Context, private val viewe
                 Matrix.scaleM(matrix, 0, max(.65f, scale * 1.35f), .95f + row * .48f, max(.55f, scale))
                 transforms.setTransform(transforms.getInstance(shelf.root), matrix)
             }
+            if (body.initialized) {
+                body.x = oldX+(body.x-oldX)*blend; body.y = oldY+(body.y-oldY)*blend; body.z = oldZ+(body.z-oldZ)*blend
+            }
+            body.initialized = true
             Matrix.setIdentityM(matrix, 0)
             Matrix.translateM(matrix, 0, body.x, body.y, body.z)
             val yaw = sin(body.phase * .5f) * if (grounded) body.effort * TerrariumRules.NATIVE_ACTIVITY_GROUND_YAW
@@ -222,6 +224,22 @@ internal class AquariumResidents(private val context: Context, private val viewe
             val breath = if (grounded) 0f else sin(body.phase * 1.3f) * .009f + swing * TerrariumRules.NATIVE_ACTIVITY_WORK_BREATH
             Matrix.scaleM(matrix, 0, scale * (1f + breath), scale * (1f - breath * .6f), scale * (1f + breath))
             transforms.setTransform(transforms.getInstance(body.asset.root), matrix)
+            body.item.ciWait?.let { wait ->
+                body.ciMotion.update(wait,dt)
+                if(body.ciMotion.visible(wait)) {
+                    val helper=body.companion ?: loadCompanion().also { body.companion=it }
+                    viewer.scene.addEntities(helper.entities)
+                    val angle=body.ciMotion.angle
+                    Matrix.setIdentityM(matrix,0)
+                    Matrix.translateM(matrix,0,body.x+cos(angle)*TerrariumRules.CI_COMPANION_NATIVE_RADIUS_X*scale,
+                        body.y+sin(angle)*TerrariumRules.CI_COMPANION_NATIVE_RADIUS_Y*scale,
+                        body.z+(.44f+sin(angle)*TerrariumRules.CI_COMPANION_NATIVE_DEPTH)*scale)
+                    val helperSize=TerrariumRules.CI_COMPANION_NATIVE_SIZE*scale
+                    Matrix.scaleM(matrix,0,helperSize,helperSize,helperSize)
+                    transforms.setTransform(transforms.getInstance(helper.root),matrix)
+                } else body.companion?.let { viewer.scene.removeEntities(it.entities) }
+            }
+
             for ((i, joint) in body.joints.withIndex()) {
                 joint.rest.copyInto(pose)
                 if (joint.name.startsWith("joint_foot")) {
@@ -234,7 +252,6 @@ internal class AquariumResidents(private val context: Context, private val viewe
             }
         }
         disturbSchool(dt)
-        stepSnail(dt)
     }
 
     private fun project(canvas: Canvas, x: Float, y: Float, z: Float): Boolean {
@@ -271,6 +288,16 @@ internal class AquariumResidents(private val context: Context, private val viewe
         for (p in onScreen) {
             overlay.drawCues(canvas, p.body.item, p.bodyX, p.bodyY, p.unit, p.body.phase, p.body.item.id == focusedId)
         }
+        for(p in onScreen) p.body.item.ciWait?.let { wait ->
+            if(p.body.ciMotion.visible(wait)) {
+                val angle=p.body.ciMotion.angle
+                if(project(canvas,p.body.x+cos(angle)*TerrariumRules.CI_COMPANION_NATIVE_RADIUS_X*p.body.size,
+                    p.body.y+sin(angle)*TerrariumRules.CI_COMPANION_NATIVE_RADIUS_Y*p.body.size,
+                    p.body.z+(.44f+sin(angle)*TerrariumRules.CI_COMPANION_NATIVE_DEPTH)*p.body.size)) {
+                    overlay.drawCompanionCaption(canvas,wait,screenX,screenY,p.unit*TerrariumRules.CI_COMPANION_NATIVE_SIZE)
+                }
+            }
+        }
         if (!labelsVisible) return
         val byId = onScreen.associateBy { it.body.item.id }
         val decisions = resolveResidentLabels(onScreen.map { p ->
@@ -294,6 +321,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
             viewer.scene.removeEntities(body.asset.entities)
             loader.destroyAsset(body.asset)
             body.support?.let { viewer.scene.removeEntities(it.entities); loader.destroyAsset(it) }
+            body.companion?.let { viewer.scene.removeEntities(it.entities);loader.destroyAsset(it) }
         }
         bodies.clear()
         resources.destroy()

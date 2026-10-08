@@ -162,7 +162,12 @@ data class GroupedEntry(
     /** Terminator metadata (chat_end) merged into this turn group — carries the
      *  "Completed · Ns · topic" suffix. Mirrors Apple mergedCompletion. */
     val mergedCompletion: TimelineEntry? = null,
+    val toolActivity: List<TimelineEntry> = emptyList(),
+    /** Android presentation-only identity, assigned before recency projection. */
+    val presentationKey: String? = null,
 ) {
+    val toolSummary: String get() = toolActivity.joinToString(" · ") { it.summary }
+    val toolDetail: String get() = toolActivity.joinToString("\n\n") { it.detail ?: it.summary }
     /** True when the assistant delivered something for this turn (response body
      *  or completion metadata). UIs use it to stop the chat_start spinner and
      *  swap its icon to the completed glyph — otherwise a merged, completed
@@ -186,15 +191,7 @@ data class GroupedEntry(
  *     into one `×count` group (`canGroup`): tool_request 10s, chat_end/default
  *     60s.
  */
-/** How many prior groups a turn child (chat_response/chat_end) may scan back
- *  through to find its chat_start. With several agents running concurrently,
- *  other sessions' rows interleave between a prompt and its completion —
- *  merging only into the immediately-previous group (the old behaviour) made
- *  every busy-dashboard turn render as 2-3 scattered rows with a spinner that
- *  never stopped. Bounded so a pathological backlog can't go quadratic. */
-private const val TURN_MERGE_LOOKBACK = 40
-private const val TURN_MERGE_MAX_GAP_MS = 12 * 60 * 60 * 1000L
-
+// Scan the retained buffer; other sessions cannot consume a turn's lookback.
 fun groupConsecutive(entries: List<TimelineEntry>): List<GroupedEntry> {
     if (entries.isEmpty()) return emptyList()
     val groups = mutableListOf<GroupedEntry>()
@@ -205,7 +202,7 @@ fun groupConsecutive(entries: List<TimelineEntry>): List<GroupedEntry> {
             // Turn merge: a chat_response/chat_end folds into the most recent
             // same-context turn group, looking past interleaved rows from
             // other sessions.
-            if (tryMergeTurnChild(groups, entry)) continue
+            if (tryMergeToolActivity(groups, entry) || tryMergeTurnChild(groups, entry)) continue
 
             // Same-type consecutive run collapse (×count) — keep latest entry.
             // Task hierarchy markers never group — each is a unique unit of work.
@@ -223,6 +220,32 @@ fun groupConsecutive(entries: List<TimelineEntry>): List<GroupedEntry> {
         groups.add(GroupedEntry(entry = entry, lastTs = entry.timestamp))
     }
     return groups
+}
+
+/** Attach ordinary tools only when their session/run has a real prompt. */
+private fun tryMergeToolActivity(groups: MutableList<GroupedEntry>, entry: TimelineEntry): Boolean {
+    if (entry.type !in ObservedAgentRules.TURN_ACTIVITY_TYPES || entry.subagentId != null ||
+        entry.summary.startsWith("Subagent ") ||
+        (entry.sessionId.isNullOrBlank() && entry.runId.isNullOrBlank())) return false
+    for (i in groups.indices.reversed()) {
+        val group = groups[i]
+        val parent = group.entry
+        if (entry.timestamp - parent.timestamp > ObservedAgentRules.TURN_MERGE_MAX_GAP_MS) return false
+        // A task can span runs; tool ownership must match the execution.
+        if (parent.sessionId?.takeIf { it.isNotBlank() } != entry.sessionId?.takeIf { it.isNotBlank() }) continue
+        if (parent.runId?.takeIf { it.isNotBlank() } != entry.runId?.takeIf { it.isNotBlank() }) continue
+        if (!sameTimelineContext(parent, entry)) continue
+        if (parent.type == "chat_start") {
+            if (!isMeaningfulChatStart(parent) || (entry.startedAt ?: entry.timestamp) < parent.timestamp) return false
+            val end = group.mergedCompletion ?: group.mergedResponse
+            if (end != null && entry.timestamp > (end.endedAt ?: end.timestamp) &&
+                (entry.runId.isNullOrBlank() || entry.runId != parent.runId)) return false
+            groups[i] = group.copy(toolActivity = group.toolActivity + entry)
+            return true
+        }
+        if (parent.type !in setOf("tool_request", "tool_resolved", "tool_exec", "model_call", "memory_recall")) return false
+    }
+    return false
 }
 
 /**
@@ -243,12 +266,10 @@ private fun tryMergeTurnChild(groups: MutableList<GroupedEntry>, entry: Timeline
     val isCompletion = entry.type == "chat_end"
     if (!isResponse && !isCompletion) return false
 
-    var scanned = 0
     for (i in groups.indices.reversed()) {
-        if (scanned++ >= TURN_MERGE_LOOKBACK) return false
         val g = groups[i]
         val ge = g.entry
-        if (entry.timestamp - ge.timestamp > TURN_MERGE_MAX_GAP_MS) return false
+        if (entry.timestamp - ge.timestamp > ObservedAgentRules.TURN_MERGE_MAX_GAP_MS) return false
         if (!sameTimelineContext(ge, entry)) continue
 
         when (ge.type) {
@@ -351,7 +372,10 @@ class TimelineStore private constructor() {
         for (i in list.indices.reversed()) {
             val e = list[i]
             if (normalized.timestamp - e.timestamp > 5000) break
-            if (e.type == normalized.type && e.summary == normalized.summary) return
+            if (kotlin.math.abs(normalized.timestamp - e.timestamp) <= 5000 &&
+                e.type == normalized.type && e.summary == normalized.summary &&
+                e.sessionId == normalized.sessionId && e.runId == normalized.runId &&
+                e.startedAt == normalized.startedAt) return
         }
         // Sorted insert: live events normally arrive ascending (append
         // fast-path), but the daemon's deferred `task_start` is backdated to
@@ -404,7 +428,11 @@ class TimelineStore private constructor() {
             list.indexOfLast { it.subagentId == normalized.subagentId }
         } else -1
         val idx = if (taskMatchIdx >= 0) taskMatchIdx else if (subagentMatchIdx >= 0) subagentMatchIdx else {
-            list.indexOfLast { it.type == normalized.type && kotlin.math.abs(it.timestamp - normalized.timestamp) < 1000L }
+            list.indexOfLast { it.type == normalized.type && kotlin.math.abs(it.timestamp - normalized.timestamp) < 1000L &&
+                (it.sessionId == null || normalized.sessionId == null || it.sessionId == normalized.sessionId) &&
+                (it.runId == null || normalized.runId == null || it.runId == normalized.runId) &&
+                (it.taskId == null || normalized.taskId == null || it.taskId == normalized.taskId) &&
+                (it.startedAt == null || normalized.startedAt == null || it.startedAt == normalized.startedAt) }
         }
         if (idx >= 0) {
             list[idx] = list[idx].copy(
@@ -439,7 +467,7 @@ class TimelineStore private constructor() {
         // OTel filter.
         val filtered = newEntries.mapNotNull { normalizeTimelineEntryForStorage(it) }
         _entries.value = (_entries.value + filtered)
-            .distinctBy { "${it.timestamp}-${it.type}-${it.summary}" }
+            .distinctBy { "${it.timestamp}-${it.type}-${it.summary}-${it.sessionId}-${it.runId}-${it.startedAt}" }
             .sortedBy { it.timestamp }
             .takeLast(MAX_ENTRIES)
     }
@@ -463,7 +491,7 @@ class TimelineStore private constructor() {
     fun replaceSnapshot(snapshot: List<TimelineEntry>) {
         val filtered = snapshot.mapNotNull { normalizeTimelineEntryForStorage(it) }
         _entries.value = filtered
-            .distinctBy { "${it.timestamp}-${it.type}-${it.summary}" }
+            .distinctBy { "${it.timestamp}-${it.type}-${it.summary}-${it.sessionId}-${it.runId}-${it.startedAt}" }
             .sortedBy { it.timestamp }
             .takeLast(MAX_ENTRIES)
     }

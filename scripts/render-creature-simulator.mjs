@@ -10,12 +10,15 @@ import {
   initTerrarium,
   setOctopi,
   setJellyfish,
+  setOpenCode,
+  setResidents,
   setCrayfish,
   setVoiceAssistantState,
   updateTerrarium,
   renderTerrariumFrame,
 } from '../bridge/dist/tui/terrarium.js';
-import { renderDashboard } from '../bridge/dist/tui/renderer.js';
+import { renderDashboard, aquariumSize } from '../bridge/dist/tui/renderer.js';
+import { ansiScreenToFrame } from './ansi-demo-frame.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sourcePath = path.resolve(__dirname, '../tools/creature-simulator/index.html');
@@ -178,122 +181,6 @@ function stripAnsi(str) {
   );
 }
 
-function ansiColorFromCode(code) {
-  const palette = {
-    30: '#111827',
-    31: '#ef4444',
-    32: '#22c55e',
-    33: '#f59e0b',
-    34: '#3b82f6',
-    35: '#a855f7',
-    36: '#06b6d4',
-    37: '#d1d5db',
-    90: '#6b7280',
-    91: '#f87171',
-    92: '#4ade80',
-    93: '#fcd34d',
-    94: '#60a5fa',
-    95: '#c084fc',
-    96: '#67e8f9',
-    97: '#f9fafb',
-  };
-  return palette[code] || null;
-}
-
-function applySgr(params, currentColor) {
-  const parts = params === '' ? [0] : params.split(';').map((part) => Number(part || 0));
-  let color = currentColor;
-  for (let p = 0; p < parts.length; p++) {
-    const code = parts[p];
-    if (code === 0 || code === 39) {
-      color = null;
-    } else if ((code >= 30 && code <= 37) || (code >= 90 && code <= 97)) {
-      color = ansiColorFromCode(code);
-    } else if (code === 38 && parts[p + 1] === 2) {
-      const r = parts[p + 2];
-      const g = parts[p + 3];
-      const b = parts[p + 4];
-      if ([r, g, b].every((v) => Number.isFinite(v))) {
-        color = `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')}`;
-      }
-      p += 4;
-    }
-  }
-  return color;
-}
-
-function ansiScreenToFrame(text, cols, rows) {
-  const screen = Array.from({ length: rows }, () => Array.from({ length: cols }, () => ({ ch: ' ', color: null })));
-  let row = 0;
-  let col = 0;
-  let color = null;
-  let i = 0;
-
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === '\u001b' && text[i + 1] === '[') {
-      let j = i + 2;
-      while (j < text.length && !/[A-Za-z]/.test(text[j])) j++;
-      const final = text[j];
-      const params = text.slice(i + 2, j);
-      if (final === 'H' || final === 'f') {
-        const [r = '1', c = '1'] = params.split(';');
-        row = Math.max(0, Math.min(rows - 1, Number(r) - 1));
-        col = Math.max(0, Math.min(cols - 1, Number(c) - 1));
-      } else if (final === 'K' && params === '2') {
-        screen[row] = Array.from({ length: cols }, () => ({ ch: ' ', color: null }));
-        col = 0;
-      } else if (final === 'm') {
-        color = applySgr(params, color);
-      }
-      i = j + 1;
-      continue;
-    }
-    if (ch === '\n') {
-      row = Math.min(rows - 1, row + 1);
-      col = 0;
-      i++;
-      continue;
-    }
-    if (row >= 0 && row < rows && col >= 0 && col < cols) {
-      screen[row][col] = { ch, color };
-    }
-    col++;
-    i++;
-  }
-
-  const lines = [];
-  const spans = [];
-  for (const line of screen) {
-    const last = line.findLastIndex((cell) => cell.ch !== ' ');
-    if (last < 0) {
-      lines.push('');
-      spans.push([]);
-      continue;
-    }
-    lines.push(line.slice(0, last + 1).map((cell) => cell.ch).join(''));
-
-    const rowSpans = [];
-    let start = 0;
-    let textRun = '';
-    let runColor = line[0].color;
-    for (let x = 0; x <= last; x++) {
-      const cell = line[x];
-      if (cell.color !== runColor) {
-        if (textRun.trim()) rowSpans.push({ x: start, text: textRun, color: runColor });
-        start = x;
-        textRun = cell.ch;
-        runColor = cell.color;
-      } else {
-        textRun += cell.ch;
-      }
-    }
-    if (textRun.trim()) rowSpans.push({ x: start, text: textRun, color: runColor });
-    spans.push(rowSpans);
-  }
-
-  return { lines, spans };
-}
 
 function renderTuiData() {
   return withSeed(12345, () => {
@@ -312,12 +199,15 @@ function renderTuiData() {
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
+        setOpenCode(ctx, sessions);
+        setResidents(ctx, sessions);
         setCrayfish(ctx, true, agent === 'openclaw' && state === 'working', 'OpenClaw', false);
         setVoiceAssistantState(ctx, 'disabled');
         for (let frame = 0; frame < 36; frame++) updateTerrarium(ctx, frame);
         const cols = 160;
         const rows = 40;
-        const terrariumLines = renderTerrariumFrame(ctx, cols - Math.max(20, Math.floor(cols * 0.22)) - 3, Math.max(3, Math.floor((rows - 3) * 0.42)), 36);
+        const aq = aquariumSize(cols, rows);
+        const terrariumLines = aq ? renderTerrariumFrame(ctx, aq.width, aq.height, 36) : [];
         const dashboardState = {
           state: simStateToBridge(state),
           connectionStatus: 'connected',
@@ -329,8 +219,8 @@ function renderTuiData() {
           usage: {
             fiveHourPercent: 46,
             sevenDayPercent: 72,
-            fiveHourResetsAt: '1h24m',
-            sevenDayResetsAt: '1d12h',
+            fiveHourResetsAt: buildUsage().fiveHourResetsAt,
+            sevenDayResetsAt: buildUsage().sevenDayResetsAt,
             inputTokens: 123400,
             outputTokens: 56700,
             estimatedCostUsd: 12.34,
@@ -373,13 +263,15 @@ function renderTuiTerrariumData() {
         ];
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
+        setOpenCode(ctx, sessions);
+        setResidents(ctx, sessions);
         setCrayfish(ctx, true, agent === 'openclaw' && state === 'working', 'OpenClaw', false);
         setVoiceAssistantState(ctx, 'disabled');
         for (let frame = 0; frame < 36; frame++) updateTerrarium(ctx, frame);
         const width = 84;
         const height = 18;
-        const terrariumLines = renderTerrariumFrame(ctx, width, height, 36).map((line) => stripAnsi(line));
-        result[`${agent}:${state}`] = { width, height, lines: terrariumLines };
+        const terrariumLines = renderTerrariumFrame(ctx, width, height, 36);
+        result[`${agent}:${state}`] = { width, height, ...ansiScreenToFrame(terrariumLines.join('\n'), width, height) };
       }
     }
     return result;

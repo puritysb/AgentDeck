@@ -233,3 +233,37 @@ describe('D200H observed session detail', () => {
     expect(cmds.find((c) => c.type === 'interrupt')).toBeTruthy();
   });
 });
+
+describe('D200H observed detail INFO readout (#463)', () => {
+  it('shows the row\'s own model, effort and mode words verbatim', () => {
+    const svgs = [...detailCells(observedStateEvt({
+      state: 'idle', modelName: 'gpt-6-astra', effortLevel: 'ultra', permissionMode: 'workspace-write',
+    })).values()].map((c) => c.svg).join('');
+    expect(svgs).toContain('· ultra');
+    expect(svgs).toContain('WORKSPACE-WRITE');
+  });
+
+  it('never borrows the daemon-global mode for an observed row that reports none', () => {
+    const original = observedStateEvt({ state: 'idle', modelName: 'claude-sonnet-5-5' });
+    const evt = { ...original, focusedSessionId: original.allSessions[0].id, mode: 'plan', permissionMode: 'plan' };
+    const svgs = [...detailCells(evt).values()].map((c) => c.svg).join('');
+    expect(svgs).not.toContain('>PLAN<');
+  });
+});
+
+describe('D200H observed NOW card (#463)', () => {
+  it('idle replaces the bare OBSERVED card with what the row says the agent is doing', () => {
+    const svgs = [...detailCells(observedStateEvt({
+      state: 'idle', activity: 'Reviewing picker', contextPercent: 63, subagents: { active: 2, peak: 2, completed: 0 },
+    })).values()].map((c) => c.svg).join('');
+    expect(svgs).toContain('2 SUBAGENTS');
+    expect(svgs).toContain('Reviewing picker');
+    expect(svgs).toContain('context 63%');
+    expect(svgs).not.toContain('control in terminal');
+  });
+
+  it('keeps OBSERVED when the row carries nothing to say', () => {
+    const svgs = [...detailCells(observedStateEvt({ state: 'idle' })).values()].map((c) => c.svg).join('');
+    expect(svgs).toContain('OBSERVED');
+  });
+});

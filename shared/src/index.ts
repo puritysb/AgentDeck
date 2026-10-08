@@ -3,6 +3,7 @@ export * from './protocol.js';
 export * from './openclaw-approval.js';
 export * from './openclaw-plugin-approval.js';
 export * from './gateway-protocol.js';
+export * from './session-settings.js';
 export * from './command-builders.js';
 export * from './adapter.js';
 export * from './voice-paths.js';
@@ -26,6 +27,7 @@ export * from './format-utils.js';
 export * from './timeline-summarizer.js';
 export * from './session-utils.js';
 export * from './creature-layout.js';
+export * from './brand-features.js';
 export * from './terrarium-rules.js';
 export * from './state-colors.js';
 export * from './session-state-presentation.js';
@@ -60,3 +62,7 @@ export { DOT_LIMITS, DOT_OAUTH_LIMITS } from './dot-rules.js';
 
 export * from './dot-interactions.js';
 export * from './dot-deck.js';
+export * from './daemon-parity.js';
+export * from './ci-wait.js';
+
+export * from './session-settings-client.js';

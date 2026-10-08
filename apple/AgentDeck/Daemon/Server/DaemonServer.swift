@@ -400,6 +400,13 @@ enum CodexRolloutResponseReader {
     private static let maxDayDirs = 30
     private static let tailBytes = 128 * 1024
 
+    /// The rollout's latest `turn_context` payload — Codex's own record of the
+    /// turn's model, effort, sandbox and collaboration mode (#463).
+    static func latestTurnContext(sessionId: String, sessionsRoot: URL? = nil) -> [String: Any]? {
+        guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot) else { return nil }
+        return ObservedAgentSettings.latestTurnContext(inRolloutTail: readTail(file, maxBytes: tailBytes))
+    }
+
     static func lastAgentMessage(sessionId: String, sessionsRoot: URL? = nil) -> String? {
         guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot) else { return nil }
         let text = readTail(file, maxBytes: tailBytes)
@@ -434,7 +441,7 @@ enum CodexRolloutResponseReader {
     // (2026-09-01, 20 rollouts; max 21,736 bytes). An 8 KB window truncated
     // every real first line and the truncation guard correctly answered
     // "no claim", which read as TUI downstream. 128 KB matches tailBytes.
-    private static let headBytes = 128 * 1024
+    private static let headBytes = ObservedAgentRules.codexMetadataHeadBytes
 
     /// Whether the rollout's `session_meta` names a desktop originator.
     ///
@@ -467,13 +474,26 @@ enum CodexRolloutResponseReader {
               let payload = record["payload"] as? [String: Any] else { return nil }
         return CodexRolloutSessionMeta(
             originator: payload["originator"] as? String,
-            cwd: payload["cwd"] as? String)
+            cwd: payload["cwd"] as? String,
+            isSubagent: subagentVerdict(payload: payload, sessionId: sessionId))
+    }
+
+    /// A missing/malformed head is unknown, so a partial first write can retry
+    /// rather than permanently caching a guessed standalone identity.
+    static func subagentVerdict(payload: [String: Any], sessionId: String) -> Bool? {
+        let bare = normalizedSessionId(sessionId)
+        guard payload["id"] as? String == bare else { return nil }
+        return ObservedAgentRules.codexSessionMetaSubagentVerdict(payload)
+    }
+
+    private static func normalizedSessionId(_ sessionId: String) -> String {
+        sessionId.hasPrefix("codex:")
+            ? String(sessionId.dropFirst("codex:".count))
+            : sessionId
     }
 
     static func locateRollout(sessionId: String, sessionsRoot: URL? = nil) -> URL? {
-        let normalized = sessionId.hasPrefix("codex:")
-            ? String(sessionId.dropFirst("codex:".count))
-            : sessionId
+        let normalized = normalizedSessionId(sessionId)
         guard normalized.range(of: #"^[0-9a-fA-F-]{8,}$"#, options: .regularExpression) != nil else {
             return nil
         }
@@ -584,6 +604,16 @@ enum ClaudeTranscriptTailReader {
     }
 }
 
+/// Host-local "HH:MM" now — the `localHm` convention, for `display_state.hostHm`.
+/// Stamped wherever a display_state dict is built so every re-sync carries
+/// the clock at ITS send time (Node parity: display-dim.ts `hostLocalHm`).
+/// E-ink boards print it as their "as of HH:MM" band; a serial-primary board
+/// parks its radio and has no other wall clock.
+func displayStateHostHm(_ now: Date = Date()) -> String {
+    let c = Calendar.current.dateComponents([.hour, .minute], from: now)
+    return String(format: "%02d:%02d", c.hour ?? 0, c.minute ?? 0)
+}
+
 /// ESP32 heartbeat callbacks run from the `ESP32Serial` actor, not from the
 /// daemon's `@MainActor` context. Store serial-facing event snapshots here so
 /// heartbeat code never reaches back into `DaemonServer` actor state.
@@ -653,7 +683,8 @@ private final class SerialEventSnapshot: @unchecked Sendable {
     func currentDisplayStateEvent() -> [String: Any] {
         lock.lock()
         defer { lock.unlock() }
-        return ["type": "display_state", "displayOn": displayOn, "dim": displayDim]
+        return ["type": "display_state", "displayOn": displayOn, "dim": displayDim,
+                "hostHm": displayStateHostHm()]
     }
 
     func initialEvents() -> [[String: Any]] {
@@ -685,7 +716,8 @@ private final class SerialEventSnapshot: @unchecked Sendable {
         if !seed.isEmpty {
             events.append(["type": "timeline_history", "entries": Array(seed)])
         }
-        events.append(["type": "display_state", "displayOn": display, "dim": dim])
+        events.append(["type": "display_state", "displayOn": display, "dim": dim,
+                       "hostHm": displayStateHostHm()])
         return events
     }
 }
@@ -1239,6 +1271,8 @@ final class DaemonServer {
     /// jobs) — the second census axis beside `subagentCensus`. Fed by the hook
     /// pid header + hook payloads, reconciled against `sysctl` every 5 s.
     private let coordinationTracker = CoordinationTracker()
+    private var claudeBackgroundTasks = ClaudeBackgroundTasks()
+    private let ciWaits = CiWaitTracker()
     private var coordinationTickTask: Task<Void, Never>?
     private var subagentBurstSeq = 0
     /// Children starting within this window fold into ONE dispatch row. Per
@@ -1327,6 +1361,27 @@ final class DaemonServer {
     /// drift / lost turn anchor). See the `.turnEnd` OTel case for the guard.
     private var codexOtelTurnIdBySession: [String: String] = [:]
     private var codexObservationOwnership = CodexObservationOwnership()
+    private var codexOtelSynthesizedSessionIds: Set<String> = []
+    private lazy var codexOtelSubagentFilter: CodexOtelSubagentFilter = {
+        let filter = CodexOtelSubagentFilter { threadId in
+            await Task.detached(priority: .utility) {
+                // Scope begins and ends in the worker containing the read;
+                // dispatch never waits for bookmark resolution or filesystem I/O.
+                AppPreferences.shared.withCodexDirectoryAccess { dir -> Bool? in
+                    CodexRolloutResponseReader.sessionMeta(
+                        sessionId: threadId,
+                        sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))?.isSubagent
+                } ?? CodexRolloutResponseReader.sessionMeta(sessionId: threadId)?.isSubagent
+            }.value
+        }
+        filter.onSubagent = { [weak self] threadId in
+            guard let self else { return }
+            let sid = "codex:\(threadId)"
+            guard self.codexOtelSynthesizedSessionIds.remove(sid) != nil else { return }
+            self.retractCodexThreadState(sessionId: sid, bareId: threadId)
+        }
+        return filter
+    }()
 
     /// Open-turn chat_start anchor per Claude Code session: noted on every
     /// UserPromptSubmit, claimed by the turn's Stop hook so chat_response /
@@ -2077,6 +2132,7 @@ final class DaemonServer {
                     "type": "display_state",
                     "displayOn": displayOn,
                     "dim": self.currentDimDict(),
+                    "hostHm": displayStateHostHm(),
                 ] as [String: Any])
                 if displayOn {
                     DaemonLogger.shared.info("Display wake — recovering modules and state")
@@ -2484,6 +2540,7 @@ final class DaemonServer {
                         "type": "display_state",
                         "displayOn": false,
                         "dim": self.currentDimDict(),
+                        "hostHm": displayStateHostHm(),
                     ] as [String: Any])
                 }
             }
@@ -4268,6 +4325,12 @@ final class DaemonServer {
                 return
             }
         }
+        // The catalog is request-scoped and can be large. Reply only on this
+        // authenticated requesting socket, never into every ESP32/serial feed.
+        if cmd["type"] as? String == "query_session_settings" || cmd["type"] as? String == "set_session_setting" {
+            handleSessionSettingsCommand(cmd, from: conn)
+            return
+        }
         // WiFi-WS ESP32 boards self-identify with a spontaneous `device_info`
         // frame on connect (and re-announce on device_info_request). Capture it
         // so the topology can show WiFi-only boards — Node-daemon parity with
@@ -4646,6 +4709,7 @@ final class DaemonServer {
     /// stale `processing`-touched / chat-topic / current-tool residue
     /// behind. Caller decides whether to broadcast.
     private func purgeCodexSessionState(_ sessionId: String) {
+        ciWaits.forget(ObservedAgentRules.rawSessionId(sessionId))
         pushedSessionsById.removeValue(forKey: sessionId)
         cachedSessions.removeAll { $0.id == sessionId }
         codexProcessingTouchedAtBySession.removeValue(forKey: sessionId)
@@ -4655,6 +4719,7 @@ final class DaemonServer {
         codexProjectNameBySession.removeValue(forKey: sessionId)
         clearCodexTurnAnchor(sid: sessionId)
         codexOtelTurnIdBySession.removeValue(forKey: sessionId)
+        codexOtelSynthesizedSessionIds.remove(sessionId)
         codexLastPromptTopicBySession.removeValue(forKey: sessionId)
         codexCurrentToolBySession.removeValue(forKey: sessionId)
         lastHookAtByPushedSession.removeValue(forKey: sessionId)
@@ -4938,6 +5003,14 @@ final class DaemonServer {
             return !sid.isEmpty && sid != "openclaw-gateway"
         }()
 
+        // Agent-native setting switches (#463) are answered here, never
+        // consumed by the gateway's generic command block below.
+        if type == "query_session_settings" || type == "set_session_setting" {
+            // These commands require a requesting WS identity. Module callers
+            // cannot initiate a settings write or receive the large catalog.
+            return
+        }
+
         // Gateway adapter handles command if alive
         if !sessionScopedCmd, let gw = gatewayAdapter {
             let cmdBox = SendableDict(cmd)
@@ -4952,7 +5025,12 @@ final class DaemonServer {
                 _ = stateMachine.transition(trigger: "interrupt", source: .user); broadcastStateUpdate()
             case "select_option": Task { await gw.resolvePendingApproval(command: cmdBox.value) }
                 _ = stateMachine.transition(trigger: "user_selection", source: .user); broadcastStateUpdate()
-            case "send_prompt": Task { await gw.sendRPC(method: "chat.send", params: cmdBox.value) }
+            // `chat.send` takes `message`; the device command carries `text`
+            // (the wake path already sends it this way). Forwarding the raw
+            // command left `message` out, so a deck prompt never arrived.
+            case "send_prompt":
+                let text = (cmd["text"] as? String) ?? ""
+                Task { await gw.sendRPC(method: "chat.send", params: ["message": text]) }
                 _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook); broadcastStateUpdate()
             case "escape": Task { await gw.sendRPC(method: "chat.abort", params: [:]) }
                 _ = stateMachine.transition(trigger: "interrupt", source: .user); broadcastStateUpdate()
@@ -5157,6 +5235,7 @@ final class DaemonServer {
     /// child): its row, its hub-driver identity, its APME run.
     private func retractCodexThreadState(sessionId sid: String, bareId bare: String) {
         codexOtelTurnIdBySession.removeValue(forKey: sid)
+        codexOtelSynthesizedSessionIds.remove(sid)
         if pushedSessionsById.removeValue(forKey: sid) != nil {
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
@@ -5235,6 +5314,7 @@ final class DaemonServer {
         // Owned by hooks either way: `codex exec` exports its OTel spans in one
         // batch at exit, which must not synthesize a row for the thread the
         // roster deliberately left out.
+        codexOtelSynthesizedSessionIds.remove(sessionId)
         codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
         let inline = Self.nonEmptyString(json["last_assistant_message"])
         await applyCodexExecChildEvents(verdict.events, inlineSummary: inline)
@@ -5699,6 +5779,13 @@ final class DaemonServer {
             }
         }
 
+        // Background snapshots describe parent session work even on SubagentStop.
+        // Read before the child-only return; this never changes turn/APME state.
+        let backgroundEvent = ["stop": "Stop", "stop_failure": "StopFailure",
+            "subagent_stop": "SubagentStop", "notification": "Notification",
+            "session_start": "SessionStart", "session_end": "SessionEnd"][event] ?? event
+        if claudeBackgroundTasks.note(backgroundEvent, payload: json) { broadcastSessionsList() }
+
         // Child lifecycle is telemetry-only. Consume it before resurrection,
         // state, APME, and steering bookkeeping so a child's tool hooks can
         // never alter or request approval through the parent session.
@@ -5738,6 +5825,7 @@ final class DaemonServer {
         }
 
         if isCodexEvent, let sessionId {
+            codexOtelSynthesizedSessionIds.remove(sessionId)
             codexObservationOwnership.receiveHook(event: event, sessionId: sessionId, now: Date())
         }
 
@@ -6191,6 +6279,9 @@ final class DaemonServer {
             }
         default: break
         }
+        if let sessionId, !isOpenCodeEvent {
+            noteObservedAgentSettings(event: event, json: json, sessionId: sessionId, isCodex: isCodexEvent)
+        }
         if isOpenCodeEvent, let sessionId {
             applyOpenCodeWait(sessionId: sessionId, event: event,
                 id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
@@ -6213,6 +6304,26 @@ final class DaemonServer {
         // and a SendMessage call. Process-table evidence (spawned workers,
         // background jobs) is Node-only — the sandboxed daemon has no ps.
         noteCoordinationEvidence(event: event, json: json, sessionId: sessionId)
+        if let sid = sessionId {
+            // The generated tracker normalizes every supported source family.
+            // A local Codex-only mapping previously discarded OpenCode waits.
+            let rawSid = ObservedAgentRules.rawSessionId(sid)
+            let now = Self.wireEpochMs(Date().timeIntervalSince1970 * 1000)
+            if ciWaits.note(rawSid, event: event, json: json, now: now) {
+                let wait = ciWaits.snapshot(rawSid, now: now)
+                var entry = DaemonTimelineEntry(ts: Double(now), type: "scheduled",
+                    raw: wait == nil ? "CI wait ended · result unconfirmed" : "CI wait requested",
+                    detail: nil, approvalId: nil, status: nil,
+                    agentType: isCodexEvent ? "codex-cli" : isOpenCodeEvent ? "opencode" : "claude-code", repeatCount: nil, automated: nil)
+                entry.sessionId = rawSid
+                entry.summaryKind = "none"
+                if await timelineStore.add(entry, bypassSuppression: true) {
+                    broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
+                }
+                broadcastSessionsList()
+            }
+        }
+
 
         // Attribute the next state_update + timeline entries to the session
         // that fired this hook: remember the sessionId, and mirror the
@@ -6691,6 +6802,7 @@ final class DaemonServer {
         guard !expired.isEmpty else { return }
 
         for sid in expired {
+            ciWaits.forget(ObservedAgentRules.rawSessionId(sid))
             hermesGate.forget(sessionKey: sid)
             let expiredEntry = pushedSessionsById[sid]
             let isPostTerminal = lastTerminalCodexEventBySession[sid]
@@ -6712,6 +6824,11 @@ final class DaemonServer {
                 // A run that outlives its session sat open until a restart;
                 // a later prompt on a re-engaged TUI opens a fresh run lazily.
                 apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "codex-cli"])
+            } else if sid.hasPrefix(HermesObserverGate.sessionPrefix) {
+                if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
+                    appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true, agentType: "hermes")
+                }
+                apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "hermes"])
             } else if sid.hasPrefix(Self.openCodeSessionPrefix) {
                 if openCodeTurnAnchors.hasOpenTurn(sid: sid) {
                     appendOpenCodeChatEnd(json: [:], sessionId: sid, interrupted: true)
@@ -6885,6 +7002,7 @@ final class DaemonServer {
     }
 
     private func pruneCodexObservationOwnership(now: Date) {
+        codexOtelSynthesizedSessionIds.formIntersection(pushedSessionsById.keys)
         let cutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
         let retained = Set(pushedSessionsById.keys)
             .union(lastTerminalCodexEventBySession.filter { $0.value >= cutoff }.keys)
@@ -6898,6 +7016,7 @@ final class DaemonServer {
     /// session entry per Codex thread; either signal alone is sufficient
     /// to drive the dashboard, both together is idempotent.
     private func handleCodexTrace(_ body: Data) async {
+        guard !codexOtelSubagentFilter.isClosed else { return }
         let parsed: Any
         do {
             parsed = try JSONSerialization.jsonObject(with: body)
@@ -7012,6 +7131,7 @@ final class DaemonServer {
             )
             entry.state = "processing"
             pushedSessionsById[sid] = entry
+            codexOtelSynthesizedSessionIds.insert(sid)
             upsertIntoCachedSessions(entry)
             trackCodexProcessingState(sessionId: sid, entry: entry)
             didTouchSessionsList = true
@@ -7027,6 +7147,7 @@ final class DaemonServer {
             // suggestions) export spans like the user's work; their hooks are
             // dropped, so without this a cwd-less "Codex" row would open.
             if codexAmbientThreads.isAmbient(sid) { return nil }
+            if codexOtelSubagentFilter.check(threadId) == true { return nil }
             return sid
         }
 
@@ -7443,6 +7564,79 @@ final class DaemonServer {
     /// Apply a per-session state/tool update coming from a hook event and
     /// broadcast the refreshed sessions list. No-op when the sessionId is
     /// nil or refers to a session we never registered via `session_start`.
+    /// `query_session_settings` / `set_session_setting` (#463). Only an agent
+    /// with a supported write path offers settings — today the OpenClaw Gateway
+    /// (`sessions.patch`). Every other session answers an empty list: its model
+    /// and effort are readouts. Replies remain bound to the requesting socket.
+    private func handleSessionSettingsCommand(_ cmd: [String: Any], from conn: WebSocketConnection) {
+        guard let command = OpenClawSessionSettings.command(cmd) else { return }
+        if let error = command.error {
+            sendSessionSettings(command: command, settings: [], targetSessionKey: command.targetSessionKey, error: error, to: conn)
+            return
+        }
+        guard command.sessionId == "openclaw-gateway", let gw = gatewayAdapter else {
+            sendSessionSettings(command: command, settings: [], targetSessionKey: command.targetSessionKey,
+                error: command.isSet ? "Setting switches are unavailable for this session" : nil, to: conn)
+            return
+        }
+        Task { @DaemonActor [weak self] in
+            var error: String?
+            if command.isSet {
+                error = await gw.setSessionSetting(targetSessionKey: command.targetSessionKey!,
+                    key: command.key!, value: command.value)
+            }
+            let read = await gw.querySessionSettings(targetSessionKey: command.isSet ? command.targetSessionKey : nil)
+            self?.sendSessionSettings(command: command, settings: read.settings,
+                targetSessionKey: read.targetSessionKey, error: error ?? read.error, to: conn)
+        }
+    }
+
+    private func sendSessionSettings(command: OpenClawSessionSettings.Command,
+        settings: [[String: Any]], targetSessionKey: String?, error: String?, to conn: WebSocketConnection) {
+        var event: [String: Any] = ["type": "session_settings", "requestId": command.requestId,
+            "sessionId": command.sessionId, "settings": settings]
+        if let targetSessionKey { event["targetSessionKey"] = targetSessionKey }
+        if let error { event["error"] = error }
+        if activeWSConnectionIds.contains(conn.id), let data = event.jsonData { conn.send(data) }
+    }
+
+    /// Model / effort / permission mode in the agent's own words (#463), from
+    /// the hook payload and — for Codex, whose hooks carry only the model — the
+    /// rollout's latest `turn_context`, read at turn boundaries inside the
+    /// `~/.codex` bookmark scope. Observed rows only: a managed bridge pushes
+    /// its own values.
+    private func noteObservedAgentSettings(event: String, json: [String: Any], sessionId: String, isCodex: Bool) {
+        guard var entry = pushedSessionsById[sessionId], entry.controlMode == "observed" else { return }
+        var reading = isCodex
+            ? ObservedAgentSettings.codex(fromHook: json)
+            : ObservedAgentSettings.claude(fromHook: json)
+        if isCodex, event == "codex_stop" || event == "codex_user_prompt_submit" || event == "codex_session_start",
+           let context = codexRolloutTurnContext(sessionId: sessionId) {
+            // The hook's model is the live slug; the rollout supplies the rest.
+            reading = ObservedAgentSettings.merge(reading, into: ObservedAgentSettings.codex(turnContext: context))
+        }
+        guard !reading.isEmpty else { return }
+        let current = ObservedAgentSettings.Reading(
+            model: entry.modelName, effortLevel: entry.effortLevel, permissionMode: entry.permissionMode)
+        let next = ObservedAgentSettings.merge(reading, into: current)
+        guard next != current else { return }
+        entry.modelName = next.model
+        entry.effortLevel = next.effortLevel
+        entry.permissionMode = next.permissionMode
+        pushedSessionsById[sessionId] = entry
+        upsertIntoCachedSessions(entry)
+        scheduleSessionsListBroadcast()
+    }
+
+    private func codexRolloutTurnContext(sessionId: String) -> [String: Any]? {
+        let bare = Self.codexBareId(sessionId)
+        return AppPreferences.shared.withCodexDirectoryAccess { dir -> [String: Any]? in
+            CodexRolloutResponseReader.latestTurnContext(
+                sessionId: bare,
+                sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))
+        } ?? CodexRolloutResponseReader.latestTurnContext(sessionId: bare)
+    }
+
     private func updateSessionHookState(
         sessionId: String?,
         state newState: String,
@@ -10457,6 +10651,7 @@ final class DaemonServer {
             if let p = window(cached.data.primary) { payload["primary"] = p }
             if let s = window(cached.data.secondary) { payload["secondary"] = s }
         }
+        payload["authFailed"] = cached.data.authFailed ?? false
         if let plan = cached.data.planType { payload["planType"] = plan }
         if let limitId = cached.data.limitId { payload["limitId"] = limitId }
         if let capturedAt = cached.data.capturedAt { payload["capturedAt"] = capturedAt }
@@ -10873,6 +11068,7 @@ final class DaemonServer {
 
     func shutdown() async {
         DotHost.shared.release(dotOwnership)
+        codexOtelSubagentFilter.close()
         DaemonLogger.shared.info("Daemon shutting down...")
         if let backgroundActivity { ProcessInfo.processInfo.endActivity(backgroundActivity) }
         backgroundActivity = nil
@@ -11089,6 +11285,12 @@ final class DaemonServer {
             d["elapsedSec"] = elapsed
         }
         if let activity = sessionActivitySummary(s) { d["activity"] = activity }
+        let ciWait = ciWaits.snapshot(ObservedAgentRules.rawSessionId(s.id), now: Self.wireEpochMs(Date().timeIntervalSince1970 * 1000))
+        if let ciWait { d["waitingOn"] = ciWait } else { d["waitingOn"] = NSNull() }
+        if let ciWait, !(s.state ?? "").hasPrefix("awaiting") {
+            d["activity"] = "CI wait" + ((ciWait["pr"] as? Int).map { " #\($0)" } ?? "")
+        }
+
         // Live child-agent census — a SECOND axis to `state`, not a correction
         // to it: a parent whose turn closed is genuinely idle while its
         // subagents keep working. Hooks key children by the BARE session uuid
@@ -11126,6 +11328,9 @@ final class DaemonServer {
             d["reviewStatus"] = badge.status
             if let risk = badge.risk { d["reviewRisk"] = risk }
             if let findings = badge.findings { d["reviewFindings"] = findings }
+        }
+        if s.agentType == "claude-code", s.controlMode == "observed" {
+            return claudeBackgroundTasks.project(ObservedAgentRules.rawSessionId(s.id), session: d)
         }
         return d
     }
@@ -11480,6 +11685,13 @@ final class DaemonServer {
             }
             payload["session_id"] = sessionId
             payload["agent_type"] = source.agentType
+            // Hermes observer v1 calls this field `model`; the collector's
+            // agent-neutral run contract reads `model_name`. Preserve the
+            // measured identity without inventing one for blank tool hooks.
+            if source.agentType == "hermes", let model = payload["model"] as? String,
+               !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                payload["model_name"] = String(model.prefix(200))
+            }
         } else {
             payload["agent_type"] = (payload["agent_type"] as? String) ?? "claude-code"
             if let sessionId, !sessionId.isEmpty { payload["session_id"] = sessionId }
@@ -11497,6 +11709,20 @@ final class DaemonServer {
             normalizedEvent = event.lowercased()
         }
         return (normalizedEvent, payload)
+    }
+
+    /// Hermes supplies explicit model metadata but no Gateway usage event.
+    /// Stamp the newly opened (or just closed) turn as well as the run; a
+    /// run-only identity would leave the per-turn scorecard unattributed.
+    static func recordHermesApmeHook(
+        _ hook: (event: String, payload: [String: Any])?,
+        sessionId: String, collector: ApmeCollector?
+    ) {
+        guard let hook, let collector else { return }
+        collector.handleHook(event: hook.event, data: hook.payload)
+        if let model = hook.payload["model_name"] as? String {
+            collector.updateTurnIdentity(modelId: model, provider: nil, sessionId: sessionId)
+        }
     }
 
     /// Explicit new-turn signal for a Codex thread (`codex_session_start`,
@@ -11724,14 +11950,33 @@ final class DaemonServer {
             DaemonLogger.shared.debug("Hook", "Hermes \(event) not admitted")
             return
         }
+        // Hermes bypasses the generic Claude/Codex handler. Admit the same
+        // normalized CI evidence here, using the bare id that roster encoding
+        // reads, and clear it on the same conversation boundaries.
+        let rawSid = ObservedAgentRules.rawSessionId(sessionId)
+        let timestamp = Self.wireEpochMs(now.timeIntervalSince1970 * 1000)
+        if ciWaits.note(rawSid, event: boundary, json: json, now: timestamp) {
+            let wait = ciWaits.snapshot(rawSid, now: timestamp)
+            var entry = DaemonTimelineEntry(ts: Double(timestamp), type: "scheduled",
+                raw: wait == nil ? "CI wait ended · result unconfirmed" : "CI wait requested",
+                detail: nil, approvalId: nil, status: nil,
+                agentType: "hermes", repeatCount: nil, automated: nil)
+            entry.sessionId = rawSid
+            entry.summaryKind = "none"
+            Task {
+                if await timelineStore.add(entry, bypassSuppression: true) {
+                    broadcastRaw(["type": "timeline_event", "entry": claudeCodeEntryDict(entry)])
+                }
+            }
+        }
         let apmeHook = Self.normalizeApmeObservedHook(
             event: event,
             json: apmeEnrichedHookPayload(json: json, sessionId: sessionId),
             sessionId: sessionId
         )
         // The prompt boundary opens the task first so its chat row is tagged.
-        if boundary == "user_prompt_submit", let hook = apmeHook {
-            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        if boundary == "user_prompt_submit" {
+            Self.recordHermesApmeHook(apmeHook, sessionId: sessionId, collector: apmeCollector)
         }
         if boundary == "session_end" {
             if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
@@ -11771,12 +12016,13 @@ final class DaemonServer {
             }
             broadcastSessionsList()
         }
-        if boundary != "user_prompt_submit", let hook = apmeHook {
-            apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+        if boundary != "user_prompt_submit" {
+            Self.recordHermesApmeHook(apmeHook, sessionId: sessionId, collector: apmeCollector)
         }
     }
 
     private func removeHermesRow(_ sessionId: String) {
+        ciWaits.forget(ObservedAgentRules.rawSessionId(sessionId))
         pushedSessionsById.removeValue(forKey: sessionId)
         cachedSessions.removeAll { $0.id == sessionId }
         lastHookAtByPushedSession.removeValue(forKey: sessionId)

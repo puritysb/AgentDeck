@@ -1,0 +1,81 @@
+[
+  {
+    "name": "different sessions retain identical CI wait evidence",
+    "before": {
+      "ts": 1000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "codex-session"
+    },
+    "incoming": {
+      "ts": 1100,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "action": "add"
+  },
+  {
+    "name": "same session absorbs duplicate CI wait evidence",
+    "before": {
+      "ts": 1000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "incoming": {
+      "ts": 1100,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "action": "skip"
+  },
+  {
+    "name": "legacy unattributed evidence retains content dedup",
+    "before": {
+      "ts": 1000,
+      "type": "scheduled",
+      "raw": "CI wait requested"
+    },
+    "incoming": {
+      "ts": 1100,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "action": "skip"
+  },
+  {
+    "name": "backdated evidence outside exact window stays distinct",
+    "before": {
+      "ts": 10000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "incoming": {
+      "ts": 1000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "action": "add"
+  },
+  {
+    "name": "exact boundary has the same inclusive window",
+    "before": {
+      "ts": 9000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "incoming": {
+      "ts": 1000,
+      "type": "scheduled",
+      "raw": "CI wait requested",
+      "sessionId": "hermes-session"
+    },
+    "action": "skip"
+  }
+]

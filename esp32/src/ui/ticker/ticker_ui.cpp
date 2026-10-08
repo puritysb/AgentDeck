@@ -17,6 +17,7 @@
 #include "../../util/utf8.h"
 #include "../../util/usage_rows.h"
 #include "usage_panel.h"
+#include "../strip_layout.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -242,6 +243,8 @@ static void updateKeyHints(uint32_t now) {
     }
 }
 
+static constexpr int USAGE_HINT_H = 14;
+
 static void renderUsagePage() {
     // Provider cards from the shared UsageRows model: only present windows
     // render, z.ai keeps its MCP window, an exhausted Codex account shows its
@@ -250,6 +253,10 @@ static void renderUsagePage() {
     lockState();
     const uint8_t count = UsageRows::build(g_state, groups);
     unlockState();
+    // Layout switch hint: a deliberate hold anywhere on this page (onTouch).
+    lv_obj_t* hint = makeLabel(s_body, &lv_font_montserrat_12, Theme::HUDFaint,
+                               "HOLD = PORTRAIT");
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_RIGHT, -8, -1);
     if (count == 0) {
         lv_obj_t* l = makeLabel(s_body, &lv_font_montserrat_14, Theme::HUDDim,
                                 "Waiting for usage data...");
@@ -257,7 +264,7 @@ static void renderUsagePage() {
         return;
     }
     const UsagePanel::Fonts fonts{&lv_font_montserrat_12, &lv_font_montserrat_14, &lv_font_montserrat_18};
-    UsagePanel::render(s_body, 8, 4, SCREEN_W - 16, BODY_H - 8, groups, count, true, fonts);
+    UsagePanel::render(s_body, 8, 4, SCREEN_W - 16, BODY_H - 8 - USAGE_HINT_H, groups, count, true, fonts);
 }
 
 static uint32_t agentColor(const char* agentType) {
@@ -701,6 +708,11 @@ void primaryAction() {
 
 }
 
+void notify(const char* text) {
+    flash(text);
+    s_lastSig[0] = 0;
+}
+
 void buttonFeedback(uint8_t button) {
     if (button >= 3) return;
     s_buttonActiveUntil[button] = millis() + 260;
@@ -714,6 +726,12 @@ void onTouch(const Input::TouchEvent& event) {
     }
     if (event.gesture == Input::TouchGesture::SWIPE_RIGHT) {
         prevPage();
+        return;
+    }
+    if (event.gesture == Input::TouchGesture::HOLD) {
+        // Usage page is passive (no tap targets in its body), so a hold there
+        // can only mean the layout switch — never an approval or a pin.
+        if (s_page == 1 && event.y >= BODY_Y) StripLayout::request(StripLayout::PORTRAIT);
         return;
     }
     if (event.gesture != Input::TouchGesture::TAP) return;

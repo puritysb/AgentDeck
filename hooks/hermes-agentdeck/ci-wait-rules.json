@@ -1,0 +1,66 @@
+{
+  "maxCommandChars": 16384,
+  "maxIdentityChars": 255,
+  "maxId": 9007199254740991,
+  "whitespace": "\t\n\u000b\f\r                  　﻿",
+  "forbidden": "\u0000`$(){}",
+  "numberPattern": "^[1-9][0-9]*$",
+  "digitsPattern": "^[0-9]+$",
+  "repoPattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+  "branchPattern": "^[A-Za-z0-9_./-]+$",
+  "assignmentPattern": "^[A-Za-z_][A-Za-z0-9_]*=",
+  "urlPattern": "^https://github\\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/pull/([1-9][0-9]*)/?$",
+  "runWatch": {
+    "values": [
+      "--interval",
+      "-i"
+    ],
+    "switches": [
+      "--exit-status",
+      "--compact"
+    ]
+  },
+  "prChecks": {
+    "values": [
+      "--interval",
+      "-i",
+      "--json",
+      "--jq",
+      "-q",
+      "--template",
+      "-t"
+    ],
+    "switches": [
+      "--fail-fast",
+      "--required"
+    ]
+  },
+  "runList": {
+    "values": [
+      "--branch",
+      "-b",
+      "--json",
+      "--jq",
+      "-q",
+      "--template",
+      "-t",
+      "--limit",
+      "-L",
+      "--workflow",
+      "-w",
+      "--status",
+      "-s",
+      "--event",
+      "-e",
+      "--user",
+      "-u",
+      "--commit",
+      "-c",
+      "--created"
+    ],
+    "switches": [
+      "--all",
+      "-a"
+    ]
+  }
+}

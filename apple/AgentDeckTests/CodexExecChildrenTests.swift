@@ -276,7 +276,7 @@ final class CodexExecChildrenTests: XCTestCase {
         let url = root.appendingPathComponent("2026/10/01/rollout-2026-10-01T02-27-49-\(id).jsonl")
         try (line + "\n").data(using: .utf8)!.write(to: url)
         let meta = CodexRolloutResponseReader.sessionMeta(sessionId: id, sessionsRoot: root)
-        XCTAssertEqual(meta, CodexRolloutSessionMeta(originator: "codex_exec", cwd: cwdReal))
+        XCTAssertEqual(meta, CodexRolloutSessionMeta(originator: "codex_exec", cwd: cwdReal, isSubagent: false))
         XCTAssertEqual(CodexRolloutResponseReader.originatorIsDesktop(sessionId: id, sessionsRoot: root), false)
         XCTAssertNil(CodexRolloutResponseReader.sessionMeta(sessionId: "01a0f35b-0000-0000-0000-000000000000", sessionsRoot: root))
     }

@@ -22,10 +22,15 @@ describe('aliasModelName', () => {
 describe('formatModelEffort', () => {
   it('returns aliased model when no effort to show', () => {
     expect(formatModelEffort('claude-sonnet-4-6', undefined, 15)).toBe('sonnet 4.6');
-    expect(formatModelEffort('claude-opus-4-7', 'medium', 15)).toBe('opus 4.7');
+    expect(formatModelEffort('claude-opus-4-7', 'default', 15)).toBe('opus 4.7');
   });
 
-  it('appends non-default effort when it fits', () => {
+  it('shows every reported level — which one is the default is per agent and model (#463)', () => {
+    expect(formatModelEffort('claude-opus-4-7', 'medium', 20)).toBe('opus 4.7 · medium');
+    expect(formatModelEffort('gpt-6-astra', 'ultra', 20)).toBe('gpt-6-astra · ultra');
+  });
+
+  it('appends effort when it fits', () => {
     expect(formatModelEffort('claude-sonnet-4-6', 'high', 20)).toBe('sonnet 4.6 · high');
   });
 
