@@ -247,11 +247,11 @@ function slotAt(slots: CreatureSlot[], index: number): CreatureSlot {
 }
 
 /** Check if agent type gets a creature. */
-function isCreatureAgent(agentType: string): boolean {
+export function isCreatureAgent(agentType: string): boolean {
   return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType) || KIRO_AGENTS.has(agentType) || HERMES_AGENTS.has(agentType);
 }
 
-function creatureTypeFor(agentType: string): CreatureType {
+export function creatureTypeFor(agentType: string): CreatureType {
   if (ANTIGRAVITY_AGENTS.has(agentType)) return 'antigravity';
   if (KIRO_AGENTS.has(agentType)) return 'kiro';
   if (HERMES_AGENTS.has(agentType)) return 'hermes';
@@ -367,7 +367,7 @@ function syncCreatures(
   }
 }
 
-function mapSessionState(state: string): 'idle' | 'processing' | 'awaiting' {
+export function mapSessionState(state: string): 'idle' | 'processing' | 'awaiting' {
   if (state === 'processing') return 'processing';
   if (state === 'awaiting' || state === 'awaiting_option' || state === 'awaiting_permission' || state === 'awaiting_diff') return 'awaiting';
   return 'idle';
@@ -774,7 +774,7 @@ export function formatResetDetailed(resetsAt: string | undefined): string {
  *  When Codex only reports 7d, its subscription date occupies the otherwise
  *  empty primary zone.
  */
-function drawUsageHUD(
+export function drawUsageHUD(
   buf: Uint8Array, usageEvent: UsageEvent | null, animFrame: number,
 ): void {
   if (!usageEvent) return;
@@ -1332,12 +1332,12 @@ function drawSubagentOrbits(
  * `'standard'` is the full terrarium.
  */
 /** A separate CI glyph; permission/error signals always keep priority. */
-interface CiCueAnchor { sessionId: string; x: number; y: number; bodySize: number }
+export interface CiCueAnchor { sessionId: string; x: number; y: number; bodySize: number }
 const ciCueResults = new Map<string, { phase: string; openedAt: number; waiting: boolean; changedAt: number; lastAt: number; angle: number; speed: number }>();
 let ciCueSnapshot: Array<{ sessionId: string; left: number; top: number; moving: boolean; angle: number }> = [];
 
 /** Only actual displayed sessions own a helper. No provider/resident identity is created. */
-function drawCiCue(buf: Uint8Array, size: number, sessions: SessionInfo[] | null, now: number,
+export function drawCiCue(buf: Uint8Array, size: number, sessions: SessionInfo[] | null, now: number,
   anchors: CiCueAnchor[], tiny = false, bottom = size): void {
   ciCueSnapshot = [];
   for (const id of ciCueResults.keys()) {

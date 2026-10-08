@@ -371,6 +371,33 @@ export async function getHttpGifId(ip: string): Promise<number | null> {
   }
 }
 
+/**
+ * Is the panel still showing what WE last uploaded? Two tiny queries, no upload
+ * (so no loading hourglass): the active channel is Custom (3) and the device's
+ * PicID counter has not fallen below ours. NOT equality: measured 2026-10-08 on
+ * the Pixoo64, the counter does not track the uploaded ID one-for-one (215 →
+ * 217 after one single-frame upload, → 218 after a four-frame one), so equality
+ * called every healthy device stale. A reboot resets the counter (lower), a
+ * button press changes the channel — those are the two things worth catching.
+ * Three answers, not two: `unknown` (a query failed,
+ * or the device is backed off) must never read as `stale`, or a flaky link
+ * re-uploads forever — the caller retains and asks again later.
+ */
+export type DeviceContent = 'ours' | 'stale' | 'unknown';
+export async function checkDeviceContent(ip: string): Promise<DeviceContent> {
+  if (isBackedOff(ip)) return 'unknown';
+  const expected = devicePicId.get(ip);
+  if (expected === undefined) return 'stale';
+  try {
+    const channel = await httpPost(ip, { Command: 'Channel/GetIndex' });
+    const picId = await getHttpGifId(ip);
+    if (!channel || picId === null) return 'unknown';
+    return channel.SelectIndex === 3 && picId >= expected ? 'ours' : 'stale';
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** Reset the PicID counter to prevent device lockup. */
 export async function resetPicId(ip: string): Promise<boolean> {
   return postCommand(ip, { Command: 'Draw/ResetHttpGifId' });

@@ -2,6 +2,11 @@
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
  *
  * Active states advance through moving single frames every 2.5s by default.
+ * `animation: "tide"` is the Pixoo-native scene (pixoo-tide.ts): one closed 6-frame
+ * loop the device plays itself, uploaded only when something visible changed and
+ * otherwise verified with two tiny queries instead of re-uploaded, because every
+ * upload makes the panel show its loading hourglass.
+ *
  * A device-side looping animation is OPT-IN per device (`animation: "loop"`):
  * the 2026-06/07 multi-frame failures (HTTP and ICMP loss right after the
  * request) were measured with every frame concatenated into one oversized
@@ -23,8 +28,9 @@ import {
   type SubagentActivityBySession,
   type TimelineEntry,
 } from '@agentdeck/shared';
-import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer } from './pixoo-client.js';
+import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer, checkDeviceContent } from './pixoo-client.js';
 import { renderFrame, renderDisconnectedFrame, formatResetDetailed, renderPixooLoop, PIXOO_LOOP } from './pixoo-renderer.js';
+import { renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
 import { debug } from '../logger.js';
 
 const TAG = 'Pixoo';
@@ -35,8 +41,8 @@ export interface PixooDevice {
   ip: string;
   name?: string;
   brightness?: number; // 0-100, default 100
-  /** Active-state motion. Default `single-frame`; `loop` opts into a baked device-side loop. */
-  animation?: 'single-frame' | 'loop';
+  /** Motion. Default `single-frame`; `loop` bakes the aquarium into a device-side loop; `tide` is the Pixoo-native scene (always a loop). */
+  animation?: 'single-frame' | 'loop' | 'tide';
 }
 
 // ===== Internal State =====
@@ -48,6 +54,8 @@ let pushing = false; // guard against overlapping pushes
 let lastStateHash = '';
 const deviceLastPushTime = new Map<string, number>();
 const deviceLoopCooldownUntil = new Map<string, number>();
+const deviceTideUploaded = new Map<string, TideUploadRecord>();
+const deviceTideRetryAt = new Map<string, number>();
 
 // Cached latest events
 let lastStateEvent: StateUpdateEvent | null = null;
@@ -77,14 +85,17 @@ export const PIXOO_PUSH_POLICY = {
   /** After a failed loop upload the device runs single frames for this long. */
   loopFailureCooldownMs: 15 * 60_000,
 } as const;
-export type PixooPushMode = 'single-frame' | 'loop' | 'idle';
+export type PixooPushMode = 'single-frame' | 'loop' | 'idle' | 'tide';
 
-export function resolvePixooPushMode(active: boolean, loopEnabled = false): PixooPushMode {
+export function resolvePixooPushMode(active: boolean, loopEnabled = false, tideEnabled = false): PixooPushMode {
+  // Tide is the whole scene, idle or busy: the loop plays on the device for free.
+  if (tideEnabled) return 'tide';
   if (!active) return 'idle';
   return loopEnabled ? 'loop' : 'single-frame';
 }
 
 export function pixooPushIntervalMs(stateChanged: boolean, mode: PixooPushMode): number {
+  // 'tide' never reaches here: its cadence is `tideDecision` (pixoo-tide.ts).
   if (mode === 'loop') {
     return stateChanged ? PIXOO_PUSH_POLICY.loopStateChangeFloorMs : PIXOO_PUSH_POLICY.loopRefreshMs;
   }
@@ -96,6 +107,11 @@ export function pixooPushIntervalMs(stateChanged: boolean, mode: PixooPushMode):
 /** Whether `dev` may use the baked loop right now (opt-in and not cooling down). */
 export function pixooLoopEnabled(dev: PixooDevice, now: number, cooldownUntil = 0): boolean {
   return dev.animation === 'loop' && now >= cooldownUntil;
+}
+
+/** Whether `dev` runs the tide scene. A failed upload never changes this: tide backs off its own uploads (`deviceTideRetryAt`) instead of falling back to single frames, because a one-frame upload after a multi-frame one tangled the panel's picture (2026-10-08). */
+export function pixooTideEnabled(dev: PixooDevice): boolean {
+  return dev.animation === 'tide';
 }
 const CHANNEL_REASSERT_MS = 30_000;     // Re-assert custom channel every 30s (fast recovery after reboots)
 const DEFAULT_BRIGHTNESS = 100;
@@ -156,7 +172,8 @@ export function startPixooBridge(pixooDevices?: PixooDevice[]): void {
   streamTimer = setInterval(doStateCheckAndPush, STATE_CHECK_INTERVAL_MS);
 
   const loopDevices = devices.filter(d => d.animation === 'loop').length;
-  debug(TAG, `Bridge started (2.5s active single-frame motion; ${loopDevices} device(s) opted into the baked loop)`);
+  const tideDevices = devices.filter(d => d.animation === 'tide').length;
+  debug(TAG, `Bridge started (2.5s active single-frame motion; ${loopDevices} device(s) opted into the baked loop, ${tideDevices} into tide)`);
 }
 
 /** The daemon owns this subscription independently of the optional Pixoo LAN
@@ -307,6 +324,8 @@ export async function stopPixooBridge(): Promise<void> {
   frameListeners = [];
   deviceLastPushTime.clear();
   deviceLoopCooldownUntil.clear();
+  deviceTideUploaded.clear();
+  deviceTideRetryAt.clear();
   debug(TAG, 'Bridge stopped');
 }
 
@@ -365,6 +384,7 @@ export function getPixooDeviceDetails(): Array<{
       animationMode: resolvePixooPushMode(
         isAnimationActive(),
         pixooLoopEnabled(dev, Date.now(), deviceLoopCooldownUntil.get(dev.ip)),
+        pixooTideEnabled(dev),
       ),
     };
   });
@@ -428,10 +448,20 @@ function doStateCheckAndPush(): void {
   const stateChanged = currentHash !== lastStateHash;
   const now = Date.now();
   const active = isAnimationActive();
+  const tideSig = devices.some(pixooTideEnabled)
+    ? tideSignature(lastStateEvent, lastUsageEvent, lastSessions) : null;
   const due = devices.flatMap(dev => {
-    const mode = resolvePixooPushMode(active, pixooLoopEnabled(dev, now, deviceLoopCooldownUntil.get(dev.ip)));
+    if (tideSig && pixooTideEnabled(dev)) {
+      const decision = tideDecision(
+        tideSig, deviceTideUploaded.get(dev.ip),
+        deviceLastPushTime.get(dev.ip) ?? 0, deviceTideRetryAt.get(dev.ip) ?? 0, now,
+      );
+      return decision === 'wait' ? [] : [{ dev, mode: 'tide' as PixooPushMode, decision }];
+    }
+    const cooldown = deviceLoopCooldownUntil.get(dev.ip);
+    const mode = resolvePixooPushMode(active, pixooLoopEnabled(dev, now, cooldown), false);
     const elapsed = now - (deviceLastPushTime.get(dev.ip) ?? 0);
-    return elapsed >= pixooPushIntervalMs(stateChanged, mode) ? [{ dev, mode }] : [];
+    return elapsed >= pixooPushIntervalMs(stateChanged, mode) ? [{ dev, mode, decision: 'upload' as const }] : [];
   });
   if (due.length === 0) return;
 
@@ -442,34 +472,49 @@ function doStateCheckAndPush(): void {
     const ts = new Date().toISOString().slice(11, 19);
     debug('Pixoo', `${ts} pushing to ${due.length} dev(s) (changed=${stateChanged}, active=${active})`);
 
-    const promises = due.map(({ dev, mode }) => {
-      const frames = mode === 'loop'
-        ? renderPixooLoop(lastStateEvent, lastUsageEvent, lastSessions, now, currentSubagentActivity(now))
-        : [renderFrame(
-          lastStateEvent,
-          lastUsageEvent,
-          lastSessions,
-          now,
-          64,
-          'standard',
-          currentSubagentActivity(now),
-        )];
-      const count = frames.length;
+    const promises = due.map(async ({ dev, mode, decision }) => {
       // Rate-limit attempts as well as successes. This prevents a failed
       // endpoint from being retried on every 500 ms scheduler tick.
       deviceLastPushTime.set(dev.ip, Date.now());
-      return pushFrames(dev.ip, frames, count > 1 ? PIXOO_LOOP.picSpeedMs : 1000).then(ok => {
+      try {
+        if (mode === 'tide' && decision === 'verify') {
+          // Nothing worth showing changed: do not re-upload (the panel shows a
+          // loading hourglass for every upload). Only a device that no longer
+          // shows our loop gets it again; `unknown` retains and asks again later.
+          const content = await checkDeviceContent(dev.ip);
+          debug('Pixoo', `${ts}   → ${dev.ip}: verify ${content} (tide)`);
+          if (content !== 'stale') return;
+        }
+        const frames = mode === 'tide'
+          ? renderTideLoop(lastStateEvent, lastUsageEvent, lastSessions, now)
+          : mode === 'loop'
+            ? renderPixooLoop(lastStateEvent, lastUsageEvent, lastSessions, now, currentSubagentActivity(now))
+            : [renderFrame(
+              lastStateEvent,
+              lastUsageEvent,
+              lastSessions,
+              now,
+              64,
+              'standard',
+              currentSubagentActivity(now),
+            )];
+        const count = frames.length;
+        const speed = mode === 'tide' ? TIDE_LOOP.picSpeedMs : count > 1 ? PIXOO_LOOP.picSpeedMs : 1000;
+        const ok = await pushFrames(dev.ip, frames, speed);
         if (ok) {
           deviceLastPushTime.set(dev.ip, Date.now());
           lastPushTime = Date.now();
+          if (mode === 'tide' && tideSig) deviceTideUploaded.set(dev.ip, { sig: tideSig, at: Date.now() });
+        } else if (mode === 'tide') {
+          deviceTideRetryAt.set(dev.ip, Date.now() + TIDE_POLICY.retryMs);
         } else if (mode === 'loop') {
           // Never retry a failing loop: run single frames for a cooldown.
           deviceLoopCooldownUntil.set(dev.ip, Date.now() + PIXOO_PUSH_POLICY.loopFailureCooldownMs);
         }
         debug('Pixoo', `${ts}   → ${dev.ip}: ${ok ? 'OK' : 'FAIL'} (${mode}, ${count} frame)`);
-      }).catch((err: any) => {
+      } catch (err: any) {
         debug('Pixoo', `${ts}   → ${dev.ip}: ERROR ${err?.message}`);
-      });
+      }
     });
 
     Promise.all(promises).finally(() => { pushing = false; });
