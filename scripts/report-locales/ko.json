@@ -467,5 +467,6 @@
   "No executed cases": "실행된 케이스 없음",
   "Method / manual QA": "검증 방법·수동 QA",
   "excluded from executed tests": "실행 수에서 제외",
-  "No parsed executed test cases; reported command completion is not case evidence.": "파싱된 실행 케이스 없음. 명령 완료만으로 테스트 케이스를 증명하지 않습니다."
+  "No parsed executed test cases; reported command completion is not case evidence.": "파싱된 실행 케이스 없음. 명령 완료만으로 테스트 케이스를 증명하지 않습니다.",
+  "Review the decision, remaining risk and next action first; inspect the exact test evidence below.": "검증 결론과 남은 위험, 다음 행동을 먼저 확인하고 아래에서 구체적인 테스트 근거를 살펴보세요."
 }
