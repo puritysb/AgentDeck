@@ -81,6 +81,10 @@ only when the user explicitly requests that device.
 | **Waveshare C6-LCD-1.47** (172×320) | `esp32_c6_147` | `esp32_c6_147` | `/dev/cu.usbmodem*` | ESP32-C6, native USB, no OTA |
 | **Ulanzi TC001** (8×32 LED) | `led_8x32` | `led8x32` | `/dev/cu.usbserial-*` | ESP32-D0WD classic, CH340 |
 
+## Main merge trigger
+
+The owner’s Mac uses `.github/workflows/local-deploy.yml`: a push to `master` (including a merged PR) queues the `agentdeck-local-deploy` runner. It runs `scripts/deploy-local-main.mjs` against the persistent checkout configured by `AGENTDECK_MAIN_CHECKOUT`, builds and tests before installation, replaces the macOS app with a preserved backup, restarts the supervised Node daemon, and deploys/verifies the Stream Deck plugin. The runner is a login LaunchAgent; the Mac must be awake and connected. No schedule or Codex heartbeat is involved. Runs queue while the Mac is offline. The workflow never accepts pull-request events or deploys public releases. A dirty or divergent main checkout fails without removing another session’s work. Receipts are in `diagnostics/latest-main-deployment.json` and logs in `diagnostics/logs/local-main-*.log`. A failed deployment is visible in the workflow run; inspect its log before retrying with workflow dispatch on `master`. Native mobile apps and firmware retain the target-specific procedures below.
+
 ## Execution Steps
 
 **Output discipline.** Every step below runs from the repository root (`cd "$(git rev-parse --show-toplevel)"`). Send long build output to a log under `diagnostics/logs/` (gitignored) and show only the tail or the errors, e.g. `mkdir -p diagnostics/logs; <build> >diagnostics/logs/<target>.log 2>&1 || { tail -40 diagnostics/logs/<target>.log; exit 1; }`, then `grep -nE 'error|FAILED' diagnostics/logs/<target>.log | head -20` if the tail is not enough. Use each tool's quiet mode: xcodebuild `-quiet`, gradle `-q`, `pio run -s`.

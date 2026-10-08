@@ -762,6 +762,7 @@
     }
   ],
   "not_a_gate": {
+    ".github/workflows/local-deploy.yml": "Post-merge deployment to the owner’s Mac: builds and tests before replacing the app, restarts the supervised daemon and verifies build identity and plugin runtime. Not a pre-merge gate or public release.",
     ".github/workflows/asc-certificates.yml": "Manual App Store Connect certificate maintenance; verifies nothing about the product."
   },
   "not_verified": [
@@ -1069,6 +1070,7 @@
         "scripts/__tests__/npm-registry-visibility.test.ts",
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/local-main-deploy.test.ts",
         "scripts/__tests__/verify-tiers.test.ts",
         "scripts/__tests__/build-health-report.test.ts",
         "scripts/__tests__/public-media.test.ts",
