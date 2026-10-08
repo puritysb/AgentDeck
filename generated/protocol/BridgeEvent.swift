@@ -2458,6 +2458,9 @@ struct ADSessionInfo: Codable, Equatable {
     /// unsafe index space. These are present only while a multi-group prompt is pending, and let
     /// a surface render "Q 2/3". Absent ⇒ a single-question prompt.
     var askGroupIndex: Double?
+    /// Claude background_tasks snapshot count, separate from the child-agent census. Explicit
+    /// zero clears prior work; absent means the producer has no snapshot.
+    var backgroundTaskCount: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
     /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
@@ -2547,6 +2550,7 @@ struct ADSessionInfo: Codable, Equatable {
         case alive = "alive"
         case askGroupCount = "askGroupCount"
         case askGroupIndex = "askGroupIndex"
+        case backgroundTaskCount = "backgroundTaskCount"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
         case coordination = "coordination"
@@ -2609,6 +2613,7 @@ extension ADSessionInfo {
         alive: Bool? = nil,
         askGroupCount: Double?? = nil,
         askGroupIndex: Double?? = nil,
+        backgroundTaskCount: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
         coordination: ADCoordinationSummary?? = nil,
@@ -2651,6 +2656,7 @@ extension ADSessionInfo {
             alive: alive ?? self.alive,
             askGroupCount: askGroupCount ?? self.askGroupCount,
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
+            backgroundTaskCount: backgroundTaskCount ?? self.backgroundTaskCount,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
             coordination: coordination ?? self.coordination,

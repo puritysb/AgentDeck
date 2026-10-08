@@ -323,6 +323,7 @@
   "the macOS app and its in-process Swift daemon build and pass XCTest": "macOS 앱과 앱 내 Swift 데몬을 빌드하고 XCTest를 통과합니다.",
   "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths": "명시한 데몬 데이터 경로가 기존 사용자 데이터 마이그레이션을 피하고 임시 경로만 소유합니다.",
   "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests": "CiWaitRulesTests에서 공통 CI 입력으로 네이티브 CI 대기 의도·수명주기·전경 집계를 재생합니다.",
+  "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval": "백그라운드 작업 스냅샷이 크리처 효과에 전달되고, 개수 제한과 동작 줄이기를 지키며 완료·승인 대기 시 사라집니다.",
   "the iOS app builds unsigned": "iOS 앱이 서명 없이 빌드됩니다.",
   "App Store metadata, screenshots and privacy manifest are within submission limits": "App Store 메타데이터·스크린샷·개인정보 매니페스트가 제출 제한을 충족합니다.",
   "UI flows (there is no UI-test target)": "UI 흐름. UI 테스트 대상이 없습니다.",

@@ -47,8 +47,10 @@ struct ClaudeBackgroundTasks {
     }
 
     func project(_ sid: String, session: [String: Any]) -> [String: Any] {
-        guard session["state"] as? String == "idle", let count = counts[sid], count > 0 else { return session }
+        guard let count = counts[sid] else { return session }
         var result = session
+        result["backgroundTaskCount"] = count
+        guard session["state"] as? String == "idle", count > 0 else { return result }
         let activity = "Waiting for \\(count) background task" + (count == 1 ? "" : "s")
         result["state"] = "processing"
         result["currentTool"] = ${JSON.stringify(policy.tool)}

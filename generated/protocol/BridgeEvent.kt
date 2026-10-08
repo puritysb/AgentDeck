@@ -1268,6 +1268,12 @@ data class SessionInfo (
      */
     val askGroupIndex: Double? = null,
 
+    /**
+     * Claude background_tasks snapshot count, separate from the child-agent census. Explicit
+     * zero clears prior work; absent means the producer has no snapshot.
+     */
+    val backgroundTaskCount: Double? = null,
+
     val contextPercent: Double? = null,
     val controlMode: ControlMode? = null,
 

@@ -1362,6 +1362,10 @@
           "description": "A single AskUserQuestion call may carry up to four question groups. The daemon presents them ONE AT A TIME (`question`/`options` above are the active group's projection) and advances as each is answered, so a device never has to flatten unrelated groups into one unsafe index space. These are present only while a multi-group prompt is pending, and let a surface render \"Q 2/3\". Absent ⇒ a single-question prompt.",
           "type": "number"
         },
+        "backgroundTaskCount": {
+          "description": "Claude background_tasks snapshot count, separate from the child-agent census. Explicit zero clears prior work; absent means the producer has no snapshot.",
+          "type": "number"
+        },
         "contextPercent": {
           "type": "number"
         },

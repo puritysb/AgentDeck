@@ -38,13 +38,13 @@ describe('Claude background work projection', () => {
     const parent = hooks.applyTo(original)[0];
     expect(parent.state).toBe('idle');
     const displayed = background.project('parent', parent);
-    expect(displayed).toMatchObject({ state: 'processing', currentTool: 'Background tasks', activity: 'Waiting for 1 background task' });
+    expect(displayed).toMatchObject({ state: 'processing', currentTool: 'Background tasks', activity: 'Waiting for 1 background task', backgroundTaskCount: 1 });
     expect(activityFor({ ...displayed, port: 0, projectName: 'Demo', alive: true })).toBe('Waiting for 1 background task');
     expect(displayed).not.toHaveProperty('subagents');
     expect(parent.state).toBe('idle');
     expect(original[0].currentTool).toBe('Bash');
     background.note('Stop', { session_id: 'parent', background_tasks: [] });
-    expect(background.project('parent', parent)).toBe(parent);
+    expect(background.project('parent', parent)).toEqual({ ...parent, backgroundTaskCount: 0 });
   });
 
   it('retains unknown snapshots and converges on explicit completion across interleaved sessions', () => {
@@ -60,7 +60,7 @@ describe('Claude background work projection', () => {
     tracker.note('Stop', { session_id: 'parent', background_tasks: [task('render')] });
     for (const state of ['processing', 'awaiting_permission', 'awaiting_option', 'awaiting_diff', 'disconnected', undefined]) {
       const row = { state, currentTool: 'Read', activity: 'Existing activity' };
-      expect(tracker.project('parent', row)).toBe(row);
+      expect(tracker.project('parent', row)).toEqual({ ...row, backgroundTaskCount: 1 });
     }
   });
 

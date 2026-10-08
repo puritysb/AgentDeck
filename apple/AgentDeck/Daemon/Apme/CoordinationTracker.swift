@@ -365,7 +365,7 @@ final class CoordinationTracker {
     }
 }
 // BEGIN GENERATED CLAUDE BACKGROUND — bridge/generate-claude-background.mjs
-// Source SHA256: 0451a943bf0f3bd567539ee40950a0e022011e1a786f01f42df9e7162bf1ce59
+// Source SHA256: 0847044efe89211498c97b1ecd2430d6f8a3ca68721d08e2414d37c89dface63
 // Parent turns remain idle; only the session-work projection stays working.
 struct ClaudeBackgroundTasks {
     private var counts: [String: Int] = [:]
@@ -406,8 +406,10 @@ struct ClaudeBackgroundTasks {
     }
 
     func project(_ sid: String, session: [String: Any]) -> [String: Any] {
-        guard session["state"] as? String == "idle", let count = counts[sid], count > 0 else { return session }
+        guard let count = counts[sid] else { return session }
         var result = session
+        result["backgroundTaskCount"] = count
+        guard session["state"] as? String == "idle", count > 0 else { return result }
         let activity = "Waiting for \(count) background task" + (count == 1 ? "" : "s")
         result["state"] = "processing"
         result["currentTool"] = "Background tasks"

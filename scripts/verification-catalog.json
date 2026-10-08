@@ -500,6 +500,7 @@
         "shared/src/__tests__/daemon-parity.test.ts",
         "shared/src/__tests__/ci-wait-sync.test.ts",
         "bridge/src/__tests__/ips10-roster.test.ts",
+        "bridge/src/__tests__/claude-background-tasks.test.ts",
         "bridge/src/__tests__/matrix-expression.test.ts",
         "bridge/src/__tests__/tui-terrarium-snapshots.test.ts",
         "bridge/src/__tests__/daemon-supervisor.test.ts",
@@ -569,11 +570,12 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "xcodebuild test -scheme AgentDeck_macOS; xcodebuild build -scheme AgentDeck_iOS; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift"],
+      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
         "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
+        "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
         "the iOS app builds unsigned",
         "App Store metadata, screenshots and privacy manifest are within submission limits"
       ],

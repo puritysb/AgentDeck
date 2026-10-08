@@ -63,10 +63,12 @@ export class ClaudeBackgroundTasks {
 
   /** Presentation only: never reopens a turn, fabricates children, or covers
    * an approval/question/offline state. Input rows stay unchanged. */
-  project<T extends { state?: string; currentTool?: string; currentTask?: string; activity?: string }>(sid: string, session: T): T {
-    const count = this.counts.get(sid) ?? 0;
-    if (session.state !== 'idle' || count === 0) return session;
+  project<T extends { state?: string; currentTool?: string; currentTask?: string; activity?: string }>(sid: string, session: T): T & { backgroundTaskCount?: number } {
+    const count = this.counts.get(sid);
+    if (count === undefined) return session;
+    const result = { ...session, backgroundTaskCount: count };
+    if (session.state !== 'idle' || count === 0) return result;
     const activity = `Waiting for ${count} background task${count === 1 ? '' : 's'}`;
-    return { ...session, state: 'processing', currentTool: CLAUDE_BACKGROUND_POLICY.tool, currentTask: activity, activity };
+    return { ...result, state: 'processing', currentTool: CLAUDE_BACKGROUND_POLICY.tool, currentTask: activity, activity };
   }
 }

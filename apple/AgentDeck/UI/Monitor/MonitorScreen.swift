@@ -65,6 +65,7 @@ struct MonitorScreen: View {
             fields.append(session.modelName ?? "")
             fields.append(session.waitingOn?.phase ?? "")
             fields.append(session.activity ?? "")
+            fields.append(session.backgroundTaskCount.map(String.init) ?? "")
             fields.append(String(session.alive))
             rows.append(fields.joined(separator: "|"))
         }

@@ -115,6 +115,7 @@ struct HermesCreatureState: Identifiable {
 // MARK: - Terrarium State (aggregate)
 
 struct TerrariumState {
+    var backgroundTaskCounts: [String: Int] = [:]
     var ciWaits: [String: CiWaitStatus] = [:]
     var ciWaitLabels: [String: String] = [:]
     var ciWaitingIDs: Set<String> = []
@@ -148,6 +149,11 @@ extension DashboardState {
         subagentActivityBySession: [String: SubagentVisualActivity] = [:]
     ) -> TerrariumState {
         var result = TerrariumState()
+        for session in siblingSessions where session.state == "processing" {
+            if let count = session.backgroundTaskCount, count > 0 {
+                result.backgroundTaskCounts[session.id] = count
+            }
+        }
         for session in siblingSessions where session.waitingOn != nil && !(session.state ?? "").hasPrefix("awaiting") {
             result.ciWaits[session.id] = session.waitingOn
             if let wait = session.waitingOn { result.ciWaitLabels[session.id] = CiCompanionPresentation.label(wait) }

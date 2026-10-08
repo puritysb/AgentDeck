@@ -646,6 +646,9 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
+  /** Claude background_tasks snapshot count, separate from the child-agent census.
+   * Explicit zero clears prior work; absent means the producer has no snapshot. */
+  backgroundTaskCount?: number;
   /** Cross-session coordination census — see CoordinationSummary. Same
    *  emission rule as `subagents`: present with zeros once observed, absent
    *  only when this session has never had a relation. */
