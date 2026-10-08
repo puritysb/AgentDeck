@@ -5,6 +5,7 @@ packages:
   - plugin-ulanzi
   - hooks
   - setup
+  - services/dot-relay
 
 # Fail development installs on EOL or short-lived odd Node releases. Native
 # prebuild coverage is a product contract, not an advisory: CI verifies every

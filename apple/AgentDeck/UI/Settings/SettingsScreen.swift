@@ -374,6 +374,8 @@ struct SettingsScreen: View {
                 codexObservationContent
                 Divider()
                 servicesContent
+                Divider()
+                if !daemonService.isUsingExternalDaemon { DotSettingsView() }
             }
         case .dashboard:
             dashboardContent

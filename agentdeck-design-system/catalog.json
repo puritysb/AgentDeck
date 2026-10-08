@@ -11,6 +11,7 @@
     "system.handover": { "en": "Handover", "ko": "인계", "ja": "引き継ぎ" },
     "system.agent-harness": { "en": "Agent harness", "ko": "에이전트 환경", "ja": "エージェント環境" },
     "design.foundation": { "en": "Visual language", "ko": "시각 언어", "ja": "ビジュアル言語" },
+    "design.dot-creature-surfaces": { "en": "Dot creature surfaces", "ko": "Dot 표면별 크리처", "ja": "Dot サーフェス別キャラクター" },
     "design.resources": { "en": "Resources", "ko": "리소스", "ja": "リソース" },
     "arch.overview": { "en": "Architecture", "ko": "아키텍처", "ja": "アーキテクチャ" },
     "arch.daemon": { "en": "Daemon", "ko": "데몬", "ja": "デーモン" },
@@ -44,6 +45,7 @@
       "docs"
     ],
     "exclusions": {
+      "docs/dot-mcp-events-plan.md": "Proposed Dot integration architecture and interoperability experiment plan; no runtime or hosted service is shipped, so this is not a specification of the system as built.",
       "docs/hermes-agent.md": "Integration research and opt-in preview runbook; full native/device rollout remains tracked in #423.",
       "docs/why-apme.md": "Rationale essay, Korean body. English is canonical in the catalog; bind it once translated.",
       "docs/apme-pipeline.md": "Implementation walkthrough, Korean body. Superseded for reader purposes by the cataloged arch.apme.",
@@ -94,6 +96,10 @@
       "sources": {
         "en": "DESIGN.md"
       }
+    },
+    {
+      "id": "design.dot-creature-surfaces",
+      "sources": { "en": "docs/dot-creature-surfaces.md" }
     },
     {
       "id": "design.resources",

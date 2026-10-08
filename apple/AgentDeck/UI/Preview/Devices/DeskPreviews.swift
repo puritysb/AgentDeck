@@ -559,12 +559,26 @@ private struct D200HSlotTile: View {
                 )
                 .padding(size * 0.055)
             }
-        case .info(_, _):
+        case .info(let icon, _):
+            if icon == "dot" {
+                VStack(spacing: 3) {
+                    ZStack {
+                        Circle().fill(DesignTokens.Ink.s300)
+                        HStack(spacing: size * 0.08) {
+                            Capsule().fill(DesignTokens.Ink.s900).frame(width: size * 0.025, height: size * 0.07)
+                            Capsule().fill(DesignTokens.Ink.s900).frame(width: size * 0.025, height: size * 0.07)
+                        }
+                    }.frame(width: size * 0.32, height: size * 0.32)
+                    Text("DOT").font(.system(size: size * 0.11, weight: .semibold))
+                    Text(slot.subtitle ?? "NO REPORT").font(.system(size: size * 0.08)).lineLimit(1)
+                }.foregroundStyle(DesignTokens.UI.hudText)
+            } else {
             Text(slot.label)
                 .font(.system(size: size * 0.11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
                 .padding(size * 0.06)
+            }
         case .nextPage:
             VStack(spacing: 2) {
                 Image(systemName: "ellipsis")

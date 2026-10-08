@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-09-23
-revision: 2026-09-23
+reviewed: 2026-10-09
+revision: 2026-10-09
 source_of_truth: design/RESOURCES.md
 validators: [node scripts/build-design-system-viewer.mjs --check, python3 design/verify-tokens-sync.py]
 ---
@@ -38,6 +38,7 @@ index. If a location or gate changes, update this file in the same commit.
 | Real photography / captures | `assets/` (sources: `assets/hardware-photos/`) | `scripts/crop-hardware-images.mjs` crop table |
 | Android LCD aquarium habitat | `assets/terrarium/aquarium-habitat.blend` | `assets/terrarium/export-habitat.py`; manual Blender export and on-device visual review |
 | Native 3D aquarium study / TRMNL plate | `assets/terrarium/living-aquarium.blend` | `export-living-aquarium.py` / `export-paper-aquarium.py` in the same directory; native preview and panel review |
+| Dot companion surface contract | [docs/dot-creature-surfaces.md](../docs/dot-creature-surfaces.md); native references `DotCompanionView.swift` / `DotAquariumResident.swift` | Docs/catalog checks; `DotDirectHostingTests` checks current native behavior. Shared vector/pixel/paper assets and remote creature renderers remain planned. |
 | Native 3D agent residents | `assets/terrarium/3d-residents.blend`, built from `design/brand/*.svg` | `build-3d-residents.py` + `export-android-residents.py`; Apple import and Android asset tests |
 | Hermes mermaid adaptation | `assets/terrarium/hermes-mermaid.blend` + `build-hermes-mermaid.py` | USDZ for Apple. The GLB export is a build output, not committed (`.gitignore`): rerun the builder to regenerate it. `HermesAquariumTests` verifies import, articulation and lifecycle. Original Nous girl brand geometry stays in `design/brand/hermes.svg`. |
 | Hermes 2D mermaid (terrariums without 3D) | `scripts/generate-hermes-mermaid-2d.mjs` → `assets/terrarium/hermes-mermaid-2d.svg` | The official Nous girl head (paths unchanged, crop faded) over a generated kelp tail. One geometry generates the TS/Kotlin path data, the ESP32 42×60 and Pixoo 28×40 layer masks; `--check` gate in `hermes-mermaid-2d.test.ts`. Non-terrarium surfaces keep the plain mark. |

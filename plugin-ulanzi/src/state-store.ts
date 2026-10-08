@@ -11,6 +11,7 @@ export class StateStore {
   /** Full focused snapshots, isolated by session identity. */
   private sessionStates = new Map<string, Record<string, unknown>>();
   private sessions: SessionInfo[] = [];
+  private dot: import('@agentdeck/shared').DotDeckSnapshot | null = null;
   private usage: Record<string, unknown> = {};
   /** Host push-to-talk state (daemon voice_state) for the detail VOICE tile. */
   voiceState: 'idle' | 'recording' | 'transcribing' | 'error' = 'idle';
@@ -34,6 +35,7 @@ export class StateStore {
   /** Reflect daemon connect/disconnect so the deck shows OFFLINE when down. */
   setConnected(connected: boolean): void {
     this.connected = connected;
+    if (!connected) this.dot = null;
   }
 
   /** Start a focus handshake from the selected sessions_list row, not stale detail. */
@@ -75,6 +77,7 @@ export class StateStore {
     const e = ev as unknown as Record<string, unknown>;
     switch (ev.type) {
       case 'sessions_list':
+        this.dot = ev.dot ?? null;
         this.sessions = (e.sessions as SessionInfo[]) ?? [];
         for (const id of this.sessionStates.keys()) {
           if (!this.sessions.some((session) => session.id === id)) this.sessionStates.delete(id);
@@ -190,6 +193,7 @@ export class StateStore {
       // session state. `state:'disconnected'` with an empty roster is a healthy,
       // connected daemon waiting for work; only this flag may select OFFLINE.
       daemonConnected: this.connected,
+      dot: this.dot,
       allSessions: this.sessionsWithPendingReview(),
       totalTokens,
       totalCost: (this.usage.totalCost as number) ?? (selected.totalCost as number) ?? 0,

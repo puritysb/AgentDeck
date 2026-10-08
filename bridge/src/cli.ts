@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerDotCommands } from './dot-cli.js';
 
 import { Command, InvalidArgumentError } from 'commander';
 import { writeFileSync, unlinkSync, existsSync, realpathSync, readFileSync, statSync } from 'fs';
@@ -804,6 +805,8 @@ program
   .name('agentdeck')
   .description('AgentDeck — Physical Controller for AI Coding Agents')
   .version(packageJson.version);
+
+registerDotCommands(program);
 
 // ===== Weather context =====
 

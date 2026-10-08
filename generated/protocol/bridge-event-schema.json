@@ -780,6 +780,44 @@
       ],
       "type": "object"
     },
+    "DotDeckSnapshot": {
+      "additionalProperties": false,
+      "description": "Separate integration presence; never a coding session or authority to execute.",
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "expiresAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hosting": {
+          "type": "boolean"
+        },
+        "reportState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reportedAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "configured",
+        "hosting",
+        "reportState",
+        "reportedAt",
+        "expiresAt"
+      ],
+      "type": "object"
+    },
     "EncoderSlotState": {
       "additionalProperties": false,
       "properties": {
@@ -1415,6 +1453,17 @@
     "SessionsListEvent": {
       "additionalProperties": false,
       "properties": {
+        "dot": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DotDeckSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Full snapshot: null clears Dot; absent from older daemons also clears it."
+        },
         "sessions": {
           "items": {
             "$ref": "#/definitions/SessionInfo"

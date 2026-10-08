@@ -31,12 +31,13 @@
       "command": "npx vitest run --coverage",
       "report_suite": "vitest",
       "proves": [
-        "bridge, shared, hooks, plugin, plugin-ulanzi, setup and scripts behave as their tests specify (the domain table below counts them)",
+        "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
         "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)"
       ],
       "does_not_prove": [
         "anything about native apps, firmware or real devices",
+        "real Dot subscription/report execution, hosted OAuth-provider interoperability or public relay deployment (the relay tests use a local receiver and test JWTs)",
         "macOS-only halves (Swift toolchain, launchd) — those cases are marked skipped on Linux and appear as skipped in this report"
       ]
     },
@@ -377,6 +378,13 @@
     }
   ],
   "domains": [
+    {
+      "id": "dot-relay",
+      "name": "Dot direct HTTPS MCP",
+      "question": "Do direct HTTPS, local OAuth consent/revocation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.",
+      "icon": "◉",
+      "match": ["services/dot-relay/src/__tests__/*.test.ts"]
+    },
     {
       "id": "security",
       "name": "LAN security & pairing",

@@ -1,3 +1,4 @@
+import { dotDeckReservedKeys, type DotDeckSnapshot } from '@agentdeck/shared';
 import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 import { selectedLunaReserve, selectedCodexCredits } from '@agentdeck/shared';
 import { nextZaiPairMode, zaiPairReadings, type ZaiPairMode } from '@agentdeck/shared';
@@ -67,7 +68,8 @@ export interface PresetAction {
 }
 
 export interface SessionSlotConfig {
-  type: 'session' | 'back' | 'info' | 'status' | 'option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'empty';
+  type: 'dot' | 'session' | 'back' | 'info' | 'status' | 'option' | 'esc' | 'stop' | 'next-page' | 'preset' | 'usage' | 'usage-page' | 'empty';
+  dot?: DotDeckSnapshot;
   session?: SessionInfo;
   option?: PromptOption;
   optionIndex?: number;
@@ -393,6 +395,10 @@ export class SessionSlotManager {
   }
 
   // ---- Session list updates ----
+
+  private _dot: DotDeckSnapshot | null = null;
+  updateDot(dot: DotDeckSnapshot | null | undefined): void { this._dot = dot ?? null; }
+  private dotReserve(layout: DeckLayout): number { return dotDeckReservedKeys(this._dot, layout.keyCount, this._sessions.length); }
 
   updateSessions(sessions: SessionInfo[]): void {
     // Build ordered list: sorted by agentType (openclaw→claude→codex→opencode) then name→startedAt
@@ -849,19 +855,19 @@ export class SessionSlotManager {
 
   /** Session-fillable keys per page = grid minus pinned usage tiles, minus NEXT→ when paginating. */
   private listSessionsPerPage(layout: DeckLayout, totalSessions: number): number {
-    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout));
+    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout) - this.dotReserve(layout));
     return totalSessions > cap ? Math.max(1, cap - 1) : cap;
   }
 
   private totalPages(layout: DeckLayout = DEFAULT_LAYOUT): number {
     const count = this._sessions.length;
-    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout));
+    const cap = Math.max(1, layout.keyCount - this.usageReserve(layout) - this.dotReserve(layout));
     if (count <= cap) return 1;
     return Math.ceil(count / this.listSessionsPerPage(layout, count));
   }
 
   private needsPagination(layout: DeckLayout): boolean {
-    return this._sessions.length > Math.max(1, layout.keyCount - this.usageReserve(layout));
+    return this._sessions.length > Math.max(1, layout.keyCount - this.usageReserve(layout) - this.dotReserve(layout));
   }
 
   private isAwaitingDetailState(): boolean {
@@ -877,6 +883,8 @@ export class SessionSlotManager {
   }
 
   private getListSlotConfig(slot: number, layout: DeckLayout): SessionSlotConfig {
+    const dotKeys = this.dotReserve(layout);
+    if (slot === 0 && dotKeys) return { type: 'dot', dot: this._dot! };
     const usageReserve = this.usageReserve(layout);
 
     // Pin water-tank quota gauges to the last keys (every page; usage is global).
@@ -968,9 +976,9 @@ export class SessionSlotManager {
     }
 
     const startIdx = this._currentPage * sessionsOnPage;
-    const sessionIdx = startIdx + slot;
+    const sessionIdx = startIdx + slot - dotKeys;
 
-    if (slot < sessionsOnPage && sessionIdx < this._sessions.length) {
+    if (slot - dotKeys < sessionsOnPage && sessionIdx >= 0 && sessionIdx < this._sessions.length) {
       const session = this._sessions[sessionIdx];
       return {
         type: 'session',

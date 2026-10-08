@@ -55,3 +55,8 @@ export * from './claude-weekly-view.js';
 export * from './zai-pair-view.js';
 export * from './matrix-expression.js';
 export { GatewayLiveActivity, GATEWAY_LIVE_RULES, gatewayToolFoldRaw } from './gateway-live-activity.js';
+
+export { DOT_LIMITS, DOT_OAUTH_LIMITS } from './dot-rules.js';
+
+export * from './dot-interactions.js';
+export * from './dot-deck.js';

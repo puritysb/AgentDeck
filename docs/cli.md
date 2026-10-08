@@ -399,3 +399,7 @@ The command exits 0 when both protocols work without a known PID mismatch,
 and 1 otherwise. A CLI success does not prove the plugin's account, elevation,
 environment or macOS sandbox discovery path is identical, nor does it say an
 agent session is active.
+
+## Dot direct HTTPS host
+
+The optional direct host runs inside the Node daemon after explicit private configuration. See [configuration and security boundaries](../services/dot-relay/README.md). `agentdeck dot status` shows pending approvals, grants and results; `approve <id> --code <browser-code>` or `deny <id>` resolves a local connection request. `request <grantId> --context-file <absolute-path> --profile desk` explicitly shares a briefing, and `disconnect <grantId>` revokes access and deletes its local content. These commands use a separate authenticated loopback operator endpoint; they never expose LAN pairing credentials through MCP.

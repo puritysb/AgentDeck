@@ -66,7 +66,8 @@
     "plugin:deploy": "node plugin/scripts/deploy.mjs",
     "plugin:check": "node plugin/scripts/deploy.mjs --check",
     "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts",
-    "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs"
+    "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs",
+    "generate-dot-contract": "pnpm --filter @agentdeck/shared build && pnpm --filter @agentdeck/dot-relay build && node services/dot-relay/generate-native.mjs"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

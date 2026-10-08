@@ -618,9 +618,20 @@ export interface SessionInfo {
   coordination?: CoordinationSummary;
 }
 
+/** Separate integration presence; never a coding session or authority to execute. */
+export interface DotDeckSnapshot {
+  configured: boolean;
+  hosting: boolean;
+  reportState: string | null;
+  reportedAt: number | null;
+  expiresAt: number | null;
+}
+
 export interface SessionsListEvent {
   type: 'sessions_list';
   sessions: SessionInfo[];
+  /** Full snapshot: null clears Dot; absent from older daemons also clears it. */
+  dot?: DotDeckSnapshot | null;
 }
 
 export interface TimelineEventMsg {
@@ -1045,7 +1056,7 @@ export type CardActionClass = 'live' | 'day' | 'info';
  *
  * `thread`/`pulse` are read-only (`info`); `nudge`/`quest` are the first `day`
  * class producers — answerable offline, queued in the device outbox. */
-export type CardModuleId = 'thread' | 'pulse' | 'nudge' | 'quest';
+export type CardModuleId = 'thread' | 'pulse' | 'nudge' | 'quest' | 'dot';
 
 /** Max choices a module card may bind (slot 1 is the device's own **Later**).
  *  Producers clamp; they never grow a fifth button. */

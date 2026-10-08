@@ -1851,7 +1851,11 @@ final class DaemonServer {
         onStandDownRequested = handler
     }
 
+    private let dotOwnership = UUID()
+
     func startServices() async throws {
+        DotHost.shared.owned(by: dotOwnership)
+        do { try DotHost.shared.resumeIfEnabled() } catch { DaemonLogger.shared.error("Dot configuration could not be loaded") }
         // 0. Initialize APME store + collector + runner
         let store = ApmeStore()
         if await store.openWithTimeout() {
@@ -2782,6 +2786,7 @@ final class DaemonServer {
             ])
         }
 
+        cards.append(contentsOf: DotHost.shared.resultCards(now: Int(now.timeIntervalSince1970 * 1000)))
         let signed: [String: Any] = ["cards": cards, "glance": glance]
         let signedData = (try? JSONSerialization.data(withJSONObject: signed, options: [.sortedKeys])) ?? Data()
         let sig = SHA256.hash(data: signedData).prefix(8).map { String(format: "%02x", $0) }.joined()
@@ -9404,7 +9409,7 @@ final class DaemonServer {
             if let hm = m["hm"] { s["lastEventHm"] = hm }
             return s
         }
-        return ["type": "sessions_list", "sessions": sessions]
+        return ["type": "sessions_list", "sessions": sessions, "dot": DotHost.shared.deckSnapshot() as Any? ?? NSNull()]
     }
 
     // MARK: - Usage (3-tier relay)
@@ -10867,6 +10872,7 @@ final class DaemonServer {
     // MARK: - Shutdown
 
     func shutdown() async {
+        DotHost.shared.release(dotOwnership)
         DaemonLogger.shared.info("Daemon shutting down...")
         if let backgroundActivity { ProcessInfo.processInfo.endActivity(backgroundActivity) }
         backgroundActivity = nil

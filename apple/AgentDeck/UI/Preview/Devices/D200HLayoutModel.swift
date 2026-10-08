@@ -24,7 +24,8 @@
 // against; `scripts/check-preview-mirror-sync.mjs` verifies they match the
 // current `git hash-object` of each file and fails CI when the origin drifts
 // ahead of this mirror. Update them whenever you re-port.
-// SYNC-HASH shared/src/d200h-layout.ts 7f5dc168d8a976c727953ad7471ba635c4a377db
+// SYNC-HASH shared/src/d200h-layout.ts 14cb0bf359038aa9b74356db53943933c6b27e0d
+// SYNC-HASH shared/src/dot-deck.ts 72e6366e81a67aacf8e86caffd14152766198fb3
 // SYNC-HASH shared/src/session-utils.ts 9ff8581b7ce0e779cfd4443a16ba7d85ed7d9964
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
@@ -291,6 +292,7 @@ public struct D200HUsage: Equatable, Sendable {
 public struct D200HDeckInput: Sendable {
     public var state: String
     public var sessions: [D200HSession]
+    public var dotLabel: String?
     public var usage: D200HUsage?
     /// When set and equal to the open session id, that session's options are
     /// treated as navigable (TUI ❯ cursor) → `select_option`; otherwise a
@@ -306,7 +308,8 @@ public struct D200HDeckInput: Sendable {
         usage: D200HUsage? = nil,
         focusedSessionId: String? = nil,
         question: String? = nil,
-        navigable: Bool = false
+        navigable: Bool = false,
+        dotLabel: String? = nil
     ) {
         self.state = state
         self.sessions = sessions
@@ -314,6 +317,7 @@ public struct D200HDeckInput: Sendable {
         self.focusedSessionId = focusedSessionId
         self.question = question
         self.navigable = navigable
+        self.dotLabel = dotLabel
     }
 }
 
@@ -500,6 +504,11 @@ public enum D200HLayoutModel {
     private static func buildList(_ input: D200HDeckInput, view: D200HDeckView, slots: [String]) -> [D200HKeySlot] {
         let sessions = sortSessions(foldCodexSessionsForDisplay(input.sessions))
 
+        // Same sparse-grid guard as shared/src/dot-deck.ts; no synthetic session.
+        let dotHere = input.dotLabel != nil && (slots.count >= 3 || sessions.count <= slots.count - 1)
+        let dotPosition = dotHere ? slots.first : nil
+        let slots = dotHere ? Array(slots.dropFirst()) : slots
+
         // Reserve keys for the global usage gauges (opt-in) on the bottom-row
         // strip left of the clock widget, filled from its right end; fall back to
         // trailing positions for strip keys the user didn't place. Never reserve
@@ -511,7 +520,8 @@ public enum D200HLayoutModel {
         var usageHere: [String: (D200HSlotKind, String, String)] = [:]
         if view.showUsage, let usage = input.usage {
             let stripTiles = buildUsageTiles(usage)
-            let maxReserve = max(0, slots.count - 1)
+            let sessionFloor = dotHere && sessions.count > 1 ? 2 : 1
+            let maxReserve = max(0, slots.count - sessionFloor)
             let preferred = sortPositions(usagePreferredPositions.filter { slots.contains($0) })
             let stripCount = min(stripTiles.count, usagePreferredPositions.count, maxReserve)
             let afterStrip = slots.count - stripCount
@@ -531,6 +541,10 @@ public enum D200HLayoutModel {
 
         let freeSlots = slots.filter { usageHere[$0] == nil }
         var out: [D200HKeySlot] = []
+        if let pos = dotPosition {
+            let (col, row) = parse(pos)
+            out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "dot", tone: "info"), label: "DOT", subtitle: input.dotLabel, action: .none))
+        }
 
         func appendUsage() {
             for pos in slots where usageHere[pos] != nil {

@@ -117,6 +117,11 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
+                #if os(macOS)
+                if !hudHidden && stateHolder.state.bridgeConnected {
+                    DotCompanionView().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                }
+                #endif
 
                 if !stateHolder.state.bridgeConnected {
                     ConnectionOverlay()

@@ -142,3 +142,9 @@ are in [Retired and Experimental Surfaces](retired-surfaces.md).
   - [Actions](https://docs.elgato.com/streamdeck/sdk/plugin-guides/actions) · [Keys](https://docs.elgato.com/streamdeck/sdk/plugin-guides/keys) · [Dials & Touch Strip](https://docs.elgato.com/streamdeck/sdk/plugin-guides/dials-touch-strip)
   - [Manifest schema](https://docs.elgato.com/streamdeck/sdk/references/manifest) · [Touch Strip Layout](https://docs.elgato.com/streamdeck/sdk/references/touch-strip-layout) · [WebSocket API](https://docs.elgato.com/streamdeck/sdk/references/websocket-api)
 - **Plugin Samples**: https://github.com/elgatosf/streamdeck-plugin-samples (layouts, cat-keys, hello-world, data-sources, lights-out)
+
+## Dot integration key
+
+A configured Dot integration reserves the first AgentDeck list key on every page. Hermes and OpenClaw retain their existing shared assistant rank and user-weight/project ordering behind it. Dot is separate from the session roster and counts; no action UUID or encoder assignment changes. Stopped hosting retains the key with explicit status. Missing/null daemon snapshots or disconnect clear it.
+
+The shared renderer shows the orb, DOT, report/hosting status and provenance wording. The key is read-only and pressing it sends no command. Detail pages are unchanged. Pagination subtracts the reserved key; one/two-key partial layouts omit Dot when necessary to keep sessions/navigation reachable. Ulanzi uses the same renderer and reservation policy through its own layout engine. Source tests pass; installed-plugin and physical-key acceptance remain pending.

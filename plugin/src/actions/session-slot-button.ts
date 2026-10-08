@@ -76,7 +76,8 @@ export function initSessionSlots(
   onSlotAction = callback;
 }
 
-export function updateSessionSlotSessions(sessions: SessionInfo[]): void {
+export function updateSessionSlotSessions(sessions: SessionInfo[], dot?: import('@agentdeck/shared').DotDeckSnapshot | null): void {
+  manager.updateDot(dot);
   manager.updateSessions(sessions);
   refreshAll();
 }
@@ -157,6 +158,7 @@ export function setDaemonConnected(connected: boolean): void {
   if (!connected) {
     daemonStale = false;
     // Clear sessions on daemon disconnect
+    manager.updateDot(null);
     manager.updateSessions([]);
     if (manager.view === 'detail') {
       manager.exitDetailView();

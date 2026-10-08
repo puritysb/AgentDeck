@@ -336,3 +336,9 @@ AgentDeck/
 ├── AGENTS.md                     # Developer reference
 └── README.md
 ```
+
+## Dot deck snapshot
+
+The first-party `sessions_list` event optionally carries `dot: DotDeckSnapshot | null`. Fields are `configured` and `hosting` booleans, nullable `reportState` string, and nullable integer epoch-ms `reportedAt` / `expiresAt`. Both Node and Swift producers send it on initial and periodic snapshots. Absent and null both clear previous Dot state, including reconnecting to older daemons.
+
+This is a full sanitized integration snapshot, separate from `sessions`: no session identity/count, context, OAuth material, target reference or report text is included. The latest request is selected by creation time; expired/old nonterminal reports become stale. Hosting is local listener state, not cloud Dot activity. Existing clients may ignore the additive field; this does not promote it into every external surface profile.

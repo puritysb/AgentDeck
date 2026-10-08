@@ -28,6 +28,10 @@ struct LivingAquariumScene: View {
     var onCreatureTapped: ((String) -> Void)?
     var onBackgroundTapped: (() -> Void)?
     @State private var residents = AquariumResidents()
+    #if os(macOS)
+    @State private var dot = DotAquariumResident()
+    @State private var showDot = false
+    #endif
     @State private var cameraRig = AquariumCameraRig()
     @State private var cancelUpdate: (() -> Void)?
     @State private var visible = false
@@ -45,6 +49,9 @@ struct LivingAquariumScene: View {
                 camera.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                 camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
                 content.add(camera)
+                #if os(macOS)
+                content.add(dot.root)
+                #endif
                 cameraRig.camera = camera
                 residents.camera = camera
                 cameraRig.viewing = viewingMode
@@ -92,8 +99,10 @@ struct LivingAquariumScene: View {
                     guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
                     content.add(residents.root)
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
+                    let stepCompanion = companionStepper()
                     let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
                         residents?.step(event.deltaTime)
+                        stepCompanion(event.deltaTime)
                         cameraRig?.step(event.deltaTime)
                     }
                     cancelUpdate = { subscription.cancel() }
@@ -108,6 +117,9 @@ struct LivingAquariumScene: View {
                 residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
             }
             .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
+                #if os(macOS)
+                if DotAquariumResident.contains(value.entity) { showDot = true; return }
+                #endif
                 if let id = AquariumResidents.sessionID(for: value.entity) { onCreatureTapped?(id) }
                 else if value.entity.name == "aquarium-background" { onBackgroundTapped?() }
             })
@@ -134,6 +146,20 @@ struct LivingAquariumScene: View {
         // The async loader captures the initial environment. Reconcile playback
         // in the refreshed view so a background → active transition during load
         // cannot leave the newly-created controller paused forever.
+        #if os(macOS)
+        .task {
+            while !Task.isCancelled {
+                dot.sync(await DotHost.shared.snapshot(), now: Int(Date().timeIntervalSince1970 * 1000))
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        .sheet(isPresented: $showDot) {
+            VStack {
+                HStack { Text("Dot requests and relationships").font(.headline); Spacer(); Button("Done") { showDot = false } }
+                ScrollView { DotSettingsView() }
+            }.padding().frame(width: 580, height: 650)
+        }
+        #endif
         .onAppear { visible = true; updatePlayback() }
         .onChange(of: controllers.count) { _, _ in updatePlayback() }
         .onChange(of: reduceMotion) { _, _ in updatePlayback() }
@@ -162,12 +188,25 @@ struct LivingAquariumScene: View {
         for child in entity.children { applyWaterMaterial(to: child) }
     }
 
+    private func companionStepper() -> (Double) -> Void {
+        #if os(macOS)
+        return { [weak dot] in dot?.step($0) }
+        #else
+        return { _ in }
+        #endif
+    }
+
     private func updatePlayback() {
         let playing = visible && !reduceMotion && scenePhase == .active
         residents.animate = playing
+        #if os(macOS)
+        dot.animate = playing
+        #endif
         if playing, cancelUpdate == nil, let scene = residents.root.scene {
+            let stepCompanion = companionStepper()
             let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
                 residents?.step(event.deltaTime)
+                stepCompanion(event.deltaTime)
                 cameraRig?.step(event.deltaTime)
             }
             cancelUpdate = { subscription.cancel() }

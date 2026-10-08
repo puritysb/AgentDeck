@@ -140,6 +140,8 @@ struct ADBridgeEvent: Codable, Equatable {
     /// How to dim on sleep. Absent ⇒ legacy full-off.
     var dim: ADDisplayDimInstruction?
     var displayOn: Bool?
+    /// Full snapshot: null clears Dot; absent from older daemons also clears it.
+    var dot: ADDotDeckSnapshot?
     var sessions: [ADSessionInfo]?
     var encoders: [ADEncoderSlotState]?
     var takeoverActive: Bool?
@@ -250,6 +252,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case timestamp = "timestamp"
         case dim = "dim"
         case displayOn = "displayOn"
+        case dot = "dot"
         case sessions = "sessions"
         case encoders = "encoders"
         case takeoverActive = "takeoverActive"
@@ -377,6 +380,7 @@ extension ADBridgeEvent {
         timestamp: Double?? = nil,
         dim: ADDisplayDimInstruction?? = nil,
         displayOn: Bool?? = nil,
+        dot: ADDotDeckSnapshot?? = nil,
         sessions: [ADSessionInfo]?? = nil,
         encoders: [ADEncoderSlotState]?? = nil,
         takeoverActive: Bool?? = nil,
@@ -484,6 +488,7 @@ extension ADBridgeEvent {
             timestamp: timestamp ?? self.timestamp,
             dim: dim ?? self.dim,
             displayOn: displayOn ?? self.displayOn,
+            dot: dot ?? self.dot,
             sessions: sessions ?? self.sessions,
             encoders: encoders ?? self.encoders,
             takeoverActive: takeoverActive ?? self.takeoverActive,
@@ -1260,6 +1265,73 @@ extension ADDisplayDimInstruction {
 enum ADMode: String, Codable, Equatable {
     case min = "min"
     case off = "off"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+/// Separate integration presence; never a coding session or authority to execute.
+// MARK: - ADDotDeckSnapshot
+struct ADDotDeckSnapshot: Codable, Equatable {
+    var configured: Bool
+    var expiresAt: Double?
+    var hosting: Bool
+    var reportedAt: Double?
+    var reportState: String?
+
+    enum CodingKeys: String, CodingKey {
+        case configured = "configured"
+        case expiresAt = "expiresAt"
+        case hosting = "hosting"
+        case reportedAt = "reportedAt"
+        case reportState = "reportState"
+    }
+}
+
+// MARK: ADDotDeckSnapshot convenience initializers and mutators
+
+extension ADDotDeckSnapshot {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotDeckSnapshot.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        configured: Bool? = nil,
+        expiresAt: Double?? = nil,
+        hosting: Bool? = nil,
+        reportedAt: Double?? = nil,
+        reportState: String?? = nil
+    ) -> ADDotDeckSnapshot {
+        return ADDotDeckSnapshot(
+            configured: configured ?? self.configured,
+            expiresAt: expiresAt ?? self.expiresAt,
+            hosting: hosting ?? self.hosting,
+            reportedAt: reportedAt ?? self.reportedAt,
+            reportState: reportState ?? self.reportState
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
 }
 
 //

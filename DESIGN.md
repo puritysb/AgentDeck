@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-09-27
-revision: 2026-09-27
+reviewed: 2026-10-09
+revision: 2026-10-09
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -510,6 +510,17 @@ opacities are `nativeLabel` in `shared/src/terrarium-rules.ts`, generated to
 Swift, Kotlin and C++; both platforms implement the same resolver
 (`ResidentLabelLayout`) and pin it with the same five tests.
 
+### 6.5 Dot companion across surfaces
+
+Dot uses an AgentDeck-original light orb with paired eyes. It is separate from
+provider-derived session creatures and never increases agent counts. The
+[Dot Creature Surface Design](docs/dot-creature-surfaces.md) defines the adopted
+3D, 2D, paper, LCD-key, TFT, LED-matrix and text adaptations, their implementation
+status, and the shared relationship grammar. Direction, kind, stage, report age
+and provenance must survive simplification. A Dot report is not target-side
+acknowledgement, and an unverified target must not be attached to a real creature.
+
+
 ---
 
 ## 7. Hardware surfaces
@@ -522,14 +533,14 @@ Each panel has its own pixel grid, dynamic range, and refresh rate. Designs MUST
 | macOS popup          | 360×520      | Vibrant blur, dark mode default     | Aquarium-deep, kelp accents        |
 | iPad full UI         | 2160×1620    | Touch, 44pt min targets             | Sand background, full color        |
 | Lenovo Tab dashboard | 1920×1200    | Always-on, slight burn-in risk      | Dark ink ground, calm motion       |
-| E-ink (D200H)        | 280×240      | 1-bit, slow refresh                 | High-contrast, hatch fills, mono   |
+| Ulanzi D200H / D200X  | Logical 960×540 | LCD keys, vendor-plugin delivery | Compact identity + readable state |
 | Pixoo64 LED          | 64×64        | LAN HTTP, fragile GIF buffer        | Terrarium + tiny device-side loop  |
 | iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Numeric fleet summary + event creatures |
 | Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Expressive robot face / eyes       |
 | TC001 LED            | 32×8         | RGB matrix, blocky                  | Multi-mark status strip            |
 | IPS 10.1 office      | 1280×800     | Many pods/cards, glance distance    | Shape-coded state + text-first cards |
 | TRMNL 7.5" native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
-| ESP32 round AMOLED   | 466×466      | Round mask, low brightness          | Single creature centered           |
+| ESP32 round AMOLED   | 360×360      | Round mask, low brightness          | Single creature centered           |
 
 Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention, responses and errors. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the asked agent listening (`ASK`) until its reply, then the reply held for six seconds (`SENT`, meaning delivered) — and a new session earns a brief entrance; attention/errors preempt both with the affected creature and count, rotating affected sessions every six seconds. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
 

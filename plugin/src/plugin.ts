@@ -398,9 +398,9 @@ connMgr.on('connection', (ev: ConnectionEvent) => {
 });
 
 // ---- v4 Session Slot: sessions_list → slot assignment ----
-connMgr.on('sessions_list', (ev: { type: 'sessions_list'; sessions: SessionInfo[] }) => {
+connMgr.on('sessions_list', (ev: import('@agentdeck/shared').SessionsListEvent) => {
   dlog('Plugin', `sessions_list: ${ev.sessions.length} sessions`);
-  updateSessionSlotSessions(ev.sessions);
+  updateSessionSlotSessions(ev.sessions, ev.dot);
   // Provider "last heavy use" signal for the auto usage dial (#349): the wire
   // carries no per-row activity stamp, so the honest proxy is PROCESSING
   // counts first, then the newest session-start per provider.

@@ -81,6 +81,8 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 
 | Canonical source | Generator | Gate / note |
 |---|---|---|
+| `shared/src/dot-deck.ts` | Both deck plugins consume one reservation/status SVG implementation; native D200H preview reservation mirror | Deck layout tests and preview SYNC-HASH drift gate; native Dot tests. |
+| `shared/src/dot-rules.ts` + `shared/src/dot-interactions.ts` + `services/dot-relay/src/contracts.ts` | `pnpm generate-dot-contract` → Swift budgets, relationship stages and bundled JSON schemas | `native-contract.test.ts` checks all generated budgets, event and tool schemas; `DotDirectHostingTests` exercises the native consumer. |
 | `bridge/src/compact-session-labels.ts` | `node bridge/generate-compact-session-labels.mjs` → Swift serial projection | Generator drift check and `shared/compact-session-label-vectors.json` replayed by Node/Swift; names are presentation only, IDs and folding keys unchanged. Firmware `ui/companion/session_glance.h` is consumed directly by the small-screen renderers and host-tested. |
 | `shared/src/matrix-expression.ts` + `bridge/src/pixoo/matrix-art.ts` | `pnpm generate-matrix-expressions` | BLE robot-face/agent-world policy and RLE Swift frames. `matrix-expression.test.ts` gates generated drift and executes Swift and Node against identical wire-event sequences, comparing every RGB pixel. |
 | `shared/project-name-vectors.json` | Existing Node `project-name.ts` / Swift `ProjectNameResolver` filesystem resolvers | Both suites replay the same linked-worktree, relative/absolute pointer, submodule and unreadable-metadata fixtures. Worktrees display `Repository · worktree-folder`; the suffix preserves independent session folding. |

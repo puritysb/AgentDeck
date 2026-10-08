@@ -1,3 +1,4 @@
+import { startConfiguredDotHost, dotResultModule, readDotConfiguration } from './dot-host.js';
 import { startPersonalVoiceTurn } from './personal-voice-turn.js';
 import { transcribeDeviceAudio, type VoiceTranscriptionSettings } from './device-transcription.js';
 /**
@@ -1484,6 +1485,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
 let startupBuildId: string | null = null;
 
 export async function startDaemon(opts: DaemonOptions): Promise<void> {
+  let dotHost: Awaited<ReturnType<typeof startConfiguredDotHost>>;
   startupBuildId = distBuildId();
   if (opts.debug) {
     enableDebugLog();
@@ -3015,7 +3017,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const includeWeatherOutlook = surfaceIdentity?.capabilities.includes('weather.snapshot.read') === true;
           const feedGlance = pocketReader ? projectPortableReaderGlance(glance, includeWeatherOutlook) : glance;
           const feed = buildCardFeed(sessions as unknown as SessionInfo[], now,
-            pocketReader ? pocketReaderModules : pocketCardModules, {
+            [...(pocketReader ? pocketReaderModules : pocketCardModules), ...(dotHost ? [dotResultModule(dotHost.reports)] : [])], {
             glance: feedGlance,
             echoSig: parsedUrl.searchParams.get('sig') ?? undefined,
             includeSessions: !pocketReader,
@@ -4260,6 +4262,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     await listenOnce(httpServer, port, bindHost);
   }
 
+  let dotConfigured = false;
+  try { dotConfigured = readDotConfiguration(getDataDir())?.enabled === true; } catch { /* Unknown configuration cannot assert presence. */ }
+
+  dotHost = await startConfiguredDotHost(getDataDir(), posture.loopbackOnly).catch(() => {
+    log("[agentdeck] Dot HTTPS startup failed; check private configuration and certificate. LAN daemon remains available.");
+    return undefined;
+  });
   log(describeDaemonPosture(posture, port));
   if (preferred.source === 'settings' || preferred.source === 'env') {
     // A persisted or environmental port is invisible in the command line that
@@ -4679,6 +4688,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     return modules;
   };
   core.setModuleHealthProvider(moduleHealthProvider);
+  core.setDotDeckProvider(() => dotHost?.deckSnapshot() ?? (dotConfigured
+    ? { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null } : null));
 
   // iDotMatrix BLE is now driven by IDotMatrixModule (registered in
   // createDefaultModules): the module owns spawning the Python sync client,
@@ -7478,6 +7489,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== Shutdown =====
   core.onShutdown(async () => {
+    await dotHost?.stop();
     drainDaemonSockets();
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);

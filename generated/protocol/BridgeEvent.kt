@@ -260,6 +260,12 @@ data class BridgeEvent (
     val dim: DisplayDimInstruction? = null,
 
     val displayOn: Boolean? = null,
+
+    /**
+     * Full snapshot: null clears Dot; absent from older daemons also clears it.
+     */
+    val dot: DotDeckSnapshot? = null,
+
     val sessions: List<SessionInfo>? = null,
     val encoders: List<EncoderSlotState>? = null,
     val takeoverActive: Boolean? = null,
@@ -633,6 +639,17 @@ enum class Mode(val value: String) {
         }
     }
 }
+
+/**
+ * Separate integration presence; never a coding session or authority to execute.
+ */
+data class DotDeckSnapshot (
+    val configured: Boolean,
+    val expiresAt: Double? = null,
+    val hosting: Boolean,
+    val reportedAt: Double? = null,
+    val reportState: String? = null
+)
 
 data class EncoderSlotState (
     val accentColor: String? = null,

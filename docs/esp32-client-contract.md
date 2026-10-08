@@ -369,7 +369,7 @@ carries its own body in `FeedCard.module` (`ModuleCard`) instead of
   Later/Done action. The daemon suppresses that exact autonomous card without
   treating the action as positive or negative feedback; a newly fingerprinted
   card may still appear when the underlying fact changes.
-- **Read-only modules take no choices.** `thread` and `pulse` are `info`;
+- **Read-only modules take no choices.** `thread`, `pulse` and `dot` are `info`;
   `nudge` and `quest` are `day` — answerable offline and queued in the device
   outbox. XTeink owns slot 1 as *Later*; slots 2–4 map to stable choice IDs.
 
@@ -434,3 +434,7 @@ sent audio.
 - **`voice_end` must not overtake the audio.** If your client queues control frames and PCM on separate paths, the end frame can be delivered first and the daemon will finalize the utterance without its tail — measured as a lost final syllable ("안녕하세요" transcribed as "안녕하세"). Hold `voice_end` until the audio queue has drained, and keep reading the mic for a few hundred ms after the button is released so the DMA's last buffer is included.
 - **The reply follows the board, not the socket.** A board that is USB-attached parks its radio and closes the WebSocket it dictated over; the daemon re-resolves the live transport (serial first) when the answer is ready, so a client may receive playback on a different link than it sent capture on. Advertise the same `board` string on both transports — that string is the identity the reply is routed by.
 - **Serial audio needs RX headroom.** A 16 kHz mono reply is ~44 KB/s once base64-encoded, and a client whose network task blocks (an in-progress WebSocket reconnect is the usual cause) will overflow a small RX ring and lose whole lines — silently, if it discards lines that do not start with `{`. Size the ring for your worst stall, and park the radio while serial is the transport.
+
+### Dot result cards
+
+The optional direct MCP host adds `module:dot:<requestId>` cards to the authenticated pull feed. Each is `info`, has no session body or choices, and carries a bounded report summary, last-reported state, absolute timestamp and integration profile. Both Node and Swift include these cards in the conditional feed signature, so changed results invalidate the cached deck without changing the card ID. Only the latest three received reports within the seven-day retention window are projected. A `working` report in a cached card is historical evidence, not a claim of current cloud activity. Older readers may skip an unknown module; actual hardware acceptance remains separate from daemon projection tests.
