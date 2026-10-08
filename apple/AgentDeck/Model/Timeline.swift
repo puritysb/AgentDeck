@@ -272,6 +272,8 @@ struct GroupedEntry: Identifiable, Sendable {
     /// Terminator metadata (chat_end) merged into this group. Carries the
     /// "Completed · Ns · topic" suffix + `summaryKind` backend pill.
     var mergedCompletion: TimelineEntry? = nil
+    /// Display-only fold; original worker events remain in the store.
+    var subagentEntries: [TimelineEntry] = []
 
     /// True when the assistant has delivered something for this turn —
     /// either the response body or the completion metadata. UIs use this
@@ -321,6 +323,8 @@ func groupConsecutive(_ entries: [TimelineEntry], windowSeconds: Double = 60) ->
             // Task hierarchy entries never group — they're unique markers.
             let timeDiff = abs(entry.ts - last.lastTs)
             if last.entry.type != .taskStart && last.entry.type != .taskEnd &&
+               entry.subagentId == nil && last.entry.subagentId == nil &&
+               !entry.raw.hasPrefix("Subagent ") && !last.entry.raw.hasPrefix("Subagent ") &&
                entry.type == last.entry.type &&
                entry.raw == last.entry.raw &&
                sameTimelineContext(last.entry, entry) &&
@@ -668,3 +672,60 @@ func timelineIsTaskNotificationChatStart(_ entry: TimelineEntry) -> Bool {
 }
 
 // Type display functions moved to TimelineStripView.swift (timelineTypeIcon, timelineTypeColor)
+
+/// Fold worker lifecycle into one selectable row per parent turn. Sessionless
+/// legacy rows stay individual: project membership cannot prove a parent.
+/// Completion anchors can reach an earlier turn when a worker outlives it.
+func timelineFoldSubagentGroups(_ groups: [GroupedEntry]) -> [GroupedEntry] {
+    var result: [GroupedEntry] = []
+    var current: [String: Int] = [:]
+    for group in groups {
+        let entry = group.entry
+        guard let session = canonicalTimelineSessionId(entry.sessionId) else {
+            result.append(group)
+            continue
+        }
+        if entry.type == .chatStart || entry.type == .taskStart || entry.type == .taskEnd {
+            current.removeValue(forKey: session)
+        }
+        let isWorker = (entry.type == .toolExec || entry.type == .toolResolved)
+            && (entry.subagentId != nil || entry.raw.hasPrefix("Subagent "))
+        guard isWorker else {
+            result.append(group)
+            continue
+        }
+        var target = current[session]
+        if entry.type == .toolResolved, let anchor = entry.startedAt {
+            target = result.indices.reversed().first { i in
+                let candidate = result[i]
+                return !candidate.subagentEntries.isEmpty
+                    && canonicalTimelineSessionId(candidate.entry.sessionId) == session
+                    && candidate.entry.taskId == entry.taskId
+                    && candidate.subagentEntries.contains {
+                        $0.type == .toolExec && $0.ts <= anchor
+                    }
+            }
+        }
+        if let i = target, result[i].entry.taskId == entry.taskId {
+            result[i].subagentEntries.append(entry)
+            result[i].lastTs = max(result[i].lastTs, group.lastTs)
+        } else {
+            var folded = group
+            folded.count = 1
+            folded.subagentEntries = [entry]
+            current[session] = result.count
+            result.append(folded)
+        }
+    }
+    return result
+}
+
+func timelineSubagentSummary(_ entries: [TimelineEntry]) -> String {
+    let dispatched = entries.filter { $0.type == .toolExec }
+        .reduce(0) { $0 + TimelineStore.subagentBurstCount($1.raw) }
+    let ended = entries.filter { $0.type == .toolResolved }.count
+    var parts = ["Subagents"]
+    if dispatched > 0 { parts.append("\(dispatched) dispatched") }
+    if ended > 0 { parts.append("\(ended) ended") }
+    return parts.joined(separator: " · ")
+}

@@ -472,7 +472,7 @@ struct TimelineStripView: View {
                         design: .monospaced
                     ))
                     .foregroundStyle(isChatEnd ? TerrariumHUD.text.opacity(0.6) : TerrariumHUD.text)
-                    .lineLimit(allowMultiline ? 2 : 1)
+                    .lineLimit(allowMultiline && group.subagentEntries.isEmpty ? 2 : 1)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: allowMultiline)
 
@@ -1275,7 +1275,7 @@ func timelineDayLabel(for date: Date, now: Date = Date(), calendar: Calendar = .
 }
 
 func timelineDisplayGroupsForDashboard(_ groups: [GroupedEntry]) -> [GroupedEntry] {
-    groups.filter { group in
+    timelineFoldSubagentGroups(groups).filter { group in
         let entry = group.entry
         if entry.type == .taskStart || entry.type == .taskEnd {
             return timelineShouldShowTaskMarker(group, in: groups)
@@ -1434,10 +1434,19 @@ func timelineIsMeaningfulTaskTitle(_ raw: String) -> Bool {
 }
 
 func timelineSummaryTextForDashboard(_ group: GroupedEntry) -> String {
-    timelinePromoteInformativeLead(group.entry.raw, type: group.entry.type)
+    if !group.subagentEntries.isEmpty { return timelineSubagentSummary(group.subagentEntries) }
+    return timelinePromoteInformativeLead(group.entry.raw, type: group.entry.type)
 }
 
 func timelineDetailEntryForDashboard(_ group: GroupedEntry) -> TimelineEntry {
+    if !group.subagentEntries.isEmpty {
+        var entry = group.entry
+        entry.summaryKind = "heuristic"
+        entry.detail = "Worker activity\n\n" + group.subagentEntries.map {
+            [$0.raw, $0.detail].compactMap { $0 }.joined(separator: "\n\n")
+        }.joined(separator: "\n\n---\n\n")
+        return entry
+    }
     if group.entry.type == .chatStart,
        let response = group.mergedResponse,
        !timelineIsProgressChatResponse(response) {

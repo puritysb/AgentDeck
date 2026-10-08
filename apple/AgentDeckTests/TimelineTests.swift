@@ -5,6 +5,56 @@ import XCTest
 
 final class TimelineTests: XCTestCase {
 
+    func testWorkerDetailsFoldWithoutLosingEventsOrMixingParents() {
+        let entries = [
+            TimelineEntry(ts: 1, type: .chatStart, raw: "Review", sessionId: "a"),
+            TimelineEntry(ts: 2, type: .toolExec, raw: "Subagent ×2 dispatched · Review", sessionId: "a", subagentId: "burst:a"),
+            TimelineEntry(ts: 3, type: .toolExec, raw: "Subagent Other · dispatched", sessionId: "b", subagentId: "burst:b"),
+            TimelineEntry(ts: 4, type: .toolResolved, raw: "Subagent Alpha · 2s · checked parser", sessionId: "a", startedAt: 2, subagentId: "child:a:1"),
+            TimelineEntry(ts: 5, type: .toolResolved, raw: "Subagent Beta · 3s · checked UI", sessionId: "a", startedAt: 2, subagentId: "child:a:2"),
+        ]
+        let display = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(display.count, 3)
+        let workers = display[1]
+        XCTAssertEqual(timelineSummaryTextForDashboard(workers), "Subagents · 2 dispatched · 2 ended")
+        let detail = timelineDetailEntryForDashboard(workers)
+        XCTAssertTrue(detail.detail!.contains("checked parser"))
+        XCTAssertTrue(detail.detail!.contains("checked UI"))
+        XCTAssertTrue(timelineShouldShowDetailForDashboard(entry: detail, detail: detail.detail!))
+        XCTAssertEqual(display[2].subagentEntries.count, 1)
+        XCTAssertEqual(entries.count, 5)
+    }
+
+    func testWorkerCompletionOutlivingTurnReturnsToOriginalFold() {
+        let entries = [
+            TimelineEntry(ts: 1, type: .toolExec, raw: "Subagent Old · dispatched", sessionId: "a", subagentId: "burst:old"),
+            TimelineEntry(ts: 2, type: .chatStart, raw: "Next turn", sessionId: "a"),
+            TimelineEntry(ts: 3, type: .toolExec, raw: "Subagent New · dispatched", sessionId: "a", subagentId: "burst:new"),
+            TimelineEntry(ts: 4, type: .toolResolved, raw: "Subagent Old · ended", sessionId: "a", startedAt: 1, subagentId: "child:old"),
+            TimelineEntry(ts: 5, type: .toolResolved, raw: "Subagent New · ended", sessionId: "a", startedAt: 3, subagentId: "child:new"),
+            TimelineEntry(ts: 6, type: .toolResolved, raw: "Subagent legacy · ended"),
+        ]
+        let display = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(display.count, 4)
+        XCTAssertEqual(display[0].subagentEntries.map(\.ts), [1, 4])
+        XCTAssertEqual(display[2].subagentEntries.map(\.ts), [3, 5])
+        XCTAssertTrue(display[3].subagentEntries.isEmpty)
+    }
+
+    func testWorkerFoldKeepsIdenticalSiblingsAndOrphanStopsHonest() {
+        let entries = [
+            TimelineEntry(ts: 1, type: .toolResolved, raw: "Subagent Worker · ended · no summary", sessionId: "a"),
+            TimelineEntry(ts: 2, type: .toolResolved, raw: "Subagent Worker · ended · no summary", sessionId: "a"),
+            TimelineEntry(ts: 3, type: .taskEnd, raw: "Session end", sessionId: "a", taskId: "old"),
+            TimelineEntry(ts: 4, type: .toolExec, raw: "Subagent New · dispatched", sessionId: "a", taskId: "new", subagentId: "burst:new"),
+        ]
+        let display = timelineDisplayGroupsForDashboard(groupConsecutive(entries))
+        XCTAssertEqual(display.count, 2)
+        XCTAssertEqual(timelineSummaryTextForDashboard(display[0]), "Subagents · 2 ended")
+        XCTAssertEqual(display[0].subagentEntries.count, 2)
+        XCTAssertEqual(timelineSummaryTextForDashboard(display[1]), "Subagents · 1 dispatched")
+    }
+
     func testObservedSessionFilterMatchesRawTimelineSessionId() {
         let entry = TimelineEntry(
             ts: 1,
