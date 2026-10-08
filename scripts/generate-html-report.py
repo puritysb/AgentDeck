@@ -125,11 +125,14 @@ def load_android_xml():
         }
         for tc in root.findall("testcase"):
             failure = tc.find("failure")
+            if failure is None:
+                failure = tc.find("error")
+            skipped = tc.find("skipped") is not None
             case = {
                 "name": tc.get("name", ""),
                 "classname": tc.get("classname", ""),
                 "time": float(tc.get("time", 0)),
-                "status": "failed" if failure is not None else "passed",
+                "status": "failed" if failure is not None else ("skipped" if skipped else "passed"),
                 "failure": failure.text if failure is not None else None,
             }
             suite["cases"].append(case)
@@ -405,6 +408,8 @@ def update_history(history, total_passed, total_failed, total_all, lines_pct, me
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
         "commit": commit_sha,
         "total": total_all,
+        "executed": total_passed + total_failed,
+        "skipped": max(0, total_all - total_passed - total_failed),
         "passed": total_passed,
         "failed": total_failed,
         "coverage": round(lines_pct, 1),
@@ -520,11 +525,11 @@ def build_default_metadata(vitest, android, robot, e2e=None):
     return {
         "run_profile": "ad-hoc",
         "suites": {
-            "vitest": {"status": "pass" if vitest else "not-run", "executed": bool(vitest), "note": ""},
+            "vitest": {"status": ("fail" if vitest.get("numFailedTests", 0) or vitest.get("numFailedTestSuites", 0) or any(r.get("status") == "failed" for r in vitest.get("testResults", [])) else "pass") if vitest else "not-run", "executed": bool(vitest), "note": ""},
             "e2e": {"status": ("pass" if e2e.get("numFailedTests", 0) == 0 else "fail") if e2e else "not-run", "executed": bool(e2e), "note": ""},
-            "android": {"status": "pass" if android else "not-run", "executed": bool(android), "note": ""},
+            "android": {"status": ("fail" if any(x["failures"] or x["errors"] for x in android) else "pass") if android else "not-run", "executed": bool(android), "note": ""},
             "apple": {"status": "not-run", "executed": False, "note": "No Apple result parser input"},
-            "robot": {"status": "pass" if robot else "not-run", "executed": bool(robot), "note": ""},
+            "robot": {"status": ("fail" if robot["failed"] else "pass") if robot else "not-run", "executed": bool(robot), "note": ""},
         },
     }
 
@@ -587,13 +592,13 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
             if not suite_status["vitest"]["executed"]:
                 return {"status": "not-run", "passed": 0, "failed": 0}
             if "*" in patterns:
-                return {"status": "fail" if found["failed"] else "pass", "passed": found["passed"], "failed": found["failed"]}
+                return {"status": "fail" if found["failed"] else "pass" if found["passed"] and all(a["status"] == "passed" for a in found["assertions"]) else "partial" if found["passed"] else "not-run", "passed": found["passed"], "failed": found["failed"]}
             matched = [a for a in found.get("assertions", []) if pattern_matches(full_assertion_name(a), patterns)]
             if not matched:
                 return {"status": "missing", "passed": 0, "failed": 0}
             passed = sum(1 for a in matched if a["status"] == "passed")
             failed = sum(1 for a in matched if a["status"] == "failed")
-            return {"status": "fail" if failed else "pass", "passed": passed, "failed": failed}
+            return {"status": "fail" if failed else "pass" if passed == len(matched) else "partial" if passed else "not-run", "passed": passed, "failed": failed}
 
         found = None
         for aname, adata in and_lookup.items():
@@ -627,7 +632,7 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
 
         for cat in ("unit", "integration", "platform", "e2e"):
             test_entries = sc.get("tests", {}).get(cat, [])
-            cat_result = {"tests": [], "passed": 0, "failed": 0, "missing": 0, "not_run": 0, "total": len(test_entries)}
+            cat_result = {"tests": [], "passed": 0, "failed": 0, "missing": 0, "not_run": 0, "partial": 0, "total": len(test_entries)}
 
             for entry in test_entries:
                 resolved = resolve_entry(entry)
@@ -637,6 +642,8 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
                     cat_result["failed"] += 1
                 elif resolved["status"] == "pass":
                     cat_result["passed"] += 1
+                elif resolved["status"] == "partial":
+                    cat_result["partial"] += 1
                 elif resolved["status"] == "not-run":
                     cat_result["not_run"] += 1
                 else:
@@ -663,6 +670,120 @@ def build_scenario_results(scenarios, vitest, android_suites, metadata):
 
 def _esc(text):
     return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;"))
+
+def result_counts(vitest, android, robot):
+    assertions = [a for r in (vitest or {}).get("testResults", []) for a in r.get("assertionResults", [])]
+    passed = sum(a.get("status") == "passed" for a in assertions) + sum(s["passed"] for s in android) + (robot or {}).get("passed", 0)
+    failed = sum(a.get("status") == "failed" for a in assertions) + sum(s["failures"] + s["errors"] for s in android) + (robot or {}).get("failed", 0)
+    skipped = sum(a.get("status") not in ("passed", "failed") for a in assertions) + sum(s.get("skipped", 0) for s in android) + (robot or {}).get("skipped", 0)
+    available = []
+    for r in (vitest or {}).get("testResults", []):
+        name = r.get("name", "").replace(str(ROOT) + "/", "")
+        suite = "e2e" if name.startswith("tests/e2e/") else "vitest"
+        if suite not in available:
+            available.append(suite)
+    if android:
+        available.append("android")
+    if robot:
+        available.append("robot")
+    return {"passed": passed, "failed": failed, "skipped": skipped, "executed": passed + failed, "total": passed + failed + skipped, "available_suites": available}
+
+def run_decision(counts, metadata):
+    metas = [suite_meta(metadata, name) for name in ("vitest", "e2e", "android", "apple", "robot")]
+    if counts["failed"] or any(_state(m["status"]) == "fail" for m in metas):
+        return "fail"
+    if not counts["executed"]:
+        return "off"
+    if counts["skipped"] or len(counts["available_suites"]) < 5 or any(not m["executed"] or _state(m["status"]) != "pass" for m in metas):
+        return "partial"
+    return "pass"
+
+def reconcile_case_evidence(metadata, vitest, android, robot):
+    """A reported command outcome alone cannot prove passing test cases."""
+    result = json.loads(json.dumps(metadata))
+    suites = result.setdefault("suites", {})
+    parsed = {}
+    for entry in (vitest or {}).get("testResults", []):
+        name = entry.get("name", "").replace(str(ROOT) + "/", "")
+        suite = "e2e" if name.startswith("tests/e2e/") else "vitest"
+        info = parsed.setdefault(suite, {"executed": 0, "failed": False})
+        cases = entry.get("assertionResults", [])
+        info["executed"] += sum(a.get("status") in ("passed", "failed") for a in cases)
+        info["failed"] |= entry.get("status") == "failed" or any(a.get("status") == "failed" for a in cases)
+    if android:
+        parsed["android"] = {"executed": sum(s["passed"] + s["failures"] + s["errors"] for s in android),
+                             "failed": any(s["failures"] or s["errors"] for s in android)}
+    if robot:
+        parsed["robot"] = {"executed": robot["passed"] + robot["failed"], "failed": bool(robot["failed"])}
+    for name in ("vitest", "e2e", "android", "apple", "robot"):
+        meta = suites.setdefault(name, {"status": "not-run", "executed": False, "note": ""})
+        info = parsed.get(name)
+        if info and info["failed"]:
+            meta.update(status="fail", executed=True)
+        elif _state(meta.get("status")) == "fail":
+            # Preserve reported setup/coverage failures even without failing cases.
+            continue
+        elif info and info["executed"]:
+            meta.update(status="pass", executed=True)
+        elif meta.get("executed") or info:
+            meta.update(status="unknown", executed=True)
+            note = "No parsed executed test cases; reported command completion is not case evidence."
+            if note not in meta.get("note", ""):
+                meta["note"] = " ".join(x for x in (meta.get("note", ""), note) if x)
+    return result
+
+_DECISION_LABEL = {"pass": "Pass", "fail": "Fail", "off": "Not run", "partial": "Partial verification"}
+
+def _render_qa_summary(counts, metadata):
+    decision = run_decision(counts, metadata)
+    missing = [name for name in ("vitest", "e2e", "android", "apple", "robot") if not suite_meta(metadata, name)["executed"] or suite_meta(metadata, name)["status"] == "unknown" or name not in counts["available_suites"]]
+    action = (_esc("Inspect failed cases and suite notes, fix the cause, then rerun the same scope.") if decision == "fail" else
+              _esc("Run missing suites and review manual QA before a release decision."))
+    return f'''<section id="qa-summary" tabindex="-1" class="card qa-summary" aria-labelledby="qa-title">
+      <h2 id="qa-title">{_esc("Decision first")}</h2>
+      <p><strong>{_esc(_DECISION_LABEL[decision])}</strong></p>
+      <dl class="specs">
+        <div><dt>{_esc("Passed")}</dt><dd>{counts["passed"]:,}</dd></div>
+        <div><dt>{_esc("Failed cases")}</dt><dd>{counts["failed"]:,}</dd></div>
+        <div><dt>{_esc("Skipped cases")}</dt><dd>{counts["skipped"]:,}</dd></div>
+        <div><dt>{_esc("Executed / collected")}</dt><dd>{counts["executed"]:,} / {counts["total"]:,}</dd></div>
+      </dl>
+      <p>{_esc("Not run or no parsed case evidence here")}: {_esc(", ".join(missing) or "—")}.</p>
+      <p>{_esc("Remaining risk: mocked inputs do not prove physical readability, real permission flows or device recovery. Evidence from other runs keeps its own commit and date.")}</p>
+      <p><strong>{_esc("Next action")}</strong>: {action} <a href="#qa-method">{_esc("Method and manual QA")}</a></p>
+      <details><summary>{_esc("Input scope and counting rules")}</summary>
+      <p class="fine">{_esc("Run profile")}: {_esc(metadata.get("run_profile", "unknown"))} · <a href="summary.json">summary.json</a></p>
+      <p>{_esc("Parsed input scope")}: {_esc(", ".join(counts["available_suites"]) or "—")}. {_esc("Only supplied cases are counted; this is not release approval.")}</p>
+      <p class="fine">{_esc("Setup errors or coverage failures can fail a suite with zero failed cases. Skipped cases are excluded from executed tests.")}</p></details>
+    </section>'''
+
+def _render_qa_method(vt_file_data, include_scenarios=True):
+    source = "https://github.com/puritysb/AgentDeck/blob/" + (os.environ.get("GITHUB_SHA") or "master")
+    example = next((data for path, data in vt_file_data.items() if path.endswith("/http-auth-gate.test.ts")), None)
+    observed = (_esc(f'Example cases: {example["passed"]} passed, {example["failed"]} failed, {example["skipped"]} skipped.') if example else
+                _esc("No case evidence for this example in the supplied inputs."))
+    cards = [
+      ("Why automate?", "Repeated state transitions, access boundaries and protocol mirrors have deterministic expectations. Fast regression tests are appropriate; scenario gaps show what remains unproven."),
+      ("Manual QA still needed", "On the target app and device, observe real permission approval/denial, disconnect/reconnect and text readability. Compare expected state/options with the screen; record app/firmware version, device, date, result and evidence. Not executed by this report."),
+      ("Public test example", "Risk: unauthenticated LAN access. Input: unauthorized GET /status. Expected: deny; GET /health exposes public health only. Inspect the access-control cases in Test domains when they are included in this run. Unit inputs do not prove a physical network or UI."),
+      ("AI and evidence limits", "Aggregation uses deterministic parsers, not an LLM verdict. Mock hooks do not assess model quality or hallucinations. Review AI-authored code and regression results; missing evidence stays unknown. Only public AgentDeck sources and synthetic fixtures belong here; confidential cases are excluded even when blurred."),
+    ]
+    scenario_link = ' · <a href="#scenarios">Scenario basis and gaps</a>' if include_scenarios else ""
+    rendered = "".join(f'<article class="card gap"><h3>{_esc(en)}</h3><p>{_esc(body_en)}</p></article>' for en, body_en in cards)
+    return f'''<section id="qa-method" tabindex="-1"><h2>{_esc("Test basis and QA judgment")}</h2>
+      <div class="grid gaps">{rendered}</div>
+      <p>{observed}</p>
+      <p><a href="{_esc(source)}/bridge/src/__tests__/http-auth-gate.test.ts">http-auth-gate.test.ts</a> · <a href="#domains">{_esc("Observed results")}</a>{scenario_link}</p>
+      <details class="card files"><summary>{_esc("Reproduce: inputs → execution → evaluation → report")}</summary>
+        <p>{_esc("Use Node 22, 24 or 26, locked pnpm dependencies and a POSIX shell. In a fresh checkout, collect a focused public example; JSON results feed the report. This is a narrow example, not full acceptance. Coverage and native evidence require separate runs.")}</p>
+        <p class="cmd"><code>pnpm install --frozen-lockfile
+pnpm build
+example_dir=$(mktemp -d)
+pnpm vitest run bridge/src/__tests__/http-auth-gate.test.ts --reporter=json --outputFile="$example_dir/vitest.json"
+BUILD_HEALTH_REPORT_DIR="$example_dir" BUILD_HEALTH_COVERAGE_JSON="$example_dir/no-coverage" BUILD_HEALTH_ANDROID_DIR="$example_dir/no-android" python3 scripts/generate-html-report.py</code></p>
+        <p><a href="{_esc(source)}/.github/workflows/test-report.yml">{_esc("Published pipeline")}</a> · <a href="summary.json">summary.json</a> · <a href="run-metadata.json">{_esc("Run scope and suite notes")}</a></p>
+        <p>{_esc("Troubleshooting: HTML previously counted pass+fail while summary.json included skips. Both now use the same assertions; regression fixtures exercise skip-only runs, suite errors and missing suites. Focused results cannot substitute for release/device evidence. No QA execution video is attached to this run.")}</p>
+      </details></section>'''
 
 def _state(status):
     """Normalize a suite/test status to one of pass / fail / off."""
@@ -700,7 +821,7 @@ def _bar(passed, failed, total):
             f'<span class="ok" style="width:{p:.2f}%"></span>'
             f'<span class="bad" style="width:{f:.2f}%"></span></div>')
 
-def write_summary(metadata, total_passed, total_failed, total_all):
+def write_summary(metadata, total_passed, total_failed, total_all, counts=None):
     suites_meta = metadata.get("suites", {}) if metadata else {}
     suites = []
     for name in ("vitest", "e2e", "android", "apple", "robot"):
@@ -712,6 +833,7 @@ def write_summary(metadata, total_passed, total_failed, total_all):
             "note": meta.get("note", ""),
         })
     report = {
+        "decision": run_decision(counts, metadata) if counts else "unknown",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "run_profile": metadata.get("run_profile", "unknown") if metadata else "unknown",
         "suites": suites,
@@ -719,13 +841,23 @@ def write_summary(metadata, total_passed, total_failed, total_all):
             "passed": total_passed,
             "failed": total_failed,
             "total": total_all,
+            "skipped": (counts or {}).get("skipped", 0),
+            "executed": (counts or {}).get("executed", total_passed + total_failed),
         },
     }
     SUMMARY_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
 def sparkline_svg(history, key, label):
     """A small trend line for one history metric. Needs two or more runs."""
-    values = [entry.get(key, 0) for entry in history]
+    if key == "passed":
+        # Plot percentages, not pass counts: suite growth is not a pass-rate trend.
+        history = [e for e in history if e.get("passed", 0) + e.get("failed", 0) > 0]
+        values = [e.get("passed", 0) / (e.get("passed", 0) + e.get("failed", 0)) * 100 for e in history]
+    elif key == "total":
+        # Historical totals include skips; derive executed for old and new entries.
+        values = [e.get("passed", 0) + e.get("failed", 0) for e in history]
+    else:
+        values = [entry.get(key, 0) for entry in history]
     if len(values) < 2:
         return ""
     w, h = 240, 48
@@ -741,7 +873,7 @@ def sparkline_svg(history, key, label):
         # Of the tests that ran: skipped cases are not failures (a run with 0
         # failed and 16 skipped read 99.7% when divided by the total).
         executed = history[-1].get("passed", 0) + history[-1].get("failed", 0)
-        display = f"{last / executed * 100:.1f}%" if executed else "—"
+        display = f"{last:.1f}%" if executed else "—"
     else:
         display = f"{last:,}"
     lx, ly = pts[-1]
@@ -817,7 +949,7 @@ def render_gnb_css():
     return re.sub(r"/\*[\s\S]*?\*/\s*", "", css, count=1).rstrip()
 
 def _section_head(sid, kicker, title, lede):
-    return f'''<div class="section-head" id="{sid}">
+    return f'''<div class="section-head" id="{sid}" tabindex="-1">
       <div><p class="kicker">{_esc(kicker)}</p><h2>{_esc(title)}</h2></div>
       <p>{lede}</p>
     </div>'''
@@ -867,8 +999,10 @@ def _render_run(stats, suites, skipped_html=""):
     for s in suites:
         meta = s["meta"]
         st = _state(meta["status"]) if meta["executed"] else "off"
+        if st == "pass" and not (s["passed"] + s["failed"]):
+            st = "off"
         elsewhere = None if meta["executed"] else s.get("elsewhere")
-        badge = _elsewhere_badge(elsewhere) if elsewhere else status_badge(st)
+        badge = _elsewhere_badge(elsewhere) if elsewhere else status_badge(st, "No case evidence" if meta["executed"] and st == "off" else None)
         figures = ""
         if meta["executed"]:
             figures = f'''<dl class="specs">
@@ -1035,7 +1169,8 @@ def _render_verify(catalog, metadata, workflow_status=None, recorded=None, commi
         suite = gate.get("report_suite")
         meta = suite_meta(metadata, suite) if suite else None
         if meta and meta["executed"]:
-            badge = status_badge(meta["status"], "Passed here" if _state(meta["status"]) == "pass" else "Failed here")
+            label = {"pass": "Passed here", "fail": "Failed here", "off": "No case evidence"}[_state(meta["status"])]
+            badge = status_badge(meta["status"], label)
         else:
             # Only a check branch protection requires stops a merge; a red
             # workflow alone does not (catalog `required` vs `blocking`).
@@ -1115,9 +1250,9 @@ def _render_domains(vt_file_data):
               <summary><span class="fpath">{_esc(f)}</span><span class="fcount {"bad-text" if d["failed"] else ""}">{d["passed"]}/{d["passed"] + d["failed"]}</span></summary>
               <ul class="tests">{_test_rows(d["assertions"])}</ul>
             </details>'''
-        st = "fail" if failed else ("pass" if files else "off")
+        st = "fail" if failed else ("pass" if passed and not skipped else "off")
         cards += f'''<article class="card domain" id="domain-{_esc(layer["id"])}">
-          <div class="card-top"><p class="kicker"><span aria-hidden="true">{_esc(layer.get("icon", ""))}</span> {_n(len(files), "file")}</p>{status_badge(st, f"{failed} failing" if failed else None)}</div>
+          <div class="card-top"><p class="kicker"><span aria-hidden="true">{_esc(layer.get("icon", ""))}</span> {_n(len(files), "file")}</p>{status_badge(st, f"{failed} failing" if failed else "Partial verification" if passed and skipped else None)}</div>
           <h3>{_esc(layer["name"])}</h3>
           <p class="sub">{_esc(layer.get("question", ""))}</p>
           {_bar(passed, failed, passed + failed)}
@@ -1153,7 +1288,7 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
         a_p = sum(s["passed"] for s in android_suites)
         a_f = sum(s["failures"] + s["errors"] for s in android_suites)
         android = f'''<article class="card platform">
-          <div class="card-top"><h3>Android</h3>{status_badge("fail" if a_f else "pass")}</div>
+          <div class="card-top"><h3>Android</h3>{status_badge("fail" if a_f else "pass" if a_p else "off", "No executed cases" if not (a_f or a_p) else None)}</div>
           <p class="sub">JUnit + Robolectric on the JVM (ubuntu), {_n(len(android_suites), "suite")}.</p>
           {_bar(a_p, a_f, a_p + a_f)}
           <details class="files"{" open" if a_f else ""}><summary>{_n(len(android_suites), "suite")}</summary>{rows}</details>
@@ -1164,7 +1299,7 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
           <p class="sub">{_esc(android_meta.get("note") or "No JUnit results in this run.")}</p></article>'''
     # Apple
     apple = f'''<article class="card platform">
-      <div class="card-top"><h3>Apple (XCTest)</h3>{_elsewhere_badge(apple_elsewhere) if apple_elsewhere and not apple_meta["executed"] else status_badge(_state(apple_meta["status"]) if apple_meta["executed"] else "off")}</div>
+      <div class="card-top"><h3>Apple (XCTest)</h3>{_elsewhere_badge(apple_elsewhere) if apple_elsewhere and not apple_meta["executed"] else status_badge(_state(apple_meta["status"]) if apple_meta["executed"] else "off", "No case evidence" if apple_meta["executed"] and _state(apple_meta["status"]) == "off" else None)}</div>
       <p class="sub">{_esc(apple_meta.get("note") or "Runs in the Apple Tests workflow on a macOS runner.")}</p>{apple_elsewhere["line"] if apple_elsewhere and not apple_meta["executed"] else ""}</article>'''
     # Robot
     if robot:
@@ -1177,7 +1312,7 @@ def _render_platforms(android_suites, android_meta, apple_meta, robot, robot_met
                                                "failureMessages": [c["message"]] if c["status"] == "failed" and c.get("message") else []} for c in cases])}</ul>
             </details>'''
         robot_card = f'''<article class="card platform wide">
-          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("fail" if robot["failed"] else "pass")}</div>
+          <div class="card-top"><h3>ESP32 Robot Framework</h3>{status_badge("fail" if robot["failed"] else "pass" if robot["passed"] else "off", "No executed cases" if not (robot["failed"] or robot["passed"]) else None)}</div>
           <p class="sub">Physical boards in the maintainer's lab: {", ".join(_esc(BOARD_LABELS.get(b, b)) for b in robot["boards"]) or "no board tags"}.</p>
           {_bar(robot["passed"], robot["failed"], robot["passed"] + robot["failed"])}
           {_build_robot_perf_table(robot)}
@@ -1198,8 +1333,8 @@ def _scenario_cell(cat):
     p, f, m, nr = cat["passed"], cat["failed"], cat["missing"], cat.get("not_run", 0)
     st = "fail" if f else ("pass" if p == t else "off")
     parts = [x for x in (f"{p} passed" if p else "", f"{f} failed" if f else "",
-                         f"{m} not found in this run" if m else "", f"{nr} not executed here" if nr else "") if x]
-    return f'<td class="num"><span class="dot {st}"></span>{p}/{t}<span class="sr"> — {", ".join(parts)}</span></td>'
+                         f"{m} not found in this run" if m else "", f"{nr} not executed here" if nr else "", f'{cat.get("partial", 0)} partially executed' if cat.get("partial") else "") if x]
+    return f'<td class="num"><span class="dot {st}"></span>{p}/{t}<span class="fine"> — {", ".join(parts)}</span></td>'
 
 def _render_scenarios(scenario_results):
     rows = ""
@@ -1274,6 +1409,7 @@ def _robot_elsewhere(recorded):
 
 def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results, history, metadata, robot=None,
                   workflow_status=None, recorded=None, this_run=None):
+    metadata = reconcile_case_evidence(metadata, vitest, android_suites, robot)
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     commit = os.environ.get("GITHUB_SHA", "")[:7]
     workflow_status = workflow_status or {}
@@ -1310,21 +1446,22 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
     rb_p = robot["passed"] if robot else 0
     rb_f = robot["failed"] if robot else 0
 
-    total_passed = vt_p + e2_p + an_p + rb_p
-    total_failed = vt_f + e2_f + an_f + rb_f
-    total_all = total_passed + total_failed
-    overall = "fail" if total_failed else "pass"
+    counts = result_counts(vitest, android_suites, robot)
+    total_passed, total_failed = counts["passed"], counts["failed"]
+    total_all = counts["executed"]
+    overall = run_decision(counts, metadata)
 
     cov_total = cov_data.get("total", {}) if cov_data else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
     pkg_cov = extract_package_coverage(cov_data) if cov_data else {}
 
     stats = [
-        ("Result", "Pass" if overall == "pass" else "Fail", "ok-text" if overall == "pass" else "bad-text",
+        ("Result", _DECISION_LABEL[overall], "ok-text" if overall == "pass" else ("bad-text" if overall == "fail" else ""),
          f"{total_all:,} tests executed"),
         ("Passed", f"{total_passed:,}", "", f"{(total_passed / total_all * 100) if total_all else 0:.2f}% of executed"),
         ("Failed", f"{total_failed:,}", "bad-text" if total_failed else "", "across every suite run here"),
-        ("Wall time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
+        ("Skipped", f'{counts["skipped"]:,}', "", "excluded from executed tests"),
+        ("Cumulative test time", duration_fmt(vt_ms + e2_ms + an_ms), "", "summed per-file test time"),
         ("Line coverage", f"{lines_pct:.1f}%" if cov_data else "—", "", "TypeScript packages"),
     ]
     suites = [
@@ -1357,8 +1494,11 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         ("coverage", "Coverage", "TypeScript coverage against the enforced floor."),
         ("history", "History", "Trends across recent master runs."),
     ]
+    if not cov_data:
+        sections = [s for s in sections if s[0] != "coverage"]
     if not scenario_results:
         sections = [s for s in sections if s[0] != "scenarios"]
+    sections += [("qa-method", "Method / manual QA", "")]
     jump = "".join(f'<a href="#{sid}">{_esc(title)}</a>' for sid, title, _ in sections)
 
     body = ""
@@ -1373,7 +1513,14 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
         body += f'<section>{_section_head("coverage", "Vitest --coverage", "Coverage", "Line, statement, function and branch coverage of bridge, shared, plugin and hooks. The floors are read from <code>vitest.config.ts</code> and enforced on every pull request.")}{_render_coverage(cov_total, pkg_cov)}</section>'
     body += f'<section>{_section_head("history", "Trend", "History", "Totals from the last runs of this page on master.")}{history_html}</section>'
 
+    body += _render_qa_method(vt_file_data, bool(scenario_results))
+
     commit_bit = f" · commit {_esc(commit)}" if commit else ""
+    translations = _load_json(ROOT / "scripts" / "report-locales" / "ko.json", {})
+    # Inline assets keep the report self-contained. Escaping < prevents a locale
+    # entry from ending the script element; all rendering uses text nodes.
+    locale_script = "const REPORT_KO = " + json.dumps(translations, ensure_ascii=False).replace("<", "\\u003c") + ";\n"
+    locale_script += (ROOT / "scripts" / "report-locale.js").read_text(encoding="utf-8")
     gnb = render_gnb()
     gnb_css = render_gnb_css()
     return f'''<!DOCTYPE html>
@@ -1470,7 +1617,7 @@ details.skipped td .fine {{ display:block; }}
 .dot {{ display:inline-block; width:6px; height:6px; border-radius:var(--r-pill); margin-right:6px; vertical-align:middle; }}
 .dot.pass {{ background:var(--status-processing); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-processing) 33%, transparent); }}
 .dot.fail {{ background:var(--status-error); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-error) 33%, transparent); }}
-.dot.off {{ background:var(--status-idle); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-idle) 33%, transparent); }}
+.dot.partial, .dot.off {{ background:var(--status-idle); box-shadow:0 0 0 2px color-mix(in srgb, var(--status-idle) 33%, transparent); }}
 .rail, .meter {{ position:relative; display:flex; height:6px; border-radius:var(--r-pill); background:var(--tide-200); overflow:hidden; margin:0 0 var(--s-3); }}
 .rail .ok, .meter .ok {{ background:var(--kelp-500); }}
 .rail .bad, .meter .bad {{ background:var(--coral-500); }}
@@ -1490,6 +1637,11 @@ details.skipped td .fine {{ display:block; }}
 .cmd {{ margin:var(--s-3) 0 0; }}
 .cmd code {{ display:block; font-size:11.5px; color:var(--tide-50); background:var(--ink-900); padding:var(--s-2) var(--s-3); border-radius:var(--r-md); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }}
 .gap p:not(.label) {{ margin:0; color:var(--ink-700); font-size:var(--t-caption); }}
+.qa-summary {{ margin-top:var(--s-6); }}
+.qa-summary h2 {{ margin:0; }}
+.qa-summary .specs dt {{ font-family:var(--font-sans); font-size:var(--t-caption); letter-spacing:normal; text-transform:none; }}
+.qa-summary .specs dd {{ font-size:var(--t-card-title); color:var(--ink-900); }}
+:focus-visible {{ outline:2px solid var(--kelp-700); outline-offset:4px; }}
 .legend {{ margin-top:var(--s-6); }}
 .legend + .grid {{ margin-top:var(--s-6); }}
 .legend dl {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3) var(--s-6); margin:0; }}
@@ -1553,9 +1705,10 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   <header>
     <p class="kicker">AgentDeck · Build health</p>
     <h1>Test Report</h1>
-    <p class="lede">The latest master run, in full: what passed, what each check proves and does not prove, and where the gaps are. This is the maintainer's evidence that the build works — not a product analytics dashboard.</p>
-    <p class="run-chip"><span class="dot {overall}"></span>{"Pass" if overall == "pass" else "Fail"} · {total_all:,} tests{commit_bit} · generated {now}</p>
+    <p class="lede">Review the decision, remaining risk and next action first; inspect the exact test evidence below.</p>
+    <p class="run-chip"><span class="dot {overall}"></span>{_DECISION_LABEL[overall]} · {total_all:,} tests{commit_bit} · generated {now}</p>
   </header>
+  {_render_qa_summary(counts, metadata)}
   <nav class="jump" aria-label="Sections">{jump}</nav>
   {body}
 </main>
@@ -1564,18 +1717,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
   Machine-readable: <a href="summary.json">summary.json</a> · <a href="run-metadata.json">run-metadata.json</a> · <a href="history.json">history.json</a> · <a href="verification-catalog.json">verification-catalog.json</a>.
 </footer>
 <script>
-// Site-wide language choice (Build Health's body stays English — CI evidence,
-// not authored copy); the selector only persists the choice for other routes.
-(function () {{
-  var el = document.getElementById('lang');
-  if (!el) return;
-  var KEY = 'agentdeck-design-locale';
-  try {{
-    var saved = localStorage.getItem(KEY) || 'en';
-    if (['en', 'ko', 'ja'].indexOf(saved) >= 0) el.value = saved;
-  }} catch (e) {{}}
-  el.addEventListener('change', function () {{ try {{ localStorage.setItem(KEY, el.value); }} catch (e) {{}} }});
-}})();
+{locale_script}
 </script>
 </body>
 </html>
@@ -1586,7 +1728,8 @@ def main():
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
     e2e = load_e2e()
-    vitest = merge_e2e(load_vitest(), e2e)
+    raw_vitest = load_vitest()
+    vitest = merge_e2e(raw_vitest, e2e)
     android = load_android_xml()
     cov = load_coverage()
     robot = load_robot_xml()
@@ -1594,20 +1737,9 @@ def main():
     history = load_history()
     metadata = load_metadata()
     if not metadata:
-        metadata = build_default_metadata(vitest, android, robot, e2e)
-        METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
-    else:
-        # Reconcile metadata with actual data presence — override stale not-run flags
-        suites = metadata.setdefault("suites", {})
-        if vitest and not suites.get("vitest", {}).get("executed"):
-            suites["vitest"] = {"status": "pass" if vitest.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
-        if e2e and not suites.get("e2e", {}).get("executed"):
-            suites["e2e"] = {"status": "pass" if e2e.get("numFailedTests", 0) == 0 else "fail", "executed": True, "note": ""}
-        if android and not suites.get("android", {}).get("executed"):
-            af = sum(s["failures"] + s["errors"] for s in android)
-            suites["android"] = {"status": "pass" if af == 0 else "fail", "executed": True, "note": ""}
-        if robot and not suites.get("robot", {}).get("executed"):
-            suites["robot"] = {"status": "pass" if robot["failed"] == 0 else "fail", "executed": True, "note": ""}
+        metadata = build_default_metadata(raw_vitest, android, robot, e2e)
+    metadata = reconcile_case_evidence(metadata, vitest, android, robot)
+    METADATA_JSON.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     if not vitest and not android and not robot:
         print("No test results found. Run 'pnpm test:report' first.")
@@ -1616,26 +1748,16 @@ def main():
     # Build scenario cross-reference
     scenario_results = build_scenario_results(scenarios, vitest, android, metadata) if scenarios else []
 
-    # Compute stats for history
-    vt_passed = vitest["numPassedTests"] if vitest else 0
-    vt_failed = vitest["numFailedTests"] if vitest else 0
-    vt_total = vitest["numTotalTests"] if vitest else 0
-    and_passed = sum(s["passed"] for s in android)
-    and_failed = sum(s["failures"] + s["errors"] for s in android)
-    and_total = sum(s["tests"] for s in android)
-    rob_passed = robot["passed"] if robot else 0
-    rob_failed = robot["failed"] if robot else 0
-    rob_total = robot["total"] if robot else 0
-    total_passed = vt_passed + and_passed + rob_passed
-    total_failed = vt_failed + and_failed + rob_failed
-    total_all = vt_total + and_total + rob_total
+    # The same parsed assertions feed HTML, summary and history.
+    counts = result_counts(vitest, android, robot)
+    total_passed, total_failed, total_all = counts["passed"], counts["failed"], counts["total"]
     cov_total = cov.get("total", {}) if cov else {}
     lines_pct = cov_total.get("lines", {}).get("pct", 0)
 
     # Update history
     history = update_history(history, total_passed, total_failed, total_all, lines_pct, metadata)
 
-    write_summary(metadata, total_passed, total_failed, total_all)
+    write_summary(metadata, total_passed, total_failed, total_all, counts)
     html = generate_html(vitest, android, cov, scenarios, scenario_results, history, metadata, robot,
                          load_workflow_status(), load_recorded_receipt(), load_this_run_receipt())
     OUTPUT_HTML.write_text(html, encoding="utf-8")
