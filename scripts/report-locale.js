@@ -70,6 +70,14 @@
         }
       }
     }
+    // Generated scenario spans start with " — "; trim removes its first space.
+    if (!translated) {
+      const leading = /^(—\s+)(.+)$/.exec(text);
+      if (leading) {
+        const body = translate(leading[2], locale);
+        if (body !== leading[2]) translated = leading[1] + body;
+      }
+    }
     // Composite catalog metadata, scenario summaries and screen-reader counts.
     if (!translated) {
       // Split the outer separator first so known phrases containing commas
