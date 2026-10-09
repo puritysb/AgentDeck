@@ -1,0 +1,113 @@
+# Dot connection and distribution decision
+
+Decision date: 2026-10-09. This is the current product and transport plan. It supersedes the public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), while retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Research is complete for this decision; real Dot interoperability and public distribution are not established.
+
+## Decision
+
+Build toward **AgentDeck + a local ChatGPT plugin + the user's existing Dot computer connection**. Keep AgentDeck on the user's Mac, require explicit local pairing, and reuse ChatGPT's existing account and computer permission. Do not require a second AgentDeck account or Sign in with ChatGPT merely to connect Dot.
+
+This is the selected product direction, not a claim that OpenAI currently offers self-service public distribution of that complete integration. Prove the local route in a private plugin first. Obtaining a supported public local-MCP distribution path is a separate launch gate. If that gate cannot be met, keep Dot integration an opt-in private preview; do not advertise a one-click public integration or substitute a hosted service silently.
+
+Use the official Secure MCP Tunnel only for the private MCP Events experiment and optional operator-managed use. Do not make a tunnel ID, Platform organization, API key, domain or certificate part of ordinary AgentDeck onboarding. No AgentDeck-operated public server is authorized by this decision.
+
+Three requested properties are not jointly established by the current public documentation: (1) no public service operated by AgentDeck or users, (2) install-and-consent onboarding for arbitrary users, and (3) cloud Dot event activation and return calls. Login and plugin packaging alone do not establish the third property's local transport. The release gate must remain visible rather than being hidden by more implementation.
+
+## What the official contracts establish
+
+| Topic | Confirmed evidence | Consequence for AgentDeck |
+|---|---|---|
+| Dot computer access | Dot can use a connected personal computer, local tasks and supported plugins. One personal computer can be connected; it must be online with ChatGPT open. Local skills require a connected computer. [Computers and apps](https://learn.chatgpt.com/docs/dots/computers-and-apps) | Existing computer access is the first route to test. It does not prove that an arbitrary local MCP server is exposed directly to Dot. |
+| Desktop-only plugins | Such plugins exist, but installation/use depends on the desktop app and supported surfaces. [Plugins](https://learn.chatgpt.com/docs/plugins) | A first-party desktop plugin is evidence of a product capability, not proof that third parties can register the same native extension. |
+| Public MCP distribution | Public submission requires a public HTTPS MCP endpoint. Developers unable to host local MCP publicly are directed to contact OpenAI about local MCP support. [Packaging](https://developers.openai.com/plugins/build/plugins#bundled-mcp-servers-and-lifecycle-hooks) | Do not promise public directory acceptance of a loopback URL, local executable or tunnel-backed server. |
+| Skills-only distribution | Skills-only packages have a submission path, but MCP configuration is excluded; credentials or persistent user settings require MCP in the documented migration guidance. [Skills-only submission](https://developers.openai.com/plugins/guides/submit-claude-plugin#submit-a-skills-only-plugin) | A setup/help skill can be published separately. Do not disguise an authenticated local service as a skills-only connection workaround. |
+| Commercial ChatGPT sign-in | Identity sign-in uses registered OAuth/OIDC clients; commercial access is a limited partner trial. Connector authorization and user sign-in are separate transactions. [Website sign-in](https://developers.openai.com/siwc/website), [plugin sign-in](https://developers.openai.com/siwc/chatgpt-plugin) | Useful if an AgentDeck account service is later needed, but it neither creates a local route nor grants tool permissions by itself. |
+| Open-source ChatGPT plan usage | A local open-source client can dynamically register without a partner API key/client secret and obtain permission for eligible model requests. It does not obtain ChatGPT conversations/account context. [Overview](https://developers.openai.com/siwc/token-sharing-open-source), [registration](https://developers.openai.com/siwc/token-sharing-open-source/sign-in) | This could power a separate AgentDeck AI feature. It does not connect to the user's existing Dot. Eligibility for a paid or remotely hosted product must not be inferred from the OSS flow. |
+| Plan-usage limitations | The current direct inference route excludes hosted MCP/connectors and several other hosted tools. [Preview limitations](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations) | Do not repurpose a plan-usage token as a tunnel-management token or a Dot-control API credential. |
+| MCP Events | ChatGPT subscribes to events produced by our server and supplies a signed HTTPS callback contract. The integration supports Work Cloud and dots. [MCP Events](https://developers.openai.com/plugins/build/mcp-events) | Events can wake an authorized workflow; they are not an OpenAI feed of every Dot state change. Tool calls to AgentDeck still require a reachable authenticated MCP path. |
+| Cloud Dot hooks and telemetry | Local/plugin command hooks do not run with cloud orchestration. Enterprise remote MCP hooks and cloud audit records have separate scopes; local OTel does not contain all cloud orchestration. [Cloud/local compatibility](https://learn.chatgpt.com/docs/enterprise/cloud-local-access#check-hooks-and-network-compatibility) | No personal-account lifecycle-hook workaround or claim that a local transcript/OTel collector observes all Dot activity. |
+| Official tunnel | An outbound client forwards MCP calls to a private server. It needs a tunnel identity, runtime key and permissions/workspace association; it is not a public plugin distribution route. [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) | Suitable for private interoperability testing. Each installation/organization owns its credentials; a publisher's key is never shipped. |
+
+No documented public API for a personal Dot's global live state, avatar synchronization, or arbitrary remote pause/approval was established in this review. This is a bounded research result, not a claim that no internal or future interface exists. Retain manual character import and the distinction between a reported interaction and target-side acknowledgement.
+
+## Target user experience and capability boundary
+
+The intended public flow, conditional on local-MCP distribution support, is:
+
+1. Install/open AgentDeck and install the AgentDeck plugin in ChatGPT.
+2. Grant the existing Dot's access to this Mac in ChatGPT, if not already granted.
+3. Approve a local AgentDeck pairing with visible scopes: selected context reads and request/report writes. Subsequent reconnects reuse a revocable grant.
+4. Ask Dot to use AgentDeck. Show a successful correlated round trip before declaring the connection ready.
+
+Account login, Dot computer permission, plugin installation and local pairing are separate grants. Reduce repeated setup by persisting valid grants, not by bypassing them. Installation does not silently share transcripts, authorize agent commands, or enroll an event subscription. User-configured subscriptions need their own supported enrollment flow.
+
+| Capability | Local-plugin preview | Private Events experiment | Public launch claim |
+|---|---|---|---|
+| Explicit Dot request reads selected AgentDeck context and returns a report | Candidate; must pass a real Dot/local-executor test | Candidate through tunneled MCP | Only after the relevant real-account and distribution gates |
+| Physical key automatically wakes a cloud Dot | Not established by local plugin installation | Candidate through MCP Events | Requires an officially supported subscription and MCP return path |
+| Show all unrelated cloud Dot work | Not available from the proposed contracts | Not supplied by MCP Events | Do not claim |
+| Show reported delegation/control relations | Reuse bounded report store | Same report store | Label report provenance; verified target observations remain distinct |
+| Work after ChatGPT quits | Local computer route becomes unavailable | May work if AgentDeck, tunnel and subscription remain usable; must test | Never infer cloud Dot stopped from local disconnect |
+| Work after Mac sleeps or AgentDeck stops | Local tools unavailable | Local tools unavailable | Keep historical reports; no always-online device promise |
+
+The public skills-only fallback is setup/documentation and user-invoked workflows supported by existing tools. It cannot be marketed as the authenticated live connection or event transport. Do not initially publish a skills-only listing under the assumption that MCP can simply be attached later: the [current submission flow](https://developers.openai.com/plugins/deploy/submission) does not support adding an MCP server to an existing skills-only plugin. Keep any such companion's identity and purpose explicit.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    Dot[Cloud Dot] -->|Existing computer permission; route to prove| Local[ChatGPT local execution]
+    Local -->|Plugin-scoped local credential| MCP[AgentDeck loopback MCP]
+    MCP --> Store[Shared request and report service]
+    Store --> Hub[Active Node or Swift daemon]
+    Hub --> Devices[Dashboard / Stream Deck / D200H / mobile / ESP32]
+    Dot -.->|Private experiment| Tunnel[OpenAI tunnel service]
+    Client[Official tunnel client] -->|Outbound HTTPS| Tunnel
+    Client -->|Scoped local credential| MCP
+    Store -.->|Signed events; subscribed experiment only| Callback[OpenAI callback]
+```
+
+The diagram is a proposed routing design. The first edge must be tested with Dot itself; a Codex local-tool success does not prove it. If Dot delegates the call to a local task, record that execution context and label the result accordingly instead of claiming a direct Dot MCP invocation.
+
+Keep one domain service for request creation, claims, context, reports, relationships, expiry, revocation and rendering. Transports adapt to it; neither a plugin nor a tunnel owns the source of truth. Reuse the existing schemas and per-surface freshness rules. Do not add a fake session, inflate workload counts, or resurrect a stale WORKING animation during reconnection.
+
+The proposed local adapter binds loopback only and uses an explicit, revocable, plugin-scoped grant. It exposes a route allow-list and bounded payloads, rejects invalid Host/Origin and unsolicited browser access as appropriate, and rate-limits pairing. Loopback location is not authentication. Pair through a user-confirmed one-time transaction; keep credentials outside model prompts/results and plugin archives. Never reuse the hub's LAN pairing token or OpenAI session cookies. Multi-user/workspace identity must be bound by the transport; a model-written actor label cannot establish identity.
+
+The official-client experiment has a separate local credential and restricted personal/workspace context. A fixed header supplied by one operator cannot identify separate users in a shared tunnel. OAuth discovery passing through the tunnel does not make the authorization server automatically reachable; test its browser and token paths independently. Do not promote the private experiment's authentication arrangement to multi-user/public distribution.
+
+Swift implements the local adapter in-process using native networking and Keychain, under the existing daemon ownership/isolation rules. Node exposes the same domain contract. No shell, embedded interpreter, official tunnel binary or external-helper installation prompt is added to the App Store app. These are [repository product constraints](../.claude/rules/apple-release.md), not a prediction of App Review acceptance. A signed sandboxed Release test remains required.
+
+A future in-process Swift tunnel client would require a documented supported protocol/SDK, authorized credential provisioning and native compatibility validation. Porting observed traffic from the official binary is not a selected solution. A future AgentDeck-operated relay would change the no-public-service decision and introduce account, availability, privacy and operating-cost responsibilities; it is outside this plan.
+
+## Implementation and validation order
+
+| Stage | Concrete deliverable | Exit or fallback |
+|---|---|---|
+| 0. Correct the product contract | This decision, legacy-plan supersession, App Store planned rows, honest setup/display wording | No requirement for public DNS/certificates in the selected product plan; existing implementation remains clearly marked experimental |
+| 1. Finish local transport parity | Node and Swift loopback adapter over the existing store; explicit pairing/revocation; plugin capability discovery; separate local/Events capability flags | Positive/negative auth tests, expiry/restart/ownership tests and signed sandbox validation. Generated shared constants, no new per-platform magic values |
+| 2. Prove local plugin execution | Private marketplace package with setup/use skills and authenticated MCP configuration; fresh user profile and real Dot tests | Demonstrate which executor invokes which tool, without manual token/file editing. If only local Codex works, label only local Codex support |
+| 3. Prove Dot workflows | Ten correlated context/claim/report round trips, including a delegated local task, idle resume, disconnect, stale report, revoked grant and account/workspace mismatch | Record call provenance, required approvals, failures and timings. No completion inferred from receipt or silence |
+| 4. Prove optional Events | Official private tunnel, discovery, event list, subscribe/verify, delivery, report, refresh and unsubscribe using a real Dot | Button-to-result test plus duplicate/out-of-order/expiry/offline tests. A mocked callback or HTTP 2xx does not pass |
+| 5. Resolve public distribution | OpenAI confirmation of third-party local-MCP packaging, Dot/local support, authentication and supported install/update path; clean-profile install test | If unavailable, remain a private preview. Do not replace it with a public relay or hide manual tunnel credentials behind misleading copy |
+| 6. Release the demonstrated scope | Full repository verification, Release archive gate, Node/Swift parity, physical surface acceptance and review/privacy text | Publish only capabilities whose transport, account, lifecycle and installation gates passed |
+
+The real-account lifecycle matrix must cover ChatGPT foreground/background/window-close/full-quit, AgentDeck stopped/restarted, Mac sleep/wake, computer permission revoked, plugin disabled/uninstalled and the selected connection revoked. Keep each signal separate. A local task already running may behave differently from a newly requested task; test both. Do not quit the only client controlling the test.
+
+Physical acceptance uses one desktop and one deck before widening to all surfaces. Reuse the existing Dot artwork, fixed deck position and custom image path. Render stale/unavailable reports quietly; state and relationships must remain readable without motion. Verify working-to-completed and working-to-stale on Swift as well as Node before another broad installation.
+
+## Questions to resolve with OpenAI
+
+These are prepared questions, not a sent message or an assumed partnership:
+
+- Can third-party publishers distribute a desktop-only loopback/stdio MCP plugin publicly, and what enrollment, review and signing requirements apply?
+- Can a Dot call that plugin through its connected Mac, or only delegate to a local Work/Codex task? Which account plans, operating systems and workspaces support it?
+- Does that local transport support MCP 2.0 Events discovery, subscription creation/refresh and later cloud calls, including while no local task is open?
+- Is there a supported native SDK or delegated credential flow that lets an App Store app use Secure MCP Tunnel without a separate executable or a user-managed Platform API key?
+- Is there a public personal-Dot identity/activity/appearance contract? Which identifiers prove provenance and survive reconnects?
+
+Do not wait indefinitely for an answer: stages 1–3 can validate private local usability; stage 4 validates the already-authorized operator experiment independently. Stage 5 blocks a public zero-configuration claim, not the rest of AgentDeck's release.
+
+## Evidence at this decision
+
+Official sources above were retrieved on 2026-10-09. Repository review confirmed an existing native HTTPS/OAuth host, bounded report contracts and portable rendering, plus unfinished private-transport work in the earlier integration checkout. It did not establish a usable local plugin, a configured live Dot subscription, a public distribution entitlement, or a finished native loopback adapter.
+
+This research change modifies documentation only. It creates no tunnel, account, credential, subscription, public listener or production report. Existing source/deployment receipts remain evidence for their own tested scope; they do not establish the new transport or onboarding. Record future interoperability evidence separately with build identity, account surface, executor, transport, scenario and observed result.
