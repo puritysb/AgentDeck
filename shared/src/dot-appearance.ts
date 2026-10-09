@@ -4,6 +4,7 @@ export const DOT_APPEARANCE_RULES = Object.freeze({
   version: 1, portraitSize: 64, glyphSize: 16, sourceBytes: 2 * 1024 * 1024,
   sourcePixels: 4 * 1024 * 1024, portraitBytes: 24 * 1024,
   glyphBytes: 16 * 16 * 4, glyphBase64: 1368, relationBytes: 96,
+  pixelSizeDivisor: 6, pixelMinSize: 7, pixelMargin: 3, pixelYDivisor: 4,
   panelGlyphSize: 32, paperGlyphSize: 24, matrixGlyphSize: 7, panelMargin: 8,
 });
 export interface DotAppearance {
@@ -34,10 +35,11 @@ export function validDotAppearance(value: unknown): value is DotAppearance {
 export function compactDotAppearance(value: unknown): DotAppearance | null {
   return validDotAppearance(value) ? { version: value.version, id: value.id, rgba: value.rgba } : null;
 }
-export const DOT_PHASES = ['NO REPORT', 'HOST STOPPED', 'WORKING', 'NEEDS YOU', 'COMPLETED', 'FAILED', 'OLD REPORT', 'UNKNOWN'] as const;
+export const DOT_PHASES = ['AWAITING ACTIVITY', 'HOST STOPPED', 'WORKING', 'NEEDS YOU', 'COMPLETED', 'FAILED', 'OLD REPORT', 'UNKNOWN'] as const;
+export const DOT_COMPACT_LABELS = ['Dot', 'Stopped', 'Working', 'Help', 'Done', 'Failed', 'Old', 'Unknown'] as const;
 /** Original default geometry, shared by generated firmware and tiny host previews. */
 export const DOT_ORB_GEOMETRY = Object.freeze({ center: 7.5, radius: 7, eyeLeft: 5, eyeRight: 10, eyeTop: 5, eyeBottom: 9 });
-export function defaultDotRGBA(size = DOT_APPEARANCE_RULES.glyphSize): Uint8Array {
+export function defaultDotRGBA(size: number = DOT_APPEARANCE_RULES.glyphSize): Uint8Array {
   const out = new Uint8Array(size * size * 4);
   const g = DOT_ORB_GEOMETRY;
   const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -52,9 +54,10 @@ export function defaultDotRGBA(size = DOT_APPEARANCE_RULES.glyphSize): Uint8Arra
 }
 
 export const DOT_PHASE_COLORS = [Ink.s300, Ink.s300, UI.cyan, UI.attn, UI.ok, UI.error, Ink.s300, Ink.s300] as const;
+// Tiny matrices use recognizable punctuation, never provider/status initials.
+// Quiet states retain the unobstructed face; detail lives on the host.
 export const DOT_STATUS_MARKS = [
-  ['101','111','111','111','101'], ['111','100','111','001','111'],
-  ['101','101','101','111','010'], ['010','010','010','000','010'],
-  ['111','100','100','100','111'], ['111','100','110','100','100'],
+  [], [], ['010','101','010'], ['010','010','010','000','010'],
+  ['000','001','101','010','000'], ['101','010','101'],
   ['110','001','010','000','010'], ['110','001','010','000','010'],
 ] as const;

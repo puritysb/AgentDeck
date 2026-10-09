@@ -22,8 +22,9 @@ final class DotAquariumResident {
     private let portrait = ModelEntity()
     private let badge = ModelEntity()
     private var elapsed: Double = 0
+    var labelsVisible = true { didSet { badge.isEnabled = labelsVisible } }
     var animate = false
-    private let home = SIMD3<Float>(3.1, 3.8, 0.8)
+    private let home = SIMD3<Float>(2.9, 2.7, 1.4)
 
     init() {
         root.name = "dot-companion"
@@ -74,10 +75,13 @@ final class DotAquariumResident {
         if displayedCode != code {
             body.model?.materials = [SimpleMaterial(color: DotNativeColor(DotSurfaceView.tint(code)), roughness: 0.5, isMetallic: false)]
             displayedCode = code
-            let mark = "DOT " + DotAppearanceRules.labels[code]
+            let mark = code == 0 ? "Dot" : "Dot · " + DotAppearanceRules.labels[code].capitalized
             badge.model = ModelComponent(mesh: .generateText(mark, extrusionDepth: 0.002,
-                font: .init(name: "IBMPlexSans-Bold", size: 0.07) ?? .systemFont(ofSize: 0.07)),
+                font: .init(name: "IBMPlexSans-Bold", size: 0.10) ?? .systemFont(ofSize: 0.10)),
                 materials: [UnlitMaterial(color: DotNativeColor(DotSurfaceView.tint(code)))])
+            // Center the actual mesh rather than anchoring every variable-length label at the left eye.
+            let bounds = badge.visualBounds(relativeTo: badge)
+            badge.position = [-bounds.center.x, -0.43, 0.28]
         }
         if code != 2 { root.position = home }
     }

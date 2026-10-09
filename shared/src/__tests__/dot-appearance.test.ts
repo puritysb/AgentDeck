@@ -18,3 +18,7 @@ it('bounds compact monotonic validity to actual report age and expiry, including
   expect(dotSurfaceSnapshot({...s,hosting:false},null,null,now).code).toBe(1);
   expect(dotDeckPresentation(s,now+1000000).label).toBe('OLD REPORT');
 });
+
+it('describes missing reports without asserting a connection or global idle', () => {
+  expect(dotDeckPresentation({configured:true,hosting:true,reportState:null,reportedAt:null,expiresAt:null}).label).toBe('AWAITING ACTIVITY');
+});

@@ -811,7 +811,7 @@ void render(float dt) {
             DotCompanion::glyph(dotFrame, x, y, size, [](int px, int py, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
                 setPixelAlpha(px, py, (uint32_t(r) << 16) | (uint32_t(g) << 8) | b, a);
             });
-            snprintf(dotText, sizeof(dotText), "DOT %s\n%s", DotSurfaceRules::labels[code], dotFrame.relation);
+            snprintf(dotText, sizeof(dotText), "%s%s%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code], dotFrame.relation[0] ? "\n" : "", dotFrame.relation);
             lv_obj_set_pos(dotLabel, max(0, x + size - 112), y + size + 4);
             lv_obj_set_width(dotLabel, 112);
             lv_obj_set_style_text_color(dotLabel, lv_color_hex(tint), 0);

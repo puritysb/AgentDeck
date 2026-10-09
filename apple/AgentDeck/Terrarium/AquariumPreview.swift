@@ -109,6 +109,7 @@ struct LivingAquariumScene: View {
                 cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     residents.labelsVisible = !viewingMode
+                    dot.labelsVisible = !viewingMode
                     cameraRig.camera?.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
                 }

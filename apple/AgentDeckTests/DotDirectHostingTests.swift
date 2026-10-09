@@ -374,5 +374,24 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertNil(legacy.dot)
     }
 
+    func testQuietMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
+        let dot = try JSONDecoder().decode(DotSurfaceSnapshot.self, from: Data("{\"configured\":true,\"hosting\":true}".utf8))
+        for width in [32, 64] {
+            let pixels = [UInt8](DotPixelOverlay.paint(Data(repeating: 13, count: width * width * 3), width: width, dot: dot))
+            let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
+            let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor
+            for y in 0..<width { for x in 0..<width {
+                if x < x0 || x >= x0 + size || y < y0 || y >= y0 + size {
+                    XCTAssertEqual(pixels[(y * width + x) * 3], 13)
+                }
+            } }
+            for eye in [5, 10] {
+                let x = x0 + Int((Double(eye * (size - 1)) / 15).rounded())
+                let y = y0 + Int((Double(5 * (size - 1)) / 15).rounded())
+                XCTAssertLessThan(pixels[(y * width + x) * 3], 60)
+            }
+        }
+    }
+
 }
 #endif

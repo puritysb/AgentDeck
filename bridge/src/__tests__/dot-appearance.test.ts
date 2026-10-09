@@ -58,3 +58,30 @@ it('preserves the collective 11-pixel face and changes only a separate Dot regio
   expect(large).not.toEqual(before);
   expect(paintDotPixels(before.slice(),64,null)).toEqual(before);
 });
+
+it('keeps the matrix habitat unframed and unlettered, with a bounded activity cue', () => {
+  const now = 1800000000000;
+  const quiet = {configured:true, hosting:true, reportState:null, reportedAt:null, expiresAt:null};
+  for (const width of [32,64]) {
+    const plain = new Uint8Array(width*width*3).fill(13);
+    const painted = paintDotPixels(plain.slice(),width,quiet,now);
+    const size = Math.max(R.pixelMinSize,Math.floor(width/R.pixelSizeDivisor));
+    const x0=width-size-R.pixelMargin, y0=Math.floor(width/R.pixelYDivisor);
+    for(let y=0;y<width;y++) for(let x=0;x<width;x++) {
+      if(x<x0 || x>=x0+size || y<y0 || y>=y0+size) {
+        expect([...painted.slice((y*width+x)*3,(y*width+x+1)*3)]).toEqual([13,13,13]);
+      }
+    }
+    // At native size both dark eyes must survive; nearest-neighbor shrink lost them.
+    const eyeY=y0+Math.round(5*(size-1)/15);
+    for(const eye of [5,10]) {
+      const eyeX=x0+Math.round(eye*(size-1)/15);
+      const i=(eyeY*width+eyeX)*3;
+      expect(painted[i]).toBeLessThan(60);
+    }
+    const working = paintDotPixels(plain.slice(),width,{...quiet,reportState:'working',reportedAt:now,expiresAt:now+60000},now);
+    expect(working).not.toEqual(painted);
+    const expired=paintDotPixels(plain.slice(),width,{...quiet,reportState:'working',reportedAt:now,expiresAt:now+60000},now+60001);
+    expect(expired).not.toEqual(working);
+  }
+});

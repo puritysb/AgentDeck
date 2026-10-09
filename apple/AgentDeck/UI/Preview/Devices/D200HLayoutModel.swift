@@ -31,7 +31,7 @@
 // entry tiles; the picker sub-view itself is listed under INTENTIONALLY OMITTED.
 // SYNC-HASH shared/src/d200h-layout.ts 64612c5a5fcc17cb9439695fb0159c80215080ec
 // SYNC-HASH shared/src/session-utils.ts 1a1728e640a5dc3a8b55b61e309431c7debecad1
-// SYNC-HASH shared/src/dot-deck.ts b3f49ceb42666321a7732bb8659e64bbee4e9b9b
+// SYNC-HASH shared/src/dot-deck.ts fc6e1df34a44af71c36beb348a493cb12e95947d
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the

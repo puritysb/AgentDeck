@@ -10,11 +10,16 @@ enum DotAppearanceRules {
     static let glyphBytes = 1024
     static let glyphBase64 = 1368
     static let relationBytes = 96
+    static let pixelSizeDivisor = 6
+    static let pixelMinSize = 7
+    static let pixelMargin = 3
+    static let pixelYDivisor = 4
     static let panelGlyphSize = 32
     static let paperGlyphSize = 24
     static let matrixGlyphSize = 7
     static let panelMargin = 8
-    static let labels = ["NO REPORT", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN"]
+    static let labels = ["AWAITING ACTIVITY", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN"]
+    static let compactLabels = ["Dot", "Stopped", "Working", "Help", "Done", "Failed", "Old", "Unknown"]
 }
 struct DotAppearance: Codable, Equatable, Sendable {
     var version: Int; var id: String; var png: String?; var rgba: String
