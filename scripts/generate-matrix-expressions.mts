@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MATRIX_RULES, MATRIX_POLICY, MATRIX_AGENTS, MATRIX_KINDS, MATRIX_FACES, MATRIX_FACE_PIPS, UI } from '../shared/src/index.js';
-import { MATRIX_COLORS, MATRIX_LAYOUT, MATRIX_GLYPHS, MATRIX_FACE_COLORS, MATRIX_FACE_LAYOUT, renderMatrixBase, renderMatrixFace, matrixDigit, rgb } from '../bridge/src/pixoo/matrix-art.js';
+import { MATRIX_RULES, MATRIX_POLICY, MATRIX_AGENTS, MATRIX_KINDS, MATRIX_FACES, UI } from '../shared/src/index.js';
+import { MATRIX_COLORS, MATRIX_LAYOUT, MATRIX_GLYPHS, renderMatrixBase, renderMatrixFace, matrixDigit, rgb } from '../bridge/src/pixoo/matrix-art.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function encodeFrame(frame: Uint8Array): string {
   const packed: number[] = [];
@@ -36,7 +36,6 @@ import Foundation
 enum MatrixFrames {
 ${Object.entries(MATRIX_RULES).map(([k, v]) => `    static let ${k} = ${v}`).join('\n')}
 ${Object.entries(MATRIX_LAYOUT).map(([k, v]) => `    static let ${k} = ${v}`).join('\n')}
-${Object.entries(MATRIX_FACE_LAYOUT).map(([k, v]) => `    static let ${k} = ${v}`).join('\n')}
     static let awaitingPrefix = ${JSON.stringify(MATRIX_POLICY.awaitingPrefix)}
     static let stateKinds: [String: String] = ${map(Object.entries(MATRIX_POLICY.stateKinds))}
 ${['resultTypes', 'rejectedStatuses', 'replyTypes', 'askTypes', 'closeTypes', 'priority', 'urgent', 'summaryKinds'].map(k => `    static let ${k}: [String] = ${JSON.stringify(MATRIX_POLICY[k as keyof typeof MATRIX_POLICY])}`).join('\n')}
@@ -44,8 +43,6 @@ ${['resultTypes', 'rejectedStatuses', 'replyTypes', 'askTypes', 'closeTypes', 'p
     static let awaitingFaces: [[String]] = ${JSON.stringify(MATRIX_POLICY.awaitingFaces)}
     static let ciFaces: [String: String] = ${map(MATRIX_POLICY.ciFaces.map(([k, v]) => [k, v]))}
     static let gatewayAgent = ${JSON.stringify(MATRIX_POLICY.gatewayAgent)}
-    static let facePips: [String: Int] = ${map(Object.entries(MATRIX_FACE_PIPS))}
-    static let faceColors: [String: [UInt8]] = ${map(Object.entries(MATRIX_FACE_COLORS).map(([k, v]) => [k, rgb(v)]))}
     static let colors: [String: [UInt8]] = ${map(Object.entries(MATRIX_COLORS).map(([k, v]) => [k, rgb(v)]))}
     static let overflow: [UInt8] = ${JSON.stringify(rgb(UI.hudText))}
     static let digits: [String: [Int]] = ${map([..."0123456789+-"].map(d => [d, matrixDigit(d)]))}
