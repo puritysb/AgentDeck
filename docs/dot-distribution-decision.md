@@ -166,3 +166,61 @@ The released rendering fixes remain valid: an approved local grant without a
 report displays **Awaiting activity** in status chrome and no habitat creature.
 The local transport is a private preview; **Dot interoperability remains blocked
 at tool availability**, and no public Dot integration claim is justified yet.
+
+## Official tunnel preflight
+
+Test date: 2026-10-09. Immediately after the operator signed into Platform, the
+Personal organization displayed **Tunnels access required**, and the linked roles
+page refused `organization.read`. On returning to Tunnels after login settled,
+the page instead showed **No tunnels yet** and an enabled Create tunnel button.
+The creation form offered the personal organization and one associated ChatGPT
+workspace. The initial permission errors were transient observations, not a
+confirmed account blocker. Do not infer a required paid plan or a universal
+personal-account exclusion from them. The operator then created the private
+AgentDeck tunnel. Its saved name and organization/workspace associations were
+verified in the edit form without changing them.
+
+The official Darwin ARM64 `tunnel-client` release v0.0.16 was downloaded from the
+OpenAI release repository and matched against its published SHA-256 asset digest.
+The operator created a one-day runtime key restricted to Tunnels Read + Use and
+saved it privately in a mode-0600 file. The profile stores only a file reference.
+`doctor` passed and the official managed `runtimes connect` process started.
+A subsequent `runtimes status` reported a running process, `ready`, and no remote
+error. No public AgentDeck listener was added.
+
+This proves tunnel runtime readiness, **not authenticated MCP or Dot acceptance**.
+The local MCP initialization probe returned `401 Unauthorized`; the official
+client explicitly allows readiness when MCP initialization requires auth. Its
+OAuth discovery found AgentDeck metadata, but the automatically discovered
+loopback HTTP OAuth targets were rejected by Harpoon's HTTPS policy. The
+plaintext override remains disabled. Even resolving that transport issue alone
+would not fix the OAuth client contract: AgentDeck's current local mode allows
+its registered local client and loopback callbacks only. A harmless request with
+an HTTPS callback was rejected with `400 invalid_request`, as designed.
+
+A dedicated, locally held OAuth grant and official static MCP header support
+remain a candidate for this single-operator experiment. They are not configured:
+AgentDeck access tokens expire after five minutes, so one pasted token would not
+provide a maintained connection. Any such arrangement needs refresh/expiry and
+revocation handling, a separate approved grant, and a private workspace boundary.
+It cannot identify separate users sharing a tunnel. Do not reuse the existing
+local Codex grant or disable MCP authentication to make discovery pass.
+
+Resume using the [official setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels):
+
+1. Confirm that ChatGPT's custom MCP form lists the created tunnel and inspect
+   its authentication/callback requirements before selecting an implementation.
+   Computer-use access to the native ChatGPT/Codex app was denied by the tool;
+   the operator must perform that UI step rather than using an automation bypass.
+2. Establish authenticated discovery with a separately approved scoped client.
+   Test browser authorization, token exchange, refresh, expiry and revocation
+   independently of tunnel readiness. Do not reset existing local grants while
+   adapting the cloud-client contract.
+3. Create a fresh test request only when the actual Dot can access the tools;
+   earlier test requests expired. Verify correlated read/claim/working/completed
+   calls and disconnect/reconnect behavior. Keep shared context limited to the
+   test payload. A successful probe from this local Codex chat is not Dot proof.
+
+The runtime key is short-lived and requires operator renewal after expiry. No
+admin key, production subscription or successful real Dot report exists in this
+experiment. The main daemon and operator-control ports are not tunnel targets.
