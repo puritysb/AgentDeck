@@ -178,7 +178,9 @@ The shared `DOT_HABITAT_PHASES` allow-list admits only valid working, attention,
 completed and failed reports to immersive scenes and matrix overlays. Its generated
 Swift/Kotlin/C++ mirrors prevent configuration or OAuth permission alone from
 creating a floating resident. The toolbar and fixed first deck key retain setup
-and history access. Removing an orb never removes an agent session or its controls.
+and history access. On Android tablets this is a measured row below the AgentDeck
+hub in the scrollable System rail, never an absolute overlay over provider quotas.
+Details open on tap. Removing an orb never removes an agent session or its controls.
 
 The dedicated TC001 DOT status page and paper/status chrome may keep a labeled
 connection state. They are diagnostic controls, not evidence of a present habitat
