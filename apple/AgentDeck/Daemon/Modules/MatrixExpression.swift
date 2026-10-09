@@ -223,14 +223,7 @@ struct MatrixExpression {
             for c in 0..<3 { out[(y * size + x) * 3 + c] = UInt8((Double(color[c]) * intensity).rounded()) }
         }
         if size == 11 {
-            // Chin pips (matrix-art.ts paintFacePips): steady, centred, at most pipMax.
-            if let minimum = MatrixFrames.facePips[face], scene.pips >= minimum, let color = MatrixFrames.faceColors[face] {
-                let n = min(MatrixFrames.pipMax, scene.pips)
-                let x0 = Double(MatrixFrames.pipCenter) - Double((n - 1) * MatrixFrames.pipStep) / 2
-                for i in 0..<n {
-                    put(Int(x0) + i * MatrixFrames.pipStep, MatrixFrames.pipY, color, MatrixFrames.pipIntensity)
-                }
-            }
+            // The small panel is a face; population counts stay in scene metadata.
             return Data(out)
         }
         func number(_ value: Int, _ y: Int, _ tone: String) {
