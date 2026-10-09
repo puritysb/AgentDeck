@@ -66,3 +66,6 @@ export * from './daemon-parity.js';
 export * from './ci-wait.js';
 
 export * from './session-settings-client.js';
+
+export * from './dot-appearance.js';
+export * from './dot-pixels.js';

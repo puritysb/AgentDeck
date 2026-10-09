@@ -37,7 +37,8 @@ bool SimMatrix::renderToPng(const char* scene, const char* page, int frames,
     g_sim_millis += 33;
     animTime += dt;
     fill_solid(leds, MATRIX_W * MATRIX_H, CRGB::Black);
-    if (std::strcmp(page, "agents") == 0) MatrixPages::renderAgents(leds, animTime);
+    if (std::strcmp(page, "dot") == 0) MatrixPages::renderDot(leds, animTime);
+    else if (std::strcmp(page, "agents") == 0) MatrixPages::renderAgents(leds, animTime);
     else if (std::strcmp(page, "codex") == 0) MatrixPages::renderCodex(leds, animTime);
     else if (std::strcmp(page, "zai") == 0) MatrixPages::renderZai(leds, animTime);
     else MatrixPages::renderUsage(leds, animTime);

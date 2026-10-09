@@ -27,6 +27,7 @@ import {
 export type LayoutMode = 'wide' | 'standard' | 'narrow';
 
 export interface DashboardState {
+  dot?: import("@agentdeck/shared").DotDeckSnapshot | null;
   state: string;
   connectionStatus: 'connected' | 'reconnecting' | 'disconnected';
   /** A connection succeeded at least once (names the Reconnecting phase). */
@@ -468,6 +469,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<void> {
       case 'sessions_list': {
         const e = event as SessionsListEvent;
         state.sessions = e.sessions;
+        state.dot = e.dot ?? null;
         // Update crayfish routing from sibling states
         const ocSibling = e.sessions.find(s =>
           s.agentType === 'openclaw' && s.state === 'processing'

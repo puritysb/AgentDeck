@@ -1,3 +1,4 @@
+import { dotDeckPresentation } from '@agentdeck/shared';
 /**
  * TUI Dashboard renderer — the "tide console".
  *
@@ -250,6 +251,7 @@ function renderHeader(state: DashboardState, cards: RosterCard[], cols: number, 
   if (c.idle) parts.push(`${ink.idle}${stateGlyph('idle')} ${c.idle} idle${RESET}`);
   if (c.offline) parts.push(`${ink.offline}${stateGlyph('disconnected')} ${c.offline} offline${RESET}`);
   if (state.gatewayHasError) parts.push(`${ink.error}${terminalCaps.unicode ? '⚠' : '!'} Gateway error${RESET}`);
+  if (state.connectionStatus === "connected" && state.dot?.configured) parts.push(`${ink.sub}Dot · ${dotDeckPresentation(state.dot).label} · report${RESET}`);
   const voice = voiceLabel(state);
   if (voice) parts.push(voice);
   const left = ` ${mark}  ${link.dot} ${ink.sub}${link.text}${RESET}${stale}`;

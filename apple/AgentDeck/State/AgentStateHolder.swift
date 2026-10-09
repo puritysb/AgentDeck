@@ -770,6 +770,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             displaySync.handleDisplayState(displayOn: e.displayOn, dim: e.dim)
         case .sessionsList(let e):
             state.siblingSessions = e.sessions
+            state.dot = e.dot
             #if os(macOS)
             // Post/clear the "needs your response" system notification for
             // sessions entering/leaving an awaiting state. App-layer so it
@@ -1190,6 +1191,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         timelineVersion += 1
         // Preserve lastKnownState for offline display
         state.bridgeConnected = false
+        state.dot = nil
         state.gatewayAuthStatus = nil
         state.gatewayConnected = false
         state.gatewayAvailable = false

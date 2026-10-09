@@ -154,6 +154,9 @@ private struct PixooPixelGrid: View {
 
 // MARK: - Ulanzi TC001 matrix
 //
+// Firmware also has an optional independent DOT page. This view mirrors only
+// renderAgents; the DOT page is verified by the actual firmware simulator,
+// and does not change AGENTS pixels or session counts.
 // Firmware cycles AGENTS and the live Claude/Codex/z.ai usage pages. Each
 // usage page keeps the official provider mark beside its window/percentage,
 // alternates present windows every four seconds, and overlays agent activity.
@@ -161,7 +164,7 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 2945bf6831d56497731b4a3843aae22e23373f1d
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp bcf4126c9687dcd2709960b61dcf68b842b1b4ec
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 

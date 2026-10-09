@@ -65,6 +65,7 @@ enum PromptType: String, Codable, Sendable {
 // MARK: - Dashboard State (composite observable state)
 
 struct DashboardState: Sendable {
+    var dot: DotSurfaceSnapshot? = nil
     // Connection
     var bridgeConnected = false
     /// Session that produced the latest state/update payload. This is used

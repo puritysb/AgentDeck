@@ -1,3 +1,5 @@
+#include "../companion/dot_companion.h"
+#include "../product_palette.generated.h"
 #include "util/usage_severity.generated.h"
 #ifdef BOARD_LED8X32
 #include "../../util/usage_presentation.generated.h"
@@ -903,3 +905,20 @@ void MatrixPages::renderInfo(CRGB* leds, float animTime) {
 }
 #endif // renderInfo disabled
 #endif // BOARD_LED8X32
+
+#if defined(BOARD_LED8X32)
+void MatrixPages::renderDot(CRGB* leds, float animTime) {
+    static DotSurfaceState dot; // Reused 1.2 KiB; no stack/heap buffer per frame.
+    lockState(); if (g_state.dot) dot = *g_state.dot; else dot.configured = false; const bool connected = g_state.wsConnected || Net::serialConnected(); unlockState();
+    if (!connected) { renderDisconnectStatus(leds, animTime); return; }
+    fill_solid(leds, MATRIX_W * MATRIX_H, CRGB::Black);
+    if (!dot.configured) return;
+    const uint8_t code = dot.effectiveCode(millis());
+    DotCompanion::glyph(dot, 0, 0, DotSurfaceRules::matrixGlyphSize,
+        [leds](int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) { if (a >= 128) setPixel(leds, x, y, CRGB(r, g, b)); });
+    const char* text = code == 2 ? "WORK" : code == 3 ? "ASK" : code == 4 ? "DONE" : code == 5 ? "FAIL" : "DOT?";
+    const uint32_t color = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
+    MatrixFont::drawScrollText(leds, text, 9, 1, CRGB(color), MATRIX_W, MATRIX_H);
+}
+
+#endif // BOARD_LED8X32 Dot page

@@ -206,3 +206,11 @@ decisions follow from that:
 - Rendering steering buttons without real session options.
 
 Dashboard subscription presentation: plan names and reported subscription dates appear once in the owning upstream row. The full reported list remains available in Dashboard settings, including hidden providers.
+
+### Dot character and portable companion (development)
+
+| Capability | In-process App Store daemon | Node daemon | Boundary |
+|---|---|---|---|
+| Manual Dot character image | User-selected static PNG/WebP/JPEG, bounded ImageIO conversion and container persistence | Explicit local CLI import/reset, bounded sharp conversion | No OpenAI avatar API or automatic synchronization; no image URL fetching or executable model import |
+| Portable Dot companion | Authenticated normal/compact snapshots with independent status, appearance and latest report relation | Same additive snapshot; portraits stripped from compact transport | Separate from sessions/counts, no execution or approval authority |
+| Remote Apple/Android display | Read-only decoded companion; user image becomes a billboard in the Apple 3D scene | Host-authored snapshot | A 2D image does not become a volumetric character; report labels remain visible |

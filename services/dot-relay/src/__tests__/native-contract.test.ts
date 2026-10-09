@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { DOT_LIMITS, DOT_OAUTH_LIMITS, DOT_INTERACTION_RANK, DOT_INTERACTION_TERMINAL } from '@agentdeck/shared';
@@ -21,4 +22,8 @@ it('generates the same relation transition policy consumed by native rendering a
   expect(swift).toContain('next.targetRef == prior.targetRef');
   const terminal = swift.match(/static let terminal = (\[[^\]]+\])/)![1];
   expect(JSON.parse(terminal)).toEqual(DOT_INTERACTION_TERMINAL);
+});
+
+it('checks every generated portable model, phase table, pixel overlay and firmware glyph against the generator', () => {
+  execFileSync(process.execPath, ['services/dot-relay/generate-native.mjs', '--check'], { cwd: new URL('../../../../', import.meta.url), timeout: 30000 });
 });

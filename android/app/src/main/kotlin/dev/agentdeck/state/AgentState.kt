@@ -37,6 +37,7 @@ private inline fun stateDebug(message: () -> String) {
 }
 
 data class DashboardState(
+    val dot: dev.agentdeck.net.DotSurfaceSnapshot? = null,
     val agentState: AgentState = AgentState.DISCONNECTED,
     val permissionMode: PermissionMode = PermissionMode.DEFAULT,
     val agentType: String? = null,
@@ -324,7 +325,7 @@ class AgentStateHolder private constructor() {
                         Log.d(TAG, "  Session: id=${s.id}, agentType=${s.agentType}, state=${s.state}, projectName=${s.projectName}")
                     }
                 }
-                _state.update { it.copy(siblingSessions = event.sessions) }
+                _state.update { it.copy(siblingSessions = event.sessions, dot = event.dot) }
             }
 
             is BridgeEvent.EncoderState -> { /* Deck tab removed — ignore */ }
@@ -354,6 +355,7 @@ class AgentStateHolder private constructor() {
                 _state.update {
                     it.copy(
                         bridgeConnected = false,
+                        dot = null,
                         agentState = AgentState.DISCONNECTED,
                         hostDisplayOn = true,
                         gatewayConnected = false,

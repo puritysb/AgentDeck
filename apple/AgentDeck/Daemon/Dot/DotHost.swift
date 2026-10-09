@@ -9,6 +9,7 @@ struct DotHostConfiguration: Codable, Sendable {
 }
 struct DotHostSnapshot: Sendable {
     var resumeOnLaunch: Bool = false; var hosting: Bool = false; var available: Bool; var status: String; var origin: String; var clientID: String
+    var appearance: DotAppearance? = nil
     var consents: [DotConsent]; var grants: [DotGrant]; var reports: [DotBriefing]
     func deckSnapshot(now: Int) -> [String: Any]? {
         let value = self
@@ -17,10 +18,22 @@ struct DotHostSnapshot: Sendable {
         var reportState = latest?.report?.state
         if let latest, let report = latest.report, !["completed", "failed"].contains(report.state),
            (latest.expiresAt <= now || now - report.receivedAt >= DotLimits.reportFreshMs) { reportState = "stale" }
-        return ["configured": true, "hosting": value.hosting,
+        var result: [String: Any] = ["configured": true, "hosting": value.hosting,
                 "reportState": reportState as Any? ?? NSNull(),
                 "reportedAt": latest?.report?.receivedAt as Any? ?? NSNull(),
                 "expiresAt": latest?.expiresAt as Any? ?? NSNull()]
+        if let appearance, appearance.portrait != nil, let data = try? JSONEncoder().encode(appearance),
+           let dictionary = try? JSONSerialization.jsonObject(with: data) { result["appearance"] = dictionary }
+        let snapshot = DotSurfaceSnapshot(configured: true, hosting: value.hosting, reportState: reportState,
+            reportedAt: latest?.report?.receivedAt, expiresAt: latest?.expiresAt)
+        result["code"] = snapshot.phase(at: now)
+        result["validForMs"] = snapshot.phase(at: now) == 2 || snapshot.phase(at: now) == 3
+            ? max(0, min(DotLimits.reportFreshMs - (now - (latest?.report?.receivedAt ?? 0)), (latest?.expiresAt ?? now) - now)) : 0
+        if let edge = latest?.interactions?.last {
+            result["relation"] = ["kind": edge.kind, "direction": edge.direction, "stage": edge.stage,
+                "target": edge.targetRef as Any? ?? NSNull(), "receivedAt": edge.receivedAt, "evidence": "dot_report"]
+        }
+        return result
     }
 
 }
@@ -45,7 +58,7 @@ final class DotHost {
         stop(); activeOwner = nil
     }
     func snapshot() -> DotHostSnapshot {
-        .init(resumeOnLaunch: config?.resumeOnLaunch == true, hosting: active && listener.isReady, available: activeOwner != nil, status: error ?? listener.state, origin: config?.origin ?? "", clientID: config?.oauth.clientID ?? "",
+        .init(resumeOnLaunch: config?.resumeOnLaunch == true, hosting: active && listener.isReady, available: activeOwner != nil, status: error ?? listener.state, origin: config?.origin ?? "", clientID: config?.oauth.clientID ?? "", appearance: DotAppearanceStore.current(),
               consents: oauth?.requests() ?? [], grants: oauth?.grants() ?? [], reports: store?.requests() ?? [])
     }
     func deckSnapshot() -> [String: Any]? {

@@ -248,7 +248,8 @@ describe('expressive BLE matrices', () => {
       const exe = path.join(temp, 'parity');
       execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Model/ObservedAgentRules.generated.swift',
         'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
-        'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
+        'apple/AgentDeck/Daemon/Dot/DotRules.generated.swift', 'apple/AgentDeck/Model/DotSurface.generated.swift',
+        'apple/AgentDeck/Model/DotPixels.generated.swift', 'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
       const steps: { now: number; event?: Record<string, unknown> }[] = [{ now: 0 }];
       const add = (now: number, event?: Record<string, unknown>) => steps.push({ now, event });
       add(1, { type: 'sessions_list', sessions: [] });

@@ -33,13 +33,14 @@ struct MatrixExpression {
         var face: String = ""
         var pips: Int = 0
     }
+    private var dot: DotSurfaceSnapshot?
     private var sessions: [Resident]?
     private var timeline: [Result] = []
     private var seen: [String] = []
     private var arrival: (id: String, ts: Double)?
     private var gatewayHasError = false
 
-    mutating func reset() { sessions = nil; timeline = []; arrival = nil; seen = []; gatewayHasError = false }
+    mutating func reset() { sessions = nil; dot = nil; timeline = []; arrival = nil; seen = []; gatewayHasError = false }
     static func state(_ state: String) -> String {
         state.hasPrefix(MatrixFrames.awaitingPrefix) ? "waiting" : MatrixFrames.stateKinds[state] ?? "idle"
     }
@@ -55,6 +56,9 @@ struct MatrixExpression {
     mutating func ingest(_ event: [String: Any], now: Double) {
         switch event["type"] as? String {
         case "sessions_list":
+            dot = nil
+            if let raw = event["dot"] as? [String: Any], JSONSerialization.isValidJSONObject(raw),
+               let data = try? JSONSerialization.data(withJSONObject: raw) { dot = try? JSONDecoder().decode(DotSurfaceSnapshot.self, from: data) }
             guard let raw = event["sessions"] as? [[String: Any]] else { return }
             let incoming = raw.compactMap { row -> Resident? in
                 guard let id = row["id"] as? String else { return nil }
@@ -209,7 +213,7 @@ struct MatrixExpression {
         return live.isEmpty ? ("empty", 0) : ("idle", live.count)
     }
     func render(size: Int, now: Double) -> Data {
-        Self.render(size: size, scene: scene(now: now))
+        DotPixelOverlay.paint(Self.render(size: size, scene: scene(now: now)), width: size, dot: dot, now: Int(now))
     }
     static func render(size: Int, scene: Scene) -> Data {
         precondition(size == 11 || size == 32)

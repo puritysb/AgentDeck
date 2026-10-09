@@ -1,3 +1,4 @@
+#include "dot_state.h"
 #pragma once
 
 #include <cstdint>
@@ -171,6 +172,7 @@ constexpr uint8_t KNOB_SCRUB_CAP = 12;
 
 // ===== Main dashboard state =====
 struct DashboardState {
+    DotSurfaceState* dot = nullptr; // Protocol owns one fallible reusable heap object.
     // Connection
     bool wsConnected;
     char bridgeIp[16];

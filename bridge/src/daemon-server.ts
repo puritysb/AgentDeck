@@ -1,3 +1,5 @@
+import { dotSurfaceSnapshot } from '@agentdeck/shared';
+import { readDotAppearance } from './dot-appearance.js';
 import { startConfiguredDotHost, dotResultModule, readDotConfiguration } from './dot-host.js';
 import { CiWaitProcesses } from './ci-wait-process.js';
 import { probeCiWait } from './ci-wait-probe.js';
@@ -4836,8 +4838,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     return modules;
   };
   core.setModuleHealthProvider(moduleHealthProvider);
-  core.setDotDeckProvider(() => dotHost?.deckSnapshot() ?? (dotConfigured
-    ? { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null } : null));
+  core.setDotDeckProvider(() => { const dot = dotHost?.deckSnapshot() ?? (dotConfigured
+    ? { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null } : null);
+    return dot ? dotSurfaceSnapshot(dot, readDotAppearance(getDataDir()), dot.relation ?? null) : null;
+  });
 
   // iDotMatrix BLE is now driven by IDotMatrixModule (registered in
   // createDefaultModules): the module owns spawning the Python sync client,

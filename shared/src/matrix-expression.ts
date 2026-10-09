@@ -1,3 +1,4 @@
+import type { DotDeckSnapshot } from './protocol.js';
 /** BLE expression policy SSOT. Swift constants/frames are generated; sequence tests
  * execute both engines. Animation is expressive motion, not a quota alarm. */
 import { sameSession } from './session-utils.js';
@@ -71,10 +72,12 @@ function sameRowSession(a: MatrixResult, b: MatrixResult): boolean {
   return a.sessionId === b.sessionId || sameSession(a.sessionId, b.sessionId);
 }
 export interface MatrixBroadcast {
-  type: string; sessions?: MatrixSession[]; entries?: MatrixResult[];
+  type: string; dot?: DotDeckSnapshot | null; sessions?: MatrixSession[]; entries?: MatrixResult[];
   entry?: MatrixResult; upsert?: boolean; status?: string; gatewayHasError?: boolean;
 }
 export interface MatrixScene {
+  dot?: DotDeckSnapshot | null;
+  dotNow?: number;
   kind: MatrixKind; count: number; glyph: string; frame: number; roster: MatrixKind[]; counts: number[];
   /** Timebox face and its session count (pips). Optional for callers that
    *  build a 32×32 scene by hand; the 11×11 renderer falls back to `kind`. */
@@ -146,12 +149,13 @@ export function deskSignal(sessions: MatrixSession[] | null, timeline: MatrixRes
  * establish a baseline; only a subsequent genuinely new live id earns an entrance. */
 export class MatrixExpression {
   private sessions: MatrixSession[] | null = null;
+  private dot: DotDeckSnapshot | null = null;
   private timeline: MatrixResult[] = [];
   private seen = new Set<string>();
   private arrival: { id: string; ts: number } | null = null;
   private gatewayHasError = false;
   reset(): void {
-    this.sessions = null; this.timeline = []; this.arrival = null; this.seen.clear(); this.gatewayHasError = false;
+    this.sessions = null; this.dot = null; this.timeline = []; this.arrival = null; this.seen.clear(); this.gatewayHasError = false;
   }
   updateSessions(sessions: MatrixSession[], now: number): void {
     if (this.sessions !== null) {
@@ -172,7 +176,7 @@ export class MatrixExpression {
       .slice(-MATRIX_RULES.historyLimit);
   }
   ingest(event: MatrixBroadcast, now: number): void {
-    if (event.type === 'sessions_list' && event.sessions) this.updateSessions(event.sessions, now);
+    if (event.type === 'sessions_list' && event.sessions) { this.updateSessions(event.sessions, now); this.dot = event.dot ?? null; }
     else if (event.type === 'connection' && event.status === 'disconnected') this.reset();
     // Retain-on-absent: only an explicit boolean changes the Gateway verdict.
     else if (event.type === 'state_update' && typeof event.gatewayHasError === 'boolean') this.gatewayHasError = event.gatewayHasError;
@@ -219,7 +223,7 @@ export class MatrixExpression {
     }
     const { face, pips } = this.face(live, kind, now);
     const frameTime = kind === 'arrival' ? now - this.arrival!.ts : responseAt == null ? now : now - responseAt;
-    return { kind, count: kind === 'arrival' || kind === 'asked' || kind === 'reply' ? live.length : signal.count,
+    return { ...(this.dot?.configured ? { dot: this.dot, dotNow: now } : {}), kind, count: kind === 'arrival' || kind === 'asked' || kind === 'reply' ? live.length : signal.count,
       glyph, face, pips,
       frame: Math.floor(Math.max(0, frameTime) / MATRIX_RULES.frameMs) % MATRIX_RULES.frames,
       roster: live.map(s => matrixState(s.state)),

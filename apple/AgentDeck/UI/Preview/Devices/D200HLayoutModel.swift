@@ -31,7 +31,7 @@
 // entry tiles; the picker sub-view itself is listed under INTENTIONALLY OMITTED.
 // SYNC-HASH shared/src/d200h-layout.ts 64612c5a5fcc17cb9439695fb0159c80215080ec
 // SYNC-HASH shared/src/session-utils.ts 1a1728e640a5dc3a8b55b61e309431c7debecad1
-// SYNC-HASH shared/src/dot-deck.ts 72e6366e81a67aacf8e86caffd14152766198fb3
+// SYNC-HASH shared/src/dot-deck.ts b3f49ceb42666321a7732bb8659e64bbee4e9b9b
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -304,6 +304,7 @@ public struct D200HDeckInput: Sendable {
     public var state: String
     public var sessions: [D200HSession]
     public var dotLabel: String?
+    var dotAppearance: DotAppearance? = nil
     public var usage: D200HUsage?
     /// When set and equal to the open session id, that session's options are
     /// treated as navigable (TUI ❯ cursor) → `select_option`; otherwise a
@@ -440,6 +441,7 @@ public struct D200HUsagePairWindow: Equatable, Sendable {
 
 /// One key of the deck, addressed by `col`/`row` (index == row*GRID_COLS+col).
 public struct D200HKeySlot: Equatable, Sendable {
+    var dotAppearance: DotAppearance? = nil
     public let position: String        // "col_row"
     public let col: Int
     public let row: Int
@@ -558,7 +560,9 @@ public enum D200HLayoutModel {
         var out: [D200HKeySlot] = []
         if let pos = dotPosition {
             let (col, row) = parse(pos)
-            out.append(D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "dot", tone: "info"), label: "DOT", subtitle: input.dotLabel, action: .none))
+            var cell = D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "dot", tone: "info"), label: "DOT", subtitle: input.dotLabel, action: .none)
+            cell.dotAppearance = input.dotAppearance
+            out.append(cell)
         }
 
         func appendUsage() {

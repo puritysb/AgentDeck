@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "state/agent_state.h"
+#include "util/memory.h"
 #include <cstdio>
 #include <cstring>
 
@@ -174,6 +175,26 @@ bool applyDemoScene(const char* agent, const char* state) {
 }  // namespace
 
 bool SimScenes::apply(const char* name) {
+  if (std::strncmp(name, "dot:", 4) == 0) {
+    base(CreatureState::FLOATING);
+    addSession("claude-code", "idle", "Fixture workspace");
+    static auto storage = makeUniqueNoThrow<DotSurfaceState>();
+    if (!storage) return false;
+    g_state.dot = storage.get();
+    auto& dot = *g_state.dot; dot.configured = true; dot.hosting = true;
+    dot.code = 2; dot.receivedMs = millis(); dot.validForMs = DotSurfaceRules::reportFreshMs;
+    if (!std::strcmp(name + 4, "attention")) dot.code = 3;
+    else if (!std::strcmp(name + 4, "stopped")) { dot.hosting = false; dot.code = 1; }
+    else if (!std::strcmp(name + 4, "stale")) { dot.code = 6; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "custom")) {
+      dot.custom = true; std::memcpy(dot.rgba, DotSurfaceRules::defaultRgba, sizeof(dot.rgba));
+      for (size_t i = 0; i < sizeof(dot.rgba); i += 4) if (dot.rgba[i] > 100) {
+        dot.rgba[i] = 210; dot.rgba[i+1] = 80; dot.rgba[i+2] = 170;
+      }
+    }
+    setStr(dot.relation, sizeof(dot.relation), "CONTROL RUN Dot > agent? (report)");
+    return true;
+  }
   if (std::strncmp(name, "demo:", 5) == 0) {
     char agent[16] = {0};
     const char* sep = std::strchr(name + 5, ':');

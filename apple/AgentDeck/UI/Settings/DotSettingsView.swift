@@ -11,6 +11,7 @@ struct DotSettingsView: View {
     @State private var certificate: Data?
     @State private var certificateName = "No certificate selected"
     @State private var password = ""
+    @State private var selectingCharacter = false
     @State private var selectingCertificate = false
     @State private var replacing = false
     @State private var message: String?
@@ -24,6 +25,17 @@ struct DotSettingsView: View {
         GroupBox("Dot — direct connection") {
             VStack(alignment: .leading, spacing: 12) {
                 Text(snapshot.status).font(.callout)
+                HStack {
+                    Button("Choose character image…") { selectingCharacter = true }
+                    Button("Restore default character") { perform { try await DotAppearanceStore.reset() } }
+                }.disabled(busy)
+                if let appearance = snapshot.appearance {
+                    HStack {
+                        DotCharacterImage(appearance: appearance).frame(width: 64, height: 64)
+                        Text("Selected character").font(.caption)
+                    }
+                }
+                Text("Choose a static PNG, WebP or JPEG for AgentDeck. Status and relationship labels remain visible.").font(.caption).foregroundStyle(.secondary)
                 Text("AgentDeck receives requests directly on this Mac. Hosting stops when AgentDeck stops or the Mac sleeps.")
                     .font(.caption).foregroundStyle(.secondary)
                 if snapshot.available {
@@ -109,6 +121,16 @@ struct DotSettingsView: View {
                     }
                 }
             }.padding(8)
+        }
+        .fileImporter(isPresented: $selectingCharacter, allowedContentTypes: [.image]) { result in
+            do {
+                let url = try result.get(); let granted = url.startAccessingSecurityScopedResource()
+                defer { if granted { url.stopAccessingSecurityScopedResource() } }
+                let values = try url.resourceValues(forKeys: [.fileSizeKey])
+                guard (values.fileSize ?? Int.max) <= DotAppearanceRules.sourceBytes else { throw DotFailure.message("Character image is too large.") }
+                let data = try Data(contentsOf: url)
+                perform { try await DotAppearanceStore.importImage(data) }
+            } catch { message = error.localizedDescription }
         }
         .fileImporter(isPresented: $selectingCertificate, allowedContentTypes: [.data]) { result in
             do {

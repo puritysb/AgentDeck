@@ -1,3 +1,4 @@
+import { paintDotPixels } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 /** Canonical pixel art for both BLE runtimes. Swift consumes generated RLE frames
  * from this renderer, so eyes, official masks and motion cannot drift by platform. */
@@ -298,5 +299,5 @@ export function renderMatrixScene(size: 11 | 32, scene: MatrixScene): Uint8Array
     for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) put(x + dx, MATRIX_LAYOUT.dotY + dy, MATRIX_COLORS[kind], MATRIX_LAYOUT.dotIntensity);
     if (i === MATRIX_RULES.rosterDots - 1 && scene.roster.length > MATRIX_RULES.rosterDots) put(x, MATRIX_LAYOUT.dotY - 1, UI.hudText);
   });
-  return out;
+  return paintDotPixels(out, size, scene.dot, scene.dotNow);
 }

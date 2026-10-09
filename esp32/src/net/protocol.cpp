@@ -10,6 +10,7 @@
 #include "../util/reset_reason.h"
 #include "../util/usage_format.h"
 #include "../util/utf8.h"
+#include "../util/memory.h"
 #include "config.h"
 #include <ArduinoJson.h>
 #include <cmath>
@@ -411,9 +412,50 @@ static void handleUsageUpdate(JsonObject& obj) {
     unlockState();
 }
 
+static std::unique_ptr<DotSurfaceState> dotStorage;
+static void readDot(JsonVariantConst value) {
+    // 1.2 KiB, allocated only on first configuration and reused. Static DRAM is
+    // already full on TTGO; stack and per-message allocation are unsuitable.
+    const bool configured = value.is<JsonObjectConst>() && value["configured"].is<bool>() && value["configured"].as<bool>();
+    if (configured && !g_state.dot) {
+        if (!dotStorage) dotStorage = makeUniqueNoThrow<DotSurfaceState>();
+        if (!dotStorage) { Serial.println("[Dot] state allocation failed; retaining agent display"); return; }
+        g_state.dot = dotStorage.get(); logHeap("dot-state");
+    }
+    if (!g_state.dot) return;
+    g_state.dot->configured = false; g_state.dot->hosting = false; g_state.dot->code = 1;
+    g_state.dot->receivedMs = 0; g_state.dot->validForMs = 0; g_state.dot->custom = false;
+    g_state.dot->relation[0] = 0;
+    if (!value.is<JsonObjectConst>() || !value["configured"].is<bool>() || !value["configured"].as<bool>()) return;
+    auto& dot = *g_state.dot;
+    dot.configured = true;
+    dot.hosting = value["hosting"].is<bool>() && value["hosting"].as<bool>();
+    dot.code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < 8 ? value["code"].as<uint8_t>() : 7;
+    dot.receivedMs = millis();
+    dot.validForMs = value["validForMs"].is<uint32_t>() ? min(value["validForMs"].as<uint32_t>(), DotSurfaceRules::reportFreshMs) : 0;
+    const char* rgba = value["appearance"]["rgba"] | "";
+    if (value["appearance"]["version"].is<uint8_t>() && value["appearance"]["version"].as<uint8_t>() == DotSurfaceRules::version
+        && strlen(rgba) == DotSurfaceRules::glyphBase64) {
+        size_t length = 0;
+        dot.custom = mbedtls_base64_decode(dot.rgba, sizeof(dot.rgba), &length,
+            reinterpret_cast<const unsigned char*>(rgba), strlen(rgba)) == 0 && length == sizeof(dot.rgba);
+    }
+    auto relation = value["relation"];
+    if (!strcmp(relation["evidence"] | "", "dot_report")) {
+        const char* kind = relation["kind"] | "";
+        const char* stage = relation["stage"] | "";
+        const char* target = relation["target"] | "?";
+        const bool outbound = !strcmp(relation["direction"] | "", "dot_to_agent");
+        snprintf(dot.relation, sizeof(dot.relation), "%s %s %s %s %s (report)", kind, stage,
+            outbound ? "Dot >" : "", target, outbound ? "?" : "> Dot ?");
+        Utf8::utf8TrimEnd(dot.relation);
+    }
+}
+
 static void handleSessionsList(JsonObject& obj) {
     lockState();
     g_state.dataReceived = true;
+    readDot(obj["dot"]);
 
     JsonArray sessions = obj["sessions"].as<JsonArray>();
     // Cap 10 — keep in sync with sessions[10] (agent_state.h) and

@@ -403,6 +403,7 @@ actor PixooModule: DeviceModule {
     /// Set once the first `sessions_list` lands. Gates the renderer's `_primary`
     /// fallback so an empty-but-received list draws an empty tank instead of a
     /// ghost creature (Node parity — bridge commit e9562525).
+    private var cachedDot: DotSurfaceSnapshot?
     private var cachedSessionsListReceived = false
     private var cached5h: Double?
     private var cached7d: Double?
@@ -458,6 +459,7 @@ actor PixooModule: DeviceModule {
             cachedCodexSubscriptionUntil = event["codexSubscriptionActiveUntil"] as? String
         case "sessions_list":
             cachedSessions = event["sessions"] as? [[String: Any]] ?? []
+            cachedDot = Self.decodePayload(DotSurfaceSnapshot.self, from: event["dot"])
             cachedSessionsListReceived = true
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
@@ -915,7 +917,9 @@ actor PixooModule: DeviceModule {
         )
         return TideScene(
             state: state, marks: marks,
-            signature: PixooTide.signature(marks: marks, sessions: sessions, usage: state)
+            signature: { let signature = PixooTide.signature(marks: marks, sessions: sessions, usage: state)
+                let cue = cachedDot.flatMap { $0.configured ? "|Dot:" + String($0.effectiveCode) + "|" + ($0.appearance?.id ?? "") : nil } ?? ""
+                return PixooTide.Signature(scene: signature.scene, hud: signature.hud + cue) }()
         )
     }
 
@@ -947,7 +951,7 @@ actor PixooModule: DeviceModule {
     private func uploadTide(_ device: PixooDevice, scene: TideScene, reason: String) async {
         let ip = device.ip
         let nowMs = Date().timeIntervalSince1970 * 1000
-        let frames = renderer.renderTideLoop(dashboardState: scene.state, marks: scene.marks, nowMs: nowMs)
+        let frames = renderer.renderTideLoop(dashboardState: scene.state, marks: scene.marks, nowMs: nowMs).map { DotPixelOverlay.paint($0, width: 64, dot: cachedDot) }
         if let first = frames.first { shadow.writeFrame(first) }
         let started = Date()
         let ok = await pushLoopToDevice(device, frames: frames, speedMs: PixooTide.picSpeedMs, reason: reason)
@@ -1083,6 +1087,7 @@ actor PixooModule: DeviceModule {
         state.gatewayConnected = cachedGatewayConnected
         state.gatewayHasError = cachedGatewayHasError
         state.siblingSessions = cachedSessions.compactMap(Self.makeSessionInfo)
+        state.dot = cachedDot
         state.sessionsListReceived = cachedSessionsListReceived
         return state
     }

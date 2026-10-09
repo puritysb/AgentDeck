@@ -51,6 +51,7 @@ void epd_draw_image(LilyEpdRect area, uint8_t* data, int mode);
 #include "net/ws_client.h"
 #include "ui/terrarium/creature_glyphs_generated.h"
 #include "ui/agent_label.h"
+#include "ui/companion/dot_companion.h"
 #include "ui/creature_glyph_selection.h"
 #include "ui/eink/eink_dashboard_layout.h"
 #include "ui/eink/epd47_diff.h"
@@ -378,6 +379,7 @@ struct RowSnap {
 };
 
 struct Snap {
+    DotSurfaceState dot;
     bool bridgeConnected;
     bool wifiUp;
     bool serialUp;
@@ -431,6 +433,8 @@ void snapshot(Snap& s) {
     s.serialUp = Net::serialConnected();
     lockState();
     s.bridgeConnected = g_state.wsConnected;
+    if (g_state.dot) s.dot = *g_state.dot;
+    if (!s.bridgeConnected) s.dot.configured = false;
     s.totalSessions = g_state.sessionCount;
     s.rowCount = g_state.sessionCount < MAX_ROWS ? g_state.sessionCount : MAX_ROWS;
     for (uint8_t i = 0; i < s.rowCount; i++) {
@@ -655,6 +659,13 @@ uint32_t contentHash(const Snap& s) {
     h = fnv(h, &s.serialUp, 1);
     h = fnv(h, &s.rowCount, 1);
     h = fnv(h, &s.totalSessions, 1);
+    const uint8_t dotCode = s.dot.effectiveCode(millis());
+    h = fnv(h, &s.dot.configured, sizeof(s.dot.configured));
+    if (s.dot.configured) {
+        h = fnv(h, &dotCode, sizeof(dotCode));
+        h = fnvStr(h, s.dot.relation);
+        if (s.dot.custom) h = fnv(h, s.dot.rgba, sizeof(s.dot.rgba));
+    }
     for (uint8_t i = 0; i < s.rowCount; i++) {
         const RowSnap& r = s.rows[i];
         h = fnvStr(h, r.name); h = fnvStr(h, r.agentType); h = fnvStr(h, r.state);
@@ -1103,12 +1114,24 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
         textAt(chipX + 12, 38, link, &FreeSansBold9pt7b);
     }
 
+    int16_t dotWidth = 0;
+    if (s.dot.configured && chipX >= 290) {
+        dotWidth = chipX >= 480 ? 168 : 48;
+        const int16_t x = chipX - dotWidth - 4;
+        DotCompanion::mono(s.dot, x, 18, DotSurfaceRules::paperGlyphSize,
+            [](int px, int py, bool dark) { display.drawPixel(px, py, dark ? GxEPD_BLACK : GxEPD_WHITE); });
+        const uint8_t code = s.dot.effectiveCode(millis());
+        char label[40];
+        if (dotWidth > 48) snprintf(label, sizeof(label), "DOT %s", DotSurfaceRules::labels[code]);
+        else snprintf(label, sizeof(label), "D%s", code == 2 ? "W" : code == 3 ? "!" : code == 4 ? "C" : code == 5 ? "F" : "?");
+        textAt(x + DotSurfaceRules::paperGlyphSize + 3, 36, label, CLASSIC_FONT);
+    }
     // Session counts by state, left of the chip.
     if (s.totalSessions > 0) {
         // Degrade by dropping the quiet categories, then the font — never by
         // printing over the wordmark on a narrow panel.
         char cnt[112];
-        const int16_t available = chipX - 14 - 270;
+        const int16_t available = chipX - dotWidth - 14 - 270;
         const GFXfont* countFont = nullptr;
         for (uint8_t pass = 0; pass < 2 && !countFont; pass++) {
             boardCountSummary(s, cnt, sizeof(cnt), pass == 1);
@@ -1116,7 +1139,7 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
             if (textWidth(cnt, &FreeSans9pt7b) <= available) countFont = &FreeSans9pt7b;
             else if (textWidth(cnt, CLASSIC_FONT) <= available) countFont = CLASSIC_FONT;
         }
-        if (countFont) textRight(chipX - 14, 38, cnt, countFont);
+        if (countFont) textRight(chipX - dotWidth - 14, 38, cnt, countFont);
     }
 
     // Double rule (print-style)
@@ -1674,6 +1697,12 @@ bool sendDecisionSelection(const Snap& s, uint8_t selection) {
 uint32_t paperHash(const Snap& s, PaperFace face) {
     uint32_t h = 2166136261u;
     h = fnv(h, &face, sizeof(face));
+    const uint8_t dotCode = s.dot.effectiveCode(millis());
+    h = fnv(h, &s.dot.configured, sizeof(s.dot.configured));
+    if (s.dot.configured) {
+        h = fnv(h, &dotCode, sizeof(dotCode)); h = fnvStr(h, s.dot.relation);
+        if (s.dot.custom) h = fnv(h, s.dot.rgba, sizeof(s.dot.rgba));
+    }
     h = fnv(h, &s.bridgeConnected, sizeof(s.bridgeConnected));
     h = fnv(h, &s.rowCount, sizeof(s.rowCount));
 #if defined(AGENTDECK_EPD47_UI)

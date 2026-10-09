@@ -119,11 +119,9 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
-                #if os(macOS)
-                if !hudHidden && stateHolder.state.bridgeConnected {
-                    DotCompanionView().frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
+                    DotSurfaceView(snapshot: dot).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
                 }
-                #endif
 
                 if !stateHolder.state.bridgeConnected {
                     ConnectionOverlay()
@@ -167,7 +165,7 @@ struct MonitorScreen: View {
                     let top = featuredAwaitingSession == nil ? 0 : attentionHeight + 24
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
-                        LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState, onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
+                        LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState, dotSnapshot: stateHolder.state.dot, onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
                             .frame(height: max(1, geometry.size.height - top))
                             .padding(.top, top)
                         // Keep the habitat continuous behind the timeline, as on macOS.

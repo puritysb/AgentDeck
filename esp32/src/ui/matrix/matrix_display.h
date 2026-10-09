@@ -9,6 +9,7 @@ enum class Page : uint8_t {
     CODEX,      // Codex primary/secondary token-limit windows
     ZAI,        // z.ai GLM Coding Plan windows (5H + MCP/long) — #350
     AGENTS,     // Octopus/crayfish sprites with state colors
+    DOT,        // Independent read-only Dot companion; never an agent count
     PAGE_COUNT
 };
 

@@ -81,6 +81,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 
 | Canonical source | Generator | Gate / note |
 |---|---|---|
+| `shared/src/dot-appearance.ts` + `shared/src/dot-pixels.ts` | `pnpm generate-dot-contract` → portable Swift/Kotlin models, firmware budgets/default glyph, native pixel overlay | Avatar conversion/budget/clearing tests, native quadrant-orientation and remote snapshot tests, generated-byte drift and matrix parity. |
 | `shared/src/dot-deck.ts` | Both deck plugins consume one reservation/status SVG implementation; native D200H preview reservation mirror | Deck layout tests and preview SYNC-HASH drift gate; native Dot tests. |
 | `shared/src/dot-rules.ts` + `shared/src/dot-interactions.ts` + `services/dot-relay/src/contracts.ts` | `pnpm generate-dot-contract` → Swift budgets, relationship stages and bundled JSON schemas | `native-contract.test.ts` checks all generated budgets, event and tool schemas; `DotDirectHostingTests` exercises the native consumer. |
 | `shared/src/timeline.ts` (scheduled evidence exact dedup) | Swift `DaemonTimelineStore.add` mirrors the session boundary and absolute 8-second window | Shared `timeline-ci-dedup-vectors.json` runs in TS and native XCTest: concurrent sessions retain independent CI annotations, repeated same-session evidence is deduplicated, legacy unattributed rows retain content dedup. |

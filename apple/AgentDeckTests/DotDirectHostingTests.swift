@@ -67,7 +67,7 @@ final class DotDirectHostingTests: XCTestCase {
         row.report = .init(sequence: 1, state: "working", summary: "private-summary", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://private.example", clientID: "private-client", consents: [], grants: [], reports: [row])
         let value = try XCTUnwrap(snapshot.deckSnapshot(now: now))
-        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "reportState", "reportedAt", "expiresAt"])
+        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
         XCTAssertEqual(value["reportState"] as? String, "working")
         let encoded = String(data: try JSONSerialization.data(withJSONObject: value), encoding: .utf8)!
         XCTAssertFalse(encoded.contains("private"))
@@ -242,5 +242,39 @@ final class DotDirectHostingTests: XCTestCase {
             XCTAssertThrowsError(try DotSchema.validate(["requestId": "x", "extra": 1], ["type": "object", "properties": ["requestId": ["type": "string"]], "required": ["requestId"], "additionalProperties": false]))
         }.value
     }
+    func testCharacterNormalizationIsBoundedAndPreservesTopLeftOrientation() async throws {
+        let source = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAFElEQVR4nGO4JMn1nwEEGRj+gwEASPEJ7YV4WrYAAAAASUVORK5CYII=")!
+        let asset = try await DotAppearanceStore.normalizeImage(source)
+        XCTAssertEqual(asset.version, DotAppearanceRules.version)
+        XCTAssertNotNil(asset.portrait)
+        let rgba = [UInt8](try XCTUnwrap(asset.glyph))
+        XCTAssertEqual(rgba.count, DotAppearanceRules.glyphBytes)
+        let topLeft = (1 * DotAppearanceRules.glyphSize + 1) * 4
+        XCTAssertGreaterThan(rgba[topLeft], rgba[topLeft + 1])
+        XCTAssertGreaterThan(rgba[topLeft], rgba[topLeft + 2])
+        let bottomLeft = (14 * DotAppearanceRules.glyphSize + 1) * 4
+        XCTAssertGreaterThan(rgba[bottomLeft + 2], rgba[bottomLeft])
+        do {
+            _ = try await DotAppearanceStore.normalizeImage(Data("<svg/>".utf8))
+            XCTFail("SVG is not a permitted character")
+        } catch { }
+        var corrupted = asset; corrupted.rgba = "bad"
+        XCTAssertNil(corrupted.glyph)
+    }
+    func testRemoteDotDecoderAndPixelOverlayStaySeparateFromSessions() throws {
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        let source = Data("{\"type\":\"sessions_list\",\"sessions\":[],\"dot\":{\"configured\":true,\"hosting\":true,\"reportState\":\"working\",\"reportedAt\":NOW,\"expiresAt\":LATER}}".replacingOccurrences(of: "NOW", with: String(now)).replacingOccurrences(of: "LATER", with: String(now + 10000)).utf8)
+        let event = try JSONDecoder().decode(SessionsListEvent.self, from: source)
+        XCTAssertEqual(event.sessions.count, 0)
+        XCTAssertEqual(event.dot?.effectiveCode, 2)
+        let plain = Data(repeating: 13, count: 64 * 64 * 3)
+        let painted = DotPixelOverlay.paint(plain, width: 64, dot: event.dot, now: now)
+        XCTAssertEqual(painted.prefix(64 * 10 * 3), plain.prefix(64 * 10 * 3))
+        XCTAssertNotEqual(painted, plain)
+        XCTAssertEqual(DotPixelOverlay.paint(Data(repeating: 13, count: 11 * 11 * 3), width: 11, dot: event.dot), Data(repeating: 13, count: 11 * 11 * 3))
+        let legacy = try JSONDecoder().decode(SessionsListEvent.self, from: Data("{\"type\":\"sessions_list\",\"sessions\":[]}".utf8))
+        XCTAssertNil(legacy.dot)
+    }
+
 }
 #endif

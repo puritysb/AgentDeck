@@ -1309,18 +1309,26 @@ enum ADMode: String, Codable, Equatable {
 /// Separate integration presence; never a coding session or authority to execute.
 // MARK: - ADDotDeckSnapshot
 struct ADDotDeckSnapshot: Codable, Equatable {
+    var appearance: ADDotAppearance?
+    var code: Double?
     var configured: Bool
     var expiresAt: Double?
     var hosting: Bool
+    var relation: ADDotSurfaceRelation?
     var reportedAt: Double?
     var reportState: String?
+    var validForMs: Double?
 
     enum CodingKeys: String, CodingKey {
+        case appearance = "appearance"
+        case code = "code"
         case configured = "configured"
         case expiresAt = "expiresAt"
         case hosting = "hosting"
+        case relation = "relation"
         case reportedAt = "reportedAt"
         case reportState = "reportState"
+        case validForMs = "validForMs"
     }
 }
 
@@ -1343,18 +1351,26 @@ extension ADDotDeckSnapshot {
     }
 
     func with(
+        appearance: ADDotAppearance?? = nil,
+        code: Double?? = nil,
         configured: Bool? = nil,
         expiresAt: Double?? = nil,
         hosting: Bool? = nil,
+        relation: ADDotSurfaceRelation?? = nil,
         reportedAt: Double?? = nil,
-        reportState: String?? = nil
+        reportState: String?? = nil,
+        validForMs: Double?? = nil
     ) -> ADDotDeckSnapshot {
         return ADDotDeckSnapshot(
+            appearance: appearance ?? self.appearance,
+            code: code ?? self.code,
             configured: configured ?? self.configured,
             expiresAt: expiresAt ?? self.expiresAt,
             hosting: hosting ?? self.hosting,
+            relation: relation ?? self.relation,
             reportedAt: reportedAt ?? self.reportedAt,
-            reportState: reportState ?? self.reportState
+            reportState: reportState ?? self.reportState,
+            validForMs: validForMs ?? self.validForMs
         )
     }
 
@@ -1365,6 +1381,144 @@ extension ADDotDeckSnapshot {
     func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
         return String(data: try self.jsonData(), encoding: encoding)
     }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADDotAppearance
+struct ADDotAppearance: Codable, Equatable {
+    var id: String
+    /// Canonical static PNG, authored by the importing host; optional on compact transport.
+    var png: String?
+    /// Exactly 16×16 row-major, straight-alpha RGBA8, base64 encoded.
+    var rgba: String
+    var version: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case png = "png"
+        case rgba = "rgba"
+        case version = "version"
+    }
+}
+
+// MARK: ADDotAppearance convenience initializers and mutators
+
+extension ADDotAppearance {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotAppearance.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        id: String? = nil,
+        png: String?? = nil,
+        rgba: String? = nil,
+        version: Double? = nil
+    ) -> ADDotAppearance {
+        return ADDotAppearance(
+            id: id ?? self.id,
+            png: png ?? self.png,
+            rgba: rgba ?? self.rgba,
+            version: version ?? self.version
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADDotSurfaceRelation
+struct ADDotSurfaceRelation: Codable, Equatable {
+    var direction: String
+    var evidence: ADDotSurfaceRelationEvidence
+    var kind: String
+    var receivedAt: Double
+    var stage: String
+    var target: String?
+
+    enum CodingKeys: String, CodingKey {
+        case direction = "direction"
+        case evidence = "evidence"
+        case kind = "kind"
+        case receivedAt = "receivedAt"
+        case stage = "stage"
+        case target = "target"
+    }
+}
+
+// MARK: ADDotSurfaceRelation convenience initializers and mutators
+
+extension ADDotSurfaceRelation {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotSurfaceRelation.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        direction: String? = nil,
+        evidence: ADDotSurfaceRelationEvidence? = nil,
+        kind: String? = nil,
+        receivedAt: Double? = nil,
+        stage: String? = nil,
+        target: String?? = nil
+    ) -> ADDotSurfaceRelation {
+        return ADDotSurfaceRelation(
+            direction: direction ?? self.direction,
+            evidence: evidence ?? self.evidence,
+            kind: kind ?? self.kind,
+            receivedAt: receivedAt ?? self.receivedAt,
+            stage: stage ?? self.stage,
+            target: target ?? self.target
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADDotSurfaceRelationEvidence: String, Codable, Equatable {
+    case dotReport = "dot_report"
 }
 
 //
@@ -2979,7 +3133,7 @@ extension ADSubagentSummary {
 struct ADCiWaitStatus: Codable, Equatable {
     var agentWaiting: Bool
     var checks: ADChecks?
-    var evidence: ADEvidence
+    var evidence: ADCiWaitStatusEvidence
     var kind: ADCiWaitStatusKind
     var openedAt: Double
     var phase: ADPhase
@@ -3027,7 +3181,7 @@ extension ADCiWaitStatus {
     func with(
         agentWaiting: Bool? = nil,
         checks: ADChecks?? = nil,
-        evidence: ADEvidence? = nil,
+        evidence: ADCiWaitStatusEvidence? = nil,
         kind: ADCiWaitStatusKind? = nil,
         openedAt: Double? = nil,
         phase: ADPhase? = nil,
@@ -3125,7 +3279,7 @@ extension ADChecks {
     }
 }
 
-enum ADEvidence: String, Codable, Equatable {
+enum ADCiWaitStatusEvidence: String, Codable, Equatable {
     case github = "github"
     case toolInput = "tool_input"
 }

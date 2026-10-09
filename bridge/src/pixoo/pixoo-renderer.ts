@@ -1,3 +1,4 @@
+import { paintDotPixels, type DotDeckSnapshot } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 import { usageRgb } from '@agentdeck/shared';
 import { TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
@@ -1409,7 +1410,7 @@ export function renderFrame(
   size: 11 | 32 | 64 = 64,
   layout: 'standard' | 'micro' = 'standard',
   subagentActivity: SubagentActivityBySession = {},
-  options: { freezeSimulation?: boolean; cueNowMs?: number } = {},
+  options: { freezeSimulation?: boolean; cueNowMs?: number; dot?: DotDeckSnapshot | null } = {},
 ): Uint8Array {
   const freeze = options.freezeSimulation === true;
   const worldBuf = new Uint8Array(W * W * 3);
@@ -1680,7 +1681,7 @@ export function renderFrame(
   }
   drawCiCue(outputBuf, size, sessions, options.cueNowMs ?? timeOverrideMs ?? Date.now(), ciAnchors, false,
     size - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight);
-  return outputBuf;
+  return paintDotPixels(outputBuf, size, options.dot, options.cueNowMs ?? timeOverrideMs ?? Date.now());
 }
 
 // ===== Baked device loop =====

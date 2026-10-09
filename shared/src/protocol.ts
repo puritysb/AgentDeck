@@ -1,3 +1,4 @@
+import type { DotAppearance, DotSurfaceRelation } from './dot-appearance.js';
 import { State, PermissionMode, PromptOption } from './states.js';
 import type { AgentType, AgentCapabilities } from './adapter.js';
 import type { TimelineEntry } from './timeline.js';
@@ -662,6 +663,10 @@ export interface DotDeckSnapshot {
   reportState: string | null;
   reportedAt: number | null;
   expiresAt: number | null;
+  code?: number;
+  validForMs?: number;
+  appearance?: DotAppearance | null;
+  relation?: DotSurfaceRelation | null;
 }
 
 export interface SessionsListEvent {

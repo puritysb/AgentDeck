@@ -185,3 +185,5 @@ coverage decision. `docs/esp32.md` (already cataloged) carries its documentation
 2. New design documentation gets YAML frontmatter and a `catalog.json` entry so
    the viewer publishes it; `docs/design/` HTML is frozen.
 3. Anything under a "Derived" row is disposable output: fixes go to its source.
+
+Dot manual character format, budgets and generated default pixel geometry: `shared/src/dot-appearance.ts`; portable pixel overlay: `shared/src/dot-pixels.ts`; generator: `services/dot-relay/generate-native.mjs`; canonical contract: [Dot Creature Surface Design](../docs/dot-creature-surfaces.md).

@@ -1580,6 +1580,36 @@ actor ESP32Serial {
             e.removeValue(forKey: "gatewayAuthMessage")
             e.removeValue(forKey: "remoteUrl")
         }
+        if type == "sessions_list" {
+            e.removeValue(forKey: "dot")
+            if let raw = event["dot"] as? [String: Any], JSONSerialization.isValidJSONObject(raw),
+               let bytes = try? JSONSerialization.data(withJSONObject: raw),
+               let dot = try? JSONDecoder().decode(DotSurfaceSnapshot.self, from: bytes), dot.configured {
+                let now = Int(Date().timeIntervalSince1970 * 1000)
+                var compact: [String: Any] = ["configured": true, "hosting": dot.hosting,
+                    "reportState": dot.reportState as Any? ?? NSNull(), "reportedAt": dot.reportedAt as Any? ?? NSNull(),
+                    "expiresAt": dot.expiresAt as Any? ?? NSNull(), "code": dot.phase(at: now),
+                    "validForMs": dot.validForMs ?? 0]
+                if let appearance = dot.appearance?.compactDictionary { compact["appearance"] = appearance }
+                if let relation = dot.relation, relation.evidence == "dot_report" {
+                    compact["relation"] = ["kind": relation.kind, "direction": relation.direction, "stage": relation.stage,
+                        "target": relation.target.map { Self.limitUtf8Bytes($0, DotAppearanceRules.relationBytes) } as Any? ?? NSNull(),
+                        "receivedAt": relation.receivedAt, "evidence": "dot_report"]
+                }
+                e["dot"] = compact
+                if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget {
+                    compact.removeValue(forKey: "appearance"); e["dot"] = compact
+                    if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget {
+                        compact.removeValue(forKey: "relation"); e["dot"] = compact
+                    }
+                }
+            }
+            if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget,
+               let dot = e["dot"] as? [String: Any] {
+                e["dot"] = ["configured": true, "hosting": dot["hosting"] ?? false, "code": dot["code"] ?? 7, "validForMs": dot["validForMs"] ?? 0]
+                if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget { e.removeValue(forKey: "dot") }
+            }
+        }
         if Self.needsLegacyCodexAppAlias(deviceInfo) {
             e = Self.aliasCodexAppAgentTypes(e) as? [String: Any] ?? e
         }

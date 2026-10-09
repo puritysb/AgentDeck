@@ -15,35 +15,36 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
     })
 
 private val klaxon = Klaxon()
-    .convert(AgentType::class,           { AgentType.fromValue(it.string!!) },           { "\"${it.value}\"" })
-    .convert(BillingType::class,         { BillingType.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(Mode::class,                { Mode.fromValue(it.string!!) },                { "\"${it.value}\"" })
-    .convert(EncoderType::class,         { EncoderType.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(VoiceState::class,          { VoiceState.fromValue(it.string!!) },          { "\"${it.value}\"" })
-    .convert(EntryStatus::class,         { EntryStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(SummaryKind::class,         { SummaryKind.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(TimelineEntryType::class,   { TimelineEntryType.fromValue(it.string!!) },   { "\"${it.value}\"" })
-    .convert(GatewayAuthStatus::class,   { GatewayAuthStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
-    .convert(Layout::class,              { Layout.fromValue(it.string!!) },              { "\"${it.value}\"" })
-    .convert(OptionKind::class,          { OptionKind.fromValue(it.string!!) },          { "\"${it.value}\"" })
-    .convert(PermissionMode::class,      { PermissionMode.fromValue(it.string!!) },      { "\"${it.value}\"" })
-    .convert(PromptType::class,          { PromptType.fromValue(it.string!!) },          { "\"${it.value}\"" })
-    .convert(Risk::class,                { Risk.fromValue(it.string!!) },                { "\"${it.value}\"" })
-    .convert(Layer::class,               { Layer.fromValue(it.string!!) },               { "\"${it.value}\"" })
-    .convert(Outcome::class,             { Outcome.fromValue(it.string!!) },             { "\"${it.value}\"" })
-    .convert(ControlMode::class,         { ControlMode.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(ReviewStatus::class,        { ReviewStatus.fromValue(it.string!!) },        { "\"${it.value}\"" })
-    .convert(Evidence::class,            { Evidence.fromValue(it.string!!) },            { "\"${it.value}\"" })
-    .convert(CiWaitStatusKind::class,    { CiWaitStatusKind.fromValue(it.string!!) },    { "\"${it.value}\"" })
-    .convert(Phase::class,               { Phase.fromValue(it.string!!) },               { "\"${it.value}\"" })
-    .convert(Provider::class,            { Provider.fromValue(it.string!!) },            { "\"${it.value}\"" })
-    .convert(Key::class,                 { Key.fromValue(it.string!!) },                 { "\"${it.value}\"" })
-    .convert(State::class,               { State.fromValue(it.string!!) },               { "\"${it.value}\"" })
-    .convert(BridgeEventStatus::class,   { BridgeEventStatus.fromValue(it.string!!) },   { "\"${it.value}\"" })
-    .convert(TokenStatus::class,         { TokenStatus.fromValue(it.string!!) },         { "\"${it.value}\"" })
-    .convert(Type::class,                { Type.fromValue(it.string!!) },                { "\"${it.value}\"" })
-    .convert(VoiceAssistantState::class, { VoiceAssistantState.fromValue(it.string!!) }, { "\"${it.value}\"" })
-    .convert(Quantity::class,            { Quantity.fromValue(it.string!!) },            { "\"${it.value}\"" })
+    .convert(AgentType::class,                  { AgentType.fromValue(it.string!!) },                  { "\"${it.value}\"" })
+    .convert(BillingType::class,                { BillingType.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(Mode::class,                       { Mode.fromValue(it.string!!) },                       { "\"${it.value}\"" })
+    .convert(DotSurfaceRelationEvidence::class, { DotSurfaceRelationEvidence.fromValue(it.string!!) }, { "\"${it.value}\"" })
+    .convert(EncoderType::class,                { EncoderType.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(VoiceState::class,                 { VoiceState.fromValue(it.string!!) },                 { "\"${it.value}\"" })
+    .convert(EntryStatus::class,                { EntryStatus.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(SummaryKind::class,                { SummaryKind.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(TimelineEntryType::class,          { TimelineEntryType.fromValue(it.string!!) },          { "\"${it.value}\"" })
+    .convert(GatewayAuthStatus::class,          { GatewayAuthStatus.fromValue(it.string!!) },          { "\"${it.value}\"" })
+    .convert(Layout::class,                     { Layout.fromValue(it.string!!) },                     { "\"${it.value}\"" })
+    .convert(OptionKind::class,                 { OptionKind.fromValue(it.string!!) },                 { "\"${it.value}\"" })
+    .convert(PermissionMode::class,             { PermissionMode.fromValue(it.string!!) },             { "\"${it.value}\"" })
+    .convert(PromptType::class,                 { PromptType.fromValue(it.string!!) },                 { "\"${it.value}\"" })
+    .convert(Risk::class,                       { Risk.fromValue(it.string!!) },                       { "\"${it.value}\"" })
+    .convert(Layer::class,                      { Layer.fromValue(it.string!!) },                      { "\"${it.value}\"" })
+    .convert(Outcome::class,                    { Outcome.fromValue(it.string!!) },                    { "\"${it.value}\"" })
+    .convert(ControlMode::class,                { ControlMode.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(ReviewStatus::class,               { ReviewStatus.fromValue(it.string!!) },               { "\"${it.value}\"" })
+    .convert(CiWaitStatusEvidence::class,       { CiWaitStatusEvidence.fromValue(it.string!!) },       { "\"${it.value}\"" })
+    .convert(CiWaitStatusKind::class,           { CiWaitStatusKind.fromValue(it.string!!) },           { "\"${it.value}\"" })
+    .convert(Phase::class,                      { Phase.fromValue(it.string!!) },                      { "\"${it.value}\"" })
+    .convert(Provider::class,                   { Provider.fromValue(it.string!!) },                   { "\"${it.value}\"" })
+    .convert(Key::class,                        { Key.fromValue(it.string!!) },                        { "\"${it.value}\"" })
+    .convert(State::class,                      { State.fromValue(it.string!!) },                      { "\"${it.value}\"" })
+    .convert(BridgeEventStatus::class,          { BridgeEventStatus.fromValue(it.string!!) },          { "\"${it.value}\"" })
+    .convert(TokenStatus::class,                { TokenStatus.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(Type::class,                       { Type.fromValue(it.string!!) },                       { "\"${it.value}\"" })
+    .convert(VoiceAssistantState::class,        { VoiceAssistantState.fromValue(it.string!!) },        { "\"${it.value}\"" })
+    .convert(Quantity::class,                   { Quantity.fromValue(it.string!!) },                   { "\"${it.value}\"" })
 
 /**
  * Bridge → clients — fires when a run completes evaluation (layer 1 or 2).
@@ -675,12 +676,54 @@ enum class Mode(val value: String) {
  * Separate integration presence; never a coding session or authority to execute.
  */
 data class DotDeckSnapshot (
+    val appearance: DotAppearance? = null,
+    val code: Double? = null,
     val configured: Boolean,
     val expiresAt: Double? = null,
     val hosting: Boolean,
+    val relation: DotSurfaceRelation? = null,
     val reportedAt: Double? = null,
-    val reportState: String? = null
+    val reportState: String? = null,
+
+    @Json(name = "validForMs")
+    val validForMS: Double? = null
 )
+
+data class DotAppearance (
+    val id: String,
+
+    /**
+     * Canonical static PNG, authored by the importing host; optional on compact transport.
+     */
+    val png: String? = null,
+
+    /**
+     * Exactly 16×16 row-major, straight-alpha RGBA8, base64 encoded.
+     */
+    val rgba: String,
+
+    val version: Double
+)
+
+data class DotSurfaceRelation (
+    val direction: String,
+    val evidence: DotSurfaceRelationEvidence,
+    val kind: String,
+    val receivedAt: Double,
+    val stage: String,
+    val target: String? = null
+)
+
+enum class DotSurfaceRelationEvidence(val value: String) {
+    DotReport("dot_report");
+
+    companion object {
+        public fun fromValue(value: String): DotSurfaceRelationEvidence = when (value) {
+            "dot_report" -> DotReport
+            else         -> throw IllegalArgumentException()
+        }
+    }
+}
 
 data class EncoderSlotState (
     val accentColor: String? = null,
@@ -1553,7 +1596,7 @@ data class SubagentSummary (
 data class CiWaitStatus (
     val agentWaiting: Boolean,
     val checks: Checks? = null,
-    val evidence: Evidence,
+    val evidence: CiWaitStatusEvidence,
     val kind: CiWaitStatusKind,
     val openedAt: Double,
     val phase: Phase,
@@ -1576,12 +1619,12 @@ data class Checks (
     val total: Double
 )
 
-enum class Evidence(val value: String) {
+enum class CiWaitStatusEvidence(val value: String) {
     Github("github"),
     ToolInput("tool_input");
 
     companion object {
-        public fun fromValue(value: String): Evidence = when (value) {
+        public fun fromValue(value: String): CiWaitStatusEvidence = when (value) {
             "github"     -> Github
             "tool_input" -> ToolInput
             else         -> throw IllegalArgumentException()

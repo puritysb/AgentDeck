@@ -1,3 +1,4 @@
+import { compactDotSnapshot } from '@agentdeck/shared';
 import { ciWaitPhaseId, type CiWaitStatus } from '@agentdeck/shared';
 import { compactSessionLabels } from './compact-session-labels.js';
 import { compactProjectName } from './utils/project-name.js';
@@ -590,6 +591,17 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       if (!label || label === row.projectName) continue;
       row.displayName = limitString(label, 39);
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete row.displayName;
+    }
+    const dot = compactDotSnapshot(e.dot);
+    if (dot) (prepared as any).dot = dot;
+    if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET && (prepared as any).dot) {
+      delete (prepared as any).dot.appearance;
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete (prepared as any).dot.relation;
+    }
+    if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET && (prepared as any).dot) {
+      const d = (prepared as any).dot;
+      (prepared as any).dot = { configured: true, hosting: d.hosting, code: d.code, validForMs: d.validForMs };
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete (prepared as any).dot;
     }
     return prepared;
   }

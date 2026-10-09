@@ -1,3 +1,4 @@
+import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
  *
@@ -62,6 +63,7 @@ let lastStateEvent: StateUpdateEvent | null = null;
 let lastUsageEvent: UsageEvent | null = null;
 const matrixExpression = new MatrixExpression();
 let lastSessions: SessionInfo[] | null = null;
+let lastDot: DotDeckSnapshot | null = null;
 let lastTimelineEntries: TimelineEntry[] = [];
 
 // Display sleep state — when Mac display is off, dim Pixoo and pause stream
@@ -195,6 +197,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
       break;
     case 'sessions_list':
       lastSessions = (event as SessionsListEvent).sessions;
+      lastDot = (event as SessionsListEvent).dot ?? null;
       break;
     case 'timeline_event': {
       const entry = (event as { entry?: TimelineEntry }).entry;
@@ -221,7 +224,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
     case 'connection':
       if ((event as any).status === 'disconnected') {
         lastStateEvent = null;
-        lastSessions = null;
+        lastSessions = null; lastDot = null;
         lastUsageEvent = null;
         lastTimelineEntries = [];
       }
@@ -315,7 +318,7 @@ export async function stopPixooBridge(): Promise<void> {
   devices = [];
   lastStateEvent = null;
   lastUsageEvent = null;
-  lastSessions = null;
+  lastSessions = null; lastDot = null;
   matrixExpression.reset();
   lastTimelineEntries = [];
   displayDimmed = false;
@@ -449,7 +452,8 @@ function doStateCheckAndPush(): void {
   const now = Date.now();
   const active = isAnimationActive();
   const tideSig = devices.some(pixooTideEnabled)
-    ? tideSignature(lastStateEvent, lastUsageEvent, lastSessions) : null;
+    ? (() => { const signature = tideSignature(lastStateEvent, lastUsageEvent, lastSessions);
+      return { ...signature, hud: signature.hud + "|" + (lastDot?.configured ? dotDeckPresentation(lastDot, now).label + "|" + (lastDot.appearance?.id ?? "") : "") }; })() : null;
   const due = devices.flatMap(dev => {
     if (tideSig && pixooTideEnabled(dev)) {
       const decision = tideDecision(
@@ -498,6 +502,7 @@ function doStateCheckAndPush(): void {
               'standard',
               currentSubagentActivity(now),
             )];
+        for (const frame of frames) paintDotPixels(frame, 64, lastDot, now);
         const count = frames.length;
         const speed = mode === 'tide' ? TIDE_LOOP.picSpeedMs : count > 1 ? PIXOO_LOOP.picSpeedMs : 1000;
         const ok = await pushFrames(dev.ip, frames, speed);

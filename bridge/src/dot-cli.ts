@@ -3,10 +3,16 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getDataDir } from './session-registry.js';
+import { importDotAppearance, saveDotAppearance } from './dot-appearance.js';
 import { readDotConfiguration } from './dot-host.js';
 
 export function registerDotCommands(program: Command) {
   const dot = program.command('dot').description('Operate the opt-in direct HTTPS MCP host');
+  const character = dot.command('character').description('Choose the local Dot character; no ChatGPT avatar synchronization');
+  character.command('import <file>').description('Import a static character image').action(async (file: string) => {
+    const asset = await importDotAppearance(file, getDataDir()); console.log('Dot character imported: ' + asset.id.slice(0, 12));
+  });
+  character.command('reset').description('Restore the default Dot orb').action(() => { saveDotAppearance(null, getDataDir()); console.log('Dot character restored'); });
   async function request(path: string, value?: unknown) {
     const directory = getDataDir(), config = readDotConfiguration(directory);
     if (!config?.enabled) throw new Error('Configure the private dot-host.json first; see the direct hosting guide.');

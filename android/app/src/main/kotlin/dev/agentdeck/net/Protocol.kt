@@ -628,7 +628,7 @@ sealed class BridgeEvent {
     data class Connected(val sessionId: String?) : BridgeEvent()
     data object Disconnected : BridgeEvent()
     data class DisplaySleep(val displayOn: Boolean, val dim: DimConfig? = null) : BridgeEvent()
-    data class SessionsList(val sessions: List<SessionInfo>) : BridgeEvent()
+    data class SessionsList(val sessions: List<SessionInfo>, val dot: DotSurfaceSnapshot? = null) : BridgeEvent()
     data class EncoderState(val encoders: List<EncoderSlotState>, val takeoverActive: Boolean) : BridgeEvent()
     data class ButtonState(val buttons: List<ButtonSlotState>) : BridgeEvent()
     data class SlotMap(val buttons: List<DeckSlotConfig>, val encoders: List<DeckSlotConfig>) : BridgeEvent()
@@ -765,7 +765,7 @@ fun parseBridgeMessage(text: String): BridgeEvent? {
                 val sessionsArray = obj["sessions"]
                 if (sessionsArray != null) {
                     val sessions = protocolJson.decodeFromJsonElement<List<SessionInfo>>(sessionsArray)
-                    BridgeEvent.SessionsList(sessions)
+                    BridgeEvent.SessionsList(sessions, obj["dot"]?.let { runCatching { protocolJson.decodeFromJsonElement<DotSurfaceSnapshot>(it) }.getOrNull() })
                 } else null
             }
             "encoder_state" -> {

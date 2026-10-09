@@ -201,7 +201,7 @@ fun EinkMonitorScreen(
                 EinkRefreshZone(
                     mode = Zone.CHROME.mode,
                     debounceMs = Zone.CHROME.debounceMs,
-                    triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
+                    triggerKey = listOf(state.agentState, sessionsKey, state.workerSessionCount, state.dot?.appearance?.id, state.dot?.reportState, state.dot?.hosting),
                     sleepSnapshotMode = sleepSnapshotMode,
                     modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
                 ) {
@@ -472,6 +472,11 @@ private fun EinkDashboardChromeBar(
             size = 30.dp,
             color = MaterialTheme.colorScheme.onSurface,
         )
+        state.dot?.takeIf { it.configured }?.let { dot ->
+            dev.agentdeck.ui.monitor.DotPaperGlyph(dot)
+            val label = dev.agentdeck.net.DotSurfaceRules.labels[dot.effectiveCode(System.currentTimeMillis())]
+            Text("DOT " + label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
+        }
         // Wordmark uses default sans (IBM Plex Sans where bundled, system sans
         // otherwise). DESIGN.md §10-3 reserves Monospace for diagnostic/data
         // glyphs — the brand line itself stays sans for identity.
@@ -881,7 +886,7 @@ private fun EinkPortraitLayout(
         EinkRefreshZone(
             mode = Zone.CHROME.mode,
             debounceMs = Zone.CHROME.debounceMs,
-            triggerKey = Triple(state.agentState, sessionsKey, state.workerSessionCount),
+            triggerKey = listOf(state.agentState, sessionsKey, state.workerSessionCount, state.dot?.appearance?.id, state.dot?.reportState, state.dot?.hosting),
             sleepSnapshotMode = sleepSnapshotMode,
             modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
         ) {

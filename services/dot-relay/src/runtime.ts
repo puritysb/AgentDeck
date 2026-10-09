@@ -58,7 +58,10 @@ export async function startDirectHost(config: DirectHostConfiguration, directory
       const stale = report && !['completed', 'failed'].includes(report.state)
         && (latest.expiresAt <= Date.now() || Date.now() - report.receivedAt >= DOT_LIMITS.reportFreshMs);
       return { configured: true, hosting: !stopped && publicServer?.listening === true,
-        reportState: stale ? 'stale' : report?.state ?? null, reportedAt: latest?.report?.receivedAt ?? null, expiresAt: latest?.expiresAt ?? null };
+        reportState: stale ? 'stale' : report?.state ?? null, reportedAt: latest?.report?.receivedAt ?? null, expiresAt: latest?.expiresAt ?? null,
+        ...(latest?.interactions?.length ? { relation: { kind: latest.interactions.at(-1)!.kind,
+          direction: latest.interactions.at(-1)!.direction, stage: latest.interactions.at(-1)!.stage,
+          target: latest.interactions.at(-1)!.targetRef, receivedAt: latest.interactions.at(-1)!.receivedAt, evidence: 'dot_report' as const } } : {}) };
     } };
   } catch (error) { await stop(); throw error; }
 }

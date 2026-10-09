@@ -1,3 +1,6 @@
+#if defined(BOARD_T_DISPLAY_PRO)
+#include "../companion/dot_badge.h"
+#endif
 #include "../companion/session_glance.h"
 #if defined(BOARD_T_DISPLAY_PRO)
 
@@ -61,6 +64,7 @@ static lv_obj_t *s_pinLabel, *s_waitingLabel;
 static char s_waitingText[24]{};
 
 static lv_obj_t* s_scr = nullptr;
+static DotCompanion::Badge s_dotBadge;
 static lv_obj_t* s_tabs[4] = {nullptr, nullptr, nullptr, nullptr};
 static lv_obj_t* s_hdrWifi = nullptr;
 static lv_obj_t* s_hdrBattery = nullptr;
@@ -577,6 +581,7 @@ namespace Ticker {
 
 void create() {
     s_scr = lv_obj_create(NULL);
+    s_dotBadge.create(s_scr, &font_kr_12);
     lv_obj_set_style_bg_color(s_scr, lv_color_hex(Theme::DeepSea), 0);
     lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
 
@@ -831,6 +836,7 @@ void update(float dt) {
     (void)dt;
     uint32_t now = millis();
     updateKeyHints(now);
+    s_dotBadge.update(s_page != PAGE_CAM, 4, SCREEN_H - 20);
 
     // Camera power follows the page: acquire on entry, release on leave.
     // Keeping the sensor powered around the clock tripped the brownout

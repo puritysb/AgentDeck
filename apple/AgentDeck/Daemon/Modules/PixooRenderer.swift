@@ -647,7 +647,7 @@ final class PixooRenderer {
             }
             drawCiCue(&output, size: 64, state: dashboardState, now: nowMs + Double(i * intervalMs), anchors: ciAnchors,
                       bottom: Self.width - hudCount * TerrariumRules.pixooUsageRowHeight)
-            frames.append(Data(output))
+            frames.append(DotPixelOverlay.paint(Data(output), width: 64, dot: dashboardState.dot))
         }
 
         return frames
@@ -897,7 +897,7 @@ final class PixooRenderer {
             if width > 0 { for x in 3..<(3 + width) { set(x, y, color) } }
         }
 
-        return Data(out)
+        return DotPixelOverlay.paint(Data(out), width: 32, dot: dashboardState.dot)
     }
 
     /// Static dark frame with a centered grey "OFFLINE" label and sparse cyan

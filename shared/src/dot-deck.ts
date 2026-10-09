@@ -1,4 +1,6 @@
 import type { DotDeckSnapshot } from './protocol.js';
+import { validDotAppearance, compactDotAppearance, DOT_PHASES, type DotAppearance, type DotSurfaceRelation } from './dot-appearance.js';
+import { DOT_INTERACTION_KINDS, DOT_INTERACTION_STAGES } from './dot-interactions.js';
 import { DOT_LIMITS } from './dot-rules.js';
 import { Ink, UI } from './design-tokens.js';
 import { svgFrame, escSvgText } from './svg-renderers/index.js';
@@ -24,5 +26,28 @@ export function dotDeckPresentation(dot: DotDeckSnapshot, now = Date.now()): { l
 /** Deterministic, inert original orb; no provider/session impersonation or animation lease. */
 export function renderDotDeckSlot(dot: DotDeckSnapshot, now = Date.now()): string {
   const { label, color } = dotDeckPresentation(dot, now);
-  return svgFrame(Ink.s900, `<circle cx="72" cy="40" r="22" fill="${color}"/><rect x="63" y="34" width="4" height="10" rx="2" fill="${Ink.s900}"/><rect x="77" y="34" width="4" height="10" rx="2" fill="${Ink.s900}"/><text x="72" y="83" text-anchor="middle" fill="${UI.hudText}" font-family="IBM Plex Sans" font-size="18">DOT</text><text x="72" y="105" text-anchor="middle" fill="${color}" font-family="IBM Plex Sans" font-size="12">${escSvgText(label)}</text><text x="72" y="125" text-anchor="middle" fill="${UI.hudText}" font-family="IBM Plex Sans" font-size="10">${dot.reportState ? 'Dot report' : 'Integration'}</text>`);
+  const relation = dot.relation?.evidence === 'dot_report' ? dot.relation : null;
+  const edge = relation && DOT_INTERACTION_KINDS.some(k => k === relation.kind) && DOT_INTERACTION_STAGES.some(s => s === relation.stage)
+    ? (relation.direction === 'dot_to_agent' ? 'D→?' : '?→D') + ' ' + relation.kind.toUpperCase().slice(0, 8) + ' ' + relation.stage.toUpperCase().replace('NEEDS_ATTENTION', 'ATTN').slice(0, 6) + ' report'
+    : dot.reportState ? 'Dot report' : 'Integration';
+  const portrait = validDotAppearance(dot.appearance) && dot.appearance.png
+    ? `<image x="48" y="16" width="48" height="48" href="data:image/png;base64,${dot.appearance.png}"/>`
+    : null;
+  const svg = svgFrame(Ink.s900, `<circle cx="72" cy="40" r="22" fill="${color}"/><rect x="63" y="34" width="4" height="10" rx="2" fill="${Ink.s900}"/><rect x="77" y="34" width="4" height="10" rx="2" fill="${Ink.s900}"/><text x="72" y="83" text-anchor="middle" fill="${UI.hudText}" font-family="IBM Plex Sans" font-size="18">DOT</text><text x="72" y="105" text-anchor="middle" fill="${color}" font-family="IBM Plex Sans" font-size="12">${escSvgText(label)}</text><text x="72" y="125" text-anchor="middle" fill="${UI.hudText}" font-family="IBM Plex Sans" font-size="10">${escSvgText(edge)}</text>`);
+  return portrait ? svg.replace(/<circle cx="72".*?<text x="72" y="83"/, portrait + '<text x="72" y="83"') : svg;
+}
+
+/** Relative age budget is computed at the host; compact boards need no wall clock. */
+export function dotSurfaceSnapshot(dot: DotDeckSnapshot, appearance: DotAppearance | null = null, relation: DotSurfaceRelation | null = null, now = Date.now()): DotDeckSnapshot {
+  const code = DOT_PHASES.indexOf(dotDeckPresentation(dot, now).label as typeof DOT_PHASES[number]);
+  const validForMs = code === 2 || code === 3 ? Math.max(0, Math.min(
+    DOT_LIMITS.reportFreshMs - (now - (dot.reportedAt ?? 0)),
+    (dot.expiresAt ?? (now + DOT_LIMITS.reportFreshMs)) - now,
+  )) : 0;
+  return { ...dot, code: Math.max(0, code), validForMs, appearance, relation };
+}
+export function compactDotSnapshot(dot: DotDeckSnapshot | null | undefined): DotDeckSnapshot | null {
+  if (!dot?.configured) return null;
+  const value = dotSurfaceSnapshot(dot, null, dot.relation ?? null);
+  return { ...value, appearance: compactDotAppearance(dot.appearance) };
 }
