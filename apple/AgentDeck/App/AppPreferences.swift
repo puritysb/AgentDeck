@@ -294,13 +294,22 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
     }
 
     /// First-run onboarding tracking. Flips to `true` when the user
-    /// completes or skips the 3-pane onboarding sheet (macOS) /
+    /// completes or skips the guided setup (macOS) /
     /// full-screen flow (iOS). Pure local flag; not mirrored to
     /// settings.json. Apple's App Store review guidelines expect a
     /// clear first-run orientation pass for non-developer consumers,
     /// so this gates the educational flow before the dashboard.
     @Published var hasSeenOnboarding: Bool {
         didSet { defaults.set(hasSeenOnboarding, forKey: Keys.hasSeenOnboarding) }
+    }
+
+    /// nil is a pre-guided-setup installation; [] is an explicit skip.
+    @Published var onboardingAgents: [String]? {
+        didSet { defaults.set(onboardingAgents, forKey: "prefs.onboardingAgents") }
+    }
+
+    var hasConfiguredObservation: Bool {
+        hooksInstalled || codexConfigInstalled || openCodeMonitoringEnabled || kiroAccessEnabled
     }
 
     /// Opt-in OpenCode server monitoring (Settings → Integrations). Default
@@ -320,7 +329,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
 
     private let defaults: UserDefaults
 
-    private init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.dashboardType = DashboardType(rawValue: defaults.string(forKey: "prefs.dashboardType") ?? "") ?? .standard
         let storedPort = defaults.object(forKey: Keys.daemonPort) as? Int
@@ -361,6 +370,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.hasSeenDevicePreview = defaults.object(forKey: Keys.hasSeenDevicePreview) as? Bool ?? false
         self.hasSeenMonitorEmptyGuide = defaults.object(forKey: Keys.hasSeenMonitorEmptyGuide) as? Bool ?? false
         self.hasRequestedNotifications = defaults.object(forKey: Keys.hasRequestedNotifications) as? Bool ?? false
+        self.onboardingAgents = defaults.stringArray(forKey: "prefs.onboardingAgents")
         self.hasSeenOnboarding = defaults.object(forKey: Keys.hasSeenOnboarding) as? Bool ?? false
         self.openCodeMonitoringEnabled = defaults.object(forKey: Keys.openCodeMonitoringEnabled) as? Bool ?? false
         self.openCodeServerURL = defaults.string(forKey: Keys.openCodeServerURL) ?? "http://127.0.0.1:4096"

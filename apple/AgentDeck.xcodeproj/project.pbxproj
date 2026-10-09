@@ -128,6 +128,7 @@
 		2B8F7E0477776522FD3417A9 /* ApmeDashboardWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCA36B13CDF6548B698F4C55 /* ApmeDashboardWindow.swift */; };
 		2C10018050B390B0B4EA76DD /* OpenCodeSSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E03521107C667F3ED4EA7A /* OpenCodeSSEClient.swift */; };
 		2C1EFC41BE967569FC761A6A /* LocalModelPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F94B33C220750813FE23640E /* LocalModelPresentation.swift */; };
+		2C54F431D539377057CE5200 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */; };
 		2CA69943196E37F61A932DEF /* OpenClawToolNoiseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */; };
 		2DDD8DC9B5918E9D0001AE28 /* PlanktonSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70843624A0EEB9E63435EC5 /* PlanktonSystem.swift */; };
 		2E4BB417A1CB93B5962D6D09 /* IDotMatrixBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */; };
@@ -154,6 +155,7 @@
 		36121C5F8A2BF0D337CA2ED1 /* GatewayLiveActivity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77F4FA4E17866309859930F /* GatewayLiveActivity.generated.swift */; };
 		36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
 		365E273D40DBDE66988AE8E2 /* MatrixExpression.swift in Sources */ = {isa = PBXBuildFile; fileRef = B938F198829A3AF90F7BE842 /* MatrixExpression.swift */; };
+		3690A11DD49328595133646D /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D277256BE00809ABB593F588 /* OnboardingFlow.swift */; };
 		36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */; };
 		37445F34EE5090F24D59EB4A /* DataParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57722317EDF1D567981112DE /* DataParticleSystem.swift */; };
 		378C03BA7C86CFABDD41FA06 /* PixooPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DC38F54A1C54AB134DB0535 /* PixooPreview.swift */; };
@@ -265,6 +267,7 @@
 		58E5710560C2B86ACFA1A460 /* SwiftSurfaceProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C734B04F5E770B8B5FE2B70 /* SwiftSurfaceProtocolTests.swift */; };
 		590D75801E10021127334F88 /* ActivityPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6186E147F760B85461F02022 /* ActivityPanel.swift */; };
 		59BEE539C23688C92D592A19 /* CiWaitRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */; };
+		5A74FCB08167CCC4C5664D04 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */; };
 		5A90801088DFF80C8E0EDED6 /* CrayfishCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD30721AD4CBA74DD049A1F /* CrayfishCreature.swift */; };
 		5B1640167CAEBC66B8D0BE35 /* LocalSessionDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2FD383032B3C47C9B547426 /* LocalSessionDiscovery.swift */; };
 		5B7A5FC7C0209AF3CF13C563 /* D200HLayoutModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075254486BFFC613DB33B99D /* D200HLayoutModel.swift */; };
@@ -417,6 +420,7 @@
 		93AB7595B2EC62D78A09A58F /* DeskPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83D5CE0F7637C0913938BA6B /* DeskPreviews.swift */; };
 		942417AA37DAD475B023BED1 /* PairingWindowStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F0B91327EB48703713A68C /* PairingWindowStore.swift */; };
 		942DEF7F0BE77DF0FA264AF8 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
+		94A83BA94BFDD188991FEAF4 /* OnboardingFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D277256BE00809ABB593F588 /* OnboardingFlow.swift */; };
 		9557B1E24F9A22C339934981 /* CodexObservationOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */; };
 		955B482B990E5FB3C933144A /* UsagePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */; };
 		97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */; };
@@ -907,6 +911,7 @@
 		6E1158EB2A6E4220C0DA980A /* SerialOwnershipGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialOwnershipGuardTests.swift; sourceTree = "<group>"; };
 		6E98D7DD3B95496DC3353CF1 /* SessionOrderStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOrderStoreTests.swift; sourceTree = "<group>"; };
 		6F0A3614C2DF6495CAB410B1 /* AppReviewPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppReviewPromptTests.swift; sourceTree = "<group>"; };
+		6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
 		707E6E55048B70C6A50DB105 /* TuiCanonicalCells.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuiCanonicalCells.generated.swift; sourceTree = "<group>"; };
 		70F61897614FBE52B61AB8B4 /* MiniToml.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniToml.swift; sourceTree = "<group>"; };
 		730925E1194B8183122443CA /* PixooRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooRenderer.swift; sourceTree = "<group>"; };
@@ -1037,6 +1042,7 @@
 		CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOtelRoutes.swift; sourceTree = "<group>"; };
 		CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRegistry.swift; sourceTree = "<group>"; };
 		D1DDCB822B1DC56875875388 /* ModuleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleManager.swift; sourceTree = "<group>"; };
+		D277256BE00809ABB593F588 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
 		D2994478DEFAA4A1CC8EC54D /* FormatUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatUtils.swift; sourceTree = "<group>"; };
 		D2FD383032B3C47C9B547426 /* LocalSessionDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSessionDiscovery.swift; sourceTree = "<group>"; };
 		D53F4A08898B95CB592E133A /* LightRaySystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightRaySystem.swift; sourceTree = "<group>"; };
@@ -1222,6 +1228,7 @@
 				E5E8405A0184E8ED644F8BEB /* MlxSafetyTests.swift */,
 				412BA6DCF8B496FBEEE65F00 /* ObservedAgentSettingsTests.swift */,
 				767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */,
+				6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */,
 				8EB6D1182ABF3CF9649640FE /* OpenClawApprovalErrorTests.swift */,
 				FD9BAEA1AA19038A243F2806 /* OpenClawPluginApprovalRulesTests.swift */,
 				9AF98CA1BB582FB56637BB59 /* OpenClawSessionSettingsTests.swift */,
@@ -1557,6 +1564,7 @@
 		BAFA97F9104C19010170019D /* Onboarding */ = {
 			isa = PBXGroup;
 			children = (
+				D277256BE00809ABB593F588 /* OnboardingFlow.swift */,
 				9965CED8937C8C1F27DFCC68 /* OnboardingScreen.swift */,
 				302810B07A9DC093700A7C31 /* OnboardingSheet.swift */,
 			);
@@ -2042,6 +2050,7 @@
 				41C8872F41E768340F5AB7E5 /* MlxSafetyTests.swift in Sources */,
 				79FEBC1309CC4ED64EC91741 /* ObservedAgentSettingsTests.swift in Sources */,
 				BA45B7FBDCFDD8971904714D /* ObservedAskUserQuestionTests.swift in Sources */,
+				2C54F431D539377057CE5200 /* OnboardingFlowTests.swift in Sources */,
 				005B0DAAC1B51D7B88E775B8 /* OpenClawApprovalErrorTests.swift in Sources */,
 				10D745FF03A660573DFAD326 /* OpenClawPluginApprovalRulesTests.swift in Sources */,
 				D4596068D1B0207EFD0BB829 /* OpenClawSessionSettingsTests.swift in Sources */,
@@ -2131,6 +2140,7 @@
 				C3572381069C025842EB85EA /* MlxSafetyTests.swift in Sources */,
 				16516CAB1B2FDAFC27C2261C /* ObservedAgentSettingsTests.swift in Sources */,
 				3DF6BC8D6B4841A3EF370023 /* ObservedAskUserQuestionTests.swift in Sources */,
+				5A74FCB08167CCC4C5664D04 /* OnboardingFlowTests.swift in Sources */,
 				143AC29C25DFB6DF71A0B42F /* OpenClawApprovalErrorTests.swift in Sources */,
 				A45715C40465E13F9F57B786 /* OpenClawPluginApprovalRulesTests.swift in Sources */,
 				9ABF9EC3B767F9589CAC5902 /* OpenClawSessionSettingsTests.swift in Sources */,
@@ -2335,6 +2345,7 @@
 				19ECE218BBAF3ED4EE451B0E /* ObservedAgentSettings.swift in Sources */,
 				4D747DC11E54E8A60894D481 /* ObservedSteering.swift in Sources */,
 				4B34D6CBC040FE9BE5E51856 /* OctopusCreature.swift in Sources */,
+				3690A11DD49328595133646D /* OnboardingFlow.swift in Sources */,
 				F1C357A840E59D7A188C808B /* OnboardingScreen.swift in Sources */,
 				E98F3FC6D7134E8E65163D93 /* OnboardingSheet.swift in Sources */,
 				FD86AF81DA987540254BA326 /* OpenClawAdapter.swift in Sources */,
@@ -2601,6 +2612,7 @@
 				32BFAECC2ADBE771D2E31C3D /* ObservedAgentSettings.swift in Sources */,
 				48B83035D9FC3732361014F8 /* ObservedSteering.swift in Sources */,
 				CCB2A2848DDAADBEB6F7BB53 /* OctopusCreature.swift in Sources */,
+				94A83BA94BFDD188991FEAF4 /* OnboardingFlow.swift in Sources */,
 				BF6E216F74A8205677B8B82B /* OnboardingScreen.swift in Sources */,
 				F608DAD197953CC405F306A5 /* OnboardingSheet.swift in Sources */,
 				58591ABC081F2367FEE6B563 /* OpenClawAdapter.swift in Sources */,

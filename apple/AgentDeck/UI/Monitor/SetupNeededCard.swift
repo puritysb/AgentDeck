@@ -250,10 +250,20 @@ extension AgentStateHolder {
         let externalDaemonOwnsHooks = daemonService.isUsingExternalDaemon
 
         let anthropicSaved = anthropicAdminKeySavedValue()
-        let shouldSurfaceClaude = Self.shouldSurfaceClaudeSetup(for: state)
+        let types = Self.visibleAgentTypes(in: state)
+        let shouldSurfaceClaude = preferences.onboardingAgents == nil
+            ? Self.shouldSurfaceClaudeSetup(for: state)
+            : OnboardingFlow.shouldSuggest(
+            "claude", selected: preferences.onboardingAgents,
+            configured: preferences.hookInstallConsent == .accepted,
+            live: types.contains("claude-code"))
+        let shouldSurfaceCodex = OnboardingFlow.shouldSuggest(
+            "codex", selected: preferences.onboardingAgents,
+            configured: preferences.codexConfigConsent == .accepted,
+            live: types.contains("codex-cli") || types.contains("codex-app"))
         let descriptors: [IntegrationDescriptor] = [
             shouldSurfaceClaude ? IntegrationCatalog.claudeCode : nil,
-            IntegrationCatalog.codex,
+            shouldSurfaceCodex ? IntegrationCatalog.codex : nil,
             IntegrationCatalog.openClaw,
             IntegrationCatalog.antigravity,
         ].compactMap { $0 }
@@ -296,7 +306,8 @@ extension AgentStateHolder {
         // run: the CLI can incidentally install the same managed config block,
         // but the standalone App Store app needs a visible, user-approved path
         // before any Codex App / Codex CLI session has emitted telemetry.
-        if !externalDaemonOwnsHooks,
+        if shouldSurfaceCodex,
+           !externalDaemonOwnsHooks,
            Self.shouldShowCodexObservationSetup(
             codexAuthMode: state.codexAuthMode,
             codexConfigInstalled: preferences.codexConfigInstalled,
