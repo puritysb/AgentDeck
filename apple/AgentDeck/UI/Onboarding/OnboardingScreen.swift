@@ -16,7 +16,7 @@ struct OnboardingScreen: View {
             if connecting {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Connect to your Mac").font(.title.bold())
-                    Text("Open AgentDeck on your Mac on the same network. Allow Local Network access to find it, then approve this device in the Mac's Pair a Device window or scan its QR code.")
+                    Text("Open AgentDeck on your Mac on the same network. Allow Local Network access to find it, then open Devices → Pair Device on your Mac to approve this device or show its QR code.")
                         .foregroundStyle(.secondary)
                     if stateHolder.connection.status == .connected {
                         Label("Connected to AgentDeck", systemImage: "checkmark.circle")

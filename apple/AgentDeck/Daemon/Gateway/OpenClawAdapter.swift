@@ -1779,7 +1779,7 @@ actor OpenClawAdapter {
             "client": [
                 "id": clientId,
                 "displayName": clientDisplayName,
-                "version": "0.3.0",
+                "version": AppMetadata.current.version,
                 "platform": clientPlatform,
                 "deviceFamily": clientDeviceFamily,
                 "mode": clientMode,

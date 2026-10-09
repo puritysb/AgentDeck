@@ -180,8 +180,9 @@ struct OnboardingSheet: View {
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Button("Preview Devices") { finish(opening: "device-preview") }
-                Button("Pair a Device") { finish(opening: "pairing-qr") }
+                Button("Pair Device") { finish(opening: "pairing-qr") }
             }
+            Link("Get AgentDeck for iPhone or iPad", destination: AppMetadata.appStoreURL)
         }
     }
 
