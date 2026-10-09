@@ -68,6 +68,26 @@ class MultiDaemonConnectionTest {
         }
     }
 
+    @Test fun `exhausted second host must not show first host approval error`() {
+        RefusalServer(401).use { first ->
+            val connection = BridgeConnection()
+            try {
+                connection.connect(first.url)
+                await { connection.lastError.value?.startsWith("Approval required") == true }
+                val second = "ws://[::1]:${first.port}"
+                connection.connect(second)
+                await(35_000) { connection.url.value == null }
+                assertEquals(second, connection.selectedUrl)
+                val shown = PairingCredential.disconnectedDetail(
+                    connection.lastError.value, connection.unauthorizedEndpoints.value.keys,
+                    connection.url.value, connection.selectedUrl,
+                )
+                assertEquals("A different selected host's network failure must not be labeled as approval for the first host",
+                    connection.lastError.value, shown)
+            } finally { connection.disconnect() }
+        }
+    }
+
     private fun await(timeoutMs: Long = 8_000, condition: () -> Boolean) {
         val until = System.nanoTime() + timeoutMs * 1_000_000L
         while (!condition() && System.nanoTime() < until) Thread.sleep(10)

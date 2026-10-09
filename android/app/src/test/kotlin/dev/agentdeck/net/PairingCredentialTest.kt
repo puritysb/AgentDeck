@@ -274,4 +274,10 @@ class PairingCredentialTest {
             "Network unreachable", setOf("192.168.1.10:9120"), "ws://192.168.1.11:9120"))
     }
 
+    @Test fun `exhausted selected host keeps its own network error`() {
+        val error = "Bridge not found"
+        assertEquals(error, PairingCredential.disconnectedDetail(error, setOf("first.local:9120"),
+            currentUrl = null, selectedUrl = "ws://second.local:9120"))
+    }
+
 }

@@ -60,6 +60,12 @@ final class BridgeDiscovery: ObservableObject, @unchecked Sendable {
     /// starting a real `NWBrowser` under test would also put a Local Network
     /// permission prompt in CI's path. Compiled out of Release builds.
     var isBrowserEnabled = !ProcessInfo.processInfo.arguments.contains("-AgentDeckDisableDiscovery")
+
+    /// Feed deterministic discovery events into the real connection waterfall.
+    func publishForTesting(_ bridges: [DiscoveredBridge]) {
+        precondition(!isBrowserEnabled)
+        self.bridges = bridges
+    }
     #endif
 
     // MARK: - Start/Stop

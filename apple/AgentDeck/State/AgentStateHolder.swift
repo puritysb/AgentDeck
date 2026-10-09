@@ -33,6 +33,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     // MARK: - URL Persistence
 
     private var selectedBridgeURL: String?
+    /// Remains available for a manual retry after the socket clears its URL.
+    var retryBridgeURL: String? { selectedBridgeURL ?? savedUrl }
     private var credentials: [String: String] {
         get {
             PairingCredential.remembering(savedUrl, in:
@@ -268,8 +270,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             self.endForegroundSearch()
             self.waterfallStage = .idle
-            self.userStoppedConnecting = true
-            // Keep discovery visible, but let the user choose another host.
+            // Exhausting a network retry budget is not a user stop. A later
+            // advertisement for this same endpoint may restore the connection.
+            // The discovery selector still refuses every other host.
             self.discovery.startSearching()
         }
         // Socket retries retain the selected endpoint. Discovery is not evidence
@@ -556,7 +559,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         print("[Waterfall] starting waterfall")
 
         // Always mDNS first — savedUrl can be stale after DHCP/network changes.
-        // savedUrl is tried as fallback after 4s if no mDNS results.
+        // The selected URL is tried after 4s even if only other hosts advertise.
         startMdnsDiscovery()
     }
 
@@ -695,9 +698,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
             print("[AutoConnect] poll: bridges=\(self.discovery.bridges.count), failed=\(self.failedBridgeIds.count), searching=\(self.discovery.isSearching)")
 
-            // After 4s with no mDNS results, try savedUrl as fallback
-            if self.autoConnectPollCount == 8, self.discovery.bridges.isEmpty, let url = self.selectedBridgeURL ?? self.savedUrl {
-                print("[AutoConnect] no mDNS after 4s, trying saved URL: \(url)")
+            // A saved/manual endpoint can be reachable without advertising mDNS.
+            // Other computers in the list must not suppress its direct attempt.
+            if self.autoConnectPollCount == 8, let url = self.retryBridgeURL {
+                print("[AutoConnect] trying selected URL after discovery window: \(url)")
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.waterfallStage = .savedUrl
@@ -719,7 +723,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.connectTo(daemon)
-            } else if candidates.filter({ $0.agentType == "daemon" }).count > 1 {
+            } else if self.retryBridgeURL == nil, candidates.filter({ $0.agentType == "daemon" }).count > 1 {
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.endForegroundSearch()

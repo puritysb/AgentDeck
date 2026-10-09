@@ -9,6 +9,8 @@ import dev.agentdeck.ui.eink.EinkPaperBoard
 import android.content.res.Configuration
 import dev.agentdeck.ui.common.ConnectionLexicon
 import dev.agentdeck.ui.common.ConnectionSetupGuide
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -128,7 +130,7 @@ fun EinkMonitorScreen(
     // A refusal outranks the last attempt's error: the recovery ladder keeps
     // probing the USB path, and "USB bridge not found" kept overwriting the one
     // message this device's user can act on.
-    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys, connection.url.value)
+    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys, currentUrl, connection.selectedUrl)
     val isReconnecting by connection.isReconnecting.collectAsState()
     val reconnectAttempt by connection.reconnectAttempt.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)
@@ -155,6 +157,8 @@ fun EinkMonitorScreen(
                 connectionStatus = connectionStatus,
                 discoveredBridges = discoveredBridges,
                 lastError = lastError,
+                retryUrl = currentUrl ?: connection.selectedUrl,
+                onRetry = { (connection.url.value ?: connection.selectedUrl)?.let { connection.connect(it) } },
                 onConnectToBridge = { bridge ->
                     connection.connect(bridge.wsUrl(), bridge.fallbackWsUrl())
                 },
@@ -565,6 +569,8 @@ private fun EinkNotConnectedScreen(
     connectionStatus: ConnectionStatus,
     discoveredBridges: List<DiscoveredBridge>,
     lastError: String?,
+    retryUrl: String?,
+    onRetry: () -> Unit,
     onConnectToBridge: (DiscoveredBridge) -> Unit,
     onConnectLocalhost: () -> Unit,
     onSettingsClick: () -> Unit,
@@ -573,7 +579,8 @@ private fun EinkNotConnectedScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp),
+            .padding(32.dp)
+            .verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -593,18 +600,14 @@ private fun EinkNotConnectedScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = when (connectionStatus) {
-                ConnectionStatus.DISCONNECTED -> ConnectionLexicon.SEARCHING
-                ConnectionStatus.CONNECTING -> ConnectionLexicon.CONNECTING
-                ConnectionStatus.CONNECTED -> "Connected"
-            },
+            text = ConnectionLexicon.statusText(connectionStatus, lastError, discoveredBridges.isNotEmpty()),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (connectionStatus == ConnectionStatus.DISCONNECTED) {
+        if (connectionStatus == ConnectionStatus.DISCONNECTED && retryUrl == null && discoveredBridges.isEmpty() && lastError == null) {
             Text(
                 text = ConnectionSetupGuide.REQUIRED,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
@@ -624,11 +627,17 @@ private fun EinkNotConnectedScreen(
         // Error message from last connection attempt
         if (lastError != null && connectionStatus == ConnectionStatus.DISCONNECTED) {
             Text(
-                text = "Connection error · $lastError",
+                text = lastError,
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        if (connectionStatus == ConnectionStatus.DISCONNECTED && retryUrl != null) {
+            androidx.compose.material3.Button(onClick = onRetry) { Text(ConnectionLexicon.RETRY_CONNECTION) }
+            Text(PairingCredential.endpointOf(retryUrl).orEmpty())
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         if (connectionStatus == ConnectionStatus.DISCONNECTED) {
@@ -689,7 +698,7 @@ private fun EinkNotConnectedScreen(
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                 }
-            } else {
+            } else if (retryUrl == null && lastError == null) {
                 Text(
                     text = ConnectionLexicon.SEARCHING,
                     style = MaterialTheme.typography.bodyMedium,

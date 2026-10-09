@@ -117,11 +117,13 @@ object PairingCredential {
      * approves. So by the time anyone reads this, the row is already waiting on
      * the Mac.
      */
-    fun disconnectedDetail(lastError: String?, unauthorizedEndpoints: Set<String>, currentUrl: String? = null): String? {
+    fun disconnectedDetail(lastError: String?, unauthorizedEndpoints: Set<String>, currentUrl: String? = null, selectedUrl: String? = null): String? {
         if (lastError?.startsWith("Approval required") == true) return lastError
-        val current = endpointOf(currentUrl)
+        // The socket URL is cleared on exhaustion; the user's selection is not.
+        val target = currentUrl ?: selectedUrl
+        val current = endpointOf(target)
         // A refusal from host A must not explain a later network failure on B.
-        if (current != null && !isLoopback(currentUrl) && current !in unauthorizedEndpoints) return lastError
+        if (current != null && !isLoopback(target) && current !in unauthorizedEndpoints) return lastError
         val endpoint = current?.takeIf { it in unauthorizedEndpoints }
             ?: unauthorizedEndpoints.firstOrNull() ?: return lastError
         return approvalMessage("ws://$endpoint")

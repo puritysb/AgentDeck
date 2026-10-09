@@ -472,7 +472,11 @@ on one host does not authorize a client on another host.
 Apple and Android clients retain pairing URLs per endpoint and migrate the
 previously saved URL. Selecting another host keeps the first host's credential;
 a tokenless discovery result never clears it or copies it to a different host.
-Reconnection stays with the selected endpoint. When discovery returns multiple
+Reconnection stays with the selected endpoint. A saved or manually entered
+endpoint is still tried when only other computers advertise mDNS. Exhausting a
+network retry budget ends the active attempt but keeps recovery on a later
+advertisement from that same host; an explicit stop or authentication refusal
+continues to suppress passive retries on Apple. When discovery returns multiple
 hosts without a previous selection, the client asks the user to choose.
 
 An HTTP 401 handshake refusal or WebSocket 4001 close enters **Approval required**
@@ -481,7 +485,11 @@ after the existing 30-second refusal holdoff, so host-side approval still works
 without touching a reader. Explicit retry is available immediately on both
 clients. The client identifies the refused host and directs
 the operator to that computer's **Devices › Pair Device › Waiting to Connect**.
-Approve the client there, then select the host again to retry. The approval list
+Approve the client there, then use **Retry Connection**. The connection screen
+keeps this action available for the selected address even when it is absent
+from discovery. Approval, network failure, and choosing a discovered host have
+distinct status labels; a previous host's refusal never describes a new host's
+network failure. The approval list
 identifies the requesting client; do not confuse that address with the host
 address shown in the client's connection error. QR and manual pairing remain
 available. A changed host address is a new endpoint and is not silently trusted.

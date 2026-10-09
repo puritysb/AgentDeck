@@ -506,8 +506,8 @@ struct SettingsScreen: View {
                         .foregroundStyle(TerrariumHUD.ledRed)
                 }
 
-                if let target = stateHolder.connection.authenticationRequiredURL {
-                    Button("Retry Connection") { stateHolder.connectTo(url: target) }
+                if let target = stateHolder.retryBridgeURL, stateHolder.connection.status == .disconnected {
+                    Button(ConnectionLexicon.retryConnection) { stateHolder.connectTo(url: target) }
                         .buttonStyle(.borderedProminent)
                         .tint(DesignTokens.UI.cyan)
                 }

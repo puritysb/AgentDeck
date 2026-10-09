@@ -43,6 +43,76 @@ final class MultiDaemonConnectionTests: XCTestCase {
         XCTAssertNil(connection.authenticationRequiredURL)
         XCTAssertNil(connection.lastError)
     }
+    #if DEBUG
+    func testSavedHostIsDialedWhenOnlyOtherHostIsDiscovered() throws {
+        let ready = expectation(description: "listener ready")
+        let server = try RefusalServer(code: 401) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        server.approve()
+        let url = "ws://127.0.0.1:\(try XCTUnwrap(server.port))"
+        let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+        UserDefaults.standard.set(url, forKey: "lastBridgeUrl")
+        defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+        let holder = AgentStateHolder()
+        holder.discovery.isBrowserEnabled = false
+        defer { holder.prepareForTermination() }
+        holder.discovery.publishForTesting([DiscoveredBridge(name: "other-host", host: "192.0.2.10", port: 9120, token: nil, agentType: "daemon")])
+        holder.startConnectionWaterfall()
+        let settled = expectation(description: "saved URL fallback window")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { settled.fulfill() }
+        wait(for: [settled], timeout: 9)
+        XCTAssertGreaterThan(server.requests, 0, "A different mDNS host must not suppress dialing the saved endpoint")
+    }
+
+    func testSelectedHostRecoversAfterRetryExhaustion() throws {
+        let ready = expectation(description: "listener ready")
+        let server = try RefusalServer(code: 401) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        server.approve()
+        let url = "ws://127.0.0.1:\(try XCTUnwrap(server.port))"
+        let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+        UserDefaults.standard.set(url, forKey: "lastBridgeUrl")
+        defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+        let holder = AgentStateHolder()
+        holder.discovery.isBrowserEnabled = false
+        defer { holder.prepareForTermination() }
+        holder.connection.onReconnectExhausted?(url)
+        holder.discovery.publishForTesting([
+            DiscoveredBridge(name: "unrelated", host: "192.0.2.10", port: 9120, token: nil, agentType: "daemon"),
+            DiscoveredBridge(name: "selected-host-returned", host: "127.0.0.1", port: Int(try XCTUnwrap(server.port)), token: nil, agentType: "daemon")])
+        let settled = expectation(description: "passive discovery delivery")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { settled.fulfill() }
+        wait(for: [settled], timeout: 4)
+        XCTAssertGreaterThan(server.requests, 0, "Retry exhaustion must not be treated as a user stop when the selected host returns")
+    }
+
+    func testDiscoveryDoesNotUndoExplicitStop() throws { try assertDiscoveryRemainsStopped(auth: false) }
+    func testDiscoveryDoesNotRetryAnAuthenticationRefusal() throws { try assertDiscoveryRemainsStopped(auth: true) }
+
+    private func assertDiscoveryRemainsStopped(auth: Bool) throws {
+        let ready = expectation(description: "listener ready")
+        let server = try RefusalServer(code: 401) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+        let url = "ws://127.0.0.1:\(try XCTUnwrap(server.port))"
+        UserDefaults.standard.set(url, forKey: "lastBridgeUrl")
+        defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+        let holder = AgentStateHolder()
+        holder.discovery.isBrowserEnabled = false
+        defer { holder.prepareForTermination() }
+        if auth { holder.connection.onAuthenticationRequired?() }
+        else { holder.stopConnectionAttempts() }
+        holder.discovery.publishForTesting([DiscoveredBridge(name: "selected", host: "127.0.0.1", port: Int(try XCTUnwrap(server.port)), token: nil, agentType: "daemon")])
+        let settled = expectation(description: "discovery delivered")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
+        wait(for: [settled], timeout: 3)
+        XCTAssertEqual(server.requests, 0)
+    }
+    #endif
+
 }
 
 private final class RefusalServer: @unchecked Sendable {
