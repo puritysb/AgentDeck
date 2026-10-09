@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
+import dev.agentdeck.net.PairingCredential
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.agentdeck.util.PanelOverride
@@ -37,6 +39,7 @@ class DisplayPreferences(
         private val DASHBOARD_TYPE_KEY = stringPreferencesKey("dashboard_type")
         private val ORIENTATION_KEY = intPreferencesKey("orientation")
         private val KEEP_AWAKE_KEY = booleanPreferencesKey("keep_awake")
+        private val PAIRED_BRIDGE_URLS_KEY = stringSetPreferencesKey("paired_bridge_urls")
         private val LAST_BRIDGE_URL_KEY = stringPreferencesKey("last_bridge_url")
         private val DISPLAY_SYNC_ENABLED_KEY = booleanPreferencesKey("display_sync_enabled")
         private val IDLE_TIMEOUT_MINUTES_KEY = intPreferencesKey("idle_timeout_minutes")
@@ -83,10 +86,19 @@ class DisplayPreferences(
         prefs[LAST_BRIDGE_URL_KEY]
     }
 
+    val pairedBridgeUrlsFlow: Flow<Map<String, String>> = context.dataStore.data.map { prefs ->
+        (prefs[PAIRED_BRIDGE_URLS_KEY].orEmpty() + listOfNotNull(prefs[LAST_BRIDGE_URL_KEY]))
+            .fold(emptyMap()) { credentials, url -> PairingCredential.remember(url, credentials) }
+    }
+
     suspend fun setLastBridgeUrl(url: String?) {
         context.dataStore.edit { prefs ->
+            val credentials = (prefs[PAIRED_BRIDGE_URLS_KEY].orEmpty() + listOfNotNull(prefs[LAST_BRIDGE_URL_KEY]))
+                .fold(emptyMap<String, String>()) { saved, item -> PairingCredential.remember(item, saved) }
+            val retained = PairingCredential.remember(url, credentials)
+            prefs[PAIRED_BRIDGE_URLS_KEY] = retained.values.toSet()
             if (url != null) {
-                prefs[LAST_BRIDGE_URL_KEY] = url
+                prefs[LAST_BRIDGE_URL_KEY] = PairingCredential.resolveFromStore(url, retained)
             } else {
                 prefs.remove(LAST_BRIDGE_URL_KEY)
             }

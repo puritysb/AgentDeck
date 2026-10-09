@@ -81,6 +81,22 @@ final class ConnectionOverlayTests: XCTestCase {
 
         XCTAssertEqual(phase, .searching)
     }
+    func testApprovalAndNetworkFailureDoNotClaimEmptyDiscovery() {
+        XCTAssertEqual(ConnectionOverlayPhase.resolve(localNetworkDenied: false, isReconnecting: false,
+            isConnecting: false, isAutoConnecting: false, authenticationRequired: true,
+            hasConnectionError: true, hasDiscoveredHosts: true), .approvalRequired)
+        XCTAssertEqual(ConnectionOverlayPhase.resolve(localNetworkDenied: false, isReconnecting: false,
+            isConnecting: false, isAutoConnecting: false, hasConnectionError: true), .unreachable)
+        XCTAssertEqual(ConnectionOverlayPhase.resolve(localNetworkDenied: false, isReconnecting: false,
+            isConnecting: false, isAutoConnecting: false, hasDiscoveredHosts: true), .chooseHost)
+    }
+
+    func testAnActiveRetryOutranksThePreviousFailure() {
+        XCTAssertEqual(ConnectionOverlayPhase.resolve(localNetworkDenied: false, isReconnecting: false,
+            isConnecting: true, isAutoConnecting: false, authenticationRequired: true,
+            hasConnectionError: true), .connecting)
+    }
+
 }
 
 /// The invariant the 2.1(a) rejection was actually about: the visible search

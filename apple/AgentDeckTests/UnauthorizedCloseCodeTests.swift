@@ -37,10 +37,10 @@ final class UnauthorizedCloseCodeTests: XCTestCase {
     /// problem and the action. "Connection failed" named neither, which is why
     /// #171 was opened rather than self-served.
     func testMessageNamesTheProblemAndTheFix() {
-        let message = BridgeConnection.unauthorizedMessage
-        XCTAssertTrue(message.contains("Unauthorized"), "must name the problem")
+        let message = PairingCredential.approvalMessage(for: "ws://example.local:9120")
+        XCTAssertTrue(message.contains("Approval required"), "must name the problem")
         XCTAssertTrue(
-            message.lowercased().contains("pair"),
+            message.contains("Devices › Pair Device"),
             "must point at pairing — a refusal is not fixed by waiting or retrying"
         )
         XCTAssertFalse(
