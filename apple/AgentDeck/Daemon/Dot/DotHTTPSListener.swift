@@ -75,7 +75,11 @@ final class DotHTTPSListener {
             sec_protocol_options_set_local_identity(tls.securityProtocolOptions, nativeIdentity)
             parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
         }
-        let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+        // requiredLocalEndpoint already supplies the bind port. Passing `on:`
+        // as well makes Network.framework reject the parameters with EINVAL.
+        let listener = loopbackOnly
+            ? try NWListener(using: parameters)
+            : try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
         self.listener = listener; state = "Starting connection"
         listener.stateUpdateHandler = { [weak self] result in
             Task { @DaemonActor in

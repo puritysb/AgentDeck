@@ -6,6 +6,28 @@ import RealityKit
 @testable import AgentDeck
 
 final class DotDirectHostingTests: XCTestCase {
+    func testLocalListenerServesHTTPWithoutTLSIdentity() async throws {
+        try await Task { @DaemonActor in
+            let listener = DotHTTPSListener()
+            // Separate concurrent XCTest hosts without touching production ports.
+            let port = UInt16(20000 + ProcessInfo.processInfo.processIdentifier % 30000)
+            try listener.start(identity: nil, port: port, loopbackOnly: true) { request in
+                .init(status: request.target == "/probe" ? 200 : 404, body: Data("local-ok".utf8))
+            }
+            defer { listener.stop() }
+            for _ in 0..<100 {
+                if listener.isReady { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertTrue(listener.isReady, listener.state)
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/probe")!)
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            XCTAssertEqual(String(data: data, encoding: .utf8), "local-ok")
+        }.value
+    }
+
     func testLocalPublicOAuthRequiresConsentPKCEAndLoopbackCallback() async throws {
         try await Task { @DaemonActor in
             let origin = "http://127.0.0.1:9476", callback = "http://127.0.0.1:38472/callback"
