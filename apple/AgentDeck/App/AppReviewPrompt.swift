@@ -7,9 +7,7 @@ import StoreKit
 /// session reached an idle pause. Nothing is uploaded and no session id,
 /// project name, command, or user identifier is retained.
 struct AppReviewPromptPolicy {
-    static let reviewURL = URL(
-        string: "https://apps.apple.com/app/id6784822497?action=write-review"
-    )!
+    static let reviewURL = AppMetadata.reviewURL
 
     static func isProductionAppStoreInstall() async -> Bool {
         #if DEBUG

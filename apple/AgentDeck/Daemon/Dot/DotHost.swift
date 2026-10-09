@@ -201,7 +201,7 @@ final class DotHost {
                 let params = object["params"] as? [String: Any] ?? [:]
                 if method == "initialize" {
                     guard params["protocolVersion"] is String, params["capabilities"] is [String: Any], params["clientInfo"] is [String: Any] else { throw DotRPCError(code: -32602, message: "Invalid initialization") }
-                    return result(["protocolVersion": "2025-11-25", "capabilities": ["tools": [:]], "serverInfo": ["name": "agentdeck-direct", "version": "0.0.0"],
+                    return result(["protocolVersion": "2025-11-25", "capabilities": ["tools": [:]], "serverInfo": ["name": "agentdeck-direct", "version": AppMetadata.current.version],
                         "instructions": "Read and claim the supplied request before reporting. Reports describe this request only, never global Dot status."])
                 }
                 if method == "ping" { return result([:]) }

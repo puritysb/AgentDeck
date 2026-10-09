@@ -1,10 +1,10 @@
 #if os(macOS)
-// OnboardingSheet.swift — First-launch 3-pane orientation for macOS.
+// OnboardingSheet.swift — First-launch 4-pane orientation for macOS.
 //
 // App Store review expects a clear first-run path for non-developer users.
 // The dashboard starts empty by design (no session until the user launches
 // one), so without onboarding a fresh user sees a blank terrarium and no
-// affordance to proceed. This sheet bridges that gap with three screens:
+// affordance to proceed. This sheet bridges that gap with four screens:
 //
 //   1. Welcome — brand + value prop ("Stop Chatting. Start Steering.")
 //   2. Pick an agent — supported agent overview. App Store builds never
@@ -287,29 +287,18 @@ private struct PairIPadPane: View {
                     bullet("Install **AgentDeck** from the iOS App Store")
                     bullet("Open it on the same Wi-Fi network as this Mac")
                     bullet("The iPad finds the Mac automatically via mDNS")
-                    bullet("For different networks, use **Pair iPad** in the menu bar to show a QR code")
+                    bullet("Choose **Pair Device** in the menu bar, then scan the QR code to authorize the connection.")
                 }
                 .font(.system(size: 13))
             }
 
             HStack(spacing: 10) {
                 Button {
-                    // Placeholder — actual ID set after App Store publish.
-                    // Using a search URL so the button is never a dead end.
-                    if let url = URL(string: "https://apps.apple.com/search?term=agentdeck") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    NSWorkspace.shared.open(AppMetadata.appStoreURL)
                 } label: {
                     Label("Open iOS App Store", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.borderedProminent)
-
-                Button("Do It Later") {
-                    // Ignored — footer "Get Started" is the primary close path.
-                }
-                .buttonStyle(.bordered)
-                .opacity(0.5)
-                .disabled(true)
             }
 
             Spacer()
