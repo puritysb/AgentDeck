@@ -26,6 +26,13 @@ report before claiming that route works. Ordinary cloud Dot instructions do not
 automatically become AgentDeck reports.
 Do not add secrets or invent unsupported fields in `mcp.json` to bypass this gate.
 
+The 2026-10-09 real-account test reached Dot-created task creation on the connected
+Mac, but that child (host `durable`) reported no AgentDeck MCP tools before its first
+request read. No claim or report reached AgentDeck. This is a tool-availability
+failure, not evidence that another local consent is needed. The local Codex host
+exposes the tools; that success must not be generalized to a cloud-coordinated task
+with a local working directory. See the [recorded result](../../docs/dot-distribution-decision.md#real-account-validation).
+
 Compare the browser's code with AgentDeck's pending consent and approve it. Select that grant,
 prepare a request, and give its request ID to the connected agent. The agent reads, claims and
 reports it. Disconnect revokes its grant. Local requests never imply cloud event delivery.

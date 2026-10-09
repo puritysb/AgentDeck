@@ -174,6 +174,13 @@ login exposed the five AgentDeck MCP tools to the local Codex client. That prove
 client authorization and tool discovery, not Dot interoperability; the real Dot
 claim/report round trip remains a separate acceptance gate.
 
+The subsequent real Dot attempt and a Dot-created task both reported unavailable
+AgentDeck MCP tools. The child task was created successfully, but neither attempt
+produced a claim or report. See the [real-account result](dot-distribution-decision.md#real-account-validation).
+Keep **Awaiting activity** and the absent habitat resident for this case; do not
+infer Working from task creation, Completed from the child's error response, or
+Not linked from tool absence when a local grant still exists.
+
 The shared `DOT_HABITAT_PHASES` allow-list admits only valid working, attention,
 completed and failed reports to immersive scenes and matrix overlays. Its generated
 Swift/Kotlin/C++ mirrors prevent configuration or OAuth permission alone from

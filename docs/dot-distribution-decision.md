@@ -131,3 +131,38 @@ in both hosts before promising one-click setup. Do not embed tokens or unsupport
 
 Real Dot invocation, delegated execution, account consent, Mac sleep/restart and public
 plugin distribution still require client/account evidence. Unit tests cannot attest them.
+
+## Real account validation
+
+Test date: 2026-10-09.
+
+The first live attempts did **not** pass the Dot interoperability gate:
+
+| Execution context | Observed result |
+|---|---|
+| Existing local Codex host | OAuth completed and the five AgentDeck tools were exposed. This proves local-client authentication/discovery only. |
+| Direct Dot conversation | Dot reported that AgentDeck MCP tools were unavailable and did not process the request. The operator store retained null claim and report fields. |
+| Dot-created task on the connected Mac | Dot created a separate task. Its task record identified host `durable`, distinct from the testing chat's `local` host. The child reported unavailable AgentDeck MCP tools before `get_request`; its recorded turn contains no AgentDeck call, and the operator store still had no claim or report. |
+
+Computer access and task creation therefore succeeded, but the tested delegation did
+not expose the locally configured MCP tools. A local working directory is not proof
+of local-only coordination or inherited MCP configuration. Official documentation
+distinguishes [cloud coordination with local execution](https://learn.chatgpt.com/docs/enterprise/cloud-local-access)
+from local-only tasks and scopes shared [MCP configuration](https://learn.chatgpt.com/docs/extend/mcp)
+to a Codex host. The precise client-side reason for the missing tools remains
+unconfirmed; the observed failure does not establish that every Dot/local path is
+unsupported.
+
+Do not retry by merely changing the prompt, reapproving the same local grant, or
+creating more expiring requests. First establish a supported way to expose the
+authenticated tools to the actual Dot-created executor. A client capability or
+configuration change needs a fresh correlated test. The already-authorized private
+Secure MCP Tunnel experiment remains a separate alternative, with its own account
+setup and acceptance; it is not an automatic fallback or ordinary onboarding.
+Do not manufacture a report through shell/HTTP calls, move credentials into the
+cloud task, or label a manually created local Codex run as a Dot round trip.
+
+The released rendering fixes remain valid: an approved local grant without a
+report displays **Awaiting activity** in status chrome and no habitat creature.
+The local transport is a private preview; **Dot interoperability remains blocked
+at tool availability**, and no public Dot integration claim is justified yet.
