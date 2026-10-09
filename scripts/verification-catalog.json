@@ -1028,6 +1028,7 @@
         "shared/src/__tests__/creature-layout.test.ts",
         "shared/src/__tests__/terrarium-rules.test.ts",
         "shared/src/__tests__/collaboration-presentation.test.ts",
+        "shared/src/__tests__/connection-status.test.ts",
         "scripts/__tests__/*firmware*.test.ts",
         "scripts/__tests__/web-flasher-*.test.ts",
         "scripts/__tests__/dashboard-providers-sync.test.ts",
