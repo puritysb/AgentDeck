@@ -42,6 +42,7 @@ struct SettingsScreen: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @EnvironmentObject private var preferences: AppPreferences
     #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var daemonService: DaemonService
     #endif
     @Environment(\.dismiss) private var dismiss
@@ -75,7 +76,7 @@ struct SettingsScreen: View {
     /// Whether the Advanced group in the sidebar is expanded. Collapsed
     /// by default so the first read is only 4 rows (Integrations, Dashboard,
     /// About, Advanced ►).
-    @State private var advancedExpanded: Bool = true
+    @State private var advancedExpanded: Bool = false
     /// Live slider value for the display-sleep dim level. Committed to
     /// `preferences.displaySleepDimLevel` only when the drag ends so we don't
     /// rewrite settings.json + re-broadcast a brightness command on every tick.
@@ -902,9 +903,10 @@ struct SettingsScreen: View {
             Divider()
 
             VStack(spacing: 4) {
-                infoRow("App", "AgentDeck")
-                infoRow("Version", "1.0.0")
-                infoRow("Bundle", "bound.serendipity.agent.deck")
+                infoRow("App", AppMetadata.current.name)
+                infoRow("Version", AppMetadata.current.version)
+                infoRow("Build", AppMetadata.current.build)
+                infoRow("Bundle", AppMetadata.current.bundleIdentifier)
             }
 
             Divider()
@@ -950,6 +952,14 @@ struct SettingsScreen: View {
             // `openDashboardOnLaunch` is read in AgentDeckApp.swift's macOS
             // scene; `menuBarIconStyle` is read by the macOS MenuBarExtra.
             #if os(macOS)
+            Button("Set Up AgentDeck…") {
+                preferences.hasSeenOnboarding = false
+                openWindow(id: "dashboard")
+            }
+            Button("Choose Notifications…") {
+                Task { await NotificationPermission.chooseFromUserAction() }
+            }
+
             Toggle("Open dashboard on launch", isOn: $preferences.openDashboardOnLaunch)
 
             Picker("Menu bar icon", selection: $preferences.menuBarIconStyle) {
@@ -1014,35 +1024,19 @@ struct SettingsScreen: View {
                 .foregroundStyle(TerrariumHUD.subtext)
 
             Toggle("Session list", isOn: $preferences.showSessionList)
-            Toggle("Tank status", isOn: $preferences.showTankStatus)
-            Toggle("Device diagnostic", isOn: $preferences.showDeviceDiagnostic)
+            Toggle("Usage, services & devices", isOn: Binding(
+                get: { preferences.showTankStatus || preferences.showDeviceDiagnostic },
+                set: { preferences.showTankStatus = $0; preferences.showDeviceDiagnostic = $0 }
+            ))
             Toggle("Timeline strip", isOn: $preferences.showTimeline)
             Toggle("Settings button", isOn: $preferences.showSettingsButton)
 
-            // Tank Status Sections subgroup is macOS-only for now: nothing
-            // currently reads these preferences (separate cleanup pending),
-            // so hiding on iOS prevents dead toggles from polluting the
-            // client-only Settings sheet.
             #if os(macOS)
-            Divider()
-
-            Text("Tank Status Sections")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(TerrariumHUD.subtext)
-
-            Toggle("OpenClaw", isOn: $preferences.showOpenClawSection)
-            Toggle("MLX", isOn: $preferences.showMLXSection)
-            Toggle("OLLAMA", isOn: $preferences.showOllamaSection)
             Toggle("Subscription dates", isOn: $preferences.showSubscriptionsSection)
-            Toggle("Antigravity", isOn: $preferences.showAntigravitySection)
-                .disabled(!preferences.antigravityAccessEnabled)
-
-            if !preferences.antigravityAccessEnabled {
-                Text("Antigravity is hidden until you explicitly grant access below.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(TerrariumHUD.subtext)
-            }
             #endif
+            Text("Choose visible services from the menu in the dashboard's Usage & Services panel.")
+                .font(.caption).foregroundStyle(.secondary)
+
         }
     }
 

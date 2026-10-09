@@ -79,8 +79,8 @@ struct IntegrationDescriptor: Identifiable, Hashable {
 enum IntegrationCatalog {
     private static let claudeOneLineHelp = "Live session telemetry through opt-in Claude Code hooks."
     private static let claudeConnectInstructions = "Enable Claude Code Hooks below. Sessions appear here after hook events arrive."
-    private static let codexOneLineHelp = "Codex runs in your own terminal; AgentDeck monitors the session through hooks."
-    private static let codexConnectInstructions = "The standalone dashboard still works without launching Codex from here."
+    private static let codexOneLineHelp = "Follow activity from Codex App and Codex CLI through opt-in observation."
+    private static let codexConnectInstructions = "Enable Codex observation below. Usage limits can be added separately."
 
     static let claudeCode = IntegrationDescriptor(
         id: "claude",
@@ -253,7 +253,7 @@ enum IntegrationStatusEvaluator {
         case "antigravity":
             return antigravityStatus(state: state, preferences: preferences)
         case "opencode":
-            return openCodeStatus(preferences: preferences)
+            return openCodeStatus(preferences: preferences, state: state)
         case "kiro":
             return kiroStatus(preferences: preferences)
         case "anthropic-admin":
@@ -344,13 +344,16 @@ enum IntegrationStatusEvaluator {
         })
     }
 
-    private static func openCodeStatus(preferences: AppPreferences) -> IntegrationStatus {
+    private static func openCodeStatus(preferences: AppPreferences, state: DashboardState) -> IntegrationStatus {
         guard preferences.openCodeMonitoringEnabled else {
             // Neutral copy — the feature is optional and default-off; no nag,
             // no companion-install phrasing.
             return .notConfigured(detail: "Optional. Monitors an OpenCode server running on this Mac when enabled.")
         }
-        return .connected(detail: "Monitoring on — sessions appear when a server responds at \(preferences.openCodeServerURL) or an explicit --port.")
+        if OnboardingFlow.hasLiveSession("opencode", dashboard: state) {
+            return .connected(detail: "OpenCode session activity is visible.")
+        }
+        return .awaitingData(detail: "Monitoring is enabled. Waiting for an OpenCode session at \(preferences.openCodeServerURL) or an explicit --port.")
     }
 
     private static func anthropicStatus(state: DashboardState, hasKey: Bool) -> IntegrationStatus {

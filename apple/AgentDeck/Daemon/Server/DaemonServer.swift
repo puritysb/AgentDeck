@@ -6387,7 +6387,7 @@ final class DaemonServer {
                     "type": "surface_welcome", "protocol": 1,
                     "profile": negotiation.profile,
                     "capabilities": negotiation.capabilities,
-                    "serverVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0",
+                    "serverVersion": AppMetadata.current.version,
                 ]
                 if let data = welcome.jsonData { conn.send(data) }
                 DaemonLogger.shared.debug(

@@ -19,6 +19,10 @@ enum TerrariumHUD {
 
 struct SessionListPanel: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
+    @EnvironmentObject private var preferences: AppPreferences
+    #if os(macOS)
+    @Environment(\.openWindow) private var openWindow
+    #endif
 
     /// Landscape passes the water-region budget so a large roster scrolls
     /// inside the card instead of growing over Timeline. Portrait keeps the
@@ -98,6 +102,26 @@ struct SessionListPanel: View {
             .frame(height: 5)
 
             Spacer().frame(height: 4)
+
+            if entries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("No active sessions").font(.headline)
+                    #if os(macOS)
+                    Text(preferences.hasConfiguredObservation
+                         ? "Observation is ready. Your next agent activity will appear here."
+                         : "Connect an agent to see your work here. Extra devices are optional.")
+                        .font(.callout)
+                    Button("Set Up AgentDeck…") {
+                        preferences.hasSeenOnboarding = false
+                        openWindow(id: "dashboard")
+                    }.buttonStyle(.bordered)
+                    #else
+                    Text("Sessions appear when your Mac receives agent activity.").font(.callout)
+                    #endif
+                }
+                .foregroundStyle(TerrariumHUD.text)
+                .padding(.vertical, 8)
+            }
 
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 switch row {
