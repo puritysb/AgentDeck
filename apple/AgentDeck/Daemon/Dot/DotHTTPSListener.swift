@@ -60,22 +60,32 @@ final class DotHTTPSListener {
         return .ready(DotHTTPRequest(method: String(start[0]), target: String(start[1]), headers: headers, body: data[split.upperBound...]))
     }
     private(set) var isReady = false
-    func start(identity: SecIdentity, port: UInt16, handler: @escaping @DaemonActor @Sendable (DotHTTPRequest) async -> DotHTTPResponse) throws {
+    func start(identity: SecIdentity?, port: UInt16, loopbackOnly: Bool = false, handler: @escaping @DaemonActor @Sendable (DotHTTPRequest) async -> DotHTTPResponse) throws {
         guard port >= 1024, !(9120...9139).contains(Int(port)) else { throw DotFailure.message("Choose a dedicated HTTPS port outside 9120–9139.") }
         stop()
         let run = epoch
-        let tls = NWProtocolTLS.Options()
-        sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
-        guard let nativeIdentity = sec_identity_create(identity) else { throw DotFailure.message("TLS identity is unavailable.") }
-        sec_protocol_options_set_local_identity(tls.securityProtocolOptions, nativeIdentity)
-        let parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
-        let listener = try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
-        self.listener = listener; state = "Starting HTTPS"
+        let parameters: NWParameters
+        if loopbackOnly {
+            parameters = NWParameters(tls: nil, tcp: NWProtocolTCP.Options())
+            parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!)
+        } else {
+            guard let identity, let nativeIdentity = sec_identity_create(identity) else { throw DotFailure.message("TLS identity is unavailable.") }
+            let tls = NWProtocolTLS.Options()
+            sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+            sec_protocol_options_set_local_identity(tls.securityProtocolOptions, nativeIdentity)
+            parameters = NWParameters(tls: tls, tcp: NWProtocolTCP.Options())
+        }
+        // requiredLocalEndpoint already supplies the bind port. Passing `on:`
+        // as well makes Network.framework reject the parameters with EINVAL.
+        let listener = loopbackOnly
+            ? try NWListener(using: parameters)
+            : try NWListener(using: parameters, on: NWEndpoint.Port(rawValue: port)!)
+        self.listener = listener; state = "Starting connection"
         listener.stateUpdateHandler = { [weak self] result in
             Task { @DaemonActor in
                 guard let self, self.epoch == run else { return }
                 switch result {
-                case .ready: self.isReady = true; self.state = "HTTPS listening; internet reachability unverified"
+                case .ready: self.isReady = true; self.state = loopbackOnly ? "Local MCP listening" : "HTTPS listening; internet reachability unverified"
                 case .failed: self.stop(); self.state = "HTTPS listener failed"
                 default: break
                 }
@@ -96,7 +106,7 @@ final class DotHTTPSListener {
         listener.start(queue: Self.queue)
         Task { @DaemonActor [weak self] in
             try? await Task.sleep(for: .milliseconds(DotLimits.callbackMs))
-            guard let self, self.epoch == run, self.state == "Starting HTTPS" else { return }
+            guard let self, self.epoch == run, !self.isReady else { return }
             self.stop(); self.state = "HTTPS startup timed out"
         }
     }

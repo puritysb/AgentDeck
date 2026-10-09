@@ -14,10 +14,11 @@ export function dotResultModule(reports: () => DotResult[]): CardModule {
     })) };
 }
 
-export interface DotHostConfiguration {
+export interface DirectDotHostConfiguration {
   enabled: boolean; origin: string; port: number; bind?: string; certificatePath: string; keyPath: string;
   clientId: string; clientSecret: string; redirectURI: string; controlPort: number;
 }
+export type DotHostConfiguration = DirectDotHostConfiguration | { enabled: boolean; mode: 'local'; port: number; controlPort: number; bind?: string };
 export function readDotConfiguration(directory: string): DotHostConfiguration | undefined {
   try { return JSON.parse(readFileSync(join(directory, 'dot-host.json'), 'utf8')) as DotHostConfiguration; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
@@ -25,7 +26,7 @@ export function readDotConfiguration(directory: string): DotHostConfiguration | 
 export async function startConfiguredDotHost(directory: string, loopbackOnly: boolean) {
   const config = readDotConfiguration(directory);
   if (!config?.enabled) return undefined;
-  if (loopbackOnly && !['127.0.0.1', '::1'].includes(config.bind ?? '0.0.0.0')) {
+  if (loopbackOnly && !('mode' in config && config.mode === 'local') && !['127.0.0.1', '::1'].includes(config.bind ?? '0.0.0.0')) {
     throw new Error('Dot public binding conflicts with the daemon loopback posture');
   }
   const runtime = await import(new URL('./dot-runtime.mjs', import.meta.url).href) as {

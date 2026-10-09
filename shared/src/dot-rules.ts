@@ -10,3 +10,9 @@ export const DOT_LIMITS = {
 export const DOT_OAUTH_LIMITS = {
   pending: 16, records: 16384, consentMs: 120000, accessMs: 300000, refreshMs: 2592000000,
 } as const;
+
+/** Local public OAuth client; PKCE and explicit host consent grant access. */
+export const DOT_LOCAL_MCP = {
+  host: '127.0.0.1', port: 9476, controlPort: 9477, callbackPort: 1455,
+  clientId: 'agentdeck-local-plugin', callbackPath: '/callback',
+} as const;

@@ -1,6 +1,8 @@
 # Dot integration through MCP Events
 
-Status: direct HTTPS hosting implemented, 2026-10-09; integrated with current main and installed locally. Not submitted or released. Original repository baseline: `fdd902d4`.
+**Current decision, 2026-10-09:** [Dot connection and distribution decision](dot-distribution-decision.md) supersedes this document's public HTTPS onboarding, mandatory domain/certificate prerequisites and fixed direct-hosting choice. The selected direction is a local plugin over the user's existing Dot computer connection, subject to real interoperability and distribution gates; the official tunnel is a private Events experiment. No public AgentDeck service is selected. The contracts and dated implementation evidence below remain useful; the old transport plan is historical, not current user setup guidance.
+
+Historical implementation status: direct HTTPS hosting implemented, 2026-10-09; integrated with current main and installed locally. Not submitted or released. Original repository baseline: `fdd902d4`.
 
 The [direct-hosting runtime](../services/dot-relay/README.md) now includes native macOS TLS/MCP, local OAuth consent and Keychain custody, native briefing UI, Node daemon ownership integration and local operator commands. No external OAuth provider or middle server is required. Generated schemas and security budgets keep the two implementations aligned. Local tests cover real TLS, consent, token issuance, restart/revocation, signed callback mechanics and request/report lifecycles. Public DNS/trusted production identity, real Dot account interoperability, signed distribution validation and physical-device acceptance remain release gates. Local installation evidence is recorded separately in deployment receipts; it does not establish public Dot interoperability.
 
@@ -28,7 +30,9 @@ The previous research could not inspect ChatGPT's live UI because the computer-u
 
 Local hooks are not a cloud Dot audit stream. Enterprise remote MCP hooks have a narrower, managed-account contract. [Cloud and local access](https://learn.chatgpt.com/docs/enterprise/cloud-local-access#check-hooks-and-network-compatibility)
 
-## First user experience
+## Earlier direct-hosting user experience
+
+Superseded by the [current onboarding and capability boundary](dot-distribution-decision.md#target-user-experience-and-capability-boundary). Retained to explain the existing experimental controls, not as prerequisites for ordinary users.
 
 1. The user opts into direct HTTPS MCP hosting, supplies a DNS hostname and a matching publicly trusted certificate, and configures external reachability. AgentDeck keeps this listener separate from its LAN daemon. No automatic router/firewall changes.
 2. The user connects the private MCP endpoint in ChatGPT, approves the connection in AgentDeck, and asks Dot to monitor briefing requests for one integration profile. Local OAuth consent is implemented in the native app and Node operator path.
@@ -53,9 +57,9 @@ flowchart LR
     Presence[Native ChatGPT app observer] --> Daemon
 ```
 
-### Direct hosting decision
+### Earlier direct hosting decision
 
-The user selected direct HTTPS hosting on 2026-10-09, superseding the earlier always-on relay proposal and the provisional single-Linux-server deployment choice. There is no hosted relay, cloud device sync, required tunnel, or AgentDeck cloud account in the selected architecture. `services/dot-relay/` remains the historical path for the isolated protocol experiment; it is not a product runtime dependency.
+The user initially selected direct HTTPS hosting on 2026-10-09, superseding the earlier always-on relay proposal and the provisional single-Linux-server deployment choice. Later clarification selected local/private connectivity and allowed the official tunnel, followed by research into simpler plugin distribution. The [current decision](dot-distribution-decision.md) owns that choice. `services/dot-relay/` remains the historical path for the protocol implementation.
 
 The public listener has its own port, TLS identity, OAuth gate and strict route allow-list. **Never forward port 9120 or 9121–9139 to the internet.** Native local actions use the store directly; existing authenticated LAN clients continue through the hub. Neither device creation/control routes, hooks, daemon health, shutdown, nor LAN pairing tokens belong on public ingress.
 
@@ -228,7 +232,7 @@ A production hostname/identity, inbound route and supported Dot connection are s
 
 ## Decisions and deferred scope
 
-Proceed now with the architecture and bounded interoperability spike. Do not wait for a public Dot status API. The direct-hosting choice is fixed. Native OAuth and certificate import are implemented; production identity provisioning and real internet reachability remain external acceptance gates; a separate service is not a fallback to introduce silently.
+The original decision was to proceed with a bounded direct-hosting interoperability spike. Its native OAuth and certificate import were implemented. The [current distribution decision](dot-distribution-decision.md) replaces public identity/reachability as product prerequisites with local transport and public-distribution gates; a separate service remains outside the selected scope.
 
 Prioritize briefing requests, a result inbox and honest app/transport status. Later candidates are return-to-desk digests, user-authorized attention escalation, evidence-backed delegation links and device-aware output. Global Dot stop, arbitrary remote control, inferred usage/cost, persistent screenshots, private runtime introspection and direct-to-cloud firmware are outside v1.
 

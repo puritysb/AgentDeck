@@ -33,7 +33,7 @@ The Apple 3D companion reconciles the latest host snapshot and checks report exp
 
 ## Connection discovery
 
-macOS exposes **Settings → Dot** and a **Connect Dot…** dashboard entry before the host reports a configured integration. This setup entry is not a creature or a connection claim. Native-owned hosting opens the built-in certificate/OAuth setup; external-host dashboards show the reported connection context. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Real Dot-account acceptance and public HTTPS reachability remain separate release gates.
+macOS exposes **Settings → Dot** and a **Connect Dot…** dashboard entry before the host reports a configured integration. This setup entry is not a creature or a connection claim. The current experimental native-owner UI opens certificate/OAuth setup; external-host dashboards show the reported connection context. The [current distribution plan](dot-distribution-decision.md) replaces that setup direction with local plugin pairing, which remains unimplemented and requires real Dot and distribution acceptance. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Public HTTPS reachability applies only to the earlier direct-host experiment, not ordinary local onboarding.
 
 ## User-selected character
 

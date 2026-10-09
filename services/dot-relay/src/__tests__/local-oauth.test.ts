@@ -78,3 +78,21 @@ it('invalidates existing tokens when registered credentials are replaced', () =>
   expect(() => auth.authenticate(token)).toThrow('invalid_token');
   expect(auth.grants()).toEqual([]);
 });
+it('supports explicit loopback public clients without weakening confidential clients', () => {
+  const local = { resource: 'http://127.0.0.1:9476', clientId: 'agentdeck-local-plugin', clientSecret: '', redirectURI: 'http://127.0.0.1:1455/callback', local: true };
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  const callback = 'http://127.0.0.1:38472/callback';
+  const input = authorization({ client_id: local.clientId, resource: local.resource, redirect_uri: callback });
+  for (const bad of ['https://evil.example/callback', 'http://192.168.1.2:1234/callback', 'http://2130706433:1234/callback', 'http://127.0.0.1:1234/other', callback + '?redirect=evil', 'http://user@127.0.0.1:1234/callback']) {
+    const invalid = new URLSearchParams(input); invalid.set('redirect_uri', bad);
+    expect(() => auth.request(invalid)).toThrow();
+  }
+  const id = auth.request(input); auth.decide(id, true);
+  const status = auth.status(id); if (!('redirect' in status)) throw new Error('not approved');
+  const params = new URLSearchParams({ grant_type: 'authorization_code', client_id: local.clientId,
+    resource: local.resource, redirect_uri: callback, code: new URL(status.redirect).searchParams.get('code')!, code_verifier: verifier });
+  const wrong = new URLSearchParams(params); wrong.set('redirect_uri', local.redirectURI);
+  expect(() => auth.exchange(wrong)).toThrow('invalid_grant');
+  expect(auth.authenticate(auth.exchange(params).access_token).subject).toBeTruthy();
+  expect(() => new LocalOAuth({ ...local, local: false }, oauthStorage(store))).toThrow();
+});

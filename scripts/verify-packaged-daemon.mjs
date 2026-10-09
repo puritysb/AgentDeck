@@ -492,9 +492,11 @@ try {
       await hook('hermes_user_prompt_submit', { ...payload, prompt: `CROWDED_PROFILE_${i + 1}` });
       expected.push({ sid, label });
     }
-    const rows = await waitFor('12 separate Hermes roster rows', () => {
+    const rows = await waitFor('12 separate working Hermes roster rows', () => {
       const rows = dashboard.roster()?.filter((r) => r.agentType === 'hermes');
-      return rows?.length === 12 ? rows : undefined;
+      // Session-start broadcasts the twelfth idle row before the following
+      // prompt's processing update reaches the dashboard WebSocket.
+      return rows?.length === 12 && rows.every((row) => row.state === 'processing') ? rows : undefined;
     });
     assert.equal(new Set(rows.map((r) => r.id)).size, 12);
     for (const { sid, label } of expected) {

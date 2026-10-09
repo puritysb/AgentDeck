@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentdeck-local",
+  "version": "0.1.0",
+  "description": "Private preview: report explicitly shared AgentDeck requests from a connected local computer.",
+  "extensions": { "com.openai": { "interface": { "displayName": "AgentDeck Local Preview", "shortDescription": "Report shared local requests", "category": "Productivity" } } }
+}

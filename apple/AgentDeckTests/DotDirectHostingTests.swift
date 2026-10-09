@@ -6,6 +6,71 @@ import RealityKit
 @testable import AgentDeck
 
 final class DotDirectHostingTests: XCTestCase {
+    func testLocalListenerServesHTTPWithoutTLSIdentity() async throws {
+        try await Task { @DaemonActor in
+            let listener = DotHTTPSListener()
+            // Separate concurrent XCTest hosts without touching production ports.
+            let port = UInt16(20000 + ProcessInfo.processInfo.processIdentifier % 30000)
+            try listener.start(identity: nil, port: port, loopbackOnly: true) { request in
+                .init(status: request.target == "/probe" ? 200 : 404, body: Data("local-ok".utf8))
+            }
+            defer { listener.stop() }
+            for _ in 0..<100 {
+                if listener.isReady { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertTrue(listener.isReady, listener.state)
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/probe")!)
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            XCTAssertEqual(String(data: data, encoding: .utf8), "local-ok")
+        }.value
+    }
+
+    func testLocalPublicOAuthRequiresConsentPKCEAndLoopbackCallback() async throws {
+        try await Task { @DaemonActor in
+            let origin = "http://127.0.0.1:9476", callback = "http://127.0.0.1:38472/callback"
+            let config = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: callback, local: true)
+            let auth = try DotOAuth(config: config, data: nil) { _ in }
+            XCTAssertFalse(DotOAuth.localRedirect("http://192.168.1.2:38472/callback"))
+            XCTAssertFalse(DotOAuth.localRedirect(callback + "?next=evil"))
+            let verifier = String(repeating: "v", count: 64)
+            let ticket = try auth.begin(["client_id": config.clientID, "redirect_uri": callback, "resource": origin, "response_type": "code", "scope": "agentdeck:read agentdeck:report", "state": "test", "code_challenge_method": "S256", "code_challenge": dotDigest(verifier)])
+            XCTAssertNil(try auth.redirect(ticket))
+            try auth.decide(ticket, approve: true)
+            let redirect = URLComponents(string: try XCTUnwrap(auth.redirect(ticket)))!
+            let code = redirect.queryItems!.first { $0.name == "code" }!.value!
+            var params = ["client_id": config.clientID, "resource": origin, "redirect_uri": callback, "grant_type": "authorization_code", "code": code, "code_verifier": "wrong"]
+            XCTAssertThrowsError(try auth.exchange(params)); params["code_verifier"] = verifier
+            let tokens = try auth.exchange(params)
+            let access = tokens["access_token"] as! String
+            let grant = try XCTUnwrap(auth.authenticate(access)); try auth.revokeGrant(grant.id)
+            XCTAssertNil(auth.authenticate(access))
+        }.value
+    }
+    func testLocalRequestPersistsWithoutSubscriptionAndNeverDeliversWebhook() async throws {
+        try await Task { @DaemonActor in
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let specURL = try XCTUnwrap(Bundle.main.url(forResource: "dot-mcp-contract", withExtension: "json"))
+            let spec = try Data(contentsOf: specURL), file = directory.appendingPathComponent("requests.json")
+            var deliveries = 0
+            let store = try DotMCPStore(file: file, contract: spec, access: { _ in true }) { _, _, _ in deliveries += 1; return .init(status: 200, body: Data()) }
+            XCTAssertThrowsError(try store.create(owner: "owner", profile: "desk", context: "shared", key: "remote"))
+            try store.create(owner: "owner", profile: "desk", context: "shared", key: "local", local: true)
+            try await store.deliver()
+            XCTAssertEqual(deliveries, 0)
+            XCTAssertEqual(store.requests().first?.delivery, "local")
+            let requestID = try XCTUnwrap(store.requests().first?.id)
+            let result = try await store.rpc(grant: .init(id: "owner", scopes: DotOAuth.scopes, expiresAt: Int.max, revoked: false),
+                method: "tools/call", params: ["name": "get_request", "arguments": ["requestId": requestID]])
+            XCTAssertEqual((result["structuredContent"] as? [String: Any])?["delivery"] as? String, "local")
+            let restarted = try DotMCPStore(file: file, contract: spec, access: { _ in true })
+            XCTAssertEqual(restarted.requests().first?.delivery, "local")
+            try restarted.revoke("owner"); XCTAssertTrue(restarted.requests().isEmpty)
+        }.value
+    }
     @MainActor
     func testCompanionPreviewRendersReportedStates() throws {
         let now = Int(Date().timeIntervalSince1970 * 1000)

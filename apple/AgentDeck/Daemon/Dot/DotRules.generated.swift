@@ -31,3 +31,11 @@ enum DotOAuthLimits {
     static let accessMs = 300000
     static let refreshMs = 2592000000
 }
+enum DotLocalMCP {
+    static let host = "127.0.0.1"
+    static let port = 9476
+    static let controlPort = 9477
+    static let callbackPort = 1455
+    static let clientId = "agentdeck-local-plugin"
+    static let callbackPath = "/callback"
+}

@@ -25,7 +25,7 @@ struct DotConnectionSetupView: View {
                         }
                         Text("Connection settings are managed by the host sharing this dashboard.")
                             .font(.callout)
-                        Text("Setup needs a public HTTPS address, a trusted TLS certificate and approval of the connection in Dot. Installing AgentDeck alone does not connect a Dot account.")
+                        Text("Local setup uses an approved MCP connection on the host Mac. Installing AgentDeck alone does not connect a Dot account.")
                             .font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(8)
                 }

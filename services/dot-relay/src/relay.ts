@@ -117,7 +117,7 @@ export class Relay {
     return { id, refreshBefore: new Date(sub.expiresAt).toISOString(), cursor: null, truncated: false };
   }
 
-  create(p: Principal, input: unknown): ReturnType<typeof view> {
+  create(p: Principal, input: unknown, local = false): ReturnType<typeof view> {
     this.authorize(p); requireScope(p, 'agentdeck:device'); validate(schemas.create, input);
     const a = input as { integrationId: string; idempotencyKey: string; context: string; capturedAt: number };
     const fingerprint = hash([a.integrationId, a.context, a.capturedAt]);
@@ -130,11 +130,11 @@ export class Relay {
         return view(prior);
       }
       const sub = s.subscriptions.find(x => x.owner === p.subject && x.profile === a.integrationId && x.expiresAt > now);
-      if (!sub) throw new Fault(-32009, 'No active subscription for this profile');
+      if (!sub && !local) throw new Fault(-32009, 'No active subscription for this profile');
       if (s.requests.length >= LIMITS.records) throw new Fault(-32009, 'Pilot request capacity reached');
       const r: Briefing = { id: `req_${randomUUID()}`, owner: p.subject, profile: a.integrationId, key: a.idempotencyKey,
         fingerprint, context: a.context, capturedAt: a.capturedAt, createdAt: now, expiresAt: now + LIMITS.requestMs,
-        eventId: `evt_${randomUUID()}`, subscriptionId: sub.id, delivery: 'pending', attempts: 0, nextAttemptAt: now, reportKeys: {} };
+        eventId: `evt_${randomUUID()}`, subscriptionId: local ? '' : sub!.id, delivery: local ? 'local' : 'pending', attempts: 0, nextAttemptAt: now, reportKeys: {} };
       s.requests.push(r); return view(r);
     });
   }
