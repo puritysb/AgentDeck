@@ -33,7 +33,7 @@ The Apple 3D companion reconciles the latest host snapshot and checks report exp
 
 ## Habitat composition
 
-Dot lives in the upper water beside the residents, below the HUD, rather than appearing as a separate status panel in the sky. The 3D label is centered beneath its body: only “Dot” before any shared activity, with the reported state added when relevant. Viewing mode hides that label with the other resident labels. The macOS detail entry sits in the toolbar rather than covering the chat/timeline panel; selecting it retains full report and relationship evidence.
+Dot lives in the upper water beside the residents, below the HUD, rather than appearing as a separate status panel in the sky. The 3D label is centered above its body with a readable foreground color: only “Dot” before any shared activity, with the reported state added when relevant. Viewing mode hides that label with the other resident labels. The macOS detail entry sits in the toolbar rather than covering the chat/timeline panel; selecting it retains full report and relationship evidence.
 
 On 64×64 and 32×32 matrices, the companion occupies a small upper-right water pocket. It has no horizontal frame, underline or D/W/N initial codes. The quiet face stands alone; working has a small cyan bubble, attention an amber exclamation mark, completion a check and failure a cross. Old/unknown reports have a question mark. These shapes and placement rules come from the shared appearance source and its generated Swift renderer. Custom portraits keep their pixels; the state cue stays outside the face. The 11×11 collective face remains unchanged.
 

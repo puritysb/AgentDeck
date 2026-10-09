@@ -44,7 +44,7 @@ final class DotAquariumResident {
         portrait.orientation = simd_quatf(angle: .pi / 2, axis: [1, 0, 0])
         portrait.isEnabled = false
         root.addChild(portrait)
-        badge.position = [-0.28, -0.4, 0.28]
+        badge.position = [-0.28, 0.40, 0.28]
         root.addChild(badge)
         root.components.set(CollisionComponent(shapes: [.generateSphere(radius: 0.34)]))
         root.components.set(InputTargetComponent())
@@ -78,10 +78,10 @@ final class DotAquariumResident {
             let mark = code == 0 ? "Dot" : "Dot · " + DotAppearanceRules.labels[code].capitalized
             badge.model = ModelComponent(mesh: .generateText(mark, extrusionDepth: 0.002,
                 font: .init(name: "IBMPlexSans-Bold", size: 0.10) ?? .systemFont(ofSize: 0.10)),
-                materials: [UnlitMaterial(color: DotNativeColor(DotSurfaceView.tint(code)))])
+                materials: [UnlitMaterial(color: DotNativeColor(DesignTokens.Tide.s50))])
             // Center the actual mesh rather than anchoring every variable-length label at the left eye.
             let bounds = badge.visualBounds(relativeTo: badge)
-            badge.position = [-bounds.center.x, -0.43, 0.28]
+            badge.position = [-bounds.center.x, 0.40, 0.28]
         }
         if code != 2 { root.position = home }
     }
