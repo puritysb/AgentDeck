@@ -317,6 +317,8 @@
   "the AGENTS.md chain (root + nested) stays under Codex's 32 KiB project_doc_max_bytes and no CLAUDE.md-family file shadows it inside the checkout": "루트와 중첩 AGENTS.md가 Codex 32 KiB 제한 내에 있고 체크아웃의 CLAUDE.md 계열 파일이 이를 가리지 않습니다.",
   "the development log aggregates match their entries": "개발 로그 집계가 개별 기록과 일치합니다.",
   "how anything looks on a device": "실제 기기에서의 외관.",
+  "multi-host refusal recovery retains endpoint-specific errors and distinguishes approval from network failure": "여러 호스트의 연결 거부를 복구할 때 오류 대상을 유지하고 승인 대기와 네트워크 실패를 구분합니다.",
+  "selected-host discovery recovery survives network retry exhaustion while explicit stops and authentication refusals remain stopped": "선택한 호스트의 검색 복구는 네트워크 재시도 소진 후에도 동작하며, 명시적인 중단과 인증 거부는 중단 상태를 유지합니다.",
   "the Android app compiles": "Android 앱이 컴파일됩니다.",
   "protocol parsing, timeline store and state logic behave as specified on the JVM": "JVM에서 프로토콜 파싱·타임라인 저장소·상태 논리가 명세대로 동작합니다.",
   "Compose UI on a device or e-ink panel (there are no instrumented tests)": "실제 기기나 전자잉크 화면의 Compose UI. 기기 실행 테스트는 없습니다.",

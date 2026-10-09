@@ -66,4 +66,22 @@ final class PairingCredentialTests: XCTestCase {
         let legacy = "ws://192.168.1.10:9120?token=1111111111111111"
         XCTAssertEqual(PairingCredential.resolve(discoveredUrl: legacy, savedUrl: paired), legacy)
     }
+    func testSwitchingHostsRetainsIndependentCredentials() {
+        let other = "ws://192.168.1.11:9120?token=other"
+        var saved = PairingCredential.remembering(paired, in: [:])
+        saved = PairingCredential.remembering(other, in: saved)
+        saved = PairingCredential.remembering(discovered, in: saved)
+        XCTAssertEqual(PairingCredential.resolve(discoveredUrl: discovered, credentials: saved), paired)
+        XCTAssertEqual(PairingCredential.resolve(discoveredUrl: "ws://192.168.1.11:9120", credentials: saved), other)
+        XCTAssertEqual(PairingCredential.resolve(discoveredUrl: "ws://192.168.1.12:9120", credentials: saved), "ws://192.168.1.12:9120")
+    }
+
+    func testDiscoveryPreservesSelectionAndRequiresChoiceWhenAmbiguous() {
+        let other = "ws://192.168.1.11:9120"
+        XCTAssertNil(PairingCredential.preferredURL(in: [other, discovered], selected: nil))
+        XCTAssertEqual(PairingCredential.preferredURL(in: [other, discovered], selected: paired), discovered)
+        XCTAssertNil(PairingCredential.preferredURL(in: [other], selected: paired))
+        XCTAssertEqual(PairingCredential.preferredURL(in: [discovered, discovered], selected: nil), discovered)
+    }
+
 }

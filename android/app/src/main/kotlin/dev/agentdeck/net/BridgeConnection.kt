@@ -36,7 +36,7 @@ enum class ConnectionStatus {
     CONNECTED,
 }
 
-class BridgeConnection private constructor() {
+class BridgeConnection internal constructor() {
 
     companion object {
         val instance: BridgeConnection by lazy { BridgeConnection() }
@@ -78,6 +78,9 @@ class BridgeConnection private constructor() {
         .build()
 
     private var webSocket: WebSocket? = null
+    private val generation = java.util.concurrent.atomic.AtomicLong()
+    @Volatile var selectedUrl: String? = null
+    @Volatile var pairedUrls: Map<String, String> = emptyMap()
     private var backoffMs = INITIAL_BACKOFF_MS
     private var shouldReconnect = false
     /** Secondary URL (NSD-resolved host) to try once the primary keeps failing; null when none. */
@@ -155,7 +158,10 @@ class BridgeConnection private constructor() {
     var pairedUrl: String? = null
 
     fun connect(requestedUrl: String, fallbackUrl: String? = null) {
-        val wsUrl = PairingCredential.resolve(requestedUrl, pairedUrl)
+        generation.incrementAndGet()
+        pairedUrls = PairingCredential.remember(pairedUrl, pairedUrls)
+        val wsUrl = PairingCredential.resolveFromStore(requestedUrl, pairedUrls)
+        if (!PairingCredential.isLoopback(wsUrl)) selectedUrl = wsUrl
         bridgeDebug { "connect($wsUrl) — current status=${_status.value}" }
         // Cancel any existing connection/reconnect loop before starting fresh
         shouldReconnect = false
@@ -187,6 +193,8 @@ class BridgeConnection private constructor() {
     }
 
     fun disconnect() {
+        generation.incrementAndGet()
+        selectedUrl = null
         shouldReconnect = false
         _isReconnecting.value = false
         _reconnectAttempt.value = 0
@@ -244,26 +252,36 @@ class BridgeConnection private constructor() {
             }
             .build()
 
+        val attempt = generation.incrementAndGet()
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (generation.get() != attempt) return
                 bridgeDebug { "onOpen — connected to $wsUrl" }
-                _status.value = ConnectionStatus.CONNECTED
-                _isReconnecting.value = false
-                _reconnectAttempt.value = 0
-                backoffMs = INITIAL_BACKOFF_MS
-                // Volunteer this dashboard's identity so the daemon topology can
-                // show an Android row. Without it a WiFi-connected tablet is an
-                // anonymous consumer with no visibility anywhere in the UI.
-                // Some models already embed the brand ("Lenovo TB-J606F") —
-                // `DeviceProfile.displayName` is where that de-duplication lives.
-                registrationCoordinator.socketOpened(
-                    androidDashboardIdentity(Build.MODEL, DeviceProfileHolder.current)
-                )
+                // Authentication is confirmed by the first parsed daemon frame.
+
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (generation.get() != attempt) return
                 val event = parseBridgeMessage(text)
                 if (event != null) {
+                    if (_status.value != ConnectionStatus.CONNECTED) {
+                        _status.value = ConnectionStatus.CONNECTED
+                        _isReconnecting.value = false
+                        _reconnectAttempt.value = 0
+                        backoffMs = INITIAL_BACKOFF_MS
+                        // Volunteer this dashboard's identity so the daemon topology can
+                        // show an Android row. Without it a WiFi-connected tablet is an
+                        // anonymous consumer with no visibility anywhere in the UI.
+                        // Some models already embed the brand ("Lenovo TB-J606F") —
+                        // `DeviceProfile.displayName` is where that de-duplication lives.
+                        registrationCoordinator.socketOpened(
+                            androidDashboardIdentity(Build.MODEL, DeviceProfileHolder.current)
+                        )
+                        PairingCredential.endpointOf(wsUrl)?.let { endpoint ->
+                            _unauthorizedEndpoints.update { it - endpoint }
+                        }
+                    }
                     if (event is BridgeEvent.State) {
                         bridgeDebug("Terrarium") {
                             "WS state_update: agentType=${event.data.agentType}, state=${event.data.state}, gwAvail=${event.data.gatewayAvailable}, gwErr=${event.data.gatewayHasError}"
@@ -276,40 +294,27 @@ class BridgeConnection private constructor() {
             }
 
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                if (generation.get() != attempt) return
                 bridgeDebug { "onClosing — code=$code reason=$reason" }
                 webSocket.close(1000, null)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (generation.get() != attempt) return
                 bridgeDebug { "onClosed — code=$code reason=$reason" }
                 registrationCoordinator.socketClosed()
                 _status.value = ConnectionStatus.DISCONNECTED
                 onEvent?.invoke(BridgeEvent.Disconnected)
                 // Don't reconnect on auth rejection — token required
                 if (code == 4001) {
-                    Log.w(TAG, "Auth rejected (4001) — stopping reconnect")
-                    shouldReconnect = false
-                    // Remember WHICH endpoint refused us before clearing the URL:
-                    // the layer above treats a null URL as "never tried" and would
-                    // otherwise redial this same endpoint on every discovery tick.
-                    PairingCredential.endpointOf(_url.value)?.let { endpoint ->
-                        _unauthorizedEndpoints.update { current ->
-                            (current + (endpoint to System.currentTimeMillis())).let {
-                                if (it.size <= MAX_REMEMBERED_REFUSALS) it
-                                else it.entries.sortedBy { e -> e.value }
-                                    .drop(it.size - MAX_REMEMBERED_REFUSALS)
-                                    .associate { e -> e.key to e.value }
-                            }
-                        }
-                    }
-                    _url.value = null
-                    _lastError.value = "Unauthorized — check pairing token"
+                    authenticationRequired(wsUrl)
                 } else {
                     scheduleReconnect()
                 }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (generation.get() != attempt) return
                 // Prefer HTTP handshake details when the upgrade was rejected — a bare
                 // t.message like "Failed to connect" hides the actual reason (4xx code,
                 // server message). When response is null, fall back to the exception.
@@ -323,6 +328,10 @@ class BridgeConnection private constructor() {
                 } else {
                     Log.w(TAG, "onFailure — $msg")
                 }
+                if (response?.code == 401) {
+                    authenticationRequired(wsUrl)
+                    return
+                }
                 registrationCoordinator.socketClosed()
                 _status.value = ConnectionStatus.DISCONNECTED
                 _lastError.value = msg
@@ -330,11 +339,58 @@ class BridgeConnection private constructor() {
                 scheduleReconnect()
             }
         })
+        // A peer may upgrade and then send nothing while answering pings.
+        // Bound confirmation independently of WebSocket keepalive.
+        scope.launch {
+            delay(client.readTimeoutMillis.toLong())
+            if (generation.get() == attempt && _status.value == ConnectionStatus.CONNECTING) {
+                generation.incrementAndGet()
+                webSocket?.cancel()
+                _status.value = ConnectionStatus.DISCONNECTED
+                _lastError.value = "No response from ${PairingCredential.endpointOf(wsUrl)}"
+                scheduleReconnect()
+            }
+        }
+    }
+
+    private fun authenticationRequired(wsUrl: String) {
+        shouldReconnect = false
+        _isReconnecting.value = false
+        _reconnectAttempt.value = 0
+        registrationCoordinator.socketClosed()
+        PairingCredential.endpointOf(wsUrl)?.let { endpoint ->
+            _unauthorizedEndpoints.update { current ->
+                (current + (endpoint to System.currentTimeMillis())).entries
+                    .sortedByDescending { it.value }.take(MAX_REMEMBERED_REFUSALS)
+                    .associate { it.key to it.value }
+            }
+        }
+        // Keep the selected URL: discovery must not treat a refusal as a fresh
+        // opportunity to dial another host or hammer the same host.
+        _lastError.value = PairingCredential.approvalMessage(wsUrl)
+        _status.value = ConnectionStatus.DISCONNECTED
+        onEvent?.invoke(BridgeEvent.Disconnected)
+        val refusedGeneration = generation.get()
+        scope.launch {
+            delay(PairingCredential.UNAUTHORIZED_REDIAL_HOLDOFF_MS)
+            // Operator approval must still work without touching an e-ink
+            // reader. Recheck only this host, and never revive a replaced or
+            // explicitly disconnected attempt. Expiry is checked on read.
+            val endpoint = PairingCredential.endpointOf(wsUrl) ?: return@launch
+            if (generation.get() == refusedGeneration && _url.value == wsUrl &&
+                PairingCredential.mayDialDiscovered(
+                    discoveredUrl = "ws://$endpoint", currentUrl = null,
+                    loopbackTried = true, unauthorizedAt = _unauthorizedEndpoints.value,
+                    savedUrl = null, nowMs = System.currentTimeMillis(),
+                )
+            ) connect(wsUrl)
+        }
     }
 
     private fun scheduleReconnect() {
         if (!shouldReconnect) return
         val currentUrl = _url.value ?: return
+        val retryGeneration = generation.get()
 
         _isReconnecting.value = true
         _reconnectAttempt.value++
@@ -358,7 +414,7 @@ class BridgeConnection private constructor() {
             _lastError.value = null
             scope.launch {
                 delay(backoffMs)
-                if (shouldReconnect && _status.value == ConnectionStatus.DISCONNECTED) {
+                if (generation.get() == retryGeneration && shouldReconnect && _status.value == ConnectionStatus.DISCONNECTED) {
                     doConnect(fb)
                 }
             }
@@ -391,7 +447,7 @@ class BridgeConnection private constructor() {
         scope.launch {
             delay(delayMs)
             backoffMs = min(backoffMs * 2, MAX_BACKOFF_MS)
-            if (shouldReconnect && _status.value == ConnectionStatus.DISCONNECTED) {
+            if (generation.get() == retryGeneration && shouldReconnect && _status.value == ConnectionStatus.DISCONNECTED) {
                 doConnect(currentUrl)
             }
         }

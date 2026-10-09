@@ -553,7 +553,8 @@
       "report_suite": "android",
       "proves": [
         "the Android app compiles",
-        "protocol parsing, timeline store and state logic behave as specified on the JVM"
+        "protocol parsing, timeline store and state logic behave as specified on the JVM",
+        "multi-host refusal recovery retains endpoint-specific errors and distinguishes approval from network failure"
       ],
       "does_not_prove": ["Compose UI on a device or e-ink panel (there are no instrumented tests)"]
     },
@@ -574,6 +575,7 @@
       "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "selected-host discovery recovery survives network retry exhaustion while explicit stops and authentication refusals remain stopped",
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
         "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
         "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
@@ -1026,6 +1028,7 @@
         "shared/src/__tests__/creature-layout.test.ts",
         "shared/src/__tests__/terrarium-rules.test.ts",
         "shared/src/__tests__/collaboration-presentation.test.ts",
+        "shared/src/__tests__/connection-status.test.ts",
         "scripts/__tests__/*firmware*.test.ts",
         "scripts/__tests__/web-flasher-*.test.ts",
         "scripts/__tests__/dashboard-providers-sync.test.ts",

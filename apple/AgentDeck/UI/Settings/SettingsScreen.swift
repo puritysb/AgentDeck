@@ -513,6 +513,12 @@ struct SettingsScreen: View {
                         .foregroundStyle(TerrariumHUD.ledRed)
                 }
 
+                if let target = stateHolder.retryBridgeURL, stateHolder.connection.status == .disconnected {
+                    Button(ConnectionLexicon.retryConnection) { stateHolder.connectTo(url: target) }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignTokens.UI.cyan)
+                }
+
                 #if os(iOS)
                 // QR scan pairing — secondary path when mDNS can't find the
                 // Mac (different Wi-Fi networks, Local Network permission
