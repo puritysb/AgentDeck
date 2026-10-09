@@ -142,6 +142,7 @@ final class DotDirectHostingTests: XCTestCase {
         frame.reportState = "working"; frame.authorized = false
         resident.sync(frame, now: now); resident.step(0.05, now: now)
         XCTAssertEqual(frame.phase(at: now), 8)
+        XCTAssertFalse(resident.root.isEnabled)
         XCTAssertEqual(resident.root.position, home)
         frame.hosting = false
         resident.sync(frame, now: now); resident.step(0.05, now: now)
@@ -380,14 +381,18 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertNil(legacy.dot)
     }
 
-    func testQuietMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
-        let dot = try JSONDecoder().decode(DotSurfaceSnapshot.self, from: Data("{\"configured\":true,\"hosting\":true}".utf8))
+    func testReportOnlyMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
+        let now = 1800000000000
+        let quiet = DotSurfaceSnapshot(configured: true, hosting: true)
+        let dot = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + 10000)
         for width in [32, 64] {
-            let pixels = [UInt8](DotPixelOverlay.paint(Data(repeating: 13, count: width * width * 3), width: width, dot: dot))
+            let plain = Data(repeating: 13, count: width * width * 3)
+            XCTAssertEqual(DotPixelOverlay.paint(plain, width: width, dot: quiet, now: now), plain)
+            let pixels = [UInt8](DotPixelOverlay.paint(plain, width: width, dot: dot, now: now))
             let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
             let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor
             for y in 0..<width { for x in 0..<width {
-                if x < x0 || x >= x0 + size || y < y0 || y >= y0 + size {
+                if x < x0 || x >= x0 + size + 2 || y < y0 - 2 || y >= y0 + size {
                     XCTAssertEqual(pixels[(y * width + x) * 3], 13)
                 }
             } }

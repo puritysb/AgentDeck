@@ -796,7 +796,7 @@ void render(float dt) {
     for (auto& memo : ciMemos) if (!memo.seen) memo.occupied = false;
 
     if (dotCache && dotLabel) {
-        if (!dotFrame.configured) lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
+        if (!dotFrame.configured || !DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis()))) lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
         else {
             const uint8_t code = dotFrame.effectiveCode(millis());
             const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn

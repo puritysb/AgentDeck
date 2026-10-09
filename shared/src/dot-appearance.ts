@@ -36,6 +36,8 @@ export function compactDotAppearance(value: unknown): DotAppearance | null {
   return validDotAppearance(value) ? { version: value.version, id: value.id, rgba: value.rgba } : null;
 }
 export const DOT_PHASES = ['AWAITING ACTIVITY', 'HOST STOPPED', 'WORKING', 'NEEDS YOU', 'COMPLETED', 'FAILED', 'OLD REPORT', 'UNKNOWN', 'NOT LINKED'] as const;
+/** Habitat residents require a real report; setup/status stays in chrome and fixed keys. */
+export const DOT_HABITAT_PHASES: readonly number[] = [2, 3, 4, 5];
 export const DOT_COMPACT_LABELS = ['Dot', 'Stopped', 'Working', 'Help', 'Done', 'Failed', 'Old', 'Unknown', 'Unlinked'] as const;
 /** Original default geometry, shared by generated firmware and tiny host previews. */
 export const DOT_ORB_GEOMETRY = Object.freeze({ center: 7.5, radius: 7, eyeLeft: 5, eyeRight: 10, eyeTop: 5, eyeBottom: 9 });

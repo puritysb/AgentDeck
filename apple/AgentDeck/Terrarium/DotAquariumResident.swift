@@ -52,7 +52,6 @@ final class DotAquariumResident {
 
     func sync(_ snapshot: DotSurfaceSnapshot?, now: Int) {
         self.snapshot = snapshot
-        root.isEnabled = snapshot?.configured == true
         refreshPhase(at: now)
         if snapshot?.appearance?.id != portraitID {
             portraitID = snapshot?.appearance?.id
@@ -72,6 +71,7 @@ final class DotAquariumResident {
     }
     private func refreshPhase(at now: Int) {
         code = snapshot?.phase(at: now) ?? 1
+        root.isEnabled = snapshot?.inhabitsHabitat(at: now) == true
         if displayedCode != code {
             body.model?.materials = [SimpleMaterial(color: DotNativeColor(DotSurfaceView.tint(code)), roughness: 0.5, isMetallic: false)]
             displayedCode = code

@@ -48,7 +48,7 @@ it('keeps normal portraits separate from compact packets and retains sessions wh
 });
 
 it('preserves the collective 11-pixel face and changes only a separate Dot region on larger matrices', () => {
-  const dot = {configured:true,hosting:true,reportState:null,reportedAt:null,expiresAt:null};
+  const dot = {configured:true,hosting:true,reportState:'working',reportedAt:Date.now(),expiresAt:null};
   const small = new Uint8Array(11*11*3).fill(13);
   expect(paintDotPixels(small,11,dot)).toEqual(new Uint8Array(11*11*3).fill(13));
   const large = new Uint8Array(64*64*3).fill(13);
@@ -64,11 +64,16 @@ it('keeps the matrix habitat unframed and unlettered, with a bounded activity cu
   const quiet = {configured:true, hosting:true, reportState:null, reportedAt:null, expiresAt:null};
   for (const width of [32,64]) {
     const plain = new Uint8Array(width*width*3).fill(13);
-    const painted = paintDotPixels(plain.slice(),width,quiet,now);
+    expect(paintDotPixels(plain.slice(),width,quiet,now)).toEqual(plain);
+    const active = {...quiet,reportState:'working',reportedAt:now,expiresAt:now+60000};
+    const painted = paintDotPixels(plain.slice(),width,active,now);
+    for (const hidden of [{...active,authorized:false},{...active,hosting:false},{...active,reportState:'stale'},{...active,reportedAt:now+1}]) {
+      expect(paintDotPixels(plain.slice(),width,hidden,now)).toEqual(plain);
+    }
     const size = Math.max(R.pixelMinSize,Math.floor(width/R.pixelSizeDivisor));
     const x0=width-size-R.pixelMargin, y0=Math.floor(width/R.pixelYDivisor);
     for(let y=0;y<width;y++) for(let x=0;x<width;x++) {
-      if(x<x0 || x>=x0+size || y<y0 || y>=y0+size) {
+      if(x<x0 || x>=x0+size+2 || y<y0-2 || y>=y0+size) {
         expect([...painted.slice((y*width+x)*3,(y*width+x+1)*3)]).toEqual([13,13,13]);
       }
     }
@@ -80,8 +85,8 @@ it('keeps the matrix habitat unframed and unlettered, with a bounded activity cu
       expect(painted[i]).toBeLessThan(60);
     }
     const working = paintDotPixels(plain.slice(),width,{...quiet,reportState:'working',reportedAt:now,expiresAt:now+60000},now);
-    expect(working).not.toEqual(painted);
+    expect(working).toEqual(painted);
     const expired=paintDotPixels(plain.slice(),width,{...quiet,reportState:'working',reportedAt:now,expiresAt:now+60000},now+60001);
-    expect(expired).not.toEqual(working);
+    expect(expired).toEqual(plain);
   }
 });

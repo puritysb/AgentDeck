@@ -1115,7 +1115,7 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
     }
 
     int16_t dotWidth = 0;
-    if (s.dot.configured && chipX >= 290) {
+    if (s.dot.configured && DotSurfaceRules::inhabitsHabitat(s.dot.effectiveCode(millis())) && chipX >= 290) {
         dotWidth = chipX >= 480 ? 168 : 84;
         const int16_t x = chipX - dotWidth - 4;
         DotCompanion::mono(s.dot, x, 18, DotSurfaceRules::paperGlyphSize,

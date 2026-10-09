@@ -302,9 +302,6 @@ fun MonitorScreen(
             )
         }
 
-        if (!showDisconnected && !hudHidden && !attentionVisible) {
-            dashState.dot?.takeIf { it.configured }?.let { DotCompanion(it, Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp)) }
-        }
         if (showDisconnected) {
             // Layer 2: Connection overlay when disconnected
             ConnectionOverlay(

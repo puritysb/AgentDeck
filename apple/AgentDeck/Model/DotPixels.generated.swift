@@ -9,7 +9,7 @@ enum DotPixelOverlay {
     static let colors: [[UInt8]] = [[124,150,148],[124,150,148],[62,214,232],[255,169,61],[82,217,136],[255,107,107],[124,150,148],[124,150,148],[124,150,148]]
     static let marks: [[String]] = [[],[],["010","101","010"],["010","010","010","000","010"],["000","001","101","010","000"],["101","010","101"],["110","001","010","000","010"],["110","001","010","000","010"],[]]
     static func paint(_ data: Data, width: Int, dot: DotSurfaceSnapshot?, now: Int = Int(Date().timeIntervalSince1970 * 1000)) -> Data {
-        guard [32,64].contains(width), data.count == width * width * 3, let dot, dot.configured else { return data }
+        guard [32,64].contains(width), data.count == width * width * 3, let dot, dot.inhabitsHabitat(at: now) else { return data }
         var rgb = [UInt8](data)
         let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
         let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor, tint = colors[dot.phase(at: now)]

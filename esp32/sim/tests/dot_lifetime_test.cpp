@@ -47,6 +47,9 @@ int main() {
     assert(dot.setActivity(true, 2, true, 6000, lease, 0));
     assert(dot.setActivity(true, 8, true, 6000, 0, 1));
     assert(dot.effectiveCode(1) == 8);
+    assert(!DotSurfaceRules::inhabitsHabitat(dot.effectiveCode(1)));
+    assert(!DotSurfaceRules::inhabitsHabitat(0));
+    assert(DotSurfaceRules::inhabitsHabitat(2));
     assert(dot.setActivity(true, 2, true, 6000, lease, 2));
     assert(dot.effectiveCode(2) == 6);
     // Unsigned subtraction preserves the budget across millis() wrap.
