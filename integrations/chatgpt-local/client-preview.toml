@@ -1,0 +1,10 @@
+# Explicit local client test configuration; do not overwrite user config.
+# Portable mcp.json cannot carry pre-registered OAuth fields.
+[mcp_servers.agentdeck]
+url = "http://127.0.0.1:9476/mcp"
+oauth_resource = "http://127.0.0.1:9476"
+scopes = ["agentdeck:read", "agentdeck:report"]
+[mcp_servers.agentdeck.oauth]
+client_id = "agentdeck-local-plugin"
+callback_url = "http://127.0.0.1:1455/callback"
+callback_port = 1455

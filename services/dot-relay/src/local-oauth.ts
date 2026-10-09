@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { DOT_OAUTH_LIMITS as OAUTH_LIMITS } from '@agentdeck/shared';
+import { DOT_OAUTH_LIMITS as OAUTH_LIMITS, DOT_LOCAL_MCP } from '@agentdeck/shared';
 export { DOT_OAUTH_LIMITS as OAUTH_LIMITS } from '@agentdeck/shared';
 import type { Principal } from './contracts.js';
 
@@ -21,7 +21,7 @@ interface Pending {
   id: string; redirect: string; challenge: string; scopes: string[]; state: string; expiresAt: number;
   decision: 'pending' | 'approved' | 'denied'; code?: string; grant?: string;
 }
-export interface OAuthConfiguration { resource: string; clientId: string; clientSecret: string; redirectURI: string }
+export interface OAuthConfiguration { resource: string; clientId: string; clientSecret: string; redirectURI: string; local?: boolean }
 
 /** One locally approved installation; no passwords, remote approval or dynamic client registration. */
 export class LocalOAuth {
@@ -29,8 +29,8 @@ export class LocalOAuth {
   private config: OAuthConfiguration;
   constructor(config: OAuthConfiguration, private store: OAuthStorage, private clock = Date.now) {
     const resource = new URL(config.resource), redirect = new URL(config.redirectURI);
-    if (resource.protocol !== 'https:' || resource.origin !== config.resource || redirect.protocol !== 'https:'
-      || redirect.username || redirect.password || redirect.hash || config.clientId.length < 16 || config.clientSecret.length < 32) {
+    if ((config.local ? resource.protocol !== 'http:' || resource.hostname !== DOT_LOCAL_MCP.host || config.clientId !== DOT_LOCAL_MCP.clientId : resource.protocol !== 'https:') || resource.origin !== config.resource || (config.local ? !localRedirect(config.redirectURI) : redirect.protocol !== 'https:')
+      || redirect.username || redirect.password || redirect.hash || config.clientId.length < 16 || (!config.local && config.clientSecret.length < 32)) {
       throw new Error('Invalid local OAuth configuration');
     }
     this.config = { ...config };
@@ -52,7 +52,7 @@ export class LocalOAuth {
     return { issuer: resource, authorization_endpoint: `${resource}/oauth/authorize`, token_endpoint: `${resource}/oauth/token`,
       revocation_endpoint: `${resource}/oauth/revoke`, authorization_response_iss_parameter_supported: true,
       response_types_supported: ['code'], grant_types_supported: ['authorization_code', 'refresh_token'],
-      token_endpoint_auth_methods_supported: ['client_secret_post'], code_challenge_methods_supported: ['S256'], scopes_supported: SCOPES };
+      token_endpoint_auth_methods_supported: [this.config.local ? 'none' : 'client_secret_post'], code_challenge_methods_supported: ['S256'], scopes_supported: SCOPES };
   }
   private sweep() {
     for (const [id, value] of this.pending) if (value.expiresAt <= this.clock()) this.pending.delete(id);
@@ -61,7 +61,7 @@ export class LocalOAuth {
     this.sweep();
     for (const key of params.keys()) if (params.getAll(key).length !== 1) throw new OAuthError('invalid_request');
     const scopes = (params.get('scope') ?? '').split(' ').filter(Boolean);
-    if (params.get('client_id') !== this.config.clientId || params.get('redirect_uri') !== this.config.redirectURI
+    if (params.get('client_id') !== this.config.clientId || (this.config.local ? !localRedirect(params.get('redirect_uri') ?? '') : params.get('redirect_uri') !== this.config.redirectURI)
       || params.get('response_type') !== 'code' || params.get('resource') !== this.config.resource
       || params.get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(params.get('code_challenge') ?? '')
       || !scopes.length || scopes.some(s => !SCOPES.includes(s)) || !params.get('state') || params.get('state')!.length > 512) {
@@ -69,7 +69,7 @@ export class LocalOAuth {
     }
     if (this.pending.size >= OAUTH_LIMITS.pending) throw new OAuthError('temporarily_unavailable');
     const id = random();
-    this.pending.set(id, { id, redirect: this.config.redirectURI, challenge: params.get('code_challenge')!,
+    this.pending.set(id, { id, redirect: params.get('redirect_uri')!, challenge: params.get('code_challenge')!,
       scopes: [...new Set(scopes)].sort(), state: params.get('state')!, expiresAt: this.clock() + OAUTH_LIMITS.consentMs, decision: 'pending' });
     return id;
   }
@@ -103,7 +103,7 @@ export class LocalOAuth {
   }
   private client(params: URLSearchParams) {
     for (const key of params.keys()) if (params.getAll(key).length !== 1) throw new OAuthError('invalid_request');
-    if (params.get('client_id') !== this.config.clientId || !same(digest(params.get('client_secret') ?? ''), digest(this.config.clientSecret))) {
+    if (params.get('client_id') !== this.config.clientId || (!this.config.local && !same(digest(params.get('client_secret') ?? ''), digest(this.config.clientSecret)))) {
       throw new OAuthError('invalid_client');
     }
   }
@@ -168,4 +168,13 @@ export class LocalOAuth {
     const token = this.store.read().tokens.find(t => same(t.hash, hash));
     if (token) this.revokeGrant(token.grant);
   }
+}
+
+export function localRedirect(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.href === value && url.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(url.hostname)
+      && !!url.port && Number(url.port) >= 1024 && url.pathname === DOT_LOCAL_MCP.callbackPath
+      && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
 }

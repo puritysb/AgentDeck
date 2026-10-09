@@ -8,7 +8,7 @@ struct DotConsent: Identifiable, Sendable {
 struct DotGrant: Codable, Identifiable, Sendable { var id: String; var scopes: [String]; var expiresAt: Int; var revoked: Bool }
 private struct DotToken: Codable { var hash: String; var grant: String; var refresh: Bool; var expiresAt: Int; var used: Bool }
 private struct DotOAuthState: Codable { var version = 1; var grants: [DotGrant] = []; var tokens: [DotToken] = [] }
-struct DotOAuthConfiguration: Codable, Sendable { var origin: String; var clientID: String; var secret: String; var redirectURI: String }
+struct DotOAuthConfiguration: Codable, Sendable { var origin: String; var clientID: String; var secret: String; var redirectURI: String; var local: Bool? = nil }
 @DaemonActor
 final class DotOAuth {
     private struct Pending { var consent: DotConsent; var challenge: String; var state: String; var decision: Bool?; var code: String?; var grant: String? }
@@ -19,11 +19,16 @@ final class DotOAuth {
     private let clock: () -> Int
     static let scopes = ["agentdeck:read", "agentdeck:report", "agentdeck:subscribe"]
     init(config: DotOAuthConfiguration, data: Data?, clock: @escaping () -> Int = { Int(Date().timeIntervalSince1970 * 1000) }, persist: @escaping (Data) throws -> Void) throws {
-        guard let origin = URLComponents(string: config.origin), origin.scheme == "https", origin.host != nil,
-              origin.user == nil, origin.password == nil, origin.path.isEmpty, origin.query == nil, origin.fragment == nil,
-              let redirect = URLComponents(string: config.redirectURI), redirect.scheme == "https", redirect.host != nil,
-              redirect.user == nil, redirect.password == nil, redirect.fragment == nil,
-              config.clientID.count >= 16, config.secret.count >= 32 else { throw DotFailure.message("Invalid OAuth configuration.") }
+        guard let origin = URLComponents(string: config.origin), origin.host != nil,
+              origin.user == nil, origin.password == nil, origin.path.isEmpty, origin.query == nil, origin.fragment == nil else { throw DotFailure.message("Invalid OAuth origin.") }
+        if config.local == true {
+            guard origin.scheme == "http", origin.host == DotLocalMCP.host, config.clientID == DotLocalMCP.clientId,
+                  Self.localRedirect(config.redirectURI) else { throw DotFailure.message("Invalid local OAuth configuration.") }
+        } else {
+            guard origin.scheme == "https", let redirect = URLComponents(string: config.redirectURI), redirect.scheme == "https", redirect.host != nil,
+                  redirect.user == nil, redirect.password == nil, redirect.fragment == nil,
+                  config.clientID.count >= 16, config.secret.count >= 32 else { throw DotFailure.message("Invalid OAuth configuration.") }
+        }
         self.config = config; self.persist = persist; self.clock = clock
         state = try data.map { try JSONDecoder().decode(DotOAuthState.self, from: $0) } ?? DotOAuthState()
         guard state.version == 1, state.tokens.count <= DotOAuthLimits.records, state.grants.count <= DotOAuthLimits.records else { throw DotFailure.message("Invalid saved authorization state.") }
@@ -36,21 +41,27 @@ final class DotOAuth {
         ["issuer": config.origin, "authorization_endpoint": config.origin + "/oauth/authorize", "token_endpoint": config.origin + "/oauth/token",
          "revocation_endpoint": config.origin + "/oauth/revoke", "authorization_response_iss_parameter_supported": true,
          "response_types_supported": ["code"], "grant_types_supported": ["authorization_code", "refresh_token"],
-         "token_endpoint_auth_methods_supported": ["client_secret_post"], "code_challenge_methods_supported": ["S256"], "scopes_supported": Self.scopes]
+         "token_endpoint_auth_methods_supported": [config.local == true ? "none" : "client_secret_post"], "code_challenge_methods_supported": ["S256"], "scopes_supported": Self.scopes]
+    }
+    static func localRedirect(_ value: String) -> Bool {
+        guard let url = URLComponents(string: value), url.scheme == "http", ["127.0.0.1", "localhost"].contains(url.host ?? ""),
+              let port = url.port, (1024...65535).contains(port), url.path == DotLocalMCP.callbackPath,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return false }
+        return true
     }
     private func sweep() { pending = pending.filter { $0.value.consent.expiresAt > clock() } }
     func requests() -> [DotConsent] { sweep(); return pending.values.filter { $0.decision == nil }.map(\.consent).sorted { $0.expiresAt < $1.expiresAt } }
     func begin(_ p: [String: String]) throws -> String {
         sweep()
         let scopes = (p["scope"] ?? "").split(separator: " ").map(String.init)
-        guard p["client_id"] == config.clientID, p["redirect_uri"] == config.redirectURI, p["resource"] == config.origin,
+        guard p["client_id"] == config.clientID, (config.local == true ? Self.localRedirect(p["redirect_uri"] ?? "") : p["redirect_uri"] == config.redirectURI), p["resource"] == config.origin,
               p["response_type"] == "code", p["code_challenge_method"] == "S256", let challenge = p["code_challenge"],
               challenge.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil,
               let context = p["state"], !context.isEmpty, context.utf8.count <= 512,
               !scopes.isEmpty, scopes.allSatisfy({ Self.scopes.contains($0) }) else { throw DotFailure.message("invalid_request") }
         guard pending.count < DotOAuthLimits.pending else { throw DotFailure.message("temporarily_unavailable") }
         let id = try dotRandom()
-        pending[id] = Pending(consent: .init(id: id, scopes: Array(Set(scopes)).sorted(), redirectURI: config.redirectURI,
+        pending[id] = Pending(consent: .init(id: id, scopes: Array(Set(scopes)).sorted(), redirectURI: p["redirect_uri"]!,
             expiresAt: clock() + DotOAuthLimits.consentMs), challenge: challenge, state: context)
         return id
     }
@@ -77,7 +88,7 @@ final class DotOAuth {
         return url.string!
     }
     private func client(_ p: [String: String]) throws {
-        guard p["client_id"] == config.clientID, dotEqual(dotDigest(p["client_secret"] ?? ""), dotDigest(config.secret)) else { throw DotFailure.message("invalid_client") }
+        guard p["client_id"] == config.clientID, (config.local == true || dotEqual(dotDigest(p["client_secret"] ?? ""), dotDigest(config.secret))) else { throw DotFailure.message("invalid_client") }
     }
     func exchange(_ p: [String: String]) throws -> [String: Any] {
         try client(p); sweep()

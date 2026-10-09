@@ -111,3 +111,23 @@ Do not wait indefinitely for an answer: stages 1–3 can validate private local 
 Official sources above were retrieved on 2026-10-09. Repository review confirmed an existing native HTTPS/OAuth host, bounded report contracts and portable rendering, plus unfinished private-transport work in the earlier integration checkout. It did not establish a usable local plugin, a configured live Dot subscription, a public distribution entitlement, or a finished native loopback adapter.
 
 This research change modifies documentation only. It creates no tunnel, account, credential, subscription, public listener or production report. Existing source/deployment receipts remain evidence for their own tested scope; they do not establish the new transport or onboarding. Record future interoperability evidence separately with build identity, account surface, executor, transport, scenario and observed result.
+
+## Implementation checkpoint — 2026-10-09
+
+The Node and native Swift hosts now have an explicit IPv4-loopback mode, public-client
+OAuth with PKCE and local consent, and local requests that do not require an Events
+subscription. Local requests retain `delivery: local`; preparing one does not wake Dot.
+The macOS UI offers local setup first and exposes request IDs. Node `dot init-local`
+creates configuration exclusively without replacing existing settings.
+
+The private [plugin package](../integrations/chatgpt-local/README.md) is a test artifact.
+A newly confirmed distribution gate changes the automatic-onboarding assumption:
+[the portable MCP schema](https://agent-plugins.org/schemas/1.0.0/mcp.schema.json)
+allows transport, URL and headers, but no pre-registered OAuth client fields.
+An explicit local client configuration is included for protocol experiments. Installing
+this portable plugin alone is not yet a verified authentication flow. Resolve this through
+confirmed host support or a separately reviewed bounded dynamic-registration implementation
+in both hosts before promising one-click setup. Do not embed tokens or unsupported fields.
+
+Real Dot invocation, delegated execution, account consent, Mac sleep/restart and public
+plugin distribution still require client/account evidence. Unit tests cannot attest them.

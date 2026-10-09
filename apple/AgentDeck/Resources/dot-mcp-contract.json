@@ -424,6 +424,7 @@
           },
           "delivery": {
             "enum": [
+              "local",
               "pending",
               "accepted",
               "failed",

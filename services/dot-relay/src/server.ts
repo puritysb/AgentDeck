@@ -29,7 +29,7 @@ async function body(req: IncomingMessage): Promise<unknown> {
   catch { throw new Fault(-32700, 'Invalid JSON'); }
 }
 export function createRelayServer(relay: Relay, authenticate: Authenticate, resource: string, issuer: string,
-  options: { tls?: ServerOptions; deviceRoutes?: boolean; oauth?: LocalOAuth; operator?: boolean } = {}) {
+  options: { tls?: ServerOptions; deviceRoutes?: boolean; oauth?: LocalOAuth; operator?: boolean; local?: boolean } = {}) {
   let budgetAt = Date.now(), budget = 0;
   const handler: RequestListener = async (req, res) => {
     const reply = (status: number, value?: unknown) => {
@@ -40,6 +40,7 @@ export function createRelayServer(relay: Relay, authenticate: Authenticate, reso
     if (++budget > LIMITS.requestsPerMinute) { res.setHeader('Retry-After', '60'); reply(429); return; }
     // Server-to-server experiment; browser requests are unsupported, not granted broad CORS.
     if (req.headers.origin) { reply(403, { error: 'Browser requests are not supported' }); return; }
+    if (options.local && req.headers.host !== `${req.socket.localAddress}:${req.socket.localPort}`) { reply(403); return; }
     if (options.oauth && !options.operator && await oauthHTTP(req, res, options.oauth)) return;
     if (req.method === 'GET' && req.url === '/.well-known/oauth-protected-resource') {
       reply(200, { resource, authorization_servers: [issuer], scopes_supported: [
@@ -75,7 +76,7 @@ export function createRelayServer(relay: Relay, authenticate: Authenticate, reso
         if (req.url === '/operator/request' && req.method === 'POST') {
           const { grantId, ...input } = await body(req) as Record<string, unknown>;
           if (typeof grantId !== 'string' || !options.oauth.hasAccess(grantId)) throw new Fault(-32003, 'Invalid grant');
-          reply(201, relay.create({ subject: grantId, scopes: ['agentdeck:device'] }, input)); return;
+          reply(201, relay.create({ subject: grantId, scopes: ['agentdeck:device'] }, input, options.local)); return;
         }
         reply(404, { error: 'Not found' }); return;
       }

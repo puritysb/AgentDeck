@@ -85,7 +85,7 @@ final class DotMCPStore {
         guard state.requests.allSatisfy({ row in
             [row.createdAt, row.capturedAt, row.expiresAt, row.nextAttemptAt].allSatisfy(validStamp)
             && row.context.unicodeScalars.count <= DotLimits.contextCharacters && row.attempts >= 0 && row.attempts <= DotLimits.attempts
-            && row.reportKeys.count <= DotLimits.reportKeys && (row.interactions?.count ?? 0) <= DotLimits.interactionEvents && (row.interactionKeys?.count ?? 0) <= DotLimits.interactionEvents && ["pending", "accepted", "failed", "expired", "cancelled"].contains(row.delivery)
+            && row.reportKeys.count <= DotLimits.reportKeys && (row.interactions?.count ?? 0) <= DotLimits.interactionEvents && (row.interactionKeys?.count ?? 0) <= DotLimits.interactionEvents && ["local", "pending", "accepted", "failed", "expired", "cancelled"].contains(row.delivery)
         }), state.subscriptions.allSatisfy({ validStamp($0.expiresAt) && validStamp($0.verifiedUntil) }) else { throw DotFailure.message("Invalid persisted Dot data.") }
         let requestTool = (spec["tools"] as! [[String: Any]]).first { $0["name"] as? String == "get_request" }!
         let properties = (requestTool["outputSchema"] as! [String: Any])["properties"] as! [String: Any]
@@ -130,18 +130,19 @@ final class DotMCPStore {
          "claim": r.claim.map { ["attemptId": $0.attemptId, "expiresAt": $0.expiresAt] as [String: Any] } as Any? ?? NSNull(),
          "report": r.report.map { ["sequence": $0.sequence, "state": $0.state, "summary": $0.summary, "receivedAt": $0.receivedAt] as [String: Any] } as Any? ?? NSNull()]
     }
-    func create(owner: String, profile: String, context: String, key: String) throws {
+    func create(owner: String, profile: String, context: String, key: String, local: Bool = false) throws {
         guard access(owner), !context.isEmpty, context.unicodeScalars.count <= DotLimits.contextCharacters else { throw DotFailure.message("Choose a connected account and share at most 8,000 characters.") }
         let now = clock(), fingerprint = dotDigest(profile + "\n" + context)
         try change { s in
             if let prior = s.requests.first(where: { $0.owner == owner && $0.key == key }) {
                 guard prior.fingerprint == fingerprint else { throw DotFailure.message("Request key conflict.") }; return
             }
-            guard let sub = s.subscriptions.first(where: { $0.owner == owner && $0.profile == profile && $0.expiresAt > now }) else { throw DotFailure.message("Ask Dot to subscribe to this integration profile first.") }
+            let sub = s.subscriptions.first(where: { $0.owner == owner && $0.profile == profile && $0.expiresAt > now })
+            guard local || sub != nil else { throw DotFailure.message("Ask Dot to subscribe to this integration profile first.") }
             guard s.requests.count < DotLimits.records else { throw DotFailure.message("Request storage is full. Disconnect to clear local history, or wait for automatic expiry.") }
             s.requests.append(.init(id: "req_" + UUID().uuidString, owner: owner, profile: profile, key: key, fingerprint: fingerprint,
                 context: context, capturedAt: now, createdAt: now, expiresAt: now + DotLimits.requestMs, eventId: "evt_" + UUID().uuidString,
-                subscriptionId: sub.id, delivery: "pending", attempts: 0, nextAttemptAt: now))
+                subscriptionId: local ? "" : sub!.id, delivery: local ? "local" : "pending", attempts: 0, nextAttemptAt: now))
         }
     }
     func rpc(grant: DotGrant, method: String, params: [String: Any]) async throws -> [String: Any] {

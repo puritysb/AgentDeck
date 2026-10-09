@@ -12,7 +12,7 @@ export interface Subscription {
 export interface Briefing {
   id: string; owner: string; profile: string; key: string; fingerprint: string;
   context: string; capturedAt: number; createdAt: number; expiresAt: number;
-  eventId: string; subscriptionId: string; delivery: 'pending' | 'accepted' | 'failed' | 'expired' | 'cancelled';
+  eventId: string; subscriptionId: string; delivery: 'local' | 'pending' | 'accepted' | 'failed' | 'expired' | 'cancelled';
   attempts: number; nextAttemptAt: number;
   claim?: { id: string; key: string; expiresAt: number };
   report?: { sequence: number; state: string; summary: string; receivedAt: number };
@@ -44,7 +44,7 @@ export class Store {
           || typeof r.context !== 'string' || [...r.context].length > LIMITS.contextCharacters || typeof r.profile !== 'string'
           || ![r.createdAt, r.capturedAt, r.expiresAt, r.nextAttemptAt].every(stamp)
           || !Number.isInteger(r.attempts) || r.attempts < 0 || r.attempts > LIMITS.attempts
-          || !['pending', 'accepted', 'failed', 'expired', 'cancelled'].includes(r.delivery)
+          || !['local', 'pending', 'accepted', 'failed', 'expired', 'cancelled'].includes(r.delivery)
           || (r.interactions !== undefined && (!Array.isArray(r.interactions) || r.interactions.length > LIMITS.interactionEvents))
           || (r.interactionKeys !== undefined && (typeof r.interactionKeys !== 'object' || r.interactionKeys === null || Object.keys(r.interactionKeys).length > LIMITS.interactionEvents))
           || !r.reportKeys || typeof r.reportKeys !== 'object' || Object.keys(r.reportKeys).length > LIMITS.reportKeys)
