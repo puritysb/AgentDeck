@@ -43,12 +43,6 @@ export type MatrixKind = typeof MATRIX_KINDS[number];
 export const MATRIX_FACES = ['unknown', 'empty', 'idle', 'working', 'delegating', 'ci', 'ci-unknown',
   'waiting', 'choosing', 'reviewing', 'error', 'done', 'arrival', 'asked', 'reply'] as const;
 export type MatrixFace = typeof MATRIX_FACES[number];
-/** Faces whose class can hold several sessions show a count of pips. */
-export const MATRIX_FACE_PIPS: Partial<Record<MatrixFace, number>> = {
-  // Minimum count that earns pips. Children are the delegating face's whole
-  // meaning, so even one is shown; elsewhere one session is the default case.
-  idle: 2, working: 2, delegating: 1, ci: 2, 'ci-unknown': 2, waiting: 2, choosing: 2, reviewing: 2, error: 2,
-};
 export interface MatrixSession {
   id: string; alive: boolean; state?: string; agentType?: string;
   waitingOn?: { phase?: string; agentWaiting?: boolean } | null;
@@ -79,7 +73,9 @@ export interface MatrixScene {
   dot?: DotDeckSnapshot | null;
   dotNow?: number;
   kind: MatrixKind; count: number; glyph: string; frame: number; roster: MatrixKind[]; counts: number[];
-  /** Timebox face and its session count (pips). Optional for callers that
+  /** Timebox face and its supporting population count (legacy name: pips).
+   *  The count remains metadata; the face does not draw a numeric ornament.
+   *  Optional for callers that
    *  build a 32×32 scene by hand; the 11×11 renderer falls back to `kind`. */
   face?: MatrixFace; pips?: number;
 }

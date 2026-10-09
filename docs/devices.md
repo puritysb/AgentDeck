@@ -338,7 +338,7 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
   |---|---|
   | No roster yet (startup, link reset) | `unknown` — dim broken eyes |
   | Live daemon, zero sessions | `empty` — sleeping eyes and a "Z" |
-  | Sessions, nothing running | `idle` — dim grey eyes that blink |
+  | Sessions, nothing running | `idle` — dim grey eyes that glance and blink |
   | Agent working | `working` — cyan eyes that glance |
   | Parent idle, subagents running | `delegating` — heavy-lidded cyan eyes looking down at the helpers |
   | CI wait (queued/running) | `ci` — eyes rolled up at a filling ellipsis; a CI wait is neither PERM nor WORKING |
@@ -349,12 +349,20 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
   | Failed session, or Gateway health error while the OpenClaw session is present | `error` — red frown |
   | Explicit result / reply / question / new session | `done` · `reply` · `asked` · `arrival` |
 
-  Faces that can stand for several sessions (idle, working, CI, needs-you,
-  error) show steady chin pips on the bottom row when two or more sessions share
-  them, up to five; `delegating` shows one pip per running child. Only amber
-  pulses. Quota is not on the face (it is not a session state; DESIGN.md §2.8).
+  The bottom row stays clear: population counts are not drawn beneath the
+  face. Delegated work is expressed through the downward scanning eyes.
+  Only amber pulses. Quota is not on the face (it is not a session state; DESIGN.md §2.8).
   The daemon gone entirely is the separate OFFLINE badge, and host display
   sleep scales or blanks brightness without changing the face.
+- **Conversation motion**: a message turns the pupils toward the reader and
+  earns a small listening nod. Replies move through closed, open, rounded and
+  smiling mouth shapes; a new session wakes and winks hello. Quiet/work/reply
+  faces have restrained warm cheeks and some open eyes carry sand highlights,
+  all from existing design tokens. Eyes and mouth retain their
+  status hue; error, unknown, CI and needs-you faces keep their sober palette.
+  Major gestures hold for two 750 ms frames so the CLI's nominal 1.5 s polling
+  cannot freeze the speaking mouth by sampling only alternate frames. This is
+  a response to session/timeline events, not microphone, camera or touch input.
 - **Priority**: no roster → needs you (approval → choice → diff, a fixed order,
   never a timer) → error → conversation / new session / a result in its first
   six seconds → working → delegating → CI wait → a result within 90 seconds →

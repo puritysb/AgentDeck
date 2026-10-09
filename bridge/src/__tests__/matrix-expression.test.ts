@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { MatrixExpression, MATRIX_RULES, MATRIX_FACES, type MatrixSession, type MatrixBroadcast, type BridgeEvent } from '@agentdeck/shared';
-import { renderMatrixScene, renderMatrixFace, paintFacePips } from '../pixoo/matrix-art.js';
+import { renderMatrixScene, renderMatrixFace } from '../pixoo/matrix-art.js';
 import { swiftMatrixSource } from '../../../scripts/generate-matrix-expressions.mts';
 import { broadcastMatrix, getLastFrame, renderPreviewFrame } from '../pixoo/pixoo-bridge.js';
 
@@ -163,6 +163,35 @@ describe('expressive BLE matrices', () => {
       if (!['waiting', 'choosing', 'reviewing'].includes(face)) expect(peak(1)).toBe(peak(0));
     }
   });
+  it('keeps speaking mouth shapes distinct at both phases of a 1.5 s BLE poll', () => {
+    for (const phase of [0, 1]) {
+      const mouths = Array.from({ length: 4 }, (_, i) =>
+        Buffer.from(renderMatrixFace('reply', phase + i * 2).slice(7 * 11 * 3, 10 * 11 * 3)
+          .map(n => Math.round(n / 17))).toString('base64'));
+      expect(new Set(mouths).size).toBe(4);
+    }
+  });
+  it('nods on a message, keeps accents visible after packing, and keeps the bottom row clear', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('c')], 0);
+    engine.ingest({ type: 'timeline_event', entry: { ts: 100, type: 'chat_start', sessionId: 'c' } }, 100);
+    const before = renderMatrixScene(11, engine.scene(100));
+    const nod = renderMatrixScene(11, engine.scene(100 + 2 * MATRIX_RULES.frameMs));
+    const at = (pixels: Uint8Array, x: number, y: number) => pixels.slice((y * 11 + x) * 3, (y * 11 + x + 1) * 3);
+    expect(at(before, 5, 8).some(n => n > 0)).toBe(true);
+    expect(at(nod, 5, 8).every(n => n === 0)).toBe(true);
+    expect(at(nod, 5, 9)).toEqual(at(before, 5, 8));
+    // A warm cheek and the cyan eye must not collapse to one packed colour.
+    for (const brightness of [1, .6]) {
+      const packed = before.map(n => Math.round(n * brightness / 17));
+      expect(at(packed, 1, 7)[0]).toBeGreaterThan(at(packed, 1, 7)[1]);
+      expect(at(packed, 2, 3)[0]).toBeLessThan(at(packed, 2, 3)[1]);
+    }
+    for (const face of MATRIX_FACES) for (let frame = 0; frame < MATRIX_RULES.frames; frame++) {
+      expect(renderMatrixFace(face, frame).slice(10 * 11 * 3).every(n => n === 0)).toBe(true);
+      expect(renderMatrixFace(face, frame + MATRIX_RULES.frames)).toEqual(renderMatrixFace(face, frame));
+    }
+  });
   it('selects the face from more of the desk than the 32x32 kind', () => {
     const face = (sessions: MatrixSession[], now = 100, setup?: (e: MatrixExpression) => void) => {
       const engine = new MatrixExpression(); engine.updateSessions(sessions, 0); setup?.(engine);
@@ -172,7 +201,7 @@ describe('expressive BLE matrices', () => {
     // An empty roster is not an idle one.
     expect(face([])).toEqual({ face: 'empty', pips: 0 });
     expect(face([row('a', 'idle'), row('b', 'idle')])).toEqual({ face: 'idle', pips: 2 });
-    // One working session is the default case; several earn chin pips.
+    // Population metadata follows the selected face, without drawing count dots.
     expect(face([row('a')])).toEqual({ face: 'working', pips: 1 });
     expect(face([row('a'), row('b', 'processing', 'codex-cli'), row('c', 'idle')])).toEqual({ face: 'working', pips: 2 });
     // Each needs-you state has its own face, in a fixed (not rotating) order.
@@ -212,16 +241,13 @@ describe('expressive BLE matrices', () => {
     expect(engine.scene(20000).face).toBe('done');
     expect(engine.scene(100 + MATRIX_RULES.resultMs).face).toBe('idle');
   });
-  it('draws chin pips only when the face carries a count, capped at five', () => {
-    const lit = (face: Parameters<typeof renderMatrixFace>[0], pips: number) => {
-      const out = renderMatrixFace(face, 0); paintFacePips(out, face as never, pips);
-      return Array.from({ length: 11 }, (_, x) => out[(10 * 11 + x) * 3 + 1] > 0 ? 1 : 0).join('');
-    };
-    expect(lit('working', 1)).toBe('00000000000');
-    expect(lit('working', 2)).toBe('00001010000');
-    expect(lit('delegating', 1)).toBe('00000100000');
-    expect(lit('idle', 9)).toBe('01010101010');
-    expect(lit('done', 4)).toBe('00000000000');
+  it('keeps the face independent of population count, including delegated children', () => {
+    const engine = new MatrixExpression();
+    engine.updateSessions([row('c')], 0);
+    const base = engine.scene(0);
+    for (const face of MATRIX_FACES) for (const pips of [0, 1, 2, 5, 99]) {
+      expect(renderMatrixScene(11, { ...base, face, pips })).toEqual(renderMatrixFace(face, base.frame));
+    }
   });
   it('routes live Node endpoint frames through the same event state (preview does not replay entrances)', () => {
     vi.useFakeTimers(); vi.setSystemTime(10000);
