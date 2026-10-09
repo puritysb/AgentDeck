@@ -47,9 +47,12 @@ struct DotSurfaceView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack { Text("Dot report").font(.headline); Spacer(); Button("Done") { expanded = false } }
                 Text(snapshot.label.capitalized)
-                if snapshot.reportState == nil {
-                    Text("No activity has been shared with AgentDeck yet. This does not indicate whether Dot is connected or working elsewhere.").font(.callout).foregroundStyle(.secondary)
+                if snapshot.authorized == false {
+                    Text("No client is authorized to share activity with AgentDeck. Configuring the host or installing the plugin does not complete the connection.").font(.callout).foregroundStyle(.secondary)
+                } else if snapshot.reportState == nil {
+                    Text("No activity has been shared with AgentDeck yet. A connection alone does not report Dot’s other tasks.").font(.callout).foregroundStyle(.secondary)
                 }
+                Text("This companion shows explicitly shared task reports, not all Dot activity.").font(.caption).foregroundStyle(.secondary)
                 if let stamp = snapshot.reportedAt {
                     Text(Date(timeIntervalSince1970: Double(stamp) / 1000), format: .dateTime).font(.caption)
                 }

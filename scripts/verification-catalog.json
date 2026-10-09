@@ -584,6 +584,7 @@
       ],
       "does_not_prove": [
         "UI flows (there is no UI-test target)",
+        "GPU screenshot availability: native scene captures are bounded, optional review attachments; capture failure is recorded and scene assertions still execute",
         "behaviour on a signed build with real TCC grants"
       ]
     },

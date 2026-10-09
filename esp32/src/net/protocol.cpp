@@ -426,7 +426,7 @@ static void readDot(JsonVariantConst value) {
     if (!configured) { g_state.dot->clear(); return; }
     auto& dot = *g_state.dot;
     const bool hosting = value["hosting"].is<bool>() && value["hosting"].as<bool>();
-    const uint8_t code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < 8 ? value["code"].as<uint8_t>() : 7;
+    const uint8_t code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < DotSurfaceRules::phaseCount ? value["code"].as<uint8_t>() : 7;
     const uint32_t budget = value["validForMs"].is<uint32_t>() ? value["validForMs"].as<uint32_t>() : 0;
     const bool known = value["reportedAt"].is<uint64_t>();
     if (!dot.setActivity(hosting, code, known, known ? value["reportedAt"].as<uint64_t>() : 0, budget, millis())) return;

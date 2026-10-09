@@ -82,12 +82,13 @@ struct DotSurfaceRelation: Codable, Sendable {
     }
 }
 struct DotSurfaceSnapshot: Codable, Sendable {
-    var configured: Bool = false; var hosting: Bool = false
+    var configured: Bool = false; var hosting: Bool = false; var authorized: Bool? = nil
     var reportState: String?; var reportedAt: Int?; var expiresAt: Int?
     var code: Int?; var validForMs: Int?; var appearance: DotAppearance?; var relation: DotSurfaceRelation?
     var effectiveCode: Int { phase(at: Int(Date().timeIntervalSince1970 * 1000)) }
     func phase(at now: Int) -> Int {
         guard hosting else { return 1 }
+        if authorized == false { return 8 }
         guard let state = reportState else { return 0 }
         guard let stamp = reportedAt, stamp >= 0, stamp <= now else { return 7 }
         if state == "stale" { return 6 }
@@ -117,11 +118,12 @@ ${Object.entries(A).map(([k,v]) => `    const val ${k} = ${v}`).join('\n')}
 @Serializable data class DotSurfaceRelation(val kind: String, val direction: String, val stage: String, val target: String? = null, val receivedAt: Long, val evidence: String) {
     val label: String get() = kind + " · " + stage + " · " + (if (direction == "dot_to_agent") "Dot → " + (target?.let { "Unverified " + it } ?: "Unknown target") else (target?.let { "Unverified " + it } ?: "Unknown target") + " → Dot") + " · Dot report"
 }
-@Serializable data class DotSurfaceSnapshot(val configured: Boolean = false, val hosting: Boolean = false,
+@Serializable data class DotSurfaceSnapshot(val configured: Boolean = false, val hosting: Boolean = false, val authorized: Boolean? = null,
     val reportState: String? = null, val reportedAt: Long? = null, val expiresAt: Long? = null,
     val code: Int? = null, val validForMs: Long? = null, val appearance: DotAppearance? = null, val relation: DotSurfaceRelation? = null) {
     fun effectiveCode(now: Long): Int {
         if (!hosting) return 1
+        if (authorized == false) return 8
         val state = reportState ?: return 0
         val stamp = reportedAt ?: return 7
         if (stamp < 0 || stamp > now) return 7
@@ -142,6 +144,7 @@ ${Object.entries(A).map(([k,v]) => `static constexpr uint32_t ${k} = ${v}U;`).jo
 static constexpr uint32_t reportFreshMs = ${DOT_LIMITS.reportFreshMs}U;
 static constexpr uint8_t matrixRgba[] = {${Array.from(defaultDotRGBA(A.matrixGlyphSize)).join(",")}};
 static constexpr uint8_t defaultRgba[] = {${Array.from(defaultDotRGBA()).join(",")}};
+static constexpr uint8_t phaseCount = ${DOT_PHASES.length};
 static constexpr const char* labels[] = {${phaseStrings}};
 static constexpr const char* compactLabels[] = {${compactStrings}};
 }

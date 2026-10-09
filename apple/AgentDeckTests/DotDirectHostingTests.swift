@@ -77,7 +77,7 @@ final class DotDirectHostingTests: XCTestCase {
         func snapshot(_ status: String, age: Int = 0) -> DotHostSnapshot {
             var row = DotBriefing(id: "preview", owner: "owner", profile: "desk", key: "key", fingerprint: "hash", context: "", capturedAt: now, createdAt: now, expiresAt: now + DotLimits.requestMs, eventId: "event", subscriptionId: "sub", delivery: "accepted", attempts: 1, nextAttemptAt: now)
             row.report = DotReport(sequence: 1, state: status, summary: "검증된 브리핑 결과", receivedAt: now - age)
-            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         }
         let view = VStack(alignment: .leading, spacing: 12) {
             DotCompanionView(snapshot: snapshot("working"))
@@ -97,7 +97,7 @@ final class DotDirectHostingTests: XCTestCase {
             expiresAt: now + DotLimits.requestMs, eventId: "e", subscriptionId: "s", delivery: "accepted", attempts: 1, nextAttemptAt: now)
         row.report = .init(sequence: 1, state: "working", summary: "", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://example.test", clientID: "id", consents: [],
-            grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         let resident = DotAquariumResident()
         XCTAssertFalse(resident.root.isEnabled)
         resident.sync(snapshot, now: now)
@@ -139,7 +139,11 @@ final class DotDirectHostingTests: XCTestCase {
         resident.sync(frame, now: now)
         for _ in 0..<5 { resident.step(0.05, now: now + 1) }
         XCTAssertEqual(resident.root.position, home)
-        frame.reportState = "working"; frame.hosting = false
+        frame.reportState = "working"; frame.authorized = false
+        resident.sync(frame, now: now); resident.step(0.05, now: now)
+        XCTAssertEqual(frame.phase(at: now), 8)
+        XCTAssertEqual(resident.root.position, home)
+        frame.hosting = false
         resident.sync(frame, now: now); resident.step(0.05, now: now)
         XCTAssertEqual(resident.root.position, home)
         resident.sync(nil as DotSurfaceSnapshot?, now: now); resident.step(0.05, now: now)
@@ -165,8 +169,10 @@ final class DotDirectHostingTests: XCTestCase {
         row.report = .init(sequence: 1, state: "working", summary: "private-summary", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://private.example", clientID: "private-client", consents: [], grants: [], reports: [row])
         let value = try XCTUnwrap(snapshot.deckSnapshot(now: now))
-        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
+        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "authorized", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
         XCTAssertEqual(value["reportState"] as? String, "working")
+        XCTAssertEqual(value["authorized"] as? Bool, false)
+        XCTAssertEqual(value["code"] as? Int, 8)
         let encoded = String(data: try JSONSerialization.data(withJSONObject: value), encoding: .utf8)!
         XCTAssertFalse(encoded.contains("private"))
         XCTAssertEqual(snapshot.deckSnapshot(now: now + DotLimits.reportFreshMs)?["reportState"] as? String, "stale")

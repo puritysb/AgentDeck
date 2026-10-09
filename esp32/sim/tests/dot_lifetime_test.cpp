@@ -42,6 +42,13 @@ int main() {
     assert(dot.setActivity(false, 1, false, 0, 0, 1));
     assert(dot.setActivity(true, 2, false, 0, lease, 2));
     assert(dot.effectiveCode(2) == 6);
+    // Revoking authorization stops the same report and cannot renew its work lease.
+    dot.clear();
+    assert(dot.setActivity(true, 2, true, 6000, lease, 0));
+    assert(dot.setActivity(true, 8, true, 6000, 0, 1));
+    assert(dot.effectiveCode(1) == 8);
+    assert(dot.setActivity(true, 2, true, 6000, lease, 2));
+    assert(dot.effectiveCode(2) == 6);
     // Unsigned subtraction preserves the budget across millis() wrap.
     dot.clear();
     const uint32_t start = UINT32_MAX - 20;

@@ -149,3 +149,24 @@ Both daemons currently emit bounded read-only Dot cards. That producer does not 
 6. Record contract, runtime, device and release evidence separately under the [handover evidence levels](../agentdeck-design-system/docs/handover.md#evidence-levels). Local tests and a preview are not live Dot or hardware acceptance.
 
 Implementation and interoperability evidence stays in the [Dot integration plan](dot-mcp-events-plan.md); this document is the canonical visual contract.
+
+## Connection readiness and reported activity
+
+Configuration only makes the companion discoverable. The host emits an explicit
+`authorized` boolean for a current, unrevoked grant with `agentdeck:report`.
+False displays **Not linked** (phase 8), suppressing work animation even if an old
+report remains. True without a report displays **Awaiting activity**; it does not
+prove the client is Dot or that unrelated Dot work is idle. Missing authorization
+metadata from an older host remains unknown and preserves legacy report handling.
+
+Node and Swift author the same field. Generated Swift/Kotlin consumers and compact
+firmware use the shared phase vocabulary; older firmware maps the new phase to
+Unknown. Host-stopped takes precedence over authorization. Report freshness still
+bounds work independently of connection permission. An approved grant is permission,
+not a heartbeat or proof of a successful Dot invocation.
+
+The 2026-10-09 live check found zero approved grants and zero requests while the
+user was exercising Dot. This establishes that no task report reached this host;
+it is not an animation failure. Only an actual authenticated Dot request/report
+round trip can establish interoperability. MCP Events delivers our events to
+ChatGPT; it does not provide a global Dot activity feed.

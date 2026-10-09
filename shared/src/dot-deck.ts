@@ -12,6 +12,7 @@ export function dotDeckReservedKeys(dot: DotDeckSnapshot | null | undefined, key
 
 export function dotDeckPresentation(dot: DotDeckSnapshot, now = Date.now()): { label: string; color: string } {
   if (!dot.hosting) return { label: 'HOST STOPPED', color: Ink.s300 };
+  if (dot.authorized === false) return { label: DOT_PHASES[8], color: Ink.s300 };
   if (!dot.reportState) return { label: DOT_PHASES[0], color: Ink.s300 };
   if (dot.reportedAt === null || !Number.isSafeInteger(dot.reportedAt) || dot.reportedAt > now || dot.reportedAt < 0) return { label: 'UNKNOWN', color: Ink.s300 };
   if (dot.reportState === 'stale') return { label: 'OLD REPORT', color: Ink.s300 };

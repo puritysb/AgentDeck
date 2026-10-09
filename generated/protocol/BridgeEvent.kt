@@ -677,6 +677,13 @@ enum class Mode(val value: String) {
  */
 data class DotDeckSnapshot (
     val appearance: DotAppearance? = null,
+
+    /**
+     * Active scoped MCP grant, not proof of Dot identity or global activity. Absent means
+     * unknown.
+     */
+    val authorized: Boolean? = null,
+
     val code: Double? = null,
     val configured: Boolean,
     val expiresAt: Double? = null,

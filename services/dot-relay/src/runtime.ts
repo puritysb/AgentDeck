@@ -61,7 +61,7 @@ export async function startDirectHost(config: DirectHostConfiguration | LocalHos
       const report = latest?.report;
       const stale = report && !['completed', 'failed'].includes(report.state)
         && (latest.expiresAt <= Date.now() || Date.now() - report.receivedAt >= DOT_LIMITS.reportFreshMs);
-      return { configured: true, hosting: !stopped && publicServer?.listening === true,
+      return { configured: true, authorized: oauth.grants().some(g => g.scopes.includes('agentdeck:report')), hosting: !stopped && publicServer?.listening === true,
         reportState: stale ? 'stale' : report?.state ?? null, reportedAt: latest?.report?.receivedAt ?? null, expiresAt: latest?.expiresAt ?? null,
         ...(latest?.interactions?.length ? { relation: { kind: latest.interactions.at(-1)!.kind,
           direction: latest.interactions.at(-1)!.direction, stage: latest.interactions.at(-1)!.stage,
