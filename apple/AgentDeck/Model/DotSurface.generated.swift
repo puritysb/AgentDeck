@@ -20,6 +20,7 @@ enum DotAppearanceRules {
     static let panelMargin = 8
     static let labels = ["AWAITING ACTIVITY", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN", "NOT LINKED"]
     static let compactLabels = ["Dot", "Stopped", "Working", "Help", "Done", "Failed", "Old", "Unknown", "Unlinked"]
+    static let habitatPhases = [2, 3, 4, 5]
 }
 struct DotAppearance: Codable, Equatable, Sendable {
     var version: Int; var id: String; var png: String?; var rgba: String
@@ -64,5 +65,6 @@ struct DotSurfaceSnapshot: Codable, Sendable {
         guard expiresAt.map({ $0 > now }) ?? true, now - stamp < DotLimits.reportFreshMs else { return 6 }
         return state == "working" ? 2 : state == "needs_attention" ? 3 : 7
     }
+    func inhabitsHabitat(at now: Int) -> Bool { configured && DotAppearanceRules.habitatPhases.contains(phase(at: now)) }
     var label: String { DotAppearanceRules.labels[effectiveCode] }
 }

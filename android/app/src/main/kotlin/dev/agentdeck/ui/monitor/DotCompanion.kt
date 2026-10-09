@@ -48,10 +48,12 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier) {
         }.getOrNull()
     }
     Row(modifier.background(DesignTokens.Ink.s800).clickable { expanded = true }.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (image != null) Image(image, contentDescription = "Dot character", modifier = Modifier.size(42.dp))
-        else Canvas(Modifier.size(42.dp)) {
-            drawCircle(tint, radius = size.minDimension / 2)
-            for (x in listOf(0.37f, 0.63f)) drawLine(DesignTokens.Ink.s900, Offset(size.width * x, size.height * 0.35f), Offset(size.width * x, size.height * 0.6f), 3.dp.toPx())
+        if (dot.inhabitsHabitat(now)) {
+            if (image != null) Image(image, contentDescription = "Dot character", modifier = Modifier.size(42.dp))
+            else Canvas(Modifier.size(42.dp)) {
+                drawCircle(tint, radius = size.minDimension / 2)
+                for (x in listOf(0.37f, 0.63f)) drawLine(DesignTokens.Ink.s900, Offset(size.width * x, size.height * 0.35f), Offset(size.width * x, size.height * 0.6f), 3.dp.toPx())
+            }
         }
         Column(Modifier.widthIn(max = 200.dp)) {
             Text("Dot", color = DesignTokens.Tide.s50)

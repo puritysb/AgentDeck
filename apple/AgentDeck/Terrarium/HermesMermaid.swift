@@ -5,6 +5,63 @@ import RealityKit
 @available(iOS 18.0, macOS 15.0, *)
 @MainActor
 enum HermesMermaid {
+    /// Fixed habitat prop, built once per resident. The fan ribs and open lid
+    /// make the seat read as a shell instead of another agent's stone pedestal.
+    static func makeShell() -> Entity {
+        let shell = Entity()
+        shell.name = "hermes-shell"
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+        let rings = 8, slices = 48
+        func point(_ r: Float, _ angle: Float) -> SIMD3<Float> {
+            let rib = cos(angle * 9)
+            let rim = r * (1 + 0.045 * rib * r)
+            return [sin(angle) * rim * 0.62, 0.11 * r * r + 0.035 * rib * r,
+                    -cos(angle) * rim * 0.70]
+        }
+        for ring in 0...rings {
+            let r = Float(ring) / Float(rings)
+            for slice in 0...slices {
+                let angle = (Float(slice) / Float(slices) - 0.5) * 2.6
+                positions.append(point(r, angle))
+                // Surface normals follow the ribs, so the fan remains legible
+                // under the aquarium light instead of reading as a flat cape.
+                let radial = point(r + 0.001, angle) - point(r, angle)
+                let tangent = point(max(r, 0.001), angle + 0.001) - point(max(r, 0.001), angle)
+                normals.append(simd_normalize(simd_cross(tangent, radial)))
+                if ring < rings && slice < slices {
+                    let a = UInt32(ring * (slices + 1) + slice), b = a + UInt32(slices + 1)
+                    indices += [a, b, a + 1, a + 1, b, b + 1]
+                }
+            }
+        }
+        var descriptor = MeshDescriptor(name: "hermes-shell-fan")
+        descriptor.positions = MeshBuffers.Positions(positions)
+        descriptor.normals = MeshBuffers.Normals(normals)
+        descriptor.primitives = .triangles(indices)
+        guard let mesh = try? MeshResource.generate(from: [descriptor]) else { return shell }
+        #if os(macOS)
+        let color = NSColor(DesignTokens.Tide.s100)
+        #else
+        let color = UIColor(DesignTokens.Tide.s100)
+        #endif
+        var pearl = SimpleMaterial(color: color, roughness: 0.7, isMetallic: false)
+        pearl.faceCulling = .none
+        let bowl = ModelEntity(mesh: mesh, materials: [pearl])
+        bowl.name = "shell-seat"
+        bowl.position = [0, 0, -0.24]
+        bowl.orientation = simd_quatf(angle: .pi, axis: [0, 1, 0])
+        shell.addChild(bowl)
+        let lid = ModelEntity(mesh: mesh, materials: [pearl])
+        lid.name = "shell-lid"
+        lid.position = [0, 0.015, -0.24]
+        lid.orientation = simd_quatf(angle: .pi * 0.38, axis: [1, 0, 0])
+        lid.scale = [1, 1, 0.9]
+        shell.addChild(lid)
+        return shell
+    }
+
     static let requiredBones: Set<String> = ["spine", "tail_base", "tail_mid", "tail_tip", "fin",
         "fin_left", "fin_right", "arm_left", "elbow_left", "wrist_left", "arm_right", "elbow_right", "wrist_right"]
 

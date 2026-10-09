@@ -60,15 +60,15 @@ Use semantic tokens from [the design system](../DESIGN.md#27-status-semantics). 
 | Meaning | Required appearance and wording | Motion and recovery |
 |---|---|---|
 | Integration not configured | No persistent Dot resident; setup remains in settings | No phantom connection or session |
-| Hosting stopped | Quiet gray, stopped-host wording; last report may remain as history | No work motion; does not mean cloud Dot stopped |
-| Awaiting connection | Quiet gray with connection wording | No work motion |
-| Connected, no work reported | Resting orb, explicit quiet/connected wording; a green connection cue means health | No inference of global idle |
-| Request sent or callback accepted, no report | Waiting-for-report wording, neutral body; no work spark | Delivery receipt alone never starts working motion |
+| Hosting stopped | No habitat resident; stopped-host wording in the status entry, history retained | No work motion; does not mean cloud Dot stopped |
+| Awaiting connection | No habitat resident; quiet connection wording in toolbar/settings or fixed deck key | No work motion |
+| Connected, no work reported | No habitat resident; Awaiting activity in the status entry | No inference of global idle |
+| Request sent or callback accepted, no report | Status-entry wording only; no habitat resident or work spark | Delivery receipt alone never starts working motion |
 | Fresh working report | Cyan activity cue, work marker and “reported by Dot” wording | Gentle displacement is allowed; no brightness pulse |
 | Reported attention | Amber attention cue and visible `!`, with the reported issue | Optional amber pulse only; Reduce Motion freezes motion |
 | Completed request | Completion label or check, retained result and timestamp | Bounded completion reaction, then rest; never an endless success loop |
 | Reported failure / delivery failure | Red failure cue with explicit distinction between report failure and delivery failure | No work motion; no implied automatic retry |
-| Stale, future-dated, expired or unknown activity | Gray/unknown cue, report time and unknown-current-activity wording | Stop work motion; silence is not completion |
+| Stale, future-dated, expired or unknown activity | Hide the habitat resident; retain report time and unknown-current-activity wording in details | Stop work motion; silence is not completion |
 
 These are required cross-surface semantics, not a claim that all badges already exist. The portable Apple/Android companion has explicit status text. The Apple 3D resident now adds an in-scene Dot status label, including for user-image billboards; full accessibility/occlusion acceptance remains device work. Do not claim accessibility parity from a successful geometry test.
 
@@ -154,8 +154,8 @@ Implementation and interoperability evidence stays in the [Dot integration plan]
 
 Configuration only makes the companion discoverable. The host emits an explicit
 `authorized` boolean for a current, unrevoked grant with `agentdeck:report`.
-False displays **Not linked** (phase 8), suppressing work animation even if an old
-report remains. True without a report displays **Awaiting activity**; it does not
+False displays **Not linked** (phase 8) in status chrome and fixed control keys.
+It removes the habitat resident even if an old report remains. True without a report displays **Awaiting activity**; it does not
 prove the client is Dot or that unrelated Dot work is idle. Missing authorization
 metadata from an older host remains unknown and preserves legacy report handling.
 
@@ -165,8 +165,24 @@ Unknown. Host-stopped takes precedence over authorization. Report freshness stil
 bounds work independently of connection permission. An approved grant is permission,
 not a heartbeat or proof of a successful Dot invocation.
 
-The 2026-10-09 live check found zero approved grants and zero requests while the
+The initial 2026-10-09 live check found zero approved grants and zero requests while the
 user was exercising Dot. This establishes that no task report reached this host;
 it is not an animation failure. Only an actual authenticated Dot request/report
 round trip can establish interoperability. MCP Events delivers our events to
-ChatGPT; it does not provide a global Dot activity feed.
+ChatGPT; it does not provide a global Dot activity feed. A subsequent local OAuth
+login exposed the five AgentDeck MCP tools to the local Codex client. That proves
+client authorization and tool discovery, not Dot interoperability; the real Dot
+claim/report round trip remains a separate acceptance gate.
+
+The shared `DOT_HABITAT_PHASES` allow-list admits only valid working, attention,
+completed and failed reports to immersive scenes and matrix overlays. Its generated
+Swift/Kotlin/C++ mirrors prevent configuration or OAuth permission alone from
+creating a floating resident. The toolbar and fixed first deck key retain setup
+and history access. Removing an orb never removes an agent session or its controls.
+
+The dedicated TC001 DOT status page and paper/status chrome may keep a labeled
+connection state. They are diagnostic controls, not evidence of a present habitat
+resident. The native 3D Hermes resident instead has a fixed open shell: idle/error
+poses remain at that seat, observed work rises into the water, and completion
+returns smoothly to the same seat. The imported mesh bounds determine contact
+height so the tail is not buried in its support.

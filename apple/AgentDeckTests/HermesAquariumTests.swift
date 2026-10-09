@@ -4,6 +4,41 @@ import RealityKit
 @testable import AgentDeck
 
 final class HermesAquariumTests: XCTestCase {
+    @MainActor
+    func testIdleRestsOnFixedShellAndReturnsAfterWork() async throws {
+        let library = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz")))
+        let scene = AquariumResidents()
+        scene.loadHermesTemplate(library)
+        var state = TerrariumState()
+        state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .idle)]
+        scene.sync(state, aspect: 1.6)
+        let resident = try XCTUnwrap(scene.residents["rest"])
+        let shell = try XCTUnwrap(scene.root.findEntity(named: "hermes-shell"))
+        XCTAssertNotNil(shell.findEntity(named: "shell-seat") as? ModelEntity)
+        XCTAssertNotNil(shell.findEntity(named: "shell-lid") as? ModelEntity)
+        let home = resident.position, support = shell.transformMatrix(relativeTo: nil)
+        let body = try XCTUnwrap(resident.findEntity(named: "body"))
+        XCTAssertGreaterThanOrEqual(body.visualBounds(relativeTo: scene.root).min.y,
+                                    shell.position(relativeTo: scene.root).y,
+                                    "The imported tail must stay above the substrate, not sink into it")
+        for _ in 0..<600 { scene.step(1/60) }
+        XCTAssertEqual(resident.position, home, "Idle must not drift away from the shell")
+        state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .working)]
+        scene.sync(state, aspect: 1.6)
+        for _ in 0..<600 { scene.step(1/60) }
+        XCTAssertGreaterThan(resident.position.y, home.y + 0.25)
+        XCTAssertEqual(shell.transformMatrix(relativeTo: nil), support)
+        state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .idle)]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(try XCTUnwrap(resident.findEntity(named: "activity")).isEnabled)
+        for _ in 0..<1200 { scene.step(1/60) }
+        XCTAssertEqual(resident.position, home)
+        XCTAssertEqual(shell.transformMatrix(relativeTo: nil), support)
+        state.hermesCreatures = []
+        scene.sync(state, aspect: 1.6)
+        XCTAssertNil(scene.root.findEntity(named: "hermes-shell"))
+    }
+
     func testDisconnectedDashboardCannotAnimateCachedWorkingResidents() {
         var dashboard = DashboardState()
         dashboard.state = .processing

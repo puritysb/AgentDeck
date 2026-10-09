@@ -47,6 +47,7 @@ struct Badge {
         unlockState();
         if (!allowed || urgent || !snapshot.configured) { lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN); return false; }
         const uint8_t code = snapshot.effectiveCode(millis());
+        if (!DotSurfaceRules::inhabitsHabitat(code)) { lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN); return false; }
         const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn
             : code == 4 ? ProductPalette::UiOk : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
         const uint8_t* rgba = snapshot.custom ? snapshot.rgba : DotSurfaceRules::defaultRgba;
