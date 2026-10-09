@@ -192,8 +192,7 @@ class PairingCredentialTest {
             setOf("192.168.1.10:9120"),
         )
         assertEquals(
-            "Waiting for approval — open AgentDeck on your Mac, " +
-                "Devices \u203a Pair Device, and approve 192.168.1.10:9120",
+            PairingCredential.approvalMessage("ws://192.168.1.10:9120"),
             detail,
         )
     }
@@ -257,4 +256,22 @@ class PairingCredentialTest {
             )
         )
     }
+    @Test
+    fun `switching hosts retains independent credentials`() {
+        val first = "ws://192.168.1.10:9120?token=first"
+        val second = "ws://192.168.1.11:9120?token=second"
+        var saved = PairingCredential.remember(first, emptyMap())
+        saved = PairingCredential.remember(second, saved)
+        saved = PairingCredential.remember("ws://192.168.1.10:9120", saved)
+        assertEquals(first, PairingCredential.resolveFromStore("ws://192.168.1.10:9120", saved))
+        assertEquals(second, PairingCredential.resolveFromStore("ws://192.168.1.11:9120", saved))
+        assertEquals("ws://192.168.1.12:9120", PairingCredential.resolveFromStore("ws://192.168.1.12:9120", saved))
+    }
+
+    @Test
+    fun `a refusal from another host does not explain this hosts network failure`() {
+        assertEquals("Network unreachable", PairingCredential.disconnectedDetail(
+            "Network unreachable", setOf("192.168.1.10:9120"), "ws://192.168.1.11:9120"))
+    }
+
 }

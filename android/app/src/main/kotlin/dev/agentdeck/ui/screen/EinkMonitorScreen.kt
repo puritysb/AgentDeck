@@ -128,7 +128,7 @@ fun EinkMonitorScreen(
     // A refusal outranks the last attempt's error: the recovery ladder keeps
     // probing the USB path, and "USB bridge not found" kept overwriting the one
     // message this device's user can act on.
-    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys)
+    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys, connection.url.value)
     val isReconnecting by connection.isReconnecting.collectAsState()
     val reconnectAttempt by connection.reconnectAttempt.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)

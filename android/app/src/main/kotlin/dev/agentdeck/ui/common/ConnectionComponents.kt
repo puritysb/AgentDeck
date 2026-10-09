@@ -525,6 +525,12 @@ fun ConnectionPanel(
             connectionStatus = connectionStatus,
         )
 
+        if (connectionStatus == ConnectionStatus.DISCONNECTED &&
+            currentUrl != null && lastError?.startsWith("Approval required") == true
+        ) {
+            Button(onClick = { onConnectManualUrl(currentUrl) }) { Text("Retry Connection") }
+        }
+
         if (connectionStatus == ConnectionStatus.CONNECTED) {
             DisconnectButton(onClick = onDisconnect)
         }
@@ -543,6 +549,9 @@ fun ConnectionPanel(
 
             UsbConnectButton(onClick = onConnectLocalhost)
 
+            if (discoveredBridges.size > 1) {
+                Text("Choose a host. Each computer needs its own approval or pairing.")
+            }
             DiscoveredBridgeList(
                 bridges = discoveredBridges,
                 onConnectToBridge = onConnectToBridge,

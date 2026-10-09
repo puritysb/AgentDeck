@@ -198,7 +198,7 @@ fun MonitorScreen(
     val unauthorizedEndpoints by connection.unauthorizedEndpoints.collectAsState()
     // A refusal outranks the last attempt's error — see the same line in
     // EinkMonitorScreen, and PairingCredential.disconnectedDetail for why.
-    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys)
+    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys, connection.url.value)
     val isReconnecting by connection.isReconnecting.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)
     val showTankStatus by displayPrefs.showTankStatusFlow.collectAsState(initial = true)

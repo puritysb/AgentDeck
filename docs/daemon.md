@@ -461,3 +461,31 @@ carries the weight band) never collapses two differently-pinned tabs.
 - `bridge/src/session-registry.ts` — `daemon.json` port discovery (`writeDaemonInfo`/`readDaemonInfo`/`removeDaemonInfo`/`findDaemonPort`/`probeDaemonHealth`)
 - `bridge/src/hook-server.ts` — SSE (`/sse`), `/health` (includes `mode` field), `/status`, 토큰 인증
 - `bridge/src/ws-server.ts` — remote WS 연결 토큰 검증 (4001 거부), local bypass
+
+
+## Multiple hosts and client approval
+
+Discovery shows reachable AgentDeck advertisements; it does not grant access.
+Each computer owns its own pairing credentials and device approvals. Approval
+on one host does not authorize a client on another host.
+
+Apple and Android clients retain pairing URLs per endpoint and migrate the
+previously saved URL. Selecting another host keeps the first host's credential;
+a tokenless discovery result never clears it or copies it to a different host.
+Reconnection stays with the selected endpoint. When discovery returns multiple
+hosts without a previous selection, the client asks the user to choose.
+
+An HTTP 401 handshake refusal or WebSocket 4001 close enters **Approval required**
+and stops rapid network-error retries. Android rechecks only the selected host
+after the existing 30-second refusal holdoff, so host-side approval still works
+without touching a reader. Explicit retry is available immediately on both
+clients. The client identifies the refused host and directs
+the operator to that computer's **Devices › Pair Device › Waiting to Connect**.
+Approve the client there, then select the host again to retry. The approval list
+identifies the requesting client; do not confuse that address with the host
+address shown in the client's connection error. QR and manual pairing remain
+available. A changed host address is a new endpoint and is not silently trusted.
+
+Regression coverage uses real loopback refusal handshakes on both native clients,
+plus host-selection and credential-retention tests. Tracking:
+[#493](https://github.com/puritysb/AgentDeck/issues/493).

@@ -506,6 +506,12 @@ struct SettingsScreen: View {
                         .foregroundStyle(TerrariumHUD.ledRed)
                 }
 
+                if let target = stateHolder.connection.authenticationRequiredURL {
+                    Button("Retry Connection") { stateHolder.connectTo(url: target) }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignTokens.UI.cyan)
+                }
+
                 #if os(iOS)
                 // QR scan pairing — secondary path when mDNS can't find the
                 // Mac (different Wi-Fi networks, Local Network permission

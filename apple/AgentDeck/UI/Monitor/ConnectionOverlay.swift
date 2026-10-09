@@ -112,7 +112,10 @@ struct ConnectionOverlay: View {
                         .foregroundStyle(.white)
 
                     // Status subtitle — matches Android logic
-                    Text(phase.statusText)
+                    Text(stateHolder.connection.authenticationRequiredURL != nil
+                         ? "Approval required"
+                         : (!stateHolder.discovery.bridges.filter { $0.agentType == "daemon" }.isEmpty && phase == .notFound
+                            ? "Choose an AgentDeck host" : phase.statusText))
                         .font(.subheadline)
                         .foregroundStyle(slateText)
 
@@ -155,6 +158,13 @@ struct ConnectionOverlay: View {
 
                     }
 
+                    if let target = stateHolder.connection.authenticationRequiredURL,
+                       stateHolder.connection.status == .disconnected {
+                        Button("Retry Connection") { stateHolder.connectTo(url: target) }
+                            .buttonStyle(.borderedProminent)
+                            .tint(DesignTokens.UI.cyan)
+                    }
+
                     // Connection options (disconnected or reconnecting with WiFi alternatives)
                     if stateHolder.connection.status == .disconnected || isReconnecting {
 
@@ -179,7 +189,7 @@ struct ConnectionOverlay: View {
                                     .tint(DesignTokens.UI.cyan)
                             }
 
-                            if phase == .notFound {
+                            if phase == .notFound && stateHolder.connection.authenticationRequiredURL == nil {
                                 noMacRecovery
                             }
                         }
