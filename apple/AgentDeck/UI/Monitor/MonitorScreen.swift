@@ -20,6 +20,9 @@ struct MonitorScreen: View {
     #endif
 
     @State private var terrariumState = TerrariumState()
+    #if os(macOS)
+    @State private var showDotSetup = false
+    #endif
     #if os(iOS)
     @State private var showSettingsSheet = false
     #endif
@@ -95,7 +98,21 @@ struct MonitorScreen: View {
             ))
             #if os(macOS)
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
+            .sheet(isPresented: $showDotSetup) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack { Text("Dot connection").font(.title2.bold()); Spacer(); Button("Done") { showDotSetup = false } }
+                        DotConnectionSetupView()
+                    }.padding(24)
+                }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
+            }
             .toolbar {
+                if stateHolder.state.dot?.configured != true {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Connect Dot…") { showDotSetup = true }
+                            .accessibilityIdentifier("dot-setup-entry")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)

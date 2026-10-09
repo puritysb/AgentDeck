@@ -300,6 +300,7 @@
 		6923A8C834228B700B0DD433 /* living-aquarium.usdz in Resources */ = {isa = PBXBuildFile; fileRef = E6382C68380E57D0B8C08301 /* living-aquarium.usdz */; };
 		693BB7F3EB7EC3829E9D286B /* DotMCPStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD0E2EA7731BD5950B02CCBE /* DotMCPStore.swift */; };
 		6958E073DCDF46DFF22FFCE4 /* DevicePreviewScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965AE4E31EBD72B1A484DE25 /* DevicePreviewScreen.swift */; };
+		69BD3486E8AD3A99A68CBA39 /* DotConnectionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778FF4C97B849993A1C5AC83 /* DotConnectionSetupView.swift */; };
 		69EEBFCB47436C161B442D2B /* AttentionTheaterHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD7B38A97F5852FE0E8249C2 /* AttentionTheaterHUD.swift */; };
 		6A437E145B84655290EF0375 /* DotSurface.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBF4A84CAAFEB416C14CA63E /* DotSurface.generated.swift */; };
 		6ABEE9F93544CE1C125FAB81 /* DotSecurity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4C92668F43EA966A904056 /* DotSecurity.swift */; };
@@ -561,6 +562,7 @@
 		C37CD3CFD263A0903096C515 /* TimeboxSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */; };
 		C39BADC18C8D030A110B5158 /* AquariumResidents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C41CE28781400748CBA9AE6 /* AquariumResidents.swift */; };
 		C3BFB9980016E999CFD1BA9F /* ci-companion.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 28D92D8BEAB46A00CF081716 /* ci-companion.usdz */; };
+		C40E0DA1A8C2D9A78FF65C7E /* DotConnectionSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778FF4C97B849993A1C5AC83 /* DotConnectionSetupView.swift */; };
 		C46F9CBAF1E5CFC66037BDA2 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
 		C4E318F694193401A193DEB8 /* DotCompanionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B515282657E9C46C6A833F16 /* DotCompanionView.swift */; };
 		C4F117E796C0C81A8E52A02B /* PortDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */; };
@@ -918,6 +920,7 @@
 		767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAskUserQuestionTests.swift; sourceTree = "<group>"; };
 		76D12DF5535F73FD12022173 /* DotRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotRules.generated.swift; sourceTree = "<group>"; };
 		776467350B975D0CA1A18E84 /* OctopusCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OctopusCreature.swift; sourceTree = "<group>"; };
+		778FF4C97B849993A1C5AC83 /* DotConnectionSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotConnectionSetupView.swift; sourceTree = "<group>"; };
 		7847FA7381FB8075331B0F12 /* TimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineTests.swift; sourceTree = "<group>"; };
 		788166EF7E8CB65CDE3D3D67 /* SessionFocusRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFocusRelay.swift; sourceTree = "<group>"; };
 		79398BB5E612A59F14C13245 /* jp-n3-ko.manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jp-n3-ko.manifest.json"; sourceTree = "<group>"; };
@@ -1359,6 +1362,7 @@
 		6B69A873A86B1E6F86029DAD /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				778FF4C97B849993A1C5AC83 /* DotConnectionSetupView.swift */,
 				ED10CEC4D0AD8F6A3502E027 /* DotSettingsView.swift */,
 				C6229A084E6CE2AB75D86F83 /* ESP32ProvisionSheet.swift */,
 				E0C496748B5F5315E3551E69 /* IDotMatrixSheet.swift */,
@@ -2267,6 +2271,7 @@
 				CCA2EF7B5D56E76FE788DB7B /* DotAquariumResident.swift in Sources */,
 				A1DD909211D240C31A5D7965 /* DotCharacterImage.swift in Sources */,
 				BD04C67F1DE284DA64CF6647 /* DotCompanionView.swift in Sources */,
+				C40E0DA1A8C2D9A78FF65C7E /* DotConnectionSetupView.swift in Sources */,
 				3B27BBB5E9F60E825C5CEDE9 /* DotHTTPSListener.swift in Sources */,
 				8A85C2C10B0D18325FCA19A7 /* DotHost.swift in Sources */,
 				C7BD32F014792DEBF43E9818 /* DotInteraction.generated.swift in Sources */,
@@ -2532,6 +2537,7 @@
 				1F0258876EC170B4F821C251 /* DotAquariumResident.swift in Sources */,
 				CEA5884ABDA8297828F1AA28 /* DotCharacterImage.swift in Sources */,
 				C4E318F694193401A193DEB8 /* DotCompanionView.swift in Sources */,
+				69BD3486E8AD3A99A68CBA39 /* DotConnectionSetupView.swift in Sources */,
 				B2A7A24B5879D2B2C3F1AD89 /* DotHTTPSListener.swift in Sources */,
 				E739E51365F230ED44B8C80B /* DotHost.swift in Sources */,
 				F5352BCCDCEF7CDDB90AC58A /* DotInteraction.generated.swift in Sources */,

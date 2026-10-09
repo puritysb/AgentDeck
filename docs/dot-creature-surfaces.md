@@ -27,6 +27,10 @@ Existing agent creatures retain their canonical provider geometry under [DESIGN.
 - Selecting the companion opens requests, results and relationship history. An information card is not a command, retry, cancellation or approval button. Future controls need their own capability and authorization contract.
 - Cosmetic proximity, looking toward another creature or swimming beside it never establishes delegation. Relationship visualization requires an explicit correlated record.
 
+## Connection discovery
+
+macOS exposes **Settings → Dot** and a **Connect Dot…** dashboard entry before the host reports a configured integration. This setup entry is not a creature or a connection claim. Native-owned hosting opens the built-in certificate/OAuth setup; external-host dashboards show the reported connection context. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Real Dot-account acceptance and public HTTPS reachability remain separate release gates.
+
 ## User-selected character
 
 Users can select a static PNG, WebP or JPEG on the owning macOS host, or run `agentdeck dot character import <file>` / `reset` on a Node host. This is a manual AgentDeck appearance override; it does not retrieve or synchronize ChatGPT's Dot customization. The selected anatomy replaces the default orb while the Dot name, report state, relation direction, unverified-target wording and provenance remain independent of the artwork.

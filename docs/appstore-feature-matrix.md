@@ -211,6 +211,7 @@ Dashboard subscription presentation: plan names and reported subscription dates 
 
 | Capability | In-process App Store daemon | Node daemon | Boundary |
 |---|---|---|---|
+| Dot connection discovery | Always-visible macOS Settings → Dot and a dashboard setup entry before a configured snapshot. Native-owner setup retains built-in HTTPS/OAuth controls; external-host dashboards show read-only connection context without installation prompts | Operator-managed host configuration | Setup entry is not a connected creature or cloud-activity signal; external-host configuration editing from the Mac app remains unimplemented |
 | Manual Dot character image | User-selected static PNG/WebP/JPEG, bounded ImageIO conversion and container persistence | Explicit local CLI import/reset, bounded sharp conversion | No OpenAI avatar API or automatic synchronization; no image URL fetching or executable model import |
 | Portable Dot companion | Authenticated normal/compact snapshots with independent status, appearance and latest report relation | Same additive snapshot; portraits stripped from compact transport | Separate from sessions/counts, no execution or approval authority |
 | Remote Apple/Android display | Read-only decoded companion; user image becomes a billboard in the Apple 3D scene | Host-authored snapshot | A 2D image does not become a volumetric character; report labels remain visible |
