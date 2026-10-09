@@ -329,6 +329,7 @@
   "the iOS app builds unsigned": "iOS 앱이 서명 없이 빌드됩니다.",
   "App Store metadata, screenshots and privacy manifest are within submission limits": "App Store 메타데이터·스크린샷·개인정보 매니페스트가 제출 제한을 충족합니다.",
   "UI flows (there is no UI-test target)": "UI 흐름. UI 테스트 대상이 없습니다.",
+  "GPU screenshot availability: native scene captures are bounded, optional review attachments; capture failure is recorded and scene assertions still execute": "GPU 스크린샷 제공 여부. native 장면 캡처는 시간 제한이 있는 선택적 검토 첨부이며, 캡처 실패를 기록하고 장면 동작 검증은 계속 실행합니다.",
   "behaviour on a signed build with real TCC grants": "실제 TCC 권한을 가진 서명된 빌드의 동작.",
   "firmware policy headers execute on the host, including strict unknown-agent glyph refusal and source feature selection": "호스트에서 펌웨어 정책 헤더를 실행해 알 수 없는 에이전트의 글리프 거부와 원본 기능 선택을 검사합니다.",
   "e-ink paint policies: EPD47 masked differential bands and strip residue, the NM paint gate, the host clock behind \"as of\", and serial-primary radio parking from the radio's real state": "전자잉크 그리기 정책: EPD47 마스크 차분 영역·잔상, NM 그리기 조건, 기준 시각의 호스트 시계, 실제 무선 상태에 따른 시리얼 우선 무선 중단을 검사합니다.",

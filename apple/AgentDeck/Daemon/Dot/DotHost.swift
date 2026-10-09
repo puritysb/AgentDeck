@@ -19,13 +19,14 @@ struct DotHostSnapshot: Sendable {
         var reportState = latest?.report?.state
         if let latest, let report = latest.report, !["completed", "failed"].contains(report.state),
            (latest.expiresAt <= now || now - report.receivedAt >= DotLimits.reportFreshMs) { reportState = "stale" }
-        var result: [String: Any] = ["configured": true, "hosting": value.hosting,
+        let authorized = value.grants.contains { !$0.revoked && $0.expiresAt > now && $0.scopes.contains("agentdeck:report") }
+        var result: [String: Any] = ["configured": true, "hosting": value.hosting, "authorized": authorized,
                 "reportState": reportState as Any? ?? NSNull(),
                 "reportedAt": latest?.report?.receivedAt as Any? ?? NSNull(),
                 "expiresAt": latest?.expiresAt as Any? ?? NSNull()]
         if let appearance, appearance.portrait != nil, let data = try? JSONEncoder().encode(appearance),
            let dictionary = try? JSONSerialization.jsonObject(with: data) { result["appearance"] = dictionary }
-        let snapshot = DotSurfaceSnapshot(configured: true, hosting: value.hosting, reportState: reportState,
+        let snapshot = DotSurfaceSnapshot(configured: true, hosting: value.hosting, authorized: authorized, reportState: reportState,
             reportedAt: latest?.report?.receivedAt, expiresAt: latest?.expiresAt)
         result["code"] = snapshot.phase(at: now)
         result["validForMs"] = snapshot.phase(at: now) == 2 || snapshot.phase(at: now) == 3

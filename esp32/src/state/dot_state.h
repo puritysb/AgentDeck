@@ -41,7 +41,7 @@ struct DotSurfaceState {
     uint8_t effectiveCode(uint32_t now) const {
         if (!hosting) return 1;
         if ((code == 2 || code == 3) && now - receivedMs >= validForMs) return 6;
-        return code < 8 ? code : 7;
+        return code < DotSurfaceRules::phaseCount ? code : 7;
     }
 };
 static_assert(sizeof(DotSurfaceState) < 1280, "Dot companion owns one fixed bounded glyph; no render allocation");

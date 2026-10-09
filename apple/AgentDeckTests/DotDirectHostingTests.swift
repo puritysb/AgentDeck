@@ -77,7 +77,7 @@ final class DotDirectHostingTests: XCTestCase {
         func snapshot(_ status: String, age: Int = 0) -> DotHostSnapshot {
             var row = DotBriefing(id: "preview", owner: "owner", profile: "desk", key: "key", fingerprint: "hash", context: "", capturedAt: now, createdAt: now, expiresAt: now + DotLimits.requestMs, eventId: "event", subscriptionId: "sub", delivery: "accepted", attempts: 1, nextAttemptAt: now)
             row.report = DotReport(sequence: 1, state: status, summary: "검증된 브리핑 결과", receivedAt: now - age)
-            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         }
         let view = VStack(alignment: .leading, spacing: 12) {
             DotCompanionView(snapshot: snapshot("working"))
@@ -97,7 +97,7 @@ final class DotDirectHostingTests: XCTestCase {
             expiresAt: now + DotLimits.requestMs, eventId: "e", subscriptionId: "s", delivery: "accepted", attempts: 1, nextAttemptAt: now)
         row.report = .init(sequence: 1, state: "working", summary: "", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://example.test", clientID: "id", consents: [],
-            grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         let resident = DotAquariumResident()
         XCTAssertFalse(resident.root.isEnabled)
         resident.sync(snapshot, now: now)
@@ -139,7 +139,11 @@ final class DotDirectHostingTests: XCTestCase {
         resident.sync(frame, now: now)
         for _ in 0..<5 { resident.step(0.05, now: now + 1) }
         XCTAssertEqual(resident.root.position, home)
-        frame.reportState = "working"; frame.hosting = false
+        frame.reportState = "working"; frame.authorized = false
+        resident.sync(frame, now: now); resident.step(0.05, now: now)
+        XCTAssertEqual(frame.phase(at: now), 8)
+        XCTAssertEqual(resident.root.position, home)
+        frame.hosting = false
         resident.sync(frame, now: now); resident.step(0.05, now: now)
         XCTAssertEqual(resident.root.position, home)
         resident.sync(nil as DotSurfaceSnapshot?, now: now); resident.step(0.05, now: now)
@@ -165,8 +169,10 @@ final class DotDirectHostingTests: XCTestCase {
         row.report = .init(sequence: 1, state: "working", summary: "private-summary", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://private.example", clientID: "private-client", consents: [], grants: [], reports: [row])
         let value = try XCTUnwrap(snapshot.deckSnapshot(now: now))
-        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
+        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "authorized", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
         XCTAssertEqual(value["reportState"] as? String, "working")
+        XCTAssertEqual(value["authorized"] as? Bool, false)
+        XCTAssertEqual(value["code"] as? Int, 8)
         let encoded = String(data: try JSONSerialization.data(withJSONObject: value), encoding: .utf8)!
         XCTAssertFalse(encoded.contains("private"))
         XCTAssertEqual(snapshot.deckSnapshot(now: now + DotLimits.reportFreshMs)?["reportState"] as? String, "stale")
@@ -372,6 +378,25 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertEqual(DotPixelOverlay.paint(Data(repeating: 13, count: 11 * 11 * 3), width: 11, dot: event.dot), Data(repeating: 13, count: 11 * 11 * 3))
         let legacy = try JSONDecoder().decode(SessionsListEvent.self, from: Data("{\"type\":\"sessions_list\",\"sessions\":[]}".utf8))
         XCTAssertNil(legacy.dot)
+    }
+
+    func testQuietMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
+        let dot = try JSONDecoder().decode(DotSurfaceSnapshot.self, from: Data("{\"configured\":true,\"hosting\":true}".utf8))
+        for width in [32, 64] {
+            let pixels = [UInt8](DotPixelOverlay.paint(Data(repeating: 13, count: width * width * 3), width: width, dot: dot))
+            let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
+            let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor
+            for y in 0..<width { for x in 0..<width {
+                if x < x0 || x >= x0 + size || y < y0 || y >= y0 + size {
+                    XCTAssertEqual(pixels[(y * width + x) * 3], 13)
+                }
+            } }
+            for eye in [5, 10] {
+                let x = x0 + Int((Double(eye * (size - 1)) / 15).rounded())
+                let y = y0 + Int((Double(5 * (size - 1)) / 15).rounded())
+                XCTAssertLessThan(pixels[(y * width + x) * 3], 60)
+            }
+        }
     }
 
 }

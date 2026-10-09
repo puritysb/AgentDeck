@@ -57,7 +57,7 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier) {
             Text("Dot", color = DesignTokens.Tide.s50)
             Text(DotSurfaceRules.labels[code], color = tint)
             dot.relation?.takeIf { it.evidence == "dot_report" }?.let { Text(it.label, maxLines = 3, color = DesignTokens.Tide.s50) }
-            Text(if (dot.reportState == null) "Integration" else "Dot report", color = DesignTokens.Ink.s300)
+            Text(if (dot.reportState == null) "No activity shared yet" else "Dot report", color = DesignTokens.Ink.s300)
         }
     }
     if (expanded) AlertDialog(onDismissRequest = { expanded = false },

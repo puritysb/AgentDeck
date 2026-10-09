@@ -569,7 +569,7 @@ private struct D200HSlotTile: View {
                         tint: DotSurfaceView.tint(DotAppearanceRules.labels.firstIndex(of: slot.subtitle ?? "") ?? 7))
                         .frame(width: size * 0.32, height: size * 0.32)
                     Text("DOT").font(.system(size: size * 0.11, weight: .semibold))
-                    Text(slot.subtitle ?? "NO REPORT").font(.system(size: size * 0.08)).lineLimit(1)
+                    Text(slot.subtitle ?? DotAppearanceRules.labels[0]).font(.system(size: size * 0.08)).lineLimit(1)
                 }.foregroundStyle(DesignTokens.UI.hudText)
             } else {
             Text(slot.label)

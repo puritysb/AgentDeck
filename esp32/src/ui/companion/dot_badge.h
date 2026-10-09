@@ -57,7 +57,7 @@ struct Badge {
             changed |= pixels[i] != value; pixels[i] = value;
         }
         if (changed) lv_obj_invalidate(image);
-        snprintf(text, sizeof(text), "D %s", DotSurfaceRules::labels[code]);
+        snprintf(text, sizeof(text), "%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code]);
         lv_obj_set_style_text_color(label, lv_color_hex(tint), 0);
         lv_obj_invalidate(label);
         lv_obj_set_pos(panel, x, y); lv_obj_remove_flag(panel, LV_OBJ_FLAG_HIDDEN);

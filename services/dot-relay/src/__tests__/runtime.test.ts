@@ -33,7 +33,7 @@ it('hosts local-consent OAuth over verified HTTPS, isolates operator routes and 
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   try {
-    expect(host.deckSnapshot()).toEqual({ configured: true, hosting: true, reportState: null, reportedAt: null, expiresAt: null });
+    expect(host.deckSnapshot()).toEqual({ configured: true, authorized: false, hosting: true, reportState: null, reportedAt: null, expiresAt: null });
     expect((await call('/operator/status')).status).toBe(404);
     expect((await operator('status', undefined, false)).status).toBe(401);
     const verifier = 'v'.repeat(64);
@@ -50,6 +50,7 @@ it('hosts local-consent OAuth over verified HTTPS, isolates operator routes and 
       client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: config.redirectURI, resource: config.origin, code_verifier: verifier });
     const tokens = JSON.parse((await call('/oauth/token', form.toString(), undefined, true)).body);
     expect(tokens.access_token).toBeTypeOf('string');
+    expect(host.deckSnapshot().authorized).toBe(true);
     const rpc = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(JSON.parse((await call('/mcp', rpc, tokens.access_token)).body).result.tools).toHaveLength(5);
     expect((await call('/operator/status', undefined, tokens.access_token)).status).toBe(404);
@@ -60,8 +61,10 @@ it('hosts local-consent OAuth over verified HTTPS, isolates operator routes and 
     const status = await (await operator('status')).json() as { grants: { id: string }[] };
     expect((await operator('revoke', { grantId: status.grants[0].id })).status).toBe(200);
     expect((await call('/mcp', rpc, tokens.access_token)).status).toBe(401);
+    expect(host.deckSnapshot().authorized).toBe(false);
     await host.stop(); host = await startDirectHost(config, directory);
     expect((await call('/mcp', rpc, tokens.access_token)).status).toBe(401);
+    expect(host.deckSnapshot().authorized).toBe(false);
   } finally { await host.stop(); rmSync(directory, { recursive: true, force: true }); }
 });
 it('binds local MCP explicitly, rejects foreign Host/Origin and creates requests without webhook delivery', async () => {

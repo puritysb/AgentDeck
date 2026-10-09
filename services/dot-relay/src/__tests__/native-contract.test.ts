@@ -36,4 +36,6 @@ it('keeps the private plugin endpoint and explicit OAuth test configuration alig
   expect(config).toContain(`client_id = "${DOT_LOCAL_MCP.clientId}"`);
   expect(config).toContain(`callback_url = "http://${DOT_LOCAL_MCP.host}:${DOT_LOCAL_MCP.callbackPort}${DOT_LOCAL_MCP.callbackPath}"`);
   expect(config).not.toMatch(/client_secret|bearer_token|Authorization/);
+  // Codex discovers resource metadata itself; an override duplicates the resource parameter.
+  expect(config).not.toContain('oauth_resource');
 });

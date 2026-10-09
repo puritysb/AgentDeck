@@ -108,6 +108,9 @@ struct MonitorScreen: View {
                 }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
             }
             .toolbar {
+                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
+                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, compact: true) }
+                }
                 if stateHolder.state.dot?.configured != true {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Connect Dot…") { showDotSetup = true }
@@ -137,9 +140,11 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
+                #if os(iOS)
                 if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    DotSurfaceView(snapshot: dot).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                    DotSurfaceView(snapshot: dot, compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
                 }
+                #endif
 
                 if !stateHolder.state.bridgeConnected {
                     ConnectionOverlay()

@@ -26,6 +26,10 @@ struct DotSettingsView: View {
         GroupBox("Dot — direct connection") {
             VStack(alignment: .leading, spacing: 12) {
                 Text(snapshot.status).font(.callout)
+                if snapshot.hosting && !snapshot.grants.contains(where: { $0.scopes.contains("agentdeck:report") }) {
+                    Text("Not linked — approve a reporting client to share task activity.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Choose character image…") { selectingCharacter = true }
                     Button("Restore default character") { perform { try await DotAppearanceStore.reset() } }
@@ -48,7 +52,7 @@ struct DotSettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if !snapshot.origin.isEmpty {
                         Text("MCP address: \(snapshot.origin)/mcp").textSelection(.enabled).font(.caption)
-                        Toggle("Resume connection when AgentDeck starts", isOn: Binding(
+                        Toggle("Resume host when AgentDeck starts", isOn: Binding(
                             get: { snapshot.resumeOnLaunch }, set: { enabled in perform { try await DotHost.shared.setResumeOnLaunch(enabled) } })).disabled(busy)
                     }
                     DisclosureGroup("Advanced HTTPS experiment") {
@@ -78,7 +82,7 @@ struct DotSettingsView: View {
                         }
                     }
                     HStack {
-                        Button("Start connection") { perform { try await DotHost.shared.start() } }.disabled(busy)
+                        Button("Start host") { perform { try await DotHost.shared.start() } }.disabled(busy)
                         Button("Stop hosting") { perform { await DotHost.shared.stop() } }.disabled(busy)
                     }
                     ForEach(snapshot.consents) { consent in

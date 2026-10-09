@@ -658,6 +658,8 @@ export interface SessionInfo {
 
 /** Separate integration presence; never a coding session or authority to execute. */
 export interface DotDeckSnapshot {
+  /** Active scoped MCP grant, not proof of Dot identity or global activity. Absent means unknown. */
+  authorized?: boolean;
   configured: boolean;
   hosting: boolean;
   reportState: string | null;

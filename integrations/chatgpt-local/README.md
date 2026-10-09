@@ -14,6 +14,16 @@ currently supports a pre-registered public client with PKCE, not dynamic registr
 Therefore installing this package alone is not yet a verified authentication workflow.
 `client-preview.toml` contains the explicit supported client configuration for isolated tests;
 merge it through the client configuration UI/workflow, never overwrite existing configuration.
+The desktop app and CLI share this local-host configuration. Start the normal OAuth
+login with only `agentdeck:read,agentdeck:report`. Let resource metadata discovery
+supply the OAuth resource: Codex CLI 0.160.1 duplicates the `resource` authorization
+parameter when the same `oauth_resource` override is also configured, which this
+server rejects. No token or account credential belongs in this file.
+
+This enables the local client; it does not establish cloud Dot access. A Dot-created
+local task must independently expose the authenticated tools and return a correlated
+report before claiming that route works. Ordinary cloud Dot instructions do not
+automatically become AgentDeck reports.
 Do not add secrets or invent unsupported fields in `mcp.json` to bypass this gate.
 
 Compare the browser's code with AgentDeck's pending consent and approve it. Select that grant,
