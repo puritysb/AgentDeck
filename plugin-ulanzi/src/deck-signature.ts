@@ -1,3 +1,4 @@
+import { dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Compact signature of everything the D200H deck renders from — lets `renderAll`
  * skip the whole rebuild+raster when a daemon broadcast (processing tool-progress
@@ -46,7 +47,7 @@ export function deckSignature(ev: Record<string, unknown>): string {
   ]);
   return [ev.state, ev.mode, ev.focusedSessionId ?? ev.sessionId ?? '', ev.requestId ?? '',
     ev.promptType ?? '', ev.currentTool ?? '', ev.toolInput ?? '', ev.modelName ?? '',
-    ev.question ?? '', ev.navigable ?? '', ev.cursorIndex ?? '', opts, usage, sessions, JSON.stringify(ev.dot ?? null)].join('|');
+    ev.question ?? '', ev.navigable ?? '', ev.cursorIndex ?? '', opts, usage, sessions, JSON.stringify(ev.dot ?? null), ev.dot ? dotDeckPresentation(ev.dot as DotDeckSnapshot).label : ''].join('|');
 }
 
 /** Local preferences and placed keys change pixels even without a daemon tick. */

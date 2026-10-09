@@ -15,6 +15,7 @@ private typealias DotNativeColor = UIColor
 final class DotAquariumResident {
     let root = Entity()
     private let body: ModelEntity
+    private var snapshot: DotSurfaceSnapshot?
     private var code = 1
     private var displayedCode: Int?
     private var portraitID: String?
@@ -49,17 +50,9 @@ final class DotAquariumResident {
     }
 
     func sync(_ snapshot: DotSurfaceSnapshot?, now: Int) {
+        self.snapshot = snapshot
         root.isEnabled = snapshot?.configured == true
-        code = snapshot?.phase(at: now) ?? 1
-        body.model?.materials = [SimpleMaterial(color: DotNativeColor(DotSurfaceView.tint(code)), roughness: 0.5, isMetallic: false)]
-        if displayedCode != code {
-            displayedCode = code
-            let mark = "DOT " + DotAppearanceRules.labels[code]
-            badge.model = ModelComponent(mesh: .generateText(mark, extrusionDepth: 0.002,
-                font: .init(name: "IBMPlexSans-Bold", size: 0.07) ?? .systemFont(ofSize: 0.07)),
-                materials: [UnlitMaterial(color: DotNativeColor(DotSurfaceView.tint(code)))])
-        }
-        if code != 2 { root.position = home }
+        refreshPhase(at: now)
         if snapshot?.appearance?.id != portraitID {
             portraitID = snapshot?.appearance?.id
             portrait.isEnabled = false; body.isEnabled = true
@@ -76,6 +69,18 @@ final class DotAquariumResident {
             }
         }
     }
+    private func refreshPhase(at now: Int) {
+        code = snapshot?.phase(at: now) ?? 1
+        if displayedCode != code {
+            body.model?.materials = [SimpleMaterial(color: DotNativeColor(DotSurfaceView.tint(code)), roughness: 0.5, isMetallic: false)]
+            displayedCode = code
+            let mark = "DOT " + DotAppearanceRules.labels[code]
+            badge.model = ModelComponent(mesh: .generateText(mark, extrusionDepth: 0.002,
+                font: .init(name: "IBMPlexSans-Bold", size: 0.07) ?? .systemFont(ofSize: 0.07)),
+                materials: [UnlitMaterial(color: DotNativeColor(DotSurfaceView.tint(code)))])
+        }
+        if code != 2 { root.position = home }
+    }
     #if os(macOS)
     func sync(_ snapshot: DotHostSnapshot, now: Int) {
         let frame = snapshot.deckSnapshot(now: now)
@@ -85,7 +90,9 @@ final class DotAquariumResident {
     }
     #endif
 
-    func step(_ delta: Double) {
+    func step(_ delta: Double, now: Int = Int(Date().timeIntervalSince1970 * 1000)) {
+        // Expiry follows the latest reconciled snapshot, even when motion is paused.
+        refreshPhase(at: now)
         guard animate && root.isEnabled && code == 2 else { return }
         elapsed += min(max(delta, 0), 1.0 / 20)
         root.position = home + [0, Float(sin(elapsed * 2)) * 0.06, 0]

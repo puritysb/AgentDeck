@@ -7,7 +7,7 @@ import type { ObservedSession } from './passive-observer.js';
 export const HERMES_SILENCE_TTL_MS = 30 * 60_000;
 const MAX_SESSIONS = 128;
 const EVENTS = new Set(['session_start', 'user_prompt_submit', 'tool_start', 'tool_end', 'stop', 'session_end']);
-interface Entry { row: ObservedSession; lastAt: number; pid?: number; cli?: boolean; }
+interface Entry { row: ObservedSession; lastAt: number; pid?: number; cli?: boolean; stopped?: boolean; }
 
 /** Whether a reported Hermes pid still runs. Three answers: only "no such
  *  process" is `dead`; a refused or failed probe (EPERM…) is `unknown` and
@@ -46,6 +46,9 @@ export class HermesSessions {
       return true;
     }
     const old = this.sessions.get(sid);
+    // A late tool callback cannot reopen an authoritatively ended turn.
+    // Only an explicit opening event starts the next turn/session.
+    if (old?.stopped && !opening && (boundary === 'tool_start' || boundary === 'tool_end')) return false;
     // Recover from daemon restart only on real progress, never a stray Stop.
     if (!old && !opening && boundary !== 'tool_start') return false;
     const row: ObservedSession = old?.row ?? {
@@ -71,7 +74,7 @@ export class HermesSessions {
       ? payload.pid : old?.pid;
     const cli = typeof payload.platform === 'string' ? payload.platform === 'cli' : old?.cli;
     this.sessions.delete(sid);
-    this.sessions.set(sid, { row, lastAt: now, pid, cli });
+    this.sessions.set(sid, { row, lastAt: now, pid, cli, stopped: boundary === 'stop' || (!opening && old?.stopped === true) });
     while (this.sessions.size > MAX_SESSIONS) this.sessions.delete(this.sessions.keys().next().value!);
     this.onChanged?.();
     return true;
@@ -95,7 +98,7 @@ export class HermesSessions {
       // Like OpenClaw, a running Hermes CLI stays on screen: its live process
       // keeps the silence TTL from retiring an idle conversation. Gateway
       // conversations (no finalize per chat) keep the TTL.
-      if (verdict === 'alive' && entry.cli) { entry.lastAt = now; continue; }
+      if (verdict === 'alive' && entry.cli && entry.row.state === 'idle') { entry.lastAt = now; continue; }
       if (verdict !== 'dead') continue;
       this.sessions.delete(sid);
       this.ended.set(sid, now);

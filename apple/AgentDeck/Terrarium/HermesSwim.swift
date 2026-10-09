@@ -166,7 +166,17 @@ struct HermesSwim {
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
                        activity: Activity, neighbours: [SIMD3<Float>], aspect: Float) {
         let dt = min(max(delta.isFinite ? delta : 0, 0), 0.05)
-        guard dt > 0 else { return }
+        guard dt > 0 else {
+            // A paused clock must freeze motion, not a previous task's expression.
+            if activity != previous {
+                effort = activity == .working ? 1 : 0
+                attention = activity == .waiting ? 1 : 0
+                sadness = activity == .error ? 1 : 0
+                celebration = 0
+                previous = activity
+            }
+            return
+        }
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
         effort += ((activity == .working ? 1 : 0) - effort) * blend

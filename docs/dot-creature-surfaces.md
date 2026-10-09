@@ -27,6 +27,10 @@ Existing agent creatures retain their canonical provider geometry under [DESIGN.
 - Selecting the companion opens requests, results and relationship history. An information card is not a command, retry, cancellation or approval button. Future controls need their own capability and authorization contract.
 - Cosmetic proximity, looking toward another creature or swimming beside it never establishes delegation. Relationship visualization requires an explicit correlated record.
 
+## Activity lifetime
+
+The Apple 3D companion reconciles the latest host snapshot and checks report expiry during scene updates, including when motion is disabled. Completion, stopped hosting and a cleared/disconnected snapshot override previous working motion immediately. No long-lived timer may replay an initial snapshot over newer state. D200H static keys schedule a one-shot repaint at the report deadline, and their pixel signature includes the current report phase; rendering the same cached frame cannot extend that deadline. Stale work becomes an old report, not a fabricated completion. Compact firmware uses the host-authored relative validity budget; report age must not be renewed merely because a cached frame is displayed again.
+
 ## Connection discovery
 
 macOS exposes **Settings → Dot** and a **Connect Dot…** dashboard entry before the host reports a configured integration. This setup entry is not a creature or a connection claim. Native-owned hosting opens the built-in certificate/OAuth setup; external-host dashboards show the reported connection context. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Real Dot-account acceptance and public HTTPS reachability remain separate release gates.

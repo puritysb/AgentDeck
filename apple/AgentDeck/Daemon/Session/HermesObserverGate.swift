@@ -32,7 +32,7 @@ struct HermesObserverGate: Sendable {
         case accept(boundary: String, sessionKey: String)
     }
 
-    private struct Entry: Sendable { var lastAt: Date; var pid: Int32?; var cli: Bool? }
+    private struct Entry: Sendable { var lastAt: Date; var pid: Int32?; var cli: Bool?; var stopped: Bool; var processing: Bool }
 
     /// Result of a process sweep: rows closed because their process is gone,
     /// and live CLI rows whose silence timer was refreshed.
@@ -68,6 +68,9 @@ struct HermesObserverGate: Sendable {
             ended = Self.trimmed(ended)
             return .accept(boundary: boundary, sessionKey: key)
         }
+        if live[sid]?.stopped == true && !opening && (boundary == "tool_start" || boundary == "tool_end") {
+            return .reject
+        }
         // Recover from a daemon restart only on real progress, never a stray Stop.
         if live[sid] == nil && !opening && boundary != "tool_start" { return .reject }
         // Reject fractional/out-of-range values instead of truncating or wrapping
@@ -75,7 +78,10 @@ struct HermesObserverGate: Sendable {
         let reported = (payload["pid"] as? NSNumber).flatMap { Int32(exactly: $0.doubleValue) }
         let pid = reported.flatMap { $0 > 1 ? $0 : nil } ?? live[sid]?.pid
         let cli = (payload["platform"] as? String).map { $0 == "cli" } ?? live[sid]?.cli
-        live[sid] = Entry(lastAt: now, pid: pid, cli: cli)
+        live[sid] = Entry(lastAt: now, pid: pid, cli: cli,
+                          stopped: boundary == "stop" || (!opening && live[sid]?.stopped == true),
+                          processing: boundary == "user_prompt_submit" || boundary == "tool_start" ||
+                            (boundary != "stop" && live[sid]?.processing == true))
         trimLive()
         return .accept(boundary: boundary, sessionKey: key)
     }
@@ -93,7 +99,7 @@ struct HermesObserverGate: Sendable {
             // Like OpenClaw, a running Hermes CLI stays on screen: its live
             // process keeps the silence TTL from retiring an idle conversation.
             // Gateway conversations (no finalize per chat) keep the TTL.
-            if verdict == .alive, entry.cli == true {
+            if verdict == .alive, entry.cli == true, !entry.processing {
                 live[sid]?.lastAt = now
                 result.refreshed.append(Self.sessionPrefix + sid)
                 continue

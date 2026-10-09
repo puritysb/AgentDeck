@@ -266,6 +266,13 @@ final class AquariumResidents {
             if !animate {
                 resident.position = targets[item.id]!
                 hermesSwims[item.id]?.relocate(resident.position)
+                if var swim = hermesSwims[item.id] {
+                    swim.step(0, home: resident.position, size: size,
+                        activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
+                        neighbours: [], aspect: aspect)
+                    hermesSwims[item.id] = swim
+                    hermesRigs[item.id]?.pose(swim)
+                }
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)

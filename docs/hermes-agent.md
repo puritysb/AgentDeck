@@ -30,6 +30,8 @@ unaltered Nous girl geometry.
 
 ## Native aquarium motion
 
+Offline cached sessions remain available as history but do not drive live aquarium residents. Task-specific typing follows the observed turn state. A transition to idle must update the expression even while animation is paused or Reduce Motion is enabled; freezing the animation clock must not freeze an old working pose. Gentle idle swimming and cosmetic greetings do not mean that Hermes is running a task. The process being alive likewise proves presence, not active work. After an authoritative Stop, late tool callbacks cannot reopen the turn; the next explicit opening event admits new work. A live CLI process extends only an idle conversation’s presence; it does not renew unconfirmed working activity. With no further progress and no Stop, the existing silence TTL retires the activity without inventing a successful completion.
+
 **Figure adaptation of the official mark (2026-09-30).** The identity source is
 the official Hermes Agent mark (`design/brand/hermes.svg`, the Nous girl). The
 generated concept sheets are **not** the source: they drifted to a round chibi

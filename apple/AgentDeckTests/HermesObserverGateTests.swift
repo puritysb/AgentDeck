@@ -5,6 +5,28 @@ import XCTest
 /// Swift mirror of bridge/src/__tests__/hermes-sessions.test.ts: the same
 /// admission rules and process-lifetime close for the native daemon.
 final class HermesObserverGateTests: XCTestCase {
+    func testALiveCliProcessDoesNotRenewUnconfirmedWork() {
+        var gate = HermesObserverGate()
+        let payload: [String: Any] = ["session_id": sid, "pid": 7, "platform": "cli"]
+        _ = gate.admit(event: "hermes_user_prompt_submit", payload: payload, now: t0)
+        let later = t0.addingTimeInterval(HermesObserverGate.silenceTTL)
+        XCTAssertTrue(gate.sweepDeparted(now: later) { _ in .alive }.refreshed.isEmpty)
+        XCTAssertEqual(gate.admit(event: "hermes_stop", payload: payload, now: later), .reject)
+    }
+
+    func testLateToolCallbacksCannotReopenAStoppedTurn() {
+        var gate = HermesObserverGate()
+        let payload: [String: Any] = ["session_id": "hermes-" + String(repeating: "a", count: 32)]
+        func at(_ seconds: Double) -> Date { Date(timeIntervalSince1970: seconds) }
+        _ = gate.admit(event: "hermes_user_prompt_submit", payload: payload, now: at(0))
+        _ = gate.admit(event: "hermes_tool_start", payload: payload, now: at(1))
+        _ = gate.admit(event: "hermes_stop", payload: payload, now: at(2))
+        XCTAssertEqual(gate.admit(event: "hermes_tool_start", payload: payload, now: at(3)), .reject)
+        XCTAssertEqual(gate.admit(event: "hermes_tool_end", payload: payload, now: at(4)), .reject)
+        guard case .accept = gate.admit(event: "hermes_user_prompt_submit", payload: payload, now: at(5)) else { return XCTFail("New turn must open") }
+        guard case .accept = gate.admit(event: "hermes_tool_start", payload: payload, now: at(6)) else { return XCTFail("New work must be observed") }
+    }
+
     @DaemonActor
     func testCapturedRealCiInvocationUsesNormalizedEvidenceAndExactEnd() async throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -165,6 +187,7 @@ final class HermesObserverGateTests: XCTestCase {
         var gate = HermesObserverGate()
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": sid, "pid": 7, "platform": "cli"], now: t0)
         _ = gate.admit(event: "hermes_user_prompt_submit", payload: ["session_id": other, "pid": 8, "platform": "telegram"], now: t0)
+        _ = gate.admit(event: "hermes_stop", payload: ["session_id": sid], now: at(1))
         let sweep = gate.sweepDeparted(now: at(5)) { _ in .alive }
         XCTAssertEqual(sweep.refreshed, [HermesObserverGate.sessionPrefix + sid])
         XCTAssertEqual(sweep.closed, [])

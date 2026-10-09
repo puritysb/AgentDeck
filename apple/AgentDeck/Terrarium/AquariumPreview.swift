@@ -142,15 +142,6 @@ struct LivingAquariumScene: View {
                     .allowsHitTesting(false)
             }
         }
-        // The async loader captures the initial environment. Reconcile playback
-        // in the refreshed view so a background → active transition during load
-        // cannot leave the newly-created controller paused forever.
-        .task {
-            while !Task.isCancelled {
-                dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-                try? await Task.sleep(for: .seconds(1))
-            }
-        }
         .sheet(isPresented: $showDot) {
             VStack {
                 HStack { Text("Dot requests and relationships").font(.headline); Spacer(); Button("Done") { showDot = false } }

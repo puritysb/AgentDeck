@@ -43,6 +43,7 @@ struct MonitorScreen: View {
     /// session metadata changes without a state/count change.
     private var terrariumProjectionKey: String {
         let primary = [
+            String(stateHolder.state.bridgeConnected),
             stateHolder.state.sessionId ?? "",
             stateHolder.state.focusedSessionId ?? "",
             stateHolder.state.agentType ?? "",
@@ -556,7 +557,8 @@ struct MonitorScreen: View {
     private func updateTerrariumState() {
         terrariumState = stateHolder.state.toTerrariumState(
             previous: terrariumState,
-            subagentActivityBySession: subagentActivityForTerrarium()
+            subagentActivityBySession: subagentActivityForTerrarium(),
+            activityAvailable: stateHolder.state.bridgeConnected
         )
     }
 

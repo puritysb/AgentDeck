@@ -23,7 +23,7 @@ final class DotDirectHostingTests: XCTestCase {
         let image = try XCTUnwrap(renderer.cgImage)
         XCTAssertGreaterThan(image.width, 300); XCTAssertGreaterThan(image.height, 300)
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-dot-companion-preview.png"))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-companion-preview.png"))
     }
     @MainActor
     func testThreeDimensionalCompanionIsSeparateFromSessionsAndHonorsMotion() {
@@ -41,11 +41,44 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertTrue(DotAquariumResident.contains(resident.root.children.first!))
         XCTAssertGreaterThan(resident.root.visualBounds(relativeTo: resident.root).extents.x, 0.5)
         let home = resident.root.position
-        resident.step(1); XCTAssertEqual(resident.root.position, home)
-        resident.animate = true; resident.step(1); XCTAssertNotEqual(resident.root.position, home)
+        resident.step(1, now: now); XCTAssertEqual(resident.root.position, home)
+        resident.animate = true; resident.step(1, now: now); XCTAssertNotEqual(resident.root.position, home)
         resident.sync(snapshot, now: now + DotLimits.reportFreshMs)
-        resident.step(1); XCTAssertEqual(resident.root.position, home)
+        resident.step(1, now: now + DotLimits.reportFreshMs); XCTAssertEqual(resident.root.position, home)
         snapshot.origin = ""; resident.sync(snapshot, now: now); XCTAssertFalse(resident.root.isEnabled)
+    }
+    @MainActor
+    func testLatestCompanionStateWinsAndExpiryStopsMotionWithoutAnotherSnapshot() {
+        let now = 1800000000000
+        let resident = DotAquariumResident()
+        var frame = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + DotLimits.requestMs)
+        resident.animate = true
+        resident.sync(frame, now: now)
+        resident.animate = false
+        let home = resident.root.position
+        resident.animate = true
+        resident.step(0.05, now: now)
+        XCTAssertNotEqual(resident.root.position, home)
+        // The clock alone expires activity, including under Reduce Motion.
+        resident.animate = false
+        resident.step(0, now: now + DotLimits.reportFreshMs)
+        XCTAssertEqual(resident.root.position, home)
+        resident.animate = true
+        resident.step(0.05, now: now + DotLimits.reportFreshMs)
+        XCTAssertEqual(resident.root.position, home)
+        // Fresh work may resume, but completion, stopped hosting and disconnect win immediately.
+        resident.sync(frame, now: now)
+        resident.step(0.05, now: now)
+        XCTAssertNotEqual(resident.root.position, home)
+        frame.reportState = "completed"
+        resident.sync(frame, now: now)
+        for _ in 0..<5 { resident.step(0.05, now: now + 1) }
+        XCTAssertEqual(resident.root.position, home)
+        frame.reportState = "working"; frame.hosting = false
+        resident.sync(frame, now: now); resident.step(0.05, now: now)
+        XCTAssertEqual(resident.root.position, home)
+        resident.sync(nil as DotSurfaceSnapshot?, now: now); resident.step(0.05, now: now)
+        XCTAssertFalse(resident.root.isEnabled)
     }
     @MainActor
     func testRelationshipPreviewShowsDirectionAndUnverifiedTarget() throws {
@@ -59,7 +92,7 @@ final class DotDirectHostingTests: XCTestCase {
         let renderer = ImageRenderer(content: view); renderer.scale = 2
         let image = try XCTUnwrap(renderer.cgImage)
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-dot-relations-preview.png"))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-relations-preview.png"))
     }
     func testDeckSnapshotIsSeparateBoundedAndExpiresWithoutLeakingContext() throws {
         let now = 1800000000000
