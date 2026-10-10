@@ -141,6 +141,10 @@ importers:
         version: 13.0.0
 
   hooks:
+    dependencies:
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^25.6.0

@@ -2199,17 +2199,29 @@ daemon
 
 program
   .command('hermes-observer')
-  .description('Install the opt-in Hermes observer plugin (does not enable or launch Hermes)')
+  .description('Install or check the opt-in Hermes observer connection')
   .option('--home <path>', 'Hermes profile home; defaults to HERMES_HOME or ~/.hermes')
-  .action(async (opts: { home?: string }) => {
-    const { installHermesObserver } = await import('@agentdeck/hooks');
+  .option('--check', 'Read-only setup and receiver checks; does not install or send events')
+  .option('--json', 'Print check results as machine-readable JSON (requires --check)')
+  .option('--port <port>', 'Persist an explicit loopback receiver port (including sandboxed Mac app)')
+  .option('--registry', 'Remove an explicit port and return to registry discovery')
+  .action(async (opts: { home?: string; check?: boolean; json?: boolean; port?: string; registry?: boolean }) => {
+    const { installHermesObserver, collectHermesDiagnostic, formatHermesDiagnostic } = await import('@agentdeck/hooks');
     try {
-      const target = installHermesObserver(opts.home);
-      log(`Hermes observer installed: ${target}`);
-      log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
-      log('Restart Hermes after enabling. Requires an AgentDeck daemon advertising Hermes observation support.');
+      if ((opts.check && (opts.port !== undefined || opts.registry)) || (opts.json && !opts.check) || (opts.port !== undefined && opts.registry)) {
+        throw new Error('Use --check [--json] without --port/--registry; choose only one receiver selection when installing.');
+      }
+      if (!opts.check) {
+        const target = installHermesObserver(opts.home, { port: opts.registry ? null : opts.port === undefined ? undefined : Number(opts.port) });
+        log(`Hermes observer files installed: ${target}`);
+        log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
+        log('Restart Hermes (desktop/server or gateway) after enabling or changing the connection.');
+      }
+      const report = await collectHermesDiagnostic({ home: opts.home });
+      process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : formatHermesDiagnostic(report)}\n`);
+      if (opts.check && !report.ok) process.exitCode = 1;
     } catch (error) {
-      log(`Hermes observer installation failed: ${String(error)}`);
+      log(`Hermes observer setup failed: ${String(error)}`);
       process.exitCode = 1;
     }
   });

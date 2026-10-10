@@ -36,6 +36,19 @@ The Node bridge/tooling supports the maintained, prebuild-verified even lines **
 
 ---
 
+## Hermes observation setup
+
+Hermes observation is opt-in. Installing or updating the AgentDeck app does not
+install or enable the Hermes observer. Use `agentdeck hermes-observer --check`
+to distinguish missing plugin files, disabled configuration and receiver
+connection problems. Select the active profile with `--home <profile>`.
+
+For App Store/TestFlight on macOS, the observer can use an explicit local daemon
+port without reading the app's container or installing another daemon. Follow
+[Hermes setup and recovery](hermes-agent.md#check-setup-when-hermes-activity-is-missing),
+then restart Hermes and verify a real turn. The setup check does not send a test
+conversation or prove that a running Hermes process loaded the plugin.
+
 ## Manual Build & Install
 
 ## Build
