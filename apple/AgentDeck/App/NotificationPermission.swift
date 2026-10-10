@@ -1,4 +1,4 @@
-// NotificationPermission.swift — First-launch notification authorization flow.
+// NotificationPermission.swift — User-initiated notification authorization flow.
 //
 // AgentDeck posts local notifications when a session needs the user's
 // explicit response (`AttentionNotifier`) via `UNUserNotificationCenter`.
@@ -19,6 +19,24 @@ import UserNotifications
 import AppKit
 
 enum NotificationPermission {
+    /// Reopening setup must not pretend an OS-level denial can be retried
+    /// through requestAuthorization. Show the actual state and recovery path.
+    @MainActor
+    static func chooseFromUserAction() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            AppPreferences.shared.hasRequestedNotifications = false
+            await requestIfNeeded()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = settings.authorizationStatus == .denied
+            ? "Notifications are off" : "Notifications are enabled"
+        alert.informativeText = "You can change AgentDeck's notification settings in System Settings → Notifications → AgentDeck."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     /// Show an explanatory NSAlert on first launch, then call
     /// UNUserNotificationCenter.requestAuthorization only if the user
     /// says yes. Idempotent — guarded by AppPreferences.hasRequestedNotifications.

@@ -90,7 +90,7 @@ struct TopologyRail: View {
     private var railContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                sectionHeader("UPSTREAM")
+                sectionHeader("USAGE & SERVICES")
                 Menu {
                     ForEach(providerOrder, id: \.self) { id in
                         Button {
@@ -108,8 +108,15 @@ struct TopologyRail: View {
             if let providerSaveError { Text(providerSaveError).font(.caption).foregroundStyle(.secondary) }
             upstreamRows
             hubZone
-            sectionHeader("DOWNSTREAM")
+            #if os(macOS)
+            if hasAnyDownstreamRow {
+                sectionHeader("DEVICES")
+                downstreamRows
+            }
+            #else
+            sectionHeader("THIS SCREEN")
             downstreamRows
+            #endif
         }
     }
 
@@ -238,7 +245,7 @@ struct TopologyRail: View {
         if s.zaiRateLimits != nil { ids.append("zai") }
         if ProviderRailEvaluator.openClaw(state: s) != nil { ids.append("openclaw") }
         if !s.mlxModels.isEmpty || s.mlxResidency?.known == true { ids.append("mlx") }
-        if s.ollamaStatus != nil { ids.append("ollama") }
+        if s.ollamaStatus?.available == true { ids.append("ollama") }
         if s.antigravityStatus?.planName != nil { ids.append("antigravity") }
         return ids
     }
@@ -607,7 +614,7 @@ struct TopologyRail: View {
     /// nothing real is present.
     private var hasAnyDownstreamRow: Bool {
         guard let health = stateHolder.state.moduleHealth else { return false }
-        if let adb = health.adb, (adb.available || !adb.devices.isEmpty || adb.lastError != nil) {
+        if let adb = health.adb, (!adb.devices.isEmpty || adb.lastError != nil) {
             return true
         }
         if health.d200h != nil { return true }
@@ -656,9 +663,6 @@ struct TopologyRail: View {
                 wifiEsp32Section(health: health)
                 androidSection(health: health)
                 tuiSection(health: health)
-            }
-            if !hasAnyDownstreamRow {
-                emptyDownstreamPlaceholder
             }
             #else
             DeviceRailRow(
@@ -936,7 +940,7 @@ struct TopologyRail: View {
         // — e.g. older daemons or the 1-2s window before `getprop`
         // completes for the first time.
         let needsAggregate = (adb?.classifiedDevices.isEmpty ?? true)
-            && ((adb?.available ?? false) || !(adb?.devices.isEmpty ?? true) || adb?.lastError != nil)
+            && (!(adb?.devices.isEmpty ?? true) || adb?.lastError != nil)
 
         if !wifiDashboards.isEmpty || !eInk.isEmpty || !tablets.isEmpty || needsAggregate {
             VStack(alignment: .leading, spacing: 3) {
@@ -1017,24 +1021,6 @@ struct TopologyRail: View {
             .font(.system(size: 9, weight: .medium, design: .monospaced))
             .kerning(1.0)
             .foregroundStyle(TerrariumHUD.subtext.opacity(0.7))
-    }
-
-    /// Lists the device families this app surfaces directly. Android and
-    /// Ulanzi TC001 are not mentioned because they ride a separate desktop
-    /// bridge — they appear automatically once that bridge connects, so
-    /// listing them here would imply they're missing rather than optional.
-    /// macOS-only: iOS now renders a self-row instead of the empty-state
-    /// placeholder, so there is no iOS branch here anymore.
-    private var emptyDownstreamPlaceholder: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text("no devices connected")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(TerrariumHUD.subtext.opacity(0.8))
-            Text("Stream Deck (USB) · D200H (USB) · Pixoo (Wi-Fi) · ESP32 (USB serial)")
-                .font(.system(size: 9, design: .monospaced))
-                .foregroundStyle(TerrariumHUD.subtext.opacity(0.55))
-        }
-        .padding(.vertical, 4)
     }
 
     // MARK: - Rate-limit chips (inline under Claude row)

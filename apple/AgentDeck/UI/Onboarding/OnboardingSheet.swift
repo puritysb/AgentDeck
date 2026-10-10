@@ -1,329 +1,202 @@
 #if os(macOS)
-// OnboardingSheet.swift — First-launch 3-pane orientation for macOS.
-//
-// App Store review expects a clear first-run path for non-developer users.
-// The dashboard starts empty by design (no session until the user launches
-// one), so without onboarding a fresh user sees a blank terrarium and no
-// affordance to proceed. This sheet bridges that gap with three screens:
-//
-//   1. Welcome — brand + value prop ("Stop Chatting. Start Steering.")
-//   2. Pick an agent — supported agent overview. App Store builds never
-//      show install commands or route users to companion executables.
-//   3. Optional integrations — services that can be enabled later
-//   4. Pair your iPad — Bonjour pitch + iOS companion download link
-//
-// Gated by `AppPreferences.hasSeenOnboarding` so returning users skip it.
-// xctest environments bypass the gate so test runs don't deadlock on a
-// modal sheet.
-
 import SwiftUI
-import AppKit
 
 struct OnboardingSheet: View {
     @EnvironmentObject private var preferences: AppPreferences
+    @EnvironmentObject private var stateHolder: AgentStateHolder
+    @EnvironmentObject private var daemonService: DaemonService
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
+    @StateObject private var flow: OnboardingFlow
 
-    @State private var pane: Int = 0
-    @State private var userHasAgent: Bool = false
+    init(flow: OnboardingFlow = OnboardingFlow()) {
+        _flow = StateObject(wrappedValue: flow)
+    }
+    @State private var feedback: [String: String] = [:]
+    @State private var showsOtherAgents = false
 
     var body: some View {
         VStack(spacing: 0) {
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            footer
-                .padding(.horizontal, 24)
-                .padding(.vertical, 14)
-        }
-        .frame(width: 640, height: 540)
-    }
-
-    /// 4 panes: Welcome → Agent picker → Optional integrations → Pair iPad.
-    /// Adding the integrations pane (Claude Code hooks / OpenClaw /
-    /// Anthropic API) keeps the wizard length reasonable while letting
-    /// first-run users know those surfaces exist before they go hunting
-    /// in Settings. The pane is purely informational — actual token
-    /// paste and hook consent stay in Settings → Integrations to keep
-    /// the wizard short.
-    private static let paneCount = 4
-
-    @ViewBuilder
-    private var content: some View {
-        switch pane {
-        case 0: WelcomePane()
-        case 1: AgentPickerPane(userHasAgent: $userHasAgent)
-        case 2: IntegrationsPane()
-        default: PairIPadPane()
-        }
-    }
-
-    private var footer: some View {
-        HStack(spacing: 12) {
-            // Progress dots.
-            HStack(spacing: 6) {
-                ForEach(0..<Self.paneCount, id: \.self) { idx in
-                    Circle()
-                        .fill(idx == pane ? Color.accentColor : Color.secondary.opacity(0.3))
-                        .frame(width: 8, height: 8)
-                }
-            }
-
-            Spacer()
-
-            if pane > 0 {
-                Button("Back") {
-                    pane = max(0, pane - 1)
-                }
-                .buttonStyle(.bordered)
-            }
-
-            Button(pane == Self.paneCount - 1 ? "Get Started" : "Continue") {
-                if pane < Self.paneCount - 1 {
-                    pane += 1
-                } else {
-                    finish()
-                }
-            }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-        }
-    }
-
-    private func finish() {
-        preferences.hasSeenOnboarding = true
-        dismiss()
-    }
-}
-
-// MARK: - Pane 1: Welcome
-
-private struct WelcomePane: View {
-    var body: some View {
-        VStack(spacing: 22) {
-            Spacer()
-
-            // Terrarium creature — use the octopus app icon as a recognizable
-            // brand anchor rather than a runtime-animated creature (Canvas
-            // sizing inside a sheet has edge cases we'd rather avoid here).
-            Image(systemName: "scribble.variable")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 120, height: 120)
-                .foregroundStyle(Color.accentColor)
-                .padding(.bottom, 6)
-
-            Text("Stop Chatting.\nStart Steering.")
-                .font(.system(size: 30, weight: .bold))
-                .multilineTextAlignment(.center)
-
-            Text("Real-time monitoring and evaluation for AI coding agents. Works with Claude Code, Codex, and OpenCode sessions across every device in your setup.")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 40)
-
-            Spacer()
-        }
-        .padding(24)
-    }
-}
-
-// MARK: - Pane 2: Agent picker
-
-/// Orientation pane: the app is self-contained and does not present CLI
-/// install commands as an in-app next step.
-private struct AgentPickerPane: View {
-    @Binding var userHasAgent: Bool
-
-    private struct AgentOption {
-        let name: String
-        let tagline: String
-    }
-
-    private var options: [AgentOption] {
-        [
-            AgentOption(
-                name: "Claude Code",
-                tagline: "Live session telemetry arrives through opt-in hooks."
-            ),
-            AgentOption(
-                name: "Codex",
-                tagline: "Runs in your own terminal; sessions appear here once started."
-            ),
-            AgentOption(
-                name: "OpenCode",
-                tagline: "Runs in your own terminal; sessions appear here once started."
-            ),
-        ]
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Choose the agent you already use")
-                    .font(.system(size: 22, weight: .semibold))
-                Text("AgentDeck works as a standalone dashboard. Enable hooks in Settings when you want live Claude Code sessions to appear here.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(spacing: 10) {
-                ForEach(options, id: \.name) { option in
-                    agentCard(option)
-                }
-            }
-            Text("No companion executable is required for Device Preview, iPad pairing, voice input, APME reports, or hardware status output.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
-        }
-        .padding(24)
-    }
-
-    @ViewBuilder
-    private func agentCard(_ option: AgentOption) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(option.name)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(option.tagline)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.secondary.opacity(0.08))
-        )
-    }
-}
-
-// MARK: - Pane 3: Optional integrations
-
-/// Informational pane introducing the integrations grouped exactly the
-/// same way Settings groups them — accounts you sign in to vs. paste-
-/// in API keys. Reuses `IntegrationCatalog` so the copy is identical
-/// across Onboarding, Settings, and the dashboard SetupCard.
-private struct IntegrationsPane: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Optional integrations")
-                        .font(.system(size: 22, weight: .semibold))
-                    Text("Skip any you don't need — every one of them can be enabled later from Settings → Integrations.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                integrationGroup(
-                    title: "Sign in once — no tokens here",
-                    rows: IntegrationCatalog.all.filter { $0.kind == .accountLinked }
-                )
-
-                integrationGroup(
-                    title: "Optional API keys",
-                    rows: IntegrationCatalog.all.filter { $0.kind == .apiKey }
-                )
-
-                Text("Most people only need to sign in to Claude. Everything else is opt-in.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(24)
-        }
-    }
-
-    private func integrationGroup(title: String, rows: [IntegrationDescriptor]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .kerning(0.6)
-                .foregroundStyle(.secondary)
-            VStack(spacing: 10) {
-                ForEach(rows) { descriptor in
-                    IntegrationRow(
-                        descriptor: descriptor,
-                        status: .notConfigured(detail: nil),
-                        mode: .onboarding
-                    )
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Pane 4: Pair iPad
-
-private struct PairIPadPane: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Pair your iPad or iPhone")
-                    .font(.system(size: 22, weight: .semibold))
-                Text("AgentDeck has a free iOS companion app. It auto-discovers this Mac over Wi-Fi and mirrors your live sessions to a second screen — great as a bedside monitor or for pair programming.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(alignment: .top, spacing: 16) {
-                Image(systemName: "ipad.landscape")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 120, height: 120)
-                    .foregroundStyle(Color.accentColor.opacity(0.8))
-
-                VStack(alignment: .leading, spacing: 10) {
-                    bullet("Install **AgentDeck** from the iOS App Store")
-                    bullet("Open it on the same Wi-Fi network as this Mac")
-                    bullet("The iPad finds the Mac automatically via mDNS")
-                    bullet("For different networks, use **Pair iPad** in the menu bar to show a QR code")
-                }
-                .font(.system(size: 13))
-            }
-
-            HStack(spacing: 10) {
-                Button {
-                    // Placeholder — actual ID set after App Store publish.
-                    // Using a search URL so the button is never a dead end.
-                    if let url = URL(string: "https://apps.apple.com/search?term=agentdeck") {
-                        NSWorkspace.shared.open(url)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    switch flow.step {
+                    case .appearance:
+                        OnboardingAppearance()
+                        Text("This Mac is all you need. Extra devices are optional.")
+                            .font(.callout)
+                    case .agents: agents
+                    case .ready: ready
                     }
-                } label: {
-                    Label("Open iOS App Store", systemImage: "square.and.arrow.up")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(28)
+            }
+            Divider()
+            HStack(spacing: 12) {
+                Text("Step \(flow.step.rawValue + 1) of 3")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Set Up Later") { finish() }
+                    .accessibilityIdentifier("onboarding-skip")
+                Spacer()
+                if flow.step != .appearance { Button("Back") { flow.back() } }
+                Button(flow.step == .ready ? "Open Dashboard" : "Continue") {
+                    if flow.step == .agents { recordAgentChoiceIfNeeded() }
+                    if flow.step == .ready { finish() } else { flow.next() }
                 }
                 .buttonStyle(.borderedProminent)
-
-                Button("Do It Later") {
-                    // Ignored — footer "Get Started" is the primary close path.
-                }
-                .buttonStyle(.bordered)
-                .opacity(0.5)
-                .disabled(true)
-            }
-
-            Spacer()
+                .keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("onboarding-next")
+            }.padding(20)
         }
-        .padding(24)
+        .frame(width: 680, height: 660)
     }
 
-    private func bullet(_ markdown: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("•")
-                .foregroundStyle(Color.accentColor)
-            Text((try? AttributedString(markdown: markdown)) ?? AttributedString(markdown))
-                .foregroundStyle(.primary)
+    /// Record the fresh user's agent choice once they have made one — leaving
+    /// the agents step, Set Up Later, or Open Dashboard (Connect records its
+    /// own). `[]` means "explicitly skipped" and suppresses the Claude/Codex
+    /// setup cards, so merely opening the sheet must not write it: a user who
+    /// quits on step 1 keeps `nil` and still sees the cards. Existing access
+    /// or consent is never changed here.
+    private func recordAgentChoiceIfNeeded() {
+        guard preferences.onboardingAgents == nil else { return }
+        var selected: [String] = []
+        if preferences.hooksInstalled || hasSession("claude") { selected.append("claude") }
+        if preferences.codexConfigInstalled || hasSession("codex") { selected.append("codex") }
+        preferences.onboardingAgents = selected
+    }
+
+    private var agents: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Connect the agents you use").font(.title.bold())
+            Text("Choose either, both, or continue without connecting. AgentDeck observes work in your existing apps; it does not start an agent or ask for an account password.")
+                .foregroundStyle(.secondary)
+            agentCard("claude", name: "Claude Code", type: "claude-code",
+                      detail: "Allow activity reporting from Claude Code. You choose its settings file before AgentDeck adds its own entries.")
+            agentCard("codex", name: "Codex App & CLI", type: "codex-app",
+                      detail: "Allow activity reporting from Codex. You choose its configuration file; your model and other integrations are preserved.")
+            Text("Use your agent as usual after setup. A running session may need to be reopened before it picks up the change.")
+                .font(.callout).foregroundStyle(.secondary)
+            DisclosureGroup("Other agents", isExpanded: $showsOtherAgents) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("OpenCode, Kiro and OpenClaw can be configured in Settings → Integrations when you use them.")
+                    if hasSession("hermes") {
+                        Label("Hermes activity is arriving", systemImage: "checkmark.circle")
+                        Text("This is a read-only view of your existing Hermes connection.")
+                    }
+                    Button("Open Integrations") { finish(opening: "settings") }
+                }.padding(.top, 8)
+            }
         }
+    }
+
+    private func hasSession(_ agent: String) -> Bool {
+        stateHolder.state.siblingSessions.contains {
+            $0.alive && ($0.agentType == agent || (agent == "claude" && $0.agentType == "claude-code")
+                || (agent == "codex" && ["codex-app", "codex-cli"].contains($0.agentType ?? "")))
+        }
+    }
+
+    private func observation(_ agent: String) -> OnboardingFlow.Observation {
+        .resolve(installed: agent == "claude" ? preferences.hooksInstalled : preferences.codexConfigInstalled,
+                 live: hasSession(agent))
+    }
+
+    private func agentCard(_ id: String, name: String, type: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SessionCreatureIcon(agentType: type, tint: SessionBrand.color(for: type), size: 28)
+                Text(name).font(.headline)
+                Spacer()
+                Text(observation(id).title).font(.caption).foregroundStyle(.secondary)
+            }
+            Text(detail).font(.callout).foregroundStyle(.secondary)
+            if observation(id) == .notConfigured {
+                if daemonService.isUsingExternalDaemon {
+                    Text("This Mac is receiving sessions from an existing connection. New activity will appear here when that connection reports it.")
+                        .font(.callout)
+                } else {
+                    Button(feedback[id] == nil ? "Connect \(name)" : "Try Again") {
+                        var selected = preferences.onboardingAgents ?? []
+                        if !selected.contains(id) { selected.append(id) }
+                        preferences.onboardingAgents = selected
+                        if id == "claude" { _ = HookInstaller.promptAndInstall() }
+                        else { _ = CodexConfigInstaller.promptAndInstall() }
+                        feedback[id] = observation(id) == .notConfigured
+                            ? "Setup was not completed. You can try again or continue and set it up later."
+                            : nil
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("onboarding-connect-\(id)")
+                }
+            }
+            if let message = feedback[id] { Text(message).font(.caption) }
+            if id == "codex", observation(id) != .notConfigured, !preferences.codexUsageAccessEnabled, !daemonService.isUsingExternalDaemon {
+                Button("Add usage limits (optional)…") { _ = preferences.chooseCodexDirectory() }
+                Text("Usage needs separate read access to your Codex folder. Activity reporting works without it.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var ready: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Your dashboard is yours").font(.title.bold())
+            if hasSession("claude") || hasSession("codex") || stateHolder.state.siblingSessions.contains(where: \.alive) {
+                Text("Your sessions are visible. Open the dashboard to follow their activity.")
+            } else if preferences.hasConfiguredObservation {
+                Text("Observation is set up. Your next agent activity will appear here. You can use your agent as usual.")
+            } else {
+                Text("You can look around now. Connect an agent later from Settings → Dashboard → Set Up AgentDeck to see live work.")
+            }
+            Text("Want to use a device you already have?").font(.headline)
+            Picker("Optional devices", selection: $flow.interest) {
+                ForEach(OnboardingFlow.Interest.allCases) { item in Text(item.title).tag(item) }
+            }.pickerStyle(.segmented)
+            deviceStory
+            Divider()
+            Text("Optional notifications").font(.headline)
+            Text("Get a notification when a session needs your attention. You can decide later in Settings.")
+                .font(.callout).foregroundStyle(.secondary)
+            Button("Choose Notifications…") {
+                Task { await NotificationPermission.chooseFromUserAction() }
+            }
+        }
+    }
+
+    @ViewBuilder private var deviceStory: some View {
+        switch flow.interest {
+        case .mac:
+            Text("All core dashboard views work on this Mac. You can explore extra screens any time from Preview Devices.")
+                .foregroundStyle(.secondary)
+        case .streamDeck:
+            Text("Keep session status on your keys while you work. Supported actions can show real questions from an agent; available controls depend on the session.")
+            if let devices = stateHolder.state.moduleHealth?.streamDeck?.devices, !devices.isEmpty {
+                Label("Stream Deck is reporting to AgentDeck", systemImage: "checkmark.circle")
+            } else {
+                Text("An existing AgentDeck action in Stream Deck reports connected keys here. A USB connection alone does not report sessions.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Button("Preview Devices") { finish(opening: "device-preview") }
+        case .displays:
+            Text("An iPad or iPhone can show your live dashboard beside your work. Ambient displays can keep session status visible at a glance.")
+            Text("Preview layouts without hardware, or pair a screen you already own. Pairing requires network access to this Mac.")
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Button("Preview Devices") { finish(opening: "device-preview") }
+                Button("Pair Device") { finish(opening: "pairing-qr") }
+            }
+            Link("Get AgentDeck for iPhone or iPad", destination: AppMetadata.appStoreURL)
+        }
+    }
+
+    private func finish(opening window: String? = nil) {
+        recordAgentChoiceIfNeeded()
+        preferences.hasSeenMonitorEmptyGuide = true
+        preferences.hasSeenOnboarding = true
+        dismiss()
+        if let window { openWindow(id: window) }
     }
 }
 #endif

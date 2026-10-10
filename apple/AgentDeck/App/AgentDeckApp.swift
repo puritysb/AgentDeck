@@ -46,11 +46,16 @@ struct AgentDeckApp: App {
                             && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
                     },
                     set: { newValue in
-                        if !newValue { preferences.hasSeenOnboarding = true }
+                        if !newValue {
+                            preferences.hasSeenMonitorEmptyGuide = true
+                            preferences.hasSeenOnboarding = true
+                        }
                     }
                 )) {
                     OnboardingSheet()
                         .environmentObject(preferences)
+                        .environmentObject(stateHolder)
+                        .environmentObject(daemonService)
                 }
         }
         .defaultPosition(.center)
@@ -215,27 +220,8 @@ struct AgentDeckApp: App {
             }
         }
 
-        // First-launch notification permission prompt. Wait for the
-        // OnboardingSheet to close before firing our explanatory NSAlert
-        // — otherwise the alert stacks behind the modal sheet and the
-        // user is stuck deciding which one to answer first (a bug caught
-        // by design review on 2026-04-18). After onboarding dismisses
-        // we add a 1 s beat so the dashboard has fully drawn before the
-        // system prompt overlays it. The helper itself is idempotent and
-        // bypasses early under xctest, so the poll loop is safe.
-        Task { @MainActor in
-            let isXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-            // Bounded: the onboarding sheet rides the Dashboard window, which
-            // a menu-bar-only user may never open. An unbounded poll would
-            // then tick every 500 ms for the life of the process.
-            var waited = 0
-            while !preferences.hasSeenOnboarding && !isXCTest && waited < 120 {
-                try? await Task.sleep(for: .milliseconds(500))
-                waited += 1
-            }
-            try? await Task.sleep(for: .seconds(1))
-            await NotificationPermission.requestIfNeeded()
-        }
+        // Notifications are requested only from an explicit onboarding or Settings action.
+
     }
 
     // Dashboard visibility / toggle helpers moved to ControlTowerPanel
