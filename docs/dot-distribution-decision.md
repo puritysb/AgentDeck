@@ -1,5 +1,7 @@
 # Dot connection and distribution decision
 
+Reader overview: [Dot 연결과 배포를 쉽게 설명한 한국어 안내](dot-connection-explained.ko.md), with diagrams of the current private experiment, request lifecycle and public-distribution gates.
+
 Decision date: 2026-10-09. This is the current product and transport plan. It supersedes the public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), while retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Research is complete for this decision; real Dot interoperability and public distribution are not established.
 
 ## Decision
@@ -131,3 +133,230 @@ in both hosts before promising one-click setup. Do not embed tokens or unsupport
 
 Real Dot invocation, delegated execution, account consent, Mac sleep/restart and public
 plugin distribution still require client/account evidence. Unit tests cannot attest them.
+
+## Real account validation
+
+Test date: 2026-10-09.
+
+The first live attempts did **not** pass the Dot interoperability gate:
+
+| Execution context | Observed result |
+|---|---|
+| Existing local Codex host | OAuth completed and the five AgentDeck tools were exposed. This proves local-client authentication/discovery only. |
+| Direct Dot conversation | Dot reported that AgentDeck MCP tools were unavailable and did not process the request. The operator store retained null claim and report fields. |
+| Dot-created task on the connected Mac | Dot created a separate task. Its task record identified host `durable`, distinct from the testing chat's `local` host. The child reported unavailable AgentDeck MCP tools before `get_request`; its recorded turn contains no AgentDeck call, and the operator store still had no claim or report. |
+
+Computer access and task creation therefore succeeded, but the tested delegation did
+not expose the locally configured MCP tools. A local working directory is not proof
+of local-only coordination or inherited MCP configuration. Official documentation
+distinguishes [cloud coordination with local execution](https://learn.chatgpt.com/docs/enterprise/cloud-local-access)
+from local-only tasks and scopes shared [MCP configuration](https://learn.chatgpt.com/docs/extend/mcp)
+to a Codex host. The precise client-side reason for the missing tools remains
+unconfirmed; the observed failure does not establish that every Dot/local path is
+unsupported.
+
+Do not retry by merely changing the prompt, reapproving the same local grant, or
+creating more expiring requests. First establish a supported way to expose the
+authenticated tools to the actual Dot-created executor. A client capability or
+configuration change needs a fresh correlated test. The already-authorized private
+Secure MCP Tunnel experiment remains a separate alternative, with its own account
+setup and acceptance; it is not an automatic fallback or ordinary onboarding.
+Do not manufacture a report through shell/HTTP calls, move credentials into the
+cloud task, or label a manually created local Codex run as a Dot round trip.
+
+The released rendering fixes remain valid: an approved local grant without a
+report displays **Awaiting activity** in status chrome and no habitat creature.
+The local transport is a private preview; **Dot interoperability remains blocked
+at tool availability**, and no public Dot integration claim is justified yet.
+
+## Official tunnel preflight
+
+Test date: 2026-10-09. Immediately after the operator signed into Platform, the
+Personal organization displayed **Tunnels access required**, and the linked roles
+page refused `organization.read`. On returning to Tunnels after login settled,
+the page instead showed **No tunnels yet** and an enabled Create tunnel button.
+The creation form offered the personal organization and one associated ChatGPT
+workspace. The initial permission errors were transient observations, not a
+confirmed account blocker. Do not infer a required paid plan or a universal
+personal-account exclusion from them. The operator then created the private
+AgentDeck tunnel. Its saved name and organization/workspace associations were
+verified in the edit form without changing them.
+
+The official Darwin ARM64 `tunnel-client` release v0.0.16 was downloaded from the
+OpenAI release repository and matched against its published SHA-256 asset digest.
+The operator created a one-day runtime key restricted to Tunnels Read + Use and
+saved it privately in a mode-0600 file. The profile stores only a file reference.
+`doctor` passed and the official managed `runtimes connect` process started.
+A subsequent `runtimes status` reported a running process, `ready`, and no remote
+error. No public AgentDeck listener was added.
+
+This proves tunnel runtime readiness, **not authenticated MCP or Dot acceptance**.
+The local MCP initialization probe returned `401 Unauthorized`; the official
+client explicitly allows readiness when MCP initialization requires auth. Its
+OAuth discovery found AgentDeck metadata, but the automatically discovered
+loopback HTTP OAuth targets were rejected by Harpoon's HTTPS policy. The
+plaintext override remains disabled. Even resolving that transport issue alone
+would not fix the OAuth client contract: AgentDeck's current local mode allows
+its registered local client and loopback callbacks only. A harmless request with
+an HTTPS callback was rejected with `400 invalid_request`, as designed.
+
+AgentDeck access tokens expire after five minutes, so one static header is not a
+maintained connection. On 2026-10-10 the private experiment added a
+[stdio adapter](../integrations/openai-tunnel/README.md) between the official
+client and authenticated loopback MCP. It holds a separately approved local
+read/report grant, rotates tokens on demand, and forwards bounded tool requests
+without opening another listener. An uncertain refresh outcome fails closed;
+claims/reports are never automatically replayed. The existing Codex grant stays
+separate. This helper is not shipped inside the App Store application.
+
+This arrangement uses the official tunnel's workspace access boundary and a
+single local principal. The custom MCP connector uses No Auth at its layer,
+while AgentDeck still requires the adapter's local bearer token. It cannot
+identify separate users sharing a tunnel and must remain a personal-operator
+experiment. It implements tools only, not MCP Events. Authenticated local
+initialize and five-tool discovery passed; those probes are not Dot activity.
+The real local probe waited beyond the original five-minute token expiry, then
+successfully rotated credentials and completed another MCP ping. The official
+managed runtime was switched from HTTP to this stdio command; a fresh status
+reported a running process, readiness and no remote error. Before plugin creation,
+MCP health reported `not_observed`, initialize epoch zero: a running child and
+`/readyz` alone do not prove cloud-side discovery.
+
+After the user's action-time approval, the personal **AgentDeck Mac Studio**
+plugin was created and connected in Chrome on 2026-10-10. ChatGPT's plugin detail
+page displayed **Connected**. The official runtime recorded cloud-side discovery
+at `2026-10-10T09:30:31.530993Z`: status `ok`, state `discovered`, stdio transport,
+`same_child` evidence and initialize epoch 2. Both initialize and tools/list
+succeeded with protocol `2025-11-25`; the complete five-tool list was
+`get_request`, `get_context`, `claim_request`, `report_update` and
+`report_interaction`. This passes personal plugin installation and cloud-side
+discovery, but does not yet establish a Dot invocation, correlated report,
+physical surface reaction or Events subscription.
+
+The adapter's eight focused tests and the 22 automated pre-release checks passed,
+including 5,625 JavaScript tests, daemon E2E, native builds/tests and the packaged
+daemon acceptance run. The recorded pre-release receipt identifies a dirty
+experimental checkout, not a published release. Windows native runtime and the
+manual hardware/Swift live gates were not attested by that run. These results do
+not establish a real Dot request or MCP Events subscription.
+
+Resume using the [official setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels):
+
+1. Use the installed personal plugin for a fresh actual Dot test. Earlier test
+   requests expired. Share the new request with the dedicated tunnel grant,
+   rather than the separate local Codex grant. Verify correlated
+   read/claim/working/completed calls and disconnect/reconnect behavior. Keep
+   shared context limited to the test payload. A successful probe from this
+   local Codex chat is not Dot proof.
+2. Keep authentication lifecycle and tunnel readiness as separate checks. The
+   approved local grant and its refresh have been exercised; the connector uses
+   the tunnel's access boundary, not cloud-to-loopback browser OAuth. Do not reset
+   existing local grants while testing revocation or adapting the contract.
+3. For future UI work, the native ChatGPT/Codex app denial does not imply a
+   browser-settings denial: the supported Chrome interface completed this
+   connection after confirmation. New or broader access still needs action-time
+   confirmation under the browser tool's policy; the same approved connection
+   does not need repeated consent.
+
+The runtime key is short-lived and requires operator renewal after expiry. No
+admin key or production Events subscription exists in this experiment. A real Dot
+request/report round trip subsequently passed, as recorded below. The main daemon and operator-control ports are not tunnel targets.
+
+
+## First real Dot round trip — 2026-10-10 23:23 KST
+
+The user authorized a test message in the existing Dot conversation. Chrome's
+ChatGPT Dot page was used; this was not a locally delegated Codex task and this
+verification agent did not call the reporting tools on Dot's behalf. The fresh
+request was scoped to the dedicated tunnel grant. Its context held a test marker
+and the numbers 17, 23 and 41.
+
+| Observation | Time (KST) | Evidence |
+|---|---|---|
+| Request accepted | 23:23:25.583 | Operator store recorded a claim and attempt |
+| Working report | 23:23:36.227 | Sequence 1 included the marker and three context numbers |
+| Completed report | 23:23:54.080 | Sequence 2 included sum 81 and independent arithmetic verification |
+| Daemon propagation | Same working/completed transitions | WebSocket `sessions_list.dot` carried codes 2 then 4 and matching report timestamps |
+
+This establishes one real, manually initiated Dot request/report round trip.
+The context-specific contents support successful context access; the operator
+record does not individually audit each read-only tool call. The observed working
+interval was about 18 seconds. It does not establish Events, ten-round reliability,
+delegation, disconnect recovery or a Swift-owned daemon.
+
+Visual acceptance remains pending. The Mac locked during the test and computer
+use requested a manual unlock. Cached Dashboard captures still showed `Awaiting
+Activity`, including the capture approximately 1.2 seconds after the working
+report. This could be a suspended/stale view or a display propagation defect;
+it must be distinguished after unlocking. Pixoo HTTP preview snapshots were
+saved for both states. Source inspection found that this preview re-renders
+cached state and omitted the Dot overlay even though the device upload path
+applies it. The preview is not a saved physical-device upload or a photograph.
+The preview, HTTP frame and SSE paths now share the overlay; regression tests
+cover working/completed, unlinking and stale activity. This source correction
+still requires installation and an unlocked live rerun. No broad surface
+acceptance is claimed.
+
+Private evidence is retained in the isolated checkout under the ignored
+`diagnostics/tunnel-runtime/` directory: `live2-observation.json` contains the
+correlated claim/reports and WebSocket snapshots; `live2-status-latest.json`
+contains the operator result. Local screen/frame captures are retained separately
+from public documentation. Never publish credentials or personal dashboard/chat
+screenshots as repository documentation.
+
+
+## Unlocked follow-up and invalidated runtime key — 2026-10-10 23:45–23:55 KST
+
+After manual unlock, the installed macOS Dashboard's accessibility state showed
+`Dot. COMPLETED` for the earlier real report. This confirms the settled report
+reached that client; it does not retrospectively prove the working animation.
+A fresh request was then shared and sent to the same Dot conversation. Dot
+reported two failed `get_request` attempts (`UNAVAILABLE`) and did not claim or
+report activity. The operator record retained no claim/report, and the Dashboard
+showed `Awaiting Activity` rather than false working activity.
+
+The official runtime's control plane returned HTTP 401 `token_invalidated`.
+Its last successful poll was 23:46:09 KST. The process `/health` still said
+`live: true, ready: true`; component details showed the control plane in degraded
+backoff. Therefore process readiness is not authenticated cloud reachability.
+The precise invalidation cause was not established. The managed runtime was
+stopped successfully to end futile retries. Renewal of the restricted runtime key
+is required before restarting and repeating the actual Dot/creature test. The
+local AgentDeck grant and daemon were preserved.
+
+The clean-checkout [pre-release receipt](../verification/receipts/2026-10-10-e163636.json)
+passed the available automated checks, including 5,628 JavaScript tests, Android,
+macOS XCTest, iOS build, Apple bundle limits, ESP32 host/simulator/TTGO builds and
+clean packaged-daemon acceptance. The full runner skipped opt-in macOS E2E;
+a separate run with `AGENTDECK_E2E_ALLOW_DARWIN=1` passed all 14 E2E tests.
+Physical-device and Swift-owner live gates remain unverified. The Pixoo preview
+fix remains source-only until installed after live acceptance. Draft PR #501
+preserves the changes without claiming deployment or complete visual acceptance.
+
+
+## Runtime-key renewal and unlocked live visual pass — 2026-10-11 00:33–00:35 KST
+
+The user replaced the restricted runtime key locally. The existing official
+managed runtime restarted with a file reference, preserving the tunnel, private
+AgentDeck grant and permissions. Component health recorded successful control-plane
+polls and MCP initialization; process readiness alone was not used as proof.
+
+A new request was shared with the dedicated grant and sent to the existing Dot
+conversation. Dot directly claimed it, reported working at 00:34:51.472 and
+completed at 00:35:08.050 KST. The new context contained 29, 37 and 46; the reported
+sum was 112 with an independent check. No synthetic reports or delegated local
+tasks were used. Operator records and WebSocket snapshots were retained privately.
+
+On the unlocked installed Mac Dashboard, the pending state showed only the quiet
+Awaiting Activity badge. The real working report produced the cyan badge and a
+Dot creature at the right of the habitat. Captures 1.2 and 6 seconds later showed
+a changed vertical position. The completed report changed both badge and creature
+label to Completed and the creature to green; a capture after 12 seconds retained
+completion rather than working. This establishes real Mac report-to-render
+behavior, not exact animation timing or every physical surface's acceptance.
+
+Private evidence is in ignored `diagnostics/tunnel-runtime/live4-observation.json`,
+`live4-captures/` and `live4-dot-result.jpg`. No credentials or personal screenshots
+are published. The Pixoo preview fix still needs installed-runtime verification.
+Events, delegation, a Swift-owned daemon, other users' onboarding and physical
+SDK/firmware displays remain separate acceptance gates.
