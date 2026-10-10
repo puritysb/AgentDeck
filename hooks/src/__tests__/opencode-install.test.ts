@@ -81,6 +81,8 @@ describe('AgentDeckObserver event sequencing', () => {
         posts.push({ event: hook[1], body: JSON.parse(init.body) });
         return { ok: true };
       }
+      // The steering long-poll: never answers, so the loop just waits.
+      if (u.includes('/opencode/commands')) return new Promise(() => {});
       return { ok: false };
     });
   });
@@ -92,7 +94,7 @@ describe('AgentDeckObserver event sequencing', () => {
   });
 
   /** Load a fresh copy of the plugin (module-level port cache resets per file). */
-  async function observer() {
+  async function observer(client: unknown = null) {
     dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-run-'));
     const file = join(dir, 'agentdeck.mjs');
     // Sequencing tests must not read the maintainer's real daemon/container files.
@@ -101,7 +103,7 @@ describe('AgentDeckObserver event sequencing', () => {
       'const readFile = async () => { throw new Error("fixture: no registry"); };',
     ), 'utf-8');
     const mod = await import(pathToFileURL(file).href);
-    return mod.AgentDeckObserver({ directory: '/tmp/proj', client: null });
+    return mod.AgentDeckObserver({ directory: '/tmp/proj', client });
   }
 
   /** post() is fire-and-forget through a promise chain — let it drain. */
@@ -204,6 +206,75 @@ describe('AgentDeckObserver event sequencing', () => {
     const submits = posts.filter((p) => p.event === 'opencode_user_prompt_submit');
     expect(submits).toHaveLength(2);
     expect(submits[1].body.prompt).toBe('again');
+  });
+
+  it('reports a Task-tool child session as the parent\'s subagent, never as a session', async () => {
+    const { event } = await observer();
+    await event({ event: userMessage });
+    await event({ event: { type: 'session.created', properties: { info: { id: 'c1', parentID: 's1' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore', text: 'find the config' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm2', sessionID: 'c1', role: 'assistant', agent: 'explore' } } } });
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      type: 'tool', sessionID: 'c1', callID: 'k1', tool: 'read', state: { status: 'running' },
+    } } } });
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      type: 'text', sessionID: 'c1', messageID: 'cm2', text: 'found 3 files',
+    } } } });
+    await event({ event: { type: 'permission.asked', properties: { id: 'p1', sessionID: 'c1', permission: 'bash' } } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c1' } } });
+    await flush();
+    const childPosts = posts.filter((p) => p.body.session_id === 'c1' || p.body.agent_id === 'c1');
+    expect(childPosts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    expect(childPosts[0].body).toMatchObject({ session_id: 's1', agent_id: 'c1', agent_type: 'explore' });
+    expect(childPosts[1].body).toMatchObject({ session_id: 's1', last_assistant_message: 'found 3 files' });
+    // A child's permission is a real wait: it lands on the parent's row.
+    expect(posts.find((p) => p.event === 'opencode_permission_asked')?.body)
+      .toMatchObject({ session_id: 's1', permission_id: 'p1' });
+    expect(posts.some((p) => p.event === 'opencode_session_start' && p.body.session_id === 'c1')).toBe(false);
+    expect(posts.some((p) => p.event === 'opencode_stop' && p.body.session_id === 'c1')).toBe(false);
+  });
+
+  it('asks the server for an unseen session\'s parent, and treats no answer as top level', async () => {
+    const get = vi.fn(async ({ path }: { path: { id: string } }) => (
+      path.id === 'c2' ? { data: { id: 'c2', parentID: 's9' } } : { data: { id: path.id } }
+    ));
+    const { event } = await observer({ session: { get } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c2' } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    expect(posts[0].body).toMatchObject({ session_id: 's9', agent_id: 'c2' });
+  });
+
+  it('a finished child stays finished when OpenCode re-emits its message, and restarts on a new task prompt', async () => {
+    const { event } = await observer();
+    await event({ event: { type: 'session.created', properties: { info: { id: 'c1', parentID: 's1' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c1' } } });
+    // Trailing re-emit after the turn settled.
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    // The Task tool resumes the child with a new prompt.
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm9', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop', 'opencode_subagent_start']);
+  });
+
+  it('keeps an uncached session\'s events in arrival order although OpenCode does not await handlers', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const get = vi.fn(async () => { await gate; return { data: { id: 's7' } }; });
+    const { event } = await observer({ session: { get } });
+    // Fired back to back without awaiting, as OpenCode does.
+    const pending = [
+      event({ event: { type: 'message.updated', properties: { info: { id: 'm7', sessionID: 's7', role: 'user', text: 'go' } } } }),
+      event({ event: { type: 'session.idle', properties: { sessionID: 's7' } } }),
+    ];
+    release();
+    await Promise.all(pending);
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(posts.map((p) => p.event)).toEqual(['opencode_session_start', 'opencode_user_prompt_submit', 'opencode_stop']);
   });
 });
 

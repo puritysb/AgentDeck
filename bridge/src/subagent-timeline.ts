@@ -104,9 +104,11 @@ function normalizedEventName(eventName: string): string {
   switch (eventName) {
     case 'SubagentStart':
     case 'codex_subagent_start':
+    case 'opencode_subagent_start':
       return 'subagent_start';
     case 'SubagentStop':
     case 'codex_subagent_stop':
+    case 'opencode_subagent_stop':
       return 'subagent_stop';
     case 'TaskCompleted':
       return 'task_completed';

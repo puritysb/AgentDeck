@@ -20,6 +20,8 @@ import {
   parseCodexRollout,
   parseLsofRollouts,
   parseProcessTable,
+  selectClaudeConversationFiles,
+  type ClaudeSessionFile,
 } from '../passive-observer.js';
 import { parseKiroSessionMetadata, parseKiroTranscript } from '../kiro-session.js';
 
@@ -402,6 +404,23 @@ describe('passive-observer parsers', () => {
     expect(isClaudeSessionProcessCommand('/Users/robin/.local/bin/claude --print "hi"')).toBe(false);
     // An unrelated node process must not be swept in.
     expect(isClaudeSessionProcessCommand('node /Users/robin/src/server.js')).toBe(false);
+  });
+
+  it('finds a Claude Code background job launched from the versioned binary', () => {
+    // Live 2026-10-10: the job the user was working in ran as the versioned
+    // native binary, so argv[0] never said `claude` and the session vanished.
+    const job = '/Users/robin/.local/share/claude/versions/2.1.296 --session-id 5b55b9d6-c0e9-4309-9cff-24fffa6eb973 '
+      + '--fork-session --resume /Users/robin/.claude/projects/-Users-robin-OpenClaw/d385adf6-9e82-4567-8360-c8d9c9a4483b.jsonl '
+      + '--model claude-opus-5-5 --permission-mode auto';
+    expect(isClaudeSessionProcessCommand(job)).toBe(true);
+    expect(isClaudeSessionProcessCommand('C:\\Users\\robin\\.local\\share\\claude\\versions\\2.1.296.exe --session-id x')).toBe(true);
+    // The PTY host that relays the job's terminal is not a conversation.
+    expect(isClaudeSessionProcessCommand(
+      '/Users/robin/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude --bg-pty-host /tmp/cc-daemon-501/c1/pty/5b55b9d6.sock 272 56 -- '
+        + '/Users/robin/.local/share/claude/versions/2.1.296 --session-id 5b55b9d6',
+    )).toBe(false);
+    // Only argv[0] counts — an argument naming the path is not the binary.
+    expect(isClaudeSessionProcessCommand('/usr/bin/du -sh /Users/robin/.local/share/claude/versions/2.1.296')).toBe(false);
   });
 
   it('drops Electron child processes that reuse the app binary name', () => {
@@ -1002,5 +1021,46 @@ describe('foldHeadlessCodexSessions', () => {
     expect(roster).toHaveLength(2);
     expect(execChildren).toEqual([]);
     for (const row of roster) expect(row).not.toHaveProperty('codexOriginator');
+  });
+});
+
+describe('selectClaudeConversationFiles', () => {
+  const file = (over: Partial<ClaudeSessionFile> & { pid: number; sessionId: string }): { file: ClaudeSessionFile } => ({
+    file: { cwd: '/Users/robin/OpenClaw', startedAt: 1, kind: 'interactive', spare: false, ...over },
+  });
+  const ids = (rows: Array<{ file: ClaudeSessionFile }>) => rows.map((row) => row.file.sessionId);
+
+  it('shows the background job instead of the window it was moved out of, and never a spare', () => {
+    // The live 2026-10-10 shape: the window parked into job 5b55b9d6 and a
+    // pre-warmed spare in the same cwd. Before, the deck showed the parked
+    // window and the spare as two idle OpenClaw rows and no working one.
+    const rows = [
+      file({ pid: 2237, sessionId: 'd385adf6', parkedJobId: '5b55b9d6' }),
+      file({ pid: 28723, sessionId: '5b55b9d6-c0e9', kind: 'bg', jobId: '5b55b9d6' }),
+      file({ pid: 28616, sessionId: '64cf355f', kind: 'bg', jobId: '64cf355f', spare: true }),
+    ];
+    expect(ids(selectClaudeConversationFiles(rows))).toEqual(['5b55b9d6-c0e9']);
+  });
+
+  it('keeps a parked window whose job is not visibly alive', () => {
+    // A stale parkedJobId is no evidence the window is empty.
+    const rows = [file({ pid: 2237, sessionId: 'd385adf6', parkedJobId: '5b55b9d6' })];
+    expect(ids(selectClaudeConversationFiles(rows))).toEqual(['d385adf6']);
+  });
+
+  it('a spare cannot stand in for the job a window parked into', () => {
+    const rows = [
+      file({ pid: 2237, sessionId: 'd385adf6', parkedJobId: '64cf355f' }),
+      file({ pid: 28616, sessionId: '64cf355f', kind: 'bg', jobId: '64cf355f', spare: true }),
+    ];
+    expect(ids(selectClaudeConversationFiles(rows))).toEqual(['d385adf6']);
+  });
+
+  it('keeps independent background jobs and ordinary windows', () => {
+    const rows = [
+      file({ pid: 1, sessionId: 'a' }),
+      file({ pid: 2, sessionId: 'b', kind: 'bg', jobId: 'b' }),
+    ];
+    expect(ids(selectClaudeConversationFiles(rows))).toEqual(['a', 'b']);
   });
 });

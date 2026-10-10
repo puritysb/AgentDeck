@@ -81,6 +81,25 @@ enum ProcessEnumerator {
         }
     }
 
+    /// One process's row without enumerating the table: two `sysctl`s
+    /// (`KERN_PROC_PID` for the parent, `KERN_PROCARGS2` for argv). Cheap
+    /// enough to call synchronously on the daemon actor, so a hook handler can
+    /// classify a brand-new process without a suspension point that would let
+    /// a later hook of the same session overtake it. Nil when the process is
+    /// gone or unreadable.
+    static func processRow(pid: Int) -> ProcessRow? {
+        guard pid > 0 else { return nil }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0,
+              size == MemoryLayout<kinfo_proc>.stride,
+              Int(info.kp_proc.p_pid) == pid else { return nil }
+        let args = processArguments(pid: pid_t(pid))
+        guard !args.isEmpty else { return nil }
+        return ProcessRow(pid: pid, ppid: Int(info.kp_eproc.e_ppid), command: args.joined(separator: " "))
+    }
+
     static func processArguments(pid: pid_t) -> [String] {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0

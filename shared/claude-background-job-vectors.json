@@ -1,0 +1,88 @@
+{
+  "$comment": "Claude Code background-job process shapes (2.1.296, live 2026-10-10). Replayed by shared/src/__tests__/claude-background-jobs.test.ts and apple/AgentDeckTests/ClaudeBackgroundJobRulesTests.swift. `parent` null = parent unknown. `role` is spare | pty-host | job | other; `forkedFrom` is set only for a job forked from a conversation; `spareStartup` is isClaudeSpareStartup(source, role).",
+  "vectors": [
+    {
+      "name": "unclaimed spare announcing itself",
+      "command": "claude bg-spare --bg-spare /tmp/cc-daemon-501/c19e6c63/spare/5b563000.claim.sock",
+      "parent": "claude bg-pty-host --bg-pty-host /tmp/cc-daemon-501/c19e6c63/spare/5b563000.pty.sock 200 50 -- /Users/robin/.local/share/claude/versions/2.1.296 --bg-spare /tmp/cc-daemon-501/c19e6c63/spare/5b563000.claim.sock",
+      "source": "startup",
+      "role": "spare",
+      "spareStartup": true
+    },
+    {
+      "name": "claimed spare compacting keeps its SessionStart",
+      "command": "claude bg-spare --bg-spare /tmp/cc-daemon-501/c19e6c63/spare/5b563000.claim.sock",
+      "parent": null,
+      "source": "compact",
+      "role": "spare",
+      "spareStartup": false
+    },
+    {
+      "name": "PTY host is a relay, even though its tail names the job argv",
+      "command": "/Users/robin/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude --bg-pty-host /tmp/cc-daemon-501/c19e6c63/pty/5b55b9d6.sock 272 56 -- /Users/robin/.local/share/claude/versions/2.1.296 --session-id 5b55b9d6-c0e9-4309-9cff-24fffa6eb973 --fork-session --resume /Users/robin/.claude/projects/-Users-robin-OpenClaw/d385adf6-9e82-4567-8360-c8d9c9a4483b.jsonl",
+      "parent": null,
+      "source": "startup",
+      "role": "pty-host",
+      "spareStartup": false
+    },
+    {
+      "name": "window moved to the background: job forked from the parked conversation",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 5b55b9d6-c0e9-4309-9cff-24fffa6eb973 --fork-session --resume /Users/robin/.claude/projects/-Users-robin-OpenClaw/d385adf6-9e82-4567-8360-c8d9c9a4483b.jsonl --allowed-tools mcp__computer-use__zoom --model claude-opus-5-5 --permission-mode auto",
+      "parent": "/Users/robin/.local/share/claude/ClaudeCode.app/Contents/MacOS/claude --bg-pty-host /tmp/cc-daemon-501/c19e6c63/pty/5b55b9d6.sock 272 56 -- /Users/robin/.local/share/claude/versions/2.1.296 --session-id 5b55b9d6-c0e9-4309-9cff-24fffa6eb973",
+      "source": "resume",
+      "role": "job",
+      "forkedFrom": "d385adf6-9e82-4567-8360-c8d9c9a4483b",
+      "spareStartup": false
+    },
+    {
+      "name": "resume path containing spaces",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 11111111-2222-3333-4444-555555555555 --fork-session --resume /Users/robin/My Projects/.claude/projects/-x/AAAAAAAA-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl --model claude-opus-5-5",
+      "parent": "claude --bg-pty-host /tmp/s.sock 200 50 -- x",
+      "source": "resume",
+      "role": "job",
+      "forkedFrom": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "spareStartup": false
+    },
+    {
+      "name": "fresh background job (claude --bg), no conversation it continues",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 11111111-2222-3333-4444-555555555555 --model claude-opus-5-5",
+      "parent": "claude --bg-pty-host /tmp/s.sock 200 50 -- x",
+      "source": "startup",
+      "role": "job",
+      "spareStartup": false
+    },
+    {
+      "name": "terminal fork is not a background job: the original may still be open",
+      "command": "claude --resume d385adf6-9e82-4567-8360-c8d9c9a4483b --fork-session",
+      "parent": "-zsh",
+      "source": "resume",
+      "role": "other",
+      "spareStartup": false
+    },
+    {
+      "name": "unknown parent proves nothing",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 11111111-2222-3333-4444-555555555555 --fork-session --resume d385adf6-9e82-4567-8360-c8d9c9a4483b",
+      "parent": null,
+      "source": "resume",
+      "role": "other",
+      "spareStartup": false
+    },
+    {
+      "name": "ordinary interactive window",
+      "command": "claude --resume",
+      "parent": "-zsh",
+      "source": "startup",
+      "role": "other",
+      "spareStartup": false
+    },
+    {
+      "name": "bare --resume uuid is not overtaken by a later path argument",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 11111111-2222-3333-4444-555555555555 --fork-session --resume aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --add-dir /tmp/99999999-8888-7777-6666-555555555555",
+      "parent": "claude --bg-pty-host /tmp/s.sock 200 50 -- x",
+      "source": "resume",
+      "role": "job",
+      "forkedFrom": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "spareStartup": false
+    }
+  ]
+}
