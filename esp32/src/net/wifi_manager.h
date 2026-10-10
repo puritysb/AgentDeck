@@ -2,6 +2,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Battery-capable e-ink panels boot with the radio parked and join WiFi only
+// when USB serial stays silent past RadioPark::BOOT_GRACE_MS (see
+// net/radio_park_policy.h). On the desk, where serial is the transport, they
+// never associate at all; a `wifi_provision` that arrives over serial is
+// persisted for that later join instead of turning the radio on.
+#if defined(BOARD_NM_EPD_420) || defined(BOARD_LILYGO_EPD47)
+#define AGENTDECK_DEFER_BOOT_WIFI_JOIN 1
+#endif
+
 namespace Net {
 
 /**
@@ -47,7 +56,9 @@ bool wifiTryDeferredJoin();
 
 /**
  * Persist daemon-provisioned WiFi credentials without changing radio state.
- * Used by IPS10 when USB serial is primary and the hosted WiFi radio is parked.
+ * Used when USB serial is primary and the radio is parked (IPS10, the
+ * T-Display-S3-Pro and the AGENTDECK_DEFER_BOOT_WIFI_JOIN e-ink panels); the
+ * credentials are joined when the radio is restored.
  */
 void wifiSaveProvisionedCredentials(const char* ssid, const char* password);
 
@@ -99,7 +110,10 @@ int wifiRssiDbm();
  * Park (true) or restore (false) WiFi while USB serial is primary. Most boards
  * power the radio off (WIFI_OFF). ESP32-P4/C6 IPS10 keeps ESP-Hosted initialized
  * and only disassociates STA, because deinitializing the hosted SDIO transport
- * while RX is in flight can assert. Restoring reconnects to the saved AP.
+ * while RX is in flight can assert. Restoring reconnects to the saved AP —
+ * the daemon-provisioned credentials first where the board persists them, so a
+ * provision that was deferred while parked is the one that gets joined.
+ * Non-blocking: association completes in the background.
  */
 void wifiSetRadioParked(bool parked);
 

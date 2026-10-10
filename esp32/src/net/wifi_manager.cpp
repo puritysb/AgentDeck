@@ -97,6 +97,20 @@ void wifiInit() {
     // before the render loop. Avoid Arduino String heap churn on IPS10 boot.
     char savedSsid[IPS10_SSID_MAX] = {0};
     char savedPassword[IPS10_PASSWORD_MAX] = {0};
+#if defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN)
+    // Boot parked. The network task's RadioPark decision restores the radio
+    // (joining these saved credentials) only if USB serial stays silent past
+    // the boot grace — a desk unit on USB never spends the association, and
+    // the network task is not blocked for the 10 s connect timeout before it
+    // has polled serial once.
+    portalActive = false;
+    radioParked = true;
+    WiFi.mode(WIFI_OFF);
+    Serial.printf("[WiFi] Boot join deferred to the serial verdict (saved creds: %s)\n",
+                  loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword,
+                                           sizeof(savedPassword)) ? "yes" : "no");
+    return;
+#endif
     if (loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword, sizeof(savedPassword))) {
         Serial.printf("[WiFi] Saved daemon credentials found: SSID=%s\n", savedSsid);
         if (wifiConnectWith(savedSsid, savedPassword)) {
@@ -217,6 +231,32 @@ void wifiSetRadioParked(bool parked) {
 #if !defined(BOARD_IPS10)
         WiFi.mode(WIFI_STA);
         WiFi.setSleep(false);
+        // SNTP retries on its own once the association lands. A board that
+        // booted parked has never started it, and WebSocket usage frames carry
+        // ISO reset times that only render against a synced clock.
+        configTzTime("UTC", "pool.ntp.org", "time.google.com");
+#if defined(AGENTDECK_PERSISTED_WIFI)
+        // A provision deferred while parked lives only in the "adwifi" store,
+        // not in the WiFi driver's own NVS config that reconnect() replays.
+        {
+            char savedSsid[IPS10_SSID_MAX] = {0};
+            char savedPassword[IPS10_PASSWORD_MAX] = {0};
+            if (loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword,
+                                         sizeof(savedPassword))) {
+                WiFi.persistent(true);
+                WiFi.begin(savedSsid, savedPassword);
+                return;
+            }
+        }
+#endif
+#if defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN)
+        // Never provisioned: nothing to join, so do not leave an idle STA
+        // powered. The next wifi_provision brings the radio up itself.
+        if (WiFi.SSID().length() == 0) {
+            WiFi.mode(WIFI_OFF);
+            return;
+        }
+#endif
 #else
         // ESP-Hosted does not reliably reconnect from WIFI_OFF with a bare
         // WiFi.reconnect(). Normally the IPS10 transport remained initialized

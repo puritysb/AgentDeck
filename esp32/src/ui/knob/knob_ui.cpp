@@ -1,3 +1,6 @@
+#if defined(BOARD_T_EMBED)
+#include "../companion/dot_badge.h"
+#endif
 #include "../companion/session_glance.h"
 #if defined(BOARD_T_EMBED)
 
@@ -127,6 +130,7 @@ static lv_obj_t* s_hdrWifi = nullptr;   // WiFi/WS link glyph
 static lv_obj_t* s_hdrBatt = nullptr;   // battery % (+ charge bolt)
 static lv_obj_t* s_body = nullptr;
 static lv_obj_t* s_footer = nullptr;
+static DotCompanion::Badge s_dotBadge;
 
 static lv_obj_t *s_questionPanel, *s_questionProject, *s_questionAgent, *s_questionText;
 static char s_projectText[40]{}, s_agentText[32]{}, s_questionLabel[160]{};
@@ -734,6 +738,7 @@ void create() {
 
     // Korean-capable face: voice transcripts render here, and montserrat alone
     // drew them as tofu boxes.
+    s_dotBadge.create(s_scr, &font_kr_12);
     s_footer = makeLabel(s_scr, &font_kr_12, Theme::HUDFaint, "");
     lv_obj_align(s_footer, LV_ALIGN_BOTTOM_LEFT, 8, -3);
     lv_obj_set_width(s_footer, 304);
@@ -1177,6 +1182,9 @@ void update(float dt) {
         renderListBody(connected, count);
     }
 
+    const bool dotVisible = s_dotBadge.update(!listening && !speaking && !s_pendingReply.active && !flashOn && !questionPanel,
+        SCREEN_W - 108, SCREEN_H - 20);
+    lv_obj_set_width(s_footer, dotVisible ? SCREEN_W - 120 : SCREEN_W - 16);
     // Footer: the listening banner outranks everything — while the user is
     // speaking, the one thing they need on screen is who is listening.
     if (listening) {

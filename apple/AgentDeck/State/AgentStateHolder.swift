@@ -32,6 +32,24 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     // MARK: - URL Persistence
 
+    private var selectedBridgeURL: String?
+    /// Remains available for a manual retry after the socket clears its URL.
+    var retryBridgeURL: String? { selectedBridgeURL ?? savedUrl }
+    private var credentials: [String: String] {
+        get {
+            PairingCredential.remembering(savedUrl, in:
+                UserDefaults.standard.dictionary(forKey: "pairedBridgeURLs") as? [String: String] ?? [:])
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "pairedBridgeURLs") }
+    }
+
+    private func preferredDiscoveredBridge(_ bridges: [DiscoveredBridge]) -> DiscoveredBridge? {
+        let daemons = bridges.filter { $0.agentType == "daemon" }
+        guard let url = PairingCredential.preferredURL(in: daemons.map(\.wsUrl),
+                                                     selected: selectedBridgeURL ?? savedUrl) else { return nil }
+        return daemons.first { $0.wsUrl == url }
+    }
+
     private static let lastBridgeUrlKey = "lastBridgeUrl"
 
     private var savedUrl: String? {
@@ -160,6 +178,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     ///   instead of waiting out the production value.
     init(foregroundSearchDeadlineSec: TimeInterval = 12) {
         self.foregroundSearchDeadlineSec = foregroundSearchDeadlineSec
+        credentials = credentials // Migrate the legacy single URL before any host switch.
         #if DEBUG
         // App Store/launch capture only: pin a Debug app directly to the
         // deterministic local mock before mDNS can discover a developer daemon.
@@ -204,10 +223,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 // An explicit stop must stick. Without this the next mDNS tick
                 // silently undoes "Stop Reconnecting" / Settings → Disconnect.
                 guard !self.userStoppedConnecting else { return }
+                // Unknown hosts are chosen by the bounded discovery window or
+                // an explicit tap, never by the first passive Bonjour callback.
+                guard self.selectedBridgeURL != nil || self.savedUrl != nil else { return }
 
                 let candidates = bridges.filter { !self.failedBridgeIds.contains($0.id) }
-                let bridge = candidates.first(where: { $0.agentType == "daemon" })
-                    ?? candidates.first(where: { $0.agentType != nil })
+                let bridge = self.preferredDiscoveredBridge(candidates)
                 if let bridge {
                     print("[AutoReconnect] new bridge appeared while disconnected: \(bridge.wsUrl)")
                     self.failedBridgeIds.removeAll()
@@ -228,60 +249,35 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 self.resetToDisconnected()
             }
             // macOS local daemon mode should reconnect directly instead of discovering itself via mDNS
-            if let preferredLocalBridgeUrl = self.preferredLocalBridgeUrl {
+            if let preferredLocalBridgeUrl = self.preferredLocalBridgeUrl,
+               PairingCredential.sameEndpoint(preferredLocalBridgeUrl, self.selectedBridgeURL) {
                 self.connectTo(url: preferredLocalBridgeUrl)
             } else {
                 // Start mDNS discovery during reconnect so we can find new bridges
                 self.discovery.startSearching()
             }
         }
-        connection.onReconnectExhausted = { [weak self] failedUrl in
+        connection.onAuthenticationRequired = { [weak self] in
             guard let self else { return }
-            guard !self.isTerminating else { return }
-            // Blacklist the failed bridge so we skip it in auto-connect. The URL
-            // arrives as a parameter because `connection.url` is cleared in the
-            // same block that invokes this callback.
-            if let url = failedUrl,
-               let bridge = self.discovery.bridges.first(where: { $0.wsUrl == url }) {
-                self.failedBridgeIds.insert(bridge.id)
-                print("[Waterfall] blacklisted bridge \(bridge.id) after reconnect exhausted")
-            }
-            // savedUrl is deliberately KEPT. It is the only place this device
-            // stores its pairing token, and an unreachable Mac (asleep, DHCP
-            // change, Wi-Fi drop) is not an un-pairing — discarding it here
-            // turned every outage into a re-scan-the-QR event. The waterfall
-            // already prefers mDNS and only falls back to this URL, and the
-            // blacklist above stops a dead bridge being retried.
+            self.autoConnectTimer?.invalidate()
+            self.autoConnectTimer = nil
+            self.endForegroundSearch()
             self.waterfallStage = .idle
-            self.startConnectionWaterfall()
+            self.userStoppedConnecting = true
+            self.resetToDisconnected()
         }
-
-        // On each reconnect attempt, check for available bridges.
-        // If found, abort stale-URL reconnect and connect to the new bridge.
-        connection.onReconnectAttempt = { [weak self] in
-            guard let self else { return false }
-            guard !self.isTerminating else { return true }
-
-            // Check mDNS discovered bridges (skip blacklisted, prefer daemon)
-            let candidates = self.discovery.bridges.filter { !self.failedBridgeIds.contains($0.id) }
-            let bridge = candidates.first(where: { $0.agentType == "daemon" })
-                ?? candidates.first
-            // Switch only for a genuinely DIFFERENT daemon. Discovered URLs
-            // carry no token since #145, so a full-string comparison against a
-            // paired connection never matched — every reconnect blip looked
-            // like the daemon had moved, cleared the stored credential, and
-            // redialed unauthenticated (see PairingCredential).
-            if let bridge, !PairingCredential.sameEndpoint(bridge.wsUrl, self.connection.url) {
-                let target = PairingCredential.resolve(discoveredUrl: bridge.wsUrl, savedUrl: self.savedUrl)
-                DispatchQueue.main.async {
-                    self.waterfallStage = .idle
-                    self.connectTo(url: target)
-                }
-                return true  // abort reconnect
-            }
-
-            return false
+        connection.onReconnectExhausted = { [weak self] _ in
+            guard let self else { return }
+            self.endForegroundSearch()
+            self.waterfallStage = .idle
+            // Exhausting a network retry budget is not a user stop. A later
+            // advertisement for this same endpoint may restore the connection.
+            // The discovery selector still refuses every other host.
+            self.discovery.startSearching()
         }
+        // Socket retries retain the selected endpoint. Discovery is not evidence
+        // that a different computer is a replacement for it.
+        connection.onReconnectAttempt = nil
 
         #if os(macOS)
         startStaleDataMonitor()
@@ -563,7 +559,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         print("[Waterfall] starting waterfall")
 
         // Always mDNS first — savedUrl can be stale after DHCP/network changes.
-        // savedUrl is tried as fallback after 4s if no mDNS results.
+        // The selected URL is tried after 4s even if only other hosts advertise.
         startMdnsDiscovery()
     }
 
@@ -625,7 +621,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     private func trySavedUrl() {
         guard !isTerminating else { return }
-        if let url = savedUrl {
+        if let url = selectedBridgeURL ?? savedUrl {
             print("[Waterfall] trying saved URL: \(url)")
             waterfallStage = .savedUrl
             connectTo(url: url)
@@ -702,9 +698,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
             print("[AutoConnect] poll: bridges=\(self.discovery.bridges.count), failed=\(self.failedBridgeIds.count), searching=\(self.discovery.isSearching)")
 
-            // After 4s with no mDNS results, try savedUrl as fallback
-            if self.autoConnectPollCount == 8, self.discovery.bridges.isEmpty, let url = self.savedUrl {
-                print("[AutoConnect] no mDNS after 4s, trying saved URL: \(url)")
+            // A saved/manual endpoint can be reachable without advertising mDNS.
+            // Other computers in the list must not suppress its direct attempt.
+            if self.autoConnectPollCount == 8, let url = self.retryBridgeURL {
+                print("[AutoConnect] trying selected URL after discovery window: \(url)")
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.waterfallStage = .savedUrl
@@ -715,26 +712,22 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             // Filter out bridges that previously failed to connect (ghost mDNS entries)
             let candidates = self.discovery.bridges.filter { !self.failedBridgeIds.contains($0.id) }
 
-            // Prefer daemon bridge for consistent state (daemon aggregates all sessions)
-            let daemon = candidates.first(where: { $0.agentType == "daemon" })
-            if let daemon {
-                print("[AutoConnect] connecting to daemon: \(daemon.wsUrl)")
+            // Let the existing four-second discovery window collect peers
+            // before choosing a previously unknown host. A remembered host
+            // can reconnect immediately; the first Bonjour arrival cannot win.
+            if self.selectedBridgeURL == nil && self.savedUrl == nil && self.autoConnectPollCount < 8 {
+                self.autoConnectPollCount += 1
+                return
+            }
+            if let daemon = self.preferredDiscoveredBridge(candidates) {
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.connectTo(daemon)
-            } else if !candidates.isEmpty {
-                // If some bridges have nil agentType (health not yet resolved), wait up to 4s
-                // for /health responses before falling back to any bridge
-                let hasUnresolved = candidates.contains(where: { $0.agentType == nil })
-                if hasUnresolved && self.autoConnectPollCount < 8 {
-                    print("[AutoConnect] waiting for health info (\(candidates.count) bridges, some unresolved)")
-                } else {
-                    guard let bridge = candidates.first else { return }
-                    print("[AutoConnect] connecting to bridge: \(bridge.wsUrl) (agent=\(bridge.agentType ?? "?"))")
-                    timer.invalidate()
-                    self.autoConnectTimer = nil
-                    self.connectTo(bridge)
-                }
+            } else if self.retryBridgeURL == nil, candidates.filter({ $0.agentType == "daemon" }).count > 1 {
+                timer.invalidate()
+                self.autoConnectTimer = nil
+                self.endForegroundSearch()
+                self.waterfallStage = .idle
             }
 
             // After 10 seconds with no mDNS results, stop polling
@@ -770,6 +763,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             displaySync.handleDisplayState(displayOn: e.displayOn, dim: e.dim)
         case .sessionsList(let e):
             state.siblingSessions = e.sessions
+            state.dot = e.dot
             #if os(macOS)
             // Post/clear the "needs your response" system notification for
             // sessions entering/leaving an awaiting state. App-layer so it
@@ -1149,7 +1143,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 if let previous = savedUrl, previous != url {
                     clearRelayedUsageState()
                 }
-                savedUrl = url
+                credentials = PairingCredential.remembering(url, in: credentials)
+                savedUrl = PairingCredential.resolve(discoveredUrl: url, credentials: credentials)
             }
         case "disconnected":
             resetToDisconnected()
@@ -1190,6 +1185,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         timelineVersion += 1
         // Preserve lastKnownState for offline display
         state.bridgeConnected = false
+        state.dot = nil
         state.gatewayAuthStatus = nil
         state.gatewayConnected = false
         state.gatewayAvailable = false
@@ -1231,13 +1227,19 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     func connectTo(_ bridge: DiscoveredBridge) {
         guard !isTerminating else { return }
         userStoppedConnecting = false
-        connection.connect(to: PairingCredential.resolve(discoveredUrl: bridge.wsUrl, savedUrl: savedUrl))
+        connectTo(url: bridge.wsUrl)
     }
 
     func connectTo(url: String) {
         guard !isTerminating else { return }
         userStoppedConnecting = false
-        connection.connect(to: url)
+        selectedBridgeURL = url
+        autoConnectTimer?.invalidate()
+        autoConnectTimer = nil
+        endForegroundSearch()
+        waterfallStage = .idle
+        connection.disconnect()
+        connection.connect(to: PairingCredential.resolve(discoveredUrl: url, credentials: credentials))
     }
 
     func setPreferredLocalBridge(url: String?) {
@@ -1272,6 +1274,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         // tearing down only the socket left the overlay claiming a search.
         stopConnectionAttempts()
         resetToDisconnected()
+        selectedBridgeURL = nil
         savedUrl = nil  // Clear saved URL on explicit disconnect
         preferredLocalBridgeUrl = nil  // Prevent auto-reconnect from onDisconnect handler
     }

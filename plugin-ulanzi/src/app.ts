@@ -1,3 +1,4 @@
+import { DotExpiryRefresh } from './dot-expiry.js';
 import { nextClaudeWeeklyMode, isClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 import { nextZaiPairMode, isZaiPairMode, type ZaiPairMode } from '@agentdeck/shared';
 /**
@@ -101,6 +102,8 @@ function scheduleRender(): void {
 function positions(): string[] {
   return [...instances.values()].map((i) => i.key);
 }
+
+const dotExpiry = new DotExpiryRefresh(scheduleRender);
 
 // Paced per-key push to the device. Map keeps only the latest image per key.
 interface QueueItem { dataUri: string; isGif: boolean; }
@@ -288,6 +291,7 @@ async function drainAnimQueue(): Promise<void> {
 function renderAll(): void {
   if (displayDimmed) return;
   const ev = layoutInput();
+  dotExpiry.update(ev.dot as import('@agentdeck/shared').DotDeckSnapshot | null);
   // If the focused session vanished, drop back to the list.
   if (view.mode === 'detail' && view.openSessionId) {
     const sessions = (ev.allSessions as Array<{ id: string }>) ?? [];
@@ -604,7 +608,7 @@ daemon.on('connected', () => {
   daemon.send({ type: 'query_usage' });
   scheduleRender();
 });
-daemon.on('disconnected', () => { dlog(TAG, 'daemon disconnected'); cancelActiveHold('daemon disconnected'); store.setConnected(false); view = { mode: 'list', page: 0 }; scheduleRender(); });
+daemon.on('disconnected', () => { dlog(TAG, 'daemon disconnected'); cancelActiveHold('daemon disconnected'); store.setConnected(false); dotExpiry.update(null); view = { mode: 'list', page: 0 }; scheduleRender(); });
 daemon.start();
 
 dinfo(TAG, 'AgentDeck Ulanzi plugin started');

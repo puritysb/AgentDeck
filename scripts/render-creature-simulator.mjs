@@ -11,12 +11,13 @@ import {
   setOctopi,
   setJellyfish,
   setOpenCode,
+  setResidents,
   setCrayfish,
   setVoiceAssistantState,
   updateTerrarium,
   renderTerrariumFrame,
 } from '../bridge/dist/tui/terrarium.js';
-import { renderDashboard } from '../bridge/dist/tui/renderer.js';
+import { renderDashboard, aquariumSize } from '../bridge/dist/tui/renderer.js';
 import { ansiScreenToFrame } from './ansi-demo-frame.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -199,12 +200,14 @@ function renderTuiData() {
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
         setOpenCode(ctx, sessions);
+        setResidents(ctx, sessions);
         setCrayfish(ctx, true, agent === 'openclaw' && state === 'working', 'OpenClaw', false);
         setVoiceAssistantState(ctx, 'disabled');
         for (let frame = 0; frame < 36; frame++) updateTerrarium(ctx, frame);
         const cols = 160;
         const rows = 40;
-        const terrariumLines = renderTerrariumFrame(ctx, cols - Math.max(20, Math.floor(cols * 0.22)) - 3, Math.max(3, Math.floor((rows - 3) * 0.42)), 36);
+        const aq = aquariumSize(cols, rows);
+        const terrariumLines = aq ? renderTerrariumFrame(ctx, aq.width, aq.height, 36) : [];
         const dashboardState = {
           state: simStateToBridge(state),
           connectionStatus: 'connected',
@@ -261,6 +264,7 @@ function renderTuiTerrariumData() {
         setOctopi(ctx, sessions);
         setJellyfish(ctx, sessions);
         setOpenCode(ctx, sessions);
+        setResidents(ctx, sessions);
         setCrayfish(ctx, true, agent === 'openclaw' && state === 'working', 'OpenClaw', false);
         setVoiceAssistantState(ctx, 'disabled');
         for (let frame = 0; frame < 36; frame++) updateTerrarium(ctx, frame);

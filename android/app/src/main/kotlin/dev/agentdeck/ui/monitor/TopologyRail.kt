@@ -176,6 +176,10 @@ fun TopologyRail(
         if (saveError) Text("Could not save provider display settings.", color = TerrariumColors.HUDSubtext)
         UpstreamRows(state = state, scale = scale, visible = displayed ?: discovered)
         HubZone(state = state, scale = scale)
+        // A measured row in the scrollable rail; never an overlay over quotas.
+        state.dot?.takeIf { it.configured }?.let {
+            DotCompanion(it, Modifier.fillMaxWidth(), scale)
+        }
         SectionHeader("DOWNSTREAM", scale)
         DownstreamRows(scale = scale)
     }

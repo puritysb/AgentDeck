@@ -11,7 +11,7 @@ import { OpenClawAdapter } from '../adapters/openclaw.js';
 
 type Priv = {
   alive: boolean;
-  currentSessionKey: string | null;
+  steeringSessionKey: string | null;
   gatewayMethods: Set<string> | null;
   rpcCall: (method: string, params: unknown) => Promise<unknown>;
 };
@@ -22,7 +22,7 @@ function makeAdapter(rpc: (method: string, params: any) => unknown): { adapter: 
   const adapter = new OpenClawAdapter({ autoReconnect: false });
   const priv = adapter as unknown as Priv;
   priv.alive = true;
-  priv.currentSessionKey = 'agent:main:dashboard:a';
+  priv.steeringSessionKey = 'agent:main:dashboard:a';
   const calls: Array<[string, unknown]> = [];
   priv.rpcCall = vi.fn(async (method: string, params: unknown) => { calls.push([method, params]); return rpc(method, params); });
   return { adapter, calls };
@@ -70,7 +70,7 @@ describe('OpenClaw setting conversation binding', () => {
     let finishList!: (value: unknown) => void;
     const { adapter, calls } = makeAdapter(m => m === 'sessions.list' ? new Promise(done => { finishList = done; }) : models);
     const query = adapter.querySessionSettings();
-    (adapter as unknown as Priv).currentSessionKey = 'agent:main:dashboard:b'; // Background chat moved the active target.
+    (adapter as unknown as Priv).steeringSessionKey = 'agent:main:dashboard:b'; // Background chat moved the active target.
     finishList(listing);
     expect((await query).targetSessionKey).toBe('agent:main:dashboard:a');
     await expect(adapter.setSessionSetting('agent:main:dashboard:a', 'effort', 'high')).rejects.toThrow(/conversation changed/);
@@ -80,7 +80,7 @@ describe('OpenClaw setting conversation binding', () => {
   it('post-write readback remains on the patched conversation after a chat changes the active key', async () => {
     let adapter!: OpenClawAdapter;
     ({ adapter } = makeAdapter(m => {
-      if (m === 'sessions.patch') (adapter as unknown as Priv).currentSessionKey = 'agent:main:dashboard:b';
+      if (m === 'sessions.patch') (adapter as unknown as Priv).steeringSessionKey = 'agent:main:dashboard:b';
       return m === 'sessions.list' ? listing : models;
     }));
     await adapter.setSessionSetting('agent:main:dashboard:a', 'model', 'zai/glm-5.3');

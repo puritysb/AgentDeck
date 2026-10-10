@@ -1,3 +1,5 @@
+import { dotDeckReservedKeys, renderDotDeckSlot } from './dot-deck.js';
+import type { DotDeckSnapshot } from './protocol.js';
 import { claudeWeeklyReadings, type ClaudeWeeklyMode } from './claude-weekly-view.js';
 import { zaiPairReadings, type ZaiPairMode } from './zai-pair-view.js';
 import { usageColor } from './usage-severity.js';
@@ -98,6 +100,7 @@ export interface DashState {
   options: PromptOption[];
   currentTool: string;
   allSessions: SessionInfo[];
+  dot?: DotDeckSnapshot | null;
   /** Question the live `options` belong to. Echoed back on a press so the
    *  daemon can reject an answer aimed at a question the prompt has moved past
    *  (a multi-question AskUserQuestion advances between its groups). */
@@ -161,6 +164,7 @@ export function parseState(evt: any): DashState {
     ),
     currentTool: evt?.currentTool ?? '',
     question: typeof evt?.question === 'string' && evt.question ? evt.question : undefined,
+    dot: evt?.dot ?? null,
     allSessions: Array.isArray(evt?.allSessions) ? evt.allSessions : [],
     navigable: Boolean(evt?.navigable),
     // Prefer an explicit flag; otherwise infer from the presence of a real percent.
@@ -1147,6 +1151,13 @@ function buildList(
 ): Map<string, SessionDeckCell> {
   const sessions = sortSessions(foldCodexSessionsForDisplay(state.allSessions));
 
+  const dotKeys = dotDeckReservedKeys(state.dot, slots.length, sessions.length);
+  if (dotKeys) {
+    out.set(slots[0], { svg: renderDotDeckSlot(state.dot!), action: null });
+    slots = slots.slice(1);
+    if (!slots.length) return out;
+  }
+
   // Pin the bottom-row usage strip to the global quota gauges (opt-in,
   // water-tank style). On the D200H the strip sits just left of the native clock
   // widget; on classic Stream Deck it replaces the encoder LCD this surface
@@ -1165,7 +1176,9 @@ function buildList(
     // from a session — `spare` is computed AFTER the roster, and when sessions
     // overflow there is no spare by construction.
     const stripTiles = buildUsageTiles(state, undefined, view.claudeWeeklyMode, view.zaiPairMode);
-    const maxReserve = Math.max(0, slots.length - 1);
+    // Dot must leave room for both a session and NEXT when the roster overflows.
+    const sessionFloor = dotKeys && sessions.length > 1 ? 2 : 1;
+    const maxReserve = Math.max(0, slots.length - sessionFloor);
     const preferred = sortPositions(USAGE_PREFERRED_POS.filter((p) => slots.includes(p)));
     const stripCount = Math.min(stripTiles.length, USAGE_PREFERRED_POS.length, maxReserve);
     const afterStrip = slots.length - stripCount;

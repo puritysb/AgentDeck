@@ -1,3 +1,4 @@
+import { renderDotDeckSlot } from '@agentdeck/shared';
 /**
  * One keypad slot config → its key SVG. Pure: the animation frame, each
  * session's phase start, the stale flag and the focused detail state come in
@@ -33,6 +34,7 @@ export interface SlotRenderEnv {
 export function renderSlotConfig(config: SessionSlotConfig, env: SlotRenderEnv): string {
   const layout = env.layout;
   switch (config.type) {
+    case 'dot': return renderDotDeckSlot(config.dot!);
     case 'session': {
       const sess = config.session!;
       return renderSessionSlot(sess, false, env.animFrame, undefined, {

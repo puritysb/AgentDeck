@@ -3,6 +3,7 @@
  * Raw terminal control — no external dependencies beyond the shared palette.
  */
 import { Session, State, STATE_COLORS } from '@agentdeck/shared';
+import { displayWidth, truncateWidth } from './width.js';
 
 // ===== Cursor & Screen Control =====
 
@@ -186,17 +187,14 @@ export function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-/** Visual length of a string (stripping ANSI) */
+/** Visual length of a string in terminal cells (stripping ANSI; wide CJK = 2). */
 export function visLen(str: string): number {
-  return stripAnsi(str).length;
+  return displayWidth(str);
 }
 
-/** Truncate text to fit width, preserving ANSI codes at boundaries */
+/** Truncate text to fit `maxWidth` cells, keeping its colour escapes. */
 export function truncText(text: string, maxWidth: number, ellipsis = '\u2026'): string {
-  const plain = stripAnsi(text);
-  if (plain.length <= maxWidth) return text;
-  // Simple approach: strip ANSI, truncate, lose color (safe for most uses)
-  return plain.slice(0, maxWidth - 1) + ellipsis;
+  return truncateWidth(text, maxWidth, ellipsis);
 }
 
 /** Pad string to width (visual) with spaces */

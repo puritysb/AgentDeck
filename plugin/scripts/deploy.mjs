@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync }
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { uuid, runtimeFile, installedPath, inspectInstallation, digest, verifyRuntime } from './deployment-state.mjs';
+import { uuid, runtimeFile, installedPath, inspectInstallation, digest, verifyRuntime, waitForRuntimeExit } from './deployment-state.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const source = join(root, 'plugin', `${uuid}.sdPlugin`);
@@ -36,7 +36,9 @@ async function main() {
   const backup = join(homedir(), '.agentdeck', 'plugin-backups', `${Date.now()}`, `${uuid}.sdPlugin`);
   let moved = false;
   let changed = false;
+  const previousPid = receipt()?.pid;
   run('streamdeck', ['stop', uuid]);
+  await waitForRuntimeExit(previousPid, alive);
   try {
     if (inspectInstallation(source, installed)) {
       // Keep the complete Marketplace package for reversal, outside the host's scan directory.

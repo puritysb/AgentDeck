@@ -27,10 +27,6 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     /// Not in `URLSessionWebSocketTask.CloseCode` — 4001 is application-defined
     /// (`ws.close(4001, 'Unauthorized')` in `bridge/src/ws-server.ts`).
     static let unauthorizedCloseCode = 4001
-    /// Shown when the daemon refuses this device's credential. Says what is
-    /// wrong and what to do — a refusal is not a generic connection failure,
-    /// and the retry that follows a generic failure cannot fix it.
-    static let unauthorizedMessage = "Unauthorized — re-pair this device (scan the QR from \"agentdeck qr\")"
     // Keepalive cadence. The daemon (ws-server.ts) pings every 15s and evicts any
     // client that hasn't ponged within one 15s window, so we keep the path warm
     // well inside that budget: an 8s interval gives ~2x margin, and the first ping
@@ -60,6 +56,8 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
 
     /// Called when WebSocket disconnects (before reconnect attempts)
     var onDisconnect: (() -> Void)?
+    var onAuthenticationRequired: (() -> Void)?
+    @Published private(set) var authenticationRequiredURL: String?
 
     /// Called when reconnect gives up — state holder can restart discovery.
     /// Carries the URL that failed, because this callback fires from the same
@@ -108,6 +106,10 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private func connectInternal(_ urlString: String) {
         guard !isTerminating else { return }
 
+        connectionGeneration += 1
+        reconnectWork?.cancel()
+        reconnectWork = nil
+
         // Allow handleDisconnect to run again for this new connection
         isHandlingDisconnect = false
 
@@ -132,6 +134,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             self.url = urlString
             self.status = .connecting
             self.lastError = nil
+            self.authenticationRequiredURL = nil
             self.hasReceivedMessage = false
             // Only enable shouldReconnect for fresh connections.
             // Reconnect-originated calls already have it set; re-setting it
@@ -192,7 +195,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             self.queue.async {
                 guard self.connectionGeneration == connectionGen,
-                      self.status == .connecting else { return }
+                      self.webSocket === task, self.status == .connecting else { return }
                 print("[BridgeConnection] connection attempt timed out (\(Self.connectionTimeoutSec)s)")
                 self.handleDisconnect(error: URLError(.timedOut))
             }
@@ -442,9 +445,17 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
         // isHandlingDisconnect stays true until connectInternal resets it —
         // this prevents the second error callback (ping + receive loop both fire when
         // bridge dies) from scheduling a duplicate reconnect.
+        let source = webSocket
+        let generation = connectionGeneration
         queue.async { [weak self] in
-            guard let self, !self.isTerminating, !self.isHandlingDisconnect else { return }
+            guard let self, !self.isTerminating, !self.isHandlingDisconnect,
+                  self.connectionGeneration == generation, self.webSocket === source else { return }
             self.isHandlingDisconnect = true
+
+            let closeCode = self.webSocket?.closeCode.rawValue
+            let httpStatus = (self.webSocket?.response as? HTTPURLResponse)?.statusCode
+            let refused = closeCode == Self.unauthorizedCloseCode || httpStatus == 401
+                || (error as? URLError)?.code == .userAuthenticationRequired
 
             self.pingSource?.cancel()
             self.pingSource = nil
@@ -457,36 +468,22 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             self.hasReceivedMessage = false
 
             // Notify state holder immediately so UI shows disconnect
-            if wasConnected {
+            if wasConnected && !refused {
                 DispatchQueue.main.async { self.onDisconnect?() }
             }
 
-            // Auth rejection, by either shape it can arrive in.
-            //
-            // `URLError.userAuthenticationRequired` only appears when the
-            // UPGRADE is refused with HTTP 401, which is what the Swift daemon
-            // does. The Node daemon — what `npx @agentdeck/setup` installs, so
-            // what most people run — completes the handshake with 101 and only
-            // then closes `4001 Unauthorized`. URLSession reports that as an
-            // ordinary close, so this branch never fired for it: a wrong or
-            // missing pairing token spent the whole reconnect budget and
-            // surfaced as "Connection failed", with the one word that explains
-            // it — Unauthorized — never reaching the screen. Reported as #171 by
-            // a user who could load /health from the same phone and could not
-            // work out why pairing failed; they had no way to, from the app.
-            //
-            // docs/daemon.md has said "check for the close code, not the status
-            // line" since #145. This is the client that wasn't.
-            let closeCode = self.webSocket?.closeCode
-            let refusedByCloseCode = closeCode.map { $0.rawValue == Self.unauthorizedCloseCode } ?? false
-            let refusedByUpgrade = (error as? URLError)?.code == .userAuthenticationRequired
-            if refusedByCloseCode || refusedByUpgrade {
-                self.isHandlingDisconnect = false  // No reconnect will follow
+            if refused {
+                self.shouldReconnect = false
+                self.reconnectWork?.cancel()
+                self.reconnectWork = nil
                 DispatchQueue.main.async {
+                    guard self.connectionGeneration == generation else { return }
                     self.status = .disconnected
-                    self.lastError = Self.unauthorizedMessage
-                    self.shouldReconnect = false
+                    self.authenticationRequiredURL = self.url
+                    self.lastError = PairingCredential.approvalMessage(for: self.url)
                     self.isReconnecting = false
+                    self.reconnectAttempt = 0
+                    self.onAuthenticationRequired?()
                 }
                 return
             }
@@ -499,11 +496,8 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
                 return
             }
 
-            // Give up after max attempts. Each reconnect attempt first consults
-            // onReconnectAttempt, which re-resolves mDNS and switches to a freshly
-            // discovered bridge URL if one surfaced — so this cap bounds retries
-            // against a single stale/unreachable cached IP before the waterfall
-            // restarts discovery from scratch.
+            // Bound retries to the selected endpoint. The state holder keeps
+            // discovery visible so the user can explicitly choose another host.
             let maxAttempts = Self.maxReconnectAttempts
             if self.reconnectAttempt >= maxAttempts {
                 self.isHandlingDisconnect = false  // No reconnect will follow

@@ -256,6 +256,17 @@ final class ESP32WifiForwardTests: XCTestCase {
         XCTAssertNil(without["lastEventHm"])
     }
 
+    /// display_state carries the host-local wall clock as "HH:MM" (Node parity:
+    /// display-dim.ts `hostLocalHm`). E-ink boards print it as "as of HH:MM";
+    /// a serial-primary board has no other clock.
+    func testDisplayStateHostHmIsHostLocalZeroPadded() throws {
+        let cal = Calendar.current
+        let morning = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 9, minute: 5, second: 59)))
+        XCTAssertEqual(displayStateHostHm(morning), "09:05")
+        let late = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 10, day: 7, hour: 23, minute: 59)))
+        XCTAssertEqual(displayStateHostHm(late), "23:59")
+    }
+
     /// The whitelist must cover the display events a board renders, and match the
     /// USB-serial path (single source of truth: `serialForwardedEvents`).
     func testDisplayEventWhitelistForwarded() {

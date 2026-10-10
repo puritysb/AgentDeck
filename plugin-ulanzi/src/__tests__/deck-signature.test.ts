@@ -108,3 +108,9 @@ describe('local weekly preference and quota-only repaint', () => {
     expect(deckSignature({ scopedLimits: [] })).not.toBe(initial);
   });
 });
+
+it('invalidates the deck when Dot appears, stops, ages or clears', () => {
+  const dot = { configured: true, hosting: true, reportState: 'working', reportedAt: 1800000000000, expiresAt: 1800001800000 };
+  const values = [null, dot, { ...dot, hosting: false }, { ...dot, reportState: 'stale' }].map(dot => deckSignature({ dot }));
+  expect(new Set(values).size).toBe(4);
+});

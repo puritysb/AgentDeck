@@ -112,6 +112,7 @@ fun SettingsScreen(
                     ConnectionPanel(
                         connectionStatus = connectionStatus,
                         currentUrl = currentUrl,
+                        retryUrl = currentUrl ?: connection.selectedUrl,
                         lastError = lastError,
                         discoveredBridges = discoveredBridges,
                         onConnectToBridge = { bridge -> connection.connect(bridge.wsUrl(), bridge.fallbackWsUrl()) },
@@ -168,6 +169,7 @@ fun SettingsScreen(
                     ConnectionPanel(
                         connectionStatus = connectionStatus,
                         currentUrl = currentUrl,
+                        retryUrl = currentUrl ?: connection.selectedUrl,
                         lastError = lastError,
                         discoveredBridges = discoveredBridges,
                         onConnectToBridge = { bridge -> connection.connect(bridge.wsUrl(), bridge.fallbackWsUrl()) },

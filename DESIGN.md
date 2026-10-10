@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-09-27
-revision: 2026-09-27
+reviewed: 2026-10-09
+revision: 2026-10-09
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -478,9 +478,11 @@ The menu bar uses the small-size aquarium-deck symbol, not the full app icon ill
 Hermes's aquarium resident is the user-directed exception: an AgentDeck-original
 Nous girl mermaid adaptation, preserving the portrait's black bob, bangs and
 pale face while adding a small articulated tail. Its compact brand icon remains
-the exact upstream mark. Gentle native-aquarium swimming and cosmetic greetings
-are permitted at idle; only observed processing drives working gestures, and
-proximity must never be presented as task delegation. Reduced Motion freezes
+the exact upstream mark. In the native aquarium, idle Hermes rests on a fixed
+open shell over the substrate; blinking and a restrained seated greeting are
+allowed, but idle never follows a swimming route. Observed work lifts her above
+the shell and drives working gestures; completion returns her smoothly to her
+seat. Proximity must never be presented as task delegation. Reduced Motion freezes
 these movements while keeping explicit status cues visible.
 
 Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
@@ -514,6 +516,17 @@ opacities are `nativeLabel` in `shared/src/terrarium-rules.ts`, generated to
 Swift, Kotlin and C++; both platforms implement the same resolver
 (`ResidentLabelLayout`) and pin it with the same five tests.
 
+### 6.5 Dot companion across surfaces
+
+Dot uses an AgentDeck-original light orb with paired eyes. It is separate from
+provider-derived session creatures and never increases agent counts. The
+[Dot Creature Surface Design](docs/dot-creature-surfaces.md) defines the adopted
+3D, 2D, paper, LCD-key, TFT, LED-matrix and text adaptations, their implementation
+status, and the shared relationship grammar. Direction, kind, stage, report age
+and provenance must survive simplification. A Dot report is not target-side
+acknowledgement, and an unverified target must not be attached to a real creature.
+
+
 ---
 
 ## 7. Hardware surfaces
@@ -526,16 +539,16 @@ Each panel has its own pixel grid, dynamic range, and refresh rate. Designs MUST
 | macOS popup          | 360×520      | Vibrant blur, dark mode default     | Aquarium-deep, kelp accents        |
 | iPad full UI         | 2160×1620    | Touch, 44pt min targets             | Sand background, full color        |
 | Lenovo Tab dashboard | 1920×1200    | Always-on, slight burn-in risk      | Dark ink ground, calm motion       |
-| E-ink (D200H)        | 280×240      | 1-bit, slow refresh                 | High-contrast, hatch fills, mono   |
+| Ulanzi D200H / D200X  | Logical 960×540 | LCD keys, vendor-plugin delivery | Compact identity + readable state |
 | Pixoo64 LED          | 64×64        | LAN HTTP, fragile GIF buffer        | Terrarium + tiny device-side loop  |
 | iDotMatrix LED       | 32×32        | BLE, diffuser, constrained detail   | Numeric fleet summary + event creatures |
 | Timebox Mini LED     | 11×11        | 121 LEDs, 4-bit packed color        | Expressive robot face / eyes       |
 | TC001 LED            | 32×8         | RGB matrix, blocky                  | Multi-mark status strip            |
 | IPS 10.1 office      | 1280×800     | Many pods/cards, glance distance    | Shape-coded state + text-first cards |
 | TRMNL 7.5" native       | 800×480      | 1-bit, fixed card capacity          | Priority grid + exact hidden-state counts |
-| ESP32 round AMOLED   | 466×466      | Round mask, low brightness          | Single creature centered           |
+| ESP32 round AMOLED   | 360×360      | Round mask, low brightness          | Single creature centered           |
 
-Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention, responses and errors. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the asked agent listening (`ASK`) until its reply, then the reply held for six seconds (`SENT`, meaning delivered) — and a new session earns a brief entrance; attention/errors preempt both with the affected creature and count, rotating affected sessions every six seconds. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
+Dot-matrix agent marks are generated from `design/brand/*.svg`; event scenes preserve their geometry. Timebox Mini is the agents' collective face: eye poses and expressions convey activity, attention (approval, choice and diff review each have their own amber face), responses, errors, delegated subagent work, CI waits and an empty desk; the bottom row stays clear instead of adding population-count dots. It is an original robot face, not a redrawn provider mark. iDotMatrix prioritizes simultaneous waiting/work/result/live counts; a conversation earns the stage — the agent that just received your message listening (`HEAR`, never a question to you) for up to a minute or until its reply, then the reply held for six seconds (`SENT`, meaning delivered) — and a new session earns a brief entrance; attention/errors preempt both with the affected creature and count, rotating affected sessions every six seconds. Node and Swift share generated pixel frames and executable parity tests. These expressive displays permit eye blinks and event-driven movement; only amber attention modulates status brightness. The Timebox face may add small, fixed-intensity sand eye highlights and muted coral cheeks to quiet, working and conversational faces; eyes and mouth retain the semantic status hue. Message nods, greeting winks and speaking mouth shapes use paired poses so a 1.5-second BLE poll still sees their motion. There is no timer-driven creature carousel. See [device semantics](docs/devices.md#idotmatrix-3232) for exact count and retention rules. Pixoo64 retains its existing renderer and transport policy.
 
 ---
 

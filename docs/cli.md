@@ -225,13 +225,15 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 
 | Command | Description |
 |---------|-------------|
-| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`) |
+| `agentdeck dashboard` | TUI monitoring dashboard (alias: `dash`): sessions with state, model/effort/permission, CI waits and subagents; per-provider usage; aquarium; activity feed. Keys: `↑↓` select, `tab` switch focus (narrow: next panel), `⏎` detail, `f` follow the selected session, `1-9` switch managed session, `?` help |
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
 | `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
+| `agentdeck hermes-observer [--home <profile>] [--port <port> \| --registry]` | Install/update the opt-in observer, select a loopback receiver if needed, and print setup readiness; Hermes enablement/restart remain explicit |
+| `agentdeck hermes-observer [--home <profile>] --check [--json]` | Read-only Hermes installation, enablement, discovery and receiver-capability check; see [Hermes setup](hermes-agent.md#check-setup-when-hermes-activity-is-missing) |
 | `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |
@@ -376,6 +378,7 @@ not the same act as finding one you never asked for.
 | `agentdeck timebox test [target]` | Send one frame (BLE) |
 | `agentdeck timebox sync [target]` | Run foreground Timebox frame sync (BLE) |
 | `agentdeck wifi-setup` | ESP32 WiFi provisioning (serial) |
+| `agentdeck esp32 orientation <target> <auto\|portrait\|landscape>` | Persist a T-Display-S3-Pro layout (portrait Pocket ↔ landscape Focus Strip); the board restarts when the layout changes. `auto` = portrait with a camera shield, else landscape. Node daemon only. |
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 
 ---
@@ -399,3 +402,9 @@ The command exits 0 when both protocols work without a known PID mismatch,
 and 1 otherwise. A CLI success does not prove the plugin's account, elevation,
 environment or macOS sandbox discovery path is identical, nor does it say an
 agent session is active.
+
+## Dot direct HTTPS host
+
+The optional direct host runs inside the Node daemon after explicit private configuration. See [configuration and security boundaries](../services/dot-relay/README.md). `agentdeck dot status` shows pending approvals, grants and results; `approve <id> --code <browser-code>` or `deny <id>` resolves a local connection request. `request <grantId> --context-file <absolute-path> --profile desk` explicitly shares a briefing, and `disconnect <grantId>` revokes access and deletes its local content. These commands use a separate authenticated loopback operator endpoint; they never expose LAN pairing credentials through MCP.
+
+Dot character: `agentdeck dot character import <file>` selects a local static PNG/WebP/JPEG for this Node host; `agentdeck dot character reset` restores the original orb. It does not configure HTTPS, connect an account, fetch ChatGPT artwork or create a session.

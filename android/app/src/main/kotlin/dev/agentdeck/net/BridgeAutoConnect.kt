@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import dev.agentdeck.data.DisplayPreferences
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 
 private const val TAG = "BridgeAutoConnect"
 private const val VERBOSE_AUTOCONNECT_LOGS = false
@@ -109,11 +110,12 @@ fun BridgeAutoConnect(
         // Seed the credential the connection layer re-attaches to tokenless
         // discovered endpoints (PairingCredential) — discovery stopped carrying
         // tokens in #145, so this is the only copy the device has.
+        connection.pairedUrls = displayPrefs.pairedBridgeUrlsFlow.first()
         connection.pairedUrl = savedUrl
         autoConnectDebug { "Auto-connect: savedUrl=$savedUrl" }
 
         delay(AutoConnectRules.LOOPBACK_SETTLE_MS)
-        if (savedUrl != null && connection.status.value != ConnectionStatus.CONNECTED) {
+        if (savedUrl != null && connection.selectedUrl == null && connection.status.value != ConnectionStatus.CONNECTED) {
             connection.autoConnect(savedUrl)
         }
     }
@@ -157,9 +159,15 @@ fun BridgeAutoConnect(
             onDiscoveredBridges(emptyList())
             return@LaunchedEffect
         }
-        discovery.discover().collect { bridges ->
+        discovery.discover().collectLatest { bridges ->
             onDiscoveredBridges(bridges)
-            val daemon = AutoConnectRules.pickDaemon(bridges)
+            // Bonjour resolves hosts separately. Wait for the existing startup
+            // settling interval before choosing an unknown single host; a new
+            // discovery emission cancels this pending choice.
+            if (connection.selectedUrl == null && connection.pairedUrl == null) {
+                delay(AutoConnectRules.LOOPBACK_SETTLE_MS)
+            }
+            val daemon = AutoConnectRules.pickDaemon(bridges, connection.selectedUrl ?: connection.pairedUrl)
             // A daemon that just appeared is news for the loopback path too:
             // a reverse tunnel to a daemon that was down cannot answer either,
             // so the backoff earned while it was gone should not outlive it.
@@ -171,9 +179,9 @@ fun BridgeAutoConnect(
                 lastSeenDaemon = seen
                 if (seen != null) loopbackMisses = 0
             }
-            if (connection.status.value == ConnectionStatus.CONNECTED) return@collect
-            if (daemon == null) return@collect
-            if (!mayDial(daemon)) return@collect
+            if (connection.status.value == ConnectionStatus.CONNECTED) return@collectLatest
+            if (daemon == null) return@collectLatest
+            if (!mayDial(daemon)) return@collectLatest
             autoConnectDebug { "mDNS dial: ${daemon.name} at ${daemon.wsUrl()}" }
             connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
         }
@@ -188,7 +196,7 @@ fun BridgeAutoConnect(
         if (status != ConnectionStatus.DISCONNECTED || url != null) return@LaunchedEffect
         delay(AutoConnectRules.loopbackProbeDelayMs(loopbackMisses))
         if (connection.status.value != ConnectionStatus.DISCONNECTED) return@LaunchedEffect
-        if (connection.url.value != null) return@LaunchedEffect
+        if (connection.url.value != null || connection.selectedUrl != null) return@LaunchedEffect
         loopbackMisses++
         autoConnectDebug { "Recovery probe #$loopbackMisses — localhost:${BridgeConstants.WS_PORT} (USB)" }
         connection.connect(BridgeConstants.LOCALHOST_WS_URL)
@@ -249,9 +257,13 @@ object AutoConnectRules {
      * something else won the port, and a filter that required the canonical
      * port made that daemon invisible to the tablet ladder.
      */
-    fun pickDaemon(bridges: List<DiscoveredBridge>): DiscoveredBridge? {
+    fun pickDaemon(bridges: List<DiscoveredBridge>, selectedUrl: String? = null): DiscoveredBridge? {
         val daemons = bridges.filter { it.agentType == "daemon" }
-        return daemons.firstOrNull { it.port == BridgeConstants.WS_PORT } ?: daemons.firstOrNull()
+            .distinctBy { PairingCredential.endpointOf(it.wsUrl()) }
+        if (selectedUrl != null) return daemons.firstOrNull {
+            PairingCredential.sameEndpoint(it.wsUrl(), selectedUrl)
+        }
+        return daemons.singleOrNull()
     }
 
     /**

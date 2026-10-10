@@ -37,6 +37,16 @@ describe('BridgeCore sessions_list', () => {
     vi.useRealTimers();
   });
 
+  it('broadcasts and clears the separate Dot snapshot without creating a session', async () => {
+    mockBuildEnrichedSessionsList.mockResolvedValue([]);
+    let dot: import('@agentdeck/shared').DotDeckSnapshot | null = { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null };
+    core.setDotDeckProvider(() => dot);
+    await core.broadcastSessionsList();
+    expect(core.getLastSessionsListEvent()).toMatchObject({ dot, sessions: [] });
+    dot = null; await core.broadcastSessionsList();
+    expect(core.getLastSessionsListEvent()).toMatchObject({ dot: null, sessions: [] });
+  });
+
   it('broadcastSessionsList enriches sessions before broadcast', async () => {
     mockBuildEnrichedSessionsList.mockResolvedValue([
       {

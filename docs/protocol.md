@@ -336,3 +336,15 @@ AgentDeck/
 ├── AGENTS.md                     # Developer reference
 └── README.md
 ```
+
+## Dot deck snapshot
+
+The first-party `sessions_list` event optionally carries `dot: DotDeckSnapshot | null`. Fields are `configured` and `hosting` booleans, nullable `reportState` string, and nullable integer epoch-ms `reportedAt` / `expiresAt`. Both Node and Swift producers send it on initial and periodic snapshots. Absent and null both clear previous Dot state, including reconnecting to older daemons.
+
+This is a full sanitized integration snapshot, separate from `sessions`: no session identity/count, context, OAuth material, target reference or report text is included. The latest request is selected by creation time; expired/old nonterminal reports become stale. Hosting is local listener state, not cloud Dot activity. Existing clients may ignore the additive field; this does not promote it into every external surface profile.
+
+### Dot appearance and relation extensions
+
+The optional first-party Dot snapshot additively carries `code`, host-authored `validForMs`, nullable `appearance` and nullable latest `relation`. Appearance v1 uses an opaque content ID, a static PNG base64 string (normal transport only) and exactly 16×16 straight-alpha RGBA8 base64. The relation contains direction/kind/stage, a nullable unverified target, receipt time and `dot_report` evidence. This remains a reported claim and never grants command/approval authority.
+
+Firmware projections strip PNGs and enforce existing byte budgets before optional glyph/relation data. A minimal compact snapshot needs only configuration, hosting, phase code and remaining validity. When no safe room remains, omission clears Dot on firmware; sessions and existing controls are retained. MCU monotonic time expires working/attention cues without requiring a wall clock. Reconnect, legacy absence, invalid assets and explicit reset are clearing/fallback cases. These fields do not change public profile eligibility or create a new agent type.

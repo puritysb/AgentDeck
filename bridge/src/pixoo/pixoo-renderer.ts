@@ -1,3 +1,4 @@
+import { paintDotPixels, type DotDeckSnapshot } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 import { usageRgb } from '@agentdeck/shared';
 import { TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
@@ -64,6 +65,41 @@ const ACTIVE_OFFSET = (WORLD_SIZE - ACTIVE_SIZE) / 2; // 16
 
 // Track last render time for accurate dt calculation
 let lastRenderTime = 0;
+// Last camera actually drawn — reused by frozen loop frames so a baked device
+// loop does not pan between its own frames.
+let lastCamera: Camera | null = null;
+
+// ===== Simulation clock =====
+//
+// Tetras, bubbles and data particles are integrated one 100 ms tick at a time.
+// They used to advance one tick per renderFrame() CALL, so their speed was the
+// caller's call rate: the Pixoo64 device path renders once per ~2.5–3 s push,
+// which ran the school and the bubbles at 1/25–1/30 of their designed speed
+// (visibly frozen), while an open 10 fps preview stream sped the same shared
+// state back up. The oscillators (seaweed, rays, creature bob) were already
+// wall-clock (`getAnimFrame`); the integrators now are too — each render
+// replays the ticks that elapsed since the last one, capped so a long sleep
+// cannot flush a whole school off-screen in one frame.
+export const PIXOO_SIM_MAX_TICKS_PER_RENDER = 30;
+let lastSimFrame: number | null = null;
+
+/** Tick indices to integrate for a render at `animFrame` (consumes them). */
+export function consumeSimulationTicks(animFrame: number): number[] {
+  if (lastSimFrame === null || animFrame < lastSimFrame) {
+    lastSimFrame = animFrame;
+    return [animFrame];
+  }
+  const elapsed = animFrame - lastSimFrame;
+  if (elapsed <= 0) return [];
+  const n = Math.min(elapsed, PIXOO_SIM_MAX_TICKS_PER_RENDER);
+  lastSimFrame = animFrame;
+  return Array.from({ length: n }, (_, i) => animFrame - n + 1 + i);
+}
+
+/** Test seam: forget the simulation clock (next render integrates one tick). */
+export function resetSimulationClock(): void {
+  lastSimFrame = null;
+}
 
 // ===== Layout (world-buffer pixel coords) =====
 const SAND_TOP = ACTIVE_OFFSET + 54;      // 70
@@ -212,11 +248,11 @@ function slotAt(slots: CreatureSlot[], index: number): CreatureSlot {
 }
 
 /** Check if agent type gets a creature. */
-function isCreatureAgent(agentType: string): boolean {
+export function isCreatureAgent(agentType: string): boolean {
   return CODING_AGENTS.has(agentType) || JELLYFISH_AGENTS.has(agentType) || OPENCODE_AGENTS.has(agentType) || ANTIGRAVITY_AGENTS.has(agentType) || KIRO_AGENTS.has(agentType) || HERMES_AGENTS.has(agentType);
 }
 
-function creatureTypeFor(agentType: string): CreatureType {
+export function creatureTypeFor(agentType: string): CreatureType {
   if (ANTIGRAVITY_AGENTS.has(agentType)) return 'antigravity';
   if (KIRO_AGENTS.has(agentType)) return 'kiro';
   if (HERMES_AGENTS.has(agentType)) return 'hermes';
@@ -332,7 +368,7 @@ function syncCreatures(
   }
 }
 
-function mapSessionState(state: string): 'idle' | 'processing' | 'awaiting' {
+export function mapSessionState(state: string): 'idle' | 'processing' | 'awaiting' {
   if (state === 'processing') return 'processing';
   if (state === 'awaiting' || state === 'awaiting_option' || state === 'awaiting_permission' || state === 'awaiting_diff') return 'awaiting';
   return 'idle';
@@ -739,7 +775,7 @@ export function formatResetDetailed(resetsAt: string | undefined): string {
  *  When Codex only reports 7d, its subscription date occupies the otherwise
  *  empty primary zone.
  */
-function drawUsageHUD(
+export function drawUsageHUD(
   buf: Uint8Array, usageEvent: UsageEvent | null, animFrame: number,
 ): void {
   if (!usageEvent) return;
@@ -1297,12 +1333,12 @@ function drawSubagentOrbits(
  * `'standard'` is the full terrarium.
  */
 /** A separate CI glyph; permission/error signals always keep priority. */
-interface CiCueAnchor { sessionId: string; x: number; y: number; bodySize: number }
+export interface CiCueAnchor { sessionId: string; x: number; y: number; bodySize: number }
 const ciCueResults = new Map<string, { phase: string; openedAt: number; waiting: boolean; changedAt: number; lastAt: number; angle: number; speed: number }>();
 let ciCueSnapshot: Array<{ sessionId: string; left: number; top: number; moving: boolean; angle: number }> = [];
 
 /** Only actual displayed sessions own a helper. No provider/resident identity is created. */
-function drawCiCue(buf: Uint8Array, size: number, sessions: SessionInfo[] | null, now: number,
+export function drawCiCue(buf: Uint8Array, size: number, sessions: SessionInfo[] | null, now: number,
   anchors: CiCueAnchor[], tiny = false, bottom = size): void {
   ciCueSnapshot = [];
   for (const id of ciCueResults.keys()) {
@@ -1374,7 +1410,9 @@ export function renderFrame(
   size: 11 | 32 | 64 = 64,
   layout: 'standard' | 'micro' = 'standard',
   subagentActivity: SubagentActivityBySession = {},
+  options: { freezeSimulation?: boolean; cueNowMs?: number; dot?: DotDeckSnapshot | null } = {},
 ): Uint8Array {
+  const freeze = options.freezeSimulation === true;
   const worldBuf = new Uint8Array(W * W * 3);
   const outputBuf = new Uint8Array(size * size * 3);
   const animFrame = getAnimFrame(timeOverrideMs);
@@ -1446,29 +1484,36 @@ export function renderFrame(
 
   // === Update camera director ===
   const now = timeOverrideMs ?? Date.now();
-  const dt = lastRenderTime > 0 ? Math.min(5, (now - lastRenderTime) / 1000) : 1.0;
-  lastRenderTime = now;
-  const schoolPos = getSchoolCenter();
-  let camera = updateDirector(
-    dt, activeCreatures, crayfishRouting,
-    hasGateway ? { x: cfX, y: cfY } : null,
-    schoolPos,
-  );
-  
-  // Adaptive zoom out when multiple sessions are active to increase spacing & breathing room
-  const activeSessionCount = creatureInstances.size;
-  if (activeSessionCount > 1 && camera.zoom === 1.0) {
-    camera.zoom = Math.max(0.78, 1.0 - (activeSessionCount - 1) * 0.11);
-  }
-  
-  camera.width = size; // Set camera target resolution width
+  let camera: Camera;
+  if (freeze && lastCamera && lastCamera.width === size) {
+    camera = { ...lastCamera };
+  } else {
+    const dt = lastRenderTime > 0 ? Math.min(5, (now - lastRenderTime) / 1000) : 1.0;
+    lastRenderTime = now;
+    const schoolPos = getSchoolCenter();
+    camera = updateDirector(
+      dt, activeCreatures, crayfishRouting,
+      hasGateway ? { x: cfX, y: cfY } : null,
+      schoolPos,
+    );
 
-  // Snap the camera center to whole device pixels so a fixed sprite cell (a
-  // creature eye) doesn't sub-step as the camera lerps. Applied to the single
-  // camera shared by the background blit and every creature draw → they stay
-  // pixel-aligned. Must run after the adaptive-zoom tweak above so the final
-  // zoom is what we quantize against.
-  camera = quantizeCameraPixels(camera);
+    // Adaptive zoom out when multiple sessions are active to increase spacing & breathing room
+    const activeSessionCount = creatureInstances.size;
+    if (activeSessionCount > 1 && camera.zoom === 1.0) {
+      camera.zoom = Math.max(0.78, 1.0 - (activeSessionCount - 1) * 0.11);
+    }
+
+    camera.width = size; // Set camera target resolution width
+
+    // Snap the camera center to whole device pixels so a fixed sprite cell (a
+    // creature eye) doesn't sub-step as the camera lerps. Applied to the single
+    // camera shared by the background blit and every creature draw → they stay
+    // pixel-aligned. Must run after the adaptive-zoom tweak above so the final
+    // zoom is what we quantize against.
+    camera = quantizeCameraPixels(camera);
+    lastCamera = { ...camera };
+  }
+  const simTicks = freeze ? [] : consumeSimulationTicks(animFrame);
 
   // ========================================
   // Phase 1: Render environment → world buffer
@@ -1501,7 +1546,7 @@ export function renderFrame(
 
   // Bubbles
   const bubbleDensity = effectiveState === State.PROCESSING ? 10 : effectiveState === State.IDLE ? 3 : 5;
-  updateBubbles(animFrame, surfaceY, bubbleDensity);
+  for (const tick of simTicks) updateBubbles(tick, surfaceY, bubbleDensity);
   for (const b of bubbles) {
     const bx = Math.round(b.x);
     const by = Math.round(b.y);
@@ -1510,7 +1555,7 @@ export function renderFrame(
 
   // Data particles (spawn when any creature is processing)
   const anyProcessing = [...creatureInstances.values()].some(c => c.state === 'processing');
-  updateDataParticles(animFrame, surfaceY, anyProcessing);
+  for (const tick of simTicks) updateDataParticles(tick, surfaceY, anyProcessing);
   for (const p of dataParticles) {
     const fadeAlpha = Math.min(1, p.life / 10);
     const color = p.green ? COLORS.dataParticleGreen : COLORS.dataParticle;
@@ -1519,7 +1564,8 @@ export function renderFrame(
 
   // Tetras — update always, clamped above HUD when present
   const tetraMaxY = hudProviderCount > 0 ? 64 - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight - 4 : (SAND_TOP - 3);
-  updateTetras(animFrame, surfaceY, tetraMaxY);
+  for (const tick of simTicks) updateTetras(tick, surfaceY, tetraMaxY);
+  if (!tetras) tetras = initTetras();
 
   // Surface waves — use effectiveState so daemon doesn't suppress wave animation
   drawSurface(worldBuf, animFrame, surfaceY, palette, effectiveState);
@@ -1633,9 +1679,56 @@ export function renderFrame(
     const [x, y] = worldToScreen(cfX, cfY, camera);
     ciAnchors.push({ sessionId: s.id, x, y, bodySize: Math.max(CI_WAIT_CUE.glyphSize, Math.round(OFFICIAL_DOT_GLYPH_SIZE / 2 * camera.zoom)) });
   }
-  drawCiCue(outputBuf, size, sessions, timeOverrideMs ?? Date.now(), ciAnchors, false,
+  drawCiCue(outputBuf, size, sessions, options.cueNowMs ?? timeOverrideMs ?? Date.now(), ciAnchors, false,
     size - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight);
-  return outputBuf;
+  return paintDotPixels(outputBuf, size, options.dot, options.cueNowMs ?? timeOverrideMs ?? Date.now());
+}
+
+// ===== Baked device loop =====
+
+/**
+ * Shape of the opt-in Pixoo64 device-side loop (`animation: "loop"`).
+ *
+ * `uniqueFrames` are rendered `tickStep` animation ticks (100 ms each) apart
+ * and played back at `picSpeedMs` per frame, i.e. in real time. The upload is
+ * a palindrome (0…n-1, n-2…1), so every animated value — creature bob, sparkle
+ * orbit, seaweed, caustics, the CI companion — returns to its start on the
+ * frame after the last one and the loop closes by construction (see the
+ * "baked animation loop must close" rule). The integrated school/bubbles are
+ * frozen inside one loop and step between uploads.
+ */
+export const PIXOO_LOOP = {
+  uniqueFrames: 8,
+  tickStep: 2,
+  picSpeedMs: 200,
+} as const;
+
+/** Upload order for a closed palindrome loop over `n` unique frames. */
+export function pixooLoopOrder(n: number): number[] {
+  if (n <= 1) return [0];
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 2; i >= 1; i--) order.push(i);
+  return order;
+}
+
+/** Render the 64×64 frames of one closed device loop starting at `nowMs`. */
+export function renderPixooLoop(
+  stateEvent: StateUpdateEvent | null,
+  usageEvent: UsageEvent | null,
+  sessions: SessionInfo[] | null,
+  nowMs: number,
+  subagentActivity: SubagentActivityBySession = {},
+): Uint8Array[] {
+  const unique: Uint8Array[] = [];
+  for (let i = 0; i < PIXOO_LOOP.uniqueFrames; i++) {
+    unique.push(renderFrame(
+      stateEvent, usageEvent, sessions,
+      nowMs + i * PIXOO_LOOP.tickStep * 100,
+      64, 'standard', subagentActivity,
+      i === 0 ? {} : { freezeSimulation: true, cueNowMs: nowMs },
+    ));
+  }
+  return pixooLoopOrder(unique.length).map((i) => unique[i]);
 }
 
 // ===== Disconnected Frame =====

@@ -1,3 +1,4 @@
+import { compactDotSnapshot } from '@agentdeck/shared';
 import { ciWaitPhaseId, type CiWaitStatus } from '@agentdeck/shared';
 import { compactSessionLabels } from './compact-session-labels.js';
 import { compactProjectName } from './utils/project-name.js';
@@ -169,6 +170,9 @@ export interface SerialConnection {
     otaSlotSize?: number;
     otaFreeSketchSpace?: number;
     otaReason?: string;
+    /** T-Display-S3-Pro running layout and persisted setting. */
+    layout?: 'portrait' | 'landscape';
+    layoutSetting?: 'auto' | 'portrait' | 'landscape';
     timelineCount?: number;
     sessionCount?: number;
     usageFiveH?: number;
@@ -588,6 +592,17 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       row.displayName = limitString(label, 39);
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete row.displayName;
     }
+    const dot = compactDotSnapshot(e.dot);
+    if (dot) (prepared as any).dot = dot;
+    if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET && (prepared as any).dot) {
+      delete (prepared as any).dot.appearance;
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete (prepared as any).dot.relation;
+    }
+    if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET && (prepared as any).dot) {
+      const d = (prepared as any).dot;
+      (prepared as any).dot = { configured: true, hosting: d.hosting, code: d.code, validForMs: d.validForMs };
+      if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete (prepared as any).dot;
+    }
     return prepared;
   }
 
@@ -963,6 +978,8 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           otaSlotSize: msg.otaSlotSize,
           otaFreeSketchSpace: msg.otaFreeSketchSpace,
           otaReason: msg.otaReason,
+          layout: msg.layout,
+          layoutSetting: msg.layoutSetting,
           // Board-side reality counters (debug aid — surfaced on /devices so
           // "device shows nothing" can be diagnosed without stealing the port)
           timelineCount: (msg as any).timelineCount,

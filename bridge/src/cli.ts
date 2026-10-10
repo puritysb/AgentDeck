@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { registerDotCommands } from './dot-cli.js';
 import { acceptsDaemonRuntime } from '@agentdeck/shared';
 
 import { Command, InvalidArgumentError } from 'commander';
@@ -896,6 +897,8 @@ program
   .name('agentdeck')
   .description('AgentDeck — Physical Controller for AI Coding Agents')
   .version(packageJson.version);
+
+registerDotCommands(program);
 
 // ===== Weather context =====
 
@@ -2196,17 +2199,29 @@ daemon
 
 program
   .command('hermes-observer')
-  .description('Install the opt-in Hermes observer plugin (does not enable or launch Hermes)')
+  .description('Install or check the opt-in Hermes observer connection')
   .option('--home <path>', 'Hermes profile home; defaults to HERMES_HOME or ~/.hermes')
-  .action(async (opts: { home?: string }) => {
-    const { installHermesObserver } = await import('@agentdeck/hooks');
+  .option('--check', 'Read-only setup and receiver checks; does not install or send events')
+  .option('--json', 'Print check results as machine-readable JSON (requires --check)')
+  .option('--port <port>', 'Persist an explicit loopback receiver port (including sandboxed Mac app)')
+  .option('--registry', 'Remove an explicit port and return to registry discovery')
+  .action(async (opts: { home?: string; check?: boolean; json?: boolean; port?: string; registry?: boolean }) => {
+    const { installHermesObserver, parseHermesPortFlag, collectHermesDiagnostic, formatHermesDiagnostic } = await import('@agentdeck/hooks');
     try {
-      const target = installHermesObserver(opts.home);
-      log(`Hermes observer installed: ${target}`);
-      log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
-      log('Restart Hermes after enabling. Requires an AgentDeck daemon advertising Hermes observation support.');
+      if ((opts.check && (opts.port !== undefined || opts.registry)) || (opts.json && !opts.check) || (opts.port !== undefined && opts.registry)) {
+        throw new Error('Use --check [--json] without --port/--registry; choose only one receiver selection when installing.');
+      }
+      if (!opts.check) {
+        const target = installHermesObserver(opts.home, { port: opts.registry ? null : opts.port === undefined ? undefined : parseHermesPortFlag(opts.port) });
+        log(`Hermes observer files installed: ${target}`);
+        log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
+        log('Restart Hermes (desktop/server or gateway) after enabling or changing the connection.');
+      }
+      const report = await collectHermesDiagnostic({ home: opts.home });
+      process.stdout.write(`${opts.json ? JSON.stringify(report, null, 2) : formatHermesDiagnostic(report)}\n`);
+      if (opts.check && !report.ok) process.exitCode = 1;
     } catch (error) {
-      log(`Hermes observer installation failed: ${String(error)}`);
+      log(`Hermes observer setup failed: ${String(error)}`);
       process.exitCode = 1;
     }
   });
@@ -2852,6 +2867,29 @@ program
 // existing top-level `esp32-ota` without a second rename. `esp32-ota` is
 // untouched in this change.
 const esp32Cmd = program.command('esp32').description('ESP32 firmware and device commands');
+
+esp32Cmd
+  .command('orientation <target> <layout>')
+  .description('Switch a T-Display-S3-Pro between portrait Pocket and the landscape strip (auto|portrait|landscape; persisted, board restarts)')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (target: string, layout: string, opts: { port?: string }) => {
+    const { parseEsp32Layout } = await import('./esp32-orientation.js');
+    const parsed = parseEsp32Layout(layout);
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const info = readDaemonInfo();
+    const port = opts.port != null
+      ? parseInt(opts.port, 10)
+      : (info?.httpPort ?? info?.port ?? findDaemonPort() ?? BRIDGE_WS_PORT);
+    const { statusCode, body } = await postJsonWithTimeout<Record<string, unknown>>(
+      `http://127.0.0.1:${port}/esp32/orientation`, { target, layout: parsed }, 10_000,
+    );
+    if (statusCode !== 200 || body.ok !== true) {
+      console.error(`Orientation request failed (${statusCode}): ${String(body.error ?? 'unknown error')}`);
+      process.exit(1);
+    }
+    log(`Sent layout "${parsed}" to ${target} via ${String(body.transport)} (${String(body.via)}). `
+      + 'The board restarts when its layout changes; device_info reports layout/layoutSetting afterwards.');
+  });
 
 esp32Cmd
   .command('flash <board>')

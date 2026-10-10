@@ -1,3 +1,6 @@
+import { dotSurfaceSnapshot } from '@agentdeck/shared';
+import { readDotAppearance } from './dot-appearance.js';
+import { startConfiguredDotHost, dotResultModule, readDotConfiguration } from './dot-host.js';
 import { CiWaitProcesses } from './ci-wait-process.js';
 import { probeCiWait } from './ci-wait-probe.js';
 import { CiWaitTracker, ciWaitLabel, CI_WAIT_LIFECYCLE } from '@agentdeck/shared';
@@ -26,11 +29,14 @@ import { BridgeCore, buildCappedTimelineHistory, ESP32_INITIAL_TIMELINE_HISTORY_
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import { prepareForSerial } from './esp32-serial.js';
+import { deliverOrientation, OrientationRequestError, parseEsp32Layout } from './esp32-orientation.js';
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
+import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from './claude-spare-hooks.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
+import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
@@ -361,6 +367,9 @@ interface WifiEsp32Device {
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  /** T-Display-S3-Pro running layout and persisted setting. */
+  layout?: 'portrait' | 'landscape';
+  layoutSetting?: 'auto' | 'portrait' | 'landscape';
   /** Peripheral telemetry/diag from capability-advertising boards. */
   capabilities?: string[];
   batteryPercent?: number;
@@ -789,6 +798,9 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     otaSlotSize: typeof d.otaSlotSize === 'number' ? d.otaSlotSize : undefined,
     otaFreeSketchSpace: typeof d.otaFreeSketchSpace === 'number' ? d.otaFreeSketchSpace : undefined,
     otaReason: typeof d.otaReason === 'string' ? d.otaReason : undefined,
+    layout: d.layout === 'portrait' || d.layout === 'landscape' ? d.layout : undefined,
+    layoutSetting: d.layoutSetting === 'auto' || d.layoutSetting === 'portrait' || d.layoutSetting === 'landscape'
+      ? d.layoutSetting : undefined,
     // Peripheral telemetry/diag — without these the /devices view silently
     // drops what capability-advertising boards report (the t_embed battery
     // fields were invisible here for a day for exactly this reason).
@@ -1304,6 +1316,11 @@ export function classifyObservedHookEvent(
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
   }
+  // OpenCode's Task tool runs a child session (`parentID`); the observer
+  // plugin reports it as the parent's subagent, never as a session.
+  if (eventName === 'opencode_subagent_start' || eventName === 'opencode_subagent_stop') {
+    return { boundary: eventName, agentType: 'opencode' };
+  }
   const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
@@ -1536,6 +1553,7 @@ export async function handleSessionSettingsSocketRequest(
 }
 
 export async function startDaemon(opts: DaemonOptions): Promise<void> {
+  let dotHost: Awaited<ReturnType<typeof startConfiguredDotHost>>;
   startupBuildId = distBuildId();
   if (opts.debug) {
     enableDebugLog();
@@ -1970,6 +1988,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Cross-session coordination (spawned workers, peer messages, background
   // jobs) — the second census axis beside `subagents`. See coordination-evidence.ts.
   const coordination = new CoordinationTracker();
+  const claudeBackgroundTasks = new ClaudeBackgroundTasks();
   const ciWaits = new CiWaitTracker();
   const ciWaitOwners = new Map<string, number>();
   const ciWaitProcesses = new CiWaitProcesses();
@@ -2685,6 +2704,39 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }));
       return;
     }
+    // Persisted layout switch (T-Display-S3-Pro portrait Pocket ↔ landscape
+    // strip). Same-machine is authenticated; LAN callers need the token.
+    if (req.method === 'POST' && pathname === '/esp32/orientation') {
+      (async () => {
+        const body = await readJsonBody(req);
+        const target = typeof body.target === 'string' ? body.target : '';
+        const layout = parseEsp32Layout(body.layout);
+        return deliverOrientation(target, layout, {
+          serialPortFor: (t) => {
+            const matches = getESP32DeviceInfo().filter((d) =>
+              d.port === t || (d.board && canonicalBoardId(d.board) === canonicalBoardId(t)));
+            if (matches.length > 1) {
+              throw new OrientationRequestError(`Target "${t}" is ambiguous: ${matches.map((m) => m.port).join(', ')}`);
+            }
+            return matches[0]?.port;
+          },
+          sendSerial: (port, event) => sendSerialJson(port, event as unknown as Record<string, unknown>),
+          sendWifi: (t, event) => {
+            const { key, ws } = findWifiOtaTarget(t);
+            core.wsServer.sendTo(ws, event);
+            return key;
+          },
+        });
+      })().then((result) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      }).catch((err) => {
+        const status = err instanceof OrientationRequestError || err instanceof SyntaxError ? 400 : 404;
+        res.writeHead(status, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
+      });
+      return;
+    }
     if (req.method === 'POST' && pathname === '/esp32/ota') {
       (async () => {
         const body = await readJsonBody(req);
@@ -3108,7 +3160,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const includeWeatherOutlook = surfaceIdentity?.capabilities.includes('weather.snapshot.read') === true;
           const feedGlance = pocketReader ? projectPortableReaderGlance(glance, includeWeatherOutlook) : glance;
           const feed = buildCardFeed(sessions as unknown as SessionInfo[], now,
-            pocketReader ? pocketReaderModules : pocketCardModules, {
+            [...(pocketReader ? pocketReaderModules : pocketCardModules), ...(dotHost ? [dotResultModule(dotHost.reports)] : [])], {
             glance: feedGlance,
             echoSig: parsedUrl.searchParams.get('sig') ?? undefined,
             includeSessions: !pocketReader,
@@ -3360,6 +3412,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.end(JSON.stringify({ received: true, background: true }));
           return;
         }
+        // A Claude Code background-job spare's startup SessionStart is a pool
+        // process warming up, not a conversation: no row, no timeline, no run.
+        const claudeBgRole = await claudeBackgroundRoleForHook(
+          eventName, json, passiveSessionObserver.processes(), collectProcessInfo,
+        );
+        if (isClaudeSpareHook(json, claudeBgRole)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true, background: true }));
+          return;
+        }
         // A headless `codex exec` launched by another observed session is
         // that session's child, not a session: its hooks drive the parent's
         // subagent census (through the registry's lifecycle) and nothing
@@ -3390,6 +3452,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const earlyHookCwd = (typeof json.cwd === 'string' ? json.cwd
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
         const earlyHookProject = hookPayloadProjectName(json, earlyHookCwd);
+        if (claudeBackgroundTasks.note(eventName, json)) core.maybeBroadcastSessionsList();
         const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
@@ -3701,6 +3764,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // stop hook won't spawn a phantom run, and a late `session_start`
             // arriving after a lazy open won't double-open (the run already
             // exists → skip).
+            // A window whose conversation moved to a background job never
+            // posts SessionEnd; the job's start is that identity's close (the
+            // observer hides the parked row from the session file's
+            // `parkedJobId`). Finished, not abandoned — the reaper would say so.
+            // Only on the window's own record: a fork alone may leave the
+            // original working, and closing that run would drop its turn.
+            const parkedSid = parkedClaudeSessionId(json, claudeBgRole);
+            if (parkedSid && apme.collector.getRunId(parkedSid) && isParkedClaudeSession(parkedSid) === true) {
+              apme.collector.ingestHook(parkedSid, 'session_end', { session_id: parkedSid, reason: 'moved_to_background' });
+              apme.collector.closeRun(parkedSid);
+            }
             if (!apme.collector.getRunId(hookSid)
                 && (boundary === 'session_start' || boundary === 'user_prompt_submit')) {
               apme.collector.openRun({
@@ -4365,6 +4439,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     await listenOnce(httpServer, port, bindHost);
   }
 
+  let dotConfigured = false;
+  try { dotConfigured = readDotConfiguration(getDataDir())?.enabled === true; } catch { /* Unknown configuration cannot assert presence. */ }
+
+  dotHost = await startConfiguredDotHost(getDataDir(), posture.loopbackOnly).catch(() => {
+    log("[agentdeck] Dot HTTPS startup failed; check private configuration and certificate. LAN daemon remains available.");
+    return undefined;
+  });
   log(describeDaemonPosture(posture, port));
   if (preferred.source === 'settings' || preferred.source === 'env') {
     // A persisted or environmental port is invisible in the command line that
@@ -4784,6 +4865,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     return modules;
   };
   core.setModuleHealthProvider(moduleHealthProvider);
+  core.setDotDeckProvider(() => { const dot = dotHost?.deckSnapshot() ?? (dotConfigured
+    ? { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null } : null);
+    return dot ? dotSurfaceSnapshot(dot, readDotAppearance(getDataDir()), dot.relation ?? null) : null;
+  });
 
   // iDotMatrix BLE is now driven by IDotMatrixModule (registered in
   // createDefaultModules): the module owns spawning the Python sync client,
@@ -5405,7 +5490,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id)
         ? s.waitingOn : ciWaits.snapshot(rawSessionId(s.id), now);
       const ciLabel = !s.state?.startsWith('awaiting') ? ciWaitLabel(waitingOn) : null;
-      const withCensus = { ...withSubagents, ...(coord ? { coordination: coord } : {}),
+      const withBackground = s.id.startsWith('observed:claude:')
+        ? claudeBackgroundTasks.project(rawSessionId(s.id), withSubagents) : withSubagents;
+      const withCensus = { ...withBackground, ...(coord ? { coordination: coord } : {}),
         ...(waitingOn !== undefined ? { waitingOn } : {}), ...(ciLabel ? { activity: ciLabel } : {}) };
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
       const sec = Math.round((now - Date.parse(withCensus.startedAt)) / 1000);
@@ -7661,6 +7748,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== Shutdown =====
   core.onShutdown(async () => {
+    await dotHost?.stop();
     ciPollingStopped = true;
     clearInterval(coordinationTimer);
     drainDaemonSockets();

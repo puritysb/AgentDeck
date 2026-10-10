@@ -29,9 +29,12 @@ struct AquariumPreview: View {
 struct LivingAquariumScene: View {
     var viewingMode = false
     var terrariumState = TerrariumState()
+    var dotSnapshot: DotSurfaceSnapshot?
     var onCreatureTapped: ((String) -> Void)?
     var onBackgroundTapped: (() -> Void)?
     @State private var residents = AquariumResidents()
+    @State private var dot = DotAquariumResident()
+    @State private var showDot = false
     @State private var cameraRig = AquariumCameraRig()
     @State private var cancelUpdate: (() -> Void)?
     @State private var visible = false
@@ -50,9 +53,11 @@ struct LivingAquariumScene: View {
                     camera.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
                     content.add(camera)
+                    content.add(dot.root)
                     cameraRig.camera = camera
                     residents.camera = camera
-                    cameraRig.viewing = viewingMode
+                    dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+                cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     let background = Entity()
                     background.name = "aquarium-background"
@@ -89,8 +94,10 @@ struct LivingAquariumScene: View {
                         residents.loadCiCompanion(loaded.ciCompanion)
                         content.add(residents.root)
                         residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
+                        let stepCompanion = companionStepper()
                         let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
                             residents?.step(event.deltaTime)
+                            stepCompanion(event.deltaTime)
                             cameraRig?.step(event.deltaTime)
                         }
                         cancelUpdate = { subscription.cancel() }
@@ -98,13 +105,16 @@ struct LivingAquariumScene: View {
                         assets.reportSceneFailure(error, templateCount: residents.templateCount)
                     }
                 } update: { _ in
-                    cameraRig.viewing = viewingMode
+                    dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+                cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     residents.labelsVisible = !viewingMode
+                    dot.labelsVisible = !viewingMode
                     cameraRig.camera?.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
                 }
                 .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
+                    if DotAquariumResident.contains(value.entity) { showDot = true; return }
                     if let id = AquariumResidents.sessionID(for: value.entity) { onCreatureTapped?(id) }
                     else if value.entity.name == "aquarium-background" { onBackgroundTapped?() }
                 })
@@ -133,9 +143,13 @@ struct LivingAquariumScene: View {
                     .allowsHitTesting(false)
             }
         }
-        // The async loader captures the initial environment. Reconcile playback
-        // in the refreshed view so a background → active transition during load
-        // cannot leave the newly-created controller paused forever.
+        .sheet(isPresented: $showDot) {
+            VStack {
+                HStack { Text("Dot requests and relationships").font(.headline); Spacer(); Button("Done") { showDot = false } }
+                if let dotSnapshot { DotSurfaceView(snapshot: dotSnapshot) }
+            }.padding().frame(width: 580, height: 650)
+        }
+        .onChange(of: dotSnapshot?.appearance?.id) { _, _ in dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000)) }
         .onAppear { visible = true; updatePlayback() }
         .onChange(of: controllers.count) { _, _ in updatePlayback() }
         .onChange(of: reduceMotion) { _, _ in updatePlayback() }
@@ -165,13 +179,20 @@ struct LivingAquariumScene: View {
         for child in entity.children { applyWaterMaterial(to: child) }
     }
 
+    private func companionStepper() -> (Double) -> Void {
+        return { [weak dot] in dot?.step($0) }
+    }
+
     private func updatePlayback() {
         let playing = visible && !reduceMotion && scenePhase == .active
         residents.animate = playing
+        dot.animate = playing
         // Keep expiry checks alive on a retained visible scene even under Reduce Motion.
         if visible && scenePhase == .active, cancelUpdate == nil, let scene = residents.root.scene {
+            let stepCompanion = companionStepper()
             let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
                 residents?.step(event.deltaTime)
+                            stepCompanion(event.deltaTime)
                 cameraRig?.step(event.deltaTime)
             }
             cancelUpdate = { subscription.cancel() }

@@ -235,6 +235,9 @@ export class BridgeCore {
   private sessionsEnricher?: (sessions: import('./session-aggregator.js').EnrichedSession[]) => import('./session-aggregator.js').EnrichedSession[];
 
   /** Optional callback to expose daemon-owned device/module health on state_update. */
+  private dotDeckProvider?: () => import('@agentdeck/shared').DotDeckSnapshot | null;
+  setDotDeckProvider(provider: () => import('@agentdeck/shared').DotDeckSnapshot | null): void { this.dotDeckProvider = provider; }
+
   private moduleHealthProvider?: () => Record<string, unknown>;
 
   /** External client count provider (e.g., ESP32 serial connections) */
@@ -920,7 +923,7 @@ export class BridgeCore {
   /** Broadcast enriched sessions list (debounced 2s from state_changed) */
   async broadcastSessionsList(): Promise<void> {
     const sessions = await this.buildSessionsSnapshot();
-    const event = { type: 'sessions_list', sessions } as BridgeEvent;
+    const event = { type: 'sessions_list', sessions, ...(this.dotDeckProvider ? { dot: this.dotDeckProvider() } : {}) } as BridgeEvent;
     // Cache for the serial heartbeat re-sync (like display_state): a board that
     // reconnects across a daemon handoff during a quiet window otherwise sits
     // on an empty roster until the next unrelated session change broadcasts.
@@ -1077,7 +1080,7 @@ export class BridgeCore {
 
     // Sessions list
     this.buildSessionsSnapshot().then((sessions) => {
-      this.wsServer.sendTo(ws, { type: 'sessions_list', sessions } as BridgeEvent);
+      this.wsServer.sendTo(ws, { type: 'sessions_list', sessions, ...(this.dotDeckProvider ? { dot: this.dotDeckProvider() } : {}) } as BridgeEvent);
     }).catch(() => {});
 
     // Extra events from caller

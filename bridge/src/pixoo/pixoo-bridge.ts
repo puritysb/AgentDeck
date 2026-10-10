@@ -1,10 +1,21 @@
+import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
  *
- * Active states advance through moving single frames every 2.5s. Multi-frame
- * GIF uploads are intentionally disabled: the supported LAN API accepts them,
- * but tested Pixoo64 firmware loses both HTTP and ICMP after such requests.
- * State latency is controlled separately from the motion cadence.
+ * Active states advance through moving single frames every 2.5s by default.
+ * `animation: "tide"` is the Pixoo-native scene (pixoo-tide.ts): one closed 6-frame
+ * loop the device plays itself, uploaded only when something visible changed and
+ * otherwise verified with two tiny queries instead of re-uploaded, because every
+ * upload makes the panel show its loading hourglass.
+ *
+ * A device-side looping animation is OPT-IN per device (`animation: "loop"`):
+ * the 2026-06/07 multi-frame failures (HTTP and ICMP loss right after the
+ * request) were measured with every frame concatenated into one oversized
+ * `PicData`; the loop path now uses the documented one-frame-per-request
+ * upload (pixoo-client `buildSendHttpGifCommands`), but it has not been
+ * re-validated on hardware, so it stays off unless the owner enables it, and
+ * a failed loop upload drops that device back to single frames for a
+ * cooldown. State latency is controlled separately from the motion cadence.
  */
 
 import { MatrixExpression, type MatrixBroadcast } from '@agentdeck/shared';
@@ -18,8 +29,9 @@ import {
   type SubagentActivityBySession,
   type TimelineEntry,
 } from '@agentdeck/shared';
-import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer } from './pixoo-client.js';
-import { renderFrame, renderDisconnectedFrame, formatResetDetailed } from './pixoo-renderer.js';
+import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer, checkDeviceContent } from './pixoo-client.js';
+import { renderFrame, renderDisconnectedFrame, formatResetDetailed, renderPixooLoop, PIXOO_LOOP } from './pixoo-renderer.js';
+import { renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
 import { debug } from '../logger.js';
 
 const TAG = 'Pixoo';
@@ -30,6 +42,8 @@ export interface PixooDevice {
   ip: string;
   name?: string;
   brightness?: number; // 0-100, default 100
+  /** Motion. Default `single-frame`; `loop` bakes the aquarium into a device-side loop; `tide` is the Pixoo-native scene (always a loop). */
+  animation?: 'single-frame' | 'loop' | 'tide';
 }
 
 // ===== Internal State =====
@@ -40,12 +54,16 @@ let lastPushTime = 0;
 let pushing = false; // guard against overlapping pushes
 let lastStateHash = '';
 const deviceLastPushTime = new Map<string, number>();
+const deviceLoopCooldownUntil = new Map<string, number>();
+const deviceTideUploaded = new Map<string, TideUploadRecord>();
+const deviceTideRetryAt = new Map<string, number>();
 
 // Cached latest events
 let lastStateEvent: StateUpdateEvent | null = null;
 let lastUsageEvent: UsageEvent | null = null;
 const matrixExpression = new MatrixExpression();
 let lastSessions: SessionInfo[] | null = null;
+let lastDot: DotDeckSnapshot | null = null;
 let lastTimelineEntries: TimelineEntry[] = [];
 
 // Display sleep state — when Mac display is off, dim Pixoo and pause stream
@@ -62,17 +80,40 @@ export const PIXOO_PUSH_POLICY = {
   stateChangeFloorMs: 1_000,
   idleRefreshMs: 10_000,
   activeFrameRefreshMs: 2_500,
+  /** Loop mode: the device plays the loop between uploads, so re-bake rarely. */
+  loopRefreshMs: 10_000,
+  /** Loop mode: one upload is several requests — coalesce state bursts harder. */
+  loopStateChangeFloorMs: 3_000,
+  /** After a failed loop upload the device runs single frames for this long. */
+  loopFailureCooldownMs: 15 * 60_000,
 } as const;
-export type PixooPushMode = 'single-frame' | 'idle';
+export type PixooPushMode = 'single-frame' | 'loop' | 'idle' | 'tide';
 
-export function resolvePixooPushMode(active: boolean): PixooPushMode {
-  return active ? 'single-frame' : 'idle';
+export function resolvePixooPushMode(active: boolean, loopEnabled = false, tideEnabled = false): PixooPushMode {
+  // Tide is the whole scene, idle or busy: the loop plays on the device for free.
+  if (tideEnabled) return 'tide';
+  if (!active) return 'idle';
+  return loopEnabled ? 'loop' : 'single-frame';
 }
 
 export function pixooPushIntervalMs(stateChanged: boolean, mode: PixooPushMode): number {
+  // 'tide' never reaches here: its cadence is `tideDecision` (pixoo-tide.ts).
+  if (mode === 'loop') {
+    return stateChanged ? PIXOO_PUSH_POLICY.loopStateChangeFloorMs : PIXOO_PUSH_POLICY.loopRefreshMs;
+  }
   if (stateChanged) return PIXOO_PUSH_POLICY.stateChangeFloorMs;
   if (mode === 'single-frame') return PIXOO_PUSH_POLICY.activeFrameRefreshMs;
   return PIXOO_PUSH_POLICY.idleRefreshMs;
+}
+
+/** Whether `dev` may use the baked loop right now (opt-in and not cooling down). */
+export function pixooLoopEnabled(dev: PixooDevice, now: number, cooldownUntil = 0): boolean {
+  return dev.animation === 'loop' && now >= cooldownUntil;
+}
+
+/** Whether `dev` runs the tide scene. A failed upload never changes this: tide backs off its own uploads (`deviceTideRetryAt`) instead of falling back to single frames, because a one-frame upload after a multi-frame one tangled the panel's picture (2026-10-08). */
+export function pixooTideEnabled(dev: PixooDevice): boolean {
+  return dev.animation === 'tide';
 }
 const CHANNEL_REASSERT_MS = 30_000;     // Re-assert custom channel every 30s (fast recovery after reboots)
 const DEFAULT_BRIGHTNESS = 100;
@@ -132,7 +173,9 @@ export function startPixooBridge(pixooDevices?: PixooDevice[]): void {
   if (streamTimer) clearInterval(streamTimer);
   streamTimer = setInterval(doStateCheckAndPush, STATE_CHECK_INTERVAL_MS);
 
-  debug(TAG, 'Bridge started (safe 2.5s active single-frame motion)');
+  const loopDevices = devices.filter(d => d.animation === 'loop').length;
+  const tideDevices = devices.filter(d => d.animation === 'tide').length;
+  debug(TAG, `Bridge started (2.5s active single-frame motion; ${loopDevices} device(s) opted into the baked loop, ${tideDevices} into tide)`);
 }
 
 /** The daemon owns this subscription independently of the optional Pixoo LAN
@@ -154,6 +197,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
       break;
     case 'sessions_list':
       lastSessions = (event as SessionsListEvent).sessions;
+      lastDot = (event as SessionsListEvent).dot ?? null;
       break;
     case 'timeline_event': {
       const entry = (event as { entry?: TimelineEntry }).entry;
@@ -180,7 +224,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
     case 'connection':
       if ((event as any).status === 'disconnected') {
         lastStateEvent = null;
-        lastSessions = null;
+        lastSessions = null; lastDot = null;
         lastUsageEvent = null;
         lastTimelineEntries = [];
       }
@@ -274,7 +318,7 @@ export async function stopPixooBridge(): Promise<void> {
   devices = [];
   lastStateEvent = null;
   lastUsageEvent = null;
-  lastSessions = null;
+  lastSessions = null; lastDot = null;
   matrixExpression.reset();
   lastTimelineEntries = [];
   displayDimmed = false;
@@ -282,6 +326,9 @@ export async function stopPixooBridge(): Promise<void> {
   broadcastFn = null;
   frameListeners = [];
   deviceLastPushTime.clear();
+  deviceLoopCooldownUntil.clear();
+  deviceTideUploaded.clear();
+  deviceTideRetryAt.clear();
   debug(TAG, 'Bridge stopped');
 }
 
@@ -337,7 +384,11 @@ export function getPixooDeviceDetails(): Array<{
       failures: backoff.failures,
       nextProbeMs: backoff.nextProbeMs,
       lastPushAgo: lastPushTime > 0 ? Date.now() - lastPushTime : -1,
-      animationMode: resolvePixooPushMode(isAnimationActive()),
+      animationMode: resolvePixooPushMode(
+        isAnimationActive(),
+        pixooLoopEnabled(dev, Date.now(), deviceLoopCooldownUntil.get(dev.ip)),
+        pixooTideEnabled(dev),
+      ),
     };
   });
 }
@@ -400,10 +451,21 @@ function doStateCheckAndPush(): void {
   const stateChanged = currentHash !== lastStateHash;
   const now = Date.now();
   const active = isAnimationActive();
+  const tideSig = devices.some(pixooTideEnabled)
+    ? (() => { const signature = tideSignature(lastStateEvent, lastUsageEvent, lastSessions);
+      return { ...signature, hud: signature.hud + "|" + (lastDot?.configured ? dotDeckPresentation(lastDot, now).label + "|" + (lastDot.appearance?.id ?? "") : "") }; })() : null;
   const due = devices.flatMap(dev => {
-    const mode = resolvePixooPushMode(active);
+    if (tideSig && pixooTideEnabled(dev)) {
+      const decision = tideDecision(
+        tideSig, deviceTideUploaded.get(dev.ip),
+        deviceLastPushTime.get(dev.ip) ?? 0, deviceTideRetryAt.get(dev.ip) ?? 0, now,
+      );
+      return decision === 'wait' ? [] : [{ dev, mode: 'tide' as PixooPushMode, decision }];
+    }
+    const cooldown = deviceLoopCooldownUntil.get(dev.ip);
+    const mode = resolvePixooPushMode(active, pixooLoopEnabled(dev, now, cooldown), false);
     const elapsed = now - (deviceLastPushTime.get(dev.ip) ?? 0);
-    return elapsed >= pixooPushIntervalMs(stateChanged, mode) ? [{ dev, mode }] : [];
+    return elapsed >= pixooPushIntervalMs(stateChanged, mode) ? [{ dev, mode, decision: 'upload' as const }] : [];
   });
   if (due.length === 0) return;
 
@@ -414,30 +476,50 @@ function doStateCheckAndPush(): void {
     const ts = new Date().toISOString().slice(11, 19);
     debug('Pixoo', `${ts} pushing to ${due.length} dev(s) (changed=${stateChanged}, active=${active})`);
 
-    const promises = due.map(({ dev, mode }) => {
-      const count = 1;
-      const frames = Array.from({ length: count }, (_, i) =>
-        renderFrame(
-          lastStateEvent,
-          lastUsageEvent,
-          lastSessions,
-          now + i * 180,
-          64,
-          'standard',
-          currentSubagentActivity(now + i * 180),
-        ));
+    const promises = due.map(async ({ dev, mode, decision }) => {
       // Rate-limit attempts as well as successes. This prevents a failed
       // endpoint from being retried on every 500 ms scheduler tick.
       deviceLastPushTime.set(dev.ip, Date.now());
-      return pushFrames(dev.ip, frames, count > 1 ? 180 : 1000).then(ok => {
+      try {
+        if (mode === 'tide' && decision === 'verify') {
+          // Nothing worth showing changed: do not re-upload (the panel shows a
+          // loading hourglass for every upload). Only a device that no longer
+          // shows our loop gets it again; `unknown` retains and asks again later.
+          const content = await checkDeviceContent(dev.ip);
+          debug('Pixoo', `${ts}   → ${dev.ip}: verify ${content} (tide)`);
+          if (content !== 'stale') return;
+        }
+        const frames = mode === 'tide'
+          ? renderTideLoop(lastStateEvent, lastUsageEvent, lastSessions, now)
+          : mode === 'loop'
+            ? renderPixooLoop(lastStateEvent, lastUsageEvent, lastSessions, now, currentSubagentActivity(now))
+            : [renderFrame(
+              lastStateEvent,
+              lastUsageEvent,
+              lastSessions,
+              now,
+              64,
+              'standard',
+              currentSubagentActivity(now),
+            )];
+        for (const frame of frames) paintDotPixels(frame, 64, lastDot, now);
+        const count = frames.length;
+        const speed = mode === 'tide' ? TIDE_LOOP.picSpeedMs : count > 1 ? PIXOO_LOOP.picSpeedMs : 1000;
+        const ok = await pushFrames(dev.ip, frames, speed);
         if (ok) {
           deviceLastPushTime.set(dev.ip, Date.now());
           lastPushTime = Date.now();
+          if (mode === 'tide' && tideSig) deviceTideUploaded.set(dev.ip, { sig: tideSig, at: Date.now() });
+        } else if (mode === 'tide') {
+          deviceTideRetryAt.set(dev.ip, Date.now() + TIDE_POLICY.retryMs);
+        } else if (mode === 'loop') {
+          // Never retry a failing loop: run single frames for a cooldown.
+          deviceLoopCooldownUntil.set(dev.ip, Date.now() + PIXOO_PUSH_POLICY.loopFailureCooldownMs);
         }
         debug('Pixoo', `${ts}   → ${dev.ip}: ${ok ? 'OK' : 'FAIL'} (${mode}, ${count} frame)`);
-      }).catch((err: any) => {
+      } catch (err: any) {
         debug('Pixoo', `${ts}   → ${dev.ip}: ERROR ${err?.message}`);
-      });
+      }
     });
 
     Promise.all(promises).finally(() => { pushing = false; });
@@ -453,31 +535,24 @@ function doStateCheckAndPush(): void {
  */
 export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array {
   if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
-  return renderFrame(
+  const now = Date.now();
+  const frame = renderFrame(
     lastStateEvent,
     lastUsageEvent,
     lastSessions,
-    undefined,
+    now,
     size,
     layout,
-    currentSubagentActivity(),
+    currentSubagentActivity(now),
   );
+  return paintDotPixels(frame, 64, lastDot, now);
 }
 
 /**
- * Get the last calculated frame.
+ * Render the current cached state (not a photograph or last device upload).
  */
 export function getLastFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array | null {
-  if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
-  return renderFrame(
-    lastStateEvent,
-    lastUsageEvent,
-    lastSessions,
-    undefined,
-    size,
-    layout,
-    currentSubagentActivity(),
-  );
+  return renderPreviewFrame(size, layout);
 }
 
 /** Notify all SSE frame listeners. */
@@ -493,15 +568,7 @@ function startPreviewTimer(): void {
   const intervalMs = Math.round(1000 / previewFps);
   previewTimer = setInterval(() => {
     if (frameListeners.length === 0) { stopPreviewTimer(); return; }
-    const frame = renderFrame(
-      lastStateEvent,
-      lastUsageEvent,
-      lastSessions,
-      undefined,
-      64,
-      'standard',
-      currentSubagentActivity(),
-    );
+    const frame = renderPreviewFrame(64);
     notifyFrameListeners(frame);
   }, intervalMs);
 }

@@ -56,7 +56,7 @@ function envOptOut(): boolean {
   return process.env.AGENTDECK_NO_OPENCODE_HOOKS === '1';
 }
 
-const PLUGIN_VERSION = 2;
+const PLUGIN_VERSION = 3;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -142,6 +142,10 @@ function post(event, body) {
 // while the session is idle. One loop per observed session; stops on
 // opencode_stop-less session death via the poll's own error backoff.
 const steerLoops = new Set();
+// permissionID -> the child session that asked it. A Task-tool child's
+// permission is surfaced on its parent's row (a real wait the user must see),
+// but OpenCode resolves it against the session that asked.
+const permissionSession = new Map();
 
 function startSteerLoop(client, sessionID) {
   if (!client || steerLoops.has(sessionID)) return;
@@ -177,7 +181,7 @@ function startSteerLoop(client, sessionID) {
               // "once" (not "always") keeps device-approval one-shot.
               if (client.postSessionIdPermissionsPermissionId) {
                 await client.postSessionIdPermissionsPermissionId({
-                  path: { id: sessionID, permissionID: cmd.permissionId },
+                  path: { id: permissionSession.get(cmd.permissionId) || sessionID, permissionID: cmd.permissionId },
                   body: { response: cmd.response === "allow" ? "once" : "reject" },
                 });
               }
@@ -211,6 +215,146 @@ export const AgentDeckObserver = async ({ directory, client }) => {
   const responses = new Map();   // sessionID -> latest assistant text
   const startedAt = new Map();   // sessionID -> turn start ms
   const toolPhase = new Map();   // tool callID -> "start" | "end"
+  const parentOf = new Map();    // sessionID -> parent sessionID, or null (top level)
+  const childStarted = new Set();// child sessionIDs whose opencode_subagent_start was posted
+  const childStopped = new Set();// child sessionIDs whose opencode_subagent_stop was posted
+
+  function noteSessionInfo(info) {
+    if (!info || typeof info.id !== "string" || !info.id) return;
+    parentOf.set(info.id, typeof info.parentID === "string" && info.parentID ? info.parentID : null);
+    if (parentOf.size > 512) parentOf.delete(parentOf.keys().next().value);
+  }
+
+  // A Task-tool child session (OpenCode sets parentID) is its parent's
+  // subagent, not a session the user opened: announcing it put a second row
+  // on every deck for the length of the task. session.created normally names
+  // the parent first; otherwise ask the server once, bounded. An unanswered
+  // lookup is unknown and keeps the old behaviour (a row) — it never hides one.
+  // OpenCode calls plugin event handlers WITHOUT awaiting them, so every
+  // event of an uncached session would race its own lookup and resume out of
+  // order (a prompt landing after its own stop opened a phantom turn). One
+  // in-flight promise per session makes them all resume in arrival order.
+  const parentLookups = new Map(); // sessionID -> Promise<parent|null>
+  function lookupParent(sessionID) {
+    if (parentOf.has(sessionID)) return Promise.resolve(parentOf.get(sessionID));
+    const pending = parentLookups.get(sessionID);
+    if (pending) return pending;
+    const lookup = (async () => {
+      let parent = null;
+      try {
+        if (client && client.session && client.session.get) {
+          const res = await Promise.race([
+            client.session.get({ path: { id: sessionID } }),
+            new Promise((r) => setTimeout(() => r(null), 1000)),
+          ]);
+          const info = res && (res.data || res);
+          if (info && typeof info.parentID === "string" && info.parentID) parent = info.parentID;
+        }
+      } catch { /* unknown → top level */ }
+      if (!parentOf.has(sessionID)) parentOf.set(sessionID, parent);
+      parentLookups.delete(sessionID);
+      return parentOf.get(sessionID);
+    })();
+    parentLookups.set(sessionID, lookup);
+    return lookup;
+  }
+
+  /** The top-level session a (possibly nested) child belongs to, or null. */
+  async function rootSession(sessionID) {
+    if (!sessionID) return null;
+    let root = null;
+    let cur = sessionID;
+    for (let hop = 0; hop < 8; hop++) {
+      const parent = await lookupParent(cur);
+      if (!parent) break;
+      root = parent;
+      cur = parent;
+    }
+    return root;
+  }
+
+  function eventSessionID(type, props) {
+    if (type === "message.updated") return (props.info || {}).sessionID;
+    if (type === "message.part.updated") return (props.part || {}).sessionID;
+    if (type === "permission.asked" || type === "permission.updated" || type === "permission.replied") {
+      const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
+      return perm.sessionID;
+    }
+    return props.sessionID;
+  }
+
+  /** Child-session events: lifecycle into the parent's subagent census, a
+   *  genuine permission wait onto the parent's row, everything else dropped. */
+  function childEvent(type, props, sessionID, parent) {
+    // After its stop, a child stays finished: OpenCode re-emits
+    // message.updated once a turn settles, and treating that as a new start
+    // left the parent's census showing a running child for hours. Only a new
+    // user message (the Task tool resuming the child) starts it again.
+    if (childStopped.has(sessionID)) {
+      const info = props.info || {};
+      const resumed = type === "message.updated" && info.role === "user" && info.id && !userMsgs.has(info.id);
+      if (!resumed) return;
+      childStopped.delete(sessionID);
+    }
+    if (!childStarted.has(sessionID)) {
+      childStarted.add(sessionID);
+      if (childStarted.size > 512) childStarted.delete(childStarted.values().next().value);
+      const info = props.info || {};
+      const label = typeof info.agent === "string" && info.agent ? info.agent
+        : (typeof info.mode === "string" && info.mode ? info.mode : "Subagent");
+      post("opencode_subagent_start", { session_id: parent, agent_id: sessionID, agent_type: label, cwd });
+    }
+    if (type === "message.part.updated") {
+      const part = props.part || {};
+      if (part.type === "text" && typeof part.text === "string" && !userMsgs.has(part.messageID)) {
+        responses.set(sessionID, part.text);
+      }
+    } else if (type === "message.updated") {
+      const info = props.info || {};
+      if (info.role === "user" && info.id) userMsgs.set(info.id, sessionID);
+    } else if (type === "permission.asked" || type === "permission.updated") {
+      const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
+      if (perm.id) {
+        permissionSession.set(perm.id, sessionID);
+        if (permissionSession.size > 256) permissionSession.delete(permissionSession.keys().next().value);
+        post("opencode_permission_asked", {
+          session_id: parent,
+          permission_id: perm.id,
+          title: typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested"),
+          cwd,
+        });
+      }
+    } else if (type === "permission.replied") {
+      const perm = (props.permission && typeof props.permission === "object") ? props.permission : (props.info || props);
+      const id = perm.requestID || perm.permissionID || perm.id || "";
+      permissionSession.delete(id);
+      post("opencode_permission_replied", { session_id: parent, permission_id: id, cwd });
+    } else if (type === "question.asked") {
+      // Display-only on every surface, so the parent's row can show it.
+      if (props.id) {
+        post("opencode_question_asked", {
+          session_id: parent, question_id: props.id,
+          title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
+          cwd,
+        });
+      }
+    } else if (type === "question.replied" || type === "question.rejected") {
+      if (props.requestID) {
+        post(type === "question.replied" ? "opencode_question_replied" : "opencode_question_rejected", {
+          session_id: parent, question_id: props.requestID, cwd,
+        });
+      }
+    } else if (type === "session.idle") {
+      childStarted.delete(sessionID);
+      childStopped.add(sessionID);
+      if (childStopped.size > 512) childStopped.delete(childStopped.values().next().value);
+      post("opencode_subagent_stop", {
+        session_id: parent, agent_id: sessionID,
+        last_assistant_message: responses.get(sessionID) || "", cwd,
+      });
+      responses.delete(sessionID);
+    }
+  }
 
   function announce(sessionID) {
     if (!sessionID || announced.has(sessionID)) return;
@@ -236,6 +380,16 @@ export const AgentDeckObserver = async ({ directory, client }) => {
       try {
         const type = event.type;
         const props = event.properties || {};
+        if (type === "session.created" || type === "session.updated") {
+          noteSessionInfo(props.info);
+          return;
+        }
+        const eventSid = eventSessionID(type, props);
+        const parent = eventSid ? await rootSession(eventSid) : null;
+        if (parent) {
+          childEvent(type, props, eventSid, parent);
+          return;
+        }
         if (type === "message.updated") {
           const info = props.info || {};
           const sessionID = info.sessionID;

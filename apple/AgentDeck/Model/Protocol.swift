@@ -716,6 +716,9 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// because a field that vanishes when the last child exits latches its last
     /// count forever under retain-on-absent merging.
     var subagents: SubagentSummary?
+    /// Claude background task snapshot; explicit zero clears, nil is unknown.
+    /// Includes shell jobs and is not an additional child-agent count.
+    var backgroundTaskCount: Int?
     /// Cross-session coordination census — see `CoordinationSummary`. Same
     /// emission rule as `subagents`: zeros once observed, absent only when the
     /// session has never had a relation.
@@ -951,6 +954,7 @@ struct DisplayStateEvent: Codable, Sendable {
 struct SessionsListEvent: Codable, Sendable {
     let type: String  // "sessions_list"
     let sessions: [SessionInfo]
+    var dot: DotSurfaceSnapshot? = nil
 }
 
 struct PromptOptionsEvent: Codable, Sendable {

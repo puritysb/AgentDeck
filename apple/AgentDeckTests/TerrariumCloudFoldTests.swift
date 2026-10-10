@@ -4,12 +4,142 @@ import RealityKit
 import SwiftUI
 @testable import AgentDeck
 
+@MainActor
+private final class SnapshotCompletion {
+    private var continuation: CheckedContinuation<NSImage?, Never>?
+    init(_ continuation: CheckedContinuation<NSImage?, Never>) { self.continuation = continuation }
+    func finish(_ image: NSImage?) {
+        let pending = continuation
+        continuation = nil
+        pending?.resume(returning: image)
+    }
+}
+
 /// Verify the render-time Codex creature fold introduced to suppress phantom
 /// Cloud creatures when Claude Code's rescue/stop-gate workflow spawns a fresh
 /// codex thread per turn. Without folding the same workspace lights up 4-5
 /// simultaneous Cloud sprites; the fold collapses them to one creature per
 /// `(agentType=codex-cli, projectName)` group.
 final class TerrariumCloudFoldTests: XCTestCase {
+
+    func testBackgroundSnapshotDecodesProjectsAndClearsWithoutInventingAgents() throws {
+        let data = Data(#"{"id":"observed:claude:bg","port":0,"projectName":"Render","agentType":"claude-code","alive":true,"state":"processing","backgroundTaskCount":7}"#.utf8)
+        var row = try JSONDecoder().decode(SessionInfo.self, from: data)
+        var dashboard = DashboardState()
+        dashboard.siblingSessions = [row]
+        let projected = AquariumResident.project(dashboard.toTerrariumState())
+        XCTAssertEqual(projected.count, 1)
+        XCTAssertEqual(projected.first?.backgroundTasks, 7)
+        XCTAssertEqual(projected.first?.helpers, 0)
+        XCTAssertEqual(projected.first?.activity, .working)
+        for state in ["awaiting_permission", "awaiting_option", "idle", "disconnected"] {
+            row.state = state
+            dashboard.siblingSessions = [row]
+            XCTAssertTrue(dashboard.toTerrariumState().backgroundTaskCounts.isEmpty)
+        }
+        row.state = "processing"
+        for count: Int? in [0, nil, -1] {
+            row.backgroundTaskCount = count
+            dashboard.siblingSessions = [row]
+            XCTAssertTrue(dashboard.toTerrariumState().backgroundTaskCounts.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testBackgroundTilesMoveFreezeAndClearOnRealSceneReconciliation() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = ["claude": 12]
+        scene.sync(state, aspect: 1.6)
+        let resident = try XCTUnwrap(scene.residents["claude"])
+        let group = try XCTUnwrap(resident.findEntity(named: "background-work"))
+        XCTAssertTrue(group.isEnabled)
+        XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, false, "Background tiles replace the foreground bars")
+        XCTAssertEqual(group.children.count, 3, "Large task counts cannot allocate an unbounded effect")
+        // Keep a render of the actual production scene for visual review.
+        let view = ARView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = view
+        // Keep the capture window visible to avoid offscreen occlusion throttling.
+        window.setFrameOrigin(NSScreen.main?.visibleFrame.origin ?? .zero)
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+        view.environment.background = .color(NSColor(DesignTokens.Ink.s900))
+        let anchor = AnchorEntity(world: .zero)
+        anchor.addChild(scene.root)
+        let camera = PerspectiveCamera()
+        camera.camera.fieldOfViewInDegrees = 38
+        camera.look(at: resident.position + [0, 0.15, 0], from: resident.position + [0, 0.9, 4.5], relativeTo: nil)
+        anchor.addChild(camera)
+        let light = DirectionalLight()
+        light.light.intensity = 3000
+        light.look(at: resident.position, from: resident.position + [-2, 3, 4], relativeTo: nil)
+        anchor.addChild(light)
+        view.scene.addAnchor(anchor)
+        try await Task.sleep(for: .seconds(2))
+        let image: NSImage? = await withCheckedContinuation { continuation in
+            let completion = SnapshotCompletion(continuation)
+            let deadline = Task { @MainActor in
+                do { try await Task.sleep(for: .seconds(8)) } catch { return }
+                completion.finish(nil)
+            }
+            view.snapshot(saveToHDR: false) { image in
+                Task { @MainActor in
+                    deadline.cancel()
+                    completion.finish(image)
+                }
+            }
+        }
+        // Capture is review evidence, not the motion assertion below. Some macOS
+        // test hosts cannot supply a GPU snapshot; record that limitation explicitly.
+        let attachment = image.map { XCTAttachment(image: $0) }
+            ?? XCTAttachment(string: "RealityKit capture unavailable within 8 seconds. Native scene assertions continue; physical visual acceptance is not attested.")
+        attachment.name = image == nil ? "Background work - capture unavailable" : "Background work - native 3D"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let preview = TerrariumRenderer()
+        preview.animateCompanions = false
+        preview.update(dt: 0.016, state: state)
+        let canvasImage = ImageRenderer(content: Canvas { context, size in
+            preview.draw(context: &context, size: size, includeHabitat: false)
+        }.frame(width: 640, height: 480).background(DesignTokens.Ink.s900))
+        let canvasAttachment = XCTAttachment(image: try XCTUnwrap(canvasImage.nsImage))
+        canvasAttachment.name = "Background work - native Canvas"
+        canvasAttachment.lifetime = .keepAlways
+        add(canvasAttachment)
+        let tile = try XCTUnwrap(group.children.first)
+        let initial = tile.position
+        scene.step(0.05)
+        XCTAssertNotEqual(tile.position, initial)
+        scene.animate = false
+        let frozen = tile.position
+        scene.step(60)
+        XCTAssertEqual(tile.position, frozen)
+        state.backgroundTaskCounts["claude"] = 1
+        scene.sync(state, aspect: 1.6)
+        XCTAssertEqual(group.children.filter(\.isEnabled).count, 1)
+        XCTAssertEqual(tile.position, frozen, "Reduced Motion keeps the phase fixed even when counts change")
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .asking, homeX: 0.5, homeY: 0.5, scale: 1)]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(group.isEnabled, "Approval takes priority even with retained task metadata")
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = [:]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertFalse(group.isEnabled, "Completion clears without requiring an animation frame")
+        XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, true, "Foreground work keeps its own cue after background tasks end")
+        scene.sync(TerrariumState(), aspect: 1.6)
+        XCTAssertTrue(scene.residents.isEmpty)
+
+        let canvas = TerrariumRenderer()
+        canvas.update(dt: 0.05, state: state)
+        XCTAssertGreaterThan(canvas.backgroundOrbitPhase, 0)
+        canvas.animateCompanions = false
+        let phase = canvas.backgroundOrbitPhase
+        canvas.update(dt: 60, state: state)
+        XCTAssertEqual(canvas.backgroundOrbitPhase, phase)
+    }
 
     func testCrowdedForegroundKeepsFocusAndWaitingSessionsWithoutProjectMerging() {
         let items = (0..<48).map {

@@ -1,0 +1,26 @@
+{
+  "name": "@agentdeck/dot-relay",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22.x || 24.x || 26.x"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ipaddr.js": "2.5.0",
+    "jose": "6.2.12",
+    "standardwebhooks": "1.1.1",
+    "@agentdeck/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@types/node": "^25.9.2",
+    "typescript": "^6.0.3"
+  }
+}

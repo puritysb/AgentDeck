@@ -15,6 +15,7 @@
 #include "../../util/utf8.h"
 #include "../../util/usage_rows.h"
 #include "../ticker/usage_panel.h"
+#include "../strip_layout.h"
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -268,6 +269,7 @@ static void onLampClicked(lv_event_t*) {
     s_lastSig[0] = '\0';
 }
 static void onTargetClicked(lv_event_t*) { cycleTarget(); }
+static void onRotateClicked(lv_event_t*) { StripLayout::request(StripLayout::LANDSCAPE); }
 
 // ── widget builders ─────────────────────────────────────────────────────────
 
@@ -505,6 +507,17 @@ static void renderCamTab() {
     lv_obj_set_pos(hint, 6, 394);
 }
 
+// Layout switch: persisted, applied by a restart (StripLayout). Lives on the
+// USAGE tab — the only Pocket page with room for it, and away from the
+// SESSIONS cards where a stray tap would cost a reboot.
+static constexpr int ROTATE_ROW_H = 40;
+static void addRotateButton() {
+    lv_obj_t* btn = makeButton(s_content, POCKET_W - 12, 32, Theme::MidWater,
+                               LV_SYMBOL_LOOP " LANDSCAPE", &lv_font_montserrat_14,
+                               onRotateClicked, nullptr);
+    lv_obj_align(btn, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+}
+
 static void renderUsageTab() {
     lv_obj_set_layout(s_content, LV_LAYOUT_NONE);
     lv_obj_set_style_pad_all(s_content, 6, 0);
@@ -518,6 +531,7 @@ static void renderUsageTab() {
         lv_obj_t* l = makeLabel(s_content, &lv_font_montserrat_14, Theme::HUDDim,
                                 "Waiting for usage data...");
         lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
+        addRotateButton();
         return;
     }
     const UsagePanel::Fonts fonts{&lv_font_montserrat_12, &lv_font_montserrat_14, &lv_font_montserrat_16};
@@ -526,8 +540,10 @@ static void renderUsageTab() {
     int rows = 0;
     for (uint8_t i = 0; i < count; ++i) rows += groups[i].rowCount < 2 && groups[i].hasPlan() ? groups[i].rowCount + 1 : groups[i].rowCount ? groups[i].rowCount : 1;
     int h = rows * 66 + count * 26 + (count - 1) * 6;
-    const int maxH = CONTENT_H - 12;
+    // The last row is the layout switch, so the gauges stop above it.
+    const int maxH = CONTENT_H - 12 - ROTATE_ROW_H;
     UsagePanel::render(s_content, 0, 0, POCKET_W - 12, h > maxH ? maxH : h, groups, count, false, fonts);
+    addRotateButton();
 }
 
 namespace Pocket {
@@ -590,6 +606,8 @@ void create() {
     lv_screen_load(s_scr);
     s_lastSig[0] = '\0';
 }
+
+void notify(const char* text) { toast(text); }
 
 void nextTab() { s_tab = (uint8_t)((s_tab + 1) % TAB_COUNT); }
 void prevTab() { s_tab = (uint8_t)((s_tab + TAB_COUNT - 1) % TAB_COUNT); }

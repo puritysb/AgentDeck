@@ -1,3 +1,4 @@
+#include "dot_state.h"
 #pragma once
 
 #include <cstdint>
@@ -5,6 +6,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "config.h"
+#include "../util/host_clock.h"
 
 // ===== Agent state enums =====
 enum class AgentState : uint8_t {
@@ -170,6 +172,7 @@ constexpr uint8_t KNOB_SCRUB_CAP = 12;
 
 // ===== Main dashboard state =====
 struct DashboardState {
+    DotSurfaceState* dot = nullptr; // Protocol owns one fallible reusable heap object.
     // Connection
     bool wsConnected;
     char bridgeIp[16];
@@ -308,6 +311,9 @@ struct DashboardState {
 
     // Display
     bool hostDisplayOn;     // Mac display awake (from display_state event)
+    // Host-local wall clock from display_state.hostHm (util/host_clock.h).
+    // Trivial; reset() zero-fills it, then clear() marks it unknown.
+    HostClock::Clock hostClock;
     uint8_t userBrightness; // user-set brightness (restored when host wakes)
     // Host-pushed dim instruction (from the display_state event's `dim` object).
     // Defaults reproduce legacy full-off so an un-upgraded host (no `dim` field)
@@ -331,6 +337,7 @@ struct DashboardState {
         crayfishState = CrayfishState::DORMANT;
         tetraState = TetraState::HOVERING;
         hostDisplayOn = true;
+        hostClock.clear();
         userBrightness = 255;
         hostDimEnabled = true;
         hostDimMode = 0;     // off

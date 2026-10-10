@@ -2,8 +2,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MATRIX_RULES, MATRIX_POLICY, MATRIX_AGENTS, MATRIX_KINDS, UI } from '../shared/src/index.js';
-import { MATRIX_COLORS, MATRIX_LAYOUT, MATRIX_GLYPHS, renderMatrixBase, matrixDigit, rgb } from '../bridge/src/pixoo/matrix-art.js';
+import { MATRIX_RULES, MATRIX_POLICY, MATRIX_AGENTS, MATRIX_KINDS, MATRIX_FACES, UI } from '../shared/src/index.js';
+import { MATRIX_COLORS, MATRIX_LAYOUT, MATRIX_GLYPHS, renderMatrixBase, renderMatrixFace, matrixDigit, rgb } from '../bridge/src/pixoo/matrix-art.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export function encodeFrame(frame: Uint8Array): string {
   const packed: number[] = [];
@@ -16,8 +16,12 @@ export function encodeFrame(frame: Uint8Array): string {
 }
 export function swiftMatrixSource(): string {
   const frames: string[] = [];
-  for (const size of [11, 32] as const) for (const kind of MATRIX_KINDS) {
-    const glyphs = size === 11 ? ['neutral'] : kind === 'waiting' || kind === 'error' || kind === 'arrival' || kind === 'done' || kind === 'asked' || kind === 'reply'
+  // The 11×11 face is keyed by MatrixFace; the 32×32 world by MatrixKind.
+  for (const face of MATRIX_FACES) for (let frame = 0; frame < MATRIX_RULES.frames; frame++) {
+    frames.push(`        "11/${face}/neutral/${frame}": "${encodeFrame(renderMatrixFace(face, frame))}"`);
+  }
+  for (const size of [32] as const) for (const kind of MATRIX_KINDS) {
+    const glyphs = kind === 'waiting' || kind === 'error' || kind === 'arrival' || kind === 'done' || kind === 'asked' || kind === 'reply'
       ? MATRIX_GLYPHS : ['summary', 'summary-error'];
     for (const glyph of glyphs) for (let frame = 0; frame < MATRIX_RULES.frames; frame++) {
       frames.push(`        "${size}/${kind}/${glyph}/${frame}": "${encodeFrame(renderMatrixBase(size, kind, glyph, frame))}"`);
@@ -36,6 +40,9 @@ ${Object.entries(MATRIX_LAYOUT).map(([k, v]) => `    static let ${k} = ${v}`).jo
     static let stateKinds: [String: String] = ${map(Object.entries(MATRIX_POLICY.stateKinds))}
 ${['resultTypes', 'rejectedStatuses', 'replyTypes', 'askTypes', 'closeTypes', 'priority', 'urgent', 'summaryKinds'].map(k => `    static let ${k}: [String] = ${JSON.stringify(MATRIX_POLICY[k as keyof typeof MATRIX_POLICY])}`).join('\n')}
     static let agents: [String: String] = ${map(Object.entries(MATRIX_AGENTS))}
+    static let awaitingFaces: [[String]] = ${JSON.stringify(MATRIX_POLICY.awaitingFaces)}
+    static let ciFaces: [String: String] = ${map(MATRIX_POLICY.ciFaces.map(([k, v]) => [k, v]))}
+    static let gatewayAgent = ${JSON.stringify(MATRIX_POLICY.gatewayAgent)}
     static let colors: [String: [UInt8]] = ${map(Object.entries(MATRIX_COLORS).map(([k, v]) => [k, rgb(v)]))}
     static let overflow: [UInt8] = ${JSON.stringify(rgb(UI.hudText))}
     static let digits: [String: [Int]] = ${map([..."0123456789+-"].map(d => [d, matrixDigit(d)]))}

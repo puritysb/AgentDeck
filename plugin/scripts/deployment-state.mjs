@@ -22,3 +22,13 @@ export function verifyRuntime(receipt, expected, isAlive) {
   if (!Number.isInteger(receipt.pid) || receipt.pid <= 0 || (!Number.isFinite(receipt.startedAt) || receipt.startedAt < expected.notBefore)) return false;
   return isAlive(receipt.pid);
 }
+
+// SDK stop acknowledges the request before its Node process has exited.
+export async function waitForRuntimeExit(pid, isAlive, { now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), budgetMs = 20000 } = {}) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const deadline = now() + budgetMs;
+  while (isAlive(pid)) {
+    if (now() >= deadline) throw new Error('Previous Stream Deck runtime did not stop before restart');
+    await sleep(100);
+  }
+}

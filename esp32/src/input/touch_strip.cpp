@@ -41,7 +41,10 @@ static int16_t s_maxX = 0, s_maxY = 0;
 
 static constexpr uint32_t TAP_MAX_MS =
 #if defined(BOARD_LILYGO_EPD47)
-    850;  // e-ink UI polls at 250 ms; a normal tap spans two samples
+    // The e-ink UI samples touch every 25 ms between paints, but a release
+    // that lands during a 1-2 s panel update is only seen after it; keep the
+    // window forgiving so a slow tap across a paint still counts.
+    850;
 #else
     450;
 #endif

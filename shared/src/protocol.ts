@@ -1,3 +1,4 @@
+import type { DotAppearance, DotSurfaceRelation } from './dot-appearance.js';
 import { State, PermissionMode, PromptOption } from './states.js';
 import type { AgentType, AgentCapabilities } from './adapter.js';
 import type { TimelineEntry } from './timeline.js';
@@ -468,6 +469,13 @@ export interface DisplayStateEvent {
   displayOn: boolean;
   /** How to dim on sleep. Absent ⇒ legacy full-off. */
   dim?: DisplayDimInstruction;
+  /** Daemon host-local "HH:MM" at send time (same convention as timeline
+   *  `localHm`). display_state is re-sent every 5 s over serial and 15 s over
+   *  WebSocket, so this is the wall clock for boards that never reach NTP —
+   *  a serial-primary board parks its radio — and for every board that only
+   *  knows UTC. E-ink panels print it as their "as of HH:MM" freshness band.
+   *  Absent ⇒ no information; a client keeps its last estimate. */
+  hostHm?: string;
 }
 
 // ===== Multi-session Discovery =====
@@ -639,15 +647,35 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
+  /** Claude background_tasks snapshot count, separate from the child-agent census.
+   * Explicit zero clears prior work; absent means the producer has no snapshot. */
+  backgroundTaskCount?: number;
   /** Cross-session coordination census — see CoordinationSummary. Same
    *  emission rule as `subagents`: present with zeros once observed, absent
    *  only when this session has never had a relation. */
   coordination?: CoordinationSummary;
 }
 
+/** Separate integration presence; never a coding session or authority to execute. */
+export interface DotDeckSnapshot {
+  /** Active scoped MCP grant, not proof of Dot identity or global activity. Absent means unknown. */
+  authorized?: boolean;
+  configured: boolean;
+  hosting: boolean;
+  reportState: string | null;
+  reportedAt: number | null;
+  expiresAt: number | null;
+  code?: number;
+  validForMs?: number;
+  appearance?: DotAppearance | null;
+  relation?: DotSurfaceRelation | null;
+}
+
 export interface SessionsListEvent {
   type: 'sessions_list';
   sessions: SessionInfo[];
+  /** Full snapshot: null clears Dot; absent from older daemons also clears it. */
+  dot?: DotDeckSnapshot | null;
 }
 
 export interface TimelineEventMsg {
@@ -835,6 +863,10 @@ export interface DeviceInfoMessage {
   otaSlotSize?: number;
   otaFreeSketchSpace?: number;
   otaReason?: string;
+  /** T-Display-S3-Pro: layout of the running render tree. */
+  layout?: 'portrait' | 'landscape';
+  /** T-Display-S3-Pro: persisted layout setting (`auto` follows the camera shield). */
+  layoutSetting?: 'auto' | 'portrait' | 'landscape';
   /** Actual physical panel refreshes since boot; absent on non-e-ink/legacy firmware. */
   repaintCount?: number;
   /** Hard anti-ghost/full-waveform subset of repaintCount since boot. */
@@ -1009,6 +1041,16 @@ export interface Esp32OtaAbortEvent {
   otaId: string;
 }
 
+/** Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by
+ *  the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or
+ *  the landscape Focus Strip (`auto` = portrait with a camera shield, else
+ *  landscape). `landscape` is the legacy bool other LCD boards read. */
+export interface SetOrientationEvent {
+  type: 'set_orientation';
+  layout?: 'auto' | 'portrait' | 'landscape';
+  landscape?: boolean;
+}
+
 export interface Esp32OtaAckCommand {
   type: 'esp32_ota_ack';
   otaId: string;
@@ -1072,7 +1114,7 @@ export type CardActionClass = 'live' | 'day' | 'info';
  *
  * `thread`/`pulse` are read-only (`info`); `nudge`/`quest` are the first `day`
  * class producers — answerable offline, queued in the device outbox. */
-export type CardModuleId = 'thread' | 'pulse' | 'nudge' | 'quest';
+export type CardModuleId = 'thread' | 'pulse' | 'nudge' | 'quest' | 'dot';
 
 /** Max choices a module card may bind (slot 1 is the device's own **Later**).
  *  Producers clamp; they never grow a fifth button. */
@@ -1573,7 +1615,8 @@ export type BridgeEvent =
   | Esp32OtaBeginEvent
   | Esp32OtaChunkEvent
   | Esp32OtaEndEvent
-  | Esp32OtaAbortEvent;
+  | Esp32OtaAbortEvent
+  | SetOrientationEvent;
 
 // ===== Plugin → Bridge (Commands) =====
 

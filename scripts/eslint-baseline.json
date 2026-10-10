@@ -1,0 +1,5 @@
+{
+  "$comment": "Ratchet for scripts/check-eslint-baseline.mjs: the number of ESLint errors (severity 2) master is allowed to carry. Lower it when you fix one; never raise it to land a change.",
+  "as_of": "2026-10-07",
+  "errors": 13
+}

@@ -1259,3 +1259,32 @@ describe('Observed NOW card (#463)', () => {
     expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ label: 'NOW', subtitle: 'add the picker' });
   });
 });
+
+describe('Dot integration first-key reservation', () => {
+  const dot = { configured: true, hosting: true, reportState: null, reportedAt: null, expiresAt: null };
+  it('prepends Dot without changing Hermes/OpenClaw order and clears on an absent snapshot', () => {
+    const manager = new SessionSlotManager();
+    const sessions = [makeSession({ id: 'oc', agentType: 'openclaw', projectName: 'A' }), makeSession({ id: 'hermes', agentType: 'hermes', projectName: 'B' }), makeSession({ id: 'code' })];
+    manager.updateSessions(sessions);
+    const before = [0, 1, 2].map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT).session?.id);
+    manager.updateDot(dot);
+    expect(manager.getSlotConfig(0, SD_PLUS_LAYOUT).type).toBe('dot');
+    expect([1, 2, 3].map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT).session?.id)).toEqual(before);
+    manager.updateDot({ ...dot, hosting: false });
+    expect([1, 2, 3].map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT).session?.id)).toEqual(before);
+    manager.updateDot(undefined);
+    expect([0, 1, 2].map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT).session?.id)).toEqual(before);
+  });
+  it('pins Dot on every page without losing a session to pagination', () => {
+    const manager = new SessionSlotManager(); manager.updateDot(dot);
+    const sessions = Array.from({ length: 17 }, (_, i) => makeSession({ id: `s${i}`, projectName: `p${i}` }));
+    manager.updateSessions(sessions);
+    const found = new Set<string>();
+    for (let page = 0; page < 3; page++) {
+      expect(manager.getSlotConfig(0, SD_PLUS_LAYOUT).type).toBe('dot');
+      for (let key = 1; key < 8; key++) { const s = manager.getSlotConfig(key, SD_PLUS_LAYOUT).session; if (s) found.add(s.id); }
+      manager.nextPage(SD_PLUS_LAYOUT);
+    }
+    expect(found.size).toBe(17);
+  });
+});

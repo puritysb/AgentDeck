@@ -69,6 +69,10 @@ static Page skipEmpty(Page p) {
             p = static_cast<Page>((static_cast<uint8_t>(p) + 1) % count);
             continue;
         }
+        if (p == Page::DOT) {
+            lockState(); const bool dotHere = g_state.dot && g_state.dot->configured; unlockState();
+            if (!dotHere) { p = static_cast<Page>((static_cast<uint8_t>(p) + 1) % count); continue; }
+        }
         return p;
     }
     return p;
@@ -191,6 +195,7 @@ void render() {
         case Page::CODEX:  MatrixPages::renderCodex(leds, animTime);  break;
         case Page::ZAI:    MatrixPages::renderZai(leds, animTime);    break;
         case Page::AGENTS: MatrixPages::renderAgents(leds, animTime); break;
+        case Page::DOT: MatrixPages::renderDot(leds, animTime); break;
         default: break;
     }
 

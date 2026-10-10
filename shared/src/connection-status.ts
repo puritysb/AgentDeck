@@ -72,3 +72,11 @@ export const PASSIVE_OFFLINE_LABEL = 'OFFLINE';
 
 /** Call-to-action subtitle paired with the passive OFFLINE card. */
 export const OPEN_AGENTDECK_LABEL = 'Open AgentDeck';
+
+/** Native companion recovery labels; generated into the existing Swift/Kotlin lexicons. */
+export const NATIVE_CONNECTION_LABELS = {
+  approvalRequired: 'Approval required',
+  chooseHost: 'Choose an AgentDeck host',
+  unreachable: 'Could not connect to the selected host',
+  retryConnection: 'Retry Connection',
+} as const;

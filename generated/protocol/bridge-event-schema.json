@@ -447,6 +447,9 @@
         },
         {
           "$ref": "#/definitions/Esp32OtaAbortEvent"
+        },
+        {
+          "$ref": "#/definitions/SetOrientationEvent"
         }
       ]
     },
@@ -856,6 +859,10 @@
         "displayOn": {
           "type": "boolean"
         },
+        "hostHm": {
+          "description": "Daemon host-local \"HH:MM\" at send time (same convention as timeline `localHm`). display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the wall clock for boards that never reach NTP — a serial-primary board parks its radio — and for every board that only knows UTC. E-ink panels print it as their \"as of HH:MM\" freshness band. Absent ⇒ no information; a client keeps its last estimate.",
+          "type": "string"
+        },
         "type": {
           "const": "display_state",
           "type": "string"
@@ -864,6 +871,135 @@
       "required": [
         "type",
         "displayOn"
+      ],
+      "type": "object"
+    },
+    "DotAppearance": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "png": {
+          "description": "Canonical static PNG, authored by the importing host; optional on compact transport.",
+          "type": "string"
+        },
+        "rgba": {
+          "description": "Exactly 16×16 row-major, straight-alpha RGBA8, base64 encoded.",
+          "type": "string"
+        },
+        "version": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "rgba"
+      ],
+      "type": "object"
+    },
+    "DotDeckSnapshot": {
+      "additionalProperties": false,
+      "description": "Separate integration presence; never a coding session or authority to execute.",
+      "properties": {
+        "appearance": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DotAppearance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authorized": {
+          "description": "Active scoped MCP grant, not proof of Dot identity or global activity. Absent means unknown.",
+          "type": "boolean"
+        },
+        "code": {
+          "type": "number"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "expiresAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "hosting": {
+          "type": "boolean"
+        },
+        "relation": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DotSurfaceRelation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reportState": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reportedAt": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "validForMs": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "configured",
+        "hosting",
+        "reportState",
+        "reportedAt",
+        "expiresAt"
+      ],
+      "type": "object"
+    },
+    "DotSurfaceRelation": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "type": "string"
+        },
+        "evidence": {
+          "const": "dot_report",
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "receivedAt": {
+          "type": "number"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "target": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "direction",
+        "stage",
+        "target",
+        "receivedAt",
+        "evidence"
       ],
       "type": "object"
     },
@@ -1355,6 +1491,10 @@
           "description": "A single AskUserQuestion call may carry up to four question groups. The daemon presents them ONE AT A TIME (`question`/`options` above are the active group's projection) and advances as each is answered, so a device never has to flatten unrelated groups into one unsafe index space. These are present only while a multi-group prompt is pending, and let a surface render \"Q 2/3\". Absent ⇒ a single-question prompt.",
           "type": "number"
         },
+        "backgroundTaskCount": {
+          "description": "Claude background_tasks snapshot count, separate from the child-agent census. Explicit zero clears prior work; absent means the producer has no snapshot.",
+          "type": "number"
+        },
         "contextPercent": {
           "type": "number"
         },
@@ -1608,6 +1748,17 @@
     "SessionsListEvent": {
       "additionalProperties": false,
       "properties": {
+        "dot": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DotDeckSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Full snapshot: null clears Dot; absent from older daemons also clears it."
+        },
         "sessions": {
           "items": {
             "$ref": "#/definitions/SessionInfo"
@@ -1622,6 +1773,31 @@
       "required": [
         "type",
         "sessions"
+      ],
+      "type": "object"
+    },
+    "SetOrientationEvent": {
+      "additionalProperties": false,
+      "description": "Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the legacy bool other LCD boards read.",
+      "properties": {
+        "landscape": {
+          "type": "boolean"
+        },
+        "layout": {
+          "enum": [
+            "auto",
+            "portrait",
+            "landscape"
+          ],
+          "type": "string"
+        },
+        "type": {
+          "const": "set_orientation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
       ],
       "type": "object"
     },

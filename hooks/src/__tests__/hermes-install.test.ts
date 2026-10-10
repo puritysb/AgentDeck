@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { installHermesObserver } from '../hermes-install.js';
+import { installHermesObserver, parseHermesPortFlag } from '../hermes-install.js';
 const homes: string[] = [];
 afterEach(() => homes.splice(0).forEach(h => rmSync(h, { recursive: true, force: true })));
 
@@ -27,10 +27,37 @@ describe('explicit Hermes observer installation', () => {
     expect(() => installHermesObserver(home)).toThrow('unowned');
     expect(readFileSync(join(target, '__init__.py'), 'utf8')).toBe('personal code');
   });
+  it('preserves an explicit connection on update and can return to registry discovery', () => {
+    const home = mkdtempSync(join(tmpdir(), 'hermes-install-')); homes.push(home);
+    const target = installHermesObserver(home, { port: 9234 });
+    installHermesObserver(home);
+    expect(JSON.parse(readFileSync(join(target, 'connection.json'), 'utf8'))).toEqual({ port: 9234 });
+    installHermesObserver(home, { port: null });
+    expect(() => readFileSync(join(target, 'connection.json'))).toThrow();
+  });
+  it.each([0, 65536, 1.5, NaN])('rejects invalid port %s before writing files', port => {
+    const home = mkdtempSync(join(tmpdir(), 'hermes-install-')); homes.push(home);
+    expect(() => installHermesObserver(home, { port })).toThrow('Port must');
+    expect(() => readFileSync(join(home, 'plugins/agentdeck-observer/.agentdeck-owned'))).toThrow();
+  });
   it('runs the Python observer behavior/transport suite', () => {
     const suite = fileURLToPath(new URL('../../hermes-tests', import.meta.url));
     const result = spawnSync(process.platform === 'win32' ? 'python' : 'python3', ['-m', 'unittest', 'discover', '-s', suite], { encoding: 'utf8', timeout: 15_000 });
     expect(result.error, result.stderr).toBeUndefined();
     expect(result.status, result.stderr).toBe(0);
+  });
+});
+
+describe('parseHermesPortFlag', () => {
+  it('accepts plain decimal ports only', () => {
+    expect(parseHermesPortFlag('9120')).toBe(9120);
+    for (const typed of ['0x2380', '1e3', '9120.0', ' 9120 ', '', '-1', '123456']) {
+      expect(Number.isNaN(parseHermesPortFlag(typed)), typed).toBe(true);
+    }
+  });
+
+  it('an unparseable flag is refused before any file is written', () => {
+    expect(() => installHermesObserver('/nonexistent-agentdeck-home', { port: parseHermesPortFlag('0x2380') }))
+      .toThrow(/integer from 1 to 65535/);
   });
 });

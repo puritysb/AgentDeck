@@ -210,3 +210,15 @@ describe('D200H settings transport', () => {
     expect(store.apply({ ...retry, type: 'session_settings', settings })).toBe(false);
   });
 });
+
+it('clears Dot integration on legacy snapshots and reconnect instead of retaining another daemon', () => {
+  const store = connectedStore();
+  const dot = { configured: true, hosting: false, reportState: null, reportedAt: null, expiresAt: null };
+  store.apply({ type: 'sessions_list', sessions: [claude], dot });
+  expect(store.toLayoutInput().dot).toEqual(dot);
+  store.apply({ type: 'sessions_list', sessions: [claude] });
+  expect(store.toLayoutInput().dot).toBeNull();
+  store.apply({ type: 'sessions_list', sessions: [claude], dot });
+  store.setConnected(false); store.setConnected(true);
+  expect(store.toLayoutInput().dot).toBeNull();
+});

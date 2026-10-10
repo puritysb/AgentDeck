@@ -76,7 +76,7 @@ Dispatch on the top-level `"type"`. The forwarded sets are defined in `protocol.
 |---|---|
 | `timeline_event` | Incremental activity-log row. `ts` is epoch-ms; entries also carry `localHm` = daemon host-local "HH:MM" (both daemons stamp it now) — RTC-less clients render `localHm` for the wall time rather than deriving from `ts` in UTC. |
 | `timeline_history` | Backfill of recent timeline rows on (re)connect. A reply to `query_session_timeline` includes top-level `sessionId`; constrained clients may replace their mixed live ring with that session-specific batch so unrelated busy sessions cannot evict the requested Detail rows. |
-| `display_state` | Host display on/off + optional `dim {enabled, mode, level}`. Absent `dim` ⇒ legacy full-off. Level is percent 1–100 → scale to the board's backlight domain, floored at 1. |
+| `display_state` | Host display on/off + optional `dim {enabled, mode, level}`. Absent `dim` ⇒ legacy full-off. Level is percent 1–100 → scale to the board's backlight domain, floored at 1. Optional `hostHm`: the daemon's host-local `"HH:MM"` at send time — re-sent with every re-sync (5 s serial, 15 s WebSocket), it is the wall clock for a board without NTP or timezone. Absent ⇒ keep the last estimate. AgentDeck e-ink firmware prints it as the "as of" band (`esp32/src/util/host_clock.h`). |
 | `wifi_provision` | Credentials pushed over serial (USB provisioning flow). |
 | `auth_provision` | Pairing token pushed over serial, on its own: `{authToken, bridgeIp?, bridgePort?}`. Store the token durably (NVS) and restore it at boot — a board that forgets its credential is closed 4001 on every dial (#145) and discovery no longer carries one (#149), so serial is the only way back. Do **not** join WiFi or reconnect from this message; the existing reconnect path picks the new token up under its own policy guards. An absent/empty `authToken` means "no information" — never clear a working credential. Reply `auth_provision_ack {success, changed?, error?}`. |
 | `set_orientation` | `landscape` bool; portrait↔landscape toggle. |
@@ -369,7 +369,7 @@ carries its own body in `FeedCard.module` (`ModuleCard`) instead of
   Later/Done action. The daemon suppresses that exact autonomous card without
   treating the action as positive or negative feedback; a newly fingerprinted
   card may still appear when the underlying fact changes.
-- **Read-only modules take no choices.** `thread` and `pulse` are `info`;
+- **Read-only modules take no choices.** `thread`, `pulse` and `dot` are `info`;
   `nudge` and `quest` are `day` — answerable offline and queued in the device
   outbox. XTeink owns slot 1 as *Later*; slots 2–4 map to stable choice IDs.
 
@@ -434,3 +434,7 @@ sent audio.
 - **`voice_end` must not overtake the audio.** If your client queues control frames and PCM on separate paths, the end frame can be delivered first and the daemon will finalize the utterance without its tail — measured as a lost final syllable ("안녕하세요" transcribed as "안녕하세"). Hold `voice_end` until the audio queue has drained, and keep reading the mic for a few hundred ms after the button is released so the DMA's last buffer is included.
 - **The reply follows the board, not the socket.** A board that is USB-attached parks its radio and closes the WebSocket it dictated over; the daemon re-resolves the live transport (serial first) when the answer is ready, so a client may receive playback on a different link than it sent capture on. Advertise the same `board` string on both transports — that string is the identity the reply is routed by.
 - **Serial audio needs RX headroom.** A 16 kHz mono reply is ~44 KB/s once base64-encoded, and a client whose network task blocks (an in-progress WebSocket reconnect is the usual cause) will overflow a small RX ring and lose whole lines — silently, if it discards lines that do not start with `{`. Size the ring for your worst stall, and park the radio while serial is the transport.
+
+### Dot result cards
+
+The optional direct MCP host adds `module:dot:<requestId>` cards to the authenticated pull feed. Each is `info`, has no session body or choices, and carries a bounded report summary, last-reported state, absolute timestamp and integration profile. Both Node and Swift include these cards in the conditional feed signature, so changed results invalidate the cached deck without changing the card ID. Only the latest three received reports within the seven-day retention window are projected. A `working` report in a cached card is historical evidence, not a claim of current cloud activity. Older readers may skip an unknown module; actual hardware acceptance remains separate from daemon projection tests.

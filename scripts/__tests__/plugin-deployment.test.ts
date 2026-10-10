@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { inspectInstallation, verifyRuntime, digest } from '../../plugin/scripts/deployment-state.mjs';
+import { inspectInstallation, verifyRuntime, digest, waitForRuntimeExit } from '../../plugin/scripts/deployment-state.mjs';
 import { captureRuntimeIdentity } from '../../plugin/src/runtime-identity.js';
 
 describe('plugin deployment identity', () => {
@@ -42,4 +42,13 @@ describe('plugin deployment identity', () => {
     expect(verifyRuntime(good, expected, () => false)).toBe(false);
     expect(verifyRuntime(null, expected, () => true)).toBe(false);
   });
+});
+
+it('waits for asynchronous SDK stop before allowing a restart and refuses a stuck runtime', async () => {
+  let now = 0, probes = 0;
+  const clock = { now: () => now, sleep: async (ms: number) => { now += ms; }, budgetMs: 500 };
+  await waitForRuntimeExit(123, () => ++probes <= 3, clock);
+  expect(probes).toBe(4);
+  expect(now).toBe(300);
+  await expect(waitForRuntimeExit(123, () => true, clock)).rejects.toThrow('did not stop');
 });

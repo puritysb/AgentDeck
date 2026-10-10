@@ -301,4 +301,5 @@ print(String(data:try! JSONSerialization.data(withJSONObject:["frames":output as
     }
     expect(i).toBe(24);
   } finally { rmSync(dir, { recursive: true, force: true }); }
-});
+  // swiftc alone may take 30 s on a cold or busy host; the 10 s default timed out a pre-release run.
+}, 60_000);

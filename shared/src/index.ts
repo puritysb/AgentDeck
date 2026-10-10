@@ -1,6 +1,7 @@
 export * from './states.js';
 export * from './protocol.js';
 export * from './openclaw-approval.js';
+export * from './openclaw-session-key.js';
 export * from './openclaw-plugin-approval.js';
 export * from './gateway-protocol.js';
 export * from './session-settings.js';
@@ -26,6 +27,7 @@ export * from './timeline-markdown.js';
 export * from './format-utils.js';
 export * from './timeline-summarizer.js';
 export * from './session-utils.js';
+export * from './claude-background-jobs.js';
 export * from './creature-layout.js';
 export * from './brand-features.js';
 export * from './terrarium-rules.js';
@@ -58,7 +60,14 @@ export * from './zai-pair-view.js';
 export * from './matrix-expression.js';
 export { GatewayLiveActivity, GATEWAY_LIVE_RULES, gatewayToolFoldRaw } from './gateway-live-activity.js';
 
+export { DOT_LIMITS, DOT_OAUTH_LIMITS, DOT_LOCAL_MCP } from './dot-rules.js';
+
+export * from './dot-interactions.js';
+export * from './dot-deck.js';
 export * from './daemon-parity.js';
 export * from './ci-wait.js';
 
 export * from './session-settings-client.js';
+
+export * from './dot-appearance.js';
+export * from './dot-pixels.js';

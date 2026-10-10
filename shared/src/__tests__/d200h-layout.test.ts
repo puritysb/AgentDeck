@@ -1,3 +1,5 @@
+import { dotDeckPresentation, renderDotDeckSlot } from '../dot-deck.js';
+import { DOT_LIMITS } from '../dot-rules.js';
 import { describe, it, expect } from 'vitest';
 import { Brand } from '../design-tokens.js';
 import {
@@ -414,4 +416,52 @@ describe('VOICE tile — hold-to-talk contract', () => {
   it('goes inert only while transcribing', () => {
     expect(voiceCell('transcribing')?.action).toBeNull();
   });
+});
+
+describe('Dot pinned integration key', () => {
+  const dot = { configured: true, hosting: true, reportState: null, reportedAt: null, expiresAt: null };
+  const sessions = [{ id: 'oc', agentType: 'openclaw', projectName: 'A', state: 'idle', alive: true }, { id: 'h', agentType: 'hermes', projectName: 'B', state: 'idle', alive: true }, ...Array.from({ length: 18 }, (_, i) => ({ id: `s${i}`, agentType: 'claude-code', projectName: `p${i}`, state: 'idle', alive: true }))];
+  it('reserves first position across pages and keeps existing sessions intact', () => {
+    const state = { daemonConnected: true, state: 'IDLE', allSessions: sessions };
+    const before = [...buildSessionDeck(state, { mode: 'list' }, positions(14)).values()];
+    const first = [...buildSessionDeck({ ...state, dot }, { mode: 'list' }, positions(14)).values()];
+    expect(first[0].svg).toContain('>DOT</text>'); expect(first[0].action).toBeNull();
+    expect(first[1].action).toEqual(before[0].action); expect(first[2].action).toEqual(before[1].action);
+    const seen = new Set<string>();
+    for (let page = 0; page < 2; page++) {
+      const deck = buildSessionDeck({ ...state, dot }, { mode: 'list', page }, positions(14));
+      expect(deck.get('0_0')?.svg).toContain('>DOT</text>');
+      for (const c of deck.values()) if (c.action?.kind === 'open') seen.add(c.action.sessionId);
+    }
+    expect(seen.size).toBe(sessions.length);
+    expect([...buildSessionDeck({ ...state, dot: null }, { mode: 'list' }, positions(14)).values()]).toEqual(before);
+  });
+  it('keeps sessions and NEXT reachable with Dot and usage on three keys', () => {
+    const state = { daemonConnected: true, dot, allSessions: sessions, fiveHourPercent: 20, sevenDayPercent: 30, usageKnown: true };
+    const seen = new Set<string>();
+    for (let page = 0; page < sessions.length; page++) {
+      const deck = buildSessionDeck(state, { mode: 'list', page, showUsage: true }, positions(3));
+      expect(deck.get('0_0')?.svg).toContain('>DOT</text>');
+      expect([...deck.values()].some(c => c.action?.kind === 'page')).toBe(true);
+      for (const cell of deck.values()) if (cell.action?.kind === 'open') seen.add(cell.action.sessionId);
+    }
+    expect(seen.size).toBe(sessions.length);
+  });
+  it('does not hide the only reachable session on a sparse two-key grid', () => {
+    const deck = buildSessionDeck({ daemonConnected: true, dot, allSessions: sessions }, { mode: 'list' }, positions(2));
+    expect([...deck.values()].some(c => c.action?.kind === 'open')).toBe(true);
+    expect([...deck.values()].some(c => c.action?.kind === 'page')).toBe(true);
+  });
+});
+
+it('never renders stale or future reports as working and keeps rendering deterministic', () => {
+  const now = 1800000000000;
+  const dot = { configured: true, hosting: true, reportState: 'working', reportedAt: now, expiresAt: now + DOT_LIMITS.requestMs };
+  expect(dotDeckPresentation(dot, now).label).toBe('WORKING');
+  expect(dotDeckPresentation(dot, now + DOT_LIMITS.reportFreshMs).label).toBe('OLD REPORT');
+  expect(dotDeckPresentation({ ...dot, reportedAt: now + 1 }, now).label).toBe('UNKNOWN');
+  expect(dotDeckPresentation({ ...dot, expiresAt: now }, now).label).toBe('OLD REPORT');
+  expect(dotDeckPresentation({ ...dot, hosting: false }, now).label).toBe('HOST STOPPED');
+  expect(renderDotDeckSlot(dot, now)).toBe(renderDotDeckSlot(dot, now));
+  expect(renderDotDeckSlot(dot, now)).not.toContain('undefined');
 });

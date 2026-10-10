@@ -176,10 +176,20 @@ def _ci_intent(tool, args):
 
 def _deliver(event, payload):
     # Resolve every delivery: a daemon restart can move the port.
-    data_dir = os.environ.get("AGENTDECK_DATA_DIR")
-    registry = (Path(data_dir).expanduser() if data_dir else Path.home() / ".agentdeck") / "daemon.json"
-    info = json.loads(registry.read_text())
-    port = info.get("httpPort") or info.get("port")
+    connection = Path(__file__).parent / "connection.json"
+    try:
+        selection = connection.read_text()
+    except FileNotFoundError:
+        selection = None
+    if selection is not None:
+        # User-selected loopback port supports sandboxed Swift without reading
+        # its container. Invalid/unreadable explicit selection never falls back.
+        port = json.loads(selection).get("port")
+    else:
+        data_dir = os.environ.get("AGENTDECK_DATA_DIR")
+        registry = (Path(data_dir).expanduser() if data_dir else Path.home() / ".agentdeck") / "daemon.json"
+        info = json.loads(registry.read_text())
+        port = info.get("httpPort") or info.get("port")
     if type(port) is not int or not 1 <= port <= 65535:
         return
     base = "http://127.0.0.1:" + str(port)

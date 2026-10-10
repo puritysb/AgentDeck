@@ -9,8 +9,8 @@
  * - Scaling: small (default) / large (2×) based on terminal size
  */
 
-import { fg, bg, RESET, DIM, colors, sgr } from './ansi.js';
-import { TERRARIUM_RULES, agentBrandColor, type AgentType } from '@agentdeck/shared';
+import { fg, bg, RESET, DIM, BOLD, colors, sgr } from './ansi.js';
+import { TERRARIUM_RULES, UI, agentBrandColor, type AgentType } from '@agentdeck/shared';
 import { OFFICIAL_DOT_GLYPHS, OFFICIAL_DOT_GLYPH_SIZE, OFFICIAL_STANDARD_FEATURES } from '../pixoo/official-dot-glyphs.generated.js';
 
 // ===== Sprite Scaling =====
@@ -33,7 +33,16 @@ const TERMINAL_FOOTPRINTS = {
   codex: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
   openClaw: { small: [8, 2], large: [16, 4], xlarge: [24, 6] },
   openCode: { small: [5, 3], large: [5, 5], xlarge: [6, 7] },
+  // Square marks sampled at the Codex footprint. Native previews mirror only
+  // the four creatures above (scripts/generate-tui-creatures.mjs).
+  antigravity: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+  kiro: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
+  hermes: { small: [5, 2], large: [10, 4], xlarge: [15, 6] },
 } as const;
+const GLYPH_AGENT: Record<keyof typeof TERMINAL_FOOTPRINTS, string> = {
+  claudeCode: 'claude-code', codex: 'codex-cli', openClaw: 'openclaw', openCode: 'opencode',
+  antigravity: 'antigravity', kiro: 'kiro-cli', hermes: 'hermes',
+};
 interface TerminalPixel { rgb: number[]; alpha: number; }
 interface TerminalCell { char: string; top: TerminalPixel | null; bottom: TerminalPixel | null; }
 interface TerminalSprite { braille: string[]; cells: TerminalCell[][]; color: string; }
@@ -46,7 +55,7 @@ export function canonicalTerminalSprite(glyph: string, scale: SpriteScale, color
   const key = glyph as keyof typeof TERMINAL_FOOTPRINTS;
   const [cols, rows] = TERMINAL_FOOTPRINTS[key][scale];
   const n = OFFICIAL_DOT_GLYPH_SIZE;
-  const hex = agentBrandColor({ claudeCode: 'claude-code', codex: 'codex-cli', openClaw: 'openclaw', openCode: 'opencode' }[key] as AgentType);
+  const hex = agentBrandColor(GLYPH_AGENT[key] as AgentType);
   const sourceRGB = color.match(/38;2;(\d+);(\d+);(\d+)m/);
   const rgb = sourceRGB ? sourceRGB.slice(1).map(Number) : [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
   const mask = OFFICIAL_DOT_GLYPHS[key];
@@ -90,6 +99,14 @@ function renderCrayfish(state: CrayfishState, frame: number, scale: SpriteScale)
   const color = state.sick ? DIM + fg(180, 140, 140) : state.routing || pulse ? colors.crayfish : DIM + colors.crayfish;
   return canonicalTerminalSprite('openClaw', scale, color);
 }
+
+// Creature status grammar (DESIGN.md §6.4): input-needed is a solid amber
+// `!`, working adds a cyan geometric spark. Colour stays redundant with shape.
+function tokenFg(hex: string): string {
+  return fg(parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16));
+}
+const ATTN_BADGE = tokenFg(UI.attn);
+const WORK_SPARK = tokenFg(UI.cyan);
 
 // ===== Neon Tetra =====
 
@@ -178,9 +195,24 @@ interface TerrariumContext {
   octopi: OctopusInstance[];
   jellyfish: JellyfishInstance[];
   opencode: OpenCodeInstance[];
+  residents: ResidentInstance[];
   crayfish: CrayfishState;
   voiceAssistantState: string;
 }
+
+/**
+ * Agents whose creature is their canonical mark drawn as-is: Antigravity, Kiro
+ * and Hermes. Before these existed the TUI drew nothing for them (the correct
+ * polarity for an UNKNOWN agent, wrong for a known one).
+ */
+export type ResidentGlyph = 'antigravity' | 'kiro' | 'hermes';
+export interface ResidentInstance {
+  id: string; glyph: ResidentGlyph; x: number; y: number; homeX: number;
+  state: string; name?: string; phaseOffset: number;
+}
+const RESIDENT_GLYPH: Record<string, ResidentGlyph> = {
+  antigravity: 'antigravity', 'kiro-cli': 'kiro', 'kiro-ide': 'kiro', hermes: 'hermes',
+};
 
 export function initTerrarium(): TerrariumContext {
   const bubbles: Bubble[] = [];
@@ -198,6 +230,7 @@ export function initTerrarium(): TerrariumContext {
     octopi: [],
     jellyfish: [],
     opencode: [],
+    residents: [],
     crayfish: { visible: false, routing: false, sick: false, x: 0.75, y: 0.88 },
     voiceAssistantState: 'disabled',
   };
@@ -268,6 +301,16 @@ export function updateTerrarium(ctx: TerrariumContext, frame: number): void {
     if (oc.state === 'processing') {
       oc.y += Math.sin((frame + oc.phaseOffset) * 0.08) * 0.006;
     }
+  }
+
+  // Mark residents — same state→depth grammar as the octopus, gentle drift.
+  for (const r of ctx.residents) {
+    const working = r.state === 'processing';
+    const targetY = working ? 0.32 : r.state.startsWith('awaiting') ? 0.50 : 0.86;
+    r.y += (targetY - r.y) * 0.04;
+    r.y += Math.sin((frame + r.phaseOffset) * (working ? 0.12 : 0.04)) * (working ? 0.012 : 0.004);
+    const drift = working ? Math.sin((frame + r.phaseOffset) * 0.03) * 0.04 : 0;
+    r.x = Math.max(0.06, Math.min(TERRARIUM_RULES.crayfish.clearMaxX, r.homeX + drift));
   }
 
   // Crayfish Y: routing swims up, sitting rests on floor
@@ -410,6 +453,33 @@ export function setOpenCode(
   ctx.opencode = newOc;
 }
 
+export function setResidents(
+  ctx: TerrariumContext,
+  sessions: Array<{ id?: string; state: string; name?: string; agentType?: string }>,
+): void {
+  const list = sessions.filter(s => RESIDENT_GLYPH[s.agentType ?? ''] !== undefined);
+  const count = list.length;
+  const next: ResidentInstance[] = [];
+  for (let i = 0; i < count; i++) {
+    const s = list[i]!;
+    const sid = s.id || `res-${i}`;
+    // Spread across the open water left of the crayfish's floor territory.
+    const homeX = Math.min(
+      TERRARIUM_RULES.crayfish.clearMaxX,
+      count === 1 ? 0.40 : 0.16 + (i * 0.44) / Math.max(1, count - 1),
+    );
+    const glyph = RESIDENT_GLYPH[s.agentType!]!;
+    const existing = ctx.residents.find(r => r.id === sid);
+    if (existing) {
+      Object.assign(existing, { glyph, state: s.state, name: s.name || undefined, homeX });
+      next.push(existing);
+    } else {
+      next.push({ id: sid, glyph, x: homeX, y: 0.86, homeX, state: s.state, name: s.name || undefined, phaseOffset: Math.floor(Math.random() * 40) });
+    }
+  }
+  ctx.residents = next;
+}
+
 export function setVoiceAssistantState(ctx: TerrariumContext, state: string): void {
   ctx.voiceAssistantState = state;
 }
@@ -420,23 +490,28 @@ function stripAnsiCodes(text: string): string {
   return text.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-function drawLabelIfClear(
-  chars: string[],
-  charColors: string[],
-  text: string,
-  centerX: number,
-  color: string,
+/** Priority for tag placement: needs-you, working, then quiet. */
+function labelRank(state: string): number {
+  return state.startsWith('awaiting') ? 0 : state === 'processing' ? 1 : 2;
+}
+
+function placeLabel(
+  chars: string[], charColors: string[], charBackgrounds: string[], taken: boolean[],
+  text: string, centerX: number, color: string,
 ): void {
   const plain = stripAnsiCodes(text);
   const startX = centerX - Math.floor(plain.length / 2);
   for (let i = 0; i < plain.length; i++) {
     const px = startX + i;
-    if (px < 0 || px >= chars.length || chars[px] !== ' ') return;
+    if (px < 0 || px >= chars.length || taken[px]) return;
+    // A creature cell (half-block body) is never covered by a tag.
+    if (chars[px] === '\u2580' || chars[px] === '\u2584' || charBackgrounds[px]) return;
   }
   for (let i = 0; i < plain.length; i++) {
     const px = startX + i;
-    chars[px] = plain[i];
+    chars[px] = plain[i]!;
     charColors[px] = color;
+    taken[px] = true;
   }
 }
 
@@ -450,6 +525,7 @@ export function renderTerrariumFrame(
   const octopusSprites = ctx.octopi.map(o => renderOctopus(o, frame, scale));
   const codexSprites = ctx.jellyfish.map(o => renderJellyfish(o, frame, scale));
   const openCodeSprites = ctx.opencode.map(o => renderOpenCode(o, frame, scale));
+  const residentSprites = ctx.residents.map(r => canonicalTerminalSprite(r.glyph, scale, r.state === 'disconnected' ? DIM : ''));
   const clawSprite = renderCrayfish(ctx.crayfish, frame, scale);
   const sandRow = height - 2; // sand starts at this row
 
@@ -462,6 +538,9 @@ export function renderTerrariumFrame(
     const chars: string[] = new Array(width).fill(' ');
     const charColors: string[] = new Array(width).fill('');
     const charBackgrounds: string[] = new Array(width).fill('');
+    // Name tags are collected and drawn after every creature (DESIGN.md §6.4:
+    // one post-creature pass, priority order, a tag never hides a body).
+    const labels: Array<{ text: string; x: number; color: string; rank: number }> = [];
     const placeCell = (px: number, cell: TerminalCell, color: string) => {
       if (px < 0 || px >= width || (!cell.top && !cell.bottom)) return;
       const paint = (p: TerminalPixel) => p.rgb.map((c, i) => Math.round(c * p.alpha + [r, g, bv][i] * (1 - p.alpha)));
@@ -555,12 +634,12 @@ export function renderTerrariumFrame(
       // Name tag — directly above braille sprite
       if (oct.name && oy - 1 === row) {
         const name = oct.name.length > 12 ? oct.name.slice(0, 11) + '\u2026' : oct.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(oct.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(oct.x * width), color: fg(180, 180, 180), rank: labelRank(oct.state) });
       }
       // "?" bubble — below sprite (not on name tag row, to avoid overlap)
       if (oct.state.startsWith('awaiting') && oy + braille.length === row) {
         const qx = Math.floor(oct.x * width) + octHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
       }
       // Voice assistant indicator — above active octopus (first octopus or processing one)
       if (ctx.voiceAssistantState !== 'disabled' && ctx.voiceAssistantState !== 'idle') {
@@ -622,8 +701,9 @@ export function renderTerrariumFrame(
           const angle = (p / 6) * Math.PI * 2 + frame * 0.15;
           const px = Math.floor(oct.x * width + Math.cos(angle) * burstR);
           const py = Math.floor(oct.y * height + Math.sin(angle) * burstR * 0.5);
-          if (py === row && px >= 0 && px < width) {
-            chars[px] = '\u2727'; charColors[px] = fg(255, 200, 100);
+          // Sparks fill open water only — never over a name tag or a body.
+          if (py === row && px >= 0 && px < width && chars[px] === ' ') {
+            chars[px] = '\u2727'; charColors[px] = WORK_SPARK;
           }
         }
       }
@@ -648,12 +728,12 @@ export function renderTerrariumFrame(
       // Name tag
       if (jf.name && jy - 1 === row) {
         const name = jf.name.length > 12 ? jf.name.slice(0, 11) + '\u2026' : jf.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(jf.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(jf.x * width), color: fg(180, 180, 180), rank: labelRank(jf.state) });
       }
       // "?" bubble when awaiting
       if (jf.state.startsWith('awaiting') && jy + braille.length === row) {
         const qx = Math.floor(jf.x * width) + jfHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
       }
       // Bioluminescent glow particles when processing
       if (jf.state === 'processing') {
@@ -689,11 +769,43 @@ export function renderTerrariumFrame(
       }
       if (oc.name && oy - 1 === row) {
         const name = oc.name.length > 12 ? oc.name.slice(0, 11) + '\u2026' : oc.name;
-        drawLabelIfClear(chars, charColors, name, Math.floor(oc.x * width), fg(180, 180, 180));
+        labels.push({ text: name, x: Math.floor(oc.x * width), color: fg(180, 180, 180), rank: labelRank(oc.state) });
       }
       if (oc.state.startsWith('awaiting') && oy + lines.length === row) {
         const qx = Math.floor(oc.x * width) + ocHalfW + 1;
-        if (qx >= 0 && qx < width) { chars[qx] = '?'; charColors[qx] = fg(255, 255, 100); }
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
+      }
+    }
+
+    // Mark residents (Antigravity, Kiro, Hermes)
+    for (const [index, res] of ctx.residents.entries()) {
+      const { braille, color, cells } = residentSprites[index]!;
+      const halfW = Math.floor((braille[0]?.length ?? 5) / 2);
+      const rx = Math.floor(res.x * width) - halfW;
+      const ry = Math.floor(res.y * height) - Math.floor(braille.length / 2);
+      for (let br = 0; br < braille.length; br++) {
+        if (ry + br !== row) continue;
+        for (let bc = 0; bc < braille[br]!.length; bc++) {
+          const px = rx + bc;
+          if (px >= 0 && px < width) placeCell(px, cells[br]![bc]!, color);
+        }
+      }
+      if (res.name && ry - 1 === row) {
+        const name = res.name.length > 12 ? res.name.slice(0, 11) + '\u2026' : res.name;
+        labels.push({ text: name, x: Math.floor(res.x * width), color: fg(180, 180, 180), rank: labelRank(res.state) });
+      }
+      if (res.state.startsWith('awaiting') && ry + braille.length === row) {
+        const qx = Math.floor(res.x * width) + halfW + 1;
+        if (qx >= 0 && qx < width) { chars[qx] = '!'; charColors[qx] = BOLD + ATTN_BADGE; }
+      }
+      if (res.state === 'processing') {
+        const r = (1.6 + (frame % 10) * 0.2) * (scaleFactor * 0.75);
+        for (let p = 0; p < 4; p++) {
+          const angle = (p / 4) * Math.PI * 2 + frame * 0.12;
+          const px = Math.floor(res.x * width + Math.cos(angle) * r);
+          const py = Math.floor(res.y * height + Math.sin(angle) * r * 0.5);
+          if (py === row && px >= 0 && px < width && chars[px] === ' ') { chars[px] = '\u2727'; charColors[px] = WORK_SPARK; }
+        }
       }
     }
 
@@ -718,7 +830,7 @@ export function renderTerrariumFrame(
       const cfName = ctx.crayfish.sick ? `\u26A0 ${cfBaseName}` : cfBaseName;
       const cfNameColor = ctx.crayfish.sick ? fg(200, 120, 120) : fg(180, 180, 180);
       if (cy - 1 === row) {
-        drawLabelIfClear(chars, charColors, cfName, Math.floor(ctx.crayfish.x * width), cfNameColor);
+        labels.push({ text: cfName, x: Math.floor(ctx.crayfish.x * width), color: cfNameColor, rank: ctx.crayfish.sick ? 0 : ctx.crayfish.routing ? 1 : 2 });
       }
 
       // Signal wave rings + orbiting dots when ROUTING
@@ -764,12 +876,18 @@ export function renderTerrariumFrame(
       }
     }
 
+    // Tags last: most urgent first; a tag yields to bodies and to a tag
+    // already placed, but is drawn over water, fish, bubbles and sparks.
+    labels.sort((a, b) => a.rank - b.rank);
+    const taken = new Array<boolean>(width).fill(false);
+    for (const l of labels) placeLabel(chars, charColors, charBackgrounds, taken, l.text, l.x, l.color);
+
     // Build line
     let line = bgColor;
     for (let x = 0; x < width; x++) {
       line += (charColors[x] || '') + charBackgrounds[x] + chars[x];
       if (charBackgrounds[x]) line += bgColor;
-      if (charColors[x].includes(DIM)) line += sgr(22);
+      if (charColors[x].includes(DIM) || charColors[x].includes(BOLD)) line += sgr(22);
     }
     line += RESET;
     lines.push(line);

@@ -225,6 +225,17 @@ class ObserverTests(unittest.TestCase):
                 with self.assertRaises(FileNotFoundError):
                     self.module._deliver("hermes_session_start", {"session_id": "opaque"})
 
+    def test_explicit_selection_refuses_invalid_ports_without_registry_fallback(self):
+        with tempfile.TemporaryDirectory() as plugin:
+            with patch.object(self.module, '__file__', str(Path(plugin) / '__init__.py')):
+                for value in [True, "9120", 0, 65536, 1.5]:
+                    (Path(plugin) / 'connection.json').write_text(json.dumps({'port': value}))
+                    with patch.object(self.module._HTTP, 'open', side_effect=AssertionError('no network')):
+                        self.module._deliver('hermes_stop', {})
+                (Path(plugin) / 'connection.json').write_text('{')
+                with self.assertRaises(json.JSONDecodeError):
+                    self.module._deliver('hermes_stop', {})
+
     def test_real_loopback_export_requires_receiver_capability(self):
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -253,6 +264,16 @@ class ObserverTests(unittest.TestCase):
                     with patch.object(self.module.Path, 'home', side_effect=AssertionError('explicit directory wins')):
                         self.module._deliver('hermes_stop', {'session_id': 'opaque'})
                 self.assertEqual(received[-1][0], '/hooks/hermes_stop')
+                # Installed-profile selection reaches Swift without any registry.
+                (registry / 'daemon.json').unlink()
+                with patch.object(self.module, '__file__', str(Path(home) / '__init__.py')):
+                    (Path(home) / 'connection.json').write_text(json.dumps({'port': server.server_port}))
+                    self.module._deliver('hermes_user_prompt_submit', {'session_id': 'opaque'})
+                    self.assertEqual(received[-1][0], '/hooks/hermes_user_prompt_submit')
+                    before = len(received)
+                    supported[0] = False
+                    self.module._deliver('hermes_stop', {'session_id': 'opaque'})
+                    self.assertEqual(len(received), before)
         finally:
             server.shutdown(); server.server_close(); worker.join(timeout=2)
 

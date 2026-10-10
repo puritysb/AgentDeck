@@ -186,7 +186,7 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             foldedSessionIds: s.foldedSessionIds
         )
     }
-    return D200HDeckInput(
+    var input = D200HDeckInput(
         state: live.topLevelState,
         sessions: sessions,
         usage: D200HUsage(
@@ -222,8 +222,11 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             codexCreditBalance: live.source.codexRateLimits?.activeCodexCredits()?.balance ?? -1
         ),
         focusedSessionId: live.focusedSessionId,
-        navigable: live.navigable
+        navigable: live.navigable,
+        dotLabel: live.source.dot?.configured == true ? live.source.dot?.label : nil
     )
+    input.dotAppearance = live.source.dot?.appearance
+    return input
 }
 
 /// Mirrors `creditCoinSvg` (shared/src/svg-renderers/usage-reserve-marks.ts):
@@ -559,12 +562,22 @@ private struct D200HSlotTile: View {
                 )
                 .padding(size * 0.055)
             }
-        case .info(_, _):
+        case .info(let icon, _):
+            if icon == "dot" {
+                VStack(spacing: 3) {
+                    DotCharacterImage(appearance: slot.dotAppearance,
+                        tint: DotSurfaceView.tint(DotAppearanceRules.labels.firstIndex(of: slot.subtitle ?? "") ?? 7))
+                        .frame(width: size * 0.32, height: size * 0.32)
+                    Text("DOT").font(.system(size: size * 0.11, weight: .semibold))
+                    Text(slot.subtitle ?? DotAppearanceRules.labels[0]).font(.system(size: size * 0.08)).lineLimit(1)
+                }.foregroundStyle(DesignTokens.UI.hudText)
+            } else {
             Text(slot.label)
                 .font(.system(size: size * 0.11, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.7))
                 .multilineTextAlignment(.center)
                 .padding(size * 0.06)
+            }
         case .nextPage:
             VStack(spacing: 2) {
                 Image(systemName: "ellipsis")

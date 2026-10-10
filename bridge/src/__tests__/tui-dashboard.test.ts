@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import stripAnsi from 'strip-ansi';
 import type { StateUpdateEvent } from '@agentdeck/shared';
-import { renderDashboard } from '../tui/renderer.js';
+import { renderDashboard, defaultView } from '../tui/renderer.js';
+import { buildRoster } from '../tui/model.js';
 import { applyStateUpdate, type DashboardState } from '../tui/dashboard.js';
 
 function makeState(overrides: Partial<DashboardState> = {}): DashboardState {
@@ -56,12 +57,14 @@ describe('TUI dashboard models', () => {
       [],
       0,
       0,
+      // Narrow shows one named panel at a time (DESIGN.md §5.13).
+      { ...defaultView(), tab: cols < 80 ? 'usage' : 'sessions' },
     ));
 
-    expect(output).toContain('Codex 5h');
-    expect(output).toContain('31%');
-    expect(output).toContain('Codex 7d');
-    expect(output).toContain('67%');
+    expect(output).toContain('Codex');
+    expect(output).toMatch(/5h\s+\S+\s+31%/);
+    expect(output).toMatch(/7d\s+\S+\s+67%/);
+    expect(output).toContain('Plus');
   });
 
   it.each([
@@ -88,11 +91,13 @@ describe('TUI dashboard models', () => {
       [],
       0,
       0,
+      { ...defaultView(), tab: cols < 80 ? 'usage' : 'sessions' },
     ));
 
-    expect(output).toContain('Codex 7d');
-    expect(output).toContain('44%');
-    expect(output).not.toContain('Codex 5h');
+    // Labelled by duration, never by slot: the Pro weekly window sits in
+    // `primary` and must not become a phantom 5h row.
+    expect(output).toMatch(/7d\s+\S+\s+44%/);
+    expect(output).not.toMatch(/5h\s+\S+\s+44%/);
   });
 
   it('stores modelCatalog from state_update', () => {
@@ -199,7 +204,7 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('DOWNSTREAM');
+    expect(output).toContain('DEVICES');
     expect(output).toContain('Serial 2: ips_35, ulanzi_tc001');
     expect(output).toContain('Pixoo 1/1');
     expect(output).toContain('D200H ready plugin');
@@ -261,8 +266,12 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('my-project · sonnet-4 · WORK');
-    expect(output).toContain('q quit  ↑↓/j k scroll  1-9 switch session');
+    expect(output).toContain('my-project');
+    expect(output).toContain('sonnet-4');
+    expect(output).toContain('◉ WORKING');
+    expect(output).toContain('1 working');
+    expect(output).toContain('1-9 switch');
+    expect(output).toContain('q quit');
   });
 
   it('renders agent list secondary line as model dash compact state', () => {
@@ -279,7 +288,8 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('sonnet-4 - WORK');
+    expect(output).toContain('sonnet-4');
+    expect(output).toContain('◉ WORKING');
   });
 
   it('renders sibling models in session bridge mode and omits uptime label', () => {
@@ -306,7 +316,8 @@ describe('TUI dashboard models', () => {
       0,
     ));
 
-    expect(output).toContain('codex-mini - WORK');
+    expect(output).toContain('codex-mini');
+    expect(output).toContain('WORKING');
     expect(output).not.toContain('Up:');
   });
 
@@ -323,26 +334,23 @@ describe('TUI dashboard models', () => {
     ));
 
     expect(output).toContain('AgentDeck TUI Help');
-    expect(output).toContain('? / h    toggle help');
+    expect(output).toContain('? / h      toggle help');
+    expect(output).toContain('f          follow');
     expect(output).toContain('Press ? or Esc to return');
   });
 
   it('shows numbered session badges', () => {
-    const output = stripAnsi(renderDashboard(
-      makeState({
-        sessions: [
-          { id: 's1', port: 9121, projectName: 'build', alive: true, state: 'processing' },
-          { id: 's2', port: 9122, projectName: 'docs', alive: true, state: 'idle' },
-        ],
-      }),
-      140,
-      28,
-      [],
-      0,
-      0,
-    ));
-
-    expect(output).toContain('[1]');
-    expect(output).toContain('[2]');
+    const state = makeState({
+      sessions: [
+        { id: 's1', port: 9121, projectName: 'build', alive: true, state: 'processing' },
+        { id: 's2', port: 9122, projectName: 'docs', alive: true, state: 'idle' },
+        { id: 'observed:claude:abc', port: 0, projectName: 'watch', alive: true, state: 'idle', controlMode: 'observed' },
+      ],
+    });
+    const hotkeys = Object.fromEntries(buildRoster(state).map(c => [c.projectName, c.hotkey]));
+    expect(hotkeys).toMatchObject({ build: 1, docs: 2, watch: null });
+    const output = stripAnsi(renderDashboard(state, 140, 28, [], 0, 0));
+    expect(output).toMatch(/1 \S+ build/);
+    expect(output).toMatch(/2 \S+ docs/);
   });
 });

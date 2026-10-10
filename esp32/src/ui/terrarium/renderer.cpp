@@ -17,6 +17,8 @@
 #include "../../state/agent_state.h"
 #include "../../util/memory.h"
 #include "../companion/ci_companion.h"
+#include "../companion/dot_companion.h"
+
 #include "../theme.h"
 #include "config.h"
 
@@ -28,6 +30,17 @@ using std::min;
 using std::max;
 
 static lv_obj_t* canvas = nullptr;
+// Two reusable allocations total ~2.5 KiB. TTGO static DRAM has no room
+// for these buffers; allocate once at cold init, retain for the renderer lifetime.
+struct DotRenderCache {
+    DotSurfaceState state;
+    lv_obj_t* label = nullptr;
+    char text[DotSurfaceRules::relationBytes + 40] = {};
+};
+static std::unique_ptr<DotRenderCache> dotCache;
+#define dotFrame (dotCache->state)
+#define dotLabel (dotCache->label)
+#define dotText (dotCache->text)
 static lv_draw_buf_t draw_buf;
 static uint16_t* canvas_buf = nullptr;
 #if defined(BOARD_IPS10)
@@ -364,6 +377,21 @@ void init(lv_obj_t* parent) {
     // Arduino_GFX: canvas in native RGB565, LVGL converts to SWAPPED on flush
     lv_color_format_t canvasFmt = LV_COLOR_FORMAT_RGB565;
     canvas = lv_canvas_create(parent);
+    if (!dotCache) {
+        dotCache = makeUniqueNoThrow<DotRenderCache>();
+        if (!dotCache) Serial.println("[Dot] render cache allocation failed; retaining agent display");
+        else logHeap("dot-render");
+    }
+    if (dotCache) {
+        dotLabel = lv_label_create(canvas); // LVGL owns label for the canvas lifetime.
+        if (!dotLabel) Serial.println("[Dot] label allocation failed");
+        else {
+            lv_label_set_text_static(dotLabel, dotText);
+            lv_obj_set_style_text_color(dotLabel, lv_color_hex(ProductPalette::UiIdle), 0);
+            lv_obj_set_style_text_font(dotLabel, lv_obj_get_style_text_font(parent, LV_PART_MAIN), 0);
+            lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     // Explicit stride = width * 2 bytes (no alignment padding).
     uint32_t canvasStride = canvasW * sizeof(uint16_t);
     lv_draw_buf_init(&draw_buf, canvasW, canvasH, canvasFmt,
@@ -404,6 +432,11 @@ void render(float dt) {
 
     // Read state snapshot
     lockState();
+    if (dotCache) {
+        if (g_state.dot) dotFrame = *g_state.dot;
+        else dotFrame.configured = false;
+        if (!g_state.wsConnected || !g_state.dataReceived) dotFrame.configured = false;
+    }
     bool hasData = g_state.dataReceived;
     CreatureState cState = g_state.creatureState;
     CrayfishState cfState = g_state.crayfishState;
@@ -761,6 +794,31 @@ void render(float dt) {
     }
     // Explicit phase0 or a departed owner clears the renderer-lifetime memo.
     for (auto& memo : ciMemos) if (!memo.seen) memo.occupied = false;
+
+    if (dotCache && dotLabel) {
+        if (!dotFrame.configured || !DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis()))) lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
+        else {
+            const uint8_t code = dotFrame.effectiveCode(millis());
+            const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn
+                : code == 4 ? ProductPalette::UiOk : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
+            const int size = DotSurfaceRules::panelGlyphSize;
+            #if defined(BOARD_AMOLED)
+            const int x = canvasW * 3 / 4 - size / 2, y = canvasH / 4;
+#else
+            const int x = max(0, canvasW - size - (int)DotSurfaceRules::panelMargin);
+            const int y = max(24, canvasH / 5);
+#endif
+            DotCompanion::glyph(dotFrame, x, y, size, [](int px, int py, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+                setPixelAlpha(px, py, (uint32_t(r) << 16) | (uint32_t(g) << 8) | b, a);
+            });
+            snprintf(dotText, sizeof(dotText), "%s%s%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code], dotFrame.relation[0] ? "\n" : "", dotFrame.relation);
+            lv_obj_set_pos(dotLabel, max(0, x + size - 112), y + size + 4);
+            lv_obj_set_width(dotLabel, 112);
+            lv_obj_set_style_text_color(dotLabel, lv_color_hex(tint), 0);
+            lv_obj_remove_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_invalidate(dotLabel);
+        }
+    }
 
     // 8. Data particles (food crumbs from working agents)
     Particles::update(dt, totalTime, cState, octCount, cfState, showCrayfish, octStates);

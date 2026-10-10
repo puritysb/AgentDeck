@@ -89,6 +89,13 @@ jobs:
         working-directory: esp32/sim
         run: pio run
 
+      # Plain assert() mains over the firmware's policy headers (e-ink geometry,
+      # glyph selection, usage rows, …). Host compiler only, a few seconds; they
+      # used to be local-only, so a broken policy header could merge green.
+      - name: Host policy assertions
+        if: steps.scope.outputs.run == 'true'
+        run: bash esp32/sim/run-tests.sh
+
   # The native simulator cannot catch target linker DRAM overflow. Resolve the
   # pinned TTGO dependencies freshly on the same toolchain as the release.
   ttgo:

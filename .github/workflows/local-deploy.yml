@@ -1,0 +1,38 @@
+name: Local main deployment
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-main-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.repository == 'puritysb/AgentDeck' && github.ref == 'refs/heads/master'
+    runs-on: [agentdeck-local-deploy]
+    timeout-minutes: 30
+    steps:
+      # Deliberately use the persistent checkout: installed CLI/plugin links
+      # must survive a runner workspace cleanup. No pull_request trigger.
+      - name: Update persistent main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/opt/homebrew/bin:$HOME/Library/pnpm:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+          cd "${AGENTDECK_MAIN_CHECKOUT:?Runner must configure its main checkout}"
+          test "$(git branch --show-current)" = master
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git fetch origin master
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/master
+          git merge --ff-only --quiet origin/master
+      - name: Build, verify and deploy to this Mac
+        shell: bash
+        run: |
+          export PATH="/opt/homebrew/bin:$HOME/Library/pnpm:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+          node "$AGENTDECK_MAIN_CHECKOUT/scripts/deploy-local-main.mjs"

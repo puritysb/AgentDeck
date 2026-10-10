@@ -24,6 +24,11 @@ import Foundation
 ///
 /// Additive public-protocol acknowledgement. Legacy WS clients never receive or need this
 /// event.
+///
+/// Persisted ESP32 layout switch (Daemon → ESP32). `layout` is understood by the
+/// T-Display-S3-Pro, which stores it and restarts into portrait Pocket or the landscape
+/// Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
+/// legacy bool other LCD boards read.
 // MARK: - ADBridgeEvent
 struct ADBridgeEvent: Codable, Equatable {
     var agentCapabilities: ADAgentCapabilities?
@@ -142,6 +147,14 @@ struct ADBridgeEvent: Codable, Equatable {
     /// How to dim on sleep. Absent ⇒ legacy full-off.
     var dim: ADDisplayDimInstruction?
     var displayOn: Bool?
+    /// Daemon host-local "HH:MM" at send time (same convention as timeline `localHm`).
+    /// display_state is re-sent every 5 s over serial and 15 s over WebSocket, so this is the
+    /// wall clock for boards that never reach NTP — a serial-primary board parks its radio — and
+    /// for every board that only knows UTC. E-ink panels print it as their "as of HH:MM"
+    /// freshness band. Absent ⇒ no information; a client keeps its last estimate.
+    var hostHm: String?
+    /// Full snapshot: null clears Dot; absent from older daemons also clears it.
+    var dot: ADDotDeckSnapshot?
     var sessions: [ADSessionInfo]?
     var encoders: [ADEncoderSlotState]?
     var takeoverActive: Bool?
@@ -174,6 +187,8 @@ struct ADBridgeEvent: Codable, Equatable {
     var data: String?
     var offset: Double?
     var seq: Double?
+    var landscape: Bool?
+    var layout: ADLayout?
 
     enum CodingKeys: String, CodingKey {
         case agentCapabilities = "agentCapabilities"
@@ -255,6 +270,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case timestamp = "timestamp"
         case dim = "dim"
         case displayOn = "displayOn"
+        case hostHm = "hostHm"
+        case dot = "dot"
         case sessions = "sessions"
         case encoders = "encoders"
         case takeoverActive = "takeoverActive"
@@ -283,6 +300,8 @@ struct ADBridgeEvent: Codable, Equatable {
         case data = "data"
         case offset = "offset"
         case seq = "seq"
+        case landscape = "landscape"
+        case layout = "layout"
     }
 }
 
@@ -384,6 +403,8 @@ extension ADBridgeEvent {
         timestamp: Double?? = nil,
         dim: ADDisplayDimInstruction?? = nil,
         displayOn: Bool?? = nil,
+        hostHm: String?? = nil,
+        dot: ADDotDeckSnapshot?? = nil,
         sessions: [ADSessionInfo]?? = nil,
         encoders: [ADEncoderSlotState]?? = nil,
         takeoverActive: Bool?? = nil,
@@ -411,7 +432,9 @@ extension ADBridgeEvent {
         size: Double?? = nil,
         data: String?? = nil,
         offset: Double?? = nil,
-        seq: Double?? = nil
+        seq: Double?? = nil,
+        landscape: Bool?? = nil,
+        layout: ADLayout?? = nil
     ) -> ADBridgeEvent {
         return ADBridgeEvent(
             agentCapabilities: agentCapabilities ?? self.agentCapabilities,
@@ -493,6 +516,8 @@ extension ADBridgeEvent {
             timestamp: timestamp ?? self.timestamp,
             dim: dim ?? self.dim,
             displayOn: displayOn ?? self.displayOn,
+            hostHm: hostHm ?? self.hostHm,
+            dot: dot ?? self.dot,
             sessions: sessions ?? self.sessions,
             encoders: encoders ?? self.encoders,
             takeoverActive: takeoverActive ?? self.takeoverActive,
@@ -520,7 +545,9 @@ extension ADBridgeEvent {
             size: size ?? self.size,
             data: data ?? self.data,
             offset: offset ?? self.offset,
-            seq: seq ?? self.seq
+            seq: seq ?? self.seq,
+            landscape: landscape ?? self.landscape,
+            layout: layout ?? self.layout
         )
     }
 
@@ -1279,6 +1306,233 @@ enum ADMode: String, Codable, Equatable {
 // for types that require the use of JSONAny, nor will the implementation of Hashable be
 // synthesized for types that have collections (such as arrays or dictionaries).
 
+/// Separate integration presence; never a coding session or authority to execute.
+// MARK: - ADDotDeckSnapshot
+struct ADDotDeckSnapshot: Codable, Equatable {
+    var appearance: ADDotAppearance?
+    /// Active scoped MCP grant, not proof of Dot identity or global activity. Absent means
+    /// unknown.
+    var authorized: Bool?
+    var code: Double?
+    var configured: Bool
+    var expiresAt: Double?
+    var hosting: Bool
+    var relation: ADDotSurfaceRelation?
+    var reportedAt: Double?
+    var reportState: String?
+    var validForMs: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case appearance = "appearance"
+        case authorized = "authorized"
+        case code = "code"
+        case configured = "configured"
+        case expiresAt = "expiresAt"
+        case hosting = "hosting"
+        case relation = "relation"
+        case reportedAt = "reportedAt"
+        case reportState = "reportState"
+        case validForMs = "validForMs"
+    }
+}
+
+// MARK: ADDotDeckSnapshot convenience initializers and mutators
+
+extension ADDotDeckSnapshot {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotDeckSnapshot.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        appearance: ADDotAppearance?? = nil,
+        authorized: Bool?? = nil,
+        code: Double?? = nil,
+        configured: Bool? = nil,
+        expiresAt: Double?? = nil,
+        hosting: Bool? = nil,
+        relation: ADDotSurfaceRelation?? = nil,
+        reportedAt: Double?? = nil,
+        reportState: String?? = nil,
+        validForMs: Double?? = nil
+    ) -> ADDotDeckSnapshot {
+        return ADDotDeckSnapshot(
+            appearance: appearance ?? self.appearance,
+            authorized: authorized ?? self.authorized,
+            code: code ?? self.code,
+            configured: configured ?? self.configured,
+            expiresAt: expiresAt ?? self.expiresAt,
+            hosting: hosting ?? self.hosting,
+            relation: relation ?? self.relation,
+            reportedAt: reportedAt ?? self.reportedAt,
+            reportState: reportState ?? self.reportState,
+            validForMs: validForMs ?? self.validForMs
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADDotAppearance
+struct ADDotAppearance: Codable, Equatable {
+    var id: String
+    /// Canonical static PNG, authored by the importing host; optional on compact transport.
+    var png: String?
+    /// Exactly 16×16 row-major, straight-alpha RGBA8, base64 encoded.
+    var rgba: String
+    var version: Double
+
+    enum CodingKeys: String, CodingKey {
+        case id = "id"
+        case png = "png"
+        case rgba = "rgba"
+        case version = "version"
+    }
+}
+
+// MARK: ADDotAppearance convenience initializers and mutators
+
+extension ADDotAppearance {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotAppearance.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        id: String? = nil,
+        png: String?? = nil,
+        rgba: String? = nil,
+        version: Double? = nil
+    ) -> ADDotAppearance {
+        return ADDotAppearance(
+            id: id ?? self.id,
+            png: png ?? self.png,
+            rgba: rgba ?? self.rgba,
+            version: version ?? self.version
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
+// MARK: - ADDotSurfaceRelation
+struct ADDotSurfaceRelation: Codable, Equatable {
+    var direction: String
+    var evidence: ADDotSurfaceRelationEvidence
+    var kind: String
+    var receivedAt: Double
+    var stage: String
+    var target: String?
+
+    enum CodingKeys: String, CodingKey {
+        case direction = "direction"
+        case evidence = "evidence"
+        case kind = "kind"
+        case receivedAt = "receivedAt"
+        case stage = "stage"
+        case target = "target"
+    }
+}
+
+// MARK: ADDotSurfaceRelation convenience initializers and mutators
+
+extension ADDotSurfaceRelation {
+    init(data: Data) throws {
+        self = try newJSONDecoder().decode(ADDotSurfaceRelation.self, from: data)
+    }
+
+    init(_ json: String, using encoding: String.Encoding = .utf8) throws {
+        guard let data = json.data(using: encoding) else {
+            throw NSError(domain: "JSONDecoding", code: 0, userInfo: nil)
+        }
+        try self.init(data: data)
+    }
+
+    init(fromURL url: URL) throws {
+        try self.init(data: try Data(contentsOf: url))
+    }
+
+    func with(
+        direction: String? = nil,
+        evidence: ADDotSurfaceRelationEvidence? = nil,
+        kind: String? = nil,
+        receivedAt: Double? = nil,
+        stage: String? = nil,
+        target: String?? = nil
+    ) -> ADDotSurfaceRelation {
+        return ADDotSurfaceRelation(
+            direction: direction ?? self.direction,
+            evidence: evidence ?? self.evidence,
+            kind: kind ?? self.kind,
+            receivedAt: receivedAt ?? self.receivedAt,
+            stage: stage ?? self.stage,
+            target: target ?? self.target
+        )
+    }
+
+    func jsonData() throws -> Data {
+        return try newJSONEncoder().encode(self)
+    }
+
+    func jsonString(encoding: String.Encoding = .utf8) throws -> String? {
+        return String(data: try self.jsonData(), encoding: encoding)
+    }
+}
+
+enum ADDotSurfaceRelationEvidence: String, Codable, Equatable {
+    case dotReport = "dot_report"
+}
+
+//
+// Hashable or Equatable:
+// The compiler will not be able to synthesize the implementation of Hashable or Equatable
+// for types that require the use of JSONAny, nor will the implementation of Hashable be
+// synthesized for types that have collections (such as arrays or dictionaries).
+
 // MARK: - ADEncoderSlotState
 struct ADEncoderSlotState: Codable, Equatable {
     var accentColor: String?
@@ -1633,6 +1887,12 @@ enum ADGatewayAuthStatus: String, Codable, Equatable {
     case pairingRequired = "pairing_required"
     case tokenMismatch = "token_mismatch"
     case unsupportedProtocol = "unsupported_protocol"
+}
+
+enum ADLayout: String, Codable, Equatable {
+    case auto = "auto"
+    case landscape = "landscape"
+    case portrait = "portrait"
 }
 
 //
@@ -2430,6 +2690,9 @@ struct ADSessionInfo: Codable, Equatable {
     /// unsafe index space. These are present only while a multi-group prompt is pending, and let
     /// a surface render "Q 2/3". Absent ⇒ a single-question prompt.
     var askGroupIndex: Double?
+    /// Claude background_tasks snapshot count, separate from the child-agent census. Explicit
+    /// zero clears prior work; absent means the producer has no snapshot.
+    var backgroundTaskCount: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
     /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
@@ -2519,6 +2782,7 @@ struct ADSessionInfo: Codable, Equatable {
         case alive = "alive"
         case askGroupCount = "askGroupCount"
         case askGroupIndex = "askGroupIndex"
+        case backgroundTaskCount = "backgroundTaskCount"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
         case coordination = "coordination"
@@ -2581,6 +2845,7 @@ extension ADSessionInfo {
         alive: Bool? = nil,
         askGroupCount: Double?? = nil,
         askGroupIndex: Double?? = nil,
+        backgroundTaskCount: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
         coordination: ADCoordinationSummary?? = nil,
@@ -2623,6 +2888,7 @@ extension ADSessionInfo {
             alive: alive ?? self.alive,
             askGroupCount: askGroupCount ?? self.askGroupCount,
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
+            backgroundTaskCount: backgroundTaskCount ?? self.backgroundTaskCount,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,
             coordination: coordination ?? self.coordination,
@@ -2873,7 +3139,7 @@ extension ADSubagentSummary {
 struct ADCiWaitStatus: Codable, Equatable {
     var agentWaiting: Bool
     var checks: ADChecks?
-    var evidence: ADEvidence
+    var evidence: ADCiWaitStatusEvidence
     var kind: ADCiWaitStatusKind
     var openedAt: Double
     var phase: ADPhase
@@ -2921,7 +3187,7 @@ extension ADCiWaitStatus {
     func with(
         agentWaiting: Bool? = nil,
         checks: ADChecks?? = nil,
-        evidence: ADEvidence? = nil,
+        evidence: ADCiWaitStatusEvidence? = nil,
         kind: ADCiWaitStatusKind? = nil,
         openedAt: Double? = nil,
         phase: ADPhase? = nil,
@@ -3019,7 +3285,7 @@ extension ADChecks {
     }
 }
 
-enum ADEvidence: String, Codable, Equatable {
+enum ADCiWaitStatusEvidence: String, Codable, Equatable {
     case github = "github"
     case toolInput = "tool_input"
 }
@@ -3277,6 +3543,7 @@ enum ADType: String, Codable, Equatable {
     case reviewStatus = "review_status"
     case sessionSettings = "session_settings"
     case sessionsList = "sessions_list"
+    case setOrientation = "set_orientation"
     case stateUpdate = "state_update"
     case surfaceWelcome = "surface_welcome"
     case timelineEvent = "timeline_event"

@@ -229,6 +229,7 @@ struct SettingsScreen: View {
     /// have to know what those mean to find the right setting.
     enum SettingsSection: Hashable, Identifiable {
         case integrations
+        case dot
         case dashboard
         case about
         case connection
@@ -244,6 +245,7 @@ struct SettingsScreen: View {
         var title: String {
             switch self {
             case .integrations:    "Integrations"
+            case .dot:             "Dot"
             case .dashboard:       "Dashboard"
             case .about:           "About"
             case .connection:      "Connection"
@@ -259,6 +261,7 @@ struct SettingsScreen: View {
         var icon: String {
             switch self {
             case .integrations:    "link"
+            case .dot:             "circle"
             case .dashboard:       "macwindow"
             case .about:           "info.circle"
             case .connection:      "network"
@@ -280,6 +283,8 @@ struct SettingsScreen: View {
             switch self {
             case .integrations:
                 "Wire up Claude Code, OpenClaw, and Anthropic API — everything AgentDeck talks to."
+            case .dot:
+                "Connect Dot and choose how it appears on your displays."
             case .dashboard:
                 "What shows up on the terrarium and in the menu bar."
             case .about:
@@ -302,7 +307,7 @@ struct SettingsScreen: View {
         }
     }
 
-    private static let essentialSections: [SettingsSection] = [.integrations, .dashboard, .about]
+    private static let essentialSections: [SettingsSection] = [.integrations, .dot, .dashboard, .about]
     private static let advancedSections: [SettingsSection] = [.connection, .daemon, .pairing, .display, .hardware, .evaluation, .timelineSummary]
 
     private var macOSSettings: some View {
@@ -376,7 +381,11 @@ struct SettingsScreen: View {
                 codexObservationContent
                 Divider()
                 servicesContent
+                Divider()
+                Button("Dot connection…") { selectedSection = .dot }
             }
+        case .dot:
+            DotConnectionSetupView()
         case .dashboard:
             dashboardContent
         case .about:
@@ -502,6 +511,12 @@ struct SettingsScreen: View {
                     Text("Connection error · \(error)")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(TerrariumHUD.ledRed)
+                }
+
+                if let target = stateHolder.retryBridgeURL, stateHolder.connection.status == .disconnected {
+                    Button(ConnectionLexicon.retryConnection) { stateHolder.connectTo(url: target) }
+                        .buttonStyle(.borderedProminent)
+                        .tint(DesignTokens.UI.cyan)
                 }
 
                 #if os(iOS)

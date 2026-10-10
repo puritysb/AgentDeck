@@ -7,6 +7,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -198,7 +200,7 @@ fun MonitorScreen(
     val unauthorizedEndpoints by connection.unauthorizedEndpoints.collectAsState()
     // A refusal outranks the last attempt's error — see the same line in
     // EinkMonitorScreen, and PairingCredential.disconnectedDetail for why.
-    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys)
+    val lastError = PairingCredential.disconnectedDetail(rawLastError, unauthorizedEndpoints.keys, currentUrl, connection.selectedUrl)
     val isReconnecting by connection.isReconnecting.collectAsState()
     val showSessionList by displayPrefs.showSessionListFlow.collectAsState(initial = true)
     val showTankStatus by displayPrefs.showTankStatusFlow.collectAsState(initial = true)
@@ -306,6 +308,8 @@ fun MonitorScreen(
                 connectionStatus = connectionStatus,
                 discoveredBridges = discoveredBridges,
                 lastError = lastError,
+                retryUrl = currentUrl ?: connection.selectedUrl,
+                onRetry = { (connection.url.value ?: connection.selectedUrl)?.let { connection.connect(it) } },
                 isReconnecting = isReconnecting,
                 onConnectToBridge = { bridge ->
                     connection.connect(bridge.wsUrl(), bridge.fallbackWsUrl())
@@ -413,6 +417,8 @@ private fun ConnectionOverlay(
     connectionStatus: ConnectionStatus,
     discoveredBridges: List<DiscoveredBridge>,
     lastError: String?,
+    retryUrl: String?,
+    onRetry: () -> Unit,
     isReconnecting: Boolean,
     onConnectToBridge: (DiscoveredBridge) -> Unit,
     onConnectLocalhost: () -> Unit,
@@ -432,6 +438,7 @@ private fun ConnectionOverlay(
                     color = DesignTokens.UI.waterMid.copy(alpha = 0.9f),
                     shape = RoundedCornerShape(16.dp),
                 )
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -449,18 +456,13 @@ private fun ConnectionOverlay(
             )
 
             Text(
-                text = when {
-                    isReconnecting -> ConnectionLexicon.RECONNECTING
-                    connectionStatus == ConnectionStatus.DISCONNECTED -> ConnectionLexicon.SEARCHING
-                    connectionStatus == ConnectionStatus.CONNECTING -> ConnectionLexicon.CONNECTING
-                    else -> "Connected"
-                },
+                text = ConnectionLexicon.statusText(connectionStatus, lastError, discoveredBridges.isNotEmpty(), isReconnecting),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AgentDeckColors.SlateText,
                 textAlign = TextAlign.Center,
             )
 
-            if (connectionStatus == ConnectionStatus.DISCONNECTED && !isReconnecting) {
+            if (connectionStatus == ConnectionStatus.DISCONNECTED && !isReconnecting && retryUrl == null && discoveredBridges.isEmpty() && lastError == null) {
                 Text(
                     text = ConnectionSetupGuide.REQUIRED,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
@@ -492,11 +494,18 @@ private fun ConnectionOverlay(
             // Error message
             if (lastError != null && connectionStatus == ConnectionStatus.DISCONNECTED) {
                 Text(
-                    text = "Connection error · $lastError",
+                    text = lastError,
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                    color = AgentDeckColors.Red,
+                    color = if (lastError.startsWith(ConnectionLexicon.APPROVAL_REQUIRED)) DesignTokens.UI.attn else DesignTokens.UI.error,
                     textAlign = TextAlign.Center,
                 )
+            }
+
+            if (connectionStatus == ConnectionStatus.DISCONNECTED && !isReconnecting && retryUrl != null) {
+                Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
+                    Text(ConnectionLexicon.RETRY_CONNECTION)
+                }
+                Text(PairingCredential.endpointOf(retryUrl).orEmpty(), color = AgentDeckColors.SlateText)
             }
 
             // Show connection options when not actively connecting (or when reconnecting with alternatives)
@@ -526,7 +535,7 @@ private fun ConnectionOverlay(
                             }
                         }
                     }
-                } else if (!isReconnecting) {
+                } else if (!isReconnecting && retryUrl == null && lastError == null) {
                     Text(
                         text = ConnectionLexicon.SEARCHING,
                         style = MaterialTheme.typography.bodySmall,

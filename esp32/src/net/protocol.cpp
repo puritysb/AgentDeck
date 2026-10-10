@@ -10,6 +10,7 @@
 #include "../util/reset_reason.h"
 #include "../util/usage_format.h"
 #include "../util/utf8.h"
+#include "../util/memory.h"
 #include "config.h"
 #include <ArduinoJson.h>
 #include <cmath>
@@ -40,6 +41,7 @@
 #include "../input/power_monitor.h"
 #include "../ui/ticker/ticker_ui.h"
 #include "../ui/pocket/pocket_ui.h"
+#include "../ui/strip_layout.h"
 #include "../camera/photo_capture.h"
 #endif
 #if defined(BOARD_LILYGO_EPD47)
@@ -410,9 +412,48 @@ static void handleUsageUpdate(JsonObject& obj) {
     unlockState();
 }
 
+static std::unique_ptr<DotSurfaceState> dotStorage;
+static void readDot(JsonVariantConst value) {
+    // 1.2 KiB, allocated only on first configuration and reused. Static DRAM is
+    // already full on TTGO; stack and per-message allocation are unsuitable.
+    const bool configured = value.is<JsonObjectConst>() && value["configured"].is<bool>() && value["configured"].as<bool>();
+    if (configured && !g_state.dot) {
+        if (!dotStorage) dotStorage = makeUniqueNoThrow<DotSurfaceState>();
+        if (!dotStorage) { Serial.println("[Dot] state allocation failed; retaining agent display"); return; }
+        g_state.dot = dotStorage.get(); logHeap("dot-state");
+    }
+    if (!g_state.dot) return;
+    if (!configured) { g_state.dot->clear(); return; }
+    auto& dot = *g_state.dot;
+    const bool hosting = value["hosting"].is<bool>() && value["hosting"].as<bool>();
+    const uint8_t code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < DotSurfaceRules::phaseCount ? value["code"].as<uint8_t>() : 7;
+    const uint32_t budget = value["validForMs"].is<uint32_t>() ? value["validForMs"].as<uint32_t>() : 0;
+    const bool known = value["reportedAt"].is<uint64_t>();
+    if (!dot.setActivity(hosting, code, known, known ? value["reportedAt"].as<uint64_t>() : 0, budget, millis())) return;
+    dot.custom = false; dot.relation[0] = 0;
+    const char* rgba = value["appearance"]["rgba"] | "";
+    if (value["appearance"]["version"].is<uint8_t>() && value["appearance"]["version"].as<uint8_t>() == DotSurfaceRules::version
+        && strlen(rgba) == DotSurfaceRules::glyphBase64) {
+        size_t length = 0;
+        dot.custom = mbedtls_base64_decode(dot.rgba, sizeof(dot.rgba), &length,
+            reinterpret_cast<const unsigned char*>(rgba), strlen(rgba)) == 0 && length == sizeof(dot.rgba);
+    }
+    auto relation = value["relation"];
+    if (!strcmp(relation["evidence"] | "", "dot_report")) {
+        const char* kind = relation["kind"] | "";
+        const char* stage = relation["stage"] | "";
+        const char* target = relation["target"] | "?";
+        const bool outbound = !strcmp(relation["direction"] | "", "dot_to_agent");
+        snprintf(dot.relation, sizeof(dot.relation), "%s %s %s %s %s (report)", kind, stage,
+            outbound ? "Dot >" : "", target, outbound ? "?" : "> Dot ?");
+        Utf8::utf8TrimEnd(dot.relation);
+    }
+}
+
 static void handleSessionsList(JsonObject& obj) {
     lockState();
     g_state.dataReceived = true;
+    readDot(obj["dot"]);
 
     JsonArray sessions = obj["sessions"].as<JsonArray>();
     // Cap 10 — keep in sync with sessions[10] (agent_state.h) and
@@ -959,13 +1000,15 @@ static void handleWifiProvision(JsonObject& obj) {
     Net::wifiSaveAuthToken(authToken);
 
     bool ok = false;
-#if defined(BOARD_T_DISPLAY_PRO) || \
+#if defined(BOARD_T_DISPLAY_PRO) || defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN) || \
     (defined(BOARD_IPS10) && !defined(BOARD_HAS_VOICE_CAPTURE))
     if (Net::serialConnected()) {
         // USB serial is the primary transport on these boards. Persist the
         // credentials/endpoint but do not join now: on the IPS10 that avoids
         // waking the hosted C6 radio; on the T-Display-S3-Pro a join while on
-        // the desk cable browned out the 3.3 V rail (E BOD loop, 2026-07-27).
+        // the desk cable browned out the 3.3 V rail (E BOD loop, 2026-07-27);
+        // on the e-ink panels a join here was the radio that never parked
+        // again (net/radio_park_policy.h).
         // WiFi comes up from the serial-death path when USB actually goes away.
         Net::wifiSaveProvisionedCredentials(ssid, password);
         Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
@@ -1420,6 +1463,10 @@ static void sendDeviceInfo() {
         }
     }
 #endif
+#if defined(BOARD_T_DISPLAY_PRO)
+    resp["layout"] = StripLayout::layoutName(StripLayout::portrait());
+    resp["layoutSetting"] = StripLayout::settingName(StripLayout::setting());
+#endif
     OtaCapability::Info ota = OtaCapability::get();
     resp["otaSupported"] = ota.supported;
     resp["otaSlotCount"] = ota.slotCount;
@@ -1597,19 +1644,46 @@ void parseMessage(const char* json, size_t length) {
         if (scaled < 1) scaled = 1;
         if (scaled > 255) scaled = 255;
         lockState();
+        // The daemons re-send display_state every 5 s (serial) / 15 s (WiFi);
+        // log only what changed instead of narrating every heartbeat.
+        const bool changed = g_state.hostDisplayOn != displayOn ||
+                             g_state.hostDimEnabled != dimEnabled ||
+                             g_state.hostDimMode != dimMode8 ||
+                             g_state.hostDimLevel != (uint8_t)scaled;
         g_state.hostDisplayOn = displayOn;
         g_state.hostDimEnabled = dimEnabled;
         g_state.hostDimMode = dimMode8;
         g_state.hostDimLevel = (uint8_t)scaled;
+        // Optional host-local "HH:MM" riding the same re-sync: the wall clock
+        // for boards that never reach NTP (util/host_clock.h). Absent ⇒ keep.
+        g_state.hostClock.observe(obj["hostHm"] | "", millis());
         unlockState();
-        Serial.printf("[Host] display %s (dim=%d mode=%d level=%d)\n",
-                      displayOn ? "on" : "off", dimEnabled, dimMode8, scaled);
+        if (changed) {
+            Serial.printf("[Host] display %s (dim=%d mode=%d level=%d)\n",
+                          displayOn ? "on" : "off", dimEnabled, dimMode8, scaled);
+        }
     } else if (strcmp(type, "set_orientation") == 0) {
+#if defined(BOARD_T_DISPLAY_PRO)
+        // Persisted layout switch (restart-applied): `layout` is
+        // auto|portrait|landscape; the legacy bool maps to an explicit side.
+        StripLayout::Setting next;
+        const char* layout = obj["layout"] | "";
+        if (!StripLayout::parseSetting(layout, &next)) {
+            if (obj["landscape"].is<bool>()) {
+                next = obj["landscape"].as<bool>() ? StripLayout::LANDSCAPE : StripLayout::PORTRAIT;
+            } else {
+                Serial.printf("[Layout] ignored set_orientation (layout=\"%s\")\n", layout);
+                return;
+            }
+        }
+        StripLayout::request(next);
+#else
         bool landscape = obj["landscape"] | true;
         lockState();
         g_state.pendingLandscape = landscape;
         g_state.orientationChanged = true;
         unlockState();
+#endif
     } else if (strcmp(type, "connection") == 0) {
         // Connection status is handled by WS event callbacks
     } else if (strcmp(type, "touch_diag") == 0) {

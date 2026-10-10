@@ -47,6 +47,22 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- EPD47 and NM-EPD-420 e-ink panels refresh less and say when they last did.
+  EPD47 updates drive only the pixels that changed, in the rows that changed,
+  instead of erasing and redrawing every inked pixel; a clean panel no longer
+  flashes just because ten minutes passed. NM no longer runs two 13-second
+  cycles back to back, and neither panel repaints a frame identical to the one
+  already shown. Both print an "as of HH:MM" stamp from the host clock
+  (`display_state.hostHm`, sent by both daemons), and "since HH:MM" while
+  offline.
+- EPD47 and NM show a waiting decision without a key press first, and the NM
+  decision page keeps all three options on screen (the last one, usually Deny,
+  used to fall off). The EPD47 home lists every other session with its agent
+  and state instead of repeating the primary one.
+- ESP32 boards on USB serial keep their WiFi radio off again after the daemon
+  re-sends credentials; the two e-ink panels had stayed on WiFi and USB at once.
+  The e-ink panels also stay off WiFi at boot while USB serial is present.
+
 ## 2026-10-06 — npm 1.8.0, Apple 1.8.0, Android 1.8.0, ESP32 1.8.0, Stream Deck 1.8.0, Ulanzi 1.8.0
 
 Coordinated 1.8.0 release. Store review and public availability are tracked

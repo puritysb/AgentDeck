@@ -68,4 +68,31 @@ enum PairingCredential {
         else { return discoveredUrl }
         return saved
     }
+
+    /// Keep credentials by endpoint; a tokenless success never erases a token.
+    static func remembering(_ url: String?, in credentials: [String: String]) -> [String: String] {
+        guard let key = endpoint(of: url), let url, token(in: url) != nil else { return credentials }
+        var result = credentials
+        result[key] = url
+        return result
+    }
+
+    static func resolve(discoveredUrl: String, credentials: [String: String]) -> String {
+        resolve(discoveredUrl: discoveredUrl, savedUrl: endpoint(of: discoveredUrl).flatMap { credentials[$0] })
+    }
+
+    /// Never turn a reconnect into a switch to a different computer.
+    static func preferredURL(in urls: [String], selected: String?) -> String? {
+        let endpoints = Array(Set(urls.compactMap { endpoint(of: $0) }))
+        if let selected {
+            return urls.first { sameEndpoint($0, selected) }
+        }
+        return endpoints.count == 1 ? urls.first : nil
+    }
+
+    static func approvalMessage(for url: String?) -> String {
+        let host = endpoint(of: url) ?? "the selected host"
+        return "Approval required for \(host). Open AgentDeck on that computer, choose Devices › Pair Device, and approve this device under Waiting to Connect. Then select this host again to retry."
+    }
+
 }

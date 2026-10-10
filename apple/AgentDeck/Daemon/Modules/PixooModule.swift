@@ -8,7 +8,19 @@ struct PixooDevice: Codable, Equatable {
     let ip: String
     var name: String?
     var brightness: Int?
+    /// Motion. Unset/`single-frame` = the aquarium as safe single frames; `tide` =
+    /// the Pixoo-native scene (PixooTide.swift), one closed loop the device plays
+    /// itself. `loop` (the Node daemon's baked aquarium loop) is Node-only and
+    /// stays single-frame here.
+    var animation: String?
+
+    var isTide: Bool { animation == "tide" }
 }
+
+/// Is the panel still showing what WE last uploaded? Three answers, not two:
+/// `unknown` (a query failed, or the device is backed off) must never read as
+/// `stale`, or a flaky link re-uploads forever — the caller retains and asks again.
+enum PixooDeviceContent: Equatable { case ours, stale, unknown }
 
 struct PixooAdaptivePushPolicy {
     enum Mode: String { case activeSingle = "single-frame", idle }
@@ -142,6 +154,10 @@ actor PixooModule: DeviceModule {
     private var deviceLogStates: [String: DeviceLogState] = [:]
     private var lastPushedFrames: [String: Data] = [:]
     private var deviceLastPushTime: [String: Date] = [:]
+    // Tide devices upload a closed loop rarely (PixooTide.decision) instead of
+    // pushing frames on a timer: what was uploaded, and when to try again.
+    private var deviceTideUploaded: [String: PixooTide.UploadRecord] = [:]
+    private var deviceTideRetryAt: [String: Date] = [:]
     private var lastStateDigest: String?
     private var isPushing = false
     private let renderer = PixooRenderer()
@@ -257,6 +273,8 @@ actor PixooModule: DeviceModule {
         // creature scene after the daemon goes away. Matches Node's
         // stopPixooBridge() behavior.
         await pushOfflineFrame()
+        deviceTideUploaded.removeAll()
+        deviceTideRetryAt.removeAll()
     }
 
     private func pushOfflineFrame() async {
@@ -300,6 +318,8 @@ actor PixooModule: DeviceModule {
         deviceLogStates.removeAll()
         lastPushedFrames.removeAll()
         deviceLastPushTime.removeAll()
+        deviceTideUploaded.removeAll()
+        deviceTideRetryAt.removeAll()
         lastPushError = nil
         // Re-sync PicID from each device (may have rebooted during sleep)
         for device in devices {
@@ -367,7 +387,7 @@ actor PixooModule: DeviceModule {
                     "online": !(logState.map { $0.consecutiveFailures >= backoffThreshold } ?? false),
                     "failures": logState?.consecutiveFailures ?? 0,
                     "backedOff": isBackedOff(d.ip),
-                    "animationMode": PixooAdaptivePushPolicy.mode(active: active).rawValue,
+                    "animationMode": d.isTide ? "tide" : PixooAdaptivePushPolicy.mode(active: active).rawValue,
                 ]
             },
         ]
@@ -383,12 +403,15 @@ actor PixooModule: DeviceModule {
     /// Set once the first `sessions_list` lands. Gates the renderer's `_primary`
     /// fallback so an empty-but-received list draws an empty tank instead of a
     /// ghost creature (Node parity — bridge commit e9562525).
+    private var cachedDot: DotSurfaceSnapshot?
     private var cachedSessionsListReceived = false
     private var cached5h: Double?
     private var cached7d: Double?
     private var cached5hResetsAt: String?
     private var cached7dResetsAt: String?
     private var cachedCodexRateLimits: CodexRateLimits?
+    private var cachedZaiRateLimits: ZaiRateLimits?
+    private var cachedCodexSubscriptionUntil: String?
     private var cachedGatewayAvailable = false
     private var cachedGatewayConnected = false
     private var cachedGatewayHasError = false
@@ -432,8 +455,11 @@ actor PixooModule: DeviceModule {
             cached5hResetsAt = event["fiveHourResetsAt"] as? String
             cached7dResetsAt = event["sevenDayResetsAt"] as? String
             cachedCodexRateLimits = dotMatrixCodexRateLimits(from: event["codexRateLimits"])
+            cachedZaiRateLimits = Self.decodePayload(ZaiRateLimits.self, from: event["zaiRateLimits"])
+            cachedCodexSubscriptionUntil = event["codexSubscriptionActiveUntil"] as? String
         case "sessions_list":
             cachedSessions = event["sessions"] as? [[String: Any]] ?? []
+            cachedDot = Self.decodePayload(DotSurfaceSnapshot.self, from: event["dot"])
             cachedSessionsListReceived = true
         case "display_state":
             let displayOn = event["displayOn"] as? Bool ?? true
@@ -493,6 +519,7 @@ actor PixooModule: DeviceModule {
                 devicePicIds.removeValue(forKey: device.ip)
                 lastPushedFrames.removeValue(forKey: device.ip)
                 deviceLastPushTime.removeValue(forKey: device.ip)
+                forgetTide(device.ip)
 
                 // Keep the device untouched during the grace period. Sending
                 // Channel/SetIndex too early can expose the Pixoo firmware's
@@ -521,6 +548,7 @@ actor PixooModule: DeviceModule {
                     devicePicIds.removeValue(forKey: device.ip)
                     lastPushedFrames.removeValue(forKey: device.ip)
                     deviceLastPushTime.removeValue(forKey: device.ip)
+                    forgetTide(device.ip)
                     if var state = deviceLogStates[device.ip] {
                         state.backoffUntil = nil
                         deviceLogStates[device.ip] = state
@@ -659,7 +687,10 @@ actor PixooModule: DeviceModule {
         isPushing = true
         defer { isPushing = false }
 
-        for device in devices where !isBackedOff(device.ip) {
+        // Tide devices are left alone: their 30 s verify (checkDeviceContent)
+        // already catches a drifted channel, and re-seeding would upload — and
+        // flash the panel's loading hourglass — every five minutes for nothing.
+        for device in devices where !isBackedOff(device.ip) && !device.isTide {
             // The adaptive scheduler already refreshes active frames every
             // 2.5s and idle frames every 10s. Do not duplicate a channel switch
             // + upload when a recent attempt proves the custom path is active;
@@ -700,6 +731,10 @@ actor PixooModule: DeviceModule {
         isPushing = true
         defer { isPushing = false }
 
+        await pushTideIfDue()
+        let classicDevices = devices.filter { !$0.isTide }
+        guard !classicDevices.isEmpty else { return }
+
         let state = currentDashboardState()
         let isDisconnectedPlaceholder = state.state == .disconnected && cachedAgentType == nil && cachedSessions.isEmpty
 
@@ -715,7 +750,7 @@ actor PixooModule: DeviceModule {
         let active = !isDisconnectedPlaceholder && isAnimationActive(state)
 
         var due: [PixooDevice] = []
-        for device in devices where !isBackedOff(device.ip) {
+        for device in classicDevices where !isBackedOff(device.ip) {
             let mode = PixooAdaptivePushPolicy.mode(active: active)
             let elapsed = deviceLastPushTime[device.ip].map { now.timeIntervalSince($0) } ?? 99999
             let interval = PixooAdaptivePushPolicy.interval(stateChanged: stateChanged, mode: mode)
@@ -752,6 +787,10 @@ actor PixooModule: DeviceModule {
     }
 
     private func seedCurrentFrame(_ device: PixooDevice, reason: String) async {
+        if device.isTide {
+            await uploadTide(device, scene: currentTideScene(), reason: reason)
+            return
+        }
         let state = currentDashboardState()
         let frames: [Data]
         if state.state == .disconnected && cachedAgentType == nil && cachedSessions.isEmpty {
@@ -782,20 +821,7 @@ actor PixooModule: DeviceModule {
         // server or GIF buffer is recovering.
         deviceLastPushTime[ip] = now
 
-        guard let picId = await nextPicId(for: device.ip) else {
-            recordPushFailure(ip: device.ip, reason: "failed to acquire PicID")
-            lastPushError = "failed to acquire PicID for \(device.ip)"
-            // If a fresh one-shot probe reaches the same device, the Pixoo is
-            // alive and only this module's long-lived URLSession is wedged.
-            // Replace it immediately instead of consuming six 30s failures
-            // before the circuit-breaker probe can make the same distinction.
-            if await Self.probeIsPixoo(ip: device.ip, timeoutSec: 0.8) {
-                rebuildURLSession(reason: "fresh PicID probe reached \(device.ip)")
-                devicePicIds.removeValue(forKey: device.ip)
-                deviceLastPushTime.removeValue(forKey: device.ip)
-            }
-            return
-        }
+        guard let picId = await acquirePicId(for: device) else { return }
 
         var combinedData = Data()
         for frame in effectiveFrames {
@@ -828,12 +854,181 @@ actor PixooModule: DeviceModule {
         }
     }
 
+    /// The next PicID for `device`, or nil after recording the failure. Shared by the
+    /// single-frame push and the tide upload.
+    private func acquirePicId(for device: PixooDevice) async -> Int? {
+        if let picId = await nextPicId(for: device.ip) { return picId }
+        recordPushFailure(ip: device.ip, reason: "failed to acquire PicID")
+        lastPushError = "failed to acquire PicID for \(device.ip)"
+        // If a fresh one-shot probe reaches the same device, the Pixoo is
+        // alive and only this module's long-lived URLSession is wedged.
+        // Replace it immediately instead of consuming six 30s failures
+        // before the circuit-breaker probe can make the same distinction.
+        if await Self.probeIsPixoo(ip: device.ip, timeoutSec: 0.8) {
+            rebuildURLSession(reason: "fresh PicID probe reached \(device.ip)")
+            devicePicIds.removeValue(forKey: device.ip)
+            deviceLastPushTime.removeValue(forKey: device.ip)
+        }
+        return nil
+    }
+
     private static func isPixooSuccess(_ response: [String: Any]) -> Bool {
         if let code = response["error_code"] as? Int { return code == 0 }
         if let code = response["errorCode"] as? Int { return code == 0 }
         if let code = response["error_code"] as? NSNumber { return code.intValue == 0 }
         if let code = response["errorCode"] as? NSNumber { return code.intValue == 0 }
         return true
+    }
+
+    // MARK: - Tide (a closed loop the device plays by itself)
+    //
+    // The panel shows a loading hourglass while it ingests an upload, so a tide
+    // device is NOT pushed on a timer: `PixooTide.decision` uploads only when what
+    // the panel would show changed, otherwise asks two tiny read-only questions
+    // (`checkDeviceContent`) and re-uploads only a device that no longer shows our
+    // loop. A failed upload backs off for a minute and never falls back to single
+    // frames — a one-frame upload after a multi-frame one tangled the picture
+    // (measured 2026-10-08, Node daemon).
+
+    /// Divoom documents PicNum < 60; the Node client allows 40. One request per frame.
+    private static let maxAnimationFrames = 40
+    /// Pause between the per-frame POSTs of one upload (Node: PIXOO_ANIMATION_FRAME_GAP_MS).
+    private static let animationFrameGap: Duration = .milliseconds(120)
+
+    private struct TideScene {
+        let state: DashboardState
+        let marks: PixooTide.Marks
+        let signature: PixooTide.Signature
+    }
+
+    private func forgetTide(_ ip: String) {
+        deviceTideUploaded.removeValue(forKey: ip)
+        deviceTideRetryAt.removeValue(forKey: ip)
+    }
+
+    private func currentTideScene() -> TideScene {
+        let state = currentDashboardState()
+        let sessions: [[String: Any]]? = cachedSessionsListReceived ? cachedSessions : nil
+        let primary: (agentType: String, state: String)? = cachedState == "disconnected"
+            ? nil : (cachedAgentType ?? "claude-code", cachedState)
+        let marks = PixooTide.resolveMarks(
+            sessions: sessions, primary: primary, gatewayHasError: cachedGatewayHasError,
+            glyphFor: { renderer.officialGlyph(forAgentType: $0) }
+        )
+        return TideScene(
+            state: state, marks: marks,
+            signature: { let signature = PixooTide.signature(marks: marks, sessions: sessions, usage: state)
+                let cue = cachedDot.flatMap { $0.configured ? "|Dot:" + String($0.effectiveCode) + "|" + ($0.appearance?.id ?? "") : nil } ?? ""
+                return PixooTide.Signature(scene: signature.scene, hud: signature.hud + cue) }()
+        )
+    }
+
+    private func pushTideIfDue() async {
+        let tideDevices = devices.filter { $0.isTide && !isBackedOff($0.ip) }
+        guard !tideDevices.isEmpty else { return }
+        let scene = currentTideScene()
+        for device in tideDevices {
+            let ip = device.ip
+            let now = Date()
+            let decision = PixooTide.decision(
+                signature: scene.signature, uploaded: deviceTideUploaded[ip],
+                lastAttemptAt: deviceLastPushTime[ip], retryAt: deviceTideRetryAt[ip], now: now
+            )
+            if decision == .wait { continue }
+            // Rate-limit attempts as well as successes, so a failing endpoint is
+            // not retried on every 500 ms scheduler tick.
+            deviceLastPushTime[ip] = now
+            if decision == .verify {
+                let content = await checkDeviceContent(ip)
+                DaemonLogger.shared.debug("Pixoo", "→ \(ip): verify \(content) (tide)")
+                if content != .stale { continue }
+            }
+            await uploadTide(device, scene: scene, reason: decision == .verify ? "tide re-seed" : "tide scene")
+        }
+        refreshShadow()
+    }
+
+    private func uploadTide(_ device: PixooDevice, scene: TideScene, reason: String) async {
+        let ip = device.ip
+        let nowMs = Date().timeIntervalSince1970 * 1000
+        let frames = renderer.renderTideLoop(dashboardState: scene.state, marks: scene.marks, nowMs: nowMs).map { DotPixelOverlay.paint($0, width: 64, dot: cachedDot) }
+        if let first = frames.first { shadow.writeFrame(first) }
+        let started = Date()
+        let ok = await pushLoopToDevice(device, frames: frames, speedMs: PixooTide.picSpeedMs, reason: reason)
+        // One line per upload: each one makes the panel show its loading hourglass,
+        // so "how often" is the number to watch (Node logs the same in pixoo-bridge).
+        DaemonLogger.shared.debug("Pixoo", "→ \(ip): \(ok ? "OK" : "FAIL") (tide, \(frames.count) frames, \(reason), \(String(format: "%.1f", Date().timeIntervalSince(started)))s) scene=\(scene.signature.scene)")
+        if ok {
+            deviceTideUploaded[ip] = PixooTide.UploadRecord(signature: scene.signature, at: Date())
+            deviceTideRetryAt.removeValue(forKey: ip)
+        } else {
+            deviceTideRetryAt[ip] = Date().addingTimeInterval(PixooTide.Policy.retry)
+        }
+    }
+
+    /// Two tiny queries, no upload (so no loading hourglass): the active channel is
+    /// Custom (3) and the device's PicID counter has not fallen below ours. NOT
+    /// equality — the counter does not track the uploaded ID one-for-one (measured
+    /// 2026-10-08: 215 → 217 after a single-frame upload, → 218 after a four-frame
+    /// one). A reboot resets the counter (lower), a button press changes the
+    /// channel: those are the two things worth catching.
+    private func checkDeviceContent(_ ip: String) async -> PixooDeviceContent {
+        if isBackedOff(ip) { return .unknown }
+        guard let expected = devicePicIds[ip] else { return .stale }
+        guard let channel = await postCommand(ip, payload: ["Command": "Channel/GetIndex"], logFailures: false),
+              let picId = await getHttpGifId(ip) else { return .unknown }
+        let selected = (channel["SelectIndex"] as? NSNumber)?.intValue
+        return selected == 3 && picId >= expected ? .ours : .stale
+    }
+
+    /// Upload one device-side animation as the Divoom LAN API specifies it: ONE
+    /// request per frame, every request carrying the same `PicID` and `PicNum`, with
+    /// `PicOffset` = that frame's index and `PicData` = exactly one 64×64 RGB frame.
+    /// (The 2026-06/07 multi-frame failures concatenated every frame into one oversized
+    /// `PicData`.) Strictly sequential and spaced; the first failed frame aborts the
+    /// upload and forces a PicID re-sync.
+    private func pushLoopToDevice(_ device: PixooDevice, frames: [Data], speedMs: Int, reason: String) async -> Bool {
+        let ip = device.ip
+        guard !frames.isEmpty, frames.count <= Self.maxAnimationFrames,
+              frames.allSatisfy({ $0.count == frameWidth * frameHeight * 3 }) else { return false }
+        deviceLastPushTime[ip] = Date()
+
+        guard let picId = await acquirePicId(for: device) else { return false }
+
+        var lastResponse: [String: Any] = [:]
+        for (offset, frame) in frames.enumerated() {
+            if offset > 0 { try? await Task.sleep(for: Self.animationFrameGap) }
+            let payload: [String: Any] = [
+                "Command": "Draw/SendHttpGif",
+                "PicNum": frames.count,
+                "PicWidth": frameWidth,
+                "PicOffset": offset,
+                "PicID": picId,
+                "PicSpeed": speedMs,
+                "PicData": Data(frame.map { Self.gammaLUT[Int($0)] }).base64EncodedString(),
+            ]
+            guard let response = await postCommand(ip, payload: payload, timeout: pushTimeout, logFailures: false),
+                  Self.isPixooSuccess(response) else {
+                lastPushError = "loop upload failed for \(ip) at frame \(offset + 1)/\(frames.count)"
+                devicePicIds.removeValue(forKey: ip)
+                lastPushedFrames.removeValue(forKey: ip)
+                recordPushFailure(ip: ip, reason: "loop upload failed at frame \(offset + 1)/\(frames.count) (picId=\(picId), reason=\(reason))")
+                return false
+            }
+            lastResponse = response
+        }
+        lastPushError = nil
+        lastPushAt = Date()
+        recordPushSuccess(ip: ip, picId: picId, response: lastResponse)
+        lastPushedFrames[ip] = frames[0]
+        deviceLastPushTime[ip] = Date()
+        return true
+    }
+
+    private static func decodePayload<T: Decodable>(_ type: T.Type, from raw: Any?) -> T? {
+        guard let raw, JSONSerialization.isValidJSONObject(raw),
+              let data = try? JSONSerialization.data(withJSONObject: raw) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 
     /// Set brightness for all devices
@@ -880,6 +1075,8 @@ actor PixooModule: DeviceModule {
         state.fiveHourResetsAt = cached5hResetsAt
         state.sevenDayResetsAt = cached7dResetsAt
         state.codexRateLimits = cachedCodexRateLimits
+        state.zaiRateLimits = cachedZaiRateLimits
+        state.codexSubscriptionActiveUntil = cachedCodexSubscriptionUntil
         // Gateway flags come straight from the daemon broadcast — no OR
         // fallback on "siblingSessions contains openclaw". DaemonServer only
         // injects the virtual openclaw session when `cachedGatewayConnected`
@@ -890,6 +1087,7 @@ actor PixooModule: DeviceModule {
         state.gatewayConnected = cachedGatewayConnected
         state.gatewayHasError = cachedGatewayHasError
         state.siblingSessions = cachedSessions.compactMap(Self.makeSessionInfo)
+        state.dot = cachedDot
         state.sessionsListReceived = cachedSessionsListReceived
         return state
     }
@@ -944,6 +1142,7 @@ actor PixooModule: DeviceModule {
             deviceLogStates.removeValue(forKey: removedIP)
             lastPushedFrames.removeValue(forKey: removedIP)
             deviceLastPushTime.removeValue(forKey: removedIP)
+            forgetTide(removedIP)
         }
 
         if devices.isEmpty {
@@ -958,6 +1157,9 @@ actor PixooModule: DeviceModule {
         refreshShadow()
 
         for device in devices where force || previousByIP[device.ip] != device {
+            // A changed entry (animation mode, brightness) is a new device as far as
+            // "what is on the panel" goes: the next tick uploads it afresh.
+            forgetTide(device.ip)
             await prepareDevice(device)
         }
         refreshShadow()
@@ -983,7 +1185,10 @@ actor PixooModule: DeviceModule {
             guard let rawIP = d["ip"] as? String else { return nil }
             let ip = rawIP.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !ip.isEmpty else { return nil }
-            return PixooDevice(ip: ip, name: d["name"] as? String, brightness: d["brightness"] as? Int)
+            return PixooDevice(
+                ip: ip, name: d["name"] as? String, brightness: d["brightness"] as? Int,
+                animation: (d["animation"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            )
         }
     }
 
@@ -1299,7 +1504,8 @@ actor PixooModule: DeviceModule {
             projectName: raw["projectName"] as? String,
             agentType: raw["agentType"] as? String,
             alive: (raw["alive"] as? Bool) ?? true,
-            state: raw["state"] as? String
+            state: raw["state"] as? String,
+            waitingOn: decodePayload(CiWaitStatus.self, from: raw["waitingOn"])
         )
     }
 }

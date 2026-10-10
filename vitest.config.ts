@@ -11,6 +11,7 @@ export default defineConfig({
       'plugin-ulanzi/src/__tests__/**/*.test.ts',
       'scripts/__tests__/**/*.test.ts',
       'setup/src/__tests__/**/*.test.ts',
+      'services/dot-relay/src/__tests__/**/*.test.ts',
     ],
     testTimeout: 10_000,
     // Setup hooks carry the first-use cost of native modules (27 files open an
@@ -27,6 +28,7 @@ export default defineConfig({
         'shared/src/**/*.ts',
         'plugin/src/**/*.ts',
         'hooks/src/**/*.ts',
+        'services/dot-relay/src/**/*.ts',
         // Only the unit-tested Ulanzi module — pulling the whole package in would
         // count its many untested renderer files against the global thresholds.
         'plugin-ulanzi/src/reconnect-supervisor.ts',
