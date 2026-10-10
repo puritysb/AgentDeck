@@ -216,10 +216,20 @@ initialize and five-tool discovery passed; those probes are not Dot activity.
 The real local probe waited beyond the original five-minute token expiry, then
 successfully rotated credentials and completed another MCP ping. The official
 managed runtime was switched from HTTP to this stdio command; a fresh status
-reported a running process, readiness and no remote error. Its MCP health still
-reported `not_observed`, initialize epoch zero: a running child and `/readyz`
-alone do not prove cloud-side discovery. Personal ChatGPT plugin creation and
-actual Dot calls remain pending final connection consent.
+reported a running process, readiness and no remote error. Before plugin creation,
+MCP health reported `not_observed`, initialize epoch zero: a running child and
+`/readyz` alone do not prove cloud-side discovery.
+
+After the user's action-time approval, the personal **AgentDeck Mac Studio**
+plugin was created and connected in Chrome on 2026-10-10. ChatGPT's plugin detail
+page displayed **Connected**. The official runtime recorded cloud-side discovery
+at `2026-10-10T09:30:31.530993Z`: status `ok`, state `discovered`, stdio transport,
+`same_child` evidence and initialize epoch 2. Both initialize and tools/list
+succeeded with protocol `2025-11-25`; the complete five-tool list was
+`get_request`, `get_context`, `claim_request`, `report_update` and
+`report_interaction`. This passes personal plugin installation and cloud-side
+discovery, but does not yet establish a Dot invocation, correlated report,
+physical surface reaction or Events subscription.
 
 The adapter's eight focused tests and the 22 automated pre-release checks passed,
 including 5,625 JavaScript tests, daemon E2E, native builds/tests and the packaged
@@ -230,21 +240,21 @@ not establish a real Dot request or MCP Events subscription.
 
 Resume using the [official setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels):
 
-1. Confirm that ChatGPT's custom MCP form lists the created tunnel and configure
-   the personal stdio-backed connection as described in the adapter runbook.
-   The tool denied native ChatGPT/Codex app access, but on 2026-10-10 its supported
-   Chrome browser interface allowed the plugin settings page. Do not generalize
-   the native-app denial to browser settings. The prepared form accepted the
-   tunnel ID and resolved its saved name. Its final create/connect action still
-   requires action-time user confirmation under the browser tool's access policy.
-2. Establish authenticated discovery with a separately approved scoped client.
-   Test browser authorization, token exchange, refresh, expiry and revocation
-   independently of tunnel readiness. Do not reset existing local grants while
-   adapting the cloud-client contract.
-3. Create a fresh test request only when the actual Dot can access the tools;
-   earlier test requests expired. Verify correlated read/claim/working/completed
-   calls and disconnect/reconnect behavior. Keep shared context limited to the
-   test payload. A successful probe from this local Codex chat is not Dot proof.
+1. Use the installed personal plugin for a fresh actual Dot test. Earlier test
+   requests expired. Share the new request with the dedicated tunnel grant,
+   rather than the separate local Codex grant. Verify correlated
+   read/claim/working/completed calls and disconnect/reconnect behavior. Keep
+   shared context limited to the test payload. A successful probe from this
+   local Codex chat is not Dot proof.
+2. Keep authentication lifecycle and tunnel readiness as separate checks. The
+   approved local grant and its refresh have been exercised; the connector uses
+   the tunnel's access boundary, not cloud-to-loopback browser OAuth. Do not reset
+   existing local grants while testing revocation or adapting the contract.
+3. For future UI work, the native ChatGPT/Codex app denial does not imply a
+   browser-settings denial: the supported Chrome interface completed this
+   connection after confirmation. New or broader access still needs action-time
+   confirmation under the browser tool's policy; the same approved connection
+   does not need repeated consent.
 
 The runtime key is short-lived and requires operator renewal after expiry. No
 admin key, production subscription or successful real Dot report exists in this
