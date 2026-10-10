@@ -31,6 +31,17 @@ describe('SubagentTimelineTracker', () => {
     expect(tracker.summary('parent')?.completed).toBe(1);
   });
 
+  it('counts an OpenCode Task-tool child session on its parent', () => {
+    const tracker = new SubagentTimelineTracker(() => {});
+    const started = tracker.handle({ eventName: 'opencode_subagent_start', sessionId: 's1', agentType: 'opencode',
+      payload: { session_id: 's1', agent_id: 'c1', agent_type: 'explore' } });
+    expect(started.childOnly).toBe(true);
+    expect(tracker.summary('s1')).toMatchObject({ active: 1, peak: 1, completed: 0 });
+    tracker.handle({ eventName: 'opencode_subagent_stop', sessionId: 's1', agentType: 'opencode',
+      payload: { session_id: 's1', agent_id: 'c1', last_assistant_message: 'found 3 files' } });
+    expect(tracker.summary('s1')).toMatchObject({ active: 0, peak: 1, completed: 1 });
+  });
+
   it('closes a known child even when its stop loses its type', () => {
     const tracker = new SubagentTimelineTracker(() => {});
     tracker.handle({ eventName: 'SubagentStart', sessionId: 'parent', agentType: 'claude-code',

@@ -92,7 +92,7 @@ describe('AgentDeckObserver event sequencing', () => {
   });
 
   /** Load a fresh copy of the plugin (module-level port cache resets per file). */
-  async function observer() {
+  async function observer(client: unknown = null) {
     dir = mkdtempSync(join(tmpdir(), 'agentdeck-oc-run-'));
     const file = join(dir, 'agentdeck.mjs');
     // Sequencing tests must not read the maintainer's real daemon/container files.
@@ -101,7 +101,7 @@ describe('AgentDeckObserver event sequencing', () => {
       'const readFile = async () => { throw new Error("fixture: no registry"); };',
     ), 'utf-8');
     const mod = await import(pathToFileURL(file).href);
-    return mod.AgentDeckObserver({ directory: '/tmp/proj', client: null });
+    return mod.AgentDeckObserver({ directory: '/tmp/proj', client });
   }
 
   /** post() is fire-and-forget through a promise chain — let it drain. */
@@ -204,6 +204,43 @@ describe('AgentDeckObserver event sequencing', () => {
     const submits = posts.filter((p) => p.event === 'opencode_user_prompt_submit');
     expect(submits).toHaveLength(2);
     expect(submits[1].body.prompt).toBe('again');
+  });
+
+  it('reports a Task-tool child session as the parent\'s subagent, never as a session', async () => {
+    const { event } = await observer();
+    await event({ event: userMessage });
+    await event({ event: { type: 'session.created', properties: { info: { id: 'c1', parentID: 's1' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore', text: 'find the config' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm2', sessionID: 'c1', role: 'assistant', agent: 'explore' } } } });
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      type: 'tool', sessionID: 'c1', callID: 'k1', tool: 'read', state: { status: 'running' },
+    } } } });
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      type: 'text', sessionID: 'c1', messageID: 'cm2', text: 'found 3 files',
+    } } } });
+    await event({ event: { type: 'permission.asked', properties: { id: 'p1', sessionID: 'c1', permission: 'bash' } } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c1' } } });
+    await flush();
+    const childPosts = posts.filter((p) => p.body.session_id === 'c1' || p.body.agent_id === 'c1');
+    expect(childPosts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    expect(childPosts[0].body).toMatchObject({ session_id: 's1', agent_id: 'c1', agent_type: 'explore' });
+    expect(childPosts[1].body).toMatchObject({ session_id: 's1', last_assistant_message: 'found 3 files' });
+    // A child's permission is a real wait: it lands on the parent's row.
+    expect(posts.find((p) => p.event === 'opencode_permission_asked')?.body)
+      .toMatchObject({ session_id: 's1', permission_id: 'p1' });
+    expect(posts.some((p) => p.event === 'opencode_session_start' && p.body.session_id === 'c1')).toBe(false);
+    expect(posts.some((p) => p.event === 'opencode_stop' && p.body.session_id === 'c1')).toBe(false);
+  });
+
+  it('asks the server for an unseen session\'s parent, and treats no answer as top level', async () => {
+    const get = vi.fn(async ({ path }: { path: { id: string } }) => (
+      path.id === 'c2' ? { data: { id: 'c2', parentID: 's9' } } : { data: { id: path.id } }
+    ));
+    const { event } = await observer({ session: { get } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c2' } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    expect(posts[0].body).toMatchObject({ session_id: 's9', agent_id: 'c2' });
   });
 });
 
