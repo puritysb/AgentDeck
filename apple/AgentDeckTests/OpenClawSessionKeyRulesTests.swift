@@ -19,19 +19,30 @@ final class OpenClawSessionKeyRulesTests: XCTestCase {
         XCTAssertGreaterThan(keys.count, 0)
         for c in keys {
             let key = try XCTUnwrap(c["key"] as? String)
-            XCTAssertEqual(OpenClawSessionKeyRules.isConversationKey(key), try XCTUnwrap(c["conversation"] as? Bool), key)
+            XCTAssertEqual(OpenClawSessionKeyRules.isConversationKey(key, mainSessionKey: c["main"] as? String),
+                           try XCTUnwrap(c["conversation"] as? Bool), key)
         }
         for c in try XCTUnwrap(root["pick"] as? [[String: Any]]) {
             let name = c["name"] as? String ?? ""
             let list = try XCTUnwrap(c["keys"] as? [String])
-            XCTAssertEqual(OpenClawSessionKeyRules.pickSteeringKey(list), c["expected"] as? String, name)
+            XCTAssertEqual(OpenClawSessionKeyRules.pickSteeringKey(list, mainSessionKey: c["main"] as? String),
+                           c["expected"] as? String, name)
         }
         for c in try XCTUnwrap(root["next"] as? [[String: Any]]) {
             let name = c["name"] as? String ?? ""
             XCTAssertEqual(
-                OpenClawSessionKeyRules.nextSteeringKey(current: c["current"] as? String, eventKey: c["event"] as? String),
+                OpenClawSessionKeyRules.nextSteeringKey(current: c["current"] as? String, eventKey: c["event"] as? String,
+                                                        mainSessionKey: c["main"] as? String),
                 c["expected"] as? String, name
             )
         }
+    }
+
+    func testMainSessionKeyFromHello() {
+        XCTAssertEqual(OpenClawSessionKeyRules.mainSessionKey(fromHello: [
+            "snapshot": ["sessionDefaults": ["mainSessionKey": "agent:main:main", "scope": "per-sender"]],
+        ]), "agent:main:main")
+        XCTAssertNil(OpenClawSessionKeyRules.mainSessionKey(fromHello: nil))
+        XCTAssertNil(OpenClawSessionKeyRules.mainSessionKey(fromHello: ["snapshot": ["sessionDefaults": ["mainSessionKey": 7]]]))
     }
 }

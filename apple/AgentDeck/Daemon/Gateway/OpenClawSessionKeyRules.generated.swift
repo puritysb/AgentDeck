@@ -12,29 +12,44 @@ enum OpenClawSessionKeyRules {
     static let conversationKeyPatterns: [String] = [
         #"^agent:[^:]+:(?:main|voice)$"#,
         #"^agent:[^:]+:dashboard:[^:]+$"#,
-        #"^agent:[^:]+:[a-z0-9_-]+:(?:group|dm|direct|channel|thread):[^:]+$"#,
+        #"^agent:[^:]+:[a-z0-9_-]+:(?:dm|direct):[^:]+$"#,
     ]
 
     private static let conversationRegexes: [NSRegularExpression] =
         conversationKeyPatterns.map { try! NSRegularExpression(pattern: $0) }
 
-    static func isConversationKey(_ key: String?) -> Bool {
+    static func isConversationKey(_ key: String?, mainSessionKey: String? = nil) -> Bool {
         guard let key, !key.isEmpty else { return false }
+        if let mainSessionKey, !mainSessionKey.isEmpty, key == mainSessionKey { return true }
         let range = NSRange(key.startIndex..., in: key)
         return conversationRegexes.contains { $0.firstMatch(in: key, range: range) != nil }
     }
 
     /// The steering key from a `sessions.list` answer (newest first): the
-    /// newest conversation key, else the newest key (previous behaviour).
-    static func pickSteeringKey(_ keysNewestFirst: [String]) -> String? {
-        keysNewestFirst.first(where: { isConversationKey($0) }) ?? keysNewestFirst.first
+    /// newest conversation key, else the Gateway's main session key, else the
+    /// newest key (previous behaviour).
+    static func pickSteeringKey(_ keysNewestFirst: [String], mainSessionKey: String? = nil) -> String? {
+        if let key = keysNewestFirst.first(where: { isConversationKey($0, mainSessionKey: mainSessionKey) }) { return key }
+        if let mainSessionKey, !mainSessionKey.isEmpty { return mainSessionKey }
+        return keysNewestFirst.first
     }
 
     /// The steering key after an event names `eventKey`: a conversation key
-    /// takes over; a background key only fills an empty slot.
-    static func nextSteeringKey(current: String?, eventKey: String?) -> String? {
+    /// takes over; a background key only fills an empty slot (main first).
+    static func nextSteeringKey(current: String?, eventKey: String?, mainSessionKey: String? = nil) -> String? {
         guard let eventKey, !eventKey.isEmpty else { return current }
-        if isConversationKey(eventKey) { return eventKey }
-        return current ?? eventKey
+        if isConversationKey(eventKey, mainSessionKey: mainSessionKey) { return eventKey }
+        if let current { return current }
+        if let mainSessionKey, !mainSessionKey.isEmpty { return mainSessionKey }
+        return eventKey
+    }
+
+    /// `hello-ok.snapshot.sessionDefaults.mainSessionKey`, when the Gateway sent one.
+    static func mainSessionKey(fromHello hello: [String: Any]?) -> String? {
+        guard let snapshot = hello?["snapshot"] as? [String: Any],
+              let defaults = snapshot["sessionDefaults"] as? [String: Any],
+              let key = defaults["mainSessionKey"] as? String,
+              !key.isEmpty, key.count <= 512 else { return nil }
+        return key
     }
 }

@@ -1,36 +1,203 @@
 {
-  "$comment": "OpenClaw Gateway session-key shapes (owner's store, 2026-10-10). Replayed by shared/src/__tests__/openclaw-session-key.test.ts and apple/AgentDeckTests/OpenClawSessionKeyRulesTests.swift. `conversation` is isOpenClawConversationKey; `pick` cases are pickOpenClawSteeringKey over keys newest first; `next` cases are nextOpenClawSteeringKey(current, event).",
+  "$comment": "OpenClaw Gateway session-key shapes (owner's store, 2026-10-10). Replayed by shared/src/__tests__/openclaw-session-key.test.ts and apple/AgentDeckTests/OpenClawSessionKeyRulesTests.swift. `main` (optional) is the Gateway's hello-ok snapshot.sessionDefaults.mainSessionKey. `conversation` is isOpenClawConversationKey(key, main); `pick` cases are pickOpenClawSteeringKey(keys newest first, main); `next` cases are nextOpenClawSteeringKey(current, event, main).",
   "keys": [
-    { "key": "agent:main:main", "conversation": true },
-    { "key": "agent:main:voice", "conversation": true },
-    { "key": "agent:main:dashboard:3f2a9c1e-1111-2222-3333-444455556666", "conversation": true },
-    { "key": "agent:main:line:group:u0123456789abcdef0123456789abcdef", "conversation": true },
-    { "key": "agent:main:telegram:dm:12345678", "conversation": true },
-    { "key": "agent:ops:main", "conversation": true },
-    { "key": "agent:main:main:heartbeat", "conversation": false },
-    { "key": "agent:main:dashboard:3f2a9c1e-1111-2222-3333-444455556666:heartbeat", "conversation": false },
-    { "key": "agent:main:cron:0b6f4c2a-7d1e-4e8a-9a51-2f7c3d9e1b40", "conversation": false },
-    { "key": "agent:main:eval-zai-glm-5.3-coding-t07__r2", "conversation": false },
-    { "key": "agent:main:preflight-openrouter-deepseek-deepseek-v4-pro", "conversation": false },
-    { "key": "agent:main:model-upgrade-20260904-glm53", "conversation": false },
-    { "key": "agent:main:explicit:semantic-judge-probe", "conversation": false },
-    { "key": "agent:main:agentdeck-probe4", "conversation": false },
-    { "key": "agent:main:diag-ox-tools-20260921", "conversation": false },
-    { "key": "main", "conversation": false },
-    { "key": "", "conversation": false }
+    {
+      "key": "agent:main:main",
+      "conversation": true
+    },
+    {
+      "key": "agent:main:voice",
+      "conversation": true
+    },
+    {
+      "key": "agent:main:dashboard:3f2a9c1e-1111-2222-3333-444455556666",
+      "conversation": true
+    },
+    {
+      "key": "agent:main:line:group:u0123456789abcdef0123456789abcdef",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:telegram:dm:12345678",
+      "conversation": true
+    },
+    {
+      "key": "agent:ops:main",
+      "conversation": true
+    },
+    {
+      "key": "agent:main:main:heartbeat",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:dashboard:3f2a9c1e-1111-2222-3333-444455556666:heartbeat",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:cron:0b6f4c2a-7d1e-4e8a-9a51-2f7c3d9e1b40",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:eval-zai-glm-5.3-coding-t07__r2",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:preflight-openrouter-deepseek-deepseek-v4-pro",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:model-upgrade-20260904-glm53",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:explicit:semantic-judge-probe",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:agentdeck-probe4",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:diag-ox-tools-20260921",
+      "conversation": false
+    },
+    {
+      "key": "main",
+      "conversation": false
+    },
+    {
+      "key": "",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:telegram:channel:-100123",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:slack:thread:C01:1700000000.1",
+      "conversation": false
+    },
+    {
+      "key": "agent:main:home",
+      "conversation": true,
+      "main": "agent:main:home"
+    },
+    {
+      "key": "global",
+      "conversation": true,
+      "main": "global"
+    },
+    {
+      "key": "agent:main:home",
+      "conversation": false
+    }
   ],
   "pick": [
-    { "name": "an eval run updated last, main is still the target", "keys": ["agent:main:eval-x__r1", "agent:main:cron:abc", "agent:main:main"], "expected": "agent:main:main" },
-    { "name": "the newest conversation wins", "keys": ["agent:main:cron:abc", "agent:main:dashboard:d1", "agent:main:main"], "expected": "agent:main:dashboard:d1" },
-    { "name": "no conversation key known: previous most-recent behaviour", "keys": ["agent:main:eval-x__r1", "agent:main:cron:abc"], "expected": "agent:main:eval-x__r1" },
-    { "name": "empty list", "keys": [], "expected": null }
+    {
+      "name": "an eval run updated last, main is still the target",
+      "keys": [
+        "agent:main:eval-x__r1",
+        "agent:main:cron:abc",
+        "agent:main:main"
+      ],
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "the newest conversation wins",
+      "keys": [
+        "agent:main:cron:abc",
+        "agent:main:dashboard:d1",
+        "agent:main:main"
+      ],
+      "expected": "agent:main:dashboard:d1"
+    },
+    {
+      "name": "no conversation key known: previous most-recent behaviour",
+      "keys": [
+        "agent:main:eval-x__r1",
+        "agent:main:cron:abc"
+      ],
+      "expected": "agent:main:eval-x__r1"
+    },
+    {
+      "name": "empty list",
+      "keys": [],
+      "expected": null
+    },
+    {
+      "name": "a paged list holding only eval runs: the Gateway's main key",
+      "keys": [
+        "agent:main:eval-x__r1",
+        "agent:main:eval-x__r2"
+      ],
+      "main": "agent:main:main",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "a group active more recently than main is not the target",
+      "keys": [
+        "agent:main:line:group:u1",
+        "agent:main:main"
+      ],
+      "expected": "agent:main:main"
+    }
   ],
   "next": [
-    { "name": "a cron tick does not take the deck", "current": "agent:main:main", "event": "agent:main:cron:abc", "expected": "agent:main:main" },
-    { "name": "a heartbeat does not take the deck", "current": "agent:main:main", "event": "agent:main:main:heartbeat", "expected": "agent:main:main" },
-    { "name": "the user talking in the dashboard does", "current": "agent:main:main", "event": "agent:main:dashboard:d1", "expected": "agent:main:dashboard:d1" },
-    { "name": "nothing known yet: any key beats none", "current": null, "event": "agent:main:cron:abc", "expected": "agent:main:cron:abc" },
-    { "name": "a later conversation replaces that fallback", "current": "agent:main:cron:abc", "event": "agent:main:main", "expected": "agent:main:main" },
-    { "name": "an event without a key changes nothing", "current": "agent:main:main", "event": null, "expected": "agent:main:main" }
+    {
+      "name": "a cron tick does not take the deck",
+      "current": "agent:main:main",
+      "event": "agent:main:cron:abc",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "a heartbeat does not take the deck",
+      "current": "agent:main:main",
+      "event": "agent:main:main:heartbeat",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "the user talking in the dashboard does",
+      "current": "agent:main:main",
+      "event": "agent:main:dashboard:d1",
+      "expected": "agent:main:dashboard:d1"
+    },
+    {
+      "name": "nothing known yet: any key beats none",
+      "current": null,
+      "event": "agent:main:cron:abc",
+      "expected": "agent:main:cron:abc"
+    },
+    {
+      "name": "a later conversation replaces that fallback",
+      "current": "agent:main:cron:abc",
+      "event": "agent:main:main",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "an event without a key changes nothing",
+      "current": "agent:main:main",
+      "event": null,
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "a group chat does not take the deck",
+      "current": "agent:main:main",
+      "event": "agent:main:line:group:u1",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "nothing steered yet but main known: a cron tick yields to main",
+      "current": null,
+      "event": "agent:main:cron:abc",
+      "main": "agent:main:main",
+      "expected": "agent:main:main"
+    },
+    {
+      "name": "a renamed main key takes the deck",
+      "current": "agent:main:dashboard:d1",
+      "event": "agent:main:home",
+      "main": "agent:main:home",
+      "expected": "agent:main:home"
+    }
   ]
 }

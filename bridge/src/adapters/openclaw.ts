@@ -7,7 +7,7 @@ import { createPublicKey, createPrivateKey, sign as cryptoSign, randomUUID } fro
 import WebSocket from 'ws';
 import { debug, log, logError } from '../logger.js';
 import { summarizeResponse } from '../timeline-summarizer.js';
-import { nextOpenClawSteeringKey, pickOpenClawSteeringKey } from '@agentdeck/shared';
+import { nextOpenClawSteeringKey, openClawMainSessionKeyFromHello, pickOpenClawSteeringKey } from '@agentdeck/shared';
 import { extractTopicHint, extractTopicHintWithKind, promptSnippetFallback, prepareMarkdownDetail } from '@agentdeck/shared';
 import {
   cleanRawText,
@@ -197,6 +197,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   // (`shared/src/openclaw-session-key.ts`).
   private currentSessionKey: string | null = null;
   private steeringSessionKey: string | null = null;
+  /** `hello-ok.snapshot.sessionDefaults.mainSessionKey` of this connection —
+   *  the deck's target when a paged `sessions.list` shows no conversation. */
+  private gatewayMainSessionKey: string | null = null;
   private currentRunId: string | null = null;
   /** The approval the Gateway is currently blocked on, normalized for display
    *  AND for answering — the options carry their own decision so an index press
@@ -1687,7 +1690,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         // Track active run and session
         if (runId) this.currentRunId = runId;
         if (sessionKey) this.currentSessionKey = sessionKey;
-        this.steeringSessionKey = nextOpenClawSteeringKey(this.steeringSessionKey, sessionKey);
+        this.steeringSessionKey = nextOpenClawSteeringKey(this.steeringSessionKey, sessionKey, this.gatewayMainSessionKey);
 
         switch (state) {
           case 'delta': {
@@ -2287,6 +2290,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       resolve: (payload) => {
         debug('adapter:openclaw', 'Handshake complete (hello-ok)');
         this.alive = true;
+        this.gatewayMainSessionKey = openClawMainSessionKeyFromHello(payload);
         this.catalogGeneration += 1;
         this.reconnectDelay = 1000;
 
@@ -2413,7 +2417,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       this.currentSessionKey = sorted[0].key;
       // The newest key is often an eval run or a cron job; the deck talks to
       // the newest conversation (`agent:main:main` on a quiet day).
-      this.steeringSessionKey = pickOpenClawSteeringKey(sorted.map((s) => s.key));
+      this.steeringSessionKey = pickOpenClawSteeringKey(sorted.map((s) => s.key), this.gatewayMainSessionKey);
 
       // Use fixed name — Gateway session labels can be user identifiers
       // (e.g. phone numbers) which are unsuitable as project names

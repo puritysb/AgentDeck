@@ -212,6 +212,8 @@ actor OpenClawAdapter {
     /// Where the user's actions go — prompt, stop, settings. Only a
     /// conversation-shaped key takes it over (`OpenClawSessionKeyRules`).
     private var steeringSessionKey: String?
+    /// `hello-ok.snapshot.sessionDefaults.mainSessionKey` of this connection.
+    private var gatewayMainSessionKey: String?
     /// Model configured on the canonical main session. Gateway `models.list`
     /// does not always expose the CLI's `default` tag, so this is the reliable
     /// fallback for the virtual OpenClaw session row.
@@ -573,7 +575,8 @@ actor OpenClawAdapter {
             }
             if let sessionKey = payload["sessionKey"] as? String, !sessionKey.isEmpty {
                 currentSessionKey = sessionKey
-                steeringSessionKey = OpenClawSessionKeyRules.nextSteeringKey(current: steeringSessionKey, eventKey: sessionKey)
+                steeringSessionKey = OpenClawSessionKeyRules.nextSteeringKey(
+                    current: steeringSessionKey, eventKey: sessionKey, mainSessionKey: gatewayMainSessionKey)
             }
             let chatState = payload["state"] as? String
 
@@ -860,6 +863,9 @@ actor OpenClawAdapter {
                 return
             }
             persistHelloAuth(payload)
+            // The Gateway's own main conversation (configurable `session.mainKey`);
+            // the deck's target when a paged `sessions.list` shows none.
+            gatewayMainSessionKey = OpenClawSessionKeyRules.mainSessionKey(fromHello: payload)
             disableDeviceAuthForNextConnect = false // Reset fallback flag on successful connect!
             markConnectedIfNeeded()
             emitAuthStatus("connected", requestId: nil, message: nil)
@@ -1901,7 +1907,8 @@ actor OpenClawAdapter {
         currentSessionKey = sorted.first?["key"] as? String
         // The newest key is often an eval run or a cron job; the deck talks to
         // the newest conversation (`agent:main:main` on a quiet day).
-        steeringSessionKey = OpenClawSessionKeyRules.pickSteeringKey(sorted.compactMap { $0["key"] as? String })
+        steeringSessionKey = OpenClawSessionKeyRules.pickSteeringKey(
+            sorted.compactMap { $0["key"] as? String }, mainSessionKey: gatewayMainSessionKey)
         DaemonLogger.shared.debug("OpenClaw", "Active session: \(currentSessionKey ?? "nil"); deck targets \(steeringSessionKey ?? "nil")")
         mainSessionModelKey = Self.mainSessionModelKey(from: sessions)
         emitResolvedModel()

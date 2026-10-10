@@ -14,6 +14,7 @@ type Priv = {
   alive: boolean;
   rpcCall: (method: string, params: unknown) => Promise<unknown>;
   fetchSessions(): Promise<void>;
+  gatewayMainSessionKey: string | null;
   handleGatewayEvent(e: string, p: Record<string, unknown>): void;
 };
 
@@ -62,5 +63,25 @@ describe('OpenClaw steering key', () => {
     priv.handleGatewayEvent('chat', { state: 'delta', runId: 'r1', sessionKey: 'agent:main:dashboard:d1' });
     adapter.handleCommand({ type: 'send_prompt', text: 'more' } as never);
     expect(sent(calls, 'chat.send')).toEqual(['agent:main:dashboard:d1']);
+  });
+
+  it('a LINE group answering other people never takes the deck', async () => {
+    const { adapter, priv, calls } = setup([{ key: 'agent:main:main', updatedAt: 100 }]);
+    await priv.fetchSessions();
+    priv.handleGatewayEvent('chat', { state: 'delta', runId: 'g1', sessionKey: 'agent:main:line:group:u754' });
+    adapter.handleCommand({ type: 'send_prompt', text: 'private note' } as never);
+    expect(sent(calls, 'chat.send')).toEqual(['agent:main:main']);
+  });
+
+  it('a page of eval runs with no conversation falls back to the Gateway main key, not an eval run', async () => {
+    const { adapter, priv, calls } = setup([
+      { key: 'agent:main:eval-a__r1', updatedAt: 300 },
+      { key: 'agent:main:eval-a__r2', updatedAt: 200 },
+    ]);
+    priv.gatewayMainSessionKey = 'agent:main:main';
+    await priv.fetchSessions();
+    priv.handleGatewayEvent('chat', { state: 'delta', runId: 'e3', sessionKey: 'agent:main:eval-a__r3' });
+    adapter.handleCommand({ type: 'send_prompt', text: 'hi' } as never);
+    expect(sent(calls, 'chat.send')).toEqual(['agent:main:main']);
   });
 });
