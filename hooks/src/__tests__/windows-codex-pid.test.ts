@@ -46,7 +46,7 @@ const hook = spawn('cmd.exe', ['/d', '/s', '/c', ${JSON.stringify(hookCommand(op
 hook.stdin.end(${JSON.stringify(payload)});
 hook.stdout.pipe(process.stdout); hook.stderr.pipe(process.stderr);
 hook.on('error', error => { console.error(error.message); process.exit(1); });
-hook.on('exit', code => process.exit(code ?? 1));
+hook.on('close', code => { process.exitCode = code ?? 1; });
 `);
     const child = spawn(executable, [script], {
       windowsHide: true,
@@ -60,7 +60,7 @@ hook.on('exit', code => process.exit(code ?? 1));
     const code = await new Promise<number | null>((resolve, reject) => {
       const deadline = setTimeout(() => { child.kill(); reject(new Error('Windows hook exceeded 10s')); }, 10_000);
       child.on('error', error => { clearTimeout(deadline); reject(error); });
-      child.on('exit', exit => { clearTimeout(deadline); resolve(exit); });
+      child.on('close', exit => { clearTimeout(deadline); resolve(exit); });
     });
     expect(code, output).toBe(0);
     expect(received?.body).toBe(payload);
@@ -68,7 +68,8 @@ hook.on('exit', code => process.exit(code ?? 1));
   } finally {
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
-    rmSync(dir, { recursive: true, force: true });
+    // Windows may release a just-exited executable or pipe a moment after close.
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
