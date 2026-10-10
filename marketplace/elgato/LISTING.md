@@ -2,13 +2,14 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the independently verified public version is **1.6** (2026-10-03,
-> 758.41 KB), following `1.3`, `1.2` and `1.0.6`
+> and the independently verified public version is **1.8** (released
+> 2026-10-08 per the public product page, read 2026-10-11), following `1.6`
+> (2026-10-03, 758.41 KB), `1.3`, `1.2` and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 1.8.0 — GitHub package public; submitted for review (2026-10-06)
+## 1.8.0 — public on the Marketplace (2026-10-08)
 
 The official [1.8.0 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.0)
 is public (source `4168e572`, package 1.8.0.0, SDK 3). Downloaded package SHA-256:
@@ -25,6 +26,10 @@ code/headless-controller checks passed. After approval, review of the DRM-proces
 package through code/simulator checks and final publication remain separate steps.
 The local receipt is `diagnostics/delivery-180/elgato-180-submitted.json`, with the
 matching PNG capture retained alongside it.
+
+The public product page shows **Version 1.8, released 2026-10-08** (read
+2026-10-11). Automatic publication was off, so the release was a manual publish;
+whether the DRM-processed encoder acceptance ran before it is not recorded here.
 
 ## 1.7.0 — submitted for review (2026-10-04)
 
