@@ -303,3 +303,32 @@ correlated claim/reports and WebSocket snapshots; `live2-status-latest.json`
 contains the operator result. Local screen/frame captures are retained separately
 from public documentation. Never publish credentials or personal dashboard/chat
 screenshots as repository documentation.
+
+
+## Unlocked follow-up and invalidated runtime key — 2026-10-10 23:45–23:55 KST
+
+After manual unlock, the installed macOS Dashboard's accessibility state showed
+`Dot. COMPLETED` for the earlier real report. This confirms the settled report
+reached that client; it does not retrospectively prove the working animation.
+A fresh request was then shared and sent to the same Dot conversation. Dot
+reported two failed `get_request` attempts (`UNAVAILABLE`) and did not claim or
+report activity. The operator record retained no claim/report, and the Dashboard
+showed `Awaiting Activity` rather than false working activity.
+
+The official runtime's control plane returned HTTP 401 `token_invalidated`.
+Its last successful poll was 23:46:09 KST. The process `/health` still said
+`live: true, ready: true`; component details showed the control plane in degraded
+backoff. Therefore process readiness is not authenticated cloud reachability.
+The precise invalidation cause was not established. The managed runtime was
+stopped successfully to end futile retries. Renewal of the restricted runtime key
+is required before restarting and repeating the actual Dot/creature test. The
+local AgentDeck grant and daemon were preserved.
+
+The clean-checkout [pre-release receipt](../verification/receipts/2026-10-10-e163636.json)
+passed the available automated checks, including 5,628 JavaScript tests, Android,
+macOS XCTest, iOS build, Apple bundle limits, ESP32 host/simulator/TTGO builds and
+clean packaged-daemon acceptance. The full runner skipped opt-in macOS E2E;
+a separate run with `AGENTDECK_E2E_ALLOW_DARWIN=1` passed all 14 E2E tests.
+Physical-device and Swift-owner live gates remain unverified. The Pixoo preview
+fix remains source-only until installed after live acceptance. Draft PR #501
+preserves the changes without claiming deployment or complete visual acceptance.
