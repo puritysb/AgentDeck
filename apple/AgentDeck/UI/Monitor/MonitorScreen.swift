@@ -20,6 +20,9 @@ struct MonitorScreen: View {
     #endif
 
     @State private var terrariumState = TerrariumState()
+    #if os(macOS)
+    @State private var showDotSetup = false
+    #endif
     #if os(iOS)
     @State private var showSettingsSheet = false
     #endif
@@ -40,6 +43,7 @@ struct MonitorScreen: View {
     /// session metadata changes without a state/count change.
     private var terrariumProjectionKey: String {
         let primary = [
+            String(stateHolder.state.bridgeConnected),
             stateHolder.state.sessionId ?? "",
             stateHolder.state.focusedSessionId ?? "",
             stateHolder.state.agentType ?? "",
@@ -95,7 +99,24 @@ struct MonitorScreen: View {
             ))
             #if os(macOS)
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
+            .sheet(isPresented: $showDotSetup) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack { Text("Dot connection").font(.title2.bold()); Spacer(); Button("Done") { showDotSetup = false } }
+                        DotConnectionSetupView()
+                    }.padding(24)
+                }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
+            }
             .toolbar {
+                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
+                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, compact: true) }
+                }
+                if stateHolder.state.dot?.configured != true {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Connect Dot…") { showDotSetup = true }
+                            .accessibilityIdentifier("dot-setup-entry")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)
@@ -119,9 +140,11 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
+                #if os(iOS)
                 if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    DotSurfaceView(snapshot: dot).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                    DotSurfaceView(snapshot: dot, compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
                 }
+                #endif
 
                 if !stateHolder.state.bridgeConnected {
                     ConnectionOverlay()
@@ -539,7 +562,8 @@ struct MonitorScreen: View {
     private func updateTerrariumState() {
         terrariumState = stateHolder.state.toTerrariumState(
             previous: terrariumState,
-            subagentActivityBySession: subagentActivityForTerrarium()
+            subagentActivityBySession: subagentActivityForTerrarium(),
+            activityAvailable: stateHolder.state.bridgeConnected
         )
     }
 

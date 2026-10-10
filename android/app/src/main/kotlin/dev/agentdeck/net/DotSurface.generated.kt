@@ -11,13 +11,19 @@ object DotSurfaceRules {
     const val glyphBytes = 1024
     const val glyphBase64 = 1368
     const val relationBytes = 96
+    const val pixelSizeDivisor = 6
+    const val pixelMinSize = 7
+    const val pixelMargin = 3
+    const val pixelYDivisor = 4
     const val panelGlyphSize = 32
     const val paperGlyphSize = 24
     const val matrixGlyphSize = 7
     const val panelMargin = 8
     const val reportFreshMs = 180000L
     const val defaultRgbaBase64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/6iwmv+osJr/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/AAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/w4fH/+osJr/qLCa/6iwmv+osJr/Dh8f/6iwmv+osJr/qLCa/6iwmv8AAAAAAAAAAKiwmv+osJr/qLCa/6iwmv8OHx//qLCa/6iwmv+osJr/qLCa/w4fH/+osJr/qLCa/6iwmv+osJr/AAAAAAAAAACosJr/qLCa/6iwmv+osJr/Dh8f/6iwmv+osJr/qLCa/6iwmv8OHx//qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/w4fH/+osJr/qLCa/6iwmv+osJr/Dh8f/6iwmv+osJr/qLCa/6iwmv8AAAAAAAAAAKiwmv+osJr/qLCa/6iwmv8OHx//qLCa/6iwmv+osJr/qLCa/w4fH/+osJr/qLCa/6iwmv+osJr/AAAAAAAAAACosJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAKiwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAAAAAAAAAAAAqLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACosJr/qLCa/6iwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKiwmv+osJr/qLCa/6iwmv+osJr/qLCa/wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
-    val labels = listOf("NO REPORT", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN")
+    val labels = listOf("AWAITING ACTIVITY", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN", "NOT LINKED")
+    val compactLabels = listOf("Dot", "Stopped", "Working", "Help", "Done", "Failed", "Old", "Unknown", "Unlinked")
+    val habitatPhases = setOf(2, 3, 4, 5)
 }
 @Serializable data class DotAppearance(val version: Int, val id: String, val png: String? = null, val rgba: String) {
     fun validGlyph(): Boolean = version == DotSurfaceRules.version && Regex("[a-f0-9]{64}").matches(id) &&
@@ -26,11 +32,13 @@ object DotSurfaceRules {
 @Serializable data class DotSurfaceRelation(val kind: String, val direction: String, val stage: String, val target: String? = null, val receivedAt: Long, val evidence: String) {
     val label: String get() = kind + " · " + stage + " · " + (if (direction == "dot_to_agent") "Dot → " + (target?.let { "Unverified " + it } ?: "Unknown target") else (target?.let { "Unverified " + it } ?: "Unknown target") + " → Dot") + " · Dot report"
 }
-@Serializable data class DotSurfaceSnapshot(val configured: Boolean = false, val hosting: Boolean = false,
+@Serializable data class DotSurfaceSnapshot(val configured: Boolean = false, val hosting: Boolean = false, val authorized: Boolean? = null,
     val reportState: String? = null, val reportedAt: Long? = null, val expiresAt: Long? = null,
     val code: Int? = null, val validForMs: Long? = null, val appearance: DotAppearance? = null, val relation: DotSurfaceRelation? = null) {
+    fun inhabitsHabitat(now: Long): Boolean = configured && effectiveCode(now) in DotSurfaceRules.habitatPhases
     fun effectiveCode(now: Long): Int {
         if (!hosting) return 1
+        if (authorized == false) return 8
         val state = reportState ?: return 0
         val stamp = reportedAt ?: return 7
         if (stamp < 0 || stamp > now) return 7

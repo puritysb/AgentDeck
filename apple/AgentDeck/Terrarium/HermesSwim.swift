@@ -166,7 +166,17 @@ struct HermesSwim {
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
                        activity: Activity, neighbours: [SIMD3<Float>], aspect: Float) {
         let dt = min(max(delta.isFinite ? delta : 0, 0), 0.05)
-        guard dt > 0 else { return }
+        guard dt > 0 else {
+            // A paused clock must freeze motion, not a previous task's expression.
+            if activity != previous {
+                effort = activity == .working ? 1 : 0
+                attention = activity == .waiting ? 1 : 0
+                sadness = activity == .error ? 1 : 0
+                celebration = 0
+                previous = activity
+            }
+            return
+        }
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
         effort += ((activity == .working ? 1 : 0) - effort) * blend
@@ -180,9 +190,10 @@ struct HermesSwim {
         // A slow three-dimensional figure eight, tightly bounded around the
         // assigned slot so crowded/portrait tanks retain their label layout.
         let t = elapsed * 0.34 + offset
+        let resting = activity == .idle || activity == .error
         let radius = size * (0.85 + effort * 0.35) * (1 - attention * 0.85)
         var destination = home + SIMD3<Float>(sin(t) * radius,
-            sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // a soft float
+            size * 0.85 + sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // above her shell
                 + sin(elapsed * 3.4) * size * 0.05 * attention,                        // waiting: an eager bob
             sin(t * 0.83) * radius * 0.70)
         var nearest: SIMD3<Float>?
@@ -195,7 +206,7 @@ struct HermesSwim {
         // line, command symbol or implied transfer of work.
         let social = max(0, sin(elapsed * 0.18 + offset)) * (1 - effort) * (1 - attention) * (1 - sadness)
         greeting += ((distance < size * 3 ? social : 0) - greeting) * blend
-        if let peer = nearest, distance > 0.001, distance < size * 3 {
+        if !resting, let peer = nearest, distance > 0.001, distance < size * 3 {
             let direction = simd_normalize(peer - position)
             let arc = peer + SIMD3<Float>(cos(t) * size * 1.3, sin(t * 0.8) * size * 0.2,
                                                 sin(t) * size * 1.3)
@@ -215,7 +226,7 @@ struct HermesSwim {
         }
         gaze += (lookTarget - gaze) * (1 - exp(-dt * 4))
         // Separation is computed from one scene snapshot, never iteration order.
-        for peer in neighbours {
+        for peer in neighbours where !resting {
             let difference = position - peer
             let d = simd_length(difference)
             let clearance = max(0.4, size * 1.15)
@@ -225,13 +236,20 @@ struct HermesSwim {
         }
         let halfWidth = min(3.65, max(0.9, aspect * 3.0)) - size * 0.35
         destination.x = max(-halfWidth, min(halfWidth, destination.x))
-        destination.y = max(1.55, min(4.65, destination.y))
+        destination.y = max(home.y, min(4.65, destination.y))
         destination.z = max(-1.0, min(1.7, destination.z))
+        // Idle is a planted resting pose, not an endless swimming loop. Gaze,
+        // blinking and gentle articulation remain; neighbours cannot move the seat.
+        if resting { destination = home }
         let desired = (destination - position) * 1.5
         velocity += (desired - velocity) * (1 - exp(-dt * 2.5))
         let speed = simd_length(velocity)
         let maximum = max(0.20, size * (0.50 + effort * 0.30))
         if speed > maximum { velocity *= maximum / speed }
         position += velocity * dt
+        if resting && simd_distance(position, home) < 0.002 && simd_length(velocity) < 0.005 {
+            position = home
+            velocity = .zero
+        }
     }
 }

@@ -232,6 +232,8 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
 | `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
+| `agentdeck hermes-observer [--home <profile>] [--port <port> \| --registry]` | Install/update the opt-in observer, select a loopback receiver if needed, and print setup readiness; Hermes enablement/restart remain explicit |
+| `agentdeck hermes-observer [--home <profile>] --check [--json]` | Read-only Hermes installation, enablement, discovery and receiver-capability check; see [Hermes setup](hermes-agent.md#check-setup-when-hermes-activity-is-missing) |
 | `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |

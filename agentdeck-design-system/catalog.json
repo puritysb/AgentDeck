@@ -45,7 +45,9 @@
       "docs"
     ],
     "exclusions": {
-      "docs/dot-mcp-events-plan.md": "Proposed Dot integration architecture and interoperability experiment plan; no runtime or hosted service is shipped, so this is not a specification of the system as built.",
+      "docs/dot-connection-explained.ko.md": "Dated Korean reader explainer with connection diagrams and private-preview/public-distribution boundaries; derived from dot-distribution-decision.md, not a new canonical product specification.",
+      "docs/dot-mcp-events-plan.md": "Earlier Dot transport plan and dated experimental implementation evidence; current distribution decision is linked at the top, and real Dot interoperability is not established.",
+      "docs/dot-distribution-decision.md": "Dated integration research and release-gated distribution plan; proposed local plugin and private Events routes are not shipped capability claims.",
       "docs/hermes-agent.md": "Integration research and opt-in preview runbook; full native/device rollout remains tracked in #423.",
       "docs/why-apme.md": "Rationale essay, Korean body. English is canonical in the catalog; bind it once translated.",
       "docs/apme-pipeline.md": "Implementation walkthrough, Korean body. Superseded for reader purposes by the cataloged arch.apme.",

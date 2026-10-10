@@ -423,16 +423,14 @@ static void readDot(JsonVariantConst value) {
         g_state.dot = dotStorage.get(); logHeap("dot-state");
     }
     if (!g_state.dot) return;
-    g_state.dot->configured = false; g_state.dot->hosting = false; g_state.dot->code = 1;
-    g_state.dot->receivedMs = 0; g_state.dot->validForMs = 0; g_state.dot->custom = false;
-    g_state.dot->relation[0] = 0;
-    if (!value.is<JsonObjectConst>() || !value["configured"].is<bool>() || !value["configured"].as<bool>()) return;
+    if (!configured) { g_state.dot->clear(); return; }
     auto& dot = *g_state.dot;
-    dot.configured = true;
-    dot.hosting = value["hosting"].is<bool>() && value["hosting"].as<bool>();
-    dot.code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < 8 ? value["code"].as<uint8_t>() : 7;
-    dot.receivedMs = millis();
-    dot.validForMs = value["validForMs"].is<uint32_t>() ? min(value["validForMs"].as<uint32_t>(), DotSurfaceRules::reportFreshMs) : 0;
+    const bool hosting = value["hosting"].is<bool>() && value["hosting"].as<bool>();
+    const uint8_t code = value["code"].is<uint8_t>() && value["code"].as<uint8_t>() < DotSurfaceRules::phaseCount ? value["code"].as<uint8_t>() : 7;
+    const uint32_t budget = value["validForMs"].is<uint32_t>() ? value["validForMs"].as<uint32_t>() : 0;
+    const bool known = value["reportedAt"].is<uint64_t>();
+    if (!dot.setActivity(hosting, code, known, known ? value["reportedAt"].as<uint64_t>() : 0, budget, millis())) return;
+    dot.custom = false; dot.relation[0] = 0;
     const char* rgba = value["appearance"]["rgba"] | "";
     if (value["appearance"]["version"].is<uint8_t>() && value["appearance"]["version"].as<uint8_t>() == DotSurfaceRules::version
         && strlen(rgba) == DotSurfaceRules::glyphBase64) {

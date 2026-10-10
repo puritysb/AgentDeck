@@ -913,6 +913,10 @@
             }
           ]
         },
+        "authorized": {
+          "description": "Active scoped MCP grant, not proof of Dot identity or global activity. Absent means unknown.",
+          "type": "boolean"
+        },
         "code": {
           "type": "number"
         },

@@ -7,6 +7,27 @@ const session_id = `hermes-${'a'.repeat(32)}`;
 const payload = { session_id, model: 'custom-model', project_name: 'Hermes (telegram)' };
 
 describe('Hermes conversation lifetime', () => {
+  it('does not renew unconfirmed work just because the CLI process is alive', () => {
+    const sessions = new HermesSessions();
+    const expired: string[] = [];
+    sessions.onExpired = id => expired.push(id);
+    sessions.note('hermes_user_prompt_submit', { ...payload, pid: 7, platform: 'cli' }, 0);
+    for (let now = 60_000; now <= HERMES_SILENCE_TTL_MS; now += 60_000) sessions.sweepDeparted(() => 'alive', now);
+    expect(sessions.applyTo([], HERMES_SILENCE_TTL_MS)).toEqual([]);
+    expect(expired).toEqual([session_id]);
+  });
+  it('does not resurrect completed work from late tool callbacks', () => {
+    const sessions = new HermesSessions();
+    sessions.note('hermes_user_prompt_submit', payload, 0);
+    sessions.note('hermes_tool_start', { ...payload, tool_name: 'terminal' }, 1);
+    sessions.note('hermes_stop', payload, 2);
+    expect(sessions.note('hermes_tool_start', payload, 3)).toBe(false);
+    expect(sessions.note('hermes_tool_end', payload, 4)).toBe(false);
+    expect(sessions.applyTo([], 4)[0]).toMatchObject({ state: 'idle', currentTool: undefined });
+    expect(sessions.note('hermes_user_prompt_submit', payload, 5)).toBe(true);
+    expect(sessions.note('hermes_tool_start', payload, 6)).toBe(true);
+    expect(sessions.applyTo([], 6)[0].state).toBe('processing');
+  });
   it('keeps a captured delegated turn as one read-only parent until finalization', () => {
     const capture = JSON.parse(readFileSync(new URL('./fixtures/hermes-live-child.json', import.meta.url), 'utf8'));
     const sessions = new HermesSessions();

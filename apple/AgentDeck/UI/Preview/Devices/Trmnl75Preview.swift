@@ -47,7 +47,7 @@
 // masked EPD47 bands, NM gate, "as of" band on EPD47/NM only, push delivery)
 // does not change the TRMNL dashboard this view mirrors. The OFFLINE subtitle
 // separators became ASCII; this mirror shows only "Searching for AgentDeck…".
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 67446d132a222337208448793141131c271fab51
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp cdd5dc53f502a265aa75159c02bc81dff91ed18e
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -114,9 +114,9 @@ struct Trmnl75Preview: View {
                         .minimumScaleFactor(0.72)
                         .foregroundStyle(ink.opacity(0.8))
                 }
-                if let dot = selection.live?.source.dot, dot.configured {
+                if let dot = selection.live?.source.dot, dot.inhabitsHabitat(at: Int(Date().timeIntervalSince1970 * 1000)) {
                     DotPaperCharacter(appearance: dot.appearance).frame(width: 24, height: 24)
-                    Text("DOT " + dot.label).font(.system(size: 8)).foregroundStyle(ink).lineLimit(1)
+                    Text(DotAppearanceRules.compactLabels[dot.effectiveCode]).font(.system(size: 8)).foregroundStyle(ink).lineLimit(1)
                 }
                 linkChip
             }

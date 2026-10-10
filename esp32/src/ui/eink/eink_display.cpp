@@ -1115,15 +1115,14 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
     }
 
     int16_t dotWidth = 0;
-    if (s.dot.configured && chipX >= 290) {
-        dotWidth = chipX >= 480 ? 168 : 48;
+    if (s.dot.configured && DotSurfaceRules::inhabitsHabitat(s.dot.effectiveCode(millis())) && chipX >= 290) {
+        dotWidth = chipX >= 480 ? 168 : 84;
         const int16_t x = chipX - dotWidth - 4;
         DotCompanion::mono(s.dot, x, 18, DotSurfaceRules::paperGlyphSize,
             [](int px, int py, bool dark) { display.drawPixel(px, py, dark ? GxEPD_BLACK : GxEPD_WHITE); });
         const uint8_t code = s.dot.effectiveCode(millis());
         char label[40];
-        if (dotWidth > 48) snprintf(label, sizeof(label), "DOT %s", DotSurfaceRules::labels[code]);
-        else snprintf(label, sizeof(label), "D%s", code == 2 ? "W" : code == 3 ? "!" : code == 4 ? "C" : code == 5 ? "F" : "?");
+        snprintf(label, sizeof(label), "%s", DotSurfaceRules::compactLabels[code]);
         textAt(x + DotSurfaceRules::paperGlyphSize + 3, 36, label, CLASSIC_FONT);
     }
     // Session counts by state, left of the chip.

@@ -6,7 +6,8 @@ import AppKit
 struct DotSettingsView: View {
     @State private var snapshot = DotHostSnapshot(available: false, status: "Stopped", origin: "", clientID: "", consents: [], grants: [], reports: [])
     @State private var origin = ""
-    @State private var port = "9476"
+    @State private var port = String(DotLocalMCP.port)
+    @State private var replacingWithLocal = false
     @State private var redirect = "https://chatgpt.com/connector_platform_oauth_redirect"
     @State private var certificate: Data?
     @State private var certificateName = "No certificate selected"
@@ -25,6 +26,10 @@ struct DotSettingsView: View {
         GroupBox("Dot — direct connection") {
             VStack(alignment: .leading, spacing: 12) {
                 Text(snapshot.status).font(.callout)
+                if snapshot.hosting && !snapshot.grants.contains(where: { $0.scopes.contains("agentdeck:report") }) {
+                    Text("Not linked — approve a reporting client to share task activity.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 HStack {
                     Button("Choose character image…") { selectingCharacter = true }
                     Button("Restore default character") { perform { try await DotAppearanceStore.reset() } }
@@ -39,7 +44,18 @@ struct DotSettingsView: View {
                 Text("AgentDeck receives requests directly on this Mac. Hosting stops when AgentDeck stops or the Mac sleeps.")
                     .font(.caption).foregroundStyle(.secondary)
                 if snapshot.available {
-                    DisclosureGroup("HTTPS and ChatGPT connection") {
+                    Button("Set up local connection") {
+                        replacingWithLocal = true
+                        if snapshot.grants.isEmpty { configureLocal() } else { replacing = true }
+                    }.disabled(busy)
+                    Text("Local MCP stays on this Mac. Connect a compatible local plugin and approve its code below. Dot interoperability is still being validated.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !snapshot.origin.isEmpty {
+                        Text("MCP address: \(snapshot.origin)/mcp").textSelection(.enabled).font(.caption)
+                        Toggle("Resume host when AgentDeck starts", isOn: Binding(
+                            get: { snapshot.resumeOnLaunch }, set: { enabled in perform { try await DotHost.shared.setResumeOnLaunch(enabled) } })).disabled(busy)
+                    }
+                    DisclosureGroup("Advanced HTTPS experiment") {
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Public HTTPS origin", text: $origin)
                             TextField("Local HTTPS port", text: $port)
@@ -52,9 +68,10 @@ struct DotSettingsView: View {
                             Text("Use a PKCS#12 certificate with its private key and trusted chain. Configure DNS and external access to this dedicated port; keep device port 9120 private.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Button("Save connection configuration") {
+                                replacingWithLocal = false
                                 if snapshot.grants.isEmpty { configure() } else { replacing = true }
                             }.disabled(certificate == nil || busy)
-                            if !snapshot.clientID.isEmpty {
+                            if !snapshot.clientID.isEmpty && snapshot.origin.hasPrefix("https://") {
                                 Toggle("Resume HTTPS hosting when AgentDeck starts", isOn: Binding(
                                     get: { snapshot.resumeOnLaunch }, set: { enabled in perform { try await DotHost.shared.setResumeOnLaunch(enabled) } }))
                                     .disabled(busy)
@@ -65,7 +82,7 @@ struct DotSettingsView: View {
                         }
                     }
                     HStack {
-                        Button("Start HTTPS hosting") { perform { try await DotHost.shared.start() } }.disabled(busy)
+                        Button("Start host") { perform { try await DotHost.shared.start() } }.disabled(busy)
                         Button("Stop hosting") { perform { await DotHost.shared.stop() } }.disabled(busy)
                     }
                     ForEach(snapshot.consents) { consent in
@@ -90,13 +107,13 @@ struct DotSettingsView: View {
                         Text("Share only the context you want Dot to receive. Context expires after 30 minutes; results are kept for seven days while AgentDeck runs.").font(.caption)
                         TextEditor(text: $context).frame(minHeight: 70, maxHeight: 130)
                         HStack {
-                            Button("Ask Dot for a briefing") {
+                            Button(snapshot.origin.hasPrefix("http://") ? "Prepare shared request" : "Ask Dot for a briefing") {
                                 let key = UUID().uuidString, shared = context, profile = profile, grant = grantID
                                 perform { try await DotHost.shared.request(grant: grant, profile: profile, context: shared, key: key) }
                             }.disabled(busy || context.isEmpty || context.unicodeScalars.count > DotLimits.contextCharacters || grantID.isEmpty)
                             Button("Disconnect", role: .destructive) { let grant = grantID; perform { try await DotHost.shared.revoke(grant) } }.disabled(busy || grantID.isEmpty)
                         }
-                        Text("In Dot, subscribe to agentdeck.briefing.requested for this profile and ask it to read, claim and report each request. Delivery is separate from completion.")
+                        Text(snapshot.origin.hasPrefix("http://") ? "Copy the request ID below and ask a connected local agent to read, claim and report it. Preparing a request does not wake Dot." : "In Dot, subscribe to agentdeck.briefing.requested for this profile and ask it to read, claim and report each request. Delivery is separate from completion.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
@@ -108,6 +125,7 @@ struct DotSettingsView: View {
                     Text("Briefing results").font(.headline)
                     ForEach(Array(snapshot.reports.prefix(20))) { request in
                         VStack(alignment: .leading, spacing: 4) {
+                            Text("Request ID: \(request.id)").textSelection(.enabled).font(.caption)
                             Text("\(request.profile) · Delivery: \(request.delivery)").font(.caption)
                             if let events = request.interactions, !events.isEmpty {
                                 DotInteractionView(events: events, now: Int(Date().timeIntervalSince1970 * 1000))
@@ -141,7 +159,7 @@ struct DotSettingsView: View {
             } catch { message = error.localizedDescription }
         }
         .confirmationDialog("Replace connection settings and revoke existing connections?", isPresented: $replacing) {
-            Button("Replace connections", role: .destructive) { configure() }
+            Button("Replace connections", role: .destructive) { if replacingWithLocal { configureLocal() } else { configure() } }
         }
         .task {
             while !Task.isCancelled {
@@ -152,6 +170,9 @@ struct DotSettingsView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+    private func configureLocal() {
+        perform { try await DotHost.shared.configureLocal() }
     }
     private func configure() {
         guard let certificate, let port = UInt16(port) else { message = "Choose a certificate and valid port."; return }

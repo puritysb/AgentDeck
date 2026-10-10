@@ -1,5 +1,6 @@
 #if os(macOS)
 import Foundation
+import Security
 
 struct DotHostConfiguration: Codable, Sendable {
     var origin: String
@@ -18,13 +19,14 @@ struct DotHostSnapshot: Sendable {
         var reportState = latest?.report?.state
         if let latest, let report = latest.report, !["completed", "failed"].contains(report.state),
            (latest.expiresAt <= now || now - report.receivedAt >= DotLimits.reportFreshMs) { reportState = "stale" }
-        var result: [String: Any] = ["configured": true, "hosting": value.hosting,
+        let authorized = value.grants.contains { !$0.revoked && $0.expiresAt > now && $0.scopes.contains("agentdeck:report") }
+        var result: [String: Any] = ["configured": true, "hosting": value.hosting, "authorized": authorized,
                 "reportState": reportState as Any? ?? NSNull(),
                 "reportedAt": latest?.report?.receivedAt as Any? ?? NSNull(),
                 "expiresAt": latest?.expiresAt as Any? ?? NSNull()]
         if let appearance, appearance.portrait != nil, let data = try? JSONEncoder().encode(appearance),
            let dictionary = try? JSONSerialization.jsonObject(with: data) { result["appearance"] = dictionary }
-        let snapshot = DotSurfaceSnapshot(configured: true, hosting: value.hosting, reportState: reportState,
+        let snapshot = DotSurfaceSnapshot(configured: true, hosting: value.hosting, authorized: authorized, reportState: reportState,
             reportedAt: latest?.report?.receivedAt, expiresAt: latest?.expiresAt)
         result["code"] = snapshot.phase(at: now)
         result["validForMs"] = snapshot.phase(at: now) == 2 || snapshot.phase(at: now) == 3
@@ -88,6 +90,16 @@ final class DotHost {
         try DotVault.save(JSONEncoder().encode(value), account: "configuration")
         config = value
     }
+    func configureLocal(port: UInt16 = UInt16(DotLocalMCP.port)) throws {
+        guard activeOwner != nil, port >= 1024, !(9120...9139).contains(Int(port)) else { throw DotFailure.message("Choose a dedicated local MCP port.") }
+        let origin = "http://127.0.0.1:\(port)"
+        let value = DotHostConfiguration(origin: origin, port: port, oauth: .init(origin: origin,
+            clientID: DotLocalMCP.clientId, secret: "", redirectURI: "http://\(DotLocalMCP.host):\(DotLocalMCP.callbackPort)\(DotLocalMCP.callbackPath)", local: true))
+        stop(); oauth = nil; store = nil
+        try DotVault.save(Data(), account: "authorization")
+        try DotVault.save(JSONEncoder().encode(value), account: "configuration")
+        config = value
+    }
     func load() throws {
         guard let data = try DotVault.load("configuration"), !data.isEmpty else { return }
         config = try JSONDecoder().decode(DotHostConfiguration.self, from: data)
@@ -97,7 +109,7 @@ final class DotHost {
         if config?.resumeOnLaunch == true { try start() }
     }
     func setResumeOnLaunch(_ enabled: Bool) throws {
-        guard var value = config else { throw DotFailure.message("Configure HTTPS first.") }
+        guard var value = config else { throw DotFailure.message("Configure a connection first.") }
         value.resumeOnLaunch = enabled
         try DotVault.save(JSONEncoder().encode(value), account: "configuration")
         config = value
@@ -105,16 +117,23 @@ final class DotHost {
     func start() throws {
         guard activeOwner != nil else { throw DotFailure.message("The local AgentDeck daemon is not active.") }
         if config == nil { try load() }
-        guard let config, let bytes = try DotVault.load("identity") else { throw DotFailure.message("Configure the public hostname and certificate first.") }
-        guard let publicURL = URLComponents(string: config.origin), publicURL.scheme == "https",
+        guard let config else { throw DotFailure.message("Configure a connection first.") }
+        let local = config.oauth.local == true
+        guard config.oauth.origin == config.origin, let publicURL = URLComponents(string: config.origin),
               let hostname = publicURL.host, !hostname.isEmpty, publicURL.user == nil, publicURL.password == nil,
               publicURL.query == nil, publicURL.fragment == nil, publicURL.path.isEmpty,
-              config.port >= 1024, !(9120...9139).contains(Int(config.port)) else {
-            throw DotFailure.message("Stored HTTPS configuration is invalid. Configure the connection again.")
+              config.port >= 1024, !(9120...9139).contains(Int(config.port)),
+              local ? config.origin == "http://127.0.0.1:\(config.port)" : publicURL.scheme == "https" else {
+            throw DotFailure.message("Stored connection configuration is invalid.")
         }
         stop(); error = nil
-        let envelope = try JSONDecoder().decode(DotCertificateEnvelope.self, from: bytes)
-        let identity = try DotIdentity.validate(envelope, hostname: hostname)
+        var envelope: DotCertificateEnvelope?
+        var identity: SecIdentity?
+        if !local {
+            guard let bytes = try DotVault.load("identity") else { throw DotFailure.message("Import a certificate first.") }
+            let certificate = try JSONDecoder().decode(DotCertificateEnvelope.self, from: bytes)
+            identity = try DotIdentity.validate(certificate, hostname: hostname); envelope = certificate
+        }
         let authData = try DotVault.load("authorization")
         let auth = try DotOAuth(config: config.oauth, data: authData?.isEmpty == false ? authData : nil) { try DotVault.save($0, account: "authorization") }
         guard let contractURL = Bundle.main.url(forResource: "dot-mcp-contract", withExtension: "json") else { throw DotFailure.message("MCP contract resource is missing.") }
@@ -122,7 +141,7 @@ final class DotHost {
         try database.maintenance()
         oauth = auth; store = database
         let run = generation
-        try listener.start(identity: identity, port: config.port) { [weak self] request in
+        try listener.start(identity: identity, port: config.port, loopbackOnly: local) { [weak self] request in
             guard let self, self.generation == run else { return .init(status: 503) }
             return await self.handle(request)
         }
@@ -131,7 +150,7 @@ final class DotHost {
             var validatedAt = Date()
             while !Task.isCancelled {
                 guard let self, self.generation == run else { return }
-                if Date().timeIntervalSince(validatedAt) >= 60 {
+                if let envelope, Date().timeIntervalSince(validatedAt) >= 60 {
                     do { _ = try DotIdentity.validate(envelope, hostname: hostname); validatedAt = Date() }
                     catch { self.stop(); self.error = "HTTPS identity expired or is no longer trusted. Import a renewed certificate."; return }
                 }
@@ -143,8 +162,8 @@ final class DotHost {
     func approve(_ id: String, allowed: Bool) throws { try oauth?.decide(id, approve: allowed) }
     func revoke(_ id: String) throws { try oauth?.revokeGrant(id); try store?.revoke(id) }
     func request(grant: String, profile: String, context: String, key: String) throws {
-        guard active, listener.isReady, let store else { throw DotFailure.message("Start HTTPS hosting before requesting a briefing.") }
-        try store.create(owner: grant, profile: profile, context: context, key: key)
+        guard active, listener.isReady, let store else { throw DotFailure.message("Start the connection before sharing a request.") }
+        try store.create(owner: grant, profile: profile, context: context, key: key, local: config?.oauth.local == true)
     }
     nonisolated static func parameters(_ value: String) throws -> [String: String] {
         guard let components = URLComponents(string: "https://form.invalid/?" + value.replacingOccurrences(of: "+", with: "%20")) else { throw DotFailure.message("invalid_request") }
@@ -157,6 +176,7 @@ final class DotHost {
     }
     private func handle(_ request: DotHTTPRequest) async -> DotHTTPResponse {
         guard let config, let oauth, let store else { return .init(status: 503) }
+        if config.oauth.local == true, request.headers["host"] != "127.0.0.1:\(config.port)" { return .init(status: 403) }
         if request.headers["origin"] != nil { return .init(status: 403) }
         // A bounded installation-wide budget also covers unauthenticated OAuth requests.
         if Date().timeIntervalSince(budgetAt) >= 60 { budgetAt = Date(); budget = 0 }

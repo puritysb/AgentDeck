@@ -12,7 +12,8 @@ export function dotDeckReservedKeys(dot: DotDeckSnapshot | null | undefined, key
 
 export function dotDeckPresentation(dot: DotDeckSnapshot, now = Date.now()): { label: string; color: string } {
   if (!dot.hosting) return { label: 'HOST STOPPED', color: Ink.s300 };
-  if (!dot.reportState) return { label: 'NO REPORT', color: Ink.s300 };
+  if (dot.authorized === false) return { label: DOT_PHASES[8], color: Ink.s300 };
+  if (!dot.reportState) return { label: DOT_PHASES[0], color: Ink.s300 };
   if (dot.reportedAt === null || !Number.isSafeInteger(dot.reportedAt) || dot.reportedAt > now || dot.reportedAt < 0) return { label: 'UNKNOWN', color: Ink.s300 };
   if (dot.reportState === 'stale') return { label: 'OLD REPORT', color: Ink.s300 };
   if (dot.reportState === 'completed') return { label: 'COMPLETED', color: UI.ok };
@@ -29,7 +30,7 @@ export function renderDotDeckSlot(dot: DotDeckSnapshot, now = Date.now()): strin
   const relation = dot.relation?.evidence === 'dot_report' ? dot.relation : null;
   const edge = relation && DOT_INTERACTION_KINDS.some(k => k === relation.kind) && DOT_INTERACTION_STAGES.some(s => s === relation.stage)
     ? (relation.direction === 'dot_to_agent' ? 'D→?' : '?→D') + ' ' + relation.kind.toUpperCase().slice(0, 8) + ' ' + relation.stage.toUpperCase().replace('NEEDS_ATTENTION', 'ATTN').slice(0, 6) + ' report'
-    : dot.reportState ? 'Dot report' : 'Integration';
+    : dot.reportState ? 'Dot report' : 'No activity shared';
   const portrait = validDotAppearance(dot.appearance) && dot.appearance.png
     ? `<image x="48" y="16" width="48" height="48" href="data:image/png;base64,${dot.appearance.png}"/>`
     : null;

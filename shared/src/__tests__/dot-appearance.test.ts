@@ -18,3 +18,17 @@ it('bounds compact monotonic validity to actual report age and expiry, including
   expect(dotSurfaceSnapshot({...s,hosting:false},null,null,now).code).toBe(1);
   expect(dotDeckPresentation(s,now+1000000).label).toBe('OLD REPORT');
 });
+
+it('describes missing reports without asserting a connection or global idle', () => {
+  expect(dotDeckPresentation({configured:true,hosting:true,reportState:null,reportedAt:null,expiresAt:null}).label).toBe('AWAITING ACTIVITY');
+});
+
+it('distinguishes missing authorization and clears working on revocation without guessing legacy state', () => {
+  const now = 1800000000000;
+  const dot = { configured: true, hosting: true, reportState: 'working', reportedAt: now, expiresAt: null };
+  expect(dotSurfaceSnapshot({...dot, authorized:false}, null, null, now).code).toBe(8);
+  expect(dotSurfaceSnapshot({...dot, authorized:false}, null, null, now).validForMs).toBe(0);
+  expect(dotSurfaceSnapshot({...dot, authorized:true}, null, null, now).code).toBe(2);
+  expect(dotSurfaceSnapshot(dot, null, null, now).code).toBe(2);
+  expect(dotDeckPresentation({...dot, authorized:false, hosting:false}, now).label).toBe('HOST STOPPED');
+});

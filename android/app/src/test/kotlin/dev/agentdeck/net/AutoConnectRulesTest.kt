@@ -40,14 +40,14 @@ class AutoConnectRulesTest {
     }
 
     @Test
-    fun `the canonical port is preferred but not required`() {
+    fun `ambiguous discovery needs a choice and fallback ports remain visible`() {
         // The hub falls back to 9121+ when something else won 9120. A filter
         // that required the canonical port made that daemon invisible.
         assertEquals(9121, AutoConnectRules.pickDaemon(listOf(daemon(9121)))?.port)
-        assertEquals(
-            9120,
-            AutoConnectRules.pickDaemon(listOf(daemon(9121, "a"), daemon(9120, "b")))?.port,
-        )
+        val hosts = listOf(daemon(9121, "a"), daemon(9120, "b"))
+        assertNull(AutoConnectRules.pickDaemon(hosts))
+        assertEquals(9121, AutoConnectRules.pickDaemon(hosts, "ws://192.168.1.10:9121?token=a")?.port)
+        assertNull(AutoConnectRules.pickDaemon(hosts, "ws://192.168.1.11:9120"))
     }
 
     @Test

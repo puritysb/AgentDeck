@@ -30,6 +30,8 @@ unaltered Nous girl geometry.
 
 ## Native aquarium motion
 
+Offline cached sessions remain available as history but do not drive live aquarium residents. Task-specific typing follows the observed turn state. A transition to idle must update the expression even while animation is paused or Reduce Motion is enabled; freezing the animation clock must not freeze an old working pose. Gentle idle swimming and cosmetic greetings do not mean that Hermes is running a task. The process being alive likewise proves presence, not active work. After an authoritative Stop, late tool callbacks cannot reopen the turn; the next explicit opening event admits new work. A live CLI process extends only an idle conversation’s presence; it does not renew unconfirmed working activity. With no further progress and no Stop, the existing silence TTL retires the activity without inventing a successful completion.
+
 **Figure adaptation of the official mark (2026-09-30).** The identity source is
 the official Hermes Agent mark (`design/brand/hermes.svg`, the Nous girl). The
 generated concept sheets are **not** the source: they drifted to a round chibi
@@ -366,8 +368,9 @@ exports tool names only, so it deliberately makes no “learned a skill” claim
 ## Try the preview
 
 Requires an AgentDeck receiver advertising `hermesObserver: 1` in local health.
-The default registry supports Node and unsandboxed Swift receivers; the App
-Store sandbox/profile-discovery restriction is described below.
+The default registry supports Node and unsandboxed Swift receivers. For the
+App Store/TestFlight Mac app, select its actual local daemon port explicitly;
+the observer does not need access to the app container.
 This branch does not restart an existing daemon or modify a Hermes profile.
 Install explicitly into the intended profile:
 
@@ -384,6 +387,44 @@ An existing unowned plugin directory is refused. Disable with
 `hermes plugins disable agentdeck-observer`, or set `AGENTDECK_NO_HERMES_HOOKS=1`
 in the Hermes process environment.
 
+### Check setup when Hermes activity is missing
+
+Running Hermes or updating AgentDeck does not install or enable the observer.
+Check the same profile used by the Hermes desktop/server or gateway:
+
+```bash
+agentdeck hermes-observer --home /path/to/hermes-profile --check
+agentdeck hermes-observer --home /path/to/hermes-profile --check --json
+```
+
+The read-only check reports plugin files, configuration enablement, the
+`AGENTDECK_NO_HERMES_HOOKS` opt-out, receiver selection and Hermes capability
+separately. It sends only a bounded loopback health GET, never a synthetic turn.
+Exit status is 1 when setup is incomplete or unconfirmed. The report excludes
+profile paths, credentials and conversation content. It checks the CLI's
+environment and files; it cannot prove that an already-running Hermes process
+loaded them. Restart Hermes after setup and verify a real turn in AgentDeck.
+If loading still fails, run
+`hermes plugins doctor /path/to/hermes-profile/plugins/agentdeck-observer`.
+
+For a sandboxed Mac app with no accessible default registry, use the daemon
+port shown by that running app (9120 is an example, not automatic discovery):
+
+```bash
+agentdeck hermes-observer --home /path/to/hermes-profile --port 9120
+# Enable in that same profile, then restart its Hermes desktop/server or gateway:
+hermes plugins enable agentdeck-observer
+agentdeck hermes-observer --home /path/to/hermes-profile --check
+```
+
+This stores only a loopback port in the observer's `connection.json`, preserves
+Hermes configuration and does not start or replace any daemon. Ordinary observer
+updates preserve that selection. Use `--registry` instead of `--port` to remove
+it and restore registry discovery. Reconfigure it if the intended daemon moves.
+An invalid explicit selection never falls back to another receiver. Installation
+prints the readiness report so copied plugin files cannot be mistaken for a
+completed connection. `--check` cannot be combined with selection changes.
+
 The observer exports bounded prompt/final-response text (8,192 characters each),
 model, platform, CLI working directory, tool name and its own process id to the
 local daemon. It
@@ -393,7 +434,8 @@ for identity; CLI cwd is intentionally visible as project context.
 
 One daemon worker serializes sends, with a 128-item queue, a five-second queue
 age limit and bounded HTTP timeouts. Proxy settings and redirects are disabled.
-Discovery reads `AGENTDECK_DATA_DIR/daemon.json` when explicitly configured,
+Discovery uses the profile's explicit `connection.json` port first. Without
+that file it reads `AGENTDECK_DATA_DIR/daemon.json` when explicitly configured,
 otherwise the user's `.agentdeck/daemon.json`; it does not scan ports or
 fallback to an old/native receiver that would misclassify Hermes hooks. Callback
 failures are ignored; callbacks always return `None`. CLI exit allows up to one

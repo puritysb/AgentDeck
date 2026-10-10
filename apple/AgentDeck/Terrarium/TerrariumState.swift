@@ -146,9 +146,12 @@ struct TerrariumState {
 extension DashboardState {
     func toTerrariumState(
         previous: TerrariumState? = nil,
-        subagentActivityBySession: [String: SubagentVisualActivity] = [:]
+        subagentActivityBySession: [String: SubagentVisualActivity] = [:],
+        activityAvailable: Bool = true
     ) -> TerrariumState {
         var result = TerrariumState()
+        // Offline history stays in the dashboard, but cannot drive live task motion.
+        guard activityAvailable else { return result }
         for session in siblingSessions where session.state == "processing" {
             if let count = session.backgroundTaskCount, count > 0 {
                 result.backgroundTaskCounts[session.id] = count

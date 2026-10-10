@@ -24,7 +24,7 @@
  * login Keychain through `security`, which can raise a Keychain dialog.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -195,7 +195,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
 
   afterAll(async () => {
     if (daemon) await stopDaemon(daemon);
-    if (home) rmSync(home, { recursive: true, force: true });
+    if (home) rmSync(home, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }, 20_000);
 
   it('announces itself on /health and in daemon.json, from the temp data dir only', async () => {
@@ -438,25 +438,47 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     // stdin, no AGENTDECK_PORT, so the port must come from daemon.json + /health.
     const client = await connect(daemon.port);
     try {
+      // A slow discovery probe can fall back to 9120. Never let this fixture
+      // reach the developer's real daemon, even when the snippet test fails.
+      const bin = join(home, 'guarded-bin');
+      const blocked = join(home, 'blocked-hook-destination');
+      mkdirSync(bin, { recursive: true });
+      const realCurl = spawnSync('sh', ['-c', 'command -v curl'], { encoding: 'utf8' }).stdout.trim();
+      expect(realCurl).toMatch(/^\//);
+      writeFileSync(join(bin, 'curl'), `#!/bin/sh
+for arg in "$@"; do
+  case "$arg" in
+    http://127.0.0.1:$AGENTDECK_TEST_PORT/*) ;;
+    http://*|https://*) printf '%s\\n' "$arg" >> "$AGENTDECK_TEST_BLOCKED"; exit 86 ;;
+  esac
+done
+exec "$AGENTDECK_TEST_CURL" "$@"
+`, { mode: 0o700 });
+      const hookEnv = { PATH: `${bin}:${process.env.PATH ?? ''}`, HOME: home,
+        AGENTDECK_TEST_PORT: String(daemon.port), AGENTDECK_TEST_CURL: realCurl, AGENTDECK_TEST_BLOCKED: blocked };
+      expect(spawnSync(join(bin, 'curl'), ['http://127.0.0.1:1/health'], { env: hookEnv }).status).toBe(86);
+      rmSync(blocked);
       const payload = JSON.stringify({ ...SESSION, session_id: 'e2e-session-0002', hook_event_name: 'UserPromptSubmit', prompt: 'via snippet' });
       const run = spawnSync('sh', ['-c', buildHookCommand('UserPromptSubmit')], {
         input: payload,
-        env: { PATH: process.env.PATH ?? '', HOME: home },
+        env: hookEnv,
         encoding: 'utf8',
         timeout: 10_000,
       });
       expect(run.status).toBe(0);
+      expect(existsSync(blocked), 'hook discovery tried a port outside the isolated daemon').toBe(false);
       await waitFor('snippet prompt on the timeline', () =>
         client.frames.some((f) => f.type === 'timeline_event' && JSON.stringify(f).includes('via snippet')) ? true : undefined);
 
       // Stop is request-response: the snippet prints the daemon's body (empty here).
       const stop = spawnSync('sh', ['-c', buildHookCommand('Stop')], {
         input: JSON.stringify({ ...SESSION, session_id: 'e2e-session-0002', hook_event_name: 'Stop' }),
-        env: { PATH: process.env.PATH ?? '', HOME: home },
+        env: hookEnv,
         encoding: 'utf8',
         timeout: 15_000,
       });
       expect(stop.status).toBe(0);
+      expect(existsSync(blocked), 'Stop tried a port outside the isolated daemon').toBe(false);
       expect(stop.stdout).toBe('');
     } finally {
       client.close();

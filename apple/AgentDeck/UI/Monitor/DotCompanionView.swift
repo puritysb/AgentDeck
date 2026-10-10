@@ -23,7 +23,7 @@ struct DotCompanionView: View {
             if snapshot.available && !snapshot.origin.isEmpty {
                 Button { expanded = true } label: {
                     HStack(spacing: 10) {
-                        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: reduceMotion || ![.working, .completed].contains(presentation.phase))) { timeline in
+                        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: reduceMotion || presentation.phase != .working)) { timeline in
                             let motion = reduceMotion ? 0.0 : sin(timeline.date.timeIntervalSinceReferenceDate * 2)
                             ZStack {
                                 Circle().fill(tint.opacity(0.18)).frame(width: 54, height: 54)
@@ -34,7 +34,7 @@ struct DotCompanionView: View {
                                 }.offset(y: -1)
                                 if presentation.phase == .attention { Image(systemName: "exclamationmark.circle.fill").foregroundStyle(DesignTokens.Session.awaiting).offset(x: 20, y: -20) }
                                 if [.offline, .stale].contains(presentation.phase) { Image(systemName: "questionmark.circle").foregroundStyle(DesignTokens.Tide.s50).offset(x: 20, y: -20) }
-                            }.offset(y: [.working, .completed].contains(presentation.phase) ? motion * 3 : 0)
+                            }.offset(y: presentation.phase == .working ? motion * 3 : 0)
                         }.frame(width: 60, height: 60).accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Dot").font(.headline)

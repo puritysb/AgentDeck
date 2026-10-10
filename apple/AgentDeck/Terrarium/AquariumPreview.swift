@@ -109,6 +109,7 @@ struct LivingAquariumScene: View {
                 cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     residents.labelsVisible = !viewingMode
+                    dot.labelsVisible = !viewingMode
                     cameraRig.camera?.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
                 }
@@ -140,15 +141,6 @@ struct LivingAquariumScene: View {
                     .background(TerrariumColors.deepSea.opacity(0.95), in: RoundedRectangle(cornerRadius: 8))
                     .padding(.bottom, 8)
                     .allowsHitTesting(false)
-            }
-        }
-        // The async loader captures the initial environment. Reconcile playback
-        // in the refreshed view so a background → active transition during load
-        // cannot leave the newly-created controller paused forever.
-        .task {
-            while !Task.isCancelled {
-                dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-                try? await Task.sleep(for: .seconds(1))
             }
         }
         .sheet(isPresented: $showDot) {

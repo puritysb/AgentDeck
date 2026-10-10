@@ -116,6 +116,7 @@ final class AquariumResidents {
         template.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
         guard HermesMermaid.Rig(template).isComplete else { return }
         templates["hermes"] = template
+        footHeights["hermes"] = max(0, -template.visualBounds(relativeTo: nil).min.y)
     }
     private struct Joint {
         let entity: Entity
@@ -193,27 +194,39 @@ final class AquariumResidents {
         // Existing residents retain their relative order when sessions arrive or depart.
         let existing = slotOrder.filter(ids.contains)
         slotOrder = existing + next.map(\.id).filter { !existing.contains($0) }
-        let bottomIDs = slotOrder.filter { id in next.contains { $0.id == id && Self.isGrounded($0.kind) } }
+        let bottomIDs = slotOrder.filter { id in next.contains { $0.id == id && (Self.isGrounded($0.kind) || $0.kind == "hermes") } }
         let waterIDs = slotOrder.filter { !bottomIDs.contains($0) }
         let waterLayout = Self.layout(count: waterIDs.count, aspect: aspect)
         let bottomLayout = Self.bottomLayout(count: bottomIDs.count, aspect: aspect)
         for item in next {
-            let grounded = Self.isGrounded(item.kind)
+            let onShell = item.kind == "hermes"
+            let grounded = Self.isGrounded(item.kind) || onShell
             if grounded {
                 let index = bottomIDs.firstIndex(of: item.id) ?? 0
                 let surface = bottomLayout.positions[index]
                 size = bottomLayout.size
-                targets[item.id] = surface + [0, (footHeights[item.kind] ?? 0.43) * size, 0]
+                targets[item.id] = surface + [0, (onShell ? ((footHeights["hermes"] ?? 0.7) + 0.10) * Self.hermesScale : (footHeights[item.kind] ?? 0.43)) * size, 0]
                 // A broad, flat-topped substrate rock is fixed in habitat space.
                 // It does not follow the resident's pacing or breathing.
                 if supports[item.id] == nil {
-                    let support = makeSubstrate()
+                    let support = onShell ? Entity() : makeSubstrate()
+                    if onShell {
+                        let rock = makeSubstrate()
+                        rock.name = "support-rock"
+                        support.addChild(rock)
+                        support.addChild(HermesMermaid.makeShell())
+                    }
                     support.name = "substrate|" + item.id
                     root.addChild(support)
                     supports[item.id] = support
                 }
                 supports[item.id]?.position = [surface.x, 0, surface.z]
-                supports[item.id]?.scale = [max(0.65, size * 1.35), surface.y, max(0.55, size)]
+                let rock = onShell ? supports[item.id]?.findEntity(named: "support-rock") : supports[item.id]
+                rock?.scale = [max(0.65, size * 1.35), surface.y, max(0.55, size)]
+                if let shell = supports[item.id]?.findEntity(named: "hermes-shell") {
+                    shell.position = [0, surface.y, 0]
+                    shell.scale = .init(repeating: size * Self.hermesScale)
+                }
             } else {
                 let index = waterIDs.firstIndex(of: item.id) ?? 0
                 size = waterLayout.size
@@ -266,6 +279,13 @@ final class AquariumResidents {
             if !animate {
                 resident.position = targets[item.id]!
                 hermesSwims[item.id]?.relocate(resident.position)
+                if var swim = hermesSwims[item.id] {
+                    swim.step(0, home: resident.position, size: size,
+                        activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
+                        neighbours: [], aspect: aspect)
+                    hermesSwims[item.id] = swim
+                    hermesRigs[item.id]?.pose(swim)
+                }
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
                 rebuildLabel(for: item, on: resident, compact: labelCompact[item.id] ?? false)

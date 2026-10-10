@@ -40,6 +40,7 @@ struct OnboardingSheet: View {
                 Spacer()
                 if flow.step != .appearance { Button("Back") { flow.back() } }
                 Button(flow.step == .ready ? "Open Dashboard" : "Continue") {
+                    if flow.step == .agents { recordAgentChoiceIfNeeded() }
                     if flow.step == .ready { finish() } else { flow.next() }
                 }
                 .buttonStyle(.borderedProminent)
@@ -48,16 +49,20 @@ struct OnboardingSheet: View {
             }.padding(20)
         }
         .frame(width: 680, height: 660)
-        .onAppear {
-            // Record a deliberate fresh-user choice without changing existing
-            // access or consent. Dismissing at any step is recoverable.
-            if preferences.onboardingAgents == nil {
-                var selected: [String] = []
-                if preferences.hooksInstalled || hasSession("claude") { selected.append("claude") }
-                if preferences.codexConfigInstalled || hasSession("codex") { selected.append("codex") }
-                preferences.onboardingAgents = selected
-            }
-        }
+    }
+
+    /// Record the fresh user's agent choice once they have made one — leaving
+    /// the agents step, Set Up Later, or Open Dashboard (Connect records its
+    /// own). `[]` means "explicitly skipped" and suppresses the Claude/Codex
+    /// setup cards, so merely opening the sheet must not write it: a user who
+    /// quits on step 1 keeps `nil` and still sees the cards. Existing access
+    /// or consent is never changed here.
+    private func recordAgentChoiceIfNeeded() {
+        guard preferences.onboardingAgents == nil else { return }
+        var selected: [String] = []
+        if preferences.hooksInstalled || hasSession("claude") { selected.append("claude") }
+        if preferences.codexConfigInstalled || hasSession("codex") { selected.append("codex") }
+        preferences.onboardingAgents = selected
     }
 
     private var agents: some View {
@@ -187,6 +192,7 @@ struct OnboardingSheet: View {
     }
 
     private func finish(opening window: String? = nil) {
+        recordAgentChoiceIfNeeded()
         preferences.hasSeenMonitorEmptyGuide = true
         preferences.hasSeenOnboarding = true
         dismiss()

@@ -36,7 +36,7 @@ export const interactionFields = {
 };
 export const interactionOutput = object({ ...interactionFields, evidence: { const: 'dot_report' }, receivedAt: stamp });
 const requestOutput = object({ interactions: { type: 'array', items: interactionOutput, maxItems: DOT_LIMITS.interactionEvents }, requestId: id, integrationId: id, createdAt: stamp, expiresAt: stamp,
-  delivery: { enum: ['pending', 'accepted', 'failed', 'expired', 'cancelled'] }, attempts: { type: 'integer', minimum: 0 },
+  delivery: { enum: ['local', 'pending', 'accepted', 'failed', 'expired', 'cancelled'] }, attempts: { type: 'integer', minimum: 0 },
   claim: { anyOf: [claimSchema, { type: 'null' }] }, report: { anyOf: [reportSchema, { type: 'null' }] }, expired: { type: 'boolean' } });
 export const tools = [
   { name: 'report_interaction', title: 'Report a Dot–agent interaction', read: false,

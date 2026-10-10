@@ -1310,6 +1310,9 @@ enum ADMode: String, Codable, Equatable {
 // MARK: - ADDotDeckSnapshot
 struct ADDotDeckSnapshot: Codable, Equatable {
     var appearance: ADDotAppearance?
+    /// Active scoped MCP grant, not proof of Dot identity or global activity. Absent means
+    /// unknown.
+    var authorized: Bool?
     var code: Double?
     var configured: Bool
     var expiresAt: Double?
@@ -1321,6 +1324,7 @@ struct ADDotDeckSnapshot: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case appearance = "appearance"
+        case authorized = "authorized"
         case code = "code"
         case configured = "configured"
         case expiresAt = "expiresAt"
@@ -1352,6 +1356,7 @@ extension ADDotDeckSnapshot {
 
     func with(
         appearance: ADDotAppearance?? = nil,
+        authorized: Bool?? = nil,
         code: Double?? = nil,
         configured: Bool? = nil,
         expiresAt: Double?? = nil,
@@ -1363,6 +1368,7 @@ extension ADDotDeckSnapshot {
     ) -> ADDotDeckSnapshot {
         return ADDotDeckSnapshot(
             appearance: appearance ?? self.appearance,
+            authorized: authorized ?? self.authorized,
             code: code ?? self.code,
             configured: configured ?? self.configured,
             expiresAt: expiresAt ?? self.expiresAt,

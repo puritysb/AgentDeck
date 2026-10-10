@@ -47,6 +47,7 @@ struct Badge {
         unlockState();
         if (!allowed || urgent || !snapshot.configured) { lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN); return false; }
         const uint8_t code = snapshot.effectiveCode(millis());
+        if (!DotSurfaceRules::inhabitsHabitat(code)) { lv_obj_add_flag(panel, LV_OBJ_FLAG_HIDDEN); return false; }
         const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn
             : code == 4 ? ProductPalette::UiOk : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
         const uint8_t* rgba = snapshot.custom ? snapshot.rgba : DotSurfaceRules::defaultRgba;
@@ -57,7 +58,7 @@ struct Badge {
             changed |= pixels[i] != value; pixels[i] = value;
         }
         if (changed) lv_obj_invalidate(image);
-        snprintf(text, sizeof(text), "D %s", DotSurfaceRules::labels[code]);
+        snprintf(text, sizeof(text), "%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code]);
         lv_obj_set_style_text_color(label, lv_color_hex(tint), 0);
         lv_obj_invalidate(label);
         lv_obj_set_pos(panel, x, y); lv_obj_remove_flag(panel, LV_OBJ_FLAG_HIDDEN);

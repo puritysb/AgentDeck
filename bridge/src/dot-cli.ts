@@ -1,5 +1,6 @@
+import { DOT_LOCAL_MCP } from '@agentdeck/shared';
 import type { Command } from 'commander';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getDataDir } from './session-registry.js';
@@ -7,7 +8,13 @@ import { importDotAppearance, saveDotAppearance } from './dot-appearance.js';
 import { readDotConfiguration } from './dot-host.js';
 
 export function registerDotCommands(program: Command) {
-  const dot = program.command('dot').description('Operate the opt-in direct HTTPS MCP host');
+  const dot = program.command('dot').description('Operate the opt-in local or HTTPS MCP host');
+  dot.command('init-local').description('Create loopback MCP configuration without replacing existing settings').action(() => {
+    const directory = getDataDir(); mkdirSync(directory, { recursive: true, mode: 0o700 });
+    writeFileSync(join(directory, 'dot-host.json'), JSON.stringify({ enabled: true, mode: 'local',
+      port: DOT_LOCAL_MCP.port, controlPort: DOT_LOCAL_MCP.controlPort }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    console.log('Local MCP configured. Restart the daemon with agentdeck daemon restart to activate it.');
+  });
   const character = dot.command('character').description('Choose the local Dot character; no ChatGPT avatar synchronization');
   character.command('import <file>').description('Import a static character image').action(async (file: string) => {
     const asset = await importDotAppearance(file, getDataDir()); console.log('Dot character imported: ' + asset.id.slice(0, 12));

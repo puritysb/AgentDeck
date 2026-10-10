@@ -10,11 +10,17 @@ enum DotAppearanceRules {
     static let glyphBytes = 1024
     static let glyphBase64 = 1368
     static let relationBytes = 96
+    static let pixelSizeDivisor = 6
+    static let pixelMinSize = 7
+    static let pixelMargin = 3
+    static let pixelYDivisor = 4
     static let panelGlyphSize = 32
     static let paperGlyphSize = 24
     static let matrixGlyphSize = 7
     static let panelMargin = 8
-    static let labels = ["NO REPORT", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN"]
+    static let labels = ["AWAITING ACTIVITY", "HOST STOPPED", "WORKING", "NEEDS YOU", "COMPLETED", "FAILED", "OLD REPORT", "UNKNOWN", "NOT LINKED"]
+    static let compactLabels = ["Dot", "Stopped", "Working", "Help", "Done", "Failed", "Old", "Unknown", "Unlinked"]
+    static let habitatPhases = [2, 3, 4, 5]
 }
 struct DotAppearance: Codable, Equatable, Sendable {
     var version: Int; var id: String; var png: String?; var rgba: String
@@ -44,12 +50,13 @@ struct DotSurfaceRelation: Codable, Sendable {
     }
 }
 struct DotSurfaceSnapshot: Codable, Sendable {
-    var configured: Bool = false; var hosting: Bool = false
+    var configured: Bool = false; var hosting: Bool = false; var authorized: Bool? = nil
     var reportState: String?; var reportedAt: Int?; var expiresAt: Int?
     var code: Int?; var validForMs: Int?; var appearance: DotAppearance?; var relation: DotSurfaceRelation?
     var effectiveCode: Int { phase(at: Int(Date().timeIntervalSince1970 * 1000)) }
     func phase(at now: Int) -> Int {
         guard hosting else { return 1 }
+        if authorized == false { return 8 }
         guard let state = reportState else { return 0 }
         guard let stamp = reportedAt, stamp >= 0, stamp <= now else { return 7 }
         if state == "stale" { return 6 }
@@ -58,5 +65,6 @@ struct DotSurfaceSnapshot: Codable, Sendable {
         guard expiresAt.map({ $0 > now }) ?? true, now - stamp < DotLimits.reportFreshMs else { return 6 }
         return state == "working" ? 2 : state == "needs_attention" ? 3 : 7
     }
+    func inhabitsHabitat(at now: Int) -> Bool { configured && DotAppearanceRules.habitatPhases.contains(phase(at: now)) }
     var label: String { DotAppearanceRules.labels[effectiveCode] }
 }

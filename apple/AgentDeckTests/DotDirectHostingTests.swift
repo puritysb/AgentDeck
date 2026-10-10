@@ -6,13 +6,78 @@ import RealityKit
 @testable import AgentDeck
 
 final class DotDirectHostingTests: XCTestCase {
+    func testLocalListenerServesHTTPWithoutTLSIdentity() async throws {
+        try await Task { @DaemonActor in
+            let listener = DotHTTPSListener()
+            // Separate concurrent XCTest hosts without touching production ports.
+            let port = UInt16(20000 + ProcessInfo.processInfo.processIdentifier % 30000)
+            try listener.start(identity: nil, port: port, loopbackOnly: true) { request in
+                .init(status: request.target == "/probe" ? 200 : 404, body: Data("local-ok".utf8))
+            }
+            defer { listener.stop() }
+            for _ in 0..<100 {
+                if listener.isReady { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertTrue(listener.isReady, listener.state)
+            var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/probe")!)
+            request.timeoutInterval = 3
+            let (data, response) = try await URLSession.shared.data(for: request)
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            XCTAssertEqual(String(data: data, encoding: .utf8), "local-ok")
+        }.value
+    }
+
+    func testLocalPublicOAuthRequiresConsentPKCEAndLoopbackCallback() async throws {
+        try await Task { @DaemonActor in
+            let origin = "http://127.0.0.1:9476", callback = "http://127.0.0.1:38472/callback"
+            let config = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: callback, local: true)
+            let auth = try DotOAuth(config: config, data: nil) { _ in }
+            XCTAssertFalse(DotOAuth.localRedirect("http://192.168.1.2:38472/callback"))
+            XCTAssertFalse(DotOAuth.localRedirect(callback + "?next=evil"))
+            let verifier = String(repeating: "v", count: 64)
+            let ticket = try auth.begin(["client_id": config.clientID, "redirect_uri": callback, "resource": origin, "response_type": "code", "scope": "agentdeck:read agentdeck:report", "state": "test", "code_challenge_method": "S256", "code_challenge": dotDigest(verifier)])
+            XCTAssertNil(try auth.redirect(ticket))
+            try auth.decide(ticket, approve: true)
+            let redirect = URLComponents(string: try XCTUnwrap(auth.redirect(ticket)))!
+            let code = redirect.queryItems!.first { $0.name == "code" }!.value!
+            var params = ["client_id": config.clientID, "resource": origin, "redirect_uri": callback, "grant_type": "authorization_code", "code": code, "code_verifier": "wrong"]
+            XCTAssertThrowsError(try auth.exchange(params)); params["code_verifier"] = verifier
+            let tokens = try auth.exchange(params)
+            let access = tokens["access_token"] as! String
+            let grant = try XCTUnwrap(auth.authenticate(access)); try auth.revokeGrant(grant.id)
+            XCTAssertNil(auth.authenticate(access))
+        }.value
+    }
+    func testLocalRequestPersistsWithoutSubscriptionAndNeverDeliversWebhook() async throws {
+        try await Task { @DaemonActor in
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let specURL = try XCTUnwrap(Bundle.main.url(forResource: "dot-mcp-contract", withExtension: "json"))
+            let spec = try Data(contentsOf: specURL), file = directory.appendingPathComponent("requests.json")
+            var deliveries = 0
+            let store = try DotMCPStore(file: file, contract: spec, access: { _ in true }) { _, _, _ in deliveries += 1; return .init(status: 200, body: Data()) }
+            XCTAssertThrowsError(try store.create(owner: "owner", profile: "desk", context: "shared", key: "remote"))
+            try store.create(owner: "owner", profile: "desk", context: "shared", key: "local", local: true)
+            try await store.deliver()
+            XCTAssertEqual(deliveries, 0)
+            XCTAssertEqual(store.requests().first?.delivery, "local")
+            let requestID = try XCTUnwrap(store.requests().first?.id)
+            let result = try await store.rpc(grant: .init(id: "owner", scopes: DotOAuth.scopes, expiresAt: Int.max, revoked: false),
+                method: "tools/call", params: ["name": "get_request", "arguments": ["requestId": requestID]])
+            XCTAssertEqual((result["structuredContent"] as? [String: Any])?["delivery"] as? String, "local")
+            let restarted = try DotMCPStore(file: file, contract: spec, access: { _ in true })
+            XCTAssertEqual(restarted.requests().first?.delivery, "local")
+            try restarted.revoke("owner"); XCTAssertTrue(restarted.requests().isEmpty)
+        }.value
+    }
     @MainActor
     func testCompanionPreviewRendersReportedStates() throws {
         let now = Int(Date().timeIntervalSince1970 * 1000)
         func snapshot(_ status: String, age: Int = 0) -> DotHostSnapshot {
             var row = DotBriefing(id: "preview", owner: "owner", profile: "desk", key: "key", fingerprint: "hash", context: "", capturedAt: now, createdAt: now, expiresAt: now + DotLimits.requestMs, eventId: "event", subscriptionId: "sub", delivery: "accepted", attempts: 1, nextAttemptAt: now)
             row.report = DotReport(sequence: 1, state: status, summary: "검증된 브리핑 결과", receivedAt: now - age)
-            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            return DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://preview.example", clientID: "preview", consents: [], grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         }
         let view = VStack(alignment: .leading, spacing: 12) {
             DotCompanionView(snapshot: snapshot("working"))
@@ -23,7 +88,7 @@ final class DotDirectHostingTests: XCTestCase {
         let image = try XCTUnwrap(renderer.cgImage)
         XCTAssertGreaterThan(image.width, 300); XCTAssertGreaterThan(image.height, 300)
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-dot-companion-preview.png"))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-companion-preview.png"))
     }
     @MainActor
     func testThreeDimensionalCompanionIsSeparateFromSessionsAndHonorsMotion() {
@@ -32,7 +97,7 @@ final class DotDirectHostingTests: XCTestCase {
             expiresAt: now + DotLimits.requestMs, eventId: "e", subscriptionId: "s", delivery: "accepted", attempts: 1, nextAttemptAt: now)
         row.report = .init(sequence: 1, state: "working", summary: "", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://example.test", clientID: "id", consents: [],
-            grants: [DotGrant(id: "owner", scopes: [], expiresAt: now + 1000, revoked: false)], reports: [row])
+            grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
         let resident = DotAquariumResident()
         XCTAssertFalse(resident.root.isEnabled)
         resident.sync(snapshot, now: now)
@@ -41,11 +106,49 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertTrue(DotAquariumResident.contains(resident.root.children.first!))
         XCTAssertGreaterThan(resident.root.visualBounds(relativeTo: resident.root).extents.x, 0.5)
         let home = resident.root.position
-        resident.step(1); XCTAssertEqual(resident.root.position, home)
-        resident.animate = true; resident.step(1); XCTAssertNotEqual(resident.root.position, home)
+        resident.step(1, now: now); XCTAssertEqual(resident.root.position, home)
+        resident.animate = true; resident.step(1, now: now); XCTAssertNotEqual(resident.root.position, home)
         resident.sync(snapshot, now: now + DotLimits.reportFreshMs)
-        resident.step(1); XCTAssertEqual(resident.root.position, home)
+        resident.step(1, now: now + DotLimits.reportFreshMs); XCTAssertEqual(resident.root.position, home)
         snapshot.origin = ""; resident.sync(snapshot, now: now); XCTAssertFalse(resident.root.isEnabled)
+    }
+    @MainActor
+    func testLatestCompanionStateWinsAndExpiryStopsMotionWithoutAnotherSnapshot() {
+        let now = 1800000000000
+        let resident = DotAquariumResident()
+        var frame = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + DotLimits.requestMs)
+        resident.animate = true
+        resident.sync(frame, now: now)
+        resident.animate = false
+        let home = resident.root.position
+        resident.animate = true
+        resident.step(0.05, now: now)
+        XCTAssertNotEqual(resident.root.position, home)
+        // The clock alone expires activity, including under Reduce Motion.
+        resident.animate = false
+        resident.step(0, now: now + DotLimits.reportFreshMs)
+        XCTAssertEqual(resident.root.position, home)
+        resident.animate = true
+        resident.step(0.05, now: now + DotLimits.reportFreshMs)
+        XCTAssertEqual(resident.root.position, home)
+        // Fresh work may resume, but completion, stopped hosting and disconnect win immediately.
+        resident.sync(frame, now: now)
+        resident.step(0.05, now: now)
+        XCTAssertNotEqual(resident.root.position, home)
+        frame.reportState = "completed"
+        resident.sync(frame, now: now)
+        for _ in 0..<5 { resident.step(0.05, now: now + 1) }
+        XCTAssertEqual(resident.root.position, home)
+        frame.reportState = "working"; frame.authorized = false
+        resident.sync(frame, now: now); resident.step(0.05, now: now)
+        XCTAssertEqual(frame.phase(at: now), 8)
+        XCTAssertFalse(resident.root.isEnabled)
+        XCTAssertEqual(resident.root.position, home)
+        frame.hosting = false
+        resident.sync(frame, now: now); resident.step(0.05, now: now)
+        XCTAssertEqual(resident.root.position, home)
+        resident.sync(nil as DotSurfaceSnapshot?, now: now); resident.step(0.05, now: now)
+        XCTAssertFalse(resident.root.isEnabled)
     }
     @MainActor
     func testRelationshipPreviewShowsDirectionAndUnverifiedTarget() throws {
@@ -59,7 +162,7 @@ final class DotDirectHostingTests: XCTestCase {
         let renderer = ImageRenderer(content: view); renderer.scale = 2
         let image = try XCTUnwrap(renderer.cgImage)
         let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
-        try png.write(to: URL(fileURLWithPath: "/tmp/agentdeck-dot-relations-preview.png"))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-relations-preview.png"))
     }
     func testDeckSnapshotIsSeparateBoundedAndExpiresWithoutLeakingContext() throws {
         let now = 1800000000000
@@ -67,8 +170,10 @@ final class DotDirectHostingTests: XCTestCase {
         row.report = .init(sequence: 1, state: "working", summary: "private-summary", receivedAt: now)
         var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://private.example", clientID: "private-client", consents: [], grants: [], reports: [row])
         let value = try XCTUnwrap(snapshot.deckSnapshot(now: now))
-        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
+        XCTAssertEqual(Set(value.keys), ["configured", "hosting", "authorized", "reportState", "reportedAt", "expiresAt", "code", "validForMs"])
         XCTAssertEqual(value["reportState"] as? String, "working")
+        XCTAssertEqual(value["authorized"] as? Bool, false)
+        XCTAssertEqual(value["code"] as? Int, 8)
         let encoded = String(data: try JSONSerialization.data(withJSONObject: value), encoding: .utf8)!
         XCTAssertFalse(encoded.contains("private"))
         XCTAssertEqual(snapshot.deckSnapshot(now: now + DotLimits.reportFreshMs)?["reportState"] as? String, "stale")
@@ -274,6 +379,29 @@ final class DotDirectHostingTests: XCTestCase {
         XCTAssertEqual(DotPixelOverlay.paint(Data(repeating: 13, count: 11 * 11 * 3), width: 11, dot: event.dot), Data(repeating: 13, count: 11 * 11 * 3))
         let legacy = try JSONDecoder().decode(SessionsListEvent.self, from: Data("{\"type\":\"sessions_list\",\"sessions\":[]}".utf8))
         XCTAssertNil(legacy.dot)
+    }
+
+    func testReportOnlyMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
+        let now = 1800000000000
+        let quiet = DotSurfaceSnapshot(configured: true, hosting: true)
+        let dot = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + 10000)
+        for width in [32, 64] {
+            let plain = Data(repeating: 13, count: width * width * 3)
+            XCTAssertEqual(DotPixelOverlay.paint(plain, width: width, dot: quiet, now: now), plain)
+            let pixels = [UInt8](DotPixelOverlay.paint(plain, width: width, dot: dot, now: now))
+            let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
+            let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor
+            for y in 0..<width { for x in 0..<width {
+                if x < x0 || x >= x0 + size + 2 || y < y0 - 2 || y >= y0 + size {
+                    XCTAssertEqual(pixels[(y * width + x) * 3], 13)
+                }
+            } }
+            for eye in [5, 10] {
+                let x = x0 + Int((Double(eye * (size - 1)) / 15).rounded())
+                let y = y0 + Int((Double(5 * (size - 1)) / 15).rounded())
+                XCTAssertLessThan(pixels[(y * width + x) * 3], 60)
+            }
+        }
     }
 
 }
