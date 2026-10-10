@@ -259,5 +259,47 @@ Resume using the [official setup guide](https://developers.openai.com/api/docs/g
    does not need repeated consent.
 
 The runtime key is short-lived and requires operator renewal after expiry. No
-admin key, production subscription or successful real Dot report exists in this
-experiment. The main daemon and operator-control ports are not tunnel targets.
+admin key or production Events subscription exists in this experiment. A real Dot
+request/report round trip subsequently passed, as recorded below. The main daemon and operator-control ports are not tunnel targets.
+
+
+## First real Dot round trip — 2026-10-10 23:23 KST
+
+The user authorized a test message in the existing Dot conversation. Chrome's
+ChatGPT Dot page was used; this was not a locally delegated Codex task and this
+verification agent did not call the reporting tools on Dot's behalf. The fresh
+request was scoped to the dedicated tunnel grant. Its context held a test marker
+and the numbers 17, 23 and 41.
+
+| Observation | Time (KST) | Evidence |
+|---|---|---|
+| Request accepted | 23:23:25.583 | Operator store recorded a claim and attempt |
+| Working report | 23:23:36.227 | Sequence 1 included the marker and three context numbers |
+| Completed report | 23:23:54.080 | Sequence 2 included sum 81 and independent arithmetic verification |
+| Daemon propagation | Same working/completed transitions | WebSocket `sessions_list.dot` carried codes 2 then 4 and matching report timestamps |
+
+This establishes one real, manually initiated Dot request/report round trip.
+The context-specific contents support successful context access; the operator
+record does not individually audit each read-only tool call. The observed working
+interval was about 18 seconds. It does not establish Events, ten-round reliability,
+delegation, disconnect recovery or a Swift-owned daemon.
+
+Visual acceptance remains pending. The Mac locked during the test and computer
+use requested a manual unlock. Cached Dashboard captures still showed `Awaiting
+Activity`, including the capture approximately 1.2 seconds after the working
+report. This could be a suspended/stale view or a display propagation defect;
+it must be distinguished after unlocking. Pixoo HTTP preview snapshots were
+saved for both states. Source inspection found that this preview re-renders
+cached state and omitted the Dot overlay even though the device upload path
+applies it. The preview is not a saved physical-device upload or a photograph.
+The preview, HTTP frame and SSE paths now share the overlay; regression tests
+cover working/completed, unlinking and stale activity. This source correction
+still requires installation and an unlocked live rerun. No broad surface
+acceptance is claimed.
+
+Private evidence is retained in the isolated checkout under the ignored
+`diagnostics/tunnel-runtime/` directory: `live2-observation.json` contains the
+correlated claim/reports and WebSocket snapshots; `live2-status-latest.json`
+contains the operator result. Local screen/frame captures are retained separately
+from public documentation. Never publish credentials or personal dashboard/chat
+screenshots as repository documentation.

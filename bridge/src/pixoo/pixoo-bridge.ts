@@ -535,31 +535,24 @@ function doStateCheckAndPush(): void {
  */
 export function renderPreviewFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array {
   if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
-  return renderFrame(
+  const now = Date.now();
+  const frame = renderFrame(
     lastStateEvent,
     lastUsageEvent,
     lastSessions,
-    undefined,
+    now,
     size,
     layout,
-    currentSubagentActivity(),
+    currentSubagentActivity(now),
   );
+  return paintDotPixels(frame, 64, lastDot, now);
 }
 
 /**
- * Get the last calculated frame.
+ * Render the current cached state (not a photograph or last device upload).
  */
 export function getLastFrame(size?: 11 | 32 | 64, layout: 'standard' | 'micro' = 'standard'): Uint8Array | null {
-  if (size === 11 || size === 32) return renderMatrixScene(size, matrixExpression.scene(Date.now()));
-  return renderFrame(
-    lastStateEvent,
-    lastUsageEvent,
-    lastSessions,
-    undefined,
-    size,
-    layout,
-    currentSubagentActivity(),
-  );
+  return renderPreviewFrame(size, layout);
 }
 
 /** Notify all SSE frame listeners. */
@@ -575,15 +568,7 @@ function startPreviewTimer(): void {
   const intervalMs = Math.round(1000 / previewFps);
   previewTimer = setInterval(() => {
     if (frameListeners.length === 0) { stopPreviewTimer(); return; }
-    const frame = renderFrame(
-      lastStateEvent,
-      lastUsageEvent,
-      lastSessions,
-      undefined,
-      64,
-      'standard',
-      currentSubagentActivity(),
-    );
+    const frame = renderPreviewFrame(64);
     notifyFrameListeners(frame);
   }, intervalMs);
 }
