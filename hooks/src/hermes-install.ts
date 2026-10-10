@@ -6,6 +6,17 @@ import { hermesProfileHome, isHermesPort } from './hermes-diagnostics.js';
 /** Source package assets are shipped beside dist in the published hooks package. */
 export const hermesObserverSource = resolve(dirname(fileURLToPath(import.meta.url)), '../hermes-agentdeck');
 
+/**
+ * `--port` as the user typed it. Only plain decimal digits are a port:
+ * `Number()` alone accepted `0x2380` (9088), `1e3` (1000) and `9120.0`, and a
+ * persisted port the user did not mean surfaces later only as `unreachable`.
+ * Anything else yields NaN, which `installHermesObserver` refuses before
+ * writing a file.
+ */
+export function parseHermesPortFlag(text: string): number {
+  return /^\d{1,5}$/.test(text) ? Number(text) : Number.NaN;
+}
+
 /** Explicit installation only; Hermes remains responsible for plugin enablement. */
 export function installHermesObserver(home?: string, options: { port?: number | null } = {}): string {
   if (options.port !== undefined && options.port !== null && !isHermesPort(options.port)) {

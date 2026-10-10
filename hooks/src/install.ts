@@ -1,5 +1,5 @@
 export { collectHermesDiagnostic, formatHermesDiagnostic } from './hermes-diagnostics.js';
-export { installHermesObserver } from './hermes-install.js';
+export { installHermesObserver, parseHermesPortFlag } from './hermes-install.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';

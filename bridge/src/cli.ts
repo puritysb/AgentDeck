@@ -2206,13 +2206,13 @@ program
   .option('--port <port>', 'Persist an explicit loopback receiver port (including sandboxed Mac app)')
   .option('--registry', 'Remove an explicit port and return to registry discovery')
   .action(async (opts: { home?: string; check?: boolean; json?: boolean; port?: string; registry?: boolean }) => {
-    const { installHermesObserver, collectHermesDiagnostic, formatHermesDiagnostic } = await import('@agentdeck/hooks');
+    const { installHermesObserver, parseHermesPortFlag, collectHermesDiagnostic, formatHermesDiagnostic } = await import('@agentdeck/hooks');
     try {
       if ((opts.check && (opts.port !== undefined || opts.registry)) || (opts.json && !opts.check) || (opts.port !== undefined && opts.registry)) {
         throw new Error('Use --check [--json] without --port/--registry; choose only one receiver selection when installing.');
       }
       if (!opts.check) {
-        const target = installHermesObserver(opts.home, { port: opts.registry ? null : opts.port === undefined ? undefined : Number(opts.port) });
+        const target = installHermesObserver(opts.home, { port: opts.registry ? null : opts.port === undefined ? undefined : parseHermesPortFlag(opts.port) });
         log(`Hermes observer files installed: ${target}`);
         log('In the same Hermes profile, run: hermes plugins enable agentdeck-observer');
         log('Restart Hermes (desktop/server or gateway) after enabling or changing the connection.');
