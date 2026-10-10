@@ -173,6 +173,7 @@
 		3A0913B4B8FD471CDFD77631 /* WifiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DA1104DBFD7C9FA0C79A5D /* WifiConfig.swift */; };
 		3A2B8C867961541BC493C1AA /* SessionStatePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50B9E099D3C15FCA1A2F47D8 /* SessionStatePresentation.generated.swift */; };
 		3A341BC1D4421CE024022F05 /* AquariumShoal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C095A676EC89446C067731C /* AquariumShoal.swift */; };
+		3AA3A8CEDFE2A89F0708D96E /* ClaudeBackgroundJobRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */; };
 		3AB4FFE7850E2A1AB615E162 /* ApmeParseJudgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB04CEEDD6C769AD9056561 /* ApmeParseJudgeTests.swift */; };
 		3B27BBB5E9F60E825C5CEDE9 /* DotHTTPSListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C49F45DBB77B44A88CC3B10 /* DotHTTPSListener.swift */; };
 		3B811EEE60C3BC211B2A5373 /* ApmeClassifierRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */; };
@@ -188,6 +189,7 @@
 		3F707E15A1A8E2707F36796D /* TerrariumView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BCA057209786EF62993762 /* TerrariumView.swift */; };
 		3F9DB675F934829519C0BAB0 /* SerialOwnershipGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E1158EB2A6E4220C0DA980A /* SerialOwnershipGuardTests.swift */; };
 		3FAA84734F99F8690B7B4E3C /* DaemonLoggerRotationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C2893742373685180839EAF /* DaemonLoggerRotationTests.swift */; };
+		400DA2617A474B0330E9D615 /* ClaudeBackgroundJobRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */; };
 		4063C8A5D6C17B415AA11D2A /* AgentStatusIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */; };
 		413628EDE7A8E2B6B1EE7876 /* NOTICE.md in Resources */ = {isa = PBXBuildFile; fileRef = 6B62112FACCFA943D1AF75F7 /* NOTICE.md */; };
 		41C8872F41E768340F5AB7E5 /* MlxSafetyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5E8405A0184E8ED644F8BEB /* MlxSafetyTests.swift */; };
@@ -323,6 +325,7 @@
 		6EE5AA7C7AF2171C8C94674D /* DotInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2C2FC450290089CE89830A /* DotInteractionView.swift */; };
 		6F22B8BA6B49FDD3F538DDE8 /* CreatureGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */; };
 		70055CA070869B45C0E300A7 /* SpokenDigestParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279EAD7034309F8B8641DF78 /* SpokenDigestParityTests.swift */; };
+		702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
 		70568489EF1BE34061D43FEA /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
 		7090DAA53171F720B69C29DC /* ZaiUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E5D1306D12A8F901214C795 /* ZaiUsageClient.swift */; };
 		709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */; };
@@ -411,6 +414,7 @@
 		8B7311262C05E2B32F563760 /* IntegrationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */; };
 		8B995FCD093438C0F919C374 /* GatewayHealthRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA37B6C7D35CA879C9BD8F75 /* GatewayHealthRules.swift */; };
 		8BD045F864776BC79B8BDA5F /* WebSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */; };
+		8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
 		8CB40A396077F92F9140E25F /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
 		8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */; };
 		8D8D4E4EC92C57631E719FDC /* MdnsIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */; };
@@ -857,6 +861,7 @@
 		412BA6DCF8B496FBEEE65F00 /* ObservedAgentSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentSettingsTests.swift; sourceTree = "<group>"; };
 		41CF82AE8E20EDCAE99DCEDD /* SessionLauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLauncherTests.swift; sourceTree = "<group>"; };
 		427B912EBD043285F0A0008D /* OpenClawAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawAdapter.swift; sourceTree = "<group>"; };
+		43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRules.generated.swift; sourceTree = "<group>"; };
 		43838A747888CB84DF5A6762 /* OpenClawTokenImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawTokenImporter.swift; sourceTree = "<group>"; };
 		43F7DA99E490C72ED75FF711 /* ApmeExternalCloseSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeExternalCloseSelectionTests.swift; sourceTree = "<group>"; };
 		44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRulesTests.swift; sourceTree = "<group>"; };
@@ -1010,6 +1015,7 @@
 		AA4C92668F43EA966A904056 /* DotSecurity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotSecurity.swift; sourceTree = "<group>"; };
 		AA6B880920FED6442871AA9F /* OFL-PocketSansWorld.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-PocketSansWorld.txt"; sourceTree = "<group>"; };
 		AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRules.generated.swift; sourceTree = "<group>"; };
+		ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRulesTests.swift; sourceTree = "<group>"; };
 		ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonVoiceAssistant.swift; sourceTree = "<group>"; };
 		AE17EFB01F43FCB1A53F644D /* DaemonTimelineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonTimelineStore.swift; sourceTree = "<group>"; };
 		B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquatterCleaner.swift; sourceTree = "<group>"; };
@@ -1208,6 +1214,7 @@
 				6F0A3614C2DF6495CAB410B1 /* AppReviewPromptTests.swift */,
 				BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */,
 				44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */,
+				ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */,
 				160B2258BF46CD03C53B5AC0 /* ClaudePermissionRulesTests.swift */,
 				0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */,
 				2FBD79359C74EFD3D692FB05 /* CodexCreditsPresentationTests.swift */,
@@ -1598,6 +1605,7 @@
 			isa = PBXGroup;
 			children = (
 				AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */,
+				43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */,
 				408F05BE863985A2E157A5AD /* ClaudePermissionRules.generated.swift */,
 				0C97EE2C9DA1A4FA137619AF /* CodexExecChildren.swift */,
 				009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */,
@@ -2036,6 +2044,7 @@
 				26CD84217792773330924DA0 /* AppReviewPromptTests.swift in Sources */,
 				797EB64211FFF8F679AD9729 /* AuthTokenAdoptionTests.swift in Sources */,
 				8CB40A396077F92F9140E25F /* CiWaitRulesTests.swift in Sources */,
+				3AA3A8CEDFE2A89F0708D96E /* ClaudeBackgroundJobRulesTests.swift in Sources */,
 				ADC9C0B4303BEA1EEB33E969 /* ClaudePermissionRulesTests.swift in Sources */,
 				00E9789B6EFDA8174842999D /* CodexConfigInstallerTests.swift in Sources */,
 				9AC98859CDC66FD5342EEA61 /* CodexCreditsPresentationTests.swift in Sources */,
@@ -2129,6 +2138,7 @@
 				7E151A499F63C5A8F7896DD4 /* AppReviewPromptTests.swift in Sources */,
 				709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */,
 				C5F162AA9AB80292E55F6046 /* CiWaitRulesTests.swift in Sources */,
+				400DA2617A474B0330E9D615 /* ClaudeBackgroundJobRulesTests.swift in Sources */,
 				C984EE6C8F562962DBE4EB5B /* ClaudePermissionRulesTests.swift in Sources */,
 				23C366450AF88EC0E69DDD11 /* CodexConfigInstallerTests.swift in Sources */,
 				C10CD1596A8DC0CF050C6AED /* CodexCreditsPresentationTests.swift in Sources */,
@@ -2259,6 +2269,7 @@
 				2A91978796D69836486BB35C /* BubbleSystem.swift in Sources */,
 				522CB2254E5C9EF0B3F1346E /* CiCompanionPresentation.swift in Sources */,
 				59BEE539C23688C92D592A19 /* CiWaitRules.generated.swift in Sources */,
+				8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
 				BD603C0DA671877FFFF496E1 /* ClaudePermissionRules.generated.swift in Sources */,
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
@@ -2528,6 +2539,7 @@
 				570EE6757194B634FA68AF72 /* BubbleSystem.swift in Sources */,
 				5BB32AB0F02012A28980DF5A /* CiCompanionPresentation.swift in Sources */,
 				008A6553EC1E4ECE53369412 /* CiWaitRules.generated.swift in Sources */,
+				702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
 				52F319B3F0699BDB206D714E /* ClaudePermissionRules.generated.swift in Sources */,
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,

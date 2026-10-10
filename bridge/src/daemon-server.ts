@@ -34,6 +34,7 @@ import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
+import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from './claude-spare-hooks.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
 import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
@@ -1314,6 +1315,11 @@ export function classifyObservedHookEvent(
 ): { boundary: string; agentType: 'claude-code' | 'codex-cli' | 'opencode' | 'antigravity' | 'kiro-cli' | 'kiro-ide' | 'hermes' } {
   if (eventName === 'codex_subagent_start' || eventName === 'codex_subagent_stop') {
     return { boundary: eventName, agentType: 'codex-cli' };
+  }
+  // OpenCode's Task tool runs a child session (`parentID`); the observer
+  // plugin reports it as the parent's subagent, never as a session.
+  if (eventName === 'opencode_subagent_start' || eventName === 'opencode_subagent_stop') {
+    return { boundary: eventName, agentType: 'opencode' };
   }
   const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
     .exec(eventName);
@@ -3406,6 +3412,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.end(JSON.stringify({ received: true, background: true }));
           return;
         }
+        // A Claude Code background-job spare's startup SessionStart is a pool
+        // process warming up, not a conversation: no row, no timeline, no run.
+        const claudeBgRole = await claudeBackgroundRoleForHook(
+          eventName, json, passiveSessionObserver.processes(), collectProcessInfo,
+        );
+        if (isClaudeSpareHook(json, claudeBgRole)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true, background: true }));
+          return;
+        }
         // A headless `codex exec` launched by another observed session is
         // that session's child, not a session: its hooks drive the parent's
         // subagent census (through the registry's lifecycle) and nothing
@@ -3748,6 +3764,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // stop hook won't spawn a phantom run, and a late `session_start`
             // arriving after a lazy open won't double-open (the run already
             // exists → skip).
+            // A window whose conversation moved to a background job never
+            // posts SessionEnd; the job's start is that identity's close (the
+            // observer hides the parked row from the session file's
+            // `parkedJobId`). Finished, not abandoned — the reaper would say so.
+            // Only on the window's own record: a fork alone may leave the
+            // original working, and closing that run would drop its turn.
+            const parkedSid = parkedClaudeSessionId(json, claudeBgRole);
+            if (parkedSid && apme.collector.getRunId(parkedSid) && isParkedClaudeSession(parkedSid) === true) {
+              apme.collector.ingestHook(parkedSid, 'session_end', { session_id: parkedSid, reason: 'moved_to_background' });
+              apme.collector.closeRun(parkedSid);
+            }
             if (!apme.collector.getRunId(hookSid)
                 && (boundary === 'session_start' || boundary === 'user_prompt_submit')) {
               apme.collector.openRun({

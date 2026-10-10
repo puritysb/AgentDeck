@@ -5282,6 +5282,49 @@ final class DaemonServer {
         coordinationTracker.mergePeers([]).map { CodexExecPeer(sessionId: $0.sessionId, pid: $0.pid) }
     }
 
+    /// Background-job role of the Claude process that posted this hook, or nil
+    /// when the hook names no pid or the process cannot be read (unknown never
+    /// drops or retires anything). Synchronous on purpose: SessionStart is
+    /// posted fire-and-forget, and an `await` here (the first suspension point
+    /// in `handleHookEvent`) let the same session's UserPromptSubmit overtake
+    /// it, after which the resumed session_start reset the row to idle and
+    /// split the turn. A spare's SessionStart fires the moment it boots,
+    /// usually before the 5 s tick, so a miss reads that one pid directly.
+    private func claudeBackgroundRole(_ json: [String: Any]) -> ClaudeBackgroundJobRules.Role? {
+        guard let pid = (json["agentdeck_pid"] as? Int) ?? (json["agentdeck_pid"] as? NSNumber)?.intValue,
+              pid > 1 else { return nil }
+        if let role = ClaudeBackgroundJobRules.role(pid: pid, in: lastProcessTable) { return role }
+        guard let row = ProcessEnumerator.processRow(pid: pid) else { return nil }
+        let parent = ProcessEnumerator.processRow(pid: row.ppid)
+        return ClaudeBackgroundJobRules.role(command: row.command, parentCommand: parent?.command)
+    }
+
+    /// The window a background job was forked from stays alive as a host shell
+    /// and never posts SessionEnd, so its row would sit idle for the 30-min
+    /// interactive TTL beside the job that now carries the conversation. Only
+    /// an idle row is retired: a row still working or awaiting is not provably
+    /// the parked one (a `--resume … --fork-session` can leave both running).
+    private func retireParkedClaudeSession(_ rawId: String, continuedAs newId: String?) {
+        guard let (sid, entry) = pushedSessionsById.first(where: { $0.key.lowercased() == rawId }),
+              entry.agentType == "claude-code",
+              entry.state == nil || entry.state == "idle",
+              !claudeTurnAnchors.hasOpenTurn(sid: sid) else { return }
+        // The parked identity is finished, not abandoned: close its run now
+        // rather than leave it to the reaper.
+        apmeCollector?.handleHook(event: "session_end", data: ["session_id": sid, "agent_type": "claude-code"])
+        pushedSessionsById.removeValue(forKey: sid)
+        cachedSessions.removeAll { $0.id == sid }
+        lastHookAtByPushedSession.removeValue(forKey: sid)
+        clearClaudeTurnAnchor(sid: sid)
+        claudeLastPromptTopicBySession.removeValue(forKey: sid)
+        claudeTranscriptPathBySession.removeValue(forKey: sid)
+        if currentHookSessionId == sid { currentHookSessionId = newId }
+        if userFocusedSessionId == sid { userFocusedSessionId = newId }
+        DaemonLogger.shared.debug("Hook", "Claude session \(sid) moved to background job \(newId ?? "?"); parked window row retired")
+        broadcastSessionsList()
+    }
+
+
     /// Returns true when the hook belongs to a child (attached or pending) and
     /// the caller must stop.
     private func gateCodexExecChild(event: String, json: [String: Any], sessionId: String) async -> Bool {
@@ -5465,6 +5508,9 @@ final class DaemonServer {
         let lifecycleEvents: Set<String> = [
             "subagent_start", "subagent_stop",
             "codex_subagent_start", "codex_subagent_stop",
+            // OpenCode's Task tool runs a child session (`parentID`); the
+            // observer plugin reports it as the parent's subagent.
+            "opencode_subagent_start", "opencode_subagent_stop",
             "task_completed", "teammate_idle",
         ]
         let agentId = (json["agent_id"] as? String)?
@@ -5478,6 +5524,7 @@ final class DaemonServer {
         if hasChildIdentity
             && event != "subagent_start" && event != "subagent_stop"
             && event != "codex_subagent_start" && event != "codex_subagent_stop"
+            && event != "opencode_subagent_start" && event != "opencode_subagent_stop"
             && event != "task_completed" {
             return true
         }
@@ -5509,7 +5556,7 @@ final class DaemonServer {
         let now = Date().timeIntervalSince1970 * 1000
         sweepSubagentCensus(now: now)
 
-        if event == "subagent_start" || event == "codex_subagent_start" {
+        if event == "subagent_start" || event == "codex_subagent_start" || event == "opencode_subagent_start" {
             var census = subagentCensus[sid] ?? SubagentCensus()
             // Open a burst, or join the one still open.
             if census.burstId == nil || now - census.burstStartedAt > Self.subagentBurstWindowMs {
@@ -5776,6 +5823,22 @@ final class DaemonServer {
             _ = openCodeOwnership.claimHook(sessionId)
             if event == "opencode_stop" || event == "opencode_user_prompt_submit" || event == "opencode_session_end" {
                 openCodeWaits.removeValue(forKey: sessionId)
+            }
+        }
+
+        // Claude Code background jobs (ClaudeBackgroundJobRules): a spare's
+        // startup SessionStart is a pool process warming up — no row, no
+        // timeline, no APME run. A job forked from a window's conversation is
+        // that conversation moved to the background; the parked window emits
+        // no more hooks, so its idle row is retired instead of lingering.
+        if event == "session_start", !isCodexEvent, !isOpenCodeEvent,
+           let role = claudeBackgroundRole(json) {
+            if ClaudeBackgroundJobRules.isSpareStartup(source: json["source"], role: role) {
+                DaemonLogger.shared.debug("Hook", "Claude background spare \(sessionId ?? "?"): not a conversation, SessionStart dropped")
+                return
+            }
+            if case .job(let forkedFrom?) = role, forkedFrom != sessionId?.lowercased() {
+                retireParkedClaudeSession(forkedFrom, continuedAs: sessionId)
             }
         }
 

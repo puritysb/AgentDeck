@@ -908,6 +908,7 @@
         "bridge/src/__tests__/project-name.test.ts",
         "bridge/src/__tests__/remote-sessions.test.ts",
         "shared/src/__tests__/claude-permission-rules*.test.ts",
+        "shared/src/__tests__/claude-background-jobs*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
         "shared/src/__tests__/subagent-activity.test.ts",
         "shared/src/__tests__/ci-wait*.test.ts",

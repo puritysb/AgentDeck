@@ -116,11 +116,26 @@ export function cleanGoal(raw: string): string {
   return s.slice(0, 120);
 }
 
-interface ClaudeSessionFile {
+/**
+ * `~/.claude/sessions/<pid>.json`. The last four fields are Claude Code's
+ * background-job registry (2.1.29x agent view), read only to decide which live
+ * process is the conversation — see `selectClaudeConversationFiles`.
+ */
+export interface ClaudeSessionFile {
   pid: number;
   sessionId: string;
   cwd: string;
   startedAt: number;
+  /** `interactive` (a terminal window), `bg` (a background job), `sdk`, … */
+  kind?: string;
+  /** A background job's short id (`5b55b9d6`). */
+  jobId?: string;
+  /** Set on a window whose conversation was moved to background job `<id>`;
+   *  the window process stays alive as a host shell and stops emitting hooks. */
+  parkedJobId?: string;
+  /** A pre-warmed, unclaimed background process: it has a session id and a
+   *  cwd but no conversation. Claude clears the flag when the spare is claimed. */
+  spare?: boolean;
 }
 
 export interface ObservedSession extends EnrichedSession {
@@ -824,10 +839,13 @@ function collectClaudeSessions(processes: ProcInfo[]): ObservedSession[] {
   const configDirs = claudeConfigDirs();
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const sessions: ObservedSession[] = [];
+  const candidates: Array<{ proc: ProcInfo; file: ClaudeSessionFile }> = [];
   for (const proc of processes) {
     if (!isClaudeSessionProcessCommand(proc.command)) continue;
-    const sessionFile = findClaudeSessionFile(configDirs, proc.pid);
-    if (!sessionFile) continue;
+    const file = findClaudeSessionFile(configDirs, proc.pid);
+    if (file) candidates.push({ proc, file });
+  }
+  for (const { proc, file: sessionFile } of selectClaudeConversationFiles(candidates)) {
     const transcript = findClaudeTranscript(configDirs, sessionFile.cwd, sessionFile.sessionId);
     // Head+tail so the FIRST user prompt (the session goal, at the file start) is
     // parsed alongside recent activity (at the tail).
@@ -1332,11 +1350,20 @@ function findClaudeSessionFile(configDirs: string[], pid: number): ClaudeSession
           typeof parsed.cwd !== 'string' || typeof parsed.startedAt !== 'number') {
         continue;
       }
+      const raw = parsed as Record<string, unknown>;
+      const shortId = (key: string) => {
+        const value = raw[key];
+        return typeof value === 'string' && value.length > 0 ? value.slice(0, 64) : undefined;
+      };
       return {
         pid: parsed.pid,
         sessionId: parsed.sessionId.slice(0, 256),
         cwd: parsed.cwd.slice(0, 4096),
         startedAt: parsed.startedAt,
+        kind: shortId('kind'),
+        jobId: shortId('jobId'),
+        parkedJobId: shortId('parkedJobId'),
+        spare: raw.spare === true,
       };
     } catch {
       continue;
@@ -1650,8 +1677,48 @@ function cmdHasBinary(command: string, name: string, opts?: { ignoreCase?: boole
  */
 export function isClaudeSessionProcessCommand(command: string): boolean {
   if (command.includes('--print') || isElectronChildProcess(command)) return false;
+  // The background-job PTY host is a terminal relay for the job under it,
+  // never a conversation of its own.
+  if (command.includes('--bg-pty-host')) return false;
   if (cmdHasBinary(command, 'claude')) return true;
+  // Claude Code's daemon launches a background job straight from the
+  // versioned native binary (`~/.local/share/claude/versions/2.1.296 …`), so
+  // argv[0] is named after the version, not `claude`. Missing it hid the very
+  // conversation the user was working in (2026-10-10).
+  const argv0 = leadingCommandTokens(command)[0]?.replace(/^"+|"+$/g, '') ?? '';
+  if (/[\\/]claude[\\/]versions[\\/]\d+\.\d+\.\d+[^\\/]*$/.test(argv0)) return true;
   return /[\\/]@anthropic-ai[\\/]claude-code[\\/]cli\.js/.test(command);
+}
+
+/**
+ * Which live Claude processes are a conversation the user would call a session.
+ *
+ * Claude Code's background jobs put three kinds of process behind one
+ * conversation, and only one of them is it:
+ * - an unclaimed **spare** (`spare: true`) is a pre-warmed pool process with a
+ *   session id and a cwd but no conversation — it is never a row;
+ * - a window whose conversation was **moved to the background** keeps running
+ *   as a host shell with `parkedJobId` naming the job, and stops emitting hooks
+ *   — the job IS that conversation now, so the window yields to it;
+ * - the **job** (`kind: "bg"`) is the live conversation and is the row.
+ *
+ * A window yields only while its job is visibly alive in the same scan: a
+ * stale `parkedJobId` whose job is gone is no evidence the window is empty, so
+ * it keeps its row (an unknown never removes a session).
+ */
+export function selectClaudeConversationFiles<T extends { file: ClaudeSessionFile }>(
+  candidates: readonly T[],
+): T[] {
+  const liveJobs = new Set(
+    candidates
+      .filter(({ file }) => file.kind === 'bg' && !file.spare && file.jobId)
+      .map(({ file }) => file.jobId as string),
+  );
+  return candidates.filter(({ file }) => {
+    if (file.spare) return false;
+    if (file.parkedJobId && liveJobs.has(file.parkedJobId)) return false;
+    return true;
+  });
 }
 
 function isDescendantOf(pid: number, ancestorPid: number, byPid: Map<number, ProcInfo>): boolean {
