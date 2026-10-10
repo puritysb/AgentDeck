@@ -2,15 +2,15 @@
 
 Reader overview: [Dot 연결과 배포를 쉽게 설명한 한국어 안내](dot-connection-explained.ko.md), with diagrams of the current private experiment, request lifecycle and public-distribution gates.
 
-Decision date: 2026-10-09. This is the current product and transport plan. It supersedes the public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), while retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Research is complete for this decision; real Dot interoperability and public distribution are not established.
+Initial decision: 2026-10-09; release-plan revision: **2026-10-11**. The [server-free App Store release plan](dot-store-release-plan.md) now owns the next steps and release gates. This document preserves the transport rationale and dated evidence. It supersedes public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Real Dot interoperability is proven through the private tunnel; app-only Dot execution and general public distribution are not established.
 
 ## Decision
 
-Build toward **AgentDeck + a local ChatGPT plugin + the user's existing Dot computer connection**. Keep AgentDeck on the user's Mac, require explicit local pairing, and reuse ChatGPT's existing account and computer permission. Do not require a second AgentDeck account or Sign in with ChatGPT merely to connect Dot.
+Build toward **AgentDeck's native local MCP + a supported ChatGPT local executor + the user's existing Dot computer connection**. Test desktop Settings → MCP servers → Add server and OAuth before requiring a public local plugin. The documented settings flow is an alternative to directory distribution, but does not itself prove Dot tool availability. Keep AgentDeck on the user's Mac, require explicit local pairing, and reuse ChatGPT's existing account and computer permission. Do not require a second AgentDeck account or Sign in with ChatGPT merely to connect Dot.
 
-This is the selected product direction, not a claim that OpenAI currently offers self-service public distribution of that complete integration. Prove the local route in a private plugin first. Obtaining a supported public local-MCP distribution path is a separate launch gate. If that gate cannot be met, keep Dot integration an opt-in private preview; do not advertise a one-click public integration or substitute a hosted service silently.
+This is the selected product direction, not a claim that OpenAI currently offers self-service public distribution of that complete integration. Prove the local route through the documented desktop settings first. Public local-plugin distribution is a separate option; it must not be confused with the supported local-client configuration flow. If neither route establishes actual supported Dot access, keep Dot integration an opt-in private preview; do not advertise a one-click public integration or substitute a hosted service silently.
 
-Use the official Secure MCP Tunnel only for the private MCP Events experiment and optional operator-managed use. Do not make a tunnel ID, Platform organization, API key, domain or certificate part of ordinary AgentDeck onboarding. No AgentDeck-operated public server is authorized by this decision.
+Use the official Secure MCP Tunnel only for private interoperability experiments and optional operator-managed use. The current request/report adapter does not expose MCP Events. Do not make a tunnel ID, Platform organization, API key, domain or certificate part of ordinary AgentDeck onboarding. No AgentDeck-operated public server is authorized by this decision.
 
 Three requested properties are not jointly established by the current public documentation: (1) no public service operated by AgentDeck or users, (2) install-and-consent onboarding for arbitrary users, and (3) cloud Dot event activation and return calls. Login and plugin packaging alone do not establish the third property's local transport. The release gate must remain visible rather than being hidden by more implementation.
 
@@ -33,7 +33,7 @@ No documented public API for a personal Dot's global live state, avatar synchron
 
 ## Target user experience and capability boundary
 
-The intended public flow, conditional on local-MCP distribution support, is:
+The plugin-based public flow, conditional on local-MCP distribution support, is below. The [current release plan](dot-store-release-plan.md#target-architecture-and-user-experience) tests direct desktop registration first and does not require a plugin listing for that route.
 
 1. Install/open AgentDeck and install the AgentDeck plugin in ChatGPT.
 2. Grant the existing Dot's access to this Mac in ChatGPT, if not already granted.
@@ -81,6 +81,8 @@ Swift implements the local adapter in-process using native networking and Keycha
 A future in-process Swift tunnel client would require a documented supported protocol/SDK, authorized credential provisioning and native compatibility validation. Porting observed traffic from the official binary is not a selected solution. A future AgentDeck-operated relay would change the no-public-service decision and introduce account, availability, privacy and operating-cost responsibilities; it is outside this plan.
 
 ## Implementation and validation order
+
+**Historical stage order:** superseded by [the 2026-10-11 release gates](dot-store-release-plan.md#release-gates-in-order). Prove supported Dot local execution and GUI authentication before broad implementation. A public directory listing is needed only for the plugin route, not necessarily for user-configured desktop MCP.
 
 | Stage | Concrete deliverable | Exit or fallback |
 |---|---|---|
