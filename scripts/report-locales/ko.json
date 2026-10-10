@@ -474,7 +474,7 @@
   "No parsed executed test cases; reported command completion is not case evidence.": "파싱된 실행 케이스 없음. 명령 완료만으로 테스트 케이스를 증명하지 않습니다.",
   "Review the decision, remaining risk and next action first; inspect the exact test evidence below.": "검증 결론과 남은 위험, 다음 행동을 먼저 확인하고 아래에서 구체적인 테스트 근거를 살펴보세요.",
   "Dot local and HTTPS MCP": "Dot 로컬 및 HTTPS MCP",
-  "Do loopback MCP, direct HTTPS, local OAuth consent/revocation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.": "루프백 MCP, 직접 HTTPS, 로컬 OAuth 동의·철회, 이벤트 전달과 연결된 보고가 계약을 충족하는가? 로컬 및 네이티브 테스트는 실제 Dot이나 공개 접속의 상호 운용성을 입증하지 않는다.",
+  "Do loopback MCP, direct HTTPS, local OAuth consent/revocation, private tunnel stdio token rotation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.": "루프백 MCP, 직접 HTTPS, 로컬 OAuth 동의·철회, 비공개 터널 표준입출력 연결의 토큰 교체, 이벤트 전달과 연결된 보고가 계약을 충족하는가? 로컬 및 네이티브 테스트는 실제 Dot이나 공개 접속의 상호 운용성을 입증하지 않는다.",
   "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)": "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts와 실험용 Dot 직접 호스트가 테스트에 명시된 대로 동작한다(아래 영역 표에 집계).",
   "real Dot subscription/report execution, hosted OAuth-provider interoperability or public relay deployment (the relay tests use a local receiver and test JWTs)": "실제 Dot 구독·보고 실행, 외부 OAuth 제공자와의 상호 운용성 또는 공개 배포(직접 호스트 테스트는 로컬 수신기와 테스트 JWT를 사용)."
 }

@@ -198,18 +198,40 @@ would not fix the OAuth client contract: AgentDeck's current local mode allows
 its registered local client and loopback callbacks only. A harmless request with
 an HTTPS callback was rejected with `400 invalid_request`, as designed.
 
-A dedicated, locally held OAuth grant and official static MCP header support
-remain a candidate for this single-operator experiment. They are not configured:
-AgentDeck access tokens expire after five minutes, so one pasted token would not
-provide a maintained connection. Any such arrangement needs refresh/expiry and
-revocation handling, a separate approved grant, and a private workspace boundary.
-It cannot identify separate users sharing a tunnel. Do not reuse the existing
-local Codex grant or disable MCP authentication to make discovery pass.
+AgentDeck access tokens expire after five minutes, so one static header is not a
+maintained connection. On 2026-10-10 the private experiment added a
+[stdio adapter](../integrations/openai-tunnel/README.md) between the official
+client and authenticated loopback MCP. It holds a separately approved local
+read/report grant, rotates tokens on demand, and forwards bounded tool requests
+without opening another listener. An uncertain refresh outcome fails closed;
+claims/reports are never automatically replayed. The existing Codex grant stays
+separate. This helper is not shipped inside the App Store application.
+
+This arrangement uses the official tunnel's workspace access boundary and a
+single local principal. The custom MCP connector uses No Auth at its layer,
+while AgentDeck still requires the adapter's local bearer token. It cannot
+identify separate users sharing a tunnel and must remain a personal-operator
+experiment. It implements tools only, not MCP Events. Authenticated local
+initialize and five-tool discovery passed; those probes are not Dot activity.
+The real local probe waited beyond the original five-minute token expiry, then
+successfully rotated credentials and completed another MCP ping. The official
+managed runtime was switched from HTTP to this stdio command; a fresh status
+reported a running process, readiness and no remote error. Its MCP health still
+reported `not_observed`, initialize epoch zero: a running child and `/readyz`
+alone do not prove cloud-side discovery. Personal ChatGPT plugin creation and
+actual Dot calls remain pending operator UI setup.
+
+The adapter's eight focused tests and the 22 automated pre-release checks passed,
+including 5,625 JavaScript tests, daemon E2E, native builds/tests and the packaged
+daemon acceptance run. The recorded pre-release receipt identifies a dirty
+experimental checkout, not a published release. Windows native runtime and the
+manual hardware/Swift live gates were not attested by that run. These results do
+not establish a real Dot request or MCP Events subscription.
 
 Resume using the [official setup guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels):
 
-1. Confirm that ChatGPT's custom MCP form lists the created tunnel and inspect
-   its authentication/callback requirements before selecting an implementation.
+1. Confirm that ChatGPT's custom MCP form lists the created tunnel and configure
+   the personal stdio-backed connection as described in the adapter runbook.
    Computer-use access to the native ChatGPT/Codex app was denied by the tool;
    the operator must perform that UI step rather than using an automation bypass.
 2. Establish authenticated discovery with a separately approved scoped client.

@@ -802,7 +802,7 @@
     {
       "id": "dot-relay",
       "name": "Dot local and HTTPS MCP",
-      "question": "Do loopback MCP, direct HTTPS, local OAuth consent/revocation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.",
+      "question": "Do loopback MCP, direct HTTPS, local OAuth consent/revocation, private tunnel stdio token rotation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.",
       "icon": "◉",
       "match": ["services/dot-relay/src/__tests__/*.test.ts", "bridge/src/__tests__/dot-*.test.ts", "shared/src/__tests__/dot-*.test.ts"]
     },
