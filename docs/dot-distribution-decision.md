@@ -332,3 +332,31 @@ a separate run with `AGENTDECK_E2E_ALLOW_DARWIN=1` passed all 14 E2E tests.
 Physical-device and Swift-owner live gates remain unverified. The Pixoo preview
 fix remains source-only until installed after live acceptance. Draft PR #501
 preserves the changes without claiming deployment or complete visual acceptance.
+
+
+## Runtime-key renewal and unlocked live visual pass — 2026-10-11 00:33–00:35 KST
+
+The user replaced the restricted runtime key locally. The existing official
+managed runtime restarted with a file reference, preserving the tunnel, private
+AgentDeck grant and permissions. Component health recorded successful control-plane
+polls and MCP initialization; process readiness alone was not used as proof.
+
+A new request was shared with the dedicated grant and sent to the existing Dot
+conversation. Dot directly claimed it, reported working at 00:34:51.472 and
+completed at 00:35:08.050 KST. The new context contained 29, 37 and 46; the reported
+sum was 112 with an independent check. No synthetic reports or delegated local
+tasks were used. Operator records and WebSocket snapshots were retained privately.
+
+On the unlocked installed Mac Dashboard, the pending state showed only the quiet
+Awaiting Activity badge. The real working report produced the cyan badge and a
+Dot creature at the right of the habitat. Captures 1.2 and 6 seconds later showed
+a changed vertical position. The completed report changed both badge and creature
+label to Completed and the creature to green; a capture after 12 seconds retained
+completion rather than working. This establishes real Mac report-to-render
+behavior, not exact animation timing or every physical surface's acceptance.
+
+Private evidence is in ignored `diagnostics/tunnel-runtime/live4-observation.json`,
+`live4-captures/` and `live4-dot-result.jpg`. No credentials or personal screenshots
+are published. The Pixoo preview fix still needs installed-runtime verification.
+Events, delegation, a Swift-owned daemon, other users' onboarding and physical
+SDK/firmware displays remain separate acceptance gates.
