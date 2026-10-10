@@ -1,0 +1,7 @@
+# 2026-10-10 — OpenClaw: the deck's prompt went to whichever session spoke last
+
+Found while auditing non-foreground sessions across agents (the same day's Claude background-job entry). The OpenClaw Gateway connection sees every session the agent has. The owner's store held one `agent:main:main`, a voice chat, dashboard chats and a LINE group, and also 465 `agent:main:eval-…` keys, cron jobs, heartbeats, and preflight / probe / diagnostic runs.
+
+Both adapters kept a single `currentSessionKey`. Every `chat` event set it, and at connect it came from the most recently updated `sessions.list` row. `chat.send`, `chat.abort` and `sessions.patch` (the #463 settings) all targeted it. On this Gateway the newest row is usually an eval run, so the deck's first prompt after a connect could land in one. Later, a cron tick between two presses moved the next prompt into the cron session, and a stop aborted the cron run.
+
+**Fix.** Each adapter now keeps an activity key (what spoke last; drives state, timeline and subscriptions) and a steering key (prompt, stop, settings). Only a conversation-shaped key can take the steering key: `main`, `voice`, `dashboard:<id>` and channel `group`/`dm` keys. This is an allow-list because background shapes are open-ended. When no conversation key is listed, the newest key is still used. A stop carries the running `runId` only when the activity key is the steering key. The rule is a generated SSOT (`shared/src/openclaw-session-key.ts` → Swift) with shared vectors taken from the owner's real key shapes.

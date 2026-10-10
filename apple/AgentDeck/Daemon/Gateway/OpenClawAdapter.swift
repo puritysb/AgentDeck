@@ -206,7 +206,12 @@ actor OpenClawAdapter {
     private let connectRPCResponseTimeoutNanoseconds: UInt64 = 10_000_000_000
     private let standardRPCResponseTimeoutNanoseconds: UInt64 = 20_000_000_000
 
+    /// ACTIVITY key: whichever session spoke last (often a cron tick, a
+    /// heartbeat or an eval run).
     private var currentSessionKey: String?
+    /// Where the user's actions go — prompt, stop, settings. Only a
+    /// conversation-shaped key takes it over (`OpenClawSessionKeyRules`).
+    private var steeringSessionKey: String?
     /// Model configured on the canonical main session. Gateway `models.list`
     /// does not always expose the CLI's `default` tag, so this is the reliable
     /// fallback for the virtual OpenClaw session row.
@@ -568,6 +573,7 @@ actor OpenClawAdapter {
             }
             if let sessionKey = payload["sessionKey"] as? String, !sessionKey.isEmpty {
                 currentSessionKey = sessionKey
+                steeringSessionKey = OpenClawSessionKeyRules.nextSteeringKey(current: steeringSessionKey, eventKey: sessionKey)
             }
             let chatState = payload["state"] as? String
 
@@ -1535,13 +1541,13 @@ actor OpenClawAdapter {
     }
 
     /// Deck-switchable settings (#463) of the session the deck talks to — the
-    /// `currentSessionKey` that `chat.send` targets — read fresh from the
+    /// `steeringSessionKey` that `chat.send` targets — read fresh from the
     /// Gateway row and `models.list`. Returns the wire `SessionSetting` list,
     /// or an error message when the Gateway could not be read.
     func querySessionSettings(targetSessionKey: String? = nil) async -> OpenClawSessionSettings.Read {
         // Snapshot before the first await. Post-write readback passes its fixed
         // target explicitly, so another session becoming newest cannot retarget it.
-        let target = targetSessionKey ?? currentSessionKey
+        let target = targetSessionKey ?? steeringSessionKey
         return await OpenClawSessionSettings.query(targetSessionKey: target) { request in
             await self.sessionSettingsRPC(request)
         }
@@ -1551,7 +1557,7 @@ actor OpenClawAdapter {
     /// Returns the Gateway's error message on refusal.
     func setSessionSetting(targetSessionKey: String, key: String, value: String?) async -> String? {
         return await OpenClawSessionSettings.set(targetSessionKey: targetSessionKey,
-            activeSessionKey: currentSessionKey, key: key, value: value) { request in
+            activeSessionKey: steeringSessionKey, key: key, value: value) { request in
             await self.sessionSettingsRPC(request)
         }
     }
@@ -1559,7 +1565,7 @@ actor OpenClawAdapter {
     private func sessionSettingsRPC(_ request: OpenClawSessionSettings.RPCRequest) async -> OpenClawSessionSettings.RPCReply {
         // Recheck on the actor immediately before sending. The injected
         // operation can resume on another executor after the initial guard.
-        if request.method == "sessions.patch", request.params["key"] as? String != currentSessionKey {
+        if request.method == "sessions.patch", request.params["key"] as? String != steeringSessionKey {
             return .init(ok: false, payload: nil, error: "OpenClaw session changed; query settings again")
         }
         let response = await rpcRequest(method: request.method, params: request.params,
@@ -1595,17 +1601,20 @@ actor OpenClawAdapter {
         var resolvedParams = params
         switch method {
         case "chat.send":
-            if resolvedParams["sessionKey"] == nil, let sessionKey = currentSessionKey {
+            if resolvedParams["sessionKey"] == nil, let sessionKey = steeringSessionKey {
                 resolvedParams["sessionKey"] = sessionKey
             }
             if resolvedParams["idempotencyKey"] == nil {
                 resolvedParams["idempotencyKey"] = UUID().uuidString
             }
         case "chat.abort":
-            if resolvedParams["sessionKey"] == nil, let sessionKey = currentSessionKey {
+            if resolvedParams["sessionKey"] == nil, let sessionKey = steeringSessionKey {
                 resolvedParams["sessionKey"] = sessionKey
             }
-            if resolvedParams["runId"] == nil, let runId = currentRunId {
+            // The running run id belongs to the activity key; scope the abort
+            // to it only when that is the conversation the user is stopping.
+            if resolvedParams["runId"] == nil, let runId = currentRunId,
+               resolvedParams["sessionKey"] as? String == currentSessionKey {
                 resolvedParams["runId"] = runId
             }
         case "exec.approval.resolve":
@@ -1890,7 +1899,10 @@ actor OpenClawAdapter {
             return left > right
         }
         currentSessionKey = sorted.first?["key"] as? String
-        DaemonLogger.shared.debug("OpenClaw", "Active session: \(currentSessionKey ?? "nil")")
+        // The newest key is often an eval run or a cron job; the deck talks to
+        // the newest conversation (`agent:main:main` on a quiet day).
+        steeringSessionKey = OpenClawSessionKeyRules.pickSteeringKey(sorted.compactMap { $0["key"] as? String })
+        DaemonLogger.shared.debug("OpenClaw", "Active session: \(currentSessionKey ?? "nil"); deck targets \(steeringSessionKey ?? "nil")")
         mainSessionModelKey = Self.mainSessionModelKey(from: sessions)
         emitResolvedModel()
         if let currentSessionKey {

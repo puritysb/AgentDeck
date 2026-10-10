@@ -7,6 +7,7 @@ import { createPublicKey, createPrivateKey, sign as cryptoSign, randomUUID } fro
 import WebSocket from 'ws';
 import { debug, log, logError } from '../logger.js';
 import { summarizeResponse } from '../timeline-summarizer.js';
+import { nextOpenClawSteeringKey, pickOpenClawSteeringKey } from '@agentdeck/shared';
 import { extractTopicHint, extractTopicHintWithKind, promptSnippetFallback, prepareMarkdownDetail } from '@agentdeck/shared';
 import {
   cleanRawText,
@@ -189,8 +190,13 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private rawDataCallback: ((data: string) => void) | null = null;
   private autoReconnect: boolean;
 
-  // Session tracking
+  // Session tracking. `currentSessionKey` is the ACTIVITY key — whichever
+  // session spoke last, which may be a cron tick, a heartbeat or an eval run.
+  // `steeringSessionKey` is where the user's actions go (prompt, stop,
+  // settings); only a conversation-shaped key takes it over
+  // (`shared/src/openclaw-session-key.ts`).
   private currentSessionKey: string | null = null;
+  private steeringSessionKey: string | null = null;
   private currentRunId: string | null = null;
   /** The approval the Gateway is currently blocked on, normalized for display
    *  AND for answering — the options carry their own decision so an index press
@@ -1137,8 +1143,8 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
       case 'send_prompt': {
         const liveRunId = randomUUID();
-        if (this.currentSessionKey) {
-          for (const update of this.liveActivity.dispatch(this.currentSessionKey, liveRunId, cmd.text, Date.now())) {
+        if (this.steeringSessionKey) {
+          for (const update of this.liveActivity.dispatch(this.steeringSessionKey, liveRunId, cmd.text, Date.now())) {
             this.emitAdapterEvent({ source: 'timeline', ...update });
           }
         }
@@ -1155,28 +1161,28 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
           const prompt = cmd.text;
           const promptRaw = prompt.length > 500 ? prompt.slice(0, 497) + '...' : prompt;
           const promptDetail = prompt.length > 100 ? (prompt.length > 1000 ? prompt.slice(0, 997) + '...' : prompt) : undefined;
-          if (!this.currentSessionKey) this.emitTimelineEntry({
+          if (!this.steeringSessionKey) this.emitTimelineEntry({
             ts: Date.now(), type: 'chat_start', raw: promptRaw,
             ...(promptDetail ? { detail: promptDetail } : {}),
           });
           this.emitAdapterEvent({ source: 'parser', event: 'spinner_start' });
         }
 
-        if (this.currentSessionKey) {
+        if (this.steeringSessionKey) {
           // APME: open a turn. The matching `turn_response` lands on
           // `chat.final` below. Cancel any pending idle-gap timer — a new
           // send means the conversation is still active.
-          const ctx = this.buildApmeCtx(this.currentSessionKey);
+          const ctx = this.buildApmeCtx(this.steeringSessionKey);
           if (ctx) {
-            this.clearIdleGapTimer(this.currentSessionKey);
-            this.ingestApmeSpans(this.currentSessionKey, [openclawChatSendToSpan(ctx, cmd.text)]);
+            this.clearIdleGapTimer(this.steeringSessionKey);
+            this.ingestApmeSpans(this.steeringSessionKey, [openclawChatSendToSpan(ctx, cmd.text)]);
           }
           this.rpcCall('chat.send', {
-            sessionKey: this.currentSessionKey,
+            sessionKey: this.steeringSessionKey,
             message: cmd.text,
             idempotencyKey: liveRunId,
           }).catch((err) => {
-            this.liveActivity.ingest('chat', { sessionKey: this.currentSessionKey, runId: liveRunId, state: 'error' }, Date.now());
+            this.liveActivity.ingest('chat', { sessionKey: this.steeringSessionKey, runId: liveRunId, state: 'error' }, Date.now());
             debug('adapter:openclaw', `chat.send failed: ${err}`);
             this.emitTimelineEntry({
               ts: Date.now(), type: 'error', raw: `Send failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1201,10 +1207,13 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
       case 'interrupt': {
         debug('adapter:openclaw', 'interrupt: sending chat.abort');
-        if (this.currentSessionKey) {
+        if (this.steeringSessionKey) {
+          // The running run id belongs to the activity key; scope the abort
+          // to it only when that is the conversation the user is stopping.
+          const runId = this.steeringSessionKey === this.currentSessionKey ? this.currentRunId : null;
           this.rpcCall('chat.abort', {
-            sessionKey: this.currentSessionKey,
-            ...(this.currentRunId ? { runId: this.currentRunId } : {}),
+            sessionKey: this.steeringSessionKey,
+            ...(runId ? { runId } : {}),
           }).catch((err) => {
             debug('adapter:openclaw', `chat.abort failed: ${err}`);
           });
@@ -1214,9 +1223,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
       case 'escape': {
         debug('adapter:openclaw', 'escape: sending chat.abort');
-        if (this.currentSessionKey) {
+        if (this.steeringSessionKey) {
           this.rpcCall('chat.abort', {
-            sessionKey: this.currentSessionKey,
+            sessionKey: this.steeringSessionKey,
           }).catch((err) => {
             debug('adapter:openclaw', `chat.abort failed: ${err}`);
           });
@@ -1241,9 +1250,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   writeInput(data: string): void {
     // Fallback: send raw text as a chat message
     debug('adapter:openclaw', `writeInput fallback: "${data.slice(0, 60)}"`);
-    if (this.currentSessionKey) {
+    if (this.steeringSessionKey) {
       this.rpcCall('chat.send', {
-        sessionKey: this.currentSessionKey,
+        sessionKey: this.steeringSessionKey,
         message: data,
         idempotencyKey: randomUUID(),
       }).catch((err) => {
@@ -1678,6 +1687,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         // Track active run and session
         if (runId) this.currentRunId = runId;
         if (sessionKey) this.currentSessionKey = sessionKey;
+        this.steeringSessionKey = nextOpenClawSteeringKey(this.steeringSessionKey, sessionKey);
 
         switch (state) {
           case 'delta': {
@@ -2401,6 +2411,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0),
       );
       this.currentSessionKey = sorted[0].key;
+      // The newest key is often an eval run or a cron job; the deck talks to
+      // the newest conversation (`agent:main:main` on a quiet day).
+      this.steeringSessionKey = pickOpenClawSteeringKey(sorted.map((s) => s.key));
 
       // Use fixed name — Gateway session labels can be user identifiers
       // (e.g. phone numbers) which are unsuitable as project names
@@ -2411,7 +2424,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         data: { name: 'OpenClaw' },
       });
 
-      debug('adapter:openclaw', `Active session: ${this.currentSessionKey}`);
+      debug('adapter:openclaw', `Active session: ${this.currentSessionKey}; deck targets ${this.steeringSessionKey}`);
     } catch (err) {
       debug('adapter:openclaw', `sessions.list failed: ${err}`);
     }
@@ -2419,12 +2432,12 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
   /**
    * Deck-switchable settings (#463) of the session the deck talks to — the
-   * same `currentSessionKey` that `send_prompt` targets — read fresh from the
+   * same `steeringSessionKey` that `send_prompt` targets — read fresh from the
    * Gateway: the row's own thinking levels/default and the `models.list`
    * catalog. Nothing is defaulted here; see `openClawSessionSettings`.
    */
-  async querySessionSettings(targetSessionKey = this.currentSessionKey): Promise<{ targetSessionKey: string; settings: SessionSetting[] }> {
-    // Capture before any await. Chat events can change currentSessionKey while
+  async querySessionSettings(targetSessionKey = this.steeringSessionKey): Promise<{ targetSessionKey: string; settings: SessionSetting[] }> {
+    // Capture before any await. Chat events can change steeringSessionKey while
     // a read is pending; neither that read nor post-write readback may retarget.
     if (!isSessionSettingsTargetKey(targetSessionKey)) throw new Error('No OpenClaw session to read');
     const result = await this.rpcCall('sessions.list', {}, SESSION_SETTINGS_RULES.rpcTimeoutMs);
@@ -2440,7 +2453,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     if (!isSessionSettingsTargetKey(targetSessionKey)) throw new Error('Invalid settings target');
     if (!isSessionSettingKey(key)) throw new Error('Unknown session setting');
     if (!isSessionSettingValue(value)) throw new Error('Invalid session setting value');
-    if (targetSessionKey !== this.currentSessionKey) throw new Error('OpenClaw conversation changed; reopen the picker');
+    if (targetSessionKey !== this.steeringSessionKey) throw new Error('OpenClaw conversation changed; reopen the picker');
     await this.rpcCall('sessions.patch', key === 'model'
       ? { key: targetSessionKey, model: value }
       : { key: targetSessionKey, thinkingLevel: value }, SESSION_SETTINGS_RULES.rpcTimeoutMs);

@@ -277,6 +277,7 @@
 		5E39A0DA9E8B9E175292E84D /* GatewayParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234CFF4B2832E6B1CA98AF10 /* GatewayParityTests.swift */; };
 		5E3FCF09BE50281AE6749762 /* ESP32WifiForwardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C671E2324E45E6745813C681 /* ESP32WifiForwardTests.swift */; };
 		5E7AA48D5FE57966246B4502 /* SessionSettingsRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5EE710FE14F48C58E23B52 /* SessionSettingsRules.generated.swift */; };
+		5F19E683A6D43850D953E8A3 /* OpenClawSessionKeyRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */; };
 		5F62235C4D677989E2B7972D /* MiniToml.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F61897614FBE52B61AB8B4 /* MiniToml.swift */; };
 		5FBCFE8F4EBDCB7937FECA50 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */; };
 		604472724296A989DD86DEDE /* ApmeActivityHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD17B846036A2F78B153024 /* ApmeActivityHistory.swift */; };
@@ -473,6 +474,7 @@
 		A7C525ED25F56061A0DF9ADE /* HermesObserverGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0903C3EBD6675CB1D28C1FE /* HermesObserverGate.swift */; };
 		A7E6158A1A9242B77356F1E8 /* MiniTomlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1754EEF69FF454C638CF1C /* MiniTomlTests.swift */; };
 		A8293F557BD8D3FB91BF4CF4 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
+		A84E1C4B3E34A982B09710A9 /* OpenClawSessionKeyRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9185FF90065381D67996F78 /* OpenClawSessionKeyRulesTests.swift */; };
 		A869C24476DAE485D0B950EC /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
 		A8815F32726A3355322BA31E /* DotSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21629400210C88B7A9F0E3C /* DotSurfaceView.swift */; };
 		AA5C41BFDE43A8EDC2C85AA3 /* TerrariumRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF3CC89437DF95538AA2AE5 /* TerrariumRules.generated.swift */; };
@@ -604,6 +606,7 @@
 		D14972CEAF0D69E6918C86BA /* AgentDeckPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 056D70153C3F720A6D935C9F /* AgentDeckPaths.swift */; };
 		D169DFD5EA54C323E1128E7B /* AgentState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15F55435772A15B8F0E92C1 /* AgentState.swift */; };
 		D17DFF0683AFC3DC60D4BE19 /* CollaborationProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F09E1BD51B5102E89060963B /* CollaborationProjectionTests.swift */; };
+		D23040EAEA1488288D7DA135 /* OpenClawSessionKeyRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9185FF90065381D67996F78 /* OpenClawSessionKeyRulesTests.swift */; };
 		D2335AB9E3A5DEE25405617F /* TimeboxProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27A351E073AB448BEE1DA392 /* TimeboxProtocolTests.swift */; };
 		D285BA530EBC08FD2C5CCF32 /* SwiftSurfaceFirmwareStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDEFB32CAC64614A563E7C31 /* SwiftSurfaceFirmwareStore.swift */; };
 		D35BA75727611B0FA50E5526 /* TuiCanonicalCells.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707E6E55048B70C6A50DB105 /* TuiCanonicalCells.generated.swift */; };
@@ -711,6 +714,7 @@
 		FA0A73634F02279804DDF386 /* ApmeSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBBE1258602AB5ABC83560EE /* ApmeSettings.swift */; };
 		FA2AA2B226EBD69F45238A1F /* OpenCodeObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9C1092C93CA846103C9692C /* OpenCodeObserver.swift */; };
 		FA4DE837BCE2D19760C8ECEE /* DotRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D12DF5535F73FD12022173 /* DotRules.generated.swift */; };
+		FB489658B1372F96E04EDDA6 /* OpenClawSessionKeyRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */; };
 		FBB919EF89AE0DBEE2DC0082 /* ApmeCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF540FF89BA54744CF94CC4 /* ApmeCollector.swift */; };
 		FBBDE4862E8788F5007ACBC3 /* apme-dashboard.html in Resources */ = {isa = PBXBuildFile; fileRef = 766909A21820E709DA63C7C2 /* apme-dashboard.html */; };
 		FC3FC48B2EB1C7FE0790EED5 /* GatewayLiveActivity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77F4FA4E17866309859930F /* GatewayLiveActivity.generated.swift */; };
@@ -1041,6 +1045,7 @@
 		CCFFBDF3C8B9091DE9D5E376 /* DashboardProviderVectorsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardProviderVectorsTests.swift; sourceTree = "<group>"; };
 		CD7B38A97F5852FE0E8249C2 /* AttentionTheaterHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionTheaterHUD.swift; sourceTree = "<group>"; };
 		CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOtelRoutes.swift; sourceTree = "<group>"; };
+		CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSessionKeyRules.generated.swift; sourceTree = "<group>"; };
 		CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRegistry.swift; sourceTree = "<group>"; };
 		D1DDCB822B1DC56875875388 /* ModuleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleManager.swift; sourceTree = "<group>"; };
 		D2994478DEFAA4A1CC8EC54D /* FormatUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatUtils.swift; sourceTree = "<group>"; };
@@ -1079,6 +1084,7 @@
 		E6382C68380E57D0B8C08301 /* living-aquarium.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "living-aquarium.usdz"; sourceTree = "<group>"; };
 		E6F0B91327EB48703713A68C /* PairingWindowStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingWindowStore.swift; sourceTree = "<group>"; };
 		E84D819AA86894944600240C /* DaemonActorIndependenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonActorIndependenceTests.swift; sourceTree = "<group>"; };
+		E9185FF90065381D67996F78 /* OpenClawSessionKeyRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSessionKeyRulesTests.swift; sourceTree = "<group>"; };
 		E9342D343A701D2BDC92C845 /* PixooModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooModule.swift; sourceTree = "<group>"; };
 		EA30C4FE1630E93CEEAF4B1D /* ResidentLabelLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResidentLabelLayoutTests.swift; sourceTree = "<group>"; };
 		EB1470AE66304DC838676016 /* ApmeJudgeDetect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeDetect.swift; sourceTree = "<group>"; };
@@ -1231,6 +1237,7 @@
 				767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */,
 				8EB6D1182ABF3CF9649640FE /* OpenClawApprovalErrorTests.swift */,
 				FD9BAEA1AA19038A243F2806 /* OpenClawPluginApprovalRulesTests.swift */,
+				E9185FF90065381D67996F78 /* OpenClawSessionKeyRulesTests.swift */,
 				9AF98CA1BB582FB56637BB59 /* OpenClawSessionSettingsTests.swift */,
 				DAF69E65D3118C105A193227 /* OpenClawTokenExtractTests.swift */,
 				52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */,
@@ -1623,6 +1630,7 @@
 				427B912EBD043285F0A0008D /* OpenClawAdapter.swift */,
 				4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */,
 				0874BC71B3B1DEAE2C6177D7 /* OpenClawPluginApprovalRules.generated.swift */,
+				CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */,
 				911116AFCDB54393457A6EB6 /* OpenClawSessionSettings.swift */,
 				2A5EE710FE14F48C58E23B52 /* SessionSettingsRules.generated.swift */,
 			);
@@ -2053,6 +2061,7 @@
 				BA45B7FBDCFDD8971904714D /* ObservedAskUserQuestionTests.swift in Sources */,
 				005B0DAAC1B51D7B88E775B8 /* OpenClawApprovalErrorTests.swift in Sources */,
 				10D745FF03A660573DFAD326 /* OpenClawPluginApprovalRulesTests.swift in Sources */,
+				A84E1C4B3E34A982B09710A9 /* OpenClawSessionKeyRulesTests.swift in Sources */,
 				D4596068D1B0207EFD0BB829 /* OpenClawSessionSettingsTests.swift in Sources */,
 				7B0F7E18D01881EF81E3F08E /* OpenClawTokenExtractTests.swift in Sources */,
 				2CA69943196E37F61A932DEF /* OpenClawToolNoiseTests.swift in Sources */,
@@ -2143,6 +2152,7 @@
 				3DF6BC8D6B4841A3EF370023 /* ObservedAskUserQuestionTests.swift in Sources */,
 				143AC29C25DFB6DF71A0B42F /* OpenClawApprovalErrorTests.swift in Sources */,
 				A45715C40465E13F9F57B786 /* OpenClawPluginApprovalRulesTests.swift in Sources */,
+				D23040EAEA1488288D7DA135 /* OpenClawSessionKeyRulesTests.swift in Sources */,
 				9ABF9EC3B767F9589CAC5902 /* OpenClawSessionSettingsTests.swift in Sources */,
 				9A5DC975FE1C36D4AB0B13A4 /* OpenClawTokenExtractTests.swift in Sources */,
 				45C2A8320BF4C10E8106CF6B /* OpenClawToolNoiseTests.swift in Sources */,
@@ -2351,6 +2361,7 @@
 				FD86AF81DA987540254BA326 /* OpenClawAdapter.swift in Sources */,
 				4B12BD71DAC0B74F7FB41BDA /* OpenClawApprovalRules.generated.swift in Sources */,
 				85C724787BC98E91B345697E /* OpenClawPluginApprovalRules.generated.swift in Sources */,
+				FB489658B1372F96E04EDDA6 /* OpenClawSessionKeyRules.generated.swift in Sources */,
 				2FDF3D0AE2DC4A95A35811DC /* OpenClawSessionSettings.swift in Sources */,
 				7AA10F90E922138D683C318D /* OpenClawTokenImporter.swift in Sources */,
 				46086D1358BD25389E304052 /* OpenCodeCreature.swift in Sources */,
@@ -2618,6 +2629,7 @@
 				58591ABC081F2367FEE6B563 /* OpenClawAdapter.swift in Sources */,
 				36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */,
 				A73CF81FE653E74BF02E102E /* OpenClawPluginApprovalRules.generated.swift in Sources */,
+				5F19E683A6D43850D953E8A3 /* OpenClawSessionKeyRules.generated.swift in Sources */,
 				D9ED8E3AA3918D61737BE6B1 /* OpenClawSessionSettings.swift in Sources */,
 				D53FC33DD05A32D719809874 /* OpenClawTokenImporter.swift in Sources */,
 				996C92E310F9A7E69C40C803 /* OpenCodeCreature.swift in Sources */,
