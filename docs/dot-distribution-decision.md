@@ -219,7 +219,7 @@ managed runtime was switched from HTTP to this stdio command; a fresh status
 reported a running process, readiness and no remote error. Its MCP health still
 reported `not_observed`, initialize epoch zero: a running child and `/readyz`
 alone do not prove cloud-side discovery. Personal ChatGPT plugin creation and
-actual Dot calls remain pending operator UI setup.
+actual Dot calls remain pending final connection consent.
 
 The adapter's eight focused tests and the 22 automated pre-release checks passed,
 including 5,625 JavaScript tests, daemon E2E, native builds/tests and the packaged
@@ -232,8 +232,11 @@ Resume using the [official setup guide](https://developers.openai.com/api/docs/g
 
 1. Confirm that ChatGPT's custom MCP form lists the created tunnel and configure
    the personal stdio-backed connection as described in the adapter runbook.
-   Computer-use access to the native ChatGPT/Codex app was denied by the tool;
-   the operator must perform that UI step rather than using an automation bypass.
+   The tool denied native ChatGPT/Codex app access, but on 2026-10-10 its supported
+   Chrome browser interface allowed the plugin settings page. Do not generalize
+   the native-app denial to browser settings. The prepared form accepted the
+   tunnel ID and resolved its saved name. Its final create/connect action still
+   requires action-time user confirmation under the browser tool's access policy.
 2. Establish authenticated discovery with a separately approved scoped client.
    Test browser authorization, token exchange, refresh, expiry and revocation
    independently of tunnel readiness. Do not reset existing local grants while
