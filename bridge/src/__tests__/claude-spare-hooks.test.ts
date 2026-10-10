@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { claudeBackgroundRoleForHook, isClaudeSpareHook, parkedClaudeSessionId } from '../claude-spare-hooks.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from '../claude-spare-hooks.js';
 import type { ProcInfo } from '../passive-observer.js';
 
 const proc = (pid: number, ppid: number, command: string): ProcInfo => ({ pid, ppid, rssKb: 0, command });
@@ -42,5 +45,23 @@ describe('Claude background-job hooks', () => {
     const failing = await classify({ agentdeck_pid: 999, source: 'startup' }, [], vi.fn(async () => { throw new Error('ps failed'); }));
     expect(failing.spare).toBe(false);
     expect(failing.parked).toBeUndefined();
+  });
+});
+
+describe('isParkedClaudeSession', () => {
+  it('trusts only the window\'s own parkedJobId record', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'agentdeck-claude-sessions-'));
+    try {
+      writeFileSync(join(dir, '2237.json'), JSON.stringify({ pid: 2237, sessionId: 'D385ADF6-x', parkedJobId: '5b55b9d6' }));
+      writeFileSync(join(dir, '3000.json'), JSON.stringify({ pid: 3000, sessionId: 'still-working' }));
+      writeFileSync(join(dir, '3001.json'), '{torn');
+      expect(isParkedClaudeSession('d385adf6-x', [dir])).toBe(true);
+      // Forked but the original window is still its own live conversation.
+      expect(isParkedClaudeSession('still-working', [dir])).toBe(false);
+      // No record at all is unknown, never a reason to close.
+      expect(isParkedClaudeSession('gone', [dir, join(dir, 'missing')])).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -46,10 +46,13 @@ export const CLAUDE_BG_FLAGS = {
  * `--resume <uuid>` or `--resume <path>/<uuid>.jsonl`, capture 1 = the uuid.
  * The path may contain spaces (argv is joined with spaces on both daemons), so
  * the uuid is read as the last thing before `.jsonl`/end-of-token rather than
- * by tokenising. ICU (Swift `NSRegularExpression`) and JS read it alike.
+ * by tokenising. The path prefix is LAZY-optional (`??`), so a bare
+ * `--resume <uuid>` is tried first and a later argument's path (`--add-dir
+ * /tmp/<uuid>`) is never mistaken for it. ICU (Swift `NSRegularExpression`)
+ * and JS read it alike.
  */
 export const CLAUDE_BG_RESUME_PATTERN =
-  '(?:^|\\s)--resume(?:=|\\s+)(?:.*?[\\\\/])?'
+  '(?:^|\\s)--resume(?:=|\\s+)(?:.*?[\\\\/])??'
   + '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'
   + '(?:\\.jsonl)?(?=\\s|$)';
 

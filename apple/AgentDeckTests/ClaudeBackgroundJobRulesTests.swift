@@ -46,5 +46,14 @@ final class ClaudeBackgroundJobRulesTests: XCTestCase {
         XCTAssertEqual(ClaudeBackgroundJobRules.role(pid: 28616, in: table), .spare)
         XCTAssertNil(ClaudeBackgroundJobRules.role(pid: 999, in: table))
     }
+
+    /// The hook path classifies a brand-new process synchronously (no await
+    /// that would let the session's next hook overtake its SessionStart).
+    func testProcessRowReadsOneLiveProcess() throws {
+        let row = try XCTUnwrap(ProcessEnumerator.processRow(pid: Int(getpid())))
+        XCTAssertEqual(row.ppid, Int(getppid()))
+        XCTAssertFalse(row.command.isEmpty)
+        XCTAssertNil(ProcessEnumerator.processRow(pid: 0))
+    }
 }
 #endif

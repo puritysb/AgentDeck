@@ -74,6 +74,15 @@
       "source": "startup",
       "role": "other",
       "spareStartup": false
+    },
+    {
+      "name": "bare --resume uuid is not overtaken by a later path argument",
+      "command": "/Users/robin/.local/share/claude/versions/2.1.296 --session-id 11111111-2222-3333-4444-555555555555 --fork-session --resume aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --add-dir /tmp/99999999-8888-7777-6666-555555555555",
+      "parent": "claude --bg-pty-host /tmp/s.sock 200 50 -- x",
+      "source": "resume",
+      "role": "job",
+      "forkedFrom": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "spareStartup": false
     }
   ]
 }

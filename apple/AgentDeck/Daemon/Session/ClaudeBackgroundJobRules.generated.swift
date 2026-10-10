@@ -28,7 +28,7 @@ enum ClaudeBackgroundJobRules {
     private static let flagPrefix = #"(?:^|\s)"#
     private static let flagSuffix = #"(?=\s|=|$)"#
     private static let resumeRegex = try! NSRegularExpression(
-        pattern: #"(?:^|\s)--resume(?:=|\s+)(?:.*?[\\/])?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\.jsonl)?(?=\s|$)"#
+        pattern: #"(?:^|\s)--resume(?:=|\s+)(?:.*?[\\/])??([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\.jsonl)?(?=\s|$)"#
     )
 
     private static func hasFlag(_ command: String, _ flag: String) -> Bool {

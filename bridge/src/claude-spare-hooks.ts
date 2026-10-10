@@ -11,6 +11,9 @@ import {
   isClaudeSpareStartup,
   type ClaudeBackgroundProcessRole,
 } from '@agentdeck/shared';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { ProcInfo } from './passive-observer.js';
 
 function roleForPid(pid: number, table: readonly ProcInfo[]) {
@@ -57,4 +60,36 @@ export function parkedClaudeSessionId(
   if (role?.role !== 'job' || !role.forkedFrom) return undefined;
   const sid = typeof payload.session_id === 'string' ? payload.session_id.toLowerCase() : '';
   return role.forkedFrom === sid ? undefined : role.forkedFrom;
+}
+
+function claudeSessionDirs(): string[] {
+  const dirs = [join(homedir(), '.claude', 'sessions')];
+  const envDir = process.env.CLAUDE_CONFIG_DIR;
+  if (envDir) dirs.push(join(envDir, 'sessions'));
+  return dirs;
+}
+
+/**
+ * Whether the live window holding conversation `sessionId` says it moved that
+ * conversation to the background (`parkedJobId` in `~/.claude/sessions/<pid>.json`).
+ * The job's argv proves only that it was forked FROM `sessionId`; a fork can
+ * leave the original still working, and closing that run would drop its turn.
+ * `undefined` = no readable record (unknown — the caller leaves the run alone).
+ */
+export function isParkedClaudeSession(sessionId: string, dirs: readonly string[] = claudeSessionDirs()): boolean | undefined {
+  const want = sessionId.toLowerCase();
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    let names: string[];
+    try { names = readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      if (!/^\d+\.json$/.test(name)) continue;
+      try {
+        const record = JSON.parse(readFileSync(join(dir, name), 'utf8')) as Record<string, unknown>;
+        if (typeof record.sessionId !== 'string' || record.sessionId.toLowerCase() !== want) continue;
+        return typeof record.parkedJobId === 'string' && record.parkedJobId.length > 0;
+      } catch { /* torn or unreadable record — keep looking */ }
+    }
+  }
+  return undefined;
 }

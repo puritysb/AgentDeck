@@ -5283,17 +5283,20 @@ final class DaemonServer {
     }
 
     /// Background-job role of the Claude process that posted this hook, or nil
-    /// when the hook names no pid or neither the cached nor a fresh process
-    /// table shows it (unknown never drops or retires anything). A spare's
-    /// SessionStart fires the moment it boots, usually after the 5 s tick.
-    private func claudeBackgroundRole(_ json: [String: Any]) async -> ClaudeBackgroundJobRules.Role? {
+    /// when the hook names no pid or the process cannot be read (unknown never
+    /// drops or retires anything). Synchronous on purpose: SessionStart is
+    /// posted fire-and-forget, and an `await` here (the first suspension point
+    /// in `handleHookEvent`) let the same session's UserPromptSubmit overtake
+    /// it, after which the resumed session_start reset the row to idle and
+    /// split the turn. A spare's SessionStart fires the moment it boots,
+    /// usually before the 5 s tick, so a miss reads that one pid directly.
+    private func claudeBackgroundRole(_ json: [String: Any]) -> ClaudeBackgroundJobRules.Role? {
         guard let pid = (json["agentdeck_pid"] as? Int) ?? (json["agentdeck_pid"] as? NSNumber)?.intValue,
               pid > 1 else { return nil }
         if let role = ClaudeBackgroundJobRules.role(pid: pid, in: lastProcessTable) { return role }
-        let fresh = await Task.detached(priority: .utility) { ProcessEnumerator.processTable() }.value
-        guard !fresh.isEmpty else { return nil }
-        lastProcessTable = fresh
-        return ClaudeBackgroundJobRules.role(pid: pid, in: fresh)
+        guard let row = ProcessEnumerator.processRow(pid: pid) else { return nil }
+        let parent = ProcessEnumerator.processRow(pid: row.ppid)
+        return ClaudeBackgroundJobRules.role(command: row.command, parentCommand: parent?.command)
     }
 
     /// The window a background job was forked from stays alive as a host shell
@@ -5829,7 +5832,7 @@ final class DaemonServer {
         // that conversation moved to the background; the parked window emits
         // no more hooks, so its idle row is retired instead of lingering.
         if event == "session_start", !isCodexEvent, !isOpenCodeEvent,
-           let role = await claudeBackgroundRole(json) {
+           let role = claudeBackgroundRole(json) {
             if ClaudeBackgroundJobRules.isSpareStartup(source: json["source"], role: role) {
                 DaemonLogger.shared.debug("Hook", "Claude background spare \(sessionId ?? "?"): not a conversation, SessionStart dropped")
                 return

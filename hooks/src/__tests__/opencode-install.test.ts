@@ -81,6 +81,8 @@ describe('AgentDeckObserver event sequencing', () => {
         posts.push({ event: hook[1], body: JSON.parse(init.body) });
         return { ok: true };
       }
+      // The steering long-poll: never answers, so the loop just waits.
+      if (u.includes('/opencode/commands')) return new Promise(() => {});
       return { ok: false };
     });
   });
@@ -241,6 +243,38 @@ describe('AgentDeckObserver event sequencing', () => {
     await flush();
     expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
     expect(posts[0].body).toMatchObject({ session_id: 's9', agent_id: 'c2' });
+  });
+
+  it('a finished child stays finished when OpenCode re-emits its message, and restarts on a new task prompt', async () => {
+    const { event } = await observer();
+    await event({ event: { type: 'session.created', properties: { info: { id: 'c1', parentID: 's1' } } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 'c1' } } });
+    // Trailing re-emit after the turn settled.
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm1', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop']);
+    // The Task tool resumes the child with a new prompt.
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'cm9', sessionID: 'c1', role: 'user', agent: 'explore' } } } });
+    await flush();
+    expect(posts.map((p) => p.event)).toEqual(['opencode_subagent_start', 'opencode_subagent_stop', 'opencode_subagent_start']);
+  });
+
+  it('keeps an uncached session\'s events in arrival order although OpenCode does not await handlers', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const get = vi.fn(async () => { await gate; return { data: { id: 's7' } }; });
+    const { event } = await observer({ session: { get } });
+    // Fired back to back without awaiting, as OpenCode does.
+    const pending = [
+      event({ event: { type: 'message.updated', properties: { info: { id: 'm7', sessionID: 's7', role: 'user', text: 'go' } } } }),
+      event({ event: { type: 'session.idle', properties: { sessionID: 's7' } } }),
+    ];
+    release();
+    await Promise.all(pending);
+    await flush();
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(posts.map((p) => p.event)).toEqual(['opencode_session_start', 'opencode_user_prompt_submit', 'opencode_stop']);
   });
 });
 

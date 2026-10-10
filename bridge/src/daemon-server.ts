@@ -34,7 +34,7 @@ import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
 import { distBuildId } from './daemon-build-identity.js';
 import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessInfo, type ProcInfo } from './passive-observer.js';
-import { claudeBackgroundRoleForHook, isClaudeSpareHook, parkedClaudeSessionId } from './claude-spare-hooks.js';
+import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from './claude-spare-hooks.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
 import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
@@ -3768,8 +3768,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // posts SessionEnd; the job's start is that identity's close (the
             // observer hides the parked row from the session file's
             // `parkedJobId`). Finished, not abandoned — the reaper would say so.
+            // Only on the window's own record: a fork alone may leave the
+            // original working, and closing that run would drop its turn.
             const parkedSid = parkedClaudeSessionId(json, claudeBgRole);
-            if (parkedSid && apme.collector.getRunId(parkedSid)) {
+            if (parkedSid && apme.collector.getRunId(parkedSid) && isParkedClaudeSession(parkedSid) === true) {
               apme.collector.ingestHook(parkedSid, 'session_end', { session_id: parkedSid, reason: 'moved_to_background' });
               apme.collector.closeRun(parkedSid);
             }
