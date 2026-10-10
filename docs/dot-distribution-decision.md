@@ -1,5 +1,7 @@
 # Dot connection and distribution decision
 
+Reader overview: [Dot 연결과 배포를 쉽게 설명한 한국어 안내](dot-connection-explained.ko.md), with diagrams of the current private experiment, request lifecycle and public-distribution gates.
+
 Decision date: 2026-10-09. This is the current product and transport plan. It supersedes the public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), while retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Research is complete for this decision; real Dot interoperability and public distribution are not established.
 
 ## Decision
