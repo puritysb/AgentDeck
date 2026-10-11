@@ -97,12 +97,13 @@ export function createDaemonHookForwarder(deps: {
 }): ForeignHookForwarder {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
-  let cached: { port: number | null; at: number } | null = null;
+  let cached: { port: number; at: number } | null = null;
   let lookup: Promise<number | null> | null = null;
   const daemonPort = async (): Promise<number | null> => {
     if (cached && now() - cached.at < DAEMON_PORT_CACHE_MS) return cached.port;
     lookup ??= deps.findDaemonPort().catch(() => null).then((port) => {
-      cached = { port, at: now() };
+      // Only a found daemon is reused: one starting up must be reachable at once.
+      cached = port ? { port, at: now() } : null;
       lookup = null;
       return port;
     });
