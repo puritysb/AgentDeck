@@ -138,11 +138,14 @@ final class TerrariumCloudFoldTests: XCTestCase {
         scene.sync(state, aspect: 1.6)
         XCTAssertEqual(jars.filter(\.isEnabled).count, 1)
         XCTAssertEqual(finishing.filter(\.isEnabled).count, 0, "Reduced Motion never starts a finish it could not play out")
-        let firstPod = try XCTUnwrap(jars.first)
-        let pinned = firstPod.position
         state.backgroundTaskCounts["claude"] = 2
         scene.sync(state, aspect: 1.6)
-        XCTAssertEqual(firstPod.position, pinned, "Reduced Motion keeps the phase fixed even when counts change")
+        let firstPod = try XCTUnwrap(jars.first)
+        let pinned = firstPod.position
+        XCTAssertTrue(jars.filter(\.isEnabled).allSatisfy { $0.position.z > 0 }, "Reduced Motion parks every buddy on the near side of its orbit")
+        scene.step(60)
+        scene.sync(state, aspect: 1.6)
+        XCTAssertEqual(firstPod.position, pinned, "and holds it still")
         state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .asking, homeX: 0.5, homeY: 0.5, scale: 1)]
         scene.sync(state, aspect: 1.6)
         XCTAssertFalse(group.isEnabled, "Approval takes priority even with retained task metadata")
@@ -170,7 +173,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(canvas.backgroundOrbitPhase, phase)
     }
 
-    func testJarBuddiesWanderBesideTheBodyClearOfTagAndSand() {
+    func testJarBuddiesOrbitTheirCreatureLikeAMoon() {
         typealias P = BackgroundWorkPresentation
         XCTAssertEqual(P.visibleCount(0), 0)
         XCTAssertEqual(P.visibleCount(12), P.maxBuddies, "Buddies are capped; +n and the label carry the rest")
@@ -178,41 +181,67 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(P.overflow(3), 0)
         XCTAssertEqual(P.label(1), "1 background task")
         XCTAssertEqual(P.label(5), "5 background tasks")
-        var visited: [Set<Int>] = Array(repeating: [], count: P.maxBuddies + 1)
-        var turned = Array(repeating: Set<Float>(), count: P.maxBuddies + 1)
-        for phase in stride(from: Float(0), to: 40, by: 0.05) {
-            for index in 0...P.maxBuddies {
-                let buddy = P.buddy(index: index, phase: phase)
-                let c = buddy.center
-                // Body: never closer than the creature's own half width plus the jar.
-                XCTAssertGreaterThan(abs(c.x) - buddy.radius * 1.3, 1.0, "Buddy \(index) never overlaps the body")
-                // Tag above, sand below: the whole jar, lid and fins included.
-                XCTAssertLessThan(c.y + buddy.radius * 1.9, 0.6, "Buddy \(index) stays under the name tag")
-                XCTAssertGreaterThan(c.y - buddy.radius * 1.1, -0.7, "Buddy \(index) never sinks below the feet")
-                XCTAssertLessThan(abs(c.x), 2.4, "Buddy \(index) stays near its creature")
-                XCTAssertLessThan(abs(buddy.tilt), 0.31)
-                XCTAssertLessThanOrEqual(buddy.lidLift, 0.18 + 1e-4, "The lid hops a little, it does not fly off")
-                visited[index].insert(Int((c.x * 10).rounded()))
-                turned[index].insert(buddy.facing)
+        // Constant angular speed: one lap per lapSeconds, whatever the phase.
+        let perSecond = P.orbitAngle(P.radiansPerSecond)
+        XCTAssertEqual(perSecond, 2 * .pi / P.lapSeconds, accuracy: 1e-5)
+        XCTAssertEqual(P.orbitAngle(7 * P.radiansPerSecond) - P.orbitAngle(6 * P.radiansPerSecond), perSecond, accuracy: 1e-4)
+        XCTAssertGreaterThanOrEqual(P.lapSeconds, 10)
+        XCTAssertLessThanOrEqual(P.lapSeconds, 14)
+        // Even spacing.
+        for n in 1...P.maxBuddies {
+            for index in 0..<n {
+                XCTAssertEqual(P.spacing(index: index, count: n), Float(index) * 2 * .pi / Float(n), accuracy: 1e-5)
             }
         }
-        for index in 0...P.maxBuddies {
-            XCTAssertGreaterThan(visited[index].count, 6, "Buddy \(index) wanders, it does not hover in place")
-            XCTAssertEqual(turned[index], [-1, 1], "Buddy \(index) turns to face where it swims")
+        XCTAssertEqual(P.spacing(index: 2, count: 12), 4 * .pi / 3, accuracy: 1e-5, "A capped group spaces the three it shows")
+        // A full lap: the orbit never covers the name tag, never sinks below the
+        // feet, stays clear of the body at its sides, and passes behind the
+        // creature on the far half and in front on the near half.
+        var sawFront = false, sawBehind = false
+        var previous: SIMD3<Float>?
+        for step in 0..<720 {
+            let theta = Float(step) * 2 * .pi / 720
+            let buddy = P.buddy(index: 0, theta: theta, phase: Float(step) * 0.01)
+            let c = buddy.center
+            XCTAssertLessThan(c.y + buddy.radius * 1.9 + 0.18 * buddy.radius, P.tagBottom, "θ \(theta): the jar and its hopping lid stay under the name tag")
+            XCTAssertGreaterThan(c.y - buddy.radius * 1.1, -0.75, "θ \(theta): never below the feet")
+            XCTAssertLessThan(abs(c.x), P.orbitRadius + 0.2)
+            if abs(cos(theta)) > 0.95 {
+                // Rounding a side: beside the body, not over it.
+                XCTAssertGreaterThanOrEqual(abs(c.x), P.bodyClearance, "θ \(theta): rounding a side clears the body")
+            }
+            if buddy.isBehind {
+                sawBehind = true
+                XCTAssertLessThan(c.z, 0, "The far half is behind the creature")
+                XCTAssertLessThan(buddy.radius, P.buddyRadius, "and a little smaller")
+                XCTAssertLessThan(buddy.opacity, 1, "and a little faded")
+            } else {
+                sawFront = true
+                XCTAssertGreaterThanOrEqual(c.z, -1e-4)
+                XCTAssertGreaterThanOrEqual(buddy.radius, P.buddyRadius * P.farScale)
+            }
+            XCTAssertLessThan(abs(buddy.tilt), 0.31)
+            XCTAssertLessThanOrEqual(buddy.lidLift, 0.18 + 1e-4, "The lid hops a little, it does not fly off")
+            // Smooth: consecutive points on the orbit are close (no jumps).
+            if let previous { XCTAssertLessThan(simd_distance(previous, c), 0.05) }
+            previous = c
         }
-        // Buddies spread over both sides and never move in step.
-        XCTAssertGreaterThan(P.buddy(index: 0, phase: 1).center.x, 0)
-        XCTAssertLessThan(P.buddy(index: 1, phase: 1).center.x, 0)
-        let a = P.buddy(index: 0, phase: 3), b = P.buddy(index: 2, phase: 3)
-        XCTAssertNotEqual(a.center, b.center)
+        XCTAssertTrue(sawFront && sawBehind, "A moon passes in front and behind")
+        // Moon-like direction: left to right across the front, back across the rear.
+        XCTAssertGreaterThan(P.buddy(index: 0, theta: -.pi / 2, phase: 0).facing, 0.9)
+        XCTAssertLessThan(P.buddy(index: 0, theta: .pi / 2, phase: 0).facing, -0.9)
+        XCTAssertGreaterThan(P.orbit(-.pi / 2 + 0.01).x, P.orbit(-.pi / 2).x, "The near half travels toward screen right")
+        // The ring tilts the other way from the subagent ring (-0.28) and is flatter.
+        XCTAssertGreaterThan(P.orbitTilt, 0)
+        XCTAssertLessThan(abs(P.orbitTilt), 0.28)
         // Lids hop at staggered moments: never all at once.
         var together = 0
         for phase in stride(from: Float(0), to: 20, by: 0.05) {
-            if (0..<3).allSatisfy({ P.buddy(index: $0, phase: phase).lidLift > 0.05 }) { together += 1 }
+            if (0..<3).allSatisfy({ P.buddy(index: $0, theta: 0, phase: phase).lidLift > 0.05 }) { together += 1 }
         }
         XCTAssertEqual(together, 0)
         // Simmer bubbles rise from the mouth and fade as they go.
-        let buddy = P.buddy(index: 0, phase: 0)
+        let buddy = P.buddy(index: 0, theta: -.pi / 2, phase: 0)
         for bubble in (0..<P.simmerPerBuddy).map({ P.simmer(buddy, slot: 0, k: $0, phase: 1.3) }) {
             XCTAssertGreaterThanOrEqual(bubble.center.y, P.mouth(buddy).y)
             XCTAssertLessThanOrEqual(bubble.opacity, 0.8)
@@ -235,66 +264,69 @@ final class TerrariumCloudFoldTests: XCTestCase {
         }
     }
 
-    /// Close neighbours: every buddy stays nearer its owner than any other
-    /// creature, over a long sweep, by keeping to open water or shrinking its loop.
-    func testJarBuddiesStayNearerTheirOwnerThanACloseNeighbour() {
+    /// The brood keeps its buddies evenly spaced on one orbit, glides to the
+    /// new spacing when the count changes, holds still on the near side under
+    /// Reduce Motion, and shrinks the orbit beside a close neighbour.
+    func testJarBuddyOrbitSpacingStillPoseAndCrowding() {
         typealias P = BackgroundWorkPresentation
-        // Neighbour centres in owner body radii: one close on the right, one on
-        // each side (a crowded row), and a diagonal neighbour.
-        let layouts: [[SIMD2<Float>]] = [[[3, 0]], [[-3, 0]], [[3, 0], [-3, 0]], [[2.6, 0.4], [-3.2, -0.3]], [[2.4, 1.2]]]
-        for neighbours in layouts {
+        var brood = BackgroundBrood()
+        brood.observe(explicit: 3, working: true, position: .zero, phase: 0, animate: true)
+        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
+        func gaps(_ b: BackgroundBrood, _ n: Int, phase: Float) -> [Float] {
+            (0..<n).map { i in
+                var d = b.angle(index: (i + 1) % n, phase: phase) - b.angle(index: i, phase: phase)
+                d -= 2 * .pi * (d / (2 * .pi)).rounded(.down)
+                return d
+            }
+        }
+        for gap in gaps(brood, 3, phase: 5) { XCTAssertEqual(gap, 2 * .pi / 3, accuracy: 1e-4, "Three buddies sit a third of a lap apart") }
+        // All buddies move together at the orbit's constant speed.
+        let a0 = brood.angle(index: 1, phase: 2), a1 = brood.angle(index: 1, phase: 3)
+        XCTAssertEqual(a1 - a0, P.orbitAngle(1), accuracy: 1e-4)
+        // A task ends: the remaining two glide to opposite sides, no jump.
+        brood.observe(explicit: 2, working: true, position: .zero, phase: 0, animate: true)
+        let before = brood.angle(index: 1, phase: 0)
+        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
+        let step = brood.angle(index: 1, phase: 0)
+        XCTAssertLessThan(abs(step - before), 0.1, "Re-spacing is a glide, not a jump")
+        XCTAssertGreaterThan(abs(step - before), 0, "and it starts at once")
+        for _ in 0..<300 { brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0) }
+        for gap in gaps(brood, 2, phase: 0) { XCTAssertEqual(gap, .pi, accuracy: 1e-3, "Two buddies end up opposite each other") }
+
+        // Reduce Motion: frozen, evenly spread across the front of the creature.
+        var still = BackgroundBrood()
+        still.observe(explicit: 3, working: true, position: .zero, phase: 4, animate: false)
+        still.advance(dt: 0, position: .zero, room: .init(), phase: 4)
+        let frozen = (0..<3).map { still.buddy(index: $0, phase: 4) }
+        XCTAssertTrue(frozen.allSatisfy { !$0.isBehind }, "Every buddy waits on the near side")
+        XCTAssertEqual(frozen.map(\.center), (0..<3).map { still.buddy(index: $0, phase: 9).center }, "and holds still whatever the phase")
+        XCTAssertLessThan(frozen[0].center.x, frozen[1].center.x)
+        XCTAssertLessThan(frozen[1].center.x, frozen[2].center.x)
+
+        // Crowding: the orbit is centred on its owner; a close neighbour
+        // shrinks it toward the body clearance instead of letting it drift.
+        XCTAssertEqual(P.reach(P.Room()), P.orbitRadius)
+        var close = P.Room(); close.note([2.8, 0])
+        XCTAssertLessThan(P.reach(close), P.orbitRadius)
+        XCTAssertGreaterThanOrEqual(P.reach(close), P.bodyClearance)
+        var touching = P.Room(); touching.note([0.4, 0]); touching.note([-0.4, 0])
+        XCTAssertEqual(P.reach(touching), P.bodyClearance, "Never smaller than just clear of the body")
+        var far = P.Room(); far.note([6, 0]); far.note([1, 3])
+        XCTAssertEqual(P.reach(far), P.orbitRadius, "A far neighbour or one well above changes nothing")
+        for neighbours in [[SIMD2<Float>(3.4, 0)], [SIMD2<Float>(-3.4, 0)], [SIMD2<Float>(3.4, 0), SIMD2<Float>(-3.4, 0)]] {
             var room = P.Room()
             for n in neighbours { room.note(n) }
-            for phase in stride(from: Float(0), to: 40 * P.radiansPerSecond, by: 0.05) {
-                for index in 0..<P.maxBuddies {
-                    let c = P.buddy(index: index, phase: phase, room: room).center
-                    let own = simd_length(SIMD2(c.x, c.y))
-                    for n in neighbours {
-                        XCTAssertLessThan(own, simd_distance(SIMD2(c.x, c.y), n),
-                                          "Buddy \(index) with neighbours \(neighbours) drifted toward a neighbour")
-                    }
+            for step in 0..<360 {
+                let c = P.orbit(Float(step) * .pi / 180, room: room)
+                let own = simd_length(SIMD2(c.x, c.y))
+                for n in neighbours {
+                    XCTAssertLessThan(own, simd_distance(SIMD2(c.x, c.y), n), "An orbit point drifted toward neighbour \(n)")
                 }
             }
+            let flattened = (0..<360).map { abs(P.orbit(Float($0) * .pi / 180, room: room).y - P.orbitCenterY) }.max() ?? 0
+            let open = (0..<360).map { abs(P.orbit(Float($0) * .pi / 180).y - P.orbitCenterY) }.max() ?? 0
+            XCTAssertLessThanOrEqual(flattened, open + 1e-5, "A shrunken orbit flattens with it")
         }
-        // Very close or overlapping neighbours: buddies never sit over the
-        // owner's body. Beside it when a lane fits, above the tag when none does.
-        for gap: Float in [0.3, 1.0, 2.0] {
-            for layout in [[SIMD2<Float>(gap, 0)], [SIMD2<Float>(gap, 0), SIMD2<Float>(-gap, 0)]] {
-                var room = P.Room()
-                for n in layout { room.note(n) }
-                for phase in stride(from: Float(0), to: 40 * P.radiansPerSecond, by: 0.1) {
-                    for index in 0..<P.maxBuddies {
-                        let c = P.buddy(index: index, phase: phase, room: room).center
-                        let besideBody = abs(c.x) >= P.bodyClearance - 1e-4
-                        let aboveTag = c.y - P.buddyRadius >= P.tagTop
-                        XCTAssertTrue(besideBody || aboveTag, "gap \(gap) \(layout.count)-sided: buddy \(index) at \(c) covers the body or tag")
-                        if aboveTag { XCTAssertEqual(P.clearOfTag(c), c, "A buddy hovering above the tag pops where it is") }
-                    }
-                }
-            }
-        }
-        // One close neighbour: the whole group keeps to the open side.
-        var right = P.Room(); right.note([3, 0])
-        for index in 0..<P.maxBuddies { XCTAssertEqual(P.side(index: index, room: right), -1) }
-        // A crowded row: both sides cramped, loops shrink instead of drifting.
-        var row = P.Room(); row.note([3, 0]); row.note([-3, 0])
-        XCTAssertLessThan(try XCTUnwrap(P.lane(side: 1, room: row)).scale, 0.2)
-        XCTAssertEqual(try XCTUnwrap(P.lane(side: 1, room: P.Room())).scale, 1, "Open water keeps the full loop")
-        var squeezed = P.Room(); squeezed.note([1, 0]); squeezed.note([-1, 0])
-        XCTAssertNil(P.lane(side: 1, room: squeezed), "No lane fits beside the body: the group hovers above the tag")
-        // A far neighbour or one well above or below changes nothing.
-        var far = P.Room(); far.note([6, 0]); far.note([1, 3])
-        XCTAssertEqual([P.side(index: 0, room: far), P.side(index: 1, room: far)], [-1, 1], "Open water on both sides still alternates, roomier first")
-        // Settling: a brood whose room changes swims to its new lane, it does not jump.
-        var brood = BackgroundBrood()
-        brood.observe(explicit: 1, working: true, position: .zero, phase: 0, animate: true)
-        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
-        let before = brood.buddy(index: 0, phase: 0).center
-        brood.advance(dt: 1.0 / 60, position: .zero, room: right, phase: 0)
-        let step = brood.buddy(index: 0, phase: 0).center
-        XCTAssertLessThan(simd_distance(before, step), 0.3, "A lane change is a swim, not a jump")
-        for _ in 0..<300 { brood.advance(dt: 1.0 / 60, position: .zero, room: right, phase: 0) }
-        XCTAssertLessThan(brood.buddy(index: 0, phase: 0).center.x, 0, "and it arrives on the open side")
     }
 
     /// A finish never pops into the owner's name tag, wherever it started.
@@ -319,7 +351,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         var brood = BackgroundBrood()
         brood.observe(explicit: 3, working: true, position: here, phase: 0, animate: true)
         XCTAssertTrue(brood.finishes.isEmpty, "Arriving tasks never finish")
-        let last = P.buddy(index: 2, phase: 0)
+        let last = P.buddy(index: 2, theta: P.spacing(index: 2, count: 3), phase: 0)
         brood.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
         XCTAssertEqual(brood.finishes.map(\.buddy), [last], "A finished task leaves from the end of the group")
         XCTAssertEqual(brood.finishes.first?.base, here, "The finish remembers where it was, to play in the water")
@@ -348,7 +380,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         var partly = BackgroundBrood()
         partly.observe(explicit: 4, working: true, position: here, phase: 0, animate: true)
         partly.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(partly.finishes.map(\.buddy), [P.buddy(index: 2, phase: 0)], "4 → 2 with three shown pops only the one that leaves")
+        XCTAssertEqual(partly.finishes.map(\.buddy), [P.buddy(index: 2, theta: P.spacing(index: 2, count: 3), phase: 0)], "4 → 2 with three shown pops only the one that leaves")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: true)
         XCTAssertEqual(crowded.finishes.count, P.maxBuddies, "11 → 0 pops the three that were drawn")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: false)
@@ -456,6 +488,23 @@ final class TerrariumCloudFoldTests: XCTestCase {
         for frame in 0..<6 {
             for _ in 0..<5 { renderer.update(dt: 1.0 / 30, state: state) }
             try write(String(format: "finish-%02d", frame))
+        }
+        // One lap of the orbit, close up: buddies pass behind and in front.
+        let lap = TerrariumRenderer()
+        lap.animateHermes = false
+        var solo = TerrariumState()
+        solo.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.5, homeY: 0.45, scale: 1.6)]
+        solo.backgroundTaskCounts = ["claude": 3]
+        func writeLap(_ name: String) throws {
+            let image = ImageRenderer(content: Canvas { context, size in lap.draw(context: &context, size: size) }.frame(width: 1000, height: 560))
+            image.scale = 2
+            let data = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+            try XCTUnwrap(NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]))
+                .write(to: folder.appendingPathComponent(name + ".png"))
+        }
+        for frame in 0..<8 {
+            for _ in 0..<45 { lap.update(dt: 1.0 / 30, state: solo) }
+            try writeLap(String(format: "orbit-%02d", frame))
         }
         // A deliberately crowded row: each creature's buddies must stay its own.
         let crowded = TerrariumRenderer()

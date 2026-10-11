@@ -264,7 +264,7 @@ final class TerrariumRenderer {
                 // Stable draw order: buddies of overlapping creatures never swap layers.
                 broodIDs.insert(resident.id, at: broodIDs.firstIndex { $0 > resident.id } ?? broodIDs.endIndex)
             }
-            // Mutate in place: a copied brood would reallocate its settled lanes every frame.
+            // Mutate in place: a copied brood would reallocate its spacing every frame.
             broods[resident.id]?.observe(explicit: explicit, working: resident.activity == .working,
                                          position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
         }
@@ -277,7 +277,7 @@ final class TerrariumRenderer {
                                     phase: backgroundOrbitPhase, animate: animateCompanions)
             }
             guard let brood = broods[id], !brood.isEmpty || !brood.hasSettled else { continue }
-            // The first frame settles straight into the real lanes; later ones ease.
+            // The first frame snaps into even spacing; later ones ease.
             broods[id]?.advance(dt: brood.hasSettled ? broodDt : 0, position: pose.center,
                                 room: broodRoom(id, pose, among: foreground), phase: backgroundOrbitPhase)
         }
@@ -354,7 +354,8 @@ final class TerrariumRenderer {
         // and wired satellites belong to the parent creature and never enter
         // hit testing, session selection, approval, or steering paths.
         drawSubagentOrbits(context: &context, size: size)
-        drawBackgroundWork(context: &context, size: size)
+        // Jar buddies on the far half of their orbit pass behind the creatures.
+        drawBackgroundWork(context: &context, size: size, near: false)
 
         // Name tags are collected while creatures draw and painted once, in
         // priority order, after the last creature (DESIGN.md §6.4).
@@ -391,6 +392,11 @@ final class TerrariumRenderer {
         }
 
         for hermes in hermesCreatures.values { hermes.draw(context: &context, size: size) }
+
+        // Layer 9.455: jar buddies on the near half of their orbit cross in
+        // front of their creature (finishes and the count ride here too),
+        // still under the name tags.
+        drawBackgroundWork(context: &context, size: size, near: true)
 
         // Layer 9.46: name tags, resolved together so none hides a resident.
         TerrariumNameTagLayer.active = nil
@@ -507,8 +513,8 @@ final class TerrariumRenderer {
 
     /// Centre (normalized) and body radius (normalized by width) of any live
     /// creature, whatever its kind: the one anchor jar buddies need.
-    /// Free water around a creature, in its body radii: buddies keep to the
-    /// side away from close neighbours. `among` is the frame's foreground roster.
+    /// Free water around a creature, in its body radii: a close neighbour
+    /// shrinks its buddies' orbit. `among` is the frame's foreground roster.
     func broodRoom(_ id: String, _ pose: (center: SIMD2<Float>, radius: Float), among roster: [AquariumResident]) -> BackgroundWorkPresentation.Room {
         var room = BackgroundWorkPresentation.Room()
         let unit = max(0.0001, pose.radius)
@@ -590,10 +596,12 @@ final class TerrariumRenderer {
     }
 
     /// Jar buddies (see `BackgroundWorkPresentation`) for every creature kind:
-    /// small clay jars that swim lazy loops beside their creature, one per
-    /// running background task. Lids jiggle and bubbles simmer from the
-    /// mouths; a finished buddy pops its lid, sparkles and shrinks away where it was.
-    private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
+    /// small clay jars orbiting their creature like moons, one per running
+    /// background task. Lids jiggle and bubbles simmer from the mouths; a
+    /// finished buddy pops its lid, sparkles and shrinks away where it was.
+    /// Drawn in two passes: `near: false` (the far half, before creatures)
+    /// and `near: true` (the near half, finishes and count, after them).
+    private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize, near: Bool) {
         for id in broodIDs {
             guard let brood = broods[id], !brood.isEmpty, let pose = residentPose(id) else { continue }
             let r = max(12, size.width * CGFloat(pose.radius))
@@ -604,11 +612,13 @@ final class TerrariumRenderer {
             let shown = BackgroundWorkPresentation.visibleCount(brood.count)
             for index in 0..<shown {
                 let buddy = brood.buddy(index: index, phase: phase)
+                guard buddy.isBehind != near else { continue }
                 drawBuddy(buddy, at: screen(buddy.center, from: center, r: r), r: r, context: &context, pose: nil, lidLift: buddy.lidLift)
                 for k in 0..<BackgroundWorkPresentation.simmerPerBuddy {
                     drawBubble(BackgroundWorkPresentation.simmer(buddy, slot: index, k: k, phase: phase), from: center, r: r, context: &context)
                 }
             }
+            guard near else { continue }
             // Finishes play where their buddy was, not with the creature, and
             // never pop into the creature's own name tag (it may have sunk
             // toward the floor in the same snapshot).
@@ -626,7 +636,7 @@ final class TerrariumRenderer {
                     }
                 }
             }
-            // The count sits under the creature's feet, where no buddy wanders;
+            // The count sits under the creature's feet, below the orbit;
             // "+n" leads it when more tasks run than buddies swim.
             if shown > 0 {
                 let anchor = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height + r * 1.05)
@@ -647,6 +657,8 @@ final class TerrariumRenderer {
     private func drawBuddy(_ buddy: BackgroundWorkPresentation.Buddy, at point: CGPoint, r: CGFloat, context: inout GraphicsContext,
                            pose: BackgroundWorkPresentation.FinishPose?, lidLift: Float) {
         let s = CGFloat(buddy.radius) * r * CGFloat(pose?.scale ?? 1)
+        // Rounding a side of the orbit the jar turns edge-on, never to nothing.
+        let turn = CGFloat(buddy.facing < 0 ? min(-0.18, buddy.facing) : max(0.18, buddy.facing))
         guard s > 0.2 else { return }
         var c = context
         c.translateBy(x: point.x, y: point.y)
@@ -659,10 +671,10 @@ final class TerrariumRenderer {
             spark.stroke(BuddyPaths.sparkle, with: .color(DesignTokens.Tide.s50.opacity(Double(pose.sparkleOpacity))),
                          style: StrokeStyle(lineWidth: 0.12, lineCap: .round))
         }
-        c.opacity = Double(pose?.opacity ?? 1)
+        c.opacity = Double((pose?.opacity ?? 1) * buddy.opacity)
         // Lean into climbs and dives; mirror to face the direction of travel.
         c.rotate(by: .radians(Double(-buddy.tilt)))
-        c.scaleBy(x: s * CGFloat(buddy.facing), y: s)
+        c.scaleBy(x: s * turn, y: s)
         let clay = DesignTokens.Tide.s200, shade = DesignTokens.Tide.s300
         var tail = c
         tail.translateBy(x: -0.92, y: 0.15)
