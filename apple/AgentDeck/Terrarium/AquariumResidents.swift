@@ -20,20 +20,59 @@ enum BackgroundWorkPresentation {
     static let radiansPerSecond: Float = 0.85
     static let finishSeconds: Float = 1.4
     static let bubblesPerFinish = 3
-    /// Belly radius, about a fifth of the creature's height with lid and fins.
+    static let simmerPerBuddy = 2
+    /// Belly radius, about a quarter of the creature's height with lid and fins.
     static let buddyRadius: Float = 0.18
     /// Wander bounds, centre of the buddy: always beside the body (clear of it
     /// and of the name tag above), never below the feet.
     static let innerX: Float = 1.4
     static let lowestY: Float = -0.5
     static let highestY: Float = 0.25
-    /// How quickly buddies catch up when their creature swims (per second).
+    /// How quickly buddies catch up when their creature swims (per second),
+    /// and how quickly a buddy settles into a new lane when space changes.
     static let followRate: Float = 2.5
+    static let settleRate: Float = 3
+    /// A side with no other creature centre this close (body radii) is open water.
+    static let openRoom: Float = 4.5
+    /// The name tag above a creature, in body radii: a finish never pops into it.
+    static let tagHalfWidth: Float = 1.3
+    static let tagBottom: Float = 0.55
 
     static func visibleCount(_ count: Int) -> Int { min(maxBuddies, max(0, count)) }
     static func overflow(_ count: Int) -> Int { max(0, count - maxBuddies) }
     static func label(_ count: Int) -> String {
         "\(count) background task" + (count == 1 ? "" : "s")
+    }
+
+    /// Free water on each side of a creature: the distance (body radii) to the
+    /// nearest other creature centre on that side, within a vertical band.
+    struct Room: Equatable {
+        var left: Float = .infinity
+        var right: Float = .infinity
+        /// Adds one neighbour at `offset` (body radii, relative to the owner).
+        mutating func note(_ offset: SIMD2<Float>, band: Float = 2.5) {
+            guard abs(offset.y) < band, abs(offset.x) > 0.01 else { return }
+            if offset.x > 0 { right = min(right, offset.x) } else { left = min(left, -offset.x) }
+        }
+    }
+
+    /// Which side buddy `index` keeps to. With open water on both sides they
+    /// alternate, the roomier side first; otherwise the whole group keeps to
+    /// the roomier side, so none swims in among a neighbour's things.
+    static func side(index: Int, room: Room) -> Float {
+        let first: Float = room.right >= room.left ? 1 : -1
+        guard room.left >= openRoom, room.right >= openRoom else { return first }
+        return index % 2 == 0 ? first : -first
+    }
+
+    /// The lane on one side: where the loop starts and how much of it fits. A
+    /// buddy stays nearer its owner than the neighbour on that side, so in a
+    /// cramped spot the loop shrinks instead of drifting toward the neighbour.
+    static func lane(side: Float, room: Room) -> (inner: Float, scale: Float) {
+        let gap = side > 0 ? room.right : room.left
+        let limit = min(innerX + 0.86, gap * 0.5 - 0.12)
+        let inner = min(innerX, limit - 0.08)
+        return (inner, max(0.08, min(1, (limit - inner - 0.05) / 0.8)))
     }
 
     struct Buddy: Equatable {
@@ -52,23 +91,23 @@ enum BackgroundWorkPresentation {
         var tail: Float
     }
 
-    /// Where buddy `index` is in its loop. Buddies alternate sides; each has
-    /// its own speed, loop size and phase, so the group never moves in step.
-    /// `index` may run past the last visible buddy: that is where a buddy
-    /// beyond the cap finishes.
-    static func path(index: Int, phase: Float) -> SIMD3<Float> {
+    /// Where buddy `index` is in its loop. Each has its own speed, loop size
+    /// and phase, so the group never moves in step. `index` may run past the
+    /// last visible buddy: that is where a buddy beyond the cap finishes.
+    static func path(index: Int, phase: Float, room: Room = Room()) -> SIMD3<Float> {
         let i = Float(index)
-        let side: Float = index % 2 == 0 ? 1 : -1
+        let side = side(index: index, room: room)
+        let (inner, scale) = lane(side: side, room: room)
         let t = phase * (0.55 + 0.17 * Float(index % 3)) + i * 2.1
-        let reach = 0.28 + 0.06 * Float(index % 3)
-        let x = side * (innerX + reach + reach * cos(t) + 0.05 * sin(t * 2.3 + i))
+        let reach = (0.28 + 0.06 * Float(index % 3)) * scale
+        let x = side * (inner + reach + reach * cos(t) + 0.05 * scale * sin(t * 2.3 + i))
         let y = -0.08 + 0.34 * sin(t) + 0.05 * sin(t * 2.3 + i) + 0.03 * sin(phase * 3.1 + i)
         return [x, max(lowestY, min(highestY, y)), 0.14 + 0.03 * Float(index % 3)]
     }
 
-    static func buddy(index: Int, phase: Float) -> Buddy {
-        let here = path(index: index, phase: phase)
-        let ahead = path(index: index, phase: phase + 0.02)
+    static func buddy(index: Int, phase: Float, room: Room = Room()) -> Buddy {
+        let here = path(index: index, phase: phase, room: room)
+        let ahead = path(index: index, phase: phase + 0.02, room: room)
         let dx = ahead.x - here.x, dy = ahead.y - here.y
         let facing: Float = dx >= 0 ? 1 : -1
         let i = Float(index)
@@ -80,8 +119,13 @@ enum BackgroundWorkPresentation {
                      fin: abs(sin(phase * 6 + i)), tail: sin(phase * 7 + i * 1.7) * 0.45)
     }
 
-    static func buddies(count: Int, phase: Float) -> [Buddy] {
-        (0..<visibleCount(count)).map { buddy(index: $0, phase: phase) }
+    /// Moves a finish clear of its creature's name tag: a pop rises about
+    /// three buddy radii above its centre (lid, spin and sparkle).
+    static func clearOfTag(_ p: SIMD3<Float>) -> SIMD3<Float> {
+        let top = p.y + buddyRadius * 3
+        guard abs(p.x) < tagHalfWidth + buddyRadius, top > tagBottom else { return p }
+        let side: Float = p.x < 0 ? -1 : 1
+        return [side * (tagHalfWidth + buddyRadius * 1.5), p.y, p.z]
     }
 
     struct Bubble: Equatable {
@@ -93,16 +137,14 @@ enum BackgroundWorkPresentation {
     /// The jar mouth, where bubbles leave.
     static func mouth(_ buddy: Buddy) -> SIMD3<Float> { buddy.center + [0, buddy.radius * 1.35, 0.02] }
 
-    /// Two tiny bubbles per running buddy, each rising from the mouth and
-    /// fading before the next leaves. `slot` staggers buddies.
-    static func simmer(_ buddy: Buddy, slot: Int, phase: Float) -> [Bubble] {
-        (0..<2).map { k in
-            let raw = phase * 0.45 + Float(slot) * 0.37 + Float(k) * 0.5
-            let t = raw - floor(raw)
-            return Bubble(center: mouth(buddy) + [sin(t * 6 + Float(slot)) * 0.03, t * 0.4, 0],
-                          radius: 0.022 + 0.012 * Float(k),
-                          opacity: (1 - t) * 0.8)
-        }
+    /// Simmer bubble `k` of a running buddy: it rises from the mouth and fades
+    /// before the next leaves. `slot` staggers buddies.
+    static func simmer(_ buddy: Buddy, slot: Int, k: Int, phase: Float) -> Bubble {
+        let raw = phase * 0.45 + Float(slot) * 0.37 + Float(k) * 0.5
+        let t = raw - floor(raw)
+        return Bubble(center: mouth(buddy) + [sin(t * 6 + Float(slot)) * 0.03, t * 0.4, 0],
+                      radius: 0.022 + 0.012 * Float(k),
+                      opacity: (1 - t) * 0.8)
     }
 
     /// One finished buddy, `age` seconds after its count dropped.
@@ -130,27 +172,26 @@ enum BackgroundWorkPresentation {
                           sparkle: 0.6 + pop * 0.9, sparkleOpacity: max(0, 1 - p * 2))
     }
 
-    /// The puff of a finish: bubbles rise once from the mouth and fade.
-    static func puff(mouth: SIMD3<Float>, age: Float) -> [Bubble] {
-        guard age >= 0, age < finishSeconds else { return [] }
+    /// Puff bubble `k` of a finish: it rises once from the mouth and fades.
+    static func puff(mouth: SIMD3<Float>, age: Float, k: Int) -> Bubble? {
+        guard age >= 0, age < finishSeconds else { return nil }
         let progress = age / finishSeconds
-        return (0..<bubblesPerFinish).map { k in
-            let lift = age * (0.7 + 0.25 * Float(k))
-            let wobble = sin(age * 5 + Float(k) * 2) * 0.05
-            return Bubble(center: mouth + [wobble + (Float(k) - 1) * 0.07, lift, 0.02],
-                          radius: 0.035 + 0.015 * Float(k % 2) + 0.02 * progress,
-                          opacity: 1 - progress)
-        }
+        let lift = age * (0.7 + 0.25 * Float(k))
+        let wobble = sin(age * 5 + Float(k) * 2) * 0.05
+        return Bubble(center: mouth + [wobble + (Float(k) - 1) * 0.07, lift, 0.02],
+                      radius: 0.035 + 0.015 * Float(k % 2) + 0.02 * progress,
+                      opacity: 1 - progress)
     }
 }
 
 /// Per-creature buddy memory: the last explicit task count, where the
-/// buddies are following, and the finishes still playing.
+/// buddies are following, how much room they have, and the finishes still playing.
 struct BackgroundBrood: Equatable {
+    typealias P = BackgroundWorkPresentation
     /// A finish plays where its buddy was, not with the creature: `base` is the
     /// followed position (caller's coordinates) when the count dropped.
     struct Finish: Equatable {
-        var buddy: BackgroundWorkPresentation.Buddy
+        var buddy: P.Buddy
         var base: SIMD2<Float>
         var age: Float
     }
@@ -160,6 +201,12 @@ struct BackgroundBrood: Equatable {
     private(set) var finishes: [Finish] = []
     /// The point the buddies circle: it lags the creature when it swims.
     private(set) var follow: SIMD2<Float>?
+    /// Free water around the owner, from the last advance.
+    private(set) var room = P.Room()
+    /// Each buddy's settled centre: it eases toward its lane, so a change of
+    /// side or a shrinking loop is a swim, never a jump. Sized once.
+    private var settled = [SIMD3<Float>](repeating: .zero, count: P.maxBuddies)
+    private var hasSettled = false
 
     /// Buddies to show: only a working creature has them out.
     var count: Int { working ? known ?? 0 : 0 }
@@ -167,6 +214,13 @@ struct BackgroundBrood: Equatable {
 
     /// Offset of the followed point from the creature, in caller coordinates.
     func lag(from position: SIMD2<Float>) -> SIMD2<Float> { (follow ?? position) - position }
+
+    /// Buddy `index` as drawn: its pose in the loop, at its settled centre.
+    func buddy(index: Int, phase: Float) -> P.Buddy {
+        var pose = P.buddy(index: index, phase: phase, room: room)
+        if hasSettled, index < settled.count { pose.center = settled[index] }
+        return pose
+    }
 
     /// Records one snapshot. `explicit` is the producer's count; nil means
     /// unknown (a daemon restart, a compacted session, a snapshot without the
@@ -191,26 +245,32 @@ struct BackgroundBrood: Equatable {
         guard let now = known, explicit != nil, now < previous, shown > 0, nowWorking || now == 0 else { return }
         // Finished buddies leave from the end of the group. At a capped count
         // the last visible buddy stays, so the finish plays past it.
-        let first = nowWorking ? BackgroundWorkPresentation.visibleCount(now) : 0
-        let finished = min(previous - now, BackgroundWorkPresentation.maxBuddies)
+        let first = nowWorking ? P.visibleCount(now) : 0
+        let finished = min(previous - now, P.maxBuddies)
         for index in first..<(first + finished) {
-            finishes.append(Finish(buddy: BackgroundWorkPresentation.buddy(index: index, phase: phase),
-                                   base: follow ?? position, age: 0))
+            finishes.append(Finish(buddy: buddy(index: index, phase: phase), base: follow ?? position, age: 0))
         }
         // Bounded: at most one group's worth of finishes is ever in flight.
-        if finishes.count > BackgroundWorkPresentation.maxBuddies {
-            finishes.removeFirst(finishes.count - BackgroundWorkPresentation.maxBuddies)
+        if finishes.count > P.maxBuddies {
+            finishes.removeFirst(finishes.count - P.maxBuddies)
         }
     }
 
-    /// Advances the lagged follow point and finish ages. Without time (Reduce
-    /// Motion, a paused scene) the buddies sit exactly with their creature.
-    mutating func advance(dt: Float, position: SIMD2<Float>) {
+    /// Advances the follow point, each buddy's settled centre and finish ages.
+    /// Without time (Reduce Motion, a paused scene) everything snaps in place.
+    mutating func advance(dt: Float, position: SIMD2<Float>, room: P.Room, phase: Float) {
+        self.room = room
+        let snap = dt <= 0 || !hasSettled
+        for index in settled.indices {
+            let target = P.path(index: index, phase: phase, room: room)
+            settled[index] = snap ? target : settled[index] + (target - settled[index]) * (1 - exp(-dt * P.settleRate))
+        }
+        hasSettled = true
         guard dt > 0, let current = follow else { follow = position; return }
-        follow = current + (position - current) * (1 - exp(-dt * BackgroundWorkPresentation.followRate))
+        follow = current + (position - current) * (1 - exp(-dt * P.followRate))
         guard !finishes.isEmpty else { return }
         for index in finishes.indices { finishes[index].age += dt }
-        finishes.removeAll { $0.age >= BackgroundWorkPresentation.finishSeconds }
+        finishes.removeAll { $0.age >= P.finishSeconds }
     }
 }
 
@@ -485,7 +545,10 @@ final class AquariumResidents {
             broods[item.id, default: BackgroundBrood()].observe(explicit: state.backgroundTaskCounts[item.id],
                 working: item.activity == .working, position: [resident.position.x, resident.position.y],
                 phase: backgroundPhase, animate: animate)
-            if !animate { broods[item.id]?.advance(dt: 0, position: [resident.position.x, resident.position.y]) }
+            if !animate {
+                broods[item.id]?.advance(dt: 0, position: [resident.position.x, resident.position.y],
+                                         room: broodRoom(item.id, resident), phase: backgroundPhase)
+            }
             updateBackgroundWork(resident, id: item.id)
             resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
             if !animate {
@@ -640,7 +703,10 @@ final class AquariumResidents {
         let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
-            broods[item.id]?.advance(dt: Float(dt), position: [entity.position.x, entity.position.y])
+            if broods[item.id]?.isEmpty == false {
+                broods[item.id]?.advance(dt: Float(dt), position: [entity.position.x, entity.position.y],
+                                         room: broodRoom(item.id, entity), phase: backgroundPhase)
+            }
             updateBackgroundWork(entity, id: item.id)
             motion.effort += ((item.activity == .working ? 1 : 0) - motion.effort) * blend
             motion.attention += ((item.activity == .waiting ? 1 : 0) - motion.attention) * blend
@@ -917,14 +983,24 @@ final class AquariumResidents {
         return (group, BroodRig(group: group, swimming: swimming, finishing: finishing, bubbles: bubbles, overflow: overflow))
     }
 
+    /// Free water around a resident, in its body radii: buddies keep to the
+    /// side away from close neighbours. Iterates in place, no allocation.
+    private func broodRoom(_ id: String, _ entity: Entity) -> BackgroundWorkPresentation.Room {
+        var room = BackgroundWorkPresentation.Room()
+        let unit = max(0.001, (bodyReach[id] ?? Self.defaultBodyReach) * entity.scale.x)
+        for (other, neighbour) in residents where other != id {
+            room.note([(neighbour.position.x - entity.position.x) / unit, (neighbour.position.y - entity.position.y) / unit])
+        }
+        return room
+    }
+
     /// Positions the pooled buddies from the shared maths, for any resident
     /// kind. Pure placement: the count, follow point and finishes are owned
     /// by `broods`, updated in `sync` and `step`.
     private func updateBackgroundWork(_ resident: Entity, id: String) {
         guard var rig = broodRigs[id] else { return }
-        let brood = broods[id] ?? BackgroundBrood()
-        rig.group.isEnabled = !brood.isEmpty
-        guard !brood.isEmpty else { return }
+        guard let brood = broods[id], !brood.isEmpty else { rig.group.isEnabled = false; return }
+        rig.group.isEnabled = true
         typealias P = BackgroundWorkPresentation
         let phase = backgroundPhase
         let r = bodyReach[id] ?? Self.defaultBodyReach
@@ -944,17 +1020,19 @@ final class AquariumResidents {
             rig.lid.position = [0, 1.34 + (finish?.lidLift ?? lidLift), 0]
             rig.lid.orientation = simd_quatf(angle: finish?.lidSpin ?? 0, axis: [0, 0, 1])
             rig.lid.isEnabled = (finish?.lidOpacity ?? 1) > 0.05
-            for (side, fin) in zip([Float(-1), 1], rig.fins) {
-                fin.orientation = simd_quatf(angle: side * (0.2 + buddy.fin * 0.5), axis: [0, 0, 1])
-            }
+            let beat = 0.2 + buddy.fin * 0.5
+            rig.fins[0].orientation = simd_quatf(angle: -beat, axis: [0, 0, 1])
+            rig.fins[1].orientation = simd_quatf(angle: beat, axis: [0, 0, 1])
             rig.tail.position = [-buddy.facing * 1.02, -0.22, 0]
             rig.tail.orientation = simd_quatf(angle: buddy.tail, axis: [0, 1, 0])
         }
-        let buddies = P.buddies(count: brood.count, phase: phase)
-        for (index, buddyRig) in rig.swimming.enumerated() {
-            buddyRig.root.isEnabled = index < buddies.count
-            guard index < buddies.count else { continue }
-            pose(buddyRig, buddies[index], at: place(buddies[index].center) + lag, finish: nil, lidLift: buddies[index].lidLift)
+        let shown = P.visibleCount(brood.count)
+        for index in rig.swimming.indices {
+            let buddyRig = rig.swimming[index]
+            buddyRig.root.isEnabled = index < shown
+            guard index < shown else { continue }
+            let buddy = brood.buddy(index: index, phase: phase)
+            pose(buddyRig, buddy, at: place(buddy.center) + lag, finish: nil, lidLift: buddy.lidLift)
         }
         // Bubbles: two simmer per swimming buddy, then each finish's puff. No allocation.
         var slot = 0
@@ -967,27 +1045,34 @@ final class AquariumResidents {
             entity.components.set(OpacityComponent(opacity: bubble.opacity))
             slot += 1
         }
-        for (index, buddy) in buddies.enumerated() {
-            for bubble in P.simmer(buddy, slot: index, phase: phase) { emit(bubble, lag) }
+        for index in 0..<shown {
+            let buddy = brood.buddy(index: index, phase: phase)
+            for k in 0..<P.simmerPerBuddy { emit(P.simmer(buddy, slot: index, k: k, phase: phase), lag) }
         }
-        // Finishes play where their buddy was, not with the creature.
-        for (index, buddyRig) in rig.finishing.enumerated() {
+        // Finishes play where their buddy was, not with the creature, and
+        // never pop into the creature's own name tag.
+        for index in rig.finishing.indices {
+            let buddyRig = rig.finishing[index]
             guard index < brood.finishes.count, let finish = P.finish(age: brood.finishes[index].age) else {
                 buddyRig.root.isEnabled = false
                 continue
             }
             let item = brood.finishes[index]
             let drift2 = (item.base - current) / scale
-            let drift = SIMD3<Float>(drift2.x, drift2.y, 0)
+            var popped = item.buddy
+            popped.center = P.clearOfTag(item.buddy.center + [drift2.x / r, drift2.y / r, 0])
             buddyRig.root.isEnabled = true
-            pose(buddyRig, item.buddy, at: place(item.buddy.center) + drift, finish: finish, lidLift: 0)
-            for bubble in P.puff(mouth: P.mouth(item.buddy), age: item.age) { emit(bubble, drift) }
+            pose(buddyRig, popped, at: place(popped.center), finish: finish, lidLift: 0)
+            for k in 0..<P.bubblesPerFinish {
+                if let bubble = P.puff(mouth: P.mouth(popped), age: item.age, k: k) { emit(bubble, .zero) }
+            }
         }
         for index in slot..<rig.bubbles.count { rig.bubbles[index].isEnabled = false }
         // "+n" rides with the last buddy; its mesh is rebuilt only when n changes.
         let extra = P.overflow(brood.count)
-        rig.overflow.isEnabled = extra > 0 && !buddies.isEmpty
-        if extra > 0, let last = buddies.last {
+        rig.overflow.isEnabled = extra > 0 && shown > 0
+        if extra > 0, shown > 0 {
+            let last = brood.buddy(index: shown - 1, phase: phase)
             if rig.overflowShown != extra {
                 rig.overflow.model?.mesh = MeshResource.generateText("+\(extra)", extrusionDepth: 0.002,
                     font: .init(name: "IBMPlexSans-Bold", size: 0.14) ?? .systemFont(ofSize: 0.14))

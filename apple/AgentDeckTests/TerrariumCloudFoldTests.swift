@@ -168,8 +168,8 @@ final class TerrariumCloudFoldTests: XCTestCase {
 
     func testJarBuddiesWanderBesideTheBodyClearOfTagAndSand() {
         typealias P = BackgroundWorkPresentation
-        XCTAssertTrue(P.buddies(count: 0, phase: 0).isEmpty)
-        XCTAssertEqual(P.buddies(count: 12, phase: 0).count, P.maxBuddies, "Buddies are capped; +n and the label carry the rest")
+        XCTAssertEqual(P.visibleCount(0), 0)
+        XCTAssertEqual(P.visibleCount(12), P.maxBuddies, "Buddies are capped; +n and the label carry the rest")
         XCTAssertEqual(P.overflow(12), 9)
         XCTAssertEqual(P.overflow(3), 0)
         XCTAssertEqual(P.label(1), "1 background task")
@@ -204,12 +204,12 @@ final class TerrariumCloudFoldTests: XCTestCase {
         // Lids hop at staggered moments: never all at once.
         var together = 0
         for phase in stride(from: Float(0), to: 20, by: 0.05) {
-            if P.buddies(count: 3, phase: phase).allSatisfy({ $0.lidLift > 0.05 }) { together += 1 }
+            if (0..<3).allSatisfy({ P.buddy(index: $0, phase: phase).lidLift > 0.05 }) { together += 1 }
         }
         XCTAssertEqual(together, 0)
         // Simmer bubbles rise from the mouth and fade as they go.
         let buddy = P.buddy(index: 0, phase: 0)
-        for bubble in P.simmer(buddy, slot: 0, phase: 1.3) {
+        for bubble in (0..<P.simmerPerBuddy).map({ P.simmer(buddy, slot: 0, k: $0, phase: 1.3) }) {
             XCTAssertGreaterThanOrEqual(bubble.center.y, P.mouth(buddy).y)
             XCTAssertLessThanOrEqual(bubble.opacity, 0.8)
         }
@@ -221,11 +221,72 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertLessThan(late?.scale ?? 1, 0.5)
         XCTAssertLessThan(late?.opacity ?? 1, early?.opacity ?? 0)
         XCTAssertNil(P.finish(age: P.finishSeconds))
-        let first = P.puff(mouth: .zero, age: 0.2), later = P.puff(mouth: .zero, age: 1.0)
+        let first = (0..<P.bubblesPerFinish).compactMap { P.puff(mouth: .zero, age: 0.2, k: $0) }
+        let later = (0..<P.bubblesPerFinish).compactMap { P.puff(mouth: .zero, age: 1.0, k: $0) }
+        XCTAssertNil(P.puff(mouth: .zero, age: P.finishSeconds, k: 0))
         XCTAssertEqual(first.count, P.bubblesPerFinish)
         for (x, y) in zip(first, later) {
             XCTAssertGreaterThan(y.center.y, x.center.y)
             XCTAssertLessThan(y.opacity, x.opacity)
+        }
+    }
+
+    /// Close neighbours: every buddy stays nearer its owner than any other
+    /// creature, over a long sweep, by keeping to open water or shrinking its loop.
+    func testJarBuddiesStayNearerTheirOwnerThanACloseNeighbour() {
+        typealias P = BackgroundWorkPresentation
+        // Neighbour centres in owner body radii: one close on the right, one on
+        // each side (a crowded row), and a diagonal neighbour.
+        let layouts: [[SIMD2<Float>]] = [[[3, 0]], [[-3, 0]], [[3, 0], [-3, 0]], [[2.6, 0.4], [-3.2, -0.3]], [[2.4, 1.2]]]
+        for neighbours in layouts {
+            var room = P.Room()
+            for n in neighbours { room.note(n) }
+            for phase in stride(from: Float(0), to: 40 * P.radiansPerSecond, by: 0.05) {
+                for index in 0..<P.maxBuddies {
+                    let c = P.buddy(index: index, phase: phase, room: room).center
+                    let own = simd_length(SIMD2(c.x, c.y))
+                    for n in neighbours {
+                        XCTAssertLessThan(own, simd_distance(SIMD2(c.x, c.y), n),
+                                          "Buddy \(index) with neighbours \(neighbours) drifted toward a neighbour")
+                    }
+                }
+            }
+        }
+        // One close neighbour: the whole group keeps to the open side.
+        var right = P.Room(); right.note([3, 0])
+        for index in 0..<P.maxBuddies { XCTAssertEqual(P.side(index: index, room: right), -1) }
+        // A crowded row: both sides cramped, loops shrink instead of drifting.
+        var row = P.Room(); row.note([3, 0]); row.note([-3, 0])
+        XCTAssertLessThan(P.lane(side: 1, room: row).scale, 0.2)
+        XCTAssertEqual(P.lane(side: 1, room: P.Room()).scale, 1, "Open water keeps the full loop")
+        // A far neighbour or one well above or below changes nothing.
+        var far = P.Room(); far.note([6, 0]); far.note([1, 3])
+        XCTAssertEqual([P.side(index: 0, room: far), P.side(index: 1, room: far)], [-1, 1], "Open water on both sides still alternates, roomier first")
+        // Settling: a brood whose room changes swims to its new lane, it does not jump.
+        var brood = BackgroundBrood()
+        brood.observe(explicit: 1, working: true, position: .zero, phase: 0, animate: true)
+        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
+        let before = brood.buddy(index: 0, phase: 0).center
+        brood.advance(dt: 1.0 / 60, position: .zero, room: right, phase: 0)
+        let step = brood.buddy(index: 0, phase: 0).center
+        XCTAssertLessThan(simd_distance(before, step), 0.3, "A lane change is a swim, not a jump")
+        for _ in 0..<300 { brood.advance(dt: 1.0 / 60, position: .zero, room: right, phase: 0) }
+        XCTAssertLessThan(brood.buddy(index: 0, phase: 0).center.x, 0, "and it arrives on the open side")
+    }
+
+    /// A finish never pops into the owner's name tag, wherever it started.
+    func testJarBuddyFinishPopsClearOfTheNameTag() {
+        typealias P = BackgroundWorkPresentation
+        for x in stride(from: Float(-2), through: 2, by: 0.1) {
+            for y in stride(from: Float(-1), through: 2, by: 0.1) {
+                let p = P.clearOfTag([x, y, 0.1])
+                let top = p.y + P.buddyRadius * 3
+                let overTag = abs(p.x) < P.tagHalfWidth + P.buddyRadius && top > P.tagBottom
+                XCTAssertFalse(overTag, "A pop at (\(x), \(y)) lands in the name tag")
+                if abs(x) >= P.tagHalfWidth + P.buddyRadius || y + P.buddyRadius * 3 <= P.tagBottom {
+                    XCTAssertEqual(p, [x, y, 0.1], "A pop already clear stays where it was")
+                }
+            }
         }
     }
 
@@ -239,8 +300,8 @@ final class TerrariumCloudFoldTests: XCTestCase {
         brood.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
         XCTAssertEqual(brood.finishes.map(\.buddy), [last], "A finished task leaves from the end of the group")
         XCTAssertEqual(brood.finishes.first?.base, here, "The finish remembers where it was, to play in the water")
-        brood.advance(dt: 1.0 / 60, position: here)
-        brood.advance(dt: P.finishSeconds, position: here)
+        brood.advance(dt: 1.0 / 60, position: here, room: .init(), phase: 0)
+        brood.advance(dt: P.finishSeconds, position: here, room: .init(), phase: 0)
         XCTAssertTrue(brood.finishes.isEmpty, "Finishes expire")
 
         // Unknown is not zero: a restart or a snapshot without the field retains the buddies.
@@ -285,12 +346,12 @@ final class TerrariumCloudFoldTests: XCTestCase {
 
         // Followed point: buddies trail a swimming creature, then catch up; no time, no lag.
         var follower = BackgroundBrood()
-        follower.advance(dt: 1.0 / 60, position: [0, 0])
-        follower.advance(dt: 1.0 / 60, position: [0.2, 0])
+        follower.advance(dt: 1.0 / 60, position: [0, 0], room: .init(), phase: 0)
+        follower.advance(dt: 1.0 / 60, position: [0.2, 0], room: .init(), phase: 0)
         XCTAssertLessThan(follower.lag(from: [0.2, 0]).x, -0.15, "Buddies lag behind a swim")
-        for _ in 0..<180 { follower.advance(dt: 1.0 / 60, position: [0.2, 0]) }
+        for _ in 0..<180 { follower.advance(dt: 1.0 / 60, position: [0.2, 0], room: .init(), phase: 0) }
         XCTAssertEqual(follower.lag(from: [0.2, 0]).x, 0, accuracy: 0.002, "and catch up")
-        follower.advance(dt: 0, position: [0.9, 0])
+        follower.advance(dt: 0, position: [0.9, 0], room: .init(), phase: 0)
         XCTAssertEqual(follower.lag(from: [0.9, 0]), .zero, "Reduce Motion pins buddies to their creature")
 
         var still = BackgroundBrood()
@@ -367,6 +428,25 @@ final class TerrariumCloudFoldTests: XCTestCase {
         for frame in 0..<6 {
             for _ in 0..<5 { renderer.update(dt: 1.0 / 30, state: state) }
             try write(String(format: "finish-%02d", frame))
+        }
+        // A deliberately crowded row: each creature's buddies must stay its own.
+        let crowded = TerrariumRenderer()
+        crowded.animateHermes = false
+        var row = TerrariumState()
+        row.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.40, homeY: 0.42, scale: 1)]
+        row.cloudCreatures = [.init(id: "codex", projectName: "Release", modelName: nil, state: .pulsing, homeX: 0.50, homeY: 0.42, scale: 1)]
+        row.opencodeCreatures = [.init(id: "opencode", projectName: "Docs", modelName: nil, state: .pulsing, homeX: 0.60, homeY: 0.42, scale: 1)]
+        row.backgroundTaskCounts = ["claude": 2, "codex": 3, "opencode": 2]
+        func writeRow(_ name: String) throws {
+            let image = ImageRenderer(content: Canvas { context, size in crowded.draw(context: &context, size: size) }.frame(width: 1000, height: 560))
+            image.scale = 2
+            let data = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+            try XCTUnwrap(NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]))
+                .write(to: folder.appendingPathComponent(name + ".png"))
+        }
+        for frame in 0..<6 {
+            for _ in 0..<20 { crowded.update(dt: 1.0 / 30, state: row) }
+            try writeRow(String(format: "crowded-%02d", frame))
         }
     }
 

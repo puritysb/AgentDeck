@@ -52,6 +52,8 @@ final class TerrariumRenderer {
     private var subagentOrbitPhase: Float = 0
     private(set) var backgroundOrbitPhase: Float = 0
     private(set) var broods: [String: BackgroundBrood] = [:]
+    /// Width over height of the last drawn canvas, for body-radius distances.
+    private var canvasAspect: Float = 1.6
     private var currentTimeMs: Double = 0
     /// 0..1 envelope. Ramps up when a creature gains focus, fades down when
     /// the focused creature has no on-screen sprite (or focus cleared).
@@ -254,11 +256,13 @@ final class TerrariumRenderer {
         for resident in foreground {
             let explicit = state.backgroundTaskCounts[resident.id]
             guard broods[resident.id] != nil || (explicit ?? 0) > 0, let pose = residentPose(resident.id) else { continue }
-            var brood = broods[resident.id] ?? BackgroundBrood()
-            brood.observe(explicit: explicit, working: resident.activity == .working,
-                          position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
-            brood.advance(dt: broodDt, position: pose.center)
-            broods[resident.id] = brood
+            if broods[resident.id] == nil { broods[resident.id] = BackgroundBrood() }
+            // Mutate in place: a copied brood would reallocate its settled lanes every frame.
+            broods[resident.id]?.observe(explicit: explicit, working: resident.activity == .working,
+                                         position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
+            guard broods[resident.id]?.isEmpty == false else { continue }
+            broods[resident.id]?.advance(dt: broodDt, position: pose.center,
+                                         room: broodRoom(resident.id, pose, among: foreground), phase: backgroundOrbitPhase)
         }
 
         ciCenters = octopuses.mapValues { [ $0.currentX,$0.currentY ] }
@@ -293,6 +297,7 @@ final class TerrariumRenderer {
     // MARK: - Draw (layer order matching Android ColorRenderer)
 
     func draw(context: inout GraphicsContext, size: CGSize, includeHabitat: Bool = true) {
+        if size.height > 0 { canvasAspect = Float(size.width / size.height) }
         if includeHabitat {
             // Layer 1: Deep-sea 3-color gradient background
             drawBackground(context: &context, size: size)
@@ -485,6 +490,20 @@ final class TerrariumRenderer {
 
     /// Centre (normalized) and body radius (normalized by width) of any live
     /// creature, whatever its kind: the one anchor jar buddies need.
+    /// Free water around a creature, in its body radii: buddies keep to the
+    /// side away from close neighbours. `among` is the frame's foreground roster.
+    func broodRoom(_ id: String, _ pose: (center: SIMD2<Float>, radius: Float), among roster: [AquariumResident]) -> BackgroundWorkPresentation.Room {
+        var room = BackgroundWorkPresentation.Room()
+        let unit = max(0.0001, pose.radius)
+        for other in roster where other.id != id {
+            guard let neighbour = residentPose(other.id) else { continue }
+            // x is normalized by width, y by height: bring y into width units.
+            room.note([(neighbour.center.x - pose.center.x) / unit,
+                       -(neighbour.center.y - pose.center.y) / canvasAspect / unit])
+        }
+        return room
+    }
+
     func residentPose(_ id: String) -> (center: SIMD2<Float>, radius: Float)? {
         if let c = octopuses[id] { return ([c.currentX, c.currentY], TerrariumLayout.octopusBodyRadius * c.scale) }
         if let c = clouds[id] { return ([c.currentX, c.currentY], 0.045 * c.scale) }
@@ -565,25 +584,34 @@ final class TerrariumRenderer {
             // Buddies circle the followed point, which trails the creature when it swims.
             let center = CGPoint(x: CGFloat(pose.center.x + lag.x) * size.width, y: CGFloat(pose.center.y + lag.y) * size.height)
             let phase = backgroundOrbitPhase
-            let buddies = BackgroundWorkPresentation.buddies(count: brood.count, phase: phase)
-            for (index, buddy) in buddies.enumerated() {
+            let shown = BackgroundWorkPresentation.visibleCount(brood.count)
+            for index in 0..<shown {
+                let buddy = brood.buddy(index: index, phase: phase)
                 drawBuddy(buddy, at: screen(buddy.center, from: center, r: r), r: r, context: &context, pose: nil, lidLift: buddy.lidLift)
-                for bubble in BackgroundWorkPresentation.simmer(buddy, slot: index, phase: phase) {
-                    drawBubble(bubble, from: center, r: r, context: &context)
+                for k in 0..<BackgroundWorkPresentation.simmerPerBuddy {
+                    drawBubble(BackgroundWorkPresentation.simmer(buddy, slot: index, k: k, phase: phase), from: center, r: r, context: &context)
                 }
             }
-            // Finishes play where their buddy was, not with the creature.
+            // Finishes play where their buddy was, not with the creature, and
+            // never pop into the creature's own name tag (it may have sunk
+            // toward the floor in the same snapshot).
+            let owner = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height)
             for finish in brood.finishes {
-                guard let pose = BackgroundWorkPresentation.finish(age: finish.age) else { continue }
-                let base = CGPoint(x: CGFloat(finish.base.x) * size.width, y: CGFloat(finish.base.y) * size.height)
-                drawBuddy(finish.buddy, at: screen(finish.buddy.center, from: base, r: r), r: r, context: &context, pose: pose, lidLift: 0)
-                for bubble in BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(finish.buddy), age: finish.age) {
-                    drawBubble(bubble, from: base, r: r, context: &context)
+                guard let pop = BackgroundWorkPresentation.finish(age: finish.age) else { continue }
+                let drift = SIMD3<Float>(Float((CGFloat(finish.base.x) * size.width - owner.x) / r),
+                                         Float(-(CGFloat(finish.base.y) * size.height - owner.y) / r), 0)
+                var popped = finish.buddy
+                popped.center = BackgroundWorkPresentation.clearOfTag(finish.buddy.center + drift)
+                drawBuddy(popped, at: screen(popped.center, from: owner, r: r), r: r, context: &context, pose: pop, lidLift: 0)
+                for k in 0..<BackgroundWorkPresentation.bubblesPerFinish {
+                    if let bubble = BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(popped), age: finish.age, k: k) {
+                        drawBubble(bubble, from: owner, r: r, context: &context)
+                    }
                 }
             }
             // The count sits under the creature's feet, where no buddy wanders;
             // "+n" leads it when more tasks run than buddies swim.
-            if !buddies.isEmpty {
+            if shown > 0 {
                 let anchor = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height + r * 1.05)
                 let extra = BackgroundWorkPresentation.overflow(brood.count)
                 let text = BackgroundWorkPresentation.label(brood.count)
