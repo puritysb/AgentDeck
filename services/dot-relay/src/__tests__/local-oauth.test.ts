@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, afterEach, expect, it } from 'vitest';
-import { LocalOAuth, OAUTH_LIMITS, clientRedirect, metadataRedirectMatches, metadataURL } from '../local-oauth.js';
+import { LocalOAuth, OAUTH_LIMITS, clientName, clientRedirect, fetchClientMetadata, metadataRedirectMatches, metadataURL } from '../local-oauth.js';
+import { createServer } from 'node:http';
 import { Store, oauthStorage } from '../store.js';
 const config = { resource: 'https://agentdeck.example', clientId: 'registered-chatgpt-client', clientSecret: 'c'.repeat(48), redirectURI: 'https://chatgpt.com/connector_platform_oauth_redirect' };
 const verifier = 'v'.repeat(64);
@@ -82,7 +83,7 @@ it('supports explicit loopback public clients without weakening confidential cli
   const local = { resource: 'http://127.0.0.1:9476', clientId: 'agentdeck-local-plugin', clientSecret: '', redirectURI: 'http://127.0.0.1:1455/callback', local: true };
   auth = new LocalOAuth(local, oauthStorage(store), () => now);
   const callback = 'http://127.0.0.1:38472/callback';
-  const input = authorization({ client_id: local.clientId, resource: local.resource, redirect_uri: callback });
+  const input = authorization({ client_id: local.clientId, resource: local.resource, redirect_uri: callback, scope: 'agentdeck:read agentdeck:report' });
   for (const bad of ['https://evil.example/callback', 'http://192.168.1.2:1234/callback', 'http://2130706433:1234/callback', 'http://127.0.0.1:1234/other', callback + '?redirect=evil', 'http://user@127.0.0.1:1234/callback']) {
     const invalid = new URLSearchParams(input); invalid.set('redirect_uri', bad);
     expect(() => auth.request(invalid)).toThrow();
@@ -114,6 +115,18 @@ it('replays the shared loopback client vectors the Swift host also replays', () 
   for (const c of vectors.registeredRedirects) expect(clientRedirect(c.value), c.name).toBe(c.valid);
   for (const c of vectors.metadataMatches) expect(metadataRedirectMatches(c.registered, c.requested), c.name).toBe(c.valid);
   for (const c of vectors.metadataURLs) expect(metadataURL(c.value), c.name).toBe(c.valid);
+  for (const c of vectors.clientNames) expect(clientName(c.input), c.name).toBe(c.expected);
+  // Every client kind on the loopback host, including the pre-registered one, is refused subscription.
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  const registered = auth.register({ redirect_uris: ['http://127.0.0.1:4000/callback'] }).client_id;
+  for (const [client, redirect] of [[local.clientId, 'http://127.0.0.1:4000/callback'], [registered, 'http://127.0.0.1:4000/callback']]) {
+    for (const c of vectors.loopbackScopes) {
+      const params = new URLSearchParams({ response_type: 'code', client_id: client, redirect_uri: redirect, resource: local.resource, scope: c.scope,
+        state: 's', code_challenge_method: 'S256', code_challenge: challenge });
+      if (c.valid) expect(() => auth.request(params), c.name).not.toThrow(); else expect(() => auth.request(params), c.name).toThrow('invalid_request');
+    }
+  }
+  expect(() => auth.register({ redirect_uris: ['http://127.0.0.1:4000/callback'], scope: 'agentdeck:subscribe' })).toThrow('invalid_client_metadata');
 });
 it('advertises registration only on a loopback host, with least-privilege scopes', () => {
   expect(auth.metadata()).not.toHaveProperty('registration_endpoint');
@@ -219,4 +232,31 @@ it('refuses persisted client registrations that break the loopback rules', () =>
     [{ id: 'bad', name: 'x', redirects: ['http://127.0.0.1:4000/callback'], createdAt: 1 }], 'x']) {
     expect(() => new LocalOAuth(local, { read: () => state(clients), change: fn => fn(state(clients)) })).toThrow('Invalid persisted OAuth state');
   }
+});
+
+it('clears registered clients with the grants when the host configuration changes', () => {
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  auth.register({ redirect_uris: ['http://127.0.0.1:4000/callback'] });
+  expect(store.read().oauth!.clients).toHaveLength(1);
+  auth = new LocalOAuth({ ...local, resource: 'http://127.0.0.1:9478' }, oauthStorage(store), () => now);
+  expect(store.read().oauth!.clients).toEqual([]);
+});
+it('fetches a metadata document without following redirects, within the size cap and the deadline', async () => {
+  const body = JSON.stringify({ client_id: 'x' });
+  const server = createServer((req, res) => {
+    if (req.url === '/redirect') { res.writeHead(302, { Location: '/ok' }); res.end(); return; }
+    if (req.url === '/big') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('"' + 'x'.repeat(OAUTH_LIMITS.metadataBytes) + '"'); return; }
+    if (req.url === '/slow') { setTimeout(() => { res.writeHead(200); res.end(body); }, 1500); return; }
+    if (req.url === '/missing') { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(body);
+  });
+  await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    expect(await fetchClientMetadata(base + '/ok')).toEqual({ client_id: 'x' });
+    await expect(fetchClientMetadata(base + '/redirect')).rejects.toThrow();
+    await expect(fetchClientMetadata(base + '/big')).rejects.toThrow('metadata too large');
+    await expect(fetchClientMetadata(base + '/missing')).rejects.toThrow('metadata unavailable');
+    await expect(fetchClientMetadata(base + '/slow', 300)).rejects.toThrow();
+  } finally { server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
 });

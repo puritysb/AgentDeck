@@ -42,6 +42,8 @@ Source inspection identifies a concrete local-onboarding gap:
 - Official desktop documentation supports automatic CIMD/DCR as well as pre-registration. Its GUI instructions do not establish a GUI field for our fixed client ID. A generic Add server flow therefore cannot be assumed to authenticate against today's implementation.
 - [App entitlements](../apple/AgentDeck/Resources/AgentDeck.entitlements) already declare Sandbox plus incoming/outgoing network permissions. This is source evidence, not proof of the entitlements or behavior of a submitted archive.
 
+Update 2026-10-11: the G0b registration spike closes the first three gaps in both hosts. The loopback host now accepts a `chatgpt.com` client metadata document or a bounded secretless loopback registration besides the pre-registered client, and consent still gates every grant. Codex CLI 0.160.1 completed `auto`, `cimd` and `dcr` sign-in against an isolated host with a URL-only configuration ([plugin README](../integrations/chatgpt-local/README.md)). The desktop Add server GUI and the signed sandboxed Swift host were not exercised live.
+
 ## Target architecture and user experience
 
 ```mermaid

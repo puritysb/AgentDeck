@@ -29,7 +29,7 @@ final class DotOAuth {
     private let fetchMetadata: @Sendable (URL) async throws -> Data
     static let scopes = ["agentdeck:read", "agentdeck:report", "agentdeck:subscribe"]
     init(config: DotOAuthConfiguration, data: Data?, clock: @escaping () -> Int = { Int(Date().timeIntervalSince1970 * 1000) },
-         fetchMetadata: @escaping @Sendable (URL) async throws -> Data = DotOAuth.fetchDocument, persist: @escaping (Data) throws -> Void) throws {
+         fetchMetadata: @escaping @Sendable (URL) async throws -> Data = { try await DotOAuth.fetchDocument($0) }, persist: @escaping (Data) throws -> Void) throws {
         guard let origin = URLComponents(string: config.origin), origin.host != nil,
               origin.user == nil, origin.password == nil, origin.path.isEmpty, origin.query == nil, origin.fragment == nil else { throw DotFailure.message("Invalid OAuth origin.") }
         if config.local == true {
@@ -93,12 +93,17 @@ final class DotOAuth {
         guard value.count <= DotOAuthLimits.metadataURLCharacters, let url = URLComponents(string: value), url.scheme == "https",
               let host = url.host, DotLocalMCP.metadataHosts.contains(host), url.port == nil, url.user == nil, url.password == nil,
               url.query == nil, url.fragment == nil, url.percentEncodedPath.count > 1 else { return false }
+        // WHATWG resolves `.`/`..` segments (and their %2E spellings) away, so Node never sees them as written.
+        let dotSegments: Set<String> = [".", "..", "%2e", "%2e%2e", ".%2e", "%2e."]
+        guard !url.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: false).contains(where: { dotSegments.contains($0.lowercased()) }) else { return false }
         return "https://" + host + url.percentEncodedPath == value
     }
-    private nonisolated static func clientName(_ value: Any?) -> String {
+    /// A client-chosen display name: controls, format characters and every separator but a plain space become spaces.
+    nonisolated static func clientName(_ value: Any?) -> String {
         guard let text = value as? String else { return "Unnamed client" }
+        let blanked: [Unicode.GeneralCategory] = [.control, .format, .lineSeparator, .paragraphSeparator, .spaceSeparator]
         let cleaned = String(String.UnicodeScalarView(text.unicodeScalars.map {
-            [.control, .format].contains($0.properties.generalCategory) ? " " : $0
+            $0 != " " && blanked.contains($0.properties.generalCategory) ? " " : $0
         })).trimmingCharacters(in: .whitespaces)
         let name = String(cleaned.prefix(DotOAuthLimits.clientNameCharacters))
         return name.isEmpty ? "Unnamed client" : name
@@ -116,7 +121,7 @@ final class DotOAuth {
         }
         guard list("grant_types", ["authorization_code", "refresh_token"]), list("response_types", ["code"]),
               value["token_endpoint_auth_method"] == nil || value["token_endpoint_auth_method"] as? String == "none",
-              value["scope"] == nil || (value["scope"] as? String).map({ $0.split(separator: " ").allSatisfy { Self.scopes.contains(String($0)) } }) == true,
+              value["scope"] == nil || (value["scope"] as? String).map({ $0.split(separator: " ").allSatisfy { DotLocalMCP.advertisedScopes.contains(String($0)) } }) == true,
               value["client_name"] == nil || value["client_name"] is String else { throw DotFailure.message("invalid_client_metadata") }
         var unique: [String] = []
         for case let redirect as String in redirects where !unique.contains(redirect) { unique.append(redirect) }
@@ -146,7 +151,8 @@ final class DotOAuth {
             work = Task { try Self.clientDocument(id, data: try await fetch(url)) }
             fetching[id] = work
         }
-        defer { fetching[id] = nil }
+        // A later prepare may have replaced the slot after this one finished; only clear our own.
+        defer { if fetching[id] == work { fetching[id] = nil } }
         let client: DotClient
         do { client = try await work.value } catch { throw DotFailure.message("invalid_client") }
         let now = clock()
@@ -166,10 +172,11 @@ final class DotOAuth {
         return DotClient(id: id, name: clientName(value["client_name"]), kind: .metadata, redirects: redirects.compactMap { $0 as? String })
     }
     /// HTTPS only (enforced by `metadataURL`), no redirects, a size cap and one overall deadline.
-    nonisolated static func fetchDocument(_ url: URL) async throws -> Data {
+    nonisolated static func fetchDocument(_ url: URL) async throws -> Data { try await fetchDocument(url, deadlineMs: DotOAuthLimits.metadataMs) }
+    nonisolated static func fetchDocument(_ url: URL, deadlineMs: Int) async throws -> Data {
         try await withThrowingTaskGroup(of: Data.self) { group in
             group.addTask {
-                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Double(DotOAuthLimits.metadataMs) / 1000)
+                var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: Double(deadlineMs) / 1000)
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 let session = URLSession(configuration: .ephemeral)
                 defer { session.invalidateAndCancel() }
@@ -183,7 +190,7 @@ final class DotOAuth {
                 return data
             }
             group.addTask {
-                try await Task.sleep(for: .milliseconds(DotOAuthLimits.metadataMs))
+                try await Task.sleep(for: .milliseconds(deadlineMs))
                 throw DotFailure.message("invalid_client")
             }
             defer { group.cancelAll() }
@@ -218,7 +225,8 @@ final class DotOAuth {
               p["response_type"] == "code", p["code_challenge_method"] == "S256", let challenge = p["code_challenge"],
               challenge.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil,
               let context = p["state"], !context.isEmpty, context.utf8.count <= 512,
-              !scopes.isEmpty, scopes.allSatisfy({ Self.scopes.contains($0) }) else { throw DotFailure.message("invalid_request") }
+              // The loopback host has no Events surface, so it never grants subscription to any client kind.
+              !scopes.isEmpty, scopes.allSatisfy({ (config.local == true ? DotLocalMCP.advertisedScopes : Self.scopes).contains($0) }) else { throw DotFailure.message("invalid_request") }
         guard pending.count < DotOAuthLimits.pending else { throw DotFailure.message("temporarily_unavailable") }
         let id = try dotRandom()
         pending[id] = Pending(consent: .init(id: id, scopes: Array(Set(scopes)).sorted(), redirectURI: p["redirect_uri"]!,

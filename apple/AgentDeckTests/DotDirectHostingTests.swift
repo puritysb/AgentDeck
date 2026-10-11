@@ -64,6 +64,93 @@ final class DotDirectHostingTests: XCTestCase {
             XCTAssertEqual(DotOAuth.metadataRedirectMatches(c["registered"] as! [String], c["requested"] as! String), c["valid"] as! Bool, c["name"] as! String)
         }
         for c in documents { XCTAssertEqual(DotOAuth.metadataURL(c["value"] as! String), c["valid"] as! Bool, c["name"] as! String) }
+        for c in try XCTUnwrap(root["clientNames"] as? [[String: Any]]) {
+            XCTAssertEqual(DotOAuth.clientName(c["input"] is NSNull ? nil : c["input"]), c["expected"] as! String, c["name"] as! String)
+        }
+    }
+
+    func testLoopbackHostNeverGrantsSubscriptionToAnyClientKind() async throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/dot-oauth-client-vectors.json")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let cases = try XCTUnwrap(root["loopbackScopes"] as? [[String: Any]])
+        try await Task { @DaemonActor in
+            let origin = "http://127.0.0.1:9476", callback = "http://127.0.0.1:4000/callback"
+            let config = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: "http://127.0.0.1:1455/callback", local: true)
+            let auth = try DotOAuth(config: config, data: nil) { _ in }
+            let registered = try XCTUnwrap(try auth.register(["redirect_uris": [callback]])["client_id"] as? String)
+            for client in [DotLocalMCP.clientId, registered] {
+                for c in cases {
+                    let params = ["client_id": client, "redirect_uri": callback, "resource": origin, "response_type": "code", "scope": c["scope"] as! String,
+                                  "state": "s", "code_challenge_method": "S256", "code_challenge": dotDigest(String(repeating: "v", count: 64))]
+                    if c["valid"] as! Bool { XCTAssertNoThrow(try auth.begin(params), c["name"] as! String) }
+                    else { XCTAssertThrowsError(try auth.begin(params), c["name"] as! String) }
+                }
+            }
+            XCTAssertThrowsError(try auth.register(["redirect_uris": [callback], "scope": "agentdeck:subscribe"]))
+        }.value
+    }
+
+    func testMetadataFetcherRefusesRedirectsOversizedBodiesAndSlowHosts() async throws {
+        try await Task { @DaemonActor in
+            let listener = DotHTTPSListener()
+            let port = UInt16(20000 + (ProcessInfo.processInfo.processIdentifier + 7) % 30000)
+            try listener.start(identity: nil, port: port, loopbackOnly: true) { request in
+                switch request.target {
+                case "/redirect": return .init(status: 302, headers: ["Location": "/ok"])
+                case "/big": return .init(body: Data(repeating: 0x61, count: DotOAuthLimits.metadataBytes + 1))
+                case "/missing": return .init(status: 404)
+                case "/slow": try? await Task.sleep(for: .milliseconds(1500)); return .init(body: Data("{}".utf8))
+                default: return .init(body: Data("{\"client_id\":\"x\"}".utf8))
+                }
+            }
+            defer { listener.stop() }
+            for _ in 0..<100 where !listener.isReady { try await Task.sleep(for: .milliseconds(20)) }
+            XCTAssertTrue(listener.isReady, listener.state)
+            let base = "http://127.0.0.1:\(port)"
+            let fetched = try await DotOAuth.fetchDocument(URL(string: base + "/ok")!)
+            XCTAssertEqual(fetched, Data("{\"client_id\":\"x\"}".utf8))
+            for path in ["/redirect", "/big", "/missing"] {
+                do { _ = try await DotOAuth.fetchDocument(URL(string: base + path)!); XCTFail("accepted \(path)") } catch {}
+            }
+            let started = Date()
+            do { _ = try await DotOAuth.fetchDocument(URL(string: base + "/slow")!, deadlineMs: 300); XCTFail("accepted slow host") } catch {}
+            XCTAssertLessThan(Date().timeIntervalSince(started), 1.2)
+        }.value
+    }
+
+    func testRegisterRouteRequiresJSONBoundedBodyAndNoBrowserOrigin() async throws {
+        try await Task { @DaemonActor in
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let origin = "http://127.0.0.1:19476"
+            let oauthConfig = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: "http://127.0.0.1:1455/callback", local: true)
+            let config = DotHostConfiguration(origin: origin, port: 19476, oauth: oauthConfig)
+            let auth = try DotOAuth(config: oauthConfig, data: nil) { _ in }
+            let spec = try Data(contentsOf: try XCTUnwrap(Bundle.main.url(forResource: "dot-mcp-contract", withExtension: "json")))
+            let store = try DotMCPStore(file: directory.appendingPathComponent("requests.json"), contract: spec, access: { _ in true })
+            let host = DotHost()
+            func post(_ body: String, headers: [String: String] = ["content-type": "application/json"]) async -> DotHTTPResponse {
+                await host.serveForTesting(config: config, oauth: auth, store: store,
+                    .init(method: "POST", target: "/oauth/register", headers: ["host": "127.0.0.1:19476"].merging(headers) { _, b in b }, body: Data(body.utf8)))
+            }
+            func error(_ response: DotHTTPResponse) -> String? { (try? JSONSerialization.jsonObject(with: response.body) as? [String: Any])?["error"] as? String }
+            let valid = "{\"client_name\":\"Codex\",\"redirect_uris\":[\"http://127.0.0.1:51816/callback\"]}"
+            let created = await post(valid)
+            XCTAssertEqual(created.status, 201)
+            XCTAssertEqual((try JSONSerialization.jsonObject(with: created.body) as? [String: Any])?["token_endpoint_auth_method"] as? String, "none")
+            let form = await post(valid, headers: ["content-type": "application/x-www-form-urlencoded"])
+            let browser = await post(valid, headers: ["content-type": "application/json", "origin": "https://evil.example"])
+            let rebound = await post(valid, headers: ["content-type": "application/json", "host": "evil.example"])
+            let oversized = await post("{\"redirect_uris\":[],\"pad\":\"" + String(repeating: "x", count: DotOAuthLimits.registrationBytes) + "\"}")
+            let malformed = await post("{"), foreign = await post("{\"redirect_uris\":[\"https://evil.example/cb\"]}")
+            XCTAssertEqual(form.status, 400); XCTAssertEqual(browser.status, 403); XCTAssertEqual(rebound.status, 403); XCTAssertEqual(oversized.status, 400)
+            XCTAssertEqual(error(malformed), "invalid_client_metadata")
+            XCTAssertEqual(error(foreign), "invalid_redirect_uri")
+            let metadata = await host.serveForTesting(config: config, oauth: auth, store: store,
+                .init(method: "GET", target: "/.well-known/oauth-protected-resource", headers: ["host": "127.0.0.1:19476"], body: Data()))
+            XCTAssertEqual((try JSONSerialization.jsonObject(with: metadata.body) as? [String: Any])?["scopes_supported"] as? [String], DotLocalMCP.advertisedScopes)
+        }.value
     }
 
     func testRegisteredLoopbackClientNeedsConsentAndOwnsItsCodesRefreshesAndRevocation() async throws {

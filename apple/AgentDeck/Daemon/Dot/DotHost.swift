@@ -174,6 +174,13 @@ final class DotHost {
         }
         return result
     }
+    #if DEBUG
+    /// Test seam: route requests through `handle` without the Keychain, a listener or daemon ownership.
+    func serveForTesting(config: DotHostConfiguration, oauth: DotOAuth, store: DotMCPStore, _ request: DotHTTPRequest) async -> DotHTTPResponse {
+        self.config = config; self.oauth = oauth; self.store = store
+        return await handle(request)
+    }
+    #endif
     private func handle(_ request: DotHTTPRequest) async -> DotHTTPResponse {
         guard let config, let oauth, let store else { return .init(status: 503) }
         if config.oauth.local == true, request.headers["host"] != "127.0.0.1:\(config.port)" { return .init(status: 403) }

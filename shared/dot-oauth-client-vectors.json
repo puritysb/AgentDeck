@@ -39,6 +39,33 @@
     { "name": "query", "value": "https://chatgpt.com/client.json?a=1", "valid": false },
     { "name": "userinfo", "value": "https://user@chatgpt.com/client.json", "valid": false },
     { "name": "root path", "value": "https://chatgpt.com/", "valid": false },
-    { "name": "loopback", "value": "https://127.0.0.1/client.json", "valid": false }
+    { "name": "loopback", "value": "https://127.0.0.1/client.json", "valid": false },
+    { "name": "double-dot segment", "value": "https://chatgpt.com/oauth/../client.json", "valid": false },
+    { "name": "encoded double-dot segment", "value": "https://chatgpt.com/oauth/%2E%2E/client.json", "valid": false },
+    { "name": "mixed encoded double-dot segment", "value": "https://chatgpt.com/oauth/.%2E/client.json", "valid": false },
+    { "name": "dot segment", "value": "https://chatgpt.com/./client.json", "valid": false },
+    { "name": "encoded dot segment", "value": "https://chatgpt.com/oauth/%2e/client.json", "valid": false },
+    { "name": "dots inside a segment are ordinary", "value": "https://chatgpt.com/oauth/codex/client.v2.json", "valid": true }
+  ],
+  "loopbackScopes": [
+    { "name": "read and report", "scope": "agentdeck:read agentdeck:report", "valid": true },
+    { "name": "read only", "scope": "agentdeck:read", "valid": true },
+    { "name": "subscription is never granted on loopback", "scope": "agentdeck:read agentdeck:subscribe", "valid": false },
+    { "name": "subscription alone", "scope": "agentdeck:subscribe", "valid": false },
+    { "name": "device scope", "scope": "agentdeck:device", "valid": false }
+  ],
+  "clientNames": [
+    { "name": "plain", "input": "Codex", "expected": "Codex" },
+    { "name": "inner space kept", "input": "Codex Desktop", "expected": "Codex Desktop" },
+    { "name": "bell", "input": "Codex\u0007", "expected": "Codex" },
+    { "name": "line separator", "input": "Codex Approve all", "expected": "Codex Approve all" },
+    { "name": "paragraph separator", "input": "A B", "expected": "A B" },
+    { "name": "no-break space", "input": "A B", "expected": "A B" },
+    { "name": "ideographic space", "input": "A　B", "expected": "A B" },
+    { "name": "bidi override", "input": "A‮B", "expected": "A B" },
+    { "name": "zero width space", "input": "A​B", "expected": "A B" },
+    { "name": "only separators", "input": " 　", "expected": "Unnamed client" },
+    { "name": "missing", "input": null, "expected": "Unnamed client" },
+    { "name": "Korean name kept", "input": "코덱스", "expected": "코덱스" }
   ]
 }

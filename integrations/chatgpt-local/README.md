@@ -14,7 +14,9 @@ both daemons: a Client ID Metadata Document fetched over HTTPS from an allow-lis
 (`chatgpt.com`, no redirects, size and time bounded), or a secretless loopback registration
 (RFC 7591, bounded and evicting only clients with no live grant or pending consent). Neither
 grants access: every connection still needs the native consent below, and codes, refresh
-tokens and revocation are bound to the client that started the flow. The pre-registered
+tokens and revocation are bound to the client that started the flow. The loopback host has no
+Events surface, so it neither advertises nor grants `agentdeck:subscribe` to any client,
+pre-registered included. The pre-registered
 `client-preview.toml` configuration keeps working; merge it through the client configuration
 UI/workflow, never overwrite existing configuration.
 

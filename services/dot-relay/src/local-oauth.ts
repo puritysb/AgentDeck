@@ -7,6 +7,9 @@ const digest = (value: string) => createHash('sha256').update(value).digest('bas
 const random = () => randomBytes(32).toString('base64url');
 const same = (a: string, b: string) => { const aa = Buffer.from(a), bb = Buffer.from(b); return aa.length === bb.length && timingSafeEqual(aa, bb); };
 const SCOPES = ['agentdeck:read', 'agentdeck:report', 'agentdeck:subscribe'];
+// The loopback host has no Events surface (subscriptions need the HTTPS host), so it neither
+// advertises nor grants subscription, to any client kind.
+const LOCAL_SCOPES: readonly string[] = DOT_LOCAL_MCP.advertisedScopes;
 export class OAuthError extends Error {
   constructor(public code: string) { super(code); }
 }
@@ -60,7 +63,7 @@ export class LocalOAuth {
           || c.redirects.length > OAUTH_LIMITS.redirectURIs || c.redirects.some(r => typeof r !== 'string' || !clientRedirect(r)))))) throw new Error('Invalid persisted OAuth state');
     const configurationHash = digest(JSON.stringify(config));
     if (state.configurationHash !== configurationHash) this.store.change(s => {
-      s.configurationHash = configurationHash; s.grants = []; s.tokens = [];
+      s.configurationHash = configurationHash; s.grants = []; s.tokens = []; s.clients = [];
     });
   }
   metadata() {
@@ -83,7 +86,7 @@ export class LocalOAuth {
     const list = (v: unknown, allowed: string[]) => v === undefined || (Array.isArray(v) && v.length > 0 && v.every(x => typeof x === 'string' && allowed.includes(x)));
     if (!list(value.grant_types, ['authorization_code', 'refresh_token']) || !list(value.response_types, ['code'])
       || (value.token_endpoint_auth_method !== undefined && value.token_endpoint_auth_method !== 'none')
-      || (value.scope !== undefined && (typeof value.scope !== 'string' || value.scope.split(' ').filter(Boolean).some(s => !SCOPES.includes(s))))
+      || (value.scope !== undefined && (typeof value.scope !== 'string' || value.scope.split(' ').filter(Boolean).some(s => !LOCAL_SCOPES.includes(s))))
       || (value.client_name !== undefined && typeof value.client_name !== 'string')) throw new OAuthError('invalid_client_metadata');
     const client: RegisteredClient = { id: `dcr_${random()}`, name: clientName(value.client_name),
       redirects: [...new Set(redirects as string[])], createdAt: this.clock() };
@@ -149,7 +152,7 @@ export class LocalOAuth {
     if (!client || !this.redirectAllowed(client, params.get('redirect_uri') ?? '')
       || params.get('response_type') !== 'code' || params.get('resource') !== this.config.resource
       || params.get('code_challenge_method') !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(params.get('code_challenge') ?? '')
-      || !scopes.length || scopes.some(s => !SCOPES.includes(s)) || !params.get('state') || params.get('state')!.length > 512) {
+      || !scopes.length || scopes.some(s => !(this.config.local ? LOCAL_SCOPES : SCOPES).includes(s)) || !params.get('state') || params.get('state')!.length > 512) {
       throw new OAuthError('invalid_request');
     }
     if (this.pending.size >= OAUTH_LIMITS.pending) throw new OAuthError('temporarily_unavailable');
@@ -288,8 +291,9 @@ export function metadataURL(value: string): boolean {
       && !url.username && !url.password && !url.search && !url.hash && url.pathname.length > 1;
   } catch { return false; }
 }
-function clientName(value: unknown) {
-  const name = typeof value === 'string' ? value.replace(/[\p{Cc}\p{Cf}]/gu, ' ').trim().slice(0, OAUTH_LIMITS.clientNameCharacters) : '';
+/** A client-chosen display name: controls, format characters and every separator but a plain space become spaces. */
+export function clientName(value: unknown) {
+  const name = typeof value === 'string' ? value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|(?! )\p{Zs}/gu, ' ').trim().slice(0, OAUTH_LIMITS.clientNameCharacters) : '';
   return name || 'Unnamed client';
 }
 /** Validate a fetched Client ID Metadata Document; anything unexpected refuses the client. */
@@ -303,9 +307,9 @@ export function clientDocument(id: string, input: unknown): ResolvedClient {
     || (value.client_name !== undefined && typeof value.client_name !== 'string')) throw new OAuthError('invalid_client');
   return { id, name: clientName(value.client_name), kind: 'metadata', redirects: value.redirect_uris as string[] };
 }
-async function fetchClientMetadata(url: string): Promise<unknown> {
+export async function fetchClientMetadata(url: string, deadlineMs: number = OAUTH_LIMITS.metadataMs): Promise<unknown> {
   // No redirects: an allow-listed host must serve the document itself.
-  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(OAUTH_LIMITS.metadataMs), headers: { Accept: 'application/json' } });
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(deadlineMs), headers: { Accept: 'application/json' } });
   if (!response.ok || !response.body) throw new Error('metadata unavailable');
   const chunks: Uint8Array[] = []; let size = 0;
   for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
