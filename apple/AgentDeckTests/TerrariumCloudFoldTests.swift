@@ -70,7 +70,10 @@ final class TerrariumCloudFoldTests: XCTestCase {
         let finishing = (0..<BackgroundWorkPresentation.maxBuddies).compactMap { group.findEntity(named: "background-finish-\($0)") }
         XCTAssertEqual(jars.count, BackgroundWorkPresentation.maxBuddies, "Large task counts cannot allocate an unbounded effect")
         XCTAssertEqual(jars.filter(\.isEnabled).count, 3)
-        XCTAssertEqual(group.findEntity(named: "background-overflow")?.isEnabled, true, "Twelve tasks tag the last jar with +9")
+        let pearls = (0..<BackgroundWorkPresentation.maxPearls + 1).compactMap { group.findEntity(named: "background-pearl-\($0)") }
+        XCTAssertEqual(pearls.count, BackgroundWorkPresentation.maxPearls, "A fixed pool of pearl moonlets")
+        XCTAssertEqual(pearls.filter(\.isEnabled).count, 9, "Twelve tasks: three jars and nine pearls, one to one")
+        XCTAssertNil(group.findEntity(named: "background-overflow"), "No +n text anywhere")
         // Keep a render of the actual production scene for visual review.
         let view = ARView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
         let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -177,8 +180,11 @@ final class TerrariumCloudFoldTests: XCTestCase {
         typealias P = BackgroundWorkPresentation
         XCTAssertEqual(P.visibleCount(0), 0)
         XCTAssertEqual(P.visibleCount(12), P.maxBuddies, "Buddies are capped; +n and the label carry the rest")
-        XCTAssertEqual(P.overflow(12), 9)
-        XCTAssertEqual(P.overflow(3), 0)
+        XCTAssertEqual(P.pearlCount(3), 0)
+        XCTAssertEqual(P.pearlCount(4), 1)
+        XCTAssertEqual(P.pearlCount(7), 4)
+        XCTAssertEqual(P.pearlCount(12), 9)
+        XCTAssertEqual(P.pearlCount(20), P.maxPearls, "Beyond twelve the label carries the exact count")
         XCTAssertEqual(P.label(1), "1 background task")
         XCTAssertEqual(P.label(5), "5 background tasks")
         // Constant angular speed: one lap per lapSeconds, whatever the phase.
@@ -329,6 +335,55 @@ final class TerrariumCloudFoldTests: XCTestCase {
         }
     }
 
+    /// Pearl moonlets ride the jars' orbit, strung evenly through the gaps
+    /// between them, with the same depth rule.
+    func testPearlMoonletsFillTheGapsBetweenJars() {
+        typealias P = BackgroundWorkPresentation
+        let gap = 2 * Float.pi / Float(P.maxBuddies)
+        for pearls in 1...P.maxPearls {
+            var perGap = [Int](repeating: 0, count: P.maxBuddies)
+            var angles: [Float] = []
+            for index in 0..<pearls {
+                let a = P.pearlSpacing(index: index, pearls: pearls)
+                let g = Int(a / gap)
+                perGap[g] += 1
+                let within = a - Float(g) * gap
+                XCTAssertGreaterThan(within, 0.05, "\(pearls) pearls: pearl \(index) sits clear of a jar")
+                XCTAssertLessThan(within, gap - 0.05)
+                angles.append(a)
+            }
+            XCTAssertLessThanOrEqual((perGap.max() ?? 0) - (perGap.min() ?? 0), 1, "\(pearls) pearls share the gaps evenly")
+            XCTAssertEqual(Set(angles.map { Int(($0 * 1000).rounded()) }).count, pearls, "No two pearls overlap")
+        }
+        // Even within a gap: three pearls split one gap in quarters.
+        XCTAssertEqual(P.pearlSpacing(index: 0, pearls: 9), gap / 4, accuracy: 1e-5)
+        XCTAssertEqual(P.pearlSpacing(index: 3, pearls: 9), gap / 2, accuracy: 1e-5)
+        XCTAssertEqual(P.pearlSpacing(index: 6, pearls: 9), gap * 3 / 4, accuracy: 1e-5)
+        // Depth: behind and fainter on the far half, in front on the near half; a third of a jar.
+        let far = P.pearl(theta: .pi / 2), near = P.pearl(theta: -.pi / 2)
+        XCTAssertTrue(far.isBehind)
+        XCTAssertLessThan(far.center.z, 0)
+        XCTAssertFalse(near.isBehind)
+        XCTAssertLessThan(far.radius, near.radius)
+        XCTAssertLessThan(far.opacity, near.opacity)
+        XCTAssertEqual(near.radius / P.buddy(index: 0, theta: -.pi / 2, phase: 0).radius, 1.0 / 3, accuracy: 1e-4)
+        // The brood turns pearls with the jars and re-spaces them gently.
+        var brood = BackgroundBrood()
+        brood.observe(explicit: 12, working: true, position: .zero, phase: 0, animate: true)
+        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
+        XCTAssertEqual(brood.pearls, 9)
+        XCTAssertEqual(brood.pearlAngle(index: 4, phase: 3) - brood.pearlAngle(index: 4, phase: 2), P.orbitAngle(1), accuracy: 1e-4)
+        brood.observe(explicit: 8, working: true, position: .zero, phase: 0, animate: true)
+        let before = brood.pearlAngle(index: 1, phase: 0)
+        brood.advance(dt: 1.0 / 60, position: .zero, room: .init(), phase: 0)
+        XCTAssertLessThan(abs(brood.pearlAngle(index: 1, phase: 0) - before), 0.1, "Pearls glide to their new spacing")
+        // Reduce Motion: pearls wait on the near side with the jars.
+        var still = BackgroundBrood()
+        still.observe(explicit: 9, working: true, position: .zero, phase: 2, animate: false)
+        still.advance(dt: 0, position: .zero, room: .init(), phase: 2)
+        XCTAssertTrue((0..<still.pearls).allSatisfy { !still.pearl(index: $0, phase: 2).isBehind })
+    }
+
     /// A finish never pops into the owner's name tag, wherever it started.
     func testJarBuddyFinishPopsClearOfTheNameTag() {
         typealias P = BackgroundWorkPresentation
@@ -376,13 +431,19 @@ final class TerrariumCloudFoldTests: XCTestCase {
         var crowded = BackgroundBrood()
         crowded.observe(explicit: 12, working: true, position: here, phase: 0, animate: true)
         crowded.observe(explicit: 11, working: true, position: here, phase: 0, animate: true)
-        XCTAssertTrue(crowded.finishes.isEmpty, "12 → 11 keeps all three buddies; nothing visibly leaves")
+        XCTAssertEqual(crowded.finishes.map(\.isPearl), [true], "12 → 11: the last pearl pops, every jar stays")
+        var many = BackgroundBrood()
+        many.observe(explicit: 20, working: true, position: here, phase: 0, animate: true)
+        many.observe(explicit: 19, working: true, position: here, phase: 0, animate: true)
+        XCTAssertTrue(many.finishes.isEmpty, "20 → 19 keeps every jar and pearl; only the label changes")
         var partly = BackgroundBrood()
         partly.observe(explicit: 4, working: true, position: here, phase: 0, animate: true)
         partly.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(partly.finishes.map(\.buddy), [P.buddy(index: 2, theta: P.spacing(index: 2, count: 3), phase: 0)], "4 → 2 with three shown pops only the one that leaves")
+        XCTAssertEqual(partly.finishes.map(\.isPearl), [true, false], "4 → 2: the pearl pops first, then the one jar that leaves")
+        XCTAssertEqual(partly.finishes.last?.buddy, P.buddy(index: 2, theta: P.spacing(index: 2, count: 3), phase: 0))
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(crowded.finishes.count, P.maxBuddies, "11 → 0 pops the three that were drawn")
+        XCTAssertEqual(crowded.finishes.count, P.maxFinishes, "11 → 0 is bounded")
+        XCTAssertEqual(crowded.finishes.filter { !$0.isPearl }.count, P.maxBuddies, "and every jar that was drawn still pops")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: false)
         XCTAssertTrue(crowded.finishes.isEmpty, "Turning on Reduce Motion mid-finish leaves nothing frozen")
 
@@ -494,7 +555,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         lap.animateHermes = false
         var solo = TerrariumState()
         solo.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.5, homeY: 0.45, scale: 1.6)]
-        solo.backgroundTaskCounts = ["claude": 3]
+        solo.backgroundTaskCounts = ["claude": 12]
         func writeLap(_ name: String) throws {
             let image = ImageRenderer(content: Canvas { context, size in lap.draw(context: &context, size: size) }.frame(width: 1000, height: 560))
             image.scale = 2
@@ -505,6 +566,17 @@ final class TerrariumCloudFoldTests: XCTestCase {
         for frame in 0..<8 {
             for _ in 0..<45 { lap.update(dt: 1.0 / 30, state: solo) }
             try writeLap(String(format: "orbit-%02d", frame))
+        }
+        // A pearl finishing: 12 → 11, the last pearl sparkles away.
+        solo.backgroundTaskCounts = ["claude": 11]
+        for frame in 0..<5 {
+            for _ in 0..<4 { lap.update(dt: 1.0 / 30, state: solo) }
+            try writeLap(String(format: "pearl-pop-%02d", frame))
+        }
+        for tasks in [4, 7, 20] {
+            solo.backgroundTaskCounts = ["claude": tasks]
+            for _ in 0..<90 { lap.update(dt: 1.0 / 30, state: solo) }
+            try writeLap(String(format: "tasks-%02d", tasks))
         }
         // A deliberately crowded row: each creature's buddies must stay its own.
         let crowded = TerrariumRenderer()

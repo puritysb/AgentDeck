@@ -3,7 +3,8 @@ import RealityKit
 
 /// Background tasks drawn as jar buddies: small clay jars with a face, fins
 /// and a tail that orbit their creature the way a moon circles its planet,
-/// one per running task. They share one gently tilted orbit, evenly spaced,
+/// one per running task; tasks beyond the three jars ride the same orbit as
+/// tiny pearl moonlets. They share one gently tilted orbit, evenly spaced,
 /// at a constant angular speed: across the front of the creature (larger,
 /// drawn over it) and around the back (smaller, a little faded, hidden behind
 /// it). While a task runs its lid jiggles and bubbles simmer from the mouth;
@@ -51,8 +52,17 @@ enum BackgroundWorkPresentation {
     /// Smallest orbit half-width: the body's half width plus the jar and its fins.
     static let bodyClearance: Float = 1 + buddyRadius * 1.3
 
+    /// Tasks beyond the jars are pearl moonlets: tiny clay beads on the same
+    /// orbit, strung evenly through the gaps between the jars like beads on a
+    /// necklace, one per task up to this cap (12 tasks drawn one to one); the
+    /// label carries any count beyond it.
+    static let maxPearls = 9
+    static let pearlRadius: Float = buddyRadius / 3
+    /// Most finishes in flight at once: one group's jars plus as many pearls.
+    static let maxFinishes = maxBuddies * 2
+
     static func visibleCount(_ count: Int) -> Int { min(maxBuddies, max(0, count)) }
-    static func overflow(_ count: Int) -> Int { max(0, count - maxBuddies) }
+    static func pearlCount(_ count: Int) -> Int { min(maxPearls, max(0, count - maxBuddies)) }
     static func label(_ count: Int) -> String {
         "\(count) background task" + (count == 1 ? "" : "s")
     }
@@ -85,11 +95,27 @@ enum BackgroundWorkPresentation {
         Float(index) * 2 * .pi / Float(max(1, visibleCount(count)))
     }
 
+    /// Pearl `index` of `pearls`, as an offset from jar 0: pearls fill the
+    /// gaps between the jars round-robin and spread evenly within each gap.
+    /// Pearls only exist with all jars out, so the gaps are equal.
+    static func pearlSpacing(index: Int, pearls: Int) -> Float {
+        let n = maxBuddies, gap = 2 * Float.pi / Float(n)
+        let g = index % n, slot = index / n
+        let inGap = pearls / n + (g < pearls % n ? 1 : 0)
+        return Float(g) * gap + gap * Float(slot + 1) / Float(max(1, inGap) + 1)
+    }
+
     /// Under Reduce Motion the orbit holds still with every buddy on the near
     /// side, spread across the front of the creature.
     static func stillAngle(index: Int, count: Int) -> Float {
         let n = Float(max(1, visibleCount(count)))
         return -.pi / 2 + (Float(index) - (n - 1) / 2) * 0.85
+    }
+
+    /// Pearls under Reduce Motion: strung across the same near arc as the jars.
+    static func stillPearlAngle(index: Int, pearls: Int) -> Float {
+        let p = Float(max(1, pearls))
+        return -.pi / 2 + ((Float(index) + 0.5) / p - 0.5) * 2.2
     }
 
     /// The point on the orbit at angle `theta`. sin θ > 0 is the far half
@@ -140,6 +166,24 @@ enum BackgroundWorkPresentation {
                      depth: depth, opacity: farOpacity + (1 - farOpacity) * near,
                      lidLift: hop * 0.18,
                      fin: abs(sin(phase * 6 + i)), tail: sin(phase * 7 + i * 1.7) * 0.45)
+    }
+
+    /// A pearl moonlet on the orbit: a tiny bead with no face, sized and
+    /// faded by depth exactly like a jar.
+    struct Pearl: Equatable {
+        var center: SIMD3<Float>
+        var radius: Float
+        var depth: Float
+        var opacity: Float
+        var isBehind: Bool { depth < 0 }
+    }
+
+    static func pearl(theta: Float, room: Room = Room()) -> Pearl {
+        let depth = -sin(theta)
+        let near = (depth + 1) / 2
+        return Pearl(center: orbit(theta, room: room),
+                     radius: pearlRadius * (farScale + (nearScale - farScale) * near),
+                     depth: depth, opacity: farOpacity + (1 - farOpacity) * near)
     }
 
     /// Moves a finish clear of its creature's name tag: a pop rises about
@@ -215,9 +259,13 @@ struct BackgroundBrood: Equatable {
     /// A finish plays where its buddy was, not with the creature: `base` is the
     /// followed position (caller's coordinates) when the count dropped.
     struct Finish: Equatable {
+        /// The jar that leaves; for a pearl, only its centre, radius, depth
+        /// and opacity matter.
         var buddy: P.Buddy
         var base: SIMD2<Float>
         var age: Float
+        /// A pearl moonlet's finish: a small sparkle pop, no lid or puff.
+        var isPearl = false
     }
     /// Last explicit count from the producer; nil until one arrives.
     private(set) var known: Int?
@@ -232,6 +280,8 @@ struct BackgroundBrood: Equatable {
     /// Each buddy's angular offset on the orbit: it eases toward even spacing
     /// when the count changes, so buddies glide apart or together. Sized once.
     private var offsets = [Float](repeating: 0, count: P.maxBuddies)
+    /// Each pearl's offset from jar 0, easing the same way. Sized once.
+    private var pearlOffsets = [Float](repeating: 0, count: P.maxPearls)
     private(set) var hasSettled = false
 
     /// Buddies to show: only a working creature has them out.
@@ -251,6 +301,20 @@ struct BackgroundBrood: Equatable {
     /// Buddy `index` as drawn.
     func buddy(index: Int, phase: Float) -> P.Buddy {
         P.buddy(index: index, theta: angle(index: index, phase: phase), phase: phase, room: room)
+    }
+
+    /// Pearl moonlets to show: tasks beyond the jars, capped.
+    var pearls: Int { P.pearlCount(count) }
+
+    /// Orbit angle of pearl `index` at `phase`: it turns with the jars.
+    func pearlAngle(index: Int, phase: Float) -> Float {
+        if still { return P.stillPearlAngle(index: index, pearls: pearls) }
+        let offset = hasSettled && index < pearlOffsets.count ? pearlOffsets[index] : P.pearlSpacing(index: index, pearls: pearls)
+        return P.orbitAngle(phase) + (hasSettled ? offsets[0] : 0) + offset
+    }
+
+    func pearl(index: Int, phase: Float) -> P.Pearl {
+        P.pearl(theta: pearlAngle(index: index, phase: phase), room: room)
     }
 
     /// Records one snapshot. `explicit` is the producer's count; nil means
@@ -275,18 +339,28 @@ struct BackgroundBrood: Equatable {
         still = !animate
         if !animate { finishes.removeAll(); return }
         guard let now = known, explicit != nil, now < previous, shown > 0, nowWorking || now == 0 else { return }
-        // Only buddies that visibly leave pop, from the end of the group: a
-        // drop that stays above the cap (12 → 11) changes the "+n", not a buddy,
-        // and a task that never had a buddy (4 → 2 with 3 shown) pops nothing.
+        // Only what visibly leaves pops, from the end: pearls go first, the
+        // last pearl with a small sparkle, and jars only once no pearl
+        // remains. A drop that stays above every cap (20 → 19) changes the
+        // label alone.
+        let base = follow ?? position
+        let firstPearl = nowWorking ? P.pearlCount(now) : 0
+        for index in (firstPearl..<P.pearlCount(shown)).reversed() {
+            let theta = P.orbitAngle(phase) + (hasSettled ? offsets[0] + pearlOffsets[index] : P.pearlSpacing(index: index, pearls: P.pearlCount(shown)))
+            let pearl = P.pearl(theta: theta, room: room)
+            var bead = P.buddy(index: index, theta: theta, phase: phase, room: room)
+            bead.center = pearl.center
+            bead.radius = pearl.radius
+            finishes.append(Finish(buddy: bead, base: base, age: 0, isPearl: true))
+        }
         let first = nowWorking ? P.visibleCount(now) : 0
         for index in first..<P.visibleCount(shown) {
             let theta = P.orbitAngle(phase) + (hasSettled ? offsets[index] : P.spacing(index: index, count: shown))
-            finishes.append(Finish(buddy: P.buddy(index: index, theta: theta, phase: phase, room: room),
-                                   base: follow ?? position, age: 0))
+            finishes.append(Finish(buddy: P.buddy(index: index, theta: theta, phase: phase, room: room), base: base, age: 0))
         }
-        // Bounded: at most one group's worth of finishes is ever in flight.
-        if finishes.count > P.maxBuddies {
-            finishes.removeFirst(finishes.count - P.maxBuddies)
+        // Bounded: the oldest (pearls first) give way, so jars always play.
+        if finishes.count > P.maxFinishes {
+            finishes.removeFirst(finishes.count - P.maxFinishes)
         }
     }
 
@@ -300,6 +374,11 @@ struct BackgroundBrood: Equatable {
             var delta = P.spacing(index: index, count: count) - offsets[index]
             delta -= 2 * .pi * (delta / (2 * .pi)).rounded()
             offsets[index] += delta * blend
+        }
+        for index in pearlOffsets.indices {
+            var delta = P.pearlSpacing(index: index, pearls: pearls) - pearlOffsets[index]
+            delta -= 2 * .pi * (delta / (2 * .pi)).rounded()
+            pearlOffsets[index] += delta * blend
         }
         hasSettled = true
         guard dt > 0, let current = follow else { follow = position; return }
@@ -952,9 +1031,9 @@ final class AquariumResidents {
         let swimming: [BuddyRig]
         let finishing: [BuddyRig]
         let bubbles: [ModelEntity]
-        let overflow: ModelEntity
-        var overflowShown = 0
-        var overflowWidth: Float = 0
+        /// Pearl moonlets on the orbit, and the pearls that are finishing.
+        let pearls: [Entity]
+        let pearlsFinishing: [Entity]
     }
     private var broodRigs: [String: BroodRig] = [:]
     /// A resident's half width in its own space, measured from its template:
@@ -1007,6 +1086,21 @@ final class AquariumResidents {
         return BuddyRig(root: root, lid: lid, fins: fins, tail: tail)
     }
 
+    /// One pooled pearl moonlet: a clay bead with a working-cyan glint.
+    private func makePearl(named name: String) -> Entity {
+        let root = Entity()
+        root.name = name
+        let bead = ModelEntity(mesh: .generateSphere(radius: 1),
+                               materials: [SimpleMaterial(color: nativeColor(DesignTokens.Tide.s200), roughness: 0.35, isMetallic: false)])
+        let glint = ModelEntity(mesh: .generateSphere(radius: 0.3),
+                                materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
+        glint.position = [-0.42, 0.42, 0.72]
+        root.addChild(bead)
+        root.addChild(glint)
+        root.components.set(OpacityComponent(opacity: 1))
+        return root
+    }
+
     private func makeBackgroundWork() -> (Entity, BroodRig) {
         let group = Entity()
         group.name = "background-work"
@@ -1021,12 +1115,11 @@ final class AquariumResidents {
             bubble.components.set(OpacityComponent(opacity: 1))
             return bubble
         }
-        let overflow = ModelEntity()
-        overflow.name = "background-overflow"
-        overflow.model = ModelComponent(mesh: .generateBox(size: 0.001),
-            materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
-        for entity in swimming.map(\.root) + finishing.map(\.root) + bubbles + [overflow] { group.addChild(entity) }
-        return (group, BroodRig(group: group, swimming: swimming, finishing: finishing, bubbles: bubbles, overflow: overflow))
+        let pearls = (0..<BackgroundWorkPresentation.maxPearls).map { makePearl(named: "background-pearl-\($0)") }
+        let pearlsFinishing = (0..<BackgroundWorkPresentation.maxFinishes).map { makePearl(named: "background-pearl-finish-\($0)") }
+        for entity in swimming.map(\.root) + finishing.map(\.root) + bubbles + pearls + pearlsFinishing { group.addChild(entity) }
+        return (group, BroodRig(group: group, swimming: swimming, finishing: finishing, bubbles: bubbles,
+                                pearls: pearls, pearlsFinishing: pearlsFinishing))
     }
 
     /// Free water around a resident, in its body radii: a close neighbour
@@ -1044,7 +1137,7 @@ final class AquariumResidents {
     /// kind. Pure placement: the count, follow point and finishes are owned
     /// by `broods`, updated in `sync` and `step`.
     private func updateBackgroundWork(_ resident: Entity, id: String) {
-        guard var rig = broodRigs[id] else { return }
+        guard let rig = broodRigs[id] else { return }
         guard let brood = broods[id], !brood.isEmpty else { rig.group.isEnabled = false; return }
         rig.group.isEnabled = true
         typealias P = BackgroundWorkPresentation
@@ -1097,36 +1190,46 @@ final class AquariumResidents {
         }
         // Finishes play where their buddy was, not with the creature, and
         // never pop into the creature's own name tag.
-        for index in rig.finishing.indices {
-            let buddyRig = rig.finishing[index]
-            guard index < brood.finishes.count, let finish = P.finish(age: brood.finishes[index].age) else {
-                buddyRig.root.isEnabled = false
+        var jarSlot = 0, pearlSlot = 0
+        for item in brood.finishes {
+            guard let finish = P.finish(age: item.age) else { continue }
+            let drift2 = (item.base - current) / scale
+            let at = P.clearOfTag(item.buddy.center + [drift2.x / r, drift2.y / r, 0])
+            if item.isPearl {
+                guard pearlSlot < rig.pearlsFinishing.count else { continue }
+                let bead = rig.pearlsFinishing[pearlSlot]
+                pearlSlot += 1
+                bead.isEnabled = true
+                bead.position = place(at)
+                bead.scale = .init(repeating: max(0.0001, item.buddy.radius * r * (0.4 + finish.scale * 0.8)))
+                bead.components.set(OpacityComponent(opacity: finish.opacity * item.buddy.opacity))
                 continue
             }
-            let item = brood.finishes[index]
-            let drift2 = (item.base - current) / scale
+            guard jarSlot < rig.finishing.count else { continue }
+            let buddyRig = rig.finishing[jarSlot]
+            jarSlot += 1
             var popped = item.buddy
-            popped.center = P.clearOfTag(item.buddy.center + [drift2.x / r, drift2.y / r, 0])
+            popped.center = at
             buddyRig.root.isEnabled = true
             pose(buddyRig, popped, at: place(popped.center), finish: finish, lidLift: 0)
             for k in 0..<P.bubblesPerFinish {
                 if let bubble = P.puff(mouth: P.mouth(popped), age: item.age, k: k) { emit(bubble, .zero) }
             }
         }
+        for index in jarSlot..<rig.finishing.count { rig.finishing[index].root.isEnabled = false }
+        for index in pearlSlot..<rig.pearlsFinishing.count { rig.pearlsFinishing[index].isEnabled = false }
         for index in slot..<rig.bubbles.count { rig.bubbles[index].isEnabled = false }
-        // "+n" rides with the last buddy; its mesh is rebuilt only when n changes.
-        let extra = P.overflow(brood.count)
-        rig.overflow.isEnabled = extra > 0 && shown > 0
-        if extra > 0, shown > 0 {
-            let last = brood.buddy(index: shown - 1, phase: phase)
-            if rig.overflowShown != extra {
-                rig.overflow.model?.mesh = MeshResource.generateText("+\(extra)", extrusionDepth: 0.002,
-                    font: .init(name: "IBMPlexSans-Bold", size: 0.14) ?? .systemFont(ofSize: 0.14))
-                rig.overflowShown = extra
-                rig.overflowWidth = rig.overflow.visualBounds(relativeTo: rig.overflow).extents.x
-                broodRigs[id] = rig
-            }
-            rig.overflow.position = place(last.center) + lag + [-rig.overflowWidth / 2, -last.radius * r * 2.2, 0.05]
+        // Pearl moonlets: one per task beyond the jars, strung through the gaps
+        // on the same orbit, sized and faded by depth.
+        let pearls = brood.pearls
+        for index in rig.pearls.indices {
+            let bead = rig.pearls[index]
+            bead.isEnabled = index < pearls
+            guard index < pearls else { continue }
+            let pearl = brood.pearl(index: index, phase: phase)
+            bead.position = place(pearl.center) + lag
+            bead.scale = .init(repeating: max(0.0001, pearl.radius * r))
+            bead.components.set(OpacityComponent(opacity: pearl.opacity))
         }
     }
 

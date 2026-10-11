@@ -610,6 +610,13 @@ final class TerrariumRenderer {
             let center = CGPoint(x: CGFloat(pose.center.x + lag.x) * size.width, y: CGFloat(pose.center.y + lag.y) * size.height)
             let phase = backgroundOrbitPhase
             let shown = BackgroundWorkPresentation.visibleCount(brood.count)
+            // Pearl moonlets first: the jars on the same half sit over them.
+            for index in 0..<brood.pearls {
+                let pearl = brood.pearl(index: index, phase: phase)
+                guard pearl.isBehind != near else { continue }
+                drawPearl(center: screen(pearl.center, from: center, r: r), radius: CGFloat(pearl.radius) * r,
+                          opacity: Double(pearl.opacity), context: &context)
+            }
             for index in 0..<shown {
                 let buddy = brood.buddy(index: index, phase: phase)
                 guard buddy.isBehind != near else { continue }
@@ -629,6 +636,22 @@ final class TerrariumRenderer {
                                          Float(-(CGFloat(finish.base.y) * size.height - owner.y) / r), 0)
                 var popped = finish.buddy
                 popped.center = BackgroundWorkPresentation.clearOfTag(finish.buddy.center + drift)
+                if finish.isPearl {
+                    // A pearl's finish: the bead swells a touch, sparkles and fades.
+                    let point = screen(popped.center, from: owner, r: r)
+                    let bead = CGFloat(popped.radius) * r
+                    if pop.sparkleOpacity > 0 {
+                        var spark = context
+                        spark.translateBy(x: point.x, y: point.y)
+                        let reach = bead * CGFloat(pop.sparkle) * 2.2
+                        spark.scaleBy(x: reach, y: reach)
+                        spark.stroke(BuddyPaths.sparkle, with: .color(DesignTokens.Tide.s50.opacity(Double(pop.sparkleOpacity))),
+                                     style: StrokeStyle(lineWidth: 0.14, lineCap: .round))
+                    }
+                    drawPearl(center: point, radius: bead * CGFloat(0.4 + pop.scale * 0.8),
+                              opacity: Double(pop.opacity * popped.opacity), context: &context)
+                    continue
+                }
                 drawBuddy(popped, at: screen(popped.center, from: owner, r: r), r: r, context: &context, pose: pop, lidLift: 0)
                 for k in 0..<BackgroundWorkPresentation.bubblesPerFinish {
                     if let bubble = BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(popped), age: finish.age, k: k) {
@@ -636,18 +659,34 @@ final class TerrariumRenderer {
                     }
                 }
             }
-            // The count sits under the creature's feet, below the orbit;
-            // "+n" leads it when more tasks run than buddies swim.
+            // The exact count sits under the creature's feet, below the orbit.
             if shown > 0 {
                 let anchor = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height + r * 1.05)
-                let extra = BackgroundWorkPresentation.overflow(brood.count)
-                let text = BackgroundWorkPresentation.label(brood.count)
-                let ink = DesignTokens.Session.working
-                context.draw(Text(extra > 0 ? "+\(extra) · " : "").font(.custom("IBMPlexSans-Bold", size: 10)).foregroundStyle(ink)
-                             + Text(text).font(.custom("IBMPlexSans", size: 10)).foregroundStyle(ink),
+                context.draw(Text(BackgroundWorkPresentation.label(brood.count)).font(.custom("IBMPlexSans", size: 10))
+                                .foregroundStyle(DesignTokens.Session.working),
                              at: anchor, anchor: .top)
             }
         }
+    }
+
+    /// A pearl moonlet: a clay bead with a thin working-cyan rim and a
+    /// tiny specular glint. No face; never pulses.
+    private func drawPearl(center: CGPoint, radius: CGFloat, opacity: Double, context: inout GraphicsContext) {
+        let b = max(1.4, radius)
+        guard opacity > 0.02 else { return }
+        var c = context
+        c.opacity = opacity
+        let disc = Path(ellipseIn: CGRect(x: center.x - b, y: center.y - b, width: b * 2, height: b * 2))
+        // Solid and round, unlike the hollow bubbles: a shaded rim, a lighter
+        // body toward the light, a thin working-cyan line and a glint.
+        c.fill(disc, with: .color(DesignTokens.Tide.s300))
+        let lit = b * 0.82
+        c.fill(Path(ellipseIn: CGRect(x: center.x - lit - b * 0.12, y: center.y - lit - b * 0.12, width: lit * 2, height: lit * 2)),
+               with: .color(DesignTokens.Tide.s100))
+        c.stroke(disc, with: .color(DesignTokens.Session.working), lineWidth: max(0.5, b * 0.16))
+        let g = b * 0.42
+        c.fill(Path(ellipseIn: CGRect(x: center.x - b * 0.42 - g / 2, y: center.y - b * 0.42 - g / 2, width: g, height: g)),
+               with: .color(DesignTokens.Tide.s50))
     }
 
     private func screen(_ p: SIMD3<Float>, from origin: CGPoint, r: CGFloat) -> CGPoint {
