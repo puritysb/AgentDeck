@@ -111,6 +111,8 @@ Before submission:
 
 ## Questions for OpenAI — prepared, not sent
 
+As of 2026-10-11 these questions are held back while the internal G0a experiment and the minimal CIMD/DCR registration spike run first, so that each question carries our own measured answer or the exact boundary we hit.
+
 Use the OpenAI contact/support channel referenced by the local-MCP packaging guidance. Request a written supported configuration or official example; the documentation does not promise automatic partner enrollment.
 
 > AgentDeck is a sandboxed Mac App Store app with an in-process Swift Streamable HTTP MCP server on IPv4 loopback. We want existing consumer Dots to read explicitly shared requests and report progress through their connected Mac, without a hosted MCP endpoint, external helper, Platform API key or publisher credentials. Our private Secure MCP Tunnel test works, but it is not our proposed consumer distribution route.
