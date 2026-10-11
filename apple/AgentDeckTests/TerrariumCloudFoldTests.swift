@@ -1646,11 +1646,24 @@ final class TerrariumCloudFoldTests: XCTestCase {
 // (the one stack logging uses). Declared at file scope: a C callback must not
 // inherit an actor's isolation.
 private typealias MallocLogger = @convention(c) (UInt32, UInt, UInt, UInt, UInt, UInt32) -> Void
-nonisolated(unsafe) private var countedAllocations = 0
-nonisolated(unsafe) private var countedThread: pthread_t?
+// Raw pointers, not Swift globals: the hook runs inside malloc on every
+// thread, and a Debug-build global access goes through exclusivity tracking,
+// which can itself allocate on a fresh thread and re-enter the hook (CI
+// trapped with SIGILL). Pointer reads and writes are never tracked.
+nonisolated(unsafe) private let countedAllocations: UnsafeMutablePointer<Int> = {
+    let slot = UnsafeMutablePointer<Int>.allocate(capacity: 1)
+    slot.initialize(to: 0)
+    return slot
+}()
+nonisolated(unsafe) private let countedThread: UnsafeMutablePointer<pthread_t?> = {
+    let slot = UnsafeMutablePointer<pthread_t?>.allocate(capacity: 1)
+    slot.initialize(to: nil)
+    return slot
+}()
 private let countingLogger: MallocLogger = { type, _, _, _, _, _ in
-    // MALLOC_LOG_TYPE_ALLOCATE
-    if type & 2 != 0, let thread = countedThread, pthread_equal(thread, pthread_self()) != 0 { countedAllocations += 1 }
+    // MALLOC_LOG_TYPE_ALLOCATE, on the measuring thread only.
+    guard type & 2 != 0, let thread = countedThread.pointee, pthread_equal(thread, pthread_self()) != 0 else { return }
+    countedAllocations.pointee &+= 1
 }
 
 /// Allocations made on the calling thread while `body` runs, or nil when the
@@ -1659,13 +1672,14 @@ private func allocations(_ body: () -> Void) -> Int? {
     guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "malloc_logger") else { body(); return nil }
     let slot = symbol.assumingMemoryBound(to: MallocLogger?.self)
     guard slot.pointee == nil else { body(); return nil }
-    countedAllocations = 0
-    countedThread = pthread_self()
+    // Touch both slots before the hook is live, so their lazy setup never runs inside malloc.
+    countedAllocations.pointee = 0
+    countedThread.pointee = pthread_self()
     slot.pointee = countingLogger
     body()
     slot.pointee = nil
-    countedThread = nil
-    return countedAllocations
+    countedThread.pointee = nil
+    return countedAllocations.pointee
 }
 
 private func seconds(_ body: () -> Void) -> Double {
