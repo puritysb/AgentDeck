@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
-import { DOT_LIMITS, DOT_OAUTH_LIMITS, DOT_INTERACTION_RANK, DOT_INTERACTION_TERMINAL } from '@agentdeck/shared';
+import { DOT_LIMITS, DOT_OAUTH_LIMITS, DOT_PRIVATE_MCP, DOT_INTERACTION_RANK, DOT_INTERACTION_TERMINAL } from '@agentdeck/shared';
 import { tools, schemas, eventDefinition, VERSION } from '../contracts.js';
 it('keeps the native manifest and generated security budgets aligned with the canonical contract', () => {
   const root = new URL('../../../../', import.meta.url);
@@ -9,9 +9,9 @@ it('keeps the native manifest and generated security budgets aligned with the ca
   expect(contract).toEqual({ version: VERSION, event: eventDefinition, schemas,
     tools: tools.map(({ read, ...t }) => ({ ...t, annotations: { readOnlyHint: read, destructiveHint: false, idempotentHint: true, openWorldHint: false } })) });
   const swift = readFileSync(new URL('apple/AgentDeck/Daemon/Dot/DotRules.generated.swift', root), 'utf8');
-  for (const [name, limits] of Object.entries({ DotLimits: DOT_LIMITS, DotOAuthLimits: DOT_OAUTH_LIMITS })) {
+  for (const [name, limits] of Object.entries({ DotLimits: DOT_LIMITS, DotOAuthLimits: DOT_OAUTH_LIMITS, DotPrivateMCP: DOT_PRIVATE_MCP })) {
     const body = swift.match(new RegExp(`enum ${name} \\{([^}]+)\\}`))![1];
-    const found = Object.fromEntries([...body.matchAll(/static let (\w+) = (\d+)/g)].map(m => [m[1], Number(m[2])]));
+    const found = Object.fromEntries([...body.matchAll(/static let (\w+) = ([^\n]+)/g)].map(m => [m[1], JSON.parse(m[2])]));
     expect(found).toEqual(limits);
   }
 });

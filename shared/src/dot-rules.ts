@@ -10,3 +10,10 @@ export const DOT_LIMITS = {
 export const DOT_OAUTH_LIMITS = {
   pending: 16, records: 16384, consentMs: 120000, accessMs: 300000, refreshMs: 2592000000,
 } as const;
+
+/** Private MCP transport; public ingress is never needed for the tunnel target. */
+export const DOT_PRIVATE_MCP = {
+  mode: 'private-tunnel', host: '127.0.0.1', scheme: 'http',
+  port: 9476, controlPort: 9477, minPort: 1024, maxPort: 65535,
+  reservedStart: 9120, reservedEnd: 9139, tokenBytes: 32,
+} as const;

@@ -5,6 +5,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { Store, oauthStorage } from './store.js';
 import { Relay } from './relay.js';
 import { LocalOAuth } from './local-oauth.js';
+import { startPrivateHost, type PrivateHostConfiguration } from './private-runtime.js';
 import { directHTTPS } from './direct-https.js';
 import { createRelayServer } from './server.js';
 
@@ -12,7 +13,9 @@ export interface DirectHostConfiguration {
   enabled: boolean; origin: string; port: number; bind?: string; certificatePath: string; keyPath: string;
   clientId: string; clientSecret: string; redirectURI: string; controlPort: number;
 }
-export async function startDirectHost(config: DirectHostConfiguration, directory: string) {
+export async function startDirectHost(config: DirectHostConfiguration | PrivateHostConfiguration, directory: string) {
+  if ('mode' in config && config.mode === 'private-tunnel') return startPrivateHost(config, directory);
+  config = config as DirectHostConfiguration;
   const endpoint = directHTTPS({ DOT_RELAY_RESOURCE: config.origin, DOT_RELAY_PORT: String(config.port),
     DOT_RELAY_BIND: config.bind ?? '127.0.0.1', DOT_RELAY_TLS_CERT: config.certificatePath, DOT_RELAY_TLS_KEY: config.keyPath });
   if (!Number.isInteger(config.controlPort) || config.controlPort < 1024 || config.controlPort > 65535

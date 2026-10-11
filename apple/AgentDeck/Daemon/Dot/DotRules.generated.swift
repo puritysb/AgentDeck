@@ -31,3 +31,15 @@ enum DotOAuthLimits {
     static let accessMs = 300000
     static let refreshMs = 2592000000
 }
+enum DotPrivateMCP {
+    static let mode = "private-tunnel"
+    static let host = "127.0.0.1"
+    static let scheme = "http"
+    static let port = 9476
+    static let controlPort = 9477
+    static let minPort = 1024
+    static let maxPort = 65535
+    static let reservedStart = 9120
+    static let reservedEnd = 9139
+    static let tokenBytes = 32
+}

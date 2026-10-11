@@ -9,6 +9,8 @@ import { oauthHTTP } from './oauth-http.js';
 // Tools-only compatibility; MCP Events discovery remains a separate experimental contract.
 const TOOL_VERSION = '2025-11-25';
 
+type OperatorAccess = Pick<LocalOAuth, 'pendingRequests' | 'grants' | 'hasAccess' | 'decide' | 'revokeGrant'>;
+
 export type Authenticate = (bearer: string) => Promise<Principal>;
 export function jwtAuth(issuer: string, audience: string, jwks: URL | JWTVerifyGetKey): Authenticate {
   const key = jwks instanceof URL ? createRemoteJWKSet(jwks, { timeoutDuration: 5000 }) : jwks;
@@ -29,7 +31,7 @@ async function body(req: IncomingMessage): Promise<unknown> {
   catch { throw new Fault(-32700, 'Invalid JSON'); }
 }
 export function createRelayServer(relay: Relay, authenticate: Authenticate, resource: string, issuer: string,
-  options: { tls?: ServerOptions; deviceRoutes?: boolean; oauth?: LocalOAuth; operator?: boolean } = {}) {
+  options: { tls?: ServerOptions; deviceRoutes?: boolean; oauth?: LocalOAuth; operator?: boolean; privateBearer?: boolean; operatorAccess?: OperatorAccess } = {}) {
   let budgetAt = Date.now(), budget = 0;
   const handler: RequestListener = async (req, res) => {
     const reply = (status: number, value?: unknown) => {
@@ -40,6 +42,7 @@ export function createRelayServer(relay: Relay, authenticate: Authenticate, reso
     if (++budget > LIMITS.requestsPerMinute) { res.setHeader('Retry-After', '60'); reply(429); return; }
     // Server-to-server experiment; browser requests are unsupported, not granted broad CORS.
     if (req.headers.origin) { reply(403, { error: 'Browser requests are not supported' }); return; }
+    if (options.privateBearer && req.url?.startsWith('/.well-known/')) { reply(404); return; }
     if (options.oauth && !options.operator && await oauthHTTP(req, res, options.oauth)) return;
     if (req.method === 'GET' && req.url === '/.well-known/oauth-protected-resource') {
       reply(200, { resource, authorization_servers: [issuer], scopes_supported: [
@@ -54,27 +57,28 @@ export function createRelayServer(relay: Relay, authenticate: Authenticate, reso
       if (!auth?.startsWith('Bearer ')) throw new Error('Missing bearer');
       principal = await authenticate(auth.slice(7));
     } catch {
-      res.setHeader('WWW-Authenticate', `Bearer resource_metadata="${resource}/.well-known/oauth-protected-resource"`);
+      res.setHeader('WWW-Authenticate', options.privateBearer ? 'Bearer' : `Bearer resource_metadata="${resource}/.well-known/oauth-protected-resource"`);
       reply(401, { error: 'Authorization required' }); return;
     }
     let rpcId: unknown = null;
     const isRpc = req.method === 'POST' && req.url === '/mcp';
     try {
-      if (options.operator && options.oauth) {
-        if (req.url === '/operator/status' && req.method === 'GET') { reply(200, { pending: options.oauth.pendingRequests(), grants: options.oauth.grants(), requests: relay.list() }); return; }
+      const operatorAccess = options.operatorAccess ?? options.oauth;
+      if (options.operator && operatorAccess) {
+        if (req.url === '/operator/status' && req.method === 'GET') { reply(200, { pending: operatorAccess.pendingRequests(), grants: operatorAccess.grants(), requests: relay.list() }); return; }
         if (req.url === '/operator/consent' && req.method === 'POST') {
           const value = await body(req) as { id?: string; approve?: boolean };
           if (typeof value?.id !== 'string' || typeof value.approve !== 'boolean') throw new Fault(-32602, 'Invalid consent decision');
-          options.oauth.decide(value.id, value.approve); reply(200, { accepted: true }); return;
+          operatorAccess.decide(value.id, value.approve); reply(200, { accepted: true }); return;
         }
         if (req.url === '/operator/revoke' && req.method === 'POST') {
           const value = await body(req) as { grantId?: string };
           if (typeof value?.grantId !== 'string') throw new Fault(-32602, 'Invalid grant');
-          options.oauth.revokeGrant(value.grantId); relay.maintenance(); reply(200, { revoked: true }); return;
+          operatorAccess.revokeGrant(value.grantId); relay.maintenance(); reply(200, { revoked: true }); return;
         }
         if (req.url === '/operator/request' && req.method === 'POST') {
           const { grantId, ...input } = await body(req) as Record<string, unknown>;
-          if (typeof grantId !== 'string' || !options.oauth.hasAccess(grantId)) throw new Fault(-32003, 'Invalid grant');
+          if (typeof grantId !== 'string' || !operatorAccess.hasAccess(grantId)) throw new Fault(-32003, 'Invalid grant');
           reply(201, relay.create({ subject: grantId, scopes: ['agentdeck:device'] }, input)); return;
         }
         reply(404, { error: 'Not found' }); return;
