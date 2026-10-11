@@ -11511,12 +11511,6 @@ final class DaemonServer {
                     CodexRolloutResponseReader.tailLines(atPath: path, maxBytes: bytes)
                 } ?? CodexRolloutResponseReader.tailLines(atPath: path, maxBytes: bytes)
             },
-            locate: { sid in
-                AppPreferences.shared.withCodexDirectoryAccess { dir in
-                    CodexRolloutResponseReader.locateRollout(
-                        sessionId: sid, sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))?.path
-                } ?? CodexRolloutResponseReader.locateRollout(sessionId: sid)?.path
-            },
             stat: { path in
                 let read = { () -> String? in
                     guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
@@ -11524,6 +11518,12 @@ final class DaemonServer {
                     return "\(size.int64Value):\(Int64(modified.timeIntervalSince1970 * 1000))"
                 }
                 return AppPreferences.shared.withCodexDirectoryAccess { _ in read() } ?? read()
+            },
+            locate: { sid in
+                AppPreferences.shared.withCodexDirectoryAccess { dir in
+                    CodexRolloutResponseReader.locateRollout(
+                        sessionId: sid, sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))?.path
+                } ?? CodexRolloutResponseReader.locateRollout(sessionId: sid)?.path
             },
             isAlive: { pid in
                 // kill(pid, 0) answers EPERM for everything under the App
