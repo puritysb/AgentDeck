@@ -362,3 +362,41 @@ Private evidence is in ignored `diagnostics/tunnel-runtime/live4-observation.jso
 are published. The Pixoo preview fix still needs installed-runtime verification.
 Events, delegation, a Swift-owned daemon, other users' onboarding and physical
 SDK/firmware displays remain separate acceptance gates.
+
+## Internal G0a experiment — 2026-10-11
+
+Runs 18:57–19:20 KST. Purpose: before contacting OpenAI, find out whether an existing Dot can reach the
+loopback AgentDeck MCP through the Mac's **local** Codex configuration rather than
+the private tunnel. New condition since the 2026-10-09 failure: the ChatGPT desktop
+app's Codex host on this Mac was enrolled in remote control at 2026-10-10 22:36 KST.
+The local Codex host had the loopback server configured with a valid OAuth grant
+(`codex mcp list`: `agentdeck … enabled OAuth`). Each run used a fresh request
+shared with that local grant, and the Dot was asked to record executor host and
+tool inventory and not to work around missing tools.
+
+| Run | What Dot did | Observed result |
+|---|---|---|
+| 1. New local Codex task, private tunnel running | `cloud_threads.create` with the Mac's environment | The task ran commands on `sbstudio.local` and saw five AgentDeck tools, but `get_request` returned `Request not found`: the request belonged to the local Codex grant, and the tools authenticated as the tunnel adapter's grant |
+| 2. Same, private tunnel stopped | Same | Tools came from namespace `mcp__codex_apps` with prefix `agentdeck_mac_studio_` (the personal ChatGPT plugin). The call failed with `McpServerError: Connection timed out` (`UNAVAILABLE`). The local `[mcp_servers.agentdeck]` server was not exposed |
+| 3. Continue an existing local Codex thread created by `codex exec` | `cloud_threads.send_message` | `CloudThreadNotFoundError` (`cloud_thread_not_found`): the locally created thread is not a cloud thread |
+
+Dot reported its route itself: `cloud_threads.list_environments` → `create` with the
+Mac's `environmentId` → `send_message` → `read`. That is cloud coordination with
+local execution, not the desktop app driving a local Codex thread. Consistent with
+that, the local app-server log shows no `thread/start` for these tasks and
+`~/.codex` gained no rollout or thread row for them, although the remote-control
+websocket was connected throughout.
+
+**Result: G0a fails for the local-configuration route.** A Dot-created task executes
+on the connected Mac but receives tools only from cloud-side plugins (`codex_apps`);
+MCP servers configured in the Mac's Codex host are not inherited. The only path
+that reached AgentDeck remains the personal plugin over the private tunnel. More
+local OAuth or consent work cannot change this; the next question for OpenAI is
+whether a supported route exposes a local MCP server to Dot cloud threads executing
+on a connected computer (for example a plugin-bundled stdio server run by the remote
+executor, which the MCP documentation mentions for `experimental_environment =
+"remote"`), and whether that is distributable.
+
+The tunnel client was stopped for run 2 and must be restarted by the operator. The
+expired test requests carry no claims or reports. G0b's client-registration gap is
+handled separately (PR #508).

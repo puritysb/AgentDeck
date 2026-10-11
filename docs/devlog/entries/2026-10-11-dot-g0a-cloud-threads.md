@@ -1,0 +1,5 @@
+# 2026-10-11 — Dot's "local" tasks are cloud threads and do not inherit local MCP servers
+
+An internal G0a run on the connected Mac measured how an existing Dot creates local work. Dot uses `cloud_threads.create` with the Mac's `environmentId`, so the task executes commands on the Mac while its tools come from cloud-side plugins (`mcp__codex_apps`). The Mac's local Codex host had the loopback AgentDeck MCP configured and authenticated, and remote control was connected, yet the server was never exposed to these tasks; continuing a locally created thread fails with `cloud_thread_not_found`. With the private tunnel stopped, the personal plugin's tools timed out. The only working route is still the personal plugin over the private tunnel. Record and next questions: [docs/dot-distribution-decision.md](docs/dot-distribution-decision.md#internal-g0a-experiment-2026-10-11).
+
+**Lesson.** A task that reports a local hostname is not proof of a local Codex host. Check the tool namespace and whether the local app-server created a thread before attributing tools to local configuration.

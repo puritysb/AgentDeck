@@ -14,6 +14,12 @@ A second defect surfaced in the same replay. Timeline exact dedup (`deduplicateE
 
 **What is not proven.** The 12:43 capture is gone, so this does not show which command delivered the generic copy on the audit machine. On that machine the user-global `~/.codex/config.toml` held only AgentDeck's `codex_*` hooks and workmux's, there is no `~/.codex/hooks.json` today, and Codex's `notify` pointed at Computer Use, so the delivering command may have been a since-removed import, a project-level hook, or a path not yet identified. What is proven is that the identity hazard reproduces with real Codex payloads, and that both daemons now converge a Codex payload on the Codex identity from whichever endpoint it arrives at.
 
+## 2026-10-11 — Dot's "local" tasks are cloud threads and do not inherit local MCP servers
+
+An internal G0a run on the connected Mac measured how an existing Dot creates local work. Dot uses `cloud_threads.create` with the Mac's `environmentId`, so the task executes commands on the Mac while its tools come from cloud-side plugins (`mcp__codex_apps`). The Mac's local Codex host had the loopback AgentDeck MCP configured and authenticated, and remote control was connected, yet the server was never exposed to these tasks; continuing a locally created thread fails with `cloud_thread_not_found`. With the private tunnel stopped, the personal plugin's tools timed out. The only working route is still the personal plugin over the private tunnel. Record and next questions: [docs/dot-distribution-decision.md](docs/dot-distribution-decision.md#internal-g0a-experiment-2026-10-11).
+
+**Lesson.** A task that reports a local hostname is not proof of a local Codex host. Check the tool namespace and whether the local app-server created a thread before attributing tools to local configuration.
+
 ## 2026-10-10 — OpenClaw: the deck's prompt went to whichever session spoke last
 
 Found while auditing non-foreground sessions across agents (the same day's Claude background-job entry). The OpenClaw Gateway connection sees every session the agent has. The owner's store held one `agent:main:main`, a voice chat, dashboard chats and a LINE group, and also 465 `agent:main:eval-…` keys, cron jobs, heartbeats, and preflight / probe / diagnostic runs.
