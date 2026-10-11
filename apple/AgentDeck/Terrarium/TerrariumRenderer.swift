@@ -265,7 +265,7 @@ final class TerrariumRenderer {
                 broodIDs.insert(resident.id, at: broodIDs.firstIndex { $0 > resident.id } ?? broodIDs.endIndex)
             }
             // Mutate in place: a copied brood would reallocate its spacing every frame.
-            broods[resident.id]?.observe(explicit: explicit, working: resident.activity == .working,
+            broods[resident.id, default: BackgroundBrood()].observe(explicit: explicit, working: resident.activity == .working,
                                          position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
         }
         // Advance every brood whose creature still has a pose, in or out of the
@@ -273,12 +273,12 @@ final class TerrariumRenderer {
         for id in broodIDs {
             guard let pose = residentPose(id) else { continue }
             if !visibleIDs.contains(id) {
-                broods[id]?.observe(explicit: nil, working: false, position: pose.center,
+                broods[id, default: BackgroundBrood()].observe(explicit: nil, working: false, position: pose.center,
                                     phase: backgroundOrbitPhase, animate: animateCompanions)
             }
             guard let brood = broods[id], !brood.isEmpty || !brood.hasSettled else { continue }
             // The first frame snaps into even spacing; later ones ease.
-            broods[id]?.advance(dt: brood.hasSettled ? broodDt : 0, position: pose.center,
+            broods[id, default: BackgroundBrood()].advance(dt: brood.hasSettled ? broodDt : 0, position: pose.center,
                                 room: broodRoom(id, pose, among: foreground), phase: backgroundOrbitPhase)
         }
 
@@ -521,22 +521,22 @@ final class TerrariumRenderer {
         for other in roster where other.id != id {
             guard let neighbour = residentPose(other.id) else { continue }
             // x is normalized by width, y by height: bring y into width units.
-            room.note([(neighbour.center.x - pose.center.x) / unit,
-                       -(neighbour.center.y - pose.center.y) / canvasAspect / unit])
+            room.note(SIMD2((neighbour.center.x - pose.center.x) / unit,
+                            -(neighbour.center.y - pose.center.y) / canvasAspect / unit))
         }
         return room
     }
 
     func residentPose(_ id: String) -> (center: SIMD2<Float>, radius: Float)? {
-        if let c = octopuses[id] { return ([c.currentX, c.currentY], TerrariumLayout.octopusBodyRadius * c.scale) }
-        if let c = clouds[id] { return ([c.currentX, c.currentY], 0.045 * c.scale) }
-        if let c = opencodeCreatures[id] { return ([c.currentX, c.currentY], 0.044 * c.scale) }
-        if let c = antigravityCreatures[id] { return ([c.currentX, c.currentY], 0.044 * c.scale) }
-        if let c = kiroCreatures[id] { return ([c.currentX, c.currentY], 0.040 * c.scale) }
-        if let c = hermesCreatures[id] { return ([c.currentX, c.currentY], 0.05 * c.scale) }
+        if let c = octopuses[id] { return (SIMD2(c.currentX, c.currentY), TerrariumLayout.octopusBodyRadius * c.scale) }
+        if let c = clouds[id] { return (SIMD2(c.currentX, c.currentY), 0.045 * c.scale) }
+        if let c = opencodeCreatures[id] { return (SIMD2(c.currentX, c.currentY), 0.044 * c.scale) }
+        if let c = antigravityCreatures[id] { return (SIMD2(c.currentX, c.currentY), 0.044 * c.scale) }
+        if let c = kiroCreatures[id] { return (SIMD2(c.currentX, c.currentY), 0.040 * c.scale) }
+        if let c = hermesCreatures[id] { return (SIMD2(c.currentX, c.currentY), 0.05 * c.scale) }
         if isCrayfishFocusId(id), crayfish.visible {
             let p = crayfish.currentPosition()
-            return ([p.x, p.y], TerrariumLayout.crayfishWidthFraction / 2)
+            return (SIMD2(Float(p.x), Float(p.y)), TerrariumLayout.crayfishWidthFraction / 2)
         }
         return nil
     }
@@ -544,6 +544,10 @@ final class TerrariumRenderer {
     /// Unit jar-buddy parts in screen space (y down), belly radius 1 centred on
     /// the origin, facing right. Built once; each frame only moves the context transform.
     private enum BuddyPaths {
+        /// Unit circle at the origin; callers scale and translate a context copy.
+        static let circle = Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2))
+        static let pearlLit = Path(ellipseIn: CGRect(x: -0.94, y: -0.94, width: 1.64, height: 1.64))
+        static let pearlGlint = Path(ellipseIn: CGRect(x: -0.63, y: -0.63, width: 0.42, height: 0.42))
         static let body: Path = {
             var p = Path(ellipseIn: CGRect(x: -1, y: -0.9, width: 2, height: 1.8))
             p.addRect(CGRect(x: -0.46, y: -1.14, width: 0.92, height: 0.4))
@@ -606,12 +610,17 @@ final class TerrariumRenderer {
             guard let brood = broods[id], !brood.isEmpty, let pose = residentPose(id) else { continue }
             let r = max(12, size.width * CGFloat(pose.radius))
             let lag = brood.lag(from: pose.center)
-            // Buddies circle the followed point, which trails the creature when it swims.
-            let center = CGPoint(x: CGFloat(pose.center.x + lag.x) * size.width, y: CGFloat(pose.center.y + lag.y) * size.height)
+            // Buddies circle the followed point, which trails the creature when
+            // it swims, held so the whole orbit stays on the canvas.
+            let center = CGPoint(
+                x: CGFloat(BackgroundWorkPresentation.onCanvas(Float(CGFloat(pose.center.x + lag.x) * size.width), body: Float(r), extent: Float(size.width), axis: .horizontal)),
+                y: CGFloat(BackgroundWorkPresentation.onCanvas(Float(CGFloat(pose.center.y + lag.y) * size.height), body: Float(r), extent: Float(size.height), axis: .vertical)))
             let phase = backgroundOrbitPhase
-            let shown = BackgroundWorkPresentation.visibleCount(brood.count)
+            // Too small to read: tiny creatures show the label alone, then jars without pearls.
+            let shown = BackgroundWorkPresentation.showsJars(bodyPixels: Float(r)) ? BackgroundWorkPresentation.visibleCount(brood.count) : 0
+            let pearls = BackgroundWorkPresentation.showsPearls(bodyPixels: Float(r)) ? brood.pearls : 0
             // Pearl moonlets first: the jars on the same half sit over them.
-            for index in 0..<brood.pearls {
+            for index in 0..<pearls {
                 let pearl = brood.pearl(index: index, phase: phase)
                 guard pearl.isBehind != near else { continue }
                 drawPearl(center: screen(pearl.center, from: center, r: r), radius: CGFloat(pearl.radius) * r,
@@ -660,33 +669,30 @@ final class TerrariumRenderer {
                 }
             }
             // The exact count sits under the creature's feet, below the orbit.
-            if shown > 0 {
+            if brood.count > 0 {
                 let anchor = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height + r * 1.05)
-                context.draw(Text(BackgroundWorkPresentation.label(brood.count)).font(.custom("IBMPlexSans", size: 10))
+                // Sized with the creature: a compact panel gets a small caption, never a banner.
+                context.draw(Text(BackgroundWorkPresentation.label(brood.count)).font(.custom("IBMPlexSans", size: min(10, max(6.5, r * 0.34))))
                                 .foregroundStyle(DesignTokens.Session.working),
                              at: anchor, anchor: .top)
             }
         }
     }
 
-    /// A pearl moonlet: a clay bead with a thin working-cyan rim and a
-    /// tiny specular glint. No face; never pulses.
+    /// A pearl moonlet: a warm, solid bead (sand blushed with coral) with a
+    /// soft working-cyan rim and a nacre glint, so it never reads as a hollow
+    /// air bubble. No face; never pulses. Draws cached unit paths only.
     private func drawPearl(center: CGPoint, radius: CGFloat, opacity: Double, context: inout GraphicsContext) {
         let b = max(1.4, radius)
         guard opacity > 0.02 else { return }
         var c = context
         c.opacity = opacity
-        let disc = Path(ellipseIn: CGRect(x: center.x - b, y: center.y - b, width: b * 2, height: b * 2))
-        // Solid and round, unlike the hollow bubbles: a shaded rim, a lighter
-        // body toward the light, a thin working-cyan line and a glint.
-        c.fill(disc, with: .color(DesignTokens.Tide.s300))
-        let lit = b * 0.82
-        c.fill(Path(ellipseIn: CGRect(x: center.x - lit - b * 0.12, y: center.y - lit - b * 0.12, width: lit * 2, height: lit * 2)),
-               with: .color(DesignTokens.Tide.s100))
-        c.stroke(disc, with: .color(DesignTokens.Session.working), lineWidth: max(0.5, b * 0.16))
-        let g = b * 0.42
-        c.fill(Path(ellipseIn: CGRect(x: center.x - b * 0.42 - g / 2, y: center.y - b * 0.42 - g / 2, width: g, height: g)),
-               with: .color(DesignTokens.Tide.s50))
+        c.translateBy(x: center.x, y: center.y)
+        c.scaleBy(x: b, y: b)
+        c.fill(BuddyPaths.circle, with: .color(BackgroundWorkPresentation.pearlShade))
+        c.fill(BuddyPaths.pearlLit, with: .color(BackgroundWorkPresentation.pearlBody))
+        c.stroke(BuddyPaths.circle, with: .color(DesignTokens.Session.working.opacity(0.6)), lineWidth: max(0.12, 0.5 / b))
+        c.fill(BuddyPaths.pearlGlint, with: .color(DesignTokens.Tide.s50.opacity(0.9)))
     }
 
     private func screen(_ p: SIMD3<Float>, from origin: CGPoint, r: CGFloat) -> CGPoint {
@@ -742,8 +748,10 @@ final class TerrariumRenderer {
     private func drawBubble(_ bubble: BackgroundWorkPresentation.Bubble, from origin: CGPoint, r: CGFloat, context: inout GraphicsContext) {
         let p = screen(bubble.center, from: origin, r: r)
         let br = max(1.5, CGFloat(bubble.radius) * r)
-        context.stroke(Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2)),
-                       with: .color(DesignTokens.Tide.s50.opacity(Double(bubble.opacity) * 0.8)), lineWidth: 1)
+        var c = context
+        c.translateBy(x: p.x, y: p.y)
+        c.scaleBy(x: br, y: br)
+        c.stroke(BuddyPaths.circle, with: .color(DesignTokens.Tide.s50.opacity(Double(bubble.opacity) * 0.8)), lineWidth: 1 / br)
     }
 
 

@@ -2,6 +2,7 @@
 import XCTest
 import RealityKit
 import SwiftUI
+import Darwin
 @testable import AgentDeck
 
 @MainActor
@@ -1640,3 +1641,267 @@ final class TerrariumCloudFoldTests: XCTestCase {
     }
 }
 #endif
+
+// Counts heap allocations made by one thread through libmalloc's logging hook
+// (the one stack logging uses). Declared at file scope: a C callback must not
+// inherit an actor's isolation.
+private typealias MallocLogger = @convention(c) (UInt32, UInt, UInt, UInt, UInt, UInt32) -> Void
+nonisolated(unsafe) private var countedAllocations = 0
+nonisolated(unsafe) private var countedThread: pthread_t?
+private let countingLogger: MallocLogger = { type, _, _, _, _, _ in
+    // MALLOC_LOG_TYPE_ALLOCATE
+    if type & 2 != 0, let thread = countedThread, pthread_equal(thread, pthread_self()) != 0 { countedAllocations += 1 }
+}
+
+/// Allocations made on the calling thread while `body` runs, or nil when the
+/// hook is unavailable (then only timing is asserted).
+private func allocations(_ body: () -> Void) -> Int? {
+    guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "malloc_logger") else { body(); return nil }
+    let slot = symbol.assumingMemoryBound(to: MallocLogger?.self)
+    guard slot.pointee == nil else { body(); return nil }
+    countedAllocations = 0
+    countedThread = pthread_self()
+    slot.pointee = countingLogger
+    body()
+    slot.pointee = nil
+    countedThread = nil
+    return countedAllocations
+}
+
+private func seconds(_ body: () -> Void) -> Double {
+    let start = DispatchTime.now().uptimeNanoseconds
+    body()
+    return Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
+}
+
+/// Jar buddies and pearl moonlets must not make the dashboard stutter or
+/// grow memory: a crowded tank (12 creatures, 20 tasks each, so 3 jars and
+/// 9 pearls apiece) is measured against the same tank with no tasks, for the
+/// 2D update and draw paths and the 3D update path. Budgets carry headroom
+/// over the measured numbers so CI runners do not flake, yet a per-frame
+/// allocation or an accidental O(n²) fails.
+@MainActor
+final class JarBuddyBudgetTests: XCTestCase {
+    private static func tank(tasks: Int) -> TerrariumState {
+        var state = TerrariumState()
+        for i in 0..<3 {
+            let x = Float(0.12) + Float(i) * 0.3
+            state.creatures.append(.init(id: "claude-\(i)", projectName: "Claude \(i)", modelName: nil, state: .working, homeX: x, homeY: 0.25, scale: 1))
+            state.cloudCreatures.append(.init(id: "codex-\(i)", projectName: "Codex \(i)", modelName: nil, state: .pulsing, homeX: x + 0.1, homeY: 0.45, scale: 1))
+            state.opencodeCreatures.append(.init(id: "opencode-\(i)", projectName: "OpenCode \(i)", modelName: nil, state: .pulsing, homeX: x, homeY: 0.62, scale: 1))
+            state.kiroCreatures.append(.init(id: "kiro-\(i)", projectName: "Kiro \(i)", modelName: nil, state: .working, homeX: x + 0.12, homeY: 0.78, scale: 1))
+        }
+        let ids = state.creatures.map(\.id) + state.cloudCreatures.map(\.id) + state.opencodeCreatures.map(\.id) + state.kiroCreatures.map(\.id)
+        state.backgroundTaskCounts = Dictionary(uniqueKeysWithValues: ids.map { ($0, tasks) })
+        return state
+    }
+
+    private struct Sample { var microsPerFrame: Double; var allocationsPerFrame: Double? }
+
+    private func measureUpdate(tasks: Int, frames: Int = 600) -> Sample {
+        let renderer = TerrariumRenderer()
+        renderer.animateHermes = false
+        let state = Self.tank(tasks: tasks)
+        for _ in 0..<120 { renderer.update(dt: 1.0 / 60, state: state) }
+        var time = 0.0
+        let count = allocations { time = seconds { for _ in 0..<frames { renderer.update(dt: 1.0 / 60, state: state) } } }
+        if tasks > 0 { XCTAssertGreaterThanOrEqual(renderer.broods.values.filter { $0.count == tasks }.count, 8, "Every working foreground creature carries its tasks") }
+        return Sample(microsPerFrame: time / Double(frames) * 1e6, allocationsPerFrame: count.map { Double($0) / Double(frames) })
+    }
+
+    private func measureDraw(tasks: Int, frames: Int = 40) throws -> Double {
+        let renderer = TerrariumRenderer()
+        renderer.animateHermes = false
+        let state = Self.tank(tasks: tasks)
+        for _ in 0..<120 { renderer.update(dt: 1.0 / 60, state: state) }
+        func frame() throws {
+            renderer.update(dt: 1.0 / 60, state: state)
+            let image = ImageRenderer(content: Canvas { context, size in renderer.draw(context: &context, size: size) }.frame(width: 1200, height: 750))
+            _ = try XCTUnwrap(image.cgImage)
+        }
+        for _ in 0..<5 { try frame() }
+        var total = 0.0
+        for _ in 0..<frames { var failure: Error?; total += seconds { do { try frame() } catch { failure = error } }; if let failure { throw failure } }
+        return total / Double(frames) * 1e3
+    }
+
+
+    func testCrowdedTankBuddyWorkStaysWithinFrameBudget() throws {
+        // Brood maths alone, the per-frame work every renderer repeats:
+        // steady state must not touch the heap.
+        var brood = BackgroundBrood()
+        brood.observe(explicit: 20, working: true, position: [0.4, 0.4], phase: 0, animate: true)
+        brood.advance(dt: 1.0 / 60, position: [0.4, 0.4], room: .init(), phase: 0)
+        var phase: Float = 0
+        var sink: Float = 0
+        let mathAllocations = allocations {
+            for _ in 0..<600 {
+                phase += 1.0 / 60
+                brood.observe(explicit: 20, working: true, position: [0.4, 0.4], phase: phase, animate: true)
+                brood.advance(dt: 1.0 / 60, position: [0.4, 0.4], room: .init(), phase: phase)
+                for index in 0..<BackgroundWorkPresentation.visibleCount(brood.count) {
+                    let buddy = brood.buddy(index: index, phase: phase)
+                    sink += buddy.center.x + BackgroundWorkPresentation.simmer(buddy, slot: index, k: 0, phase: phase).radius
+                }
+                for index in 0..<brood.pearls { sink += brood.pearl(index: index, phase: phase).center.y }
+            }
+        }
+        XCTAssertFalse(sink.isNaN)
+        // Optimized code (the shipped Release build) must not touch the heap at
+        // all; -Onone builds allocate while iterating ranges, so Debug is bounded.
+        let optimized = !_isDebugAssertConfiguration()
+        if let mathAllocations {
+            if optimized { XCTAssertEqual(mathAllocations, 0, "Steady-state buddy and pearl maths allocate nothing") }
+            else { XCTAssertLessThan(mathAllocations / 600, 60, "Debug build: bounded per-frame maths allocations") }
+        }
+
+        let baseline = measureUpdate(tasks: 0), crowded = measureUpdate(tasks: 20)
+        let baseDraw = try measureDraw(tasks: 0), crowdedDraw = try measureDraw(tasks: 20)
+        let report = String(format: "2D update: %.1f µs/frame baseline, %.1f µs crowded (+%.1f); allocations/frame %@ → %@. 2D draw 1200×750: %.2f ms baseline, %.2f ms crowded (+%.2f).",
+                            baseline.microsPerFrame, crowded.microsPerFrame, crowded.microsPerFrame - baseline.microsPerFrame,
+                            baseline.allocationsPerFrame.map { String(format: "%.2f", $0) } ?? "n/a",
+                            crowded.allocationsPerFrame.map { String(format: "%.2f", $0) } ?? "n/a",
+                            baseDraw, crowdedDraw, crowdedDraw - baseDraw)
+        print("[jar-buddy-budget] " + report)
+        add(XCTAttachment(string: report))
+        // Measured on an M-series Mac (2026-10-12): optimized +10 µs update,
+        // +0.8 ms draw, zero extra allocations; Debug +63 µs, +0.8 ms, ~310
+        // extra allocations from -Onone iteration. Budgets leave CI headroom.
+        XCTAssertLessThan(crowded.microsPerFrame - baseline.microsPerFrame, optimized ? 120 : 600, report)
+        if let a = baseline.allocationsPerFrame, let b = crowded.allocationsPerFrame {
+            if optimized { XCTAssertLessThanOrEqual(b - a, 0.05, "Buddies add no per-frame allocation to the update: " + report) }
+            else { XCTAssertLessThan(b - a, 600, "Debug build: bounded per-frame allocations: " + report) }
+        }
+        // Drawing 36 jars, 108 pearls and their bubbles stays a small share of a 60 fps frame.
+        XCTAssertLessThan(crowdedDraw - baseDraw, 6, report)
+    }
+
+    func testCrowdedNativeSceneBuddyWorkStaysWithinFrameBudget() async throws {
+        func run(tasks: Int) async throws -> Sample {
+            let scene = AquariumResidents()
+            scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+            scene.sync(Self.tank(tasks: tasks), aspect: 1.6)
+            for _ in 0..<60 { scene.step(1.0 / 60) }
+            let frames = 300
+            var time = 0.0
+            let count = allocations { time = seconds { for _ in 0..<frames { scene.step(1.0 / 60) } } }
+            if tasks > 0 {
+                let enabled = scene.residents.values.compactMap { $0.findEntity(named: "background-work") }.filter(\.isEnabled).count
+                XCTAssertGreaterThan(enabled, 0, "Native residents carry buddies")
+            }
+            return Sample(microsPerFrame: time / Double(frames) * 1e6, allocationsPerFrame: count.map { Double($0) / Double(frames) })
+        }
+        let baseline = try await run(tasks: 0), crowded = try await run(tasks: 20)
+        let report = String(format: "3D step: %.1f µs/frame baseline, %.1f µs crowded (+%.1f); allocations/frame %@ → %@.",
+                            baseline.microsPerFrame, crowded.microsPerFrame, crowded.microsPerFrame - baseline.microsPerFrame,
+                            baseline.allocationsPerFrame.map { String(format: "%.2f", $0) } ?? "n/a",
+                            crowded.allocationsPerFrame.map { String(format: "%.2f", $0) } ?? "n/a")
+        print("[jar-buddy-budget] " + report)
+        add(XCTAttachment(string: report))
+        // Measured (2026-10-12): optimized +117 µs and zero extra allocations;
+        // Debug +277 µs and ~420 extra allocations from -Onone code.
+        let optimized = !_isDebugAssertConfiguration()
+        XCTAssertLessThan(crowded.microsPerFrame - baseline.microsPerFrame, optimized ? 1200 : 3000, report)
+        if let a = baseline.allocationsPerFrame, let b = crowded.allocationsPerFrame {
+            if optimized { XCTAssertLessThanOrEqual(b - a, 0.05, "Buddies add no per-frame allocation to the 3D step: " + report) }
+            else { XCTAssertLessThan(b - a, 900, "Debug build: bounded per-frame allocations: " + report) }
+        }
+    }
+}
+
+/// Review evidence only: set AGENTDECK_BROOD_FORMS_OUTPUT to render every
+/// dashboard form (sizes, habitat overlay on light and dark, Reduce Motion,
+/// 3D) with 1, 4, 12 and 20 tasks across three creature kinds.
+@MainActor
+final class JarBuddyFormsTests: XCTestCase {
+    private func state(tasks: Int, scale: Float) -> TerrariumState {
+        var state = TerrariumState()
+        state.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.2, homeY: 0.38, scale: scale)]
+        state.cloudCreatures = [.init(id: "codex", projectName: "Release", modelName: nil, state: .pulsing, homeX: 0.5, homeY: 0.5, scale: scale)]
+        state.opencodeCreatures = [.init(id: "opencode", projectName: "Docs", modelName: nil, state: .pulsing, homeX: 0.8, homeY: 0.36, scale: scale)]
+        state.backgroundTaskCounts = ["claude": tasks, "codex": tasks, "opencode": tasks]
+        return state
+    }
+
+    func testRenderJarBuddiesInEveryDashboardForm() async throws {
+        guard let output = ProcessInfo.processInfo.environment["AGENTDECK_BROOD_FORMS_OUTPUT"] else {
+            throw XCTSkip("Set AGENTDECK_BROOD_FORMS_OUTPUT to render every dashboard form")
+        }
+        let folder = URL(fileURLWithPath: output, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // Name, canvas size, habitat drawn, backdrop (overlay forms), Reduce Motion.
+        let forms: [(String, CGSize, Bool, Color?, Bool)] = [
+            ("mac-dashboard-large", CGSize(width: 1600, height: 1000), true, nil, false),
+            ("mac-window", CGSize(width: 1000, height: 560), true, nil, false),
+            ("mac-small-window", CGSize(width: 560, height: 340), true, nil, false),
+            ("mac-compact-panel", CGSize(width: 360, height: 220), true, nil, false),
+            ("ipad-portrait", CGSize(width: 820, height: 640), true, nil, false),
+            ("iphone-portrait", CGSize(width: 390, height: 420), true, nil, false),
+            ("overlay-on-3d-dark", CGSize(width: 1000, height: 560), false, DesignTokens.Ink.s900, false),
+            ("overlay-on-3d-light", CGSize(width: 1000, height: 560), false, DesignTokens.Tide.s50, false),
+            ("reduce-motion", CGSize(width: 1000, height: 560), true, nil, true),
+        ]
+        for (name, size, habitat, backdrop, still) in forms {
+            for tasks in [1, 4, 12, 20] {
+                let renderer = TerrariumRenderer()
+                renderer.animateHermes = false
+                renderer.animateCompanions = !still
+                let state = state(tasks: tasks, scale: 1)
+                for _ in 0..<(still ? 2 : 50) { renderer.update(dt: 1.0 / 30, state: state) }
+                let canvas = Canvas { context, size in renderer.draw(context: &context, size: size, includeHabitat: habitat) }
+                    .frame(width: size.width, height: size.height)
+                    .background(backdrop ?? .clear)
+                let image = ImageRenderer(content: canvas)
+                image.scale = 2
+                let data = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+                try XCTUnwrap(NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]))
+                    .write(to: folder.appendingPathComponent(String(format: "%@-%02d.png", name, tasks)))
+            }
+        }
+        // 3D habitat: three resident kinds, the same counts.
+        for tasks in [1, 4, 12, 20] {
+            let scene = AquariumResidents()
+            scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+            scene.sync(state(tasks: tasks, scale: 1), aspect: 1.6)
+            for _ in 0..<40 { scene.step(1.0 / 30) }
+            let view = ARView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
+            let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            window.contentView = view
+            window.setFrameOrigin(NSScreen.main?.visibleFrame.origin ?? .zero)
+            window.orderFrontRegardless()
+            defer { window.orderOut(nil) }
+            view.environment.background = .color(NSColor(DesignTokens.Ink.s900))
+            let anchor = AnchorEntity(world: .zero)
+            anchor.addChild(scene.root)
+            let positions = scene.residents.values.map(\.position)
+            let middle = positions.reduce(SIMD3<Float>.zero, +) / Float(max(1, positions.count))
+            let spread = positions.map { simd_distance($0, middle) }.max() ?? 1
+            let camera = PerspectiveCamera()
+            camera.camera.fieldOfViewInDegrees = 40
+            camera.look(at: middle + [0, 0.15, 0], from: middle + [0, 0.8, 2.6 + spread * 2.2], relativeTo: nil)
+            anchor.addChild(camera)
+            let light = DirectionalLight()
+            light.light.intensity = 3000
+            light.look(at: middle, from: middle + [-2, 3, 4], relativeTo: nil)
+            anchor.addChild(light)
+            view.scene.addAnchor(anchor)
+            try await Task.sleep(for: .seconds(2))
+            let image: NSImage? = await withCheckedContinuation { continuation in
+                let completion = SnapshotCompletion(continuation)
+                let deadline = Task { @MainActor in
+                    do { try await Task.sleep(for: .seconds(8)) } catch { return }
+                    completion.finish(nil)
+                }
+                view.snapshot(saveToHDR: false) { image in
+                    Task { @MainActor in
+                        deadline.cancel()
+                        completion.finish(image)
+                    }
+                }
+            }
+            if let data = image?.tiffRepresentation, let png = NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]) {
+                try png.write(to: folder.appendingPathComponent(String(format: "habitat-3d-%02d.png", tasks)))
+            }
+        }
+    }
+}
