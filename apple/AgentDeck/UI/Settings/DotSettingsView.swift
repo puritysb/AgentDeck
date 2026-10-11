@@ -88,6 +88,7 @@ struct DotSettingsView: View {
                     ForEach(snapshot.consents) { consent in
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Connection request · \(consent.verificationCode)").font(.headline)
+                            Text(consentClientLabel(consent)).font(.caption).textSelection(.enabled)
                             Text(consent.redirectURI).font(.caption).textSelection(.enabled)
                             Text(consent.scopes.joined(separator: ", ")).font(.caption)
                             Toggle("The code matches the page I opened from ChatGPT", isOn: Binding(
@@ -173,6 +174,14 @@ struct DotSettingsView: View {
     }
     private func configureLocal() {
         perform { try await DotHost.shared.configureLocal() }
+    }
+    /// A registered client named itself; only a metadata document's host vouches for the name.
+    private func consentClientLabel(_ consent: DotConsent) -> String {
+        switch consent.clientKind {
+        case .preregistered: return consent.clientName
+        case .registered: return "\(consent.clientName) · name reported by the app, not verified"
+        case .metadata: return "\(consent.clientName) · published by \(URL(string: consent.clientID)?.host ?? consent.clientID)"
+        }
     }
     private func configure() {
         guard let certificate, let port = UInt16(port) else { message = "Choose a certificate and valid port."; return }

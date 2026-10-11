@@ -120,3 +120,40 @@ it('binds local MCP explicitly, rejects foreign Host/Origin and creates requests
     await operator('revoke', { grantId }); expect((await rpc()).status).toBe(401);
   } finally { await host.stop(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+it('lets a stock MCP client register over loopback HTTP and still requires native consent before any token', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dot-dcr-'));
+  const config = { enabled: true, mode: 'local' as const, port: await freePort(), controlPort: await freePort() };
+  const host = await startDirectHost(config, directory);
+  const call = (path: string, init: RequestInit = {}) => fetch(host.origin + path, { redirect: 'manual', signal: AbortSignal.timeout(2000), ...init });
+  const operator = (path: string, body?: object) => fetch(`http://127.0.0.1:${config.controlPort}/operator/${path}`, {
+    signal: AbortSignal.timeout(2000), method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json',
+      Authorization: `Bearer ${readFileSync(join(directory, 'dot-operator-token'), 'utf8')}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const register = (body: string, headers: Record<string, string> = { 'Content-Type': 'application/json' }) => call('/oauth/register', { method: 'POST', headers, body });
+  try {
+    const metadata = await (await call('/.well-known/oauth-authorization-server')).json();
+    expect(metadata.registration_endpoint).toBe(`${host.origin}/oauth/register`);
+    expect((await (await call('/.well-known/oauth-protected-resource')).json()).scopes_supported).toEqual(['agentdeck:read', 'agentdeck:report']);
+    const callback = 'http://127.0.0.1:51816/callback/us-sGnlul-Ab';
+    const valid = JSON.stringify({ client_name: 'Codex', redirect_uris: [callback], token_endpoint_auth_method: 'none' });
+    expect((await register(valid, { 'Content-Type': 'application/x-www-form-urlencoded' })).status).toBe(400);
+    expect((await register(valid, { 'Content-Type': 'application/json', Origin: 'https://evil.example' })).status).toBe(403);
+    expect((await register(JSON.stringify({ redirect_uris: [callback], pad: 'x'.repeat(5000) }))).status).toBe(400);
+    expect(await (await register('{')).json()).toEqual({ error: 'invalid_client_metadata' });
+    expect(await (await register(JSON.stringify({ redirect_uris: ['https://evil.example/cb'] }))).json()).toEqual({ error: 'invalid_redirect_uri' });
+    const created = await register(valid);
+    expect(created.status).toBe(201);
+    const client = await created.json();
+    const verifier = 'v'.repeat(64);
+    const params = new URLSearchParams({ client_id: client.client_id, resource: host.origin, redirect_uri: callback, response_type: 'code', state: 'test',
+      scope: 'agentdeck:read agentdeck:report', code_challenge_method: 'S256', code_challenge: createHash('sha256').update(verifier).digest('base64url') });
+    const begin = await call('/oauth/authorize?' + params);
+    expect(begin.status).toBe(302);
+    const token = () => call('/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: client.client_id, resource: host.origin, redirect_uri: callback, grant_type: 'authorization_code', code: 'x'.repeat(43), code_verifier: verifier }) });
+    expect((await token()).status).toBe(400);
+    const pending = (await (await operator('status')).json()).pending;
+    expect(pending).toEqual([expect.objectContaining({ clientId: client.client_id, clientName: 'Codex', clientKind: 'registered', redirectURI: callback })]);
+    expect((await (await operator('status')).json()).grants).toEqual([]);
+  } finally { await host.stop(); rmSync(directory, { recursive: true, force: true }); }
+});

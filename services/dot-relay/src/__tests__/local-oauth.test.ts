@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, afterEach, expect, it } from 'vitest';
-import { LocalOAuth, OAUTH_LIMITS } from '../local-oauth.js';
+import { LocalOAuth, OAUTH_LIMITS, clientRedirect, metadataRedirectMatches, metadataURL } from '../local-oauth.js';
 import { Store, oauthStorage } from '../store.js';
 const config = { resource: 'https://agentdeck.example', clientId: 'registered-chatgpt-client', clientSecret: 'c'.repeat(48), redirectURI: 'https://chatgpt.com/connector_platform_oauth_redirect' };
 const verifier = 'v'.repeat(64);
@@ -95,4 +95,128 @@ it('supports explicit loopback public clients without weakening confidential cli
   expect(() => auth.exchange(wrong)).toThrow('invalid_grant');
   expect(auth.authenticate(auth.exchange(params).access_token).subject).toBeTruthy();
   expect(() => new LocalOAuth({ ...local, local: false }, oauthStorage(store))).toThrow();
+});
+
+const local = { resource: 'http://127.0.0.1:9476', clientId: 'agentdeck-local-plugin', clientSecret: '', redirectURI: 'http://127.0.0.1:1455/callback', local: true };
+const vectors = JSON.parse(readFileSync(new URL('../../../../shared/dot-oauth-client-vectors.json', import.meta.url), 'utf8'));
+const challenge = createHash('sha256').update(verifier).digest('base64url');
+const begin = (oauth: LocalOAuth, client: string, redirect: string) => oauth.request(new URLSearchParams({ response_type: 'code', client_id: client,
+  redirect_uri: redirect, resource: local.resource, scope: 'agentdeck:read agentdeck:report', state: 's', code_challenge_method: 'S256', code_challenge: challenge }));
+function approve(oauth: LocalOAuth, id: string) {
+  oauth.decide(id, true); const status = oauth.status(id); if (!('redirect' in status)) throw new Error('not approved');
+  return new URL(status.redirect).searchParams.get('code')!;
+}
+const tokenFor = (client: string, redirect: string, code: string) => new URLSearchParams({ grant_type: 'authorization_code', client_id: client,
+  resource: local.resource, redirect_uri: redirect, code, code_verifier: verifier });
+const refreshFor = (client: string, token: string) => new URLSearchParams({ grant_type: 'refresh_token', client_id: client, resource: local.resource, refresh_token: token });
+
+it('replays the shared loopback client vectors the Swift host also replays', () => {
+  for (const c of vectors.registeredRedirects) expect(clientRedirect(c.value), c.name).toBe(c.valid);
+  for (const c of vectors.metadataMatches) expect(metadataRedirectMatches(c.registered, c.requested), c.name).toBe(c.valid);
+  for (const c of vectors.metadataURLs) expect(metadataURL(c.value), c.name).toBe(c.valid);
+});
+it('advertises registration only on a loopback host, with least-privilege scopes', () => {
+  expect(auth.metadata()).not.toHaveProperty('registration_endpoint');
+  expect(() => auth.register({ redirect_uris: ['http://127.0.0.1:4000/callback'] })).toThrow('invalid_request');
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  expect(auth.metadata()).toMatchObject({ registration_endpoint: `${local.resource}/oauth/register`, client_id_metadata_document_supported: true,
+    scopes_supported: ['agentdeck:read', 'agentdeck:report'], token_endpoint_auth_methods_supported: ['none'] });
+});
+it('registers a secretless loopback client that still needs consent, and binds its codes, refreshes and revocation to it', () => {
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  const redirect = 'http://127.0.0.1:51816/callback/us-sGnlul-Ab';
+  const client = auth.register({ client_name: 'Codex\u0007', redirect_uris: [redirect], grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code'], token_endpoint_auth_method: 'none', scope: 'agentdeck:read agentdeck:report', application_type: 'native' });
+  expect(client).toMatchObject({ client_name: 'Codex', redirect_uris: [redirect], token_endpoint_auth_method: 'none' });
+  expect(client).not.toHaveProperty('client_secret');
+  expect(client.client_id).toMatch(/^dcr_[A-Za-z0-9_-]{43}$/);
+  // Registration is not authorization: the exact registered callback only, and nothing issues before consent.
+  expect(() => begin(auth, client.client_id, 'http://127.0.0.1:51817/callback/us-sGnlul-Ab')).toThrow('invalid_request');
+  expect(() => begin(auth, client.client_id, local.redirectURI)).toThrow('invalid_request');
+  expect(() => begin(auth, 'dcr_' + 'x'.repeat(43), redirect)).toThrow('invalid_request');
+  const id = begin(auth, client.client_id, redirect);
+  expect(auth.pendingRequests()[0]).toMatchObject({ clientId: client.client_id, clientName: 'Codex', clientKind: 'registered' });
+  expect(auth.grants()).toEqual([]);
+  const code = approve(auth, id);
+  expect(() => auth.exchange(tokenFor(local.clientId, redirect, code))).toThrow('invalid_grant');
+  const tokens = auth.exchange(tokenFor(client.client_id, redirect, code));
+  const subject = auth.authenticate(tokens.access_token).subject;
+  expect(store.read().oauth!.grants.find(g => g.id === subject)!.client).toBe(client.client_id);
+  // Another client can neither refresh (nor burn) this refresh token, nor revoke the grant.
+  expect(() => auth.exchange(refreshFor(local.clientId, tokens.refresh_token))).toThrow('invalid_grant');
+  auth.revoke(new URLSearchParams({ client_id: local.clientId, token: tokens.refresh_token }));
+  expect(auth.hasAccess(subject)).toBe(true);
+  const next = auth.exchange(refreshFor(client.client_id, tokens.refresh_token));
+  auth.revoke(new URLSearchParams({ client_id: client.client_id, token: next.refresh_token }));
+  expect(auth.hasAccess(subject)).toBe(false);
+  // Registrations persist across restart.
+  store.close(); store = new Store(path); auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  expect(() => begin(auth, client.client_id, redirect)).not.toThrow();
+});
+it('refuses registrations that are not secretless loopback code clients', () => {
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  const ok = 'http://127.0.0.1:4000/callback';
+  for (const bad of [{}, [], { redirect_uris: [] }, { redirect_uris: ['https://evil.example/callback'] }, { redirect_uris: ['http://127.0.0.1/callback'] },
+    { redirect_uris: Array.from({ length: OAUTH_LIMITS.redirectURIs + 1 }, (_, i) => `http://127.0.0.1:${4000 + i}/callback`) }]) {
+    expect(() => auth.register(bad), JSON.stringify(bad)).toThrow(/invalid_redirect_uri|invalid_client_metadata/);
+  }
+  for (const bad of [{ token_endpoint_auth_method: 'client_secret_basic' }, { grant_types: ['client_credentials'] }, { grant_types: [] },
+    { response_types: ['token'] }, { scope: 'agentdeck:device' }, { client_name: 7 }]) {
+    expect(() => auth.register({ redirect_uris: [ok], ...bad })).toThrow('invalid_client_metadata');
+  }
+  expect(store.read().oauth?.clients ?? []).toEqual([]);
+});
+it('bounds registrations and evicts only clients nobody depends on', () => {
+  auth = new LocalOAuth(local, oauthStorage(store), () => now);
+  const redirect = 'http://127.0.0.1:4000/callback';
+  const link = (client: string) => auth.exchange(tokenFor(client, redirect, approve(auth, begin(auth, client, redirect))));
+  const first = auth.register({ redirect_uris: [redirect] }); link(first.client_id);
+  const second = auth.register({ redirect_uris: [redirect] });
+  for (let i = 2; i < OAUTH_LIMITS.clients; i++) auth.register({ redirect_uris: [redirect] });
+  auth.register({ redirect_uris: [redirect] });
+  const ids = () => store.read().oauth!.clients!.map(c => c.id);
+  expect(ids()).toHaveLength(OAUTH_LIMITS.clients);
+  expect(ids()).toContain(first.client_id); expect(ids()).not.toContain(second.client_id);
+  // Once every registration holds a live grant, a new one is refused rather than displacing it.
+  for (const id of ids()) if (id !== first.client_id) link(id);
+  expect(() => auth.register({ redirect_uris: [redirect] })).toThrow('temporarily_unavailable');
+  expect(ids()).toHaveLength(OAUTH_LIMITS.clients);
+});
+it('accepts a Client ID Metadata Document only from an allow-listed host, validated, cached and port-agnostic', async () => {
+  const url = 'https://chatgpt.com/oauth/codex/us-sGnlul-Ab/client.json';
+  const document = { client_id: url, client_name: 'Codex', application_type: 'native', token_endpoint_auth_method: 'none',
+    redirect_uris: ['http://127.0.0.1/callback/us-sGnlul-Ab', 'http://localhost/callback/us-sGnlul-Ab'], grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'] };
+  const fetched: string[] = [];
+  let served: unknown = document;
+  auth = new LocalOAuth(local, oauthStorage(store), () => now, async u => { fetched.push(u); return served; });
+  await auth.prepareClient('https://evil.example/client.json');
+  await auth.prepareClient('http://127.0.0.1:9476/client.json');
+  expect(fetched).toEqual([]);
+  expect(() => begin(auth, 'https://evil.example/client.json', 'http://127.0.0.1:52065/callback/us-sGnlul-Ab')).toThrow('invalid_request');
+  await Promise.all([auth.prepareClient(url), auth.prepareClient(url)]); await auth.prepareClient(url);
+  expect(fetched).toEqual([url]);
+  const redirect = 'http://127.0.0.1:52065/callback/us-sGnlul-Ab';
+  expect(() => begin(auth, url, 'http://127.0.0.1:52065/callback/other')).toThrow('invalid_request');
+  const id = begin(auth, url, redirect);
+  expect(auth.pendingRequests()[0]).toMatchObject({ clientId: url, clientName: 'Codex', clientKind: 'metadata' });
+  const tokens = auth.exchange(tokenFor(url, redirect, approve(auth, id)));
+  expect(auth.authenticate(tokens.access_token).subject).toBeTruthy();
+  // An expired document is refetched before the next consent; a refresh needs no document.
+  now += OAUTH_LIMITS.metadataCacheMs;
+  expect(auth.exchange(refreshFor(url, tokens.refresh_token)).access_token).toBeTruthy();
+  expect(() => begin(auth, url, redirect)).toThrow('invalid_request');
+  for (const bad of [{ ...document, client_id: url + 'x' }, { ...document, token_endpoint_auth_method: 'client_secret_basic' },
+    { ...document, redirect_uris: ['https://evil.example/callback'] }, { ...document, redirect_uris: [] }, { ...document, grant_types: ['implicit'] }, 'nope']) {
+    served = bad;
+    await expect(auth.prepareClient(url)).rejects.toThrow('invalid_client');
+  }
+  served = document; await auth.prepareClient(url);
+  expect(() => begin(auth, url, redirect)).not.toThrow();
+});
+it('refuses persisted client registrations that break the loopback rules', () => {
+  const state = (clients: unknown) => ({ version: 1 as const, grants: [], tokens: [], clients: clients as never });
+  for (const clients of [[{ id: 'dcr_' + 'a'.repeat(43), name: 'x', redirects: ['https://evil.example/callback'], createdAt: 1 }],
+    [{ id: 'bad', name: 'x', redirects: ['http://127.0.0.1:4000/callback'], createdAt: 1 }], 'x']) {
+    expect(() => new LocalOAuth(local, { read: () => state(clients), change: fn => fn(state(clients)) })).toThrow('Invalid persisted OAuth state');
+  }
 });

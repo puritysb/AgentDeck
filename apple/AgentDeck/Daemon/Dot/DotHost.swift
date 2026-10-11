@@ -184,11 +184,22 @@ final class DotHost {
         guard let target = URLComponents(string: request.target), target.host == nil, target.scheme == nil else { return .init(status: 400) }
         do {
             if request.method == "GET", target.path == "/.well-known/oauth-protected-resource" {
-                return .json(["resource": config.origin, "authorization_servers": [config.origin], "scopes_supported": DotOAuth.scopes])
+                // A loopback host never advertises Events subscription, so a stock client requests least privilege.
+                return .json(["resource": config.origin, "authorization_servers": [config.origin],
+                              "scopes_supported": config.oauth.local == true ? DotLocalMCP.advertisedScopes : DotOAuth.scopes])
             }
             if request.method == "GET", target.path == "/.well-known/oauth-authorization-server" { return .json(oauth.metadata()) }
+            if request.method == "POST", target.path == "/oauth/register", config.oauth.local == true {
+                guard request.headers["content-type"]?.hasPrefix("application/json") == true,
+                      request.body.count <= DotOAuthLimits.registrationBytes else { return .json(["error": "invalid_request"], status: 400) }
+                guard let input = try? JSONSerialization.jsonObject(with: request.body) else { return .json(["error": "invalid_client_metadata"], status: 400) }
+                return .json(try oauth.register(input), status: 201)
+            }
             if request.method == "GET", target.path == "/oauth/authorize" {
-                let id = try oauth.begin(Self.parameters(target.percentEncodedQuery ?? ""))
+                let params = try Self.parameters(target.percentEncodedQuery ?? "")
+                // A metadata-document client is fetched first; consent itself stays synchronous.
+                try await oauth.prepare(params["client_id"])
+                let id = try oauth.begin(params)
                 return .init(status: 302, headers: ["Location": config.origin + "/oauth/status?id=" + id])
             }
             if request.method == "GET", target.path == "/oauth/status" {
@@ -233,7 +244,8 @@ final class DotHost {
             }
         } catch {
             let message = error.localizedDescription
-            let known = ["invalid_request", "invalid_client", "invalid_target", "invalid_grant", "invalid_scope", "unsupported_grant_type", "temporarily_unavailable"]
+            let known = ["invalid_request", "invalid_client", "invalid_target", "invalid_grant", "invalid_scope", "unsupported_grant_type", "temporarily_unavailable",
+                         "invalid_client_metadata", "invalid_redirect_uri"]
             return .json(["error": known.contains(message) ? message : "invalid_request"], status: 400)
         }
     }

@@ -10,7 +10,8 @@ it('keeps the native manifest and generated security budgets aligned with the ca
     tools: tools.map(({ read, ...t }) => ({ ...t, annotations: { readOnlyHint: read, destructiveHint: false, idempotentHint: true, openWorldHint: false } })) });
   const swift = readFileSync(new URL('apple/AgentDeck/Daemon/Dot/DotRules.generated.swift', root), 'utf8');
   for (const [name, limits] of Object.entries({ DotLimits: DOT_LIMITS, DotOAuthLimits: DOT_OAUTH_LIMITS, DotLocalMCP: DOT_LOCAL_MCP })) {
-    const body = swift.match(new RegExp(`enum ${name} \\{([^}]+)\\}`))![1];
+    // An enum closes on its own line; a value (the callback pattern) may itself contain a brace.
+    const body = swift.match(new RegExp(`enum ${name} \\{\\n([\\s\\S]*?)\\n\\}`))![1];
     const found = Object.fromEntries([...body.matchAll(/static let (\w+) = ([^\n]+)/g)].map(m => [m[1], JSON.parse(m[2])]));
     expect(found).toEqual(limits);
   }

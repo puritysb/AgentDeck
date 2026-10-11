@@ -5,6 +5,7 @@ import { Fault, LIMITS, VERSION, type Principal } from './contracts.js';
 import type { Relay } from './relay.js';
 import type { LocalOAuth } from './local-oauth.js';
 import { oauthHTTP } from './oauth-http.js';
+import { DOT_LOCAL_MCP } from '@agentdeck/shared';
 
 // Tools-only compatibility; MCP Events discovery remains a separate experimental contract.
 const TOOL_VERSION = '2025-11-25';
@@ -43,7 +44,8 @@ export function createRelayServer(relay: Relay, authenticate: Authenticate, reso
     if (options.local && req.headers.host !== `${req.socket.localAddress}:${req.socket.localPort}`) { reply(403); return; }
     if (options.oauth && !options.operator && await oauthHTTP(req, res, options.oauth)) return;
     if (req.method === 'GET' && req.url === '/.well-known/oauth-protected-resource') {
-      reply(200, { resource, authorization_servers: [issuer], scopes_supported: [
+      // A loopback host never advertises Events subscription, so a stock client requests least privilege.
+      reply(200, { resource, authorization_servers: [issuer], scopes_supported: options.local ? [...DOT_LOCAL_MCP.advertisedScopes] : [
         'agentdeck:read', 'agentdeck:report', 'agentdeck:subscribe',
       ] }); return;
     }

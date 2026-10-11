@@ -1,0 +1,44 @@
+{
+  "description": "Loopback Dot OAuth client rules shared by the Node host (services/dot-relay/src/local-oauth.ts) and the Swift host (DotOAuth.swift). Both suites replay every case.",
+  "registeredRedirects": [
+    { "name": "codex callback with segment", "value": "http://127.0.0.1:51816/callback/us-sGnlul-Ab", "valid": true },
+    { "name": "bare callback path", "value": "http://127.0.0.1:38472/callback", "valid": true },
+    { "name": "localhost host", "value": "http://localhost:38472/callback/abc", "valid": true },
+    { "name": "missing port", "value": "http://127.0.0.1/callback/abc", "valid": false },
+    { "name": "privileged port", "value": "http://127.0.0.1:80/callback", "valid": false },
+    { "name": "https scheme", "value": "https://127.0.0.1:38472/callback", "valid": false },
+    { "name": "lan address", "value": "http://192.168.1.2:38472/callback", "valid": false },
+    { "name": "decimal loopback alias", "value": "http://2130706433:38472/callback", "valid": false },
+    { "name": "ipv6 loopback", "value": "http://[::1]:38472/callback", "valid": false },
+    { "name": "other path", "value": "http://127.0.0.1:38472/other", "valid": false },
+    { "name": "two segments", "value": "http://127.0.0.1:38472/callback/a/b", "valid": false },
+    { "name": "dot in segment", "value": "http://127.0.0.1:38472/callback/a.b", "valid": false },
+    { "name": "query", "value": "http://127.0.0.1:38472/callback?next=evil", "valid": false },
+    { "name": "fragment", "value": "http://127.0.0.1:38472/callback#x", "valid": false },
+    { "name": "userinfo", "value": "http://user@127.0.0.1:38472/callback", "valid": false },
+    { "name": "trailing slash", "value": "http://127.0.0.1:38472/callback/", "valid": false },
+    { "name": "uppercase host is not canonical", "value": "http://LOCALHOST:38472/callback", "valid": false }
+  ],
+  "metadataMatches": [
+    { "name": "portless entry matches any port", "registered": ["http://127.0.0.1/callback/us-sGnlul-Ab"], "requested": "http://127.0.0.1:52065/callback/us-sGnlul-Ab", "valid": true },
+    { "name": "localhost entry", "registered": ["http://localhost/callback/x"], "requested": "http://localhost:52065/callback/x", "valid": true },
+    { "name": "explicit port must match", "registered": ["http://127.0.0.1:1455/callback"], "requested": "http://127.0.0.1:1455/callback", "valid": true },
+    { "name": "explicit port differs", "registered": ["http://127.0.0.1:1455/callback"], "requested": "http://127.0.0.1:1456/callback", "valid": false },
+    { "name": "host differs", "registered": ["http://localhost/callback/x"], "requested": "http://127.0.0.1:52065/callback/x", "valid": false },
+    { "name": "segment differs", "registered": ["http://127.0.0.1/callback/x"], "requested": "http://127.0.0.1:52065/callback/y", "valid": false },
+    { "name": "request without port", "registered": ["http://127.0.0.1/callback/x"], "requested": "http://127.0.0.1/callback/x", "valid": false },
+    { "name": "request with query", "registered": ["http://127.0.0.1/callback/x"], "requested": "http://127.0.0.1:52065/callback/x?a=1", "valid": false }
+  ],
+  "metadataURLs": [
+    { "name": "codex document", "value": "https://chatgpt.com/oauth/codex/us-sGnlul-Ab/client.json", "valid": true },
+    { "name": "plain http", "value": "http://chatgpt.com/oauth/codex/x/client.json", "valid": false },
+    { "name": "unlisted host", "value": "https://evil.example/client.json", "valid": false },
+    { "name": "suffix of listed host", "value": "https://chatgpt.com.evil.example/client.json", "valid": false },
+    { "name": "subdomain", "value": "https://api.chatgpt.com/client.json", "valid": false },
+    { "name": "explicit port", "value": "https://chatgpt.com:8443/client.json", "valid": false },
+    { "name": "query", "value": "https://chatgpt.com/client.json?a=1", "valid": false },
+    { "name": "userinfo", "value": "https://user@chatgpt.com/client.json", "valid": false },
+    { "name": "root path", "value": "https://chatgpt.com/", "valid": false },
+    { "name": "loopback", "value": "https://127.0.0.1/client.json", "valid": false }
+  ]
+}

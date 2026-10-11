@@ -30,6 +30,14 @@ enum DotOAuthLimits {
     static let consentMs = 120000
     static let accessMs = 300000
     static let refreshMs = 2592000000
+    static let clients = 64
+    static let redirectURIs = 4
+    static let registrationBytes = 4096
+    static let clientNameCharacters = 64
+    static let metadataBytes = 8192
+    static let metadataMs = 5000
+    static let metadataCacheMs = 300000
+    static let metadataURLCharacters = 256
 }
 enum DotLocalMCP {
     static let host = "127.0.0.1"
@@ -38,4 +46,7 @@ enum DotLocalMCP {
     static let callbackPort = 1455
     static let clientId = "agentdeck-local-plugin"
     static let callbackPath = "/callback"
+    static let clientCallbackPattern = "^/callback(/[A-Za-z0-9_-]{1,64})?$"
+    static let metadataHosts = ["chatgpt.com"]
+    static let advertisedScopes = ["agentdeck:read","agentdeck:report"]
 }

@@ -49,6 +49,111 @@ final class DotDirectHostingTests: XCTestCase {
             XCTAssertNil(auth.authenticate(access))
         }.value
     }
+
+    /// Replays shared/dot-oauth-client-vectors.json, the file the Node host's suite also replays.
+    func testLoopbackClientRulesMatchTheNodeVectors() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/dot-oauth-client-vectors.json")
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let redirects = try XCTUnwrap(root["registeredRedirects"] as? [[String: Any]])
+        let matches = try XCTUnwrap(root["metadataMatches"] as? [[String: Any]])
+        let documents = try XCTUnwrap(root["metadataURLs"] as? [[String: Any]])
+        XCTAssertFalse(redirects.isEmpty || matches.isEmpty || documents.isEmpty)
+        for c in redirects { XCTAssertEqual(DotOAuth.clientRedirect(c["value"] as! String), c["valid"] as! Bool, c["name"] as! String) }
+        for c in matches {
+            XCTAssertEqual(DotOAuth.metadataRedirectMatches(c["registered"] as! [String], c["requested"] as! String), c["valid"] as! Bool, c["name"] as! String)
+        }
+        for c in documents { XCTAssertEqual(DotOAuth.metadataURL(c["value"] as! String), c["valid"] as! Bool, c["name"] as! String) }
+    }
+
+    func testRegisteredLoopbackClientNeedsConsentAndOwnsItsCodesRefreshesAndRevocation() async throws {
+        try await Task { @DaemonActor in
+            let origin = "http://127.0.0.1:9476", callback = "http://127.0.0.1:51816/callback/us-sGnlul-Ab"
+            let config = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: "http://127.0.0.1:1455/callback", local: true)
+            var persisted = Data()
+            let auth = try DotOAuth(config: config, data: nil) { persisted = $0 }
+            let metadata = auth.metadata()
+            XCTAssertEqual(metadata["registration_endpoint"] as? String, origin + "/oauth/register")
+            XCTAssertEqual(metadata["client_id_metadata_document_supported"] as? Bool, true)
+            XCTAssertEqual(metadata["scopes_supported"] as? [String], ["agentdeck:read", "agentdeck:report"])
+            for bad: [String: Any] in [[:], ["redirect_uris": ["http://127.0.0.1/callback"]], ["redirect_uris": ["https://evil.example/callback"]]] {
+                XCTAssertThrowsError(try auth.register(bad))
+            }
+            for bad: [String: Any] in [["token_endpoint_auth_method": "client_secret_basic"], ["grant_types": ["client_credentials"]], ["scope": "agentdeck:device"]] {
+                XCTAssertThrowsError(try auth.register(bad.merging(["redirect_uris": [callback]]) { a, _ in a }))
+            }
+            let client = try auth.register(["client_name": "Codex\u{7}", "redirect_uris": [callback], "token_endpoint_auth_method": "none"])
+            let clientID = try XCTUnwrap(client["client_id"] as? String)
+            XCTAssertEqual(client["client_name"] as? String, "Codex"); XCTAssertNil(client["client_secret"])
+            let verifier = String(repeating: "v", count: 64)
+            @DaemonActor func begin(_ id: String, _ redirect: String) throws -> String {
+                try auth.begin(["client_id": id, "redirect_uri": redirect, "resource": origin, "response_type": "code", "scope": "agentdeck:read agentdeck:report",
+                                "state": "s", "code_challenge_method": "S256", "code_challenge": dotDigest(verifier)])
+            }
+            XCTAssertThrowsError(try begin(clientID, "http://127.0.0.1:51817/callback/us-sGnlul-Ab"))
+            XCTAssertThrowsError(try begin(clientID, "http://127.0.0.1:1455/callback"))
+            let ticket = try begin(clientID, callback)
+            XCTAssertEqual(auth.requests().first?.clientKind, .registered)
+            XCTAssertTrue(auth.grants().isEmpty)
+            try auth.decide(ticket, approve: true)
+            let code = URLComponents(string: try XCTUnwrap(auth.redirect(ticket)))!.queryItems!.first { $0.name == "code" }!.value!
+            var params = ["client_id": DotLocalMCP.clientId, "resource": origin, "redirect_uri": callback, "grant_type": "authorization_code", "code": code, "code_verifier": verifier]
+            XCTAssertThrowsError(try auth.exchange(params)); params["client_id"] = clientID
+            let tokens = try auth.exchange(params)
+            let grant = try XCTUnwrap(auth.authenticate(tokens["access_token"] as! String))
+            XCTAssertEqual(grant.client, clientID)
+            let refresh = tokens["refresh_token"] as! String
+            let foreign = ["client_id": DotLocalMCP.clientId, "resource": origin, "grant_type": "refresh_token", "refresh_token": refresh]
+            XCTAssertThrowsError(try auth.exchange(foreign))
+            try auth.revoke(["client_id": DotLocalMCP.clientId, "token": refresh])
+            XCTAssertNotNil(auth.grant(grant.id))
+            let next = try auth.exchange(foreign.merging(["client_id": clientID]) { _, b in b })
+            try auth.revoke(["client_id": clientID, "token": next["refresh_token"] as! String])
+            XCTAssertNil(auth.grant(grant.id))
+            let restarted = try DotOAuth(config: config, data: persisted) { _ in }
+            XCTAssertNoThrow(try restarted.begin(["client_id": clientID, "redirect_uri": callback, "resource": origin, "response_type": "code",
+                "scope": "agentdeck:read", "state": "s", "code_challenge_method": "S256", "code_challenge": dotDigest(verifier)]))
+        }.value
+    }
+
+    func testMetadataDocumentClientIsFetchedOnlyFromAllowListedHostsAndMatchesAnyLoopbackPort() async throws {
+        try await Task { @DaemonActor in
+            let origin = "http://127.0.0.1:9476", id = "https://chatgpt.com/oauth/codex/us-sGnlul-Ab/client.json"
+            let config = DotOAuthConfiguration(origin: origin, clientID: DotLocalMCP.clientId, secret: "", redirectURI: "http://127.0.0.1:1455/callback", local: true)
+            final class Served: @unchecked Sendable { var body: [String: Any] = [:]; var fetched: [URL] = [] }
+            let served = Served()
+            let document: [String: Any] = ["client_id": id, "client_name": "Codex", "token_endpoint_auth_method": "none", "grant_types": ["authorization_code", "refresh_token"],
+                                           "response_types": ["code"], "redirect_uris": ["http://127.0.0.1/callback/us-sGnlul-Ab", "http://localhost/callback/us-sGnlul-Ab"]]
+            served.body = document
+            var now = 1_000
+            let auth = try DotOAuth(config: config, data: nil, clock: { now }, fetchMetadata: { url in
+                served.fetched.append(url); return try JSONSerialization.data(withJSONObject: served.body)
+            }) { _ in }
+            let verifier = String(repeating: "v", count: 64), redirect = "http://127.0.0.1:52065/callback/us-sGnlul-Ab"
+            @DaemonActor func begin(_ client: String, _ callback: String) throws -> String {
+                try auth.begin(["client_id": client, "redirect_uri": callback, "resource": origin, "response_type": "code", "scope": "agentdeck:read agentdeck:report",
+                                "state": "s", "code_challenge_method": "S256", "code_challenge": dotDigest(verifier)])
+            }
+            try await auth.prepare("https://evil.example/client.json")
+            try await auth.prepare("http://127.0.0.1:9476/client.json")
+            XCTAssertTrue(served.fetched.isEmpty)
+            try await auth.prepare(id); try await auth.prepare(id)
+            XCTAssertEqual(served.fetched.count, 1)
+            XCTAssertThrowsError(try begin(id, "http://127.0.0.1:52065/callback/other"))
+            let ticket = try begin(id, redirect)
+            XCTAssertEqual(auth.requests().first?.clientKind, .metadata)
+            try auth.decide(ticket, approve: true)
+            let code = URLComponents(string: try XCTUnwrap(auth.redirect(ticket)))!.queryItems!.first { $0.name == "code" }!.value!
+            let tokens = try auth.exchange(["client_id": id, "resource": origin, "redirect_uri": redirect, "grant_type": "authorization_code", "code": code, "code_verifier": verifier])
+            XCTAssertNotNil(auth.authenticate(tokens["access_token"] as! String))
+            now += DotOAuthLimits.metadataCacheMs
+            XCTAssertThrowsError(try begin(id, redirect))
+            for bad in [["client_id": id + "x"], ["token_endpoint_auth_method": "client_secret_basic"], ["redirect_uris": ["https://evil.example/callback"]], ["grant_types": ["implicit"]]] {
+                served.body = document.merging(bad) { _, b in b }
+                do { try await auth.prepare(id); XCTFail("accepted \(bad)") } catch {}
+            }
+        }.value
+    }
     func testLocalRequestPersistsWithoutSubscriptionAndNeverDeliversWebhook() async throws {
         try await Task { @DaemonActor in
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
