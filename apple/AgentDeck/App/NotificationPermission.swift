@@ -2,16 +2,17 @@
 //
 // AgentDeck posts local notifications when a session needs the user's
 // explicit response (`AttentionNotifier`) via `UNUserNotificationCenter`.
-// Without a prior `requestAuthorization` call those posts silently drop on
-// the floor and App Store users never see them. This helper shows a
-// one-time explanatory `NSAlert` on first launch, then defers to the real
-// system dialog only if the user consents — avoiding the classic "blind
-// system prompt" antipattern while staying idempotent via
-// `AppPreferences.hasRequestedNotifications`.
+// Without a `requestAuthorization` call those posts silently drop, so the
+// request is offered — never forced — from the two places the user chooses
+// it: the last onboarding step and Settings ("Choose Notifications…").
+// Nothing asks at launch: an unexplained system prompt before the user has
+// seen what AgentDeck does is the antipattern App Review and the HIG warn
+// against, and the button the user pressed is already the explanation, so
+// it goes straight to the system dialog.
 //
-// The flag flips to `true` in BOTH branches (primary = "Enable", secondary
-// = "Not Now") because the goal is "don't nag". Settings provides a
-// "Request Again" escape hatch for users who change their mind.
+// Once the system has an answer, requestAuthorization can no longer change
+// it, so a second press shows the real state and — when notifications are
+// off — opens AgentDeck's page in System Settings, the only place to undo it.
 
 #if os(macOS)
 import Foundation
@@ -19,32 +20,39 @@ import UserNotifications
 import AppKit
 
 enum NotificationPermission {
-    /// Reopening setup must not pretend an OS-level denial can be retried
-    /// through requestAuthorization. Show the actual state and recovery path.
-    @MainActor
-    static func chooseFromUserAction() async {
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        if settings.authorizationStatus == .notDetermined {
-            AppPreferences.shared.hasRequestedNotifications = false
-            await requestIfNeeded()
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = settings.authorizationStatus == .denied
-            ? "Notifications are off" : "Notifications are enabled"
-        alert.informativeText = "You can change AgentDeck's notification settings in System Settings → Notifications → AgentDeck."
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+    /// What a user-initiated "Choose Notifications…" press should do for a
+    /// given system authorization state.
+    enum Action: Equatable {
+        /// The system has not asked yet: show its dialog now.
+        case requestAuthorization
+        /// Notifications are off: say so and offer System Settings.
+        case explainDenied
+        /// Notifications are on (fully or provisionally).
+        case confirmEnabled
     }
 
-    /// Show an explanatory NSAlert on first launch, then call
-    /// UNUserNotificationCenter.requestAuthorization only if the user
-    /// says yes. Idempotent — guarded by AppPreferences.hasRequestedNotifications.
+    static func action(for status: UNAuthorizationStatus) -> Action {
+        switch status {
+        case .notDetermined: return .requestAuthorization
+        case .denied: return .explainDenied
+        default: return .confirmEnabled
+        }
+    }
+
+    /// AgentDeck's own page in System Settings → Notifications. Opening a
+    /// settings URL is a plain LaunchServices call, not a subprocess.
+    static func settingsURL(bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> URL {
+        var components = URLComponents(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            components.queryItems = [URLQueryItem(name: "id", value: bundleIdentifier)]
+        }
+        return components.url!
+    }
+
     @MainActor
-    static func requestIfNeeded() async {
+    static func chooseFromUserAction() async {
         // xctest host runs our @main App without a user present; a modal
-        // NSAlert would deadlock the test runner. Match SingletonGuard's
-        // environment-based bypass so `xcodebuild test` never hangs here.
+        // NSAlert or the system dialog would deadlock the test runner.
         let env = ProcessInfo.processInfo.environment
         if env["XCTestConfigurationFilePath"] != nil
             || env["XCTestBundlePath"] != nil
@@ -52,32 +60,31 @@ enum NotificationPermission {
             return
         }
 
-        let prefs = AppPreferences.shared
-        if prefs.hasRequestedNotifications {
-            return
-        }
-
-        let alert = NSAlert()
-        alert.messageText = "Enable AgentDeck notifications?"
-        alert.informativeText = "AgentDeck can notify you when sessions complete, APME reports are ready, or usage limits approach. You can change this later in System Settings → Notifications."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Enable Notifications")
-        alert.addButton(withTitle: "Not Now")
-
-        let response = alert.runModal()
-        // Mark asked regardless — the system prompt (or the user's decline)
-        // is the real signal. A subsequent call to requestAuthorization on
-        // an already-decided authorization status is a no-op, but we still
-        // want to avoid re-showing our pre-prompt.
-        prefs.hasRequestedNotifications = true
-
-        if response == .alertFirstButtonReturn {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch action(for: settings.authorizationStatus) {
+        case .requestAuthorization:
+            AppPreferences.shared.hasRequestedNotifications = true
             do {
                 _ = try await UNUserNotificationCenter.current()
                     .requestAuthorization(options: [.alert, .sound, .badge])
             } catch {
                 NSLog("[AgentDeck] requestAuthorization failed: \(error.localizedDescription)")
             }
+        case .explainDenied:
+            let alert = NSAlert()
+            alert.messageText = "Notifications are off"
+            alert.informativeText = "Turn on notifications for AgentDeck in System Settings to hear when a session needs your attention."
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Not Now")
+            if alert.runModal() == .alertFirstButtonReturn {
+                NSWorkspace.shared.open(settingsURL())
+            }
+        case .confirmEnabled:
+            let alert = NSAlert()
+            alert.messageText = "Notifications are on"
+            alert.informativeText = "AgentDeck will notify you when a session needs your attention. You can change this in System Settings → Notifications → AgentDeck."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
         }
     }
 }

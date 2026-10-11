@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock node-pty before any imports that use it
@@ -393,6 +394,9 @@ describe('OpenClawAdapter gateway protocol', () => {
     expect(sent.params.client.id).toBe('gateway-client');
     expect(sent.params.client.mode).toBe('backend');
     expect(sent.params.client.displayName).toBe('AgentDeck');
+    // The installed package version, never a stale constant.
+    expect(sent.params.client.version).toBe(JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')).version);
+    expect(sent.params.client.version).not.toBe('0.3.0');
     expect(sent.params.client.deviceFamily).toBe('mac');
     expect(sent.params.role).toBe('operator');
     expect(sent.params.caps).toContain('tool-events');

@@ -45,6 +45,20 @@ describe('Hermes setup readiness', () => {
     vi.stubEnv('AGENTDECK_NO_HERMES_HOOKS', '1');
     expect(await collectHermesDiagnostic({ home: dir, dataDir: dir })).toMatchObject({ ok: false, enablement: 'disabled', hooks: 'disabled' });
   });
+  it.each(['1', ' TRUE ', 'on'])('HERMES_SAFE_MODE=%s means Hermes loads no plugin, even an enabled one', async value => {
+    const dir = home();
+    writeFileSync(join(dir, 'config.yaml'), 'plugins: {enabled: [agentdeck-observer]}');
+    vi.stubEnv('HERMES_SAFE_MODE', value);
+    const result = await collectHermesDiagnostic({ home: dir, dataDir: dir });
+    expect(result).toMatchObject({ ok: false, enablement: 'enabled', hooks: 'disabled' });
+    expect(result.nextSteps.join(' ')).toContain('HERMES_SAFE_MODE');
+    expect(result.nextSteps.join(' ')).not.toContain('AGENTDECK_NO_HERMES_HOOKS');
+  });
+  it.each(['0', 'false', ''])('HERMES_SAFE_MODE=%s leaves hooks allowed', async value => {
+    const dir = home();
+    vi.stubEnv('HERMES_SAFE_MODE', value);
+    expect((await collectHermesDiagnostic({ home: dir, dataDir: dir })).hooks).toBe('allowed');
+  });
   it.each(['plugins: [', 'plugins: 42', 'false', 'plugins: {enabled: wrong}'])('malformed config %s is unknown, never disabled', async config => {
     const dir = home(); writeFileSync(join(dir, 'config.yaml'), config);
     expect((await collectHermesDiagnostic({ home: dir, dataDir: dir })).enablement).toBe('unknown');
