@@ -1,0 +1,343 @@
+{
+  "$comment": "Hook harness routing (#490). Replayed by shared/src/__tests__/hook-harness.test.ts, bridge/src/__tests__/hook-harness-routing.test.ts and apple/AgentDeckTests/CodexHookHarnessTests.swift. Codex payloads are verbatim captures from codex-cli 0.160.1 (`codex exec`, 2026-10-11) with paths scrubbed; the Claude payloads follow Claude Code's documented hook shape; the notify payload follows Codex's documented notify shape. `route`: as-posted | codex | drop. `fingerprint` absent means no fingerprint. `hashVectors` pin the FNV-1a/UTF-16 text hash both daemons use; `distinctInstances` are pairs that must fingerprint differently.",
+  "vectors": [
+    {
+      "name": "Codex SessionStart (codex-cli 0.160.1, captured 2026-10-11) posted to the generic /hooks/SessionStart",
+      "event": "SessionStart",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "SessionStart",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "source": "startup"
+      },
+      "route": "codex",
+      "routedEvent": "codex_session_start",
+      "fingerprint": "codex_session_start|01a12890-d8be-74b2-b19b-05218da072ae|startup"
+    },
+    {
+      "name": "Codex UserPromptSubmit (captured) posted to the generic endpoint",
+      "event": "UserPromptSubmit",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "UserPromptSubmit",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "prompt": "Reply with exactly the word: pong"
+      },
+      "route": "codex",
+      "routedEvent": "codex_user_prompt_submit",
+      "fingerprint": "codex_user_prompt_submit|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|07d39fd6"
+    },
+    {
+      "name": "Codex Stop (captured) posted to the generic endpoint",
+      "event": "Stop",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "codex",
+      "routedEvent": "codex_stop",
+      "fingerprint": "codex_stop|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|7adb16b7"
+    },
+    {
+      "name": "Codex Stop through the Swift daemon's snake_case mapping",
+      "event": "stop",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "codex",
+      "routedEvent": "codex_stop",
+      "fingerprint": "codex_stop|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|7adb16b7"
+    },
+    {
+      "name": "Codex PreToolUse (captured envelope, scrubbed tool) through the Swift mapping",
+      "event": "tool_start",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "PreToolUse",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls"
+        },
+        "tool_use_id": "call_scrubbed01"
+      },
+      "route": "codex",
+      "routedEvent": "codex_tool_start",
+      "fingerprint": "codex_tool_start|01a12890-d8be-74b2-b19b-05218da072ae|call_scrubbed01"
+    },
+    {
+      "name": "the same Codex Stop on its own codex_stop endpoint is not re-routed, and fingerprints identically",
+      "event": "codex_stop",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "as-posted",
+      "fingerprint": "codex_stop|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|7adb16b7"
+    },
+    {
+      "name": "Codex notify agent-turn-complete (documented shape) on the Swift /hook body",
+      "event": "agent-turn-complete",
+      "payload": {
+        "type": "agent-turn-complete",
+        "thread-id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn-id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "cwd": "/Users/user/src/work",
+        "input-messages": [
+          "Reply with exactly the word: pong"
+        ],
+        "last-assistant-message": "pong"
+      },
+      "route": "codex",
+      "routedEvent": "codex_turn_complete",
+      "fingerprint": "codex_turn_complete|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|7adb16b7"
+    },
+    {
+      "name": "a Codex payload for an event Codex has no AgentDeck route for is dropped",
+      "event": "Notification",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Notification",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "source": "startup"
+      },
+      "route": "drop"
+    },
+    {
+      "name": "a Codex payload under PreCompact is dropped, never a Claude row",
+      "event": "PreCompact",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "PreCompact",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "source": "startup"
+      },
+      "route": "drop"
+    },
+    {
+      "name": "Claude Code Stop (documented shape) stays as posted",
+      "event": "Stop",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-work/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "permission_mode": "default",
+        "hook_event_name": "Stop",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "Claude Code SessionStart stays as posted",
+      "event": "SessionStart",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-work/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+        "model": "claude-opus-5-5"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "claude-glm (Claude Code serving glm) stays Claude: the model is not harness evidence",
+      "event": "SessionStart",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-work/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+        "model": "glm-5.3"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "a Claude payload naming an OpenAI model is still Claude: the model is not harness evidence",
+      "event": "SessionStart",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-work/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+        "model": "gpt-6-astra"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "an OpenCode-prefixed hook is never re-routed",
+      "event": "opencode_stop",
+      "payload": {
+        "session_id": "ses_scrubbed0001",
+        "thread_id": "01a12890-d8be-74b2-b19b-05218da072ae"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "a Claude transcript whose file name merely contains 'rollout' is not a Codex rollout",
+      "event": "Stop",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-rollout-2026-10-11T10-25-44-x/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "permission_mode": "default",
+        "hook_event_name": "Stop",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "as-posted"
+    }
+  ],
+  "noFingerprint": [
+    {
+      "name": "a Codex Stop without turn_id has no fingerprint (two turns could collide)",
+      "event": "codex_stop",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      }
+    },
+    {
+      "name": "a Codex tool hook without tool_use_id has no fingerprint",
+      "event": "codex_tool_end",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "PreToolUse",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "tool_name": "Bash",
+        "tool_input": {
+          "command": "ls"
+        }
+      }
+    },
+    {
+      "name": "a hook with no thread has no fingerprint",
+      "event": "codex_stop",
+      "payload": {
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7"
+      }
+    }
+  ],
+  "hashVectors": [
+    {
+      "text": "",
+      "hash": "811c9dc5"
+    },
+    {
+      "text": "a",
+      "hash": "e40c292c"
+    },
+    {
+      "text": "pong",
+      "hash": "7adb16b7"
+    },
+    {
+      "text": "한글😀",
+      "hash": "a9ad2f5c"
+    }
+  ],
+  "distinctInstances": [
+    {
+      "name": "a Stop continued by a blocking hook (same turn, new text) is a new instance",
+      "event": "codex_stop",
+      "a": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "b": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": true,
+        "last_assistant_message": "pong — continued after a blocking Stop hook"
+      }
+    },
+    {
+      "name": "input steered into a running turn (same turn, new prompt) is a new instance",
+      "event": "codex_user_prompt_submit",
+      "a": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "UserPromptSubmit",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "prompt": "Reply with exactly the word: pong"
+      },
+      "b": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "UserPromptSubmit",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "prompt": "also run the linter"
+      }
+    }
+  ]
+}

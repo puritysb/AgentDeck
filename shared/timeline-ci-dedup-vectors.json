@@ -77,5 +77,86 @@
       "sessionId": "hermes-session"
     },
     "action": "skip"
+  },
+  {
+    "name": "different sessions keep an identical reply (#490: two Codex threads both answering pong)",
+    "before": {
+      "ts": 1000,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "01a12890-d8be-74b2-b19b-05218da072ae",
+      "agentType": "codex-cli"
+    },
+    "incoming": {
+      "ts": 1400,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "01a12890-0000-7000-8000-00000000e2e2",
+      "agentType": "codex-cli"
+    },
+    "action": "add"
+  },
+  {
+    "name": "different sessions keep an identical prompt",
+    "before": {
+      "ts": 1000,
+      "type": "chat_start",
+      "raw": "run the tests",
+      "sessionId": "session-a"
+    },
+    "incoming": {
+      "ts": 1100,
+      "type": "chat_start",
+      "raw": "run the tests",
+      "sessionId": "session-b"
+    },
+    "action": "add"
+  },
+  {
+    "name": "the same session absorbs a duplicate reply",
+    "before": {
+      "ts": 1000,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "01a12890-d8be-74b2-b19b-05218da072ae"
+    },
+    "incoming": {
+      "ts": 1400,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "01a12890-d8be-74b2-b19b-05218da072ae"
+    },
+    "action": "skip"
+  },
+  {
+    "name": "the same session in its observed and bare id forms still dedups",
+    "before": {
+      "ts": 1000,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "observed:claude:058ab6cd-8230-43eb-abee-0656c6364e80"
+    },
+    "incoming": {
+      "ts": 1400,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "058ab6cd-8230-43eb-abee-0656c6364e80"
+    },
+    "action": "skip"
+  },
+  {
+    "name": "an unattributed reply keeps content dedup",
+    "before": {
+      "ts": 1000,
+      "type": "chat_response",
+      "raw": "pong",
+      "sessionId": "session-a"
+    },
+    "incoming": {
+      "ts": 1400,
+      "type": "chat_response",
+      "raw": "pong"
+    },
+    "action": "skip"
   }
 ]

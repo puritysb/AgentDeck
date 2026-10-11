@@ -326,6 +326,7 @@
 		6F22B8BA6B49FDD3F538DDE8 /* CreatureGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */; };
 		70055CA070869B45C0E300A7 /* SpokenDigestParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279EAD7034309F8B8641DF78 /* SpokenDigestParityTests.swift */; };
 		702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
+		C7216CBF4C82128DDA1D9B31 /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */; };
 		70568489EF1BE34061D43FEA /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
 		7090DAA53171F720B69C29DC /* ZaiUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E5D1306D12A8F901214C795 /* ZaiUsageClient.swift */; };
 		709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */; };
@@ -415,6 +416,7 @@
 		8B995FCD093438C0F919C374 /* GatewayHealthRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA37B6C7D35CA879C9BD8F75 /* GatewayHealthRules.swift */; };
 		8BD045F864776BC79B8BDA5F /* WebSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */; };
 		8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
+		0FA99D96E62564DF7BF83774 /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */; };
 		8CB40A396077F92F9140E25F /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
 		8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */; };
 		8D8D4E4EC92C57631E719FDC /* MdnsIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */; };
@@ -862,6 +864,7 @@
 		41CF82AE8E20EDCAE99DCEDD /* SessionLauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLauncherTests.swift; sourceTree = "<group>"; };
 		427B912EBD043285F0A0008D /* OpenClawAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawAdapter.swift; sourceTree = "<group>"; };
 		43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRules.generated.swift; sourceTree = "<group>"; };
+		F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexHookHarness.generated.swift; sourceTree = "<group>"; };
 		43838A747888CB84DF5A6762 /* OpenClawTokenImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawTokenImporter.swift; sourceTree = "<group>"; };
 		43F7DA99E490C72ED75FF711 /* ApmeExternalCloseSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeExternalCloseSelectionTests.swift; sourceTree = "<group>"; };
 		44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRulesTests.swift; sourceTree = "<group>"; };
@@ -1606,6 +1609,7 @@
 			children = (
 				AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */,
 				43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */,
+				F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */,
 				408F05BE863985A2E157A5AD /* ClaudePermissionRules.generated.swift */,
 				0C97EE2C9DA1A4FA137619AF /* CodexExecChildren.swift */,
 				009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */,
@@ -2270,6 +2274,7 @@
 				522CB2254E5C9EF0B3F1346E /* CiCompanionPresentation.swift in Sources */,
 				59BEE539C23688C92D592A19 /* CiWaitRules.generated.swift in Sources */,
 				8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
+				0FA99D96E62564DF7BF83774 /* CodexHookHarness.generated.swift in Sources */,
 				BD603C0DA671877FFFF496E1 /* ClaudePermissionRules.generated.swift in Sources */,
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
@@ -2540,6 +2545,7 @@
 				5BB32AB0F02012A28980DF5A /* CiCompanionPresentation.swift in Sources */,
 				008A6553EC1E4ECE53369412 /* CiWaitRules.generated.swift in Sources */,
 				702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
+				C7216CBF4C82128DDA1D9B31 /* CodexHookHarness.generated.swift in Sources */,
 				52F319B3F0699BDB206D714E /* ClaudePermissionRules.generated.swift in Sources */,
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,

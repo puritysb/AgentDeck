@@ -222,4 +222,98 @@ final class CodexAmbientHookRulesTests: XCTestCase {
         XCTAssertFalse(threads.isAmbient("codex:other", now: t0))
     }
 }
+
+/// Replays shared/hook-harness-vectors.json — the same file the Node suites
+/// replay (#490). A Codex payload on a Claude endpoint must reach the Codex
+/// session key on both daemons, never a bare-id Claude Code row.
+final class CodexHookHarnessTests: XCTestCase {
+    private func root() throws -> [String: Any] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/hook-harness-vectors.json")
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    }
+
+    private func vector(_ prefix: String) throws -> [String: Any] {
+        let vectors = try XCTUnwrap(root()["vectors"] as? [[String: Any]])
+        let v = try XCTUnwrap(vectors.first { ($0["name"] as? String)?.hasPrefix(prefix) == true }, prefix)
+        return try XCTUnwrap(v["payload"] as? [String: Any])
+    }
+
+    func testEveryVectorMatchesTheNodeSSOT() throws {
+        let vectors = try XCTUnwrap(root()["vectors"] as? [[String: Any]])
+        XCTAssertGreaterThan(vectors.count, 0)
+        for v in vectors {
+            let name = v["name"] as? String ?? ""
+            let event = try XCTUnwrap(v["event"] as? String)
+            let payload = try XCTUnwrap(v["payload"] as? [String: Any])
+            let route = CodexHookHarness.route(event: event, json: payload)
+            switch v["route"] as? String {
+            case "codex": XCTAssertEqual(route, .codex(try XCTUnwrap(v["routedEvent"] as? String)), name)
+            case "drop": XCTAssertEqual(route, .drop, name)
+            default: XCTAssertEqual(route, .asPosted, name)
+            }
+            if let expected = v["fingerprint"] as? String {
+                let ingestedAs: String
+                if case .codex(let routed) = route { ingestedAs = routed } else { ingestedAs = event }
+                XCTAssertEqual(CodexHookHarness.fingerprint(event: ingestedAs, json: payload), expected, name)
+            }
+        }
+        for h in try XCTUnwrap(root()["hashVectors"] as? [[String: Any]]) {
+            XCTAssertEqual(CodexHookHarness.fnv1a32Utf16(try XCTUnwrap(h["text"] as? String)), h["hash"] as? String)
+        }
+        for v in try XCTUnwrap(root()["distinctInstances"] as? [[String: Any]]) {
+            let event = try XCTUnwrap(v["event"] as? String)
+            let a = CodexHookHarness.fingerprint(event: event, json: try XCTUnwrap(v["a"] as? [String: Any]))
+            XCTAssertNotNil(a)
+            XCTAssertNotEqual(CodexHookHarness.fingerprint(event: event, json: try XCTUnwrap(v["b"] as? [String: Any])), a,
+                              v["name"] as? String ?? "")
+        }
+        for v in try XCTUnwrap(root()["noFingerprint"] as? [[String: Any]]) {
+            XCTAssertNil(CodexHookHarness.fingerprint(
+                event: try XCTUnwrap(v["event"] as? String), json: try XCTUnwrap(v["payload"] as? [String: Any])),
+                v["name"] as? String ?? "")
+        }
+    }
+
+    /// The incident shape: the captured Codex Stop reaching `/hooks/Stop`
+    /// (mapped to `stop`) used to resolve to the bare thread id and resurrect
+    /// as Claude Code. Routed, it lands on the same `codex:<id>` key as the
+    /// Codex hook itself.
+    func testACodexStopOnTheClaudeEndpointLandsOnTheCodexSessionKey() throws {
+        let stop = try vector("Codex Stop (captured)")
+        let thread = try XCTUnwrap(stop["session_id"] as? String)
+        guard case .codex(let routed) = CodexHookHarness.route(event: "stop", json: stop) else {
+            return XCTFail("a Codex Stop on the Claude endpoint must re-route")
+        }
+        XCTAssertEqual(DaemonServer.hookSessionId(event: routed, json: stop), "codex:\(thread)")
+        XCTAssertEqual(DaemonServer.hookSessionId(event: "codex_stop", json: stop), "codex:\(thread)")
+        // A Claude Stop keeps its bare id and is never re-routed.
+        let claude = try vector("Claude Code Stop")
+        XCTAssertEqual(CodexHookHarness.route(event: "stop", json: claude), .asPosted)
+        XCTAssertEqual(DaemonServer.hookSessionId(event: "stop", json: claude), claude["session_id"] as? String)
+        // Notify carries only `thread-id`: still the Codex key.
+        let notify = try vector("Codex notify agent-turn-complete")
+        XCTAssertEqual(CodexHookHarness.route(event: "agent-turn-complete", json: notify), .codex("codex_turn_complete"))
+        XCTAssertEqual(DaemonServer.hookSessionId(event: "codex_turn_complete", json: notify), "codex:\(thread)")
+    }
+
+    func testOneCodexInstanceIsAdmittedOnceAndDistinctTurnsAndThreadsAreKept() throws {
+        let stop = try vector("Codex Stop (captured)")
+        let fp = try XCTUnwrap(CodexHookHarness.fingerprint(event: "codex_stop", json: stop))
+        var memory = CodexHookReplayMemory()
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(memory.admit(fp, now: t0))
+        XCTAssertFalse(memory.admit(fp, now: t0.addingTimeInterval(0.3)), "the twin from the second hook command")
+        var nextTurn = stop; nextTurn["turn_id"] = "turn-2"
+        XCTAssertTrue(memory.admit(try XCTUnwrap(CodexHookHarness.fingerprint(event: "codex_stop", json: nextTurn)), now: t0))
+        var otherThread = stop; otherThread["session_id"] = "01a12890-0000-7000-8000-00000000e2e2"
+        XCTAssertTrue(memory.admit(try XCTUnwrap(CodexHookHarness.fingerprint(event: "codex_stop", json: otherThread)), now: t0))
+        XCTAssertTrue(memory.admit(fp, now: t0.addingTimeInterval(CodexHookHarness.replayWindow + 1)))
+    }
+
+    func testTheModelIsNeverHarnessEvidence() {
+        XCTAssertFalse(CodexHookHarness.isCodexPayload(["session_id": "s", "model": "gpt-6-astra", "model_provider": "openai"]))
+    }
+}
 #endif

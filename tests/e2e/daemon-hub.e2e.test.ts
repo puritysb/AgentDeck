@@ -417,6 +417,68 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('ingests a Codex turn delivered to both its codex_* hooks and the generic hooks once, as Codex (#490)', async () => {
+    // Verbatim codex-cli 0.160.1 payloads (paths scrubbed). Codex runs every
+    // hook command configured for an event, so a Claude-shaped AgentDeck
+    // command it also runs re-delivers the same event to /hooks/<Event>. The
+    // generic copy was read as Claude Code: rows under the Claude icon, keyed
+    // by the Codex thread.
+    const vectors = (JSON.parse(readFileSync(join(ROOT, 'shared/hook-harness-vectors.json'), 'utf8')) as {
+      vectors: Array<{ name: string; payload: Record<string, unknown> }>;
+    }).vectors;
+    const captured = (prefix: string) => {
+      const v = vectors.find((x) => x.name.startsWith(prefix));
+      if (!v) throw new Error(`missing vector ${prefix}`);
+      return v.payload;
+    };
+    const start = captured('Codex SessionStart (codex-cli 0.160.1');
+    const prompt = captured('Codex UserPromptSubmit (captured)');
+    const stop = captured('Codex Stop (captured)');
+    const thread = String(stop.session_id);
+    // A second, real Codex thread whose turn ends with the same words.
+    const other = '01a12890-0000-7000-8000-00000000e2e2';
+    const otherTurn = '01a12890-0000-7000-8000-00000000e2e3';
+    const client = await connect(daemon.port);
+    try {
+      await postHook(daemon.port, 'codex_session_start', start);
+      await postHook(daemon.port, 'SessionStart', start);
+      await postHook(daemon.port, 'UserPromptSubmit', prompt);
+      await postHook(daemon.port, 'codex_user_prompt_submit', prompt);
+      // The generic Stop first: it is the copy that used to close the turn
+      // under the Claude icon. Codex discards a command hook's output, and the
+      // Claude-shaped command echoes this body — it must be empty.
+      const generic = await postHook(daemon.port, 'Stop', stop);
+      expect(await generic.text()).toBe('');
+      await postHook(daemon.port, 'codex_stop', stop);
+      await postHook(daemon.port, 'codex_session_start', { ...start, session_id: other });
+      await postHook(daemon.port, 'codex_user_prompt_submit', { ...prompt, session_id: other, turn_id: otherTurn });
+      await postHook(daemon.port, 'codex_stop', { ...stop, session_id: other, turn_id: otherTurn });
+
+      const rows = () => client.frames
+        .filter((f) => f.type === 'timeline_event')
+        .map((f) => f.entry as Record<string, unknown>)
+        .filter((e) => e && (e.sessionId === thread || e.sessionId === other));
+      await waitFor('both replies on the wire', () =>
+        rows().filter((e) => e.type === 'chat_response').length >= 2 ? true : undefined).catch((err: unknown) => {
+        throw new Error(`${String(err)}\nrows: ${JSON.stringify(rows().map((e) => [e.type, e.agentType, e.sessionId, e.raw]))}\n${daemon.log().slice(-3000)}`);
+      });
+      await new Promise((r) => setTimeout(r, 500));
+
+      const mine = rows().filter((e) => e.sessionId === thread);
+      expect(mine.filter((e) => e.type === 'chat_start')).toHaveLength(1);
+      expect(mine.filter((e) => e.type === 'chat_response')).toHaveLength(1);
+      expect(rows().filter((e) => e.sessionId === other && e.type === 'chat_response')).toHaveLength(1);
+      expect(rows().map((e) => e.agentType).filter((t) => t !== 'codex-cli')).toEqual([]);
+      const claudeRows = client.frames
+        .filter((f) => f.type === 'sessions_list')
+        .flatMap((f) => f.sessions as Array<{ id: string; agentType?: string }>)
+        .filter((r) => r.agentType === 'claude-code' && (r.id.includes(thread) || r.id.includes(other)));
+      expect(claudeRows).toEqual([]);
+    } finally {
+      client.close();
+    }
+  });
+
   it('answers the request-response hooks (PreToolUse, Stop) promptly when no device can approve', async () => {
     // Both hooks block Claude's TUI while they wait. With no approval-capable
     // device connected the daemon must hand the decision straight back

@@ -19,6 +19,7 @@ export type TimelineEntryType =
 // TaskBoundarySignal is defined in eval-schema.ts (single source of truth);
 // imported below for use on TimelineEntry.boundarySignal.
 import type { TaskBoundarySignal } from './eval-schema.js';
+import { rawSessionId } from './session-utils.js';
 export type { TaskBoundarySignal } from './eval-schema.js';
 
 export interface TimelineEntry {
@@ -686,9 +687,12 @@ export function deduplicateEntry(
     if (entry.ts - e.ts > 8_000) break;
     if (Math.abs(entry.ts - e.ts) > 8_000) continue;
     if (e.type !== entry.type || e.raw !== entry.raw) continue;
-    // Scheduled evidence belongs to its session. Concurrent CI waits can
-    // share identical labels without describing the same observation.
-    if (entry.type === 'scheduled' && entry.sessionId && e.sessionId && entry.sessionId !== e.sessionId) continue;
+    // A row belongs to its session. Two real sessions can say the same words
+    // within seconds — concurrent CI waits share a label, two Codex threads
+    // can both answer "pong" — and neither is a duplicate of the other (#490:
+    // collapsing them dropped one session's reply). Same session in either id
+    // form still dedups; unattributed legacy rows keep content dedup.
+    if (entry.sessionId && e.sessionId && rawSessionId(entry.sessionId) !== rawSessionId(e.sessionId)) continue;
     if (entry.type === 'chat_end' && (entry.startedAt != null || e.startedAt != null)
       && entry.startedAt !== e.startedAt) continue;
     return { action: 'skip' };

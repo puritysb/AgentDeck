@@ -33,6 +33,7 @@
     "generate-claude-permission-rules": "node scripts/generate-claude-permission-rules.mjs",
     "generate-openclaw-session-key-rules": "node scripts/generate-openclaw-session-key-rules.mjs",
     "generate-claude-background-jobs": "node scripts/generate-claude-background-jobs.mjs",
+    "generate-hook-harness": "node scripts/generate-hook-harness.mjs",
     "generate-mlx-safety": "node scripts/generate-mlx-safety.mjs",
     "generate-apme-classifier-rules": "node scripts/generate-apme-classifier-rules.mjs",
     "generate-model-provider": "node scripts/generate-model-provider.mjs",
