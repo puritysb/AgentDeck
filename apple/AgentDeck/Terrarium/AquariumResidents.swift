@@ -1,89 +1,87 @@
 import SwiftUI
 import RealityKit
 
-/// Claude background tasks drawn as octopus jars: octopuses hide in clay
-/// jars, and a background task is work left simmering on the side. One arm
-/// curls out from the lower body and carries up to three small jars; while a
-/// task runs its lid jiggles and tiny bubbles rise from its mouth. A finished
-/// task pops its lid with a little spin, puffs bubbles and a sparkle, and
-/// the jar shrinks away. Shared by the Apple Canvas and RealityKit accents.
-/// Jars are tasks, never extra residents or a second count of child agents
-/// (those are the dashed orbit and its wired satellites). Only geometry and
-/// opacity move: nothing pulses in brightness (DESIGN.md §10 rule 4).
+/// Background tasks drawn as jar buddies: small clay jars with a face, fins
+/// and a tail that swim lazy loops beside their creature like pet fish, one
+/// per running task. While a task runs its lid jiggles and bubbles simmer
+/// from the mouth; a finished task pops its lid with a spin and a sparkle and
+/// the buddy shrinks away where it was. Generic: any creature kind, 2D or 3D,
+/// with a background-task count gets buddies. Shared by the Apple Canvas and
+/// RealityKit accents. Buddies are tasks, never extra residents or a second
+/// count of child agents: subagents are wired satellites on a dashed, tilted
+/// ring, while buddies wander free with no ring or wire. Only geometry and
+/// opacity move; nothing pulses in brightness (DESIGN.md §10 rule 4).
 ///
 /// Every offset is in body-radius units relative to the creature centre,
 /// x toward screen right, y up, z toward the viewer.
 enum BackgroundWorkPresentation {
-    static let maxJars = 3
-    /// Sway and jiggle rate; the phase only advances while motion is allowed.
+    static let maxBuddies = 3
+    /// Wander and jiggle rate; the phase only advances while motion is allowed.
     static let radiansPerSecond: Float = 0.85
     static let finishSeconds: Float = 1.4
     static let bubblesPerFinish = 3
-    /// Jar belly radius and the spacing between jars along the arm.
-    static let jarRadius: Float = 0.23
-    static let jarSpacing: Float = 0.52
-    /// The arm leaves the sprite's arm tip (24-unit sprite: arms end at x 0/24,
-    /// y 10.95–14.05) and runs under the jars at this height.
-    static let shoulder: SIMD2<Float> = [0.92, -0.04]
-    static let carryHeight: Float = -0.5
-    /// The side the jars are carried on when the creature is still.
-    static let restLean: Float = 0.45
-    /// Below this speed (body radii per second) motion is fidget, not a swim,
-    /// and must not swing the jars from side to side.
-    static let swimSpeed: Float = 0.5
+    /// Belly radius, about a fifth of the creature's height with lid and fins.
+    static let buddyRadius: Float = 0.18
+    /// Wander bounds, centre of the buddy: always beside the body (clear of it
+    /// and of the name tag above), never below the feet.
+    static let innerX: Float = 1.4
+    static let lowestY: Float = -0.5
+    static let highestY: Float = 0.25
+    /// How quickly buddies catch up when their creature swims (per second).
+    static let followRate: Float = 2.5
 
-    static func visibleCount(_ count: Int) -> Int { min(maxJars, max(0, count)) }
-    static func overflow(_ count: Int) -> Int { max(0, count - maxJars) }
+    static func visibleCount(_ count: Int) -> Int { min(maxBuddies, max(0, count)) }
+    static func overflow(_ count: Int) -> Int { max(0, count - maxBuddies) }
     static func label(_ count: Int) -> String {
         "\(count) background task" + (count == 1 ? "" : "s")
     }
 
-    /// Which arm carries the jars, -1…1. Steep around zero so a swim reversal
-    /// swaps sides in a few frames instead of resting under the body.
-    static func side(_ lean: Float) -> Float { max(-1, min(1, lean / 0.25)) }
-
-    struct Jar: Equatable {
+    struct Buddy: Equatable {
         /// Belly centre.
         var center: SIMD3<Float>
         /// Belly radius in body radii.
         var radius: Float
-        /// Lean of the jar, radians (positive leans toward screen left).
+        /// +1 swimming toward screen right, -1 toward the left.
+        var facing: Float
+        /// Lean into the climb or dive, radians.
         var tilt: Float
-        /// Lid hop above its seat, in jar radii.
+        /// Lid hop above its seat, in buddy radii.
         var lidLift: Float
+        /// Fin beat 0…1 and tail swing, radians.
+        var fin: Float
+        var tail: Float
     }
 
-    /// One jar on the carrying arm. `index` may run past the last visible jar:
-    /// that is where a jar beyond the cap finishes. The outer jars lag the
-    /// arm's sway the way a load drags in water.
-    static func jar(index: Int, phase: Float, lean: Float) -> Jar {
-        let s = side(lean)
-        let along = Float(index)
-        let sway = sin(phase * 1.2 - along * 0.8) * 0.035 * (along + 1)
-        let x = s * (shoulder.x + 0.2 + jarSpacing * along)
-        let y = carryHeight + sway + jarRadius * 0.9
+    /// Where buddy `index` is in its loop. Buddies alternate sides; each has
+    /// its own speed, loop size and phase, so the group never moves in step.
+    /// `index` may run past the last visible buddy: that is where a buddy
+    /// beyond the cap finishes.
+    static func path(index: Int, phase: Float) -> SIMD3<Float> {
+        let i = Float(index)
+        let side: Float = index % 2 == 0 ? 1 : -1
+        let t = phase * (0.55 + 0.17 * Float(index % 3)) + i * 2.1
+        let reach = 0.28 + 0.06 * Float(index % 3)
+        let x = side * (innerX + reach + reach * cos(t) + 0.05 * sin(t * 2.3 + i))
+        let y = -0.08 + 0.34 * sin(t) + 0.05 * sin(t * 2.3 + i) + 0.03 * sin(phase * 3.1 + i)
+        return [x, max(lowestY, min(highestY, y)), 0.14 + 0.03 * Float(index % 3)]
+    }
+
+    static func buddy(index: Int, phase: Float) -> Buddy {
+        let here = path(index: index, phase: phase)
+        let ahead = path(index: index, phase: phase + 0.02)
+        let dx = ahead.x - here.x, dy = ahead.y - here.y
+        let facing: Float = dx >= 0 ? 1 : -1
+        let i = Float(index)
         // Staggered little hops: the lid sits still most of the time.
-        let hop = pow(max(0, sin(phase * 3.4 + along * 2.3)), 6)
-        return Jar(center: [x, y, 0.12 + 0.03 * along],
-                   radius: jarRadius,
-                   tilt: -s * cos(phase * 1.2 - along * 0.8) * 0.06 * (along + 1),
-                   lidLift: hop * 0.18)
+        let hop = pow(max(0, sin(phase * 3.4 + i * 2.3)), 6)
+        return Buddy(center: here, radius: buddyRadius, facing: facing,
+                     tilt: max(-0.3, min(0.3, atan2(dy, abs(dx) + 1e-4) * 0.5)) * facing,
+                     lidLift: hop * 0.18,
+                     fin: abs(sin(phase * 6 + i)), tail: sin(phase * 7 + i * 1.7) * 0.45)
     }
 
-    static func jars(count: Int, phase: Float, lean: Float) -> [Jar] {
-        (0..<visibleCount(count)).map { jar(index: $0, phase: phase, lean: lean) }
-    }
-
-    /// The arm's path: shoulder, down to the carrying line under the jars,
-    /// and a small upward curl past the last jar.
-    static func arm(count: Int, phase: Float, lean: Float) -> [SIMD2<Float>] {
-        let s = side(lean)
-        let jars = jars(count: count, phase: phase, lean: lean)
-        guard let last = jars.last else { return [] }
-        let bottoms = jars.map { SIMD2<Float>($0.center.x, $0.center.y - $0.radius * 0.95) }
-        return [[s * shoulder.x, shoulder.y], [s * (shoulder.x + 0.12), carryHeight + 0.05]] + bottoms
-            + [[last.center.x + s * (last.radius + 0.06), last.center.y - last.radius * 0.6],
-               [last.center.x + s * (last.radius + 0.1), last.center.y - last.radius * 0.1]]
+    static func buddies(count: Int, phase: Float) -> [Buddy] {
+        (0..<visibleCount(count)).map { buddy(index: $0, phase: phase) }
     }
 
     struct Bubble: Equatable {
@@ -93,30 +91,30 @@ enum BackgroundWorkPresentation {
     }
 
     /// The jar mouth, where bubbles leave.
-    static func mouth(_ jar: Jar) -> SIMD3<Float> { jar.center + [0, jar.radius * 1.35, 0.02] }
+    static func mouth(_ buddy: Buddy) -> SIMD3<Float> { buddy.center + [0, buddy.radius * 1.35, 0.02] }
 
-    /// Two tiny bubbles per running jar, each rising from the mouth and fading
-    /// before the next leaves. `slot` staggers jars so they never rise in step.
-    static func simmer(_ jar: Jar, slot: Int, phase: Float) -> [Bubble] {
+    /// Two tiny bubbles per running buddy, each rising from the mouth and
+    /// fading before the next leaves. `slot` staggers buddies.
+    static func simmer(_ buddy: Buddy, slot: Int, phase: Float) -> [Bubble] {
         (0..<2).map { k in
             let raw = phase * 0.45 + Float(slot) * 0.37 + Float(k) * 0.5
             let t = raw - floor(raw)
-            return Bubble(center: mouth(jar) + [sin(t * 6 + Float(slot)) * 0.03, t * 0.5, 0],
-                          radius: 0.025 + 0.015 * Float(k),
+            return Bubble(center: mouth(buddy) + [sin(t * 6 + Float(slot)) * 0.03, t * 0.4, 0],
+                          radius: 0.022 + 0.012 * Float(k),
                           opacity: (1 - t) * 0.8)
         }
     }
 
-    /// One finished jar, `age` seconds after its count dropped.
+    /// One finished buddy, `age` seconds after its count dropped.
     struct FinishPose: Equatable {
-        /// Jar scale, 1 → 0, and its opacity.
+        /// Buddy scale, 1 → 0, and its opacity.
         var scale: Float
         var opacity: Float
-        /// Lid offset above its seat (jar radii), spin (radians) and opacity.
+        /// Lid offset above its seat (buddy radii), spin (radians) and opacity.
         var lidLift: Float
         var lidSpin: Float
         var lidOpacity: Float
-        /// Sparkle reach (jar radii) and opacity.
+        /// Sparkle reach (buddy radii) and opacity.
         var sparkle: Float
         var sparkleOpacity: Float
     }
@@ -140,52 +138,44 @@ enum BackgroundWorkPresentation {
             let lift = age * (0.7 + 0.25 * Float(k))
             let wobble = sin(age * 5 + Float(k) * 2) * 0.05
             return Bubble(center: mouth + [wobble + (Float(k) - 1) * 0.07, lift, 0.02],
-                          radius: 0.04 + 0.02 * Float(k % 2) + 0.02 * progress,
+                          radius: 0.035 + 0.015 * Float(k % 2) + 0.02 * progress,
                           opacity: 1 - progress)
         }
     }
-
-    /// Wake lean from horizontal velocity (body radii per second): the jars
-    /// ride opposite the swim direction and keep their side when still. A
-    /// reversal swings across faster than it settles.
-    static func lean(previous: Float, velocityX: Float, dt: Float) -> Float {
-        guard dt > 0 else { return previous }
-        let resting = previous < 0 ? -restLean : restLean
-        let target = abs(velocityX) > swimSpeed ? max(-1, min(1, -velocityX * 0.8)) : resting
-        let rate: Float = (target < 0) != (previous < 0) ? 4.0 : 1.8
-        return previous + (target - previous) * (1 - exp(-dt * rate))
-    }
 }
 
-/// Per-creature jar memory: the last explicit task count, the wake lean, and
-/// the finishes still playing.
+/// Per-creature buddy memory: the last explicit task count, where the
+/// buddies are following, and the finishes still playing.
 struct BackgroundBrood: Equatable {
-    /// A finish plays where its jar was, not with the creature: `base` is the
-    /// creature's position (caller's coordinates) when the count dropped.
+    /// A finish plays where its buddy was, not with the creature: `base` is the
+    /// followed position (caller's coordinates) when the count dropped.
     struct Finish: Equatable {
-        var jar: BackgroundWorkPresentation.Jar
+        var buddy: BackgroundWorkPresentation.Buddy
         var base: SIMD2<Float>
         var age: Float
     }
     /// Last explicit count from the producer; nil until one arrives.
     private(set) var known: Int?
     private(set) var working = false
-    private(set) var lean: Float = BackgroundWorkPresentation.restLean
     private(set) var finishes: [Finish] = []
-    private var lastX: Float?
+    /// The point the buddies circle: it lags the creature when it swims.
+    private(set) var follow: SIMD2<Float>?
 
-    /// Jars to show: only a working creature carries them.
+    /// Buddies to show: only a working creature has them out.
     var count: Int { working ? known ?? 0 : 0 }
     var isEmpty: Bool { count == 0 && finishes.isEmpty }
 
+    /// Offset of the followed point from the creature, in caller coordinates.
+    func lag(from position: SIMD2<Float>) -> SIMD2<Float> { (follow ?? position) - position }
+
     /// Records one snapshot. `explicit` is the producer's count; nil means
     /// unknown (a daemon restart, a compacted session, a snapshot without the
-    /// field) and is never read as zero. A jar finishes only on an explicit
-    /// lower count, and only while the jars were showing. The last task
+    /// field) and is never read as zero. A buddy finishes only on an explicit
+    /// lower count, and only while buddies were showing. The last task
     /// finishing usually turns the creature idle in the same snapshot; an
     /// explicit zero still finishes them then. Leaving the working state with
-    /// tasks remaining (an approval prompt, an error) hides the jars without
-    /// finishing them. Nothing finishes under Reduce Motion, where the
+    /// tasks remaining (an approval prompt, an error) hides the buddies
+    /// without finishing them. Nothing finishes under Reduce Motion, where the
     /// animation could never play out.
     mutating func observe(explicit: Int?, working nowWorking: Bool, position: SIMD2<Float>, phase: Float, animate: Bool) {
         let shown = count
@@ -199,26 +189,25 @@ struct BackgroundBrood: Equatable {
         working = nowWorking
         if !animate { finishes.removeAll(); return }
         guard let now = known, explicit != nil, now < previous, shown > 0, nowWorking || now == 0 else { return }
-        // Finished jars leave from the end of the arm. At a capped count the
-        // last visible jar is still carried, so the finish plays just past it.
+        // Finished buddies leave from the end of the group. At a capped count
+        // the last visible buddy stays, so the finish plays past it.
         let first = nowWorking ? BackgroundWorkPresentation.visibleCount(now) : 0
-        let finished = min(previous - now, BackgroundWorkPresentation.maxJars)
+        let finished = min(previous - now, BackgroundWorkPresentation.maxBuddies)
         for index in first..<(first + finished) {
-            finishes.append(Finish(jar: BackgroundWorkPresentation.jar(index: index, phase: phase, lean: lean), base: position, age: 0))
+            finishes.append(Finish(buddy: BackgroundWorkPresentation.buddy(index: index, phase: phase),
+                                   base: follow ?? position, age: 0))
         }
-        // Bounded: at most one arm's worth of finishes is ever in flight.
-        if finishes.count > BackgroundWorkPresentation.maxJars {
-            finishes.removeFirst(finishes.count - BackgroundWorkPresentation.maxJars)
+        // Bounded: at most one group's worth of finishes is ever in flight.
+        if finishes.count > BackgroundWorkPresentation.maxBuddies {
+            finishes.removeFirst(finishes.count - BackgroundWorkPresentation.maxBuddies)
         }
     }
 
-    /// Advances wake lean and finish ages. `x` is the creature centre in body radii.
-    mutating func advance(dt: Float, x: Float) {
-        guard dt > 0 else { lastX = nil; return }
-        if let lastX {
-            lean = BackgroundWorkPresentation.lean(previous: lean, velocityX: (x - lastX) / dt, dt: dt)
-        }
-        lastX = x
+    /// Advances the lagged follow point and finish ages. Without time (Reduce
+    /// Motion, a paused scene) the buddies sit exactly with their creature.
+    mutating func advance(dt: Float, position: SIMD2<Float>) {
+        guard dt > 0, let current = follow else { follow = position; return }
+        follow = current + (position - current) * (1 - exp(-dt * BackgroundWorkPresentation.followRate))
         guard !finishes.isEmpty else { return }
         for index in finishes.indices { finishes[index].age += dt }
         finishes.removeAll { $0.age >= BackgroundWorkPresentation.finishSeconds }
@@ -403,7 +392,7 @@ final class AquariumResidents {
             supports.removeValue(forKey: id)?.removeFromParent()
             broods.removeValue(forKey: id)
             broodRigs.removeValue(forKey: id)
-            armReach.removeValue(forKey: id)
+            bodyReach.removeValue(forKey: id)
         }
 
         // Existing residents retain their relative order when sessions arrive or depart.
@@ -475,7 +464,7 @@ final class AquariumResidents {
                 let (brood, rig) = makeBackgroundWork()
                 resident.addChild(brood)
                 broodRigs[item.id] = rig
-                armReach[item.id] = templateHalfWidths[item.kind] ?? Self.defaultArmReach
+                bodyReach[item.id] = templateHalfWidths[item.kind] ?? Self.defaultBodyReach
                 resident.position = targets[item.id]!
                 root.addChild(resident)
                 residents[item.id] = resident
@@ -496,7 +485,7 @@ final class AquariumResidents {
             broods[item.id, default: BackgroundBrood()].observe(explicit: state.backgroundTaskCounts[item.id],
                 working: item.activity == .working, position: [resident.position.x, resident.position.y],
                 phase: backgroundPhase, animate: animate)
-            if !animate { broods[item.id]?.advance(dt: 0, x: 0) }
+            if !animate { broods[item.id]?.advance(dt: 0, position: [resident.position.x, resident.position.y]) }
             updateBackgroundWork(resident, id: item.id)
             resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
             if !animate {
@@ -651,8 +640,7 @@ final class AquariumResidents {
         let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
-            let reach = (armReach[item.id] ?? Self.defaultArmReach) * entity.scale.x
-            broods[item.id]?.advance(dt: Float(dt), x: entity.position.x / max(0.01, reach))
+            broods[item.id]?.advance(dt: Float(dt), position: [entity.position.x, entity.position.y])
             updateBackgroundWork(entity, id: item.id)
             motion.effort += ((item.activity == .working ? 1 : 0) - motion.effort) * blend
             motion.attention += ((item.activity == .waiting ? 1 : 0) - motion.attention) * blend
@@ -839,33 +827,34 @@ final class AquariumResidents {
         return group
     }
 
-    /// One pooled jar: the body group and the lid that hops and spins on it.
-    private struct JarRig {
+    /// One pooled jar buddy: its body, the lid that hops and spins, fins and tail.
+    private struct BuddyRig {
         let root: Entity
         let lid: Entity
+        let fins: [Entity]
+        let tail: Entity
     }
-    /// Pooled jar entities per resident, cached so a frame never searches the tree.
+    /// Pooled buddy entities per resident, cached so a frame never searches the tree.
     private struct BroodRig {
         let group: Entity
-        let carried: [JarRig]
-        let finishing: [JarRig]
-        let arm: [Entity]
-        let joints: [Entity]
+        let swimming: [BuddyRig]
+        let finishing: [BuddyRig]
         let bubbles: [ModelEntity]
         let overflow: ModelEntity
         var overflowShown = 0
         var overflowWidth: Float = 0
     }
     private var broodRigs: [String: BroodRig] = [:]
-    /// A resident's arm-tip half width in its own space, measured from the template.
-    private var armReach: [String: Float] = [:]
+    /// A resident's half width in its own space, measured from its template:
+    /// the body-radius unit for buddy placement, whatever the kind.
+    private var bodyReach: [String: Float] = [:]
     private var templateHalfWidths: [String: Float] = [:]
-    private static let defaultArmReach: Float = 0.75
-    private static let armSegments = 6
-    private static let bubblePool = BackgroundWorkPresentation.maxJars * (2 + BackgroundWorkPresentation.bubblesPerFinish)
+    private static let defaultBodyReach: Float = 0.75
+    private static let bubblePool = BackgroundWorkPresentation.maxBuddies * (2 + BackgroundWorkPresentation.bubblesPerFinish)
 
-    private func makeJar(named name: String) -> JarRig {
+    private func makeBuddy(named name: String) -> BuddyRig {
         func clay(_ color: Color) -> SimpleMaterial { SimpleMaterial(color: nativeColor(color), roughness: 0.75, isMetallic: false) }
+        func flat(_ color: Color) -> UnlitMaterial { UnlitMaterial(color: nativeColor(color), applyPostProcessToneMap: false) }
         let root = Entity()
         root.name = name
         let belly = ModelEntity(mesh: .generateSphere(radius: 1), materials: [clay(DesignTokens.Tide.s200)])
@@ -877,16 +866,22 @@ final class AquariumResidents {
         let rim = ModelEntity(mesh: .generateCylinder(height: 0.14, radius: 0.62), materials: [clay(DesignTokens.Tide.s300)])
         rim.position = [0, 1.2, 0]
         // The one cue of live work: a thin working-cyan band on the rim.
-        let band = ModelEntity(mesh: .generateCylinder(height: 0.05, radius: 0.64),
-                               materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
+        let band = ModelEntity(mesh: .generateCylinder(height: 0.05, radius: 0.64), materials: [flat(DesignTokens.Session.working)])
         band.position = [0, 1.2, 0]
         for x: Float in [-0.32, 0.32] {
-            let eye = ModelEntity(mesh: .generateSphere(radius: 0.1),
-                                  materials: [UnlitMaterial(color: nativeColor(DesignTokens.Ink.s900), applyPostProcessToneMap: false)])
+            let eye = ModelEntity(mesh: .generateSphere(radius: 0.1), materials: [flat(DesignTokens.Ink.s900)])
             eye.position = [x, 0.02, 0.9]
             eye.scale = [1, 1.2, 0.5]
             root.addChild(eye)
         }
+        let fins = [Float(-1), 1].map { side -> Entity in
+            let fin = ModelEntity(mesh: .generateSphere(radius: 1), materials: [clay(DesignTokens.Tide.s300)])
+            fin.position = [side * 1.0, -0.15, 0]
+            fin.scale = [0.32, 0.18, 0.08]
+            return fin
+        }
+        let tail = ModelEntity(mesh: .generateSphere(radius: 1), materials: [clay(DesignTokens.Tide.s300)])
+        tail.scale = [0.36, 0.24, 0.07]
         let lid = Entity()
         lid.name = "lid"
         let cap = ModelEntity(mesh: .generateCylinder(height: 0.14, radius: 0.58), materials: [clay(DesignTokens.Tide.s100)])
@@ -894,29 +889,18 @@ final class AquariumResidents {
         knob.position = [0, 0.14, 0]
         lid.addChild(cap)
         lid.addChild(knob)
-        for part in [belly, belt, neck, rim, band] { root.addChild(part) }
+        for part in [belly, belt, neck, rim, band] + fins + [tail] { root.addChild(part) }
         root.addChild(lid)
         root.components.set(OpacityComponent(opacity: 1))
-        return JarRig(root: root, lid: lid)
+        return BuddyRig(root: root, lid: lid, fins: fins, tail: tail)
     }
 
     private func makeBackgroundWork() -> (Entity, BroodRig) {
         let group = Entity()
         group.name = "background-work"
         // Allocate a fixed pool once; frame updates only move and scale existing entities.
-        let carried = (0..<BackgroundWorkPresentation.maxJars).map { makeJar(named: "background-jar-\($0)") }
-        let finishing = (0..<BackgroundWorkPresentation.maxJars).map { makeJar(named: "background-finish-\($0)") }
-        let armMaterial = SimpleMaterial(color: nativeColor(TerrariumColors.claudeBodyLight), roughness: 0.6, isMetallic: false)
-        let arm = (0..<Self.armSegments).map { index -> Entity in
-            let span = ModelEntity(mesh: .generateCylinder(height: 1, radius: 1), materials: [armMaterial])
-            span.name = "background-arm-\(index)"
-            return span
-        }
-        let joints = (0...Self.armSegments).map { index -> Entity in
-            let joint = ModelEntity(mesh: .generateSphere(radius: 1), materials: [armMaterial])
-            joint.name = "background-arm-joint-\(index)"
-            return joint
-        }
+        let swimming = (0..<BackgroundWorkPresentation.maxBuddies).map { makeBuddy(named: "background-buddy-\($0)") }
+        let finishing = (0..<BackgroundWorkPresentation.maxBuddies).map { makeBuddy(named: "background-finish-\($0)") }
         let bubbles = (0..<Self.bubblePool).map { index -> ModelEntity in
             var material = UnlitMaterial(color: nativeColor(DesignTokens.Tide.s50), applyPostProcessToneMap: false)
             material.blending = .transparent(opacity: .init(floatLiteral: 0.5))
@@ -929,12 +913,13 @@ final class AquariumResidents {
         overflow.name = "background-overflow"
         overflow.model = ModelComponent(mesh: .generateBox(size: 0.001),
             materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
-        for entity in arm + joints + carried.map(\.root) + finishing.map(\.root) + bubbles + [overflow] { group.addChild(entity) }
-        return (group, BroodRig(group: group, carried: carried, finishing: finishing, arm: arm, joints: joints, bubbles: bubbles, overflow: overflow))
+        for entity in swimming.map(\.root) + finishing.map(\.root) + bubbles + [overflow] { group.addChild(entity) }
+        return (group, BroodRig(group: group, swimming: swimming, finishing: finishing, bubbles: bubbles, overflow: overflow))
     }
 
-    /// Positions the pooled jars from the shared maths. Pure placement: the
-    /// count and finishes are owned by `broods`, updated in `sync` and `step`.
+    /// Positions the pooled buddies from the shared maths, for any resident
+    /// kind. Pure placement: the count, follow point and finishes are owned
+    /// by `broods`, updated in `sync` and `step`.
     private func updateBackgroundWork(_ resident: Entity, id: String) {
         guard var rig = broodRigs[id] else { return }
         let brood = broods[id] ?? BackgroundBrood()
@@ -942,85 +927,75 @@ final class AquariumResidents {
         guard !brood.isEmpty else { return }
         typealias P = BackgroundWorkPresentation
         let phase = backgroundPhase
-        let jars = P.jars(count: brood.count, phase: phase, lean: brood.lean)
-        let r = armReach[id] ?? Self.defaultArmReach
-        // Native residents stand on a support: lift the jars clear of its rim.
-        func place(_ p: SIMD3<Float>) -> SIMD3<Float> { [p.x * r, (p.y + 0.1) * r, p.z * r + 0.12] }
-        func pose(_ jarRig: JarRig, _ jar: P.Jar, at position: SIMD3<Float>, finish: P.FinishPose?, lidLift: Float) {
-            let size = jar.radius * r * (finish?.scale ?? 1)
-            jarRig.root.position = position
-            jarRig.root.scale = .init(repeating: max(0.0001, size))
-            jarRig.root.orientation = simd_quatf(angle: jar.tilt, axis: [0, 0, 1])
-            jarRig.root.components.set(OpacityComponent(opacity: finish?.opacity ?? 1))
-            jarRig.lid.position = [0, 1.34 + (finish?.lidLift ?? lidLift), 0]
-            jarRig.lid.orientation = simd_quatf(angle: finish?.lidSpin ?? 0, axis: [0, 0, 1])
-            jarRig.lid.isEnabled = (finish?.lidOpacity ?? 1) > 0.05
-        }
-        for (index, jarRig) in rig.carried.enumerated() {
-            jarRig.root.isEnabled = index < jars.count
-            guard index < jars.count else { continue }
-            pose(jarRig, jars[index], at: place(jars[index].center), finish: nil, lidLift: jars[index].lidLift)
-        }
-        // The carrying arm: capsule spans with round joints, shoulder to curl.
-        let points = P.arm(count: brood.count, phase: phase, lean: brood.lean).map { place([$0.x, $0.y, 0.1]) }
-        let thickness = 0.08 * r
-        for (index, span) in rig.arm.enumerated() {
-            span.isEnabled = index + 1 < points.count
-            guard index + 1 < points.count else { continue }
-            let a = points[index], b = points[index + 1]
-            let delta = b - a, length = simd_length(delta)
-            span.position = (a + b) / 2
-            span.scale = [thickness, max(0.0001, length), thickness]
-            span.orientation = length > 0 ? simd_quatf(from: [0, 1, 0], to: delta / length) : simd_quatf()
-        }
-        for (index, joint) in rig.joints.enumerated() {
-            joint.isEnabled = index < points.count
-            guard index < points.count else { continue }
-            joint.position = points[index]
-            // The curl tapers toward its tip.
-            joint.scale = .init(repeating: thickness * (index == points.count - 1 ? 0.7 : 1))
-        }
-        // Finishes play where their jar was, not with the creature.
+        let r = bodyReach[id] ?? Self.defaultBodyReach
         let current = SIMD2<Float>(resident.position.x, resident.position.y)
         let scale = max(0.001, resident.scale.x)
-        var bubbles: [(P.Bubble, SIMD3<Float>)] = []
-        for (index, jar) in jars.enumerated() {
-            for bubble in P.simmer(jar, slot: index, phase: phase) { bubbles.append((bubble, .zero)) }
+        let lag2 = brood.lag(from: current) / scale
+        let lag = SIMD3<Float>(lag2.x, lag2.y, 0)
+        // Native residents stand on a support: the wander floor keeps buddies off its rim.
+        func place(_ p: SIMD3<Float>) -> SIMD3<Float> { [p.x * r, (p.y + 0.1) * r, p.z * r + 0.12] }
+        func pose(_ rig: BuddyRig, _ buddy: P.Buddy, at position: SIMD3<Float>, finish: P.FinishPose?, lidLift: Float) {
+            let size = buddy.radius * r * (finish?.scale ?? 1)
+            rig.root.position = position
+            rig.root.scale = .init(repeating: max(0.0001, size))
+            // Turn toward the direction of travel and lean into climbs and dives.
+            rig.root.orientation = simd_quatf(angle: buddy.facing * 0.55, axis: [0, 1, 0]) * simd_quatf(angle: buddy.tilt, axis: [0, 0, 1])
+            rig.root.components.set(OpacityComponent(opacity: finish?.opacity ?? 1))
+            rig.lid.position = [0, 1.34 + (finish?.lidLift ?? lidLift), 0]
+            rig.lid.orientation = simd_quatf(angle: finish?.lidSpin ?? 0, axis: [0, 0, 1])
+            rig.lid.isEnabled = (finish?.lidOpacity ?? 1) > 0.05
+            for (side, fin) in zip([Float(-1), 1], rig.fins) {
+                fin.orientation = simd_quatf(angle: side * (0.2 + buddy.fin * 0.5), axis: [0, 0, 1])
+            }
+            rig.tail.position = [-buddy.facing * 1.02, -0.22, 0]
+            rig.tail.orientation = simd_quatf(angle: buddy.tail, axis: [0, 1, 0])
         }
-        for (index, jarRig) in rig.finishing.enumerated() {
+        let buddies = P.buddies(count: brood.count, phase: phase)
+        for (index, buddyRig) in rig.swimming.enumerated() {
+            buddyRig.root.isEnabled = index < buddies.count
+            guard index < buddies.count else { continue }
+            pose(buddyRig, buddies[index], at: place(buddies[index].center) + lag, finish: nil, lidLift: buddies[index].lidLift)
+        }
+        // Bubbles: two simmer per swimming buddy, then each finish's puff. No allocation.
+        var slot = 0
+        func emit(_ bubble: P.Bubble, _ offset: SIMD3<Float>) {
+            guard slot < rig.bubbles.count else { return }
+            let entity = rig.bubbles[slot]
+            entity.isEnabled = true
+            entity.position = place(bubble.center) + offset
+            entity.scale = .init(repeating: bubble.radius * r)
+            entity.components.set(OpacityComponent(opacity: bubble.opacity))
+            slot += 1
+        }
+        for (index, buddy) in buddies.enumerated() {
+            for bubble in P.simmer(buddy, slot: index, phase: phase) { emit(bubble, lag) }
+        }
+        // Finishes play where their buddy was, not with the creature.
+        for (index, buddyRig) in rig.finishing.enumerated() {
             guard index < brood.finishes.count, let finish = P.finish(age: brood.finishes[index].age) else {
-                jarRig.root.isEnabled = false
+                buddyRig.root.isEnabled = false
                 continue
             }
             let item = brood.finishes[index]
             let drift2 = (item.base - current) / scale
             let drift = SIMD3<Float>(drift2.x, drift2.y, 0)
-            jarRig.root.isEnabled = true
-            pose(jarRig, item.jar, at: place(item.jar.center) + drift, finish: finish, lidLift: 0)
-            for bubble in P.puff(mouth: P.mouth(item.jar), age: item.age) { bubbles.append((bubble, drift)) }
+            buddyRig.root.isEnabled = true
+            pose(buddyRig, item.buddy, at: place(item.buddy.center) + drift, finish: finish, lidLift: 0)
+            for bubble in P.puff(mouth: P.mouth(item.buddy), age: item.age) { emit(bubble, drift) }
         }
-        for (index, entity) in rig.bubbles.enumerated() {
-            entity.isEnabled = index < bubbles.count
-            guard index < bubbles.count else { continue }
-            let (bubble, drift) = bubbles[index]
-            entity.position = place(bubble.center) + drift
-            entity.scale = .init(repeating: bubble.radius * r)
-            entity.components.set(OpacityComponent(opacity: bubble.opacity))
-        }
-        // "+n" tags the last jar; its mesh is rebuilt only when n changes.
+        for index in slot..<rig.bubbles.count { rig.bubbles[index].isEnabled = false }
+        // "+n" rides with the last buddy; its mesh is rebuilt only when n changes.
         let extra = P.overflow(brood.count)
-        rig.overflow.isEnabled = extra > 0 && !jars.isEmpty
-        if extra > 0, let tip = jars.last {
+        rig.overflow.isEnabled = extra > 0 && !buddies.isEmpty
+        if extra > 0, let last = buddies.last {
             if rig.overflowShown != extra {
                 rig.overflow.model?.mesh = MeshResource.generateText("+\(extra)", extrusionDepth: 0.002,
-                    font: .init(name: "IBMPlexSans-Bold", size: 0.16) ?? .systemFont(ofSize: 0.16))
+                    font: .init(name: "IBMPlexSans-Bold", size: 0.14) ?? .systemFont(ofSize: 0.14))
                 rig.overflowShown = extra
                 rig.overflowWidth = rig.overflow.visualBounds(relativeTo: rig.overflow).extents.x
                 broodRigs[id] = rig
             }
-            let side: Float = brood.lean < 0 ? -1 : 1
-            let anchor = place(tip.center) + [side * (tip.radius * r * 1.3 + 0.04), -0.05, 0.05]
-            rig.overflow.position = side > 0 ? anchor : anchor - [rig.overflowWidth, 0, 0]
+            rig.overflow.position = place(last.center) + lag + [-rig.overflowWidth / 2, -last.radius * r * 2.2, 0.05]
         }
     }
 

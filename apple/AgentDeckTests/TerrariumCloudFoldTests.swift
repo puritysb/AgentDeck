@@ -58,15 +58,17 @@ final class TerrariumCloudFoldTests: XCTestCase {
         scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
         var state = TerrariumState()
         state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
-        state.backgroundTaskCounts = ["claude": 12]
+        state.cloudCreatures = [.init(id: "codex", projectName: "Codex", modelName: nil, state: .pulsing, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = ["claude": 12, "codex": 2]
         scene.sync(state, aspect: 1.6)
         let resident = try XCTUnwrap(scene.residents["claude"])
+        XCTAssertEqual(scene.residents["codex"]?.findEntity(named: "background-work")?.isEnabled, true, "Every resident kind gets buddies")
         let group = try XCTUnwrap(resident.findEntity(named: "background-work"))
         XCTAssertTrue(group.isEnabled)
         XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, false, "Background tiles replace the foreground bars")
-        let jars = (0..<BackgroundWorkPresentation.maxJars + 1).compactMap { group.findEntity(named: "background-jar-\($0)") }
-        let finishing = (0..<BackgroundWorkPresentation.maxJars).compactMap { group.findEntity(named: "background-finish-\($0)") }
-        XCTAssertEqual(jars.count, BackgroundWorkPresentation.maxJars, "Large task counts cannot allocate an unbounded effect")
+        let jars = (0..<BackgroundWorkPresentation.maxBuddies + 1).compactMap { group.findEntity(named: "background-buddy-\($0)") }
+        let finishing = (0..<BackgroundWorkPresentation.maxBuddies).compactMap { group.findEntity(named: "background-finish-\($0)") }
+        XCTAssertEqual(jars.count, BackgroundWorkPresentation.maxBuddies, "Large task counts cannot allocate an unbounded effect")
         XCTAssertEqual(jars.filter(\.isEnabled).count, 3)
         XCTAssertEqual(group.findEntity(named: "background-overflow")?.isEnabled, true, "Twelve tasks tag the last jar with +9")
         // Keep a render of the actual production scene for visual review.
@@ -82,7 +84,11 @@ final class TerrariumCloudFoldTests: XCTestCase {
         anchor.addChild(scene.root)
         let camera = PerspectiveCamera()
         camera.camera.fieldOfViewInDegrees = 38
-        camera.look(at: resident.position + [0, 0.15, 0], from: resident.position + [0, 0.9, 4.5], relativeTo: nil)
+        // Frame both kinds: buddies are generic, not a Claude-only accent.
+        let codex = try XCTUnwrap(scene.residents["codex"])
+        let middle = (resident.position + codex.position) / 2
+        let spread = max(1.5, simd_distance(resident.position, codex.position))
+        camera.look(at: middle + [0, 0.15, 0], from: middle + [0, 0.9, 2.2 + spread * 1.6], relativeTo: nil)
         anchor.addChild(camera)
         let light = DirectionalLight()
         light.light.intensity = 3000
@@ -160,125 +166,112 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(canvas.backgroundOrbitPhase, phase)
     }
 
-    func testBackgroundJarsRideTheArmAndStayClearOfBodyAndSand() {
+    func testJarBuddiesWanderBesideTheBodyClearOfTagAndSand() {
         typealias P = BackgroundWorkPresentation
-        XCTAssertTrue(P.jars(count: 0, phase: 0, lean: P.restLean).isEmpty)
-        XCTAssertTrue(P.arm(count: 0, phase: 0, lean: P.restLean).isEmpty, "No jars, no carrying arm")
-        XCTAssertEqual(P.jars(count: 12, phase: 0, lean: P.restLean).count, P.maxJars, "Jars are capped; +n and the label carry the rest")
+        XCTAssertTrue(P.buddies(count: 0, phase: 0).isEmpty)
+        XCTAssertEqual(P.buddies(count: 12, phase: 0).count, P.maxBuddies, "Buddies are capped; +n and the label carry the rest")
         XCTAssertEqual(P.overflow(12), 9)
         XCTAssertEqual(P.overflow(3), 0)
         XCTAssertEqual(P.label(1), "1 background task")
         XCTAssertEqual(P.label(5), "5 background tasks")
-        // Every lean the smoothing passes through, including a reversal through zero.
-        for lean: Float in [-1, -P.restLean, -0.3, -0.1, 0, 0.1, 0.3, P.restLean, 1] {
-            for phase: Float in stride(from: 0, to: 6.3, by: 0.35) {
-                let jars = P.jars(count: 3, phase: phase, lean: lean)
-                for (index, jar) in jars.enumerated() {
-                    XCTAssertGreaterThan(jar.center.y - jar.radius, -0.75, "lean \(lean): jars never drop toward the sand")
-                    XCTAssertLessThan(jar.center.y + jar.radius * 1.6, 0.25, "Jars and lids stay below the eye line and tag")
-                    XCTAssertLessThanOrEqual(jar.lidLift, 0.18 + 1e-4, "The lid hops a little, it does not fly off")
-                    XCTAssertLessThan(abs(jar.tilt), 0.2)
-                    if abs(lean) >= 0.1 {
-                        XCTAssertEqual(jar.center.x > 0, lean > 0, "Jars ride on the wake side")
-                    }
-                    if abs(lean) >= 0.3, index > 0 {
-                        XCTAssertGreaterThan(abs(jar.center.x - jars[index - 1].center.x), jar.radius * 1.9, "Jars sit side by side, not stacked")
-                    }
-                    if abs(lean) >= 0.3 {
-                        // Only mid-reversal (crossed in a few frames) may a jar pass under the body.
-                        XCTAssertGreaterThan(abs(jar.center.x) - jar.radius, 0.85, "A carried jar sits outside the body")
-                    }
-                }
-                let arm = P.arm(count: 3, phase: phase, lean: lean)
-                XCTAssertEqual(arm.first, [P.side(lean) * P.shoulder.x, P.shoulder.y], "The arm leaves from the sprite's own arm")
-                for (point, jar) in zip(arm.dropFirst(2), jars) {
-                    XCTAssertEqual(point.y, jar.center.y - jar.radius * 0.95, accuracy: 1e-5, "Each jar sits on the arm")
-                }
+        var visited: [Set<Int>] = Array(repeating: [], count: P.maxBuddies + 1)
+        var turned = Array(repeating: Set<Float>(), count: P.maxBuddies + 1)
+        for phase in stride(from: Float(0), to: 40, by: 0.05) {
+            for index in 0...P.maxBuddies {
+                let buddy = P.buddy(index: index, phase: phase)
+                let c = buddy.center
+                // Body: never closer than the creature's own half width plus the jar.
+                XCTAssertGreaterThan(abs(c.x) - buddy.radius * 1.3, 1.0, "Buddy \(index) never overlaps the body")
+                // Tag above, sand below: the whole jar, lid and fins included.
+                XCTAssertLessThan(c.y + buddy.radius * 1.9, 0.6, "Buddy \(index) stays under the name tag")
+                XCTAssertGreaterThan(c.y - buddy.radius * 1.1, -0.7, "Buddy \(index) never sinks below the feet")
+                XCTAssertLessThan(abs(c.x), 2.4, "Buddy \(index) stays near its creature")
+                XCTAssertLessThan(abs(buddy.tilt), 0.31)
+                XCTAssertLessThanOrEqual(buddy.lidLift, 0.18 + 1e-4, "The lid hops a little, it does not fly off")
+                visited[index].insert(Int((c.x * 10).rounded()))
+                turned[index].insert(buddy.facing)
             }
         }
+        for index in 0...P.maxBuddies {
+            XCTAssertGreaterThan(visited[index].count, 6, "Buddy \(index) wanders, it does not hover in place")
+            XCTAssertEqual(turned[index], [-1, 1], "Buddy \(index) turns to face where it swims")
+        }
+        // Buddies spread over both sides and never move in step.
+        XCTAssertGreaterThan(P.buddy(index: 0, phase: 1).center.x, 0)
+        XCTAssertLessThan(P.buddy(index: 1, phase: 1).center.x, 0)
+        let a = P.buddy(index: 0, phase: 3), b = P.buddy(index: 2, phase: 3)
+        XCTAssertNotEqual(a.center, b.center)
         // Lids hop at staggered moments: never all at once.
         var together = 0
         for phase in stride(from: Float(0), to: 20, by: 0.05) {
-            if P.jars(count: 3, phase: phase, lean: P.restLean).allSatisfy({ $0.lidLift > 0.05 }) { together += 1 }
+            if P.buddies(count: 3, phase: phase).allSatisfy({ $0.lidLift > 0.05 }) { together += 1 }
         }
         XCTAssertEqual(together, 0)
         // Simmer bubbles rise from the mouth and fade as they go.
-        let jar = P.jar(index: 0, phase: 0, lean: P.restLean)
-        for bubble in P.simmer(jar, slot: 0, phase: 1.3) {
-            XCTAssertGreaterThanOrEqual(bubble.center.y, P.mouth(jar).y)
+        let buddy = P.buddy(index: 0, phase: 0)
+        for bubble in P.simmer(buddy, slot: 0, phase: 1.3) {
+            XCTAssertGreaterThanOrEqual(bubble.center.y, P.mouth(buddy).y)
             XCTAssertLessThanOrEqual(bubble.opacity, 0.8)
         }
-        // A finish pops the lid up and spins it, then the jar shrinks away.
-        let early = try? XCTUnwrap(P.finish(age: 0.2)), late = try? XCTUnwrap(P.finish(age: 1.2))
+        // A finish pops the lid up and spins it, then the buddy shrinks away.
+        let early = P.finish(age: 0.2), late = P.finish(age: 1.2)
         XCTAssertGreaterThan(early?.lidLift ?? 0, 0.5)
         XCTAssertGreaterThan(early?.lidSpin ?? 0, 0)
-        XCTAssertEqual(early?.scale ?? 0, 1, accuracy: 1e-5, "The jar holds its size while the lid pops")
+        XCTAssertEqual(early?.scale ?? 0, 1, accuracy: 1e-5, "The buddy holds its size while the lid pops")
         XCTAssertLessThan(late?.scale ?? 1, 0.5)
         XCTAssertLessThan(late?.opacity ?? 1, early?.opacity ?? 0)
         XCTAssertNil(P.finish(age: P.finishSeconds))
         let first = P.puff(mouth: .zero, age: 0.2), later = P.puff(mouth: .zero, age: 1.0)
         XCTAssertEqual(first.count, P.bubblesPerFinish)
-        for (a, b) in zip(first, later) {
-            XCTAssertGreaterThan(b.center.y, a.center.y)
-            XCTAssertLessThan(b.opacity, a.opacity)
+        for (x, y) in zip(first, later) {
+            XCTAssertGreaterThan(y.center.y, x.center.y)
+            XCTAssertLessThan(y.opacity, x.opacity)
         }
-        // Swimming right carries the jars to the left; stillness keeps their side.
-        var lean = P.restLean
-        for i in 0..<240 { lean = P.lean(previous: lean, velocityX: i % 2 == 0 ? 0.3 : -0.3, dt: 1.0 / 60) }
-        XCTAssertEqual(lean, P.restLean, accuracy: 0.001, "Fidgeting in place does not swing the jars")
-        var frames = 0
-        while lean > 0 { lean = P.lean(previous: lean, velocityX: 1, dt: 1.0 / 60); frames += 1 }
-        XCTAssertLessThan(frames, 12, "A reversal carries the jars across quickly")
-        for _ in 0..<120 { lean = P.lean(previous: lean, velocityX: 1, dt: 1.0 / 60) }
-        XCTAssertLessThan(lean, -0.5)
-        let settled = lean
-        for _ in 0..<240 { lean = P.lean(previous: lean, velocityX: 0, dt: 1.0 / 60) }
-        XCTAssertEqual(lean, -P.restLean, accuracy: 0.05)
-        XCTAssertEqual(P.lean(previous: settled, velocityX: 3, dt: 0), settled, "No time, no motion")
     }
 
-    func testBackgroundJarsFinishOnlyOnExplicitlyLowerCounts() {
+    func testJarBuddiesFinishOnlyOnExplicitlyLowerCounts() {
         typealias P = BackgroundWorkPresentation
         let here: SIMD2<Float> = [0.3, 0.4]
         var brood = BackgroundBrood()
         brood.observe(explicit: 3, working: true, position: here, phase: 0, animate: true)
         XCTAssertTrue(brood.finishes.isEmpty, "Arriving tasks never finish")
-        let last = P.jar(index: 2, phase: 0, lean: brood.lean)
+        let last = P.buddy(index: 2, phase: 0)
         brood.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(brood.finishes.map(\.jar), [last], "A finished task leaves from the end of the arm")
+        XCTAssertEqual(brood.finishes.map(\.buddy), [last], "A finished task leaves from the end of the group")
         XCTAssertEqual(brood.finishes.first?.base, here, "The finish remembers where it was, to play in the water")
-        brood.advance(dt: P.finishSeconds, x: 0)
+        brood.advance(dt: 1.0 / 60, position: here)
+        brood.advance(dt: P.finishSeconds, position: here)
         XCTAssertTrue(brood.finishes.isEmpty, "Finishes expire")
 
-        // Unknown is not zero: a restart or a snapshot without the field retains the jars.
+        // Unknown is not zero: a restart or a snapshot without the field retains the buddies.
         brood.observe(explicit: nil, working: true, position: here, phase: 0, animate: true)
         XCTAssertEqual(brood.count, 2)
-        XCTAssertTrue(brood.finishes.isEmpty, "An unknown count never finishes a jar")
+        XCTAssertTrue(brood.finishes.isEmpty, "An unknown count never finishes a buddy")
         brood.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
         XCTAssertTrue(brood.finishes.isEmpty, "The same count after an unknown snapshot does not finish one either")
 
         // The common finish: the last task ends and the same snapshot turns the creature idle.
         brood.observe(explicit: 0, working: false, position: here, phase: 0, animate: true)
         XCTAssertEqual(brood.count, 0)
-        XCTAssertEqual(brood.finishes.count, 2, "Every jar that was showing finishes when the last task ends")
+        XCTAssertEqual(brood.finishes.count, 2, "Every buddy that was showing finishes when the last task ends")
 
-        // A capped arm: the last jar is still carried, so the finish plays just past it.
+        // A capped group: the last buddy still swims, so the finish plays past it.
         var crowded = BackgroundBrood()
         crowded.observe(explicit: 12, working: true, position: here, phase: 0, animate: true)
         crowded.observe(explicit: 11, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(crowded.finishes.map(\.jar), [P.jar(index: P.maxJars, phase: 0, lean: crowded.lean)])
+        XCTAssertEqual(crowded.finishes.map(\.buddy), [P.buddy(index: P.maxBuddies, phase: 0)])
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(crowded.finishes.count, P.maxJars, "In-flight finishes are bounded")
+        XCTAssertEqual(crowded.finishes.count, P.maxBuddies, "In-flight finishes are bounded")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: false)
         XCTAssertTrue(crowded.finishes.isEmpty, "Turning on Reduce Motion mid-finish leaves nothing frozen")
 
-        // An approval prompt hides the jars without finishing their tasks.
+        // An approval prompt hides the buddies without finishing their tasks.
         var waiting = BackgroundBrood()
         waiting.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
         waiting.observe(explicit: 2, working: false, position: here, phase: 0, animate: true)
         XCTAssertEqual(waiting.count, 0)
         waiting.observe(explicit: 1, working: false, position: here, phase: 0, animate: true)
-        XCTAssertTrue(waiting.finishes.isEmpty, "Nothing finishes from hidden jars")
+        XCTAssertTrue(waiting.finishes.isEmpty, "Nothing finishes from hidden buddies")
         waiting.observe(explicit: 1, working: true, position: here, phase: 0, animate: true)
         XCTAssertEqual(waiting.count, 1)
 
@@ -290,34 +283,51 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(stale.count, 0)
         XCTAssertTrue(stale.finishes.isEmpty)
 
+        // Followed point: buddies trail a swimming creature, then catch up; no time, no lag.
+        var follower = BackgroundBrood()
+        follower.advance(dt: 1.0 / 60, position: [0, 0])
+        follower.advance(dt: 1.0 / 60, position: [0.2, 0])
+        XCTAssertLessThan(follower.lag(from: [0.2, 0]).x, -0.15, "Buddies lag behind a swim")
+        for _ in 0..<180 { follower.advance(dt: 1.0 / 60, position: [0.2, 0]) }
+        XCTAssertEqual(follower.lag(from: [0.2, 0]).x, 0, accuracy: 0.002, "and catch up")
+        follower.advance(dt: 0, position: [0.9, 0])
+        XCTAssertEqual(follower.lag(from: [0.9, 0]), .zero, "Reduce Motion pins buddies to their creature")
+
         var still = BackgroundBrood()
         still.observe(explicit: 2, working: true, position: here, phase: 0, animate: false)
         still.observe(explicit: 0, working: true, position: here, phase: 0, animate: false)
         XCTAssertTrue(still.finishes.isEmpty, "Reduce Motion never starts a finish")
-        still.advance(dt: 0, x: 5)
-        still.advance(dt: 1.0 / 60, x: 50)
-        XCTAssertEqual(still.lean, P.restLean, "Leaving Reduce Motion does not read a jump as a swim")
     }
 
+    /// Every creature kind gets buddies through the same path; none of them
+    /// overlap their own creature.
     @MainActor
-    func testCanvasJarsFinishWhenATaskFinishes() {
+    func testCanvasJarBuddiesAreGenericAcrossCreatureKinds() {
         let renderer = TerrariumRenderer()
         renderer.animateHermes = false
         var state = TerrariumState()
-        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
-        state.backgroundTaskCounts = ["claude": 2]
+        state.creatures = [.init(id: "claude", projectName: "Claude", modelName: nil, state: .working, homeX: 0.2, homeY: 0.4, scale: 1)]
+        state.cloudCreatures = [.init(id: "codex", projectName: "Codex", modelName: nil, state: .pulsing, homeX: 0.5, homeY: 0.4, scale: 1)]
+        state.opencodeCreatures = [.init(id: "opencode", projectName: "OpenCode", modelName: nil, state: .pulsing, homeX: 0.8, homeY: 0.4, scale: 1)]
+        state.kiroCreatures = [.init(id: "kiro", projectName: "Kiro", modelName: nil, state: .working, homeX: 0.35, homeY: 0.6, scale: 1)]
+        state.antigravityCreatures = [.init(id: "antigravity", projectName: "Antigravity", modelName: nil, state: .working, homeX: 0.65, homeY: 0.6, scale: 1)]
+        let ids = ["claude", "codex", "opencode", "kiro", "antigravity"]
+        state.backgroundTaskCounts = Dictionary(uniqueKeysWithValues: ids.map { ($0, 2) })
         renderer.update(dt: 0.016, state: state)
-        XCTAssertEqual(renderer.broods["claude"]?.count, 2)
+        for id in ids {
+            XCTAssertEqual(renderer.broods[id]?.count, 2, "\(id) carries buddies like any other kind")
+            XCTAssertNotNil(renderer.residentPose(id))
+        }
         state.backgroundTaskCounts = [:]
         renderer.update(dt: 0.016, state: state)
-        XCTAssertEqual(renderer.broods["claude"]?.count, 2, "A snapshot without the count retains the jars")
-        XCTAssertEqual(renderer.broods["claude"]?.finishes.count, 0)
-        state.backgroundTaskCounts = ["claude": 1]
+        XCTAssertEqual(renderer.broods["codex"]?.count, 2, "A snapshot without the count retains the buddies")
+        XCTAssertEqual(renderer.broods["codex"]?.finishes.count, 0)
+        state.backgroundTaskCounts = ["codex": 1]
         renderer.update(dt: 0.016, state: state)
-        XCTAssertEqual(renderer.broods["claude"]?.finishes.count, 1)
-        state.creatures = []
+        XCTAssertEqual(renderer.broods["codex"]?.finishes.count, 1)
+        state.cloudCreatures = []
         renderer.update(dt: 0.016, state: state)
-        XCTAssertNil(renderer.broods["claude"], "A departed creature leaves no jars behind")
+        XCTAssertNil(renderer.broods["codex"], "A departed creature leaves no buddies behind")
         let quiet = TerrariumRenderer()
         state.creatures = [.init(id: "idle", projectName: "Render", modelName: nil, state: .floating, homeX: 0.5, homeY: 0.5, scale: 1)]
         state.backgroundTaskCounts = ["idle": 0]
@@ -327,20 +337,19 @@ final class TerrariumCloudFoldTests: XCTestCase {
 
     /// Review evidence only: set AGENTDECK_BROOD_VISUAL_OUTPUT to write frames.
     @MainActor
-    func testCanvasJarFramesForVisualReview() throws {
+    func testCanvasJarBuddyFramesForVisualReview() throws {
         guard let output = ProcessInfo.processInfo.environment["AGENTDECK_BROOD_VISUAL_OUTPUT"] else {
-            throw XCTSkip("Set AGENTDECK_BROOD_VISUAL_OUTPUT to render jar frames")
+            throw XCTSkip("Set AGENTDECK_BROOD_VISUAL_OUTPUT to render buddy frames")
         }
         let folder = URL(fileURLWithPath: output, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let renderer = TerrariumRenderer()
+        renderer.animateHermes = false
         var state = TerrariumState()
-        state.creatures = [
-            .init(id: "one", projectName: "Docs", modelName: nil, state: .working, homeX: 0.12, homeY: 0.45, scale: 1),
-            .init(id: "three", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.40, homeY: 0.28, scale: 1),
-            .init(id: "five", projectName: "Release", modelName: nil, state: .working, homeX: 0.76, homeY: 0.52, scale: 1),
-        ]
-        state.backgroundTaskCounts = ["one": 1, "three": 3, "five": 5]
+        state.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.18, homeY: 0.32, scale: 1)]
+        state.cloudCreatures = [.init(id: "codex", projectName: "Release", modelName: nil, state: .pulsing, homeX: 0.52, homeY: 0.48, scale: 1)]
+        state.opencodeCreatures = [.init(id: "opencode", projectName: "Docs", modelName: nil, state: .pulsing, homeX: 0.84, homeY: 0.3, scale: 1)]
+        state.backgroundTaskCounts = ["claude": 1, "codex": 3, "opencode": 5]
         func write(_ name: String) throws {
             let image = ImageRenderer(content: Canvas { context, size in renderer.draw(context: &context, size: size) }.frame(width: 1000, height: 560))
             image.scale = 2
@@ -352,11 +361,11 @@ final class TerrariumCloudFoldTests: XCTestCase {
             for _ in 0..<12 { renderer.update(dt: 1.0 / 30, state: state) }
             try write(String(format: "running-%02d", frame))
         }
-        state.backgroundTaskCounts["three"] = 2
-        state.backgroundTaskCounts["one"] = 0
-        state.creatures[0] = .init(id: "one", projectName: "Docs", modelName: nil, state: .floating, homeX: 0.12, homeY: 0.45, scale: 1)
+        state.backgroundTaskCounts["codex"] = 2
+        state.backgroundTaskCounts["claude"] = 0
+        state.creatures = [.init(id: "claude", projectName: "AgentDeck", modelName: nil, state: .floating, homeX: 0.18, homeY: 0.32, scale: 1)]
         for frame in 0..<6 {
-            for _ in 0..<6 { renderer.update(dt: 1.0 / 30, state: state) }
+            for _ in 0..<5 { renderer.update(dt: 1.0 / 30, state: state) }
             try write(String(format: "finish-%02d", frame))
         }
     }

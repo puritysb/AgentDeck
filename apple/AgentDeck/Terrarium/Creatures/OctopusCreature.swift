@@ -294,8 +294,7 @@ final class OctopusCreature: Creature {
         CreatureBrandFeatures.draw("claudecode", context: context, transform: t)
     }
 
-    /// Also paints the arm that tends a background brood, so it matches the body.
-    func bodyColorForState() -> Color {
+    private func bodyColorForState() -> Color {
         if visualState == .working {
             // Pulse between body and bodyLight during WORKING
             let t = (sin(time * TerrariumTiming.thinkingPulseSpeed) * 0.5 + 0.5)

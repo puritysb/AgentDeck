@@ -79,7 +79,8 @@ final class TerrariumRenderer {
             backgroundOrbitPhase += min(max(dt, 0), 0.05) * BackgroundWorkPresentation.radiansPerSecond
         }
         var state = sourceState
-        let visibleIDs = Set(AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId).map(\.id))
+        let foreground = AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId)
+        let visibleIDs = Set(foreground.map(\.id))
         state.creatures = state.creatures.filter { visibleIDs.contains($0.id) }
         state.cloudCreatures = state.cloudCreatures.filter { visibleIDs.contains($0.id) }
         state.opencodeCreatures = state.opencodeCreatures.filter { visibleIDs.contains($0.id) }
@@ -243,22 +244,21 @@ final class TerrariumRenderer {
         }
         crayfish.update(dt: dt, state: state)
 
-        // Background brood: counts hatch on decrease, then lean and hatches advance.
+        // Jar buddies, for every creature kind through one path: counts finish on
+        // an explicit decrease, then the follow point and finishes advance.
         // nil stays nil: an unknown count is retained, never read as zero.
         let broodDt = animateCompanions ? min(max(dt, 0), 0.05) : 0
-        if broods.keys.contains(where: { octopuses[$0] == nil }) {
-            broods = broods.filter { octopuses[$0.key] != nil }
+        if broods.keys.contains(where: { residentPose($0) == nil }) {
+            broods = broods.filter { residentPose($0.key) != nil }
         }
-        for creature in state.creatures {
-            guard let live = octopuses[creature.id] else { continue }
-            let explicit = state.backgroundTaskCounts[creature.id]
-            guard broods[creature.id] != nil || (explicit ?? 0) > 0 else { continue }
-            var brood = broods[creature.id] ?? BackgroundBrood()
-            brood.observe(explicit: explicit, working: creature.state == .working,
-                          position: [live.currentX, live.currentY], phase: backgroundOrbitPhase, animate: animateCompanions)
-            let bodyRadius = max(0.001, TerrariumLayout.octopusBodyRadius * live.scale)
-            brood.advance(dt: broodDt, x: live.currentX / bodyRadius)
-            broods[creature.id] = brood
+        for resident in foreground {
+            let explicit = state.backgroundTaskCounts[resident.id]
+            guard broods[resident.id] != nil || (explicit ?? 0) > 0, let pose = residentPose(resident.id) else { continue }
+            var brood = broods[resident.id] ?? BackgroundBrood()
+            brood.observe(explicit: explicit, working: resident.activity == .working,
+                          position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
+            brood.advance(dt: broodDt, position: pose.center)
+            broods[resident.id] = brood
         }
 
         ciCenters = octopuses.mapValues { [ $0.currentX,$0.currentY ] }
@@ -483,9 +483,25 @@ final class TerrariumRenderer {
 
     // MARK: - Background work (separate from the child-agent orbits)
 
-    /// Unit jar parts in screen space (y down), belly radius 1 centred on the
-    /// origin. Built once; each frame only moves the context transform.
-    private enum JarPaths {
+    /// Centre (normalized) and body radius (normalized by width) of any live
+    /// creature, whatever its kind: the one anchor jar buddies need.
+    func residentPose(_ id: String) -> (center: SIMD2<Float>, radius: Float)? {
+        if let c = octopuses[id] { return ([c.currentX, c.currentY], TerrariumLayout.octopusBodyRadius * c.scale) }
+        if let c = clouds[id] { return ([c.currentX, c.currentY], 0.045 * c.scale) }
+        if let c = opencodeCreatures[id] { return ([c.currentX, c.currentY], 0.044 * c.scale) }
+        if let c = antigravityCreatures[id] { return ([c.currentX, c.currentY], 0.044 * c.scale) }
+        if let c = kiroCreatures[id] { return ([c.currentX, c.currentY], 0.040 * c.scale) }
+        if let c = hermesCreatures[id] { return ([c.currentX, c.currentY], 0.05 * c.scale) }
+        if isCrayfishFocusId(id), crayfish.visible {
+            let p = crayfish.currentPosition()
+            return ([p.x, p.y], TerrariumLayout.crayfishWidthFraction / 2)
+        }
+        return nil
+    }
+
+    /// Unit jar-buddy parts in screen space (y down), belly radius 1 centred on
+    /// the origin, facing right. Built once; each frame only moves the context transform.
+    private enum BuddyPaths {
         static let body: Path = {
             var p = Path(ellipseIn: CGRect(x: -1, y: -0.9, width: 2, height: 1.8))
             p.addRect(CGRect(x: -0.46, y: -1.14, width: 0.92, height: 0.4))
@@ -493,12 +509,33 @@ final class TerrariumRenderer {
         }()
         static let belt = Path(ellipseIn: CGRect(x: -0.84, y: 0.22, width: 1.68, height: 0.5))
         static let rim = Path(roundedRect: CGRect(x: -0.62, y: -1.3, width: 1.24, height: 0.22), cornerRadius: 0.1)
-        static let gloss = Path(ellipseIn: CGRect(x: -0.66, y: -0.62, width: 0.34, height: 0.24))
-        static let leftEye = Path(ellipseIn: CGRect(x: -0.44, y: -0.18, width: 0.2, height: 0.24))
-        static let rightEye = Path(ellipseIn: CGRect(x: 0.24, y: -0.18, width: 0.2, height: 0.24))
+        static let gloss = Path(ellipseIn: CGRect(x: -0.6, y: -0.62, width: 0.32, height: 0.22))
+        /// Eyes and cheeks sit a little toward the direction of travel.
+        static let eyes: Path = {
+            var p = Path(ellipseIn: CGRect(x: -0.3, y: -0.18, width: 0.2, height: 0.24))
+            p.addEllipse(in: CGRect(x: 0.3, y: -0.18, width: 0.2, height: 0.24))
+            return p
+        }()
         static let cheeks: Path = {
-            var p = Path(ellipseIn: CGRect(x: -0.72, y: 0.06, width: 0.26, height: 0.14))
-            p.addEllipse(in: CGRect(x: 0.46, y: 0.06, width: 0.26, height: 0.14))
+            var p = Path(ellipseIn: CGRect(x: -0.56, y: 0.06, width: 0.24, height: 0.13))
+            p.addEllipse(in: CGRect(x: 0.58, y: 0.06, width: 0.24, height: 0.13))
+            return p
+        }()
+        /// A side fin, hinged at the origin; scaled by the beat.
+        static let fin: Path = {
+            var p = Path()
+            p.move(to: .zero)
+            p.addQuadCurve(to: CGPoint(x: 0.1, y: 0.55), control: CGPoint(x: 0.5, y: 0.1))
+            p.addQuadCurve(to: .zero, control: CGPoint(x: -0.1, y: 0.3))
+            return p
+        }()
+        /// A small fan tail, hinged at the origin, pointing left (behind).
+        static let tail: Path = {
+            var p = Path()
+            p.move(to: .zero)
+            p.addLine(to: CGPoint(x: -0.55, y: -0.32))
+            p.addQuadCurve(to: CGPoint(x: -0.55, y: 0.32), control: CGPoint(x: -0.4, y: 0))
+            p.closeSubpath()
             return p
         }()
         /// Lid and knob, centred on the lid's seat so it can hop and spin in place.
@@ -516,114 +553,101 @@ final class TerrariumRenderer {
         }()
     }
 
-    /// Octopus jars (see `BackgroundWorkPresentation`): one arm curls out and
-    /// carries a small clay jar per running background task. Lids jiggle and
-    /// bubbles simmer from the mouths; a finished jar pops its lid, sparkles
-    /// and shrinks away where it was.
+    /// Jar buddies (see `BackgroundWorkPresentation`) for every creature kind:
+    /// small clay jars that swim lazy loops beside their creature, one per
+    /// running background task. Lids jiggle and bubbles simmer from the
+    /// mouths; a finished buddy pops its lid, sparkles and shrinks away where it was.
     private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
-        guard let state = lastState else { return }
-        for creature in state.creatures {
-            guard let brood = broods[creature.id], !brood.isEmpty, let live = octopuses[creature.id] else { continue }
-            let center = CGPoint(x: CGFloat(live.currentX) * size.width, y: CGFloat(live.currentY) * size.height)
-            let r = max(14, size.width * CGFloat(TerrariumLayout.octopusBodyRadius * live.scale))
-            func screen(_ p: SIMD2<Float>, from origin: CGPoint) -> CGPoint {
-                CGPoint(x: origin.x + CGFloat(p.x) * r, y: origin.y - CGFloat(p.y) * r)
-            }
+        for (id, brood) in broods where !brood.isEmpty {
+            guard let pose = residentPose(id) else { continue }
+            let r = max(12, size.width * CGFloat(pose.radius))
+            let lag = brood.lag(from: pose.center)
+            // Buddies circle the followed point, which trails the creature when it swims.
+            let center = CGPoint(x: CGFloat(pose.center.x + lag.x) * size.width, y: CGFloat(pose.center.y + lag.y) * size.height)
             let phase = backgroundOrbitPhase
-            let jars = BackgroundWorkPresentation.jars(count: brood.count, phase: phase, lean: brood.lean)
-            if !jars.isEmpty {
-                // The carrying arm, in the creature's own colour, under the jars.
-                let points = BackgroundWorkPresentation.arm(count: brood.count, phase: phase, lean: brood.lean).map { screen($0, from: center) }
-                var arm = Path()
-                arm.move(to: points[0])
-                for i in 1..<points.count {
-                    let mid = i == points.count - 1 ? points[i]
-                        : CGPoint(x: (points[i].x + points[i + 1].x) / 2, y: (points[i].y + points[i + 1].y) / 2)
-                    arm.addQuadCurve(to: mid, control: points[i])
-                }
-                context.stroke(arm, with: .color(live.bodyColorForState()), style: StrokeStyle(lineWidth: r * 0.17, lineCap: .round, lineJoin: .round))
-            }
-            for (index, jar) in jars.enumerated() {
-                drawJar(jar, at: screen([jar.center.x, jar.center.y], from: center), r: r, context: &context,
-                        pose: nil, lidLift: jar.lidLift)
-                for bubble in BackgroundWorkPresentation.simmer(jar, slot: index, phase: phase) {
+            let buddies = BackgroundWorkPresentation.buddies(count: brood.count, phase: phase)
+            for (index, buddy) in buddies.enumerated() {
+                drawBuddy(buddy, at: screen(buddy.center, from: center, r: r), r: r, context: &context, pose: nil, lidLift: buddy.lidLift)
+                for bubble in BackgroundWorkPresentation.simmer(buddy, slot: index, phase: phase) {
                     drawBubble(bubble, from: center, r: r, context: &context)
                 }
             }
-            // Finishes play where their jar was, not with the creature.
+            // Finishes play where their buddy was, not with the creature.
             for finish in brood.finishes {
                 guard let pose = BackgroundWorkPresentation.finish(age: finish.age) else { continue }
                 let base = CGPoint(x: CGFloat(finish.base.x) * size.width, y: CGFloat(finish.base.y) * size.height)
-                drawJar(finish.jar, at: screen([finish.jar.center.x, finish.jar.center.y], from: base), r: r, context: &context,
-                        pose: pose, lidLift: 0)
-                for bubble in BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(finish.jar), age: finish.age) {
+                drawBuddy(finish.buddy, at: screen(finish.buddy.center, from: base, r: r), r: r, context: &context, pose: pose, lidLift: 0)
+                for bubble in BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(finish.buddy), age: finish.age) {
                     drawBubble(bubble, from: base, r: r, context: &context)
                 }
             }
-            if !jars.isEmpty {
-                // "+n" tags the last jar; the caption follows it, clear of any jar still finishing there.
-                let tip = BackgroundWorkPresentation.jar(index: jars.count - 1 + brood.finishes.count, phase: phase, lean: brood.lean)
-                let leading = brood.lean >= 0
-                let p = screen([tip.center.x, tip.center.y], from: center)
-                var x = p.x + (leading ? 1 : -1) * (CGFloat(tip.radius) * r * 1.2 + 6)
-                let ink = DesignTokens.Session.working
+            // The count sits under the creature's feet, where no buddy wanders;
+            // "+n" leads it when more tasks run than buddies swim.
+            if !buddies.isEmpty {
+                let anchor = CGPoint(x: CGFloat(pose.center.x) * size.width, y: CGFloat(pose.center.y) * size.height + r * 1.05)
                 let extra = BackgroundWorkPresentation.overflow(brood.count)
-                if extra > 0 {
-                    let more = context.resolve(Text("+\(extra)").font(.custom("IBMPlexSans-Bold", size: 11)).foregroundStyle(ink))
-                    context.draw(more, at: CGPoint(x: x, y: p.y), anchor: leading ? .leading : .trailing)
-                    x += (leading ? 1 : -1) * (more.measure(in: size).width + 5)
-                }
-                context.draw(Text(BackgroundWorkPresentation.label(brood.count))
-                    .font(.custom("IBMPlexSans", size: 10))
-                    .foregroundStyle(ink),
-                    at: CGPoint(x: x, y: p.y), anchor: leading ? .leading : .trailing)
+                let text = BackgroundWorkPresentation.label(brood.count)
+                let ink = DesignTokens.Session.working
+                context.draw(Text(extra > 0 ? "+\(extra) · " : "").font(.custom("IBMPlexSans-Bold", size: 10)).foregroundStyle(ink)
+                             + Text(text).font(.custom("IBMPlexSans", size: 10)).foregroundStyle(ink),
+                             at: anchor, anchor: .top)
             }
         }
     }
 
-    private func drawJar(_ jar: BackgroundWorkPresentation.Jar, at point: CGPoint, r: CGFloat, context: inout GraphicsContext,
-                         pose: BackgroundWorkPresentation.FinishPose?, lidLift: Float) {
-        let s = CGFloat(jar.radius) * r
+    private func screen(_ p: SIMD3<Float>, from origin: CGPoint, r: CGFloat) -> CGPoint {
+        CGPoint(x: origin.x + CGFloat(p.x) * r, y: origin.y - CGFloat(p.y) * r)
+    }
+
+    private func drawBuddy(_ buddy: BackgroundWorkPresentation.Buddy, at point: CGPoint, r: CGFloat, context: inout GraphicsContext,
+                           pose: BackgroundWorkPresentation.FinishPose?, lidLift: Float) {
+        let s = CGFloat(buddy.radius) * r * CGFloat(pose?.scale ?? 1)
+        guard s > 0.2 else { return }
         var c = context
         c.translateBy(x: point.x, y: point.y)
-        c.rotate(by: .radians(Double(jar.tilt)))
-        if let pose {
+        if let pose, pose.sparkleOpacity > 0 {
             // Sparkle first, behind the jar, at full size.
-            if pose.sparkleOpacity > 0 {
-                var spark = c
-                spark.translateBy(x: 0, y: -s * 1.4)
-                spark.scaleBy(x: s * CGFloat(pose.sparkle), y: s * CGFloat(pose.sparkle))
-                spark.stroke(JarPaths.sparkle, with: .color(DesignTokens.Tide.s50.opacity(Double(pose.sparkleOpacity))),
-                             style: StrokeStyle(lineWidth: 0.12, lineCap: .round))
-            }
-            c.opacity = Double(pose.opacity)
+            var spark = c
+            let reach = CGFloat(buddy.radius) * r * CGFloat(pose.sparkle)
+            spark.translateBy(x: 0, y: -CGFloat(buddy.radius) * r * 1.4)
+            spark.scaleBy(x: reach, y: reach)
+            spark.stroke(BuddyPaths.sparkle, with: .color(DesignTokens.Tide.s50.opacity(Double(pose.sparkleOpacity))),
+                         style: StrokeStyle(lineWidth: 0.12, lineCap: .round))
         }
-        var body = c
-        let shrink = CGFloat(pose?.scale ?? 1)
-        body.scaleBy(x: s * shrink, y: s * shrink)
-        body.fill(JarPaths.body, with: .color(DesignTokens.Tide.s200))
-        body.fill(JarPaths.belt, with: .color(DesignTokens.Tide.s300.opacity(0.55)))
-        body.fill(JarPaths.gloss, with: .color(DesignTokens.Tide.s50.opacity(0.8)))
-        body.fill(JarPaths.leftEye, with: .color(DesignTokens.Ink.s900))
-        body.fill(JarPaths.rightEye, with: .color(DesignTokens.Ink.s900))
-        body.fill(JarPaths.cheeks, with: .color(DesignTokens.Coral.s500.opacity(0.35)))
-        body.fill(JarPaths.rim, with: .color(DesignTokens.Tide.s300))
+        c.opacity = Double(pose?.opacity ?? 1)
+        // Lean into climbs and dives; mirror to face the direction of travel.
+        c.rotate(by: .radians(Double(-buddy.tilt)))
+        c.scaleBy(x: s * CGFloat(buddy.facing), y: s)
+        let clay = DesignTokens.Tide.s200, shade = DesignTokens.Tide.s300
+        var tail = c
+        tail.translateBy(x: -0.92, y: 0.15)
+        tail.rotate(by: .radians(Double(buddy.tail)))
+        tail.fill(BuddyPaths.tail, with: .color(shade))
+        c.fill(BuddyPaths.body, with: .color(clay))
+        c.fill(BuddyPaths.belt, with: .color(shade.opacity(0.55)))
+        c.fill(BuddyPaths.gloss, with: .color(DesignTokens.Tide.s50.opacity(0.8)))
+        c.fill(BuddyPaths.eyes, with: .color(DesignTokens.Ink.s900))
+        c.fill(BuddyPaths.cheeks, with: .color(DesignTokens.Coral.s500.opacity(0.35)))
+        var fin = c
+        fin.translateBy(x: 0.1, y: 0.25)
+        fin.scaleBy(x: 1, y: 0.6 + CGFloat(buddy.fin) * 0.5)
+        fin.fill(BuddyPaths.fin, with: .color(shade))
+        c.fill(BuddyPaths.rim, with: .color(shade))
         // The one cue of live work: a thin working-cyan line on the rim.
-        body.stroke(JarPaths.rim, with: .color(DesignTokens.Session.working), lineWidth: 0.08)
+        c.stroke(BuddyPaths.rim, with: .color(DesignTokens.Session.working), lineWidth: 0.08)
         var lid = c
         lid.opacity *= Double(pose?.lidOpacity ?? 1)
-        lid.scaleBy(x: s, y: s)
-        lid.translateBy(x: 0, y: JarPaths.lidSeat * shrink - CGFloat(pose?.lidLift ?? lidLift))
+        lid.translateBy(x: 0, y: BuddyPaths.lidSeat - CGFloat(pose?.lidLift ?? lidLift))
         lid.rotate(by: .radians(Double(pose?.lidSpin ?? 0)))
-        lid.fill(JarPaths.lid, with: .color(DesignTokens.Tide.s100))
-        lid.fill(JarPaths.knob, with: .color(DesignTokens.Coral.s700))
+        lid.fill(BuddyPaths.lid, with: .color(DesignTokens.Tide.s100))
+        lid.fill(BuddyPaths.knob, with: .color(DesignTokens.Coral.s700))
     }
 
     private func drawBubble(_ bubble: BackgroundWorkPresentation.Bubble, from origin: CGPoint, r: CGFloat, context: inout GraphicsContext) {
-        let p = CGPoint(x: origin.x + CGFloat(bubble.center.x) * r, y: origin.y - CGFloat(bubble.center.y) * r)
+        let p = screen(bubble.center, from: origin, r: r)
         let br = max(1.5, CGFloat(bubble.radius) * r)
-        let ring = Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2))
-        context.stroke(ring, with: .color(DesignTokens.Tide.s50.opacity(Double(bubble.opacity) * 0.8)), lineWidth: 1)
+        context.stroke(Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2)),
+                       with: .color(DesignTokens.Tide.s50.opacity(Double(bubble.opacity) * 0.8)), lineWidth: 1)
     }
 
 
