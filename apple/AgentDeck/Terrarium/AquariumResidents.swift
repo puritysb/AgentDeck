@@ -37,6 +37,12 @@ enum BackgroundWorkPresentation {
     /// The name tag above a creature, in body radii: a finish never pops into it.
     static let tagHalfWidth: Float = 1.3
     static let tagBottom: Float = 0.55
+    static let tagTop: Float = 1.7
+    /// Closest a buddy centre may come to its owner's centre sideways: the
+    /// body's half width plus the jar and its fins.
+    static let bodyClearance: Float = 1 + buddyRadius * 1.3
+    /// Where buddies hover, above the name tag, when neither side has room.
+    static let stackY: Float = 1.98
 
     static func visibleCount(_ count: Int) -> Int { min(maxBuddies, max(0, count)) }
     static func overflow(_ count: Int) -> Int { max(0, count - maxBuddies) }
@@ -68,10 +74,13 @@ enum BackgroundWorkPresentation {
     /// The lane on one side: where the loop starts and how much of it fits. A
     /// buddy stays nearer its owner than the neighbour on that side, so in a
     /// cramped spot the loop shrinks instead of drifting toward the neighbour.
-    static func lane(side: Float, room: Room) -> (inner: Float, scale: Float) {
+    /// Returns nil when even the tightest loop beside the body would reach
+    /// halfway to the neighbour: then the group hovers above the tag instead.
+    static func lane(side: Float, room: Room) -> (inner: Float, scale: Float)? {
         let gap = side > 0 ? room.right : room.left
         let limit = min(innerX + 0.86, gap * 0.5 - 0.12)
-        let inner = min(innerX, limit - 0.08)
+        guard limit >= bodyClearance + 0.1 else { return nil }
+        let inner = max(bodyClearance, min(innerX, limit - 0.08))
         return (inner, max(0.08, min(1, (limit - inner - 0.05) / 0.8)))
     }
 
@@ -97,8 +106,12 @@ enum BackgroundWorkPresentation {
     static func path(index: Int, phase: Float, room: Room = Room()) -> SIMD3<Float> {
         let i = Float(index)
         let side = side(index: index, room: room)
-        let (inner, scale) = lane(side: side, room: room)
         let t = phase * (0.55 + 0.17 * Float(index % 3)) + i * 2.1
+        guard let (inner, scale) = lane(side: side, room: room) else {
+            // No room beside the body: small bobbing loops in a row above the tag.
+            let x = (Float(index % 3) - 1) * 0.44 + 0.08 * cos(t)
+            return [x, stackY + 0.06 * sin(t) + 0.03 * sin(phase * 3.1 + i), 0.14 + 0.03 * Float(index % 3)]
+        }
         let reach = (0.28 + 0.06 * Float(index % 3)) * scale
         let x = side * (inner + reach + reach * cos(t) + 0.05 * scale * sin(t * 2.3 + i))
         let y = -0.08 + 0.34 * sin(t) + 0.05 * sin(t * 2.3 + i) + 0.03 * sin(phase * 3.1 + i)
@@ -122,8 +135,8 @@ enum BackgroundWorkPresentation {
     /// Moves a finish clear of its creature's name tag: a pop rises about
     /// three buddy radii above its centre (lid, spin and sparkle).
     static func clearOfTag(_ p: SIMD3<Float>) -> SIMD3<Float> {
-        let top = p.y + buddyRadius * 3
-        guard abs(p.x) < tagHalfWidth + buddyRadius, top > tagBottom else { return p }
+        let top = p.y + buddyRadius * 3, bottom = p.y - buddyRadius
+        guard abs(p.x) < tagHalfWidth + buddyRadius, top > tagBottom, bottom < tagTop else { return p }
         let side: Float = p.x < 0 ? -1 : 1
         return [side * (tagHalfWidth + buddyRadius * 1.5), p.y, p.z]
     }
@@ -206,7 +219,7 @@ struct BackgroundBrood: Equatable {
     /// Each buddy's settled centre: it eases toward its lane, so a change of
     /// side or a shrinking loop is a swim, never a jump. Sized once.
     private var settled = [SIMD3<Float>](repeating: .zero, count: P.maxBuddies)
-    private var hasSettled = false
+    private(set) var hasSettled = false
 
     /// Buddies to show: only a working creature has them out.
     var count: Int { working ? known ?? 0 : 0 }
@@ -243,11 +256,11 @@ struct BackgroundBrood: Equatable {
         working = nowWorking
         if !animate { finishes.removeAll(); return }
         guard let now = known, explicit != nil, now < previous, shown > 0, nowWorking || now == 0 else { return }
-        // Finished buddies leave from the end of the group. At a capped count
-        // the last visible buddy stays, so the finish plays past it.
+        // Only buddies that visibly leave pop, from the end of the group: a
+        // drop that stays above the cap (12 → 11) changes the "+n", not a buddy,
+        // and a task that never had a buddy (4 → 2 with 3 shown) pops nothing.
         let first = nowWorking ? P.visibleCount(now) : 0
-        let finished = min(previous - now, P.maxBuddies)
-        for index in first..<(first + finished) {
+        for index in first..<P.visibleCount(shown) {
             finishes.append(Finish(buddy: buddy(index: index, phase: phase), base: follow ?? position, age: 0))
         }
         // Bounded: at most one group's worth of finishes is ever in flight.
@@ -356,7 +369,8 @@ final class AquariumResidents {
     private var templates: [String: Entity] = [:]
     private var substrateTemplate: Entity?
     private(set) var residents: [String: Entity] = [:]
-    private var descriptors: [AquariumResident] = []
+    /// What each tag and activity cue was last built from (read by tests).
+    private(set) var descriptors: [AquariumResident] = []
     private var slotOrder: [String] = []
     private var targets: [String: SIMD3<Float>] = [:]
     private struct Motion {
@@ -436,7 +450,18 @@ final class AquariumResidents {
     func sync(_ state: TerrariumState, aspect: Float) {
         self.aspect = aspect
         focusedID = state.focusedSessionId
-        let next = AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId)
+        var next = AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId)
+        // The brood owns the shown task count: it reads the raw count (nil is
+        // unknown, never zero) and retains it, so the activity bars and the tag
+        // follow what the buddies show instead of the snapshot's missing field.
+        for index in next.indices {
+            let item = next[index]
+            let position = residents[item.id]?.position ?? .zero
+            if broods[item.id] == nil { broods[item.id] = BackgroundBrood() }
+            broods[item.id]?.observe(explicit: state.backgroundTaskCounts[item.id], working: item.activity == .working,
+                                     position: [position.x, position.y], phase: backgroundPhase, animate: animate)
+            next[index].backgroundTasks = broods[item.id]?.count ?? 0
+        }
         let ids = Set(next.map(\.id))
         for id in Array(residents.keys) where !ids.contains(id) {
             residents.removeValue(forKey: id)?.removeFromParent()
@@ -541,11 +566,9 @@ final class AquariumResidents {
             guard let resident = residents[item.id] else { continue }
             // Canonical state controls visibility immediately, even while paused.
             resident.findEntity(named: "activity")?.isEnabled = item.activity == .working && item.backgroundTasks == 0
-            // The raw count, not the descriptor's: nil (unknown) must not read as zero.
-            broods[item.id, default: BackgroundBrood()].observe(explicit: state.backgroundTaskCounts[item.id],
-                working: item.activity == .working, position: [resident.position.x, resident.position.y],
-                phase: backgroundPhase, animate: animate)
-            if !animate {
+            // First appearance settles straight into the real lanes, so a spawn
+            // never starts in the open-water lane and then swims across.
+            if !animate || broods[item.id]?.hasSettled == false {
                 broods[item.id]?.advance(dt: 0, position: [resident.position.x, resident.position.y],
                                          room: broodRoom(item.id, resident), phase: backgroundPhase)
             }
@@ -1003,7 +1026,7 @@ final class AquariumResidents {
         rig.group.isEnabled = true
         typealias P = BackgroundWorkPresentation
         let phase = backgroundPhase
-        let r = bodyReach[id] ?? Self.defaultBodyReach
+        let r = max(0.001, bodyReach[id] ?? Self.defaultBodyReach)
         let current = SIMD2<Float>(resident.position.x, resident.position.y)
         let scale = max(0.001, resident.scale.x)
         let lag2 = brood.lag(from: current) / scale

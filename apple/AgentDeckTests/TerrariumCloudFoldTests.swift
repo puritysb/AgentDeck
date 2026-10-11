@@ -150,6 +150,10 @@ final class TerrariumCloudFoldTests: XCTestCase {
         state.backgroundTaskCounts = [:]
         scene.sync(state, aspect: 1.6)
         XCTAssertTrue(group.isEnabled, "An unknown count retains the brood instead of reading as zero")
+        XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, false, "and the activity bars stay off beside the buddies")
+        let retained = try XCTUnwrap(scene.descriptors.first { $0.id == "claude" })
+        XCTAssertEqual(retained.backgroundTasks, 2, "The tag is built from the retained count, as in 2D")
+        XCTAssertEqual(BackgroundWorkPresentation.label(retained.backgroundTasks), "2 background tasks")
         state.backgroundTaskCounts = ["claude": 0]
         scene.sync(state, aspect: 1.6)
         XCTAssertFalse(group.isEnabled, "Completion clears without requiring an animation frame")
@@ -252,13 +256,32 @@ final class TerrariumCloudFoldTests: XCTestCase {
                 }
             }
         }
+        // Very close or overlapping neighbours: buddies never sit over the
+        // owner's body. Beside it when a lane fits, above the tag when none does.
+        for gap: Float in [0.3, 1.0, 2.0] {
+            for layout in [[SIMD2<Float>(gap, 0)], [SIMD2<Float>(gap, 0), SIMD2<Float>(-gap, 0)]] {
+                var room = P.Room()
+                for n in layout { room.note(n) }
+                for phase in stride(from: Float(0), to: 40 * P.radiansPerSecond, by: 0.1) {
+                    for index in 0..<P.maxBuddies {
+                        let c = P.buddy(index: index, phase: phase, room: room).center
+                        let besideBody = abs(c.x) >= P.bodyClearance - 1e-4
+                        let aboveTag = c.y - P.buddyRadius >= P.tagTop
+                        XCTAssertTrue(besideBody || aboveTag, "gap \(gap) \(layout.count)-sided: buddy \(index) at \(c) covers the body or tag")
+                        if aboveTag { XCTAssertEqual(P.clearOfTag(c), c, "A buddy hovering above the tag pops where it is") }
+                    }
+                }
+            }
+        }
         // One close neighbour: the whole group keeps to the open side.
         var right = P.Room(); right.note([3, 0])
         for index in 0..<P.maxBuddies { XCTAssertEqual(P.side(index: index, room: right), -1) }
         // A crowded row: both sides cramped, loops shrink instead of drifting.
         var row = P.Room(); row.note([3, 0]); row.note([-3, 0])
-        XCTAssertLessThan(P.lane(side: 1, room: row).scale, 0.2)
-        XCTAssertEqual(P.lane(side: 1, room: P.Room()).scale, 1, "Open water keeps the full loop")
+        XCTAssertLessThan(try XCTUnwrap(P.lane(side: 1, room: row)).scale, 0.2)
+        XCTAssertEqual(try XCTUnwrap(P.lane(side: 1, room: P.Room())).scale, 1, "Open water keeps the full loop")
+        var squeezed = P.Room(); squeezed.note([1, 0]); squeezed.note([-1, 0])
+        XCTAssertNil(P.lane(side: 1, room: squeezed), "No lane fits beside the body: the group hovers above the tag")
         // A far neighbour or one well above or below changes nothing.
         var far = P.Room(); far.note([6, 0]); far.note([1, 3])
         XCTAssertEqual([P.side(index: 0, room: far), P.side(index: 1, room: far)], [-1, 1], "Open water on both sides still alternates, roomier first")
@@ -281,9 +304,9 @@ final class TerrariumCloudFoldTests: XCTestCase {
             for y in stride(from: Float(-1), through: 2, by: 0.1) {
                 let p = P.clearOfTag([x, y, 0.1])
                 let top = p.y + P.buddyRadius * 3
-                let overTag = abs(p.x) < P.tagHalfWidth + P.buddyRadius && top > P.tagBottom
+                let overTag = abs(p.x) < P.tagHalfWidth + P.buddyRadius && top > P.tagBottom && p.y - P.buddyRadius < P.tagTop
                 XCTAssertFalse(overTag, "A pop at (\(x), \(y)) lands in the name tag")
-                if abs(x) >= P.tagHalfWidth + P.buddyRadius || y + P.buddyRadius * 3 <= P.tagBottom {
+                if abs(x) >= P.tagHalfWidth + P.buddyRadius || y + P.buddyRadius * 3 <= P.tagBottom || y - P.buddyRadius >= P.tagTop {
                     XCTAssertEqual(p, [x, y, 0.1], "A pop already clear stays where it was")
                 }
             }
@@ -316,13 +339,18 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(brood.count, 0)
         XCTAssertEqual(brood.finishes.count, 2, "Every buddy that was showing finishes when the last task ends")
 
-        // A capped group: the last buddy still swims, so the finish plays past it.
+        // A capped group: a drop that stays above the cap changes "+n", not a
+        // buddy, and only buddies that were drawn can pop.
         var crowded = BackgroundBrood()
         crowded.observe(explicit: 12, working: true, position: here, phase: 0, animate: true)
         crowded.observe(explicit: 11, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(crowded.finishes.map(\.buddy), [P.buddy(index: P.maxBuddies, phase: 0)])
+        XCTAssertTrue(crowded.finishes.isEmpty, "12 → 11 keeps all three buddies; nothing visibly leaves")
+        var partly = BackgroundBrood()
+        partly.observe(explicit: 4, working: true, position: here, phase: 0, animate: true)
+        partly.observe(explicit: 2, working: true, position: here, phase: 0, animate: true)
+        XCTAssertEqual(partly.finishes.map(\.buddy), [P.buddy(index: 2, phase: 0)], "4 → 2 with three shown pops only the one that leaves")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: true)
-        XCTAssertEqual(crowded.finishes.count, P.maxBuddies, "In-flight finishes are bounded")
+        XCTAssertEqual(crowded.finishes.count, P.maxBuddies, "11 → 0 pops the three that were drawn")
         crowded.observe(explicit: 0, working: true, position: here, phase: 0, animate: false)
         XCTAssertTrue(crowded.finishes.isEmpty, "Turning on Reduce Motion mid-finish leaves nothing frozen")
 

@@ -52,6 +52,8 @@ final class TerrariumRenderer {
     private var subagentOrbitPhase: Float = 0
     private(set) var backgroundOrbitPhase: Float = 0
     private(set) var broods: [String: BackgroundBrood] = [:]
+    /// Brood ids in sorted order, kept as broods come and go (never sorted per frame).
+    private var broodIDs: [String] = []
     /// Width over height of the last drawn canvas, for body-radius distances.
     private var canvasAspect: Float = 1.6
     private var currentTimeMs: Double = 0
@@ -250,19 +252,34 @@ final class TerrariumRenderer {
         // an explicit decrease, then the follow point and finishes advance.
         // nil stays nil: an unknown count is retained, never read as zero.
         let broodDt = animateCompanions ? min(max(dt, 0), 0.05) : 0
-        if broods.keys.contains(where: { residentPose($0) == nil }) {
+        if broodIDs.contains(where: { residentPose($0) == nil }) {
+            broodIDs.removeAll { residentPose($0) == nil }
             broods = broods.filter { residentPose($0.key) != nil }
         }
         for resident in foreground {
             let explicit = state.backgroundTaskCounts[resident.id]
             guard broods[resident.id] != nil || (explicit ?? 0) > 0, let pose = residentPose(resident.id) else { continue }
-            if broods[resident.id] == nil { broods[resident.id] = BackgroundBrood() }
+            if broods[resident.id] == nil {
+                broods[resident.id] = BackgroundBrood()
+                // Stable draw order: buddies of overlapping creatures never swap layers.
+                broodIDs.insert(resident.id, at: broodIDs.firstIndex { $0 > resident.id } ?? broodIDs.endIndex)
+            }
             // Mutate in place: a copied brood would reallocate its settled lanes every frame.
             broods[resident.id]?.observe(explicit: explicit, working: resident.activity == .working,
                                          position: pose.center, phase: backgroundOrbitPhase, animate: animateCompanions)
-            guard broods[resident.id]?.isEmpty == false else { continue }
-            broods[resident.id]?.advance(dt: broodDt, position: pose.center,
-                                         room: broodRoom(resident.id, pose, among: foreground), phase: backgroundOrbitPhase)
+        }
+        // Advance every brood whose creature still has a pose, in or out of the
+        // foreground, so a finish already playing completes.
+        for id in broodIDs {
+            guard let pose = residentPose(id) else { continue }
+            if !visibleIDs.contains(id) {
+                broods[id]?.observe(explicit: nil, working: false, position: pose.center,
+                                    phase: backgroundOrbitPhase, animate: animateCompanions)
+            }
+            guard let brood = broods[id], !brood.isEmpty || !brood.hasSettled else { continue }
+            // The first frame settles straight into the real lanes; later ones ease.
+            broods[id]?.advance(dt: brood.hasSettled ? broodDt : 0, position: pose.center,
+                                room: broodRoom(id, pose, among: foreground), phase: backgroundOrbitPhase)
         }
 
         ciCenters = octopuses.mapValues { [ $0.currentX,$0.currentY ] }
@@ -577,8 +594,8 @@ final class TerrariumRenderer {
     /// running background task. Lids jiggle and bubbles simmer from the
     /// mouths; a finished buddy pops its lid, sparkles and shrinks away where it was.
     private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
-        for (id, brood) in broods where !brood.isEmpty {
-            guard let pose = residentPose(id) else { continue }
+        for id in broodIDs {
+            guard let brood = broods[id], !brood.isEmpty, let pose = residentPose(id) else { continue }
             let r = max(12, size.width * CGFloat(pose.radius))
             let lag = brood.lag(from: pose.center)
             // Buddies circle the followed point, which trails the creature when it swims.
