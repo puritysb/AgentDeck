@@ -51,6 +51,7 @@ final class TerrariumRenderer {
     private var focusPulse: Float = 0
     private var subagentOrbitPhase: Float = 0
     private(set) var backgroundOrbitPhase: Float = 0
+    private(set) var broods: [String: BackgroundBrood] = [:]
     private var currentTimeMs: Double = 0
     /// 0..1 envelope. Ramps up when a creature gains focus, fades down when
     /// the focused creature has no on-screen sprite (or focus cleared).
@@ -241,6 +242,19 @@ final class TerrariumRenderer {
             k.update(dt: dt, state: state)
         }
         crayfish.update(dt: dt, state: state)
+
+        // Background brood: counts hatch on decrease, then lean and hatches advance.
+        let broodDt = animateCompanions ? min(max(dt, 0), 0.05) : 0
+        broods = broods.filter { octopuses[$0.key] != nil }
+        for creature in state.creatures {
+            guard let live = octopuses[creature.id] else { continue }
+            var brood = broods[creature.id] ?? BackgroundBrood()
+            brood.observe(count: state.backgroundTaskCounts[creature.id] ?? 0, working: creature.state == .working,
+                          phase: backgroundOrbitPhase, animate: animateCompanions)
+            let bodyRadius = max(0.001, TerrariumLayout.octopusBodyRadius * live.scale)
+            brood.advance(dt: broodDt, x: live.currentX / bodyRadius)
+            broods[creature.id] = brood
+        }
 
         ciCenters = octopuses.mapValues { [ $0.currentX,$0.currentY ] }
             .merging(clouds.mapValues { [$0.currentX,$0.currentY] }) { a,_ in a }
@@ -464,23 +478,70 @@ final class TerrariumRenderer {
 
     // MARK: - Background work (separate from the child-agent orbits)
 
+    /// The brood a working creature tends (see `BackgroundWorkPresentation`):
+    /// a soft tether from the arms, translucent egg pods with a turning
+    /// embryo, and bubbles where a finished task hatched.
     private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
         guard let state = lastState else { return }
+        let ink = DesignTokens.Session.working
+        let foam = DesignTokens.Tide.s50
         for creature in state.creatures {
-            guard let count = state.backgroundTaskCounts[creature.id], count > 0,
-                  creature.state == .working, let live = octopuses[creature.id] else { continue }
+            guard let live = octopuses[creature.id], let brood = broods[creature.id] else { continue }
+            let pods = BackgroundWorkPresentation.pods(count: brood.count, phase: backgroundOrbitPhase, lean: brood.lean)
+            let bubbles = brood.bubbles
+            guard !pods.isEmpty || !bubbles.isEmpty else { continue }
             let center = CGPoint(x: CGFloat(live.currentX) * size.width, y: CGFloat(live.currentY) * size.height)
-            let radius = max(26, CGFloat(live.scale) * min(size.width, size.height) * 0.14)
-            for index in 0..<BackgroundWorkPresentation.visibleCount(count) {
-                let offset = BackgroundWorkPresentation.offset(index: index, count: count, phase: backgroundOrbitPhase)
-                let point = CGPoint(x: center.x + CGFloat(offset.x) * radius, y: center.y + CGFloat(offset.y) * radius)
-                let tile = CGRect(x: point.x - 4, y: point.y - 3, width: 8, height: 6)
-                context.fill(Path(roundedRect: tile, cornerRadius: 2), with: .color(DesignTokens.Session.working))
+            let r = max(14, size.width * CGFloat(TerrariumLayout.octopusBodyRadius * live.scale))
+            func screen(_ p: SIMD3<Float>) -> CGPoint { CGPoint(x: center.x + CGFloat(p.x) * r, y: center.y - CGFloat(p.y) * r) }
+
+            if !pods.isEmpty {
+                // Tether: a smooth strand through the pods, midpoint-quadratic so it never kinks.
+                let points = ([BackgroundWorkPresentation.anchor(lean: brood.lean)] + pods.map(\.center)).map(screen)
+                var strand = Path()
+                strand.move(to: points[0])
+                for i in 1..<points.count {
+                    let mid = i == points.count - 1 ? points[i]
+                        : CGPoint(x: (points[i].x + points[i + 1].x) / 2, y: (points[i].y + points[i + 1].y) / 2)
+                    strand.addQuadCurve(to: mid, control: points[i])
+                }
+                context.stroke(strand, with: .color(ink.opacity(0.45)), style: StrokeStyle(lineWidth: max(1, r * 0.04), lineCap: .round))
             }
-            context.draw(Text(BackgroundWorkPresentation.label(count))
-                .font(.custom("IBMPlexSans", size: 10))
-                .foregroundStyle(DesignTokens.Session.working),
-                at: CGPoint(x: center.x, y: center.y + radius * 0.5 + 8))
+            for pod in pods {
+                let p = screen(pod.center)
+                let rx = CGFloat(pod.radius) * r, ry = rx * 1.18
+                let shell = Path(ellipseIn: CGRect(x: p.x - rx, y: p.y - ry, width: rx * 2, height: ry * 2))
+                context.fill(shell, with: .color(ink.opacity(0.16)))
+                context.stroke(shell, with: .color(ink.opacity(0.75)), lineWidth: max(1, r * 0.03))
+                // Embryo: a head and a trailing tail that turn together inside the shell.
+                let e = BackgroundWorkPresentation.embryoOffset(pod)
+                let head = CGPoint(x: p.x + CGFloat(e.x) * r, y: p.y - CGFloat(e.y) * r)
+                let tailPod = BackgroundWorkPresentation.Pod(center: pod.center, radius: pod.radius, spin: pod.spin - 0.9)
+                let t = BackgroundWorkPresentation.embryoOffset(tailPod)
+                let tail = CGPoint(x: p.x + CGFloat(t.x) * r * 0.8, y: p.y - CGFloat(t.y) * r * 0.8)
+                let headR = rx * 0.34, tailR = rx * 0.18
+                context.fill(Path(ellipseIn: CGRect(x: tail.x - tailR, y: tail.y - tailR, width: tailR * 2, height: tailR * 2)), with: .color(ink.opacity(0.7)))
+                context.fill(Path(ellipseIn: CGRect(x: head.x - headR, y: head.y - headR, width: headR * 2, height: headR * 2)), with: .color(ink))
+                let gloss = CGRect(x: p.x - rx * 0.62, y: p.y - ry * 0.72, width: rx * 0.42, height: ry * 0.30)
+                context.fill(Path(ellipseIn: gloss), with: .color(foam.opacity(0.55)))
+            }
+            for bubble in bubbles {
+                let p = screen(bubble.center)
+                let br = CGFloat(bubble.radius) * r
+                let ring = Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2))
+                context.fill(ring, with: .color(foam.opacity(Double(bubble.opacity) * 0.15)))
+                context.stroke(ring, with: .color(foam.opacity(Double(bubble.opacity) * 0.7)), lineWidth: 1)
+            }
+            if let tip = pods.last {
+                // The caption hangs off the tip pod, on the side the strand trails to.
+                let p = screen(tip.center)
+                let gap = CGFloat(tip.radius) * r + 5
+                let leading = brood.lean >= 0
+                context.draw(Text(BackgroundWorkPresentation.label(brood.count))
+                    .font(.custom("IBMPlexSans", size: 10))
+                    .foregroundStyle(ink),
+                    at: CGPoint(x: p.x + (leading ? gap : -gap), y: p.y),
+                    anchor: leading ? .leading : .trailing)
+            }
         }
     }
 

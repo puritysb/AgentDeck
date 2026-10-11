@@ -1,18 +1,150 @@
 import SwiftUI
 import RealityKit
 
-/// Shared by the Apple Canvas and RealityKit accents. Work tiles are tasks,
-/// never extra residents or a second count of child agents.
+/// Claude background tasks drawn as a brood the creature tends: up to three
+/// egg pods on one soft tether that trails in the creature's wake, each with a
+/// small embryo turning inside. A finished task hatches into rising bubbles.
+/// Shared by the Apple Canvas and RealityKit accents. Pods are tasks, never
+/// extra residents or a second count of child agents (those are the dashed
+/// orbit and its wired satellites). Only geometry moves: the working colour
+/// never pulses in brightness (DESIGN.md §10 rule 4).
+///
+/// Every offset is in body-radius units relative to the creature centre,
+/// x toward screen right, y up, z toward the viewer.
 enum BackgroundWorkPresentation {
-    static let maxTiles = 3
+    static let maxPods = 3
+    /// Sway and embryo turn rate; the phase only advances while motion is allowed.
     static let radiansPerSecond: Float = 0.85
-    static func visibleCount(_ count: Int) -> Int { min(maxTiles, max(0, count)) }
-    static func label(_ count: Int) -> String {
-        "BG · \(count) task" + (count == 1 ? "" : "s")
+    static let hatchSeconds: Float = 1.6
+    static let bubblesPerHatch = 3
+    static let tetherLength: Float = 1.4
+    /// The side the clutch trails to when the creature is still, so it never
+    /// hides directly behind the arms.
+    static let restLean: Float = 0.45
+    /// Below this speed (body radii per second) motion is fidget, not a swim,
+    /// and must not swing the strand from side to side.
+    static let swimSpeed: Float = 0.5
+
+    /// Where the tether leaves the body: the low rear edge, among the arms, on
+    /// the side the strand trails to.
+    static func anchor(lean: Float) -> SIMD3<Float> {
+        [max(-1, min(1, lean)) * 0.6, -0.62, 0.10]
     }
-    static func offset(index: Int, count: Int, phase: Float) -> SIMD3<Float> {
-        let angle = phase + Float(index) * 2 * .pi / Float(max(1, visibleCount(count)))
-        return [cos(angle), sin(angle) * 0.32, sin(angle) * 0.42]
+
+    static func visibleCount(_ count: Int) -> Int { min(maxPods, max(0, count)) }
+    static func overflow(_ count: Int) -> Int { max(0, count - maxPods) }
+    static func label(_ count: Int) -> String {
+        "\(count) background task" + (count == 1 ? "" : "s")
+    }
+
+    struct Pod: Equatable {
+        var center: SIMD3<Float>
+        /// Shell radius in body-radius units.
+        var radius: Float
+        /// Angle of the embryo inside the shell, radians.
+        var spin: Float
+    }
+
+    /// Pods strung along the tether. The sway is a wave travelling down the
+    /// strand, so the tip lags the base the way a trailing strand drags in water.
+    static func pods(count: Int, phase: Float, lean: Float) -> [Pod] {
+        let visible = visibleCount(count)
+        guard visible > 0 else { return [] }
+        let side = max(-1, min(1, lean))
+        // Trail behind and slightly down, like a wake; it never reaches far
+        // below the creature, where the sand or a neighbour's tag would be.
+        var direction = SIMD2<Float>(side * 1.6, -0.35)
+        direction /= simd_length(direction)
+        let normal = SIMD2<Float>(-direction.y, direction.x)
+        let origin = anchor(lean: side)
+        return (0..<visible).map { index in
+            let along = Float(index + 1) / Float(maxPods)
+            let sway = sin(phase - Float(index) * 0.9) * 0.16 * along
+            let point = SIMD2<Float>(origin.x, origin.y) + direction * tetherLength * along + normal * sway
+            return Pod(center: [point.x, point.y, origin.z + 0.04 * Float(index)],
+                       radius: 0.22 - 0.02 * Float(index),
+                       spin: phase * 1.3 + Float(index) * 2.1)
+        }
+    }
+
+    /// Embryo position relative to its pod centre (x right, y up).
+    static func embryoOffset(_ pod: Pod) -> SIMD2<Float> {
+        [cos(pod.spin) * pod.radius * 0.38, sin(pod.spin) * pod.radius * 0.38]
+    }
+
+    /// Wake lean from horizontal velocity (body radii per second): the clutch
+    /// trails opposite the swim direction and keeps its side when still.
+    static func lean(previous: Float, velocityX: Float, dt: Float) -> Float {
+        guard dt > 0 else { return previous }
+        let resting = previous < 0 ? -restLean : restLean
+        let target = abs(velocityX) > swimSpeed ? max(-1, min(1, -velocityX * 0.8)) : resting
+        return previous + (target - previous) * (1 - exp(-dt * 1.8))
+    }
+
+    struct Bubble: Equatable {
+        var center: SIMD3<Float>
+        var radius: Float
+        var opacity: Float
+    }
+
+    /// Bubbles of one hatch: they rise, wobble and fade out once, never loop.
+    static func bubbles(origin: SIMD3<Float>, age: Float) -> [Bubble] {
+        guard age >= 0, age < hatchSeconds else { return [] }
+        let progress = age / hatchSeconds
+        return (0..<bubblesPerHatch).map { k in
+            let lift = age * (0.9 + 0.3 * Float(k))
+            let wobble = sin(age * 5 + Float(k) * 2) * 0.08
+            return Bubble(center: origin + [wobble + (Float(k) - 1) * 0.12, lift, 0.02],
+                          radius: 0.07 + 0.03 * Float(k % 2) + 0.03 * progress,
+                          opacity: 1 - progress)
+        }
+    }
+}
+
+/// Per-creature brood memory: wake lean and the hatches still rising.
+struct BackgroundBrood: Equatable {
+    struct Hatch: Equatable { var origin: SIMD3<Float>; var age: Float }
+    private(set) var count = 0
+    private(set) var lean: Float = BackgroundWorkPresentation.restLean
+    private(set) var hatches: [Hatch] = []
+    private var lastX: Float?
+
+    /// Records the task count of a working creature. A decrease hatches the
+    /// pods that finished, from the tip of the strand inward. Leaving the
+    /// working state (an approval prompt, an error, idle) hides the brood
+    /// without hatching: the tasks did not finish, the creature only stopped
+    /// showing them. Nothing hatches under Reduce Motion, where a hatch could
+    /// never finish rising.
+    mutating func observe(count newCount: Int, working: Bool, phase: Float, animate: Bool) {
+        let previous = count
+        count = working ? max(0, newCount) : 0
+        // Reduce Motion switched on mid-hatch must not leave bubbles frozen in place.
+        if !animate { hatches.removeAll() }
+        guard working, animate, count < previous else { return }
+        let before = BackgroundWorkPresentation.pods(count: previous, phase: phase, lean: lean)
+        let finished = min(previous - count, before.count)
+        for pod in before.suffix(finished) {
+            hatches.append(Hatch(origin: pod.center, age: 0))
+        }
+        // Bounded: at most one strand's worth of hatches is ever in flight.
+        if hatches.count > BackgroundWorkPresentation.maxPods {
+            hatches.removeFirst(hatches.count - BackgroundWorkPresentation.maxPods)
+        }
+    }
+
+    /// Advances wake lean and hatch ages. `x` is the creature centre in body radii.
+    mutating func advance(dt: Float, x: Float) {
+        guard dt > 0 else { lastX = x; return }
+        if let lastX {
+            lean = BackgroundWorkPresentation.lean(previous: lean, velocityX: (x - lastX) / dt, dt: dt)
+        }
+        lastX = x
+        for index in hatches.indices { hatches[index].age += dt }
+        hatches.removeAll { $0.age >= BackgroundWorkPresentation.hatchSeconds }
+    }
+
+    var bubbles: [BackgroundWorkPresentation.Bubble] {
+        hatches.flatMap { BackgroundWorkPresentation.bubbles(origin: $0.origin, age: $0.age) }
     }
 }
 
@@ -128,6 +260,7 @@ final class AquariumResidents {
     let shoal = AquariumShoal()
     private var time: Double = 0
     private var backgroundPhase: Float = 0
+    private var broods: [String: BackgroundBrood] = [:]
     private var size: Float = 0.85
     var animate = true
     var labelsVisible = true {
@@ -189,6 +322,7 @@ final class AquariumResidents {
             hermesRigs.removeValue(forKey: id)
             joints.removeValue(forKey: id)
             supports.removeValue(forKey: id)?.removeFromParent()
+            broods.removeValue(forKey: id)
         }
 
         // Existing residents retain their relative order when sessions arrive or depart.
@@ -274,7 +408,9 @@ final class AquariumResidents {
             guard let resident = residents[item.id] else { continue }
             // Canonical state controls visibility immediately, even while paused.
             resident.findEntity(named: "activity")?.isEnabled = item.activity == .working && item.backgroundTasks == 0
-            updateBackgroundWork(resident, count: item.backgroundTasks)
+            broods[item.id, default: BackgroundBrood()].observe(count: item.backgroundTasks, working: item.activity == .working,
+                                                                 phase: backgroundPhase, animate: animate)
+            updateBackgroundWork(resident, id: item.id)
             resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
             if !animate {
                 resident.position = targets[item.id]!
@@ -428,7 +564,8 @@ final class AquariumResidents {
         let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
-            updateBackgroundWork(entity, count: item.backgroundTasks)
+            broods[item.id]?.advance(dt: Float(dt), x: entity.position.x / max(0.01, Self.broodBodyRadius * entity.scale.x))
+            updateBackgroundWork(entity, id: item.id)
             motion.effort += ((item.activity == .working ? 1 : 0) - motion.effort) * blend
             motion.attention += ((item.activity == .waiting ? 1 : 0) - motion.attention) * blend
             motion.fatigue += ((item.activity == .error ? 1 : 0) - motion.fatigue) * blend
@@ -614,26 +751,107 @@ final class AquariumResidents {
         return group
     }
 
+    /// Body radius of a native resident in its own space; the activity bars sit
+    /// just outside it at `nativeActivityBarX`.
+    private static let broodBodyRadius: Float = 0.75
+    private static let tetherBeads = 8
+
     private func makeBackgroundWork() -> Entity {
         let group = Entity()
         group.name = "background-work"
-        // Allocate a fixed pool once; frame updates only move existing entities.
-        for index in 0..<BackgroundWorkPresentation.maxTiles {
-            let tile = ModelEntity(mesh: .generateBox(size: [0.14, 0.11, 0.035], cornerRadius: 0.025),
-                materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
-            tile.name = "background-tile-\(index)"
-            group.addChild(tile)
+        func translucent(_ color: Color, _ opacity: Float) -> UnlitMaterial {
+            var material = UnlitMaterial(color: nativeColor(color), applyPostProcessToneMap: false)
+            material.blending = .transparent(opacity: .init(floatLiteral: opacity))
+            return material
         }
+        // Allocate a fixed pool once; frame updates only move and scale existing entities.
+        let pods = Entity()
+        pods.name = "background-pods"
+        for index in 0..<BackgroundWorkPresentation.maxPods {
+            let pod = Entity()
+            pod.name = "background-pod-\(index)"
+            let shell = ModelEntity(mesh: .generateSphere(radius: 1), materials: [translucent(DesignTokens.Session.working, 0.32)])
+            shell.name = "shell"
+            shell.scale = [1, 1.18, 1]
+            let embryo = ModelEntity(mesh: .generateSphere(radius: 0.36), materials: [UnlitMaterial(color: nativeColor(DesignTokens.Session.working), applyPostProcessToneMap: false)])
+            embryo.name = "embryo"
+            let gloss = ModelEntity(mesh: .generateSphere(radius: 0.16), materials: [translucent(DesignTokens.Tide.s50, 0.7)])
+            gloss.name = "gloss"
+            gloss.position = [-0.42, 0.55, 0.75]
+            pod.addChild(shell)
+            pod.addChild(embryo)
+            pod.addChild(gloss)
+            pods.addChild(pod)
+        }
+        let tether = Entity()
+        tether.name = "background-tether"
+        for index in 0..<Self.tetherBeads {
+            let bead = ModelEntity(mesh: .generateSphere(radius: 0.018), materials: [translucent(DesignTokens.Session.working, 0.55)])
+            bead.name = "background-bead-\(index)"
+            tether.addChild(bead)
+        }
+        let bubbles = Entity()
+        bubbles.name = "background-bubbles"
+        for index in 0..<(BackgroundWorkPresentation.maxPods * BackgroundWorkPresentation.bubblesPerHatch) {
+            let bubble = ModelEntity(mesh: .generateSphere(radius: 1), materials: [translucent(DesignTokens.Tide.s50, 0.45)])
+            bubble.name = "background-bubble-\(index)"
+            bubble.components.set(OpacityComponent(opacity: 1))
+            bubbles.addChild(bubble)
+        }
+        group.addChild(tether)
+        group.addChild(pods)
+        group.addChild(bubbles)
         return group
     }
 
-    private func updateBackgroundWork(_ resident: Entity, count: Int) {
+    /// Positions the pooled brood from the shared maths. Pure placement: the
+    /// count and hatches are owned by `broods`, updated in `sync` and `step`.
+    private func updateBackgroundWork(_ resident: Entity, id: String) {
         guard let group = resident.findEntity(named: "background-work") else { return }
-        group.isEnabled = count > 0
-        for (index, tile) in group.children.enumerated() {
-            tile.isEnabled = index < BackgroundWorkPresentation.visibleCount(count)
-            let offset = BackgroundWorkPresentation.offset(index: index, count: count, phase: backgroundPhase)
-            tile.position = [offset.x * 0.95, offset.y - 0.10, offset.z + 0.12]
+        let brood = broods[id] ?? BackgroundBrood()
+        let pods = BackgroundWorkPresentation.pods(count: brood.count, phase: backgroundPhase, lean: brood.lean)
+        let bubbles = brood.bubbles
+        group.isEnabled = !pods.isEmpty || !bubbles.isEmpty
+        guard group.isEnabled else { return }
+        let r = Self.broodBodyRadius
+        // Native residents stand on a support, so a strand below the arms would
+        // sink into it: the 3D brood rides higher and further out, beside the hip.
+        // Continuous in the lean, so a strand swinging across never jumps sides.
+        let outward = max(-1, min(1, brood.lean)) * 0.66
+        func place(_ p: SIMD3<Float>) -> SIMD3<Float> { [(p.x + outward) * r, (p.y + 0.9) * r, p.z * r + 0.12] }
+        if let holder = group.findEntity(named: "background-pods") {
+            for (index, pod) in holder.children.enumerated() {
+                pod.isEnabled = index < pods.count
+                guard index < pods.count else { continue }
+                let shape = pods[index]
+                pod.position = place(shape.center)
+                // Shaded spheres read larger than the flat Canvas outline.
+                pod.scale = .init(repeating: shape.radius * r * 0.8)
+                let embryo = BackgroundWorkPresentation.embryoOffset(shape)
+                pod.findEntity(named: "embryo")?.position = [embryo.x / shape.radius, embryo.y / shape.radius, 0.1]
+            }
+        }
+        if let tether = group.findEntity(named: "background-tether") {
+            tether.isEnabled = !pods.isEmpty
+            let points = [BackgroundWorkPresentation.anchor(lean: brood.lean)] + pods.map(\.center)
+            for (index, bead) in tether.children.enumerated() {
+                // Beads spread evenly along the strand from the arms to the tip pod.
+                let t = (Float(index) + 0.5) / Float(Self.tetherBeads) * Float(points.count - 1)
+                let segment = min(points.count - 2, Int(t))
+                bead.isEnabled = points.count > 1
+                guard points.count > 1 else { continue }
+                let local = t - Float(segment)
+                bead.position = place(points[segment] + (points[segment + 1] - points[segment]) * local)
+            }
+        }
+        if let holder = group.findEntity(named: "background-bubbles") {
+            for (index, bubble) in holder.children.enumerated() {
+                bubble.isEnabled = index < bubbles.count
+                guard index < bubbles.count else { continue }
+                bubble.position = place(bubbles[index].center)
+                bubble.scale = .init(repeating: bubbles[index].radius * r)
+                bubble.components.set(OpacityComponent(opacity: bubbles[index].opacity))
+            }
         }
     }
 

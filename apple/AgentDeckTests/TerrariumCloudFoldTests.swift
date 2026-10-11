@@ -57,7 +57,9 @@ final class TerrariumCloudFoldTests: XCTestCase {
         let group = try XCTUnwrap(resident.findEntity(named: "background-work"))
         XCTAssertTrue(group.isEnabled)
         XCTAssertEqual(resident.findEntity(named: "activity")?.isEnabled, false, "Background tiles replace the foreground bars")
-        XCTAssertEqual(group.children.count, 3, "Large task counts cannot allocate an unbounded effect")
+        let pods = try XCTUnwrap(group.findEntity(named: "background-pods"))
+        XCTAssertEqual(pods.children.count, BackgroundWorkPresentation.maxPods, "Large task counts cannot allocate an unbounded effect")
+        XCTAssertEqual(pods.children.filter(\.isEnabled).count, 3)
         // Keep a render of the actual production scene for visual review.
         let view = ARView(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
         let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -109,7 +111,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         canvasAttachment.name = "Background work - native Canvas"
         canvasAttachment.lifetime = .keepAlways
         add(canvasAttachment)
-        let tile = try XCTUnwrap(group.children.first)
+        let tile = pods.children[pods.children.count - 1]
         let initial = tile.position
         scene.step(0.05)
         XCTAssertNotEqual(tile.position, initial)
@@ -119,8 +121,14 @@ final class TerrariumCloudFoldTests: XCTestCase {
         XCTAssertEqual(tile.position, frozen)
         state.backgroundTaskCounts["claude"] = 1
         scene.sync(state, aspect: 1.6)
-        XCTAssertEqual(group.children.filter(\.isEnabled).count, 1)
-        XCTAssertEqual(tile.position, frozen, "Reduced Motion keeps the phase fixed even when counts change")
+        XCTAssertEqual(pods.children.filter(\.isEnabled).count, 1)
+        XCTAssertEqual(group.findEntity(named: "background-bubbles")?.children.filter(\.isEnabled).count, 0,
+                       "Reduced Motion never starts a hatch it could not finish")
+        let firstPod = try XCTUnwrap(pods.children.first)
+        let pinned = firstPod.position
+        state.backgroundTaskCounts["claude"] = 2
+        scene.sync(state, aspect: 1.6)
+        XCTAssertEqual(firstPod.position, pinned, "Reduced Motion keeps the phase fixed even when counts change")
         state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .asking, homeX: 0.5, homeY: 0.5, scale: 1)]
         scene.sync(state, aspect: 1.6)
         XCTAssertFalse(group.isEnabled, "Approval takes priority even with retained task metadata")
@@ -139,6 +147,141 @@ final class TerrariumCloudFoldTests: XCTestCase {
         let phase = canvas.backgroundOrbitPhase
         canvas.update(dt: 60, state: state)
         XCTAssertEqual(canvas.backgroundOrbitPhase, phase)
+    }
+
+    func testBackgroundBroodTrailsTheWakeAndStaysClearOfTheBody() {
+        typealias P = BackgroundWorkPresentation
+        XCTAssertTrue(P.pods(count: 0, phase: 0, lean: P.restLean).isEmpty)
+        XCTAssertEqual(P.pods(count: 12, phase: 0, lean: P.restLean).count, P.maxPods, "Pods are capped; the label carries the count")
+        XCTAssertEqual(P.overflow(12), 9)
+        XCTAssertEqual(P.label(1), "1 background task")
+        XCTAssertEqual(P.label(4), "4 background tasks")
+        for lean: Float in [-1, -P.restLean, P.restLean, 1] {
+            for phase: Float in stride(from: 0, to: 6.3, by: 0.7) {
+                let pods = P.pods(count: 3, phase: phase, lean: lean)
+                let anchor = P.anchor(lean: lean)
+                var reach: Float = 0
+                for pod in pods {
+                    let offset = SIMD2(pod.center.x, pod.center.y)
+                    let distance = simd_length(offset - SIMD2(anchor.x, anchor.y))
+                    XCTAssertGreaterThan(distance, reach, "Pods string outward along one strand, never around the body")
+                    reach = distance
+                    XCTAssertLessThan(pod.center.y, anchor.y, "The brood trails below the arms, not over the face or tag")
+                    XCTAssertGreaterThan(pod.center.y, -1.4, "The brood stays near the creature, clear of the sand")
+                    XCTAssertEqual(pod.center.x > 0, lean > 0, "The strand trails to the wake side")
+                    XCTAssertGreaterThan(simd_length(offset) - pod.radius, 0.45, "A pod never covers the body centre")
+                }
+            }
+        }
+        // The sway is a travelling wave: the tip moves more than the base.
+        let a = P.pods(count: 3, phase: 0, lean: P.restLean), b = P.pods(count: 3, phase: 1.5, lean: P.restLean)
+        XCTAssertGreaterThan(simd_distance(a[2].center, b[2].center), simd_distance(a[0].center, b[0].center))
+        XCTAssertNotEqual(a[0].spin, b[0].spin, "The embryo turns with the phase")
+        // Swimming right drags the strand to the left; stillness keeps its side.
+        var lean = P.restLean
+        for i in 0..<240 { lean = P.lean(previous: lean, velocityX: i % 2 == 0 ? 0.3 : -0.3, dt: 1.0 / 60) }
+        XCTAssertEqual(lean, P.restLean, accuracy: 0.001, "Fidgeting in place does not swing the strand")
+        for _ in 0..<120 { lean = P.lean(previous: lean, velocityX: 1, dt: 1.0 / 60) }
+        XCTAssertLessThan(lean, -0.5)
+        let settled = lean
+        for _ in 0..<240 { lean = P.lean(previous: lean, velocityX: 0, dt: 1.0 / 60) }
+        XCTAssertEqual(lean, -P.restLean, accuracy: 0.05)
+        XCTAssertEqual(P.lean(previous: settled, velocityX: 3, dt: 0), settled, "No time, no motion")
+        // Bubbles rise and fade once.
+        let early = P.bubbles(origin: .zero, age: 0.2), late = P.bubbles(origin: .zero, age: 1.2)
+        XCTAssertEqual(early.count, P.bubblesPerHatch)
+        for (e, l) in zip(early, late) {
+            XCTAssertGreaterThan(l.center.y, e.center.y)
+            XCTAssertLessThan(l.opacity, e.opacity)
+        }
+        XCTAssertTrue(P.bubbles(origin: .zero, age: P.hatchSeconds).isEmpty)
+    }
+
+    func testBackgroundBroodHatchesOnlyFinishedTasks() {
+        typealias P = BackgroundWorkPresentation
+        var brood = BackgroundBrood()
+        brood.observe(count: 3, working: true, phase: 0, animate: true)
+        XCTAssertTrue(brood.hatches.isEmpty, "Arriving tasks never hatch")
+        let tip = P.pods(count: 3, phase: 0, lean: brood.lean)[2].center
+        brood.observe(count: 2, working: true, phase: 0, animate: true)
+        XCTAssertEqual(brood.hatches.map(\.origin), [tip], "A finished task hatches from the tip of the strand")
+        XCTAssertEqual(brood.bubbles.count, P.bubblesPerHatch)
+        brood.advance(dt: P.hatchSeconds, x: 0)
+        XCTAssertTrue(brood.hatches.isEmpty && brood.bubbles.isEmpty, "Hatches expire")
+
+        var crowded = BackgroundBrood()
+        crowded.observe(count: 12, working: true, phase: 0, animate: true)
+        crowded.observe(count: 11, working: true, phase: 0, animate: true)
+        XCTAssertEqual(crowded.hatches.count, 1, "A capped strand still shows each finish")
+        crowded.observe(count: 0, working: true, phase: 0, animate: true)
+        XCTAssertEqual(crowded.hatches.count, P.maxPods, "In-flight hatches are bounded")
+        crowded.observe(count: 0, working: true, phase: 0, animate: false)
+        XCTAssertTrue(crowded.hatches.isEmpty, "Turning on Reduce Motion mid-hatch leaves no frozen bubbles")
+
+        var waiting = BackgroundBrood()
+        waiting.observe(count: 2, working: true, phase: 0, animate: true)
+        waiting.observe(count: 2, working: false, phase: 0, animate: true)
+        XCTAssertEqual(waiting.count, 0)
+        XCTAssertTrue(waiting.hatches.isEmpty, "An approval prompt hides the brood; it does not finish the tasks")
+        waiting.observe(count: 2, working: true, phase: 0, animate: true)
+        XCTAssertEqual(waiting.count, 2)
+
+        var still = BackgroundBrood()
+        still.observe(count: 2, working: true, phase: 0, animate: false)
+        still.observe(count: 0, working: true, phase: 0, animate: false)
+        XCTAssertTrue(still.hatches.isEmpty, "Reduce Motion never starts a hatch")
+        still.advance(dt: 0, x: 5)
+        XCTAssertEqual(still.lean, P.restLean)
+    }
+
+    @MainActor
+    func testCanvasBroodHatchesWhenATaskFinishes() {
+        let renderer = TerrariumRenderer()
+        renderer.animateHermes = false
+        var state = TerrariumState()
+        state.creatures = [.init(id: "claude", projectName: "Render", modelName: nil, state: .working, homeX: 0.5, homeY: 0.5, scale: 1)]
+        state.backgroundTaskCounts = ["claude": 2]
+        renderer.update(dt: 0.016, state: state)
+        XCTAssertEqual(renderer.broods["claude"]?.count, 2)
+        state.backgroundTaskCounts = ["claude": 1]
+        renderer.update(dt: 0.016, state: state)
+        XCTAssertEqual(renderer.broods["claude"]?.hatches.count, 1)
+        state.creatures = []
+        renderer.update(dt: 0.016, state: state)
+        XCTAssertNil(renderer.broods["claude"], "A departed creature leaves no brood behind")
+    }
+
+    /// Review evidence only: set AGENTDECK_BROOD_VISUAL_OUTPUT to write frames.
+    @MainActor
+    func testCanvasBroodFramesForVisualReview() throws {
+        guard let output = ProcessInfo.processInfo.environment["AGENTDECK_BROOD_VISUAL_OUTPUT"] else {
+            throw XCTSkip("Set AGENTDECK_BROOD_VISUAL_OUTPUT to render brood frames")
+        }
+        let folder = URL(fileURLWithPath: output, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let renderer = TerrariumRenderer()
+        var state = TerrariumState()
+        state.creatures = [
+            .init(id: "brood", projectName: "AgentDeck", modelName: nil, state: .working, homeX: 0.32, homeY: 0.45, scale: 1),
+            .init(id: "busy", projectName: "Release", modelName: nil, state: .working, homeX: 0.70, homeY: 0.40, scale: 1),
+        ]
+        state.backgroundTaskCounts = ["brood": 3, "busy": 12]
+        func write(_ name: String) throws {
+            let image = ImageRenderer(content: Canvas { context, size in renderer.draw(context: &context, size: size) }.frame(width: 900, height: 560))
+            image.scale = 2
+            let data = try XCTUnwrap(image.nsImage?.tiffRepresentation)
+            try XCTUnwrap(NSBitmapImageRep(data: data)?.representation(using: .png, properties: [:]))
+                .write(to: folder.appendingPathComponent(name + ".png"))
+        }
+        for frame in 0..<6 {
+            for _ in 0..<20 { renderer.update(dt: 1.0 / 30, state: state) }
+            try write(String(format: "brood-%02d", frame))
+        }
+        state.backgroundTaskCounts["brood"] = 2
+        for frame in 0..<4 {
+            for _ in 0..<8 { renderer.update(dt: 1.0 / 30, state: state) }
+            try write(String(format: "hatch-%02d", frame))
+        }
     }
 
     func testCrowdedForegroundKeepsFocusAndWaitingSessionsWithoutProjectMerging() {
