@@ -403,16 +403,20 @@ enum ClaudeBackgroundTasks {
 // END GENERATED CLAUDE BACKGROUND
 // BEGIN CODEX BACKGROUND TERMINALS — hand mirror of bridge/src/codex-background-terminals.ts
 // Codex unified-exec processes still running after a turn, read from the
-// rollout: a tool result announcing a running `session_id` (code-mode JSON with
-// no `exit_code`, or legacy "Process running with session ID <n>") enters, the
+// rollout: a tool result announcing a running `session_id` (Codex's own
+// code-mode result JSON with no `exit_code`, or the legacy header line
+// "Process running with session ID <n>" before `Output:`) enters, the
 // `CommandExecution` `item_completed` with that `process_id` leaves. Claimed only
-// while the Codex process that posted the hook is alive, because a dead Codex
-// cannot write the completion. Every read feeds the shared
-// `BackgroundWorkTracker` a full snapshot. The Node suite replays
-// shared/codex-background-terminal-vectors.json through this block.
+// while the Codex process that posted the hook is alive; after a resume (new
+// pid) only records after the new process's first boundary count. Every live
+// read feeds the shared `BackgroundWorkTracker` a full snapshot with a stale
+// bound. The Node suite replays shared/codex-background-terminal-vectors.json
+// through this block.
 struct CodexBackgroundTerminalIO {
     /// Last `bytes` of the file as whole lines, or nil when unreadable.
     var readTail: (_ path: String, _ bytes: Int) -> [String]?
+    /// "size:mtimeMs", or nil when the file cannot be stat'ed.
+    var stat: (_ path: String) -> String?
     var locate: (_ sessionId: String) -> String?
     /// true alive, false definitely gone, nil could not tell.
     var isAlive: (_ pid: Int) -> Bool?
@@ -423,12 +427,24 @@ struct CodexBackgroundTerminals {
     static let pollSeconds: UInt64 = 3
     static let maxWatches = 64
     static let maxTerminals = 256
+    static let giveUpReads = 20
+    static let staleMs: Double = 10 * 60_000
     static let reads: Set<String> = ["codex_stop", "codex_turn_complete", "codex_interrupt"]
     static let resets: Set<String> = ["codex_session_start", "codex_session_end"]
+    private static let boundaryTypes: Set<String> = ["session_meta", "turn_context"]
 
-    private struct Watch { var path: String; var pid: Int; var running: Set<String> }
+    private struct Watch {
+        var path: String
+        var pid: Int
+        var running: Set<String>
+        var afterBoundary: Bool
+        var parsedAt: String?
+        var idle: Int
+    }
     private var watches: [String: Watch] = [:]
     private var order: [String] = []
+    private var pids: [String: Int] = [:]
+    private var pidOrder: [String] = []
 
     var watchedSessions: [String] { order }
 
@@ -442,39 +458,59 @@ struct CodexBackgroundTerminals {
         return nil
     }
 
-    private static let runningText = try! NSRegularExpression(pattern: "Process running with session ID ([0-9]+)")
+    private static let runningLine = try! NSRegularExpression(
+        pattern: "^Process running with session ID ([0-9]+)$", options: [.anchorsMatchLines])
 
     private static func runningFromText(_ text: String, _ mark: (String) -> Void) {
-        let ns = text as NSString
-        for match in runningText.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+        let header = text.range(of: "Output:\n").map { String(text[..<$0.lowerBound]) } ?? text
+        let ns = header as NSString
+        if let match = runningLine.firstMatch(in: header, range: NSRange(location: 0, length: ns.length)) {
             mark(ns.substring(with: match.range(at: 1)))
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = idOf(obj["session_id"]), obj["exit_code"] == nil else { return }
+              obj["chunk_id"] is String,
+              let wall = obj["wall_time_seconds"] as? NSNumber, CFGetTypeID(wall) != CFBooleanGetTypeID(),
+              obj["exit_code"] == nil, let id = idOf(obj["session_id"]) else { return }
         mark(id)
+    }
+
+    /// Index of the last `session_meta`/`turn_context` record, or -1.
+    static func lastBoundaryIndex(_ lines: [String]) -> Int {
+        var last = -1
+        for (i, line) in lines.enumerated() {
+            guard let data = line.data(using: .utf8),
+                  let rec = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let type = rec["type"] as? String, boundaryTypes.contains(type) else { continue }
+            last = i
+        }
+        return last
     }
 
     /// Each terminal's last status in a window ("running" / "finished"), or
     /// nil when no record parsed. Absence from the window is not completion.
-    static func statuses(_ lines: [String]) -> [String: String]? {
+    static func statuses(_ lines: [String], afterBoundary: Bool = false) -> [String: String]? {
         var result: [String: String] = [:]
         var parsed = false
-        for line in lines {
+        var gate = afterBoundary
+        let lastBoundary = afterBoundary ? lastBoundaryIndex(lines) : -1
+        for (index, line) in lines.enumerated() {
+            if afterBoundary && index == lastBoundary { gate = false }
             guard let data = line.data(using: .utf8),
                   let rec = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             parsed = true
             guard let payload = rec["payload"] as? [String: Any] else { continue }
             let type = rec["type"] as? String
             let ptype = payload["type"] as? String
+            let open = !gate
             if type == "response_item", ptype == "function_call_output" || ptype == "custom_tool_call_output" {
                 if let text = payload["output"] as? String {
-                    runningFromText(text) { result[$0] = "running" }
+                    runningFromText(text) { if open { result[$0] = "running" } }
                 } else if ptype == "custom_tool_call_output", let parts = payload["output"] as? [Any] {
                     for part in parts {
                         if let text = (part as? [String: Any])?["text"] as? String {
-                            runningFromText(text) { result[$0] = "running" }
+                            runningFromText(text) { if open { result[$0] = "running" } }
                         }
                     }
                 }
@@ -487,8 +523,8 @@ struct CodexBackgroundTerminals {
         return parsed ? result : nil
     }
 
-    static func merge(_ known: Set<String>, _ lines: [String]) -> Set<String>? {
-        guard let statuses = statuses(lines) else { return nil }
+    static func merge(_ known: Set<String>, _ lines: [String], afterBoundary: Bool = false) -> Set<String>? {
+        guard let statuses = statuses(lines, afterBoundary: afterBoundary) else { return nil }
         var next = known
         for (id, status) in statuses {
             if status == "running" { next.insert(id) } else { next.remove(id) }
@@ -509,11 +545,22 @@ struct CodexBackgroundTerminals {
         let pid = number.intValue
         let tp = payload["transcript_path"] as? String
         guard let path = (tp?.hasSuffix(".jsonl") == true ? tp : nil) ?? io.locate(sid) else { return false }
-        let prior = watches[sid]
-        let keep = prior.map { $0.pid == pid && $0.path == path } ?? false
-        watches[sid] = Watch(path: path, pid: pid, running: keep ? prior!.running : [])
+        let lastPid = pids[sid]
+        if var prior = watches[sid], prior.pid == pid, prior.path == path {
+            prior.idle = 0
+            prior.parsedAt = nil
+            watches[sid] = prior
+        } else {
+            watches[sid] = Watch(path: path, pid: pid, running: [],
+                                 afterBoundary: lastPid != nil && lastPid != pid, parsedAt: nil, idle: 0)
+        }
         order.removeAll { $0 == sid }
         order.append(sid)
+        pids[sid] = pid
+        pidOrder.removeAll { $0 == sid }
+        pidOrder.append(sid)
+        while pidOrder.count > Self.maxWatches * 4 { pids.removeValue(forKey: pidOrder.removeFirst()) }
+        // An evicted watch keeps its tracker items only until they go stale.
         while order.count > Self.maxWatches { watches.removeValue(forKey: order.removeFirst()) }
         return refresh(sid, io: io, work: &work, now: now)
     }
@@ -522,23 +569,44 @@ struct CodexBackgroundTerminals {
     mutating func refresh(_ sid: String, io: CodexBackgroundTerminalIO,
                           work: inout BackgroundWorkTracker, now: Double) -> Bool {
         guard var watch = watches[sid] else { return false }
-        let running: Set<String>?
-        if io.isAlive(watch.pid) == false {
+        let alive = io.isAlive(watch.pid)
+        var running: Set<String>?
+        var learned = false
+        if alive == false {
             running = []
-        } else if let lines = io.readTail(watch.path, Self.tailBytes) {
-            running = Self.merge(watch.running, lines)
-        } else {
-            running = nil
+            learned = true
+        } else if let stamp = io.stat(watch.path) {
+            if stamp == watch.parsedAt {
+                running = watch.running
+            } else if let lines = io.readTail(watch.path, Self.tailBytes),
+                      let next = Self.merge(watch.running, lines, afterBoundary: watch.afterBoundary) {
+                running = next
+                watch.parsedAt = stamp
+                learned = true
+                if watch.afterBoundary && Self.lastBoundaryIndex(lines) >= 0 { watch.afterBoundary = false }
+            }
         }
-        guard let running else { return false }
-        watch.running = running
-        if running.isEmpty {
+        if running == nil || (alive == nil && !learned) {
+            watch.idle += 1
+            if watch.idle >= Self.giveUpReads {
+                watches.removeValue(forKey: sid)
+                order.removeAll { $0 == sid }
+                return false
+            }
+            guard running != nil else { watches[sid] = watch; return false }
+        } else {
+            watch.idle = 0
+        }
+        let set = running!
+        watch.running = set
+        if set.isEmpty {
             watches.removeValue(forKey: sid)
             order.removeAll { $0 == sid }
         } else {
             watches[sid] = watch
         }
-        return work.snapshot(sid, items: Array(running), now: now, noun: "terminal", staleMs: .some(nil))
+        guard alive == true || learned else { return false }
+        return work.snapshot(sid, items: Array(set), now: now, noun: "terminal", staleMs: .some(Self.staleMs))
     }
 
     @discardableResult
@@ -550,7 +618,7 @@ struct CodexBackgroundTerminals {
 }
 // END CODEX BACKGROUND TERMINALS
 // BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
-// Source SHA256: e939a60700224e8d1d8268f2b1c5cf4ade0233d97f8730316e90d60c7d286916
+// Source SHA256: fe8207a05489e89de505fc2b254da7c869fe4c9968b403c7d7c209ceb7bb6eb2
 // Agent-agnostic background work per session; adapters translate each agent's
 // signal into snapshot/start/finish/reset. Absent = unknown, explicit 0 = done.
 struct BackgroundWorkTracker {
@@ -657,10 +725,10 @@ struct BackgroundWorkTracker {
 
 /// The generic `<agent>_background_start|finish|snapshot` hook vocabulary.
 enum BackgroundWorkHooks {
-    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String? }
+    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
     static let rules: [Rule] = [
-        Rule(agent: "opencode", noun: "task", staleMs: 21600000, resets: ["opencode_session_start", "opencode_session_end"], childStop: "opencode_subagent_stop"),
-        Rule(agent: "hermes", noun: "process", staleMs: nil, resets: ["hermes_session_start", "hermes_session_end"], childStop: nil),
+        Rule(agent: "opencode", noun: "task", staleMs: 21600000, resets: ["opencode_session_start", "opencode_session_end"], childStop: "opencode_subagent_stop", events: ["start", "finish"]),
+        Rule(agent: "hermes", noun: "process", staleMs: nil, resets: ["hermes_session_start", "hermes_session_end"], childStop: nil, events: ["snapshot"]),
     ]
     static let maxItemId = 256
 
@@ -693,13 +761,14 @@ enum BackgroundWorkHooks {
                 guard let item = itemId(payload["agent_id"]) else { return nil }
                 return .finish(sessionId: sid, item: item)
             }
-            if event == rule.agent + "_background_start" || event == rule.agent + "_background_finish" {
+            if (event == rule.agent + "_background_start" && rule.events.contains("start"))
+                || (event == rule.agent + "_background_finish" && rule.events.contains("finish")) {
                 guard let item = itemId(payload["item_id"]) else { return nil }
                 return event.hasSuffix("_start")
                     ? .start(sessionId: sid, item: item, noun: rule.noun, staleMs: rule.staleMs)
                     : .finish(sessionId: sid, item: item)
             }
-            if event == rule.agent + "_background_snapshot" {
+            if event == rule.agent + "_background_snapshot" && rule.events.contains("snapshot") {
                 guard let raw = payload["items"] as? [Any], raw.count <= BackgroundWorkTracker.maxItems else { return nil }
                 var items: [String] = []
                 for value in raw {

@@ -57,15 +57,19 @@ export const BACKGROUND_WORK_HOOKS = {
     staleMs: 6 * 60 * 60 * 1000,
     resets: ['opencode_session_start', 'opencode_session_end'],
     childStop: 'opencode_subagent_stop',
+    events: ['start', 'finish'],
   },
   hermes: {
     noun: 'process',
     staleMs: null,
     resets: ['hermes_session_start', 'hermes_session_end'],
     childStop: null,
+    // Snapshot-only: with no stale bound, a lost start/finish would latch.
+    events: ['snapshot'],
   },
 } as const satisfies Record<string, {
   noun: BackgroundWorkNoun; staleMs: number | null; resets: readonly string[]; childStop: string | null;
+  events: readonly ('start' | 'finish' | 'snapshot')[];
 }>;
 
 export type BackgroundWorkHookOp =
@@ -96,12 +100,14 @@ export function backgroundWorkHookOp(event: string, payload: Record<string, unkn
       const item = itemId(payload.agent_id);
       return item ? { kind: 'finish', item, ...base } : null;
     }
-    if (event === `${agent}_background_start` || event === `${agent}_background_finish`) {
+    const allowed = rule.events as readonly string[];
+    if ((event === `${agent}_background_start` && allowed.includes('start'))
+      || (event === `${agent}_background_finish` && allowed.includes('finish'))) {
       const item = itemId(payload.item_id);
       if (!item) return null;
       return { kind: event.endsWith('_start') ? 'start' : 'finish', item, ...base };
     }
-    if (event === `${agent}_background_snapshot`) {
+    if (event === `${agent}_background_snapshot` && allowed.includes('snapshot')) {
       const raw = payload.items;
       if (!Array.isArray(raw) || raw.length > BACKGROUND_WORK_POLICY.maxItems) return null;
       const items: string[] = [];

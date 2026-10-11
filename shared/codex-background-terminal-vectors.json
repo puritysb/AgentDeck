@@ -144,6 +144,76 @@
           "running": null
         }
       ]
+    },
+    {
+      "name": "a running-session line inside the command's own output (after Output:) is not a terminal",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:31:00.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_rg\",\"output\":\"Chunk ID: 1a2b3c\\nWall time: 0.1021 seconds\\nProcess exited with code 0\\nOriginal token count: 12\\nOutput:\\nshared/x.json:  Process running with session ID 999\\nProcess running with session ID 998\\n\"}}"
+          ],
+          "known": [],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "JSON that lacks Codex's exec result shape (chunk_id, wall_time_seconds) is not a terminal",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:32:00.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"call_id\":\"call_echo\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 0.1 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"session_id\\\":5,\\\"note\\\":\\\"a command printed this\\\"}\"}]}}"
+          ],
+          "known": [],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "after a resume (new Codex pid), running records before the new process's boundary belong to the dead process",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:30:00.000Z\",\"type\":\"turn_context\",\"payload\":{\"cwd\":\"/tmp/bgprobe\",\"model\":\"gpt-6\"}}",
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}"
+          ],
+          "known": [],
+          "afterBoundary": true,
+          "running": []
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:30:00.000Z\",\"type\":\"turn_context\",\"payload\":{\"cwd\":\"/tmp/bgprobe\",\"model\":\"gpt-6\"}}",
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}"
+          ],
+          "known": [],
+          "running": [
+            "98364"
+          ]
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:30:00.000Z\",\"type\":\"turn_context\",\"payload\":{\"cwd\":\"/tmp/bgprobe\",\"model\":\"gpt-6\"}}",
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}"
+          ],
+          "known": [],
+          "afterBoundary": true,
+          "running": [
+            "98364"
+          ]
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}"
+          ],
+          "known": [],
+          "afterBoundary": true,
+          "running": []
+        }
+      ]
     }
   ]
 }

@@ -7,10 +7,11 @@ import {
   CodexBackgroundTerminals,
   mergeCodexBackgroundTerminals,
   type CodexBackgroundIO,
+  CODEX_BACKGROUND_POLICY,
 } from '../codex-background-terminals.js';
-import { BACKGROUND_WORK_POLICY } from '@agentdeck/shared';
+import { BACKGROUND_WORK_POLICY, BackgroundWorkTracker } from '@agentdeck/shared';
 
-interface VectorWindow { lines: string[]; known: string[]; running: string[] | null }
+interface VectorWindow { lines: string[]; known: string[]; afterBoundary?: boolean; running: string[] | null }
 const vectors = JSON.parse(readFileSync('shared/codex-background-terminal-vectors.json', 'utf8')) as {
   cases: { name: string; windows: VectorWindow[] }[];
 };
@@ -43,6 +44,7 @@ function runNode(): Record<string, unknown>[] {
   let alive: boolean | undefined;
   const io: Partial<CodexBackgroundIO> = {
     readTail: () => lines,
+    stat: () => (lines ? { size: JSON.stringify(lines).length, mtimeMs: 0 } : null),
     locate: () => null,
     isAlive: () => alive,
     setInterval: () => 1,
@@ -63,7 +65,7 @@ function runNode(): Record<string, unknown>[] {
 describe('Codex background terminals', () => {
   it('replays real rollout windows: running until its CommandExecution completion, retained when the start scrolls out', () => {
     for (const w of windows) {
-      expect(sorted(mergeCodexBackgroundTerminals(new Set(w.known), w.lines)), w.name).toEqual(w.running);
+      expect(sorted(mergeCodexBackgroundTerminals(new Set(w.known), w.lines, w.afterBoundary ?? false)), w.name).toEqual(w.running);
     }
   });
 
@@ -81,7 +83,9 @@ describe('Codex background terminals', () => {
     expect(at(4, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
     expect(at(5, 'idle')).toMatchObject({ backgroundTaskCount: 1 });
     expect(at(6, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
-    expect(at(7, 'idle')).toMatchObject({ backgroundTaskCount: 1 });
+    // A new pid is a resumed Codex: the old process's running record is not
+    // trusted until the new process writes a boundary record.
+    expect(at(7, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
     expect(at(8, 'idle')).toEqual({ state: 'idle' });
     expect(at(9, 'idle')).toEqual({ state: 'idle' });
   });
@@ -92,6 +96,7 @@ describe('Codex background terminals', () => {
     let changes = 0;
     const tracker = new CodexBackgroundTerminals({
       readTail: () => lines, locate: () => null, isAlive: () => true,
+      stat: () => (lines ? { size: JSON.stringify(lines).length, mtimeMs: 0 } : null),
       onChange: () => { changes++; },
       setInterval: fn => { timers.push(fn); return timers.length; },
       clearInterval: () => { timers.length = 0; },
@@ -103,6 +108,24 @@ describe('Codex background terminals', () => {
     expect(changes).toBe(1);
     expect(timers).toHaveLength(0);
     expect(tracker.project('t', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+  });
+
+  it('stops watching when liveness cannot be seen and nothing is appended, and lets the count expire', () => {
+    const timers: (() => void)[] = [];
+    let clock = 0;
+    const work = new BackgroundWorkTracker();
+    const tracker = new CodexBackgroundTerminals({
+      readTail: () => code.slice(0, 3), stat: () => ({ size: 1, mtimeMs: 1 }), locate: () => null,
+      isAlive: () => undefined, now: () => clock,
+      setInterval: fn => { timers.push(fn); return timers.length; },
+      clearInterval: () => { timers.length = 0; },
+    }, work);
+    tracker.note('codex_stop', { session_id: 't', agentdeck_pid: 7, transcript_path: '/r.jsonl' });
+    expect(work.count('t')).toBe(1);
+    for (let i = 0; i < CODEX_BACKGROUND_POLICY.giveUpReads && timers.length; i++) { clock += 3_000; timers[0](); }
+    expect(timers).toHaveLength(0);
+    expect(work.reap(CODEX_BACKGROUND_POLICY.staleMs + 1)).toEqual(['t']);
+    expect(work.project('t', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0 });
   });
 
   it.runIf(process.platform === 'darwin')('replays the same windows and lifecycle through the Swift mirror', () => {
@@ -119,11 +142,13 @@ let input = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLW
 func emit(_ v: Any) { print(String(data: try! JSONSerialization.data(withJSONObject: v, options: [.sortedKeys, .fragmentsAllowed]), encoding: .utf8)!) }
 for w in input["windows"] as! [[String: Any]] {
     let known = Set(w["known"] as! [String])
-    if let next = CodexBackgroundTerminals.merge(known, w["lines"] as! [String]) { emit(next.sorted()) } else { emit(NSNull()) }
+    if let next = CodexBackgroundTerminals.merge(known, w["lines"] as! [String], afterBoundary: (w["afterBoundary"] as? Bool) ?? false) { emit(next.sorted()) } else { emit(NSNull()) }
 }
 var lines: [String]? = nil
 var alive: Bool? = nil
-let io = CodexBackgroundTerminalIO(readTail: { _, _ in lines }, locate: { _ in nil }, isAlive: { _ in alive })
+let io = CodexBackgroundTerminalIO(readTail: { _, _ in lines },
+    stat: { _ in lines.map { String($0.joined(separator: "\\n").count) + ":0" } },
+    locate: { _ in nil }, isAlive: { _ in alive })
 var tracker = CodexBackgroundTerminals()
 var work = BackgroundWorkTracker()
 for step in input["steps"] as! [[String: Any]] {
@@ -142,7 +167,7 @@ for step in input["steps"] as! [[String: Any]] {
       const actual = execFileSync('swift', [join(dir, 'main.swift'), join(dir, 'input.json')], { encoding: 'utf8', timeout: 60_000 })
         .trim().split('\n').map(line => JSON.parse(line));
       const expected = [
-        ...windows.map(w => sorted(mergeCodexBackgroundTerminals(new Set(w.known), w.lines))),
+        ...windows.map(w => sorted(mergeCodexBackgroundTerminals(new Set(w.known), w.lines, w.afterBoundary ?? false))),
         ...runNode(),
       ];
       expect(actual).toEqual(expected);

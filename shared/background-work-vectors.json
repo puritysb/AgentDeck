@@ -1,57 +1,371 @@
 {
   "$comment": "Background-work hook vocabulary and tracker, replayed by bridge/src/__tests__/background-work.test.ts through Node and the generated Swift block. Each step is a hook {event, payload, now} or a reap {reap: now}; `expect` lists the projection of an idle row per session after the step (null = no information, the row is unchanged). OpenCode payloads are the observer plugin v4 posts for the 2026-10-11 probe (OpenCode 1.18.35 background subagent); Hermes payloads are observer v2 snapshots of process_registry.list_sessions entries.",
-  "sessions": ["ses_ed5013ad6ffeE3Jl9V22nq9OGW", "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c"],
+  "sessions": [
+    "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+    "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c"
+  ],
   "steps": [
-    { "event": "opencode_background_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy", "cwd": "/tmp/ocprobe" }, "now": 1791722708985,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background task", "activity": "Waiting for 1 background task" }, null] },
-    { "event": "opencode_background_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy", "cwd": "/tmp/ocprobe" }, "now": 1791722709000,
-      "consumed": true, "changed": false,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background task", "activity": "Waiting for 1 background task" }, null] },
-    { "event": "opencode_background_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "ses_second", "cwd": "/tmp/ocprobe" }, "now": 1791722710000,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 2, "currentTool": "Background tasks", "currentTask": "Waiting for 2 background tasks", "activity": "Waiting for 2 background tasks" }, null] },
-    { "event": "opencode_background_finish", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy", "status": "completed", "cwd": "/tmp/ocprobe" }, "now": 1791722728354,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background task", "activity": "Waiting for 1 background task" }, null] },
-    { "event": "opencode_subagent_stop", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "agent_id": "ses_second", "last_assistant_message": "child done" }, "now": 1791722729000,
-      "consumed": false, "changed": true,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, null] },
-    { "event": "opencode_subagent_stop", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "agent_id": "ses_foreground_child" }, "now": 1791722729500,
-      "consumed": false, "changed": false,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, null] },
-    { "event": "opencode_background_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "ses_lost_finish" }, "now": 1791722730000,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background task", "activity": "Waiting for 1 background task" }, null] },
-    { "reap": 1791744330000,
-      "expect": [{ "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background task", "activity": "Waiting for 1 background task" }, null] },
-    { "reap": 1791744330001,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, null] },
-    { "event": "hermes_background_snapshot", "payload": { "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c", "items": ["proc_a1b2"] }, "now": 1791722800000,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background process", "activity": "Waiting for 1 background process" }] },
-    { "event": "hermes_background_snapshot", "payload": { "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c", "items": "proc_a1b2" }, "now": 1791722801000,
-      "consumed": true, "changed": false,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background process", "activity": "Waiting for 1 background process" }] },
-    { "reap": 1791999999999,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "processing", "backgroundTaskCount": 1, "currentTool": "Background tasks", "currentTask": "Waiting for 1 background process", "activity": "Waiting for 1 background process" }] },
-    { "event": "hermes_background_snapshot", "payload": { "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c", "items": ["proc_a1b2", "proc_a1b2", "proc_e5f6"] }, "now": 1791722802000,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "processing", "backgroundTaskCount": 2, "currentTool": "Background tasks", "currentTask": "Waiting for 2 background processes", "activity": "Waiting for 2 background processes" }] },
-    { "event": "hermes_background_snapshot", "payload": { "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c", "items": [] }, "now": 1791722803000,
-      "consumed": true, "changed": true,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "idle", "backgroundTaskCount": 0 }] },
-    { "event": "kiro_background_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW", "item_id": "x" }, "now": 1791722804000,
-      "consumed": true, "changed": false,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "idle", "backgroundTaskCount": 0 }] },
-    { "event": "opencode_background_start", "payload": { "item_id": "orphan" }, "now": 1791722805000,
-      "consumed": true, "changed": false,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, { "state": "idle", "backgroundTaskCount": 0 }] },
-    { "event": "hermes_session_end", "payload": { "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c" }, "now": 1791722806000,
-      "consumed": false, "changed": true,
-      "expect": [{ "state": "idle", "backgroundTaskCount": 0 }, null] },
-    { "event": "opencode_session_start", "payload": { "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW" }, "now": 1791722807000,
-      "consumed": false, "changed": true,
-      "expect": [null, null] }
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy",
+        "cwd": "/tmp/ocprobe"
+      },
+      "now": 1791722708985,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy",
+        "cwd": "/tmp/ocprobe"
+      },
+      "now": 1791722709000,
+      "consumed": true,
+      "changed": false,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "ses_second",
+        "cwd": "/tmp/ocprobe"
+      },
+      "now": 1791722710000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 2,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 2 background tasks",
+          "activity": "Waiting for 2 background tasks"
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_background_finish",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "ses_ed5012000ffey7p3EtFc3y0aOy",
+        "status": "completed",
+        "cwd": "/tmp/ocprobe"
+      },
+      "now": 1791722728354,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_subagent_stop",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "agent_id": "ses_second",
+        "last_assistant_message": "child done"
+      },
+      "now": 1791722729000,
+      "consumed": false,
+      "changed": true,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_subagent_stop",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "agent_id": "ses_foreground_child"
+      },
+      "now": 1791722729500,
+      "consumed": false,
+      "changed": false,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "ses_lost_finish"
+      },
+      "now": 1791722730000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        },
+        null
+      ]
+    },
+    {
+      "reap": 1791744330000,
+      "expect": [
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background task",
+          "activity": "Waiting for 1 background task"
+        },
+        null
+      ]
+    },
+    {
+      "reap": 1791744330001,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        null
+      ]
+    },
+    {
+      "event": "hermes_background_snapshot",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+        "items": [
+          "proc_a1b2"
+        ]
+      },
+      "now": 1791722800000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        }
+      ]
+    },
+    {
+      "event": "hermes_background_snapshot",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+        "items": "proc_a1b2"
+      },
+      "now": 1791722801000,
+      "consumed": true,
+      "changed": false,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        }
+      ]
+    },
+    {
+      "reap": 1791999999999,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 1,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 1 background process",
+          "activity": "Waiting for 1 background process"
+        }
+      ]
+    },
+    {
+      "event": "hermes_background_snapshot",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+        "items": [
+          "proc_a1b2",
+          "proc_a1b2",
+          "proc_e5f6"
+        ]
+      },
+      "now": 1791722802000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "processing",
+          "backgroundTaskCount": 2,
+          "currentTool": "Background tasks",
+          "currentTask": "Waiting for 2 background processes",
+          "activity": "Waiting for 2 background processes"
+        }
+      ]
+    },
+    {
+      "event": "hermes_background_snapshot",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+        "items": []
+      },
+      "now": 1791722803000,
+      "consumed": true,
+      "changed": true,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        }
+      ]
+    },
+    {
+      "event": "hermes_background_start",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c",
+        "item_id": "proc_x"
+      },
+      "now": 1791722803500,
+      "consumed": true,
+      "changed": false,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        }
+      ]
+    },
+    {
+      "event": "kiro_background_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW",
+        "item_id": "x"
+      },
+      "now": 1791722804000,
+      "consumed": true,
+      "changed": false,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        }
+      ]
+    },
+    {
+      "event": "opencode_background_start",
+      "payload": {
+        "item_id": "orphan"
+      },
+      "now": 1791722805000,
+      "consumed": true,
+      "changed": false,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        }
+      ]
+    },
+    {
+      "event": "hermes_session_end",
+      "payload": {
+        "session_id": "hermes-0f3a9c2b7d1e4f5a6b7c8d9e0f1a2b3c"
+      },
+      "now": 1791722806000,
+      "consumed": false,
+      "changed": true,
+      "expect": [
+        {
+          "state": "idle",
+          "backgroundTaskCount": 0
+        },
+        null
+      ]
+    },
+    {
+      "event": "opencode_session_start",
+      "payload": {
+        "session_id": "ses_ed5013ad6ffeE3Jl9V22nq9OGW"
+      },
+      "now": 1791722807000,
+      "consumed": false,
+      "changed": true,
+      "expect": [
+        null,
+        null
+      ]
+    }
   ]
 }

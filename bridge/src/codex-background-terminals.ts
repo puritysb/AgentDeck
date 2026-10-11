@@ -27,7 +27,7 @@
  * in CoordinationTracker.swift) and both replay
  * `shared/codex-background-terminal-vectors.json`.
  */
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs';
 import { BackgroundWorkTracker } from '@agentdeck/shared';
 import { locateCodexRollout } from './codex-rollout-response.js';
 
@@ -39,13 +39,22 @@ export const CODEX_BACKGROUND_POLICY = {
   maxWatches: 64,
   /** More than this in one session is not a plausible reading. */
   maxTerminals: 256,
+  /** Polls that may fail to read, or find liveness unknown and nothing new,
+   *  before the watch stops (the next Codex hook resumes it). */
+  giveUpReads: 20,
+  /** Items not re-asserted by a live poll expire, so a stopped watch (give-up,
+   *  eviction, a Codex whose death could not be seen) cannot latch a count. */
+  staleMs: 10 * 60_000,
   /** Hook events after which the rollout is read. */
   reads: ['codex_stop', 'codex_turn_complete', 'codex_interrupt'],
   /** Hook events that reset the session's count. */
   resets: ['codex_session_start', 'codex_session_end'],
 } as const;
 
-const RUNNING_TEXT = /Process running with session ID ([0-9]+)/g;
+/** The legacy header line, matched only in the header Codex writes before the
+ *  command's own output (`Output:\n`), never in what the command printed. */
+const RUNNING_LINE = /^Process running with session ID ([0-9]+)$/m;
+const OUTPUT_MARK = 'Output:\n';
 
 function idOf(value: unknown): string | undefined {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return String(value);
@@ -54,14 +63,36 @@ function idOf(value: unknown): string | undefined {
 }
 
 function runningFromText(text: string, mark: (id: string) => void): void {
-  for (const m of text.matchAll(RUNNING_TEXT)) mark(m[1]);
+  const cut = text.indexOf(OUTPUT_MARK);
+  const header = cut >= 0 ? text.slice(0, cut) : text;
+  const m = RUNNING_LINE.exec(header);
+  if (m) mark(m[1]);
   const trimmed = text.trim();
   if (!trimmed.startsWith('{')) return;
   try {
+    // Only Codex's own exec result shape counts: a command that merely echoes
+    // `{"session_id":…}` is not a running terminal.
     const obj = JSON.parse(trimmed) as Record<string, unknown>;
-    const id = obj && typeof obj === 'object' ? idOf(obj.session_id) : undefined;
-    if (id !== undefined && !('exit_code' in obj)) mark(id);
+    if (!obj || typeof obj !== 'object' || typeof obj.chunk_id !== 'string'
+      || typeof obj.wall_time_seconds !== 'number' || 'exit_code' in obj) return;
+    const id = idOf(obj.session_id);
+    if (id !== undefined) mark(id);
   } catch { /* not a tool result object */ }
+}
+
+/** Records after which a resumed Codex process's own history begins. */
+const BOUNDARY_TYPES = new Set(['session_meta', 'turn_context']);
+
+/** Index of the last `session_meta`/`turn_context` record, or -1. */
+export function lastBoundaryIndex(lines: readonly string[]): number {
+  let last = -1;
+  lines.forEach((line, i) => {
+    try {
+      const rec = JSON.parse(line) as Record<string, unknown>;
+      if (rec && typeof rec === 'object' && BOUNDARY_TYPES.has(rec.type as string)) last = i;
+    } catch { /* skip */ }
+  });
+  return last;
 }
 
 export type CodexTerminalStatus = 'running' | 'finished';
@@ -70,12 +101,18 @@ export type CodexTerminalStatus = 'running' | 'finished';
  *  order (a later record wins), or undefined when no line parsed (no
  *  information). A terminal the window never mentions is absent: its start may
  *  have scrolled out, so absence is not completion. */
-export function codexBackgroundTerminalStatuses(lines: readonly string[]): Map<string, CodexTerminalStatus> | undefined {
+export function codexBackgroundTerminalStatuses(lines: readonly string[], afterBoundary = false): Map<string, CodexTerminalStatus> | undefined {
   const statuses = new Map<string, CodexTerminalStatus>();
   const set = (id: string, status: CodexTerminalStatus) => { statuses.delete(id); statuses.set(id, status); };
-  const running = (id: string) => set(id, 'running');
+  // After a pid change, running records before the new process's first
+  // boundary record belong to the dead process. With no boundary in view at
+  // all, none can be trusted yet (an undercount, never a phantom).
+  let gate = afterBoundary;
+  const running = (id: string) => { if (!gate) set(id, 'running'); };
   let parsed = false;
-  for (const line of lines) {
+  const lastBoundary = afterBoundary ? lastBoundaryIndex(lines) : -1;
+  for (const [index, line] of lines.entries()) {
+    if (afterBoundary && index === lastBoundary) gate = false;
     let rec: unknown;
     try { rec = JSON.parse(line); } catch { continue; }
     if (!rec || typeof rec !== 'object' || Array.isArray(rec)) continue;
@@ -104,8 +141,8 @@ export function codexBackgroundTerminalStatuses(lines: readonly string[]): Map<s
 
 /** Running terminals after applying one window to what was already known, or
  *  undefined when the window says nothing (unreadable, or implausibly large). */
-export function mergeCodexBackgroundTerminals(known: ReadonlySet<string>, lines: readonly string[]): Set<string> | undefined {
-  const statuses = codexBackgroundTerminalStatuses(lines);
+export function mergeCodexBackgroundTerminals(known: ReadonlySet<string>, lines: readonly string[], afterBoundary = false): Set<string> | undefined {
+  const statuses = codexBackgroundTerminalStatuses(lines, afterBoundary);
   if (!statuses) return undefined;
   const next = new Set(known);
   for (const [id, status] of statuses) {
@@ -117,6 +154,8 @@ export function mergeCodexBackgroundTerminals(known: ReadonlySet<string>, lines:
 export interface CodexBackgroundIO {
   /** Last `bytes` of the file as whole lines, or null when unreadable. */
   readTail(path: string, bytes: number): string[] | null;
+  /** Size and mtime, or null when the file cannot be stat'ed. */
+  stat(path: string): { size: number; mtimeMs: number } | null;
   locate(sessionId: string): string | null;
   /** true alive, false definitely gone, undefined could not tell. */
   isAlive(pid: number): boolean | undefined;
@@ -154,6 +193,7 @@ export function processLiveness(pid: number): boolean | undefined {
 function defaultIO(): CodexBackgroundIO {
   return {
     readTail: readRolloutTailLines,
+    stat: path => { try { const s = statSync(path); return { size: s.size, mtimeMs: s.mtimeMs }; } catch { return null; } },
     locate: sid => locateCodexRollout(sid),
     isAlive: processLiveness,
     onChange: () => {},
@@ -163,10 +203,23 @@ function defaultIO(): CodexBackgroundIO {
   };
 }
 
-interface Watch { path: string; pid: number; running: Set<string> }
+interface Watch {
+  path: string;
+  pid: number;
+  running: Set<string>;
+  /** A new Codex process took over this session (resume): trust running
+   *  records only after its first boundary record. */
+  afterBoundary: boolean;
+  /** Size/mtime at the last parse; unchanged means nothing new to read. */
+  parsedAt?: string;
+  /** Consecutive polls that read nothing or could not see liveness. */
+  idle: number;
+}
 
 export class CodexBackgroundTerminals {
   private readonly watches = new Map<string, Watch>();
+  /** Last Codex pid per session, kept past its watch so a resume is seen. */
+  private readonly pids = new Map<string, number>();
   private timer: unknown;
   private readonly io: CodexBackgroundIO;
 
@@ -189,8 +242,15 @@ export class CodexBackgroundTerminals {
     const path = typeof tp === 'string' && tp.endsWith('.jsonl') ? tp : this.io.locate(sid);
     if (!path) return false;
     const prior = this.watches.get(sid);
+    const lastPid = this.pids.get(sid);
+    const same = prior !== undefined && prior.pid === pid && prior.path === path;
     this.watches.delete(sid);
-    this.watches.set(sid, { path, pid, running: prior && prior.pid === pid && prior.path === path ? prior.running : new Set() });
+    this.watches.set(sid, same ? { ...prior, idle: 0, parsedAt: undefined }
+      : { path, pid, running: new Set(), afterBoundary: lastPid !== undefined && lastPid !== pid, idle: 0 });
+    this.pids.delete(sid);
+    this.pids.set(sid, pid);
+    while (this.pids.size > CODEX_BACKGROUND_POLICY.maxWatches * 4) this.pids.delete(this.pids.keys().next().value!);
+    // An evicted watch keeps its tracker items only until they go stale.
     while (this.watches.size > CODEX_BACKGROUND_POLICY.maxWatches) this.watches.delete(this.watches.keys().next().value!);
     return this.refresh(sid);
   }
@@ -199,16 +259,42 @@ export class CodexBackgroundTerminals {
   refresh(sid: string): boolean {
     const watch = this.watches.get(sid);
     if (!watch) return false;
+    const alive = this.io.isAlive(watch.pid);
     let running: Set<string> | undefined;
-    if (this.io.isAlive(watch.pid) === false) running = new Set();
-    else {
-      const lines = this.io.readTail(watch.path, CODEX_BACKGROUND_POLICY.tailBytes);
-      running = lines ? mergeCodexBackgroundTerminals(watch.running, lines) : undefined;
+    let learned = false;
+    if (alive === false) {
+      running = new Set();
+      learned = true;
+    } else {
+      const st = this.io.stat(watch.path);
+      const stamp = st ? `${st.size}:${st.mtimeMs}` : undefined;
+      if (stamp !== undefined && stamp === watch.parsedAt) {
+        running = watch.running; // nothing appended since the last parse
+      } else if (stamp !== undefined) {
+        const lines = this.io.readTail(watch.path, CODEX_BACKGROUND_POLICY.tailBytes);
+        running = lines ? mergeCodexBackgroundTerminals(watch.running, lines, watch.afterBoundary) : undefined;
+        if (running) {
+          watch.parsedAt = stamp;
+          learned = true;
+          if (watch.afterBoundary && lastBoundaryIndex(lines!) >= 0) watch.afterBoundary = false;
+        }
+      }
     }
-    if (!running) { this.arm(); return false; }
+    // Liveness unknown and nothing new, or nothing readable: count it, and stop
+    // watching after a bound (items then age out; the next hook resumes).
+    if (!running || (alive === undefined && !learned)) {
+      if (++watch.idle >= CODEX_BACKGROUND_POLICY.giveUpReads) this.watches.delete(sid);
+      if (!running) { this.arm(); return false; }
+    } else {
+      watch.idle = 0;
+    }
     watch.running = running;
     if (running.size === 0) this.watches.delete(sid);
-    const changed = this.work.snapshot(sid, [...running], this.io.now(), { noun: 'terminal', staleMs: null });
+    // Only a live process or a new record re-asserts the items; an unknown
+    // liveness with nothing new lets them age toward the stale bound.
+    const changed = alive === true || learned
+      ? this.work.snapshot(sid, [...running], this.io.now(), { noun: 'terminal', staleMs: CODEX_BACKGROUND_POLICY.staleMs })
+      : false;
     this.arm();
     return changed;
   }

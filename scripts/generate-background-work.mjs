@@ -27,7 +27,8 @@ export function emitBackgroundWorkSwift(policy, sourceText, hooks) {
     .map(([kind, [one, many]]) => `        case ${JSON.stringify(kind)}: return count == 1 ? ${JSON.stringify(one)} : ${JSON.stringify(many)}`).join('\n');
   const rules = Object.entries(hooks).map(([agent, r]) =>
     `        Rule(agent: ${JSON.stringify(agent)}, noun: ${JSON.stringify(r.noun)}, staleMs: ${r.staleMs === null ? 'nil' : r.staleMs}, `
-    + `resets: [${r.resets.map(x => JSON.stringify(x)).join(', ')}], childStop: ${r.childStop === null ? 'nil' : JSON.stringify(r.childStop)}),`).join('\n');
+    + `resets: [${r.resets.map(x => JSON.stringify(x)).join(', ')}], childStop: ${r.childStop === null ? 'nil' : JSON.stringify(r.childStop)}, `
+    + `events: [${r.events.map(x => JSON.stringify(x)).join(', ')}]),`).join('\n');
   return `// BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
 // Source SHA256: ${crypto.createHash('sha256').update(sourceText).digest('hex')}
 // Agent-agnostic background work per session; adapters translate each agent's
@@ -134,7 +135,7 @@ ${nouns}
 
 /// The generic \`<agent>_background_start|finish|snapshot\` hook vocabulary.
 enum BackgroundWorkHooks {
-    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String? }
+    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
     static let rules: [Rule] = [
 ${rules}
     ]
@@ -169,13 +170,14 @@ ${rules}
                 guard let item = itemId(payload["agent_id"]) else { return nil }
                 return .finish(sessionId: sid, item: item)
             }
-            if event == rule.agent + "_background_start" || event == rule.agent + "_background_finish" {
+            if (event == rule.agent + "_background_start" && rule.events.contains("start"))
+                || (event == rule.agent + "_background_finish" && rule.events.contains("finish")) {
                 guard let item = itemId(payload["item_id"]) else { return nil }
                 return event.hasSuffix("_start")
                     ? .start(sessionId: sid, item: item, noun: rule.noun, staleMs: rule.staleMs)
                     : .finish(sessionId: sid, item: item)
             }
-            if event == rule.agent + "_background_snapshot" {
+            if event == rule.agent + "_background_snapshot" && rule.events.contains("snapshot") {
                 guard let raw = payload["items"] as? [Any], raw.count <= BackgroundWorkTracker.maxItems else { return nil }
                 var items: [String] = []
                 for value in raw {

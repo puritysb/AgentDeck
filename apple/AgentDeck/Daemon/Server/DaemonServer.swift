@@ -11517,10 +11517,25 @@ final class DaemonServer {
                         sessionId: sid, sessionsRoot: dir.appendingPathComponent("sessions", isDirectory: true))?.path
                 } ?? CodexRolloutResponseReader.locateRollout(sessionId: sid)?.path
             },
+            stat: { path in
+                let read = { () -> String? in
+                    guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+                          let size = attrs[.size] as? NSNumber, let modified = attrs[.modificationDate] as? Date else { return nil }
+                    return "\(size.int64Value):\(Int64(modified.timeIntervalSince1970 * 1000))"
+                }
+                return AppPreferences.shared.withCodexDirectoryAccess { _ in read() } ?? read()
+            },
             isAlive: { pid in
-                // Three answers: ESRCH is gone; EPERM (the sandbox) is unknown.
-                if kill(pid_t(pid), 0) == 0 { return true }
-                return errno == ESRCH ? false : nil
+                // kill(pid, 0) answers EPERM for everything under the App
+                // Sandbox; sysctl KERN_PROC_PID needs no entitlement and
+                // returns an empty record for a pid that no longer exists.
+                guard pid > 0 else { return nil }
+                var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
+                var info = kinfo_proc()
+                var size = MemoryLayout<kinfo_proc>.stride
+                guard sysctl(&mib, u_int(mib.count), &info, &size, nil, 0) == 0 else { return nil }
+                if size == 0 { return false }
+                return size == MemoryLayout<kinfo_proc>.stride && Int(info.kp_proc.p_pid) == pid ? true : nil
             })
     }
 

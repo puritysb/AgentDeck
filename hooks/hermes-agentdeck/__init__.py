@@ -348,6 +348,8 @@ def _handle_locked(event, **kwargs):
             if old:
                 _post("hermes_session_end", _payload(kwargs, old))
                 _CONTEXT.pop(_identity(old), None)
+                _TASKS.pop(_identity(old), None)
+                _BACKGROUND.pop(_identity(old), None)
             return
         payload = _payload(kwargs)
         if payload is None:
