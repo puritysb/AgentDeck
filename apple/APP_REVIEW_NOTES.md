@@ -92,7 +92,7 @@ and do not expose child-agent controls.
 
 ## Local notifications
 
-AgentDeck posts a local `UNUserNotification` when a monitored session genuinely waits for the user's response (e.g. Claude Code shows a permission prompt in the user's terminal), and clears it the moment the session moves on. Authorization is requested through an explanatory in-app prompt on first launch (the user can decline; a "Request Again" affordance lives in Settings). No push notifications, no remote notification service — everything is local.
+AgentDeck posts a local `UNUserNotification` when a monitored session genuinely waits for the user's response (e.g. Claude Code shows a permission prompt in the user's terminal), and clears it the moment the session moves on. Nothing is requested at launch: authorization is asked only when the user presses "Choose Notifications…" on the last setup step or in Settings → Dashboard, which shows the system dialog directly. If notifications were turned off, the same button explains that and opens AgentDeck's page in System Settings → Notifications. No push notifications, no remote notification service — everything is local.
 
 ## Bluetooth entitlement (`com.apple.security.device.bluetooth`)
 

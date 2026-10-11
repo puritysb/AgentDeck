@@ -1,4 +1,7 @@
 import XCTest
+#if os(macOS)
+import UserNotifications
+#endif
 @testable import AgentDeck
 
 @MainActor
@@ -126,3 +129,35 @@ final class OnboardingIntegrationTests: XCTestCase {
         XCTAssertFalse(status.needsAttention)
     }
 }
+
+#if os(macOS)
+/// The onboarding / Settings "Choose Notifications…" press is the only place
+/// AgentDeck asks for notifications, so each system state must lead somewhere
+/// the user can act on — never a second dialog in front of the system's own,
+/// and never a dead end once the system has said no.
+final class NotificationPermissionChoiceTests: XCTestCase {
+    func testUndecidedGoesStraightToTheSystemDialog() {
+        XCTAssertEqual(NotificationPermission.action(for: .notDetermined), .requestAuthorization)
+    }
+
+    func testDeniedOffersSystemSettingsInsteadOfARetryThatCannotWork() {
+        XCTAssertEqual(NotificationPermission.action(for: .denied), .explainDenied)
+    }
+
+    func testEveryGrantedStateReadsAsOn() {
+        for status: UNAuthorizationStatus in [.authorized, .provisional] {
+            XCTAssertEqual(NotificationPermission.action(for: status), .confirmEnabled)
+        }
+    }
+
+    func testSettingsURLOpensAgentDecksOwnPage() {
+        let url = NotificationPermission.settingsURL(bundleIdentifier: "bound.serendipity.agent.deck")
+        XCTAssertEqual(url.scheme, "x-apple.systempreferences")
+        XCTAssertTrue(url.absoluteString.hasPrefix("x-apple.systempreferences:com.apple.Notifications-Settings.extension"))
+        XCTAssertEqual(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first?.value,
+                       "bound.serendipity.agent.deck")
+        XCTAssertNil(URLComponents(url: NotificationPermission.settingsURL(bundleIdentifier: nil),
+                                   resolvingAgainstBaseURL: false)?.queryItems)
+    }
+}
+#endif

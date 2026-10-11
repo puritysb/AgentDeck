@@ -56,6 +56,12 @@ async function receiver(port: number, timeoutMs: number): Promise<HermesDiagnost
   });
 }
 
+/** Hermes skips plugin discovery entirely under HERMES_SAFE_MODE (its
+ * `env_var_enabled`: trimmed, case-insensitive 1/true/yes/on). */
+function hermesSafeMode(): boolean {
+  return ['1', 'true', 'yes', 'on'].includes((process.env.HERMES_SAFE_MODE ?? '').trim().toLowerCase());
+}
+
 /** Mirrors observer discovery exactly: profile connection.json, otherwise the
  * configured registry only. A bad explicit selection never falls back. */
 export async function collectHermesDiagnostic(opts: { home?: string; dataDir?: string; timeoutMs?: number } = {}): Promise<HermesDiagnostic> {
@@ -63,7 +69,7 @@ export async function collectHermesDiagnostic(opts: { home?: string; dataDir?: s
   const plugin = join(home, 'plugins', observerName);
   const report: HermesDiagnostic = {
     ok: false, plugin: 'unknown', enablement: 'unknown',
-    hooks: process.env.AGENTDECK_NO_HERMES_HOOKS === '1' ? 'disabled' : 'allowed',
+    hooks: process.env.AGENTDECK_NO_HERMES_HOOKS === '1' || hermesSafeMode() ? 'disabled' : 'allowed',
     discovery: 'unknown', receiver: 'not-probed', nextSteps: [],
     scope: 'Checks this profile and CLI environment, not the running Hermes process. Restart Hermes after changes; verify a real turn appears in AgentDeck. No events were sent.',
   };
@@ -102,7 +108,8 @@ export async function collectHermesDiagnostic(opts: { home?: string; dataDir?: s
   report.ok = report.plugin === 'installed' && report.enablement === 'enabled' && report.hooks === 'allowed' && report.receiver === 'supported';
   if (report.plugin !== 'installed') report.nextSteps.push('Install/update the observer with agentdeck hermes-observer --home <profile>.');
   if (report.enablement !== 'enabled') report.nextSteps.push('In that same Hermes profile, inspect configuration and run hermes plugins enable agentdeck-observer.');
-  if (report.hooks === 'disabled') report.nextSteps.push('Remove AGENTDECK_NO_HERMES_HOOKS=1 from the Hermes launch environment to enable observation.');
+  if (hermesSafeMode()) report.nextSteps.push('HERMES_SAFE_MODE is on in this environment, so Hermes skips every plugin. Start Hermes without it to enable observation.');
+  if (process.env.AGENTDECK_NO_HERMES_HOOKS === '1') report.nextSteps.push('Remove AGENTDECK_NO_HERMES_HOOKS=1 from the Hermes launch environment to enable observation.');
   if (report.port === undefined) report.nextSteps.push('No usable receiver selection. For a sandboxed Mac app, use agentdeck hermes-observer --home <profile> --port <actual-daemon-port>; no container access is needed. For registry discovery, start the intended daemon or set AGENTDECK_DATA_DIR in the Hermes launch environment.');
   else if (report.receiver !== 'supported') report.nextSteps.push('Confirm the selected local daemon is running and advertises hermesObserver: 1. Update the receiver or correct --port; no other port was tried.');
   return report;

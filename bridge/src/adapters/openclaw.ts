@@ -53,6 +53,7 @@ import {
   type PluginApprovalDecision,
 } from '@agentdeck/shared';
 import { OPENCLAW_CAPABILITIES, OPENCLAW_GATEWAY_PORT } from '../types.js';
+import { SURFACE_SERVER_VERSION } from '../surface-protocol.js';
 import { fetchModelCatalog, getDefaultModelName, invalidateModelCache } from '../model-catalog.js';
 import { catalogFromModelsList, catalogRetryDelayMs, type ResolvedModelCatalog } from '../openclaw-model-catalog.js';
 import { getApme } from '../apme/index.js';
@@ -2232,7 +2233,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
       client: {
         id: 'gateway-client',
         displayName: 'AgentDeck',
-        version: '0.3.0',
+        // The installed package, never a historical constant: the Gateway
+        // lists this in its device inventory (Swift sends the bundle version).
+        version: SURFACE_SERVER_VERSION,
         platform: process.platform,
         deviceFamily: 'mac',
         mode: 'backend',
