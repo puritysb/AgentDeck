@@ -154,9 +154,13 @@ actor DaemonTimelineStore {
             // seconds.
             if entries.last(where: { existing in
                 guard abs(existing.ts - entry.ts) <= 8000, existing.type == entry.type, existing.raw == entry.raw else { return false }
-                // Same session-scoped scheduled evidence rule as shared/src/timeline.ts.
-                if entry.type == "scheduled", let sid = entry.sessionId, !sid.isEmpty,
-                   let other = existing.sessionId, !other.isEmpty, sid != other { return false }
+                // A row belongs to its session — same rule as shared/src/timeline.ts
+                // deduplicateEntry. Two real sessions saying the same words within
+                // seconds are not duplicates (#490); the same session in either
+                // id form still dedups; unattributed rows keep content dedup.
+                if let sid = entry.sessionId, !sid.isEmpty,
+                   let other = existing.sessionId, !other.isEmpty, sid != other,
+                   ObservedAgentRules.rawSessionId(sid) != ObservedAgentRules.rawSessionId(other) { return false }
                 return true
             }) != nil { return false }
         }

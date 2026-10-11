@@ -319,6 +319,25 @@ enum CodexHookIdentity {
     }
 }
 
+/// Remembers which Codex event instances were ingested, so the twin delivered
+/// by a second hook command within `CodexHookHarness.replayWindow` is dropped.
+struct CodexHookReplayMemory {
+    private var seen: [String: Date] = [:]
+    private let capacity = 2048
+
+    /// True when this is the first delivery of the instance (and records it).
+    mutating func admit(_ fingerprint: String, now: Date) -> Bool {
+        if let at = seen[fingerprint], now.timeIntervalSince(at) <= CodexHookHarness.replayWindow {
+            return false
+        }
+        seen[fingerprint] = now
+        if seen.count > capacity {
+            seen = seen.filter { now.timeIntervalSince($0.value) <= CodexHookHarness.replayWindow }
+        }
+        return true
+    }
+}
+
 /// Codex Desktop's ambient-suggestions threads are not the user's work.
 ///
 /// When the desktop app refreshes `~/.codex/ambient-suggestions/<hash>/
@@ -1633,6 +1652,9 @@ final class DaemonServer {
     private var currentHookSessionId: String?
     /// Codex Desktop ambient-suggestions thread ids — see CodexAmbientHookRules.
     private var codexAmbientThreads = CodexAmbientThreads()
+    /// Codex hook instances already ingested (#490): the twin a second hook
+    /// command delivers is dropped. See `CodexHookHarness`.
+    private var codexHookReplay = CodexHookReplayMemory()
     /// Session explicitly focused by the user. Kept separate from
     /// `currentHookSessionId` so a new hook from another session does not
     /// move the dashboard's visual selection halo.
@@ -3768,6 +3790,16 @@ final class DaemonServer {
             // agent process. The only session→process link this daemon has.
             let hookPid = Int(request.headers["x-agentdeck-pid"] ?? "")
             guard let self else { return .json(["received": true]) }
+            // A Codex payload on a Claude endpoint is never a Claude steering
+            // call (#490): no PreToolUse gate, no Stop directive — the queued
+            // deck command would be handed to Codex. Ingest it (re-routed in
+            // handleHookEvent) and answer with nothing.
+            if rawName == "PreToolUse" || rawName == "Stop",
+               let payload = (try? JSONSerialization.jsonObject(with: bodyData)) as? [String: Any],
+               CodexHookHarness.isCodexPayload(payload) {
+                Task { [weak self] in await self?.handleHookPost(rawName: rawName, body: bodyData, pid: hookPid) }
+                return .text("")
+            }
             if rawName == "PreToolUse" {
                 // Steering channel (mirror of the Node daemon): the response may
                 // carry a soft-STOP deny or be HELD for a device approval — but
@@ -5769,9 +5801,32 @@ final class DaemonServer {
     }
 
 
-    private func handleHookEvent(_ json: [String: Any]) async {
-        guard let event = json["event"] as? String else { return }
-        DaemonLogger.shared.debug("Hook", "Received: \(event)")
+    private func handleHookEvent(_ incoming: [String: Any]) async {
+        guard let postedEvent = incoming["event"] as? String else { return }
+        DaemonLogger.shared.debug("Hook", "Received: \(postedEvent)")
+
+        // Harness identity comes from the payload, not the endpoint (#490): a
+        // Codex payload under an unprefixed name is the `codex_*` event it is,
+        // and one Codex event instance delivered by two hook commands is
+        // ingested once. Below this point nothing may read it as Claude.
+        var json = incoming
+        let event: String
+        switch CodexHookHarness.route(event: postedEvent, json: incoming) {
+        case .drop:
+            DaemonLogger.shared.debug("Hook", "Codex payload on \(postedEvent) has no Codex route; not ingested")
+            return
+        case .codex(let routed):
+            event = routed
+            json["event"] = routed
+        case .asPosted:
+            event = postedEvent
+        }
+        if event.hasPrefix("codex_"),
+           let fingerprint = CodexHookHarness.fingerprint(event: event, json: json),
+           !codexHookReplay.admit(fingerprint, now: Date()) {
+            DaemonLogger.shared.debug("Hook", "Codex \(event) already ingested from another hook command; twin dropped")
+            return
+        }
 
         // Hermes has its own small lifecycle (handleHermesHook). It must not
         // enter the generic pipeline below, whose unknown-event fallback mints
@@ -5803,19 +5858,7 @@ final class DaemonServer {
         // values there. Route Codex ids through CodexHookIdentity so only
         // durable thread ids become `codex:<id>` session rows.
         let isCodexEvent = event.hasPrefix("codex_")
-        let sessionId: String? = {
-            if isCodexEvent {
-                return CodexHookIdentity.sessionKey(from: json)
-            }
-            if isOpenCodeEvent {
-                // Namespace with the SSE observer's prefix so both signal
-                // paths land on one `opencode:<id>` session row.
-                return (json["session_id"] as? String)
-                    .flatMap { $0.isEmpty ? nil : Self.openCodeSessionPrefix + $0 }
-            }
-            return (json["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-                ?? CodexHookIdentity.threadIdSessionKey(from: json)
-        }()
+        let sessionId = Self.hookSessionId(event: event, json: json)
 
         if isOpenCodeEvent, let sessionId {
             // Hooks own control and state once seen. SSE cannot refresh or
@@ -7330,6 +7373,23 @@ final class DaemonServer {
             broadcastSessionsList()
         }
         broadcastStateUpdate()
+    }
+
+    /// The session key a hook is ingested under, after harness routing.
+    /// Codex ids route through CodexHookIdentity so only durable thread ids
+    /// become `codex:<id>` rows; OpenCode ids take the SSE observer's prefix so
+    /// both signal paths land on one `opencode:<id>` row; everything else is
+    /// the payload's bare `session_id`.
+    nonisolated static func hookSessionId(event: String, json: [String: Any]) -> String? {
+        if event.hasPrefix("codex_") {
+            return CodexHookIdentity.sessionKey(from: json)
+        }
+        if event.hasPrefix("opencode_") {
+            return (json["session_id"] as? String)
+                .flatMap { $0.isEmpty ? nil : openCodeSessionPrefix + $0 }
+        }
+        return (json["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? CodexHookIdentity.threadIdSessionKey(from: json)
     }
 
     /// Test-only proxy for `shouldSynthesizeUnknownHookSession` so the codex

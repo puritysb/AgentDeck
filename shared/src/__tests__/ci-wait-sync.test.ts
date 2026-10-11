@@ -99,7 +99,7 @@ try await verifyLifecycle()
 // The native timeline store runs without starting persistence or a daemon.
 // Dependencies outside this replay fail loudly if unexpectedly reached.
 enum AuthManager { static var agentDeckDir: URL { fatalError("Unexpected auth directory access") } }
-enum ObservedAgentRules { static func rawSessionId(_ value: String) -> String { fatalError("Unexpected session lookup") } }
+enum ObservedAgentRules { static func rawSessionId(_ value: String) -> String { value.replacingOccurrences(of: "^observed:[a-z-]+:", with: "", options: .regularExpression) } }
 let timelineData = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4]))
 let timelineVectors = try JSONSerialization.jsonObject(with: timelineData) as! [[String: Any]]
 for vector in timelineVectors {

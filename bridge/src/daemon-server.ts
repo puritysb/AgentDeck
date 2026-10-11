@@ -219,6 +219,7 @@ import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
 import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { LegacyRearmLedger } from './legacy-rearm-ledger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
+import { CodexHookReplayGuard } from './codex-hook-replay.js';
 import { HookCodexSessions, buildCodexPermissionQuestion } from './hook-codex-sessions.js';
 import { HubStateDriverTracker, resolveHubFrameIdentity, shapeHubFrame } from './hub-state-identity.js';
 import { CodexAmbientSessions } from './codex-ambient-hooks.js';
@@ -1798,6 +1799,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const hubDriver = new HubStateDriverTracker();
   // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
   const codexAmbientSessions = new CodexAmbientSessions();
+  const codexHookReplay = new CodexHookReplayGuard();
   const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
@@ -3356,7 +3358,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Hook endpoint — receives Claude Code hook POSTs at /hooks/:eventName.
     // Routes through APME collector the same way session bridge's hook-server does.
     if (req.method === 'POST' && pathname.startsWith('/hooks/')) {
-      const eventName = pathname.slice('/hooks/'.length);
+      let eventName = pathname.slice('/hooks/'.length);
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
       req.on('end', async () => {
@@ -3371,6 +3373,28 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (Number.isInteger(headerPid) && headerPid > 1 && json.agentdeck_pid == null) {
           json.agentdeck_pid = headerPid;
         }
+        // Harness identity comes from the payload, not the endpoint (#490): a
+        // Codex payload under an unprefixed name (`/hooks/Stop`) is the
+        // `codex_*` event it is, and one Codex event instance delivered by two
+        // hook commands is ingested once. Never let it reach the Claude path —
+        // that minted a second `chat_response` under the Claude icon.
+        const genericEventName = eventName;
+        const harness = codexHookReplay.admit(eventName, json);
+        if (harness.kind === 'drop') {
+          debugThrottled('hooks', `codex-${harness.reason}`, 60_000,
+            `Codex payload on /hooks/${genericEventName} not ingested (${harness.reason})`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(genericEventName.startsWith('codex_') ? JSON.stringify({ received: true }) : '');
+          return;
+        }
+        if (harness.rerouted) {
+          // A Claude-shaped command that Codex ran echoes this body back to
+          // Codex as hook output: every exit below answers it with nothing,
+          // never with Claude's ack or a Claude steering decision.
+          const endEmpty = res.end.bind(res) as (chunk: string) => typeof res;
+          (res as unknown as { end: () => typeof res }).end = () => endEmpty('');
+        }
+        eventName = harness.eventName;
         // Map PascalCase event names to snake_case for state machine + APME
         const eventMap: Record<string, string> = {
           SessionStart: 'session_start', SessionEnd: 'session_end',

@@ -28,6 +28,7 @@ export * from './format-utils.js';
 export * from './timeline-summarizer.js';
 export * from './session-utils.js';
 export * from './claude-background-jobs.js';
+export * from './hook-harness.js';
 export * from './creature-layout.js';
 export * from './brand-features.js';
 export * from './terrarium-rules.js';
