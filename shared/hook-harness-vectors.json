@@ -1,5 +1,5 @@
 {
-  "$comment": "Hook harness routing (#490). Replayed by shared/src/__tests__/hook-harness.test.ts, bridge/src/__tests__/hook-harness-routing.test.ts and apple/AgentDeckTests/CodexHookHarnessTests.swift. Codex payloads are verbatim captures from codex-cli 0.160.1 (`codex exec`, 2026-10-11) with paths scrubbed; the Claude payloads follow Claude Code's documented hook shape; the notify payload follows Codex's documented notify shape. `route`: as-posted | codex | drop. `fingerprint` absent means no fingerprint. `hashVectors` pin the FNV-1a/UTF-16 text hash both daemons use; `distinctInstances` are pairs that must fingerprint differently.",
+  "$comment": "Hook harness routing (#490). Replayed by shared/src/__tests__/hook-harness.test.ts, bridge/src/__tests__/codex-hook-replay.test.ts and apple/AgentDeckTests/CodexOriginatorTests.swift (CodexHookHarnessTests). Codex payloads are verbatim captures from codex-cli 0.160.1 (`codex exec`, 2026-10-11) with paths scrubbed; the Claude payloads follow Claude Code's documented hook shape; the notify payload follows Codex's documented notify shape. `route`: as-posted | codex | drop. `fingerprint` absent means no fingerprint. `hashVectors` pin the FNV-1a/UTF-16 text hash both daemons use; `distinctInstances` are pairs that must fingerprint differently.",
   "vectors": [
     {
       "name": "Codex SessionStart (codex-cli 0.160.1, captured 2026-10-11) posted to the generic /hooks/SessionStart",
@@ -41,6 +41,24 @@
         "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
         "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
         "transcript_path": "/Users/user/.codex/sessions/2026/10/11/rollout-2026-10-11T10-25-44-01a12890-d8be-74b2-b19b-05218da072ae.jsonl",
+        "cwd": "/Users/user/src/work",
+        "hook_event_name": "Stop",
+        "model": "gpt-6-astra",
+        "permission_mode": "bypassPermissions",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong"
+      },
+      "route": "codex",
+      "routedEvent": "codex_stop",
+      "fingerprint": "codex_stop|01a12890-d8be-74b2-b19b-05218da072ae|01a12890-dafb-7462-8ad9-6771eb6432b7|7adb16b7"
+    },
+    {
+      "name": "Codex Stop from an ephemeral run (transcript_path null) posted to the generic endpoint",
+      "event": "Stop",
+      "payload": {
+        "session_id": "01a12890-d8be-74b2-b19b-05218da072ae",
+        "turn_id": "01a12890-dafb-7462-8ad9-6771eb6432b7",
+        "transcript_path": null,
         "cwd": "/Users/user/src/work",
         "hook_event_name": "Stop",
         "model": "gpt-6-astra",
@@ -226,6 +244,21 @@
         "hook_event_name": "Stop",
         "stop_hook_active": false,
         "last_assistant_message": "pong"
+      },
+      "route": "as-posted"
+    },
+    {
+      "name": "Claude payload carrying turn_id (as MessageDisplay does) still names its transcript, so it stays Claude",
+      "event": "Stop",
+      "payload": {
+        "session_id": "058ab6cd-8230-43eb-abee-0656c6364e80",
+        "transcript_path": "/Users/user/.claude/projects/-Users-user-src-work/058ab6cd-8230-43eb-abee-0656c6364e80.jsonl",
+        "cwd": "/Users/user/src/work",
+        "permission_mode": "default",
+        "hook_event_name": "Stop",
+        "stop_hook_active": false,
+        "last_assistant_message": "pong",
+        "turn_id": "t-1"
       },
       "route": "as-posted"
     }

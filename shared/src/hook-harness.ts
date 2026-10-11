@@ -24,7 +24,12 @@
  *     `threadId`, `codex.thread_id`, `thread.id`) — Claude payloads have none;
  *   - the legacy `notify` payload type `agent-turn-complete`;
  *   - a `transcript_path` that is a Codex rollout (`rollout-<stamp>-<id>.jsonl`)
- *     — Claude's transcript is `<session-uuid>.jsonl` under `projects/`.
+ *     — Claude's transcript is `<session-uuid>.jsonl` under `projects/`;
+ *   - a `turn_id` with NO `transcript_path` — an ephemeral Codex run
+ *     (`codex exec --ephemeral`, or a turn before its rollout exists) sends
+ *     `transcript_path: null`, while every Claude hook names its transcript.
+ *     `turn_id` alone is not evidence: Claude's `MessageDisplay` hook carries
+ *     one, and a future Claude lifecycle field must not flip its harness.
  * `model`/`modelProvider` are deliberately NOT evidence: `claude-glm` is Claude
  * Code serving a non-Anthropic model, and a Codex provider can serve anything.
  *
@@ -121,7 +126,8 @@ export function isCodexHookPayload(payload: Record<string, unknown>): boolean {
   if (codexThreadIdFromPayload(payload)) return true;
   if (payload.type === CODEX_NOTIFY_TURN_COMPLETE_TYPE) return true;
   const tp = nonEmptyString(payload.transcript_path);
-  return tp !== undefined && ROLLOUT_RE.test(tp.split(/[\\/]/).pop() ?? '');
+  if (tp === undefined) return nonEmptyString(payload.turn_id) !== undefined;
+  return ROLLOUT_RE.test(tp.split(/[\\/]/).pop() ?? '');
 }
 
 export type HookHarnessRoute =

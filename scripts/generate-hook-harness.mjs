@@ -106,7 +106,9 @@ ${contentFields}
     static func isCodexPayload(_ json: [String: Any]) -> Bool {
         if threadId(from: json) != nil { return true }
         if json["type"] as? String == notifyTurnCompleteType { return true }
-        guard let tp = nonEmpty(json["transcript_path"]) else { return false }
+        // An ephemeral Codex run has no rollout: a turn id without any
+        // transcript path is Codex (every Claude hook names its transcript).
+        guard let tp = nonEmpty(json["transcript_path"]) else { return nonEmpty(json["turn_id"]) != nil }
         let base = tp.split(whereSeparator: { $0 == "/" || $0 == "\\\\" }).last.map(String.init) ?? ""
         return base.range(of: rolloutBasenamePattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
