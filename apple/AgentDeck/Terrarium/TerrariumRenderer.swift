@@ -244,13 +244,18 @@ final class TerrariumRenderer {
         crayfish.update(dt: dt, state: state)
 
         // Background brood: counts hatch on decrease, then lean and hatches advance.
+        // nil stays nil: an unknown count is retained, never read as zero.
         let broodDt = animateCompanions ? min(max(dt, 0), 0.05) : 0
-        broods = broods.filter { octopuses[$0.key] != nil }
+        if broods.keys.contains(where: { octopuses[$0] == nil }) {
+            broods = broods.filter { octopuses[$0.key] != nil }
+        }
         for creature in state.creatures {
             guard let live = octopuses[creature.id] else { continue }
+            let explicit = state.backgroundTaskCounts[creature.id]
+            guard broods[creature.id] != nil || (explicit ?? 0) > 0 else { continue }
             var brood = broods[creature.id] ?? BackgroundBrood()
-            brood.observe(count: state.backgroundTaskCounts[creature.id] ?? 0, working: creature.state == .working,
-                          phase: backgroundOrbitPhase, animate: animateCompanions)
+            brood.observe(explicit: explicit, working: creature.state == .working,
+                          position: [live.currentX, live.currentY], phase: backgroundOrbitPhase, animate: animateCompanions)
             let bodyRadius = max(0.001, TerrariumLayout.octopusBodyRadius * live.scale)
             brood.advance(dt: broodDt, x: live.currentX / bodyRadius)
             broods[creature.id] = brood
@@ -478,72 +483,149 @@ final class TerrariumRenderer {
 
     // MARK: - Background work (separate from the child-agent orbits)
 
-    /// The brood a working creature tends (see `BackgroundWorkPresentation`):
-    /// a soft tether from the arms, translucent egg pods with a turning
-    /// embryo, and bubbles where a finished task hatched.
+    /// Unit jar parts in screen space (y down), belly radius 1 centred on the
+    /// origin. Built once; each frame only moves the context transform.
+    private enum JarPaths {
+        static let body: Path = {
+            var p = Path(ellipseIn: CGRect(x: -1, y: -0.9, width: 2, height: 1.8))
+            p.addRect(CGRect(x: -0.46, y: -1.14, width: 0.92, height: 0.4))
+            return p
+        }()
+        static let belt = Path(ellipseIn: CGRect(x: -0.84, y: 0.22, width: 1.68, height: 0.5))
+        static let rim = Path(roundedRect: CGRect(x: -0.62, y: -1.3, width: 1.24, height: 0.22), cornerRadius: 0.1)
+        static let gloss = Path(ellipseIn: CGRect(x: -0.66, y: -0.62, width: 0.34, height: 0.24))
+        static let leftEye = Path(ellipseIn: CGRect(x: -0.44, y: -0.18, width: 0.2, height: 0.24))
+        static let rightEye = Path(ellipseIn: CGRect(x: 0.24, y: -0.18, width: 0.2, height: 0.24))
+        static let cheeks: Path = {
+            var p = Path(ellipseIn: CGRect(x: -0.72, y: 0.06, width: 0.26, height: 0.14))
+            p.addEllipse(in: CGRect(x: 0.46, y: 0.06, width: 0.26, height: 0.14))
+            return p
+        }()
+        /// Lid and knob, centred on the lid's seat so it can hop and spin in place.
+        static let lid = Path(ellipseIn: CGRect(x: -0.58, y: -0.2, width: 1.16, height: 0.34))
+        static let knob = Path(ellipseIn: CGRect(x: -0.14, y: -0.4, width: 0.28, height: 0.26))
+        static let lidSeat: CGFloat = -1.34
+        static let sparkle: Path = {
+            var p = Path()
+            for k in 0..<6 {
+                let a = CGFloat(k) * .pi / 3
+                p.move(to: CGPoint(x: cos(a) * 0.55, y: sin(a) * 0.55))
+                p.addLine(to: CGPoint(x: cos(a), y: sin(a)))
+            }
+            return p
+        }()
+    }
+
+    /// Octopus jars (see `BackgroundWorkPresentation`): one arm curls out and
+    /// carries a small clay jar per running background task. Lids jiggle and
+    /// bubbles simmer from the mouths; a finished jar pops its lid, sparkles
+    /// and shrinks away where it was.
     private func drawBackgroundWork(context: inout GraphicsContext, size: CGSize) {
         guard let state = lastState else { return }
-        let ink = DesignTokens.Session.working
-        let foam = DesignTokens.Tide.s50
         for creature in state.creatures {
-            guard let live = octopuses[creature.id], let brood = broods[creature.id] else { continue }
-            let pods = BackgroundWorkPresentation.pods(count: brood.count, phase: backgroundOrbitPhase, lean: brood.lean)
-            let bubbles = brood.bubbles
-            guard !pods.isEmpty || !bubbles.isEmpty else { continue }
+            guard let brood = broods[creature.id], !brood.isEmpty, let live = octopuses[creature.id] else { continue }
             let center = CGPoint(x: CGFloat(live.currentX) * size.width, y: CGFloat(live.currentY) * size.height)
             let r = max(14, size.width * CGFloat(TerrariumLayout.octopusBodyRadius * live.scale))
-            func screen(_ p: SIMD3<Float>) -> CGPoint { CGPoint(x: center.x + CGFloat(p.x) * r, y: center.y - CGFloat(p.y) * r) }
-
-            if !pods.isEmpty {
-                // Tether: a smooth strand through the pods, midpoint-quadratic so it never kinks.
-                let points = ([BackgroundWorkPresentation.anchor(lean: brood.lean)] + pods.map(\.center)).map(screen)
-                var strand = Path()
-                strand.move(to: points[0])
+            func screen(_ p: SIMD2<Float>, from origin: CGPoint) -> CGPoint {
+                CGPoint(x: origin.x + CGFloat(p.x) * r, y: origin.y - CGFloat(p.y) * r)
+            }
+            let phase = backgroundOrbitPhase
+            let jars = BackgroundWorkPresentation.jars(count: brood.count, phase: phase, lean: brood.lean)
+            if !jars.isEmpty {
+                // The carrying arm, in the creature's own colour, under the jars.
+                let points = BackgroundWorkPresentation.arm(count: brood.count, phase: phase, lean: brood.lean).map { screen($0, from: center) }
+                var arm = Path()
+                arm.move(to: points[0])
                 for i in 1..<points.count {
                     let mid = i == points.count - 1 ? points[i]
                         : CGPoint(x: (points[i].x + points[i + 1].x) / 2, y: (points[i].y + points[i + 1].y) / 2)
-                    strand.addQuadCurve(to: mid, control: points[i])
+                    arm.addQuadCurve(to: mid, control: points[i])
                 }
-                context.stroke(strand, with: .color(ink.opacity(0.45)), style: StrokeStyle(lineWidth: max(1, r * 0.04), lineCap: .round))
+                context.stroke(arm, with: .color(live.bodyColorForState()), style: StrokeStyle(lineWidth: r * 0.17, lineCap: .round, lineJoin: .round))
             }
-            for pod in pods {
-                let p = screen(pod.center)
-                let rx = CGFloat(pod.radius) * r, ry = rx * 1.18
-                let shell = Path(ellipseIn: CGRect(x: p.x - rx, y: p.y - ry, width: rx * 2, height: ry * 2))
-                context.fill(shell, with: .color(ink.opacity(0.16)))
-                context.stroke(shell, with: .color(ink.opacity(0.75)), lineWidth: max(1, r * 0.03))
-                // Embryo: a head and a trailing tail that turn together inside the shell.
-                let e = BackgroundWorkPresentation.embryoOffset(pod)
-                let head = CGPoint(x: p.x + CGFloat(e.x) * r, y: p.y - CGFloat(e.y) * r)
-                let tailPod = BackgroundWorkPresentation.Pod(center: pod.center, radius: pod.radius, spin: pod.spin - 0.9)
-                let t = BackgroundWorkPresentation.embryoOffset(tailPod)
-                let tail = CGPoint(x: p.x + CGFloat(t.x) * r * 0.8, y: p.y - CGFloat(t.y) * r * 0.8)
-                let headR = rx * 0.34, tailR = rx * 0.18
-                context.fill(Path(ellipseIn: CGRect(x: tail.x - tailR, y: tail.y - tailR, width: tailR * 2, height: tailR * 2)), with: .color(ink.opacity(0.7)))
-                context.fill(Path(ellipseIn: CGRect(x: head.x - headR, y: head.y - headR, width: headR * 2, height: headR * 2)), with: .color(ink))
-                let gloss = CGRect(x: p.x - rx * 0.62, y: p.y - ry * 0.72, width: rx * 0.42, height: ry * 0.30)
-                context.fill(Path(ellipseIn: gloss), with: .color(foam.opacity(0.55)))
+            for (index, jar) in jars.enumerated() {
+                drawJar(jar, at: screen([jar.center.x, jar.center.y], from: center), r: r, context: &context,
+                        pose: nil, lidLift: jar.lidLift)
+                for bubble in BackgroundWorkPresentation.simmer(jar, slot: index, phase: phase) {
+                    drawBubble(bubble, from: center, r: r, context: &context)
+                }
             }
-            for bubble in bubbles {
-                let p = screen(bubble.center)
-                let br = CGFloat(bubble.radius) * r
-                let ring = Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2))
-                context.fill(ring, with: .color(foam.opacity(Double(bubble.opacity) * 0.15)))
-                context.stroke(ring, with: .color(foam.opacity(Double(bubble.opacity) * 0.7)), lineWidth: 1)
+            // Finishes play where their jar was, not with the creature.
+            for finish in brood.finishes {
+                guard let pose = BackgroundWorkPresentation.finish(age: finish.age) else { continue }
+                let base = CGPoint(x: CGFloat(finish.base.x) * size.width, y: CGFloat(finish.base.y) * size.height)
+                drawJar(finish.jar, at: screen([finish.jar.center.x, finish.jar.center.y], from: base), r: r, context: &context,
+                        pose: pose, lidLift: 0)
+                for bubble in BackgroundWorkPresentation.puff(mouth: BackgroundWorkPresentation.mouth(finish.jar), age: finish.age) {
+                    drawBubble(bubble, from: base, r: r, context: &context)
+                }
             }
-            if let tip = pods.last {
-                // The caption hangs off the tip pod, on the side the strand trails to.
-                let p = screen(tip.center)
-                let gap = CGFloat(tip.radius) * r + 5
+            if !jars.isEmpty {
+                // "+n" tags the last jar; the caption follows it, clear of any jar still finishing there.
+                let tip = BackgroundWorkPresentation.jar(index: jars.count - 1 + brood.finishes.count, phase: phase, lean: brood.lean)
                 let leading = brood.lean >= 0
+                let p = screen([tip.center.x, tip.center.y], from: center)
+                var x = p.x + (leading ? 1 : -1) * (CGFloat(tip.radius) * r * 1.2 + 6)
+                let ink = DesignTokens.Session.working
+                let extra = BackgroundWorkPresentation.overflow(brood.count)
+                if extra > 0 {
+                    let more = context.resolve(Text("+\(extra)").font(.custom("IBMPlexSans-Bold", size: 11)).foregroundStyle(ink))
+                    context.draw(more, at: CGPoint(x: x, y: p.y), anchor: leading ? .leading : .trailing)
+                    x += (leading ? 1 : -1) * (more.measure(in: size).width + 5)
+                }
                 context.draw(Text(BackgroundWorkPresentation.label(brood.count))
                     .font(.custom("IBMPlexSans", size: 10))
                     .foregroundStyle(ink),
-                    at: CGPoint(x: p.x + (leading ? gap : -gap), y: p.y),
-                    anchor: leading ? .leading : .trailing)
+                    at: CGPoint(x: x, y: p.y), anchor: leading ? .leading : .trailing)
             }
         }
     }
+
+    private func drawJar(_ jar: BackgroundWorkPresentation.Jar, at point: CGPoint, r: CGFloat, context: inout GraphicsContext,
+                         pose: BackgroundWorkPresentation.FinishPose?, lidLift: Float) {
+        let s = CGFloat(jar.radius) * r
+        var c = context
+        c.translateBy(x: point.x, y: point.y)
+        c.rotate(by: .radians(Double(jar.tilt)))
+        if let pose {
+            // Sparkle first, behind the jar, at full size.
+            if pose.sparkleOpacity > 0 {
+                var spark = c
+                spark.translateBy(x: 0, y: -s * 1.4)
+                spark.scaleBy(x: s * CGFloat(pose.sparkle), y: s * CGFloat(pose.sparkle))
+                spark.stroke(JarPaths.sparkle, with: .color(DesignTokens.Tide.s50.opacity(Double(pose.sparkleOpacity))),
+                             style: StrokeStyle(lineWidth: 0.12, lineCap: .round))
+            }
+            c.opacity = Double(pose.opacity)
+        }
+        var body = c
+        let shrink = CGFloat(pose?.scale ?? 1)
+        body.scaleBy(x: s * shrink, y: s * shrink)
+        body.fill(JarPaths.body, with: .color(DesignTokens.Tide.s200))
+        body.fill(JarPaths.belt, with: .color(DesignTokens.Tide.s300.opacity(0.55)))
+        body.fill(JarPaths.gloss, with: .color(DesignTokens.Tide.s50.opacity(0.8)))
+        body.fill(JarPaths.leftEye, with: .color(DesignTokens.Ink.s900))
+        body.fill(JarPaths.rightEye, with: .color(DesignTokens.Ink.s900))
+        body.fill(JarPaths.cheeks, with: .color(DesignTokens.Coral.s500.opacity(0.35)))
+        body.fill(JarPaths.rim, with: .color(DesignTokens.Tide.s300))
+        // The one cue of live work: a thin working-cyan line on the rim.
+        body.stroke(JarPaths.rim, with: .color(DesignTokens.Session.working), lineWidth: 0.08)
+        var lid = c
+        lid.opacity *= Double(pose?.lidOpacity ?? 1)
+        lid.scaleBy(x: s, y: s)
+        lid.translateBy(x: 0, y: JarPaths.lidSeat * shrink - CGFloat(pose?.lidLift ?? lidLift))
+        lid.rotate(by: .radians(Double(pose?.lidSpin ?? 0)))
+        lid.fill(JarPaths.lid, with: .color(DesignTokens.Tide.s100))
+        lid.fill(JarPaths.knob, with: .color(DesignTokens.Coral.s700))
+    }
+
+    private func drawBubble(_ bubble: BackgroundWorkPresentation.Bubble, from origin: CGPoint, r: CGFloat, context: inout GraphicsContext) {
+        let p = CGPoint(x: origin.x + CGFloat(bubble.center.x) * r, y: origin.y - CGFloat(bubble.center.y) * r)
+        let br = max(1.5, CGFloat(bubble.radius) * r)
+        let ring = Path(ellipseIn: CGRect(x: p.x - br, y: p.y - br, width: br * 2, height: br * 2))
+        context.stroke(ring, with: .color(DesignTokens.Tide.s50.opacity(Double(bubble.opacity) * 0.8)), lineWidth: 1)
+    }
+
 
     // MARK: - Subagent Orbits
 

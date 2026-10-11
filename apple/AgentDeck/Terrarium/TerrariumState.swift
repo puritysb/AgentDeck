@@ -115,6 +115,7 @@ struct HermesCreatureState: Identifiable {
 // MARK: - Terrarium State (aggregate)
 
 struct TerrariumState {
+    /// Explicit Claude background-task counts, zero included; an absent key is unknown.
     var backgroundTaskCounts: [String: Int] = [:]
     var ciWaits: [String: CiWaitStatus] = [:]
     var ciWaitLabels: [String: String] = [:]
@@ -152,8 +153,11 @@ extension DashboardState {
         var result = TerrariumState()
         // Offline history stays in the dashboard, but cannot drive live task motion.
         guard activityAvailable else { return result }
-        for session in siblingSessions where session.state == "processing" {
-            if let count = session.backgroundTaskCount, count > 0 {
+        // Every explicit count is carried, whatever the state: a zero is "the
+        // tasks finished", while an absent key is "unknown". Showing pods is
+        // the renderer's choice (working sessions only); hatching needs the zero.
+        for session in siblingSessions {
+            if let count = session.backgroundTaskCount, count >= 0 {
                 result.backgroundTaskCounts[session.id] = count
             }
         }
