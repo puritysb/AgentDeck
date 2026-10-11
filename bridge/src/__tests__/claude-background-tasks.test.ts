@@ -77,19 +77,22 @@ describe('Claude background work projection', () => {
   });
 
   it.runIf(process.platform === 'darwin')('replays the same interleaved lifecycle through Swift and Node', () => {
-    const swift = readFileSync('apple/AgentDeck/Daemon/Apme/CoordinationTracker.swift', 'utf8')
-      .match(/\/\/ BEGIN GENERATED CLAUDE BACKGROUND[\s\S]*?\/\/ END GENERATED CLAUDE BACKGROUND/)![0];
+    const file = readFileSync('apple/AgentDeck/Daemon/Apme/CoordinationTracker.swift', 'utf8');
+    const swift = [
+      file.match(/\/\/ BEGIN GENERATED BACKGROUND WORK[\s\S]*?\/\/ END GENERATED BACKGROUND WORK/)![0],
+      file.match(/\/\/ BEGIN GENERATED CLAUDE BACKGROUND[\s\S]*?\/\/ END GENERATED CLAUDE BACKGROUND/)![0],
+    ].join('\n');
     const dir = mkdtempSync(join(tmpdir(), 'claude-background-'));
     try {
       const input = events.map(step => ({ ...step, payload: { session_id: 'parent', ...step.payload } }));
       writeFileSync(join(dir, 'events.json'), JSON.stringify(input));
       writeFileSync(join(dir, 'main.swift'), `import Foundation\n${swift}
 let events = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [[String: Any]]
-var tracker = ClaudeBackgroundTasks()
+var work = BackgroundWorkTracker()
 for event in events {
-    tracker.note(event["event"] as! String, payload: event["payload"] as! [String: Any])
+    ClaudeBackgroundTasks.note(event["event"] as! String, payload: event["payload"] as! [String: Any], into: &work, now: 0)
     for state in ["idle", "processing", "awaiting_permission", "awaiting_option", "disconnected"] {
-        let result = tracker.project("parent", session: ["state": state])
+        let result = work.project("parent", session: ["state": state])
         print(String(data: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), encoding: .utf8)!)
     }
 }

@@ -1,0 +1,149 @@
+{
+  "$comment": "Codex background terminal windows replayed by bridge/src/__tests__/codex-background-terminals.test.ts (Node and Swift). Records are copied from real rollouts (codex-cli 0.160.1 probes 2026-10-11 and a 2026-04 legacy rollout); bulky tool-output text after \"Output:\\n\", command strings and cwd are trimmed. running: null means the window gives no information.",
+  "cases": [
+    {
+      "name": "code-mode exec: terminal still running at task_complete, completes 11 s after the turn (codex-cli 0.160.1, interactive)",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:27.363Z\",\"ordinal\":1,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"root_turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"trace_id\":\"fbd3d31f1c1c723db57bfebfdfd766af\",\"started_at\":1791721227,\"model_context_window\":258400,\"collaboration_mode_kind\":\"default\"}}",
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}"
+          ],
+          "known": [],
+          "running": [
+            "98364"
+          ]
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:27.363Z\",\"ordinal\":1,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"root_turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"trace_id\":\"fbd3d31f1c1c723db57bfebfdfd766af\",\"started_at\":1791721227,\"model_context_window\":258400,\"collaboration_mode_kind\":\"default\"}}",
+            "{\"timestamp\":\"2026-10-11T12:20:33.723Z\",\"ordinal\":12,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12ae8-5d3b-7fd2-a3c8-cd7d72bda149\",\"call_id\":\"call_d434d1e4da2442ca84f8c03a92c3e12d\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 1.3 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"ee5256\\\",\\\"wall_time_seconds\\\":1.001827167,\\\"session_id\\\":98364,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"create_time\":1791721233.723847}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}",
+            "{\"timestamp\":\"2026-10-11T12:20:47.629Z\",\"ordinal\":19,\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"01a12ae8-4346-7412-acf9-9a11b2abaa6a\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"item\":{\"type\":\"CommandExecution\",\"id\":\"exec-15048e46-de58-4efa-8081-83989ba21afa\",\"process_id\":\"98364\",\"command\":[\"/bin/zsh\",\"-lc\",\"sleep 15; echo bgdone\"],\"cwd\":\"file:///tmp/bgprobe\",\"parsed_cmd\":[{\"type\":\"unknown\",\"cmd\":\"sleep 15; echo bgdone\"}],\"source\":\"unified_exec_startup\",\"status\":\"completed\",\"stdout\":\"bgdone\\n\",\"stderr\":\"\",\"aggregated_output\":\"bgdone\\n\",\"exit_code\":0,\"duration\":{\"secs\":14,\"nanos\":910423833},\"formatted_output\":\"bgdone\\n\"},\"started_at_ms\":1791721232718,\"completed_at_ms\":1791721247629}}"
+          ],
+          "known": [],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "code-mode exec: completion recorded when the terminal process is killed (exit 0 after the shell continued)",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:24:40.809Z\",\"ordinal\":1,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_started\",\"turn_id\":\"01a12aec-2227-7d03-a07a-2c8771e18731\",\"root_turn_id\":\"01a12aec-2227-7d03-a07a-2c8771e18731\",\"trace_id\":\"7f7f5d786427401358d9916e404e880a\",\"started_at\":1791721480,\"model_context_window\":258400,\"collaboration_mode_kind\":\"default\"}}",
+            "{\"timestamp\":\"2026-10-11T12:24:56.899Z\",\"ordinal\":16,\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"id\":\"ctco_01a12aec-6143-7222-bbe2-186b89307847\",\"call_id\":\"call_df95f3e720d04fd48351d7847e9e91da\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 2.4 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"9d7ae3\\\",\\\"wall_time_seconds\\\":1.003186666,\\\"session_id\\\":82045,\\\"original_token_count\\\":0,\\\"output\\\":\\\"\\\"}\"}],\"internal_chat_message_metadata_passthrough\":{\"turn_id\":\"01a12aec-2227-7d03-a07a-2c8771e18731\",\"create_time\":1791721496.89972}},\"metadata\":{\"client_authored\":false,\"fallback_token_limit_override\":12000}}",
+            "{\"timestamp\":\"2026-10-11T12:25:02.821Z\",\"ordinal\":22,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12aec-2227-7d03-a07a-2c8771e18731\",\"last_agent_message\":\"started\",\"started_at\":1791721480,\"completed_at\":1791721502,\"duration_ms\":22016,\"time_to_first_token_ms\":12782}}"
+          ],
+          "known": [],
+          "running": [
+            "82045"
+          ]
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:25:21.609Z\",\"ordinal\":23,\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"01a12aec-2020-7410-8df8-69d573d5cc2b\",\"turn_id\":\"01a12aec-2227-7d03-a07a-2c8771e18731\",\"item\":{\"type\":\"CommandExecution\",\"id\":\"exec-1a4e7e43-a1a9-46e1-9cac-0e4a30712bcf\",\"process_id\":\"82045\",\"command\":[\"/bin/zsh\",\"-lc\",\"sleep 90; echo bgdone\"],\"cwd\":\"file:///tmp/bgprobe\",\"parsed_cmd\":[{\"type\":\"unknown\",\"cmd\":\"sleep 90; echo bgdone\"}],\"source\":\"unified_exec_startup\",\"status\":\"completed\",\"stdout\":\"bgdone\\n\",\"stderr\":\"\",\"aggregated_output\":\"bgdone\\n\",\"exit_code\":0,\"duration\":{\"secs\":25,\"nanos\":729749541},\"formatted_output\":\"bgdone\\n\"},\"started_at_ms\":1791721495879,\"completed_at_ms\":1791721521609}}"
+          ],
+          "known": [
+            "82045"
+          ],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "legacy exec_command/write_stdin text output, completion by CommandExecution item_completed (codex 2026-04)",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-04-26T02:54:52.936Z\",\"ordinal\":93,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_cQXDvC9RE7lqXhCiBi7vhOij\",\"output\":\"Chunk ID: 63535a\\nWall time: 1.0012 seconds\\nProcess running with session ID 38463\\nOriginal token count: 4668\\nOutput:\\n\"}}",
+            "{\"timestamp\":\"2026-04-26T02:55:01.246Z\",\"ordinal\":100,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_fWGb0sjYHVMgx9vzOzyt4v6a\",\"output\":\"Chunk ID: 707353\\nWall time: 5.0013 seconds\\nProcess running with session ID 38463\\nOriginal token count: 0\\nOutput:\\n\"}}",
+            "{\"timestamp\":\"2026-04-26T02:55:19.092Z\",\"ordinal\":112,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_XQxU7zBmcPlv5VxmROsQzUSx\",\"output\":\"Chunk ID: 916c6f\\nWall time: 5.0012 seconds\\nProcess running with session ID 38463\\nOriginal token count: 0\\nOutput:\\n\"}}"
+          ],
+          "known": [],
+          "running": [
+            "38463"
+          ]
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-04-26T02:54:52.936Z\",\"ordinal\":93,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_cQXDvC9RE7lqXhCiBi7vhOij\",\"output\":\"Chunk ID: 63535a\\nWall time: 1.0012 seconds\\nProcess running with session ID 38463\\nOriginal token count: 4668\\nOutput:\\n\"}}",
+            "{\"timestamp\":\"2026-04-26T02:55:01.246Z\",\"ordinal\":100,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_fWGb0sjYHVMgx9vzOzyt4v6a\",\"output\":\"Chunk ID: 707353\\nWall time: 5.0013 seconds\\nProcess running with session ID 38463\\nOriginal token count: 0\\nOutput:\\n\"}}",
+            "{\"timestamp\":\"2026-04-26T02:55:19.092Z\",\"ordinal\":112,\"type\":\"response_item\",\"payload\":{\"type\":\"function_call_output\",\"call_id\":\"call_XQxU7zBmcPlv5VxmROsQzUSx\",\"output\":\"Chunk ID: 916c6f\\nWall time: 5.0012 seconds\\nProcess running with session ID 38463\\nOriginal token count: 0\\nOutput:\\n\"}}",
+            "{\"timestamp\":\"2026-04-26T02:55:33.074Z\",\"ordinal\":125,\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"019dc7b4-d473-70a0-9d40-3bd9cd112d20\",\"turn_id\":\"019dc7b5-0d7d-7031-829d-9fa8a35dfb5f\",\"item\":{\"type\":\"CommandExecution\",\"id\":\"call_cQXDvC9RE7lqXhCiBi7vhOij\",\"process_id\":\"38463\",\"command\":[\"/bin/zsh\",\"-lc\",\"for f in \\\"$HOME/.agentdeck/swift-daemon.log\\\" \\\"$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard\"],\"cwd\":\"file:///tmp/bgprobe\",\"parsed_cmd\":[{\"type\":\"unknown\",\"cmd\":\"for f in \\\"$HOME/.agentdeck/swift-daemon.log\\\" \\\"$HOME/Library/Group Containers/group.bound.serendipity.agentdeck.dashboard\"}],\"source\":\"unified_exec_startup\",\"status\":\"failed\",\"exit_code\":-1,\"duration\":{\"secs\":41,\"nanos\":140280291}},\"completed_at_ms\":1777172133074}}"
+          ],
+          "known": [],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "a start that scrolled out of the window is retained; absence is not completion",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:36.864Z\",\"ordinal\":18,\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"last_agent_message\":\"started\",\"started_at\":1791721227,\"completed_at\":1791721236,\"duration_ms\":9504,\"time_to_first_token_ms\":4382}}"
+          ],
+          "known": [
+            "98364"
+          ],
+          "running": [
+            "98364"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a completion with no start in view removes nothing that is not known",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:47.629Z\",\"ordinal\":19,\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"01a12ae8-4346-7412-acf9-9a11b2abaa6a\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"item\":{\"type\":\"CommandExecution\",\"id\":\"exec-15048e46-de58-4efa-8081-83989ba21afa\",\"process_id\":\"98364\",\"command\":[\"/bin/zsh\",\"-lc\",\"sleep 15; echo bgdone\"],\"cwd\":\"file:///tmp/bgprobe\",\"parsed_cmd\":[{\"type\":\"unknown\",\"cmd\":\"sleep 15; echo bgdone\"}],\"source\":\"unified_exec_startup\",\"status\":\"completed\",\"stdout\":\"bgdone\\n\",\"stderr\":\"\",\"aggregated_output\":\"bgdone\\n\",\"exit_code\":0,\"duration\":{\"secs\":14,\"nanos\":910423833},\"formatted_output\":\"bgdone\\n\"},\"started_at_ms\":1791721232718,\"completed_at_ms\":1791721247629}}"
+          ],
+          "known": [],
+          "running": []
+        },
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-11T12:20:47.629Z\",\"ordinal\":19,\"type\":\"event_msg\",\"payload\":{\"type\":\"item_completed\",\"thread_id\":\"01a12ae8-4346-7412-acf9-9a11b2abaa6a\",\"turn_id\":\"01a12ae8-4457-70b2-b8b4-0677e3300498\",\"item\":{\"type\":\"CommandExecution\",\"id\":\"exec-15048e46-de58-4efa-8081-83989ba21afa\",\"process_id\":\"98364\",\"command\":[\"/bin/zsh\",\"-lc\",\"sleep 15; echo bgdone\"],\"cwd\":\"file:///tmp/bgprobe\",\"parsed_cmd\":[{\"type\":\"unknown\",\"cmd\":\"sleep 15; echo bgdone\"}],\"source\":\"unified_exec_startup\",\"status\":\"completed\",\"stdout\":\"bgdone\\n\",\"stderr\":\"\",\"aggregated_output\":\"bgdone\\n\",\"exit_code\":0,\"duration\":{\"secs\":14,\"nanos\":910423833},\"formatted_output\":\"bgdone\\n\"},\"started_at_ms\":1791721232718,\"completed_at_ms\":1791721247629}}"
+          ],
+          "known": [
+            "98364",
+            "7"
+          ],
+          "running": [
+            "7"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a result that carries exit_code finished inside its yield and is never running",
+      "windows": [
+        {
+          "lines": [
+            "{\"timestamp\":\"2026-10-09T06:03:00.000Z\",\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"call_id\":\"call_x\",\"output\":[{\"type\":\"input_text\",\"text\":\"Script completed\\nWall time 0.2 seconds\\nOutput:\\n\"},{\"type\":\"input_text\",\"text\":\"{\\\"chunk_id\\\":\\\"a1\\\",\\\"wall_time_seconds\\\":0.1,\\\"exit_code\\\":0,\\\"original_token_count\\\":3,\\\"output\\\":\\\"ok\\\"}\"}]}}"
+          ],
+          "known": [],
+          "running": []
+        }
+      ]
+    },
+    {
+      "name": "a window with no parseable record is no information",
+      "windows": [
+        {
+          "lines": [
+            "{\"type\":",
+            "not json"
+          ],
+          "known": [
+            "5"
+          ],
+          "running": null
+        }
+      ]
+    }
+  ]
+}

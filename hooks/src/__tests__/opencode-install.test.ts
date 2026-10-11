@@ -208,6 +208,44 @@ describe('AgentDeckObserver event sequencing', () => {
     expect(submits[1].body.prompt).toBe('again');
   });
 
+  it('reports a background task from the task tool metadata and its end from the parent\'s task notice', async () => {
+    // Part shapes copied from OpenCode 1.18.35's own store (2026-10-11 probe,
+    // OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true); prompt text trimmed.
+    const { event } = await observer();
+    await event({ event: userMessage });
+    const taskPart = {
+      type: 'tool', tool: 'task', callID: 'call_2728b0551d2847ec990e3ac4', sessionID: 's1', messageID: 'a1',
+      state: {
+        status: 'completed',
+        input: { background: true, description: 'Run sleep 15 test', prompt: 'Run sleep 15.', subagent_type: 'general' },
+        metadata: {
+          parentSessionId: 's1', sessionId: 'ses_ed5012000ffey7p3EtFc3y0aOy',
+          model: { modelID: 'glm-5.3', providerID: 'zai-coding-plan' },
+          background: true, jobId: 'ses_ed5012000ffey7p3EtFc3y0aOy', truncated: false,
+        },
+        title: 'Run sleep 15 test',
+        output: '<task id="ses_ed5012000ffey7p3EtFc3y0aOy" state="running">\n<summary>Background task started</summary>',
+      },
+    };
+    await event({ event: { type: 'message.part.updated', properties: { part: taskPart } } });
+    // OpenCode re-emits the same part; the start is posted once.
+    await event({ event: { type: 'message.part.updated', properties: { part: taskPart } } });
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'u2', sessionID: 's1', role: 'user' } } } });
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      type: 'text', sessionID: 's1', messageID: 'u2',
+      text: '<task id="ses_ed5012000ffey7p3EtFc3y0aOy" state="completed">\n<summary>Background task completed: Run sleep 15 test</summary>\n<task_result>\nchild done\n</task_result>\n</task>',
+    } } } });
+    // A foreground task is not background work.
+    await event({ event: { type: 'message.part.updated', properties: { part: {
+      ...taskPart, callID: 'k2', state: { ...taskPart.state, metadata: { sessionId: 'c2' } },
+    } } } });
+    await flush();
+    const background = posts.filter((p) => p.event.startsWith('opencode_background_'));
+    expect(background.map((p) => p.event)).toEqual(['opencode_background_start', 'opencode_background_finish']);
+    expect(background[0].body).toMatchObject({ session_id: 's1', item_id: 'ses_ed5012000ffey7p3EtFc3y0aOy' });
+    expect(background[1].body).toMatchObject({ session_id: 's1', item_id: 'ses_ed5012000ffey7p3EtFc3y0aOy', status: 'completed' });
+  });
+
   it('reports a Task-tool child session as the parent\'s subagent, never as a session', async () => {
     const { event } = await observer();
     await event({ event: userMessage });

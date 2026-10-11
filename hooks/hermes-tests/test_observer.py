@@ -236,6 +236,49 @@ class ObserverTests(unittest.TestCase):
                 with self.assertRaises(json.JSONDecodeError):
                     self.module._deliver('hermes_stop', {})
 
+    def test_background_processes_are_reported_from_the_registry_until_they_exit(self):
+        # Entry shape of tools/process_registry.py ProcessRegistry.list_sessions
+        # at the installed upstream (status "running"/"exited", owner_task_id).
+        entries = [
+            {'session_id': 'proc_a1b2', 'command': 'npm run dev', 'owner_task_id': 'task-1', 'status': 'running', 'uptime_seconds': 3},
+            {'session_id': 'proc_c3d4', 'command': 'make', 'owner_task_id': 'task-1', 'status': 'exited', 'exit_code': 0},
+        ]
+        asked = []
+        class Registry:
+            def list_sessions(self, task_id=None, session_key=None, include_retained=False):
+                asked.append(task_id)
+                if isinstance(entries, Exception): raise entries
+                return [e for e in entries if e['owner_task_id'] == task_id]
+        fake = SimpleNamespace(process_registry=Registry())
+        with patch.dict('sys.modules', {'tools': SimpleNamespace(), 'tools.process_registry': fake}), \
+                patch.object(self.module, '_poll_background', lambda: None):
+            self.emit('pre_llm_call', user_message='start the dev server')
+            self.emit('pre_tool_call', tool_name='terminal', task_id='task-1', tool_call_id='c1', args={'command': 'npm run dev', 'background': True})
+            self.emit('on_session_end', completed=True, interrupted=False)
+            sid = self.module._identity('conversation-1')
+            self.assertEqual([e for e, _ in self.events], ['hermes_user_prompt_submit', 'hermes_tool_start', 'hermes_stop', 'hermes_background_snapshot'])
+            self.assertEqual(self.events[-1][1], {'session_id': sid, 'items': ['proc_a1b2']})
+            self.assertEqual(asked, ['task-1'])
+            # Unchanged: nothing new is posted; the poller keeps watching.
+            self.events.clear()
+            self.assertTrue(self.module._poll_background_once())
+            self.assertEqual(self.events, [])
+            # An unreadable registry is "could not look": keep the last report.
+            entries = RuntimeError('registry busy')
+            self.assertTrue(self.module._poll_background_once())
+            self.assertEqual(self.events, [])
+            # The process exits: an explicit empty snapshot, then nothing to watch.
+            entries = [{'session_id': 'proc_a1b2', 'owner_task_id': 'task-1', 'status': 'exited', 'exit_code': 0}]
+            self.assertFalse(self.module._poll_background_once())
+            self.assertEqual(self.events, [('hermes_background_snapshot', {'session_id': sid, 'items': []})])
+        # Without a registry (older Hermes) nothing is claimed at all.
+        self.events.clear()
+        self.emit('pre_llm_call', user_message='again')
+        self.emit('pre_tool_call', tool_name='terminal', task_id='task-2', tool_call_id='c2', args={})
+        with patch.dict('sys.modules', {'tools.process_registry': None}):
+            self.emit('on_session_end', completed=True, interrupted=False)
+        self.assertNotIn('hermes_background_snapshot', [e for e, _ in self.events])
+
     def test_real_loopback_export_requires_receiver_capability(self):
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

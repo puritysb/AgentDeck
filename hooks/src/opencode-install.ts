@@ -56,7 +56,7 @@ function envOptOut(): boolean {
   return process.env.AGENTDECK_NO_OPENCODE_HOOKS === '1';
 }
 
-const PLUGIN_VERSION = 3;
+const PLUGIN_VERSION = 4;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -218,6 +218,32 @@ export const AgentDeckObserver = async ({ directory, client }) => {
   const parentOf = new Map();    // sessionID -> parent sessionID, or null (top level)
   const childStarted = new Set();// child sessionIDs whose opencode_subagent_start was posted
   const childStopped = new Set();// child sessionIDs whose opencode_subagent_stop was posted
+  // Background work (OpenCode 1.18 background subagents, measured 2026-10-11):
+  // the task tool part completes at once with state.metadata.background and a
+  // jobId (the child session id); the end arrives as a synthetic user text
+  // <task id="JOB" state="completed"> on the parent.
+  const backgroundStarted = new Set(); // jobIds whose opencode_background_start was posted
+  const backgroundFinished = new Set();// jobIds whose opencode_background_finish was posted
+  const TASK_RESULT = /<task id="([^"]{1,256})" state="([a-z_]{1,40})">/g;
+
+  function noteBackgroundStart(sessionID, part) {
+    const meta = part.state && part.state.metadata;
+    const job = meta && meta.background === true && typeof meta.jobId === "string" ? meta.jobId : "";
+    if (!job || job.length > 256 || backgroundStarted.has(job)) return;
+    if (backgroundStarted.size > 512) backgroundStarted.clear();
+    backgroundStarted.add(job);
+    post("opencode_background_start", { session_id: sessionID, item_id: job, cwd });
+  }
+
+  function noteBackgroundResults(sessionID, text) {
+    if (text.indexOf("<task id=") < 0) return;
+    for (const m of text.matchAll(TASK_RESULT)) {
+      if (m[2] === "running" || backgroundFinished.has(m[1])) continue;
+      if (backgroundFinished.size > 512) backgroundFinished.clear();
+      backgroundFinished.add(m[1]);
+      post("opencode_background_finish", { session_id: sessionID, item_id: m[1], status: m[2], cwd });
+    }
+  }
 
   function noteSessionInfo(info) {
     if (!info || typeof info.id !== "string" || !info.id) return;
@@ -419,11 +445,13 @@ export const AgentDeckObserver = async ({ directory, client }) => {
           const sessionID = part.sessionID;
           announce(sessionID);
           if (part.type === "text" && typeof part.text === "string") {
+            noteBackgroundResults(sessionID, part.text);
             const owner = userMsgs.get(part.messageID);
             if (owner) sendPrompt(part.messageID, owner, part.text.trim());
             else responses.set(sessionID, part.text);
           } else if (part.type === "tool" && part.callID) {
             const status = (part.state && part.state.status) || "running";
+            if (part.tool === "task") noteBackgroundStart(sessionID, part);
             const phase = toolPhase.get(part.callID);
             if (status === "completed" || status === "error") {
               if (phase !== "end") {

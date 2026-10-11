@@ -365,58 +365,364 @@ final class CoordinationTracker {
     }
 }
 // BEGIN GENERATED CLAUDE BACKGROUND — bridge/generate-claude-background.mjs
-// Source SHA256: 0847044efe89211498c97b1ecd2430d6f8a3ca68721d08e2414d37c89dface63
+// Source SHA256: c812ab6346bca0dab62a8fce0df36e720f8a403857545966c0a1d9dc35dd5903
 // Parent turns remain idle; only the session-work projection stays working.
-struct ClaudeBackgroundTasks {
-    private var counts: [String: Int] = [:]
-    private var order: [String] = []
-
-    static func taskCount(_ payload: [String: Any], excluding: String? = nil) -> Int? {
+enum ClaudeBackgroundTasks {
+    static func taskIds(_ payload: [String: Any], excluding: String? = nil) -> [String]? {
         guard let tasks = payload["background_tasks"] as? [Any], tasks.count <= 4096 else { return nil }
         let finished: Set<String> = ["completed", "failed", "cancelled", "canceled", "killed", "stopped", "done"]
-        var ids: Set<String> = []
+        var ids: [String] = []
         for value in tasks {
             guard let task = value as? [String: Any], let id = task["id"] as? String, !id.isEmpty,
                   let status = task["status"] as? String else { return nil }
             if id == excluding || finished.contains(status) { continue }
             guard status == "running" else { return nil }
-            ids.insert(id)
+            if !ids.contains(id) { ids.append(id) }
         }
-        return ids.count
+        return ids
     }
 
+    static func taskCount(_ payload: [String: Any], excluding: String? = nil) -> Int? {
+        taskIds(payload, excluding: excluding)?.count
+    }
+
+    /// Feed one Claude hook into the daemon's shared tracker.
     @discardableResult
-    mutating func note(_ event: String, payload: [String: Any]) -> Bool {
+    static func note(_ event: String, payload: [String: Any], into work: inout BackgroundWorkTracker,
+                     now: Double = Date().timeIntervalSince1970 * 1000) -> Bool {
         guard let sid = payload["session_id"] as? String,
               !sid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         if event != "SubagentStop", let child = payload["agent_id"] as? String, !child.isEmpty { return false }
-        if event == "SessionStart" || event == "SessionEnd" {
-            order.removeAll { $0 == sid }
-            return counts.removeValue(forKey: sid) != nil
-        }
+        if event == "SessionStart" || event == "SessionEnd" { return work.reset(sid) }
         guard ["Stop", "StopFailure", "SubagentStop", "Notification"].contains(event) else { return false }
         if event == "Notification" && payload["notification_type"] as? String != "idle_prompt" { return false }
-        guard let count = Self.taskCount(payload, excluding: event == "SubagentStop" ? payload["agent_id"] as? String : nil) else { return false }
-        let changed = counts[sid] != count
+        guard let ids = Self.taskIds(payload, excluding: event == "SubagentStop" ? payload["agent_id"] as? String : nil) else { return false }
+        return work.snapshot(sid, items: ids, now: now, noun: "task", staleMs: .some(nil))
+    }
+}
+// END GENERATED CLAUDE BACKGROUND
+// BEGIN CODEX BACKGROUND TERMINALS — hand mirror of bridge/src/codex-background-terminals.ts
+// Codex unified-exec processes still running after a turn, read from the
+// rollout: a tool result announcing a running `session_id` (code-mode JSON with
+// no `exit_code`, or legacy "Process running with session ID <n>") enters, the
+// `CommandExecution` `item_completed` with that `process_id` leaves. Claimed only
+// while the Codex process that posted the hook is alive, because a dead Codex
+// cannot write the completion. Every read feeds the shared
+// `BackgroundWorkTracker` a full snapshot. The Node suite replays
+// shared/codex-background-terminal-vectors.json through this block.
+struct CodexBackgroundTerminalIO {
+    /// Last `bytes` of the file as whole lines, or nil when unreadable.
+    var readTail: (_ path: String, _ bytes: Int) -> [String]?
+    var locate: (_ sessionId: String) -> String?
+    /// true alive, false definitely gone, nil could not tell.
+    var isAlive: (_ pid: Int) -> Bool?
+}
+
+struct CodexBackgroundTerminals {
+    static let tailBytes = 512 * 1024
+    static let pollSeconds: UInt64 = 3
+    static let maxWatches = 64
+    static let maxTerminals = 256
+    static let reads: Set<String> = ["codex_stop", "codex_turn_complete", "codex_interrupt"]
+    static let resets: Set<String> = ["codex_session_start", "codex_session_end"]
+
+    private struct Watch { var path: String; var pid: Int; var running: Set<String> }
+    private var watches: [String: Watch] = [:]
+    private var order: [String] = []
+
+    var watchedSessions: [String] { order }
+
+    private static func idOf(_ value: Any?) -> String? {
+        if let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+            let d = number.doubleValue
+            guard d >= 0, d == d.rounded(.towardZero), d < 9_007_199_254_740_992 else { return nil }
+            return String(Int64(d))
+        }
+        if let s = value as? String, !s.isEmpty, s.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) { return s }
+        return nil
+    }
+
+    private static let runningText = try! NSRegularExpression(pattern: "Process running with session ID ([0-9]+)")
+
+    private static func runningFromText(_ text: String, _ mark: (String) -> Void) {
+        let ns = text as NSString
+        for match in runningText.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            mark(ns.substring(with: match.range(at: 1)))
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"), let data = trimmed.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = idOf(obj["session_id"]), obj["exit_code"] == nil else { return }
+        mark(id)
+    }
+
+    /// Each terminal's last status in a window ("running" / "finished"), or
+    /// nil when no record parsed. Absence from the window is not completion.
+    static func statuses(_ lines: [String]) -> [String: String]? {
+        var result: [String: String] = [:]
+        var parsed = false
+        for line in lines {
+            guard let data = line.data(using: .utf8),
+                  let rec = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            parsed = true
+            guard let payload = rec["payload"] as? [String: Any] else { continue }
+            let type = rec["type"] as? String
+            let ptype = payload["type"] as? String
+            if type == "response_item", ptype == "function_call_output" || ptype == "custom_tool_call_output" {
+                if let text = payload["output"] as? String {
+                    runningFromText(text) { result[$0] = "running" }
+                } else if ptype == "custom_tool_call_output", let parts = payload["output"] as? [Any] {
+                    for part in parts {
+                        if let text = (part as? [String: Any])?["text"] as? String {
+                            runningFromText(text) { result[$0] = "running" }
+                        }
+                    }
+                }
+            } else if type == "event_msg", ptype == "item_completed",
+                      let item = payload["item"] as? [String: Any], item["type"] as? String == "CommandExecution",
+                      let id = idOf(item["process_id"]) {
+                result[id] = "finished"
+            }
+        }
+        return parsed ? result : nil
+    }
+
+    static func merge(_ known: Set<String>, _ lines: [String]) -> Set<String>? {
+        guard let statuses = statuses(lines) else { return nil }
+        var next = known
+        for (id, status) in statuses {
+            if status == "running" { next.insert(id) } else { next.remove(id) }
+        }
+        return next.count > maxTerminals ? nil : next
+    }
+
+    /// Feed a routed `codex_*` hook. Returns whether the session's count changed.
+    @discardableResult
+    mutating func note(_ event: String, payload: [String: Any], io: CodexBackgroundTerminalIO,
+                       work: inout BackgroundWorkTracker, now: Double) -> Bool {
+        guard let sid = payload["session_id"] as? String,
+              !sid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        if Self.resets.contains(event) { return forget(sid, work: &work) }
+        guard Self.reads.contains(event) else { return false }
+        guard let number = payload["agentdeck_pid"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+              number.doubleValue == number.doubleValue.rounded(.towardZero), number.doubleValue > 1 else { return false }
+        let pid = number.intValue
+        let tp = payload["transcript_path"] as? String
+        guard let path = (tp?.hasSuffix(".jsonl") == true ? tp : nil) ?? io.locate(sid) else { return false }
+        let prior = watches[sid]
+        let keep = prior.map { $0.pid == pid && $0.path == path } ?? false
+        watches[sid] = Watch(path: path, pid: pid, running: keep ? prior!.running : [])
         order.removeAll { $0 == sid }
         order.append(sid)
-        counts[sid] = count
-        if order.count > 4096 { counts.removeValue(forKey: order.removeFirst()) }
+        while order.count > Self.maxWatches { watches.removeValue(forKey: order.removeFirst()) }
+        return refresh(sid, io: io, work: &work, now: now)
+    }
+
+    @discardableResult
+    mutating func refresh(_ sid: String, io: CodexBackgroundTerminalIO,
+                          work: inout BackgroundWorkTracker, now: Double) -> Bool {
+        guard var watch = watches[sid] else { return false }
+        let running: Set<String>?
+        if io.isAlive(watch.pid) == false {
+            running = []
+        } else if let lines = io.readTail(watch.path, Self.tailBytes) {
+            running = Self.merge(watch.running, lines)
+        } else {
+            running = nil
+        }
+        guard let running else { return false }
+        watch.running = running
+        if running.isEmpty {
+            watches.removeValue(forKey: sid)
+            order.removeAll { $0 == sid }
+        } else {
+            watches[sid] = watch
+        }
+        return work.snapshot(sid, items: Array(running), now: now, noun: "terminal", staleMs: .some(nil))
+    }
+
+    @discardableResult
+    mutating func forget(_ sid: String, work: inout BackgroundWorkTracker) -> Bool {
+        watches.removeValue(forKey: sid)
+        order.removeAll { $0 == sid }
+        return work.reset(sid)
+    }
+}
+// END CODEX BACKGROUND TERMINALS
+// BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
+// Source SHA256: e939a60700224e8d1d8268f2b1c5cf4ade0233d97f8730316e90d60c7d286916
+// Agent-agnostic background work per session; adapters translate each agent's
+// signal into snapshot/start/finish/reset. Absent = unknown, explicit 0 = done.
+struct BackgroundWorkTracker {
+    static let maxSessions = 4096
+    static let maxItems = 4096
+    static let tool = "Background tasks"
+
+    static func noun(_ kind: String, count: Int) -> String {
+        switch kind {
+        case "task": return count == 1 ? "background task" : "background tasks"
+        case "terminal": return count == 1 ? "background terminal" : "background terminals"
+        case "process": return count == 1 ? "background process" : "background processes"
+        default: return count == 1 ? "background task" : "background tasks"
+        }
+    }
+
+    private struct Work {
+        var items: [String: Double] = [:]
+        var noun = "task"
+        var staleMs: Double?
+    }
+    private var sessions: [String: Work] = [:]
+    private var order: [String] = []
+
+    func count(_ sid: String) -> Int? { sessions[sid]?.items.count }
+
+    /// noun/staleMs: nil leaves the session's current value; staleMs .some(nil) clears the bound.
+    @discardableResult
+    mutating func snapshot(_ sid: String, items: [String], now: Double, noun: String? = nil, staleMs: Double?? = nil) -> Bool {
+        guard !sid.isEmpty, items.count <= Self.maxItems else { return false }
+        let before = count(sid)
+        var work = touch(sid, noun: noun, staleMs: staleMs)
+        work.items = [:]
+        for item in items where !item.isEmpty { work.items[item] = now }
+        sessions[sid] = work
+        evict()
+        return before != work.items.count
+    }
+
+    @discardableResult
+    mutating func start(_ sid: String, item: String, now: Double, noun: String? = nil, staleMs: Double?? = nil) -> Bool {
+        guard !sid.isEmpty, !item.isEmpty else { return false }
+        let before = count(sid)
+        var work = touch(sid, noun: noun, staleMs: staleMs)
+        if work.items[item] == nil, work.items.count >= Self.maxItems { sessions[sid] = work; return false }
+        work.items[item] = now
+        sessions[sid] = work
+        evict()
+        return before != work.items.count
+    }
+
+    @discardableResult
+    mutating func finish(_ sid: String, item: String) -> Bool {
+        guard var work = sessions[sid], work.items.removeValue(forKey: item) != nil else { return false }
+        sessions[sid] = work
+        return true
+    }
+
+    @discardableResult
+    mutating func reset(_ sid: String) -> Bool {
+        order.removeAll { $0 == sid }
+        return sessions.removeValue(forKey: sid) != nil
+    }
+
+    /// Sessions whose count changed because an item outlived its stale bound.
+    mutating func reap(now: Double) -> [String] {
+        var changed: [String] = []
+        for sid in order {
+            guard var work = sessions[sid], let stale = work.staleMs else { continue }
+            let before = work.items.count
+            work.items = work.items.filter { now - $0.value <= stale }
+            if work.items.count != before { sessions[sid] = work; changed.append(sid) }
+        }
         return changed
     }
 
     func project(_ sid: String, session: [String: Any]) -> [String: Any] {
-        guard let count = counts[sid] else { return session }
+        guard let work = sessions[sid] else { return session }
+        let count = work.items.count
         var result = session
         result["backgroundTaskCount"] = count
         guard session["state"] as? String == "idle", count > 0 else { return result }
-        let activity = "Waiting for \(count) background task" + (count == 1 ? "" : "s")
+        let activity = "Waiting for \(count) \(Self.noun(work.noun, count: count))"
         result["state"] = "processing"
-        result["currentTool"] = "Background tasks"
+        result["currentTool"] = Self.tool
         result["currentTask"] = activity
         result["activity"] = activity
         return result
     }
+
+    private mutating func touch(_ sid: String, noun: String?, staleMs: Double??) -> Work {
+        var work = sessions[sid] ?? Work()
+        if let noun { work.noun = noun }
+        if let staleMs { work.staleMs = staleMs }
+        order.removeAll { $0 == sid }
+        order.append(sid)
+        return work
+    }
+
+    private mutating func evict() {
+        while order.count > Self.maxSessions { sessions.removeValue(forKey: order.removeFirst()) }
+    }
 }
-// END GENERATED CLAUDE BACKGROUND
+
+/// The generic `<agent>_background_start|finish|snapshot` hook vocabulary.
+enum BackgroundWorkHooks {
+    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String? }
+    static let rules: [Rule] = [
+        Rule(agent: "opencode", noun: "task", staleMs: 21600000, resets: ["opencode_session_start", "opencode_session_end"], childStop: "opencode_subagent_stop"),
+        Rule(agent: "hermes", noun: "process", staleMs: nil, resets: ["hermes_session_start", "hermes_session_end"], childStop: nil),
+    ]
+    static let maxItemId = 256
+
+    enum Op: Equatable {
+        case start(sessionId: String, item: String, noun: String, staleMs: Double?)
+        case finish(sessionId: String, item: String)
+        case snapshot(sessionId: String, items: [String], noun: String, staleMs: Double?)
+        case reset(sessionId: String)
+    }
+
+    private static func itemId(_ value: Any?) -> String? {
+        guard let s = value as? String, !s.isEmpty, s.utf16.count <= maxItemId else { return nil }
+        return s
+    }
+
+    static func isEvent(_ event: String) -> Bool {
+        for suffix in ["_background_start", "_background_finish", "_background_snapshot"] where event.hasSuffix(suffix) {
+            let agent = event.dropLast(suffix.count)
+            return !agent.isEmpty && agent.utf8.allSatisfy { $0 >= 97 && $0 <= 122 }
+        }
+        return false
+    }
+
+    static func op(_ event: String, payload: [String: Any]) -> Op? {
+        guard let sid = payload["session_id"] as? String,
+              !sid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        for rule in rules {
+            if rule.resets.contains(event) { return .reset(sessionId: sid) }
+            if let childStop = rule.childStop, event == childStop {
+                guard let item = itemId(payload["agent_id"]) else { return nil }
+                return .finish(sessionId: sid, item: item)
+            }
+            if event == rule.agent + "_background_start" || event == rule.agent + "_background_finish" {
+                guard let item = itemId(payload["item_id"]) else { return nil }
+                return event.hasSuffix("_start")
+                    ? .start(sessionId: sid, item: item, noun: rule.noun, staleMs: rule.staleMs)
+                    : .finish(sessionId: sid, item: item)
+            }
+            if event == rule.agent + "_background_snapshot" {
+                guard let raw = payload["items"] as? [Any], raw.count <= BackgroundWorkTracker.maxItems else { return nil }
+                var items: [String] = []
+                for value in raw {
+                    guard let item = itemId(value) else { return nil }
+                    if !items.contains(item) { items.append(item) }
+                }
+                return .snapshot(sessionId: sid, items: items, noun: rule.noun, staleMs: rule.staleMs)
+            }
+        }
+        return nil
+    }
+
+    @discardableResult
+    static func apply(_ op: Op, to work: inout BackgroundWorkTracker, now: Double) -> Bool {
+        switch op {
+        case .reset(let sid): return work.reset(sid)
+        case .finish(let sid, let item): return work.finish(sid, item: item)
+        case .start(let sid, let item, let noun, let staleMs):
+            return work.start(sid, item: item, now: now, noun: noun, staleMs: .some(staleMs))
+        case .snapshot(let sid, let items, let noun, let staleMs):
+            return work.snapshot(sid, items: items, now: now, noun: noun, staleMs: .some(staleMs))
+        }
+    }
+}
+// END GENERATED BACKGROUND WORK
 #endif

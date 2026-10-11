@@ -4,6 +4,7 @@ import { startConfiguredDotHost, dotResultModule, readDotConfiguration } from '.
 import { CiWaitProcesses } from './ci-wait-process.js';
 import { probeCiWait } from './ci-wait-probe.js';
 import { CiWaitTracker, ciWaitLabel, CI_WAIT_LIFECYCLE } from '@agentdeck/shared';
+import { BackgroundWorkTracker, applyBackgroundWorkHookOp, backgroundWorkHookOp, isBackgroundWorkHookEvent } from '@agentdeck/shared';
 import { resolveZaiApiKey } from './zai-usage.js';
 import { updateDaemonSetting } from './daemon-settings.js';
 import { startPersonalVoiceTurn } from './personal-voice-turn.js';
@@ -37,6 +38,7 @@ import { PassiveSessionObserver, codexRolloutSummaryForSession, collectProcessIn
 import { claudeBackgroundRoleForHook, isClaudeSpareHook, isParkedClaudeSession, parkedClaudeSessionId } from './claude-spare-hooks.js';
 import { CodexExecChildren, type CodexExecChild, type ExecChildPeer } from './codex-exec-children.js';
 import { ClaudeBackgroundTasks } from './claude-background-tasks.js';
+import { CodexBackgroundTerminals } from './codex-background-terminals.js';
 import { HookClaudeSessions } from './hook-claude-sessions.js';
 import { SessionTimelineRelay } from './session-timeline-relay.js';
 import { SessionFocusRelay } from './session-focus-relay.js';
@@ -1990,7 +1992,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Cross-session coordination (spawned workers, peer messages, background
   // jobs) — the second census axis beside `subagents`. See coordination-evidence.ts.
   const coordination = new CoordinationTracker();
-  const claudeBackgroundTasks = new ClaudeBackgroundTasks();
+  // Background work every agent keeps running after its turn, keyed by the
+  // bare session id (shared/src/background-work.ts). Claude's Stop snapshots,
+  // Codex's rollout and the generic `<agent>_background_*` hooks all feed it.
+  const backgroundWork = new BackgroundWorkTracker();
+  const claudeBackgroundTasks = new ClaudeBackgroundTasks(backgroundWork);
+  // Codex's hooks carry no task list, so its background terminals are read
+  // from the rollout after each turn and polled until they finish. `core` is
+  // assigned below; a poll fires seconds after startup at the earliest.
+  const codexBackgroundTerminals = new CodexBackgroundTerminals({
+    onChange: () => core.maybeBroadcastSessionsList(),
+  }, backgroundWork);
   const ciWaits = new CiWaitTracker();
   const ciWaitOwners = new Map<string, number>();
   const ciWaitProcesses = new CiWaitProcesses();
@@ -3395,6 +3407,18 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           (res as unknown as { end: () => typeof res }).end = () => endEmpty('');
         }
         eventName = harness.eventName;
+        // Generic `<agent>_background_*` hooks (and each agent's session-reset
+        // and child-stop events) feed the shared background-work tracker. The
+        // three background events mean nothing else, so they stop here.
+        const backgroundOp = backgroundWorkHookOp(eventName, json);
+        if (backgroundOp && applyBackgroundWorkHookOp(backgroundWork, backgroundOp, Date.now())) {
+          core.maybeBroadcastSessionsList();
+        }
+        if (isBackgroundWorkHookEvent(eventName)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true }));
+          return;
+        }
         // Map PascalCase event names to snake_case for state machine + APME
         const eventMap: Record<string, string> = {
           SessionStart: 'session_start', SessionEnd: 'session_end',
@@ -3477,6 +3501,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           : (typeof json.project_path === 'string' ? json.project_path : '')) || '';
         const earlyHookProject = hookPayloadProjectName(json, earlyHookCwd);
         if (claudeBackgroundTasks.note(eventName, json)) core.maybeBroadcastSessionsList();
+        if (eventName.startsWith('codex_') && codexBackgroundTerminals.note(eventName, json)) {
+          core.maybeBroadcastSessionsList();
+        }
         const childResult = subagentTimeline?.handle({
           eventName,
           payload: json,
@@ -5220,6 +5247,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
   };
   const coordinationTick = () => {
+    // A lost background finish must not hold a creature working forever.
+    if (backgroundWork.reap(Date.now()).length > 0) core.maybeBroadcastSessionsList();
     pollCiWaits();
     const peers = coordination.mergePeers(passiveSessionObserver.collect([])
       .filter((s) => typeof s.pid === 'number' && s.pid > 0)
@@ -5514,8 +5543,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id)
         ? s.waitingOn : ciWaits.snapshot(rawSessionId(s.id), now);
       const ciLabel = !s.state?.startsWith('awaiting') ? ciWaitLabel(waitingOn) : null;
-      const withBackground = s.id.startsWith('observed:claude:')
-        ? claudeBackgroundTasks.project(rawSessionId(s.id), withSubagents) : withSubagents;
+      const withBackground = backgroundWork.project(rawSessionId(s.id), withSubagents);
       const withCensus = { ...withBackground, ...(coord ? { coordination: coord } : {}),
         ...(waitingOn !== undefined ? { waitingOn } : {}), ...(ciLabel ? { activity: ciLabel } : {}) };
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;
@@ -7778,6 +7806,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     drainDaemonSockets();
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
+    codexBackgroundTerminals.dispose();
     drainAllPending();
     removeDaemonInfo();
     focusRelay.stop();

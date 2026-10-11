@@ -1,10 +1,13 @@
 /** Claude hook background_tasks is a session-work snapshot, not a parent turn
- * boundary or a subagent census. SSOT for the generated Swift projection.
+ * boundary or a subagent census. SSOT for the generated Swift adapter.
  * Shape: Claude 2.1.198+ / iTerm2 cc-status HookEvent.swift + main.swift.
  * Only the observed array shape is accepted; missing/malformed means unknown.
+ * The adapter feeds the agent-agnostic `BackgroundWorkTracker`
+ * (shared/src/background-work.ts), which owns the count and the projection.
  */
+import { BackgroundWorkTracker } from '@agentdeck/shared';
+
 export const CLAUDE_BACKGROUND_POLICY = {
-  "maxSessions": 4096,
   "maxTasks": 4096,
   "snapshots": [
     "Stop",
@@ -24,7 +27,9 @@ export const CLAUDE_BACKGROUND_POLICY = {
   "tool": "Background tasks"
 } as const;
 
-export function claudeBackgroundTaskCount(payload: Record<string, unknown>, excludedId?: string): number | undefined {
+/** Running task ids in a hook snapshot, or undefined when the snapshot is
+ *  absent or malformed (no information). */
+export function claudeBackgroundTaskIds(payload: Record<string, unknown>, excludedId?: string): string[] | undefined {
   const tasks = payload.background_tasks;
   if (!Array.isArray(tasks) || tasks.length > CLAUDE_BACKGROUND_POLICY.maxTasks) return undefined;
   const ids = new Set<string>();
@@ -36,11 +41,16 @@ export function claudeBackgroundTaskCount(payload: Record<string, unknown>, excl
     if (status !== 'running') return undefined;
     ids.add(id);
   }
-  return ids.size;
+  return [...ids];
+}
+
+export function claudeBackgroundTaskCount(payload: Record<string, unknown>, excludedId?: string): number | undefined {
+  return claudeBackgroundTaskIds(payload, excludedId)?.length;
 }
 
 export class ClaudeBackgroundTasks {
-  private readonly counts = new Map<string, number>();
+  constructor(private readonly work: BackgroundWorkTracker = new BackgroundWorkTracker(),
+    private readonly now: () => number = Date.now) {}
 
   note(event: string, payload: Record<string, unknown>): boolean {
     const sid = payload.session_id;
@@ -48,27 +58,19 @@ export class ClaudeBackgroundTasks {
     // Child tool/Stop hooks describe the child. Only SubagentStop carries a
     // parent snapshot; exclude the exiting child, still listed as running.
     if (event !== 'SubagentStop' && typeof payload.agent_id === 'string' && payload.agent_id) return false;
-    if (event === 'SessionStart' || event === 'SessionEnd') return this.counts.delete(sid);
+    if (event === 'SessionStart' || event === 'SessionEnd') return this.work.reset(sid);
     if (!(CLAUDE_BACKGROUND_POLICY.snapshots as readonly string[]).includes(event)) return false;
     if (event === 'Notification' && payload.notification_type !== 'idle_prompt') return false;
-    const count = claudeBackgroundTaskCount(payload,
+    const ids = claudeBackgroundTaskIds(payload,
       event === 'SubagentStop' && typeof payload.agent_id === 'string' ? payload.agent_id : undefined);
-    if (count === undefined) return false;
-    const changed = this.counts.get(sid) !== count;
-    this.counts.delete(sid);
-    this.counts.set(sid, count);
-    if (this.counts.size > CLAUDE_BACKGROUND_POLICY.maxSessions) this.counts.delete(this.counts.keys().next().value!);
-    return changed;
+    if (ids === undefined) return false;
+    // Snapshots re-assert the whole set on every Stop, so no stale bound.
+    return this.work.snapshot(sid, ids, this.now(), { noun: 'task', staleMs: null });
   }
 
   /** Presentation only: never reopens a turn, fabricates children, or covers
    * an approval/question/offline state. Input rows stay unchanged. */
   project<T extends { state?: string; currentTool?: string; currentTask?: string; activity?: string }>(sid: string, session: T): T & { backgroundTaskCount?: number } {
-    const count = this.counts.get(sid);
-    if (count === undefined) return session;
-    const result = { ...session, backgroundTaskCount: count };
-    if (session.state !== 'idle' || count === 0) return result;
-    const activity = `Waiting for ${count} background task${count === 1 ? '' : 's'}`;
-    return { ...result, state: 'processing', currentTool: CLAUDE_BACKGROUND_POLICY.tool, currentTask: activity, activity };
+    return this.work.project(sid, session);
   }
 }

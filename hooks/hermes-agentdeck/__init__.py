@@ -1,4 +1,8 @@
-"""AgentDeck Hermes observer v1. No hook changes Hermes execution.
+"""AgentDeck Hermes observer v2. No hook changes Hermes execution.
+
+v2 reports background processes (terminal background=true) through
+`hermes_background_snapshot`, read from Hermes' own process registry at each
+run end and every few seconds while any of the session's processes run.
 
 Contract: NousResearch/hermes-agent@0a374d167, hermes.observer.v1.
 Network work is serialized by one bounded daemon worker, never in a callback.
@@ -242,7 +246,93 @@ def _post(event, payload):
             pass  # Bounded best effort; daemon expires abandoned state.
 
 
+_TASKS = OrderedDict()       # identity -> Hermes task_id (tool hooks carry it)
+_BACKGROUND = OrderedDict()  # identity -> background process ids last posted
+_POLLER = None
+_BACKGROUND_POLL_SECONDS = 3
+
+
+def _background_items(task_id):
+    """Running background processes this task spawned, read from Hermes' own
+    process registry (the same live call its status bar makes). None means
+    "could not look", never "none running"."""
+    if not task_id:
+        return None
+    try:
+        from tools.process_registry import process_registry
+        entries = process_registry.list_sessions(task_id=task_id)
+    except Exception:
+        return None
+    if not isinstance(entries, list):
+        return None
+    return sorted({e["session_id"] for e in entries
+                   if isinstance(e, dict) and e.get("status") == "running"
+                   and isinstance(e.get("session_id"), str) and 0 < len(e["session_id"]) <= 256})
+
+
+def _poll_background_once():
+    """Re-read every session that last reported running work; post changes.
+    Returns whether any session still has work. Registry reads happen outside
+    the observer lock, so a registry call can never wait on a hook callback."""
+    with _LOCK:
+        watched = [(identity, _TASKS.get(identity)) for identity, items in _BACKGROUND.items() if items]
+    still = False
+    for identity, task_id in watched:
+        items = _background_items(task_id)
+        if items is None:
+            still = True  # unknown: keep the last report and look again
+            continue
+        with _LOCK:
+            if tuple(items) != _BACKGROUND.get(identity, ()):
+                _remember(_BACKGROUND, identity, tuple(items))
+                _post("hermes_background_snapshot", {"session_id": identity, "items": items})
+        still = still or bool(items)
+    return still
+
+
+def _poll_background():
+    global _POLLER
+    while True:
+        time.sleep(_BACKGROUND_POLL_SECONDS)
+        try:
+            if _poll_background_once():
+                continue
+        except Exception:
+            pass
+        with _LOCK:
+            if not any(_BACKGROUND.values()):
+                _POLLER = None
+                return
+
+
+def _report_background(identity):
+    """At a turn end: post the session's running background processes when
+    they differ from the last report, and keep watching while any run."""
+    global _POLLER
+    items = _background_items(_TASKS.get(identity))
+    if items is None:
+        return
+    with _LOCK:
+        if tuple(items) != _BACKGROUND.get(identity, ()):
+            _remember(_BACKGROUND, identity, tuple(items))
+            _post("hermes_background_snapshot", {"session_id": identity, "items": items})
+        if items and (_POLLER is None or not _POLLER.is_alive()):
+            _POLLER = threading.Thread(target=_poll_background, name="agentdeck-background", daemon=True)
+            _POLLER.start()
+
+
 def _handle(event, **kwargs):
+    if event == "on_session_end":
+        _handle_locked(event, **kwargs)
+        # Outside the lock: the registry read takes Hermes' own lock.
+        payload = _payload(kwargs)
+        if payload is not None:
+            _report_background(payload["session_id"])
+        return
+    _handle_locked(event, **kwargs)
+
+
+def _handle_locked(event, **kwargs):
     # Serialize concurrent callbacks too. A callback has no network I/O and
     # always returns None (pre_llm/pre_tool return values can change behavior).
     with _LOCK:
@@ -270,6 +360,9 @@ def _handle(event, **kwargs):
             payload["prompt"] = _text(kwargs.get("user_message"))
             _post("hermes_user_prompt_submit", payload)
         elif event in ("pre_tool_call", "post_tool_call"):
+            task_id = kwargs.get("task_id")
+            if isinstance(task_id, str) and task_id:
+                _remember(_TASKS, sid, task_id)
             payload["tool_name"] = _text(kwargs.get("tool_name"), 120)
             call_id = _tool_id(sid, kwargs.get("tool_call_id"))
             if call_id:
@@ -301,6 +394,8 @@ def _handle(event, **kwargs):
             _TURNS.pop(sid, None)
             _post("hermes_session_end", payload)
             _CONTEXT.pop(sid, None)
+            _TASKS.pop(sid, None)
+            _BACKGROUND.pop(sid, None)
 
 
 def register(ctx):
