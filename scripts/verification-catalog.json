@@ -888,6 +888,7 @@
         "bridge/src/__tests__/claude-*.test.ts",
         "bridge/src/__tests__/codex-ambient-hooks.test.ts",
         "bridge/src/__tests__/codex-hook-replay.test.ts",
+        "bridge/src/__tests__/managed-hook-harness.test.ts",
         "bridge/src/__tests__/codex-exec-children.test.ts",
         "bridge/src/__tests__/codex-auth.test.ts",
         "bridge/src/__tests__/codex-hook-silence.test.ts",
