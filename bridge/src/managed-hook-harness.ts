@@ -20,17 +20,11 @@
 import { HOOK_HARNESS_PREFIXES, routeHookHarness } from '@agentdeck/shared';
 import { CodexHookReplayGuard } from './codex-hook-replay.js';
 
+/** The harness whose hooks a managed bridge owns — fixed by its adapter class
+ *  before the hook port opens (monitor mode is a Claude hook receiver). An
+ *  OpenCode bridge owns no HTTP hooks in practice: its observer plugin stays
+ *  silent inside a managed PTY, so whatever reaches it is a nested agent's. */
 export type ManagedHarness = 'claude-code' | 'codex' | 'opencode';
-
-/** The harness whose hooks a managed bridge of `agentType` owns. Monitor mode
- *  is a Claude hook receiver (`AGENTDECK_PORT=<port> claude`). OpenCode's
- *  observer plugin stays silent inside a managed PTY, so every hook reaching
- *  an `agentdeck opencode` bridge is a nested agent's. */
-export function managedHarnessFor(agentType: string | undefined): ManagedHarness {
-  if (agentType === 'codex') return 'codex';
-  if (agentType === 'opencode') return 'opencode';
-  return 'claude-code';
-}
 
 export type ManagedHookVerdict =
   /** This session's own hook: emit it under `eventName`. `quiet` answers the
@@ -88,23 +82,44 @@ export function forwardTimeoutMs(eventName: string): number {
   return 2_000;
 }
 
+/** How long a resolved daemon port is reused, so a burst of foreign hooks
+ *  does not rescan the port range once per hook. */
+const DAEMON_PORT_CACHE_MS = 5_000;
+
 /** Forward a foreign hook to the local daemon. Null when there is no daemon to
- *  take it (or the only one found is this bridge), or it did not answer. */
+ *  take it (or the only one found is this bridge), or it did not answer in
+ *  time. The lookup counts against the hook's budget. */
 export function createDaemonHookForwarder(deps: {
   ownPort: () => number;
   findDaemonPort: () => Promise<number | null>;
   fetchImpl?: typeof fetch;
+  now?: () => number;
 }): ForeignHookForwarder {
   const fetchImpl = deps.fetchImpl ?? fetch;
+  const now = deps.now ?? Date.now;
+  let cached: { port: number | null; at: number } | null = null;
+  let lookup: Promise<number | null> | null = null;
+  const daemonPort = async (): Promise<number | null> => {
+    if (cached && now() - cached.at < DAEMON_PORT_CACHE_MS) return cached.port;
+    lookup ??= deps.findDaemonPort().catch(() => null).then((port) => {
+      cached = { port, at: now() };
+      lookup = null;
+      return port;
+    });
+    return lookup;
+  };
   return async (eventName, body, headers) => {
-    const port = await deps.findDaemonPort().catch(() => null);
+    const startedAt = now();
+    const port = await daemonPort();
     if (!port || port === deps.ownPort()) return null;
+    const budget = forwardTimeoutMs(eventName) - (now() - startedAt);
+    if (budget <= 0) return null;
     try {
       const response = await fetchImpl(`http://127.0.0.1:${port}/hooks/${encodeURIComponent(eventName)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body,
-        signal: AbortSignal.timeout(forwardTimeoutMs(eventName)),
+        signal: AbortSignal.timeout(budget),
       });
       return {
         status: response.status,
@@ -112,6 +127,7 @@ export function createDaemonHookForwarder(deps: {
         body: await response.text(),
       };
     } catch {
+      cached = null;
       return null;
     }
   };

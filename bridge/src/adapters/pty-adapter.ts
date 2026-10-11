@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import type { Server } from 'http';
 import { PtyManager } from '../pty-manager.js';
 import { HookServer } from '../hook-server.js';
+import type { ManagedHarness } from '../managed-hook-harness.js';
 import { debug } from '../logger.js';
 import type {
   AgentAdapter,
@@ -52,6 +53,9 @@ export abstract class PtyAdapter extends EventEmitter implements AgentAdapter {
   /** Whether this agent uses HTTP hook server. Override to false for hook-less agents. */
   protected useHookServer(): boolean { return true; }
 
+  /** The harness whose hooks drive this session (#490 follow-up). */
+  protected hookHarness(): ManagedHarness { return 'claude-code'; }
+
   /**
    * Handle agent-specific commands (e.g. switch_mode for Claude).
    * Return true if handled, false to fall through to common handlers.
@@ -66,6 +70,7 @@ export abstract class PtyAdapter extends EventEmitter implements AgentAdapter {
 
     // 1. Start HTTP hook server (optional per agent)
     if (this.useHookServer()) {
+      this.hookServer.setOwnHarness(this.hookHarness());
       await this.hookServer.listen(this.port);
 
       // Wire HookServer events → AdapterEvents

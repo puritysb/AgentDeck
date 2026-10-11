@@ -10,7 +10,7 @@ import type { BridgeEvent } from './types.js';
 import type { VoiceManager } from './voice.js';
 import { onFrameRendered, offFrameRendered, setPreviewFps, getPreviewFps } from './pixoo/pixoo-bridge.js';
 import { STATE_COLORS } from '@agentdeck/shared';
-import { ManagedHookGate, managedHarnessFor, neutralHookReply, type ForeignHookForwarder } from './managed-hook-harness.js';
+import { ManagedHookGate, neutralHookReply, type ForeignHookForwarder, type ManagedHarness } from './managed-hook-harness.js';
 
 // Canonical state→color map for the inline status pages, with UPPERCASE
 // aliases since the pages historically key on upper-cased state names.
@@ -45,7 +45,8 @@ export class HookServer extends EventEmitter {
   // Metadata for status page / health
   private meta: { agentType?: string; projectName?: string; clientCount?: number; state?: string; modelName?: string; effortLevel?: string } = {};
   // Which hooks are this session's own is decided by their payload (#490).
-  private readonly hookGate = new ManagedHookGate(() => managedHarnessFor(this.meta.agentType));
+  private ownHarness: ManagedHarness = 'claude-code';
+  private readonly hookGate = new ManagedHookGate(() => this.ownHarness);
   private foreignHookForwarder: ForeignHookForwarder | null = null;
 
   constructor() {
@@ -54,6 +55,12 @@ export class HookServer extends EventEmitter {
     this.app.use(express.json());
     this.setupRoutes();
     this.server = createServer(this.app);
+  }
+
+  /** Whose hooks this bridge's session is made of. Set by the adapter before
+   *  the port opens: hooks arrive the moment the PTY spawns. */
+  setOwnHarness(harness: ManagedHarness): void {
+    this.ownHarness = harness;
   }
 
   /** Where another harness's hooks go — the local daemon (see managed-hook-harness.ts). */

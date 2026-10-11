@@ -11,11 +11,13 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HookServer } from '../hook-server.js';
+import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
+import { CodexCliAdapter } from '../adapters/codex-cli.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import {
   ManagedHookGate,
   createDaemonHookForwarder,
   forwardTimeoutMs,
-  managedHarnessFor,
   neutralHookReply,
 } from '../managed-hook-harness.js';
 
@@ -32,19 +34,11 @@ const codexStop = () => vector('Codex Stop (captured)');
 const claudeStop = () => vector('Claude Code Stop');
 
 describe('ManagedHookGate', () => {
-  it('maps the managed agent to the harness whose hooks it owns', () => {
-    expect(managedHarnessFor('codex')).toBe('codex');
-    expect(managedHarnessFor('claude-code')).toBe('claude-code');
-    expect(managedHarnessFor(undefined)).toBe('claude-code');
-    expect(managedHarnessFor('opencode')).toBe('opencode');
-  });
-
-  it('an OpenCode bridge hands a nested Claude or Codex away', () => {
-    const gate = new ManagedHookGate(() => 'opencode');
-    const claude = claudeStop();
-    expect(gate.classify(claude.event, claude.payload)).toEqual({ kind: 'foreign' });
-    expect(gate.classify('codex_stop', codexStop().payload)).toEqual({ kind: 'foreign' });
-    expect(gate.classify('opencode_stop', {})).toEqual({ kind: 'own', eventName: 'opencode_stop', quiet: false });
+  it('each managed adapter owns its own harness (the codex bridge is agentType codex-cli)', () => {
+    const harness = (a: object) => (a as { hookHarness(): string }).hookHarness();
+    expect(harness(new ClaudeCodeAdapter())).toBe('claude-code');
+    expect(harness(new CodexCliAdapter())).toBe('codex');
+    expect(harness(new OpenCodeAdapter())).toBe('opencode');
   });
 
   it('a Claude bridge keeps Claude hooks and hands Codex hooks away', () => {
@@ -111,6 +105,36 @@ describe('createDaemonHookForwarder', () => {
     expect(await none('codex_stop', '{}', {})).toBeNull();
   });
 
+  it('reuses a resolved daemon port and spends the lookup time from the hook budget', async () => {
+    let clock = 0;
+    let lookups = 0;
+    const signals: number[] = [];
+    const forward = createDaemonHookForwarder({
+      ownPort: () => 9123,
+      findDaemonPort: async () => { lookups++; clock += 1_500; return 9120; },
+      now: () => clock,
+      fetchImpl: (async (_url: string, init: { signal: AbortSignal }) => {
+        signals.push(clock);
+        void init;
+        return new Response('', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(await forward('codex_stop', '{}', {})).not.toBeNull();
+    expect(await forward('codex_stop', '{}', {})).not.toBeNull();
+    expect(lookups).toBe(1);
+    clock += 10_000;
+    await forward('codex_stop', '{}', {});
+    expect(lookups).toBe(2);
+    // A lookup that ate the whole 2 s budget forwards nothing.
+    const slow = createDaemonHookForwarder({
+      ownPort: () => 9123,
+      findDaemonPort: async () => { clock += 2_500; return 9120; },
+      now: () => clock,
+      fetchImpl: (async () => { throw new Error('must not fetch'); }) as unknown as typeof fetch,
+    });
+    expect(await slow('codex_stop', '{}', {})).toBeNull();
+  });
+
   it('bounds the wait just under each hook script’s own deadline', () => {
     expect(forwardTimeoutMs('PreToolUse')).toBeLessThan(60_000);
     expect(forwardTimeoutMs('Stop')).toBeLessThan(10_000);
@@ -120,7 +144,7 @@ describe('createDaemonHookForwarder', () => {
   it('a nested Codex hook on a managed Claude bridge reaches the daemon unchanged and never drives the Claude session', async () => {
     const daemon = await fakeDaemon('');
     const bridge = new HookServer();
-    bridge.setMeta({ agentType: 'claude-code' });
+    bridge.setOwnHarness('claude-code');
     bridge.setForeignHookForwarder(createDaemonHookForwarder({ ownPort: () => -1, findDaemonPort: async () => daemon.port }));
     const emitted: string[] = [];
     bridge.on('hook', ({ event }: { event: string }) => emitted.push(event));

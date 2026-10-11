@@ -18,6 +18,7 @@ import type { AgentCapabilities, AdapterStartOptions, AdapterEvent, PluginComman
 import type { AdapterContext } from '@agentdeck/shared';
 import { OPENCODE_CAPABILITIES } from '../types.js';
 import { PtyAdapter } from './pty-adapter.js';
+import type { ManagedHarness } from '../managed-hook-harness.js';
 import { resolveProjectNameFromCwdCached } from '../utils/project-name.js';
 import { randomUUID } from 'crypto';
 import { getApme } from '../apme/index.js';
@@ -89,6 +90,8 @@ export class OpenCodeAdapter extends PtyAdapter {
     // No parsing needed — SSE handles state detection.
     // Activity events are already emitted by PtyAdapter's data handler.
   }
+
+  protected override hookHarness(): ManagedHarness { return 'opencode'; }
 
   protected override useHookServer(): boolean {
     // OpenCode has no HTTP hooks — but we still need the HookServer for

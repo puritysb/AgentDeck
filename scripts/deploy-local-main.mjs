@@ -132,7 +132,8 @@ async function deploy() {
       if (existsSync(backup)) { renameSync(backup, target); execFileSync('open', [target], { env: detachedEnv() }); }
       throw error;
     }
-    run('daemon-restart', process.execPath, ['bridge/dist/cli.js', 'daemon', 'restart'], 180_000);
+    // An unsupervised restart spawns the daemon detached with this environment.
+    run('daemon-restart', process.execPath, ['bridge/dist/cli.js', 'daemon', 'restart'], 180_000, detachedEnv());
     run('plugin-deploy', 'pnpm', ['plugin:deploy']);
     run('plugin-check', 'pnpm', ['plugin:check']);
     const { computeDistBuildIdentity } = await import(pathToFileURL(join(root, 'bridge/dist/daemon-build-identity.js')));

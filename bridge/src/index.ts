@@ -262,6 +262,18 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     if (evt.source === 'hook' && evt.event.startsWith('codex_')) codexHookSeenEarly = true;
   });
 
+  // Another harness's hooks (a Codex run inside this PTY inherits
+  // AGENTDECK_PORT) belong to their own observed session on the local daemon.
+  // Installed before the PTY spawns: hooks arrive the moment it does.
+  const managedHookServer = (adapter as { getHookServer?: () => HookServer }).getHookServer?.();
+  managedHookServer?.setForeignHookForwarder(createDaemonHookForwarder({
+    ownPort: () => port,
+    findDaemonPort: async () => {
+      const daemon = await findDaemonPortAsync();
+      return daemon ? daemon.httpPort ?? daemon.port : null;
+    },
+  }));
+
   // ===== Start adapter (creates HTTP server, spawns process) =====
   try {
     await adapter.start({ port, command: opts.command, gatewayUrl: opts.gatewayUrl });
@@ -424,12 +436,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     hookServer.setVoiceManager(voiceManager);
     hookServer.onApiUsage(() => ({ usage: core.cachedApiUsage, fetchedAt: core.lastApiFetchTime }));
   }
-  // Another harness's hooks (a Codex run inside this Claude PTY inherits
-  // AGENTDECK_PORT) belong to their own observed session on the local daemon.
-  hookServer?.setForeignHookForwarder(createDaemonHookForwarder({
-    ownPort: () => core.port,
-    findDaemonPort: async () => (await findDaemonPortAsync())?.port ?? null,
-  }));
   const broadcastSse = (event: BridgeEvent) => hookServer?.broadcastSse(event);
   core.setSseBroadcast(broadcastSse);
 

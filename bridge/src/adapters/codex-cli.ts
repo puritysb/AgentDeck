@@ -2,6 +2,7 @@ import { CodexOutputParser } from '../codex-output-parser.js';
 import type { AgentCapabilities, PluginCommand } from '../types.js';
 import { CODEX_CLI_CAPABILITIES } from '../types.js';
 import { PtyAdapter } from './pty-adapter.js';
+import type { ManagedHarness } from '../managed-hook-harness.js';
 
 /**
  * Codex CLI adapter — lifecycle correctness comes from Codex lifecycle hooks
@@ -17,6 +18,8 @@ export class CodexCliAdapter extends PtyAdapter {
     super();
     this.outputParser = new CodexOutputParser();
   }
+
+  protected override hookHarness(): ManagedHarness { return 'codex'; }
 
   protected getDefaultCommand(): string {
     return 'codex';
