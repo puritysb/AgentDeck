@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Repository-side development tooling, never bundled into the Apple app.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync,
+import { existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync,
   renameSync, rmSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -20,6 +20,61 @@ export function validateCheckout(root, expectedSha) {
   return sha;
 }
 
+/**
+ * Environment for a process that must outlive the workflow job. The Actions
+ * runner SIGKILLs every process still carrying its `RUNNER_TRACKING_ID` when a
+ * job ends, and `open` hands the caller's environment to the app it launches:
+ * the freshly installed app was killed 24 s after launch by Runner.Worker
+ * (2026-10-11, `exited due to SIGKILL | sent by Runner.Worker`), so every
+ * deployment left the Mac without its dashboard. An empty value opts out.
+ */
+export function detachedEnv(env = process.env) {
+  return { ...env, RUNNER_TRACKING_ID: '' };
+}
+
+/**
+ * Poll the restarted daemon until it answers as the installed build. A single
+ * 5 s probe right after `daemon restart` raced the daemon's startup work
+ * (opening a multi-GB APME store blocks the loop for seconds) and failed a
+ * deployment whose daemon was healthy moments later. The registry is re-read
+ * each attempt because a supervised restart may still be handing over.
+ */
+export async function waitForDaemonHealth({ readRegistry, build, fetchImpl = fetch,
+  deadlineMs = 90_000, attemptTimeoutMs = 5_000, intervalMs = 1_000, now = Date.now,
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+  const deadline = now() + deadlineMs;
+  let lastError = 'no attempt';
+  for (;;) {
+    try {
+      const registry = readRegistry();
+      const response = await fetchImpl(`http://127.0.0.1:${registry.port}/health`,
+        { signal: AbortSignal.timeout(attemptTimeoutMs) });
+      if (!response.ok) throw new Error(`Health HTTP ${response.status}`);
+      const health = await response.json();
+      if (health.pid !== registry.pid) throw new Error(`Health pid ${health.pid} is not registry pid ${registry.pid}`);
+      if (health.build !== build) throw new Error(`Running daemon build ${health.build} differs from installed ${build}`);
+      return { registry, health };
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    if (now() + intervalMs > deadline) throw new Error(`Daemon did not become healthy: ${lastError}`);
+    await sleep(intervalMs);
+  }
+}
+
+/** Keep only the newest `keep` app backups; each is a full app bundle and one
+ *  accrued per deployment (32 copies, 2.5 GB by 2026-10-11). */
+export function pruneAppBackups(dir, keep = 3) {
+  if (!existsSync(dir)) return [];
+  const stamped = readdirSync(dir)
+    .map(name => ({ name, stamp: /^AgentDeck-(\d+)\.app$/.exec(name)?.[1] }))
+    .filter(entry => entry.stamp)
+    .sort((a, b) => Number(b.stamp) - Number(a.stamp));
+  const removed = stamped.slice(keep).map(entry => entry.name);
+  for (const name of removed) rmSync(join(dir, name), { recursive: true, force: true });
+  return removed;
+}
+
 async function deploy() {
   if (process.platform !== 'darwin') throw new Error('Local deployment requires macOS');
   const root = realpathSync(process.env.AGENTDECK_MAIN_CHECKOUT || process.cwd());
@@ -28,10 +83,10 @@ async function deploy() {
   mkdirSync(logs, { recursive: true });
   const lock = join(root, 'diagnostics/local-main-deploy.lock');
   mkdirSync(lock); // Exclusive across workflow and manual deployments.
-  const run = (name, command, args, timeout = 600_000) => {
+  const run = (name, command, args, timeout = 600_000, env = process.env) => {
     console.log(name);
     const fd = openSync(join(logs, `local-main-${name}.log`), 'w');
-    try { return execFileSync(command, args, { cwd: root, timeout, stdio: ['ignore', fd, fd] }); }
+    try { return execFileSync(command, args, { cwd: root, timeout, env, stdio: ['ignore', fd, fd] }); }
     catch (error) { throw new Error(`${name} failed; see diagnostics/logs/local-main-${name}.log`, { cause: error }); }
     finally { closeSync(fd); }
   };
@@ -71,22 +126,20 @@ async function deploy() {
     if (existsSync(target)) renameSync(target, backup);
     try {
       renameSync(staged, target);
-      run('open-app', 'open', [target]);
+      run('open-app', 'open', [target], 60_000, detachedEnv());
     } catch (error) {
       if (existsSync(target)) renameSync(target, staged);
-      if (existsSync(backup)) { renameSync(backup, target); execFileSync('open', [target]); }
+      if (existsSync(backup)) { renameSync(backup, target); execFileSync('open', [target], { env: detachedEnv() }); }
       throw error;
     }
     run('daemon-restart', process.execPath, ['bridge/dist/cli.js', 'daemon', 'restart'], 180_000);
     run('plugin-deploy', 'pnpm', ['plugin:deploy']);
     run('plugin-check', 'pnpm', ['plugin:check']);
-    const registry = JSON.parse(readFileSync(join(homedir(), '.agentdeck/daemon.json'), 'utf8'));
-    const response = await fetch(`http://127.0.0.1:${registry.port}/health`, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) throw new Error(`Health HTTP ${response.status}`);
-    const health = await response.json();
     const { computeDistBuildIdentity } = await import(pathToFileURL(join(root, 'bridge/dist/daemon-build-identity.js')));
     const build = computeDistBuildIdentity().id;
-    if (health.pid !== registry.pid || !build || health.build !== build) throw new Error('Running daemon differs from the installed build');
+    if (!build) throw new Error('Installed daemon build identity is unknown');
+    const { registry, health } = await waitForDaemonHealth({ build,
+      readRegistry: () => JSON.parse(readFileSync(join(homedir(), '.agentdeck/daemon.json'), 'utf8')) });
     const runningAppPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'],
       { encoding: 'utf8', timeout: 5000 }).trim();
     const receipt = { verifiedAt: new Date().toISOString(), commit: sha, trigger: process.env.GITHUB_EVENT_NAME || 'manual',
@@ -95,6 +148,8 @@ async function deploy() {
     const receiptPath = join(root, 'diagnostics/latest-main-deployment.json');
     writeFileSync(`${receiptPath}.tmp`, JSON.stringify(receipt, null, 2));
     renameSync(`${receiptPath}.tmp`, receiptPath);
+    const pruned = pruneAppBackups(join(root, 'diagnostics/backups'));
+    if (pruned.length) console.log(`Pruned ${pruned.length} older app backup(s)`);
     console.log(`Deployed main ${sha.slice(0, 12)}; daemon ${build}; plugin runtime verified`);
   } finally { rmSync(lock, { recursive: true }); }
 }

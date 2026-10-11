@@ -10,6 +10,7 @@ import type { BridgeEvent } from './types.js';
 import type { VoiceManager } from './voice.js';
 import { onFrameRendered, offFrameRendered, setPreviewFps, getPreviewFps } from './pixoo/pixoo-bridge.js';
 import { STATE_COLORS } from '@agentdeck/shared';
+import { ManagedHookGate, managedHarnessFor, neutralHookReply, type ForeignHookForwarder } from './managed-hook-harness.js';
 
 // Canonical state→color map for the inline status pages, with UPPERCASE
 // aliases since the pages historically key on upper-cased state names.
@@ -43,6 +44,9 @@ export class HookServer extends EventEmitter {
 
   // Metadata for status page / health
   private meta: { agentType?: string; projectName?: string; clientCount?: number; state?: string; modelName?: string; effortLevel?: string } = {};
+  // Which hooks are this session's own is decided by their payload (#490).
+  private readonly hookGate = new ManagedHookGate(() => managedHarnessFor(this.meta.agentType));
+  private foreignHookForwarder: ForeignHookForwarder | null = null;
 
   constructor() {
     super();
@@ -50,6 +54,11 @@ export class HookServer extends EventEmitter {
     this.app.use(express.json());
     this.setupRoutes();
     this.server = createServer(this.app);
+  }
+
+  /** Where another harness's hooks go — the local daemon (see managed-hook-harness.ts). */
+  setForeignHookForwarder(forwarder: ForeignHookForwarder | null): void {
+    this.foreignHookForwarder = forwarder;
   }
 
   /** Register a callback that provides diagnostic dump data */
@@ -114,6 +123,16 @@ export class HookServer extends EventEmitter {
     if (token && validateToken(token)) return true;
     res.status(401).json({ error: 'Unauthorized — token required' });
     return false;
+  }
+
+  /** Hand another harness's hook to the daemon and relay its answer, so a
+   *  held decision still reaches the hook script; without a daemon the script
+   *  gets the neutral reply and its agent continues on its own. */
+  private async forwardForeignHook(eventName: string, body: string, pid: string | undefined, res: express.Response): Promise<void> {
+    const reply = await this.foreignHookForwarder?.(eventName, body, pid ? { 'X-AgentDeck-Pid': pid } : {}) ?? null;
+    if (res.headersSent) return;
+    if (reply) res.status(reply.status).type(reply.contentType).send(reply.body);
+    else res.type('application/json').send(neutralHookReply(eventName));
   }
 
   private setupRoutes(): void {
@@ -242,11 +261,23 @@ export class HookServer extends EventEmitter {
     // The hook script pipes stdin JSON to curl POST body
     this.app.post('/hooks/:eventName', (req, res) => {
       const eventName = req.params.eventName;
-      const data = req.body || {};
+      const data = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
 
       debug('Hook', `POST /hooks/${eventName} (${JSON.stringify(data).slice(0, 120)})`);
 
-      this.emit('hook', { event: eventName, data });
+      // Serialized before classify(), which may add a Codex thread's session_id.
+      const original = JSON.stringify(data);
+      const verdict = this.hookGate.classify(eventName, data);
+      if (verdict.kind === 'drop') {
+        res.type('application/json').send(neutralHookReply(eventName, true));
+        return;
+      }
+      if (verdict.kind === 'foreign') {
+        void this.forwardForeignHook(eventName, original, req.get('X-AgentDeck-Pid'), res);
+        return;
+      }
+
+      this.emit('hook', { event: verdict.eventName, data });
 
       // Managed (`agentdeck claude`) sessions own a PTY that handles permission
       // prompts natively, so they never gate via the hook. The PreToolUse and
@@ -254,12 +285,7 @@ export class HookServer extends EventEmitter {
       // an EMPTY body for both (echo → nothing → Claude's normal/PTY flow —
       // steering for managed sessions goes through the PTY, never the hook).
       // All other events ack as before.
-      if (eventName === 'PreToolUse' || eventName === 'Stop') {
-        res.type('application/json').send('');
-        return;
-      }
-      // Respond quickly so the hook doesn't block Claude
-      res.json({ received: true });
+      res.type('application/json').send(neutralHookReply(eventName, verdict.quiet));
     });
 
     // Voice transcription endpoint (accepts raw WAV body)

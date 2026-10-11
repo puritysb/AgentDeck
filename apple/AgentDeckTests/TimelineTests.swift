@@ -743,6 +743,20 @@ final class TimelineTests: XCTestCase {
         XCTAssertFalse(store.entries.contains { $0.raw == "Current" })
     }
 
+    func testTimelineStoreReplaceSnapshotKeepsTwoSessionsWithTheSameWords() {
+        // #490: the daemons dedup per session, so two Codex threads answering
+        // "pong" in the same millisecond are two rows; a reconnect snapshot
+        // must not fold one away. One session under both id forms is one row.
+        let store = TimelineStore()
+        store.replaceSnapshot([
+            TimelineEntry(ts: 2000, type: .chatResponse, raw: "pong", sessionId: "thread-a"),
+            TimelineEntry(ts: 2000, type: .chatResponse, raw: "pong", sessionId: "thread-b"),
+            TimelineEntry(ts: 2000, type: .chatResponse, raw: "pong", sessionId: "observed:codex:thread-a"),
+        ])
+        XCTAssertEqual(store.entries.count, 2)
+        XCTAssertEqual(Set(store.entries.compactMap { $0.sessionId.map(ObservedAgentRules.rawSessionId) }), ["thread-a", "thread-b"])
+    }
+
     func testTimelineStoreReplaceSnapshotDropsLowSignalNoise() {
         let store = TimelineStore()
         store.replaceSnapshot([

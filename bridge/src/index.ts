@@ -48,6 +48,7 @@ import {
   findAvailablePort,
   detectTmuxSession,
   resolveDaemonTarget,
+  findDaemonPortAsync,
   deriveRemoteAttachOpts,
   isLoopbackHost,
   type DaemonTarget,
@@ -66,6 +67,7 @@ import {
 } from './modules/index.js';
 import { allModulesOff, type ModuleConfigs } from './modules/types.js';
 import type { HookServer } from './hook-server.js';
+import { createDaemonHookForwarder } from './managed-hook-harness.js';
 import {
   onESP32Message,
   sendWifiProvisionToAll,
@@ -422,6 +424,12 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     hookServer.setVoiceManager(voiceManager);
     hookServer.onApiUsage(() => ({ usage: core.cachedApiUsage, fetchedAt: core.lastApiFetchTime }));
   }
+  // Another harness's hooks (a Codex run inside this Claude PTY inherits
+  // AGENTDECK_PORT) belong to their own observed session on the local daemon.
+  hookServer?.setForeignHookForwarder(createDaemonHookForwarder({
+    ownPort: () => core.port,
+    findDaemonPort: async () => (await findDaemonPortAsync())?.port ?? null,
+  }));
   const broadcastSse = (event: BridgeEvent) => hookServer?.broadcastSse(event);
   core.setSseBroadcast(broadcastSse);
 

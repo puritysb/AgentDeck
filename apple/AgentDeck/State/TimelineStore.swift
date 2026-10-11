@@ -287,15 +287,20 @@ final class TimelineStore: ObservableObject, @unchecked Sendable {
     /// the ghost-row accumulation that bit the Android tablet before it moved
     /// to replace-on-connect. Since the snapshot is authoritative and TCP
     /// preserves the `connection` → `timeline_history` → live-event order, no
-    /// live row is lost by replacing. Dedup by (ts, type, raw) mirrors Android
-    /// `replaceSnapshot`'s `ts-type-summary` key; the storage filter runs here
-    /// too so a snapshot can't reintroduce noise. Mirrors android
-    /// `TimelineStore.kt::replaceSnapshot`.
+    /// live row is lost by replacing. An exact duplicate is the same
+    /// (ts, type, raw) in the same session and run — the daemons' dedup is
+    /// per-session (#490), so two sessions writing the same words in the same
+    /// millisecond stay two rows here too, as they do live via `addEntry`. The
+    /// session is compared in its bare form so `observed:codex:<id>` and `<id>`
+    /// are one session. The storage filter runs here too so a snapshot can't
+    /// reintroduce noise. Mirrors android `TimelineStore.kt::replaceSnapshot`.
     func replaceSnapshot(_ snapshot: [TimelineEntry]) {
         var seen = Set<String>()
         var deduped: [TimelineEntry] = []
         for entry in snapshot.compactMap({ normalizeTimelineEntryForStorage($0) }) {
-            let key = "\(entry.ts)-\(entry.type.rawValue)-\(entry.raw)"
+            let session = ObservedAgentRules.rawSessionId(entry.sessionId ?? "")
+            let started = entry.startedAt.map { "\($0)" } ?? ""
+            let key = "\(entry.ts)-\(entry.type.rawValue)-\(entry.raw)-\(session)-\(entry.runId ?? "")-\(started)"
             if seen.insert(key).inserted { deduped.append(entry) }
         }
         deduped.sort { $0.ts < $1.ts }
