@@ -1640,7 +1640,6 @@ final class TerrariumCloudFoldTests: XCTestCase {
         }
     }
 }
-#endif
 
 // Counts heap allocations made by one thread through libmalloc's logging hook
 // (the one stack logging uses). Declared at file scope: a C callback must not
@@ -1919,3 +1918,5 @@ final class JarBuddyFormsTests: XCTestCase {
         }
     }
 }
+
+#endif

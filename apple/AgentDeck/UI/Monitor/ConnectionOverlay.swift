@@ -87,6 +87,9 @@ enum ConnectionOverlayPhase: Equatable {
 }
 
 struct ConnectionOverlay: View {
+    enum Presentation { case overlay, onboarding }
+    var presentation: Presentation = .overlay
+
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @EnvironmentObject private var preferences: AppPreferences
     @State private var manualUrl = ""
@@ -114,144 +117,26 @@ struct ConnectionOverlay: View {
     }
 
     var body: some View {
-        // Scrim + centered card
-        ZStack {
-            DesignTokens.UI.waterDeep
-                .opacity(0.8)
-                .ignoresSafeArea()
-
-            GeometryReader { geo in
-                ScrollView {
-                    VStack(spacing: 0) {
-                        Spacer(minLength: 0)
-                        VStack(spacing: 16) {
-                    // Brand icon + title
-                    AgentDeckLogo(size: 80, color: TerrariumHUD.tetraNeon)
-
-                    Text("AgentDeck")
-                        .font(.title.bold())
-                        .foregroundStyle(.white)
-
-                    // Status subtitle — matches Android logic
-                    Text(phase.statusText)
-                        .font(.subheadline)
-                        .foregroundStyle(slateText)
-
-                    // Local Network permission denied — the browser can never find the
-                    // daemon until the user enables it, so guide them there directly
-                    // instead of spinning on "Searching…" forever.
-                    if stateHolder.discovery.localNetworkDenied {
-                        localNetworkDeniedCard
-                    }
-
-                    // Reconnecting details (stop button only)
-                    if isReconnecting {
-                        Button {
-                            // Not `connection.disconnect()` — that stops the socket
-                            // but leaves the waterfall mid-stage, which renders as a
-                            // search with no work behind it and no way back.
-                            stateHolder.stopConnectionAttempts()
-                        } label: {
-                            Text("Stop Reconnecting")
-                                .font(.subheadline)
-                                .foregroundStyle(slateText)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(slateText.opacity(0.4), lineWidth: 1)
-                                )
+        Group {
+            if presentation == .onboarding {
+                // The onboarding owns the scroll view, including its guidance.
+                // A nested full-screen overlay compressed that guidance on iPhone.
+                connectionCard
+            } else {
+                ZStack {
+                    DesignTokens.UI.waterDeep.opacity(0.8).ignoresSafeArea()
+                    GeometryReader { geo in
+                        ScrollView {
+                            VStack(spacing: 0) {
+                                Spacer(minLength: 0)
+                                connectionCard
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height)
                         }
-                        .buttonStyle(.plain)
+                        .scrollIndicators(.hidden)
                     }
-
-                    // Connection error from the last attempted URL.
-                    if let error = stateHolder.connection.lastError,
-                       stateHolder.connection.status == .disconnected {
-                        Text(error)
-                            .font(.caption)
-                            .monospaced()
-                            .foregroundStyle(phase == .approvalRequired ? DesignTokens.UI.attn : DesignTokens.UI.error)
-                            .multilineTextAlignment(.center)
-
-                    }
-
-                    if let target = stateHolder.retryBridgeURL,
-                       stateHolder.connection.status == .disconnected {
-                        Button(ConnectionLexicon.retryConnection) { stateHolder.connectTo(url: target) }
-                            .buttonStyle(.borderedProminent)
-                            .tint(DesignTokens.UI.cyan)
-                        Text(PairingCredential.endpoint(of: target) ?? "")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(slateText)
-                    }
-
-                    // Connection options (disconnected or reconnecting with WiFi alternatives)
-                    if stateHolder.connection.status == .disconnected || isReconnecting {
-
-                        // mDNS discovered bridges — show daemon only
-                        // (session bridges don't serve external clients)
-                        let daemonBridges = stateHolder.discovery.bridges.filter { $0.agentType == "daemon" }
-                        if !daemonBridges.isEmpty {
-                            VStack(spacing: 8) {
-                                Text(isReconnecting ? "Or connect via WiFi:" : "Discovered")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(slateText)
-                                ForEach(daemonBridges) { bridge in
-                                    bridgeRow(bridge, isLocal: false)
-                                }
-                            }
-                        } else if !isReconnecting {
-                            // The Bonjour browser intentionally remains alive so a Mac
-                            // appearing later can reconnect. Only the bounded foreground
-                            // attempt gets a progress indicator.
-                            if phase.showsActivityIndicator {
-                                ProgressView()
-                                    .tint(DesignTokens.UI.cyan)
-                            }
-
-                            if phase == .notFound && stateHolder.connection.authenticationRequiredURL == nil {
-                                noMacRecovery
-                            }
-                        }
-                    }
-
-                    // Manual entry — toggle to expand inline TextField
-                    if showManualEntry {
-                        HStack {
-                            TextField("ws://192.168.1.x:9120", text: $manualUrl)
-                                .textFieldStyle(.roundedBorder)
-                                #if os(iOS)
-                                .autocapitalization(.none)
-                                .keyboardType(.URL)
-                                #endif
-
-                            Button("Connect") {
-                                guard !manualUrl.isEmpty else { return }
-                                stateHolder.connectTo(url: manualUrl)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(DesignTokens.UI.cyan)
-                        }
-                    }
-
-                    Button(showManualEntry ? "Hide" : "Enter URL Manually") {
-                        showManualEntry.toggle()
-                    }
-                    .font(.caption)
-                    .foregroundStyle(slateText.opacity(0.7))
                 }
-                .padding(24)
-                .frame(maxWidth: 360)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(DesignTokens.UI.waterMid.opacity(0.9))
-                )
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
-                }
-                .scrollIndicators(.hidden)
             }
         }
         #if os(iOS)
@@ -270,6 +155,132 @@ struct ConnectionOverlay: View {
             .environmentObject(preferences)
         }
         #endif
+    }
+
+    private var connectionCard: some View {
+        VStack(spacing: 16) {
+            if presentation == .overlay {
+                AgentDeckLogo(size: 80, color: TerrariumHUD.tetraNeon)
+                Text("AgentDeck")
+                    .font(.title.bold())
+                    .foregroundStyle(.white)
+            }
+
+            // Status subtitle — matches Android logic
+            Text(phase.statusText)
+                .font(.subheadline)
+                .foregroundStyle(slateText)
+
+            // Local Network permission denied — the browser can never find the
+            // daemon until the user enables it, so guide them there directly
+            // instead of spinning on "Searching…" forever.
+            if stateHolder.discovery.localNetworkDenied {
+                localNetworkDeniedCard
+            }
+
+            // Reconnecting details (stop button only)
+            if isReconnecting {
+                Button {
+                    // Not `connection.disconnect()` — that stops the socket
+                    // but leaves the waterfall mid-stage, which renders as a
+                    // search with no work behind it and no way back.
+                    stateHolder.stopConnectionAttempts()
+                } label: {
+                    Text("Stop Reconnecting")
+                        .font(.subheadline)
+                        .foregroundStyle(slateText)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(slateText.opacity(0.4), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Connection error from the last attempted URL.
+            if let error = stateHolder.connection.lastError,
+               stateHolder.connection.status == .disconnected {
+                Text(error)
+                    .font(.caption)
+                    .monospaced()
+                    .foregroundStyle(phase == .approvalRequired ? DesignTokens.UI.attn : DesignTokens.UI.error)
+                    .multilineTextAlignment(.center)
+
+            }
+
+            if let target = stateHolder.retryBridgeURL,
+               stateHolder.connection.status == .disconnected {
+                Button(ConnectionLexicon.retryConnection) { stateHolder.connectTo(url: target) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignTokens.UI.cyan)
+                Text(PairingCredential.endpoint(of: target) ?? "")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(slateText)
+            }
+
+            // Connection options (disconnected or reconnecting with WiFi alternatives)
+            if stateHolder.connection.status == .disconnected || isReconnecting {
+
+                // mDNS discovered bridges — show daemon only
+                // (session bridges don't serve external clients)
+                let daemonBridges = stateHolder.discovery.bridges.filter { $0.agentType == "daemon" }
+                if !daemonBridges.isEmpty {
+                    VStack(spacing: 8) {
+                        Text(isReconnecting ? "Or connect via WiFi:" : "Discovered")
+                            .font(.caption.bold())
+                            .foregroundStyle(slateText)
+                        ForEach(daemonBridges) { bridge in
+                            bridgeRow(bridge, isLocal: false)
+                        }
+                    }
+                } else if !isReconnecting {
+                    // The Bonjour browser intentionally remains alive so a Mac
+                    // appearing later can reconnect. Only the bounded foreground
+                    // attempt gets a progress indicator.
+                    if phase.showsActivityIndicator {
+                        ProgressView()
+                            .tint(DesignTokens.UI.cyan)
+                    }
+
+                    if phase == .notFound && stateHolder.connection.authenticationRequiredURL == nil {
+                        noMacRecovery
+                    }
+                }
+            }
+
+            // Manual entry — toggle to expand inline TextField
+            if showManualEntry {
+                HStack {
+                    TextField("ws://192.168.1.x:9120", text: $manualUrl)
+                        .textFieldStyle(.roundedBorder)
+                        #if os(iOS)
+                        .autocapitalization(.none)
+                        .keyboardType(.URL)
+                        #endif
+
+                    Button("Connect") {
+                        guard !manualUrl.isEmpty else { return }
+                        stateHolder.connectTo(url: manualUrl)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(DesignTokens.UI.cyan)
+                }
+            }
+
+            Button(showManualEntry ? "Hide" : "Enter URL Manually") {
+                showManualEntry.toggle()
+            }
+            .font(.caption)
+            .foregroundStyle(slateText.opacity(0.7))
+        }
+        .padding(24)
+        .frame(maxWidth: 360)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(DesignTokens.UI.waterMid.opacity(0.9))
+        )
     }
 
     // MARK: - Helpers
@@ -348,16 +359,18 @@ struct ConnectionOverlay: View {
             .buttonStyle(.plain)
 
             #if os(iOS)
-            Button {
-                showDevicePreview = true
-            } label: {
-                Label("Explore without a Mac", systemImage: "rectangle.3.group")
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+            if presentation == .overlay {
+                Button {
+                    showDevicePreview = true
+                } label: {
+                    Label("Explore without a Mac", systemImage: "rectangle.3.group")
+                        .font(.subheadline.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+                .tint(DesignTokens.UI.cyan)
             }
-            .buttonStyle(.bordered)
-            .tint(DesignTokens.UI.cyan)
             #endif
         }
     }
@@ -385,7 +398,7 @@ struct ConnectionOverlay: View {
                         .padding(.vertical, 2)
                         .background(DesignTokens.UI.ok.opacity(0.2), in: Capsule())
                 }
-                if let agent = bridge.agentType {
+                if presentation == .overlay, let agent = bridge.agentType {
                     Text(agent)
                         .font(.caption2)
                         .foregroundStyle(DesignTokens.UI.cyan)

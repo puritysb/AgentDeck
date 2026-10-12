@@ -1,3 +1,4 @@
+#if os(macOS)
 import XCTest
 @testable import AgentDeck
 
@@ -66,3 +67,4 @@ final class OpenClawApprovalErrorTests: XCTestCase {
         XCTAssertFalse(OpenClawApprovalRules.isApprovalGoneError([:]))
     }
 }
+#endif

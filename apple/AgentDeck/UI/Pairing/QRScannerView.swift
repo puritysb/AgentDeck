@@ -24,6 +24,7 @@ struct QRScannerView: View {
     /// Called when the user taps "Cancel" without scanning.
     var onCancel: () -> Void
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authorizationStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
 
     var body: some View {
@@ -43,12 +44,19 @@ struct QRScannerView: View {
         }
         .background(Color.black.ignoresSafeArea())
         .onAppear {
+            authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
             if authorizationStatus == .notDetermined {
                 AVCaptureDevice.requestAccess(for: .video) { granted in
                     DispatchQueue.main.async {
                         authorizationStatus = granted ? .authorized : .denied
                     }
                 }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                // The scanner remains presented while Settings changes access.
+                authorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
             }
         }
     }

@@ -969,15 +969,20 @@ struct SettingsScreen: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Divider()
+            Button("Set Up AgentDeck…") {
+                #if os(iOS)
+                dismiss()
+                #endif
+                preferences.hasSeenOnboarding = false
+                #if os(macOS)
+                openWindow(id: "dashboard")
+                #endif
+            }
             // App-launch + menu-bar prefs are macOS-only — iOS has no
             // separate dashboard window to auto-open and no menu bar.
             // `openDashboardOnLaunch` is read in AgentDeckApp.swift's macOS
             // scene; `menuBarIconStyle` is read by the macOS MenuBarExtra.
             #if os(macOS)
-            Button("Set Up AgentDeck…") {
-                preferences.hasSeenOnboarding = false
-                openWindow(id: "dashboard")
-            }
             Button("Choose Notifications…") {
                 Task { await NotificationPermission.chooseFromUserAction() }
             }

@@ -236,6 +236,47 @@ enum IntegrationStatus: Equatable {
 /// per descriptor. Centralized so SettingsScreen, Onboarding and the
 /// Dashboard SetupCard can't drift in their interpretation of state.
 enum IntegrationStatusEvaluator {
+    /// A companion has no evidence about the Mac's local file grants or keys.
+    /// Missing telemetry must not become "not configured" or a local repair action.
+    static func companionStatus(
+        for descriptor: IntegrationDescriptor, state: DashboardState, hostConnected: Bool
+    ) -> IntegrationStatus {
+        guard hostConnected else {
+            return .awaitingData(detail: "Connect to your Mac to see integration activity.")
+        }
+        let hasData: Bool
+        switch descriptor.id {
+        case "claude": hasData = state.oauthConnected == true
+        case "codex": hasData = state.codexAuthMode?.isEmpty == false
+        case "openclaw":
+            switch openClawStatus(state: state) {
+            case .failed:
+                return .failed(detail: "Review this integration in AgentDeck on your Mac.")
+            case .connected(let detail): return .connected(detail: detail)
+            case .awaitingData(let detail): return .awaitingData(detail: detail)
+            case .unsupported(let detail): return .unsupported(detail: detail)
+            default: hasData = false
+            }
+        case "antigravity": hasData = state.antigravityStatus != nil
+        case "anthropic-admin": hasData = state.adminApiTodayInputTokens != nil || state.adminApiMonthInputTokens != nil
+        case "zai":
+            let status = zaiStatus(state: state, hasKey: false)
+            if case .failed = status {
+                return .failed(detail: "Review this integration in AgentDeck on your Mac.")
+            }
+            if case .connected = status { return status }
+            hasData = false
+        default: hasData = false
+        }
+        if let agentType = descriptor.iconAgentType,
+           state.siblingSessions.contains(where: { $0.alive && $0.agentType == agentType }) {
+            return .connected(detail: "Session activity received from your Mac.")
+        }
+        return hasData
+            ? .connected(detail: "Integration data received from your Mac.")
+            : .awaitingData(detail: "No activity received yet. Check this integration in AgentDeck on your Mac.")
+    }
+
     static func status(
         for descriptor: IntegrationDescriptor,
         state: DashboardState,
@@ -452,12 +493,14 @@ struct IntegrationRow: View {
                     .foregroundStyle(TerrariumHUD.subtext.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
+            #if os(macOS)
             if status.needsAttention, let instructions = descriptor.connectInstructions {
                 Text(instructions)
                     .font(.system(size: 10))
                     .foregroundStyle(TerrariumHUD.subtext.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
             }
+            #endif
         }
         // iOS surfaces these rows as read-only mirrors of Mac state — no
         // editor in this view tree responds to taps on iOS. Soft opacity
@@ -576,18 +619,44 @@ struct IntegrationsView<AccountSlot: View, ApiKeySlot: View>: View {
     /// Inline editor for API key rows (e.g. SecureField + Save/Clear).
     @ViewBuilder let apiKeySlot: (IntegrationDescriptor) -> ApiKeySlot
 
+    private var accountHint: String {
+        #if os(iOS)
+        "Activity reported by your Mac. Configure integrations in AgentDeck on that Mac."
+        #else
+        "AgentDeck reads local sessions; repair tools stay in each row's Advanced section."
+        #endif
+    }
+
+    private var apiKeyHint: String {
+        #if os(iOS)
+        "Optional data configured in AgentDeck on your Mac. No key is needed on this device."
+        #else
+        "Paste a key only if you want extra data AgentDeck can't infer from local state."
+        #endif
+    }
+
+    private func status(for descriptor: IntegrationDescriptor) -> IntegrationStatus {
+        #if os(iOS)
+        IntegrationStatusEvaluator.companionStatus(for: descriptor, state: stateHolder.state,
+            hostConnected: stateHolder.connection.status == .connected)
+        #else
+        IntegrationStatusEvaluator.status(for: descriptor, state: stateHolder.state,
+            preferences: preferences, anthropicKeySaved: anthropicKeySaved, zaiKeySaved: zaiKeySaved)
+        #endif
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             section(
                 title: "Accounts",
-                hint: "AgentDeck reads local sessions; repair tools stay in each row's Advanced section.",
+                hint: accountHint,
                 rows: IntegrationCatalog.all.filter { $0.kind == .accountLinked },
                 slot: { accountSlot($0) }
             )
 
             section(
                 title: "Optional API keys",
-                hint: "Paste a key only if you want extra data AgentDeck can't infer from local state.",
+                hint: apiKeyHint,
                 rows: IntegrationCatalog.all.filter { $0.kind == .apiKey },
                 slot: { apiKeySlot($0) }
             )
@@ -616,13 +685,7 @@ struct IntegrationsView<AccountSlot: View, ApiKeySlot: View>: View {
                 VStack(alignment: .leading, spacing: 6) {
                     IntegrationRow(
                         descriptor: descriptor,
-                        status: IntegrationStatusEvaluator.status(
-                            for: descriptor,
-                            state: stateHolder.state,
-                            preferences: preferences,
-                            anthropicKeySaved: anthropicKeySaved,
-                            zaiKeySaved: zaiKeySaved
-                        ),
+                        status: status(for: descriptor),
                         mode: .settings
                     )
                     slot(descriptor)

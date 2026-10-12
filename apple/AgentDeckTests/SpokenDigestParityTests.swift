@@ -1,3 +1,4 @@
+#if os(macOS)
 import XCTest
 @testable import AgentDeck
 
@@ -94,3 +95,4 @@ final class SpokenDigestParityTests: XCTestCase {
         XCTAssertEqual(DaemonServer.spokenDigest("   \n \n"), "")
     }
 }
+#endif

@@ -1,8 +1,66 @@
 import XCTest
+@testable import AgentDeck
 #if os(macOS)
 import UserNotifications
 #endif
-@testable import AgentDeck
+
+#if os(iOS)
+import SwiftUI
+import UIKit
+
+@MainActor
+final class CompanionOnboardingLayoutTests: XCTestCase {
+    func testConnectionGuidanceScrollsWithRecoveryAbovePinnedControls() async throws {
+        let suite = "CompanionOnboarding.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = AppPreferences(defaults: defaults)
+        let state = AgentStateHolder()
+        for (size, typeSize) in [
+            (CGSize(width: 375, height: 667), DynamicTypeSize.large),
+            (CGSize(width: 667, height: 375), .large),
+            (CGSize(width: 375, height: 667), .accessibility3),
+            (CGSize(width: 768, height: 1024), .large),
+        ] {
+            let view = OnboardingScreen(connecting: true)
+                .environmentObject(preferences)
+                .environmentObject(state)
+                .environment(\.dynamicTypeSize, typeSize)
+            let host = UIHostingController(rootView: view)
+            let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.frame = window.bounds
+            host.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            host.view.layoutIfNeeded()
+
+            func scrollViews(in view: UIView) -> [UIScrollView] {
+                ((view as? UIScrollView).map { [$0] } ?? []) + view.subviews.flatMap { scrollViews(in: $0) }
+            }
+            let scrolls = scrollViews(in: host.view)
+            XCTAssertEqual(scrolls.count, 1, "Guidance and recovery must share one scroll surface")
+            let scroll = try XCTUnwrap(scrolls.first)
+            let frame = scroll.convert(scroll.bounds, to: host.view)
+            XCTAssertLessThanOrEqual(frame.minY, host.view.safeAreaInsets.top + 1,
+                "A fixed heading above the scroll view truncates setup instructions on small phones")
+            XCTAssertLessThan(frame.maxY, host.view.bounds.maxY - 44,
+                "Back / Dashboard / Explore must remain outside the scrolling content")
+            if typeSize.isAccessibilitySize || size.height < 400 {
+                XCTAssertGreaterThan(scroll.contentSize.height, scroll.bounds.height)
+            }
+            let renderer = UIGraphicsImageRenderer(bounds: host.view.bounds)
+            let screenshot = renderer.image { _ in host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true) }
+            let attachment = XCTAttachment(image: screenshot)
+            attachment.name = "companion-setup-\(Int(size.width))x\(Int(size.height))-\(typeSize)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            window.isHidden = true
+        }
+        XCTAssertFalse(preferences.hasSeenOnboarding)
+    }
+}
+#endif
 
 @MainActor
 final class OnboardingFlowTests: XCTestCase {
@@ -117,6 +175,42 @@ final class OnboardingPresentationTests: XCTestCase {
 
 @MainActor
 final class OnboardingIntegrationTests: XCTestCase {
+    func testCompanionDoesNotInferMissingMacSetupFromMissingData() {
+        for descriptor in IntegrationCatalog.all {
+            let status = IntegrationStatusEvaluator.companionStatus(for: descriptor,
+                state: DashboardState(), hostConnected: true)
+            XCTAssertEqual(status.label, "Awaiting data", descriptor.id)
+            XCTAssertFalse(status.needsAttention, descriptor.id)
+            XCTAssertTrue(status.detail?.contains("on your Mac") == true, descriptor.id)
+        }
+    }
+
+    func testCompanionUsesLiveSessionsAndRejectsDisconnectedCachedEvidence() {
+        var state = DashboardState()
+        state.siblingSessions = [SessionInfo(id: "test", port: 9120, projectName: "Fixture", agentType: "claude-code")]
+        let received = IntegrationStatusEvaluator.companionStatus(for: IntegrationCatalog.claudeCode,
+            state: state, hostConnected: true)
+        XCTAssertEqual(received.label, "Connected")
+        XCTAssertEqual(IntegrationStatusEvaluator.companionStatus(for: IntegrationCatalog.claudeCode,
+            state: state, hostConnected: false).label, "Awaiting data")
+        state.siblingSessions[0].alive = false
+        XCTAssertEqual(IntegrationStatusEvaluator.companionStatus(for: IntegrationCatalog.claudeCode,
+            state: state, hostConnected: true).label, "Awaiting data")
+    }
+
+    func testCompanionKeepsExplicitHostFailuresActionableOnTheMac() {
+        var state = DashboardState()
+        state.gatewayAuthStatus = "auth_failed"
+        state.siblingSessions = [SessionInfo(id: "cached", port: 9120, projectName: "Fixture", agentType: "openclaw")]
+        let failure = IntegrationStatusEvaluator.companionStatus(for: IntegrationCatalog.openClaw,
+            state: state, hostConnected: true)
+        XCTAssertEqual(failure.label, "Auth failed")
+        XCTAssertTrue(failure.detail?.contains("on your Mac") == true)
+        state.gatewayAuthStatus = "unsupported_protocol"
+        XCTAssertEqual(IntegrationStatusEvaluator.companionStatus(for: IntegrationCatalog.openClaw,
+            state: state, hostConnected: true).label, "Unsupported")
+    }
+
     func testOpenCodeEnabledDoesNotClaimAConnectionBeforeASessionArrives() {
         let suite = "OnboardingIntegration.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

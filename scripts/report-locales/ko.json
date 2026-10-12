@@ -481,5 +481,7 @@
   "Do loopback MCP, direct HTTPS, local OAuth consent/revocation, private tunnel stdio token rotation, event delivery and correlated reports satisfy their contracts? Local and native fixtures do not prove real Dot or public ingress interoperability.": "루프백 MCP, 직접 HTTPS, 로컬 OAuth 동의·철회, 비공개 터널 표준입출력 연결의 토큰 교체, 이벤트 전달과 연결된 보고가 계약을 충족하는가? 로컬 및 네이티브 테스트는 실제 Dot이나 공개 접속의 상호 운용성을 입증하지 않는다.",
   "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)": "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts와 실험용 Dot 직접 호스트가 테스트에 명시된 대로 동작한다(아래 영역 표에 집계).",
   "real Dot subscription/report execution, hosted OAuth-provider interoperability or public relay deployment (the relay tests use a local receiver and test JWTs)": "실제 Dot 구독·보고 실행, 외부 OAuth 제공자와의 상호 운용성 또는 공개 배포(직접 호스트 테스트는 로컬 수신기와 테스트 JWT를 사용).",
-  "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host": "첫 설정 완료와 업그레이드 시 외관·페어링을 보존하며, 안내 종료 후에도 선택한 호스트를 유지합니다."
+  "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host": "첫 설정 완료와 업그레이드 시 외관·페어링을 보존하며, 안내 종료 후에도 선택한 호스트를 유지합니다.",
+  "Apple XCTest (macOS) + iOS build and onboarding layout tests": "Apple XCTest(macOS), iOS 빌드 및 온보딩 레이아웃 검사",
+  "iOS onboarding keeps guidance and recovery in one scroll view with pinned controls at phone portrait, landscape, accessibility text and iPad sizes; reopening retains preferences": "iOS 온보딩의 안내와 연결 복구가 휴대폰 세로·가로, 접근성 글자 크기, iPad에서 하나의 스크롤 안에 표시되고 탐색 버튼은 고정됩니다. 다시 열어도 설정이 유지됩니다."
 }

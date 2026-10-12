@@ -1882,6 +1882,7 @@ final class TimelineDayBreakTests: XCTestCase {
         XCTAssertNil(timelineDayBreakLabel(at: 1, in: grouped, now: now, calendar: seoul))
     }
 
+    #if os(macOS)
     // MARK: - Wire stamps are integers
 
     /// Epoch-ms stamps are held internally as `Double`, and serializing one
@@ -1925,5 +1926,6 @@ final class TimelineDayBreakTests: XCTestCase {
         XCTAssertEqual(DaemonServer.wireEpochMs(1_788_215_929_418.6), 1_788_215_929_419)
         XCTAssertEqual(DaemonServer.wireEpochMs(0), 0)
     }
+    #endif
 
 }

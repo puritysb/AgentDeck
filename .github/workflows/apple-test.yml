@@ -150,3 +150,30 @@ jobs:
 
       - name: Verify compiled Dot boundary
         run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}-iphonesimulator/AgentDeck.app" '${{ matrix.dot }}'
+
+      - name: Test companion onboarding layouts
+        if: matrix.configuration == 'Release'
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available --json | python3 -c 'import json, sys; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          xcodebuild test \
+            -project apple/AgentDeck.xcodeproj \
+            -scheme AgentDeck_iOS \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/AgentDeckDerivedData" \
+            -only-testing:AgentDeckTests_iOS/CompanionOnboardingLayoutTests \
+            -only-testing:AgentDeckTests_iOS/OnboardingPreferenceTests \
+            -only-testing:AgentDeckTests_iOS/OnboardingIntegrationTests \
+            -only-testing:AgentDeckTests_iOS/ConnectionOverlayTests \
+            -only-testing:AgentDeckTests_iOS/ForegroundSearchBoundTests \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -resultBundlePath "$RUNNER_TEMP/CompanionOnboarding.xcresult" \
+            | xcbeautify --renderer github-actions
+
+      - name: Upload companion layout results
+        if: always() && matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CompanionOnboarding-xcresult
+          path: ${{ runner.temp }}/CompanionOnboarding.xcresult

@@ -1,3 +1,4 @@
+#if os(macOS)
 import XCTest
 @testable import AgentDeck
 
@@ -194,3 +195,4 @@ final class OpenClawPluginApprovalRulesTests: XCTestCase {
         ]))
     }
 }
+#endif

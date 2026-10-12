@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Apple maintainers
-reviewed: 2026-07-22
-revision: 2026-07-22
+reviewed: 2026-10-12
+revision: 2026-10-12
 source_of_truth: docs/testflight-qa-checklist.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -36,30 +36,27 @@ Before starting, note your macOS version, device model, and any non-default acce
 
 > Goal: Confirm the app doesn't feel broken before the user has set anything up.
 
-- [ ] **A1**. Install the TestFlight build. On first launch, the **3-pane onboarding sheet** opens automatically over the dashboard. Tagline reads "Stop Chatting. Start Steering."
-- [ ] **A2**. Pane 2 asks "Are you already using an AI coding agent?" with two equally-weighted buttons. Clicking "Help me install one" reveals three agent cards (Claude Code, Codex, OpenCode). Each "Open Guide" button opens the correct official docs URL in a browser:
-  - Claude Code → `docs.claude.com/en/docs/claude-code/quickstart`
-  - Codex → `github.com/openai/codex`
-  - OpenCode → `opencode.ai/docs`
-- [ ] **A3**. Pane 3 mentions iOS companion + the word "Preview Devices". Clicking "Get Started" closes the sheet; `hasSeenOnboarding` flips to true.
-- [ ] **A4**. Onboarding **does not reappear** on subsequent launches.
-- [ ] **A5**. After onboarding closes, the **notification permission NSAlert** fires within ~1 second (not during onboarding). Message: "Enable AgentDeck notifications?" Grant or decline — either way, dialog does not reappear.
-- [ ] **A6**. Dashboard renders with an empty terrarium. An overlay card says "Start your first session." with a "Preview Devices" button and a "Got it" dismiss. The body text reads "Sessions appear automatically once the bridge picks one up — each one shows up here as a creature in the terrarium." (no Launch button, no terminal-launch prompt).
-- [ ] **A7**. Clicking "Preview Devices" opens a 1100×760 window with 17 standalone device previews in the sidebar. Changing agent/state/session-count picker updates all device previews live. No hardware required.
+- [ ] **A1**. A fresh install opens **Make yourself at home**. Choose a dashboard style; its preview is explicitly labeled as having no live sessions. Continue and Back preserve the choice.
+- [ ] **A2**. **Connect the agents you use** offers Claude Code and Codex setup through native file consent. Cancel leaves the agent unconfigured and offers another attempt. Granting access says ready/awaiting activity; only a received session says receiving. Other agents opens Integrations in Settings.
+- [ ] **A3**. **Your dashboard is yours** distinguishes live activity, configured observation without a session, and no configured agent. Extra devices remain optional. Preview Devices opens the real device gallery; Pair Device opens pairing.
+- [ ] **A4**. **Set Up Later** and **Open Dashboard** both dismiss orientation without fabricating agent configuration. It does not reappear on relaunch. Settings → Dashboard → **Set Up AgentDeck…** reopens it without resetting appearance, pairing, or consent.
+- [ ] **A5**. Notifications are requested only by **Choose Notifications…**. Denied authorization offers Settings; no notification dialog appears merely because onboarding completed.
+- [ ] **A6**. With no sessions, the dashboard explains where activity comes from and provides a setup entry. No session-launch button or companion-install prompt appears.
+- [ ] **A7**. Device Preview can be used without hardware. Changing device, agent, state, or session count changes the local preview; it must not be presented as a live connection.
 
 ---
 
 ## Section B — First-run experience (iOS)
 
-- [ ] **B1**. Install via TestFlight. First launch shows full-screen 4-pane onboarding ("Stop Chatting" → agent info → integrations → "Find your Mac").
-- [ ] **B2**. Local Network permission prompt appears after Get Started when discovery begins. Allow it.
-- [ ] **B3**. The final pane has a **Scan QR from Mac** button that opens a camera view. Camera permission prompt appears on first tap.
-- [ ] **B4**. With no AgentDeck Mac on the same Wi-Fi, foreground discovery ends within ~10 seconds. The spinner disappears, the stable text reads “No AgentDeck found on this network,” and Search Again + manual URL remain enabled.
-- [ ] **B5**. Tap **Explore without a Mac**. Device Preview opens locally; Device, Agent, State, and Sessions controls all update the rendered preview. Done returns to the no-Mac screen.
-- [ ] **B6**. Tap **Search Again** from the no-Mac screen. A new search starts (indicator returns), and it stops again on its own within ~10 seconds — the button is never inert.
-- [ ] **B7**. Force a failing connection (enter an unreachable `ws://` URL manually), then tap **Stop Reconnecting** while the retry ladder is running. The screen settles on the no-Mac state with no residual indicator, and Search Again still works.
-- [ ] **B8**. Start AgentDeck on a Mac on the same Wi-Fi after B4. The still-running Bonjour browser discovers it and the dashboard connects without relaunching the iPad app.
-- [ ] **B9**. Terrarium renders at a smooth framerate; creatures match the sessions on the Mac.
+- [ ] **B1**. A fresh install opens appearance selection, then **Find My Mac** opens connection guidance. Test iPhone SE-sized portrait, landscape, iPad, and accessibility text sizes: the full instructions and all connection choices must be reachable by scrolling; Back / Open Dashboard remain available.
+- [ ] **B2**. Local Network discovery starts when Find My Mac is pressed. Denial shows Settings guidance. Grant access in Settings and return; discovery/retry recovers without reinstalling.
+- [ ] **B3**. **Scan QR from Mac** requests the camera only when selected. Denial offers Open Settings / Close. Grant access in Settings and return to the still-presented scanner; it refreshes authorization. An unrelated QR reports a recoverable error. Real-camera success requires a physical device.
+- [ ] **B4**. With no host reachable, foreground discovery ends within ~10 seconds. The spinner disappears, “No AgentDeck found on this network,” Search Again, and manual URL remain available. A continuing Bonjour subscription is not progress.
+- [ ] **B5**. **Explore Without Connecting** opens local device previews. **Back to Setup** returns without completing orientation. Back returns to appearance without dropping an established connection.
+- [ ] **B6**. **Search Again** starts a bounded new attempt. With multiple discovered computers, choose a host explicitly; no arbitrary host receives a pairing attempt.
+- [ ] **B7**. Enter an unreachable URL with the keyboard visible. The input and Connect button remain reachable. **Stop Reconnecting** ends the attempt and retry remains functional. An approval-required host must show approval guidance rather than claiming a connection.
+- [ ] **B8**. **Open Dashboard** works even without a host. Settings → Display panels → **Set Up AgentDeck…** reopens orientation; dashboard style and saved pairing survive. Re-entering setup while connected must keep that connection.
+- [ ] **B9**. On a paired physical iPhone/iPad, a real session received from the Mac appears on the dashboard. Repeat after background/foreground and network loss. Simulator discovery/layout checks do not attest this physical-device path.
 
 ---
 
