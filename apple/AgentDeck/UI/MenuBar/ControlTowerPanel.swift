@@ -61,9 +61,11 @@ struct ControlTowerPanel: View {
             }
             .frame(maxHeight: .infinity)
 
+            #if AGENTDECK_DOT_PREVIEW
             if let dot = stateHolder.state.dot, dot.configured && stateHolder.state.bridgeConnected {
                 DotSurfaceView(snapshot: dot).padding(.horizontal, 10).padding(.bottom, 8)
             }
+            #endif
             bottomActionArea
         }
         .frame(

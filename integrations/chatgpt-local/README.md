@@ -4,7 +4,10 @@ This is a private test package, not a public-directory or zero-configuration rel
 The MCP endpoint runs inside AgentDeck on IPv4 loopback. No public server, tunnel,
 API key, downloaded helper or ChatGPT account credential is required by the endpoint.
 
-On macOS, open Dot settings, choose **Set up local connection**, then **Start connection**.
+For the native macOS experiment, select the explicit `AgentDeck_DotPreview_macOS`
+scheme first. Standard macOS/iOS builds exclude Dot entirely; see the
+[build configurations](../../RELEASING.md#dot-development-and-store-builds).
+In that preview, open Dot settings, choose **Set up local connection**, then **Start connection**.
 For the Node daemon, `agentdeck dot init-local` creates a new private configuration and
 refuses to replace an existing one. Activate it with `agentdeck daemon restart`.
 

@@ -222,10 +222,12 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             codexCreditBalance: live.source.codexRateLimits?.activeCodexCredits()?.balance ?? -1
         ),
         focusedSessionId: live.focusedSessionId,
-        navigable: live.navigable,
-        dotLabel: live.source.dot?.configured == true ? live.source.dot?.label : nil
+        navigable: live.navigable
     )
+    #if AGENTDECK_DOT_PREVIEW
+    input.dotLabel = live.source.dot?.configured == true ? live.source.dot?.label : nil
     input.dotAppearance = live.source.dot?.appearance
+    #endif
     return input
 }
 
@@ -563,6 +565,7 @@ private struct D200HSlotTile: View {
                 .padding(size * 0.055)
             }
         case .info(let icon, _):
+            #if AGENTDECK_DOT_PREVIEW
             if icon == "dot" {
                 VStack(spacing: 3) {
                     DotCharacterImage(appearance: slot.dotAppearance,
@@ -578,6 +581,13 @@ private struct D200HSlotTile: View {
                 .multilineTextAlignment(.center)
                 .padding(size * 0.06)
             }
+            #else
+            Text(slot.label)
+                .font(.system(size: size * 0.11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .padding(size * 0.06)
+            #endif
         case .nextPage:
             VStack(spacing: 2) {
                 Image(systemName: "ellipsis")

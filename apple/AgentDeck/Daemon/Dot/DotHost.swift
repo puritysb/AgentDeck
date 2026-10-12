@@ -174,7 +174,7 @@ final class DotHost {
         }
         return result
     }
-    #if DEBUG
+    #if DEBUG || AGENTDECK_DOT_PREVIEW
     /// Test seam: route requests through `handle` without the Keychain, a listener or daemon ownership.
     func serveForTesting(config: DotHostConfiguration, oauth: DotOAuth, store: DotMCPStore, _ request: DotHTTPRequest) async -> DotHTTPResponse {
         self.config = config; self.oauth = oauth; self.store = store

@@ -328,3 +328,20 @@ When adding tests, prioritize by impact:
 4. **Protocol handling** — client-server contract
 5. **Android state/network** — cross-platform parity
 6. **Renderers** — snapshot tests if visual regressions matter
+
+## Apple Dot build isolation
+
+The same Apple targets have Store (`Debug`/`Release`) and explicit DotPreview
+configurations. `pnpm verify:changed` checks macOS XCTest in both variants, optimized
+Store builds on macOS/iOS, and an optimized preview on both platforms. The native runner is
+`apple/scripts/verify-build.sh`; its default derived data is checkout-local.
+`AGENTDECK_APPLE_DERIVED_DATA` can select another isolated build cache.
+
+`AppleBuildBoundaryTests` verifies compiled/resource identity, incoming external Dot
+snapshot isolation and unchanged matrix output in Store builds. Dot's own hosting tests
+remain active in DotPreview. `scripts/__tests__/apple-dot-build.test.ts` exercises the
+artifact verifier's rejection paths with macOS/iOS fixtures, including Debug dylibs,
+leaked resources and mislabeled previews. `verify-appstore-archive.sh` runs the same
+check with `excluded` against the actual submitted app. These checks do not prove
+Cloudflare deployment, real Dot interoperability, UI/device acceptance or App Review.
+See [the configurations and release procedure](../RELEASING.md#dot-development-and-store-builds).

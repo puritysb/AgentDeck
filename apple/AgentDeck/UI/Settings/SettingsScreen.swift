@@ -230,7 +230,9 @@ struct SettingsScreen: View {
     /// have to know what those mean to find the right setting.
     enum SettingsSection: Hashable, Identifiable {
         case integrations
+        #if AGENTDECK_DOT_PREVIEW
         case dot
+        #endif
         case dashboard
         case about
         case connection
@@ -246,7 +248,9 @@ struct SettingsScreen: View {
         var title: String {
             switch self {
             case .integrations:    "Integrations"
+            #if AGENTDECK_DOT_PREVIEW
             case .dot:             "Dot"
+            #endif
             case .dashboard:       "Dashboard"
             case .about:           "About"
             case .connection:      "Connection"
@@ -262,7 +266,9 @@ struct SettingsScreen: View {
         var icon: String {
             switch self {
             case .integrations:    "link"
+            #if AGENTDECK_DOT_PREVIEW
             case .dot:             "circle"
+            #endif
             case .dashboard:       "macwindow"
             case .about:           "info.circle"
             case .connection:      "network"
@@ -284,8 +290,10 @@ struct SettingsScreen: View {
             switch self {
             case .integrations:
                 "Wire up Claude Code, OpenClaw, and Anthropic API — everything AgentDeck talks to."
+            #if AGENTDECK_DOT_PREVIEW
             case .dot:
                 "Connect Dot and choose how it appears on your displays."
+            #endif
             case .dashboard:
                 "What shows up on the terrarium and in the menu bar."
             case .about:
@@ -308,7 +316,11 @@ struct SettingsScreen: View {
         }
     }
 
+    #if AGENTDECK_DOT_PREVIEW
     private static let essentialSections: [SettingsSection] = [.integrations, .dot, .dashboard, .about]
+    #else
+    private static let essentialSections: [SettingsSection] = [.integrations, .dashboard, .about]
+    #endif
     private static let advancedSections: [SettingsSection] = [.connection, .daemon, .pairing, .display, .hardware, .evaluation, .timelineSummary]
 
     private var macOSSettings: some View {
@@ -382,11 +394,15 @@ struct SettingsScreen: View {
                 codexObservationContent
                 Divider()
                 servicesContent
+                #if AGENTDECK_DOT_PREVIEW
                 Divider()
                 Button("Dot connection…") { selectedSection = .dot }
+                #endif
             }
+        #if AGENTDECK_DOT_PREVIEW
         case .dot:
             DotConnectionSetupView()
+        #endif
         case .dashboard:
             dashboardContent
         case .about:

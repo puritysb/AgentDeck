@@ -303,8 +303,12 @@ public struct D200HUsage: Equatable, Sendable {
 public struct D200HDeckInput: Sendable {
     public var state: String
     public var sessions: [D200HSession]
+    #if AGENTDECK_DOT_PREVIEW
     public var dotLabel: String?
+    #endif
+    #if AGENTDECK_DOT_PREVIEW
     var dotAppearance: DotAppearance? = nil
+    #endif
     public var usage: D200HUsage?
     /// When set and equal to the open session id, that session's options are
     /// treated as navigable (TUI ❯ cursor) → `select_option`; otherwise a
@@ -329,7 +333,9 @@ public struct D200HDeckInput: Sendable {
         self.focusedSessionId = focusedSessionId
         self.question = question
         self.navigable = navigable
+        #if AGENTDECK_DOT_PREVIEW
         self.dotLabel = dotLabel
+        #endif
     }
 }
 
@@ -441,7 +447,9 @@ public struct D200HUsagePairWindow: Equatable, Sendable {
 
 /// One key of the deck, addressed by `col`/`row` (index == row*GRID_COLS+col).
 public struct D200HKeySlot: Equatable, Sendable {
+    #if AGENTDECK_DOT_PREVIEW
     var dotAppearance: DotAppearance? = nil
+    #endif
     public let position: String        // "col_row"
     public let col: Int
     public let row: Int
@@ -522,9 +530,13 @@ public enum D200HLayoutModel {
         let sessions = sortSessions(foldCodexSessionsForDisplay(input.sessions))
 
         // Same sparse-grid guard as shared/src/dot-deck.ts; no synthetic session.
+        #if AGENTDECK_DOT_PREVIEW
         let dotHere = input.dotLabel != nil && (slots.count >= 3 || sessions.count <= slots.count - 1)
         let dotPosition = dotHere ? slots.first : nil
         let slots = dotHere ? Array(slots.dropFirst()) : slots
+        #else
+        let dotHere = false
+        #endif
 
         // Reserve keys for the global usage gauges (opt-in) on the bottom-row
         // strip left of the clock widget, filled from its right end; fall back to
@@ -558,12 +570,14 @@ public enum D200HLayoutModel {
 
         let freeSlots = slots.filter { usageHere[$0] == nil }
         var out: [D200HKeySlot] = []
+        #if AGENTDECK_DOT_PREVIEW
         if let pos = dotPosition {
             let (col, row) = parse(pos)
             var cell = D200HKeySlot(position: pos, col: col, row: row, kind: .info(icon: "dot", tone: "info"), label: "DOT", subtitle: input.dotLabel, action: .none)
             cell.dotAppearance = input.dotAppearance
             out.append(cell)
         }
+        #endif
 
         func appendUsage() {
             for pos in slots where usageHere[pos] != nil {

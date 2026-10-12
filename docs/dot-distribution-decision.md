@@ -2,9 +2,17 @@
 
 Reader overview: [Dot 연결과 배포를 쉽게 설명한 한국어 안내](dot-connection-explained.ko.md), with diagrams of the current private experiment, request lifecycle and public-distribution gates.
 
-Initial decision: 2026-10-09; release-plan revision: **2026-10-11**. The [server-free App Store release plan](dot-store-release-plan.md) now owns the next steps and release gates. This document preserves the transport rationale and dated evidence. It supersedes public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Real Dot interoperability is proven through the private tunnel; app-only Dot execution and general public distribution are not established.
+Initial decision: 2026-10-09; historical release-plan revision: **2026-10-11**. The [server-free proposal](dot-store-release-plan.md) preserves that plan's next steps and release gates. This document preserves the transport rationale and dated evidence. It supersedes public-domain/certificate onboarding in [the earlier MCP Events plan](dot-mcp-events-plan.md), retaining its request/report contracts and [surface semantics](dot-creature-surfaces.md). Real Dot interoperability is proven through the private tunnel; app-only Dot execution and general public distribution are not established. The current Apple build boundary is below.
 
-## Decision
+## Current build boundary — 2026-10-12
+
+Dot is now restricted to explicit Apple DotPreview development configurations. Standard
+macOS/iOS builds exclude the whole feature; the [release contract](../RELEASING.md#dot-development-and-store-builds)
+is canonical. The earlier server-free choice below remains dated research evidence.
+Future Cloudflare work can use the same development boundary; no cloud service is
+implemented or deployed by this separation.
+
+## Decision (2026-10-11)
 
 Build toward **AgentDeck's native local MCP + a supported ChatGPT local executor + the user's existing Dot computer connection**. Test desktop Settings → MCP servers → Add server and OAuth before requiring a public local plugin. The documented settings flow is an alternative to directory distribution, but does not itself prove Dot tool availability. Keep AgentDeck on the user's Mac, require explicit local pairing, and reuse ChatGPT's existing account and computer permission. Do not require a second AgentDeck account or Sign in with ChatGPT merely to connect Dot.
 

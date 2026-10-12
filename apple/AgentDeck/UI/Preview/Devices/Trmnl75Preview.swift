@@ -114,10 +114,12 @@ struct Trmnl75Preview: View {
                         .minimumScaleFactor(0.72)
                         .foregroundStyle(ink.opacity(0.8))
                 }
+                #if AGENTDECK_DOT_PREVIEW
                 if let dot = selection.live?.source.dot, dot.inhabitsHabitat(at: Int(Date().timeIntervalSince1970 * 1000)) {
                     DotPaperCharacter(appearance: dot.appearance).frame(width: 24, height: 24)
                     Text(DotAppearanceRules.compactLabels[dot.effectiveCode]).font(.system(size: 8)).foregroundStyle(ink).lineLimit(1)
                 }
+                #endif
                 linkChip
             }
             // Print-style double rule.

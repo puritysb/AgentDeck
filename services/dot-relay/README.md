@@ -2,7 +2,12 @@
 
 AgentDeck terminates HTTPS itself. No cloud relay, external identity provider, tunnel helper or Node dependency in the macOS app is required. The directory name is historical. The Node runtime is bundled into `bridge/dist/dot-runtime.mjs`; the macOS app uses native Network/Security frameworks and Keychain. Both remain opt-in. Real Dot interoperability and public ingress remain unverified; see [the implementation plan](../../docs/dot-mcp-events-plan.md).
 
-## macOS app
+## macOS DotPreview app
+
+Select the `AgentDeck_DotPreview_macOS` scheme for this native development host.
+Standard macOS and iOS builds exclude all Dot support. The
+[Apple build/release contract](../../RELEASING.md#dot-development-and-store-builds)
+owns this separation; the Node host below is unaffected.
 
 Settings → Integrations → Dot accepts a public HTTPS origin, a dedicated local port (9476 by default), an exact registered OAuth redirect and a user-selected PKCS#12 certificate with its password. The app validates hostname, chain and validity, stores configuration and identity in Keychain and imports the identity into memory for TLS. Start hosting explicitly, or opt into resuming it when AgentDeck starts. It stops when the app releases daemon ownership or quits; sleeping makes it unreachable. Import a renewed certificate before expiration. Replacing configuration revokes existing connections.
 

@@ -48,6 +48,10 @@ if [ ! -d "$APP" ]; then
     exit 2
 fi
 
+# A DotPreview artifact is never a Store candidate, even if signing succeeds.
+# Also inspect compiled payloads/resources instead of trusting the plist alone.
+python3 "$(dirname "$0")/verify-dot-build.py" "$APP" excluded
+
 # Detect platform layout so we know where to look for Info.plist / main
 # binary and which forbidden-path set to apply.
 if [ -d "$APP/Contents" ]; then

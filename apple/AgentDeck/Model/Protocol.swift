@@ -954,7 +954,9 @@ struct DisplayStateEvent: Codable, Sendable {
 struct SessionsListEvent: Codable, Sendable {
     let type: String  // "sessions_list"
     let sessions: [SessionInfo]
+    #if AGENTDECK_DOT_PREVIEW
     var dot: DotSurfaceSnapshot? = nil
+    #endif
 }
 
 struct PromptOptionsEvent: Codable, Sendable {

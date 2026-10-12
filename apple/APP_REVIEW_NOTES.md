@@ -499,16 +499,14 @@ Contact: admin@foundby.kr
 
 For anything unclear: `admin@foundby.kr`.
 
-## Optional direct HTTPS MCP integration
+## Dot is excluded from this submission
 
-The macOS app includes an opt-in Dot request/result integration, disabled by default. Settings → Integrations → Dot lets the user import a valid PKCS#12 identity and configure a dedicated HTTPS listener. Network.framework terminates TLS in process; Security.framework and Keychain hold the identity and OAuth credentials. There is no subprocess, Node runtime, tunnel binary or AgentDeck-operated cloud relay. The normal LAN daemon and pairing credentials are not exposed by this listener.
+The submitted macOS and iOS Release builds do not contain Dot integration. Dot setup,
+authentication, hosting, cloud connections, report displays and companion renderers are
+excluded at build time, along with the dedicated MCP contract resource. Incoming Dot
+fields from an external daemon cannot enable the feature. There is no hidden or remote
+switch to activate it. AgentDeck's local session and device features work independently.
 
-The dedicated endpoint serves OAuth metadata and an MCP API. A connecting client requires exact registered callback matching, S256 PKCE and approval in the native app after comparing the browser code. The user explicitly chooses each shared context. Signed events contain request identifiers; the authorized client retrieves that request's context and writes its bounded report. No automatic transcript, screen or unrelated session data is sent. Disconnect revokes access and deletes associated local requests/subscriptions. Context is removed at 30-minute request expiry, results after seven days, on the next running maintenance pass.
-
-Hosting stops when the app quits or releases daemon ownership, and is unavailable during sleep. This integration requires a user-provided public hostname, trusted identity and network reachability; it is optional to all existing local features. Local verification does not establish live Dot account compatibility or App Review acceptance; those checks are required before distributing the feature.
-
-The configured native host also has a separate Dashboard companion which shows request-specific reports, not a synthetic coding session or a global OpenAI status. Recent reported work animates; stale reports stop animating and retain their timestamps. A separate local ChatGPT process-presence label uses NSWorkspace only. The user can explicitly opt into resuming HTTPS hosting at app launch. Paired pull-feed clients may receive bounded read-only result cards with absolute timestamps; these cards provide no approval or remote-execution controls.
-
-The native 2D dashboard and 3D aquarium show a separate, original Dot companion driven by received reports. Reported Dot–agent relationships show direction, kind, stage and history, with explicit unverified-target and Dot-report attribution. The relationship tool only stores bounded reports; it cannot execute agent commands or approve OpenAI actions. Dot companions do not create coding sessions or add to agent counts. Reduce Motion is respected. Actual Dot-account and physical-device interoperability still require acceptance testing.
-
-The development Dot integration also publishes a sanitized, read-only deck snapshot containing configuration, local hosting and latest-report state/timestamps. It does not include briefing text, authentication material or target identities, does not create coding sessions, and adds no execution/approval command to deck keys.
+Dot development remains in separate local build configurations in the same repository.
+Those artifacts are rejected by the App Store archive gate. A future Dot release will
+be submitted as a new binary with its actual functionality and data handling documented.

@@ -570,6 +570,54 @@ looking correct while the server still holds the previous text.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
+#### Dot development and Store builds
+
+Both Apple targets use one source tree. Standard `Debug` and `Release` configurations
+exclude Dot entirely; the default `AgentDeck_macOS` / `AgentDeck_iOS` schemes archive
+`Release`. `AGENTDECK_APP_STORE` remains the macOS safety invariant in every configuration,
+including previews; it is not a feature switch and never licenses a helper/subprocess.
+
+| Configuration | Dot | Purpose |
+|---|---|---|
+| `Debug` / `Release` | Excluded | Normal development / App Store candidate |
+| `DotPreviewDebug` / `DotPreviewRelease` | Compiled in | Explicit local Dot development, including optimized verification |
+
+Select `AgentDeck_DotPreview_macOS` or `AgentDeck_DotPreview_iOS` in Xcode for Dot work.
+They use the same targets, sandbox rules and bundle identity; these are development
+configurations, not a second distributed app. Installing a preview can replace the
+ordinary local app, so use isolated verification output rather than installing it
+alongside the Store app. No Cloudflare backend is created by these configurations.
+
+`apple/project.yml` owns `AGENTDECK_DOT_CONDITION`, `AGENTDECK_DOT_SUPPORT` and source/resource
+exclusions. Only preview configurations define `AGENTDECK_DOT_PREVIEW`; default builds
+exclude `Dot*.swift` and `dot-mcp-contract.json`. Dot integration boundaries in shared
+Swift files compile conditionally. Incoming Dot fields from an external daemon are
+ignored by Store clients; the Store daemon emits `dot: null` to clear old companion
+state. Old Dot configuration/Keychain data is neither read nor resumed by that build.
+
+Keep new native Dot code (including a future Cloudflare client) in `Dot*.swift` files,
+with call sites behind `AGENTDECK_DOT_PREVIEW`. Add any new Dot-only resources to the
+same exclusion and artifact check. Do not enable Dot through remote configuration,
+UserDefaults, environment variables or a hidden menu in a Store artifact.
+
+```bash
+# Run from the repository root. Unsigned builds stay in apple/build/verification/.
+bash apple/scripts/verify-build.sh macOS Debug
+bash apple/scripts/verify-build.sh macOS Release
+bash apple/scripts/verify-build.sh macOS DotPreviewRelease
+bash apple/scripts/verify-build.sh iOS Release
+bash apple/scripts/verify-build.sh iOS DotPreviewRelease
+```
+
+`pnpm verify:changed` selects these native checks for Apple changes. Apple CI tests
+Store and preview macOS builds, builds macOS Release, and builds both optimized iOS variants. Each app is
+checked by `apple/scripts/verify-dot-build.py`: build identity, compiled Dot markers
+(including Xcode's Debug dylib), and the MCP resource must match the selected variant.
+The release archive verifier always requires **excluded**, so a preview archive cannot
+pass the upload gate even if it has valid distribution signing. Release commands also
+pin `-configuration Release`. Enabling Dot for public distribution requires an explicit
+source/configuration change, complete acceptance and a newly reviewed app release.
+
 **Local builds**
 
 ```bash

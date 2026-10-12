@@ -29,12 +29,16 @@ struct AquariumPreview: View {
 struct LivingAquariumScene: View {
     var viewingMode = false
     var terrariumState = TerrariumState()
+    #if AGENTDECK_DOT_PREVIEW
     var dotSnapshot: DotSurfaceSnapshot?
+    #endif
     var onCreatureTapped: ((String) -> Void)?
     var onBackgroundTapped: (() -> Void)?
     @State private var residents = AquariumResidents()
+    #if AGENTDECK_DOT_PREVIEW
     @State private var dot = DotAquariumResident()
     @State private var showDot = false
+    #endif
     @State private var cameraRig = AquariumCameraRig()
     @State private var cancelUpdate: (() -> Void)?
     @State private var visible = false
@@ -53,10 +57,14 @@ struct LivingAquariumScene: View {
                     camera.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
                     content.add(camera)
+                    #if AGENTDECK_DOT_PREVIEW
                     content.add(dot.root)
+                    #endif
                     cameraRig.camera = camera
                     residents.camera = camera
+                    #if AGENTDECK_DOT_PREVIEW
                     dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+                    #endif
                 cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     let background = Entity()
@@ -105,16 +113,22 @@ struct LivingAquariumScene: View {
                         assets.reportSceneFailure(error, templateCount: residents.templateCount)
                     }
                 } update: { _ in
+                    #if AGENTDECK_DOT_PREVIEW
                     dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+                    #endif
                 cameraRig.viewing = viewingMode
                     cameraRig.reduceMotion = reduceMotion
                     residents.labelsVisible = !viewingMode
+                    #if AGENTDECK_DOT_PREVIEW
                     dot.labelsVisible = !viewingMode
+                    #endif
                     cameraRig.camera?.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
                     residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
                 }
                 .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { value in
+                    #if AGENTDECK_DOT_PREVIEW
                     if DotAquariumResident.contains(value.entity) { showDot = true; return }
+                    #endif
                     if let id = AquariumResidents.sessionID(for: value.entity) { onCreatureTapped?(id) }
                     else if value.entity.name == "aquarium-background" { onBackgroundTapped?() }
                 })
@@ -143,6 +157,7 @@ struct LivingAquariumScene: View {
                     .allowsHitTesting(false)
             }
         }
+        #if AGENTDECK_DOT_PREVIEW
         .sheet(isPresented: $showDot) {
             VStack {
                 HStack { Text("Dot requests and relationships").font(.headline); Spacer(); Button("Done") { showDot = false } }
@@ -150,6 +165,7 @@ struct LivingAquariumScene: View {
             }.padding().frame(width: 580, height: 650)
         }
         .onChange(of: dotSnapshot?.appearance?.id) { _, _ in dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000)) }
+        #endif
         .onAppear { visible = true; updatePlayback() }
         .onChange(of: controllers.count) { _, _ in updatePlayback() }
         .onChange(of: reduceMotion) { _, _ in updatePlayback() }
@@ -180,13 +196,19 @@ struct LivingAquariumScene: View {
     }
 
     private func companionStepper() -> (Double) -> Void {
+        #if AGENTDECK_DOT_PREVIEW
         return { [weak dot] in dot?.step($0) }
+        #else
+        return { _ in }
+        #endif
     }
 
     private func updatePlayback() {
         let playing = visible && !reduceMotion && scenePhase == .active
         residents.animate = playing
+        #if AGENTDECK_DOT_PREVIEW
         dot.animate = playing
+        #endif
         // Keep expiry checks alive on a retained visible scene even under Reduce Motion.
         if visible && scenePhase == .active, cancelUpdate == nil, let scene = residents.root.scene {
             let stepCompanion = companionStepper()

@@ -37,6 +37,7 @@ build_ios() {
     xcodebuild archive \
         -project "$PROJECT" \
         -scheme AgentDeck_iOS \
+        -configuration Release \
         -destination 'generic/platform=iOS' \
         -archivePath "$ARCHIVE_PATH" \
         -allowProvisioningUpdates \
@@ -84,6 +85,7 @@ build_macos() {
     xcodebuild archive \
         -project "$PROJECT" \
         -scheme AgentDeck_macOS \
+        -configuration Release \
         -destination 'generic/platform=macOS' \
         -archivePath "$ARCHIVE_PATH" \
         -allowProvisioningUpdates \

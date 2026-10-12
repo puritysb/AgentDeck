@@ -1945,11 +1945,15 @@ final class DaemonServer {
         onStandDownRequested = handler
     }
 
+    #if AGENTDECK_DOT_PREVIEW
     private let dotOwnership = UUID()
+    #endif
 
     func startServices() async throws {
+        #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.owned(by: dotOwnership)
         do { try DotHost.shared.resumeIfEnabled() } catch { DaemonLogger.shared.error("Dot configuration could not be loaded") }
+        #endif
         // 0. Initialize APME store + collector + runner
         let store = ApmeStore()
         if await store.openWithTimeout() {
@@ -2882,7 +2886,9 @@ final class DaemonServer {
             ])
         }
 
+        #if AGENTDECK_DOT_PREVIEW
         cards.append(contentsOf: DotHost.shared.resultCards(now: Int(now.timeIntervalSince1970 * 1000)))
+        #endif
         let signed: [String: Any] = ["cards": cards, "glance": glance]
         let signedData = (try? JSONSerialization.data(withJSONObject: signed, options: [.sortedKeys])) ?? Data()
         let sig = SHA256.hash(data: signedData).prefix(8).map { String(format: "%02x", $0) }.joined()
@@ -9760,7 +9766,11 @@ final class DaemonServer {
             if let hm = m["hm"] { s["lastEventHm"] = hm }
             return s
         }
+        #if AGENTDECK_DOT_PREVIEW
         return ["type": "sessions_list", "sessions": sessions, "dot": DotHost.shared.deckSnapshot() as Any? ?? NSNull()]
+        #else
+        return ["type": "sessions_list", "sessions": sessions, "dot": NSNull()]
+        #endif
     }
 
     // MARK: - Usage (3-tier relay)
@@ -11224,7 +11234,9 @@ final class DaemonServer {
     // MARK: - Shutdown
 
     func shutdown() async {
+        #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.release(dotOwnership)
+        #endif
         codexOtelSubagentFilter.close()
         DaemonLogger.shared.info("Daemon shutting down...")
         if let backgroundActivity { ProcessInfo.processInfo.endActivity(backgroundActivity) }

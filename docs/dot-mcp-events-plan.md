@@ -1,6 +1,8 @@
 # Dot integration through MCP Events
 
-**Current decision, 2026-10-09:** [Dot connection and distribution decision](dot-distribution-decision.md) supersedes this document's public HTTPS onboarding, mandatory domain/certificate prerequisites and fixed direct-hosting choice. The selected direction is a local plugin over the user's existing Dot computer connection, subject to real interoperability and distribution gates; the official tunnel is a private Events experiment. No public AgentDeck service is selected. The contracts and dated implementation evidence below remain useful; the old transport plan is historical, not current user setup guidance.
+**Current Apple build boundary, 2026-10-12:** standard macOS/iOS builds exclude Dot entirely. The native implementation described here is available only in explicit DotPreview development configurations; see [the build/release contract](../RELEASING.md#dot-development-and-store-builds).
+
+**Historical decision, 2026-10-09:** [Dot connection and distribution decision](dot-distribution-decision.md) supersedes this document's public HTTPS onboarding, mandatory domain/certificate prerequisites and fixed direct-hosting choice. The selected direction was a local plugin over the user's existing Dot computer connection, subject to real interoperability and distribution gates; the official tunnel was a private Events experiment. No public AgentDeck service was selected. The contracts and dated implementation evidence below remain useful; the old transport plan is historical, not current user setup guidance.
 
 Historical implementation status: direct HTTPS hosting implemented, 2026-10-09; integrated with current main and installed locally. Not submitted or released. Original repository baseline: `fdd902d4`.
 

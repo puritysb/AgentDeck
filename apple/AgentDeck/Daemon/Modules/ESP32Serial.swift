@@ -1582,6 +1582,7 @@ actor ESP32Serial {
         }
         if type == "sessions_list" {
             e.removeValue(forKey: "dot")
+            #if AGENTDECK_DOT_PREVIEW
             if let raw = event["dot"] as? [String: Any], JSONSerialization.isValidJSONObject(raw),
                let bytes = try? JSONSerialization.data(withJSONObject: raw),
                let dot = try? JSONDecoder().decode(DotSurfaceSnapshot.self, from: bytes), dot.configured {
@@ -1609,6 +1610,7 @@ actor ESP32Serial {
                 e["dot"] = ["configured": true, "hosting": dot["hosting"] ?? false, "code": dot["code"] ?? 7, "validForMs": dot["validForMs"] ?? 0]
                 if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget { e.removeValue(forKey: "dot") }
             }
+            #endif
         }
         if Self.needsLegacyCodexAppAlias(deviceInfo) {
             e = Self.aliasCodexAppAgentTypes(e) as? [String: Any] ?? e

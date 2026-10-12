@@ -1,8 +1,22 @@
-# Dot integration: server-free App Store release plan
+# Dot integration: development isolation and historical release plan
 
 Reviewed: **2026-10-11**. This is a conditional delivery plan, not a declaration of platform approval or a shipped feature. It supersedes the ordering of the older [distribution plan](dot-distribution-decision.md#implementation-and-validation-order). The [feature matrix](appstore-feature-matrix.md) owns the App Store capability boundary; the [Korean overview](dot-connection-explained.ko.md) explains the decision to users.
 
-## Decision
+## Current release boundary — 2026-10-12
+
+Dot development continues in this repository, but all Dot support is excluded from the
+standard macOS and iOS builds. Explicit DotPreview configurations retain the native
+implementation and tests. The [build/release contract](../RELEASING.md#dot-development-and-store-builds)
+owns the configurations, artifact checks and future promotion procedure. AgentDeck's
+Store release does not wait for Dot interoperability. Cloudflare is a candidate for
+future development; this split implements no hosted backend and enables no service.
+
+The server-free direction and gates below are the **2026-10-11 historical proposal**,
+not the current Store feature set or a requirement to keep future research server-free.
+A future public Dot release still needs transport, user onboarding, privacy and signed
+candidate acceptance, followed by a new reviewed binary.
+
+## Decision (historical)
 
 Keep the no-public-server requirement. Target an **in-process Swift MCP host reached by an officially supported local ChatGPT executor**. Investigate the documented desktop **Add server + OAuth** flow first; public plugin directory admission is a separate, potentially smoother distribution route. Do not assume every local integration needs a public directory listing.
 

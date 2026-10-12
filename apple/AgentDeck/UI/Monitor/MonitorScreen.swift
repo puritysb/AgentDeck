@@ -20,7 +20,7 @@ struct MonitorScreen: View {
     #endif
 
     @State private var terrariumState = TerrariumState()
-    #if os(macOS)
+    #if os(macOS) && AGENTDECK_DOT_PREVIEW
     @State private var showDotSetup = false
     #endif
     #if os(iOS)
@@ -99,6 +99,7 @@ struct MonitorScreen: View {
             ))
             #if os(macOS)
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
+            #if AGENTDECK_DOT_PREVIEW
             .sheet(isPresented: $showDotSetup) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -107,7 +108,9 @@ struct MonitorScreen: View {
                     }.padding(24)
                 }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
             }
+            #endif
             .toolbar {
+                #if AGENTDECK_DOT_PREVIEW
                 if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
                     ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, compact: true) }
                 }
@@ -117,6 +120,7 @@ struct MonitorScreen: View {
                             .accessibilityIdentifier("dot-setup-entry")
                     }
                 }
+                #endif
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)
@@ -140,7 +144,7 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
-                #if os(iOS)
+                #if os(iOS) && AGENTDECK_DOT_PREVIEW
                 if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
                     DotSurfaceView(snapshot: dot, compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
                 }
@@ -180,6 +184,16 @@ struct MonitorScreen: View {
 
     // MARK: - Sub-views
 
+    @available(iOS 18.0, macOS 15.0, *)
+    private var livingAquariumScene: LivingAquariumScene {
+        var scene = LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState,
+                                        onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
+        #if AGENTDECK_DOT_PREVIEW
+        scene.dotSnapshot = stateHolder.state.dot
+        #endif
+        return scene
+    }
+
     @ViewBuilder
     private var terrariumLayer: some View {
         if preferences.effectiveDashboardType == .aquarium3D {
@@ -188,7 +202,7 @@ struct MonitorScreen: View {
                     let top = featuredAwaitingSession == nil ? 0 : attentionHeight + 24
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
-                        LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState, dotSnapshot: stateHolder.state.dot, onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
+                        livingAquariumScene
                             .frame(height: max(1, geometry.size.height - top))
                             .padding(.top, top)
                         // Keep the habitat continuous behind the timeline, as on macOS.

@@ -339,7 +339,7 @@ AgentDeck/
 
 ## Dot deck snapshot
 
-The first-party `sessions_list` event optionally carries `dot: DotDeckSnapshot | null`. Fields are `configured` and `hosting` booleans, nullable `reportState` string, and nullable integer epoch-ms `reportedAt` / `expiresAt`. Both Node and Swift producers send it on initial and periodic snapshots. Absent and null both clear previous Dot state, including reconnecting to older daemons.
+The first-party `sessions_list` event optionally carries `dot: DotDeckSnapshot | null`. Fields are `configured` and `hosting` booleans, nullable `reportState` string, and nullable integer epoch-ms `reportedAt` / `expiresAt`. Node and Swift DotPreview producers send it on initial and periodic snapshots. Standard Apple builds exclude Dot support: their daemon sends `dot: null`, and their clients ignore incoming Dot payloads. See [Apple build isolation](../RELEASING.md#dot-development-and-store-builds). Absent and null both clear previous Dot state on Dot-capable clients, including reconnecting to older daemons.
 
 This is a full sanitized integration snapshot, separate from `sessions`: no session identity/count, context, OAuth material, target reference or report text is included. The latest request is selected by creation time; expired/old nonterminal reports become stale. Hosting is local listener state, not cloud Dot activity. Existing clients may ignore the additive field; this does not promote it into every external surface profile.
 

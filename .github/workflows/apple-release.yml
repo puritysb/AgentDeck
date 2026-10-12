@@ -117,6 +117,7 @@ jobs:
           xcodebuild archive \
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_iOS \
+            -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/AgentDeck_iOS.xcarchive" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
@@ -231,6 +232,7 @@ jobs:
           xcodebuild archive \
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_macOS \
+            -configuration Release \
             -destination 'generic/platform=macOS' \
             -archivePath "$RUNNER_TEMP/AgentDeck_macOS.xcarchive" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \

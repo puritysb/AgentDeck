@@ -46,6 +46,19 @@ jobs:
     # the target but cannot execute its tests.
     runs-on: macos-26
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: Debug
+            dot: excluded
+            action: test
+          - configuration: Release
+            dot: excluded
+            action: build
+          - configuration: DotPreviewRelease
+            dot: preview
+            action: test
 
     steps:
       - uses: actions/checkout@v4
@@ -68,34 +81,46 @@ jobs:
           xcodebuild build \
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_macOS \
-            -configuration Debug \
+            -configuration '${{ matrix.configuration }}' \
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/AgentDeckDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions || exit 1
 
       - name: Run AgentDeckTests_macOS
+        if: matrix.action == 'test'
         run: |
           xcodebuild test \
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_macOS \
-            -configuration Debug \
+            -configuration '${{ matrix.configuration }}' \
             -destination 'platform=macOS' \
             -derivedDataPath "$RUNNER_TEMP/AgentDeckDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             -resultBundlePath "$RUNNER_TEMP/AgentDeckTests.xcresult" \
             | xcbeautify --renderer github-actions || exit 1
 
+      - name: Verify compiled Dot boundary
+        run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}/AgentDeck.app" '${{ matrix.dot }}'
+
       - name: Upload xcresult on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: AgentDeckTests-xcresult
+          name: AgentDeckTests-${{ matrix.configuration }}-xcresult
           path: ${{ runner.temp }}/AgentDeckTests.xcresult
 
   build-ios:
     runs-on: macos-15
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - configuration: Release
+            dot: excluded
+          - configuration: DotPreviewRelease
+            dot: preview
 
     steps:
       - uses: actions/checkout@v4
@@ -117,8 +142,11 @@ jobs:
           xcodebuild build \
             -project apple/AgentDeck.xcodeproj \
             -scheme AgentDeck_iOS \
-            -configuration Debug \
+            -configuration '${{ matrix.configuration }}' \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/AgentDeckDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify --renderer github-actions || exit 1
+
+      - name: Verify compiled Dot boundary
+        run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}-iphonesimulator/AgentDeck.app" '${{ matrix.dot }}'

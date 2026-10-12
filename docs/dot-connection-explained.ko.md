@@ -1,5 +1,7 @@
 # Dot과 AgentDeck 연결: 지금 하는 일과 다른 사람에게 배포하는 길
 
+**2026-10-12 변경:** Dot 개발은 이 저장소의 명시적인 DotPreview 빌드에서 계속한다. 일반 macOS/iOS Debug·Release와 App Store 배포물에는 Dot 기능 전체를 빌드 시 제외한다. 아래 연결 실험과 서버 없는 출시 방향은 이전 연구 기록이며, 현재 빌드 정책은 [릴리즈 문서](../RELEASING.md#dot-development-and-store-builds)를 따른다. Cloudflare 연동은 후속 개발 후보이고 이번 분리에서 서버를 구축하거나 배포하지 않는다.
+
 기준일: **2026-10-11**. 제품을 이해하기 위한 설명 자료이며, 출시 안내나 설치 완료 선언이 아니다. 연결 상태는 이 날짜에 확인한 기록이다. 최신 실행 순서와 출시 조건은 [서버 없는 스토어 출시 계획](dot-store-release-plan.md), 날짜별 근거는 [연결·배포 결정문](dot-distribution-decision.md), 표현 규칙은 [Dot 표면별 디자인](dot-creature-surfaces.md)이 기준이다.
 
 ## 먼저 알아둘 세 문장

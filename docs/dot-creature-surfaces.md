@@ -15,6 +15,8 @@ validators: [pnpm docs:check, pnpm design-system:check]
 
 # Dot Creature Surface Design
 
+**Apple build scope (2026-10-12):** all Apple implementations described below are DotPreview-only. Standard macOS/iOS builds exclude Dot rendering, setup and report intake, even when connected to an external Dot-enabled daemon. Non-Apple surfaces keep their existing behavior. See [the release boundary](../RELEASING.md#dot-development-and-store-builds).
+
 Dot is an independent companion in AgentDeck's aquarium. Its appearance adapts to the surface while preserving the meaning of activity, report age and relationships. This is the adopted design contract for those adaptations; the implementation column below records what exists in the current development branch. It does not assert shipped support or real Dot-account interoperability.
 
 Existing agent creatures retain their canonical provider geometry under [DESIGN.md §6.4](../DESIGN.md#64-creature-marks). Dot's default companion is an AgentDeck-original light orb with two eyes, not an official OpenAI logo or a replacement for the Codex creature. Hardware dimensions and availability remain owned by [Hardware Compatibility](hardware-compatibility.md#surface-matrix); this document owns Dot's visual treatment, not hardware specifications.

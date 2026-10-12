@@ -123,6 +123,7 @@
 		286E4DD2F0E17975C47042C1 /* WifiConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DA1104DBFD7C9FA0C79A5D /* WifiConfig.swift */; };
 		28BBAAFD6BE94905F082370E /* UtilityProxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC83A78EA479592D015AA2F6 /* UtilityProxy.swift */; };
 		28C908B7D7C412A638C6DA31 /* TimeboxModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8655DDFFAFB655DEABF213F5 /* TimeboxModule.swift */; };
+		295942533870EAD425D871FE /* AppleBuildBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */; };
 		29B890C4DC7E107CDAD0D209 /* ApmeJudgeMlx.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */; };
 		2A91978796D69836486BB35C /* BubbleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DD3A6826EADF11BB4C4F139 /* BubbleSystem.swift */; };
 		2A9F9EB1D882DA8C8DA64FE8 /* 3d-residents.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 3A59CDD89266C18C80F6F324 /* 3d-residents.usdz */; };
@@ -326,7 +327,6 @@
 		6F22B8BA6B49FDD3F538DDE8 /* CreatureGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */; };
 		70055CA070869B45C0E300A7 /* SpokenDigestParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279EAD7034309F8B8641DF78 /* SpokenDigestParityTests.swift */; };
 		702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
-		C7216CBF4C82128DDA1D9B31 /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */; };
 		70568489EF1BE34061D43FEA /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
 		7090DAA53171F720B69C29DC /* ZaiUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E5D1306D12A8F901214C795 /* ZaiUsageClient.swift */; };
 		709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */; };
@@ -416,7 +416,6 @@
 		8B995FCD093438C0F919C374 /* GatewayHealthRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA37B6C7D35CA879C9BD8F75 /* GatewayHealthRules.swift */; };
 		8BD045F864776BC79B8BDA5F /* WebSocketServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */; };
 		8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */; };
-		0FA99D96E62564DF7BF83774 /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */; };
 		8CB40A396077F92F9140E25F /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
 		8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */; };
 		8D8D4E4EC92C57631E719FDC /* MdnsIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */; };
@@ -424,6 +423,7 @@
 		8E47C081C0CF3F45715D6E45 /* AnthropicAdminApiClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB4C24732A9A2DB27CC5F7C0 /* AnthropicAdminApiClient.swift */; };
 		8FAFF0B6F124FB2FBA4B25B0 /* TimeboxModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8655DDFFAFB655DEABF213F5 /* TimeboxModule.swift */; };
 		8FE3D8A54EF01D4165144E0E /* DockVisibilityPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41DA855405F8F1F5BA174D0 /* DockVisibilityPolicyTests.swift */; };
+		91690383EAD320DBC7CDFC1B /* AppleBuildBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */; };
 		9197CE4EF7351E7C83BBE89F /* MatrixExpression.swift in Sources */ = {isa = PBXBuildFile; fileRef = B938F198829A3AF90F7BE842 /* MatrixExpression.swift */; };
 		91FD7626FCF73226181BD900 /* ProjectNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F7897FE76F480951CD34749 /* ProjectNameResolver.swift */; };
 		920821ACA214400577D14C04 /* HermesMermaid.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17A40660684AE5E16A35D4A /* HermesMermaid.swift */; };
@@ -519,6 +519,7 @@
 		B2A7A24B5879D2B2C3F1AD89 /* DotHTTPSListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C49F45DBB77B44A88CC3B10 /* DotHTTPSListener.swift */; };
 		B2BC3A51EE207F9B7DE4C750 /* SessionOrderStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E98D7DD3B95496DC3353CF1 /* SessionOrderStoreTests.swift */; };
 		B2BC477250E52AFCA56936EA /* CodexOriginatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F214BD333DDE19525E3836 /* CodexOriginatorTests.swift */; };
+		B2C8DA8BF764FBDED4EC6DCF /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */; };
 		B398111252BB16DF3B2761A9 /* ScaledToFit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576B35DBF88A4E7844E7A99A /* ScaledToFit.swift */; };
 		B3A9C1B59F3239A9C482540F /* ApmeTaskBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54B6A5B14E7FEFC4CD93EF2 /* ApmeTaskBoundaryTests.swift */; };
 		B3B13E3EA601A3E8C3001775 /* ci-companion.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 28D92D8BEAB46A00CF081716 /* ci-companion.usdz */; };
@@ -583,6 +584,7 @@
 		C4E318F694193401A193DEB8 /* DotCompanionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B515282657E9C46C6A833F16 /* DotCompanionView.swift */; };
 		C4F117E796C0C81A8E52A02B /* PortDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */; };
 		C53E6FF3C458CFE3A65A926F /* UsageRelayFreshness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832BF47EA8F4F9DE55F6EA4F /* UsageRelayFreshness.swift */; };
+		C56483E3A5459DA1C120BADC /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */; };
 		C5F162AA9AB80292E55F6046 /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
 		C60311E11652C03785B9F449 /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
 		C68C5F90DA83B7DFE263289D /* ESP32ProvisionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6229A084E6CE2AB75D86F83 /* ESP32ProvisionSheet.swift */; };
@@ -789,6 +791,7 @@
 		0DD3A6826EADF11BB4C4F139 /* BubbleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BubbleSystem.swift; sourceTree = "<group>"; };
 		0F083DDE39507B6693AED227 /* ApmeCategoryE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeCategoryE2ETests.swift; sourceTree = "<group>"; };
 		117F3C33248F92F5E98E4ECB /* HermesObserverGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesObserverGateTests.swift; sourceTree = "<group>"; };
+		11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexHookHarness.generated.swift; sourceTree = "<group>"; };
 		120080C645BA7732411E648B /* MdnsAdvertisement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsAdvertisement.swift; sourceTree = "<group>"; };
 		125A43BCFF7E55A34B4C5FC1 /* AgentDeckLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckLogo.swift; sourceTree = "<group>"; };
 		12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentRules.generated.swift; sourceTree = "<group>"; };
@@ -864,7 +867,6 @@
 		41CF82AE8E20EDCAE99DCEDD /* SessionLauncherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLauncherTests.swift; sourceTree = "<group>"; };
 		427B912EBD043285F0A0008D /* OpenClawAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawAdapter.swift; sourceTree = "<group>"; };
 		43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRules.generated.swift; sourceTree = "<group>"; };
-		F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexHookHarness.generated.swift; sourceTree = "<group>"; };
 		43838A747888CB84DF5A6762 /* OpenClawTokenImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawTokenImporter.swift; sourceTree = "<group>"; };
 		43F7DA99E490C72ED75FF711 /* ApmeExternalCloseSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeExternalCloseSelectionTests.swift; sourceTree = "<group>"; };
 		44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRulesTests.swift; sourceTree = "<group>"; };
@@ -1021,6 +1023,7 @@
 		ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRulesTests.swift; sourceTree = "<group>"; };
 		ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonVoiceAssistant.swift; sourceTree = "<group>"; };
 		AE17EFB01F43FCB1A53F644D /* DaemonTimelineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonTimelineStore.swift; sourceTree = "<group>"; };
+		AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBuildBoundaryTests.swift; sourceTree = "<group>"; };
 		B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SquatterCleaner.swift; sourceTree = "<group>"; };
 		B1853443C348441BF748662A /* AttentionTheaterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionTheaterView.swift; sourceTree = "<group>"; };
 		B1F43DCAC6100C73B98139EA /* DisplayMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayMonitor.swift; sourceTree = "<group>"; };
@@ -1213,6 +1216,7 @@
 				337A9CAC731DB3377BFF5626 /* ApmeObservedHookNormalizationTests.swift */,
 				2DB04CEEDD6C769AD9056561 /* ApmeParseJudgeTests.swift */,
 				D54B6A5B14E7FEFC4CD93EF2 /* ApmeTaskBoundaryTests.swift */,
+				AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */,
 				B2A10490A1827E5EC7D6FA08 /* AppMetadataTests.swift */,
 				6F0A3614C2DF6495CAB410B1 /* AppReviewPromptTests.swift */,
 				BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */,
@@ -1609,9 +1613,9 @@
 			children = (
 				AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */,
 				43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */,
-				F2D7835C84C3DF755AD94F42 /* CodexHookHarness.generated.swift */,
 				408F05BE863985A2E157A5AD /* ClaudePermissionRules.generated.swift */,
 				0C97EE2C9DA1A4FA137619AF /* CodexExecChildren.swift */,
+				11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */,
 				009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */,
 				E43AD34194F04709FE69AF13 /* CodexOtelSubagentFilter.swift */,
 				A0903C3EBD6675CB1D28C1FE /* HermesObserverGate.swift */,
@@ -2046,6 +2050,7 @@
 				B3A9C1B59F3239A9C482540F /* ApmeTaskBoundaryTests.swift in Sources */,
 				10BE28607B397D243923E2D5 /* AppMetadataTests.swift in Sources */,
 				26CD84217792773330924DA0 /* AppReviewPromptTests.swift in Sources */,
+				295942533870EAD425D871FE /* AppleBuildBoundaryTests.swift in Sources */,
 				797EB64211FFF8F679AD9729 /* AuthTokenAdoptionTests.swift in Sources */,
 				8CB40A396077F92F9140E25F /* CiWaitRulesTests.swift in Sources */,
 				3AA3A8CEDFE2A89F0708D96E /* ClaudeBackgroundJobRulesTests.swift in Sources */,
@@ -2140,6 +2145,7 @@
 				F608EB171F09E38587FE9BA7 /* ApmeTaskBoundaryTests.swift in Sources */,
 				073878269396F77212DC560B /* AppMetadataTests.swift in Sources */,
 				7E151A499F63C5A8F7896DD4 /* AppReviewPromptTests.swift in Sources */,
+				91690383EAD320DBC7CDFC1B /* AppleBuildBoundaryTests.swift in Sources */,
 				709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */,
 				C5F162AA9AB80292E55F6046 /* CiWaitRulesTests.swift in Sources */,
 				400DA2617A474B0330E9D615 /* ClaudeBackgroundJobRulesTests.swift in Sources */,
@@ -2274,12 +2280,12 @@
 				522CB2254E5C9EF0B3F1346E /* CiCompanionPresentation.swift in Sources */,
 				59BEE539C23688C92D592A19 /* CiWaitRules.generated.swift in Sources */,
 				8C9DDE18B084FFC8B4619AE8 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
-				0FA99D96E62564DF7BF83774 /* CodexHookHarness.generated.swift in Sources */,
 				BD603C0DA671877FFFF496E1 /* ClaudePermissionRules.generated.swift in Sources */,
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
 				42E93611F3FAC453A20CC7D0 /* CodexExecChildren.swift in Sources */,
 				5DDA6F733312F1A880DE38C9 /* CodexFreshnessRules.generated.swift in Sources */,
+				C56483E3A5459DA1C120BADC /* CodexHookHarness.generated.swift in Sources */,
 				6251CC9D4270E9F29E867B59 /* CodexObservationOwnership.swift in Sources */,
 				97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */,
 				85DD9D97A0DC6A1737CC326B /* CodexOtelSubagentFilter.swift in Sources */,
@@ -2545,12 +2551,12 @@
 				5BB32AB0F02012A28980DF5A /* CiCompanionPresentation.swift in Sources */,
 				008A6553EC1E4ECE53369412 /* CiWaitRules.generated.swift in Sources */,
 				702DD6217E70BE8F5E9B7993 /* ClaudeBackgroundJobRules.generated.swift in Sources */,
-				C7216CBF4C82128DDA1D9B31 /* CodexHookHarness.generated.swift in Sources */,
 				52F319B3F0699BDB206D714E /* ClaudePermissionRules.generated.swift in Sources */,
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,
 				9AE973D827E60195679B39ED /* CodexExecChildren.swift in Sources */,
 				D7E95F09BC44D47D05B4EC06 /* CodexFreshnessRules.generated.swift in Sources */,
+				B2C8DA8BF764FBDED4EC6DCF /* CodexHookHarness.generated.swift in Sources */,
 				9557B1E24F9A22C339934981 /* CodexObservationOwnership.swift in Sources */,
 				A1D061096206EB863B801727 /* CodexOtelRoutes.swift in Sources */,
 				7DCDFE1CCF9C68930557C19D /* CodexOtelSubagentFilter.swift in Sources */,
@@ -2795,14 +2801,38 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Release;
 		};
+		1906D3D01CDC98FFC62F1B95 /* DotPreviewDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AgentDeck/Resources/AgentDeck.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = "AgentDeck/Resources/Info-macOS.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+			};
+			name = DotPreviewDebug;
+		};
 		2930907BF0471CB90D2D5459 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_DOT_CONDITION = "";
+				AGENTDECK_DOT_SUPPORT = excluded;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -2839,6 +2869,7 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) Dot*.swift dot-mcp-contract.json";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -2866,6 +2897,28 @@
 			};
 			name = Debug;
 		};
+		5AB2F9BA24015CAE9B0BD9CE /* DotPreviewDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = DotPreviewDebug;
+		};
 		5BAFD22D350185D90AE95421 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2883,6 +2936,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -2890,6 +2944,8 @@
 		5D0AE4EA8EA1CB6A7B30FF2D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_DOT_CONDITION = "";
+				AGENTDECK_DOT_SUPPORT = excluded;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -2926,6 +2982,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) Dot*.swift dot-mcp-contract.json";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -2945,6 +3002,94 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
+		};
+		8309E2B97EE96DF1E0AAABE9 /* DotPreviewRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AgentDeck/Resources/AgentDeck.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = "AgentDeck/Resources/Info-macOS.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+			};
+			name = DotPreviewRelease;
+		};
+		9C72129C13F22FDF7EE21305 /* DotPreviewDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
+			};
+			name = DotPreviewDebug;
+		};
+		A1F8E3211C3A7E0E936D5BFF /* DotPreviewRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
+			};
+			name = DotPreviewRelease;
+		};
+		A5F03DCB06460229E1E7D5D3 /* DotPreviewRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = DotPreviewRelease;
 		};
 		B261CB923F15B7919800AAA3 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -2966,7 +3111,7 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = AGENTDECK_APP_STORE;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
 			};
 			name = Release;
 		};
@@ -2983,6 +3128,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3005,10 +3151,101 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Debug;
+		};
+		D991119E1411B0668DF5A382 /* DotPreviewDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				AGENTDECK_DOT_CONDITION = AGENTDECK_DOT_PREVIEW;
+				AGENTDECK_DOT_SUPPORT = preview;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 5;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.8.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = DotPreviewDebug;
+		};
+		E88F7EA4B17D7472674F8FCE /* DotPreviewDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
+			};
+			name = DotPreviewDebug;
 		};
 		E97D9DAD98830F00501B9250 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -3023,6 +3260,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3046,9 +3284,29 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
+		};
+		EB8EC003784FEBCED69C192D /* DotPreviewRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
+			};
+			name = DotPreviewRelease;
 		};
 		F1AC575B483B651F347D003B /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -3068,9 +3326,72 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
 			};
 			name = Debug;
+		};
+		FC705384554FF0D2119A07C8 /* DotPreviewRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				AGENTDECK_DOT_CONDITION = AGENTDECK_DOT_PREVIEW;
+				AGENTDECK_DOT_SUPPORT = preview;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 5;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.8.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = DotPreviewRelease;
 		};
 /* End XCBuildConfiguration section */
 
@@ -3079,6 +3400,8 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				CDA97A11E586550BBBFF05C0 /* Debug */,
+				E88F7EA4B17D7472674F8FCE /* DotPreviewDebug */,
+				A1F8E3211C3A7E0E936D5BFF /* DotPreviewRelease */,
 				0BA095AD5FA1EC9A5E44B3AB /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -3088,6 +3411,8 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2930907BF0471CB90D2D5459 /* Debug */,
+				D991119E1411B0668DF5A382 /* DotPreviewDebug */,
+				FC705384554FF0D2119A07C8 /* DotPreviewRelease */,
 				5D0AE4EA8EA1CB6A7B30FF2D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -3097,6 +3422,8 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				5BAFD22D350185D90AE95421 /* Debug */,
+				5AB2F9BA24015CAE9B0BD9CE /* DotPreviewDebug */,
+				A5F03DCB06460229E1E7D5D3 /* DotPreviewRelease */,
 				EB1BB193E5BE4E91F46BA5E0 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -3106,6 +3433,8 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F1AC575B483B651F347D003B /* Debug */,
+				1906D3D01CDC98FFC62F1B95 /* DotPreviewDebug */,
+				8309E2B97EE96DF1E0AAABE9 /* DotPreviewRelease */,
 				B261CB923F15B7919800AAA3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -3115,6 +3444,8 @@
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				E97D9DAD98830F00501B9250 /* Debug */,
+				9C72129C13F22FDF7EE21305 /* DotPreviewDebug */,
+				EB8EC003784FEBCED69C192D /* DotPreviewRelease */,
 				CCEA9484E73F4F23DF1BAFA8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;

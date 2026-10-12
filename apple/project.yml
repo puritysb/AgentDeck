@@ -1,4 +1,9 @@
 name: AgentDeck
+configs:
+  Debug: debug
+  Release: release
+  DotPreviewDebug: debug
+  DotPreviewRelease: release
 options:
   bundleIdPrefix: bound.serendipity.agent.deck
   deploymentTarget:
@@ -14,6 +19,21 @@ settings:
     MARKETING_VERSION: "1.8.0"
     CURRENT_PROJECT_VERSION: 5
     ENABLE_USER_SCRIPT_SANDBOXING: NO
+    # Dot is an explicitly selected development feature, never a runtime switch.
+    AGENTDECK_DOT_CONDITION: ""
+    AGENTDECK_DOT_SUPPORT: excluded
+    EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) Dot*.swift dot-mcp-contract.json"
+  configs:
+    DotPreviewDebug:
+      AGENTDECK_DOT_CONDITION: AGENTDECK_DOT_PREVIEW
+      AGENTDECK_DOT_SUPPORT: preview
+      EXCLUDED_SOURCE_FILE_NAMES: ""
+    DotPreviewRelease:
+      AGENTDECK_DOT_CONDITION: AGENTDECK_DOT_PREVIEW
+      AGENTDECK_DOT_SUPPORT: preview
+      EXCLUDED_SOURCE_FILE_NAMES: ""
+      # Optimized development builds also run the @testable XCTest suite.
+      ENABLE_TESTABILITY: YES
 
 targets:
   AgentDeck_iOS:
@@ -36,9 +56,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: true
         DEVELOPMENT_TEAM: QF36NDHYHD
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION)"
       configs:
         debug:
           CODE_SIGN_STYLE: Automatic
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION)"
         release:
           # Release archives use one persistent organization Distribution
           # identity. Automatic signing on an ephemeral CI runner creates a
@@ -73,7 +95,7 @@ targets:
         # only; full-spec developer integrations live in the external Node
         # CLI/daemon. Do not use this as a distribution switch or reintroduce
         # subprocess/bundled-helper paths under another condition.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: AGENTDECK_APP_STORE
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)"
       configs:
         debug:
           CODE_SIGN_STYLE: Automatic
@@ -83,7 +105,7 @@ targets:
           # `-AgentDeckScreenshotURL` launch pin the recording runbook
           # depends on. Re-add it for Debug only; Release keeps the App
           # Store token alone, so debug-only paths still never ship.
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: AGENTDECK_APP_STORE DEBUG
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)"
         release:
           # Persistent manual signing — see the iOS release config note.
           CODE_SIGN_STYLE: Manual
@@ -122,6 +144,10 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck"
         BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION)"
+      configs:
+        debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION)"
 
   AgentDeckTests_macOS:
     type: bundle.unit-test
@@ -144,11 +170,11 @@ targets:
         # `#if AGENTDECK_APP_STORE` blocks. Without this the test target
         # would reference symbols the host compiled out (e.g. the
         # `.bundledBridge` launch mode fallback) and fail at link or run.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: AGENTDECK_APP_STORE
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)"
       configs:
         debug:
           # Keep in step with the host app's Debug conditions above.
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: AGENTDECK_APP_STORE DEBUG
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)"
 
 schemes:
   AgentDeck_iOS:
@@ -186,3 +212,41 @@ schemes:
       config: Debug
     archive:
       config: Release
+
+  AgentDeck_DotPreview_iOS:
+    build:
+      targets:
+        AgentDeck_iOS: all
+        AgentDeckTests_iOS: [test]
+    test:
+      config: DotPreviewDebug
+      gatherCoverageData: true
+      targets:
+        - AgentDeckTests_iOS
+    run:
+      config: DotPreviewDebug
+    profile:
+      config: DotPreviewRelease
+    analyze:
+      config: DotPreviewDebug
+    archive:
+      config: DotPreviewRelease
+
+  AgentDeck_DotPreview_macOS:
+    build:
+      targets:
+        AgentDeck_macOS: all
+        AgentDeckTests_macOS: [test]
+    test:
+      config: DotPreviewDebug
+      gatherCoverageData: true
+      targets:
+        - AgentDeckTests_macOS
+    run:
+      config: DotPreviewDebug
+    profile:
+      config: DotPreviewRelease
+    analyze:
+      config: DotPreviewDebug
+    archive:
+      config: DotPreviewRelease

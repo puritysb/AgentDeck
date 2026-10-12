@@ -205,18 +205,46 @@
       "name": "macOS app build + XCTest",
       "gate": "apple-unit",
       "tiers": ["changed", "full"],
-      "run": "xcodebuild test -project apple/AgentDeck.xcodeproj -scheme AgentDeck_macOS -configuration Debug -destination platform=macOS -derivedDataPath \"${TMPDIR:-/tmp}/agentdeck-verify/DerivedData\" CODE_SIGNING_ALLOWED=NO",
+      "run": "bash apple/scripts/verify-build.sh macOS Debug",
       "report_suite": "apple",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild"] },
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
+      "paths": ["apple/**", "generated/protocol/**"]
+    },
+    {
+      "id": "apple-macos-release",
+      "name": "macOS Store Release build + Dot exclusion",
+      "gate": "apple-unit",
+      "tiers": ["changed", "full"],
+      "run": "bash apple/scripts/verify-build.sh macOS Release",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
       "paths": ["apple/**", "generated/protocol/**"]
     },
     {
       "id": "apple-ios",
       "name": "iOS app build (simulator, unsigned)",
       "gate": "apple-unit",
-      "tiers": ["full"],
-      "run": "xcodebuild build -project apple/AgentDeck.xcodeproj -scheme AgentDeck_iOS -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath \"${TMPDIR:-/tmp}/agentdeck-verify/DerivedData\" CODE_SIGNING_ALLOWED=NO",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild"] }
+      "tiers": ["changed", "full"],
+      "run": "bash apple/scripts/verify-build.sh iOS Release",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
+      "paths": ["apple/**", "generated/protocol/**"]
+    },
+    {
+      "id": "apple-dot-macos",
+      "name": "macOS DotPreview optimized build + XCTest + artifact boundary",
+      "gate": "apple-unit",
+      "tiers": ["changed", "full"],
+      "run": "bash apple/scripts/verify-build.sh macOS DotPreviewRelease",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
+      "paths": ["apple/**", "generated/protocol/**"]
+    },
+    {
+      "id": "apple-dot-ios",
+      "name": "iOS DotPreview optimized build + artifact boundary",
+      "gate": "apple-unit",
+      "tiers": ["changed", "full"],
+      "run": "bash apple/scripts/verify-build.sh iOS DotPreviewRelease",
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
+      "paths": ["apple/**", "generated/protocol/**"]
     },
     {
       "id": "apple-submission",
@@ -573,7 +601,7 @@
       "job": "test-macos, build-ios, validate-submission",
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
-      "command": "xcodebuild test -scheme AgentDeck_macOS; xcodebuild build -scheme AgentDeck_iOS; validate-appstore-submission.sh",
+      "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; validate-appstore-submission.sh",
       "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
@@ -581,7 +609,8 @@
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
         "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
         "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
-        "the iOS app builds unsigned",
+        "the iOS app builds unsigned in Store and DotPreview configurations",
+        "Store artifacts exclude Dot code/resources and ignore incoming Dot snapshots; DotPreview retains its contract and native tests",
         "App Store metadata, screenshots and privacy manifest are within submission limits"
       ],
       "does_not_prove": [
@@ -710,7 +739,7 @@
       "trigger": "Tag apple-v* or manual dispatch",
       "blocking": true,
       "command": "archive, export, verify-appstore-archive.sh, upload",
-      "proves": ["the signed archive satisfies the App Store self-containment invariants before upload"],
+      "proves": ["the signed archive satisfies the App Store self-containment invariants and excludes Dot code/resources before upload"],
       "does_not_prove": ["runs no XCTest itself — relies on apple-test.yml having passed on master"]
     },
     {
@@ -1092,6 +1121,7 @@
         "scripts/__tests__/npm-registry-visibility.test.ts",
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
+        "scripts/__tests__/apple-dot-build.test.ts",
         "scripts/__tests__/local-main-deploy.test.ts",
         "scripts/__tests__/verify-tiers.test.ts",
         "scripts/__tests__/build-health-report.test.ts",
