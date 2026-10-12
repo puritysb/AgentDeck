@@ -452,18 +452,25 @@ try {
     );
     assert.equal(replies.length, 1);
     const cancelled = lifecycle.events.filter((e) => e.event === 'hermes_stop' && e.payload.interrupted === true);
+    assert.equal(cancelled.length, 3);
+    // The capture also exits one session with a turn still open. That produces
+    // another valid Interrupted row, but is not one of these explicit Stops.
+    // Check each cancelled session so an unrelated close cannot fill its place.
     await waitFor(
       'captured cancelled turn ends',
       () =>
-        dashboard.frames
-          .slice(before)
-          .filter(
-            (f) =>
-              f.type === 'timeline_event' &&
-              f.entry?.agentType === 'hermes' &&
-              f.entry?.type === 'chat_end' &&
-              f.entry.raw.startsWith('Interrupted'),
-          ).length === cancelled.length,
+        cancelled.every(({ payload }) =>
+          dashboard.frames
+            .slice(before)
+            .filter(
+              (f) =>
+                f.type === 'timeline_event' &&
+                f.entry?.agentType === 'hermes' &&
+                f.entry?.sessionId === payload.session_id &&
+                f.entry?.type === 'chat_end' &&
+                f.entry.raw.startsWith('Interrupted'),
+            ).length === 1,
+        ),
     );
     for (const event of lifecycle.events.filter((e) => e.event === 'hermes_session_start')) {
       await hook('hermes_session_end', event.payload);

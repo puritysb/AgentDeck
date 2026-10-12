@@ -33,13 +33,13 @@ AgentDeck
 **macOS App**
 
 ```
-모든 AI 코딩 에이전트를 잔잔한 한 화면에 — Claude Code, Codex, OpenClaw. Stream Deck부터 e-ink까지 상태를 실시간 프리뷰로. 하드웨어 없이 Mac 한 대로.
+AI 코딩 세션의 요청, 응답, 백그라운드 작업과 CI 대기를 한눈에 확인하세요.
 ```
 
 **iOS App**
 
 ```
-Mac에서 돌아가는 에이전트 세션을 iPad·iPhone에서 그대로. 상태·도구 호출·사용량을 실시간으로 — 침대 머리맡에서도 필요한 순간을 놓치지 않습니다. 같은 Wi-Fi의 Mac에서 AgentDeck 실행이 필요합니다.
+페어링된 Mac의 AI 코딩 세션, 요청, 응답과 CI 대기를 한눈에 확인하세요.
 ```
 
 ### Description (4000자)
@@ -423,13 +423,13 @@ AgentDeck
 **macOS App**
 
 ```
-すべてのAIコーディングエージェントを穏やかな一画面に — Claude Code、Codex、OpenClaw。Stream Deckからe-inkまで状態をライブプレビュー。Macだけで始められます。
+AIコーディングセッションのリクエスト、応答、バックグラウンドタスクとCI待機をひと目で確認。
 ```
 
 **iOS App**
 
 ```
-Macで動作中のエージェントセッションをiPad・iPhoneへそのまま。状態・ツール呼び出し・使用量をリアルタイムに — ベッドサイドでも必要な瞬間を逃しません。同一Wi-FiのMacでAgentDeckの起動が必要です。
+ペアリングしたMacのAIコーディングセッション、リクエスト、応答とCI待機をひと目で確認。
 ```
 
 ### Description (4000字)
@@ -811,13 +811,13 @@ Every agent, one calm surface
 **macOS App**
 
 ```
-All your AI coding agents on one calm screen — Claude Code, Codex, OpenClaw. Preview live state from Stream Deck to e-ink. No hardware needed — just your Mac.
+Follow your AI coding sessions, requests, responses and CI waits at a glance.
 ```
 
 **iOS App**
 
 ```
-Your Mac's agent sessions, live on iPad or iPhone — state, tool calls, and usage in real time. Know the moment you're needed. Requires AgentDeck running on your Mac.
+Follow your AI coding sessions, requests, responses and CI waits from your paired Mac at a glance.
 ```
 
 ### Description (4000 chars)
@@ -837,7 +837,7 @@ You steer in your own terminal — AgentDeck keeps watch. Run sessions in parall
 Claude Code hooks, opt-in Codex lifecycle hooks, OpenCode local-server events, and OpenClaw Gateway events render as terrarium creatures. Each session swims, processes, or awaits input so status is clear at a glance.
 
 • Free iPad/iPhone companion
-Auto-discovers your Mac over Wi-Fi via Bonjour. QR pairing fallback for different-subnet setups. Keep your agents in view from a second screen without alt-tabbing.
+Auto-discovers your Mac over Wi-Fi via Bonjour. QR pairing is available on reachable networks. Keep your agents in view from a second screen without alt-tabbing.
 
 • APME agent performance evaluation
 Finished turns are scored against category-specific rubrics. The default Apple Intelligence Foundation Models backend is on-device, free, and uses no network. Opt-in remote backends you point at yourself — Anthropic API, any OpenAI-compatible server, or a local MLX server — are alternatives; only then does the evaluated turn content leave your Mac, to the endpoint you chose.
@@ -900,7 +900,7 @@ While Claude Code or another AI agent runs on your Mac, see session progress, to
 Your Mac's Claude Code hooks, opt-in Codex lifecycle hooks, OpenCode local-server events, and OpenClaw Gateway events render as terrarium creatures. Each session swims, processes, or awaits input so status is clear at a glance.
 
 • Mac pairing (free)
-Auto-discovers your Mac over Wi-Fi via Bonjour. QR pairing fallback for different-subnet setups. Keep your agents visible from a second screen without alt-tabbing.
+Auto-discovers your Mac over Wi-Fi via Bonjour. QR pairing is available on reachable networks. Keep your agents visible from a second screen without alt-tabbing.
 
 • APME score viewing
 See agent-turn evaluation scores, scored against category-specific rubrics on your Mac. Scoring itself runs on the Mac; the iOS app only displays the results.

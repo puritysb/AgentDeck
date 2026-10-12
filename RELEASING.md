@@ -244,6 +244,26 @@ not newly completed capabilities of 1.9.0. #272/#273 remain research/migration w
 and #449 is the preceding multi-channel delivery tracker. This candidate does not
 claim replacement-model approval, new Hermes messaging support or new deck switches.
 
+The full local run at `76b06c4b` passed Store/preview native builds and tests,
+coverage, daemon E2E, Android and ESP32 checks. Its retained receipt records a
+packaged-daemon assertion failure: the captured Hermes fixture has three explicit
+cancelled Stops **plus** an open turn closed by SessionEnd, while the script
+incorrectly required exactly three Interrupted rows across all sessions. A second
+isolated replay reproduced all four correct closures. The assertion now checks
+each explicitly cancelled session independently; the affected package gate is
+rerun separately, without claiming that the original full run passed.
+
+Five native first-use page captures were inspected. An iPad Air Release candidate
+was built, passed the Dot-exclusion artifact check and installed; launch was
+refused while the device was locked. This is not physical runtime acceptance.
+The Windows Node 22/24/26 checks passed in hosted PR CI; they were not run on this
+Mac. Hardware, live Swift/Codex and replacement-model acceptance remain separate.
+
+Both 1.9.0 App Store Connect drafts have saved English, Korean and Japanese
+What's New/promotional text and platform-specific review notes. English pairing
+copy now states network reachability, rather than implying QR bypasses subnet
+reachability. Metadata preparation is not an upload or review submission.
+
 ### Delivery readback, 2026-10-06
 
 All six channels target **1.8.0**, from #460's merge commit
