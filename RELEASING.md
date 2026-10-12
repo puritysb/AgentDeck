@@ -284,6 +284,33 @@ Ulanzi have no new release in this round. The release workflows are
 [ESP32](https://github.com/puritysb/AgentDeck/actions/runs/38202033639) and
 [npm](https://github.com/puritysb/AgentDeck/actions/runs/38206633050).
 
+### Hardware recovery acceptance, 2026-10-12 evening
+
+After the user unlocked the Mac, power-cycled Timebox and reconnected NM USB,
+the two outstanding hardware checks were repeated. Actual TestFlight **1.9.0
+(7901)** reported `allowedAlways` / `poweredOn`; Timebox and iDotMatrix both
+connected and completed new frame uploads. Swift first served on 9121, then
+reclaimed 9120 after the existing bind cooldown and reconnected both displays.
+The reverse Swift → Node handoff also completed with both displays connected,
+fresh upload timestamps and no BLE errors. No privacy grant or BLE identity was
+changed by the agent. This resolves [#517](https://github.com/puritysb/AgentDeck/issues/517).
+
+NM answered a fresh leased serial identity probe as `nm_epd_420` before the
+official `esp32-v1.9.0` merged image was written. The supported CLI passed chip /
+flash preflight, verified the write, and read back **1.9.0 / 79061799** after
+boot. A bounded serial `display_state` off/on exercise remained responsive.
+After restoring the daemon feed, a direct read without toggling USB control
+lines reported 8 sessions, 12 timeline entries and 3 completed panel refreshes.
+This resolves [#518](https://github.com/puritysb/AgentDeck/issues/518). The exercise
+proves protocol recovery and completed panel I/O, not photographic color quality,
+button coverage or a full Mac suspend/resume qualification. The three broad
+manual lab gates remain unattested.
+
+The normal supervised Node owner (`ee3f46e3890b`) and development Mac app client
+were restored, with the serial lease released. This acceptance uses the existing
+TestFlight build; it does not add the later APME/permission-diagnostic changes to
+immutable submitted Apple build 7901 or claim a new Store submission.
+
 ### Apple 1.9.0 delivery readback, 2026-10-12
 
 [PR #512](https://github.com/puritysb/AgentDeck/pull/512) merged as
