@@ -224,6 +224,26 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 
 **Never report a state you did not measure.** Each has its own instrument: the workflow log for 1, `gh release list` for 2, the portal or `npm view <pkg> version` for 3, and the portal for 4 and 5. Deriving one from another is how "released" gets claimed for a build sitting in a portal — it happened on 2026-08-09, when CI upload was reported as a completed Stream Deck and Ulanzi release while neither had been submitted.
 
+### Apple 1.9.0 candidate audit, 2026-10-12
+
+App Store Connect lists both iOS and macOS **1.8.0 as Ready for Distribution**
+(read on October 12). Apple 1.9.0 is the next candidate; no upload or submission
+is claimed until its platform-specific delivery readback is recorded.
+
+The candidate includes first-use setup and pairing recovery (#492, #494, #503),
+session attribution and duplicate-event fixes (#490, #500, #504, #505), background
+work tracking and orbiting companions (#507, #510, #511), and native pixel-display
+improvements. Dot is excluded from both Store artifacts; preview development is
+retained. Other delivery channels keep their existing versions.
+
+No open PR remained at the initial audit. Master `15b6dc5e` had successful Apple,
+main CI, design, Pages and local-deploy workflows. Open issues #423/#425/#426/#428
+retain Hermes messaging-platform, physical-device and replacement-model acceptance;
+#463 retains further deck-control capabilities and physical acceptance. These are
+not newly completed capabilities of 1.9.0. #272/#273 remain research/migration work,
+and #449 is the preceding multi-channel delivery tracker. This candidate does not
+claim replacement-model approval, new Hermes messaging support or new deck switches.
+
 ### Delivery readback, 2026-10-06
 
 All six channels target **1.8.0**, from #460's merge commit
@@ -414,7 +434,7 @@ Tag prefixes remain because channels ship independently and may point to differe
 
 1. Choose the next SemVer for the target, preserving the shared compatibility major. Use minor for substantial backward-compatible features and patch for small fixes.
 2. Update that target's internal mirrors. Do not bump unrelated targets merely to align minor or patch values.
-3. Increment Apple `CURRENT_PROJECT_VERSION` or Android `versionCode` only when releasing that target.
+3. Increment Android `versionCode` when releasing Android. Apple CI owns `CURRENT_PROJECT_VERSION` (run number × 100 + attempt); its source value is a local default.
 4. **Write the `CHANGELOG.md` entry, and the delivery table in `README.md`.** The
    changelog is not a courtesy copy — `scripts/release-notes.mjs` renders the
    GitHub Release body from it, so an unwritten entry is a release page with an
@@ -568,7 +588,7 @@ looking correct while the server still holds the previous text.
 2. Run the Release build and App Store archive verifier described in `AGENTS.md`.
 3. For a coordinated iOS + macOS delivery, tag and push `apple-v<APPLE_VERSION>`; CI archives and uploads both to TestFlight. For a macOS-only delivery, dispatch `apple-release.yml` on the reviewed commit with `release_version=<APPLE_VERSION>`, `platform=macos`, and `upload=false` to prepare the signed candidate. Use `upload=true` only for the authorized App Store Connect delivery. A manual run does not publish a GitHub Release; do not push an Apple tag for a single-platform delivery because tags still build and upload both platforms.
 
-CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
+CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
 #### Dot development and Store builds
 

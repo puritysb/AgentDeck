@@ -155,6 +155,25 @@ AgentDeck은 독립적인 프로젝트이며 Anthropic, OpenAI, Google, SST, Cor
 claude code,ai,agent,dashboard,stream deck,monitoring,apme,openclaw,codex,ipad,companion,developer
 ```
 
+### What's New (v1.9.0)
+
+**macOS App**
+
+```
+• 처음 시작할 때 수족관 모양과 사용할 에이전트를 선택하고, 필요한 연결만 설정할 수 있습니다. 설정은 언제든 건너뛰거나 다시 열 수 있습니다.
+• 에이전트 캐릭터 주위를 도는 작은 친구들이 백그라운드 작업과 완료 상태를 보여줍니다.
+• 세션 구분, 타임라인 중복, 재연결과 페어링 복구를 개선했습니다.
+• 선택형 픽셀 디스플레이의 장면과 표정을 개선했습니다.
+```
+
+**iOS App**
+
+```
+• 새 시작 화면에서 수족관 모양을 선택하고 Mac 검색, 승인 또는 QR 페어링으로 연결할 수 있습니다. 오프라인 미리보기도 제공됩니다.
+• 페어링된 Mac이 전달한 백그라운드 작업을 에이전트 주위를 도는 작은 친구들로 표시합니다.
+• 재연결, 세션 구분과 타임라인 중복 표시를 개선했습니다.
+```
+
 ### What's New (v1.7.0)
 
 **macOS App**
@@ -526,6 +545,25 @@ AgentDeckは独立したプロジェクトであり、Anthropic、OpenAI、Googl
 claude code,ai,エージェント,ダッシュボード,stream deck,monitoring,apme,openclaw,codex,ipad,developer
 ```
 
+### What's New (v1.9.0)
+
+**macOS App**
+
+```
+• 初回設定で水槽の見た目と使うエージェントを選び、必要な連携だけを設定できます。設定はスキップでき、後から開き直せます。
+• エージェントの周りを回る小さな仲間が、バックグラウンドタスクと完了状態を表示します。
+• セッションの識別、タイムラインの重複、再接続とペアリングの復旧を改善しました。
+• オプションのピクセルディスプレイのシーンと表情を改善しました。
+```
+
+**iOS App**
+
+```
+• 新しい初回設定で水槽の見た目を選び、Macの検索、承認またはQRペアリングで接続できます。オフラインプレビューも利用できます。
+• ペアリングしたMacから受け取ったバックグラウンドタスクを、エージェントの周りを回る小さな仲間で表示します。
+• 再接続、セッションの識別とタイムラインの重複表示を改善しました。
+```
+
 ### What's New (v1.7.0)
 
 **macOS App**
@@ -893,6 +931,25 @@ AgentDeck is independent and is not affiliated with or endorsed by Anthropic, Op
 
 ```
 claude code,ai,agent,dashboard,monitoring,apme,openclaw,codex,ipad,stream deck,developer
+```
+
+### What's New (v1.9.0)
+
+**macOS App**
+
+```
+• A new first-use flow lets you choose your aquarium appearance and set up only the agent integrations you want. Skip any step or reopen setup later.
+• Small companions orbit your agent creatures to show background tasks and their completion.
+• Improved session identity, timeline deduplication, reconnection and pairing recovery.
+• Refined scenes and expressions for optional pixel displays.
+```
+
+**iOS App**
+
+```
+• Choose your aquarium appearance in a new first-use flow, then connect through Mac discovery, approval or QR pairing. Offline previews remain available.
+• Background tasks received from your paired Mac appear as small companions orbiting their agent.
+• Improved reconnection, session identity and duplicate timeline handling.
 ```
 
 ### What's New (v1.7.0)

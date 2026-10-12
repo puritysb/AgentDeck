@@ -63,6 +63,25 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
   re-sends credentials; the two e-ink panels had stayed on WiFi and USB at once.
   The e-ink panels also stay off WiFi at boot while USB serial is present.
 
+## 2026-10-12 — Apple 1.9.0
+
+- A skippable first-use flow lets Mac users choose their aquarium appearance,
+  enable their chosen agent integrations with explicit file-access consent, and
+  explore optional devices. iPhone/iPad adds appearance selection, bounded Mac
+  discovery, approval and QR pairing, and offline preview/retry paths.
+- Background work stays attached to its owning session. Small jar companions
+  orbit agent creatures, with additional tasks shown as pearl moonlets. Counts
+  and completion states follow the shared background-work tracker.
+- Improve session identity, hook attribution and timeline deduplication, including
+  managed sessions and reconnection. Multi-daemon host selection and pairing
+  recovery no longer retain the wrong connection.
+- Add the Tide scene to native Pixoo rendering, expand Timebox facial states and
+  improve compact device activity/timeline rendering.
+- About and integration handshakes use the installed app's actual version/build.
+- App Store macOS/iOS artifacts exclude all Dot integration at compile time.
+  Dot development continues through explicit preview configurations in the same
+  repository; release CI checks the actual compiled artifacts and rejects previews.
+
 ## 2026-10-06 — npm 1.8.0, Apple 1.8.0, Android 1.8.0, ESP32 1.8.0, Stream Deck 1.8.0, Ulanzi 1.8.0
 
 Coordinated 1.8.0 release. Store review and public availability are tracked

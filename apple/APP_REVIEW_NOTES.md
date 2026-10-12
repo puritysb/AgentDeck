@@ -15,7 +15,7 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status** (verified from the store's own records, 2026-08-22): `1.0.8` is live on both platforms at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497) — build **5301**, iPhone/iPad released 2026-08-22T18:41Z and macOS within the same window. The first iPhone/iPad submission, 1.0.2 (3901), was rejected on 2026-08-04 under Guideline 2.1(a); build 4002 carried the fix plus an offline Device Preview entry point and was released on 2026-08-06. `apple-v1.1.0` produced no build (CI outage window); its content ships in 1.2.0.
+**Release status** (App Store Connect, 2026-10-12): iOS and macOS `1.8.0` are Ready for Distribution. `1.9.0` is the next candidate; build upload and review submission are recorded separately in [RELEASING.md](../RELEASING.md).
 
 _Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
 
@@ -427,27 +427,24 @@ long-form sections above are for the Resolution Center reply, where length is no
 <!-- ios-notes-field:begin -->
 
 ```text
-NO ACCOUNT REQUIRED. A paired Mac is optional for review of this build.
+NO ACCOUNT REQUIRED. A paired Mac is optional for reviewing the offline Device Previews.
 
-VERIFY ON A CLEAN IPAD
-1. Complete the four onboarding panes and allow Local Network access.
-2. With no AgentDeck Mac on the review Wi-Fi, wait approximately 10 seconds.
-3. The spinner stops and the stable text reads “No AgentDeck found on this network.” Search Again and Enter URL Manually remain available.
-4. Tap “Explore without a Mac.” A local synthetic Device Preview opens without
-   an account, server, agent session, or hardware. The Device, Agent, State, and Sessions controls update the rendered preview. Tap Done to return.
-5. Tap “Search Again.” The bounded search runs once more and returns to the same
-   screen on its own.
+NEW IN 1.9.0
+Skippable appearance/connection setup, clearer pairing recovery, orbiting companions for background work received from the paired Mac, and session/timeline reliability improvements.
 
-LIVE COMPANION PATH (OPTIONAL)
-When AgentDeck is running on a Mac on the same Wi-Fi, the iOS app discovers it
-through Bonjour (_agentdeck._tcp). Tap “Pair iPad” on the Mac to show the QR code,
-then scan it from iOS Settings. The app opens a read-only WebSocket dashboard.
-Pairing credentials are never included in Bonjour or unauthenticated health
-responses. Build 4702 now preserves a successful pairing across dashboard-service
-restarts and reports an authorization failure explicitly instead of showing a
-generic connection error.
+VERIFY ON A CLEAN IPAD OR IPHONE
+1. Choose an aquarium appearance and continue to connection setup.
+2. Explore Without Connecting opens synthetic Device Previews without an account, server, agent session or hardware. Change the device, agent and state controls to inspect the bundled renderers; Done returns to setup.
+3. For live use, open AgentDeck on a Mac on the same reachable network and allow Local Network access. On the Mac, Devices > Pair Device provides approval and QR pairing.
+4. With no Mac available, discovery ends with retry/manual options rather than an endless spinner. QR pairing supplies connection details; it does not bypass network reachability.
 
-The iOS app is a pure client, contains no analytics or advertising SDK, and requires no sign-in. After all live agent sessions have returned to idle on three distinct days, StoreKit may show Apple's native review prompt; processing and awaiting states never qualify, and the dates and 180-day cooldown remain local in UserDefaults. Settings also has a user-initiated App Store review link.
+The iOS app mirrors the Mac through an authenticated WebSocket connection. It does not run agents, install hooks, query GitHub or evaluate sessions itself. Hermes rows are read-only. All aquarium assets are bundled. Pairing tokens are absent from Bonjour and unauthenticated health responses.
+
+DOT EXCLUDED
+All Dot setup, authentication, hosting, cloud connections and companion rendering are excluded from the submitted binary. No hidden or remote switch can enable them.
+
+PRIVACY
+No sign-in, analytics or advertising SDK. Local Network access is used for discovery/pairing. Apple's native review prompt is eligible only after all live sessions are idle on three distinct days; those dates and a 180-day cooldown stay local. No new permissions are required for background companions.
 Contact: admin@foundby.kr
 ```
 
@@ -458,38 +455,37 @@ Contact: admin@foundby.kr
 <!-- notes-field:begin -->
 
 ```text
-NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed — no external process or terminal setup is part of these instructions.
+NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 1.7.0
-Hermes mermaid previews and read-only relayed sessions, safer Codex configuration, more reliable session observation, purchased-credit display, and consolidated OpenClaw activity. Hermes live input requires an already configured relay; it is optional and the app offers no installer.
+NEW IN 1.9.0
+Skippable first-use setup, improved connection recovery, background-task companions orbiting agent creatures, and session/timeline reliability fixes. Dot is entirely excluded from this macOS/iOS submission, including setup, authentication, hosting, cloud connections and companion rendering. No hidden or remote switch enables it.
 
 WHAT IT DOES
-AgentDeck Dashboard monitors and evaluates AI coding-agent sessions (Claude Code, opt-in Codex hooks, opt-in OpenCode events, OpenClaw Gateway). Its built-in sandboxed Swift daemon owns the dashboard server, hook ingestion, session state, local-network pairing, and evaluation. Users start their agent independently; AgentDeck receives only the integrations they explicitly enable.
+The sandboxed Swift daemon monitors local coding-agent sessions, ingests user-enabled hooks, serves the dashboard, pairs companions and evaluates turns. Users start agents independently. Optional Hermes rows from an existing relay are read-only; the app offers no relay installer.
 
-HOW TO SEE THE FEATURES WITHOUT ANY AGENT INSTALLED
-1. Launch the app; dismiss the first-run onboarding sheet to reach the dashboard.
-2. Click "Preview Devices" in the menu bar — it renders sessions on the built-in preview targets, no hardware or agent required. Fastest way to review the UI.
-3. Click "Pair iPad" to show the QR the iOS companion scans.
+REVIEW WITHOUT AGENTS OR HARDWARE
+1. Choose an aquarium appearance in first-use setup. Agent integrations and optional devices can be skipped. Open Dashboard finishes setup.
+2. Open Device Preview from the menu bar to explore bundled synthetic sessions and device renderers.
+3. Devices > Pair Device opens companion approval and a QR code. Pairing is optional. Settings > Dashboard > Set Up AgentDeck reopens setup.
 
 WEATHERKIT (Guideline 5.2.5)
-Settings → Dashboard → Weather context → "Use Current Location." Allow location, then close Settings: the top weather pill shows  Weather. Click it for Apple's legal page. The attached weatherkit-attribution-macos.mov records this flow on a physical Mac. Apple data stays in-app and in-memory; readers use attributed MET Norway data.
+Settings > Dashboard > Weather context > Use Current Location. After permission, the weather pill displays Apple's Weather attribution when WeatherKit supplies the data; clicking opens Apple's legal page. Apple weather stays in-app/in-memory; portable displays use attributed MET Norway data.
 
 NO SUBPROCESS (Guideline 2.5.2)
-The build spawns no subprocess and writes no shell scripts. The sole bundled executable is Contents/MacOS/AgentDeck. CI fails the archive if a subprocess path, extra executable, or home-relative-path entitlement appears.
+The app spawns no subprocess, writes no shell scripts and bundles no helper executable. CI checks the final signed artifact for forbidden paths, extra executables, Dot payloads and home-relative-path entitlements.
 
-ENTITLEMENT RATIONALE
-• network.server — the Swift daemon uses Network.framework NWListener for its local HTTP+WebSocket hub (port 9120): paired iPhone/iPad, localhost hooks, and optional deck plugins. It binds only loopback/local interfaces, with no firewall rule, port mapping, or public listener. Settings → Port shows the port.
-• Bonjour (_agentdeck._tcp) — lets the companion find the Mac without typing an IP. Explained via NSLocalNetworkUsageDescription.
-• device.bluetooth — optional iDotMatrix and Divoom Timebox Mini LED displays via CoreBluetooth, BLE central only. Inert unless the user pairs one.
-• device.audio-input — optional voice input. device.serial — optional ESP32 USB-serial displays; inert without such hardware.
-• weatherkit — see the physical-Mac recording and exact reviewer path above. The Dashboard shows the  Weather mark linked to Apple's legal page; Apple Weather stays in-app and in-memory, while the portable feed uses MET Norway.
-• files.user-selected.read-write + bookmarks.app-scope — hook installation is fully opt-in: an NSAlert explains it, then an NSOpenPanel requires the user to pick ~/.claude/settings.json themselves. Only then do we take a security-scoped bookmark and write. A Remove button reverts it.
+ENTITLEMENTS
+network.server: Network.framework hosts authenticated local HTTP/WebSocket sessions for paired companions, localhost hooks and optional deck plugins. No router mapping or public cloud listener is configured.
+Bonjour (_agentdeck._tcp): discovers the Mac; Local Network usage is explained before pairing. Discovery never includes a token.
+device.bluetooth: optional CoreBluetooth LED displays, inert unless paired.
+device.audio-input: optional voice input. device.serial: optional USB displays.
+weatherkit: native weather and linked attribution described above.
+files.user-selected.read-write + bookmarks.app-scope: integration setup explains access, then requires the user to select the agent configuration file/folder in the system picker. Removal controls undo AgentDeck's integration entries. No home-relative-path exception or App Group is used.
 
-PRIVACY / EVALUATION BACKENDS
-Evaluation defaults to on-device Apple Intelligence Foundation Models — no network. Remote backends are opt-in alternatives the user configures with their own endpoint and key (Anthropic API, any OpenAI-compatible server, or a local MLX server). Only when one is selected does turn content leave the device, to the endpoint the user chose. Disclosed in App Privacy and our privacy policy. No analytics or advertising SDK, and we operate no cloud backend. StoreKit may show Apple's native review prompt only after all live sessions are idle on three distinct days; processing and awaiting states never qualify. Only those dates and a local 180-day cooldown are retained. Settings also has a user-initiated App Store review link.
+PRIVACY / EVALUATION
+Evaluation defaults to on-device Apple Intelligence Foundation Models. Remote alternatives are opt-in user-configured endpoints/keys (Anthropic, OpenAI-compatible, or local MLX); only then does turn content reach the chosen endpoint, as disclosed in App Privacy. No analytics/advertising SDK or AgentDeck cloud backend. Apple's review prompt requires all live sessions to be idle on three distinct days; dates and a 180-day cooldown remain local.
 
-All hardware integrations are optional (Stream Deck+ also needs Elgato's software); reviewers can skip them and the rest of the app is unaffected.
-
+Hardware is optional. Review requires no purchase, plugin installation or API key.
 Contact: admin@foundby.kr
 ```
 
