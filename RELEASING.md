@@ -224,11 +224,38 @@ CI going green is the first of five, not the last. Keep them apart in your head 
 
 **Never report a state you did not measure.** Each has its own instrument: the workflow log for 1, `gh release list` for 2, the portal or `npm view <pkg> version` for 3, and the portal for 4 and 5. Deriving one from another is how "released" gets claimed for a build sitting in a portal — it happened on 2026-08-09, when CI upload was reported as a completed Stream Deck and Ulanzi release while neither had been submitted.
 
+### Apple 1.9.0 delivery readback, 2026-10-12
+
+[PR #512](https://github.com/puritysb/AgentDeck/pull/512) merged as
+`105cca546266a087774f058628875ed73b854f74`; `apple-v1.9.0` points to that commit.
+The [distribution workflow](https://github.com/puritysb/AgentDeck/actions/runs/38191573875)
+passed both signed exports, both App Store archive/Dot-exclusion checks and both
+uploads. The [GitHub release](https://github.com/puritysb/AgentDeck/releases/tag/apple-v1.9.0)
+exists with CHANGELOG-rendered notes.
+
+The following values were read independently from each platform in App Store
+Connect, then confirmed in its App Review submission list:
+
+| Platform | Version / build | Submitted (KST) | Verified state |
+| --- | --- | --- | --- |
+| iOS | 1.9.0 / 7901 | October 12, 10:35 | Waiting for Review |
+| macOS | 1.9.0 / 7901 | October 12, 10:44 | Waiting for Review |
+
+Both retain automatic release after approval, immediate rollout to all users and
+existing ratings. Approval and public availability are **not** claimed; 1.8.0
+remains the last verified live Store version. English/Korean/Japanese release
+copy and the platform-specific review notes were saved before submission.
+
+The merge also passed the owner's local-main deployment. The installed, running
+Mac development app reports 1.9.0/build 5 and passes the compiled Dot-exclusion
+check. That local build is distinct from the submitted distribution build 7901;
+it does not replace the outstanding physical iPad or live Swift/Codex acceptance.
+Other delivery channels were not republished.
+
 ### Apple 1.9.0 candidate audit, 2026-10-12
 
-App Store Connect lists both iOS and macOS **1.8.0 as Ready for Distribution**
-(read on October 12). Apple 1.9.0 is the next candidate; no upload or submission
-is claimed until its platform-specific delivery readback is recorded.
+At the initial audit, App Store Connect listed both iOS and macOS **1.8.0 as
+Ready for Distribution**. The subsequent 1.9.0 delivery is recorded above.
 
 The candidate includes first-use setup and pairing recovery (#492, #494, #503),
 session attribution and duplicate-event fixes (#490, #500, #504, #505), background

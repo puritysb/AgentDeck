@@ -321,7 +321,9 @@ advance independently; you do not need to update every device together.
 **Delivery status, 2026-10-06:** Android 1.8.0's signed APK and Stream Deck/Ulanzi
 1.8.0 packages are public on GitHub. Google Play 1.8.0 (25) is also live. Apple
 iOS/macOS 1.8.0 is Ready for Distribution in App Store Connect (read October 12);
-Apple 1.9.0 is being prepared. Ulanzi 1.8.0 was submitted for review. Elgato 1.8
+Apple 1.9.0 (7901 on each platform) is Waiting for Review, submitted October 12
+with automatic release after approval; it is not yet the live Store version.
+Ulanzi 1.8.0 was submitted for review. Elgato 1.8
 is public: the Marketplace page shows Version 1.8, released 2026-10-08 (read
 2026-10-11). The last verified public Ulanzi version remains 1.6.0. All four npm packages and their `latest` tags are
 public at 1.8.0. ESP32 1.8.0 firmware for twelve boards is public after
