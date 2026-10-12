@@ -250,8 +250,14 @@ packaged-daemon assertion failure: the captured Hermes fixture has three explici
 cancelled Stops **plus** an open turn closed by SessionEnd, while the script
 incorrectly required exactly three Interrupted rows across all sessions. A second
 isolated replay reproduced all four correct closures. The assertion now checks
-each explicitly cancelled session independently; the affected package gate is
-rerun separately, without claiming that the original full run passed.
+each explicitly cancelled session independently. The scoped
+`pnpm verify:full --only npm-packaged --record` rerun at `d12e9fd9` passed all ten
+package checks, including 60-second health/JSON soak and isolated restart. Keep
+the [original full receipt](verification/receipts/2026-10-12-76b06c4.json) and
+[package rerun receipt](verification/receipts/2026-10-12-d12e9fd.json) together:
+the latter is partial verification, not a replacement claim for the full run.
+Final quick and changed-area checks passed; the Apple source is unchanged since
+the recorded native run.
 
 Five native first-use page captures were inspected. An iPad Air Release candidate
 was built, passed the Dot-exclusion artifact check and installed; launch was

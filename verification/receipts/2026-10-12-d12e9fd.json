@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-12T01:04:31.420Z",
+  "finished_at": "2026-10-12T01:06:37.046Z",
+  "duration_ms": 125626,
+  "commit": "d12e9fd9eef363406c22a6e4ca135ea69500cfeb",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "npm-packaged",
+      "gate": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "status": "pass",
+      "duration_ms": 125624
+    }
+  ]
+}
