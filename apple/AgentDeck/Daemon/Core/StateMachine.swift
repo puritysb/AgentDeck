@@ -28,7 +28,6 @@ final class StateMachine {
     var question: String?
     var navigable = false
     var cursorIndex = 0
-    var suggestedPrompt: String?
 
     // Project / Model
     var projectName: String?
@@ -47,9 +46,6 @@ final class StateMachine {
     var costLimit: Double?
     var resetTime: String?
     var resetDate: String?
-
-    // Remote
-    var remoteUrl: String?
 
     var onStateChanged: ((AgentState, AgentState) -> Void)?
     private var stuckTimer: Task<Void, Never>?
@@ -96,7 +92,6 @@ final class StateMachine {
         question = nil
         navigable = false
         cursorIndex = 0
-        suggestedPrompt = nil
     }
 
     private func resetStuckTimer() {

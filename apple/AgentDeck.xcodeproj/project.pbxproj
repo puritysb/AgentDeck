@@ -25,7 +25,6 @@
 		071A3FB5F200FFCFA82F4294 /* MatrixTerminalPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AECC310DB5852BD8814BC04 /* MatrixTerminalPreviews.swift */; };
 		073878269396F77212DC560B /* AppMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2A10490A1827E5EC7D6FA08 /* AppMetadataTests.swift */; };
 		076E08E5217ECF4528B4AC9A /* TerrariumConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403CDDF7DDFCF5D8702491EA /* TerrariumConfig.swift */; };
-		07B804BD8A367595E8FF639F /* ActivityPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6186E147F760B85461F02022 /* ActivityPanel.swift */; };
 		08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A135216D37932FE68501F4 /* CloudCreature.swift */; };
 		09121C3375386AAC089BD428 /* DaemonOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B649BF2ACE34B4E61EB10D /* DaemonOwnership.swift */; };
 		091A43AE8CEB292071866D39 /* ApmeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E176199605E14D2EAF35A1 /* ApmeStore.swift */; };
@@ -271,7 +270,6 @@
 		587F1862A0D492B2996A4ABD /* NOTICE.md in Resources */ = {isa = PBXBuildFile; fileRef = 6B62112FACCFA943D1AF75F7 /* NOTICE.md */; };
 		5885567AA794EB28CB6FF248 /* BridgeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A702CCCE11B4450E9EED163 /* BridgeConnection.swift */; };
 		58E5710560C2B86ACFA1A460 /* SwiftSurfaceProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C734B04F5E770B8B5FE2B70 /* SwiftSurfaceProtocolTests.swift */; };
-		590D75801E10021127334F88 /* ActivityPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6186E147F760B85461F02022 /* ActivityPanel.swift */; };
 		59BEE539C23688C92D592A19 /* CiWaitRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */; };
 		5A74FCB08167CCC4C5664D04 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */; };
 		5A90801088DFF80C8E0EDED6 /* CrayfishCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD30721AD4CBA74DD049A1F /* CrayfishCreature.swift */; };
@@ -914,7 +912,6 @@
 		603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroTimelineFeed.swift; sourceTree = "<group>"; };
 		6165A6BFF174139F6AF07CED /* PortFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortFormatting.swift; sourceTree = "<group>"; };
 		6176599CD3E03A96EA977362 /* ESP32WifiOta.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32WifiOta.swift; sourceTree = "<group>"; };
-		6186E147F760B85461F02022 /* ActivityPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityPanel.swift; sourceTree = "<group>"; };
 		61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAggregator.swift; sourceTree = "<group>"; };
 		61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusIcon.swift; sourceTree = "<group>"; };
 		6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixIdentity.generated.swift; sourceTree = "<group>"; };
@@ -1686,7 +1683,6 @@
 		CCABBFDA44B079A6354EEBA1 /* Monitor */ = {
 			isa = PBXGroup;
 			children = (
-				6186E147F760B85461F02022 /* ActivityPanel.swift */,
 				CD7B38A97F5852FE0E8249C2 /* AttentionTheaterHUD.swift */,
 				74B987710CFB6B547DB06A21 /* CollaborationModel.swift */,
 				A4AF6DB8355E0DFAD67F4DBD /* CollaborationPanel.swift */,
@@ -2234,7 +2230,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				CF6C9C3C7D97F3585DD07FCD /* ActionFoldRules.generated.swift in Sources */,
-				07B804BD8A367595E8FF639F /* ActivityPanel.swift in Sources */,
 				7DBB3B78D2F8A74614C9047E /* Adapter.swift in Sources */,
 				4D7595686B60FDBDE4A5210D /* AdbModule.swift in Sources */,
 				71CC16D6042B2F145EFC2896 /* AgentCommand.swift in Sources */,
@@ -2506,7 +2501,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				839448229FB93D6553CF0677 /* ActionFoldRules.generated.swift in Sources */,
-				590D75801E10021127334F88 /* ActivityPanel.swift in Sources */,
 				1D193B9524AA5E561A899882 /* Adapter.swift in Sources */,
 				0B04CA71C040BE9955B8C032 /* AdbModule.swift in Sources */,
 				BD4E00F831DF1A005F413275 /* AgentCommand.swift in Sources */,

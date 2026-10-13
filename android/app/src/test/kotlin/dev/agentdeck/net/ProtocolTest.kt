@@ -379,11 +379,6 @@ class ProtocolTest {
         assertFalse(without.contains("value"))
     }
 
-    @Test
-    fun `PluginCommands navigateOption`() {
-        assertEquals("""{"type":"navigate_option","direction":"up"}""", PluginCommands.navigateOption("up"))
-    }
-
     // --- deck_slot_map ---
 
     @Test

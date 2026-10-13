@@ -1023,7 +1023,7 @@ final class DaemonServer {
         switch command["type"] as? String {
         case "query_usage": return "usage.read"
         case "query_session_timeline": return "timeline.read"
-        case "focus_session", "session_switch", "clear_session_focus": return "session.focus"
+        case "focus_session", "clear_session_focus": return "session.focus"
         case "permission_decision", "respond": return "permission.decide"
         case "select_option", "navigate_option": return "prompt.select"
         case "send_prompt": return "session.prompt"
@@ -5096,8 +5096,7 @@ final class DaemonServer {
             default: break
             }
             if type != "switch_agent" && type != "query_usage" && type != "focus_session"
-                && type != "clear_session_focus"
-                && type != "mode_toggle" && type != "session_switch" && type != "usage_toggle" { return }
+                && type != "clear_session_focus" { return }
         }
 
         switch type {
@@ -5206,38 +5205,6 @@ final class DaemonServer {
             userFocusedSessionId = nil
             Task { await focusRelay.unfocus() }
             handleSwitchAgent(cmd["agent"] as? String ?? "")
-        case "mode_toggle":
-            // D200H button 0: cycle mode via focused session (sends Shift+Tab to PTY)
-            let modeCmd = SendableDict(AgentCommand.switchMode(mode: nil).dictionary)
-            Task {
-                let routed = await self.focusRelay.routeCommand(modeCmd.value)
-                if !routed {
-                    await DaemonActor.run { self.forwardCommandToSession(modeCmd.value) }
-                }
-            }
-        case "session_switch":
-            // D200H button 1: cycle focus to next session
-            let sessions = cachedSessions
-            guard !sessions.isEmpty else { break }
-            let selfPort = Int(port)
-            Task {
-                let currentId = await self.focusRelay.focusedSessionId
-                let currentIdx = sessions.firstIndex(where: { $0.id == currentId }) ?? -1
-                let nextIdx = (currentIdx + 1) % sessions.count
-                let nextSession = sessions[nextIdx]
-                await DaemonActor.run {
-                    self.userFocusedSessionId = nextSession.id
-                    self.broadcastStateUpdate()
-                }
-                if nextSession.port == selfPort || nextSession.pid == 0 {
-                    await self.focusRelay.focusLocal(sessionId: nextSession.id)
-                } else {
-                    await self.focusRelay.focus(sessionId: nextSession.id)
-                }
-            }
-        case "usage_toggle":
-            // D200H button 2: trigger usage fetch
-            Task { await fetchUsageRelayed() }
         case "utility":
             let action = cmd["action"] as? String ?? ""
             let value = cmd["value"] as? Int
@@ -10368,7 +10335,6 @@ final class DaemonServer {
         if let q = stateMachine.question { e["question"] = q }
         if stateMachine.navigable { e["navigable"] = true }
         e["cursorIndex"] = stateMachine.cursorIndex
-        if let sp = stateMachine.suggestedPrompt { e["suggestedPrompt"] = sp }
         if agentType == "openclaw" {
             // Gateway-owned frame: the Gateway's OWN activity, never the
             // hook-driven machine's turn (mirror of Node `shapeHubFrame`).
@@ -10381,7 +10347,7 @@ final class DaemonServer {
             // Gateway's own tool explicitly (an absent key is retained by the
             // Apple holder, which would keep a Claude tool under this label).
             for key in ["currentTool", "toolInput", "toolProgress", "options", "question",
-                        "promptType", "navigable", "cursorIndex", "suggestedPrompt"] {
+                        "promptType", "navigable", "cursorIndex"] {
                 e.removeValue(forKey: key)
             }
             if let tool = gatewayCurrentTool, !tool.isEmpty { e["currentTool"] = tool }
@@ -10410,7 +10376,6 @@ final class DaemonServer {
         if let requestId = cachedGatewayAuthRequestId { e["gatewayAuthRequestId"] = requestId }
         if let message = cachedGatewayAuthMessage { e["gatewayAuthMessage"] = message }
         if let url = cachedPairingUrl { e["pairingUrl"] = url }
-        if let r = stateMachine.remoteUrl { e["remoteUrl"] = r }
         e["oauthConnected"] = effectiveOauthConnected()
         // Voice assistant state (piggyback on state_update for all clients)
         if cachedVoiceAssistantState != "disabled" {

@@ -686,15 +686,10 @@ object PluginCommands {
             """"devices":[{"id":${enc(id)},"name":${enc(name)},"kind":${enc(kind)}}]}"""
     }
 
-    fun switchMode(): String = """{"type":"switch_mode"}"""
-
     fun utility(action: String, value: Int? = null): String {
         val valueStr = if (value != null) ""","value":$value""" else ""
         return """{"type":"utility","action":"$action"$valueStr}"""
     }
-
-    fun navigateOption(direction: String): String =
-        """{"type":"navigate_option","direction":"$direction"}"""
 
     /** Device approval for a gated PreToolUse permission request (observed session). */
     fun permissionDecision(requestId: String, decision: String): String =

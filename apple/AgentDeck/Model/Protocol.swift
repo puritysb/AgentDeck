@@ -1031,7 +1031,6 @@ enum PluginCommand: Encodable, Sendable {
     /// question the prompt has already moved past (multi-group
     /// AskUserQuestion). Both optional — older daemons ignore them.
     case selectOption(index: Int, sessionId: String? = nil, question: String? = nil)
-    case navigateOption(direction: String)
     case sendPrompt(text: String)
     case switchMode(mode: String?)
     case interrupt
@@ -1055,9 +1054,6 @@ enum PluginCommand: Encodable, Sendable {
             try container.encode(index, forKey: .init("index"))
             if let sessionId { try container.encode(sessionId, forKey: .init("sessionId")) }
             if let question { try container.encode(question, forKey: .init("question")) }
-        case .navigateOption(let direction):
-            try container.encode("navigate_option", forKey: .init("type"))
-            try container.encode(direction, forKey: .init("direction"))
         case .sendPrompt(let text):
             try container.encode("send_prompt", forKey: .init("type"))
             try container.encode(text, forKey: .init("text"))

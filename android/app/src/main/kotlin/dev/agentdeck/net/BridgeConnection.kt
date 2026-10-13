@@ -221,7 +221,6 @@ class BridgeConnection internal constructor() {
     fun sendInterrupt() = send(PluginCommands.interrupt())
     fun sendEscape() = send(PluginCommands.escape())
     fun sendQueryUsage() = send(PluginCommands.queryUsage())
-    fun sendSwitchMode() = send(PluginCommands.switchMode())
     /** Connect to a saved URL if not already connected. */
     fun autoConnect(savedUrl: String?) {
         if (savedUrl != null && _status.value == ConnectionStatus.DISCONNECTED) {
