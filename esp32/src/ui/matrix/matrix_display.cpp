@@ -219,6 +219,22 @@ void render() {
         }
     }
 
+#ifdef FASTLED_VERSION
+    // Intended pixels, not an optical readback: distinguish a bad frame from
+    // a healthy sparse frame that the physical LED driver transmits incorrectly.
+    static uint32_t lastFrameLogMs = 0;
+    const uint32_t now = millis();
+    if (now - lastFrameLogMs >= 10000) {
+        lastFrameLogMs = now;
+        unsigned lit = 0;
+        for (const CRGB& pixel : leds) {
+            if (pixel.r || pixel.g || pixel.b) ++lit;
+        }
+        Serial.printf("[Matrix] frame page=%u lit=%u/%u driver=FastLED-%u brightness=%u\n",
+                      static_cast<unsigned>(currentPage), lit, unsigned(MATRIX_LEDS),
+                      unsigned(FASTLED_VERSION), unsigned(FastLED.getBrightness()));
+    }
+#endif
     FastLED.show();
 }
 

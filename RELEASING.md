@@ -156,9 +156,12 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
   All 60 binary sizes and SHA-256 hashes match the public manifest/checksums.
   A later TC001 report shows an almost fully lit cyan/white panel despite fresh
   serial telemetry and a running display loop. A target-only reset reinitialized
-  the LED matrix, but the user confirmed the all-on output persists. Root cause
-  remains unconfirmed. This is
-  an open hardware-output investigation, not a successful optical acceptance.
+  the LED matrix, but the user confirmed the all-on output persisted, including
+  after installing the official CI image. A comparison build with FastLED 3.7.0
+  restored readable glyphs (user-confirmed); the 3.10.7 driver selected by the
+  floating dependency is implicated, though its precise defect is not isolated.
+  **ESP32 1.9.2 is the patch candidate** for the exact driver pin and frame
+  diagnostics; it is not yet a published release.
   TC001 and NM serial readback and T-Embed WiFi readback report 1.9.1. These
   installed candidates were built from the same source; optical inspection is
   distinct from telemetry and artifact verification.

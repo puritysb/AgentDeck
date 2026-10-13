@@ -179,6 +179,16 @@ on `usbmodem3111101`). Hold BOOT, tap RST, release BOOT — then pick the port t
 
 ### Verifying the write
 
+**TC001 LED output also needs optical acceptance.** On 2026-10-13 both the local
+and official CI 1.9.1 images received fresh data but drove an almost fully lit
+cyan/white matrix; resetting the controller did not recover it. With the same
+rendering code and FastLED 3.7.0, serial diagnostics reported sparse frames
+(94/256 and 26/256 lit pixels), and the user confirmed readable glyphs returned.
+The `led8x32` dependency is therefore pinned exactly to 3.7.0 instead of allowing
+3.10.7 through `^3.7.0`. Future driver upgrades require real TC001 acceptance;
+host simulations cannot verify the WS2812 output waveform. The precise upstream
+driver defect has not been isolated. Frame diagnostics allocate no extra buffer.
+
 MD5 is checked against the chip inside `writeFlash`, so a bad write throws rather
 than reporting success. That proves the bytes landed; it does not prove the board
 boots them, so the CLI then reopens at 115200 and waits for `device_info`.

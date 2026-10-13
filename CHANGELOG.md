@@ -45,6 +45,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-10-13 — ESP32 1.9.2
+
+- Restore readable TC001 LED output by pinning the physically verified FastLED 3.7.0 driver. The floating dependency had selected 3.10.7, which produced an almost fully lit panel despite healthy data reception.
+- Report matrix page, lit-pixel count and driver version in serial diagnostics so a running render loop is not mistaken for correct physical output. Other boards retain their existing display behavior.
+
 ## 2026-10-13 — Android 1.10.1
 
 - Keep dashboard history inspection local to each screen, separate from hardware control focus. Selecting or clearing a session no longer changes another dashboard's timeline.
