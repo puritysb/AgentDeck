@@ -319,7 +319,6 @@ vi.useRealTimers();
 
 ### Test Helpers
 
-- `bridge/src/__tests__/helpers/mock-adapter.ts` — Generic adapter mock
 - `bridge/src/__tests__/helpers/temp-data-dir.ts` — Isolated temp filesystem for daemon/registry tests
 - `bridge/src/__tests__/helpers/ws-test-client.ts` — WebSocket client simulation
 
