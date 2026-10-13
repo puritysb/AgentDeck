@@ -2038,10 +2038,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // daemon. Hub side always listens (the WS auth gate already decides who may
   // speak); the worker side starts only on an explicit relay.json opt-in.
   const relayInstanceId = randomUUID();
+  // What this daemon shows itself, refreshed by every roster build. A relayed
+  // row may never capture a local session's or local prompt's presses — any
+  // authenticated peer can say relay_hello.
+  let localRosterIds = new Set<string>();
+  let localRequestIds = new Set<string>();
   const relayHub = new RelayHub({
     instanceId: relayInstanceId,
-    // `core` is created further down; the callback only runs once frames arrive.
-    onChange: () => { core.broadcastSessionsList().catch(() => {}); },
+    // `core` is created further down; the callback only runs once frames
+    // arrive. Debounced like every other roster change: a relay must not be
+    // able to drive full-roster broadcasts to every device faster than that.
+    onChange: () => { core.maybeBroadcastSessionsList(); },
+    isLocalSession: (id) => localRosterIds.has(id),
+    isLocalRequest: (rid) => localRequestIds.has(rid) || isPendingRequest(rid),
   });
   let relayUplink: RelayUplink | null = null;
 
@@ -5594,7 +5603,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // as active whenever any unrelated session was mid-turn. `projectName` is
     // pinned to 'OpenClaw' (Swift parity) rather than the global machine's
     // last-seen project for the same reason.
-    return injectOpenClawSession(enrichedSessions, {
+    const roster = injectOpenClawSession(enrichedSessions, {
       gatewayConnected: core.cachedGatewayConnected,
       state: gatewaySessionState,
       projectName: 'OpenClaw',
@@ -5606,6 +5615,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // dead end this fixes.
       approval: gatewayAdapter?.getPendingApproval() ?? null,
     });
+    const localRows = roster.filter((r) => !relayedIds.has(r.id));
+    localRosterIds = new Set(localRows.map((r) => r.id));
+    localRequestIds = new Set(localRows.map((r) => r.requestId).filter((x): x is string => typeof x === 'string'));
+    return roster;
   });
 
   // OpenClaw-specific APME session id. Distinct from `core.sessionId`
@@ -7905,4 +7918,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     relayUplink.start();
     log(`[agentdeck] Relay: publishing observed sessions to ${relayConfig.host}:${relayConfig.port} (relay.json)`);
   }
+  // Rows of a worker that went silent age out on read; announce it so devices
+  // drop them now rather than at the next unrelated broadcast.
+  core.addInterval(setInterval(() => { relayHub.sweep(); }, 5_000));
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { createServer, type Server } from 'http';
-import type { WebSocket } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { WsServer } from '../ws-server.js';
 import {
   RelayHub,
@@ -61,6 +61,13 @@ describe('selectRelayableRows', () => {
     expect(selectRelayableRows(rows, new Set(['observed:claude:from-another-worker'])).map((r) => r.id))
       .toEqual([CLAUDE, CODEX]);
   });
+
+  it('drops the per-second elapsedSec, so an unchanged roster diffs as unchanged', () => {
+    const a = selectRelayableRows([row(CLAUDE, { startedAt: '2026-10-14T00:00:00.000Z', elapsedSec: 10 })]);
+    const b = selectRelayableRows([row(CLAUDE, { startedAt: '2026-10-14T00:00:00.000Z', elapsedSec: 11 })]);
+    expect(a[0]).not.toHaveProperty('elapsedSec');
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
 });
 
 describe('sanitizeRelayedRows', () => {
@@ -68,6 +75,20 @@ describe('sanitizeRelayedRows', () => {
     const [r] = sanitizeRelayedRows([{ id: CLAUDE, port: 9123, pid: 42, projectName: 'x', alive: true, controlMode: 'observed', liveAnswerable: true }]);
     expect(r).toMatchObject({ id: CLAUDE, port: 0, controlMode: 'observed', liveAnswerable: true });
     expect(r.pid).toBeUndefined();
+  });
+
+  it('keeps a wrongly-typed field out of the hub roster instead of letting it throw there', () => {
+    const [r] = sanitizeRelayedRows([{
+      id: CLAUDE, state: 5, projectName: { x: 1 }, weight: 99_999_999, liveAnswerable: 'yes',
+      options: [{ label: 'Yes', index: 0 }, { label: 7 }, 'nope'], waitingOn: null, unknownField: 'x',
+    }]);
+    expect(r).not.toHaveProperty('state');
+    expect(r.projectName).toBe('remote');
+    expect(r.weight).toBe(9999);
+    expect(r).not.toHaveProperty('liveAnswerable');
+    expect(r.options).toEqual([{ label: 'Yes', index: 0 }]);
+    expect(r.waitingOn).toBeNull();
+    expect(r).not.toHaveProperty('unknownField');
   });
 
   it('drops malformed, duplicate and managed rows and bounds the count', () => {
@@ -105,6 +126,17 @@ describe('acceptRelayedCommand (worker-side allow-list)', () => {
     }
     expect(acceptRelayedCommand(null, ids, reqs)).toBeNull();
   });
+
+  it('answers options only for observed Claude rows — elsewhere the daemon would fall through to the focused session', () => {
+    const oc = 'observed:opencode:ses_1';
+    const more = new Set([CLAUDE, oc, CODEX]);
+    expect(acceptRelayedCommand({ type: 'select_option', sessionId: oc, index: 0 }, more, reqs)).toBeNull();
+    expect(acceptRelayedCommand({ type: 'select_option', sessionId: CODEX, index: 0 }, more, reqs)).toBeNull();
+    expect(acceptRelayedCommand({ type: 'session_command', sessionId: oc, command: { type: 'select_option', index: 0 } }, more, reqs)).toBeNull();
+    expect(acceptRelayedCommand({ type: 'session_command', sessionId: oc, command: { type: 'respond', value: 'y' } }, more, reqs)).toBeNull();
+    expect(acceptRelayedCommand({ type: 'session_command', sessionId: oc, command: { type: 'send_prompt', text: 'go' } }, more, reqs)).not.toBeNull();
+    expect(acceptRelayedCommand({ type: 'select_option', sessionId: CLAUDE, index: 1.5 }, more, reqs)).toBeNull();
+  });
 });
 
 describe('routeRelayCommand (hub-side decision)', () => {
@@ -139,11 +171,54 @@ describe('routeRelayCommand (hub-side decision)', () => {
 });
 
 describe('RelayHub', () => {
-  function hub(now = { t: 1_000_000 }) {
+  function hub(now = { t: 1_000_000 }, local: { ids?: string[]; requests?: string[] } = {}) {
     const onChange = vi.fn();
-    const h = new RelayHub({ instanceId: 'hub-self', onChange, now: () => now.t });
+    const h = new RelayHub({
+      instanceId: 'hub-self', onChange, now: () => now.t,
+      isLocalSession: (id) => (local.ids ?? []).includes(id),
+      isLocalRequest: (rid) => (local.requests ?? []).includes(rid),
+    });
     return { h, onChange, now };
   }
+
+  it('a heartbeat carrying the same rows costs no roster broadcast', () => {
+    const { h, onChange } = hub();
+    const w = fakeSocket();
+    h.handleFrame(hello('w1'), asWs(w));
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE)] } as never, asWs(w));
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE)] } as never, asWs(w));
+    expect(onChange).toHaveBeenCalledTimes(2); // hello + first snapshot
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE, { state: 'processing' })] } as never, asWs(w));
+    expect(onChange).toHaveBeenCalledTimes(3);
+  });
+
+  it('never routes a session or a request this daemon shows itself, whatever a peer claims', () => {
+    const { h } = hub(undefined, { ids: [CLAUDE], requests: ['local-gate'] });
+    const w = fakeSocket();
+    h.handleFrame(hello('w1'), asWs(w));
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE, { requestId: 'local-gate' }), row(CODEX, { requestId: 'local-gate' })] } as never, asWs(w));
+    expect(h.owns(CLAUDE)).toBe(false);
+    expect(h.ownerOfRequest('local-gate')).toBeUndefined();
+    expect(h.route({ type: 'session_command', sessionId: CLAUDE, command: { type: 'send_prompt', text: 'x' } } as never, null, String)).toBe(false);
+    expect(h.route({ type: 'permission_decision', requestId: 'local-gate', decision: 'allow' } as never, null, String)).toBe(false);
+    expect(sent(w).filter((f) => f.type === 'relay_command_down')).toEqual([]);
+  });
+
+  it('announces a silent worker’s rows as gone once, and again only after they came back', () => {
+    const { h, onChange, now } = hub();
+    const w = fakeSocket();
+    h.handleFrame(hello('w1'), asWs(w));
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE)] } as never, asWs(w));
+    onChange.mockClear();
+    expect(h.sweep()).toBe(false);
+    now.t += RELAY_ROW_TTL_MS + 1;
+    expect(h.sweep()).toBe(true);
+    expect(h.sweep()).toBe(false);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    // The same rows returning after expiry are a change devices must see.
+    h.handleFrame({ type: 'relay_sessions', sessions: [row(CLAUDE)] } as never, asWs(w));
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
 
   it('refuses a hello from itself or from another protocol version', () => {
     const { h } = hub();
@@ -303,6 +378,29 @@ describe('RelayUplink refusals', () => {
     up.stop();
     expect(up.status()).toMatchObject({ connected: false });
     expect(logs.join('\n')).toMatch(/daemonRelay/);
+  });
+
+  it('names a rejected token instead of redialing silently', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    wss.on('connection', (ws) => ws.close(4001, 'Unauthorized'));
+    await new Promise<void>((r) => wss.once('listening', () => r()));
+    const port = (wss.address() as { port: number }).port;
+    const up = new RelayUplink({
+      target: { host: '127.0.0.1', port },
+      instanceId: 'w', hostLabel: 'w',
+      snapshot: async () => [],
+      execute: () => {},
+      probeHealth: async () => ({ mode: 'daemon', daemonRelay: true }),
+      log: () => {},
+    });
+    up.start();
+    try {
+      await vi.waitFor(() => { if (!up.status().refused) throw new Error('waiting'); }, { timeout: 3000 });
+      expect(up.status().refused).toMatch(/rejected the pairing token/);
+    } finally {
+      up.stop();
+      wss.close();
+    }
   });
 
   it('refuses a non-loopback hub without a pairing token', async () => {

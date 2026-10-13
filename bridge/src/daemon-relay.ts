@@ -34,6 +34,7 @@
  * allow-list, and only for sessions it is currently relaying.
  */
 import WebSocket from 'ws';
+import { sanitizeWeightForWire } from '@agentdeck/shared';
 import type { EnrichedSession } from './session-aggregator.js';
 import type { PluginCommand } from './types.js';
 import { debug } from './logger.js';
@@ -50,9 +51,23 @@ export const RELAY_ROW_TTL_MS = 45_000;
 /** Upper bound on rows accepted from one worker. */
 export const RELAY_MAX_ROWS = 64;
 /** Worker checks for roster changes this often. */
-export const RELAY_POLL_MS = 1_000;
+export const RELAY_POLL_MS = 2_000;
 /** A worker whose hub stops answering pings is torn down after this long. */
 export const RELAY_PONG_TIMEOUT_MS = 45_000;
+/** A hub that accepts the socket but never answers relay_hello is dropped after this long. */
+export const RELAY_ACK_TIMEOUT_MS = 10_000;
+/** Redial delay after a refusal the user has to act on (capability, token, self-relay). */
+export const RELAY_REFUSED_RETRY_MS = 60_000;
+/** WS close code the hub's auth gate uses for a missing or wrong token. */
+const WS_CLOSE_UNAUTHORIZED = 4001;
+
+/**
+ * Fields recomputed from other fields on every build. `elapsedSec` ticks once
+ * a second (card-feed.ts excludes it for the same reason), so diffing a
+ * snapshot that carries it sends — and makes the hub rebroadcast — every poll.
+ * The hub derives it again from `startedAt`.
+ */
+const RELAY_VOLATILE_FIELDS = ['elapsedSec'] as const;
 
 /** Inner command types a relayed `session_command` may carry. */
 export const RELAY_SESSION_COMMANDS: ReadonlySet<string> = new Set([
@@ -87,12 +102,80 @@ export interface RelayCommandDown {
  * only. `excludeIds` carries ids this daemon itself received from a relay.
  */
 export function selectRelayableRows(rows: EnrichedSession[], excludeIds: ReadonlySet<string> = new Set()): EnrichedSession[] {
-  return rows.filter((s) =>
-    typeof s?.id === 'string'
-    && s.id.length > 0
-    && s.controlMode !== 'managed'
-    && s.id !== 'openclaw-gateway'
-    && !excludeIds.has(s.id));
+  return rows
+    .filter((s) =>
+      typeof s?.id === 'string'
+      && s.id.length > 0
+      && s.controlMode !== 'managed'
+      && s.id !== 'openclaw-gateway'
+      && !excludeIds.has(s.id))
+    .map((s) => {
+      const copy = { ...s } as Record<string, unknown>;
+      for (const f of RELAY_VOLATILE_FIELDS) delete copy[f];
+      return copy as unknown as EnrichedSession;
+    });
+}
+
+// Typed allow-list for a relayed row. The hub's roster pipeline calls string
+// methods on these fields (`state.startsWith`, …) and every client decodes
+// them strictly, so one wrongly-typed value in a peer's row would otherwise
+// throw inside the enricher and blank `sessions_list` for every device.
+const RELAY_STRING_FIELDS = [
+  'displayName', 'projectName', 'agentType', 'state', 'modelName', 'effortLevel',
+  'permissionMode', 'startedAt', 'currentTool', 'cwd', 'currentTask', 'activity', 'goal',
+  'question', 'questionDetail', 'requestId', 'reviewStatus', 'reviewRisk', 'promptType',
+  'lastEventText', 'lastEventTask', 'lastEventHm',
+] as const;
+const RELAY_NUMBER_FIELDS = [
+  'groupSize', 'contextPercent', 'totalTokens', 'queuedDirectives', 'reviewFindings',
+  'askGroupIndex', 'askGroupCount', 'backgroundTaskCount',
+] as const;
+const RELAY_BOOLEAN_FIELDS = ['stopRequested', 'liveAnswerable'] as const;
+const RELAY_OBJECT_FIELDS = ['subagents', 'coordination'] as const;
+const RELAY_MAX_STRING = 4_000;
+const RELAY_MAX_OPTIONS = 16;
+
+function plainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function sanitizeRelayedRow(row: Record<string, unknown>): EnrichedSession {
+  const out: Record<string, unknown> = {
+    id: row.id,
+    port: 0,
+    alive: row.alive !== false,
+    controlMode: 'observed',
+    projectName: 'remote',
+  };
+  for (const f of RELAY_STRING_FIELDS) {
+    const v = row[f];
+    if (typeof v === 'string' && v) out[f] = v.slice(0, RELAY_MAX_STRING);
+  }
+  for (const f of RELAY_NUMBER_FIELDS) {
+    const v = row[f];
+    if (typeof v === 'number' && Number.isFinite(v)) out[f] = v;
+  }
+  for (const f of RELAY_BOOLEAN_FIELDS) {
+    if (typeof row[f] === 'boolean') out[f] = row[f];
+  }
+  for (const f of RELAY_OBJECT_FIELDS) {
+    if (plainObject(row[f])) out[f] = row[f];
+  }
+  // An explicit null clears a CI wait on retain-on-absent clients; keep it.
+  if (row.waitingOn === null || plainObject(row.waitingOn)) out.waitingOn = row.waitingOn;
+  const weight = sanitizeWeightForWire(row.weight);
+  if (weight !== undefined) out.weight = weight;
+  if (Array.isArray(row.options)) {
+    out.options = row.options
+      .filter((o): o is Record<string, unknown> => plainObject(o) && typeof o.label === 'string')
+      .slice(0, RELAY_MAX_OPTIONS)
+      .map((o) => Object.fromEntries(Object.entries(o).filter(([, v]) =>
+        typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)))));
+  }
+  if (Array.isArray(row.foldedSessionIds)) {
+    out.foldedSessionIds = row.foldedSessionIds.filter((x): x is string => typeof x === 'string').slice(0, RELAY_MAX_ROWS);
+  }
+  return out as unknown as EnrichedSession;
 }
 
 /**
@@ -111,14 +194,7 @@ export function sanitizeRelayedRows(raw: unknown): EnrichedSession[] {
     if (typeof row.id !== 'string' || !row.id || seen.has(row.id)) continue;
     if (row.controlMode === 'managed' || row.id === 'openclaw-gateway') continue;
     seen.add(row.id);
-    out.push({
-      ...(row as unknown as EnrichedSession),
-      port: 0,
-      pid: undefined,
-      alive: row.alive !== false,
-      projectName: typeof row.projectName === 'string' && row.projectName ? row.projectName : 'remote',
-      controlMode: 'observed',
-    });
+    out.push(sanitizeRelayedRow(row));
   }
   return out;
 }
@@ -139,12 +215,23 @@ export function acceptRelayedCommand(
     const inner = c.command as Record<string, unknown> | undefined;
     if (typeof c.sessionId !== 'string' || !relayedIds.has(c.sessionId)) return null;
     if (!inner || typeof inner.type !== 'string' || !RELAY_SESSION_COMMANDS.has(inner.type)) return null;
+    // Same fall-through as below for the option answers: only the observed
+    // Claude route answers respond/select_option without a focused fallback.
+    if ((inner.type === 'respond' || inner.type === 'select_option') && !c.sessionId.startsWith('observed:claude:')) return null;
     return { type: 'session_command', sessionId: c.sessionId, command: inner } as unknown as PluginCommand;
   }
   if (c.type === 'select_option') {
     if (typeof c.sessionId !== 'string' || !relayedIds.has(c.sessionId)) return null;
-    if (typeof c.index !== 'number') return null;
-    return cmd as PluginCommand;
+    // Only an observed Claude session answers a session-scoped select_option
+    // on the daemon. For any other id the daemon's handler falls through to
+    // whatever session the worker's own deck has focused — a press meant for
+    // this row would land in a different session.
+    if (!c.sessionId.startsWith('observed:claude:')) return null;
+    if (typeof c.index !== 'number' || !Number.isInteger(c.index)) return null;
+    return {
+      type: 'select_option', sessionId: c.sessionId, index: c.index,
+      ...(typeof c.question === 'string' ? { question: c.question } : {}),
+    } as unknown as PluginCommand;
   }
   if (c.type === 'permission_decision') {
     if (typeof c.requestId !== 'string' || !relayedRequestIds.has(c.requestId)) return null;
@@ -201,7 +288,10 @@ interface WorkerEntry {
   instanceId: string;
   host: string;
   rows: EnrichedSession[];
+  rowsJson: string;
   lastFrameAt: number;
+  /** Set once the TTL sweep has announced this worker's rows as gone. */
+  expiredAnnounced?: boolean;
 }
 
 export interface RelayHubOptions {
@@ -209,6 +299,14 @@ export interface RelayHubOptions {
   instanceId: string;
   /** Roster changed — the daemon should rebroadcast sessions_list. */
   onChange: () => void;
+  /**
+   * A session this daemon itself shows. Its commands are never routed to a
+   * worker: any authenticated peer can say relay_hello, and a row claiming a
+   * local id must not capture that session's presses.
+   */
+  isLocalSession?: (sessionId: string) => boolean;
+  /** A request id this daemon itself holds (a local gate or a local row's prompt). */
+  isLocalRequest?: (requestId: string) => boolean;
   now?: () => number;
 }
 
@@ -244,14 +342,17 @@ export class RelayHub {
         reply({ type: 'relay_refused', reason: 'this daemon is the relay worker itself' });
         return true;
       }
-      const host = typeof hello.host === 'string' && hello.host ? hello.host.slice(0, 64) : 'remote';
+      const host = typeof hello.host === 'string' && hello.host
+        ? hello.host.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 64) || 'remote'
+        : 'remote';
       // A reconnecting worker opens a new socket; its old entry (same
       // instance) is superseded so its rows never show twice.
       for (const [ws, w] of this.workers) {
         if (w.instanceId === hello.instanceId && ws !== sender) this.workers.delete(ws);
       }
-      this.workers.set(sender, { instanceId: hello.instanceId, host, rows: [], lastFrameAt: this.now() });
-      sender.once('close', () => this.dropSocket(sender));
+      const known = this.workers.has(sender);
+      this.workers.set(sender, { instanceId: hello.instanceId, host, rows: [], rowsJson: '[]', lastFrameAt: this.now() });
+      if (!known) sender.once('close', () => this.dropSocket(sender));
       debug(TAG, `relay worker attached: ${host}`);
       reply({ type: 'relay_ack', v: RELAY_PROTOCOL_VERSION });
       this.opts.onChange();
@@ -260,8 +361,14 @@ export class RelayHub {
     if (msg.type === 'relay_sessions') {
       const w = this.workers.get(sender);
       if (!w) return true; // no hello on this socket — ignore, consumed
-      w.rows = sanitizeRelayedRows((msg as Partial<RelaySessions>).sessions);
+      const wasExpired = this.now() - w.lastFrameAt > RELAY_ROW_TTL_MS;
+      const rows = sanitizeRelayedRows((msg as Partial<RelaySessions>).sessions);
+      const json = JSON.stringify(rows);
       w.lastFrameAt = this.now();
+      // A heartbeat that changes nothing must not cost every device a roster.
+      if (json === w.rowsJson && !wasExpired) return true;
+      w.rows = rows;
+      w.rowsJson = json;
       this.opts.onChange();
       return true;
     }
@@ -274,6 +381,27 @@ export class RelayHub {
     this.workers.delete(sender);
     debug(TAG, `relay worker detached: ${w.host}`);
     this.opts.onChange();
+  }
+
+  /**
+   * Announce rows that just aged out. TTL expiry is noticed on read, so
+   * without a sweep a silent worker's rows would linger on devices until an
+   * unrelated broadcast. Returns true when anything expired.
+   */
+  sweep(): boolean {
+    const now = this.now();
+    let expired = false;
+    for (const w of this.workers.values()) {
+      const stale = now - w.lastFrameAt > RELAY_ROW_TTL_MS;
+      if (stale && !w.expiredAnnounced && w.rows.length > 0) {
+        w.expiredAnnounced = true;
+        expired = true;
+      } else if (!stale) {
+        w.expiredAnnounced = false;
+      }
+    }
+    if (expired) this.opts.onChange();
+    return expired;
   }
 
   /** Live relayed rows. Rows of a worker that went silent are not served. */
@@ -298,11 +426,15 @@ export class RelayHub {
   }
 
   owns(sessionId: string): boolean {
+    if (this.opts.isLocalSession?.(sessionId)) return false;
     return this.socketFor(sessionId) !== undefined;
   }
 
   ownerOfRequest(requestId: string): string | undefined {
-    for (const r of this.rows()) if (r.requestId === requestId) return r.id;
+    if (this.opts.isLocalRequest?.(requestId)) return undefined;
+    for (const r of this.rows()) {
+      if (r.requestId === requestId && this.owns(r.id)) return r.id;
+    }
     return undefined;
   }
 
@@ -390,6 +522,8 @@ export class RelayUplink {
   private relayedIds = new Set<string>();
   private relayedRequestIds = new Set<string>();
   private refusedReason: string | null = null;
+  private refusedUntilRetry = false;
+  private ackTimer: NodeJS.Timeout | null = null;
   private sending = false;
 
   constructor(private readonly opts: RelayUplinkOptions) {}
@@ -450,12 +584,12 @@ export class RelayUplink {
     }
     if (health.daemonRelay !== true) {
       this.setRefused(`hub ${label} does not support the daemon relay (no daemonRelay capability — a current Node CLI daemon is required)`);
-      this.scheduleReconnect(60_000);
+      this.scheduleReconnect(RELAY_REFUSED_RETRY_MS);
       return;
     }
     if (!isLoopbackHost(host) && !token) {
       this.setRefused(`no pairing token for hub ${label} — run \`agentdeck relay set ${label} --token <token>\` (the value is in ~/.agentdeck/auth-token on the hub)`);
-      this.scheduleReconnect(60_000);
+      this.scheduleReconnect(RELAY_REFUSED_RETRY_MS);
       return;
     }
     // Loopback (an ssh -L forward included) is same-machine to the listener
@@ -474,12 +608,23 @@ export class RelayUplink {
         instanceId: this.opts.instanceId, host: this.opts.hostLabel,
       };
       ws.send(JSON.stringify(hello));
+      // Peer silence is a signal: a hub that took the socket and never
+      // answers the hello is torn down and redialed, not waited on forever.
+      this.ackTimer = setTimeout(() => {
+        if (this.ws === ws && !this.acked) {
+          debug(TAG, `hub ${label} did not answer relay_hello within ${RELAY_ACK_TIMEOUT_MS} ms`);
+          ws.terminate();
+        }
+      }, RELAY_ACK_TIMEOUT_MS);
+      this.ackTimer.unref?.();
     });
     ws.on('pong', () => { this.lastPongAt = Date.now(); });
     ws.on('message', (raw: Buffer | string) => {
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(raw.toString()) as Record<string, unknown>; } catch { return; }
       if (msg.type === 'relay_ack') {
+        if (this.ackTimer) clearTimeout(this.ackTimer);
+        this.ackTimer = null;
         this.acked = true;
         this.refusedReason = null;
         this.reconnectDelay = 2_000;
@@ -489,7 +634,8 @@ export class RelayUplink {
         return;
       }
       if (msg.type === 'relay_refused') {
-        this.setRefused(`hub ${label} refused the relay: ${String(msg.reason ?? 'no reason')}`);
+        this.setRefused(`hub ${label} refused the relay: ${String(msg.reason ?? 'no reason').slice(0, 200)}`);
+        this.refusedUntilRetry = true;
         ws.close();
         return;
       }
@@ -507,12 +653,19 @@ export class RelayUplink {
         setTimeout(() => { void this.pushSnapshot(true); }, 150);
       }
     });
-    ws.on('close', () => {
+    ws.on('close', (code: number) => {
       if (this.ws !== ws) return;
       const wasAcked = this.acked;
       this.disposeSocket();
-      if (wasAcked) this.opts.log(`[relay] hub ${label} disconnected — reconnecting`);
-      this.scheduleReconnect();
+      if (code === WS_CLOSE_UNAUTHORIZED) {
+        this.setRefused(`hub ${label} rejected the pairing token — run \`agentdeck relay set ${label} --token <token>\` with the value in ~/.agentdeck/auth-token on the hub`);
+        this.refusedUntilRetry = true;
+      } else if (wasAcked) {
+        this.opts.log(`[relay] hub ${label} disconnected — reconnecting`);
+      }
+      const refused = this.refusedUntilRetry;
+      this.refusedUntilRetry = false;
+      this.scheduleReconnect(refused ? RELAY_REFUSED_RETRY_MS : undefined);
     });
     ws.on('error', (err) => {
       debug(TAG, `hub socket error: ${err.message}`);
@@ -552,6 +705,8 @@ export class RelayUplink {
 
   private disposeSocket(): void {
     this.stopTimers();
+    if (this.ackTimer) clearTimeout(this.ackTimer);
+    this.ackTimer = null;
     this.acked = false;
     this.lastSentJson = '';
     this.lastSentAt = 0;

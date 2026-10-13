@@ -439,37 +439,54 @@ Managed remote attach keeps working unchanged alongside it.
   starts publishing. It is read once at daemon start, so an autostart unit
   picks it up with no credential in its argv. `agentdeck relay clear` removes
   it; `agentdeck relay status` shows the configured hub and what the running
-  daemon reports (`/health.relay`). For an `ssh -L` forward, name the local end
-  (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
+  daemon reports (`/health.relay`), including why it is not connected (missing
+  capability, rejected token, refusal). For an `ssh -L` forward, name the local
+  end (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
 - **Same boundary as remote attach**: opt-in per worker, never discovered;
   outbound only — the worker dials, commands come back down that socket, and the
   hub never dials a worker; a non-loopback hub needs its pairing token, which
   is never logged; the worker refuses a hub whose `/health` lacks
   `daemonRelay: true` (the Swift daemon advertises neither side) and a hub
-  refuses a relay from its own process.
+  refuses a relay from its own process. As with remote attach, the link is
+  plain `ws://` and the token rides its query string, and the hub is not
+  authenticated to the worker — anyone able to impersonate the hub's address
+  learns the token and can queue prompts into the worker's sessions. Use it
+  on a network you trust, or through `ssh -L`.
 - **What is relayed**: rows of the worker's own `sessions_list`, so the hub shows
   a remote observed session exactly as it shows a local one (prompt, options,
   `liveAnswerable`, model, context). Never managed rows, the Gateway row, or
   rows the worker itself received from a relay. A session the hub also observes
-  locally keeps the hub's own row. The hub stops serving a worker's rows 45 s
-  after its last frame (the worker re-sends at least every 15 s and pings the
-  hub; a silent hub is torn down after 45 s and redialed with backoff).
+  locally keeps the hub's own row, and the hub never routes a command for a
+  session or request it shows itself to a worker — any authenticated peer can
+  open a relay, so a row claiming a local id must not capture its presses.
+  Rows are a peer's data: only typed `SessionInfo` fields survive. The worker
+  checks for changes every 2 s and re-sends at least every 15 s; the hub
+  rebroadcasts (debounced) only when rows changed and stops serving a worker's
+  rows 45 s after its last frame. The worker pings the hub; a hub that does not
+  answer the hello within 10 s or stops answering pings for 45 s is torn down
+  and redialed with backoff.
 - **What the hub can do to a worker**: route a device command for a relayed
   session down the socket — `session_command`
   (`interrupt`/`escape`/`send_prompt`/`respond`/`select_option`), a
   session-scoped `select_option`, or a `permission_decision` whose `requestId`
   a relayed row carries. The worker re-checks every command against its own
   allow-list and the sessions it is currently relaying, then runs it through
-  its ordinary device-command path. The hub cannot reach any other worker
-  command (settings, voice, focus, agent switch).
+  its ordinary device-command path; option answers are accepted for observed
+  Claude rows only, since for any other agent the daemon's handler would fall
+  through to whatever session the worker's own deck has focused. The hub cannot
+  reach any other worker command (settings, voice, focus, agent switch).
 - **Controls are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
   answer, a prompt queued for the end of the turn, a stop at the next tool call,
   and terminal injection where the worker's platform has a rung (macOS
   terminals, tmux). Managed PTY controls (immediate Ctrl-C, Shift+Tab mode
   switch, cursor) are not available through the relay.
 - **Not yet relayed**: the worker's timeline rows, APME, review runs and
-  session-setting pickers. Hub-side order pins (`agentdeck order set` on the
-  hub) do apply to relayed rows.
+  session-setting pickers. Pin order on the **worker** (`agentdeck order set`
+  there): the pin rides the row's `weight` and wins on the hub. Hub-side pins
+  for relayed rows are not supported yet (the hub's prefix resolver and TTL
+  refresh see only its own rows). A relayed Codex row folds with a hub-local
+  Codex row of the same project name and weight; pin one of them to keep both
+  visible.
 - **Validated** with two real daemons on one host's loopback
   (`tests/e2e/daemon-relay.e2e.test.ts`); not yet on two machines.
 
