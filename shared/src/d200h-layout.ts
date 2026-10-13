@@ -9,10 +9,10 @@ import { remainingPercentSvgText, creditCoinSvg } from './svg-renderers/usage-re
 /**
  * D200H / deck layout engine used by the Ulanzi Studio plugin
  * (plugin-ulanzi) and Apple device previews. Given the current agent state it
- * computes, for a 5×3 key
- * grid, what each key shows (SVG) and does (command) — reflowing dynamically:
- * idle → sessions; a focused awaiting session → its options + ESC; processing →
- * STOP; plus mode / model / usage / tokens / cost.
+ * computes (`buildSessionDeck`), for a 5×3 key grid, what each key shows (SVG)
+ * and does (`DeckAction`) — a session list, and a per-session detail view that
+ * reflows to its options + ESC while awaiting and STOP while processing, plus
+ * the usage tiles.
  *
  * Key position is addressed as `col_row` (e.g. "0_0", "3_2") — the same scheme
  * the D200H firmware and Ulanzi Studio both use for keys.
@@ -45,18 +45,6 @@ import { formatScopedLabel, codexUsageFootnote, scopedLimitClaimsUsageKey, codex
 
 /** Command dispatched when a key is pressed. `null` = inert tile (info/empty). */
 export type ButtonCommand = { type: string; [k: string]: unknown };
-
-export interface KeySlot {
-  col: number;
-  row: number;
-  svg: string;
-  label: string;
-  /** What pressing this key does. Single source of truth for input. */
-  command?: ButtonCommand | null;
-}
-
-/** 5 columns × 3 rows. Physical key index == row * GRID_COLS + col. */
-export const GRID_COLS = 5;
 
 /**
  * D200H usage placement: the three bottom-row keys immediately LEFT of the wide
@@ -702,179 +690,6 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   if (lunaTile) tiles.push(lunaTile);
   if (creditsTile) tiles.push(creditsTile);
   return tiles;
-}
-
-/**
- * Display-only readout tile (TOKENS / COST / MODEL). Deliberately FLAT — no
- * rounded button bezel/panel — so the user reads it as status, not a pressable
- * key. (These tiles carry `command: null`; the old bezeled `svgFrame` look gave
- * them a false "press me" affordance.) A thin baseline rule + small dim caption
- * mark it as a label.
- */
-function renderInfoButton(title: string, value: string, titleColor = '#7c8596', valueColor = '#e5e7eb'): string {
-  const valueFontSize = value.length > 8 ? 18 : value.length > 5 ? 22 : 26;
-  const elements = [
-    `<rect width="144" height="144" fill="#0b0c10"/>`,
-    `<text x="72" y="56" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" letter-spacing="1.5" fill="${titleColor}">${escXml(title.toUpperCase())}</text>`,
-    `<text x="72" y="92" text-anchor="middle" font-family="Arial,sans-serif" font-size="${valueFontSize}" font-weight="bold" fill="${valueColor}">${escXml(value)}</text>`,
-    `<rect x="44" y="108" width="56" height="2" rx="1" fill="#1e2330"/>`,
-  ].join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="144" height="144" viewBox="0 0 144 144">${elements}</svg>`;
-}
-
-function renderModeButton(mode: string): string {
-  const elements = [
-    `<text x="72" y="52" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#94a3b8">MODE</text>`,
-    `<text x="72" y="88" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="bold" fill="#a78bfa">${escXml(mode.toUpperCase())}</text>`,
-  ].join('');
-  return svgFrame('#1C1C1E', elements);
-}
-
-function renderOfflineSlot(hero = false): string {
-  // Route through the shared aquarium-tide OFFLINE card so the legacy single-page
-  // D200H grid shows the same dome-over-deck brand mark as the session-deck path
-  // and the native connection overlays.
-  if (hero) return renderInfoSlot(PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL, 'agentdeck', 'brand');
-  return renderEmptySlot();
-}
-
-/**
- * Compute the dynamic 5×3 grid for the current state. Returns slots 0–12
- * (the merged wide usage slot 3_2 is rendered by the direct-HID consumer
- * separately; see `usageTileForGrid` for the per-key variant).
- *
- * `animFrame` advances the shared renderer's session-tile animation; pass a
- * fixed value (e.g. 0) for a static frame.
- */
-/**
- * One row-of-actions key for the legacy single-page D200H layout. Renders the
- * i-th real option Claude reported (PTY-managed session). When there are no
- * options the slot stays empty — observed (hook-only) sessions can't expose the
- * real choices, so we never fabricate an Allow/Deny that doesn't match the
- * actual prompt.
- */
-function awaitingActionSlot(state: DashState, isAwaiting: boolean, i: number, col: number, row: number): KeySlot {
-  if (isAwaiting) {
-    const opt = state.options[i];
-    if (opt) {
-      return { col, row, svg: renderOptionButton(opt, i), label: '', command: { type: 'select_option', index: i } };
-    }
-  }
-  return { col, row, svg: renderEmptySlot(), label: '', command: null };
-}
-
-export function computeLayout(state: DashState, animFrame = 0, animated = false): KeySlot[] {
-  const isDisconnected = state.state === 'DISCONNECTED' || state.state === 'disconnected';
-  if (isDisconnected) {
-    const slots: KeySlot[] = [];
-    const heroCol = 2, heroRow = 1;
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 5; col++) {
-        slots.push({ col, row, svg: renderOfflineSlot(col === heroCol && row === heroRow), label: '', command: null });
-      }
-    }
-    return slots;
-  }
-
-  const slots: KeySlot[] = [];
-  const isAwaiting = state.state.startsWith('AWAITING') || state.state.startsWith('awaiting');
-  const isProcessing = state.state === 'PROCESSING' || state.state === 'processing';
-
-  const activeSession: SessionInfo = {
-    id: 'local',
-    agentType: state.agentType as any,
-    projectName: state.projectName,
-    modelName: state.modelName,
-    state: state.state.toLowerCase(),
-    alive: true,
-    port: 0,
-  };
-
-  const sessionsToDisplay = state.allSessions.length > 0 ? state.allSessions.slice(0, 4) : [activeSession];
-  const isMultiSession = sessionsToDisplay.length > 1;
-
-  if (isMultiSession) {
-    slots.push({ col: 0, row: 0, svg: renderModeButton(state.mode), label: '', command: { type: 'mode_toggle' } });
-    for (let i = 0; i < 4; i++) {
-      const col = i + 1;
-      const sess = sessionsToDisplay[i];
-      if (sess) {
-        const isActive = sess.projectName === activeSession.projectName && sess.agentType === activeSession.agentType;
-        slots.push({ col, row: 0, svg: renderSessionSlot(sess, isActive, animFrame, undefined, { animated }), label: '', command: { type: 'focus_session', sessionId: sess.id } });
-      } else {
-        slots.push({ col, row: 0, svg: renderEmptySlot(), label: '', command: null });
-      }
-    }
-    for (let i = 0; i < 4; i++) {
-      const col = i;
-      slots.push(awaitingActionSlot(state, isAwaiting, i, col, 1));
-    }
-    slots.push({ col: 4, row: 1, svg: renderInfoButton('MODEL', state.modelName.slice(0, 12) || 'N/A'), label: '', command: null });
-  } else {
-    const heroSession = state.allSessions.length > 0 ? sessionsToDisplay[0] : null;
-    slots.push({ col: 0, row: 0, svg: renderModeButton(state.mode), label: '', command: { type: 'mode_toggle' } });
-    slots.push({ col: 1, row: 0, svg: renderSessionSlot(sessionsToDisplay[0], true, animFrame, undefined, { animated }), label: '', command: heroSession ? { type: 'focus_session', sessionId: heroSession.id } : null });
-    slots.push({ col: 2, row: 0, svg: renderDetailInfo(sessionsToDisplay[0], state.state.toLowerCase() as State, state.currentTool, state.modelName, state.mode), label: '', command: null });
-
-    for (let i = 0; i < 4; i++) {
-      const col = (i + 3) % 5;
-      const row = Math.floor((i + 3) / 5);
-      slots.push(awaitingActionSlot(state, isAwaiting, i, col, row));
-    }
-    slots.push({ col: 2, row: 1, svg: renderInfoButton('MODEL', state.modelName.slice(0, 12) || 'N/A'), label: '', command: null });
-    slots.push({ col: 3, row: 1, svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false && state.fiveHourPercent != null), label: '', command: { type: 'usage_toggle' } });
-    slots.push({ col: 4, row: 1, svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false && state.sevenDayPercent != null), label: '', command: { type: 'usage_toggle' } });
-  }
-
-  // Row 2 shared actions: STOP/ESC, TOKENS, COST
-  if (isProcessing) {
-    slots.push({ col: 0, row: 2, svg: renderStopButton(true), label: '', command: { type: 'interrupt' } });
-  } else if (isAwaiting) {
-    slots.push({ col: 0, row: 2, svg: renderEscButton(true), label: '', command: { type: 'interrupt' } });
-  } else {
-    slots.push({ col: 0, row: 2, svg: renderStopButton(false), label: '', command: { type: 'interrupt' } });
-  }
-  const tk = state.totalTokens > 1000 ? `${(state.totalTokens / 1000).toFixed(0)}K` : `${state.totalTokens}`;
-  slots.push({ col: 1, row: 2, svg: renderInfoButton('TOKENS', tk), label: '', command: null });
-  slots.push({ col: 2, row: 2, svg: renderInfoButton('COST', `$${state.totalCost.toFixed(2)}`), label: '', command: null });
-
-  return slots;
-}
-
-/** Physical-key-index → command map (index = row*GRID_COLS+col). Direct-HID input. */
-export function buildButtonCommandMap(stateEvt: any): Map<number, ButtonCommand> {
-  const layout = computeLayout(parseState(stateEvt));
-  const map = new Map<number, ButtonCommand>();
-  for (const slot of layout) {
-    if (slot.command) map.set(slot.row * GRID_COLS + slot.col, slot.command);
-  }
-  return map;
-}
-
-export interface DeckCell {
-  svg: string;
-  command: ButtonCommand | null;
-}
-
-/**
- * `col_row` → {svg, command} map for the WHOLE grid, for plugins that address
- * keys by position (Ulanzi Studio). Unlike direct-HID, slot 3_2 is a normal
- * per-key usage tile (no hardware merge), and 4_2 mirrors it.
- */
-export function buildLayoutMap(stateEvt: any, animFrame = 0, animated = false): Map<string, DeckCell> {
-  const state = parseState(stateEvt);
-  const map = new Map<string, DeckCell>();
-  for (const slot of computeLayout(state, animFrame, animated)) {
-    map.set(`${slot.col}_${slot.row}`, { svg: slot.svg, command: slot.command ?? null });
-  }
-  // Per-key usage tiles for the right side of row 2 (direct-HID merges these).
-  if (!map.has('3_2')) {
-    map.set('3_2', { svg: renderUsageButton('5H', state.fiveHourPercent, '#28a0b4', state.usageKnown !== false && state.fiveHourPercent != null), command: { type: 'usage_toggle' } });
-  }
-  if (!map.has('4_2')) {
-    map.set('4_2', { svg: renderUsageButton('7D', state.sevenDayPercent, '#2850a0', state.usageKnown !== false && state.sevenDayPercent != null), command: { type: 'usage_toggle' } });
-  }
-  return map;
 }
 
 // ============================================================================

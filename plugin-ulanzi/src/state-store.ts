@@ -1,6 +1,6 @@
 /**
  * Caches the latest daemon broadcasts and produces the merged `stateEvt` the
- * shared layout engine (`buildLayoutMap`) consumes. Focused-session selection
+ * shared layout engine (`buildSessionDeck`) consumes. Focused-session selection
  * follows the AgentDeck rule: focusedSessionId ?? sessionId.
  */
 import { SessionSettingsRequestTracker, type BridgeEvent, type SessionInfo, type SessionSetting } from '@agentdeck/shared';

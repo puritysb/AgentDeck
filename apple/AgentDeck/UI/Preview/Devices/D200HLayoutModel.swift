@@ -29,7 +29,10 @@
 // draws neither the model line nor a mode line, so nothing visible changes here.
 // Re-ported 2026-10-06 (#463 phase 2): OpenClaw idle MODEL / THINKING picker
 // entry tiles; the picker sub-view itself is listed under INTENTIONALLY OMITTED.
-// SYNC-HASH shared/src/d200h-layout.ts 64612c5a5fcc17cb9439695fb0159c80215080ec
+// Pin moved 2026-10-14 with NO port (#273 phase 0): the dead legacy direct-HID
+// grid (`computeLayout` / `buildLayoutMap` / `buildButtonCommandMap`) was
+// deleted from the TS engine; this mirror never ported it.
+// SYNC-HASH shared/src/d200h-layout.ts 66b51af060b5d16ad6fbd788fbab9774dfae8483
 // SYNC-HASH shared/src/session-utils.ts 83ad7aaf29fa227e7841b772d33894ee2257f8c6
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 //
@@ -64,10 +67,6 @@
 //     carries options. Here each `D200HSession` descriptor carries its own
 //     state/options/tool/model and `D200HDeckInput.navigable` applies when the
 //     session is the focused one — a faithful-enough visual reproduction.
-//   • The legacy single-page `computeLayout` / `buildLayoutMap` /
-//     `buildButtonCommandMap` (direct-HID) grid. That path was superseded by
-//     the session-centric deck for the Ulanzi driver, which is what the D200H
-//     preview must mirror.
 
 import Foundation
 
