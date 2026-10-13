@@ -111,6 +111,37 @@ Release remains conditional on Node/Swift pixel and state parity, the full
 verification tier, real iDotMatrix transport and optical acceptance, packaged
 three-mode daemon acceptance, and the macOS Release archive gate.
 
+Delivery readback, October 14 KST ([tracking issue #535](https://github.com/puritysb/AgentDeck/issues/535)):
+
+- **npm 1.9.2 is public**: all four registry versions and `latest` tags read back
+  as 1.9.2; [release run](https://github.com/puritysb/AgentDeck/actions/runs/38444911796)
+  succeeded at exact merge `a10ee4ab`. Published runtime files match the accepted
+  tarballs byte-for-byte; package JSON ordering and npm/pnpm license-file packing differ.
+- **macOS 1.9.1 / 8601 uploaded**, not yet submitted or public:
+  [macOS-only run](https://github.com/puritysb/AgentDeck/actions/runs/38443024001)
+  passed archive, export, final Store/Dot artifact checks and upload. Browser
+  connectivity interrupted the pending-build replacement; re-read ASC before
+  changing it. Last confirmed submission was macOS/iOS 1.9.1 / 8501 Waiting for
+  Review; keep the iOS submission unchanged.
+- **Physical acceptance passed**: actual iDotMatrix displayed production-renderer
+  WORK/JOBS/WAIT/ERR/CI/IDLE frames. The owner confirmed readable creatures/counts
+  and distinct states. The sequence used an isolated fixture, without inserting
+  synthetic sessions into the production timeline.
+- The [full receipt](verification/receipts/2026-10-13-fa7874d.json) passed on clean
+  `fa7874d`, whose complete tree matches merge `a10ee4ab`. All PR CI passed,
+  including Windows Node 22/24/26. Real installed CLI-only and Swift-only Codex
+  turns, coexistence and both handover directions retained activity history and
+  resumed BLE output. Swift canonical recovery took 136 seconds; no recovery-speed
+  improvement is claimed. The original Swift preview probe sampled Pixoo's 64×64
+  endpoint, so native successful-upload telemetry and pixel parity supplied the
+  corrected iDotMatrix evidence.
+- Local main was fast-forwarded and built, retaining the unrelated Timebox mute
+  workaround. The persistent CLI link now runs Node build `e8b20896c730` on 9120;
+  iDotMatrix reports connected, has a frame and no error. A final handover attempt
+  encountered a lingering closed socket; a supported daemon stop/start with the
+  installed app closed recovered, and the app was reopened. No firmware reflash
+  or unrelated channel upload was performed.
+
 ### 2026-10-13 remaining release decision
 
 Checked before changing manifests: [ASC status run](https://github.com/puritysb/AgentDeck/actions/runs/38322073839),

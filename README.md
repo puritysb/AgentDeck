@@ -316,7 +316,7 @@ together. See the [version decision policy](RELEASING.md#choosing-a-version).
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.0` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.1` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.2` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
@@ -329,13 +329,13 @@ and Pantone retains 1.10.0. Native 3D background companions now share geometry a
 adaptive frame pacing, while e-ink emphasizes static counts and status. See
 the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-10-13).
 
-**Other delivery, 2026-10-13:** Stream Deck and Ulanzi 1.8.1 are public on
-GitHub and awaiting marketplace review. ESP32 1.9.1 is public for all 12 boards.
-Apple iOS/macOS 1.9.1 / 8401, including the timeline handover repair, is uploaded;
-neither platform has been submitted for review.
-npm 1.9.1 is public, including all four packages and their latest tags. Apple 1.9.0 / 7901 remains
-the verified public Store version. These patches complete existing capabilities;
-see the [release decision and delivery states](RELEASING.md#2026-10-13-remaining-release-decision).
+**Other delivery, 2026-10-14:** npm 1.9.2 is public, with clearer creature-led
+iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
+Store artifact checks and was uploaded; replacing its pending review submission
+is not yet complete. iOS 1.9.1 / 8501 was submitted and is awaiting review.
+Apple 1.9.0 remains the verified public Store version. Stream Deck and Ulanzi
+1.8.1 are public on GitHub and awaiting marketplace review; ESP32 1.9.2 is public.
+See the [release delivery record](RELEASING.md#2026-10-14-idotmatrix-readability-correction).
 
 **Previous delivery, 2026-10-12:** Android 1.9.0 (26) is public on Google Play
 (100% rollout across 178 countries/regions) and as a signed GitHub APK. Its
