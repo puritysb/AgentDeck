@@ -52,6 +52,8 @@ import {
   listRemoteEnriched,
 } from './remote-sessions.js';
 import { createPushChannelHandler } from './session-push-channel.js';
+import { RelayHub, RelayUplink } from './daemon-relay.js';
+import { loadRelayConfig } from './relay-config.js';
 import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
@@ -180,6 +182,7 @@ import {
   getCandidateDataDirs,
   getDataDir,
   getOwnTimelineFile,
+  probeHealthAt,
 } from './session-registry.js';
 import { startedBySupervisor } from './daemon-supervisor.js';
 import { isForeignDaemon } from './daemon-takeover.js';
@@ -324,7 +327,7 @@ import { readFile, rm } from 'fs/promises';
 import { sampleEventLoopDelay } from './event-loop-telemetry.js';
 import { tmpdir, networkInterfaces, type NetworkInterfaceInfo } from 'os';
 import { basename, join } from 'path';
-import { homedir } from 'os';
+import { homedir, hostname } from 'os';
 import {
   BRIDGE_WS_PORT,
   OPENCLAW_CAPABILITIES,
@@ -2031,6 +2034,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   }
 
   // ===== HTTP server =====
+  // Daemon relay (#273): observed sessions published by a worker machine's
+  // daemon. Hub side always listens (the WS auth gate already decides who may
+  // speak); the worker side starts only on an explicit relay.json opt-in.
+  const relayInstanceId = randomUUID();
+  const relayHub = new RelayHub({
+    instanceId: relayInstanceId,
+    // `core` is created further down; the callback only runs once frames arrive.
+    onChange: () => { core.broadcastSessionsList().catch(() => {}); },
+  });
+  let relayUplink: RelayUplink | null = null;
+
   const httpServer = createServer((req, res) => {
     // LAN default-deny (issue #145): a request that is neither same-machine
     // nor token-bearing reaches exactly one route — a minimal GET /health
@@ -2151,6 +2165,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // Workers require this flag before remote-attaching; the Swift daemon
         // does not advertise it and is therefore never selected as a remote hub.
         sameSocketControl: true,
+        // Capability: this daemon accepts observed sessions relayed by a
+        // worker daemon (#273, daemon-relay.ts). Workers refuse a hub without it.
+        daemonRelay: true,
+        relay: {
+          ...(relayUplink ? { uplink: relayUplink.status() } : {}),
+          workers: relayHub.summary(),
+        },
         // Report the configured recognition path, not inferred engine readiness.
         // This lets device diagnostics detect a runtime that predates the local backend.
         voice: {
@@ -5516,6 +5537,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // any id already present from the local registry).
     const localIds = new Set(sessions.map((s) => s.id));
     const remote = listRemoteEnriched().filter((s) => !localIds.has(s.id));
+    // Rows a worker daemon relayed (#273). A session this daemon also sees
+    // itself keeps the local row — the local one carries this machine's
+    // steering state and answers commands without a hop.
+    const shownIds = new Set([...localIds, ...observed.map((s) => s.id), ...remote.map((s) => s.id)]);
+    const relayed = relayHub.rows().filter((s) => !shownIds.has(s.id));
+    const relayedIds = new Set(relayed.map((s) => s.id));
     // Derive per-session elapsed seconds from startedAt so NTP-less devices
     // (ESP32 IPS10 mosaic) render an elapsed value per cell without a wall clock.
     const now = Date.now();
@@ -5524,7 +5551,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // lookup — the two id forms are the standing trap here.
     const subagentCensus = subagentTimeline?.summaries() ?? new Map();
     const coordinationCensus = coordination.summaries();
-    const enrichedSessions = [...sessions, ...observed, ...remote].map((s) => {
+    const enrichedSessions = [...sessions, ...observed, ...remote, ...relayed].map((s) => {
       // Daemon-persisted sort pin (#273): observed rows without their own
       // weight pick up the stored pin here, one pass before fold+sort, so a
       // pinned observed session lands in its slot on every surface and two
@@ -5542,7 +5569,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const withSubagents = census ? { ...withReview, subagents: census } : withReview;
       // Same emission rule for the coordination census: zeros once observed.
       const coord = coordinationCensus.get(rawSessionId(withReview.id));
-      const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id)
+      const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id) || relayedIds.has(s.id)
         ? s.waitingOn : ciWaits.snapshot(rawSessionId(s.id), now);
       const ciLabel = !s.state?.startsWith('awaiting') ? ciWaitLabel(waitingOn) : null;
       const withBackground = backgroundWork.project(rawSessionId(s.id), withSubagents);
@@ -6087,6 +6114,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (handlePushChannelMessage(msg, sender)) {
       return true;
     }
+    // Daemon relay frames from a worker daemon (relay_hello / relay_sessions).
+    if (relayHub.handleFrame(msg, sender)) {
+      return true;
+    }
     if (msg.type === 'deck_slot_map') {
       // Plugin pushed its keypad layout. Forward to other viewers (extra
       // plugin instance, dashboard) and re-broadcast sessions_list so slot
@@ -6351,6 +6382,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // Option catalogs belong only to the requester, never the broadcast or
       // serial streams. Boards do not expose this first-party deck control.
       void handleSessionSettingsCommand(cmd, sender);
+      return;
+    }
+    // A session relayed from a worker daemon (#273) is steered on the worker:
+    // hand its commands down the relay socket before any local routing — its
+    // `observed:claude:` id would otherwise reach this machine's steering,
+    // which holds none of its gates.
+    if (relayHub.route(cmd, userFocusedSessionId, resolveDeviceSessionId)) {
       return;
     }
     // Session-scoped commands are NEVER OpenClaw's to consume: a device
@@ -7813,6 +7851,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     removeDaemonInfo();
     focusRelay.stop();
     timelineRelay.stop();
+    relayUplink?.stop();
     // Clears every per-session poll timer. A watchdog that survived teardown
     // would keep firing self-POSTs at a port this daemon no longer owns.
     observedStopWatchdogs.stop();
@@ -7848,4 +7887,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // wrote it cannot answer "was this fixed before or after that restart?" —
   // and on a dev checkout the answer changes several times a day.
   log(`[agentdeck] Daemon running (build ${startupBuildId ?? 'unknown'}). Gateway probe active.`);
+
+  // Worker side of the daemon relay (#273): only on an explicit relay.json
+  // opt-in, read once here — `agentdeck relay set` asks for a restart.
+  const relayConfig = loadRelayConfig();
+  if (relayConfig) {
+    relayUplink = new RelayUplink({
+      target: relayConfig,
+      instanceId: relayInstanceId,
+      hostLabel: hostname().split('.')[0] || 'worker',
+      snapshot: () => core.buildSessionsSnapshot(),
+      excludeIds: () => relayHub.relayedIds(),
+      execute: (cmd) => handleDeviceCommand(cmd),
+      probeHealth: (host, p) => probeHealthAt(host, p, 3_000),
+      log,
+    });
+    relayUplink.start();
+    log(`[agentdeck] Relay: publishing observed sessions to ${relayConfig.host}:${relayConfig.port} (relay.json)`);
+  }
 }

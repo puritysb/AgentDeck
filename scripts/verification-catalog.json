@@ -367,7 +367,7 @@
       "blocking": true,
       "command": "pnpm test:e2e",
       "report_suite": "e2e",
-      "evidence": ["tests/e2e/daemon-hub.e2e.test.ts"],
+      "evidence": ["tests/e2e/daemon-hub.e2e.test.ts", "tests/e2e/daemon-relay.e2e.test.ts"],
       "proves": [
         "the real agentdeck daemon start process boots in an empty HOME and answers /health",
         "privacy-scrubbed real Hermes CI terminal callbacks open an unknown foreground wait and clear its matching invocation through actual daemon HTTP/WS; the capture used a local fixture watcher, not a GitHub verdict",
@@ -377,12 +377,14 @@
         "the timeline is persisted to timeline.json and replayed to a new client after a restart",
         "SIGTERM shuts the daemon down on its own and withdraws daemon.json",
         "loopback posture: the port is closed on the host's LAN address",
-        "z.ai credential edits require a local bearer token, preserve unrelated settings, use private file permissions and never echo or log the key"
+        "z.ai credential edits require a local bearer token, preserve unrelated settings, use private file permissions and never echo or log the key",
+        "daemon relay (issue 273): two real daemons on loopback — a worker with relay.json publishes an observed OpenCode session to the hub, the hub shows its awaiting prompt, a deck permission decision and prompt sent to the hub land in the WORKER's steering queue (not the hub's), and the row leaves when the worker stops"
       ],
       "does_not_prove": [
         "a real Claude/Codex process (events are posted with the documented payload shape)",
         "LAN pairing and default-deny from another machine (every same-host address is trusted by design; the gate itself is unit-tested in http-auth-gate.test.ts)",
-        "device modules (all disabled with --local)"
+        "device modules (all disabled with --local)",
+        "the daemon relay across two machines, through a real ssh -L forward or with a pairing token over a LAN (the relay e2e uses one host's loopback)"
       ]
     },
     {
@@ -971,6 +973,7 @@
         "bridge/src/__tests__/remote-reverse-e2e.test.ts",
         "bridge/src/__tests__/focus-relay-samesocket.test.ts",
         "bridge/src/__tests__/session-push-channel.test.ts",
+        "bridge/src/__tests__/daemon-relay.test.ts",
         "bridge/src/__tests__/compact-session-labels.test.ts"
       ]
     },

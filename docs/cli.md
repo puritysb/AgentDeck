@@ -190,6 +190,25 @@ with identical behaviour, so pins survive a daemon handover in either
 direction. Only a daemon build older than the feature answers 404 — update
 and restart it.
 
+#### Relaying observed sessions to another machine with `agentdeck relay`
+
+Experimental and additive to `--remote-daemon` (#273). Run on the **worker**
+machine — the one where you run agents — to publish its observed sessions to a
+hub daemon whose Stream Deck you use:
+
+```bash
+agentdeck relay set mainnode.lan --token <hub token>   # token: ~/.agentdeck/auth-token on the hub
+agentdeck relay set 127.0.0.1:19120                     # through ssh -L 19120:127.0.0.1:9120 — no token
+agentdeck daemon restart                                # relay.json is read at daemon start
+agentdeck relay status                                  # configured hub + what the daemon reports
+agentdeck relay clear                                   # stop (then restart the daemon)
+```
+
+The hub must run a current Node CLI daemon. Relayed sessions accept the
+observed controls (approve/deny, AskUserQuestion answers, a queued prompt, a
+stop at the next tool, terminal injection where the worker has a rung); details
+in [daemon.md § Daemon relay](daemon.md#daemon-relay-worker-daemon-to-hub).
+
 ### Daemon
 
 | Command | Description |

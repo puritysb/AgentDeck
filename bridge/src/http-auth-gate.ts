@@ -89,7 +89,7 @@ export function gateHttpRequest(
 /**
  * The `/health` payload served to unauthenticated LAN peers. Discovery-grade
  * only: enough for a companion app to identify a daemon (`mode`) and for a
- * remote worker to see the attach capability bit — never credentials,
+ * remote worker to see the attach capability bits — never credentials,
  * device inventory, or session state. `authRequired` tells clients to open
  * their pairing flow instead of retrying.
  */
@@ -99,6 +99,7 @@ export function buildPublicHealth(port: number): Record<string, unknown> {
     mode: 'daemon',
     port,
     sameSocketControl: true,
+    daemonRelay: true,
     authRequired: true,
   };
 }

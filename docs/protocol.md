@@ -104,6 +104,15 @@ The socket a session bridge opens to the daemon is **bidirectional**. Upward fra
 
 Same-socket is the **only** reverse path (no inbound reachability required — works for NAT'd / SSH-only workers; the daemon never dials back). A remote session whose push socket dropped is unreachable until its worker reconnects. Remote attach requires a daemon advertising `sameSocketControl: true` in `/health` (Node CLI daemon; the Swift daemon does not implement these frames).
 
+**Internal daemon↔daemon relay** (`bridge/src/daemon-relay.ts`, #273) — a worker machine's daemon publishes the sessions it observes to a hub daemon over one outbound socket; see [daemon.md § Daemon relay](daemon.md#daemon-relay-worker-daemon-to-hub). Node CLI daemon only, opt-in on the worker, gated on the hub's `daemonRelay: true` in `/health`.
+
+| Frame | Dir | Payload | Purpose |
+|---|---|---|---|
+| `relay_hello` | worker → hub | `v, instanceId, host` | Open the relay. `v` is the relay protocol version (1); `instanceId` is random per daemon process so a hub refuses a relay to itself; `host` is a label for logs and `/health`. |
+| `relay_ack` / `relay_refused` | hub → worker | `v` / `reason` | Accepted, or refused (version, missing id, self-relay). |
+| `relay_sessions` | worker → hub | `sessions: SessionInfo[]` | The worker's observed `sessions_list` rows (never managed rows, the Gateway row, or rows it received from a relay). Sent on change (1 s poll) and at least every 15 s. The hub forces `port: 0` and `controlMode: observed`, caps the count at 64, and stops serving a worker's rows 45 s after its last frame. |
+| `relay_command_down` | hub → worker | `command` | A device command addressed to a relayed session: `session_command` (inner `interrupt`/`escape`/`send_prompt`/`respond`/`select_option`), session-scoped `select_option`, or `permission_decision` for a `requestId` the worker's rows carry. The worker runs it through its own device-command path only if the session is one it is relaying; anything else is dropped. |
+
 ---
 
 ## State Machine

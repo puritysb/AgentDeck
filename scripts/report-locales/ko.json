@@ -278,6 +278,8 @@
   "a real Claude/Codex process (events are posted with the documented payload shape)": "실제 Claude/Codex 프로세스. 이벤트는 문서화된 형식으로 전송합니다.",
   "LAN pairing and default-deny from another machine (every same-host address is trusted by design; the gate itself is unit-tested in http-auth-gate.test.ts)": "다른 컴퓨터에서의 LAN 페어링과 기본 거부. 같은 호스트의 주소는 설계상 신뢰하며 접근 검사는 http-auth-gate.test.ts에서 단위 검사합니다.",
   "device modules (all disabled with --local)": "기기 모듈. --local로 모두 비활성화합니다.",
+  "daemon relay (issue 273): two real daemons on loopback — a worker with relay.json publishes an observed OpenCode session to the hub, the hub shows its awaiting prompt, a deck permission decision and prompt sent to the hub land in the WORKER's steering queue (not the hub's), and the row leaves when the worker stops": "데몬 relay(issue 273): 루프백에서 실제 데몬 두 개를 띄웁니다. relay.json이 있는 worker가 관측한 OpenCode 세션을 허브에 게시하고, 허브는 그 대기 프롬프트를 보여 줍니다. 허브로 보낸 덱의 권한 결정과 프롬프트는 허브가 아니라 worker의 steering 큐에 도착하며, worker가 멈추면 행이 사라집니다.",
+  "the daemon relay across two machines, through a real ssh -L forward or with a pairing token over a LAN (the relay e2e uses one host's loopback)": "두 대의 머신 사이에서 동작하는 데몬 relay. 실제 ssh -L 포워드나 LAN 너머 페어링 토큰을 쓰는 경우입니다. relay e2e는 한 호스트의 루프백만 사용합니다.",
   "all four coordinated npm tarballs install in an empty prefix without workspace links or compiled test payloads": "연동된 npm 압축 파일 네 개가 워크스페이스 링크나 컴파일된 테스트 없이 빈 설치 경로에 설치됩니다.",
   "the installed daemon boots under the exact native-binding executable on an isolated port and temporary data directory": "설치한 데몬이 실제 네이티브 바인딩 실행 파일로 격리 포트·임시 데이터 경로에서 시작합니다.",
   "installed Claude shell hooks discover that daemon through its registry and deliver a turn": "설치한 Claude 셸 훅이 레지스트리에서 데몬을 찾아 턴을 전달합니다.",

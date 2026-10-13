@@ -227,7 +227,7 @@ Daemon이 Gateway adapter의 `connection` 이벤트를 WS 클라이언트에 포
 
 The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pull-sync e-ink clients live on the LAN — so the security boundary is **authentication, not the bind address**:
 
-- **HTTP default-deny** (`bridge/src/http-auth-gate.ts`, mirrored in Swift `DaemonServer.httpAccessResponse` + `HTTPServer.setAccessPolicy`): a request that is neither same-machine (`isLocalConnection`) nor token-bearing (`?token=` / `Authorization: Bearer`) reaches exactly one route — a minimal `GET /health` (`{status, mode, port, sameSocketControl, authRequired}`) with **no `pairingToken`, no module/device inventory, no session state**. Everything else 401s before route dispatch. The full `/health` (with `pairingToken`, for same-machine consumers) is only served to authorized requests.
+- **HTTP default-deny** (`bridge/src/http-auth-gate.ts`, mirrored in Swift `DaemonServer.httpAccessResponse` + `HTTPServer.setAccessPolicy`): a request that is neither same-machine (`isLocalConnection`) nor token-bearing (`?token=` / `Authorization: Bearer`) reaches exactly one route — a minimal `GET /health` (`{status, mode, port, sameSocketControl, daemonRelay, authRequired}`) with **no `pairingToken`, no module/device inventory, no session state**. Everything else 401s before route dispatch. The full `/health` (with `pairingToken`, for same-machine consumers) is only served to authorized requests.
 - **Cross-origin reads go to one secret-free route, `GET /setup-status`** (`{status, mode, port, state, isSwift}`; Node `daemon-server.ts`, Swift `DaemonServer.setupHTTPRoutes`). It is the only route that answers with `Access-Control-Allow-Origin: *`, because the Ulanzi Studio Property Inspector is a webview on a foreign origin and its setup stepper has to tell "daemon down" from "daemon unreadable". **`/health` must never gain that header**: it carries `pairingToken`, and a browser request originates on the user's own machine, so it passes `isLocalConnection` — ACAO there would hand the LAN credential to any page the user visits. `/setup-status` is still behind the default-deny gate above (an unauthenticated LAN peer gets 401, not the payload); CORS governs which *origin* may read a response, not which *host* may ask.
 - **WS auth on both daemons**: non-local WebSocket upgrades require the token (Node `ws-server.ts` closes 4001; Swift `WebSocketServer` rejects the handshake with 401 — added 2026-08-07, previously unauthenticated).
 - **Discovery never carries the token** — both mDNS TXT and the UDP 9121 fallback beacon are visible to every peer on the segment. The beacon advertises `authRequired: true` (same semantics as the unauthenticated `/health`): discovery says "a daemon is here and pairing is required" and nothing more. Only the daemon hub advertises; session bridges do not expose per-project metadata. Clients that used to self-serve the credential pair explicitly instead: companions via QR (`agentdeck qr`) / manual URL, ESP32 boards via serial provisioning (`wifi_provision.authToken` → NVS), remote workers via `--daemon-token` / `AGENTDECK_DAEMON_TOKEN`.
@@ -295,7 +295,7 @@ A real check needs a second host. The cheapest one in this repo is an attached A
 
 ```bash
 adb -s <serial> shell "curl -s http://<daemon-LAN-IP>:9120/health"
-# {"status":"ok","mode":"daemon","port":9120,"sameSocketControl":true,"authRequired":true}
+# {"status":"ok","mode":"daemon","port":9120,"sameSocketControl":true,"daemonRelay":true,"authRequired":true}
 ```
 
 Expected results from a genuinely remote peer: `GET /health` → 200 with that minimal body; `/status`, `/sessions`, `/timeline`, `/devices` and a wrong `?token=` → 401.
@@ -408,11 +408,12 @@ peer regardless of UID. See [ENTERPRISE-ROADMAP.md](ENTERPRISE-ROADMAP.md) §1.
 
 A session bridge (`agentdeck claude` etc.) normally attaches only to a daemon on its own machine. With **opt-in** remote attach it can instead push to a daemon on another machine and be controlled from that machine's Stream Deck — the use case being "I run Claude Code on several boxes (often over SSH) but have one Stream Deck on a main node."
 
-This feature belongs to the legacy managed-session compatibility path and
-currently has no daemon-first replacement. It remains functional with no removal
-date. Discussion #278 collects affected topologies; #273 requires a validated
-outbound worker/relay replacement before the managed implementation can be
-removed.
+This feature belongs to the legacy managed-session compatibility path. It
+remains functional with no removal date. A daemon-first counterpart exists as an
+experimental, additive option — the [daemon relay](#daemon-relay-worker-daemon-to-hub)
+below — but it does not replace this path: Discussion #278 collects the
+topologies and controls it would have to cover, and #273 requires a validated
+two-machine replacement before the managed implementation can be removed.
 
 - **Enable**: `--remote-daemon` is THE opt-in switch. `--daemon-host <host[:port]>` only names the explicit endpoint (cross-subnet / SSH where multicast doesn't reach) and **requires the switch** — the recommended explicit form is `--remote-daemon --daemon-host mainnode.lan`. Env equivalents: `AGENTDECK_REMOTE_DAEMON=1`, `AGENTDECK_DAEMON_HOST` (alias `AGENTDECK_REMOTE_DAEMON_HOST`). Default is unchanged (local-only).
 - **Opt-in gate (security boundary)**: remote attach never happens on ambient/inherited state — `--remote-daemon` / `AGENTDECK_REMOTE_DAEMON=1` gates **both** remote paths. A host hint given without the switch is inert (the CLI prints a pre-PTY warning via the shared `deriveRemoteAttachOpts` helper, so the derivations can't drift). Within the switch: an unreachable or capability-less named host returns null rather than falling through to mDNS, and mDNS is never consulted on any other signal. With no opt-in and no local daemon, `resolveDaemonTarget` returns null and the session stays local-only (byte-for-byte unchanged). Regression-tested in `bridge/src/__tests__/daemon-target.test.ts` (`resolveDaemonTarget precedence + opt-in gate`).
@@ -423,6 +424,54 @@ removed.
 - **Remote classification (`remoteAttach`)**: the worker's registration carries an explicit `remoteAttach: true` flag when the user opted in AND the target daemon advertises the capability. The daemon trusts the flag over the socket's source IP — an `ssh -L`-forwarded worker arrives on loopback and is indistinguishable from a local session by IP alone (the non-local-IP heuristic remains as back-compat for older workers). Handled by `bridge/src/session-push-channel.ts` (extracted, integration-tested).
 - **Reverse control (daemon → session) — same-socket only**: the worker's outbound push socket is **bidirectional**. When the daemon focuses a remote session it sends command frames back **down the socket the worker already opened** — the daemon never dials back, so a NAT'd / SSH-only worker needs no inbound reachability at all. The daemon stores the live push socket (`remote-sessions.ts` `sender`, `getRemoteSender`); the focus relay drives it (`setSameSocketResolver`) with `session_command_down` frames. On focus it sends `session_focus_down` (worker emits an initial state snapshot up); the worker forwards its `RELAYED_EVENTS` back up as `session_event_up` while focused; unfocus sends `session_unfocus_down`. Commands run through the **same** `applyPluginCommand` handler the local WS server uses (`index.ts`), so local and remote control never diverge. A remote session with no live push socket is unreachable until its worker reconnects.
 - **Sender-identity guards**: registration, state updates, event ingestion, and teardown are all keyed to the session's **registered sender socket**. A worker reconnect migrates focus to the new socket (`migrateSender`) before the old close fires; a stale socket's close, state push, or `session_event_up` cannot affect the newer registration; a worker ignores down-frames whose `sessionId` isn't its own. The guard covers the shared push-state **aggregator cache** too, not just the remote registry — in the local + `--remote-daemon` dual-registration case the sessions list dedups to the local row, whose displayed state comes from that cache.
+
+## Daemon relay (worker daemon to hub)
+
+**Experimental, additive (#273, Discussion #278).** The daemon-first
+counterpart of managed remote attach: instead of each `agentdeck claude
+--remote-daemon` session pushing itself to a hub, the **worker machine's own
+daemon** publishes the sessions it observes — Claude, Codex, OpenCode and the
+rest, launched normally — to a hub daemon, and the hub's decks steer them.
+Managed remote attach keeps working unchanged alongside it.
+
+- **Enable (worker)**: `agentdeck relay set <host[:port]> --token <hub token>`
+  writes `relay.json` (0600, this daemon's data dir); `agentdeck daemon restart`
+  starts publishing. It is read once at daemon start, so an autostart unit
+  picks it up with no credential in its argv. `agentdeck relay clear` removes
+  it; `agentdeck relay status` shows the configured hub and what the running
+  daemon reports (`/health.relay`). For an `ssh -L` forward, name the local end
+  (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
+- **Same boundary as remote attach**: opt-in per worker, never discovered;
+  outbound only — the worker dials, commands come back down that socket, and the
+  hub never dials a worker; a non-loopback hub needs its pairing token, which
+  is never logged; the worker refuses a hub whose `/health` lacks
+  `daemonRelay: true` (the Swift daemon advertises neither side) and a hub
+  refuses a relay from its own process.
+- **What is relayed**: rows of the worker's own `sessions_list`, so the hub shows
+  a remote observed session exactly as it shows a local one (prompt, options,
+  `liveAnswerable`, model, context). Never managed rows, the Gateway row, or
+  rows the worker itself received from a relay. A session the hub also observes
+  locally keeps the hub's own row. The hub stops serving a worker's rows 45 s
+  after its last frame (the worker re-sends at least every 15 s and pings the
+  hub; a silent hub is torn down after 45 s and redialed with backoff).
+- **What the hub can do to a worker**: route a device command for a relayed
+  session down the socket — `session_command`
+  (`interrupt`/`escape`/`send_prompt`/`respond`/`select_option`), a
+  session-scoped `select_option`, or a `permission_decision` whose `requestId`
+  a relayed row carries. The worker re-checks every command against its own
+  allow-list and the sessions it is currently relaying, then runs it through
+  its ordinary device-command path. The hub cannot reach any other worker
+  command (settings, voice, focus, agent switch).
+- **Controls are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
+  answer, a prompt queued for the end of the turn, a stop at the next tool call,
+  and terminal injection where the worker's platform has a rung (macOS
+  terminals, tmux). Managed PTY controls (immediate Ctrl-C, Shift+Tab mode
+  switch, cursor) are not available through the relay.
+- **Not yet relayed**: the worker's timeline rows, APME, review runs and
+  session-setting pickers. Hub-side order pins (`agentdeck order set` on the
+  hub) do apply to relayed rows.
+- **Validated** with two real daemons on one host's loopback
+  (`tests/e2e/daemon-relay.e2e.test.ts`); not yet on two machines.
 
 ## Observed-session order pins (#273)
 

@@ -108,7 +108,7 @@ describe('buildPublicHealth', () => {
   it('never contains credentials, module inventory, or session state', () => {
     const payload = buildPublicHealth(9120);
     expect(Object.keys(payload).sort()).toEqual(
-      ['authRequired', 'mode', 'port', 'sameSocketControl', 'status'].sort(),
+      ['authRequired', 'daemonRelay', 'mode', 'port', 'sameSocketControl', 'status'].sort(),
     );
     // Belt-and-braces: no key or value smells like a secret or state dump.
     const flat = JSON.stringify(payload).toLowerCase();

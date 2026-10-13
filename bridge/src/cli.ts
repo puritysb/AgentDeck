@@ -3602,6 +3602,83 @@ order
     }
   });
 
+// ===== Daemon relay (#273) =====
+
+const relay = program.command('relay')
+  .description('Publish this machine\'s observed sessions to a hub daemon on another machine (daemon-first remote attach)');
+
+relay
+  .command('set')
+  .description('Relay observed sessions to a hub daemon; takes effect on the next `agentdeck daemon restart`')
+  .argument('<host>', 'Hub host or host:port (default port 9120); use 127.0.0.1:<port> for an ssh -L forward')
+  .option('--token <token>', 'The hub\'s pairing token (~/.agentdeck/auth-token on the hub); or set AGENTDECK_DAEMON_TOKEN')
+  .action(async (hostArg: string, opts: { token?: string }) => {
+    const { parseHostHint, isLoopbackHost } = await import('./session-registry.js');
+    const { saveRelayConfig, relayConfigPath } = await import('./relay-config.js');
+    const { host, port } = parseHostHint(hostArg);
+    if (!host || !(port > 0 && port < 65536)) {
+      log(`Not a host or host:port: ${hostArg}`);
+      process.exit(1);
+    }
+    const token = opts.token || process.env.AGENTDECK_DAEMON_TOKEN || undefined;
+    if (!token && !isLoopbackHost(host)) {
+      log('A hub on another machine requires its pairing token: pass --token <token> (the value is in ~/.agentdeck/auth-token on the hub).');
+      process.exit(1);
+    }
+    saveRelayConfig({ host, port, ...(token ? { token } : {}) });
+    log(`Relay hub set to ${host}:${port} (token: ${token ? 'stored' : 'none — loopback'}) in ${relayConfigPath()}.`);
+    log('Run `agentdeck daemon restart` to start publishing. The hub must run a current Node CLI daemon.');
+  });
+
+relay
+  .command('clear')
+  .description('Stop relaying; takes effect on the next `agentdeck daemon restart`')
+  .action(async () => {
+    const { clearRelayConfig } = await import('./relay-config.js');
+    clearRelayConfig();
+    log('Relay hub cleared. Run `agentdeck daemon restart` to stop publishing.');
+  });
+
+relay
+  .command('status')
+  .description('Show the configured hub and what the running daemon reports for the relay')
+  .option('-p, --port <port>', 'Daemon port')
+  .action(async (opts: { port?: string }) => {
+    const { loadRelayConfig } = await import('./relay-config.js');
+    const { readDaemonInfo, findDaemonPort } = await import('./session-registry.js');
+    const config = loadRelayConfig();
+    log(config
+      ? `Configured hub: ${config.host}:${config.port} (token: ${config.token ? 'stored' : 'none'})`
+      : 'Configured hub: none (this daemon does not publish its sessions)');
+    const info = readDaemonInfo();
+    const port = opts.port != null ? parseInt(opts.port, 10) : (info?.httpPort ?? info?.port ?? findDaemonPort());
+    if (!port) {
+      log('Daemon: not running');
+      return;
+    }
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(5000) });
+      const health = await res.json() as { relay?: { uplink?: Record<string, unknown>; workers?: Array<Record<string, unknown>> } };
+      const up = health.relay?.uplink;
+      if (up) {
+        const refused = typeof up.refused === 'string' ? ` — ${up.refused}` : '';
+        log(`Publishing: ${up.connected ? 'connected' : 'not connected'} to ${String(up.target)}, ${String(up.sessions ?? 0)} session(s)${refused}`);
+      } else if (config) {
+        log('Publishing: the running daemon has not loaded relay.json — run `agentdeck daemon restart`.');
+      }
+      const workers = health.relay?.workers;
+      if (Array.isArray(workers)) {
+        log(workers.length === 0
+          ? 'Receiving: no worker daemons attached'
+          : `Receiving: ${workers.map((w) => `${String(w.host)} (${String(w.sessions)} session(s))`).join(', ')}`);
+      } else {
+        log(`The daemon on port ${port} does not report relay state (its build predates the relay).`);
+      }
+    } catch (err) {
+      log(`Daemon on port ${port} did not answer /health: ${String(err)}`);
+    }
+  });
+
 // ===== Optional Python BLE runtime =====
 
 const ble = program.command('ble').description('Prepare optional Python support for BLE display devices');
