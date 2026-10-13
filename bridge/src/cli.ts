@@ -213,12 +213,22 @@ function postJsonWithTimeout<T>(urlString: string, body: unknown, timeoutMs: num
 const PLIST_PATH = launchAgentPlistPath();
 
 function getAgentdeckBin(): string {
+  // Windows has no `which`; `where` is its counterpart and may list several
+  // shims (`agentdeck`, `agentdeck.cmd`, …), so take the first. stderr is
+  // piped, not inherited: a miss falls back below and is not an error.
   try {
-    return execSync('which agentdeck', { encoding: 'utf-8' }).trim();
+    const out = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['agentdeck'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const first = out.split(/\r?\n/).map((l) => l.trim()).find(Boolean);
+    if (first) return first;
   } catch {
-    const distDir = new URL('.', import.meta.url).pathname;
-    return join(distDir, 'cli.js');
+    // not on PATH — fall through
   }
+  // fileURLToPath, not URL.pathname: the latter yields `/C:/…` on Windows.
+  return join(dirname(fileURLToPath(import.meta.url)), 'cli.js');
 }
 
 /**
