@@ -218,7 +218,7 @@ import { broadcastMatrix, getLastFrame, renderPreviewFrame, onFrameRendered, off
 import { loadIDotMatrixDevices } from './idotmatrix/idotmatrix-settings.js';
 import { handlePixooWake } from './pixoo/pixoo-client.js';
 import { triggerMdnsRecovery } from './mdns.js';
-import { rgbToBmp, pixooLiveHtml } from './hook-server.js';
+import { rgbToBmp, pixooLiveHtml } from './pixoo/pixoo-preview.js';
 import { enableDebugLog, debug, debugThrottled } from './logger.js';
 import { LegacyRearmLedger } from './legacy-rearm-ledger.js';
 import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './codex-otel.js';
