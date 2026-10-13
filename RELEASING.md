@@ -160,8 +160,12 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
   after installing the official CI image. A comparison build with FastLED 3.7.0
   restored readable glyphs (user-confirmed); the 3.10.7 driver selected by the
   floating dependency is implicated, though its precise defect is not isolated.
-  **ESP32 1.9.2 is the patch candidate** for the exact driver pin and frame
-  diagnostics; it is not yet a published release.
+  **ESP32 1.9.2 is the patch candidate** for the exact driver pin, frame
+  diagnostics and readable reset countdowns; it is not yet a published release.
+  The release decision remains a patch from public 1.9.1: it repairs existing
+  TC001 output and countdown usability, with no new compatibility milestone.
+  The countdown retains its window label, removes `R` and scrolling, and holds
+  each time reading for four seconds. Other channels do not change version.
   TC001 and NM serial readback and T-Embed WiFi readback report 1.9.1. These
   installed candidates were built from the same source; optical inspection is
   distinct from telemetry and artifact verification.

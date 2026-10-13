@@ -158,13 +158,13 @@ private struct PixooPixelGrid: View {
 // renderAgents; the DOT page is verified by the actual firmware simulator,
 // and does not change AGENTS pixels or session counts.
 // Firmware cycles AGENTS and the live Claude/Codex/z.ai usage pages. Each
-// usage page keeps the official provider mark beside its window/percentage,
-// alternates present windows every four seconds, and overlays agent activity.
+// usage page introduces the provider/window/percentage for two seconds, then
+// holds the window label and reset countdown for four seconds.
 // This preview mirrors ONLY renderAgents: its generated 8×8 masks, state
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 3f469fbfd53f65f9bf4e9b2108e24b2633abe9b7
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 616ada6d0ca72f9e33d0c7c9275f71a013750484
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -196,7 +196,7 @@ struct UlanziMatrixPreview: View {
             Text("Ulanzi TC001 • 8×32 WS2812B")
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundStyle(.secondary)
-            Text("AGENTS page — one creature sprite per alive session; OpenClaw crayfish pins to the right edge. Firmware also rotates USAGE (5h/7d percent gauges then R-prefixed reset countdowns) and CODEX token-window pages. Background work adds cyan moving dots.")
+            Text("AGENTS page — one creature sprite per alive session; OpenClaw crayfish pins to the right edge. Firmware also rotates provider usage gauges and stationary reset countdowns with their quota labels. Background work adds cyan moving dots.")
                 .font(.system(size: 9))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

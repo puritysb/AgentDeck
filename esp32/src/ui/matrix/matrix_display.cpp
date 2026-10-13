@@ -1,6 +1,7 @@
 #ifdef BOARD_LED8X32
 #include "matrix_display.h"
 #include "matrix_pages.h"
+#include "matrix_reading.h"
 #include "matrix_buttons.h"
 #include "config.h"
 #include "state/agent_state.h"
@@ -20,7 +21,7 @@ static CRGB leds[MATRIX_LEDS];
 static Page currentPage = Page::AGENTS;
 static float animTime = 0.0f;
 static bool autoCycle = true;
-static float pageCycleTimer = 0.0f;
+static MatrixReading::Clock readingClock;
 
 /// True when the daemon has pushed at least one rate-limit sample. Sentinel
 /// `-1.0f` on `fiveHourPercent` means "no data" — when that's the case we
@@ -100,7 +101,7 @@ void nextPage() {
     const uint8_t count = static_cast<uint8_t>(Page::PAGE_COUNT);
     Page next = static_cast<Page>((static_cast<uint8_t>(currentPage) + 1) % count);
     currentPage = skipEmpty(next);
-    pageCycleTimer = 0.0f;
+    readingClock.reset();
     MatrixButtons::beep(30);
 }
 
@@ -108,7 +109,7 @@ void prevPage() {
     const uint8_t count = static_cast<uint8_t>(Page::PAGE_COUNT);
     Page prev = static_cast<Page>((static_cast<uint8_t>(currentPage) + count - 1) % count);
     currentPage = skipEmpty(prev);
-    pageCycleTimer = 0.0f;
+    readingClock.reset();
     MatrixButtons::beep(30);
 }
 
@@ -170,14 +171,12 @@ void update(float dt) {
         MatrixButtons::beep(autoCycle ? 30 : 80);
     }
 
-    if (autoCycle) {
-        pageCycleTimer += dt;
-        if (pageCycleTimer >= PAGE_AUTO_CYCLE_MS / 1000.0f) {
-            pageCycleTimer = 0.0f;
-            const uint8_t count = static_cast<uint8_t>(Page::PAGE_COUNT);
-            Page next = static_cast<Page>((static_cast<uint8_t>(currentPage) + 1) % count);
-            currentPage = skipEmpty(next);
-        }
+    const bool usagePage = currentPage == Page::USAGE || currentPage == Page::CODEX || currentPage == Page::ZAI;
+    const float duration = usagePage ? MatrixReading::PairSeconds : PAGE_AUTO_CYCLE_MS / 1000.0f;
+    if (readingClock.advance(dt, autoCycle, duration)) {
+        const uint8_t count = static_cast<uint8_t>(Page::PAGE_COUNT);
+        Page next = static_cast<Page>((static_cast<uint8_t>(currentPage) + 1) % count);
+        currentPage = skipEmpty(next);
     }
 
     static uint32_t lastBrightnessMs = 0;
@@ -190,10 +189,9 @@ void update(float dt) {
 void render() {
     fill_solid(leds, MATRIX_LEDS, CRGB::Black);
 
-    static Page readingPage = currentPage;
-    static float readingStarted = animTime;
-    if(readingPage != currentPage) { readingPage=currentPage; readingStarted=animTime; }
-    const float readingTime = animTime-readingStarted;
+    // The same paused clock owns both page and reading phase. Ambient creature
+    // animation and fresh values continue, but HOLD never changes the reading.
+    const float readingTime = readingClock.elapsed();
     switch (currentPage) {
         case Page::USAGE:  MatrixPages::renderUsage(leds, readingTime);  break;
         case Page::CODEX:  MatrixPages::renderCodex(leds, readingTime);  break;
@@ -230,9 +228,10 @@ void render() {
         for (const CRGB& pixel : leds) {
             if (pixel.r || pixel.g || pixel.b) ++lit;
         }
-        Serial.printf("[Matrix] frame page=%u lit=%u/%u driver=FastLED-%u brightness=%u\n",
+        Serial.printf("[Matrix] frame page=%u lit=%u/%u driver=FastLED-%u brightness=%u reading=%.1f hold=%u\n",
                       static_cast<unsigned>(currentPage), lit, unsigned(MATRIX_LEDS),
-                      unsigned(FASTLED_VERSION), unsigned(FastLED.getBrightness()));
+                      unsigned(FASTLED_VERSION), unsigned(FastLED.getBrightness()),
+                      readingTime, unsigned(!autoCycle));
     }
 #endif
     FastLED.show();

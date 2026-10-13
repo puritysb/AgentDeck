@@ -106,6 +106,8 @@ static const uint16_t PROGMEM GLYPHS[] = {
     G(0b000, 0b010, 0b000, 0b010, 0b000),
     // '_'
     G(0b000, 0b000, 0b000, 0b000, 0b111),
+    // '+' (explicit lower bound for unusually narrow labelled countdowns)
+    G(0b000, 0b010, 0b111, 0b010, 0b000),
 };
 
 #undef G
@@ -125,6 +127,7 @@ inline uint8_t charToIndex(char c) {
         case '/': return 42;
         case ':': return 43;
         case '_': return 44;
+        case '+': return 45;
         default:  return 0;  // unknown → space
     }
 }

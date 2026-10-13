@@ -49,6 +49,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - Restore readable TC001 LED output by pinning the physically verified FastLED 3.7.0 driver. The floating dependency had selected 3.10.7, which produced an almost fully lit panel despite healthy data reception.
 - Report matrix page, lit-pixel count and driver version in serial diagnostics so a running render loop is not mistaken for correct physical output. Other boards retain their existing display behavior.
+- Make TC001 reset times stationary and readable: retain the quota label beside the countdown (`5H 2H48M`), remove the `R` prefix and percentage rail from time readings, and allow four seconds to read each countdown. The center button now freezes the inner reading phase as well as page rotation; fresh values and creature animation continue.
 
 ## 2026-10-13 — Android 1.10.1
 

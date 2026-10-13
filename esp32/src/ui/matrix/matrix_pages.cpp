@@ -7,6 +7,7 @@
 #include "../../util/usage_rows.h"
 #include "matrix_pages.h"
 #include "matrix_font.h"
+#include "matrix_reading.h"
 #include "official_dot_glyphs_generated.h"
 #include "config.h"
 #include "state/agent_state.h"
@@ -287,21 +288,6 @@ static void drawStateDot(CRGB* leds, float animTime) {
     setPixel(leds, 31, 7, c);
 }
 
-// Compact reset duration, with both units: "3h 22m" → "3H22M", "2d 4h" → "2D4H".
-// The usual R-prefixed hour/minute reading fits the 23-pixel viewport exactly.
-static int formatResetCompact(const char* reset, char* out, int maxLen) {
-    int ri = 0;
-    for (int i = 0; reset[i] && ri < maxLen - 1; i++) {
-        const char c = reset[i];
-        if (c >= '0' && c <= '9') out[ri++] = c;
-        else if (c == 'h' || c == 'H') out[ri++] = 'H';
-        else if (c == 'd' || c == 'D') out[ri++] = 'D';
-        else if (c == 'm' || c == 'M') out[ri++] = 'M';
-    }
-    out[ri] = '\0';
-    return ri;
-}
-
 // Gauge color matching Pixoo palette
 static CRGB gaugeColor(float percent, float animTime) {
     return CRGB(UsageSeverity::color(percent));
@@ -317,18 +303,29 @@ static void windowLabel(int minutes, const char* fallback, char (&out)[5]) {
     else snprintf(out, sizeof(out), "%s", fallback);
 }
 
-// Provider mark remains visible throughout the reading. Use bounded stack text:
+// Provider identity introduces each window; its countdown keeps the window
+// label in the left column, with no R prefix, scrolling or percentage rail.
+// Use bounded stack text:
 // TC001 has no PSRAM, and this path runs on every frame.
 static void renderGaugePair(CRGB* leds, float animTime,
                             float first, const char* firstLabel,
                             float second, const char* secondLabel,
                             const uint8_t* glyph, CRGB brand, bool remaining = false, const char* firstReset = "", const char* secondReset = "") {
-    const bool useSecond = second >= 0 && (first < 0 || fmodf(animTime, 8.0f) >= 4.0f);
+    const bool useSecond = MatrixReading::second(animTime, first >= 0, second >= 0);
     float percent = useSecond ? second : first;
     if (!std::isfinite(percent) || percent < 0) return;
     percent = fminf(100.0f, fmaxf(0.0f, percent));
     // LU leaves room for 100% within the 23-pixel text area.
     const char* label = remaining ? "LU" : (useSecond ? secondLabel : firstLabel);
+    if (MatrixReading::countdown(animTime)) {
+        const int timeX = MatrixFont::textWidth(label) + 2;
+        char resetText[8];
+        MatrixReading::resetText(useSecond ? secondReset : firstReset,
+                                 (MATRIX_W - timeX + 1) / 4, resetText);
+        MatrixFont::drawScrollText(leds, label, 0, 1, CRGB(ProductPalette::UiHudSubtext), MATRIX_W, MATRIX_H);
+        MatrixFont::drawScrollText(leds, resetText, timeX, 1, CRGB(ProductPalette::UiCyan), MATRIX_W, MATRIX_H);
+        return;
+    }
     drawOfficialMatrixGlyph(leds, 0, glyph, brand);
     char reading[12];
     snprintf(reading, sizeof(reading), "%s%d%%", label, (int)(percent + 0.5f));
@@ -340,21 +337,6 @@ static void renderGaugePair(CRGB* leds, float animTime,
     const int numberX = 9 + MatrixFont::textWidth(label) + 1;
     MatrixFont::drawScrollText(leds, label, 9, 1, CRGB(160, 170, 180), MATRIX_W, MATRIX_H);
     MatrixFont::drawScrollText(leds, reading + strlen(label), numberX, 1, severity, MATRIX_W, MATRIX_H);
-    // Each window owns four seconds: usage first, then its reset countdown.
-    // R means time remaining until reset; 5H/7D above are window lengths.
-    if (fmodf(animTime, 4.0f) >= 2.0f) {
-        for (int y=0;y<7;++y) for(int x=9;x<MATRIX_W;++x) setPixel(leds,x,y,CRGB::Black);
-        char compact[10], resetText[12];
-        formatResetCompact(useSecond ? secondReset : firstReset, compact, sizeof(compact));
-        snprintf(resetText,sizeof(resetText),"R%s",compact[0] ? compact : "--");
-        const int width=MatrixFont::textWidth(resetText);
-        const int offset=width > MATRIX_W-9 ? int((fmodf(animTime,4.0f)-2.0f)*(width-(MATRIX_W-9))/2.0f) : 0;
-        MatrixFont::drawScrollText(leds,resetText,9-offset,1,CRGB(160,170,180),MATRIX_W,MATRIX_H);
-        // Clip scrolling text to its 23-column viewport before restoring the mark.
-        for (int y = 0; y < 7; ++y)
-            for (int x = 0; x < 9; ++x) setPixel(leds, x, y, CRGB::Black);
-        drawOfficialMatrixGlyph(leds,0,glyph,brand);
-    }
     const int fill = (int)(percent * 21.0f / 100.0f + 0.5f);
     for (int x = 0; x < 21; ++x)
         setPixel(leds, 9 + x, 7, x < fill ? severity : CRGB(4, 4, 6));

@@ -189,6 +189,18 @@ The `led8x32` dependency is therefore pinned exactly to 3.7.0 instead of allowin
 host simulations cannot verify the WS2812 output waveform. The precise upstream
 driver defect has not been isolated. Frame diagnostics allocate no extra buffer.
 
+**TC001 countdown reading (1.9.2):** each quota window has a two-second
+provider-logo/usage introduction followed by a four-second stationary reset
+countdown. The left label identifies the quota (`5H`, `7D`, or `MCP`); the brighter
+right value is the time until reset (`2H48M`, `5D4H`). The time reading has no `R`,
+scrolling, or usage rail. `--` means unknown, not zero; `NOW` preserves an explicit
+reset-now report. A long value beside a three-letter label uses an explicit
+lower bound such as `12H+`, never clipped digits. A provider page lasts twelve
+seconds so both windows can be read. The center button freezes/resumes the
+reading and page clocks together; live values still update. Left/right selects
+another provider page at its introduction; resume rotation to advance its
+readings. Creature animation remains independent of the held reading.
+
 MD5 is checked against the chip inside `writeFlash`, so a bad write throws rather
 than reporting success. That proves the bytes landed; it does not prove the board
 boots them, so the CLI then reopens at 115200 and waits for `device_info`.

@@ -216,6 +216,15 @@ bool SimScenes::apply(const char* name) {
     g_state.codexLunaPercent = 82;
     return true;
   }
+  if (std::strcmp(name, "matrix-countdown") == 0) {
+    base(CreatureState::FLOATING);
+    g_state.codexPrimaryPercent = 72; g_state.codexSecondaryPercent = 91;
+    setStr(g_state.codexPrimaryReset, sizeof(g_state.codexPrimaryReset), "2h 48m");
+    setStr(g_state.codexSecondaryReset, sizeof(g_state.codexSecondaryReset), "12h 34m");
+    setStr(g_state.fiveHourReset, sizeof(g_state.fiveHourReset), "");
+    setStr(g_state.sevenDayReset, sizeof(g_state.sevenDayReset), "now");
+    return true;
+  }
   if (std::strcmp(name, "empty") == 0) {
     g_state.reset();
     g_state.fiveHourPercent = g_state.sevenDayPercent = -1;
