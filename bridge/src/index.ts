@@ -1,4 +1,3 @@
-import { usageColor as quotaColor } from '@agentdeck/shared';
 /**
  * AgentDeck Bridge — session entry point.
  *
@@ -85,10 +84,6 @@ import {
   type AdapterEvent,
   type AgentType,
   type ModelCatalogEntry,
-  type EncoderSlotState,
-  type EncoderStateEvent,
-  type ButtonSlotState,
-  type ButtonStateEvent,
   type DeckSlotMapEvent,
   type UtilityCommand,
 } from './types.js';
@@ -753,14 +748,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     shutdown();
   });
 
-  // Default idle button config
-  const DEFAULT_IDLE_BUTTONS: { label: string; action: string }[] = [
-    { label: 'GO ON', action: 'continue' },
-    { label: 'REVIEW', action: '/review' },
-    { label: 'COMMIT', action: '/commit' },
-    { label: 'CLEAR', action: '/clear' },
-  ];
-
   // ===== Internal WS: push state to daemon =====
   // Port-drift resilient: portProvider is re-invoked on every (re)connect,
   // so the client follows daemon restarts onto fallback ports and the case
@@ -876,12 +863,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
     // Push state to daemon via internal WS
     daemonWsClient.pushState(snapshot.state, snapshot.modelName ?? undefined, snapshot.effortLevel ?? undefined, snapshot.permissionMode ?? undefined);
-
-    // Encoder + button state
-    const encEvt = computeEncoderState();
-    core.broadcast(encEvt);
-    const btnEvt = computeButtonState();
-    core.broadcast(btnEvt);
   });
 
   // ===== Commands from WS clients =====
@@ -952,7 +933,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
 
       case 'utility':
         utilityProxy.handleCommand(cmd as UtilityCommand);
-        core.broadcast(computeEncoderState());
         break;
 
       case 'voice':
@@ -984,7 +964,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
       cachedSlotMap = msg as unknown as DeckSlotMapEvent;
       core.wsServer.broadcastExcept(cachedSlotMap, sender);
       broadcastSse(cachedSlotMap);
-      core.broadcast(computeButtonState());
       // Re-broadcast sessions_list so slot buttons populate after plugin startup race
       core.broadcastSessionsList().catch(() => {});
       return true;
@@ -1056,10 +1035,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
       } as BridgeEvent);
     }
 
-    // Encoder + button state
-    extraEvents.push(computeEncoderState());
-    extraEvents.push(computeButtonState());
-
     // Slot map
     if (cachedSlotMap) extraEvents.push(cachedSlotMap);
 
@@ -1130,245 +1105,6 @@ export async function startSession(opts: SessionOptions): Promise<void> {
     }
     events.push(core.buildUsage());
     return events;
-  }
-
-  // ===== Encoder state computation =====
-  function computeEncoderState(): EncoderStateEvent {
-    const snapshot = core.stateMachine.getSnapshot();
-    const isInteractive = snapshot.state === State.AWAITING_OPTION ||
-      snapshot.state === State.AWAITING_PERMISSION ||
-      snapshot.state === State.AWAITING_DIFF;
-
-    const utilState = utilityProxy.getState();
-    const e1: EncoderSlotState = {
-      slot: 0, encoderType: 'utility',
-      header: utilState.mode.toUpperCase(),
-      value: utilState.value, icon: utilState.icon,
-      accentColor: '#3b82f6', progress: utilState.level,
-    };
-
-    const e2: EncoderSlotState = {
-      slot: 1, encoderType: 'action',
-      header: 'ACTION', accentColor: '#f59e0b',
-    };
-    if (isInteractive && snapshot.options.length > 0) {
-      const opt = snapshot.options[snapshot.cursorIndex];
-      e2.header = 'OPTION';
-      e2.value = opt?.label ?? '';
-      e2.counter = `${snapshot.cursorIndex + 1}/${snapshot.options.length}`;
-      e2.detail = opt?.label;
-    } else if (snapshot.suggestedPrompt) {
-      e2.header = 'PROMPT';
-      e2.value = snapshot.suggestedPrompt;
-    }
-
-    const pct5 = core.cachedApiUsage?.fiveHourPercent ?? null;
-    const pct7 = core.cachedApiUsage?.sevenDayPercent ?? null;
-    const worstPct = Math.max(pct5 ?? 0, pct7 ?? 0);
-    const usageColor = quotaColor(worstPct);
-    const e3: EncoderSlotState = {
-      slot: 2, encoderType: 'usage',
-      header: 'USAGE',
-      value: pct5 != null ? `${Math.round(pct5)}% / ${Math.round(pct7 ?? 0)}%` : '\u2014',
-      accentColor: usageColor,
-      progress: worstPct / 100,
-    };
-
-    const isRec = voiceManager.isRecording();
-    const e4: EncoderSlotState = {
-      slot: 3, encoderType: 'voice',
-      header: 'VOICE', value: isRec ? 'Recording...' : 'Ready',
-      icon: isRec ? '\uD83D\uDD34' : '\uD83C\uDFA4',
-      accentColor: isRec ? '#ef4444' : '#8b5cf6',
-      voiceState: isRec ? 'recording' : 'idle',
-    };
-
-    return {
-      type: 'encoder_state',
-      encoders: [e1, e2, e3, e4],
-      takeoverActive: isInteractive && snapshot.options.length > 0,
-    };
-  }
-
-  // ===== Button state computation =====
-  function computeButtonState(): ButtonStateEvent {
-    const snapshot = core.stateMachine.getSnapshot();
-    const st = snapshot.state;
-    const mode = snapshot.permissionMode;
-    const options = snapshot.options;
-    const isInteractive = st === State.AWAITING_OPTION ||
-      st === State.AWAITING_PERMISSION ||
-      st === State.AWAITING_DIFF;
-
-    const DIM: ButtonSlotState = {
-      slot: 0, title: '', bgColor: '#1a1a1a', textColor: '#444444',
-      enabled: false, dim: true,
-    };
-
-    function getIdleButtons(): { label: string; action: string }[] {
-      if (!cachedSlotMap) return DEFAULT_IDLE_BUTTONS;
-      const responseSlots = cachedSlotMap.buttons
-        .filter(s => s.actionType === 'response-button')
-        .sort((a, b) => a.slot - b.slot);
-      if (responseSlots.length === 0) return DEFAULT_IDLE_BUTTONS;
-      return responseSlots.map((s, i) => ({
-        label: (s.settings?.label as string) ?? DEFAULT_IDLE_BUTTONS[i]?.label ?? '',
-        action: (s.settings?.action as string) ?? DEFAULT_IDLE_BUTTONS[i]?.action ?? '',
-      }));
-    }
-
-    function colorForOption(opt: import('./types.js').PromptOption): { bg: string; text: string } {
-      const shortcut = (opt.shortcut ?? '').toLowerCase();
-      const lower = opt.label.toLowerCase();
-      if (lower.startsWith('always')) return { bg: '#1e40af', text: '#ffffff' };
-      if (/don[''\u2019]t\s+ask\s+again/i.test(lower)) return { bg: '#1e40af', text: '#ffffff' };
-      if (/allow\s+all\s+sessions/i.test(lower)) return { bg: '#1e40af', text: '#ffffff' };
-      if (shortcut === 'n' || shortcut === 'd' || lower.startsWith('no') || lower.startsWith('deny')) return { bg: '#991b1b', text: '#ffffff' };
-      if (shortcut === 'y' || shortcut === 'a') return { bg: '#166534', text: '#ffffff' };
-      if (opt.recommended) return { bg: '#1e4d2b', text: '#86efac' };
-      return { bg: '#1e3a5f', text: '#93c5fd' };
-    }
-
-    function uppercaseShort(label: string): string {
-      return label.length <= 12 ? label.toUpperCase() : label;
-    }
-
-    const buttons: ButtonSlotState[] = [];
-
-    // Slot 0: Mode
-    const modeColors: Record<string, string> = {
-      default: '#2a2a2a', plan: '#7c3aed', acceptEdits: '#2563eb',
-      dontAsk: '#0e7490', bypassPermissions: '#991b1b',
-    };
-    const modeLabels: Record<string, string> = {
-      default: 'DEFAULT', plan: 'PLAN', acceptEdits: 'ACCEPT',
-      dontAsk: "DON'T ASK", bypassPermissions: 'BYPASS',
-    };
-    const modeEnabled = st === State.IDLE;
-    buttons.push({
-      slot: 0,
-      title: modeLabels[mode] ?? 'DEFAULT',
-      subtitle: 'Mode',
-      bgColor: modeEnabled ? (modeColors[mode] ?? '#2a2a2a') : '#1a1a1a',
-      textColor: modeEnabled ? '#ffffff' : '#444444',
-      enabled: modeEnabled,
-      action: modeEnabled ? 'switch_mode' : undefined,
-      dim: !modeEnabled,
-    });
-
-    // Slot 1: Session/Status
-    if (st === State.IDLE) {
-      // Skip model-agnostic neutral levels — "medium" (legacy default) and "default"
-      // (Claude Code 2.1+ name for the per-model default). Show everything else
-      // including max/xhigh/high/low/fast as an informational suffix.
-      const effortSuffix = snapshot.effortLevel
-        && snapshot.effortLevel !== 'medium'
-        && snapshot.effortLevel !== 'default'
-        ? snapshot.effortLevel : null;
-      const sessionSubtitle = effortSuffix && snapshot.modelName
-        ? `${snapshot.modelName} \u00B7 ${effortSuffix}` : snapshot.modelName ?? undefined;
-      buttons.push({
-        slot: 1, title: snapshot.projectName ?? '\u2014',
-        subtitle: sessionSubtitle, bgColor: '#1e293b', textColor: '#ffffff', enabled: false,
-      });
-    } else if (st === State.PROCESSING) {
-      buttons.push({
-        slot: 1, title: snapshot.currentTool ?? '...',
-        subtitle: snapshot.toolProgress ?? undefined,
-        bgColor: '#1e3a5f', textColor: '#93c5fd', enabled: false,
-      });
-    } else if (st === State.AWAITING_PERMISSION || st === State.AWAITING_DIFF) {
-      buttons.push({ slot: 1, title: 'PERMIT?', bgColor: '#b45309', textColor: '#ffffff', enabled: false });
-    } else if (st === State.AWAITING_OPTION) {
-      buttons.push({ slot: 1, title: 'SELECT', bgColor: '#b45309', textColor: '#ffffff', enabled: false });
-    } else {
-      buttons.push({ ...DIM, slot: 1 });
-    }
-
-    // Slot 2: Usage
-    const pct = core.cachedApiUsage?.fiveHourPercent ?? null;
-    const usageText = pct != null ? `${Math.round(pct)}%` : '\u2014';
-    const usageBg = quotaColor(pct, { paper: true });
-    buttons.push({ slot: 2, title: usageText, subtitle: '5h', bgColor: usageBg, textColor: '#ffffff', enabled: false });
-
-    // Slots 3-6: Response buttons
-    if (st === State.IDLE) {
-      const idleBtns = getIdleButtons();
-      for (let i = 0; i < 4; i++) {
-        const btn = idleBtns[i];
-        if (btn) {
-          const isGoOn = btn.action === 'continue' || btn.label.toLowerCase() === 'go on';
-          buttons.push({
-            slot: 3 + i, title: btn.label,
-            bgColor: isGoOn ? '#1e3a2f' : '#1e293b',
-            textColor: isGoOn ? '#22c55e' : '#ffffff',
-            enabled: true, action: `command:${btn.action === 'continue' ? 'go on' : btn.action}`,
-          });
-        } else {
-          buttons.push({ ...DIM, slot: 3 + i });
-        }
-      }
-    } else if (st === State.PROCESSING) {
-      for (let i = 0; i < 4; i++) buttons.push({ ...DIM, slot: 3 + i });
-    } else if (isInteractive) {
-      if (options.length === 0 && st === State.AWAITING_PERMISSION) {
-        buttons.push({ slot: 3, title: 'YES', bgColor: '#166534', textColor: '#ffffff', enabled: true, action: 'respond:y' });
-        buttons.push({ slot: 4, title: 'NO', bgColor: '#991b1b', textColor: '#ffffff', enabled: true, action: 'respond:n' });
-        buttons.push({ slot: 5, title: 'ALWAYS', bgColor: '#1e40af', textColor: '#ffffff', enabled: true, action: 'respond:a' });
-        buttons.push({ ...DIM, slot: 6 });
-      } else if (options.length === 0 && st === State.AWAITING_DIFF) {
-        buttons.push({ slot: 3, title: 'APPLY', bgColor: '#166534', textColor: '#ffffff', enabled: true, action: 'respond:a' });
-        buttons.push({ slot: 4, title: 'DENY', bgColor: '#991b1b', textColor: '#ffffff', enabled: true, action: 'respond:d' });
-        buttons.push({ slot: 5, title: 'VIEW', bgColor: '#1e3a5f', textColor: '#93c5fd', enabled: true, action: 'respond:v' });
-        buttons.push({ ...DIM, slot: 6 });
-      } else if (options.length <= 4) {
-        for (let i = 0; i < 4; i++) {
-          if (i < options.length) {
-            const opt = options[i];
-            const colors = (st === State.AWAITING_PERMISSION || st === State.AWAITING_DIFF)
-              ? colorForOption(opt) : opt.recommended ? { bg: '#1e4d2b', text: '#86efac' } : { bg: '#1e3a5f', text: '#93c5fd' };
-            const action = snapshot.navigable
-              ? `select_option:${opt.index}` : `respond:${opt.shortcut || opt.label.charAt(0).toLowerCase()}`;
-            buttons.push({
-              slot: 3 + i, title: uppercaseShort(opt.label),
-              bgColor: colors.bg, textColor: colors.text,
-              enabled: true, badge: opt.recommended ? '\u2605' : opt.selected ? '\u2713' : undefined,
-              action,
-            });
-          } else {
-            buttons.push({ ...DIM, slot: 3 + i });
-          }
-        }
-      } else {
-        for (let i = 0; i < 3; i++) {
-          const opt = options[i];
-          const colors = (st === State.AWAITING_PERMISSION || st === State.AWAITING_DIFF)
-            ? colorForOption(opt) : opt.recommended ? { bg: '#1e4d2b', text: '#86efac' } : { bg: '#1e3a5f', text: '#93c5fd' };
-          const action = snapshot.navigable
-            ? `select_option:${opt.index}` : `respond:${opt.shortcut || opt.label.charAt(0).toLowerCase()}`;
-          buttons.push({
-            slot: 3 + i, title: uppercaseShort(opt.label),
-            bgColor: colors.bg, textColor: colors.text, enabled: true, action,
-          });
-        }
-        buttons.push({ slot: 6, title: 'MORE \u25BC', bgColor: '#334155', textColor: '#94a3b8', enabled: true, action: 'expand_options' });
-      }
-    } else {
-      for (let i = 0; i < 4; i++) buttons.push({ ...DIM, slot: 3 + i });
-    }
-
-    // Slot 7: Stop/ESC
-    if (st === State.PROCESSING) {
-      buttons.push({ slot: 7, title: 'STOP', bgColor: '#cc0000', textColor: '#ffffff', enabled: true, action: 'interrupt' });
-    } else if (isInteractive) {
-      buttons.push({ slot: 7, title: 'ESC', bgColor: '#b45309', textColor: '#ffffff', enabled: true, action: 'escape' });
-    } else if (st === State.IDLE) {
-      buttons.push({ slot: 7, title: 'ESC', bgColor: '#3d2607', textColor: '#ffb347', enabled: true, action: 'escape', dim: false });
-    } else {
-      buttons.push({ ...DIM, slot: 7 });
-    }
-
-    return { type: 'button_state', buttons };
   }
 
   // ===== Shutdown =====

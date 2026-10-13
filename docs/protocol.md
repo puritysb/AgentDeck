@@ -231,7 +231,9 @@ consumer through `shared/src/model-provider.ts`, and is non-null only when both
 sides are known and they differ. Two unknowns must never combine into a claim.
 
 ```typescript
-// --- Multi-surface events (Android Deck mirroring) ---
+// --- Multi-surface events (retired Android Deck mirroring) ---
+// The types remain in protocol.ts for wire compatibility, but nothing emits
+// them any more (#273 phase 0): every client ignored or dropped both frames.
 
 // Encoder LCD state (4 encoder panels: utility/action/terminal/voice)
 { type: 'encoder_state', encoders: [...], takeoverActive: false }

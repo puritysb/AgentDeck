@@ -195,6 +195,17 @@ The Swift daemon carries a `mode_toggle` handler (`DaemonServer.swift:4847`) rou
 `BridgeConnection.sendSwitchMode()` (`BridgeConnection.kt:216`) has no callers anywhere in
 the Android tree.
 
+**Phase 0 cleanup (2026-10-14).** The dead pieces above are removed: `computeLayout` /
+`buildLayoutMap` / `buildButtonCommandMap` with their MODE tile, the Swift `mode_toggle`
+handler (with its direct-HID siblings `session_switch` and `usage_toggle`), and
+`sendSwitchMode()`. The "remaining mode button" in `index.ts` was a slot of the session
+bridge's `button_state` frame, which no shipped client renders (the Stream Deck and Ulanzi
+plugins and the ESP32 firmware ignore it; Apple and Android decode and drop it), so it went
+with the `encoder_state` / `button_state` producer. One correction to the list of live
+emitters: the ESP32 knob menu's MODE item sends `switch_mode` as a `session_command`
+(`esp32/src/ui/knob/knob_ui.cpp`). It too reaches only a managed session, so the conclusion
+below is unchanged.
+
 The consequence for #273 is sharper than "partial": today `switch_mode` is reachable
 **only** from a managed session's own deck, so removing the managed path removes the
 capability outright rather than degrading it.
