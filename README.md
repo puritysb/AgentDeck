@@ -331,8 +331,8 @@ the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-
 
 **Other delivery, 2026-10-14:** npm 1.9.2 is public, with clearer creature-led
 iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
-Store artifact checks and was uploaded; replacing its pending review submission
-is not yet complete. iOS 1.9.1 / 8501 was submitted and is awaiting review.
+Store artifact checks and was submitted; it is awaiting review with automatic
+release after approval. iOS 1.9.1 / 8501 remains in its existing review submission.
 Apple 1.9.0 remains the verified public Store version. Stream Deck and Ulanzi
 1.8.1 are public on GitHub and awaiting marketplace review; ESP32 1.9.2 is public.
 See the [release delivery record](RELEASING.md#2026-10-14-idotmatrix-readability-correction).

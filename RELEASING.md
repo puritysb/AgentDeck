@@ -117,12 +117,14 @@ Delivery readback, October 14 KST ([tracking issue #535](https://github.com/puri
   as 1.9.2; [release run](https://github.com/puritysb/AgentDeck/actions/runs/38444911796)
   succeeded at exact merge `a10ee4ab`. Published runtime files match the accepted
   tarballs byte-for-byte; package JSON ordering and npm/pnpm license-file packing differ.
-- **macOS 1.9.1 / 8601 uploaded**, not yet submitted or public:
-  [macOS-only run](https://github.com/puritysb/AgentDeck/actions/runs/38443024001)
-  passed archive, export, final Store/Dot artifact checks and upload. Browser
-  connectivity interrupted the pending-build replacement; re-read ASC before
-  changing it. Last confirmed submission was macOS/iOS 1.9.1 / 8501 Waiting for
-  Review; keep the iOS submission unchanged.
+- **macOS 1.9.1 / 8601 submitted; Waiting for Review**, observed October 14
+  at 03:26 KST. The [macOS-only run](https://github.com/puritysb/AgentDeck/actions/runs/38443024001)
+  passed archive, export, final Store/Dot artifact checks and upload. The pending
+  macOS 8501 submission was withdrawn and replaced with 8601; review notes and
+  English release notes now describe the creature/status correction. Submission
+  `97f6a9c3-39ba-4d6d-9bb2-404220fa1c5d` contains only macOS 1.9.1/8601. Automatic
+  release after approval remains selected; **not yet public**. iOS 1.9.1/8501
+  remains in its existing Waiting for Review submission.
 - **Physical acceptance passed**: actual iDotMatrix displayed production-renderer
   WORK/JOBS/WAIT/ERR/CI/IDLE frames. The owner confirmed readable creatures/counts
   and distinct states. The sequence used an isolated fixture, without inserting
