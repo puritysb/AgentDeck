@@ -27,6 +27,27 @@ A real Claude request hit the account's weekly limit, so this is not a successfu
 agent-turn or Windows desktop attribution receipt. Remote relay, weights at launch
 and terminal-only controls remain on the managed compatibility path.
 
+## October 14 status
+
+Line references in §1–§2 were measured at `3f7dc473` and have drifted (for example
+the `claude` command now starts at `cli.ts:1006`, not `:859`). The findings still
+hold, but re-locate a line before relying on it.
+
+| Gate | Status |
+|---|---|
+| Session ordering | Done: observed pins on both daemons, validated 2026-09-19. |
+| Custom launch arguments | Done for local launches (`agentdeck run`, #386). Remote launches remain on the managed path. |
+| Terminal-only gaps | Resolved as a decision rather than a replacement. #463 (2026-10-06) decided that deck control uses no terminal parsing and no keystroke injection, and that Claude Code and Codex are readout-only. Mode switch, cursor, suggested prompt and an immediate ESC/Ctrl-C (§2.1–2.2) are therefore accepted as managed-only. They live as long as the managed path does and are not replacement requirements. Turn duration (§2.3) is shown only on the SD+ dial's session view and the IPS10 single-session fallback; deriving it from hooks would change the field's meaning, so it was left alone. |
+| Remote attach | Candidate exists: the [daemon relay](daemon.md#daemon-relay-worker-daemon-to-hub). It is additive and experimental, and validated with two real daemons on one host's loopback. Not yet validated on two machines. The original implementer was asked about topology, remote controls and Windows on Discussion #278 (2026-10-14). Observed sessions on Windows have no injection path (§2.4). The candidate rung is `AttachConsole` + `WriteConsoleInput` / `GenerateConsoleCtrlEvent`, which is unmeasured. |
+| `monitor`'s role | `monitor` is a hook-only per-session bridge. Locally the daemon already observes everything it would, so its only distinct capability is remote observation (`monitor --remote-daemon`), which is exactly what the relay does without a per-session process. It stays a compatibility command until the relay is validated on two machines. |
+
+Size of what the managed path still owns (measured at `abf9223d`): about 8,200
+lines of production code in about 30 Node files that only the managed path
+reaches, about 8,750 lines of tests for that code, and about 1,900 lines of
+managed-only branches inside files shared with the daemon-first path. Phase 0
+(#537) removes the parts with no caller and stops the daemon importing the
+managed hook server.
+
 ---
 
 ## 1. Custom launch arguments
