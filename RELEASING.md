@@ -166,9 +166,22 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
   TC001 output and countdown usability, with no new compatibility milestone.
   The countdown retains its window label, removes `R` and scrolling, and holds
   each time reading for four seconds. Other channels do not change version.
-  TC001 and NM serial readback and T-Embed WiFi readback report 1.9.1. These
-  installed candidates were built from the same source; optical inspection is
-  distinct from telemetry and artifact verification.
+  TC001 now runs the 1.9.2 candidate from `e53ab697`; after OTA and fresh boot
+  telemetry, the user confirmed that time is readable and the center button
+  holds the reading for at least 15 seconds and resumes cycling normally.
+  The candidate SHA-256 is
+  `1ac67eef00e965357749f250632b9388171f564dc936f04007d0c1fc7c2f12b7`.
+  NM serial and T-Embed WiFi readbacks remain at 1.9.1; this patch does not
+  change their display behavior.
+  The [full-tier receipt](verification/receipts/2026-10-13-e53ab69.json)
+  preserves one local TTGO framework-resolution failure; all other automated
+  gates passed. pioarduino's cleanup removed the Arduino 3 package installed
+  under a version-suffixed directory alongside Arduino 2. Restoring Arduino 3
+  to the base package path fixed the build, and the
+  [same-source TTGO retry](verification/receipts/2026-10-13-e53ab69-ttgo-retry.json)
+  passed in 64 seconds. The original failed receipt is not relabeled as a pass.
+  PR #531's complete CI matrix, including TTGO, also passes. Broad lab gates in
+  the receipts remain unattested; the TC001 optical acceptance above is separate.
 
 The [clean final full-tier receipt](verification/receipts/2026-10-13-cc0d21a.json)
 passes in 14m11s and covers the bidirectional handover candidate; its tree matches

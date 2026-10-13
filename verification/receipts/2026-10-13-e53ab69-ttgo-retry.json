@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-13T15:05:50.129Z",
+  "finished_at": "2026-10-13T15:06:54.490Z",
+  "duration_ms": 64361,
+  "commit": "e53ab697c28f4757fa1ae137b6e6cc82737d915b",
+  "branch": "codex/tc001-led-output",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "esp32-ttgo",
+      "gate": "esp32-ttgo",
+      "name": "ESP32 TTGO target build",
+      "status": "pass",
+      "duration_ms": 64352
+    }
+  ]
+}
