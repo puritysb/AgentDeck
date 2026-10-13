@@ -199,14 +199,12 @@ TIMELINE
 
 `android/` — Jetpack Compose, minSdk 29, CATEGORY_HOME, NSD mDNS discovery, operator approval and six-digit pairing (no QR scanner), e-ink detection (Crema/Onyx/Kobo).
 
-**3-tab nav**: Dashboard (terrarium bg + HUD overlay panels, connection overlay when disconnected) / Deck (encoder strip + 2×4 button grid + context area) / Settings. MonitorService: CPU wake lock + system stay-on + screen wake on state change (e-ink).
+**Screens**: onboarding until pairing completes, then a single dashboard — `EinkMonitorScreen` on e-ink devices (or when the Paper dashboard type is chosen), `TabletDashboard` (terrarium background + HUD overlay panels, connection overlay when disconnected) otherwise. Settings opens as a dialog from the dashboard. MonitorService: CPU wake lock + system stay-on + screen wake on state change (e-ink).
 
-**Deck encoder strip**: 4-panel LCD mirroring (Utility/Action/Session/Voice), touch gestures (swipe=rotate, tap=push, long-press=record).
-
-**Deck button grid**: Bridge `button_state` 프로토콜 우선, 로컬 fallback. CompactStatusBar(36dp) 상단 + 직사각형 버튼(80dp) + 넓은 ContextArea. 터치 피드백(scale 0.95+alpha 0.85), AWAITING시 전체 옵션 리스트 항상 표시, PROCESSING시 LinearProgressIndicator, IDLE시 suggestedPrompt AssistChip.
+The former Deck tab (encoder strip + 2×4 button grid mirroring the daemon's `encoder_state` / `button_state`) is gone: the app has ignored both frames since the tab was removed, and the Node daemon stopped producing them in #273 phase 0.
 
 **Voice**: Android AudioRecord → WAV → HTTP POST `/voice/transcribe` → 데몬이 번들 헬퍼(Apple 온디바이스 Speech)로 전사.
 
-**Utility proxy**: `bridge/src/utility-proxy.ts` — osascript macOS volume/brightness/media control via Android remote.
+**Utility commands**: the app no longer sends `utility` (the builder in `Protocol.kt` has no caller). The command is served by the Swift daemon and by managed session bridges only — see [protocol.md](protocol.md).
 
 **Slot map**: Plugin reports SD+ profile layout → Bridge caches → Android mirrors dynamically.

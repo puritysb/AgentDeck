@@ -11,13 +11,16 @@ import { updateDaemonSetting } from './daemon-settings.js';
 import { startPersonalVoiceTurn } from './personal-voice-turn.js';
 import { transcribeDeviceAudio, type VoiceTranscriptionSettings } from './device-transcription.js';
 /**
- * AgentDeck Daemon — lightweight monitoring server.
+ * AgentDeck Daemon — the hub every dashboard and device connects to.
  *
- * No PTY, no voice, no utility. Provides:
- * - WS server for display clients
+ * Owns no PTY and handles no `utility` command (managed session bridges do).
+ * Provides, among others:
+ * - WS server for display clients, hook ingestion for observed sessions
  * - mDNS advertisement
  * - OpenClaw Gateway proxy
  * - Usage relay (sibling HTTP → WS → direct API)
+ * - Device voice transcription and host push-to-talk
+ * - Daemon relay hub/worker (daemon-relay.ts)
  * - Pixoo + ADB + Serial device modules
  *
  * Exports `startDaemon()` called by cli.ts.

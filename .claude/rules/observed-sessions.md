@@ -23,7 +23,6 @@ paths:
   - "apple/AgentDeck/Daemon/Session/**"
   - "apple/AgentDeck/Daemon/Core/HookInstaller.swift"
   - "apple/AgentDeck/Daemon/Core/CodexConfigInstaller.swift"
-  - "apple/AgentDeck/Daemon/Core/DaemonServer*.swift"
   - "apple/AgentDeck/Daemon/Server/DaemonServer.swift"
 ---
 # Observed sessions, hooks and PERM

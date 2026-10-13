@@ -1,6 +1,7 @@
 ---
 paths:
   - "bridge/src/daemon*.ts"
+  - "bridge/src/relay-config.ts"
   - "bridge/src/cli.ts"
   - "bridge/src/auth.ts"
   - "bridge/src/http-auth-gate.ts"

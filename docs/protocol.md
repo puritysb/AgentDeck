@@ -86,7 +86,7 @@ when the row count is unchanged. An empty result is shown explicitly.
 - Daemon listens on `0.0.0.0:9120` (fallback to 9121+ if port occupied by non-daemon). `~/.agentdeck/daemon.json` records the actual port for local client discovery. Remote clients discover via mDNS (`_agentdeck._tcp`, daemon only advertises).
 - Local clients are auto-trusted; LAN clients must present the auth token (`~/.agentdeck/auth-token`). Pair via `agentdeck qr`.
 - Daemon computes encoder state and relays the Stream Deck slot map. If the plugin is absent, Android falls back to the v3 default layout while staying fully controllable.
-- Voice from Android uploads WAV to `POST /voice/transcribe`; utility actions (volume/brightness/media/timer) go through the Node CLI daemon's macOS `osascript` proxy. The App Store Swift daemon uses native CoreAudio/IOKit code for local utility control and never spawns `osascript`.
+- Voice from Android uploads WAV to `POST /voice/transcribe`; a `utility` command (volume/brightness/media/timer) is handled by the App Store Swift daemon with native CoreAudio/IOKit code (it never spawns `osascript`) and by a managed session bridge's `osascript` proxy (`bridge/src/utility-proxy.ts`). The Node CLI daemon has no `utility` handler, and no first-party client currently sends one (the Stream Deck E1 dial controls volume through the plugin's own host backends).
 
 **Internal session↔daemon push channel** (`bridge/src/daemon-ws-client.ts` ↔ `daemon-server.ts`)
 
@@ -266,7 +266,7 @@ sides are known and they differ. Two unknowns must never combine into a claim.
 { type: 'escape' }                           // Esc key (cancel prompt/selection)
 { type: 'voice', action: 'start' }           // Voice record start/stop/cancel
 { type: 'query_usage' }                      // Refresh API usage data
-{ type: 'utility', mode: 'volume', action: 'set', value: 75 }  // macOS utility proxy
+{ type: 'utility', mode: 'volume', action: 'set', value: 75 }  // Swift daemon (native) or managed bridge osascript proxy; not the Node daemon
 ```
 
 ---
@@ -298,7 +298,7 @@ AgentDeck/
 │       ├── voice.ts              # sox capture + on-device transcription (bundled helper)
 │       ├── mdns.ts               # mDNS advertising (_agentdeck._tcp)
 │       ├── auth.ts               # Auth token management (~/.agentdeck/auth-token)
-│       ├── utility-proxy.ts      # Node CLI macOS osascript proxy (volume/brightness/media)
+│       ├── utility-proxy.ts      # managed session bridge only: macOS osascript proxy (volume/brightness/media)
 │       ├── ollama-probe.ts       # Ollama process status + running models (5s polling)
 │       ├── model-catalog.ts      # OAuth model catalog fetch
 │       ├── gateway-probe.ts      # OpenClaw Gateway TCP probe + doctor health check
