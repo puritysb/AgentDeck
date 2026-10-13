@@ -24,7 +24,16 @@ struct MatrixExpression {
         var agentType: String? = nil
         let automated: Bool
     }
+    struct Companion {
+        let kind: String
+        let glyph: String
+        let count: Int
+        let lowerBound: Bool
+        let hasError: Bool
+    }
     struct Scene {
+        var companion: Companion? = nil
+
         let kind: String
         let count: Int
         let glyph: String
@@ -174,13 +183,14 @@ struct MatrixExpression {
         var count = counts[kind] ?? 0
         var glyph = "summary"
         var frameTime = now
+        var responseAt: Double?
         if MatrixFrames.urgent.contains(kind) {
             let attention = live.filter { Self.state($0.state) == kind }
             let hero = attention[Int(max(0, now) / Double(MatrixFrames.attentionMs)) % attention.count]
             glyph = MatrixFrames.agents[hero.agentType] ?? "neutral"
         } else if sessions != nil {
             if let conversation = interaction(live, now) {
-                kind = conversation.kind; count = live.count; frameTime = now - conversation.ts
+                kind = conversation.kind; count = live.count; frameTime = now - conversation.ts; responseAt = conversation.ts
                 glyph = rowGlyph(conversation.row, live)
             } else if let arrival, now >= arrival.ts, now - arrival.ts < Double(MatrixFrames.arrivalMs),
                let resident = live.first(where: { $0.id == arrival.id }) {
@@ -189,15 +199,56 @@ struct MatrixExpression {
             } else if kind == "done", let latest = done.sorted(by: { $0.ts > $1.ts }).first,
                       now - latest.ts < Double(MatrixFrames.responseMs) {
                 glyph = rowGlyph(latest, live)
-                frameTime = now - latest.ts
+                frameTime = now - latest.ts; responseAt = latest.ts
             }
         }
         let (face, pips) = self.face(live, kind: kind, results: done, now: now)
-        return Scene(kind: kind, count: count, glyph: glyph,
+        return Scene(companion: companion(live, eventKind: kind, eventGlyph: glyph, responseAt: responseAt, now: now), kind: kind, count: count, glyph: glyph,
             frame: Int(max(0, frameTime) / Double(MatrixFrames.frameMs)) % MatrixFrames.frames,
             roster: live.map { Self.state($0.state) },
             counts: [waiting, working, done.count, errors > 0 ? errors : live.count],
             face: face, pips: pips, backgroundCount: live.contains(where: { $0.backgroundCount != nil }) ? live.reduce(0) { $0 + ($1.backgroundCount ?? 0) } : -1)
+    }
+    /// Mirrors the 32×32 companion policy; sequence parity gates owner/count
+    /// selection, attention preemption and partial background counts.
+    private func companion(_ live: [Resident], eventKind: String, eventGlyph: String,
+                           responseAt: Double?, now: Double) -> Companion {
+        let errors = live.filter { Self.state($0.state) == "error" || (gatewayHasError && $0.agentType == MatrixFrames.gatewayAgent) }
+        let tick = Int(max(0, now) / Double(MatrixFrames.companionPageMs))
+        func make(_ kind: String, _ owners: [Resident], count: Int? = nil, lowerBound: Bool = false, index: Int? = nil) -> Companion {
+            let hero = owners.isEmpty ? nil : owners[(index ?? tick) % owners.count]
+            return Companion(kind: kind, glyph: MatrixFrames.agents[hero?.agentType ?? ""] ?? "neutral",
+                             count: count ?? owners.count, lowerBound: lowerBound, hasError: !errors.isEmpty)
+        }
+        if sessions == nil { return make("unknown", [], count: 0) }
+        let waiting = live.filter { Self.state($0.state) == "waiting" }
+        if !waiting.isEmpty {
+            let hero = waiting[tick % waiting.count]
+            let kind = MatrixFrames.awaitingFaces.first { $0[0] == hero.state }?[1] ?? "waiting"
+            return make(kind, waiting)
+        }
+        if !errors.isEmpty { return make("error", errors) }
+        let fresh = responseAt.map { now - $0 < Double(MatrixFrames.responseMs) } ?? false
+        if eventKind == "arrival" || eventKind == "reply" || ((eventKind == "asked" || eventKind == "done") && fresh) {
+            return Companion(kind: eventKind, glyph: eventGlyph, count: -1, lowerBound: false, hasError: false)
+        }
+        var pages: [(kind: String, owners: [Resident], count: Int?, lowerBound: Bool)] = []
+        let working = live.filter { $0.ciFace == nil && Self.state($0.state) == "working" }
+        if !working.isEmpty { pages.append(("working", working, nil, false)) }
+        let background = live.filter { ($0.backgroundCount ?? 0) > 0 }
+        if !background.isEmpty {
+            pages.append(("background", background, background.reduce(0) { $0 + ($1.backgroundCount ?? 0) }, live.contains { $0.backgroundCount == nil }))
+        }
+        let children = live.filter { $0.children > 0 }
+        if !children.isEmpty { pages.append(("delegating", children, children.reduce(0) { $0 + $1.children }, false)) }
+        let ci = live.filter { $0.ciFace != nil }
+        if !ci.isEmpty { pages.append(("ci", ci, nil, false)) }
+        if !pages.isEmpty {
+            let page = pages[tick % pages.count], index = tick / pages.count
+            let kind = page.kind == "ci" && page.owners[index % page.owners.count].ciFace == "ci-unknown" ? "ci-unknown" : page.kind
+            return make(kind, page.owners, count: page.count, lowerBound: page.lowerBound, index: index)
+        }
+        return make(live.isEmpty ? "empty" : "idle", live, count: live.isEmpty ? -1 : live.count)
     }
     /// matrix-expression.ts `face`: no roster → needs-you → failure →
     /// conversation / entrance / fresh result → working → children under an
@@ -234,6 +285,26 @@ struct MatrixExpression {
     }
     static func render(size: Int, scene: Scene) -> Data {
         precondition(size == 11 || size == 32)
+        if size == 32, let c = scene.companion {
+            var out = MatrixFrames.base(size: 32, kind: "companion-" + c.kind, glyph: c.glyph, frame: scene.frame)
+            func put(_ x: Int, _ y: Int, _ color: [UInt8]) {
+                guard x >= 0, x < 32, y >= 0, y < 32 else { return }
+                for i in 0..<3 { out[(y * 32 + x) * 3 + i] = color[i] }
+            }
+            if c.count >= 0 && c.kind != "unknown" {
+                let value = c.count > MatrixFrames.maxCount ? "99+" : "\(c.count)\(c.lowerBound ? "+" : "")"
+                for (d, character) in value.enumerated() {
+                    for (i,v) in (MatrixFrames.digits[String(character)] ?? []).enumerated() where v != 0 {
+                        put(MatrixFrames.countX + (MatrixFrames.countColumns - value.count + d) * MatrixFrames.digitStep + i % 3,
+                            MatrixFrames.companionCountY + i / 3, MatrixFrames.companionColors[c.kind]!)
+                    }
+                }
+            }
+            if c.hasError && c.kind != "error" {
+                for (x,y) in [(0,0),(1,1),(2,0),(0,2),(2,2)] { put(x,y,MatrixFrames.colors["error"]!) }
+            }
+            return Data(out)
+        }
         let summary = scene.glyph.hasPrefix("summary")
         let error = scene.roster.contains("error")
         let glyph = summary && error ? "summary-error" : scene.glyph

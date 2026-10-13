@@ -293,29 +293,31 @@ pending, a two-second `BG N` / `BG DONE` fleet count.
 - **Transport**: BLE GATT transparent-UART. The App Store daemon uses native CoreBluetooth; the CLI daemon uses `bridge/src/idotmatrix/sync.py`.
 - **Discovery**: brand-independent. A peripheral counts as a panel when it advertises service `000000fa-…`, or when its advertised name matches a known family (`IDM-` iDotMatrix, `iPixel-`). The same 32×32 hardware ships under several brand names, so a vendor prefix alone is not the filter. Both scanners — Swift CoreBluetooth and `scan.py` (bleak) — apply the identical predicate from `shared/src/idotmatrix-identity.ts` via generated mirrors (`pnpm generate-idotmatrix-identity`). For a panel that neither advertises the service nor uses a known name, add `idotmatrixNamePrefixes: ["myprefix-"]` to `settings.json`; adding the BLE address to `idotmatrixDevices` by hand still bypasses discovery entirely.
 - **CLI runtime**: `@agentdeck/bridge` ships the Python clients. The first explicit BLE command prepares `bleak`, Pillow, and `idotmatrix` in `~/.agentdeck/python-ble`; use `agentdeck ble status` or `agentdeck ble setup` to inspect or prepare it directly. npm installation itself does not contact PyPI.
-- **Rendering — agent world**: Node and native Swift share the same policy and pixel
-  art. The default is a simultaneous numeric summary: `WAIT` (live awaiting
-  sessions), `WORK` (live processing sessions), `BG` (reported background tasks, separate from child agents; a dash when no count is known), and `LIVE` (all live sessions). `ERR` replaces
-  the last row when any live session is in error, even if waiting has priority.
-  Zero rows are dim; values over 99 show `99+`. These are observed counts, not
-  progress percentages, attempt counts, or a claim that all work has completed.
-  The background row replaces the historical 90-second result tally, which mixed
-  completed turns with active work. Real replies still receive their brief `SENT`
-  scene. Background counts retain by session identity on missing telemetry;
-  explicit zero clears them and disconnect discards the old roster.
-- **Conversation scenes**: the reader's own turn is what the panel is for. When a
-  user message reaches a live session (`chat_start`, not automated), that agent's
-  official creature appears listening under `HEAR` until its reply lands or one
-  minute passes, while the session is processing (a turn close also clears it);
-  after that the `WORK` summary carries the rest of the turn. `HEAR` reports your
-  message arriving — it never means the agent is asking you anything; a question
-  for you is `WAIT`. It was `ASK` with a ten-minute hold until 2026-10-08, and a
-  long run read as a pending question. The reply (`chat_response`, not automated)
-  holds the stage for six seconds under `SENT` (answer delivered, not input
-  requested) with a speech bubble. Automated turns (crons) and bare task closes
-  are not conversations; a task close still gets the six-second result scene.
-  A newer turn or removal from the live roster cancels the reply scene.
-  The Timebox face mirrors both: a listening face, then a talking face.
+- **Rendering — creature companion**: a permanent 24×24 official creature above
+  one static five-pixel-high status/count line. The count is the fleet/category
+  total; the creature is one actual owner of that category, never an unrelated
+  idle session. Owners rotate in stable ID order. `WORK` counts processing sessions
+  excluding explicit CI waits; `JOBS` counts reported background tasks; `AGNT`
+  counts active child agents; `CI` / `CI?` distinguish known and unknown machine
+  waits from human attention. Concurrent activity categories each hold for six
+  seconds, with paired poses legible at the 1.5-second BLE cadence.
+  `WAIT` preempts immediately, showing the affected creature and awaiting-session
+  count with an amber question cue. `ERR` shows failing sessions, including an
+  unhealthy live OpenClaw Gateway. A concurrent error remains a red corner cross
+  while attention has priority. Quota usage never creates an error.
+  Background tasks and child agents are separate, never added together. Missing
+  background telemetry retains the previous count for that session; explicit zero
+  clears it and disconnect drops the roster. A partly known fleet shows a lower
+  bound (`5+`); overflow shows `99+`. These are observed counts, not percentages.
+  A live empty roster shows `REST`, an unknown roster `SYNC`; neither invents a
+  provider. Unknown agent types use a neutral resident.
+- **Conversation scenes**: `HEAR` briefly acknowledges the user's message and
+  `SENT` acknowledges a reply, each for at most six seconds on iDotMatrix, then
+  live activity returns. A task close can earn `DONE` for six seconds; historical
+  completion never covers ongoing work. Human attention and errors outrank every
+  entrance or conversation. New sessions earn a six-second `NEW` entrance; an
+  initial/reconnected roster establishes a baseline instead. The Timebox's
+  independent face policy, including its longer listening hold, is unchanged.
 - **Session identity**: rows and roster use two id forms — an observed session is
   `observed:<agent>:<uuid>` in the roster and the bare uuid on its timeline rows,
   and OpenClaw is one `openclaw-gateway` presence whose rows carry per-agent keys
@@ -323,15 +325,6 @@ pending, a two-second `BG N` / `BG DONE` fleet count.
   (either id form; OpenClaw by agent), and a result whose session has already
   left shows the creature its row names. Until 2026-10-08 an exact-id match sent
   every observed session and OpenClaw to the neutral square face on DONE/SENT/ASK.
-- **Event scenes**: a new live session gets a six-second official-creature entrance
-  (a conversation outranks it). Then the numeric summary
-  returns. There is no decorative creature carousel. Waiting/errors preempt both
-  scenes and show the affected creature with `WAIT`/`ERR` and the affected count.
-  Multiple affected sessions rotate in stable ID order every six seconds; cleared
-  sessions leave the rotation immediately. Quota usage never causes an error. Initial/reconnected rosters establish
-  a baseline rather than replaying entrances. A burst coalesces to one entrance.
-  The bottom event-scene dots show up to eight live session states (overflow is
-  marked); unknown agents use a neutral resident, never another agent's logo.
 - **Parity**: `shared/src/matrix-expression.ts` owns state/timing policy;
   `bridge/src/pixoo/matrix-art.ts` owns the art. `pnpm generate-matrix-expressions`
   bakes Swift RLE frames, and executable Node/Swift tests compare event sequences

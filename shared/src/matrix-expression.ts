@@ -11,7 +11,7 @@ export const MATRIX_RULES = {
   // holds the stage briefly, and an open question keeps its agent listening
   // briefly after it lands — then the WORK scene says the rest. It used to
   // hold for the whole turn (10 min), so a long run read as a question.
-  replyMs: 6000, askMs: 60000, attentionMs: 6000,
+  replyMs: 6000, askMs: 60000, attentionMs: 6000, companionPageMs: 6000,
 } as const;
 export const MATRIX_POLICY = {
   awaitingPrefix: 'awaiting', stateKinds: { error: 'error', processing: 'working' },
@@ -71,7 +71,19 @@ export interface MatrixBroadcast {
   type: string; dot?: DotDeckSnapshot | null; sessions?: MatrixSession[]; entries?: MatrixResult[];
   entry?: MatrixResult; upsert?: boolean; status?: string; gatewayHasError?: boolean;
 }
+export const MATRIX_COMPANION_LABELS = {
+  unknown: 'SYNC', empty: 'REST', idle: 'IDLE', working: 'WORK', background: 'JOBS',
+  delegating: 'AGNT', ci: 'CI', 'ci-unknown': 'CI?', waiting: 'WAIT', choosing: 'WAIT',
+  reviewing: 'WAIT', error: 'ERR', done: 'DONE', arrival: 'NEW', asked: 'HEAR', reply: 'SENT',
+} as const;
+export type MatrixCompanionKind = keyof typeof MATRIX_COMPANION_LABELS;
+export interface MatrixCompanion {
+  kind: MatrixCompanionKind; glyph: string; count: number; lowerBound: boolean; hasError: boolean;
+}
 export interface MatrixScene {
+  /** 32×32 companion only; the Timebox face retains its independent policy. */
+  companion?: MatrixCompanion;
+
   dot?: DotDeckSnapshot | null;
   dotNow?: number;
   kind: MatrixKind; count: number; glyph: string; frame: number; roster: MatrixKind[]; counts: number[];
@@ -224,6 +236,7 @@ export class MatrixExpression {
     const frameTime = kind === 'arrival' ? now - this.arrival!.ts : responseAt == null ? now : now - responseAt;
     return { ...(this.dot?.configured ? { dot: this.dot, dotNow: now } : {}), kind, count: kind === 'arrival' || kind === 'asked' || kind === 'reply' ? live.length : signal.count,
       glyph, face, pips,
+      companion: this.companion(live, kind, glyph, responseAt, now),
       backgroundCount: live.some(s => backgroundCount(s.backgroundTaskCount) !== null)
         ? live.reduce((sum,s) => sum + (backgroundCount(s.backgroundTaskCount) ?? 0), 0) : -1,
       frame: Math.floor(Math.max(0, frameTime) / MATRIX_RULES.frameMs) % MATRIX_RULES.frames,
@@ -233,6 +246,51 @@ export class MatrixExpression {
         live.filter(s => matrixState(s.state) === 'working').length,
         matrixResults(this.timeline, now).length,
         live.filter(s => matrixState(s.state) === 'error').length || live.length] };
+  }
+  /** Counts describe the fleet/category, while the hero is always an owner of
+   * that category. Six-second pages never mix a jobs count with an idle owner.
+   * Attention preempts on the next frame; a concurrent failure keeps a red cue. */
+  private companion(live: MatrixSession[], eventKind: MatrixKind, eventGlyph: string,
+      responseAt: number | undefined, now: number): MatrixCompanion {
+    const errors = live.filter(s => matrixState(s.state) === 'error' ||
+      (this.gatewayHasError && s.agentType === MATRIX_POLICY.gatewayAgent));
+    const tick = Math.floor(Math.max(0, now) / MATRIX_RULES.companionPageMs);
+    const make = (kind: MatrixCompanionKind, owners: MatrixSession[], count = owners.length,
+      lowerBound = false, index = tick): MatrixCompanion => ({ kind, count, lowerBound,
+        glyph: MATRIX_AGENTS[owners[index % Math.max(1, owners.length)]?.agentType ?? ''] ?? 'neutral',
+        hasError: errors.length > 0 });
+    if (this.sessions === null) return make('unknown', [], 0);
+    const waiting = live.filter(s => matrixState(s.state) === 'waiting');
+    if (waiting.length) {
+      const hero = waiting[tick % waiting.length];
+      const kind = MATRIX_POLICY.awaitingFaces.find(([state]) => state === hero.state)?.[1] ?? 'waiting';
+      return make(kind, waiting);
+    }
+    if (errors.length) return make('error', errors);
+    if (eventKind === 'arrival' || eventKind === 'reply' ||
+        (eventKind === 'asked' && responseAt !== undefined && now - responseAt < MATRIX_RULES.responseMs) ||
+        (eventKind === 'done' && responseAt !== undefined && now - responseAt < MATRIX_RULES.responseMs)) {
+      return { kind: eventKind, glyph: eventGlyph, count: -1, lowerBound: false, hasError: false };
+    }
+    const pages: { kind: MatrixCompanionKind; owners: MatrixSession[]; count?: number; lowerBound?: boolean }[] = [];
+    const working = live.filter(s => matrixFaceState(s) === 'working');
+    if (working.length) pages.push({ kind: 'working', owners: working });
+    const background = live.filter(s => (backgroundCount(s.backgroundTaskCount) ?? 0) > 0);
+    if (background.length) pages.push({ kind: 'background', owners: background,
+      count: background.reduce((n, s) => n + (backgroundCount(s.backgroundTaskCount) ?? 0), 0),
+      lowerBound: live.some(s => backgroundCount(s.backgroundTaskCount) === null) });
+    const childCount = (s: MatrixSession) => typeof s.subagents?.active === 'number' &&
+      Number.isFinite(s.subagents.active) && s.subagents.active > 0 ? Math.floor(s.subagents.active) : 0;
+    const children = live.filter(s => childCount(s) > 0);
+    if (children.length) pages.push({ kind: 'delegating', owners: children, count: children.reduce((n,s) => n + childCount(s), 0) });
+    const ci = live.filter(s => matrixCiFace(s) !== null);
+    if (ci.length) pages.push({ kind: 'ci', owners: ci });
+    if (pages.length) {
+      const page = pages[tick % pages.length], index = Math.floor(tick / pages.length);
+      const kind = page.kind === 'ci' && matrixCiFace(page.owners[index % page.owners.length]) === 'ci-unknown' ? 'ci-unknown' : page.kind;
+      return make(kind, page.owners, page.count, page.lowerBound, index);
+    }
+    return make(live.length ? 'idle' : 'empty', live, live.length ? live.length : -1);
   }
   /** Timebox face priority: no roster → needs-you → failure → conversation /
    * entrance / fresh result → working → children under an idle parent → CI

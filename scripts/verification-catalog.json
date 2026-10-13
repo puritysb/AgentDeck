@@ -539,7 +539,7 @@
         "bridge/src/__tests__/fm-helper-build.test.ts"
       ],
       "proves": [
-        "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions and the native TUI samples",
+        "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions (including iDotMatrix creature ownership, attention preemption, background lower bounds and CI/child separation) and the native TUI samples",
         "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain"
       ],
       "does_not_prove": [

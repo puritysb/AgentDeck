@@ -45,6 +45,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+## 2026-10-14 — npm 1.9.2
+
+- Keep a large official creature on iDotMatrix with one readable status/count line instead of four competing numeric rows. Working sessions, background jobs, child agents and CI waits remain distinct.
+- Show human attention immediately, preserve a concurrent error cue, and return to current activity after brief conversation or arrival scenes. Rotate only real owners of the displayed category.
+- Preserve missing background telemetry, clear explicit zero, and mark partly known totals as lower bounds. Node and native Swift share generated artwork and executable state/pixel parity tests.
+
 ## 2026-10-13 — ESP32 1.9.2
 
 - Restore readable TC001 LED output by pinning the physically verified FastLED 3.7.0 driver. The floating dependency had selected 3.10.7, which produced an almost fully lit panel despite healthy data reception.
@@ -58,6 +64,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - Make native 3D creatures selectable by their visible bounds; keep empty-water viewing mode and expose a clear-filter action on LCD and e-ink dashboards.
 
 ## 2026-10-13 — Apple 1.9.1
+
+- Pending macOS build revision, October 14: replace the four-row iDotMatrix summary with a permanent creature and readable live state/count, matching npm 1.9.2. The previously submitted iOS build is unchanged.
 
 - Keep timeline rows inside their touch area so the clear-filter button responds reliably on iPhone.
 

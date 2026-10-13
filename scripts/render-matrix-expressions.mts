@@ -2,28 +2,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { MATRIX_FACES, MATRIX_RULES, MatrixExpression, type MatrixScene } from '../shared/src/index.js';
+import { MATRIX_FACES, MATRIX_RULES, MatrixExpression, type MatrixSession } from '../shared/src/index.js';
 import { renderMatrixScene } from '../bridge/src/pixoo/matrix-art.js';
 const output = path.resolve(process.argv[2] ?? 'diagnostics/matrix');
 fs.mkdirSync(output, { recursive: true });
 // Population metadata must not introduce extra dots under the face.
 const face = MATRIX_FACES.map(f => ({ label: f, size: 11 as const,
   frames: Array.from({ length: MATRIX_RULES.frames }, (_, frame) => renderMatrixScene(11, { kind: 'idle', face: f, pips: 2, count: 1, glyph: 'summary', frame, counts: [0, 1, 0, 1], roster: ['working'] })) }));
-const engine = new MatrixExpression();
-engine.updateSessions([{ id: 'c', alive: true, agentType: 'claude-code', state: 'processing' },
-  { id: 'x', alive: true, agentType: 'codex-cli', state: 'idle' }], 0);
-const base = engine.scene(0);
-const scenes: [string, MatrixScene][] = [
-  ['Fleet: two working', { ...base, kind: 'working', counts: [0, 2, 3, 4], roster: ['working', 'working', 'idle', 'idle'] }],
-  ['Waiting + error', { ...base, kind: 'waiting', counts: [1, 2, 3, 1], roster: ['waiting', 'working', 'working', 'error'] }],
-  ['New Claude session', { ...base, kind: 'arrival', glyph: 'claudeCode', count: 2 }],
-  ['Codex response', { ...base, kind: 'done', glyph: 'codex', count: 1 }],
+const resident = (id: string, state: string, agentType = 'claude-code'): MatrixSession => ({id,state,agentType,alive:true});
+const scenarios: [string, MatrixSession[], number][] = [
+  ['Work: two sessions', [resident('a','processing'),resident('b','processing','codex-cli')], 0],
+  ['Background: five jobs', [{...resident('a','idle','codex-cli'),backgroundTaskCount:5}], 0],
+  ['Approval + error', [resident('a','awaiting_permission'),resident('b','error','codex-cli')], 0],
+  ['CI wait', [{...resident('a','processing','openclaw'),waitingOn:{phase:'running',agentWaiting:true}}],0],
+  ['Quiet desk', [resident('a','idle')],0],
+  ['Partial jobs: 5+', [{...resident('a','idle','codex-cli'),backgroundTaskCount:5},resident('b','idle')],0],
 ];
-const world = scenes.map(([label, scene]) => ({ label, size: 32 as const,
-  frames: Array.from({ length: 8 }, (_, frame) => renderMatrixScene(32, { ...scene, frame })) }));
+const world = scenarios.map(([label,sessions,now]) => {
+  const engine=new MatrixExpression();engine.updateSessions(sessions,now);
+  return {label,size:32 as const,frames:Array.from({length:8},(_,frame)=>renderMatrixScene(32,engine.scene(now+frame*MATRIX_RULES.frameMs)))};
+});
 const tiles = [...face, ...world];
 const perRow = 8, faceRows = Math.ceil(face.length / perRow), rowH = 330, worldY = 50 + faceRows * rowH;
-const height = worldY + 300;
+const height = worldY + 620;
 let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="${height}"><rect width="1460" height="${height}" fill="rgb(12,13,16)"/><g fill="rgb(226,232,240)" font-family="monospace">`;
 svg += '<text x="24" y="32" font-size="22">Timebox Mini · expressive face</text>';
 for (let i = 0; i < face.length; i++) {
@@ -34,11 +35,11 @@ for (let i = 0; i < face.length; i++) {
     svg += `<image x="${x}" y="${y}" width="132" height="132" href="data:image/png;base64,${png.toString('base64')}"/>`;
   }
 }
-svg += `<text x="24" y="${worldY + 5}" font-size="22">iDotMatrix · information first, event scenes second</text>`;
+svg += `<text x="24" y="${worldY + 5}" font-size="22">iDotMatrix · creature companion · live status</text>`;
 for (let i = 0; i < world.length; i++) {
-  const tile = world[i]; const x = 24 + i * 315;
+  const tile = world[i]; const x = 24 + (i % 3) * 470; const top = worldY + Math.floor(i / 3) * 300;
   const png = await sharp(Buffer.from(tile.frames[3]), { raw: { width: 32, height: 32, channels: 3 } }).resize(224, 224, { kernel: 'nearest' }).png().toBuffer();
-  svg += `<text x="${x}" y="${worldY + 38}" font-size="15">${tile.label}</text><image x="${x}" y="${worldY + 55}" width="224" height="224" href="data:image/png;base64,${png.toString('base64')}"/>`;
+  svg += `<text x="${x}" y="${top + 38}" font-size="15">${tile.label}</text><image x="${x}" y="${top + 55}" width="224" height="224" href="data:image/png;base64,${png.toString('base64')}"/>`;
 }
 svg += '</g></svg>';
 await sharp(Buffer.from(svg)).png().toFile(path.join(output, 'matrix-expressions.png'));

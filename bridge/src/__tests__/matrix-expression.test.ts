@@ -11,13 +11,63 @@ import { broadcastMatrix, getLastFrame, renderPreviewFrame } from '../pixoo/pixo
 const row = (id: string, state = 'processing', agentType = 'claude-code', alive = true): MatrixSession => ({ id, state, agentType, alive });
 afterEach(() => vi.useRealTimers());
 describe('expressive BLE matrices', () => {
-  it('keeps numeric information on the default world, with no creature carousel', () => {
+  it('keeps a working owner permanently visible with fleet counts', () => {
     const engine = new MatrixExpression();
     engine.updateSessions([row('c'), row('x', 'idle', 'codex-cli')], 100);
     for (const now of [100, 9000, 30000]) {
-      expect(engine.scene(now)).toMatchObject({ kind: 'working', glyph: 'summary', counts: [0, 1, 0, 2] });
+      expect(engine.scene(now)).toMatchObject({ kind: 'working', glyph: 'summary', counts: [0, 1, 0, 2], companion: { kind: 'working', glyph: 'claudeCode', count: 1 } });
     }
-    expect(renderMatrixScene(32, engine.scene(100))).toEqual(renderMatrixScene(32, engine.scene(9000)));
+    expect(renderMatrixScene(32, engine.scene(100))).not.toEqual(renderMatrixScene(32, engine.scene(9000)));
+  });
+  it('cycles work and jobs without dressing an idle session as their owner, and retains partial counts', () => {
+    const e = new MatrixExpression();
+    const sessions = [{...row('a'),backgroundTaskCount:0}, {...row('b','idle','codex-cli'),backgroundTaskCount:5},row('z','idle','openclaw')];
+    e.updateSessions(sessions,0);
+    expect(e.scene(0).companion).toMatchObject({kind:'working',glyph:'claudeCode',count:1});
+    expect(e.scene(5999).companion).toMatchObject({kind:'working'});
+    expect(e.scene(6000).companion).toMatchObject({kind:'background',glyph:'codex',count:5,lowerBound:true});
+    e.updateSessions(sessions.map(({backgroundTaskCount:_,...s})=>s),6001);
+    expect(e.scene(6001).companion).toMatchObject({kind:'background',count:5,lowerBound:true});
+    e.updateSessions(sessions.map(s=>({...s,backgroundTaskCount:0})),6002);
+    expect(e.scene(6002).companion).toMatchObject({kind:'working',count:1});
+    e.reset();expect(e.scene(6003).companion).toMatchObject({kind:'unknown',count:0,glyph:'neutral'});
+    e.updateSessions([],6004);expect(e.scene(6004).companion).toMatchObject({kind:'empty',count:-1});
+  });
+  it('visits every actual owner even when category and owner counts share a factor', () => {
+    const e = new MatrixExpression();
+    e.updateSessions([
+      {...row('a'), backgroundTaskCount: 2},
+      {...row('b', 'processing', 'codex-cli'), backgroundTaskCount: 3},
+    ], 0);
+    expect([0, 6000, 12000, 18000].map(now => e.scene(now).companion)).toMatchObject([
+      {kind: 'working', glyph: 'claudeCode', count: 2},
+      {kind: 'background', glyph: 'claudeCode', count: 5},
+      {kind: 'working', glyph: 'codex', count: 2},
+      {kind: 'background', glyph: 'codex', count: 5},
+    ]);
+  });
+  it('preempts jobs with approval, preserves concurrent failure, then clears both immediately', () => {
+    const e=new MatrixExpression();
+    e.updateSessions([{...row('a','idle'),backgroundTaskCount:8},row('b','error','codex-cli')],0);
+    expect(e.scene(0).companion).toMatchObject({kind:'error',glyph:'codex',count:1});
+    e.updateSessions([{...row('a','awaiting_permission'),backgroundTaskCount:8},row('b','error','codex-cli')],1);
+    const waiting=e.scene(1);
+    expect(waiting.companion).toMatchObject({kind:'waiting',glyph:'claudeCode',count:1,hasError:true});
+    const frame=renderMatrixScene(32,waiting); expect(frame[0]).toBeGreaterThan(frame[1]);
+    e.updateSessions([{...row('a','idle'),backgroundTaskCount:8},{...row('b','idle','codex-cli'),backgroundTaskCount:0}],2);
+    expect(e.scene(2).companion).toMatchObject({kind:'background',glyph:'claudeCode',count:8,lowerBound:false,hasError:false});
+  });
+  it('does not call CI waiting or child agents background jobs, or hold old completion over work', () => {
+    const e=new MatrixExpression();
+    e.updateSessions([{...row('a'),waitingOn:{phase:'running',agentWaiting:true}}, {...row('b','idle','codex-cli'),subagents:{active:2}}],0);
+    expect(e.scene(0).companion).toMatchObject({kind:'delegating',count:2,glyph:'codex'});
+    expect(e.scene(6000).companion).toMatchObject({kind:'ci',count:1,glyph:'claudeCode'});
+    e.updateSessions([{...row('a'),waitingOn:{phase:'unknown',agentWaiting:true}},row('b','idle','codex-cli')],6001);
+    expect(e.scene(6001).companion).toMatchObject({kind:'ci-unknown'});
+    e.updateSessions([row('a')],12000);
+    e.updateTimeline([{ts:12000,type:'chat_response',sessionId:'a'}]);
+    expect(e.scene(12000).companion).toMatchObject({kind:'reply',count:-1});
+    expect(e.scene(18000).companion).toMatchObject({kind:'working',count:1});
   });
   it('earns a six-second entrance only for a new live session, independent of polls and order', () => {
     const engine = new MatrixExpression();
@@ -336,6 +386,12 @@ describe('expressive BLE matrices', () => {
       add(240000, { type: 'timeline_event', entry: { ts: 240000, type: 'chat_start', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
       add(250000, { type: 'timeline_event', entry: { ts: 250000, type: 'task_end', sessionId: 'openclaw:agent:main:main', agentType: 'openclaw' } });
       add(260000, { type: 'timeline_event', entry: { ts: 260000, type: 'task_end', sessionId: 'left', agentType: 'codex-cli' } });
+      add(300000, {type:'connection',status:'disconnected'});
+      add(300000, {type:'sessions_list',sessions:[{...row('a'),backgroundTaskCount:0},
+        {...row('b','idle','codex-cli'),backgroundTaskCount:105},{...row('c','idle','openclaw'),subagents:{active:2}},
+        {...row('d'),waitingOn:{phase:'unknown',agentWaiting:true}}]});
+      for(let i=0;i<40;i++) add(300000+i*1500);
+      add(360000,{type:'sessions_list',sessions:[{...row('a'),backgroundTaskCount:0},row('b','idle','codex-cli')]});
       const engine = new MatrixExpression();
       const expected = steps.map(({ now, event }) => {
         if (event) engine.ingest(event as MatrixBroadcast, now);

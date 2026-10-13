@@ -3,7 +3,7 @@ import { paintOfficialFeatures } from './official-features.js';
 /** Canonical pixel art for both BLE runtimes. Swift consumes generated RLE frames
  * from this renderer, so eyes, official masks and motion cannot drift by platform. */
 import { Brand, UI, Tide, Coral, CI_WAIT_CUE, MATRIX_RULES, MATRIX_POLICY,
-  type MatrixFace, type MatrixKind, type MatrixScene } from '@agentdeck/shared';
+  MATRIX_COMPANION_LABELS, type MatrixCompanionKind, type MatrixFace, type MatrixKind, type MatrixScene } from '@agentdeck/shared';
 import { OFFICIAL_DOT_GLYPHS, type OfficialDotGlyphName } from './official-dot-glyphs.generated.js';
 import { drawText } from './pixoo-font.js';
 
@@ -21,7 +21,7 @@ export const MATRIX_FACE_COLORS: Record<MatrixFace, string> = {
   waiting: UI.attn, choosing: UI.attn, reviewing: UI.attn, error: UI.error, done: UI.ok,
   arrival: UI.cyan, asked: UI.cyan, reply: UI.ok,
 };
-export const MATRIX_LAYOUT = { countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, backgroundDotStep: 3, maxCount: 99 };
+export const MATRIX_LAYOUT = { companionCountY: 27, companionLabelX: 1, companionSide: 24, companionX: 4, countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, backgroundDotStep: 3, maxCount: 99 };
 export const MATRIX_GLYPHS = ['summary', 'summary-error', 'neutral', ...Object.keys(OFFICIAL_DOT_GLYPHS)];
 export function rgb(hex: string): number[] { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
 function painter(buf: Uint8Array, size: number) {
@@ -183,6 +183,66 @@ export function renderMatrixFace(face: MatrixFace | MatrixKind, frame: number): 
   return out;
 }
 
+/** Large permanent creature, stable footer, paired poses for the 1.5 s BLE
+ * transport. Official source geometry/features remain intact at native 24px. */
+export const MATRIX_COMPANION_COLORS: Record<MatrixCompanionKind, string> = {
+  ...MATRIX_FACE_COLORS, background: UI.cyan,
+};
+export function renderCompanionBase(kind: MatrixCompanionKind, glyph: string, frame: number): Uint8Array {
+  const out = new Uint8Array(32 * 32 * 3), put = painter(out, 32);
+  const beat = Math.floor(frame / 2) % 4, color = MATRIX_COMPANION_COLORS[kind];
+  const attention = ['waiting', 'choosing', 'reviewing'].includes(kind);
+  const pulse = attention && frame % 2 ? .65 : 1;
+  const text = (value: string, x0: number, y0: number, tone = color, intensity = 1) => {
+    for (const [d, character] of [...value].entries()) matrixDigit(character).forEach((v,i) => {
+      if (v) put(x0 + d * MATRIX_LAYOUT.digitStep + i % 3, y0 + Math.floor(i / 3), tone, intensity);
+    });
+  };
+  text(MATRIX_COMPANION_LABELS[kind], MATRIX_LAYOUT.companionLabelX, MATRIX_LAYOUT.companionCountY, color, pulse);
+  if (kind === 'unknown' || kind === 'empty') {
+    // No roster must never invent a provider. Quiet water vs searching dots.
+    if (kind === 'empty') { text('Z', 15, 10, UI.idle); for (let x=8;x<24;x++) put(x,21,UI.waterDeep); }
+    else for (let i=0;i<4;i++) put(10+i*4, 14, color, i === beat ? 1 : .35);
+    return out;
+  }
+  const active = ['working', 'background', 'delegating', 'asked', 'arrival', 'reply', 'done'].includes(kind);
+  const bob = active ? [0,1,0,1][beat] : 0;
+  const x0 = MATRIX_LAYOUT.companionX, y0 = bob, side = MATRIX_LAYOUT.companionSide;
+  const mask = OFFICIAL_DOT_GLYPHS[glyph as OfficialDotGlyphName];
+  if (mask) {
+    const brand: Record<string, string> = { claudeCode: Brand.claudeCode, codex: Brand.codex,
+      openCode: Brand.opencodeOnDark, openClaw: Brand.openclaw, antigravity: Brand.antigravity,
+      kiro: Brand.kiro, hermes: Brand.hermesOnDark, zai: Brand.zai };
+    for (let y=0;y<side;y++) for (let x=0;x<side;x++) {
+      const alpha=mask[y*24+x]/255;
+      if (alpha>0) put(x0+x,y0+y,brand[glyph],alpha);
+    }
+    paintOfficialFeatures(out,32,glyph as OfficialDotGlyphName,x0,y0,side);
+  } else {
+    for (let y=7;y<20;y++) for (let x=9;x<23;x++) {
+      if (x===9||x===22||y===7||y===19) put(x,y+bob,UI.hudSubtext,.7);
+    }
+    put(13,12+bob,color); put(18,12+bob,color);
+    for(let x=14;x<18;x++) put(x,16+bob,color);
+  }
+  if (attention) text('?',28,2,color,pulse);
+  else if (kind === 'error') text('!',28,2,color);
+  else if (kind === 'ci' || kind === 'ci-unknown') {
+    // A machine wait stays distinct from the amber needs-you question.
+    text(kind === 'ci-unknown' ? '?' : '.',28,3,color);
+    put(29,12+beat*2,color);
+  } else if (kind === 'working' || kind === 'asked' || kind === 'arrival') {
+    for (const [x,y] of [[1,15-beat*2],[30,21-beat*2]]) { put(x,y,color);put(x+1,y-1,color,.6); }
+  } else if (kind === 'background' || kind === 'delegating') {
+    // Orbiting workers, not a percentage or fabricated progress bar.
+    const orbit=[[1,7],[1,20],[29,20],[29,7]];
+    for (const offset of [0,2]) {const [x,y]=orbit[(beat+offset)%4];put(x,y,color);put(x+1,y,color);put(x,y+1,color);}
+  } else if (kind === 'reply' || kind === 'done') {
+    put(28,5,color);put(29,6,color);put(30,5,color);put(31,4,color);
+  }
+  return out;
+}
+
 export function renderMatrixBase(size: 11 | 32, kind: MatrixKind, glyph: string, frame: number): Uint8Array {
   const out = new Uint8Array(size * size * 3);
   const put = painter(out, size), color = MATRIX_COLORS[kind];
@@ -284,6 +344,18 @@ export function renderMatrixScene(size: 11 | 32, scene: MatrixScene): Uint8Array
       for(let i=0;i<Math.min(BACKGROUND_PRESENTATION.maxDots,scene.backgroundCount!);i++) put((Math.floor(scene.frame * 11 / MATRIX_RULES.frames) + i * MATRIX_LAYOUT.backgroundDotStep) % 11, 10, UI.cyan);
     }
     return out;
+  }
+  if (scene.companion) {
+    const c = scene.companion, out = renderCompanionBase(c.kind, c.glyph, scene.frame), put = painter(out,32);
+    if (c.count >= 0 && c.kind !== 'unknown') {
+      const value = c.count > MATRIX_LAYOUT.maxCount ? '99+' : `${c.count}${c.lowerBound ? '+' : ''}`;
+      for (const [d, character] of [...value].entries()) matrixDigit(character).forEach((v,i) => {
+        if(v) put(MATRIX_LAYOUT.countX + (MATRIX_LAYOUT.countColumns-value.length+d)*MATRIX_LAYOUT.digitStep+i%3,
+          MATRIX_LAYOUT.companionCountY+Math.floor(i/3),MATRIX_COMPANION_COLORS[c.kind]);
+      });
+    }
+    if(c.hasError && c.kind !== 'error') { put(0,0,UI.error);put(1,1,UI.error);put(2,0,UI.error);put(0,2,UI.error);put(2,2,UI.error); }
+    return paintDotPixels(out,size,scene.dot,scene.dotNow);
   }
   const out = renderMatrixBase(size, scene.kind, scene.glyph, scene.frame);
   const put = painter(out, 32);

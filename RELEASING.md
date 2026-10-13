@@ -95,6 +95,22 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-14 iDotMatrix readability correction
+
+Version decision recorded before manifest edits. App Store Connect's app list
+still shows iOS and macOS 1.9.1 **Waiting for Review** on October 14 KST. This
+repairs the existing device display contract; it allocates no new milestone.
+
+| Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.1 | 1.9.1 | 1.9.2 | Patch: replace the four-row matrix summary with a permanent creature and readable live status/count | Node daemon's iDotMatrix renderer |
+| Apple / macOS | 1.9.0 | 1.9.1 / 8501, Waiting for Review | 1.9.1, new CI build above 8501 | Same unreleased version: replace the pending macOS build with the matching native renderer | macOS-only workflow dispatch; recheck public/build floor before upload |
+| Apple / iOS, Android, ESP32, deck plugins | Existing delivery identities | Unchanged | Unchanged | No executable device-display change on these targets | Preserve the iOS review submission; no unrelated tags |
+
+Release remains conditional on Node/Swift pixel and state parity, the full
+verification tier, real iDotMatrix transport and optical acceptance, packaged
+three-mode daemon acceptance, and the macOS Release archive gate.
+
 ### 2026-10-13 remaining release decision
 
 Checked before changing manifests: [ASC status run](https://github.com/puritysb/AgentDeck/actions/runs/38322073839),

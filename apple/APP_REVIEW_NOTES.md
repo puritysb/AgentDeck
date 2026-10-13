@@ -458,7 +458,7 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.1
-This patch refines existing setup and connection recovery, completes background-work count presentation on device renderers, preserves partially known evaluation costs during startup, and repairs per-creature history inspection without changing other devices’ control targets. Dot is entirely excluded from this macOS/iOS submission, including setup, authentication, hosting, cloud connections and companion rendering. No hidden or remote switch enables it.
+This patch refines existing setup and connection recovery, completes background-work count presentation on device renderers, preserves partially known evaluation costs during startup, and repairs per-creature history inspection without changing other devices’ control targets. The iDotMatrix display keeps the agent creature visible with separate WORK/JOBS counts and immediate amber WAIT for human attention. Dot is entirely excluded from this macOS/iOS submission, including setup, authentication, hosting, cloud connections and companion rendering. No hidden or remote switch enables it.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors local coding-agent sessions, ingests user-enabled hooks, serves the dashboard, pairs companions and evaluates turns. Users start agents independently. Optional Hermes rows from an existing relay are read-only; the app offers no relay installer.
