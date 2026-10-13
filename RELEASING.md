@@ -115,16 +115,24 @@ existing selection/filter contract rather than introducing a new minor milestone
 
 Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e31aa0`):
 
-- Apple iOS/macOS **1.9.1 / 8401 uploaded**, both signed archive/export checks and
-  upload jobs passed ([run 38384637676](https://github.com/puritysb/AgentDeck/actions/runs/38384637676)).
-  [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/38386771646)
-  confirms both 8401 builds are VALID. This candidate includes #527 and supersedes
-  uploaded build 8301. The version
-  records remain Prepare for Submission; build attachment and review submission
-  still require App Store Connect login. This is not a live Store release.
-- Android **1.10.1 / 28 is on internal Play** and installed from Play on Lenovo.
-  General promotion awaits physical 3D creature-tap acceptance; mirrored input
-  distorted the pointer-up coordinates, so it cannot establish this result.
+- Apple iOS/macOS **1.9.1 / 8501 submitted; Waiting for Review**, observed in
+  App Store Connect on October 13 at 22:02 / 22:10 KST. Both signed archive/export
+  checks and uploads passed ([run 38399345348](https://github.com/puritysb/AgentDeck/actions/runs/38399345348)).
+  Native iPhone/iPad XCUITest exposed timeline rows intercepting the clear button;
+  [#529](https://github.com/puritysb/AgentDeck/pull/529) fixes the hit bounds and
+  adds the standalone acceptance runner. Both devices passed select, replace and
+  clear after the fix. The earlier macOS 8401 submission was withdrawn; 8501
+  supersedes it without changing the marketing version. Full verification passed
+  ([receipt](verification/receipts/2026-10-13-f517fcb.json)). Submission IDs:
+  iOS `4d92fb05-f234-42ef-affc-709a99afe436`, macOS
+  `2c7e560d-3d42-49b5-be3d-caaa4e1603ba`. Both auto-release after approval;
+  neither is confirmed live. Local deployment of merged `d0e9f06d` also passed.
+- Android **1.10.1 / 28 submitted to production Play; in review**, with managed
+  publishing off and a full rollout to the existing 178 countries after approval.
+  The Play-signed Lenovo build passed native 3D Codex/OpenClaw selection and clear;
+  the Mac's independent filter remained unchanged. The
+  [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.1)
+  is public and its downloaded SHA-256 matches the published artifact.
 - Stream Deck **1.8.1 is public on GitHub and Pending review in Maker Console**;
   auto-publish is off for DRM encoder acceptance. The submitted CI package SHA-256
   is `a90a870b8ed6f0b6c991515355ac055b30885c96315484f751df46e533c75a9e`.
@@ -146,6 +154,11 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
 - ESP32 **1.9.1 is public at `0acb96c4`**, with 12 boards and 62 release assets
   ([run 38379792242](https://github.com/puritysb/AgentDeck/actions/runs/38379792242)).
   All 60 binary sizes and SHA-256 hashes match the public manifest/checksums.
+  A later TC001 report shows an almost fully lit cyan/white panel despite fresh
+  serial telemetry and a running display loop. A target-only reset reinitialized
+  the LED matrix, but the user confirmed the all-on output persists. Root cause
+  remains unconfirmed. This is
+  an open hardware-output investigation, not a successful optical acceptance.
   TC001 and NM serial readback and T-Embed WiFi readback report 1.9.1. These
   installed candidates were built from the same source; optical inspection is
   distinct from telemetry and artifact verification.

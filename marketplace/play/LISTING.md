@@ -8,6 +8,23 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 1.10.1 production submitted — 2026-10-13
+
+Production **28 (1.10.1)** is **in review**, with a full rollout to the existing
+178 countries after approval. Managed publishing is off. The saved release
+details confirm all three release-note languages; approval/public availability
+has not yet been observed.
+
+The Play-signed build on Lenovo passed native Android input automation: Codex
+3D creature selection, replacement with OpenClaw, and clear back to mixed history.
+The Mac remained unfiltered while Lenovo inspected a session. This resolves the
+mirrored pointer-coordinate limitation recorded below without changing the APK.
+
+The [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.1)
+is public from `0acb96c4`; release workflow
+[38394263709](https://github.com/puritysb/AgentDeck/actions/runs/38394263709) passed.
+Downloaded APK SHA-256: `b1e35b5fbe310c2abf076868a847ab3407a9147c81477fe358780bbaf5753cc5`.
+
 ## 1.10.1 internal — 2026-10-13
 
 Internal testing **28 (1.10.1)** is available to internal testers, published
