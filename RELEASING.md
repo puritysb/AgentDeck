@@ -160,17 +160,26 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
   after installing the official CI image. A comparison build with FastLED 3.7.0
   restored readable glyphs (user-confirmed); the 3.10.7 driver selected by the
   floating dependency is implicated, though its precise defect is not isolated.
-  **ESP32 1.9.2 is the patch candidate** for the exact driver pin, frame
-  diagnostics and readable reset countdowns; it is not yet a published release.
+  **[ESP32 1.9.2 is public](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v1.9.2)**
+  at `c0f0c5e4`, with the exact driver pin, frame diagnostics and readable reset
+  countdowns. [Release run 38422996543](https://github.com/puritysb/AgentDeck/actions/runs/38422996543)
+  built all 12 boards; all 60 binary sizes and SHA-256 hashes in the 62 public
+  assets match the manifest and checksums.
   The release decision remains a patch from public 1.9.1: it repairs existing
   TC001 output and countdown usability, with no new compatibility milestone.
   The countdown retains its window label, removes `R` and scrolling, and holds
   each time reading for four seconds. Other channels do not change version.
-  TC001 now runs the 1.9.2 candidate from `e53ab697`; after OTA and fresh boot
-  telemetry, the user confirmed that time is readable and the center button
+  The 1.9.2 candidate from `e53ab697` passed OTA and fresh boot
+  telemetry checks. The user confirmed that time is readable and the center button
   holds the reading for at least 15 seconds and resumes cycling normally.
   The candidate SHA-256 is
   `1ac67eef00e965357749f250632b9388171f564dc936f04007d0c1fc7c2f12b7`.
+  TC001 now runs the official CI image from `c0f0c5e4`, SHA-256
+  `de70afe9f4861ed7125b53411d786beeed909e68f928d846c53c76940d1dda9c`,
+  identical to the published application binary. Post-OTA readback confirms
+  1.9.2, fresh data and 691 seconds of uptime; frame diagnostics report
+  FastLED 3.7.0 and changing partial pixel counts. Physical optical acceptance
+  belongs to the source-equivalent candidate, not a second visual check of CI.
   NM serial and T-Embed WiFi readbacks remain at 1.9.1; this patch does not
   change their display behavior.
   The [full-tier receipt](verification/receipts/2026-10-13-e53ab69.json)
@@ -180,6 +189,8 @@ Delivery update, 2026-10-13 (PR #526 at `0acb96c4`; handover repair #527 at `88e
   to the base package path fixed the build, and the
   [same-source TTGO retry](verification/receipts/2026-10-13-e53ab69-ttgo-retry.json)
   passed in 64 seconds. The original failed receipt is not relabeled as a pass.
+  A subsequent [complete clean full-tier run](verification/receipts/2026-10-13-f47e4e3.json)
+  passed in 16m51s at `f47e4e39`, whose tree matches release merge `c0f0c5e4`.
   PR #531's complete CI matrix, including TTGO, also passes. Broad lab gates in
   the receipts remain unattested; the TC001 optical acceptance above is separate.
 
