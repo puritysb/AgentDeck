@@ -157,3 +157,13 @@ jobs:
 
       - name: Windows hooks, observers and Ulanzi transport regressions
         run: pnpm exec vitest run hooks/src/__tests__/install.test.ts hooks/src/__tests__/codex-install.test.ts hooks/src/__tests__/windows-codex-pid.test.ts bridge/src/__tests__/passive-observer.test.ts bridge/src/__tests__/state-machine.test.ts bridge/src/__tests__/daemon-launcher.test.ts bridge/src/__tests__/daemon-supervisor.test.ts bridge/src/__tests__/observed-launch.test.ts bridge/src/__tests__/observed-launch-integration.test.ts bridge/src/__tests__/connection-diagnostics.test.ts plugin-ulanzi/src/__tests__/daemon-discovery.test.ts plugin-ulanzi/src/__tests__/daemon-client.test.ts plugin-ulanzi/src/__tests__/daemon-transport.test.ts --maxWorkers=2
+
+      # The daemon relay (#273) on Windows: the relay module over real sockets,
+      # then two real `agentdeck daemon start --foreground` processes — a worker
+      # publishing an observed session to a hub on loopback, the shape of an
+      # ssh -L forward. Windows observed sessions have no terminal-injection
+      # rung, so this is the half of the relay that must hold there.
+      - name: Daemon relay — unit and two-daemon e2e
+        run: |
+          pnpm exec vitest run bridge/src/__tests__/daemon-relay.test.ts
+          pnpm exec vitest run --config vitest.e2e.config.ts tests/e2e/daemon-relay.e2e.test.ts

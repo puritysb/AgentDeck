@@ -490,7 +490,7 @@
       "job": "windows-native-runtime",
       "trigger": "Every PR and push to master",
       "blocking": true,
-      "command": "node bridge/dist/cli.js diag native --json && vitest run <the files below>",
+      "command": "node bridge/dist/cli.js diag native --json && vitest run <the files below> && the daemon relay unit + two-daemon e2e",
       "files": [
         "hooks/src/__tests__/install.test.ts",
         "hooks/src/__tests__/codex-install.test.ts",
@@ -510,12 +510,14 @@
         "better-sqlite3 opens under each supported Node ABI on Windows",
         "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells",
         "native Codex hook runner sends the launcher PID through cmd.exe, preserves UTF-8 payloads, and omits guessed identity when CIM evidence is unavailable or cyclic",
-        "Ulanzi discovery handles missing registries and foreign PIDs; native loopback HTTP/WS registers, exchanges frames and rediscovers a changed port after socket loss"
+        "Ulanzi discovery handles missing registries and foreign PIDs; native loopback HTTP/WS registers, exchanges frames and rediscovers a changed port after socket loss",
+        "the daemon relay works between two real Windows daemons on loopback: a worker publishes an observed session to a hub, a hub-side decision lands in the worker's steering queue, and the row leaves when the worker stops"
       ],
       "does_not_prove": [
         "the Scheduled Task autostart on a real login session",
         "the Stream Deck app on Windows",
-        "WSL2 forwarding, the Ulanzi Studio bundled runtime or physical D200 keys"
+        "WSL2 forwarding, the Ulanzi Studio bundled runtime or physical D200 keys",
+        "the daemon relay between two Windows machines, or terminal injection into an observed Windows session (no such rung exists)"
       ]
     },
     {
