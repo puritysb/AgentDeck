@@ -686,11 +686,6 @@ object PluginCommands {
             """"devices":[{"id":${enc(id)},"name":${enc(name)},"kind":${enc(kind)}}]}"""
     }
 
-    fun utility(action: String, value: Int? = null): String {
-        val valueStr = if (value != null) ""","value":$value""" else ""
-        return """{"type":"utility","action":"$action"$valueStr}"""
-    }
-
     /** Device approval for a gated PreToolUse permission request (observed session). */
     fun permissionDecision(requestId: String, decision: String): String =
         """{"type":"permission_decision","requestId":${Json.encodeToString(kotlinx.serialization.serializer<String>(), requestId)},"decision":"$decision"}"""

@@ -205,6 +205,6 @@ The former Deck tab (encoder strip + 2×4 button grid mirroring the daemon's `en
 
 **Voice**: Android AudioRecord → WAV → HTTP POST `/voice/transcribe` → 데몬이 번들 헬퍼(Apple 온디바이스 Speech)로 전사.
 
-**Utility commands**: the app no longer sends `utility` (the builder in `Protocol.kt` has no caller). The command is served by the Swift daemon and by managed session bridges only — see [protocol.md](protocol.md).
+**Utility commands**: the app does not send `utility`. The command is served by the Swift daemon and by managed session bridges only — see [protocol.md](protocol.md).
 
 **Slot map**: Plugin reports SD+ profile layout → Bridge caches → Android mirrors dynamically.

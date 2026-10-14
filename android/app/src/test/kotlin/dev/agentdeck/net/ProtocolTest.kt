@@ -368,17 +368,6 @@ class ProtocolTest {
         assertEquals("""{"type":"escape"}""", PluginCommands.escape())
     }
 
-    @Test
-    fun `PluginCommands utility with and without value`() {
-        val withVal = PluginCommands.utility("set_volume", 75)
-        assertTrue(withVal.contains("\"action\":\"set_volume\""))
-        assertTrue(withVal.contains("\"value\":75"))
-
-        val without = PluginCommands.utility("toggle_mute")
-        assertTrue(without.contains("\"action\":\"toggle_mute\""))
-        assertFalse(without.contains("value"))
-    }
-
     // --- deck_slot_map ---
 
     @Test
