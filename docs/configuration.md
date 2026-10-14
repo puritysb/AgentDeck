@@ -35,7 +35,7 @@ stops matching the code or grows a key no loader reads.
 | `apme.*` | enabled, on-device judge | Evaluation module — schema and semantics in [APME](apme.md). `apme.judge.backend` defaults to `foundationModels` with `fallbackToMlx`. |
 | `wakeWord` | *(unset)* | `true` starts the Porcupine listener with the daemon (same as `--wake-word`). |
 | `wakeWordMic` · `wakeWordSensitivity` | *(unset)* · `0.5` | Mic name substring and detection sensitivity. See [Wake word](wake-word.md). |
-| `voice.locale` | *(system locale)* | BCP-47 tag (e.g. `"en-US"`) for on-device transcription. See [Voice setup](voice-setup.md). |
+| `voice.locale` | *(preferred languages, then en-US)* | BCP-47 tag (e.g. `"en-US"`) for on-device transcription. See [Voice setup](voice-setup.md). |
 | `weather.lat` · `weather.lon` · `weather.place` · `weather.timeZone` | *(unset)* | Provider-attributed Glance weather. Use `agentdeck weather set`; coordinates are stored at two decimals. No config → no weather card, never an IP-geolocation guess. |
 | `calendar.ics` | *(unset)* | Secret-address ICS URL, or a list of them, for the glance schedule. |
 | `peripheralMappings` | `[]` | NFC tag uid → steering action mapping. |

@@ -5062,6 +5062,25 @@ final class DaemonServer {
             return !sid.isEmpty && sid != "openclaw-gateway"
         }()
 
+        // The OpenClaw row's session_command carries its command wrapped. The
+        // gateway block below consumes only bare commands and returned on the
+        // wrapper, so a deck prompt or dictation aimed at the Gateway row was
+        // dropped without a trace. Unwrap it for the Gateway (Node parity:
+        // bridge/src/daemon-server.ts hands the inner command to the adapter).
+        if type == "session_command",
+           (cmd["sessionId"] as? String) == PromptDelivery.gatewaySessionId {
+            guard var inner = cmd["command"] as? [String: Any], gatewayAdapter != nil else {
+                DaemonLogger.shared.info(
+                    "session_command -> \(PromptDelivery.gatewaySessionId) not delivered (gateway_unavailable)")
+                return
+            }
+            // A bare command must not name a session, or it would be routed
+            // back here as session-scoped instead of to the Gateway.
+            inner.removeValue(forKey: "sessionId")
+            handleCommand(inner)
+            return
+        }
+
         // Agent-native setting switches (#463) are answered here, never
         // consumed by the gateway's generic command block below.
         if type == "query_session_settings" || type == "set_session_setting" {
@@ -5120,6 +5139,16 @@ final class DaemonServer {
             broadcastStateUpdate()
             let cmdBox = SendableDict(innerCommand)
             let focusLocally = isLocalObservedSession(targetSession)
+            // Observed Claude and OpenCode were steered above; an observed
+            // session that reaches this point has no command path in this app.
+            // The focus relay ignores commands for it, so say so instead of
+            // leaving the press indistinguishable from one that landed.
+            if focusLocally {
+                let agent = pushedSessionsById[sessionId]?.agentType ?? "unknown"
+                DaemonLogger.shared.info(
+                    "session_command \(innerCommand["type"] as? String ?? "?") -> \(sessionId.prefix(32)) "
+                    + "not delivered (no command path for an observed \(agent) session in this app)")
+            }
             Task {
                 if focusLocally {
                     await self.focusRelay.focusLocal(sessionId: sessionId)
@@ -8295,6 +8324,18 @@ final class DaemonServer {
         }
     }
 
+    /// The route a prompt for `sessionId` takes through `handleCommand`, for
+    /// the delivery log line. See `PromptDelivery`.
+    private func promptDelivery(for sessionId: String) -> PromptDelivery {
+        let target = pushedSessionsById[sessionId]
+        return PromptDelivery.classify(
+            sessionId: sessionId,
+            controlMode: target?.controlMode,
+            agentType: target?.agentType,
+            knownSession: cachedSessions.contains(where: { $0.id == sessionId }),
+            gatewayConnected: gatewayAdapter != nil && cachedGatewayConnected)
+    }
+
     private func finishHostPtt(text: String?, sessionId: String) {
         pttBusy = false
         guard let text, !text.isEmpty else {
@@ -8306,7 +8347,10 @@ final class DaemonServer {
             broadcastVoiceState("idle", text: text)
             return
         }
-        DaemonLogger.shared.info("PTT: \"\(text.prefix(40))\" -> \(sessionId.prefix(32))")
+        // Say where the prompt went, in the Node daemon's shape — a dictation
+        // that reached no session used to log exactly like one that did (#541).
+        DaemonLogger.shared.info(promptDelivery(for: sessionId)
+            .logLine(label: "PTT", text: text, sessionId: sessionId))
         handleCommand([
             "type": "session_command",
             "sessionId": sessionId,

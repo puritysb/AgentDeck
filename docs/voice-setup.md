@@ -46,7 +46,15 @@ Apple's on-device speech models are downloaded the first time you enable dictati
 3. When prompted, choose **On-Device Dictation** (also called "Dictation without an internet connection" in older releases).
 4. Wait for the language pack to finish — a progress bar shows in System Settings.
 
-AgentDeck uses the locale order *current → en_US → first available*, so if your Mac is set to Korean, make sure Korean is included in your Dictation language list. English is always available as a fallback.
+AgentDeck picks the recognition language in this order: `voice.locale` from `settings.json`, then your Mac's preferred languages in order, then the current locale, then `en-US`. Make sure the language you speak is in your Dictation language list. English is always available as a fallback.
+
+**Speaking a language that is not your Mac's first preferred language?** Set it explicitly. With macOS languages `en-JP, ja-JP`, Japanese speech is otherwise recognized as English (reported in #541):
+
+```json
+{ "voice": { "locale": "ja-JP" } }
+```
+
+The Node CLI daemon reads this from `~/.agentdeck/settings.json`, and the macOS app reads the same key from its own settings file. Both read it on every recording, so no restart is needed.
 
 ---
 
@@ -79,7 +87,7 @@ The wake word system is **independent of the SFSpeech transcription path** — w
 | Transcript empty on first attempt, works second time | OS is downloading on-device dictation model | Wait 30-60s after granting permission, or force download under Settings → General → Keyboard → Dictation |
 | "Recognizer unavailable" in logs | Dictation model not yet installed for your locale | Enable Dictation under System Settings → General → Keyboard for the current locale or English |
 | Microphone level stays at zero | Microphone permission denied, or a different app holds the input | Check System Settings → Privacy & Security → Microphone; quit other apps using the mic (Zoom, Discord…) |
-| Wrong language detected | Current locale not supported / model missing | Set current Mac locale to a supported Speech language, or rely on en_US fallback (auto) |
+| Wrong language detected | Your first preferred language is not the one you speak, or its model is missing | Set `voice.locale` (see above), and enable Dictation for that language |
 | Voice cut off at 15 seconds | Hit `maxRecordingDuration` | Press the voice button again for a new turn. Voice commands are designed to be short |
 | Transcript correct but agent doesn't receive | Daemon/bridge not connected | Check the menu bar dashboard — Connection status must be "Connected" before voice sends work |
 | Deck VOICE key does nothing; daemon logs `voice: host PTT failed: … request timed out` or `helper exited (SIGABRT)` | The CLI daemon's `agentdeck-fm-helper` was built without the embedded usage descriptions, so TCC killed it instead of prompting | Rebuild it: `cd bridge && node scripts/build-fm-helper.mjs` (verify with `codesign -dv assets/fm-helper/agentdeck-fm-helper` → `Info.plist entries=4`), restart the daemon, then grant the two **AgentDeck Voice Helper** prompts |
