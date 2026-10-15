@@ -1,58 +1,57 @@
 ---
 name: session-end
-description: Use when the user asks to end, wrap up, clear, hand off, or prepare continuity for a Codex/AgentDeck session. Summarizes current work, captures next-step memory, updates durable project notes only when needed, and writes a concise handoff for the next session.
+description: Use when the user asks to end, wrap up, clear, hand off, or prepare continuity for a Codex/AgentDeck session. Closes out in-flight work (uncommitted changes, worktrees, open PRs), records only what the next reader cannot get from git, and writes a concise handoff for the next session.
 ---
 
 # Session End
 
-Use this skill at the end of a work session, before `/clear`, `/new`, switching tasks, or handing work to another Codex/Claude session.
+Use this skill at the end of a work session, before `/clear`, `/new`, switching tasks, or handing work to another Codex/Claude session. Its job is a handoff the next session can act on without the transcript. It does not create a record of everything that happened; git, the PRs and the issues already hold that.
 
-## Purpose
-
-Produce a concise handoff that lets the next session continue without rereading the whole transcript. Separate temporary handoff notes from durable project knowledge.
-
-## Workflow
-
-1. Read `AGENTS.md` and the top of `DEVELOPMENT_LOG.md` (a generated aggregate — the entries behind it live in `docs/devlog/entries/`).
-2. Inspect the current work state:
+## 1. Read the state (cheap commands only)
 
 ```bash
-git status --short
-git diff --stat
+git status -sb
+git worktree list
+gh pr list --author @me --state open --json number,title,headRefName,mergeable
 ```
 
-3. If files changed, inspect only relevant diffs needed to summarize the work. Do not revert unrelated changes.
-4. Summarize:
-   - goal and current outcome
-   - files changed and why
-   - verification run and results
-   - unresolved risks or blockers
-   - exact next action for the next session
-5. Update durable docs only when warranted:
-   - Development log: for meaningful fixes, architectural decisions, hardware findings, or known pitfalls, create `docs/devlog/entries/YYYY-MM-DD-<slug>.md` (first line `# YYYY-MM-DD — title`, sections as `###`, links relative to the repo root), then run `pnpm devlog:build`. When committing is within the task scope, include the entry and its regenerated aggregates together. Never edit `DEVELOPMENT_LOG.md` or `docs/devlog/YYYY-MM.md` by hand.
-   - `AGENTS.md`: update only for project-wide architecture, invariants, setup, workflow changes, or persistent agent behavior expectations.
-6. Do not write secrets, credentials, tokens, private device passcodes, or raw prompt transcripts into durable docs.
-7. If no durable doc update is warranted, say so explicitly in the final handoff.
+Do not read `DEVELOPMENT_LOG.md` or the devlog entries here. Nothing in the handoff depends on them.
 
-## Handoff Format
+## 2. Close out what this session started
 
-Return this shape:
+- **Uncommitted changes.** Commit them on the task branch, or name them in the handoff as deliberately left uncommitted. Never revert, stash, or restore another session's changes in a shared tree.
+- **Worktrees this session created.** Remove one only when its branch is pushed, its tree is clean, and no other session owns it (`AGENTS.md` § Agent working agreements). Otherwise list it with the reason it stays.
+- **PRs this session opened.** List each with its state: CI, mergeable, review, and what blocks it.
+- **Background agents or long commands.** Say whether each is still running. Never report a result you have not received.
+
+## 3. Record only what git cannot
+
+| What you learned | Where it goes |
+|---|---|
+| A domain invariant (a rule future edits must keep) | the matching `.claude/rules/<domain>.md`. Move the rule body there verbatim; never paraphrase it |
+| A measurement, incident, pitfall, or decision with its rejected alternatives | one new file `docs/devlog/entries/YYYY-MM-DD-<slug>.md` (line 1 `# YYYY-MM-DD — title`, `###` sections, links relative to the repo root), committed with the change. Nothing to regenerate |
+| A personal preference or dated retrieval hint | agent memory (local, not the repo) |
+| What changed and why | nothing: the diff and the PR body already say it |
+
+Update `AGENTS.md` only for a project-wide workflow or invariant change, and stay inside its byte budget (`pnpm docs:check`). Never write secrets, tokens, device passcodes, or raw transcripts into any of these.
+
+## 4. Handoff
 
 ```markdown
 **Session Handoff**
 - Goal:
-- Current state:
-- Changed files:
-- Verification:
-- Open issues:
-- Next action:
-- Durable docs updated:
+- Current state: (merged / open PRs with blockers / uncommitted work)
+- Worktrees and branches left:
+- Verification: (what ran, result)
+- Open issues / risks:
+- Next action: (one concrete step)
+- Records written: (devlog entry / rule / memory, or "none — git holds it")
 ```
 
-Keep it short enough to paste into a new Codex prompt. Include file paths for changed files, but avoid dumping large diffs.
+Keep it short enough to paste into a new prompt. Give file paths and PR numbers, not diffs.
 
 ## Notes
 
-- Use Codex `/compact` when the active thread should continue with a compressed context.
-- Use `/new` or `/clear` after the handoff when the next task should start fresh.
-- Follow `AGENTS.md` Agent working agreements for memory ownership and freshness. Store personal recurring preferences and dated retrieval hints in local memory; required AgentDeck rules belong in checked-in docs. Link to the canonical rule rather than copying its body, and do not turn an old approval or release condition into a permanent gate.
+- Codex: use `/compact` to keep going with compressed context, and `/new` to start fresh after the handoff.
+- Claude Code: use `/clear` to start fresh after the handoff.
+- Link to a canonical rule rather than copying it. An old approval or release condition is a dated fact, not a permanent gate.

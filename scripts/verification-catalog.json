@@ -172,7 +172,7 @@
     },
     {
       "id": "devlog",
-      "name": "Development-log aggregates",
+      "name": "Development-log entries",
       "gate": "design-docs",
       "tiers": ["changed", "quick", "full"],
       "run": "pnpm devlog:check",
@@ -568,7 +568,7 @@
         "colour/type tokens are identical across CSS, JS, TS, Swift, Kotlin and C++ mirrors",
         "every Markdown link and anchor resolves; every docs/ file is cataloged or excluded with a reason",
         "the AGENTS.md chain (root + nested) stays under Codex's 32 KiB project_doc_max_bytes and no CLAUDE.md-family file shadows it inside the checkout",
-        "the development log aggregates match their entries"
+        "every development log entry is well-formed"
       ],
       "does_not_prove": ["how anything looks on a device"]
     },

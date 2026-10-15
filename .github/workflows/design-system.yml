@@ -51,10 +51,10 @@ jobs:
       - name: Verify Markdown links, anchors, and heading structure
         run: node scripts/check-docs.mjs
 
-      # DEVELOPMENT_LOG.md and docs/devlog/YYYY-MM.md are generated from one file per
-      # entry (docs/devlog/entries/). A stale aggregate or a malformed entry fails here;
-      # the fix is `pnpm devlog:build`, never a hand edit of the aggregate.
-      - name: Verify development-log aggregates match docs/devlog/entries/
+      # The development log is one file per entry (docs/devlog/entries/); nothing
+      # generated from it is committed. A malformed entry fails here; entry links are
+      # validated by the Markdown check.
+      - name: Verify development-log entries are well-formed
         run: node scripts/devlog-build.mjs --check
 
       # The ESP32 board set is written out in four places and only one edge had

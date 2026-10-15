@@ -21,7 +21,7 @@ paths:
 <!-- Moved verbatim from the root map (then CLAUDE.md, 2026-09-10; AGENTS.md since 2026-09-29). Rule bodies are the SSOT for their domain; the root map keeps only the index. -->
 Rules for the APME eval module (`bridge/src/apme/`, Swift `Daemon/Apme/`): the canonical `SessionSample`, task/turn
 segmentation, judge chain, transport gate and parser. The measurements behind each rule are in
-[docs/apme.md](../../docs/apme.md); the incidents are in `DEVELOPMENT_LOG.md`. Every rule below is a
+[docs/apme.md](../../docs/apme.md); the incidents are in `docs/devlog/entries/`. Every rule below is a
 cross-daemon contract — Node and Swift must decide identically or the same `settings.json` scores differently
 depending on which daemon holds 9120.
 

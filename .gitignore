@@ -135,3 +135,6 @@ assets/terrarium/hermes-mermaid.glb
 assets/terrarium/references/turnaround/head-study/*.png
 # Blender's automatic save backups
 *.blend1
+
+# Local devlog reading view (pnpm devlog:build); entries are the tracked source
+docs/devlog/view/

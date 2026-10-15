@@ -14,7 +14,7 @@ read it by convention. It is the **map**; **the rule bodies live in `.claude/rul
 declares `paths:` globs; Claude Code loads it automatically when a file matching those globs is touched. Codex,
 OpenCode and Antigravity have no path-conditional loading and must read the matching file **before the first edit**
 in that area (`.codex/rules` is exec policy, not instructions). Measurements behind a rule are in the topic doc it
-links; incidents are in `DEVELOPMENT_LOG.md` (grep it, never load it whole).
+links; incidents are in `docs/devlog/entries/` (grep them; see `DEVELOPMENT_LOG.md`).
 
 | Rule file | Loads when touching | Covers |
 |---|---|---|
@@ -110,7 +110,7 @@ pnpm plugin:check           # verify installed source and running bundle identit
 
 This repo is built by switching between Claude Code, Codex, OpenCode, and Antigravity. **[docs/agent-harness.md](docs/agent-harness.md)** is the canonical map of how each agent enters the repo, what it reads, and what it auto-discovers.
 
-- **Repo instructions**: this file is the entry point for every agent (see above). **`DEVELOPMENT_LOG.md` and `docs/devlog/YYYY-MM.md` are generated** from one file per entry in `docs/devlog/entries/` (`pnpm devlog:build`; `pnpm devlog:check` gates CI) — add an entry as a new file (first line `# YYYY-MM-DD — title`, links relative to the repo root) and rebuild; a merge conflict in an aggregate is resolved by rebuilding, never by picking a side.
+- **Repo instructions**: this file is the entry point for every agent (see above). **The devlog is one file per entry in `docs/devlog/entries/`** and nothing else is committed (`pnpm devlog:check` gates CI; `pnpm devlog:build` writes a git-ignored reading view). Add an entry only for what the diff and PR cannot say — measurements, incidents, pitfalls, decisions with their rejected alternatives — as a new file (first line `# YYYY-MM-DD — title`, links relative to the repo root).
 - **Repo skills (SSOT)**: canonical skills live in `.agents/skills/<name>/SKILL.md` — the only copy. Codex discovers that directory natively; Claude Code discovers `.claude/skills/<name>`, which is a tracked **symlink** to the same directory. Add a skill under `.agents/skills/` and add the symlink; never write a pointer or a second copy.
 - **Workflow originals** live in `.agents/workflows/` (OpenCode has no skill auto-discovery — point it there explicitly). **Session handoff**: run the `session-end` skill before `/clear`, `/new`, or handing work to another session.
 - **Domain rules (SSOT)**: `.claude/rules/<domain>.md` are tracked in git and are the canonical text of every domain invariant (table above). Claude Code loads them by `paths:`; other agents read the matching file before editing in that area. Add a rule to the domain file, not to this map; a genuinely cross-cutting rule goes under Key Conventions here.
@@ -127,7 +127,7 @@ This repo is built by switching between Claude Code, Codex, OpenCode, and Antigr
 
 | Change | Required local checks before a commit |
 |---|---|
-| Markdown, instructions, or memory only; no executable/template/schema changes | `pnpm verify:changed` (docs, catalog and devlog gates for the touched files; run `pnpm devlog:build` first when entries change); validate any changed skills |
+| Markdown, instructions, or memory only; no executable/template/schema changes | `pnpm verify:changed` (docs, catalog and devlog gates for the touched files); validate any changed skills |
 | Code, build configuration, executable templates, or schemas | `pnpm verify:quick`, plus `pnpm verify:changed` for the native suites (Android, Apple, ESP32) your diff touches |
 | Release or deployment | `pnpm verify:full --record` and the applicable release/deploy workflow and domain gates, including the Release archive check for App Store submission |
 

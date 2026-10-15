@@ -1,36 +1,43 @@
 #!/usr/bin/env node
 /**
- * devlog-build — DEVELOPMENT_LOG.md and docs/devlog/YYYY-MM.md are GENERATED from
- * one file per entry under docs/devlog/entries/.
+ * devlog-build — the development log is one file per entry under docs/devlog/entries/,
+ * and those files are the ONLY tracked form of it.
  *
  * Why one file per entry: every session used to prepend its entry to the top of
  * one file, so two parallel sessions conflicted on exactly the same lines every
  * time (measured 2026-09-10: 73 writes, 35 reads, most reads being conflict-marker
- * checks). A file per entry never conflicts; the aggregates are rebuilt, and a
- * conflict in an aggregate is resolved by rebuilding it — a generated value is
- * never a merge side (AGENTS.md, cross-platform SSOT rule).
+ * checks).
  *
- *   node scripts/devlog-build.mjs            # rebuild DEVELOPMENT_LOG.md, docs/devlog/YYYY-MM.md, docs/devlog/README.md
- *   node scripts/devlog-build.mjs --check    # exit 1 if any entry is malformed or an aggregate is stale (CI)
- *   node scripts/devlog-build.mjs --keep 3   # active-log window in months (default 2 = current + previous)
+ * Why the aggregates are no longer committed (2026-10-15): splitting the entries
+ * removed the conflict at write time, but the generated DEVELOPMENT_LOG.md and month
+ * files were still tracked, so every PR that added an entry rewrote the same
+ * aggregate and conflicted with every other such PR (18 of the 40 PRs merged
+ * 2026-10-01..15). It also made the gate depend on the calendar: the active window
+ * moves on the 1st, so master itself went stale at each month rollover and failed
+ * every open PR. Agents never read the aggregate (they grep the entries), so it now
+ * exists only as a local, git-ignored reading view.
+ *
+ *   node scripts/devlog-build.mjs            # write the reading view to docs/devlog/view/ (git-ignored)
+ *   node scripts/devlog-build.mjs --check    # exit 1 if any entry is malformed (CI); links are checked by check-docs
+ *   node scripts/devlog-build.mjs --keep 3   # months in the view's recent.md (default 2 = current + previous)
  *
  * Entry file contract (docs/devlog/entries/YYYY-MM-DD-<slug>.md):
  *   - exactly one H1, on line 1: `# YYYY-MM-DD — <title>`; the date must equal the filename prefix
  *   - body uses `###` and deeper; links are written relative to the REPOSITORY ROOT
- *     (the aggregates rewrite them for their own depth; check-docs validates the aggregates)
+ *     (the view rewrites them for its own depth; check-docs validates them from the root)
  *   - ordering inside one date is by filename, descending — a later entry on the same
  *     day sorts above an earlier one when its slug sorts higher; migrated entries carry a
  *     two-digit position prefix so the historical order is preserved
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ACTIVE = 'DEVELOPMENT_LOG.md';
-const ARCHIVE_DIR = 'docs/devlog';
 const ENTRIES_DIR = 'docs/devlog/entries';
-const README = `${ARCHIVE_DIR}/README.md`;
+/** Git-ignored reading view; three directories below the root. */
+const VIEW_DIR = 'docs/devlog/view';
+const VIEW_PREFIX = '../../../';
 const FILE_RE = /^(\d{4}-\d{2}-\d{2})-(.+)\.md$/;
 // Everything after the date is preserved verbatim: new entries write `# YYYY-MM-DD — title`; migrated ones
 // also carry shapes like `2026-08-03 (3) — …`, `2026-04-25 → 27 — …` and `2026-04-11 - …`.
@@ -94,13 +101,11 @@ function loadEntries() {
 }
 
 /**
- * Entry links are root-relative. An aggregate living under docs/devlog/ is two
- * directories deeper, so a root-relative target that exists on disk gets `../../`.
- * URLs, anchors, absolute and already-relative paths, and targets that never existed
- * are left alone (check-docs reports the last kind against the aggregate).
+ * Entry links are root-relative. The view lives three directories down, so a
+ * root-relative target that exists on disk gets `../../../`. URLs, anchors, absolute
+ * and already-relative paths, and targets that never existed are left alone.
  */
 function rewriteRootRelativeLinks(text, prefix) {
-  if (!prefix) return text;
   return text.replace(/\]\(([^)\s]+)((?:\s[^)]*)?)\)/g, (whole, target, title) => {
     if (/^(?:[a-z][a-z0-9+.-]*:|#|\.\.?\/|\/)/i.test(target)) return whole;
     const bare = target.split('#')[0];
@@ -117,50 +122,16 @@ function renderEntry(entry) {
   return `## ${entry.date}${entry.rest}\n${body ? `${body}\n` : ''}`;
 }
 
-function renderActive(entries, windowStart, windowEnd) {
+function renderView(title, entries) {
   const header = [
-    '# AgentDeck Development Log',
+    `# ${title}`,
     '',
-    `<!-- GENERATED by \`pnpm devlog:build\` from ${ENTRIES_DIR}/ — do not edit here. To add an entry, create ${ENTRIES_DIR}/YYYY-MM-DD-<slug>.md (first line \`# YYYY-MM-DD — title\`, links relative to the repo root) and run \`pnpm devlog:build\`. This file holds ${windowStart}..${windowEnd}; older months are in ${ARCHIVE_DIR}/YYYY-MM.md. -->`,
+    `<!-- Local reading view generated by \`pnpm devlog:build\` from ${ENTRIES_DIR}/ — git-ignored, never committed. Edit the entry files instead. -->`,
     '',
-    '',
-  ].join('\n');
-  return header + entries.map(renderEntry).join('\n');
-}
-
-function renderMonth(month, entries) {
-  const header = [
-    `# AgentDeck Development Log — ${month}`,
-    '',
-    `<!-- GENERATED by \`pnpm devlog:build\` from ../../${ENTRIES_DIR}/ — do not edit here. -->`,
-    '',
-    `Archived from the active [DEVELOPMENT_LOG.md](../../DEVELOPMENT_LOG.md). Entries are ordered newest date first; search this file directly when investigating ${monthLabel(month)} work.`,
-    '',
-    '---',
     '',
   ].join('\n');
-  return header + rewriteRootRelativeLinks(entries.map(renderEntry).join('\n'), '../../');
+  return header + rewriteRootRelativeLinks(entries.map(renderEntry).join('\n'), VIEW_PREFIX);
 }
-
-function renderReadme(counts, windowStart, windowEnd) {
-  const months = Object.keys(counts).sort().reverse();
-  return [
-    '# Development Log Archive',
-    '',
-    `<!-- GENERATED by \`pnpm devlog:build\` — do not edit here. -->`,
-    '',
-    `Every entry is one file under [\`entries/\`](entries/) (\`YYYY-MM-DD-<slug>.md\`, first line \`# YYYY-MM-DD — title\`). \`pnpm devlog:build\` regenerates the active [DEVELOPMENT_LOG.md](../../DEVELOPMENT_LOG.md) (${windowStart}..${windowEnd}) and one file per older month below; \`pnpm devlog:check\` fails CI when an aggregate is stale or an entry is malformed. A merge conflict in a generated file is resolved by rebuilding it, never by picking a side. Search one month file at a time — never load the whole directory.`,
-    '',
-    '| Month | Entries | File |',
-    '|---|---|---|',
-    ...months.map((m) => `| ${m} | ${counts[m]} | [${m}.md](${m}.md) |`),
-    '',
-  ].join('\n');
-}
-
-const now = new Date();
-const windowStart = monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (keepMonths - 1), 1)));
-const windowEnd = monthKey(now);
 
 const entries = loadEntries();
 if (problems.length) {
@@ -169,38 +140,21 @@ if (problems.length) {
   process.exit(1);
 }
 
-const active = entries.filter((e) => e.month >= windowStart);
-const archived = entries.filter((e) => e.month < windowStart);
-const byMonth = {};
-for (const e of archived) (byMonth[e.month] ||= []).push(e);
-
-const outputs = new Map();
-outputs.set(ACTIVE, renderActive(active, windowStart, windowEnd));
-for (const [month, list] of Object.entries(byMonth)) outputs.set(`${ARCHIVE_DIR}/${month}.md`, renderMonth(month, list));
-const counts = Object.fromEntries(Object.entries(byMonth).map(([m, l]) => [m, l.length]));
-outputs.set(README, renderReadme(counts, windowStart, windowEnd));
-
-// A month file with no entries behind it is stale output, not history.
-const orphanMonthFiles = readdirSync(abs(ARCHIVE_DIR))
-  .filter((n) => /^\d{4}-\d{2}\.md$/.test(n) && !outputs.has(`${ARCHIVE_DIR}/${n}`))
-  .map((n) => `${ARCHIVE_DIR}/${n}`);
-
 if (check) {
-  const stale = [];
-  for (const [rel, text] of outputs) {
-    if (!existsSync(abs(rel)) || readFileSync(abs(rel), 'utf8') !== text) stale.push(rel);
-  }
-  stale.push(...orphanMonthFiles);
-  if (stale.length) {
-    console.error(`devlog-build: ${stale.length} generated file(s) do not match ${ENTRIES_DIR}/:`);
-    for (const s of stale) console.error(`  - ${s}`);
-    console.error('  Run `pnpm devlog:build` and commit the result.');
-    process.exit(1);
-  }
-  console.log(`devlog-build: ${entries.length} entries; ${active.length} in ${ACTIVE} (${windowStart}..${windowEnd}), ${archived.length} across ${Object.keys(byMonth).length} month files — all up to date.`);
+  console.log(`devlog-build: ${entries.length} entries, all well-formed.`);
   process.exit(0);
 }
 
-for (const [rel, text] of outputs) writeFileSync(abs(rel), text);
-for (const rel of orphanMonthFiles) unlinkSync(abs(rel));
-console.log(`devlog-build: ${entries.length} entries → ${ACTIVE} (${active.length}, ${windowStart}..${windowEnd}) + ${Object.keys(byMonth).length} month files${orphanMonthFiles.length ? ` (removed ${orphanMonthFiles.length} orphan month file(s))` : ''}`);
+const now = new Date();
+const windowStart = monthKey(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (keepMonths - 1), 1)));
+const byMonth = {};
+for (const e of entries) (byMonth[e.month] ||= []).push(e);
+
+rmSync(abs(VIEW_DIR), { recursive: true, force: true });
+mkdirSync(abs(VIEW_DIR), { recursive: true });
+const recent = entries.filter((e) => e.month >= windowStart);
+writeFileSync(abs(`${VIEW_DIR}/recent.md`), renderView(`AgentDeck Development Log — since ${windowStart}`, recent));
+for (const [month, list] of Object.entries(byMonth)) {
+  writeFileSync(abs(`${VIEW_DIR}/${month}.md`), renderView(`AgentDeck Development Log — ${monthLabel(month)}`, list));
+}
+console.log(`devlog-build: ${entries.length} entries → ${VIEW_DIR}/recent.md (${recent.length}, since ${windowStart}) + ${Object.keys(byMonth).length} month files (git-ignored)`);

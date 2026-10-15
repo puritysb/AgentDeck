@@ -70,7 +70,7 @@ function decodeDestination(value) {
   }
 }
 
-function checkDestination(sourceFile, sourceText, rawDestination, index) {
+function checkDestination(sourceFile, sourceText, rawDestination, index, baseDir = path.dirname(sourceFile)) {
   let destination = rawDestination.trim().replace(/^<|>$/g, '');
   if (!destination || /^(?:https?:|mailto:|data:|app:)/i.test(destination)) return;
 
@@ -88,7 +88,7 @@ function checkDestination(sourceFile, sourceText, rawDestination, index) {
   const rawAnchor = hashIndex === -1 ? '' : destination.slice(hashIndex + 1);
   const cleanPath = decodeDestination(rawPath.split('?')[0]);
   const target = cleanPath
-    ? path.resolve(repoRoot, path.dirname(sourceFile), cleanPath)
+    ? path.resolve(repoRoot, baseDir, cleanPath)
     : path.resolve(repoRoot, sourceFile);
   const relativeTarget = path.relative(repoRoot, target);
 
@@ -111,10 +111,10 @@ function checkDestination(sourceFile, sourceText, rawDestination, index) {
 }
 
 // Development-log entries (docs/devlog/entries/*.md) are authored with links relative
-// to the REPOSITORY ROOT, because they are only ever read through the generated
-// aggregates (DEVELOPMENT_LOG.md at the root, docs/devlog/YYYY-MM.md two levels down),
-// which scripts/devlog-build.mjs rewrites per depth and which this checker validates.
-// Validating the same links against the entry's own directory would fail every one.
+// to the REPOSITORY ROOT; scripts/devlog-build.mjs rewrites them for its local,
+// git-ignored reading view. The entries are the only tracked form of the log, so
+// their links are validated here, resolved from the root rather than the entry's
+// own directory.
 const ROOT_RELATIVE_LINK_DIRS = ['docs/devlog/entries/'];
 
 for (const relativeFile of markdownFiles) {
@@ -128,13 +128,12 @@ for (const relativeFile of markdownFiles) {
     }
   }
 
-  if (ROOT_RELATIVE_LINK_DIRS.some((dir) => relativeFile.startsWith(dir))) continue;
-
+  const baseDir = ROOT_RELATIVE_LINK_DIRS.some((dir) => relativeFile.startsWith(dir)) ? '.' : undefined;
   for (const match of text.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) {
-    checkDestination(relativeFile, text, match[1], match.index);
+    checkDestination(relativeFile, text, match[1], match.index, baseDir);
   }
   for (const match of text.matchAll(/(?:href|src)=["']([^"']+)["']/g)) {
-    checkDestination(relativeFile, text, match[1], match.index);
+    checkDestination(relativeFile, text, match[1], match.index, baseDir);
   }
 }
 
