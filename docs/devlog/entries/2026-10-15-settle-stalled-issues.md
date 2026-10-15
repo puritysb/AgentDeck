@@ -19,7 +19,7 @@ own doc, not on new measurements.
   photo/default-focus routing checks. Closing these issues records a decision.
   It does not claim the gates were met.
 - **#428:** the bundled 3D model stays without the user's visual acceptance,
-  and the re-sculpt is closed as *not planned*, not as met.
+  and #428 is closed by hand as *not planned* after this merges, not as met.
 - **#463 (deck control):** the three implementation phases shipped in 1.8.0.
   Of the four leftover measurements, OpenCode `variant` delivery and Codex
   config reload no longer matter, because OpenCode is not offered as a switch

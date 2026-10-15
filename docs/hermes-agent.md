@@ -168,7 +168,7 @@ timeline rendered together; the local evidence is
 rendering evidence, not physical-device acceptance. The physical iPad was
 unavailable. The user's visual acceptance of the 3D face was never given. On
 2026-10-15 the decision was to **keep the bundled model and not pursue the
-replacement sculpt**: #428 is closed as *not planned*, not as met. The fidelity
+replacement sculpt**: #428 is closed by hand as *not planned* once this decision merges, not as met. The fidelity
 requirements recorded below still describe what a faithful model needs. Reopen
 #428 to resume.
 
@@ -199,8 +199,8 @@ visual review (outputs under ignored `diagnostics/hermes-mermaid/`).
 
 ### Production modeling research and replacement gate
 
-Formerly tracked in [#428](https://github.com/puritysb/AgentDeck/issues/428), closed as *not planned*
-on 2026-10-15. The bundled model stays without the user's visual acceptance;
+Formerly tracked in [#428](https://github.com/puritysb/AgentDeck/issues/428), which is closed by hand as
+*not planned* once the 2026-10-15 decision merges. The bundled model stays without the user's visual acceptance;
 the requirements and research below still apply to any future rebuild.
 The target is a convincing stylized 3D Nous girl mermaid: preserve the original
 face/accessory while making anatomy, surface volume and deformation credible.
@@ -630,7 +630,7 @@ the Node preview has no terminal/command route, so delivery fails visibly.
 No native App Store subprocess or companion-install UI is added.
 **Rollout decision, 2026-10-15.** Hermes support stays as shipped. The gaps below
 are recorded instead of being left open as blocking issues: #423, #425 and #426
-are closed, and #428 is closed as *not planned*. Closing them is a decision
+close when this decision merges, and #428 is closed by hand as *not planned*. Closing them is a decision
 about what to pursue. It does not claim that the gates were met.
 
 - **Messaging-platform Gateway `/new` reset** (Telegram, Discord, …) was never
