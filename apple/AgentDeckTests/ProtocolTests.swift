@@ -968,6 +968,32 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(CodexUsageFreshness.footnote(window: live, capturedAt: nil, now: freshnessNow))
     }
 
+    func testD200HPreviewMirrorTagsSameProjectSessions() {
+        // Mirror of shared/src/__tests__/session-labels.test.ts (#544): two
+        // sessions of one agent in one project get their id prefix, a lone
+        // session keeps its plain name, and both daemon id forms agree.
+        let rows = [
+            D200HSession(id: "observed:claude:5f8f5c2a-1111", agentType: "claude-code", state: "idle", projectName: "chezmoi"),
+            D200HSession(id: "b80ccccf-2222", agentType: "claude-code", state: "idle", projectName: "chezmoi"),
+            D200HSession(id: "aaaa0000-3333", agentType: "claude-code", state: "idle", projectName: "solo"),
+            D200HSession(id: "opencode:ses_0a1b2c3d4e5f", agentType: "opencode", state: "idle", projectName: "proj"),
+            D200HSession(id: "opencode:ses_0a1b2c3d9999", agentType: "opencode", state: "idle", projectName: "proj"),
+        ]
+        let labels = D200HLayoutModel.sessionDeckLabels(rows)
+        XCTAssertEqual(labels["observed:claude:5f8f5c2a-1111"]?.tag, "5f8f")
+        XCTAssertEqual(labels["b80ccccf-2222"]?.tag, "b80c")
+        XCTAssertNil(labels["aaaa0000-3333"]?.tag)
+        XCTAssertEqual(labels["opencode:ses_0a1b2c3d4e5f"]?.tag, "0a1b2c3d4")
+        XCTAssertEqual(
+            D200HLayoutModel.deckLabel(labels["b80ccccf-2222"], projectName: "chezmoi", max: 10),
+            "che\u{2026} #b80c"
+        )
+        XCTAssertEqual(
+            D200HLayoutModel.deckLabel(labels["aaaa0000-3333"], projectName: "solo", max: 13),
+            "solo"
+        )
+    }
+
     func testD200HPreviewMirrorDatesAnAgedCodexTile() {
         // The Device Preview is a fidelity mirror of d200h-layout.ts; it must dim
         // and date the same tile the real device does.

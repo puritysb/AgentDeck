@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Stream Deck and Ulanzi decks: two sessions of the same agent in the same project no longer draw identical keys. Each gets a short session-id tag (`chezmoi #5f8f`), the start of the id shown by Claude Code's `/status`, and the detail INFO tile names the tagged session, so the session a voice prompt will reach is identifiable. A lone session looks as before (#544).
+
 ## 2026-10-14 — npm 1.9.2
 
 - Keep a large official creature on iDotMatrix with one readable status/count line instead of four competing numeric rows. Working sessions, background jobs, child agents and CI waits remain distinct.

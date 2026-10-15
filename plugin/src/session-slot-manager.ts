@@ -11,7 +11,7 @@ import { nextZaiPairMode, zaiPairReadings, type ZaiPairMode } from '@agentdeck/s
  */
 import type { SessionInfo, SessionSetting, StatusCardTone, StatusIconKind, CodexRateLimits, CodexLunaReserve, SelectedCodexCredits, ScopedUsageLimit } from '@agentdeck/shared';
 import { sessionNowSummary, sessionSettingOptionLabel, SessionSettingsRequestTracker } from '@agentdeck/shared';
-import { State, sortSessions, assignDisplayNames, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageStripRank, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
+import { State, sortSessions, sessionDeckLabels, sessionLabelText, type SessionDeckLabel, foldCodexSessionsForDisplay, aliasModelName, Brand, formatScopedLabel, scopedLimitClaimsUsageKey, codexWindowsBeside, usageStripRank, usageWindowKind, usageWindowLabel, codexUsageFootnote, summarizeQuestionForKey, approvalReasonHead, UI } from '@agentdeck/shared';
 import type { PromptOption } from '@agentdeck/shared';
 import { dlog } from './log.js';
 import { stateFromSession } from './focused-detail-state.js';
@@ -54,6 +54,11 @@ export interface UsageGauge {
 }
 
 const CLAUDE_USAGE_COLOR = Brand.claudeCode;
+/** A session key wraps its name over up to four lines; a tagged label is held to
+ *  this length so the id tag never lands in the wrapper's ellipsis. */
+const SESSION_KEY_LABEL_CHARS = 28;
+/** `renderSessionReadout` (INFO) shows the name on one 12-character line. */
+const INFO_READOUT_LABEL_CHARS = 12;
 const CODEX_USAGE_COLOR = Brand.codex;
 const ZAI_USAGE_COLOR = Brand.zai;
 
@@ -284,7 +289,7 @@ export class SessionSlotManager {
   private _currentPage = 0;
   private _detailPage = 0;
   private _sessions: SessionInfo[] = [];
-  private _displayNames = new Map<string, string>();
+  private _labels = new Map<string, SessionDeckLabel>();
   private _focusedSessionId: string | null = null;
 
   // Global subscription quota (rides usage_update), pinned to the list view's
@@ -366,9 +371,11 @@ export class SessionSlotManager {
   get focusedSessionId(): string | null { return this._focusedSessionId; }
   get sessions(): SessionInfo[] { return this._sessions; }
 
-  /** Get display name for a session (with #N suffix if needed). Never mutates the original. */
-  displayNameFor(session: SessionInfo): string {
-    return this._displayNames.get(session.id) ?? session.projectName;
+  /** Deck label for a session: the project name, plus a short id tag when
+   *  another session of the same agent shares it (#544). `maxChars` keeps the
+   *  tag whole by shortening the name. Never mutates the original. */
+  displayNameFor(session: SessionInfo, maxChars?: number): string {
+    return sessionLabelText(this._labels.get(session.id), maxChars) ?? session.projectName;
   }
   get detailState(): State { return this._detailState; }
   get detailOptions(): PromptOption[] { return this._detailOptions; }
@@ -437,12 +444,8 @@ export class SessionSlotManager {
     // gone entirely.
     this.reconcileFoldedIds();
 
-    // Assign #N display names for duplicate (projectName, agentType) pairs — no mutation
-    this._displayNames = new Map();
-    const displayed = assignDisplayNames(this._sessions);
-    for (const d of displayed) {
-      this._displayNames.set(d.session.id, d.displayName);
-    }
+    // Same project + same agent would draw identical keys — tag those (#544).
+    this._labels = sessionDeckLabels(this._sessions);
 
     // Clamp page
     const totalPages = this.totalPages();
@@ -1009,6 +1012,7 @@ export class SessionSlotManager {
       return {
         type: 'session',
         session,
+        label: this.displayNameFor(session, SESSION_KEY_LABEL_CHARS),
       };
     }
 
@@ -1418,7 +1422,7 @@ export class SessionSlotManager {
     }
 
     if (slot === controls.info) {
-      return { type: 'info', session, label: session ? this.displayNameFor(session) : 'Session' };
+      return { type: 'info', session, label: session ? this.displayNameFor(session, INFO_READOUT_LABEL_CHARS) : 'Session' };
     }
 
     if (this._picker) return this.pickerSlot(slot, layout, controls);

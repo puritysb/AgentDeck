@@ -32,7 +32,10 @@
 // Pin moved 2026-10-14 with NO port (#273 phase 0): the dead legacy direct-HID
 // grid (`computeLayout` / `buildLayoutMap` / `buildButtonCommandMap`) was
 // deleted from the TS engine; this mirror never ported it.
-// SYNC-HASH shared/src/d200h-layout.ts 66b51af060b5d16ad6fbd788fbab9774dfae8483
+// Re-ported 2026-10-15 (#544): same-project session labels (`sessionDeckLabels`
+// / `sessionLabelText`, shared/src/session-labels.ts) on list keys and the
+// detail INFO tile.
+// SYNC-HASH shared/src/d200h-layout.ts 5bfbaec4de8d2865bd98187fd87623138d5cf05b
 // SYNC-HASH shared/src/session-utils.ts 83ad7aaf29fa227e7841b772d33894ee2257f8c6
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 //
@@ -527,6 +530,7 @@ public enum D200HLayoutModel {
 
     private static func buildList(_ input: D200HDeckInput, view: D200HDeckView, slots: [String]) -> [D200HKeySlot] {
         let sessions = sortSessions(foldCodexSessionsForDisplay(input.sessions))
+        let labels = sessionDeckLabels(sessions)
 
         // Same sparse-grid guard as shared/src/dot-deck.ts; no synthetic session.
         #if AGENTDECK_DOT_PREVIEW
@@ -623,7 +627,7 @@ public enum D200HLayoutModel {
                 out.append(D200HKeySlot(
                     position: pos, col: col, row: row,
                     kind: .session(agentType: sess.agentType, state: sess.state, stateLabel: sessionStateLabel(sess.state)),
-                    label: truncate(sess.projectName, 13), subtitle: sessionSubtitle(sess),
+                    label: deckLabel(labels[sess.id], projectName: sess.projectName, max: 13), subtitle: sessionSubtitle(sess),
                     action: .open(sessionId: sess.id)
                 ))
             } else {
@@ -675,7 +679,10 @@ public enum D200HLayoutModel {
                 question: isAwaiting(sState) ? (input.question ?? sess?.question) : nil,
                 why: isAwaiting(sState) ? approvalReasonHead(sess?.questionDetail) : nil
             ),
-            label: truncate(sess?.projectName ?? "", 10),
+            label: deckLabel(
+                sessionDeckLabels(foldCodexSessionsForDisplay(input.sessions))[sid],
+                projectName: sess?.projectName ?? "", max: 10
+            ),
             subtitle: detailInfoSubtitle(state: sState, tool: tool, model: model),
             action: .none
         ))
@@ -1082,6 +1089,76 @@ public enum D200HLayoutModel {
     /// truncate(s, max): keep ≤max chars, else max-1 chars + ellipsis.
     static func truncate(_ s: String, _ max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max - 1)) + "\u{2026}"
+    }
+
+    // MARK: Same-project labels (port of session-labels.ts, #544)
+
+    struct SessionDeckLabel: Equatable {
+        var name: String
+        var tag: String?
+    }
+
+    /// Alphanumeric body of a session id, transport prefixes removed.
+    static func sessionIdBody(_ id: String) -> String {
+        let bare = ObservedAgentRules.rawSessionId(id)
+        var body = bare.split(separator: ":", omittingEmptySubsequences: false).last.map(String.init) ?? bare
+        // OpenCode-style `ses_<…>`: the lowercase word before `_` is a type marker.
+        if let underscore = body.firstIndex(of: "_"), underscore != body.startIndex,
+           body[..<underscore].allSatisfy({ $0 >= "a" && $0 <= "z" }) {
+            body = String(body[body.index(after: underscore)...])
+        }
+        return String(body.filter { $0.isASCII && ($0.isLetter || $0.isNumber) }).lowercased()
+    }
+
+    /// Rows sharing projectName AND agentType get the shortest unique id
+    /// prefix (≥ 4 chars, ≤ 12); every other row is left untagged.
+    static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
+        var order: [String] = []
+        var groups: [String: [D200HSession]] = [:]
+        for s in sessions {
+            let key = s.projectName + "\u{0}" + s.agentType
+            if groups[key] == nil { order.append(key) }
+            if groups[key]?.contains(where: { $0.id == s.id }) == true { continue }
+            groups[key, default: []].append(s)
+        }
+        var labels: [String: SessionDeckLabel] = [:]
+        for key in order {
+            let members = groups[key] ?? []
+            if members.count < 2 {
+                for s in members { labels[s.id] = SessionDeckLabel(name: s.projectName) }
+                continue
+            }
+            let bodies: [String] = members.map { m in
+                let b = sessionIdBody(m.id)
+                return b.isEmpty ? m.id.lowercased() : b
+            }
+            for (i, s) in members.enumerated() {
+                let body = bodies[i]
+                let cap = min(12, body.count)
+                var len = min(4, body.count)
+                while len < cap, bodies.enumerated().contains(where: { j, other in
+                    j != i && other.hasPrefix(String(body.prefix(len)))
+                }) {
+                    len += 1
+                }
+                labels[s.id] = SessionDeckLabel(name: s.projectName, tag: String(body.prefix(len)))
+            }
+        }
+        return labels
+    }
+
+    /// `sessionLabelText` (tag kept whole, name shortened first); an untagged
+    /// row keeps this preview's own truncation.
+    static func deckLabel(_ label: SessionDeckLabel?, projectName: String, max: Int) -> String {
+        guard let label, let tag = label.tag else { return truncate(projectName, max) }
+        let suffix = " #" + tag
+        let full = label.name + suffix
+        if full.count <= max { return full }
+        let room = max - suffix.count
+        if room <= 1 { return String(("#" + tag).prefix(Swift.max(1, max))) }
+        var head = String(label.name.prefix(room - 1))
+        while head.last?.isWhitespace == true { head.removeLast() }
+        return head + "\u{2026}" + suffix
     }
 
     // MARK: Session ordering (port of session-utils.ts)

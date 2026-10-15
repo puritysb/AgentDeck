@@ -37,6 +37,7 @@ import {
 import { sessionNowSummary, sessionSettingOptionLabel } from './session-settings.js';
 import { State, type PromptOption } from './states.js';
 import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
+import { sessionDeckLabels, sessionLabelText } from './session-labels.js';
 import type { SessionInfo, SessionSetting, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, CodexLunaReserve, ScopedUsageLimit, ZaiRateLimits, ZaiWindow } from './protocol.js';
 import { Brand, Tide, UI } from './design-tokens.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from './connection-status.js';
@@ -960,11 +961,20 @@ export function buildSessionDeck(stateEvt: any, view: DeckView, positions: strin
   return buildList(state, view, slots, animFrame, animated, out);
 }
 
+/** A session key wraps its name over up to four lines; a tagged label is held
+ *  to this length so the id tag never lands in the wrapper's ellipsis. */
+const SESSION_KEY_LABEL_CHARS = 28;
+/** `renderDetailInfo` draws the name on one 10-character line. */
+const DETAIL_INFO_LABEL_CHARS = 10;
+
 function buildList(
   state: DashState, view: DeckView, slots: string[], animFrame: number, animated: boolean,
   out: Map<string, SessionDeckCell>,
 ): Map<string, SessionDeckCell> {
   const sessions = sortSessions(foldCodexSessionsForDisplay(state.allSessions));
+  // Same project + same agent would render as identical keys (#544); label the
+  // whole roster, not one page, so siblings on different pages differ too.
+  const labels = sessionDeckLabels(sessions);
 
   const dotKeys = dotDeckReservedKeys(state.dot, slots.length, sessions.length);
   if (dotKeys) {
@@ -1056,7 +1066,7 @@ function buildList(
     const sess = pageSessions[i];
     if (sess) {
       out.set(pos, {
-        svg: renderSessionSlot(sess, false, animFrame, undefined, { animated }),
+        svg: renderSessionSlot(sess, false, animFrame, sessionLabelText(labels.get(sess.id), SESSION_KEY_LABEL_CHARS), { animated }),
         action: { kind: 'open', sessionId: sess.id },
       });
     } else {
@@ -1136,7 +1146,11 @@ function buildDetail(
     svg: renderDetailInfo(
       heroSess, sState as State, tool, model,
       sess?.permissionMode ?? (focused && sess?.controlMode !== 'observed' ? state.mode || undefined : undefined),
-      undefined, sess?.effortLevel),
+      sessionLabelText(
+        sessionDeckLabels(foldCodexSessionsForDisplay(state.allSessions)).get(sid),
+        DETAIL_INFO_LABEL_CHARS,
+      ),
+      sess?.effortLevel),
     action: null,
   });
 

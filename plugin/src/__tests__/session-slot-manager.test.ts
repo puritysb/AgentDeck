@@ -48,6 +48,22 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
   };
 }
 
+describe('SessionSlotManager same-project labels (#544)', () => {
+  it('tags session keys that share project and agent, and leaves a lone one as-is', () => {
+    const manager = new SessionSlotManager();
+    manager.updateSessions([
+      makeSession({ id: '5f8f5c2a-1111', projectName: 'chezmoi', startedAt: '2026-10-14T10:00:00Z' }),
+      makeSession({ id: 'b80ccccf-2222', projectName: 'chezmoi', startedAt: '2026-10-14T11:00:00Z' }),
+      makeSession({ id: 'aaaa0000-3333', projectName: 'solo' }),
+    ]);
+    const labels = [0, 1, 2, 3, 4, 5, 6, 7]
+      .map((slot) => manager.getSlotConfig(slot, SD_PLUS_LAYOUT))
+      .filter((c) => c.type === 'session')
+      .map((c) => c.label);
+    expect(labels).toEqual(expect.arrayContaining(['chezmoi #5f8f', 'chezmoi #b80c', 'solo']));
+  });
+});
+
 describe('SessionSlotManager detail layout', () => {
   it('re-points detail focus onto the codex fold representative when the focused thread is absorbed', () => {
     const manager = new SessionSlotManager();

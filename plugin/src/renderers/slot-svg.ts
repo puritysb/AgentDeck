@@ -37,7 +37,7 @@ export function renderSlotConfig(config: SessionSlotConfig, env: SlotRenderEnv):
     case 'dot': return renderDotDeckSlot(config.dot!);
     case 'session': {
       const sess = config.session!;
-      return renderSessionSlot(sess, false, env.animFrame, undefined, {
+      return renderSessionSlot(sess, false, env.animFrame, config.label, {
         processingStartFrame: env.processingStartFrame?.(sess.id),
         isStale: env.isStale,
         lowResolutionKey: layout != null

@@ -27,6 +27,7 @@ export * from './timeline-markdown.js';
 export * from './format-utils.js';
 export * from './timeline-summarizer.js';
 export * from './session-utils.js';
+export * from './session-labels.js';
 export * from './claude-background-jobs.js';
 export * from './background-work.js';
 export * from './hook-harness.js';
