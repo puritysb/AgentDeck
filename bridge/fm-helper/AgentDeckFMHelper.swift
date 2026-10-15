@@ -30,6 +30,7 @@ struct HelperRequest: Decodable {
 @main
 struct AgentDeckFMHelper {
     static func main() async {
+        ResponsibilityDisclaim.reexecIfNeeded()
         do {
             for try await line in FileHandle.standardInput.bytes.lines {
                 await handle(line)
@@ -270,13 +271,13 @@ struct AgentDeckFMHelper {
             write(["id": request.id, "error": "busy", "reason": "a recording is already in progress"])
             return
         }
-        let granted = await ensureMicAuthorization()
-        guard granted else {
+        let mic = await ensureMicAuthorization()
+        guard mic == .authorized else {
             activeRecording.release()
             write([
                 "id": request.id,
                 "error": "unauthorized",
-                "reason": "microphone access not granted — grant it in System Settings › Privacy & Security › Microphone",
+                "reason": micRefusalReason(mic),
             ])
             return
         }
@@ -355,16 +356,30 @@ struct AgentDeckFMHelper {
         ])
     }
 
-    private static func ensureMicAuthorization() async -> Bool {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: return true
-        case .notDetermined:
-            return await withCheckedContinuation { continuation in
-                let box = ResumeOnce(continuation)
-                AVCaptureDevice.requestAccess(for: .audio) { box.resume($0) }
-            }
-        default: return false
+    private static func ensureMicAuthorization() async -> AVAuthorizationStatus {
+        let current = AVCaptureDevice.authorizationStatus(for: .audio)
+        guard current == .notDetermined else { return current }
+        let granted: Bool = await withCheckedContinuation { continuation in
+            let box = ResumeOnce(continuation)
+            AVCaptureDevice.requestAccess(for: .audio) { box.resume($0) }
         }
+        return granted ? .authorized : .denied
+    }
+
+    /// Name the entry the user has to change. Which entry that is depends on
+    /// whom TCC holds responsible: after the disclaim it is this helper
+    /// ("AgentDeck Voice Helper"); if the disclaim was unavailable it is
+    /// whatever launched the daemon — `node` under the LaunchAgent, the
+    /// terminal app in a foreground run — and a reason that only says "not
+    /// granted" sends the user looking for an AgentDeck row that does not exist.
+    private static func micRefusalReason(_ status: AVAuthorizationStatus) -> String {
+        if status == .restricted {
+            return "microphone access is restricted on this Mac (a configuration profile or Screen Time) — it cannot be granted from System Settings"
+        }
+        let entry = ResponsibilityDisclaim.active
+            ? "\"AgentDeck Voice Helper\" (agentdeck-fm-helper)"
+            : "the app or binary that launched the AgentDeck daemon (node under the LaunchAgent, your terminal app in a foreground run)"
+        return "microphone access denied for \(entry) — enable it in System Settings › Privacy & Security › Microphone, then press again"
     }
 
     // MARK: - Text to speech
@@ -758,5 +773,73 @@ private final class SpeakDelegate: NSObject, AVSpeechSynthesizerDelegate {
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         onFinish?.resume(())
+    }
+}
+
+// MARK: - TCC responsibility
+
+/// Make this helper the process TCC holds responsible for its own privacy
+/// requests, instead of whatever launched the daemon.
+///
+/// TCC attributes a microphone or speech-recognition request to the
+/// *responsible* process, which a plain spawn inherits from the parent. So the
+/// grant used to belong to the daemon's launcher — measured on macOS 27.0
+/// (2026-10-15, TCC `AUTHREQ_ATTRIBUTION`): under the LaunchAgent it is
+/// `responsible=node` (the prompt names node, and the grant then covers every
+/// node script on the machine, and lapses on the next `brew upgrade node`); in
+/// a foreground run it is the terminal app. #542 reported the LaunchAgent case
+/// failing with no prompt at all. With the disclaim, the same launchd → node →
+/// helper chain logs the helper as its own requester and uses the helper's
+/// grant, whose prompt carries this binary's usage strings.
+///
+/// `POSIX_SPAWN_SETEXEC` replaces this image in place, so the pid, the stdio
+/// pipes and the daemon's kill all stay exactly as they were — a spawned child
+/// would outlive a SIGTERM to its parent while holding the daemon's pipes.
+/// `responsibility_spawnattrs_setdisclaim` is SPI (Chromium, LLDB and terminal
+/// emulators use it for the same reason), so it is looked up at runtime: when
+/// it or the exec is unavailable the helper keeps running exactly as before.
+enum ResponsibilityDisclaim {
+    private static let marker = "AGENTDECK_FM_HELPER_DISCLAIMED"
+
+    /// True when this image was started by the disclaiming re-exec.
+    static var active: Bool { getenv(marker) != nil }
+
+    private typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
+
+    static func reexecIfNeeded() {
+        guard !active else { return }
+        // RTLD_DEFAULT is ((void *)-2) and is not imported into Swift.
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim") else {
+            note("responsibility disclaim unavailable on this macOS; TCC will attribute voice access to the daemon's launcher")
+            return
+        }
+        let setDisclaim = unsafeBitCast(symbol, to: SetDisclaim.self)
+
+        var pathBuffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        var size = UInt32(pathBuffer.count)
+        guard _NSGetExecutablePath(&pathBuffer, &size) == 0 else { return }
+
+        var attr: posix_spawnattr_t?
+        guard posix_spawnattr_init(&attr) == 0 else { return }
+        defer { posix_spawnattr_destroy(&attr) }
+        guard posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETEXEC)) == 0,
+              setDisclaim(&attr, 1) == 0 else {
+            note("responsibility disclaim could not be armed; TCC will attribute voice access to the daemon's launcher")
+            return
+        }
+        // Set before the exec so the new image inherits it and does not loop.
+        setenv(marker, "1", 1)
+        var pid: pid_t = 0
+        let rc = pathBuffer.withUnsafeBufferPointer { path in
+            posix_spawn(&pid, path.baseAddress!, nil, &attr, CommandLine.unsafeArgv, environ)
+        }
+        // SETEXEC returns only on failure.
+        unsetenv(marker)
+        note("responsibility disclaim re-exec failed (\(rc)); TCC will attribute voice access to the daemon's launcher")
+    }
+
+    /// stderr reaches the daemon's debug log; stdout is the JSON protocol.
+    private static func note(_ message: String) {
+        FileHandle.standardError.write(Data("[fm-helper] \(message)\n".utf8))
     }
 }

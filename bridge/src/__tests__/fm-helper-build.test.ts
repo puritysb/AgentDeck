@@ -99,6 +99,24 @@ describe('fm-helper build invariants', () => {
     expect(source).toContain('return "unsupportedLanguageOrLocale"');
   });
 
+  // #542: TCC charges a privacy request to the RESPONSIBLE process, which a
+  // plain spawn inherits — so without this the grant belonged to whatever
+  // launched the daemon (`node` under the LaunchAgent, the terminal in a
+  // foreground run), never to the helper whose usage strings it carries.
+  it('disclaims TCC responsibility by re-executing in place before serving', () => {
+    const source = codeOnly(readFileSync(sourcePath, 'utf8'));
+    const main = source.indexOf('static func main() async {');
+    const disclaim = source.indexOf('ResponsibilityDisclaim.reexecIfNeeded()', main);
+    const stdin = source.indexOf('FileHandle.standardInput.bytes.lines', main);
+    expect(main).toBeGreaterThan(-1);
+    expect(disclaim).toBeGreaterThan(main);
+    expect(stdin).toBeGreaterThan(disclaim);
+    // SETEXEC keeps the pid and the daemon's pipes; a spawned child would
+    // outlive the daemon's SIGTERM to its parent while holding them.
+    expect(source).toContain('POSIX_SPAWN_SETEXEC');
+    expect(source).toContain('"responsibility_spawnattrs_setdisclaim"');
+  });
+
   // Only meaningful where a dev build has run (`pnpm --filter @agentdeck/bridge
   // build:fm-helper`); the binary is not tracked or packaged — the npm install
   // compiles on demand — so its absence is not a failure.
@@ -126,6 +144,15 @@ describe('fm-helper build invariants', () => {
       const signature = codesignReport(out);
       expect(signature).toContain(`Identifier=${plistValue(plist, 'CFBundleIdentifier')}`);
       expect(signature).toMatch(/Info\.plist entries=[1-9]/);
+
+      // The disclaim re-exec must land in the SAME process (the daemon tracks
+      // and kills that pid) and must not loop: the helper still answers on the
+      // pipes it was spawned with, and its environment carries the marker.
+      const probe = spawnSync('/bin/sh', ['-c',
+        `(printf '{"id":7,"type":"health"}\\n'; sleep 2) | "${out}" & pid=$!; sleep 1; ps -E -p $pid -o command=; wait $pid`,
+      ], { encoding: 'utf8', timeout: 20_000 });
+      expect(probe.stdout).toContain('"id":7');
+      expect(probe.stdout).toContain('AGENTDECK_FM_HELPER_DISCLAIMED=1');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
