@@ -4706,8 +4706,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const driver = hubDriver.current();
           const liveTurn = driver?.kind === 'hook' && driver.sessionId === driverSid
             && core.stateMachine.getSnapshot().state === State.PROCESSING;
-          if (!liveTurn) hubDriver.noteSessionEnd(driverSid);
+          // Silent, not ended: it still holds the hub open for the 30-minute
+          // window (#545 — a SessionEnd here let a sibling's end drop the hub).
+          if (!liveTurn) hubDriver.noteDriverSilent(driverSid);
         }
+      }
+      // The last hook session went quiet past the liveness window without a
+      // SessionEnd (crashed, or its SessionEnd was lost): nothing else will
+      // take the hub off a state no session is in. The Gateway keeps its own
+      // claim while connected.
+      if (core.stateMachine.getSnapshot().state !== State.DISCONNECTED
+          && !core.cachedGatewayConnected
+          && hubDriver.current()?.kind !== 'gateway'
+          && !hubDriver.hasLiveHookSession(now)) {
+        core.stateMachine.handleHookEvent('SessionEnd', {});
       }
       const closed = core.bridgeTimeline.reapOrphanChatStarts(
         TURN_WATCHDOG_SILENCE_MS, now, active,
@@ -5722,7 +5734,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         case 'hook':
           hubDriver.noteGateway();
           if (evt.event === 'SessionStart') core.stateMachine.handleHookEvent('SessionStart', {});
-          else if (evt.event === 'SessionEnd') core.stateMachine.handleHookEvent('SessionEnd', {});
+          // The Gateway ending is not every hook session ending (#545): with
+          // hook sessions still live, only its own turn closes.
+          else if (evt.event === 'SessionEnd') {
+            core.stateMachine.handleHookEvent(hubDriver.hasLiveHookSession() ? 'Stop' : 'SessionEnd', {});
+          }
           break;
         case 'parser':
           // `model_info` is deliberately NOT forwarded: the global machine holds
@@ -5954,8 +5970,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     core.cachedGatewayAuthStatus = 'gateway_not_found';
     core.cachedModelCatalog = null;
     gatewaySessionState = 'idle';
+    const gatewayDrove = hubDriver.current()?.kind === 'gateway';
     hubDriver.noteGatewayGone();
-    if (wasAlive) core.stateMachine.handleHookEvent('SessionEnd', {});
+    // A Gateway link flap must not take the hub from live hook sessions
+    // (#545): close only a turn the Gateway itself was driving.
+    if (wasAlive && !hubDriver.hasLiveHookSession()) core.stateMachine.handleHookEvent('SessionEnd', {});
+    else if (wasAlive && gatewayDrove) core.stateMachine.handleHookEvent('Stop', {});
     else core.stateMachine.emit('state_changed', core.stateMachine.getSnapshot());
     // Do NOT broadcast connection:disconnected — that would make WS clients
     // think they lost their bridge connection. State change to 'daemon' agentType

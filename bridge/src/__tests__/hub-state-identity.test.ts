@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AgentCapabilities } from '@agentdeck/shared';
 import {
   HUB_HOOK_SESSION_LIVE_MS,
@@ -110,9 +113,12 @@ describe('HubStateDriverTracker', () => {
     t.noteHook({ sessionId: 'probe', agentType: 'claude-code' }, HUB_HOOK_SESSION_LIVE_MS);
     expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS)).toBe(true);
     expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
-    // An anonymous hook (no session id) is never counted as a live session.
+    // An anonymous hook (no session id) is a live driver too — otherwise the
+    // watchdog's empty-roster settle would drop a hub it alone is driving —
+    // and it ages out on the same window.
     t.noteHook({ agentType: 'claude-code' }, HUB_HOOK_SESSION_LIVE_MS);
-    expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
+    expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(true);
+    expect(t.hasOtherLiveHookSession('probe', 2 * HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
   });
 
   it('gateway activity replaces a hook driver and is cleared when the Gateway goes away', () => {
@@ -137,6 +143,55 @@ describe('HubStateDriverTracker', () => {
     expect(t.current()?.kind).toBe('hook');
     t.noteSessionEnd(undefined);
     expect(t.current()).toBeNull();
+  });
+
+  it('a session that only went quiet still holds the hub open (watchdog silence is not an end)', () => {
+    // #545 review: the turn watchdog clears a quiet session's identity after
+    // 3 min. Using noteSessionEnd for that shrank the 30-min live window to 3,
+    // and a sibling probe's SessionEnd then dropped the hub again.
+    const t = new HubStateDriverTracker();
+    const t0 = 1_000_000;
+    t.noteHook({ sessionId: 'working', agentType: 'claude-code', projectName: 'p' }, t0);
+    t.noteHook({ sessionId: 'probe', agentType: 'claude-code', projectName: 'p' }, t0 + 4 * 60_000);
+    t.noteDriverSilent('working');
+    expect(t.hasOtherLiveHookSession('probe', t0 + 5 * 60_000)).toBe(true);
+    t.noteSessionEnd('working');
+    expect(t.hasOtherLiveHookSession('probe', t0 + 5 * 60_000)).toBe(false);
+  });
+
+  it('noteDriverSilent clears the frame identity but not liveness', () => {
+    const t = new HubStateDriverTracker();
+    t.noteHook({ sessionId: 's1', agentType: 'claude-code' }, 0);
+    t.noteDriverSilent('s1');
+    expect(t.current()).toBeNull();
+    expect(t.hasLiveHookSession(1)).toBe(true);
+  });
+
+  it('an anonymous driver holds the hub open until its own end', () => {
+    const t = new HubStateDriverTracker();
+    t.noteHook({ agentType: 'claude-code' }, 0);
+    expect(t.hasLiveHookSession(1)).toBe(true);
+    expect(t.hasOtherLiveHookSession(undefined, 1)).toBe(false);
+    t.noteSessionEnd(undefined);
+    expect(t.hasLiveHookSession(1)).toBe(false);
+  });
+
+  it('hasLiveHookSession forgets sessions silent past the live window', () => {
+    const t = new HubStateDriverTracker();
+    t.noteHook({ sessionId: 's1', agentType: 'claude-code' }, 0);
+    expect(t.hasLiveHookSession(HUB_HOOK_SESSION_LIVE_MS)).toBe(true);
+    expect(t.hasLiveHookSession(HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
+  });
+
+  it('the turn watchdog marks quiet sessions silent, never ended', () => {
+    // Source pin for the call site the tracker tests cannot reach.
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'daemon-server.ts'), 'utf8');
+    const start = src.indexOf('const turnWatchdog = setInterval(');
+    const end = src.indexOf('}, TURN_WATCHDOG_INTERVAL_MS);', start);
+    expect(start).toBeGreaterThan(-1);
+    const body = src.slice(start, end);
+    expect(body).toContain('hubDriver.noteDriverSilent(');
+    expect(body).not.toContain('hubDriver.noteSessionEnd(');
   });
 
   it('normalises empty ids and projects to absent', () => {

@@ -35,3 +35,20 @@ shows the shared-machine half, and the refresh race is the one path found that
 removes a live row from `sessions_list`. Gates: `HubSessionIsolationTests`,
 `state-transitions.test.ts`, `state-machine.test.ts`,
 `hub-state-identity.test.ts`.
+
+**Pre-merge review fixes (same PR).** An independent review found that the Node
+turn watchdog called `noteSessionEnd` for any session quiet for 3 minutes. That
+removed it from the live set and shrank the 30-minute window to 3, so case A
+still reproduced on Node. The watchdog now calls `noteDriverSilent`, which
+clears the frame identity and keeps liveness.
+
+Further review fixes:
+- When the roster empties without a SessionEnd (the reaper, a refresh prune, or
+  a tracker expiry), the hub now settles to DISCONNECTED instead of sitting IDLE.
+- The Swift hub now counts only observed rows as live. Managed pushed rows no
+  longer hold it open.
+- A Gateway link loss now keeps the hub while hook sessions are live, and closes
+  only the turn the Gateway itself drove.
+- Swift Gateway prompts open a turn from IDLE only, matching Node.
+- An anonymous hook driver counts as live, so the settle path cannot drop a hub
+  it alone drives.

@@ -49,6 +49,10 @@ export interface HubFrameIdentity {
  *  such a row. */
 export const HUB_HOOK_SESSION_LIVE_MS = 30 * 60 * 1000;
 
+/** Key an anonymous driver (a hook that carried no session id) is tracked
+ *  under, so it holds the hub open like any other session. */
+const ANONYMOUS_HOOK_SESSION = '';
+
 /** Remembers the most recent driver of the hub's global state machine. */
 export class HubStateDriverTracker {
   private driver: HubStateDriver | null = null;
@@ -56,7 +60,7 @@ export class HubStateDriverTracker {
   private readonly liveHookSessions = new Map<string, number>();
 
   noteHook(input: { sessionId?: string; agentType: AgentType; projectName?: string }, now = Date.now()): void {
-    if (input.sessionId) this.liveHookSessions.set(input.sessionId, now);
+    this.liveHookSessions.set(input.sessionId || ANONYMOUS_HOOK_SESSION, now);
     this.driver = {
       kind: 'hook',
       sessionId: input.sessionId || undefined,
@@ -69,11 +73,20 @@ export class HubStateDriverTracker {
     this.driver = { kind: 'gateway' };
   }
 
-  /** The hook session ended (or fell silent): its identity must not outlive
-   *  it on the frame. `undefined` names the anonymous driver — a hook that
-   *  carried no session id. */
+  /** The hook session ENDED (SessionEnd): it no longer holds the hub open,
+   *  and its identity must not outlive it on the frame. `undefined` names the
+   *  anonymous driver — a hook that carried no session id. */
   noteSessionEnd(sessionId: string | undefined): void {
-    if (sessionId) this.liveHookSessions.delete(sessionId);
+    this.liveHookSessions.delete(sessionId || ANONYMOUS_HOOK_SESSION);
+    this.noteDriverSilent(sessionId);
+  }
+
+  /** The hook session went QUIET (the turn watchdog's 3-minute silence): its
+   *  identity leaves the frame, but it still counts as live. A user reading a
+   *  reply for four minutes is not a session that ended — treating it as one
+   *  let the watchdog shrink the 30-minute liveness window to three, and a
+   *  sibling's SessionEnd then took the hub again (#545 review). */
+  noteDriverSilent(sessionId: string | undefined): void {
     if (this.driver?.kind === 'hook' && this.driver.sessionId === sessionId) this.driver = null;
   }
 
@@ -89,15 +102,26 @@ export class HubStateDriverTracker {
    *  stops holding the hub open. Swift mirror:
    *  `DaemonServer.hubDisconnectsOnSessionEnd`. */
   hasOtherLiveHookSession(endedSessionId: string | undefined, now = Date.now()): boolean {
+    const ended = endedSessionId || ANONYMOUS_HOOK_SESSION;
     let other = false;
     for (const [sid, lastAt] of this.liveHookSessions) {
       if (now - lastAt > HUB_HOOK_SESSION_LIVE_MS) {
         this.liveHookSessions.delete(sid);
         continue;
       }
-      if (sid !== endedSessionId) other = true;
+      if (sid !== ended) other = true;
     }
     return other;
+  }
+
+  /** Does ANY hook session still hold the hub open? Asked when no SessionEnd
+   *  arrives — the last session went silent past the window, or the Gateway,
+   *  the hub's other driver, went away. */
+  hasLiveHookSession(now = Date.now()): boolean {
+    for (const [sid, lastAt] of this.liveHookSessions) {
+      if (now - lastAt > HUB_HOOK_SESSION_LIVE_MS) this.liveHookSessions.delete(sid);
+    }
+    return this.liveHookSessions.size > 0;
   }
 
   noteGatewayGone(): void {

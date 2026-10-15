@@ -2339,7 +2339,12 @@ final class DaemonServer {
                 // Route to gateway or session bridge
                 if let gw = self.gatewayAdapter {
                     await gw.sendRPC(method: "chat.send", params: ["message": text])
-                    _ = self.stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
+                    // From IDLE only, as Node does: since #545 the table also
+                    // accepts a prompt from DISCONNECTED, and a Gateway prompt
+                    // sent while its link is down has no Stop coming to end it.
+                    if self.stateMachine.state == .idle {
+                        _ = self.stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
+                    }
                     self.broadcastStateUpdate()
                 } else {
                     self.forwardCommandToSession(AgentCommand.sendPrompt(text: text).dictionary)
@@ -5109,7 +5114,11 @@ final class DaemonServer {
             case "send_prompt":
                 let text = (cmd["text"] as? String) ?? ""
                 Task { await gw.sendRPC(method: "chat.send", params: ["message": text]) }
-                _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook); broadcastStateUpdate()
+                // IDLE only — see `voiceSendPrompt`.
+                if stateMachine.state == .idle {
+                    _ = stateMachine.transition(trigger: "user_prompt_submit", source: .hook)
+                }
+                broadcastStateUpdate()
             case "escape": Task { await gw.sendRPC(method: "chat.abort", params: [:]) }
                 _ = stateMachine.transition(trigger: "interrupt", source: .user); broadcastStateUpdate()
             default: break
@@ -6175,7 +6184,7 @@ final class DaemonServer {
             // chat_end. Tool-only turns fall through to empty chat_end.
             appendClaudeCodeChatEnd(json: json, sessionId: sessionId)
         case "session_end":
-            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: pushedSessionsById.keys) {
+            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
                 _ = stateMachine.transition(trigger: "session_end", source: .hook)
             }
             if let sessionId {
@@ -6419,7 +6428,7 @@ final class DaemonServer {
         case "opencode_session_end":
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
-            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: pushedSessionsById.keys) {
+            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
                 _ = stateMachine.transition(trigger: "session_end", source: .hook)
             }
             if let sessionId {
@@ -7038,6 +7047,7 @@ final class DaemonServer {
                 DaemonLogger.shared.debug("Hook", "Evicted stale session \(sid) (no session entry)")
             }
         }
+        settleHubIfRosterEmpty()
         broadcastSessionsList()
         broadcastStateUpdate()
     }
@@ -7447,6 +7457,55 @@ final class DaemonServer {
     /// dispatch in `handleHookEvent` (event prefix == "codex_"). The
     /// underlying predicate is pure (no actor state), so the helper is
     /// `nonisolated` and callable from the test runner's default context.
+    /// Rows that hold the shared hub machine open: hook-observed sessions only.
+    /// A managed bridge's pushed row (`session_push_register`) has its own
+    /// machine and never drives this one, so counting it kept the hub IDLE
+    /// after the last observed session ended. Node counts the same set
+    /// (`HubStateDriverTracker`, hook sessions that drove the machine).
+    private var hubLiveSessionIds: [String] { Self.hubLiveSessionIds(pushedSessionsById) }
+
+    nonisolated static func hubLiveSessionIds(_ rows: [String: DaemonSessionEntry]) -> [String] {
+        rows.compactMap { $0.value.controlMode == "observed" ? $0.key : nil }
+    }
+
+    /// The roster lost its last observed session WITHOUT a SessionEnd — the
+    /// stale-hook reaper or a refresh prune removed it. A crashed session never
+    /// sends one, and with #545's gate a clean SessionEnd from a sibling no
+    /// longer drops the hub while that crashed row is still listed, so without
+    /// this the hub sat IDLE over an empty roster until the next session.
+    /// The Gateway keeps its own claim on the hub while it is connected.
+    private func settleHubIfRosterEmpty() {
+        guard Self.hubSettlesOnRosterLoss(
+            state: stateMachine.state,
+            gatewayDriving: hubDriver == .gateway,
+            gatewayConnected: cachedGatewayConnected,
+            liveSessionCount: hubLiveSessionIds.count
+        ) else { return }
+        _ = stateMachine.transition(trigger: "session_end", source: .hook)
+    }
+
+    nonisolated static func hubSettlesOnRosterLoss(
+        state: AgentState, gatewayDriving: Bool, gatewayConnected: Bool, liveSessionCount: Int
+    ) -> Bool {
+        state != .disconnected && !gatewayDriving && !gatewayConnected && liveSessionCount == 0
+    }
+
+    /// The Gateway went away. It is one of the hub's drivers, not all of them:
+    /// with hook sessions still listed, dropping to DISCONNECTED repeated #545
+    /// on every Gateway link flap. Then only a turn the GATEWAY was driving is
+    /// closed (back to idle); a hook session's turn is left alone.
+    private func releaseHubForGatewayLoss(gatewayDrove: Bool) {
+        guard let trigger = Self.hubTriggerOnGatewayLoss(
+            liveSessionCount: hubLiveSessionIds.count, gatewayDrove: gatewayDrove
+        ) else { return }
+        _ = stateMachine.transition(trigger: trigger, source: .hook)
+    }
+
+    nonisolated static func hubTriggerOnGatewayLoss(liveSessionCount: Int, gatewayDrove: Bool) -> String? {
+        if liveSessionCount == 0 { return "session_end" }
+        return gatewayDrove ? "stop" : nil
+    }
+
     /// Does this `session_end` take the daemon's ONE shared state machine to
     /// DISCONNECTED? Only when the session that ended was the last one.
     ///
@@ -8940,7 +8999,7 @@ final class DaemonServer {
                         }
                         DaemonLogger.shared.info("OpenClaw Gateway disconnected")
                         await self?.logStream.stop()
-                        _ = self?.stateMachine.transition(trigger: "session_end", source: .hook)
+                        self?.releaseHubForGatewayLoss(gatewayDrove: self?.hubDriver == .gateway)
                         self?.gatewaySessionState = "idle"
                         if self?.hubDriver == .gateway { self?.hubDriver = .none }
                         self?.gatewayCurrentTool = nil
@@ -8998,13 +9057,15 @@ final class DaemonServer {
         cachedGatewayAuthStatus = cachedGatewayAvailable ? "gateway_reachable" : "gateway_not_found"
         cachedGatewayAuthRequestId = nil
         cachedGatewayAuthMessage = nil
+        // Read before `gatewaySessionState`'s didSet claims the driver slot.
+        let gatewayDrove = hubDriver == .gateway
         gatewaySessionState = "idle"
         if hubDriver == .gateway { hubDriver = .none }
         gatewayCurrentTool = nil
         gatewayPendingApproval = nil
         // Note: gatewayModelName is intentionally preserved across brief disconnects
         // so the model row doesn't flash empty on reconnect.
-        _ = stateMachine.transition(trigger: "session_end", source: .hook)
+        releaseHubForGatewayLoss(gatewayDrove: gatewayDrove)
         apmeCollectorGateway?.handleHook(event: "session_end", data: [
             "session_id": "openclaw-gateway",
         ])
@@ -9631,6 +9692,7 @@ final class DaemonServer {
             pushedSessionsById.removeValue(forKey: id)
             codexProcessingTouchedAtBySession.removeValue(forKey: id)
         }
+        if !reconciled.prune.isEmpty { settleHubIfRosterEmpty() }
 
         cachedSessions = DashboardDataRules.sortSessions(reconciled.sessions)
         broadcastSessionsList()

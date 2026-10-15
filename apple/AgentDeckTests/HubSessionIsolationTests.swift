@@ -55,6 +55,44 @@ final class HubSessionIsolationTests: XCTestCase {
             endedSessionId: nil, liveSessionIds: ["working"]))
     }
 
+    // MARK: - review follow-ups
+
+    func testOnlyObservedRowsHoldTheHubOpen() async {
+        // A managed bridge's pushed row has its own machine and never drives
+        // this one; counting it kept the hub IDLE after the last observed end.
+        var managed = row("managed")
+        managed.controlMode = nil
+        let ids = DaemonServer.hubLiveSessionIds(["working": row("working"), "managed": managed])
+        XCTAssertEqual(ids, ["working"])
+        XCTAssertTrue(DaemonServer.hubDisconnectsOnSessionEnd(
+            endedSessionId: "working",
+            liveSessionIds: DaemonServer.hubLiveSessionIds(["working": row("working"), "managed": managed])))
+    }
+
+    func testHubSettlesWhenTheRosterEmptiesWithoutASessionEnd() async {
+        // A crashed sibling held the hub open past a clean end; when the reaper
+        // removes it, the hub must not sit IDLE over an empty roster.
+        XCTAssertTrue(DaemonServer.hubSettlesOnRosterLoss(
+            state: .idle, gatewayDriving: false, gatewayConnected: false, liveSessionCount: 0))
+        XCTAssertFalse(DaemonServer.hubSettlesOnRosterLoss(
+            state: .idle, gatewayDriving: false, gatewayConnected: false, liveSessionCount: 1))
+        XCTAssertFalse(DaemonServer.hubSettlesOnRosterLoss(
+            state: .idle, gatewayDriving: false, gatewayConnected: true, liveSessionCount: 0))
+        XCTAssertFalse(DaemonServer.hubSettlesOnRosterLoss(
+            state: .processing, gatewayDriving: true, gatewayConnected: false, liveSessionCount: 0))
+        XCTAssertFalse(DaemonServer.hubSettlesOnRosterLoss(
+            state: .disconnected, gatewayDriving: false, gatewayConnected: false, liveSessionCount: 0))
+    }
+
+    func testGatewayLossLeavesLiveHookSessionsTheirHub() async {
+        // The Gateway link flaps; a working Claude session must not lose the
+        // hub on each flap. Only a turn the Gateway itself drove is closed.
+        XCTAssertEqual(DaemonServer.hubTriggerOnGatewayLoss(liveSessionCount: 0, gatewayDrove: true), "session_end")
+        XCTAssertEqual(DaemonServer.hubTriggerOnGatewayLoss(liveSessionCount: 0, gatewayDrove: false), "session_end")
+        XCTAssertEqual(DaemonServer.hubTriggerOnGatewayLoss(liveSessionCount: 2, gatewayDrove: true), "stop")
+        XCTAssertNil(DaemonServer.hubTriggerOnGatewayLoss(liveSessionCount: 2, gatewayDrove: false))
+    }
+
     func testDisconnectedHubReopensOnThePromptOfASessionAlreadyUnderway() async {
         // The generated table must carry the exit the driver relies on; a
         // session already running never sends session_start again.
