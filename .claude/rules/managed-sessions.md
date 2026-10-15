@@ -11,8 +11,11 @@ paths:
 ---
 # Managed sessions (CLI, PTY)
 <!-- Moved verbatim from the root map (then CLAUDE.md, 2026-09-10; AGENTS.md since 2026-09-29). Rule bodies are the SSOT for their domain; the root map keeps only the index. -->
-The legacy `agentdeck claude|codex|opencode|monitor` PTY path stays a product contract during the compatibility
-window (#273 / #278). CLI reference: [docs/cli.md](../../docs/cli.md).
+The legacy `agentdeck claude|codex|opencode|monitor` PTY path is a **long-term compatibility path with no removal
+planned** (decided 2026-10-15 in #273: the workflows that still need it — immediate terminal steering, Windows terminal
+input, remote launch with managed flags — have no daemon-first equivalent, and no user feedback arrived to justify
+breaking them). Maintain it; build new capabilities daemon-first (`agentdeck run`, `agentdeck order`, `agentdeck relay`).
+CLI reference: [docs/cli.md](../../docs/cli.md).
 
 ## Session sort weight
 
@@ -37,5 +40,5 @@ a PTY or per-session bridge. The commander defaults are inserted immediately
 after `run`, before typed arguments; `--no-env-args` disables both layers.
 Unsupported managed-only options must fail rather than be silently ignored.
 A managed `AGENTDECK_PORT` marker refuses launch to prevent hook misrouting.
-Remote control and terminal-only affordances still use the managed path; this
-launcher is not evidence that those replacement gates in #273 are complete.
+Remote launches with managed flags and terminal-only affordances still use the
+managed path, which is why that path is kept (#273 decision, 2026-10-15).

@@ -268,13 +268,14 @@ For setup problems, run `agentdeck diag agents` or see
 <summary>Existing managed sessions and remote attach</summary>
 
 `agentdeck claude`, `agentdeck codex`, `agentdeck opencode`, and
-`agentdeck monitor` remain functional, with no removal date. Ordinary local
-sessions should use the daemon with normal agent commands. Managed-only remote
-attach, `--weight`, agent argument overrides, and terminal steering remain
-available until replacements are validated. See the
+`agentdeck monitor` are a long-term compatibility path; no removal is planned.
+Ordinary local sessions should use the daemon with normal agent commands.
+Daemon-first equivalents exist for launch arguments (`agentdeck run`), deck
+ordering (`agentdeck order`) and remote sessions (`agentdeck relay`,
+experimental). Immediate terminal steering stays managed-only. See the
 [CLI reference](docs/cli.md),
 [remote attach guide](docs/daemon.md#remote-attach-cross-machine-sessions), and
-[migration discussion](https://github.com/puritysb/AgentDeck/discussions/278).
+[decision record](docs/managed-replacement-inventory.md#october-15-decision).
 
 </details>
 

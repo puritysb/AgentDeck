@@ -166,8 +166,9 @@ loopback synthetic capture feed. The face, working cue, session roster and
 timeline rendered together; the local evidence is
 `diagnostics/release-acceptance/hermes-ipad-simulator.png`. This is simulator
 rendering evidence, not physical-device acceptance. The physical iPad was
-unavailable, and the user's visual acceptance of the 3D face remains open.
-Passing tests is not visual acceptance.
+unavailable. On 2026-10-15 the bundled model was accepted as shipped without a
+separate visual sign-off, and the replacement sculpt in #428 was closed as not
+planned. Reopen #428 if the face needs work.
 
 The Blender source is `assets/terrarium/hermes-mermaid.blend`, reproducibly
 built by `build-hermes-mermaid.py`. Apple bundles its USDZ; the builder also
@@ -196,7 +197,8 @@ visual review (outputs under ignored `diagnostics/hermes-mermaid/`).
 
 ### Production modeling research and replacement gate
 
-Tracked separately in [#428](https://github.com/puritysb/AgentDeck/issues/428).
+Formerly tracked in [#428](https://github.com/puritysb/AgentDeck/issues/428), closed as not planned on
+2026-10-15. The research below is kept for a future rebuild.
 The target is a convincing stylized 3D Nous girl mermaid: preserve the original
 face/accessory while making anatomy, surface volume and deformation credible.
 Photographic human skin is not an accepted change in art direction.
@@ -623,6 +625,16 @@ display selection, not permission to steer it. Older firmware can select a
 project named Hermes as a voice target;
 the Node preview has no terminal/command route, so delivery fails visibly.
 No native App Store subprocess or companion-install UI is added.
-Messaging-platform Gateway reset, remaining native/device acceptance and
-replacement-model approval must still be completed before claiming full rollout
-acceptance. The completed runtime receipts do not waive those gates.
+**Rollout decision, 2026-10-15.** Hermes support is accepted as it stands, with
+these known gaps recorded rather than left open as blocking issues (#423, #425,
+#426 and #428 closed):
+
+- A messaging-platform Gateway `/new` reset (Telegram, Discord, …) was never
+  captured. CLI and API lifecycle, multi-turn resume and SIGINT are measured.
+- Physical iPad, iPhone and matrix-panel visual review was not done. Simulator
+  and Lenovo tablet receipts stand in for it.
+- The 3D model is the bundled rebuild, accepted as shipped. The faithful
+  re-sculpt in #428 is not planned.
+
+Hermes stays observation-only. A new receipt for any gap above can reopen the
+matching issue.

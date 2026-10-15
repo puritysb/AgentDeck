@@ -207,7 +207,26 @@ title question — the interface a *voice-capable* panel deserves — is
 therefore still open on `trmnl_75` specifically, even though the surrounding
 dashboard-face research it asked for as groundwork has already shipped.
 
-## 5. Open decisions for the owner
+## 5. Decisions, 2026-10-15
+
+The owner questions below waited from 2026-09-28 with no new input, so #272
+closes with these decisions:
+
+- **No additional audio hardware.** `trmnl_75` stays a display-only push
+  panel. Voice stays on the surfaces that already have a microphone: the deck
+  hold-to-talk key with the host mic, and the boards with audio input. A
+  voice-capable panel is a new hardware project, not a remaining step of this
+  issue.
+- **No Swift parity for the pull/glance-frame path for now.** `/feed` and
+  `/glance-frame` stay Node-daemon-only. The push path this board uses already
+  works with either daemon.
+- **Representative traffic and optical acceptance are no longer a gate.** The
+  completion telemetry stays installed, and a regression it shows can open a
+  narrow issue.
+
+The section below is kept as the reasoning behind these choices.
+
+## 5a. Open decisions as they stood before 2026-10-15
 
 Carried forward from the issue's own comment thread, restated against what
 is now known:

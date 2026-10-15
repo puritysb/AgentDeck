@@ -89,9 +89,9 @@ export function managedPtyCompatibilityNotice(command: LegacySessionCommand): st
     ? 'run `claude`, `codex`, or `opencode` normally'
     : `run \`${command}\` directly`;
   return [
-    `[agentdeck] LEGACY COMPATIBILITY MODE: \`agentdeck ${command}\` uses the managed per-session bridge; daemon-first launch is the recommended default.`,
+    `[agentdeck] COMPATIBILITY MODE: \`agentdeck ${command}\` uses the managed per-session bridge; daemon-first launch is the recommended default.`,
     `[agentdeck] For ordinary local sessions, run \`agentdeck daemon install\`, then ${directLaunch}.`,
-    '[agentdeck] --remote-daemon, AGENTDECK_<AGENT>_ARGS, and terminal-only controls do not yet have daemon-first equivalents; for session ordering use `agentdeck order` on the observed session. No removal date is set. Design: https://github.com/puritysb/AgentDeck/discussions/278 Tracking: https://github.com/puritysb/AgentDeck/issues/273',
+    '[agentdeck] Daemon-first equivalents: `agentdeck run` (AGENTDECK_<AGENT>_ARGS and -c), `agentdeck order` (ordering), `agentdeck relay` (another machine, experimental). Immediate terminal controls stay on this path. No removal is planned: https://github.com/puritysb/AgentDeck/issues/273',
   ];
 }
 

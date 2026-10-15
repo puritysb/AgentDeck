@@ -50,7 +50,7 @@ its working directory is under `esp32/`.
 
 See [docs/architecture.md](docs/architecture.md) for full architecture details (BridgeCore, PtyAdapter hierarchy, device modules, AgentAdapter abstraction, Gateway protocol, plugin connection model).
 
-**Managed-session compatibility:** `agentdeck claude`/`codex`/`opencode`/`monitor` remain functional with no removal date; managed-only remote attach, `--weight`, `AGENTDECK_<AGENT>_ARGS` and terminal controls are product contracts until validated replacements exist ([#278](https://github.com/puritysb/AgentDeck/discussions/278) collects workflows, [#273](https://github.com/puritysb/AgentDeck/issues/273) owns gates; policy text in [docs/cli.md](docs/cli.md)). Do not add new PTY parser or per-session bridge dependencies unless #273 first records why daemon-first cannot own the capability, and do not delete a managed dependency while a tracked workflow still relies on it.
+**Managed-session compatibility:** `agentdeck claude`/`codex`/`opencode`/`monitor` are a long-term compatibility path with no removal planned ([#273](https://github.com/puritysb/AgentDeck/issues/273) decision; policy in [docs/cli.md](docs/cli.md)). New capabilities target daemon-first (`run`, `order`, `relay`). Do not add new PTY parser or per-session bridge dependencies, and do not delete a managed dependency a documented workflow relies on.
 
 ## Build
 

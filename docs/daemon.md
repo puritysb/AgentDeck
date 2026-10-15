@@ -35,11 +35,7 @@ AgentDeck runs two daemon implementations that are **not competitors but collabo
 
 > **Managed PTY compatibility:** the CLI PTY-spawn row is a compatibility
 > capability, not the default architecture. `agentdeck claude|codex|opencode`
-> and `agentdeck monitor` remain functional with no removal date. Replacement
-> design is discussed in
-> [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
-> implementation gates live in
-> [#273](https://github.com/puritysb/AgentDeck/issues/273). Daemon-first hook and
+> and `agentdeck monitor` are a long-term compatibility path with no removal planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)). Daemon-first hook and
 > event observation is the supported path for new workflows.
 
 **CLI 없이 Swift 앱만 실행한 경우**: port 9120 은 Swift daemon 이 잡고 완결된
@@ -408,12 +404,11 @@ peer regardless of UID. See [ENTERPRISE-ROADMAP.md](ENTERPRISE-ROADMAP.md) §1.
 
 A session bridge (`agentdeck claude` etc.) normally attaches only to a daemon on its own machine. With **opt-in** remote attach it can instead push to a daemon on another machine and be controlled from that machine's Stream Deck — the use case being "I run Claude Code on several boxes (often over SSH) but have one Stream Deck on a main node."
 
-This feature belongs to the legacy managed-session compatibility path. It
-remains functional with no removal date. A daemon-first counterpart exists as an
-experimental, additive option — the [daemon relay](#daemon-relay-worker-daemon-to-hub)
-below — but it does not replace this path: Discussion #278 collects the
-topologies and controls it would have to cover, and #273 requires a validated
-two-machine replacement before the managed implementation can be removed.
+This feature belongs to the managed-session path, which is kept as a long-term
+compatibility path with no removal planned (#273). The daemon-first counterpart
+is the [daemon relay](#daemon-relay-worker-daemon-to-hub) below. It is
+experimental and relays observed sessions, so the managed path stays the way to
+get managed PTY controls on a remote session.
 
 - **Enable**: `--remote-daemon` is THE opt-in switch. `--daemon-host <host[:port]>` only names the explicit endpoint (cross-subnet / SSH where multicast doesn't reach) and **requires the switch** — the recommended explicit form is `--remote-daemon --daemon-host mainnode.lan`. Env equivalents: `AGENTDECK_REMOTE_DAEMON=1`, `AGENTDECK_DAEMON_HOST` (alias `AGENTDECK_REMOTE_DAEMON_HOST`). Default is unchanged (local-only).
 - **Opt-in gate (security boundary)**: remote attach never happens on ambient/inherited state — `--remote-daemon` / `AGENTDECK_REMOTE_DAEMON=1` gates **both** remote paths. A host hint given without the switch is inert (the CLI prints a pre-PTY warning via the shared `deriveRemoteAttachOpts` helper, so the derivations can't drift). Within the switch: an unreachable or capability-less named host returns null rather than falling through to mDNS, and mDNS is never consulted on any other signal. With no opt-in and no local daemon, `resolveDaemonTarget` returns null and the session stays local-only (byte-for-byte unchanged). Regression-tested in `bridge/src/__tests__/daemon-target.test.ts` (`resolveDaemonTarget precedence + opt-in gate`).

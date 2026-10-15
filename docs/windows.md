@@ -67,11 +67,10 @@ Every `agentdeck <args>` command elsewhere in this documentation can be run as
 - **Env-var default args** — `AGENTDECK_COMMANDER_ARGS` works identically (tokenized in pure JS, no shell). For `AGENTDECK_CLAUDE_ARGS`/`AGENTDECK_CODEX_ARGS`/`AGENTDECK_OPENCODE_ARGS` the appended string is re-parsed by `cmd.exe`, which does not treat single quotes as quoting — use double quotes for values containing spaces. See [cli.md → Environment-variable defaults](cli.md).
 - **PTY** — ConPTY through `cmd.exe` with `/d /s /c` (POSIX uses `/bin/zsh -l -c`). `node-pty`'s Windows prebuild is used as-is, so no Visual Studio Build Tools are required.
 
-The managed ConPTY path remains functional with no removal date. Replacement
-design and gates live in
-[Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
-[#273](https://github.com/puritysb/AgentDeck/issues/273). New ordinary Windows
-workflows should install the daemon and run agents normally.
+The managed ConPTY path is a long-term compatibility path with no removal planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)). It is also the Windows way to type into a
+session's terminal from the deck: observed Windows sessions have no
+terminal-injection rung. New ordinary Windows workflows should install the
+daemon and run agents normally.
 - **Hooks** — Claude Code hook entries run `powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.agentdeck\agentdeck-hook.ps1" -HookEvent <Event>`; the script reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`. The body must stay in a **script file** — Claude Code spawns hook commands through a POSIX shell (Git Bash) on Windows, which expands every `$name` out of an inlined `-Command` before PowerShell parses it.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **The daemon runs with no console window.** The task's action is `daemon autostart`, a launcher that spawns the daemon detached with no console and exits; an action that is the daemon itself gets a console attached by Task Scheduler, which showed up as a permanent terminal window and taskbar button for the whole session (no task setting suppresses it — `<Hidden>` only hides the task in the Task Scheduler UI). The daemon's output goes to `%USERPROFILE%\.agentdeck\daemon-stdout.log` / `daemon-stderr.log`, so a logon start is diagnosed from those files, not from a window; `agentdeck daemon status` reports what is serving. Mechanism, measurements and the rejected alternatives: [daemon.md → Autostart](daemon.md#autostart-loginlogon).

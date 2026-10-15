@@ -16,16 +16,15 @@ The daemon installs or refreshes the lifecycle integrations and observes agents
 started through their normal commands. The **daemon** (port 9120, `0.0.0.0` by
 default) aggregates all sessions for external clients.
 
-> **Legacy compatibility notice:** `agentdeck claude`, `agentdeck codex`,
-> `agentdeck opencode`, and `agentdeck monitor` still work, and no removal date
-> is set. The daemon-first default is `agentdeck daemon install` followed by a
-> normal agent launch. Custom launch arguments can also use `agentdeck run`
-> without a PTY (below). Remote attach, terminal steering, and terminal-only
-> telemetry still require the managed path; observed ordering uses `agentdeck order`.
-> Replacement design is discussed in
-> [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
-> implementation remains tracked in
-> [#273](https://github.com/puritysb/AgentDeck/issues/273).
+> **Compatibility notice:** `agentdeck claude`, `agentdeck codex`,
+> `agentdeck opencode`, and `agentdeck monitor` are a long-term compatibility
+> path; no removal is planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)).
+> The daemon-first default is `agentdeck daemon install` followed by a normal
+> agent launch, with `agentdeck run` for custom launch arguments, `agentdeck order`
+> for deck ordering and the experimental `agentdeck relay` for sessions on another
+> machine. Keep using the managed path when you need immediate terminal steering
+> (Ctrl-C, Shift+Tab, cursor), typing into the terminal on Windows, or terminal-only
+> telemetry. Those have no daemon-first equivalent.
 
 Lifecycle compatibility: Claude Code `>=2.1.50` and Codex CLI `>=0.141.0` are
 the supported hook baselines. All same-major AgentDeck clients remain wire-compatible;
@@ -63,8 +62,8 @@ controls are rejected by `run`, including when supplied through environment
 defaults. Use the existing managed command for those workflows, or
 `agentdeck order` for observed ordering. Launching inside an existing managed
 session is rejected to avoid routing hooks to its `AGENTDECK_PORT`. This is an
-additive local launcher; remote relay and managed terminal-control parity remain
-open in #273. Existing managed commands have no removal date.
+additive local launcher. Managed terminal controls have no daemon-first parity,
+which is why the managed commands stay, with no removal planned (#273).
 
 ### Sessions
 

@@ -27,6 +27,30 @@ A real Claude request hit the account's weekly limit, so this is not a successfu
 agent-turn or Windows desktop attribution receipt. Remote relay, weights at launch
 and terminal-only controls remain on the managed compatibility path.
 
+## October 15 decision
+
+#273 closes on its own second exit criterion: a documented decision to retain
+the compatibility path. Waiting for more user input stopped here, because
+Discussion #278 received no workflow reports.
+
+- **The managed path stays, with no removal planned.** Immediate terminal
+  steering (Ctrl-C, Shift+Tab, cursor), typing into a Windows terminal, remote
+  launches with managed flags, and the status-line duration have no
+  daemon-first equivalent, and nothing measured here justifies breaking them.
+  It is maintained and gets no new features.
+- **Daemon-first equivalents are the recommended default:** `agentdeck run`
+  (launch arguments), `agentdeck order` (ordering) and `agentdeck relay`
+  (remote, experimental). The relay was validated with two real daemons on
+  loopback on macOS and on Windows CI (Node 22/24/26), not across two
+  machines. It keeps the experimental label until a two-machine run is
+  reported.
+- **No Windows console-input rung.** `AttachConsole` + `WriteConsoleInput` is
+  unmeasured, needs a Windows desk to prove, and the managed path already
+  covers that workflow. Revisit only if a Windows user asks for observed-session
+  typing.
+- **Terminal-only affordances stay managed-only** by the #463 deck-control
+  decision (no parsing, no keystroke injection for deck control).
+
 ## October 14 status
 
 Line references in §1–§2 were measured at `3f7dc473` and have drifted (for example

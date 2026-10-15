@@ -30,12 +30,9 @@ The daemon is the hub every dashboard client talks to. Normal agent commands
 report through lifecycle hooks or native event channels and can be steered where
 the observed session exposes a real delivery path.
 
-The legacy `agentdeck claude|codex|opencode|monitor` per-session bridges remain
-functional compatibility paths with no removal date. Prefer daemon-first for
-ordinary local sessions, but keep managed-only workflows working while
-[Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278) and
-[#273](https://github.com/puritysb/AgentDeck/issues/273) define and validate
-replacements.
+The legacy `agentdeck claude|codex|opencode|monitor` per-session bridges are
+a long-term compatibility path with no removal planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)). Prefer daemon-first for ordinary local sessions. The managed path stays for
+immediate terminal steering and the workflows that have no daemon-first equivalent.
 
 Full CLI reference: https://github.com/puritysb/AgentDeck/blob/master/docs/cli.md
 

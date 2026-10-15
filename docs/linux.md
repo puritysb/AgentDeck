@@ -43,13 +43,11 @@ instead of Xcode CLT and skips the Stream Deck app/CLI steps.
 
 ## Linux differences (intentional)
 
-- **No Stream Deck host** — the Stream Deck desktop app is unavailable, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). Normal `claude`/`codex`/`opencode` observation, mDNS (pure-JS `bonjour-service`), and hook HTTP all work; the legacy `agentdeck <agent>` managed path remains functional for compatibility while replacements are validated. `npx @agentdeck/setup` checks for a C toolchain (`node-pty` still builds from source for the managed PTY path) instead of Xcode CLT and skips Stream Deck checks.
+- **No Stream Deck host** — the Stream Deck desktop app is unavailable, so the plugin host and its setup/CLI steps are skipped (device control is via the daemon + Apple/Android companions). Normal `claude`/`codex`/`opencode` observation, mDNS (pure-JS `bonjour-service`), and hook HTTP all work; the legacy `agentdeck <agent>` managed path remains as a long-term compatibility path. `npx @agentdeck/setup` checks for a C toolchain (`node-pty` still builds from source for the managed PTY path) instead of Xcode CLT and skips Stream Deck checks.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **systemd `--user` unit** `agentdeck-daemon.service` (`~/.config/systemd/user/`), the Linux analog of the macOS LaunchAgent. `install` writes + enables + starts it and installs Codex/OpenCode hooks; `uninstall` gracefully shuts down the daemon then `disable --now` + removes the unit. Without systemd it degrades to a "run `agentdeck daemon start` manually" hint. For boot-without-login on a headless host, run `loginctl enable-linger $USER` once. See [docs/daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **PTY** — `$SHELL -l -c` (fallback `/bin/bash`); `node-pty` is built from source (needs the toolchain above).
 
-The PTY path remains functional with no removal date. Replacement design and
-gates live in [Discussion #278](https://github.com/puritysb/AgentDeck/discussions/278)
-and [#273](https://github.com/puritysb/AgentDeck/issues/273). New ordinary Linux
-workflows should install the daemon and run agents normally.
+The PTY path is a long-term compatibility path with no removal planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)). New ordinary Linux workflows should install the daemon
+and run agents normally.
 - **Device modules** — `adb` and Pixoo (LAN) work as-is; USB-serial scans `/dev/ttyUSB*` / `/dev/ttyACM*` (add your user to the `dialout` group for access). BLE (Timebox/iDotMatrix) needs a `bleak` venv + BlueZ and is not wired up by default.
 - **Graceful no-ops** — voice/TTS, wifi/usage/Foundation-Models helpers, the APME hardware sampler, and the macOS `osascript` plugin actions are darwin-only and simply do nothing on Linux (no errors).

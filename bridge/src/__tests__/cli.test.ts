@@ -75,8 +75,10 @@ describe('managed PTY compatibility contract', () => {
       expect(notice).toContain('agentdeck daemon install');
       expect(notice).toContain(`run \`${command}\` directly`);
       expect(notice).toContain('AGENTDECK_<AGENT>_ARGS');
-      expect(notice).toContain('No removal date is set');
-      expect(notice).toContain('discussions/278');
+      expect(notice).toContain('agentdeck run');
+      expect(notice).toContain('agentdeck order');
+      expect(notice).toContain('agentdeck relay');
+      expect(notice).toContain('No removal is planned');
       expect(notice).toContain('issues/273');
       expect(notice).not.toContain('will be removed');
     },
@@ -469,7 +471,7 @@ describe('claude action wiring (parseAsync end-to-end)', () => {
     await program.parseAsync([...base, 'claude', '--no-env-args']);
 
     expect(startSessionMock).toHaveBeenCalledTimes(1);
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('LEGACY COMPATIBILITY MODE'));
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('COMPATIBILITY MODE'));
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining('agentdeck daemon install'));
   });
 
