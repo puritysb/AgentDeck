@@ -43,7 +43,7 @@ Core bridge architecture, adapter hierarchy, and module system. See [daemon.md](
 `bridge/src/adapters/pty-adapter.ts` — Transport base for legacy managed
 agent terminals. Subclasses implement `getDefaultCommand()`, terminal UI
 observation, and agent-specific input handling. PTY output is not a lifecycle
-authority. This hierarchy remains as a replacement-gated compatibility path;
+authority. This hierarchy remains as a long-term compatibility path (#273);
 new ordinary-session features target daemon-first observed sessions.
 
 - `ClaudeCodeAdapter` uses hooks for lifecycle/transcript response capture and a terminal UI observer only for real mode/diff/options/cursor affordances, plus Shift+Tab mode switching
@@ -196,7 +196,7 @@ Not every agent enters through an adapter. Three tiers exist, and which one an
 agent lands in is decided by what that agent will actually tell us — not by
 preference.
 
-1. **Managed PTY (legacy compatibility)** — `agentdeck <agent>`. AgentDeck owns the terminal; Discussion #278 captures workflows and removal gates are tracked in #273.
+1. **Managed PTY (legacy compatibility)** — `agentdeck <agent>`. AgentDeck owns the terminal; kept as a long-term compatibility path with no removal planned (#273).
 2. **Hook-observed** — the user runs `claude` / `codex` / `opencode` normally and
    AgentDeck-installed lifecycle hooks POST to the daemon. This is the default
    and covers the great majority of real traffic.

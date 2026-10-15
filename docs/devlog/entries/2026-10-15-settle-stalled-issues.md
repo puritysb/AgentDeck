@@ -11,10 +11,15 @@ own doc, not on new measurements.
   daemon-first (`run`, `order`, `relay`). No Windows console-input rung, since
   the managed path covers that workflow
   ([docs/managed-replacement-inventory.md](docs/managed-replacement-inventory.md)).
-- **#423, #425, #426, #428 (Hermes):** accepted as it stands, with three
-  recorded gaps: no messaging-platform `/new` capture, no physical
-  iPad/iPhone/matrix review, and the bundled 3D model accepted as shipped,
-  with the re-sculpt not planned ([docs/hermes-agent.md](docs/hermes-agent.md)).
+- **#423, #425, #426 (Hermes):** the support stays as shipped, and its gaps
+  are recorded per device rather than left blocking
+  ([docs/hermes-agent.md](docs/hermes-agent.md)). The gaps are: no
+  messaging-platform `/new` capture; iPhone installed without a visual review;
+  Pantone and C6 unavailable; and no physical matrix/touch, long-run or
+  photo/default-focus routing checks. Closing these issues records a decision.
+  It does not claim the gates were met.
+- **#428:** the bundled 3D model stays without the user's visual acceptance,
+  and the re-sculpt is closed as *not planned*, not as met.
 - **#463 (deck control):** the three implementation phases shipped in 1.8.0.
   Of the four leftover measurements, OpenCode `variant` delivery and Codex
   config reload no longer matter, because OpenCode is not offered as a switch
@@ -22,6 +27,7 @@ own doc, not on new measurements.
   from SessionStart only) is a known constraint. The Swift OpenClaw
   `sessions.patch` path stands on headless controller tests plus the Node
   live check.
-- **#272 (e-ink voice panel):** no added audio hardware, no Swift
-  pull-path parity for now, and representative-traffic acceptance dropped as
-  a gate ([docs/eink-face-research.md](docs/eink-face-research.md)).
+- **#272 (e-ink voice panel):** no added audio hardware and no Swift pull-path
+  parity for now ([docs/eink-face-research.md](docs/eink-face-research.md)).
+  Representative-traffic and optical verification of the shipped panels move
+  to #551 instead of being dropped.

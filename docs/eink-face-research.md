@@ -220,9 +220,11 @@ closes with these decisions:
 - **No Swift parity for the pull/glance-frame path for now.** `/feed` and
   `/glance-frame` stay Node-daemon-only. The push path this board uses already
   works with either daemon.
-- **Representative traffic and optical acceptance are no longer a gate.** The
-  completion telemetry stays installed, and a regression it shows can open a
-  narrow issue.
+- **Representative traffic and optical acceptance move to their own issue,
+  [#551](https://github.com/puritysb/AgentDeck/issues/551).** They verify panels that have already
+  shipped, so they are independent of the hardware decision above, and
+  completion telemetry cannot stand in for what the screen shows. #272 closes
+  without them; #551 keeps them open.
 
 The section below is kept as the reasoning behind these choices.
 
