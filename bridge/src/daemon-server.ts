@@ -3631,8 +3631,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           });
         }
         if (mapped === 'session_start') core.stateMachine.handleHookEvent('SessionStart', json);
-        else if (mapped === 'session_end') core.stateMachine.handleHookEvent('SessionEnd', json);
-        else if (mapped === 'user_prompt_submit') core.stateMachine.handleHookEvent('UserPromptSubmit', json);
+        else if (mapped === 'session_end') {
+          // One session ending is not the hub losing every session (#545).
+          const endedSid = earlyHookSid === 'daemon-hook' ? undefined : earlyHookSid;
+          if (!hubDriver.hasOtherLiveHookSession(endedSid)) core.stateMachine.handleHookEvent('SessionEnd', json);
+        } else if (mapped === 'user_prompt_submit') core.stateMachine.handleHookEvent('UserPromptSubmit', json);
         else if (mapped === 'stop') core.stateMachine.handleHookEvent('Stop', json);
         else if (mapped === 'tool_start') {
           core.stateMachine.handleHookEvent('PreToolUse', json);

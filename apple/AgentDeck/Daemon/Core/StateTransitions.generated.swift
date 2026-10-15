@@ -29,9 +29,10 @@ struct StateTransition: Sendable {
 ///
 /// NOTE for this daemon specifically: it multiplexes every observed session
 /// into one machine, so — exactly like the Node daemon hub's
-/// `toolActivityRecovery: false` — the driver (DaemonServer) must never EMIT
-/// "tool_activity". Those rows exist because the table is a faithful mirror,
-/// not because this daemon drives them.
+/// `toolActivityRecovery: false` — the driver (DaemonServer) emits
+/// "tool_activity" only for a tool START from IDLE or DISCONNECTED. "Some
+/// session used a tool" proves a turn is running, but nothing about the prompt
+/// on screen, so it must never dismiss an AWAITING_* state here.
 let stateTransitions: [StateTransition] = [
     .init(from: .disconnected, to: .idle, trigger: "session_start", source: .hook),
     .init(from: .idle, to: .processing, trigger: "user_prompt_submit", source: .hook),
@@ -84,6 +85,14 @@ let stateTransitions: [StateTransition] = [
     // underway. Tool activity proves some session is alive, so it reopens the hub
     // the same way it recovers a dropped user_prompt_submit from IDLE.
     .init(from: .disconnected, to: .processing, trigger: "tool_activity", source: .hook),
+    // A prompt is the other proof a session is alive, and the one a hook-only
+    // daemon sees first after a restart: it starts DISCONNECTED and a session
+    // already underway never fires session_start again (#545). The Swift daemon
+    // had no tool_activity recovery at all, so its hub stayed DISCONNECTED and
+    // logged "No transition for user_prompt_submit" for every later prompt. Only
+    // the user produces this hook, so unlike a late Stop it cannot be a straggler
+    // reopening a session that already ended.
+    .init(from: .disconnected, to: .processing, trigger: "user_prompt_submit", source: .hook),
     // stuck_timeout: only PROCESSING recovers after STUCK_TIMEOUT_MS (Claude hung).
     // AWAITING_* intentionally have NO wall-clock backstop — an unanswered prompt
     // is a genuine, indefinitely-valid wait (the user may be away); it only leaves

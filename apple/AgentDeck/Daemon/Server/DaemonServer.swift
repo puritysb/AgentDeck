@@ -6175,7 +6175,9 @@ final class DaemonServer {
             // chat_end. Tool-only turns fall through to empty chat_end.
             appendClaudeCodeChatEnd(json: json, sessionId: sessionId)
         case "session_end":
-            _ = stateMachine.transition(trigger: "session_end", source: .hook)
+            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: pushedSessionsById.keys) {
+                _ = stateMachine.transition(trigger: "session_end", source: .hook)
+            }
             if let sessionId {
                 let expiredEntry = pushedSessionsById[sessionId]
                 let isCodex = expiredEntry.map { Self.isCodexSession(sessionId: sessionId, entry: $0) } ?? false
@@ -6212,6 +6214,13 @@ final class DaemonServer {
         case "tool_start":
             stateMachine.currentTool = json["tool_name"] as? String
             stateMachine.toolInput = json["tool_input"] as? String
+            // A tool START proves a turn is running (the table's `tool_activity`
+            // rows; Node `recoverProcessingFromToolActivity('start')`): it
+            // reopens a hub another session's end dropped, and recovers a
+            // dropped prompt. Awaiting states keep their own exits.
+            if stateMachine.state == .idle || stateMachine.state == .disconnected {
+                _ = stateMachine.transition(trigger: "tool_activity", source: .hook)
+            }
             if let sessionId,
                let ask = Self.askUserQuestionGroups(from: json),
                pushedSessionsById[sessionId] != nil {
@@ -6410,7 +6419,9 @@ final class DaemonServer {
         case "opencode_session_end":
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
-            _ = stateMachine.transition(trigger: "session_end", source: .hook)
+            if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: pushedSessionsById.keys) {
+                _ = stateMachine.transition(trigger: "session_end", source: .hook)
+            }
             if let sessionId {
                 if openCodeTurnAnchors.hasOpenTurn(sid: sessionId) {
                     appendOpenCodeChatEnd(json: json, sessionId: sessionId, interrupted: true)
@@ -7436,6 +7447,78 @@ final class DaemonServer {
     /// dispatch in `handleHookEvent` (event prefix == "codex_"). The
     /// underlying predicate is pure (no actor state), so the helper is
     /// `nonisolated` and callable from the test runner's default context.
+    /// Does this `session_end` take the daemon's ONE shared state machine to
+    /// DISCONNECTED? Only when the session that ended was the last one.
+    ///
+    /// The table's `session_end` row is a wildcard drop written for a bridge
+    /// that owns exactly one session; this daemon multiplexes every observed
+    /// session into one machine. A short background `claude` (a menu-bar usage
+    /// probe running `claude /usage` every few minutes, a `claude -p` script)
+    /// ending used to take the hub to DISCONNECTED under every session still
+    /// working (#545). A crashed session sends no SessionEnd, but its row is
+    /// reaped by `evictStaleHookSessions`, so it cannot hold the hub open
+    /// forever. Node mirror: `HubStateDriverTracker.hasOtherLiveHookSession`.
+    nonisolated static func hubDisconnectsOnSessionEnd<S: Sequence>(
+        endedSessionId: String?,
+        liveSessionIds: S
+    ) -> Bool where S.Element == String {
+        !liveSessionIds.contains { $0 != endedSessionId }
+    }
+
+    /// The roster a `refreshSessions` pass may publish, and the pushed rows it
+    /// may prune — reconciled against what hooks did WHILE the pass was
+    /// suspended.
+    ///
+    /// The pass snapshots `pushedSessionsById`, then awaits the registry and
+    /// the `/health` probes, and hooks keep landing on this actor meanwhile.
+    /// It used to write the snapshot back and prune by the CURRENT keys, so a
+    /// row a hook created during the wait — a running session resurrected by
+    /// its first prompt after an app restart — was pruned as "stale" the
+    /// moment it appeared and the deck showed NO SESSION (#545); a row that
+    /// ended meanwhile came back for one pass; and a state a hook had just set
+    /// was reverted on the wire to the snapshot's.
+    ///
+    /// - registry rows: the refreshed entry, always;
+    /// - pushed rows this pass probed (another port): the probe's answer,
+    ///   kept while it carries a state — unless the row ended meanwhile;
+    /// - pushed rows it did not probe (hook rows on this daemon's own port):
+    ///   the live entry, which is strictly newer than the snapshot;
+    /// - anything else the pass observed (Kiro): kept while it has a state.
+    /// Only a row the pass saw can be pruned.
+    nonisolated static func reconcileRefreshedSessions(
+        refreshed: [DaemonSessionEntry],
+        registryIds: Set<String>,
+        snapshotPushedIds: Set<String>,
+        probedIds: Set<String>,
+        livePushed: [String: DaemonSessionEntry]
+    ) -> (sessions: [DaemonSessionEntry], prune: [String]) {
+        var sessions: [DaemonSessionEntry] = []
+        var seen = Set<String>()
+        var prune: [String] = []
+        for entry in refreshed where seen.insert(entry.id).inserted {
+            if registryIds.contains(entry.id) {
+                sessions.append(entry)
+            } else if snapshotPushedIds.contains(entry.id) || livePushed[entry.id] != nil {
+                guard let live = livePushed[entry.id] else { continue }  // ended meanwhile
+                if probedIds.contains(entry.id) {
+                    if entry.state != nil { sessions.append(entry) } else { prune.append(entry.id) }
+                } else if live.state != nil {
+                    sessions.append(live)
+                } else {
+                    prune.append(entry.id)
+                }
+            } else if entry.state != nil {
+                sessions.append(entry)
+            }
+        }
+        // Created while the pass was suspended: newer than anything it saw.
+        for (id, live) in livePushed
+        where !seen.contains(id) && !registryIds.contains(id) && live.state != nil {
+            sessions.append(live)
+        }
+        return (sessions, prune)
+    }
+
     nonisolated static func shouldSynthesizeUnknownHookSessionForTest(event: String) -> Bool {
         shouldSynthesizeUnknownHookSession(event: event, isCodexEvent: event.hasPrefix("codex_"))
     }
@@ -9460,6 +9543,9 @@ final class DaemonServer {
         for (_, pushed) in pushedSessionsById where !knownIds.contains(pushed.id) {
             merged.append(pushed)
         }
+        // What this pass saw. Everything below the next `await` is decided
+        // against these, while hooks keep changing `pushedSessionsById`.
+        let snapshotPushedIds = Set(pushedSessionsById.keys).subtracting(knownIds)
 
         // Desktop Codex used to have a process observer here
         // (LocalCodexAppObserver). It guarded on "Codex.app/Contents/Resources"
@@ -9529,23 +9615,24 @@ final class DaemonServer {
         // Prune pushed sessions whose /health probe failed repeatedly — the
         // bridge is gone. `enrichSessionsWithState` leaves `state = nil` when
         // the probe errors; we catch those and drop the local push entry.
-        let livePushedIds = Set(pinnedEnriched.filter { $0.state != nil }.map { $0.id })
-        let stalePushed = pushedSessionsById.keys.filter { id in
-            registryEntries.contains(where: { $0.id == id }) == false
-                && livePushedIds.contains(id) == false
-        }
-        for id in stalePushed {
+        //
+        // Decided against the CURRENT rows, not the snapshot: hooks ran while
+        // this pass was suspended in the awaits above (#545).
+        let selfPort = Int(self.port)
+        let reconciled = Self.reconcileRefreshedSessions(
+            refreshed: pinnedEnriched,
+            registryIds: knownIds,
+            snapshotPushedIds: snapshotPushedIds,
+            probedIds: Set(merged.filter { $0.port > 0 && $0.port != selfPort }.map(\.id)),
+            livePushed: pushedSessionsById.mapValues { sessionOrderStore.apply(to: $0) }
+        )
+        for id in reconciled.prune {
             DaemonLogger.shared.debug("Daemon", "Pruning stale pushed session \(id)")
             pushedSessionsById.removeValue(forKey: id)
             codexProcessingTouchedAtBySession.removeValue(forKey: id)
         }
 
-        cachedSessions = DashboardDataRules.sortSessions(pinnedEnriched.filter { entry in
-            // Keep filesystem entries unconditionally; drop pushed entries
-            // whose probe failed (already pruned above, double-gate for safety).
-            if registryEntries.contains(where: { $0.id == entry.id }) { return true }
-            return livePushedIds.contains(entry.id)
-        })
+        cachedSessions = DashboardDataRules.sortSessions(reconciled.sessions)
         broadcastSessionsList()
     }
 

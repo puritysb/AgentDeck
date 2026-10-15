@@ -100,6 +100,21 @@ describe('transition table invariants', () => {
     }
   });
 
+  it('lets a live session reopen the hub after another session ended it', () => {
+    // `session_end` is a wildcard drop to DISCONNECTED on a machine shared by
+    // every observed session, and `session_start` never fires again for a
+    // session already underway (nor after a daemon restart). A prompt and a
+    // tool start are what such a session produces next; without both exits the
+    // hub ignores it until the agent itself restarts (#545).
+    for (const trigger of ['user_prompt_submit', 'tool_activity']) {
+      expect(
+        transitions.some((t) => t.from === State.DISCONNECTED && t.to === State.PROCESSING
+          && t.trigger === trigger && t.source === 'hook'),
+        `DISCONNECTED has no hook exit on ${trigger}`,
+      ).toBe(true);
+    }
+  });
+
   it('every row targets a real state and a known source', () => {
     const states = new Set<string>(Object.values(State));
     const sources = new Set(['hook', 'pty', 'user', 'internal']);

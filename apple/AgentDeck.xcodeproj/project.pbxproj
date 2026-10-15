@@ -218,6 +218,7 @@
 		47D7A8AAFBDADBA4FC75EB34 /* ApmeJudgeOpenAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A4C8A53C312709350735F5 /* ApmeJudgeOpenAI.swift */; };
 		47DF5B56CB54AC70C7FAD723 /* AquariumPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A8B97F270C72DDB67D85B5 /* AquariumPreview.swift */; };
 		48B83035D9FC3732361014F8 /* ObservedSteering.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB4AC33AE24184BF90D4CAFE /* ObservedSteering.swift */; };
+		49418AF758F15920A767E052 /* HubSessionIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */; };
 		4A0D8F7C56E1BEB0167E62CB /* ApmeRecommender.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */; };
 		4A0F5CE85656DE655D5597F1 /* MlxInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6E58B1BF67A986A9E6C50D3 /* MlxInference.swift */; };
 		4A948102669D8D93A2D2EEE0 /* MenuBarDensityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797940FBA5A10EC295F401FE /* MenuBarDensityPolicy.swift */; };
@@ -459,6 +460,7 @@
 		9C336A6CBF7BCEA5183CA40F /* HermesSwim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC7DB1B1460CCEF53951DD /* HermesSwim.swift */; };
 		9C8BB830B922EBBD3A815FC5 /* SessionBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6E252A5DCAC5E298C21473 /* SessionBrand.swift */; };
 		9D70A91FFE3582A3BCFDA72B /* DotInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2C2FC450290089CE89830A /* DotInteractionView.swift */; };
+		9DD3CE6B504077BF2996607B /* HubSessionIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */; };
 		9DD7DC6186B148652373154F /* AppMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 006CBD6A3ADAE5DCD1EBBDB3 /* AppMetadata.swift */; };
 		9E30D4D0BEE3CB402E8741D8 /* Timeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28DFE82D8F7AC7C7566940F3 /* Timeline.swift */; };
 		9EC638F130D8419C32A2C027 /* PairingCodeController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E856ECEDFDE623AA841E4F3 /* PairingCodeController.swift */; };
@@ -959,6 +961,7 @@
 		797940FBA5A10EC295F401FE /* MenuBarDensityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarDensityPolicy.swift; sourceTree = "<group>"; };
 		7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketServer.swift; sourceTree = "<group>"; };
 		7BCC68BE56702DFD637FFE02 /* GatewayProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayProbe.swift; sourceTree = "<group>"; };
+		7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubSessionIsolationTests.swift; sourceTree = "<group>"; };
 		7D05CE505E1EC5729C69752E /* TopologyRailHelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopologyRailHelpersTests.swift; sourceTree = "<group>"; };
 		7E7E35423FAC15B8DB49BBB2 /* GatewayFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GatewayFrame.swift; path = ../../generated/protocol/GatewayFrame.swift; sourceTree = "<group>"; };
 		7FF390BEA92326B1152B55A9 /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
@@ -1257,6 +1260,7 @@
 				D805A12FAC706136018710BC /* HttpAccessPolicyTests.swift */,
 				3C6D9385857E3BEB95A91496 /* HTTPServerMainThreadStallTests.swift */,
 				3DFA860CDF8678DDE9A40D9D /* HTTPServerParseTests.swift */,
+				7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */,
 				640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */,
 				E51DE77A285EB334A6F2005B /* ListenerLeakTests.swift */,
 				8B49DE4157BFB50F9F51EF40 /* LocalKiroObserverTests.swift */,
@@ -2091,6 +2095,7 @@
 				9F8B04A5AA6EF0818E975246 /* HermesObserverGateTests.swift in Sources */,
 				C13B92B69ACA5F6CA1D8EE1E /* HookIdleTTLTests.swift in Sources */,
 				A78A1918B0FC99BAA4B1F6E9 /* HttpAccessPolicyTests.swift in Sources */,
+				49418AF758F15920A767E052 /* HubSessionIsolationTests.swift in Sources */,
 				89C78B3EB58A06C87CC5CDE0 /* IDotMatrixProtocolTests.swift in Sources */,
 				ADC9DDBC633074D25AC9E37C /* ListenerLeakTests.swift in Sources */,
 				0D57DF3988B2D40AC1EE2436 /* LocalKiroObserverTests.swift in Sources */,
@@ -2187,6 +2192,7 @@
 				A4B08716944AD6C71A09D7FE /* HermesObserverGateTests.swift in Sources */,
 				D5B04048B117D3FA74BE4769 /* HookIdleTTLTests.swift in Sources */,
 				CD8B866925EF6BC839EC467D /* HttpAccessPolicyTests.swift in Sources */,
+				9DD3CE6B504077BF2996607B /* HubSessionIsolationTests.swift in Sources */,
 				FDE24F470C55939E9503C810 /* IDotMatrixProtocolTests.swift in Sources */,
 				3F1819386BBAC531840FFCDF /* ListenerLeakTests.swift in Sources */,
 				CDABC5CCE965EF7FA30DE280 /* LocalKiroObserverTests.swift in Sources */,

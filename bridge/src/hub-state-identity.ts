@@ -42,11 +42,21 @@ export interface HubFrameIdentity {
   gatewayOwned: boolean;
 }
 
+/** How long a hook session that went quiet still counts as live for the
+ *  hub's `session_end` decision. Claude fires no hook while its user thinks
+ *  between turns, and a crashed session fires no SessionEnd at all; this is the
+ *  Swift daemon's `claudeInteractiveIdleTTL`, the window after which it reaps
+ *  such a row. */
+export const HUB_HOOK_SESSION_LIVE_MS = 30 * 60 * 1000;
+
 /** Remembers the most recent driver of the hub's global state machine. */
 export class HubStateDriverTracker {
   private driver: HubStateDriver | null = null;
+  /** Hook sessions that drove the machine and have not ended, by last hook. */
+  private readonly liveHookSessions = new Map<string, number>();
 
-  noteHook(input: { sessionId?: string; agentType: AgentType; projectName?: string }): void {
+  noteHook(input: { sessionId?: string; agentType: AgentType; projectName?: string }, now = Date.now()): void {
+    if (input.sessionId) this.liveHookSessions.set(input.sessionId, now);
     this.driver = {
       kind: 'hook',
       sessionId: input.sessionId || undefined,
@@ -63,7 +73,31 @@ export class HubStateDriverTracker {
    *  it on the frame. `undefined` names the anonymous driver — a hook that
    *  carried no session id. */
   noteSessionEnd(sessionId: string | undefined): void {
+    if (sessionId) this.liveHookSessions.delete(sessionId);
     if (this.driver?.kind === 'hook' && this.driver.sessionId === sessionId) this.driver = null;
+  }
+
+  /** Does a hook session other than `endedSessionId` still drive this hub?
+   *
+   *  The machine is one per daemon, but `session_end` in the transition table
+   *  is a wildcard drop to DISCONNECTED written for a bridge that owns exactly
+   *  one session. On the hub, a short background `claude -p` (a menu-bar usage
+   *  probe, a script) ending took every running session's aggregate state with
+   *  it (#545). So the hub disconnects only when the session that ended was
+   *  the last one. A session silent past `HUB_HOOK_SESSION_LIVE_MS` no longer
+   *  counts — that is how a crashed session, which never sends SessionEnd,
+   *  stops holding the hub open. Swift mirror:
+   *  `DaemonServer.hubDisconnectsOnSessionEnd`. */
+  hasOtherLiveHookSession(endedSessionId: string | undefined, now = Date.now()): boolean {
+    let other = false;
+    for (const [sid, lastAt] of this.liveHookSessions) {
+      if (now - lastAt > HUB_HOOK_SESSION_LIVE_MS) {
+        this.liveHookSessions.delete(sid);
+        continue;
+      }
+      if (sid !== endedSessionId) other = true;
+    }
+    return other;
   }
 
   noteGatewayGone(): void {

@@ -195,10 +195,20 @@ describe('StateMachine', () => {
       expect(sm.getState()).toBe(State.AWAITING_PERMISSION);
     });
 
-    it('blocks invalid transition: DISCONNECTED → PROCESSING', () => {
+    it('blocks invalid transition: DISCONNECTED → IDLE on a straggler Stop', () => {
+      // A Stop landing after SessionEnd must not reopen a finished session.
+      const sm = createSM();
+      sm.handleHookEvent('Stop', {});
+      expect(sm.getState()).toBe(State.DISCONNECTED);
+    });
+
+    it('recovers DISCONNECTED → PROCESSING on a prompt from a session already underway (#545)', () => {
+      // After a daemon restart, or after another session's SessionEnd, the next
+      // hook a running session sends is its prompt — session_start never fires
+      // again for it.
       const sm = createSM();
       sm.handleHookEvent('UserPromptSubmit', {});
-      expect(sm.getState()).toBe(State.DISCONNECTED);
+      expect(sm.getState()).toBe(State.PROCESSING);
     });
 
     it('allows wildcard session_end from any state', () => {

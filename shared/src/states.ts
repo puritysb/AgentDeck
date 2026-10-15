@@ -93,6 +93,16 @@ export const transitions: StateTransition[] = [
       + 'the same way it recovers a dropped user_prompt_submit from IDLE.',
   },
   {
+    from: State.DISCONNECTED, to: State.PROCESSING, trigger: 'user_prompt_submit', source: 'hook',
+    note: 'A prompt is the other proof a session is alive, and the one a hook-only\n'
+      + 'daemon sees first after a restart: it starts DISCONNECTED and a session\n'
+      + 'already underway never fires session_start again (#545). The Swift daemon\n'
+      + 'had no tool_activity recovery at all, so its hub stayed DISCONNECTED and\n'
+      + 'logged "No transition for user_prompt_submit" for every later prompt. Only\n'
+      + 'the user produces this hook, so unlike a late Stop it cannot be a straggler\n'
+      + 'reopening a session that already ended.',
+  },
+  {
     from: State.PROCESSING, to: State.IDLE, trigger: 'stuck_timeout', source: 'internal',
     note: 'stuck_timeout: only PROCESSING recovers after STUCK_TIMEOUT_MS (Claude hung).\n'
       + 'AWAITING_* intentionally have NO wall-clock backstop — an unanswered prompt\n'

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentCapabilities } from '@agentdeck/shared';
 import {
+  HUB_HOOK_SESSION_LIVE_MS,
   HubStateDriverTracker,
   OPENCLAW_GATEWAY_SESSION_ID,
   resolveHubFrameIdentity,
@@ -83,6 +84,35 @@ describe('HubStateDriverTracker', () => {
     expect(t.current()?.kind).toBe('hook');
     t.noteSessionEnd('b');
     expect(t.current()).toBeNull();
+  });
+
+  it('a short session ending does not disconnect the hub while another session lives (#545)', () => {
+    // The reported shape: a working session, then a menu-bar usage probe that
+    // starts and ends a `claude` session every few minutes.
+    const t = new HubStateDriverTracker();
+    const t0 = 1_000_000;
+    t.noteHook({ sessionId: 'working', agentType: 'claude-code' }, t0);
+    t.noteHook({ sessionId: 'probe', agentType: 'claude-code' }, t0 + 1_000);
+    // session_end itself also drives the machine, so the ended id is noted first.
+    t.noteHook({ sessionId: 'probe', agentType: 'claude-code' }, t0 + 5_000);
+    expect(t.hasOtherLiveHookSession('probe', t0 + 5_000)).toBe(true);
+    t.noteSessionEnd('probe');
+    // The last session ending does disconnect it.
+    expect(t.hasOtherLiveHookSession('working', t0 + 6_000)).toBe(false);
+    t.noteSessionEnd('working');
+    expect(t.hasOtherLiveHookSession(undefined, t0 + 7_000)).toBe(false);
+  });
+
+  it('a session silent past the live window no longer holds the hub open', () => {
+    // A crashed session never sends SessionEnd; it must not pin the hub forever.
+    const t = new HubStateDriverTracker();
+    t.noteHook({ sessionId: 'crashed', agentType: 'claude-code' }, 0);
+    t.noteHook({ sessionId: 'probe', agentType: 'claude-code' }, HUB_HOOK_SESSION_LIVE_MS);
+    expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS)).toBe(true);
+    expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
+    // An anonymous hook (no session id) is never counted as a live session.
+    t.noteHook({ agentType: 'claude-code' }, HUB_HOOK_SESSION_LIVE_MS);
+    expect(t.hasOtherLiveHookSession('probe', HUB_HOOK_SESSION_LIVE_MS + 1)).toBe(false);
   });
 
   it('gateway activity replaces a hook driver and is cleared when the Gateway goes away', () => {

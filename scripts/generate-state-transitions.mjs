@@ -87,9 +87,10 @@ struct StateTransition: Sendable {
 ///
 /// NOTE for this daemon specifically: it multiplexes every observed session
 /// into one machine, so — exactly like the Node daemon hub's
-/// \`toolActivityRecovery: false\` — the driver (DaemonServer) must never EMIT
-/// "tool_activity". Those rows exist because the table is a faithful mirror,
-/// not because this daemon drives them.
+/// \`toolActivityRecovery: false\` — the driver (DaemonServer) emits
+/// "tool_activity" only for a tool START from IDLE or DISCONNECTED. "Some
+/// session used a tool" proves a turn is running, but nothing about the prompt
+/// on screen, so it must never dismiss an AWAITING_* state here.
 let stateTransitions: [StateTransition] = [
 ${rows}
 ]
