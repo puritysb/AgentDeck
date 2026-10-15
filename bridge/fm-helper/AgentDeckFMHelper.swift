@@ -199,7 +199,9 @@ struct AgentDeckFMHelper {
             write([
                 "id": request.id,
                 "error": "unauthorized",
-                "reason": "speech recognition not authorized (\(status.rawValue)) — grant it in System Settings › Privacy & Security › Speech Recognition",
+                "reason": status == .restricted
+                    ? "speech recognition is restricted on this Mac (a configuration profile or Screen Time) — it cannot be granted from System Settings"
+                    : "speech recognition denied for \(ResponsibilityDisclaim.settingsEntry) — enable it in System Settings › Privacy & Security › Speech Recognition, then press again",
             ])
             return
         }
@@ -368,7 +370,7 @@ struct AgentDeckFMHelper {
 
     /// Name the entry the user has to change. Which entry that is depends on
     /// whom TCC holds responsible: after the disclaim it is this helper
-    /// ("AgentDeck Voice Helper"); if the disclaim was unavailable it is
+    /// (`agentdeck-fm-helper`); if the disclaim was unavailable it is
     /// whatever launched the daemon — `node` under the LaunchAgent, the
     /// terminal app in a foreground run — and a reason that only says "not
     /// granted" sends the user looking for an AgentDeck row that does not exist.
@@ -376,10 +378,7 @@ struct AgentDeckFMHelper {
         if status == .restricted {
             return "microphone access is restricted on this Mac (a configuration profile or Screen Time) — it cannot be granted from System Settings"
         }
-        let entry = ResponsibilityDisclaim.active
-            ? "\"AgentDeck Voice Helper\" (agentdeck-fm-helper)"
-            : "the app or binary that launched the AgentDeck daemon (node under the LaunchAgent, your terminal app in a foreground run)"
-        return "microphone access denied for \(entry) — enable it in System Settings › Privacy & Security › Microphone, then press again"
+        return "microphone access denied for \(ResponsibilityDisclaim.settingsEntry) — enable it in System Settings › Privacy & Security › Microphone, then press again"
     }
 
     // MARK: - Text to speech
@@ -803,6 +802,15 @@ enum ResponsibilityDisclaim {
 
     /// True when this image was started by the disclaiming re-exec.
     static var active: Bool { getenv(marker) != nil }
+
+    /// The Privacy & Security entry a refusal must send the user to. TCC
+    /// records the disclaimed helper by its path (`identifier_type=Path` in
+    /// its log), so the list shows the binary's file name.
+    static var settingsEntry: String {
+        active
+            ? "agentdeck-fm-helper (~/.agentdeck/fm-helper/agentdeck-fm-helper)"
+            : "the app or binary that launched the AgentDeck daemon (node under the LaunchAgent, your terminal app in a foreground run)"
+    }
 
     private typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
 

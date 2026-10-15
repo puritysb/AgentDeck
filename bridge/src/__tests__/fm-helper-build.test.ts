@@ -149,7 +149,12 @@ describe('fm-helper build invariants', () => {
       // and kills that pid) and must not loop: the helper still answers on the
       // pipes it was spawned with, and its environment carries the marker.
       const probe = spawnSync('/bin/sh', ['-c',
-        `(printf '{"id":7,"type":"health"}\\n'; sleep 2) | "${out}" & pid=$!; sleep 1; ps -E -p $pid -o command=; wait $pid`,
+        // Polls rather than sleeping once: a freshly signed binary's first
+        // launch includes a security scan, and on a loaded runner both images
+        // may not have started within a fixed second.
+        `(printf '{"id":7,"type":"health"}\\n'; sleep 5) | "${out}" & pid=$!; `
+          + `for i in $(seq 1 40); do env=$(ps -E -p $pid -o command=); case "$env" in *AGENTDECK_FM_HELPER_DISCLAIMED=1*) break;; esac; sleep 0.1; done; `
+          + `echo "$env"; wait $pid`,
       ], { encoding: 'utf8', timeout: 20_000 });
       expect(probe.stdout).toContain('"id":7');
       expect(probe.stdout).toContain('AGENTDECK_FM_HELPER_DISCLAIMED=1');

@@ -24,7 +24,8 @@ worked when the same daemon ran in a terminal. The docs claimed the helper
 so the daemon's tracking and kill are untouched. A spawned child would have
 outlived the daemon's SIGTERM while holding its pipes. Verified end to end:
 launchd → node → rebuilt helper logged the helper as requester and prompted as
-`bound.serendipity.agentdeck.fm-helper`. The microphone refusal now distinguishes
+`bound.serendipity.agentdeck.fm-helper` (TCC identifier; the Settings list shows the
+file name `agentdeck-fm-helper`). The microphone and speech refusals now distinguish
 `restricted` and names the entry to enable. When the disclaim is unavailable, it
 names the launcher instead.
 
