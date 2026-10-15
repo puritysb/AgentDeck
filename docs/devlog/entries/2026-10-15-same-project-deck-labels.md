@@ -21,3 +21,10 @@ but neither daemon puts any of them on the session row today (the Swift row has
 no `cwd` either), so they need producer work first. No new wire field was added:
 the Ulanzi VOICE tile sends to the session whose detail view is open, and that
 view's INFO tile now carries the tag.
+
+**Pre-merge review fixes (same PR).**
+- **Tag choice for time-ordered ids.** Time-ordered ids (OpenCode `ses_…`, UUIDv7) share a long prefix. Their shortest unique prefix could outgrow the 10-character INFO tile and truncate into identical text again. Past six characters, the shorter unique tail is now used, written `…4e5f`.
+- **Type-word stripping.** A Hermes `hermes-` type word is stripped. A uuid that starts with hex letters (`deadbeef-`) is not.
+- **Truncation.** The label text counts code points, so an emoji or non-BMP project name is never split.
+- **Mirror gate.** The Swift preview port is now behind a `SYNC-HASH shared/src/session-labels.ts` pin, with a row in the SSOT catalogue.
+- **Wording.** The "never changes" wording is corrected: a tag can lengthen when a similar sibling appears.

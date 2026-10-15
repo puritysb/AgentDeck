@@ -978,12 +978,19 @@ final class ProtocolTests: XCTestCase {
             D200HSession(id: "aaaa0000-3333", agentType: "claude-code", state: "idle", projectName: "solo"),
             D200HSession(id: "opencode:ses_0a1b2c3d4e5f", agentType: "opencode", state: "idle", projectName: "proj"),
             D200HSession(id: "opencode:ses_0a1b2c3d9999", agentType: "opencode", state: "idle", projectName: "proj"),
+            D200HSession(id: "observed:hermes:hermes-3c1d0000aaaa", agentType: "hermes", state: "idle", projectName: "h"),
+            D200HSession(id: "observed:hermes:hermes-b7e20000bbbb", agentType: "hermes", state: "idle", projectName: "h"),
+            D200HSession(id: "deadbeef-1111", agentType: "claude-code", state: "idle", projectName: "hex"),
+            D200HSession(id: "cafebabe-2222", agentType: "claude-code", state: "idle", projectName: "hex"),
         ]
         let labels = D200HLayoutModel.sessionDeckLabels(rows)
         XCTAssertEqual(labels["observed:claude:5f8f5c2a-1111"]?.tag, "5f8f")
         XCTAssertEqual(labels["b80ccccf-2222"]?.tag, "b80c")
         XCTAssertNil(labels["aaaa0000-3333"]?.tag)
-        XCTAssertEqual(labels["opencode:ses_0a1b2c3d4e5f"]?.tag, "0a1b2c3d4")
+        // Time-ordered ids: the unique tail, not a 9-char prefix.
+        XCTAssertEqual(labels["opencode:ses_0a1b2c3d4e5f"]?.tag, "\u{2026}4e5f")
+        XCTAssertEqual(labels["observed:hermes:hermes-3c1d0000aaaa"]?.tag, "3c1d")
+        XCTAssertEqual(labels["deadbeef-1111"]?.tag, "dead")
         XCTAssertEqual(
             D200HLayoutModel.deckLabel(labels["b80ccccf-2222"], projectName: "chezmoi", max: 10),
             "che\u{2026} #b80c"

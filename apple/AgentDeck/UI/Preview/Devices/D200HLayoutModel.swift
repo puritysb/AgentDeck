@@ -34,10 +34,12 @@
 // deleted from the TS engine; this mirror never ported it.
 // Re-ported 2026-10-15 (#544): same-project session labels (`sessionDeckLabels`
 // / `sessionLabelText`, shared/src/session-labels.ts) on list keys and the
-// detail INFO tile.
+// detail INFO tile — pinned below so a change to that rule fails the gate.
+// Known difference: Swift counts grapheme clusters where TS counts code points.
 // SYNC-HASH shared/src/d200h-layout.ts 5bfbaec4de8d2865bd98187fd87623138d5cf05b
 // SYNC-HASH shared/src/session-utils.ts 83ad7aaf29fa227e7841b772d33894ee2257f8c6
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
+// SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -1102,16 +1104,41 @@ public enum D200HLayoutModel {
     static func sessionIdBody(_ id: String) -> String {
         let bare = ObservedAgentRules.rawSessionId(id)
         var body = bare.split(separator: ":", omittingEmptySubsequences: false).last.map(String.init) ?? bare
-        // OpenCode-style `ses_<…>`: the lowercase word before `_` is a type marker.
-        if let underscore = body.firstIndex(of: "_"), underscore != body.startIndex,
-           body[..<underscore].allSatisfy({ $0 >= "a" && $0 <= "z" }) {
-            body = String(body[body.index(after: underscore)...])
+        // A leading type word (`ses_`, `hermes-`): lowercase letters with at
+        // least one non-hex letter, so `deadbeef-…` stays a uuid.
+        let word = body.prefix { $0 >= "a" && $0 <= "z" }
+        if !word.isEmpty, word.contains(where: { $0 >= "g" }),
+           let sep = body.dropFirst(word.count).first, sep == "-" || sep == "_" {
+            body = String(body.dropFirst(word.count + 1))
         }
         return String(body.filter { $0.isASCII && ($0.isLetter || $0.isNumber) }).lowercased()
     }
 
-    /// Rows sharing projectName AND agentType get the shortest unique id
-    /// prefix (≥ 4 chars, ≤ 12); every other row is left untagged.
+    /// Shortest length in [4, 12] at which `cut(body)` no sibling shares.
+    private static func uniqueTagLength(_ bodies: [String], _ i: Int, _ cut: (String, Int) -> String) -> Int? {
+        let body = bodies[i]
+        let cap = min(12, body.count)
+        var len = min(4, body.count)
+        while len <= cap {
+            let mine = cut(body, len)
+            if !bodies.enumerated().contains(where: { j, other in j != i && cut(other, len) == mine }) { return len }
+            len += 1
+        }
+        return nil
+    }
+
+    /// Port of `tagFor`: prefix while ≤ 6 chars, else the shorter unique tail.
+    static func sessionTag(_ bodies: [String], _ i: Int) -> String {
+        let body = bodies[i]
+        let prefix = uniqueTagLength(bodies, i) { String($0.prefix($1)) }
+        if let p = prefix, p <= 6 { return String(body.prefix(p)) }
+        let suffix = uniqueTagLength(bodies, i) { String($0.suffix($1)) }
+        if let q = suffix, prefix == nil || q < prefix! { return "\u{2026}" + String(body.suffix(q)) }
+        return String(body.prefix(prefix ?? min(12, body.count)))
+    }
+
+    /// Rows sharing projectName AND agentType get a short unique id tag
+    /// (`sessionTag`); every other row is left untagged.
     static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
         var order: [String] = []
         var groups: [String: [D200HSession]] = [:]
@@ -1133,15 +1160,7 @@ public enum D200HLayoutModel {
                 return b.isEmpty ? m.id.lowercased() : b
             }
             for (i, s) in members.enumerated() {
-                let body = bodies[i]
-                let cap = min(12, body.count)
-                var len = min(4, body.count)
-                while len < cap, bodies.enumerated().contains(where: { j, other in
-                    j != i && other.hasPrefix(String(body.prefix(len)))
-                }) {
-                    len += 1
-                }
-                labels[s.id] = SessionDeckLabel(name: s.projectName, tag: String(body.prefix(len)))
+                labels[s.id] = SessionDeckLabel(name: s.projectName, tag: sessionTag(bodies, i))
             }
         }
         return labels

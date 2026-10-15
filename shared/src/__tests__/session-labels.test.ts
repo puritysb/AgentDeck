@@ -36,13 +36,37 @@ describe('sessionDeckLabels (#544)', () => {
     expect(labels.get('codex:0199aaaa')?.tag).toBeUndefined();
   });
 
-  it('grows the tag past a shared prefix (time-ordered ids)', () => {
+  it('uses the unique tail when time-ordered ids share a long prefix', () => {
+    // A 9-char prefix truncates on a 10-char INFO tile into identical text
+    // again (#548 review); the random tail tells them apart in 4.
     const labels = sessionDeckLabels([
       row('opencode:ses_0a1b2c3d4e5f', 'proj', 'opencode'),
       row('opencode:ses_0a1b2c3d9999', 'proj', 'opencode'),
     ]);
-    expect(labels.get('opencode:ses_0a1b2c3d4e5f')?.tag).toBe('0a1b2c3d4');
-    expect(labels.get('opencode:ses_0a1b2c3d9999')?.tag).toBe('0a1b2c3d9');
+    expect(labels.get('opencode:ses_0a1b2c3d4e5f')?.tag).toBe('…4e5f');
+    expect(labels.get('opencode:ses_0a1b2c3d9999')?.tag).toBe('…9999');
+    expect(sessionLabelText(labels.get('opencode:ses_0a1b2c3d4e5f'), 10)).toBe('pr… #…4e5f');
+  });
+
+  it('a short shared prefix still grows as a prefix — it reads like /status', () => {
+    const labels = sessionDeckLabels([row('5f8f5c2a-1111', 'chezmoi'), row('5f8f9999-1111', 'chezmoi')]);
+    expect(labels.get('5f8f5c2a-1111')?.tag).toBe('5f8f5');
+  });
+
+  it('strips a Hermes type word but not a uuid that starts with hex letters', () => {
+    const hermes = sessionDeckLabels([
+      row('observed:hermes:hermes-3c1d0000aaaa', 'proj', 'hermes'),
+      row('observed:hermes:hermes-b7e20000bbbb', 'proj', 'hermes'),
+    ]);
+    expect(hermes.get('observed:hermes:hermes-3c1d0000aaaa')?.tag).toBe('3c1d');
+    const hexy = sessionDeckLabels([row('deadbeef-1111', 'p'), row('cafebabe-2222', 'p')]);
+    expect(hexy.get('deadbeef-1111')?.tag).toBe('dead');
+  });
+
+  it('never splits a surrogate pair when the name shrinks', () => {
+    const text = sessionLabelText({ name: '🐙🐙🐙🐙🐙🐙', tag: '5f8f' }, 10);
+    expect(text).toBe('🐙🐙🐙… #5f8f');
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(text ?? '')).toBe(false);
   });
 
   it('is a function of the set, not of its order — activity cannot relabel a key', () => {
@@ -72,8 +96,8 @@ describe('D200 deck — same-project sessions are distinguishable (#544)', () =>
       positions(10),
     );
     const svgs = [...deck.values()].map((c) => c.svg).join('\n');
-    expect(svgs).toContain('#5f8f');
-    expect(svgs).toContain('#b80c');
+    expect(svgs).toMatch(/chezmoi[^<]*#5f8f|chezmoi<\/tspan>[\s\S]{0,200}#5f8f/);
+    expect(svgs).toMatch(/chezmoi[^<]*#b80c|chezmoi<\/tspan>[\s\S]{0,200}#b80c/);
     expect(svgs).toContain('>solo<');
     expect(svgs).not.toContain('solo #');
   });
