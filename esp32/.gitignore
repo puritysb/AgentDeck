@@ -16,3 +16,7 @@ managed_components/
 # (ips10 does). Generated per build, never authored.
 CMakeLists.txt
 dependencies.lock
+# The component manager's backup of src/idf_component.yml, written on the
+# first build and never removed. Untracked, it made every later local build
+# report GIT_SHA "-dirty" (scripts/git_rev.py reads `git status --porcelain`).
+src/idf_component.yml.orig

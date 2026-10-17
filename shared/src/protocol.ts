@@ -837,7 +837,12 @@ export interface DeviceInfoMessage {
    * from a burst. Absent on firmware that predates the field.
    */
   freeHeapKb?: number;
-  /** Lowest internal-heap level since boot, in KB (esp_get_minimum_free_heap_size). */
+  /**
+   * Lowest internal-heap level since boot, in KB
+   * (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)). A 0 here does not
+   * mean an allocation failed: on PSRAM boards a malloc that misses internal
+   * RAM is retried in PSRAM. allocFailures answers that.
+   */
   minFreeHeapKb?: number;
   /**
    * Largest CONTIGUOUS free internal DMA-capable block, in KB. The hosted SDIO
@@ -846,6 +851,18 @@ export interface DeviceInfoMessage {
    * this value collapsing while freeHeapKb stays comfortable.
    */
   largestFreeBlockKb?: number;
+  /**
+   * Allocations that returned NULL since setup(), counted by ESP-IDF's
+   * failed-allocation hook, which fires only after the last fallback has also
+   * failed. 0 means counted and none; absent means firmware without the
+   * counter. A deliberate attempt that has a fallback (an internal buffer
+   * retried in PSRAM) counts too, so read it with the two fields below.
+   */
+  allocFailures?: number;
+  /** Size in bytes of the most recent failed allocation; present when allocFailures > 0. */
+  allocFailLastBytes?: number;
+  /** MALLOC_CAP_* mask of the most recent failed allocation; present when allocFailures > 0. */
+  allocFailLastCaps?: number;
   /** Board-held Codex window percentages; -1 means no window is displayed. */
   usageCodex5H?: number;
   usageCodex7D?: number;

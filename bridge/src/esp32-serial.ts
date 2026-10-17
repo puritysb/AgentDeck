@@ -170,6 +170,10 @@ export interface SerialConnection {
     freeHeapKb?: number;
     minFreeHeapKb?: number;
     largestFreeBlockKb?: number;
+    /** Allocations that actually failed since boot (protocol.ts DeviceInfoMessage). */
+    allocFailures?: number;
+    allocFailLastBytes?: number;
+    allocFailLastCaps?: number;
     otaSupported?: boolean;
     otaSlotCount?: number;
     otaSlotSize?: number;
@@ -996,6 +1000,11 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
       logTagged('esp32-voice', `${conn.port}: ${line}`);
     } else if (/^\[EinkRefresh\] count=\d{1,10} full=[01] startedMs=\d{1,10} durationMs=\d{1,10}$/.test(line)) {
       logTagged('esp32-eink', `${conn.port}: ${line}`);
+    } else if (/^\[HeapFail\] count=\d{1,10} lastBytes=\d{1,10} lastCaps=0x[0-9a-f]{1,8} internalFree=\d{1,10} internalMin=\d{1,10} internalLargest=\d{1,10}$/.test(line)) {
+      // An allocation came back NULL (firmware util/heap_telemetry.h). The
+      // device_info counter is a connect-time snapshot on a serial board, so
+      // this line is where a failure shows up as it happens.
+      logTagged('esp32-heap', `${conn.port}: ${line}`);
     }
     return;
   }
@@ -1022,6 +1031,9 @@ export function handleSerialLine(conn: SerialConnection, line: string): void {
           freeHeapKb: (msg as any).freeHeapKb,
           minFreeHeapKb: (msg as any).minFreeHeapKb,
           largestFreeBlockKb: (msg as any).largestFreeBlockKb,
+          allocFailures: msg.allocFailures,
+          allocFailLastBytes: msg.allocFailLastBytes,
+          allocFailLastCaps: msg.allocFailLastCaps,
           otaSupported: msg.otaSupported,
           otaSlotCount: msg.otaSlotCount,
           otaSlotSize: msg.otaSlotSize,

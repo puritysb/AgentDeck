@@ -19,6 +19,7 @@
 #include "config.h"
 #include "../boards/board_config.h"
 #include "util/memory.h"
+#include "util/heap_telemetry.h"
 #include "state/agent_state.h"
 #include "net/serial_client.h"
 #include "net/wifi_manager.h"
@@ -169,6 +170,7 @@ static void networkTask(void* param) {
 #if defined(BOARD_EINK_SURFACE)
         Eink::logRefreshCompletions();
 #endif
+        HeapTelemetry::logIfChanged();
 
         // === WiFi portal (non-blocking, processes captive portal if active) ===
         Net::wifiLoop();
@@ -1191,6 +1193,9 @@ void setup() {
     pinMode(BOARD_PIN_PWR_EN, OUTPUT);
     digitalWrite(BOARD_PIN_PWR_EN, HIGH);
 #endif
+    // Before anything allocates in earnest, so device_info's allocFailures
+    // covers the whole bring-up.
+    HeapTelemetry::begin();
 #if defined(BOARD_EINK_SURFACE) || defined(BOARD_IPS10) || defined(BOARD_T_EMBED) || defined(BOARD_T_DISPLAY_PRO)
 #if defined(BOARD_T_EMBED)
     // 16384 on the only board that receives *audio* over serial. A spoken reply

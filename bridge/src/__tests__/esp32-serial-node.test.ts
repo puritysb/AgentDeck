@@ -176,6 +176,18 @@ describe('handleSerialLine (source)', () => {
     expect(conn.deviceInfo!.usageCodex7D).toBe(37);
   });
 
+  it('carries the allocation-failure counter, including an explicit zero', () => {
+    const conn = mockConn();
+    handleSerialLine(conn, '{"type":"device_info","board":"ips_35","version":"1.9.2","wifiConfigured":true,"wifiConnected":false,"minFreeHeapKb":0,"allocFailures":0}');
+    expect(conn.deviceInfo!.minFreeHeapKb).toBe(0);
+    expect(conn.deviceInfo!.allocFailures).toBe(0);
+    expect(conn.deviceInfo!.allocFailLastBytes).toBeUndefined();
+    handleSerialLine(conn, '{"type":"device_info","board":"ips_35","version":"1.9.2","wifiConfigured":true,"wifiConnected":false,"allocFailures":3,"allocFailLastBytes":1664,"allocFailLastCaps":2052}');
+    expect(conn.deviceInfo!.allocFailures).toBe(3);
+    expect(conn.deviceInfo!.allocFailLastBytes).toBe(1664);
+    expect(conn.deviceInfo!.allocFailLastCaps).toBe(2052);
+  });
+
   it('carries the board-reported WiFi RSSI and drops implausible values', () => {
     const conn = mockConn();
     handleSerialLine(conn, '{"type":"device_info","board":"round_amoled","version":"1.4.0","wifiConfigured":true,"wifiConnected":true,"ip":"192.168.68.55","rssiDbm":-78}');
@@ -204,6 +216,23 @@ describe('handleSerialLine (source)', () => {
       handleSerialLine(conn, '[EinkRefresh] count=12 full=2 startedMs=1 durationMs=3');
       expect(log).toHaveBeenCalledTimes(1);
       expect(log).toHaveBeenCalledWith('esp32-eink', `${conn.port}: ${event}`);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('retains numeric heap-failure lines and nothing appended to them', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const event = '[HeapFail] count=2 lastBytes=1664 lastCaps=0x804 internalFree=1180 internalMin=0 internalLargest=1024';
+      handleSerialLine(conn, event);
+      handleSerialLine(conn, event + ' ssid=private');
+      handleSerialLine(conn, '[HeapFail] count=2 lastBytes=1664 lastCaps=0xZZ internalFree=1 internalMin=0 internalLargest=1');
+      handleSerialLine(conn, '[HeapFail] count=-1 lastBytes=1664 lastCaps=0x804 internalFree=1 internalMin=0 internalLargest=1');
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith('esp32-heap', `${conn.port}: ${event}`);
+      expect(conn.panicLogUntil).toBeUndefined();
     } finally {
       log.mockRestore();
     }

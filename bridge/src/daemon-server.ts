@@ -373,6 +373,13 @@ interface WifiEsp32Device {
   uptimeSec?: number;
   resetReason?: string;
   resetReasonCode?: number;
+  /** Internal-heap level and failed allocations (protocol.ts DeviceInfoMessage). */
+  freeHeapKb?: number;
+  minFreeHeapKb?: number;
+  largestFreeBlockKb?: number;
+  allocFailures?: number;
+  allocFailLastBytes?: number;
+  allocFailLastCaps?: number;
   otaSupported?: boolean;
   otaSlotCount?: number;
   otaSlotSize?: number;
@@ -804,6 +811,14 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     uptimeSec,
     resetReason,
     resetReasonCode,
+    // The serial registry always carried these; a WiFi-only board's never
+    // reached /devices.
+    freeHeapKb: typeof d.freeHeapKb === 'number' ? d.freeHeapKb : undefined,
+    minFreeHeapKb: typeof d.minFreeHeapKb === 'number' ? d.minFreeHeapKb : undefined,
+    largestFreeBlockKb: typeof d.largestFreeBlockKb === 'number' ? d.largestFreeBlockKb : undefined,
+    allocFailures: typeof d.allocFailures === 'number' ? d.allocFailures : undefined,
+    allocFailLastBytes: typeof d.allocFailLastBytes === 'number' ? d.allocFailLastBytes : undefined,
+    allocFailLastCaps: typeof d.allocFailLastCaps === 'number' ? d.allocFailLastCaps : undefined,
     otaSupported: typeof d.otaSupported === 'boolean' ? d.otaSupported : undefined,
     otaSlotCount: typeof d.otaSlotCount === 'number' ? d.otaSlotCount : undefined,
     otaSlotSize: typeof d.otaSlotSize === 'number' ? d.otaSlotSize : undefined,
@@ -993,6 +1008,7 @@ export function __resetWifiEsp32OtaState(): void {
 export const __wifiOtaTestApi = {
   registerWifiEsp32,
   unregisterWifiEsp32Socket,
+  listWifiEsp32Devices,
   handleEsp32OtaReply,
   performWifiEsp32Ota,
   resolveStagedFwBoard,

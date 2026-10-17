@@ -12,6 +12,7 @@
 #include "../util/usage_format.h"
 #include "../util/utf8.h"
 #include "../util/memory.h"
+#include "../util/heap_telemetry.h"
 #include "config.h"
 #include <ArduinoJson.h>
 #include <cmath>
@@ -1327,6 +1328,30 @@ static void handleOtaAbort(JsonObject& obj) {
     sendOtaAck(otaId, "abort", UINT32_MAX, 0, 0);
 }
 
+// serializeJson() truncates silently, and a truncated device_info is not JSON
+// at all: the daemon drops the line and the board stays unidentified. The
+// T-Display-S3-Pro's frame already came to 832-878 of the 896 bytes below
+// (rebuilt from its live field values, 2026-10-18), so a frame that outgrows
+// the caller's buffer is serialized into a heap buffer of its measured size.
+static void sendDeviceInfoFrame(const JsonDocument& doc, char* buf, size_t cap,
+                                bool toSerial, bool toWs) {
+    const size_t need = measureJson(doc) + 1;
+    std::unique_ptr<char[]> grown;
+    if (need > cap) {
+        // Held for this one send; on the PSRAM boards malloc retries in PSRAM.
+        grown = makeUniqueNoThrow<char[]>(need);
+        if (!grown) {
+            Serial.printf("[Protocol] device_info needs %u bytes: not sent\n", (unsigned)need);
+            return;
+        }
+        buf = grown.get();
+        cap = need;
+    }
+    serializeJson(doc, buf, cap);
+    if (toSerial) Net::serialWriteJsonLine(buf);
+    if (toWs) Net::wsSend(buf);
+}
+
 static void sendDeviceInfo() {
     JsonDocument resp;
     resp["type"] = "device_info";
@@ -1370,6 +1395,17 @@ static void sendDeviceInfo() {
     // RX allocation actually needs (one buffer per coalesced burst).
     resp["largestFreeBlockKb"] = (uint32_t)(
         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024);
+    // Whether an allocation actually failed (util/heap_telemetry.h): the
+    // low-water mark above reads 0 on boards where every request still
+    // succeeded in PSRAM. Size and caps say which request it was.
+    {
+        const uint32_t failures = HeapTelemetry::failures();
+        resp["allocFailures"] = failures;
+        if (failures > 0) {
+            resp["allocFailLastBytes"] = HeapTelemetry::lastFailedBytes();
+            resp["allocFailLastCaps"] = HeapTelemetry::lastFailedCaps();
+        }
+    }
     // Debug aid: what this board actually holds — lets a host-side probe
     // (daemon /devices) distinguish "data never parsed" from "render gating"
     // without stealing the serial port.
@@ -1500,9 +1536,8 @@ static void sendDeviceInfo() {
     resp["otaFreeSketchSpace"] = ota.freeSketchSpace;
     if (!ota.supported) resp["otaReason"] = ota.reason;
 
-    // 896: t_embed capabilities + battery pushed past 512, and the strip's
-    // touch forensics fields pushed past 768 (serializeJson truncates
-    // silently on overflow — size for the fattest board, not the average).
+    // 896 holds the usual frame on every board but ips10; a frame that grows
+    // past it goes out through sendDeviceInfoFrame()'s heap buffer.
 #if defined(BOARD_IPS10)
     static char buf[1536];
 #else
@@ -1526,20 +1561,16 @@ static void sendDeviceInfo() {
         if (Audio::playbackReady()) caps.add("audio_http_pull");
         if (Audio::micReady()) caps.add("audio");
     }
-    serializeJson(resp, buf, sizeof(buf));
-    Net::serialWriteJsonLine(buf);
+    sendDeviceInfoFrame(resp, buf, sizeof(buf), true, false);
     if (Net::wsConnected()) {
         JsonArray caps = resp["capabilities"].as<JsonArray>();
         if (Audio::speakerAudible()) caps.add("audio_out");
-        serializeJson(resp, buf, sizeof(buf));
-        Net::wsSend(buf);
+        sendDeviceInfoFrame(resp, buf, sizeof(buf), false, true);
     }
 #else
-    serializeJson(resp, buf, sizeof(buf));
     // Both transports: serial for the USB-attached identify flow, WS so a
     // WiFi-only board (TRMNL 7.5") is registrable by the daemon without a cable.
-    Net::serialWriteJsonLine(buf);
-    if (Net::wsConnected()) Net::wsSend(buf);
+    sendDeviceInfoFrame(resp, buf, sizeof(buf), true, Net::wsConnected());
 #endif
 }
 
