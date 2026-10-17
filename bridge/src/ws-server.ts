@@ -498,6 +498,9 @@ export class WsServer {
   }
 
   private notifyClientConnect(ws: WebSocket): void {
+    // Re-arming ESP32 sockets stay OPEN briefly without being admitted. Only
+    // sockets registered after authentication may receive an initial snapshot.
+    if (!this.socketRemoteIp.has(ws)) return;
     if (!this.onConnectCallback || ws.readyState !== WebSocket.OPEN || this.connectNotified.has(ws)) return;
     this.connectNotified.add(ws);
     this.onConnectCallback(ws);

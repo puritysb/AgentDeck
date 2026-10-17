@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import WebSocket from 'ws';
 import { State } from '@agentdeck/shared';
 import { WsTestClient } from './helpers/ws-test-client.js';
+import { openPairingWindow, resetPairingWindowForTests } from '../pairing-window.js';
 
 vi.mock('../auth.js', () => ({
   isLocalConnection: () => false,
@@ -28,6 +29,7 @@ describe('WebSocket clients admitted before daemon initialization finishes', () 
   });
 
   afterEach(async () => {
+    resetPairingWindowForTests();
     await Promise.all(clients.map((client) => client.close()));
     server.close();
     await new Promise<void>((resolve) => http.close(() => resolve()));
@@ -92,5 +94,31 @@ describe('WebSocket clients admitted before daemon initialization finishes', () 
     expect(snapshot).not.toHaveBeenCalled();
     expect((await closed)[0]).toBe(4001);
     expect(messages).toHaveLength(0);
+  });
+
+  it('waits for an adopted ESP32 to reconnect with its credential before initializing it', async () => {
+    openPairingWindow({ adoptEsp32Ips: ['127.0.0.1'] });
+    server.setEsp32AdoptionProvider(() => ({
+      authToken: 'paired-test-peer', bridgeIp: '127.0.0.1', bridgePort: 9120,
+    }));
+    const adopting = new WebSocket(`${url}?clientType=esp32`);
+    const provisioned = once(adopting, 'message');
+    const closed = once(adopting, 'close');
+    const messages: unknown[] = [];
+    adopting.on('message', (message) => messages.push(JSON.parse(message.toString())));
+    expect(JSON.parse((await provisioned)[0].toString())).toMatchObject({ type: 'auth_provision' });
+
+    // Adoption keeps an unauthenticated socket OPEN for 500 ms to flush its
+    // credential. That transport must not join the startup snapshot replay.
+    expect(adopting.readyState).toBe(WebSocket.OPEN);
+    const snapshot = vi.fn(sendSnapshot);
+    server.onClientConnect(snapshot);
+    expect(snapshot).not.toHaveBeenCalled();
+    expect((await closed)[0]).toBe(1000);
+    expect(messages).toEqual([expect.objectContaining({ type: 'auth_provision' })]);
+
+    const authenticated = await connect();
+    await authenticated.waitForType('sessions_list');
+    expect(snapshot).toHaveBeenCalledTimes(1);
   });
 });
