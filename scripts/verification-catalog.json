@@ -996,6 +996,7 @@
         "bridge/src/__tests__/server-integration.test.ts",
         "bridge/src/__tests__/tier3-integration.test.ts",
         "bridge/src/__tests__/ws-server-broadcast-actionability.test.ts",
+        "bridge/src/__tests__/ws-server-startup.test.ts",
         "bridge/src/__tests__/session-aggregator.test.ts",
         "bridge/src/__tests__/session-deck-awaiting.test.ts",
         "bridge/src/__tests__/session-order-store.test.ts",
