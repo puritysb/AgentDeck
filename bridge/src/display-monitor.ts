@@ -8,6 +8,8 @@ const MAX_RESTARTS = Infinity; // keep trying forever
 const RESTART_DELAY_MS = 5_000;
 const FALLBACK_POLL_MS = 5_000;
 const FALLBACK_PROBE_TIMEOUT_MS = 2_000;
+type DisplayProbeResult = { stdout: string; code: number };
+type DisplayProbe = { promise: Promise<DisplayProbeResult | undefined>; cancel: () => void };
 
 const PYTHON_SCRIPT = `
 import ctypes, ctypes.util, time, sys
@@ -48,6 +50,7 @@ export class DisplayMonitor extends EventEmitter {
 
   private fallbackPending = false;
   private fallbackGeneration = 0;
+  private readonly fallbackProbes = new Map<string, DisplayProbe>();
 
   start(): void {
     if (this.running) return;
@@ -71,6 +74,7 @@ export class DisplayMonitor extends EventEmitter {
     this.running = false;
     this.fallbackGeneration++;
     this.fallbackPending = false;
+    for (const probe of this.fallbackProbes.values()) probe.cancel();
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
@@ -171,7 +175,7 @@ export class DisplayMonitor extends EventEmitter {
     }, RESTART_DELAY_MS);
   }
 
-  /** Slow host probes must never occupy the daemon's HTTP/WS event loop. */
+  /** Bound fallback waits and retain a probe until its native child exits. */
   private startFallbackPoll(): void {
     if (this.fallbackTimer) return;
     void this.pollFallbackOnce();
@@ -184,9 +188,9 @@ export class DisplayMonitor extends EventEmitter {
     const generation = this.fallbackGeneration;
     try {
       const [power, registry, screensaver] = await Promise.all([
-        probeDisplayCommand('pmset', ['-g', 'powerstate', 'IODisplayWrangler']),
-        probeDisplayCommand('ioreg', ['-n', 'Root', '-d1']),
-        probeDisplayCommand('pgrep', ['-x', 'ScreenSaverEngine']),
+        probeDisplayCommand(this.fallbackProbes, 'pmset', ['-g', 'powerstate', 'IODisplayWrangler']),
+        probeDisplayCommand(this.fallbackProbes, 'ioreg', ['-n', 'Root', '-d1']),
+        probeDisplayCommand(this.fallbackProbes, 'pgrep', ['-x', 'ScreenSaverEngine']),
       ]);
       // A stopped/restarted monitor must not consume the previous poll's data.
       if (!this.running || generation !== this.fallbackGeneration) return;
@@ -244,29 +248,45 @@ export function parseIoregPresence(output: string): { screenLocked?: boolean; se
 }
 
 /** Resolve independently of child close: even a stuck child has a bounded probe. */
-function probeDisplayCommand(file: string, args: string[]): Promise<{ stdout: string; code: number } | undefined> {
-  return new Promise((resolve) => {
+function probeDisplayCommand(pending: Map<string, DisplayProbe>, file: string, args: string[]): Promise<DisplayProbeResult | undefined> {
+  const key = JSON.stringify([file, args]);
+  const existing = pending.get(key);
+  if (existing) return existing.promise;
+  let reaped = false;
+  let cancel = () => {};
+  const promise = new Promise<DisplayProbeResult | undefined>((resolve) => {
     let child: ChildProcess | undefined;
     let settled = false;
-    const finish = (result: { stdout: string; code: number } | undefined) => {
+    const finish = (result: DisplayProbeResult | undefined) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
       resolve(result);
     };
-    const deadline = setTimeout(() => {
-      debug('display', `${file} probe timed out`);
+    cancel = () => {
       finish(undefined);
       try { child?.kill('SIGKILL'); } catch { /* already exited */ }
+    };
+    const deadline = setTimeout(() => {
+      debug('display', `${file} probe timed out`);
+      cancel();
     }, FALLBACK_PROBE_TIMEOUT_MS);
     try {
       child = execFile(file, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+        reaped = true;
+        pending.delete(key);
         if (!error) finish({ stdout, code: 0 });
         else if (typeof error.code === 'number' && !error.killed && !error.signal) finish({ stdout, code: error.code });
         else finish(undefined);
       });
     } catch {
+      reaped = true;
       finish(undefined);
     }
   });
+  // A timeout ends the caller's wait, not the native process. Retain the
+  // latch until the callback acknowledges exit, including across stop/start,
+  // so a stuck kernel child cannot spawn replacements every five seconds.
+  if (!reaped) pending.set(key, { promise, cancel });
+  return promise;
 }

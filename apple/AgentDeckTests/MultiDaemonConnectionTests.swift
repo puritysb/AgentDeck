@@ -8,6 +8,25 @@ import Combine
 /// Real loopback handshakes exercise URLSession's two refusal shapes, including
 /// the close code that disappeared when teardown ran before classification.
 final class MultiDaemonConnectionTests: XCTestCase {
+    @MainActor
+    func testInitialRefusalRetriesBeforeMainQueueCanPublishConnectionState() throws {
+        let ready = expectation(description: "listener ready")
+        let request = DispatchSemaphore(value: 0)
+        let server = try RefusalServer(code: 503, requestSeen: { request.signal() }) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        let connection = BridgeConnection()
+        defer { connection.prepareForTermination() }
+        connection.connect(to: "ws://127.0.0.1:\(try XCTUnwrap(server.port))")
+
+        // Deliberately hold the main queue: the peer can refuse the handshake
+        // before the queued @Published URL/status have reached the UI.
+        XCTAssertEqual(request.wait(timeout: .now() + 8), .success)
+        XCTAssertNil(connection.url, "Exercise the unpublished initial endpoint")
+        XCTAssertEqual(request.wait(timeout: .now() + 8), .success,
+                       "The transport must retry without waiting for main-queue publication")
+    }
+
     func testFreshConnectDuringOldRetryRearmsAutomaticRetries() throws {
         let ready = expectation(description: "busy listener ready")
         let server = try RefusalServer(code: 503) { ready.fulfill() }
@@ -187,12 +206,14 @@ private final class RefusalServer: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
     private var approved = false
+    private let requestSeen: @Sendable () -> Void
     func approve() { lock.withLock { approved = true } }
     private var peers: [NWConnection] = []
     var requests: Int { lock.withLock { count } }
     var port: UInt16? { listener.port?.rawValue }
 
-    init(code: Int, ready: @escaping @Sendable () -> Void) throws {
+    init(code: Int, requestSeen: @escaping @Sendable () -> Void = {}, ready: @escaping @Sendable () -> Void) throws {
+        self.requestSeen = requestSeen
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters)
@@ -217,6 +238,7 @@ private final class RefusalServer: @unchecked Sendable {
                 return
             }
             self.lock.withLock { self.count += 1 }
+            self.requestSeen()
             let approved = self.lock.withLock { self.approved }
             if code < 4000 && !approved {
                 peer.send(content: Data("HTTP/1.1 \(code) \(code == 401 ? "Unauthorized" : "Service Unavailable")\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8), completion: .contentProcessed { _ in peer.cancel() })

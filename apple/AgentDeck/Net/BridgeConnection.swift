@@ -75,6 +75,9 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private var webSocket: URLSessionWebSocketTask?
     private var urlSession: URLSession?
     private var backoffMs = initialBackoffMs
+    // Transport decisions must not wait for @Published delivery on the main queue.
+    private var endpointURL: String?
+    private var retryAttempt = 0
     private var shouldReconnect = false
     private var pingSource: DispatchSourceTimer?
     private var reconnectWork: DispatchWorkItem?
@@ -118,11 +121,13 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
         // Clean up previous socket without resetting reconnect state
         // Explicit caller intent is independent of a queued @Published update
         // from the old socket. A fresh disconnect/connect must rearm retries.
-        let savedAttempt = reconnecting ? reconnectAttempt : 0
         if !reconnecting {
             shouldReconnect = true
             backoffMs = Self.initialBackoffMs
+            retryAttempt = 0
         }
+        let savedAttempt = retryAttempt
+        hasReceivedMessage = false
         pingSource?.cancel()  // Already on queue — direct access safe
         pingSource = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
@@ -133,9 +138,11 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
         connectTimeoutWork = nil
 
         guard let wsUrl = URL(string: urlString) else {
+            endpointURL = nil
             DispatchQueue.main.async { self.lastError = "Invalid URL: \(urlString)" }
             return
         }
+        endpointURL = urlString
 
         let publishingGeneration = connectionGeneration
         DispatchQueue.main.async {
@@ -144,7 +151,6 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             self.status = .connecting
             self.lastError = nil
             self.authenticationRequiredURL = nil
-            self.hasReceivedMessage = false
             self.isReconnecting = reconnecting
             self.reconnectAttempt = savedAttempt
         }
@@ -195,7 +201,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             self.queue.async {
                 guard self.connectionGeneration == connectionGen,
-                      self.webSocket === task, self.status == .connecting else { return }
+                      self.webSocket === task, !self.hasReceivedMessage else { return }
                 print("[BridgeConnection] connection attempt timed out (\(Self.connectionTimeoutSec)s)")
                 self.handleDisconnect(error: URLError(.timedOut))
             }
@@ -247,6 +253,8 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             self.connectTimeoutWork = nil
             self.isHandlingDisconnect = false
             self.hasReceivedMessage = false
+            self.endpointURL = nil
+            self.retryAttempt = 0
 
             self.pingSource?.cancel()
             self.pingSource = nil
@@ -304,12 +312,13 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             // First successful message = connection confirmed
             if !hasReceivedMessage {
                 hasReceivedMessage = true
+                backoffMs = Self.initialBackoffMs
+                retryAttempt = 0
                 print("[BridgeConnection] first message received — connected!")
                 self.connectTimeoutWork?.cancel()
                 self.connectTimeoutWork = nil
                 DispatchQueue.main.async {
                     self.status = .connected
-                    self.backoffMs = Self.initialBackoffMs
                     self.reconnectAttempt = 0
                     self.isReconnecting = false
                 }
@@ -435,7 +444,10 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     /// Reset reconnect counter (e.g. after foreground return).
     func resetReconnectCount() {
         reconnectAttempt = 0
-        backoffMs = Self.initialBackoffMs
+        queue.async {
+            self.retryAttempt = 0
+            self.backoffMs = Self.initialBackoffMs
+        }
     }
 
     // MARK: - Reconnect
@@ -454,6 +466,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
 
             let closeCode = self.webSocket?.closeCode.rawValue
             let httpStatus = (self.webSocket?.response as? HTTPURLResponse)?.statusCode
+            let endpoint = self.endpointURL
             let refused = closeCode == Self.unauthorizedCloseCode || httpStatus == 401
                 || (error as? URLError)?.code == .userAuthenticationRequired
 
@@ -474,13 +487,14 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
 
             if refused {
                 self.shouldReconnect = false
+                self.retryAttempt = 0
                 self.reconnectWork?.cancel()
                 self.reconnectWork = nil
                 DispatchQueue.main.async {
                     guard self.connectionGeneration == generation else { return }
                     self.status = .disconnected
-                    self.authenticationRequiredURL = self.url
-                    self.lastError = PairingCredential.approvalMessage(for: self.url)
+                    self.authenticationRequiredURL = endpoint
+                    self.lastError = PairingCredential.approvalMessage(for: endpoint)
                     self.isReconnecting = false
                     self.reconnectAttempt = 0
                     self.onAuthenticationRequired?()
@@ -488,9 +502,10 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
                 return
             }
 
-            guard self.shouldReconnect, self.url != nil else {
+            guard self.shouldReconnect, let endpoint else {
                 self.isHandlingDisconnect = false  // No reconnect will follow
                 DispatchQueue.main.async {
+                    guard self.connectionGeneration == generation else { return }
                     self.status = .disconnected
                 }
                 return
@@ -499,34 +514,38 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             // Bound retries to the selected endpoint. The state holder keeps
             // discovery visible so the user can explicitly choose another host.
             let maxAttempts = Self.maxReconnectAttempts
-            if self.reconnectAttempt >= maxAttempts {
+            if self.retryAttempt >= maxAttempts {
                 self.isHandlingDisconnect = false  // No reconnect will follow
-                let failedUrl = self.url
+                self.shouldReconnect = false
                 DispatchQueue.main.async {
+                    guard self.connectionGeneration == generation else { return }
                     self.status = .disconnected
                     self.url = nil
                     self.isReconnecting = false
-                    self.shouldReconnect = false
                     self.lastError = wasConnected
                         ? "Bridge disconnected"
                         : "Connection failed"
-                    self.onReconnectExhausted?(failedUrl)
+                    self.onReconnectExhausted?(endpoint)
                 }
                 return
             }
 
+            self.retryAttempt += 1
+            let attempt = self.retryAttempt
             DispatchQueue.main.async {
+                guard self.connectionGeneration == generation else { return }
                 self.status = .disconnected
                 self.isReconnecting = true
-                self.reconnectAttempt += 1
+                self.reconnectAttempt = attempt
             }
 
             // Let caller short-circuit reconnect (e.g. macOS local session found)
             if let check = self.onReconnectAttempt, check() {
                 self.isHandlingDisconnect = false  // Caller takes over connection
+                self.shouldReconnect = false
                 DispatchQueue.main.async {
+                    guard self.connectionGeneration == generation else { return }
                     self.isReconnecting = false
-                    self.shouldReconnect = false
                 }
                 return
             }
@@ -538,8 +557,8 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.connectionGeneration == gen,
                       !self.isTerminating,
-                      self.shouldReconnect, let url = self.url else { return }
-                self.connectInternal(url, reconnecting: true)
+                      self.shouldReconnect else { return }
+                self.connectInternal(endpoint, reconnecting: true)
             }
             self.reconnectWork = work
             self.queue.asyncAfter(deadline: .now() + delay, execute: work)

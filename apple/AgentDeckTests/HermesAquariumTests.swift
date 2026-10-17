@@ -5,6 +5,30 @@ import RealityKit
 
 final class HermesAquariumTests: XCTestCase {
     @MainActor
+    func testCameraSurvivesInvalidFrameIntervalsAndContinuesViewingMotion() throws {
+        let rig = AquariumCameraRig()
+        let camera = PerspectiveCamera()
+        rig.camera = camera
+        rig.step(1 / 60)
+        let initial = camera.transform
+        for interval in [Double.nan, .infinity, -.infinity, -3600] {
+            XCTAssertFalse(rig.step(interval))
+            XCTAssertEqual(camera.transform, initial, "An invalid interval must leave the last valid camera intact")
+        }
+        rig.viewing = true
+        for _ in 0..<120 { rig.step(1 / 60) }
+        XCTAssertNotEqual(camera.position, initial.translation, "Valid frames must still move the camera after rejected intervals")
+        for value in [camera.position.x, camera.position.y, camera.position.z,
+                      camera.orientation.vector.x, camera.orientation.vector.y,
+                      camera.orientation.vector.z, camera.orientation.vector.w] {
+            XCTAssertTrue(value.isFinite)
+        }
+        // A long but finite occlusion uses the existing bounded integration.
+        rig.step(3600)
+        XCTAssertTrue(camera.position.x.isFinite && camera.position.y.isFinite && camera.position.z.isFinite)
+    }
+
+    @MainActor
     func testIdleRestsOnFixedShellAndReturnsAfterWork() async throws {
         let library = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz")))
         let scene = AquariumResidents()

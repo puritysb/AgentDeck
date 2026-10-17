@@ -66,8 +66,13 @@ describe('asynchronous display fallback probes', () => {
     await vi.advanceTimersByTimeAsync(2_000);
     for (const probe of silent) expect(probe.kill).toHaveBeenCalledWith('SIGKILL');
     expect(monitor.isDisplayOn()).toBe(false);
+    await vi.advanceTimersByTimeAsync(18_000);
+    expect(probes, 'A silent native child must not cause a process-spawn storm').toHaveLength(6);
+    answer(silent, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(monitor.isDisplayOn(), 'A late successful result was already timed out').toBe(false);
     // Failure to inspect must not become a false "no screensaver" result.
-    await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(5_000);
     answer(probes.slice(6, 9), 'EACCES');
     await vi.advanceTimersByTimeAsync(0);
     expect(monitor.isDisplayOn()).toBe(false);
@@ -84,10 +89,12 @@ describe('asynchronous display fallback probes', () => {
     const old = probes.slice();
     monitor.stop();
     monitor.start();
+    expect(probes, 'Restart cannot replace an unreaped probe').toHaveLength(3);
     answer(old, 0, true);
     await vi.advanceTimersByTimeAsync(0);
     expect(monitor.isDisplayOn()).toBe(true);
     expect(changed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_000);
     answer(probes.slice(3, 6), 1);
     await vi.advanceTimersByTimeAsync(0);
     expect(monitor.isDisplayOn()).toBe(true);

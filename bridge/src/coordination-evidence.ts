@@ -209,6 +209,15 @@ export function findAncestorSession(
 ): ObservedPeer | null {
   const byPid = new Map(processes.map((p) => [p.pid, p]));
   const peerByPid = new Map(peers.map((p) => [p.pid, p]));
+  return ancestorSession(byPid, peerByPid, pid, maxDepth);
+}
+
+function ancestorSession(
+  byPid: ReadonlyMap<number, ProcessRow>,
+  peerByPid: ReadonlyMap<number, ObservedPeer>,
+  pid: number,
+  maxDepth = 8,
+): ObservedPeer | null {
   let cur = byPid.get(pid);
   for (let depth = 0; cur && depth < maxDepth; depth++) {
     const ppid = cur.ppid;
@@ -405,10 +414,25 @@ export class CoordinationTracker {
     const peerPids = new Set(peers.map((p) => p.pid));
     const alivePeerIds = new Set(peers.map((p) => p.sessionId));
     const rows = processes.map((p) => ({ ...p, command: p.command.slice(0, MAX_COMMAND_CHARS) }));
+    const byPid = new Map(rows.map((p) => [p.pid, p]));
+    const peerByPid = new Map(peers.map((p) => [p.pid, p]));
+    // A scratchpad match is an exact slash-delimited session id. Index the
+    // bounded argv once, instead of searching every command once per session.
+    const peerIds = new Set(peers.map((p) => p.sessionId).filter((id) => id.length >= 8));
+    const jobsBySession = new Map<string, ProcessRow[]>();
+    for (const proc of rows) {
+      if (peerPids.has(proc.pid)) continue;
+      const matches = new Set(proc.command.split('/').slice(1).filter((part) => peerIds.has(part)));
+      for (const id of matches) {
+        const jobs = jobsBySession.get(id) ?? [];
+        jobs.push(proc);
+        jobsBySession.set(id, jobs);
+      }
+    }
 
     // Spawned peers: ancestry.
     for (const child of peers) {
-      const parent = findAncestorSession(rows, child.pid, peers);
+      const parent = ancestorSession(byPid, peerByPid, child.pid);
       if (!parent || parent.sessionId === child.sessionId) continue;
       const e = this.entry(parent.sessionId);
       if (e.spawned.has(child.sessionId)) continue;
@@ -447,13 +471,18 @@ export class CoordinationTracker {
     for (const peer of peers) {
       const e = this.sessions.get(peer.sessionId) ?? null;
       const seen = new Set<number>();
-      for (const proc of rows) {
+      // Bare session ids have no slash; preserve the helper's behavior for
+      // legacy callers that supply a compound id.
+      const candidates = peer.sessionId.includes('/')
+        ? rows.filter((proc) => commandNamesSession(proc.command, peer.sessionId))
+        : jobsBySession.get(peer.sessionId) ?? [];
+      for (const proc of candidates) {
         if (proc.pid === peer.pid || peerPids.has(proc.pid)) continue;
         if (!commandNamesSession(proc.command, peer.sessionId)) continue;
-        if (findAncestorSession(rows, proc.pid, peers)) continue;
+        if (ancestorSession(byPid, peerByPid, proc.pid)) continue;
         // One job may be a `bash -c …` wrapping the same script — count the
         // outermost only, so a job reads as one row rather than two.
-        const parentRow = rows.find((r) => r.pid === proc.ppid);
+        const parentRow = byPid.get(proc.ppid);
         if (parentRow && commandNamesSession(parentRow.command, peer.sessionId) && !peerPids.has(parentRow.pid)) continue;
         seen.add(proc.pid);
         const entry = e ?? this.entry(peer.sessionId);

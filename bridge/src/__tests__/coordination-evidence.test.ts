@@ -77,6 +77,29 @@ describe('findAncestorSession', () => {
 });
 
 describe('CoordinationTracker', () => {
+  it('indexes exact session path segments, deduplicates matches and retains compound-id callers', () => {
+    const tracker = new CoordinationTracker(() => 5_000);
+    const peers = [{ sessionId: 'session-a', pid: 10 }, { sessionId: 'session-b', pid: 20 },
+      { sessionId: 'legacy/session', pid: 30 }];
+    const jobs = [
+      { pid: 40, ppid: 1, command: 'bash job.sh /session-a/scratchpad /session-a/log /session-b' },
+      { pid: 41, ppid: 1, command: 'bash wrong.sh /prefix-session-a/scratchpad /session-b-suffix' },
+      { pid: 42, ppid: 1, command: 'bash legacy.sh /legacy/session/scratchpad' },
+      { pid: 43, ppid: 40, command: 'bash wrapped.sh /session-a/scratchpad' },
+      { pid: 44, ppid: 10, command: 'claude -p /session-a/scratchpad' },
+    ];
+    const rows = [...peers.map(p => ({ pid: p.pid, ppid: 1, command: 'claude' })), ...jobs];
+    const relations = tracker.observe(rows, peers);
+    expect(relations.map(r => [r.sessionId, r.key])).toEqual([
+      ['session-a', '40'], ['session-b', '40'], ['legacy/session', '42'],
+    ]);
+    expect(tracker.observe(rows, peers)).toEqual([]);
+    expect(tracker.observe(rows.filter(r => r.pid !== 40 && r.pid !== 43), peers)
+      .map(r => [r.sessionId, r.phase, r.key])).toEqual([
+        ['session-a', 'closed', '40'], ['session-b', 'closed', '40'],
+      ]);
+  });
+
   const parentPid = 56789;
   const processes = (opts: { worker?: boolean; job?: boolean }) => [
     { pid: parentPid, ppid: 1136, command: 'claude' },

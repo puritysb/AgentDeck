@@ -54,6 +54,7 @@ struct LivingAquariumScene: View {
         GeometryReader { geometry in
             if let loaded = assets.loaded {
                 RealityView { content in
+                    aquariumAssetLogger.info("Assembling aquarium at \(geometry.size.width, privacy: .public) × \(geometry.size.height, privacy: .public)")
                     content.camera = .virtual
                     let camera = PerspectiveCamera()
                     camera.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
@@ -104,13 +105,12 @@ struct LivingAquariumScene: View {
                         residents.loadCiCompanion(loaded.ciCompanion)
                         content.add(residents.root)
                         residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
-                        let stepCompanion = companionStepper()
-                        let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
-                            residents?.step(event.deltaTime)
-                            stepCompanion(event.deltaTime)
-                            cameraRig?.step(event.deltaTime)
+                        let stepFrame = frameStepper()
+                        let subscription = content.subscribe(to: SceneEvents.Update.self) { event in
+                            stepFrame(event.deltaTime)
                         }
                         cancelUpdate = { subscription.cancel() }
+                        aquariumAssetLogger.info("Assembled aquarium with \(residents.templateCount) templates; camera attached: \(camera.scene != nil)")
                     } catch {
                         assets.reportSceneFailure(error, templateCount: residents.templateCount)
                     }
@@ -212,6 +212,16 @@ struct LivingAquariumScene: View {
         #endif
     }
 
+    private func frameStepper() -> (TimeInterval) -> Void {
+        let stepCompanion = companionStepper()
+        return { [weak residents, weak cameraRig] seconds in
+            // Reject the whole frame before resident/fish integration too.
+            guard cameraRig?.step(seconds) == true else { return }
+            residents?.step(seconds)
+            stepCompanion(seconds)
+        }
+    }
+
     private func updatePlayback() {
         let playing = visible && !reduceMotion && scenePhase == .active
         residents.animate = playing
@@ -220,11 +230,9 @@ struct LivingAquariumScene: View {
         #endif
         // Keep expiry checks alive on a retained visible scene even under Reduce Motion.
         if visible && scenePhase == .active, cancelUpdate == nil, let scene = residents.root.scene {
-            let stepCompanion = companionStepper()
-            let subscription = scene.subscribe(to: SceneEvents.Update.self) { [weak residents, weak cameraRig] event in
-                residents?.step(event.deltaTime)
-                            stepCompanion(event.deltaTime)
-                cameraRig?.step(event.deltaTime)
+            let stepFrame = frameStepper()
+            let subscription = scene.subscribe(to: SceneEvents.Update.self) { event in
+                stepFrame(event.deltaTime)
             }
             cancelUpdate = { subscription.cancel() }
         }
@@ -238,18 +246,37 @@ struct LivingAquariumScene: View {
 /// Keep camera motion independent of HUD layout and resident animation state.
 @available(iOS 18.0, macOS 15.0, *)
 @MainActor
-private final class AquariumCameraRig {
+final class AquariumCameraRig {
     var camera: PerspectiveCamera?
     var viewing = false
     var reduceMotion = false
     private var distanceScale: Float = 1
+    private var reportedInvalidFrame = false
+    private var reportedFirstFrame = false
 
-    func step(_ seconds: TimeInterval) {
+    @discardableResult
+    func step(_ seconds: TimeInterval) -> Bool {
+        // An invalid frame must not poison the persistent camera transform.
+        // NaN survives every later interpolation; a negative interval can
+        // overflow exp() and turn even a stationary camera into NaN.
+        guard seconds.isFinite, seconds >= 0 else {
+            if !reportedInvalidFrame {
+                aquariumAssetLogger.error("Ignored invalid aquarium frame interval: \(seconds, privacy: .public)")
+                reportedInvalidFrame = true
+            }
+            return false
+        }
+        reportedInvalidFrame = false
+        if !reportedFirstFrame, let camera {
+            aquariumAssetLogger.info("First aquarium frame; camera attached: \(camera.scene != nil); interval: \(seconds, privacy: .public)")
+            reportedFirstFrame = true
+        }
         let target: Float = viewing ? TerrariumRules.nativeViewingDistance : 1
         let blend: Float = reduceMotion ? 1 : 1 - exp(-Float(min(seconds, 0.1)) / TerrariumRules.nativeViewingResponseSeconds)
         distanceScale += (target - distanceScale) * blend
         camera?.look(at: [0, 1.65, -0.7],
                      from: [0, 1.65 + 3.15 * distanceScale, -0.7 + 14.7 * distanceScale], relativeTo: nil)
+        return true
     }
 }
 
@@ -294,7 +321,7 @@ final class AquariumAssetLoader {
             stage = "CI companion"
             let ciCompanion = try await importEntity(url("ci-companion")); try checkCurrent()
             loaded = Assets(habitat: habitat, residents: residents, hermes: hermes, ciCompanion: ciCompanion)
-            aquariumAssetLogger.debug("Loaded all aquarium assets")
+            aquariumAssetLogger.info("Loaded all aquarium assets")
         } catch is CancellationError {
             aquariumAssetLogger.debug("Cancelled aquarium asset load at \(stage, privacy: .public)")
         } catch {

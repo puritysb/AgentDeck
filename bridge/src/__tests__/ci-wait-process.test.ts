@@ -5,6 +5,17 @@ const wait: CiWaitStatus = { kind: 'ci', provider: 'github-actions', phase: 'unk
 const parent = { pid: 10, ppid: 1, rssKb: 0, command: 'claude' };
 const child = { pid: 11, ppid: 10, rssKb: 0, command: 'gh run watch 42' };
 describe('CI watcher ownership', () => {
+  it('does not inspect argv without pending waits or outside their owner trees', () => {
+    const tracker = new CiWaitProcesses();
+    const unrelated = { pid: 90, ppid: 1, rssKb: 0,
+      get command(): string { throw new Error('Unrelated argv must not be parsed'); } };
+    expect(tracker.ended([], new Map(), { processes: [unrelated], capturedAt: 1 })).toEqual([]);
+    const waits: [string, CiWaitStatus][] = [['s', wait]];
+    const owners = new Map([['s', 10]]);
+    expect(tracker.ended(waits, owners, { processes: [unrelated, parent, child], capturedAt: 2 })).toEqual([]);
+    expect(tracker.ended(waits, owners, { processes: [unrelated, parent], capturedAt: 3 })).toEqual(['s']);
+  });
+
   it('closes only an observed owned watcher after a newer successful snapshot loses it', () => {
     const tracker = new CiWaitProcesses();
     const waits: [string, CiWaitStatus][] = [['s', wait]];
