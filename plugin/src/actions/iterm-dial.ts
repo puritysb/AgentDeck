@@ -1,15 +1,15 @@
 import { usageDialViews, renderUsageDialView } from '../utility-modes/usage-dial-view.js';
 import { PerActionViewState } from './per-action-view-state.js';
 /**
- * E3 — Codex usage dial (Stream Deck+).
+ * E3 — "Usage Dial 2" (Stream Deck+).
  *
- * This encoder shows the Codex subscription quota (from `codexRateLimits`) on
- * its 200×100 LCD using the full-bleed level-fill gauge. The dial ROTATION
- * cycles between views ('both' → '5h' → '7d' → 'session'); the dial PRESS
- * requests a usage refresh. When Codex reports no rate limits the gauge views
- * fall back to a muted "No Codex usage" note; the session view shows shared
- * token/cost text (or falls back to the windows when no token data exists).
- * The UUID (`iterm-dial`) is kept for backward profile compatibility.
+ * A second plan usage dial that starts on Codex, drawn on its 200×100 LCD with
+ * the full-bleed level-fill gauge. A touch-tap cycles through the available
+ * providers; the dial ROTATION cycles the current provider's views ('both' →
+ * '5h' → '7d' → 'session', limited to the windows it reports); the dial PRESS
+ * requests a usage refresh. A chosen provider with no usage data shows its own
+ * muted empty state. The UUID (`iterm-dial`) is kept for backward profile
+ * compatibility.
  */
 import streamDeck, {
   action,

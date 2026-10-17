@@ -14,7 +14,7 @@ validators: [pnpm test]
 ---
 # Stream Deck+ Layout
 
-**Manifest actions** (6 total): `session-slot` + `limit-key` (Keypad; the latter a placeable Claude-limit gauge) + 4 encoders on Stream Deck+.
+**Manifest actions** (6 total): `session-slot` + `limit-key` (Keypad; the latter a placeable gauge for the tightest per-model Claude cap) + 4 encoders on Stream Deck+.
 The earlier mode-dial keypad and the capabilities dropped on the way here are recorded in
 [Retired and Experimental Surfaces](retired-surfaces.md).
 
@@ -23,11 +23,21 @@ UUIDs are immutable post-distribution, so several no longer describe their role.
 | UUID | Display name | Role |
 |---|---|---|
 | `session-slot` | Session Slot | Keypad, device-grid aware |
-| `limit-key` | Claude Limit | Keypad (optional, opt-in) — worst per-model scoped cap (e.g. weekly "Fable"); critical ramp only when the cap is the active/binding limit, muted otherwise. Placeable but not in any bundled profile — never displaces a `session-slot` |
+| `limit-key` | Model Limit | Keypad (optional, opt-in) — worst per-model scoped Claude cap (e.g. weekly "Fable"); critical ramp only when the cap is the active/binding limit, muted otherwise. Placeable but not in any bundled profile — never displaces a `session-slot` |
 | `utility-dial` | Volume | E1 — macOS output volume |
-| `option-dial` | Claude Usage | E2 — Claude quota gauge (rotate: triple 5H/7D/scoped → zooms → session) |
-| `iterm-dial` | Codex Usage | E3 — Codex quota gauge |
+| `option-dial` | Usage Dial | E2 — plan usage gauge for any provider, Claude by default (rotate on the Claude page: triple 5H/7D/scoped → zooms → session) |
+| `iterm-dial` | Usage Dial 2 | E3 — the same gauge, Codex by default |
 | `launcher` | Launcher | E4 — open an agent |
+
+**Action names and icons never borrow a provider's name or mark.** An action is named for what it does, and
+its action-list icon is a product glyph. Anthropic's Claude Code legal page asks that the Claude Code and
+Anthropic names and logos not be used "as part of your own product, feature, or company name"
+([Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)), and the plugin holds every
+provider to the same rule. Provider names appear as plain text in each action's tooltip. A usage dial's LCD
+still draws the official mark of the provider it is showing, because there the mark identifies whose numbers
+are on screen. `plugin/src/__tests__/manifest-platform.test.ts` rejects a provider name in an action or state
+name. Until 2026-10-18 the three usage actions were called Claude Limit, Claude Usage and Codex Usage, and
+the two dials used the Claude Code and Codex marks as their icons.
 
 ## Keypad
 
@@ -41,7 +51,7 @@ All keypad buttons are `session-slot`; the plugin reads the physical device grid
 | Stream Deck XL (8×4) | 32 sessions, or 31 + NEXT | 0 BACK, 1 INFO, last ESC/STOP, penultimate MORE, remaining content |
 | Other key grids | `keyCount` sessions, or `keyCount - 1` + NEXT | 0 BACK, 1 INFO, last ESC/STOP, penultimate MORE, remaining content |
 
-Encoder/dial families: the **Stream Deck+** (4 dials) and **Stream Deck + XL** (6 dials) carry usage on their dials, so the keypad reserves no usage keys. E1–E4 map to Volume / Claude Usage / Codex Usage / Launcher; on the + XL, E5–E6 are intentionally unassigned. The **Stream Deck XL** has no dials and pins usage to its last keypad keys, like the classic deck. Device→family is resolved from the Elgato `DeviceType` (2 = XL, 7 = Plus, 13 = + XL); bundled profiles, including `agentdeck-sdxl` (DeviceType 2) and `agentdeck-sdplusxl` (DeviceType 13), AutoInstall and activate when first installed. Plugin startup and reconnects do not replace the user's active profile.
+Encoder/dial families: the **Stream Deck+** (4 dials) and **Stream Deck + XL** (6 dials) carry usage on their dials, so the keypad reserves no usage keys. E1–E4 map to Volume / Usage Dial / Usage Dial 2 / Launcher; on the + XL, E5–E6 are intentionally unassigned. The **Stream Deck XL** has no dials and pins usage to its last keypad keys, like the classic deck. Device→family is resolved from the Elgato `DeviceType` (2 = XL, 7 = Plus, 13 = + XL); bundled profiles, including `agentdeck-sdxl` (DeviceType 2) and `agentdeck-sdplusxl` (DeviceType 13), AutoInstall and activate when first installed. Plugin startup and reconnects do not replace the user's active profile.
 
 **The keypad usage strip uses up to the full bottom row: five keys on Classic, eight on XL.**
 Only reported windows reserve keys. Claude, its scoped cap, Codex, and z.ai are seated in that order; inactive scoped caps keep their position with Claude. With Claude 5H/7D, one Codex window, and two z.ai windows, Classic shows all five readings without MORE. Overflow reserves the last key for paging. Plus-family devices use their encoder screens instead.
@@ -85,7 +95,7 @@ also invalidate the D200H NOW card, even when the session's state is unchanged.
 ### Stream Deck+
 
 - Keypad UX 는 Stream Deck 과 동일하지만, encoder 가 상세 화면의 보조 조작면이다.
-- E1 은 볼륨, E2/E3 는 Claude/Codex usage 게이지, E4 는 에이전트 런처다.
+- E1 은 볼륨, E2/E3 는 usage 게이지(기본 Claude/Codex, LCD 탭으로 provider 전환), E4 는 에이전트 런처다.
 - Session detail 에 들어가면 keypad 는 "결정 버튼", encoder LCD 는 "읽기/스크롤" 역할로 분리한다. 긴 approval 문구를 키 타일에 억지로 넣지 않고 wide canvas 에서 읽게 한다.
 
 ### Ulanzi D200H
@@ -101,8 +111,8 @@ also invalidate the D200H NOW card, even when the session's state is unchanged.
 | E# | Action | Rotate | Push |
 |----|--------|--------|------|
 | E1 | Volume | Adjust output volume | Toggle mute |
-| E2 | Claude Usage | Cycle view (both/5h/7d/session) | Refresh usage data |
-| E3 | Codex Usage | Cycle view (both/5h/7d/session) | Refresh usage data |
+| E2 | Usage Dial | Cycle view (both/5h/7d/session) | Refresh usage data |
+| E3 | Usage Dial 2 | Cycle view (both/5h/7d/session) | Refresh usage data |
 | E4 | Launcher | Select agent | Open agent |
 
 E2 and E3 LCD touch-taps cycle through every available provider (Claude, Codex, z.ai,

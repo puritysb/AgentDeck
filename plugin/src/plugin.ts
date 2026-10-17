@@ -391,10 +391,10 @@ connMgr.on('usage_update', (ev: UsageEvent) => {
   // 5h/7d quota so every usage surface can draw both agents; z.ai the same (#348).
   const merged = { ...usageData, codexRateLimits: ev.codexRateLimits, zaiRateLimits: ev.zaiRateLimits };
   updateUsageModeData(merged);
-  // SD+ encoders: E2 = Claude usage water-tank, E3 = Codex usage water-tank.
+  // SD+ encoders: the E2 and E3 usage dials (Claude and Codex by default).
   updateClaudeUsageDial(merged);
   updateUsageDialData(merged);
-  // Dedicated "Claude Limit" keypad key: worst active per-model scoped cap.
+  // Dedicated "Model Limit" keypad key: worst active per-model scoped cap.
   updateUsageLimitButtons(merged);
   // v4: feed the pinned list-view water-tank usage tiles (classic SD / XL — no
   // encoder, so usage lives on the bottom keypad row).

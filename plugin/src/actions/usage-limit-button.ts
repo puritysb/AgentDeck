@@ -1,5 +1,5 @@
 /**
- * "Claude Limit" keypad button.
+ * "Model Limit" keypad button.
  *
  * A dedicated key that surfaces the worst per-model scoped Claude cap (e.g. the
  * weekly "Fable" limit at 98%) — the number that actually binds when the
@@ -25,7 +25,7 @@ import { isDisplayDimmed, dimActionIfNeeded } from '../display-dim.js';
 import { openAgentDeckAppOrGitHub } from '../system/index.js';
 import { dlog } from '../log.js';
 
-/** Live Claude Limit key instance IDs (usually one, but the SDK allows many). */
+/** Live Model Limit key instance IDs (usually one, but the SDK allows many). */
 const actionIds: string[] = [];
 
 function worstScoped(data: UsageModeData): UsageEncoderScoped | undefined {
