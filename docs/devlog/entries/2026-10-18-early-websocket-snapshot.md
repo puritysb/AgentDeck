@@ -23,6 +23,17 @@ never called. Registration now initializes still-open, previously uninitialized
 clients once. Closed and unauthorized peers remain excluded; replacing the
 callback does not replay already delivered snapshots.
 
+Review exposed an authentication boundary in that replay. ESP32 adoption sends
+its provisioning frame directly, then leaves an unauthenticated socket OPEN for
+500ms before reconnecting with the credential. OPEN therefore does not establish
+admission. The socket-to-address map is populated only after authentication;
+the liveness map is unsuitable because the ping sweep can populate it for any
+open socket. A real adoption/reconnect regression failed before the admission
+guard and passed afterward. An additional regression reproduced ordinary
+state_update and sessions_list broadcasts entering the same temporary window.
+The common payload path now requires admission too, while the direct
+auth_provision frame and authenticated broadcasts retain their behavior.
+
 This is separate from the fixed-version 10-minute measurement's two health
 5-second timeouts and 34 native socket samples without ESTABLISHED connections
 under host load 400–600 and memory pressure 4. Those observations and the

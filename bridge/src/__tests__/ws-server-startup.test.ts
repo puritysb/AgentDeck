@@ -121,4 +121,31 @@ describe('WebSocket clients admitted before daemon initialization finishes', () 
     await authenticated.waitForType('sessions_list');
     expect(snapshot).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps ordinary broadcasts out of the unauthenticated adoption window', async () => {
+    const admittedPeers: WebSocket[] = [];
+    server.onClientConnect((ws) => { admittedPeers.push(ws); sendSnapshot(ws); });
+    const admitted = await connect();
+    await admitted.waitForType('sessions_list');
+    admitted.clear();
+
+    openPairingWindow({ adoptEsp32Ips: ['127.0.0.1'] });
+    server.setEsp32AdoptionProvider(() => ({
+      authToken: 'paired-test-peer', bridgeIp: '127.0.0.1', bridgePort: 9120,
+    }));
+    const adopting = new WebSocket(`${url}?clientType=esp32`);
+    const provisioned = once(adopting, 'message');
+    const closed = once(adopting, 'close');
+    const messages: unknown[] = [];
+    adopting.on('message', (message) => messages.push(JSON.parse(message.toString())));
+    await provisioned;
+    expect(adopting.readyState).toBe(WebSocket.OPEN);
+
+    server.broadcast({ type: 'state_update', state: State.IDLE, permissionMode: 'default' });
+    server.broadcastExcept({ type: 'sessions_list', sessions: [] }, admittedPeers[0]!);
+    await admitted.waitForType('state_update');
+    expect((await closed)[0]).toBe(1000);
+    expect(messages).toEqual([expect.objectContaining({ type: 'auth_provision' })]);
+    expect(admitted.getMessagesOfType('sessions_list')).toHaveLength(0);
+  });
 });

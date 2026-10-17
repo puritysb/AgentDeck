@@ -407,6 +407,9 @@ export class WsServer {
   }
 
   private payloadFor(event: BridgeEvent, client: WebSocket, cachedPayload?: string): string | null {
+    // Adoption uses a direct auth_provision send before admission. Ordinary
+    // snapshots and broadcasts must not share that temporary open socket.
+    if (!this.socketRemoteIp.has(client)) return null;
     if (!this.eventTransformer) return cachedPayload ?? JSON.stringify(event);
     const transformed = this.eventTransformer(event, client);
     if (!transformed) return null;
