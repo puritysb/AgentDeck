@@ -72,6 +72,7 @@ export class WsServer {
   private binaryCallback: ((data: Buffer, sender: WebSocket) => void) | null = null;
   private onPongCallback: ((ws: WebSocket) => void) | null = null;
   private onConnectCallback: ((ws: WebSocket) => void) | null = null;
+  private readonly connectNotified = new WeakSet<WebSocket>();
   private onDisconnectCallback: ((ws: WebSocket) => void) | null = null;
   private clientAlive = new Map<WebSocket, boolean>();
   private esp32Clients = new Set<WebSocket>();
@@ -303,9 +304,7 @@ export class WsServer {
       this.clientAlive.set(ws, true);
 
       // Send current state to newly connected client
-      if (this.onConnectCallback) {
-        this.onConnectCallback(ws);
-      }
+      this.notifyClientConnect(ws);
 
       ws.on('pong', () => {
         this.clientAlive.set(ws, true);
@@ -492,6 +491,16 @@ export class WsServer {
 
   onClientConnect(callback: (ws: WebSocket) => void): void {
     this.onConnectCallback = callback;
+    // The daemon binds before async module/APME initialization finishes. A
+    // client admitted during that window otherwise misses its initial state
+    // forever, even though later broadcasts keep its transport alive.
+    for (const client of this.wss.clients) this.notifyClientConnect(client);
+  }
+
+  private notifyClientConnect(ws: WebSocket): void {
+    if (!this.onConnectCallback || ws.readyState !== WebSocket.OPEN || this.connectNotified.has(ws)) return;
+    this.connectNotified.add(ws);
+    this.onConnectCallback(ws);
   }
 
   onClientDisconnect(callback: (ws: WebSocket) => void): void {
