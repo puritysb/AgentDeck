@@ -14,12 +14,20 @@ struct BridgeInfo {
 };
 
 /**
- * Initialize mDNS and start browsing for _agentdeck._tcp services.
+ * Start the mDNS responder. Idempotent, and only meaningful while the STA has
+ * an address: mdnsPoll() calls it on demand, so nothing else needs to.
  */
 void mdnsInit();
 
 /**
- * Poll for discovered bridges. Non-blocking.
+ * Stop the mDNS responder. Must run BEFORE anything that destroys the WiFi
+ * netifs (WIFI_OFF), never after — see mdns_discovery.cpp.
+ */
+void mdnsStop();
+
+/**
+ * Poll for discovered bridges, starting the responder on first use. Call only
+ * while the STA is connected and the radio is not parked.
  * Returns true if a new bridge was found since last call.
  */
 bool mdnsPoll(BridgeInfo& out);

@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "mdns_discovery.h"
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
@@ -71,6 +72,14 @@ void saveIps10ProvisionedWifi(const char* ssid, const char* password) {
 }  // namespace
 #endif
 
+// Every WIFI_OFF goes through here. On Arduino 3 it destroys the default
+// netifs, and the mDNS responder must be gone before they are
+// (mdns_discovery.cpp).
+static void radioOff() {
+    Net::mdnsStop();
+    WiFi.mode(WIFI_OFF);
+}
+
 namespace Net {
 
 void wifiInit() {
@@ -105,7 +114,7 @@ void wifiInit() {
     // has polled serial once.
     portalActive = false;
     radioParked = true;
-    WiFi.mode(WIFI_OFF);
+    radioOff();
     Serial.printf("[WiFi] Boot join deferred to the serial verdict (saved creds: %s)\n",
                   loadIps10ProvisionedWifi(savedSsid, sizeof(savedSsid), savedPassword,
                                            sizeof(savedPassword)) ? "yes" : "no");
@@ -132,7 +141,7 @@ void wifiInit() {
 #endif
     Serial.println("[WiFi] No saved creds — radio OFF (no AP portal; provision via daemon)");
     portalActive = false;
-    WiFi.mode(WIFI_OFF);
+    radioOff();
     return;
 #endif
 
@@ -147,7 +156,7 @@ void wifiInit() {
     // daemon-provisioned like the IPS10.
     wm.setEnableConfigPortal(false);
     portalActive = false;
-    WiFi.mode(WIFI_OFF);
+    radioOff();
     Serial.println("[WiFi] Boot join deferred — radio off until the serial verdict");
     return;
 #endif
@@ -224,7 +233,7 @@ void wifiSetRadioParked(bool parked) {
             }
         }
 #else
-        WiFi.mode(WIFI_OFF);
+        radioOff();
 #endif
     } else {
         radioParked = false;
@@ -253,7 +262,7 @@ void wifiSetRadioParked(bool parked) {
         // Never provisioned: nothing to join, so do not leave an idle STA
         // powered. The next wifi_provision brings the radio up itself.
         if (WiFi.SSID().length() == 0) {
-            WiFi.mode(WIFI_OFF);
+            radioOff();
             return;
         }
 #endif
@@ -361,7 +370,7 @@ bool wifiTryDeferredJoin() {
         return true;
     }
     // Nothing to join (or AP unreachable) — back to radio-off quiet.
-    WiFi.mode(WIFI_OFF);
+    radioOff();
     return false;
 }
 #endif
@@ -442,6 +451,7 @@ bool wifiLoadProvisionedBridge(char* ip, size_t ipLen, uint16_t* port, char* tok
 }
 
 void wifiReset() {
+    Net::mdnsStop();  // resetSettings() turns WiFi off on its way to the restart
     wm.resetSettings();
     ESP.restart();
 }

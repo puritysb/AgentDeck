@@ -98,8 +98,9 @@ static void networkTask(void* param) {
     // 2. Connect WiFi (non-blocking attempt)
     Net::wifiInit();
 
-    // 3. Start mDNS discovery
-    Net::mdnsInit();
+    // 3. mDNS starts on the first poll that has an STA address (mdnsPoll),
+    //    not here, and radio-off stops it: a responder left running across a
+    //    radio park crashed on the next join (mdns_discovery.cpp).
 
     // 4. Init WebSocket
     Net::wsInit();
