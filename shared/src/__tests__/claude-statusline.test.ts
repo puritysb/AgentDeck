@@ -13,6 +13,7 @@ import {
   shouldPollClaudeOAuth,
   type ClaudeStatuslineReading,
   type ClaudeStatuslineWindow,
+  type ClaudeUsageSource,
 } from '../claude-statusline.js';
 
 interface WindowVector { usedPercent: number; resetsAt: string | null }
@@ -39,7 +40,7 @@ const vectors = JSON.parse(readFileSync(
   carry: Array<{ name: string; lastOAuthFetchAt: number | null; carry: boolean }>;
   oauthOrdering: Array<{ name: string; currentFetchedAt: number; nextFetchedAt: number; fresh: boolean; statuslineLive: boolean; preserve: boolean }>;
   changed: Array<{ name: string; prev: ReadingVector | null; next: ReadingVector; changed: boolean }>;
-  accept: Array<{ name: string; previousForSession: ReadingVector | null; current: ReadingVector | null; next: ReadingVector; accepted: boolean; regressed: boolean }>;
+  accept: Array<{ name: string; previousForSession: ReadingVector | null; current: ReadingVector | null; currentSource?: ClaudeUsageSource; next: ReadingVector; accepted: boolean; regressed: boolean }>;
 };
 
 const RECEIVED_AT = 1792108799000;
@@ -121,7 +122,7 @@ describe('claude status-line relay rules (shared vectors)', () => {
         const current = v.current ? reading(v.current) : null;
         const next = reading(v.next);
         expect(claudeStatuslineProgressRegressed(previous, next)).toBe(v.regressed);
-        expect(shouldAcceptClaudeStatusline(previous, current, next)).toBe(v.accepted);
+        expect(shouldAcceptClaudeStatusline(previous, current, next, v.currentSource ?? null)).toBe(v.accepted);
       });
     }
   });

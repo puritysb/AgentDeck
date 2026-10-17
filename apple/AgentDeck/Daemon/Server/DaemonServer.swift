@@ -10014,7 +10014,11 @@ final class DaemonServer {
            let oldest = claudeStatuslineSessions.min(by: { $0.value.receivedAtMs < $1.value.receivedAtMs })?.key {
             claudeStatuslineSessions.removeValue(forKey: oldest)
         }
-        guard ClaudeStatuslineRules.shouldAccept(previousForSession: previousForSession, current: current, next: reading) else {
+        // A sibling relay's OAuth reading keeps its fractional reset second and
+        // whole percent; the ordering check must know which carrier `current` is.
+        let currentSource = cachedApiUsage != nil ? claudeUsageSource : "statusline"
+        guard ClaudeStatuslineRules.shouldAccept(
+            previousForSession: previousForSession, current: current, next: reading, currentSource: currentSource) else {
             return ClaudeStatuslineIngest(applied: false, broadcast: false)
         }
         let prev = claudeStatusline

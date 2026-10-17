@@ -153,8 +153,10 @@ final class ClaudeStatuslineRulesTests: XCTestCase {
             let next = try XCTUnwrap(reading(c["next"]), name)
             XCTAssertEqual(ClaudeStatuslineRules.progressRegressed(previous: previous, next: next),
                            try XCTUnwrap(c["regressed"] as? Bool), name)
-            XCTAssertEqual(ClaudeStatuslineRules.shouldAccept(previousForSession: previous, current: current, next: next),
-                           try XCTUnwrap(c["accepted"] as? Bool), name)
+            XCTAssertEqual(ClaudeStatuslineRules.shouldAccept(
+                previousForSession: previous, current: current, next: next,
+                currentSource: c["currentSource"] as? String),
+                try XCTUnwrap(c["accepted"] as? Bool), name)
         }
     }
 

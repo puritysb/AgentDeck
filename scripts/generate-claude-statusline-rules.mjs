@@ -29,6 +29,8 @@ export function rulesFrom(mod) {
     msThreshold: mod.CLAUDE_STATUSLINE_MS_THRESHOLD,
     sessionLimit: mod.CLAUDE_STATUSLINE_SESSION_LIMIT,
     relayedSessionUsageFields: mod.RELAYED_SESSION_USAGE_FIELDS,
+    crossSourceResetToleranceMs: mod.CLAUDE_STATUSLINE_CROSS_SOURCE_RESET_TOLERANCE_MS,
+    crossSourcePercentTolerance: mod.CLAUDE_STATUSLINE_CROSS_SOURCE_PERCENT_TOLERANCE,
   };
 }
 
@@ -66,6 +68,12 @@ enum ClaudeStatuslineRules {
     static let sessionLimit: Int = ${num(rules.sessionLimit)}
     /// Session fields may accompany a relay without replacing the daemon's account quota.
     static let relayedSessionUsageFields: [String] = ${JSON.stringify(rules.relayedSessionUsageFields)}
+    /// Against an OAuth-family reading, resets this close are one window
+    /// (status line: whole seconds; OAuth: microseconds).
+    static let crossSourceResetToleranceMs: Double = ${num(rules.crossSourceResetToleranceMs)}
+    /// Against an OAuth-family reading of the same window, a status-line percent
+    /// this much lower is rounding (OAuth reports whole percent).
+    static let crossSourcePercentTolerance: Double = ${num(rules.crossSourcePercentTolerance)}
 
     struct Window: Equatable {
         let usedPercent: Double
@@ -208,7 +216,9 @@ enum ClaudeStatuslineRules {
 
     /// Cached renders never renew receipt freshness. A fresh cross-session quota also
     /// rejects older reset windows, same-window decreases, and another session's expiry removal.
-    static func shouldAccept(previousForSession: Reading?, current: Reading?, next: Reading) -> Bool {
+    /// Exact between status-line readings; against an OAuth-family (or unknown)
+    /// \`currentSource\` the order is read at the precision both carriers share.
+    static func shouldAccept(previousForSession: Reading?, current: Reading?, next: Reading, currentSource: String? = nil) -> Bool {
         if progressRegressed(previous: previousForSession, next: next) { return false }
         if let previous = previousForSession,
            previous.fiveHour == next.fiveHour, previous.sevenDay == next.sevenDay,
@@ -217,6 +227,11 @@ enum ClaudeStatuslineRules {
             return false
         }
         if let current, age(receivedAtMs: current.receivedAtMs, nowMs: next.receivedAtMs) == .fresh {
+            let crossSource = currentSource != "statusline"
+            let resetSlack = crossSource ? crossSourceResetToleranceMs : 0
+            let percentSlack = crossSource ? crossSourcePercentTolerance : 0
+            // An unparseable reset is NaN, which compares false both ways: no claim.
+            let sameWindow = { (x: String?, y: String) -> Bool in abs(resetMs(x) - resetMs(y)) <= resetSlack }
             let windows: [(Window?, Window?, Window?)] = [
                 (current.fiveHour, next.fiveHour, previousForSession?.fiveHour),
                 (current.sevenDay, next.sevenDay, previousForSession?.sevenDay),
@@ -224,11 +239,12 @@ enum ClaudeStatuslineRules {
             for (a, b, previous) in windows {
                 if let a, b == nil, let reset = a.resetsAt, !reset.isEmpty,
                    resetMs(reset) > next.receivedAtMs,
-                   resetMs(previous?.resetsAt) != resetMs(reset) { return false }
+                   !sameWindow(previous?.resetsAt, reset) { return false }
                 guard let a, let b, let aReset = a.resetsAt, !aReset.isEmpty,
                       let bReset = b.resetsAt, !bReset.isEmpty else { continue }
-                let before = resetMs(aReset), after = resetMs(bReset)
-                if after < before || (after == before && b.usedPercent < a.usedPercent) { return false }
+                let delta = resetMs(bReset) - resetMs(aReset)
+                if delta < -resetSlack { return false }
+                if abs(delta) <= resetSlack && b.usedPercent < a.usedPercent - percentSlack { return false }
             }
         }
         return true

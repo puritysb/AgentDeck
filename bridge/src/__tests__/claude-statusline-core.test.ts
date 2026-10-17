@@ -12,7 +12,7 @@ import { WsTestClient } from './helpers/ws-test-client.js';
 import { createTempDataDir, type TempDataDir } from './helpers/temp-data-dir.js';
 import type { UsageEvent } from '../types.js';
 import type { ApiUsageData } from '../usage-api.js';
-import type { ClaudeStatuslineReading } from '@agentdeck/shared';
+import { parseClaudeStatusline, type ClaudeStatuslineReading } from '@agentdeck/shared';
 
 const MIN = 60_000;
 const FIVE_RESET = new Date(Date.now() + 2 * 3600_000).toISOString();
@@ -142,6 +142,35 @@ describe('BridgeCore × Claude status-line relay', () => {
     expect(core.claudeStatuslineIsLive()).toBe(false);
     expect(core.applyClaudeStatusline({ ...r, receivedAt: Date.now() })).toEqual({ applied: false, broadcast: false });
     expect(core.cachedApiUsage?.fiveHourPercent).toBe(10);
+  });
+
+  it("a fresh OAuth reading's microsecond resets and whole percent do not lock newer status-line documents out", () => {
+    // The live shape (usage cache, 2026-10-18): OAuth stamps resets with
+    // microseconds, the status line with whole epoch seconds. Comparing them
+    // exactly rejected every document and left the 60 s OAuth poll running.
+    const fiveSec = Math.floor(Date.parse(FIVE_RESET) / 1000);
+    const weekSec = Math.floor(Date.parse(WEEK_RESET) / 1000);
+    const oauthIso = (sec: number) => new Date(sec * 1000).toISOString().replace(/\.000Z$/, '.323175+00:00');
+    core.updateApiUsage(oauthUsage({
+      fiveHourPercent: 7, fiveHourResetsAt: oauthIso(fiveSec),
+      sevenDayPercent: 40, sevenDayResetsAt: oauthIso(weekSec),
+    }));
+    expect(core.claudeUsageSource).toBe('oauth');
+    const document = (sessionId: string, weekly: number, apiMs: number) => parseClaudeStatusline({
+      session_id: sessionId,
+      cost: { total_duration_ms: 60_000, total_api_duration_ms: apiMs },
+      rate_limits: {
+        five_hour: { used_percentage: 7, resets_at: fiveSec },
+        seven_day: { used_percentage: weekly, resets_at: weekSec },
+      },
+    }, Date.now())!;
+    expect(core.applyClaudeStatusline(document('live', 39.6, 1000)).applied).toBe(true);
+    expect(core.claudeUsageSource).toBe('statusline');
+    expect(core.cachedApiUsage?.sevenDayPercent).toBe(39.6);
+    expect(core.shouldPollClaudeOAuth()).toBe(false);
+    // Between status-line readings the order stays exact.
+    expect(core.applyClaudeStatusline(document('other', 39.5, 2000)).applied).toBe(false);
+    expect(core.applyClaudeStatusline(document('live', 39.8, 1500)).applied).toBe(true);
   });
 
   it('preserves source timestamps when a fresh file/sibling cache predates the statusline', () => {
