@@ -2,6 +2,7 @@
 
 import SwiftUI
 #if os(macOS)
+import AppIntents
 import ServiceManagement
 import UserNotifications
 #endif
@@ -193,6 +194,9 @@ struct AgentDeckApp: App {
                 openWindow(id: "dashboard")
                 NSApp.activate(ignoringOtherApps: true)
             })
+        // Register the provider on upgrade as well as first installation.
+        // The one-shot launch guard keeps this independent of roster updates.
+        AttentionSessionShortcuts.updateAppShortcutParameters()
 
         daemonService.onReady = { [stateHolder] wsUrl in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
