@@ -186,6 +186,13 @@ struct AgentDeckApp: App {
         // Wire AppDelegate to daemon service for clean shutdown
         appDelegate.daemonService = daemonService
         appDelegate.stateHolder = stateHolder
+        AttentionSessionAccess.shared.configure(
+            snapshot: { [weak stateHolder] in stateHolder?.attentionSessionSnapshot },
+            openDashboard: {
+                DockVisibilityController.shared.prepareToShowWindow()
+                openWindow(id: "dashboard")
+                NSApp.activate(ignoringOtherApps: true)
+            })
 
         daemonService.onReady = { [stateHolder] wsUrl in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -222,6 +229,7 @@ struct AgentDeckApp: App {
             }
         } else {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                guard !AttentionSessionAccess.shared.hasRequestedDashboard else { return }
                 NSApp.windows.first { $0.identifier?.rawValue == "dashboard" }?.close()
             }
         }
@@ -335,6 +343,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 /// foreground notifications entirely and the "needs your response" banner
 /// (AttentionNotifier) would only ever appear when the app is backgrounded.
 extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let referenceID = response.notification.request.content.userInfo[AttentionNotifier.referenceKey] as? String
+        // Return promptly to the notification system; the bounded request is
+        // retained by the app and can outlive initial Dashboard construction.
+        Task { @MainActor in
+            await AttentionSessionAccess.shared.openNotification(referenceID: referenceID)
+        }
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification

@@ -12,6 +12,20 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Unreleased macOS attention actions
+
+Copy for the next macOS build containing the attention actions; this is not a
+version decision or a claim that the feature is already in the Store. The iOS
+copy is unchanged. Verify Shortcuts discovery and notification navigation on the
+signed candidate before submission.
+
+- **English:** Open the session that needs you directly from its notification.
+  Use Shortcuts to list sessions waiting for a response and open one in the Dashboard.
+- **Korean:** 알림을 눌러 응답이 필요한 세션으로 바로 이동하세요. 단축어에서
+  응답을 기다리는 세션을 조회하고 대시보드에서 열 수 있습니다.
+- **Japanese:** 通知から対応が必要なセッションを直接開けます。ショートカットで
+  応答待ちのセッションを一覧にし、ダッシュボードで開くこともできます。
+
 ---
 
 ## 🇰🇷 Korean (Additional localization)

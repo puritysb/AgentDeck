@@ -10,6 +10,24 @@ enum MonitorLayout {
     static let sandFraction = CGFloat(TerrariumLayout.sandHeightFraction)
 }
 
+/// Dashboard inspection chooses the visible question without changing the
+/// daemon's control focus or borrowing another session's live prompt options.
+enum MonitorAttentionSelection {
+    static func featuredSession(
+        in awaitingSessions: [SessionInfo],
+        inspectedSessionID: String?,
+        controlFocusedSessionID: String?
+    ) -> SessionInfo? {
+        for preferredID in [inspectedSessionID, controlFocusedSessionID] {
+            guard let preferredID else { continue }
+            for session in awaitingSessions where session.id == preferredID {
+                return session
+            }
+        }
+        return awaitingSessions.first
+    }
+}
+
 struct MonitorScreen: View {
     @EnvironmentObject private var stateHolder: AgentStateHolder
     @EnvironmentObject private var preferences: AppPreferences
@@ -18,6 +36,8 @@ struct MonitorScreen: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var communications = CommunicationFeed()
     @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
+    @ObservedObject private var attentionAccess = AttentionSessionAccess.shared
+    @State private var sessionOpenError: String?
     #endif
 
     @StateObject private var inspection = DashboardInspection()
@@ -101,6 +121,27 @@ struct MonitorScreen: View {
                 updateTerrariumState: updateTerrariumState
             ))
             #if os(macOS)
+            .onChange(of: attentionAccess.presentation?.id, initial: true) { _, requestID in
+                guard let requestID,
+                      let destination = attentionAccess.consumePresentation(id: requestID) else { return }
+                hudHidden = false
+                switch destination {
+                case .session(let id):
+                    sessionOpenError = nil
+                    inspection.select(id, state: stateHolder.state)
+                case .failure(let message):
+                    inspection.select(nil, state: stateHolder.state)
+                    sessionOpenError = message
+                }
+            }
+            .alert("Unable to open session", isPresented: Binding(
+                get: { sessionOpenError != nil },
+                set: { if !$0 { sessionOpenError = nil } }
+            )) {
+                Button("OK") { sessionOpenError = nil }
+            } message: {
+                Text(sessionOpenError ?? "")
+            }
             .environmentObject(communications)
             .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(communications.refreshID)") {
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
@@ -432,14 +473,13 @@ struct MonitorScreen: View {
         )
     }
 
-    /// Which awaiting session to feature: prefer the currently-focused one
-    /// (so the user's active context wins), then fall back to sort order.
+    /// Local navigation wins for the visible question. Control focus remains
+    /// separate so inspecting a session cannot retarget connected hardware.
     private var featuredAwaitingSession: SessionInfo? {
-        if let focusedId = effectiveFocusedSessionId,
-           let focused = attentionSessions.first(where: { $0.id == focusedId }) {
-            return focused
-        }
-        return attentionSessions.first
+        MonitorAttentionSelection.featuredSession(
+            in: attentionSessions,
+            inspectedSessionID: inspection.sessionId,
+            controlFocusedSessionID: effectiveFocusedSessionId)
     }
 
     private var effectiveFocusedSessionId: String? {

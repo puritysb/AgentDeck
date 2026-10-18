@@ -317,7 +317,9 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
                 print("[BridgeConnection] first message received — connected!")
                 self.connectTimeoutWork?.cancel()
                 self.connectTimeoutWork = nil
+                let generation = connectionGeneration
                 DispatchQueue.main.async {
+                    guard !self.isTerminating, self.connectionGeneration == generation else { return }
                     self.status = .connected
                     self.reconnectAttempt = 0
                     self.isReconnecting = false
@@ -344,10 +346,15 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     }
 
     /// Decode one inbound text frame to a typed `BridgeEvent` and deliver it to
-    /// `onEvent` on the main queue.
-    private func dispatchInbound(_ text: String) {
+    /// `onEvent` on the main queue. A host change can happen after parsing but
+    /// before delivery, so a queued frame belongs to its original generation.
+    func dispatchInbound(_ text: String) {
+        let generation = connectionGeneration
         if let event = BridgeEventParser.parse(text) {
-            DispatchQueue.main.async { self.onEvent?(event) }
+            DispatchQueue.main.async {
+                guard !self.isTerminating, self.connectionGeneration == generation else { return }
+                self.onEvent?(event)
+            }
         }
     }
 

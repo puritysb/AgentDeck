@@ -17,6 +17,19 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     @Published private(set) var state = DashboardState()
     @Published private(set) var lastDataReceivedAt: Date?
+    #if os(macOS)
+    /// Freshness for native session actions must come from a roster frame,
+    /// never a usage/timeline update or the wake watchdog's timestamp.
+    private var latestAttentionSessionSnapshot: AttentionSessionSnapshot?
+    var attentionSessionSnapshot: AttentionSessionSnapshot? {
+        guard !isTerminating, !userStoppedConnecting, state.bridgeConnected,
+              connection.status == .connected,
+              let snapshot = latestAttentionSessionSnapshot,
+              snapshot.endpoint == PairingCredential.endpoint(of: connection.url),
+              snapshot.endpoint == PairingCredential.endpoint(of: selectedBridgeURL) else { return nil }
+        return snapshot
+    }
+    #endif
     private var lastKnownState: DashboardState?
 
     // MARK: - Dependencies
@@ -422,6 +435,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     func prepareForTermination() {
         guard !isTerminating else { return }
         isTerminating = true
+        #if os(macOS)
+        latestAttentionSessionSnapshot = nil
+        #endif
         preferredLocalRecovery?.cancel()
         preferredLocalRecovery = nil
 
@@ -801,8 +817,18 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             // sessions entering/leaving an awaiting state. App-layer so it
             // covers both tiers (in-process Swift daemon + external Node
             // daemon client mode) with one implementation.
-            let sessions = e.sessions
-            Task { @MainActor in AttentionNotifier.sync(sessions: sessions) }
+            if state.bridgeConnected, connection.status == .connected, !userStoppedConnecting,
+               let endpoint = PairingCredential.endpoint(of: connection.url),
+               endpoint == PairingCredential.endpoint(of: selectedBridgeURL) {
+                let snapshot = AttentionSessionSnapshot(endpoint: endpoint, sessions: e.sessions, receivedAt: Date())
+                latestAttentionSessionSnapshot = snapshot
+                Task { @MainActor [weak self] in
+                    // Do not post a queued frame after a disconnect/host switch.
+                    guard self?.attentionSessionSnapshot?.receivedAt == snapshot.receivedAt,
+                          self?.attentionSessionSnapshot?.endpoint == snapshot.endpoint else { return }
+                    AttentionNotifier.sync(snapshot: snapshot)
+                }
+            }
             #endif
         case .promptOptions(let e):
             state.options = e.options
@@ -1176,6 +1202,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     private func handleConnection(_ e: ConnectionEvent) {
         switch e.status {
         case "connected":
+            #if os(macOS)
+            latestAttentionSessionSnapshot = nil
+            #endif
             state.bridgeConnected = true
             state.sessionId = e.sessionId
             state.focusedSessionId = nil
@@ -1233,6 +1262,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     }
 
     private func resetToDisconnected() {
+        #if os(macOS)
+        latestAttentionSessionSnapshot = nil
+        #endif
         timelineGenerator.onDisconnected()
         timelineVersion += 1
         // Preserve lastKnownState for offline display
@@ -1286,6 +1318,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     func connectTo(url: String) {
         guard !isTerminating else { return }
+        #if os(macOS)
+        latestAttentionSessionSnapshot = nil
+        #endif
         preferredLocalRecovery?.cancel()
         preferredLocalRecovery = nil
         userStoppedConnecting = false
