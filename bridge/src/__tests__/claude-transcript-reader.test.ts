@@ -280,7 +280,7 @@ describe('readOpenTurnEvidence', () => {
         message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'text', text: 'working' }] } },
     ]));
     expect(readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z')))
-      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: true });
+      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: true, completedAt: null });
     expect(readOpenTurnEvidence(join(dir, 'missing.jsonl'), 0)).toBeNull();
   });
 
@@ -311,6 +311,32 @@ describe('readOpenTurnEvidence', () => {
     expect(out.sawAssistant).toBe(false);
   });
 
+  it('reports the end_turn that finished the turn, and nothing for one still running', () => {
+    // The next-prompt close tells a turn still RUNNING (a queued message
+    // delivered mid-turn) from one that finished and then lost its Stop.
+    const running = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T11:59:59.000Z',
+        message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'previous turn' }] } },
+      { type: 'assistant', timestamp: '2026-08-13T12:00:04.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } },
+    ]));
+    expect(readOpenTurnEvidence(running, AT('2026-08-13T12:00:00.000Z'))!.completedAt).toBeNull();
+    // A window opened early (the collector's slack) reports the previous
+    // turn's record as-is; comparing it with the turn start is the caller's.
+    expect(readOpenTurnEvidence(running, AT('2026-08-13T11:59:58.000Z'))!.completedAt)
+      .toBe(AT('2026-08-13T11:59:59.000Z'));
+
+    const finished = writeTranscript(fixture([
+      { type: 'assistant', timestamp: '2026-08-13T12:00:04.000Z',
+        message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] } },
+      { type: 'assistant', timestamp: '2026-08-13T12:00:09.000Z',
+        message: { role: 'assistant', stop_reason: 'end_turn', content: [{ type: 'text', text: 'done' }] } },
+      { type: 'system', timestamp: '2026-08-13T12:00:09.400Z', subtype: 'stop_hook_summary' },
+    ]));
+    expect(readOpenTurnEvidence(finished, AT('2026-08-13T12:00:00.000Z'))!.completedAt)
+      .toBe(AT('2026-08-13T12:00:09.000Z'));
+  });
+
   it('reports a turn that never ran — two prompts, no assistant record between', () => {
     // Queued prompts and <task-notification> injections land ~130ms apart and
     // one model turn serves both; only the last of them is owed a Stop.
@@ -321,6 +347,6 @@ describe('readOpenTurnEvidence', () => {
         message: { role: 'user', content: [{ type: 'text', text: '<task-notification>b' }] } },
     ]));
     expect(readOpenTurnEvidence(path, AT('2026-08-13T12:00:00.000Z')))
-      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: false });
+      .toEqual({ interruptedAt: null, abortedAt: null, sawAssistant: false, completedAt: null });
   });
 });

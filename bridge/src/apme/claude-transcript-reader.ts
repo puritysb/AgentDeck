@@ -180,6 +180,10 @@ export interface OpenTurnEvidence {
   /** Whether the assistant wrote ANYTHING since the window opened. False means
    *  the turn never ran — a second prompt displaced it first. */
   sawAssistant: boolean;
+  /** Newest assistant `end_turn` record in the window (epoch ms), else null.
+   *  A turn that reached one finished; one that ran and has none was still
+   *  running when the window was read. */
+  completedAt: number | null;
 }
 
 /**
@@ -241,7 +245,7 @@ export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
  * and is still open. Returns null when the transcript is unreadable — the
  * absence of evidence, which callers must never resolve as a verdict.
  *
- * Three questions, one read, because the close path that runs at the next
+ * Four questions, one read, because the close path that runs at the next
  * prompt has to ask all of them and each answer is a different bucket:
  *
  *  - Did the user cancel? `readTurnEndProbe` only sees the ESC marker while it
@@ -252,6 +256,8 @@ export function readTurnEndProbe(transcriptPath: string): TurnEndProbe | null {
  *  - Did the assistant write anything at all? If not, this prompt never got a
  *    turn of its own — a second prompt landed first and one model turn served
  *    both, so the displaced row is a counting artifact, not a lost hook.
+ *  - Did the turn finish? One that ran and wrote no `end_turn` was still
+ *    running, which is how a queued message delivered mid-turn displaces it.
  *
  * The backward walk stops at the first record older than the window, so
  * evidence belonging to an earlier turn can neither be found nor paid for.
@@ -260,7 +266,7 @@ export function readOpenTurnEvidence(transcriptPath: string, sinceMs: number): O
   const EVIDENCE_TAIL_BYTES = 256 * 1024;
   const tail = readTailString(transcriptPath, EVIDENCE_TAIL_BYTES);
   if (tail == null) return null;
-  const evidence: OpenTurnEvidence = { interruptedAt: null, abortedAt: null, sawAssistant: false };
+  const evidence: OpenTurnEvidence = { interruptedAt: null, abortedAt: null, sawAssistant: false, completedAt: null };
   const lines = tail.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
@@ -282,6 +288,9 @@ export function readOpenTurnEvidence(transcriptPath: string, sinceMs: number): O
       evidence.sawAssistant = true;
       if (evidence.abortedAt == null && rec.message?.stop_reason === CLIENT_ABORT_STOP_REASON) {
         evidence.abortedAt = ts;
+      }
+      if (evidence.completedAt == null && rec.message?.stop_reason === 'end_turn') {
+        evidence.completedAt = ts;
       }
     }
   }

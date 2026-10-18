@@ -1,6 +1,6 @@
 ---
 name: esp32-heap-discipline
-description: Memory-allocation discipline for AgentDeck ESP32 firmware (esp32/). Use whenever writing or reviewing firmware code that allocates — new / malloc / ps_malloc / heap_caps_alloc / std::vector / std::string / String / a buffer / a cache / anything held across a render loop. Covers the PSRAM-vs-no-PSRAM board split, the allocation decision order, fragmentation avoidance, the makeUniqueNoThrow / ScopedCleanup helpers, the PROTOCOL_MAX_MSG_BYTES JSON guard, and the heap diagnostics (logHeap / [PERF] freeblk).
+description: Memory-allocation discipline for AgentDeck ESP32 firmware (esp32/). Use whenever writing or reviewing firmware code that allocates — new / malloc / ps_malloc / heap_caps_alloc / std::vector / std::string / String / a buffer / a cache / anything held across a render loop. Covers the PSRAM-vs-no-PSRAM board split, the allocation decision order, fragmentation avoidance, the makeUniqueNoThrow / ScopedCleanup helpers, the PROTOCOL_MAX_MSG_BYTES JSON guard, and the heap diagnostics (logHeap / [PERF] freeblk / allocFailures and [HeapFail]).
 ---
 
 # ESP32 Heap Discipline
@@ -81,6 +81,16 @@ fixed to a stack local.)
 - The IPS10 `[PERF]` profiler line (`main.cpp`, `IPS10_PERF_PROFILE`) now carries
   a `freeblk` field — a shrinking freeblk while fps holds steady is the
   fragmentation tell.
+- **A low-water mark of 0 is not a failed allocation.** On the PSRAM boards an
+  ordinary `malloc` that misses internal RAM retries in PSRAM, so
+  `minFreeHeapKb` can read 0 while every request succeeded. What did fail is
+  counted by `util/heap_telemetry.h` (ESP-IDF's failed-allocation hook, which
+  fires only after the last fallback): `allocFailures` /
+  `allocFailLastBytes` / `allocFailLastCaps` in `device_info`, and a numeric
+  `[HeapFail]` serial line that the daemon logs under `esp32-heap`. On a
+  serial-attached board `device_info` is a connect-time snapshot, so read the
+  line. A deliberate attempt with a fallback (internal buffer, then PSRAM)
+  counts too, so judge a count by its size and caps.
 
 ## Justify every allocation
 

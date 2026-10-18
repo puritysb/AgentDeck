@@ -137,7 +137,7 @@ async function stopDaemon(daemon: Daemon): Promise<{ selfExited: boolean }> {
 }
 
 /** A dashboard client: collects every frame the hub pushes. */
-async function connect(port: number): Promise<{ frames: Frame[]; close: () => void }> {
+async function connect(port: number): Promise<{ frames: Frame[]; send: (msg: Record<string, unknown>) => void; close: () => void }> {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   const frames: Frame[] = [];
   ws.addEventListener('message', (ev) => {
@@ -147,7 +147,7 @@ async function connect(port: number): Promise<{ frames: Frame[]; close: () => vo
     ws.addEventListener('open', () => ok(), { once: true });
     ws.addEventListener('error', () => fail(new Error('WS connect failed')), { once: true });
   });
-  return { frames, close: () => ws.close() };
+  return { frames, send: (msg) => ws.send(JSON.stringify(msg)), close: () => ws.close() };
 }
 
 function postHook(port: number, event: string, body: Record<string, unknown>): Promise<Response> {
@@ -303,6 +303,75 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it("closes a long Claude turn against its prompt and keeps the turn in a plain client's Detail view", async () => {
+    // Claude's per-tool hook rows (up to two per tool call) reach only a
+    // surface that negotiated `timeline.tool-events.read`. They used to count
+    // toward the 24-row read the Stop and SessionEnd paths make, so a turn of
+    // a dozen tool calls lost its prompt row: the reply went out without
+    // `startedAt`, a turn with no reply text got no closing row, and a session
+    // ending mid-turn was not closed at its SessionEnd. A plain client's
+    // Detail query also took the last 16 rows before dropping them.
+    const done = { ...SESSION, session_id: 'e2e-long-turn-0001', permission_mode: 'bypassPermissions' };
+    const quit = { ...SESSION, session_id: 'e2e-long-turn-0002', permission_mode: 'bypassPermissions' };
+    const quiet = { ...SESSION, session_id: 'e2e-long-turn-0003', permission_mode: 'bypassPermissions' };
+    const client = await connect(daemon.port);
+    const rows = (sid: string) => client.frames
+      .filter((f) => f.type === 'timeline_event')
+      .map((f) => f.entry as Record<string, unknown>)
+      .filter((e) => e && e.sessionId === sid);
+    const longTurn = async (session: typeof done) => {
+      await postHook(daemon.port, 'SessionStart', { ...session, hook_event_name: 'SessionStart', source: 'startup' });
+      await postHook(daemon.port, 'UserPromptSubmit', { ...session, hook_event_name: 'UserPromptSubmit', prompt: 'e2e: run fifteen steps' });
+      // Distinct tool names, as a real turn mixes tools: exact dedup folds a
+      // repeat of the same name within 8 s.
+      for (let i = 0; i < 15; i++) {
+        const tool = { tool_name: `mcp__e2e__step_${i}`, tool_use_id: `toolu_${session.session_id}_${i}`, tool_input: { path: `/tmp/agentdeck-e2e-project/f${i}` } };
+        await postHook(daemon.port, 'PreToolUse', { ...session, hook_event_name: 'PreToolUse', ...tool });
+        await postHook(daemon.port, 'PostToolUse', { ...session, hook_event_name: 'PostToolUse', ...tool, tool_response: 'ok' });
+      }
+    };
+    try {
+      await longTurn(done);
+      await postHook(daemon.port, 'Stop', { ...done, hook_event_name: 'Stop', last_assistant_message: 'All fifteen steps ran.' });
+      const reply = await waitFor('the reply on the wire', () => rows(done.session_id).find((e) => e.type === 'chat_response'))
+        .catch((err: unknown) => { throw new Error(`${String(err)}\n${daemon.log().slice(-3000)}`); });
+      const prompt = rows(done.session_id).find((e) => e.type === 'chat_start');
+      expect(prompt).toBeDefined();
+      expect(reply.startedAt).toBe(prompt!.startedAt ?? prompt!.ts);
+      expect(rows(done.session_id).some((e) => e.toolEvent === true)).toBe(false);
+
+      client.send({ type: 'query_session_timeline', sessionId: done.session_id });
+      const detail = await waitFor('the Detail reply', () => client.frames.find(
+        (f) => f.type === 'timeline_history' && f.sessionId === done.session_id)) as { entries: Array<Record<string, unknown>> };
+      expect(detail.entries.filter((e) => e.type === 'chat_start' || e.type === 'chat_response').map((e) => e.type))
+        .toEqual(['chat_start', 'chat_response']);
+      expect(detail.entries.some((e) => e.toolEvent === true)).toBe(false);
+
+      // No reply text (the transcript path names no file): the Stop closes the
+      // turn with a chat_end instead.
+      await longTurn(quiet);
+      await postHook(daemon.port, 'Stop', { ...quiet, hook_event_name: 'Stop' });
+      const completed = await waitFor('the reply-less close', () => rows(quiet.session_id).find((e) => e.type === 'chat_end'))
+        .catch((err: unknown) => { throw new Error(`${String(err)}\n${daemon.log().slice(-3000)}`); });
+      const quietPrompt = rows(quiet.session_id).find((e) => e.type === 'chat_start');
+      expect(String(completed.raw)).toMatch(/^Completed · /);
+      expect(completed.startedAt).toBe(quietPrompt!.startedAt ?? quietPrompt!.ts);
+
+      await longTurn(quit);
+      await postHook(daemon.port, 'SessionEnd', { ...quit, hook_event_name: 'SessionEnd', reason: 'exit' });
+      const closed = await waitFor('the interrupted close', () => rows(quit.session_id).find((e) => e.type === 'chat_end'))
+        .catch((err: unknown) => { throw new Error(`${String(err)}\n${daemon.log().slice(-3000)}`); });
+      const quitPrompt = rows(quit.session_id).find((e) => e.type === 'chat_start');
+      expect(String(closed.raw)).toMatch(/^Interrupted · /);
+      expect(closed.startedAt).toBe(quitPrompt!.startedAt ?? quitPrompt!.ts);
+      for (const session of [done, quiet]) {
+        await postHook(daemon.port, 'SessionEnd', { ...session, hook_event_name: 'SessionEnd', reason: 'exit' });
+      }
+    } finally {
+      client.close();
+    }
+  });
+
   it('replays real Hermes CI tool callbacks through HTTP and clears the exact foreground wait', async () => {
     const capture = JSON.parse(readFileSync(join(ROOT, 'bridge/src/__tests__/fixtures/hermes-live-ci.json'), 'utf8'));
     const client = await connect(daemon.port);
@@ -417,6 +486,34 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('stamps an observed OpenCode turn with the model and endpoint its stop names', async () => {
+    // The OpenCode observer (v5) payload: `model` / `model_provider` are the
+    // assistant message's modelID / providerID. `local`, not the `alibaba`
+    // the model id alone reads as, proves the provider crossed the wire.
+    const sid = 'ses_e2e_opencode_model';
+    const base = { session_id: sid, cwd: '/tmp/agentdeck-e2e-opencode' };
+    const hooks: Array<[string, Record<string, unknown>]> = [
+      ['opencode_session_start', base],
+      ['opencode_user_prompt_submit', { ...base, prompt: 'Name the capital of France.' }],
+      ['opencode_stop', { ...base, last_assistant_message: 'Paris.',
+        model: 'mlx-community/Qwen3.6-35B-A3B-4bit', model_provider: 'mlx' }],
+    ];
+    for (const [event, body] of hooks) expect((await postHook(daemon.port, event, body)).status).toBe(200);
+    const turns = await waitFor('OpenCode turn identity', async () => {
+      const page = await (await fetch(`http://127.0.0.1:${daemon.port}/apme/tasks?session=${encodeURIComponent(sid)}`,
+        { signal: AbortSignal.timeout(2000) })).json() as { tasks?: Array<{ id: string }> };
+      const id = page.tasks?.[0]?.id;
+      if (!id) return undefined;
+      const detail = await (await fetch(`http://127.0.0.1:${daemon.port}/apme/tasks/${id}`,
+        { signal: AbortSignal.timeout(2000) })).json() as { turns: Array<Record<string, unknown>> };
+      return detail.turns[0]?.model_id ? detail.turns : undefined;
+    });
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      end_source: 'stop', response: 'Paris.', model_id: 'mlx-community/Qwen3.6-35B-A3B-4bit', provider: 'local',
+    });
+  });
+
   it('ingests a Codex turn delivered to both its codex_* hooks and the generic hooks once, as Codex (#490)', async () => {
     // Verbatim codex-cli 0.160.1 payloads (paths scrubbed). Codex runs every
     // hook command configured for an event, so a Claude-shaped AgentDeck
@@ -477,6 +574,60 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     } finally {
       client.close();
     }
+  });
+
+  /** Every turn APME archived for one session, oldest first. */
+  async function apmeTurns(sid: string): Promise<Array<{ prompt: string; response: string | null; end_source: string | null }>> {
+    const page = await (await fetch(`http://127.0.0.1:${daemon.port}/apme/tasks?session=${encodeURIComponent(sid)}`,
+      { signal: AbortSignal.timeout(2000) })).json() as { tasks: Array<{ id: string }> };
+    const turns = [];
+    for (const task of page.tasks) {
+      const detail = await (await fetch(`http://127.0.0.1:${daemon.port}/apme/tasks/${task.id}`,
+        { signal: AbortSignal.timeout(2000) })).json() as {
+          turns: Array<{ prompt: string; response: string | null; end_source: string | null; turn_index: number }>;
+        };
+      turns.push(...detail.turns);
+    }
+    return turns.sort((a, b) => (a as { turn_index: number }).turn_index - (b as { turn_index: number }).turn_index);
+  }
+
+  const NOTIFICATION = '<task-notification>\n<task-id>e2e-bg</task-id>\n<status>completed</status>\n</task-notification>';
+
+  it('lands a Stop reply on the turn a task notification opened, which the timeline drops', async () => {
+    // The daemon used to route the reply with its timeline's open-turn test,
+    // and the timeline drops this prompt — so the reply went to the PREVIOUS
+    // turn, which already had one, and was lost.
+    const s = { ...SESSION, session_id: 'e2e-session-notify' };
+    await postHook(daemon.port, 'UserPromptSubmit', { ...s, hook_event_name: 'UserPromptSubmit', prompt: 'e2e: first' });
+    await postHook(daemon.port, 'Stop', { ...s, hook_event_name: 'Stop', last_assistant_message: 'FIRST_REPLY' });
+    await postHook(daemon.port, 'UserPromptSubmit', { ...s, hook_event_name: 'UserPromptSubmit', prompt: NOTIFICATION });
+    await postHook(daemon.port, 'Stop', { ...s, hook_event_name: 'Stop', last_assistant_message: 'NOTIFICATION_REPLY' });
+
+    const turns = await waitFor('both turns closed', async () => {
+      const t = await apmeTurns(s.session_id);
+      return t.length === 2 && t.every((x) => x.end_source === 'stop') ? t : undefined;
+    });
+    expect(turns.map((t) => t.response)).toEqual(['FIRST_REPLY', 'NOTIFICATION_REPLY']);
+  });
+
+  it('closes a running turn a queued message displaced as `injected`, reading the real transcript', async () => {
+    const transcript = join(home, 'injected-transcript.jsonl');
+    const s = { ...SESSION, session_id: 'e2e-session-inject', transcript_path: transcript };
+    writeFileSync(transcript, '');
+    await postHook(daemon.port, 'UserPromptSubmit', { ...s, hook_event_name: 'UserPromptSubmit', prompt: 'e2e: long task' });
+    // The turn is mid-run: tool calls written, no end_turn yet.
+    writeFileSync(transcript, `${JSON.stringify({
+      type: 'assistant', timestamp: new Date().toISOString(),
+      message: { role: 'assistant', stop_reason: 'tool_use', content: [{ type: 'tool_use', name: 'Bash' }] },
+    })}\n`);
+    await postHook(daemon.port, 'UserPromptSubmit', { ...s, hook_event_name: 'UserPromptSubmit', prompt: NOTIFICATION });
+    await postHook(daemon.port, 'Stop', { ...s, hook_event_name: 'Stop', last_assistant_message: 'LONG_TASK_DONE' });
+
+    const turns = await waitFor('the run\'s Stop', async () => {
+      const t = await apmeTurns(s.session_id);
+      return t.length === 2 && t[1].end_source === 'stop' ? t : undefined;
+    });
+    expect(turns.map((t) => [t.end_source, t.response])).toEqual([['injected', null], ['stop', 'LONG_TASK_DONE']]);
   });
 
   it('answers the request-response hooks (PreToolUse, Stop) promptly when no device can approve', async () => {

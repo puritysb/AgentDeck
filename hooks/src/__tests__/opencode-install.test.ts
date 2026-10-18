@@ -188,6 +188,32 @@ describe('AgentDeckObserver event sequencing', () => {
     expect(posts[posts.length - 1].event).toBe('opencode_stop');
   });
 
+  it('names the model that answered on the stop, and forgets it with the turn', async () => {
+    // Assistant info shape from OpenCode 1.18.35's own event log: every
+    // assistant message.updated carries modelID/providerID, the first one too.
+    const assistant = (id: string, sessionID: string, modelID: string, providerID: string) => ({
+      type: 'message.updated',
+      properties: { info: { id, sessionID, role: 'assistant', parentID: 'm1', modelID, providerID, mode: 'build', agent: 'build', time: { created: 1 } } },
+    });
+    const { event } = await observer();
+    await event({ event: userMessage });
+    await event({ event: assistant('a1', 's1', 'glm-5.2', 'zai-coding-plan') });
+    await event({ event: assistant('a2', 's1', 'glm-5.3', 'zai-coding-plan') });
+    // A child session's model is the child's, not the parent turn's.
+    await event({ event: { type: 'session.created', properties: { info: { id: 'c1', parentID: 's1' } } } });
+    await event({ event: assistant('ca1', 'c1', 'big-pickle', 'opencode') });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 's1' } } });
+    // The next turn produced no assistant message: its stop names no model.
+    await event({ event: { type: 'message.updated', properties: { info: { id: 'm2', sessionID: 's1', role: 'user', text: 'again' } } } });
+    await event({ event: { type: 'session.idle', properties: { sessionID: 's1' } } });
+    await flush();
+    const stops = posts.filter((p) => p.event === 'opencode_stop');
+    expect(stops).toHaveLength(2);
+    expect(stops[0].body).toMatchObject({ session_id: 's1', model: 'glm-5.3', model_provider: 'zai-coding-plan' });
+    expect(stops[1].body).not.toHaveProperty('model');
+    expect(stops[1].body).not.toHaveProperty('model_provider');
+  });
+
   it('still reports a genuine second turn on a new user message', async () => {
     const { event } = await observer();
 

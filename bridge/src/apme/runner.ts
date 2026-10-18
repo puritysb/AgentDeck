@@ -12,7 +12,7 @@
  */
 
 import { spawn } from 'child_process';
-import { taskGradeability, notGradeableNotes } from './task-gradeability.js';
+import { taskGradeability, notGradeableNotes, type NotGradeableReason } from './task-gradeability.js';
 import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { debug, log } from '../logger.js';
@@ -23,7 +23,7 @@ import { loadMlxSettings, mlxChatUrl, mlxBaseUrl, mlxModelPin, resolveSafeMlxMod
 import { callFoundationModelsHelper, probeFoundationModelsHelper } from '../foundation-models-helper.js';
 import type { SessionSample, TrajectoryEvent } from '@agentdeck/shared';
 import { runSampleScorers } from './scorers/index.js';
-import type { ApmeRunRow, ParsedJudge } from './types.js';
+import type { ApmeRubricRow, ApmeRunRow, ApmeTaskRow, ParsedJudge } from './types.js';
 import { execFileText } from './process.js';
 
 /** Judge attempts per task before the backlog drain stops offering it. */
@@ -97,7 +97,7 @@ export interface TaskEvaluatedEvent {
   turns?: number;
 }
 
-function deriveTaskOutcome(score: number | null | undefined): TaskEvaluatedEvent['outcome'] {
+export function deriveTaskOutcome(score: number | null | undefined): TaskEvaluatedEvent['outcome'] {
   if (score == null) return 'pending';
   if (score >= 0.75) return 'success';
   if (score >= 0.5) return 'partial';
@@ -364,74 +364,17 @@ export class ApmeRunner {
       return;
     }
 
-    const task = this.store.getTask(taskId);
-    if (!task) return;
-    const turns = this.store.listTurnsForTask(taskId);
-    if (turns.length === 0) return;
-
-    // A verdict about the agent's work needs the agent's work — see
-    // task-gradeability.ts for what that means and what it measured. A
-    // declined task is stamped with its reason so the row can say so.
-    const gradeability = taskGradeability(turns);
-    if (!gradeability.gradeable) {
-      debug('APME', `runTaskEval declined task=${taskId.slice(0, 8)} — ${gradeability.reason}`);
-      try { this.store.updateTask(taskId, { notesJson: notGradeableNotes(gradeability.reason) }); }
+    const input = buildTaskJudgeInput(this.store, { runId, taskId, category, boundarySignal });
+    if (input.kind === 'missing') return;
+    // A declined task is stamped with its reason so the row can say so.
+    if (input.kind === 'declined') {
+      debug('APME', `runTaskEval declined task=${taskId.slice(0, 8)} — ${input.reason}`);
+      try { this.store.updateTask(taskId, { notesJson: notGradeableNotes(input.reason) }); }
       catch { /* ignore */ }
       return;
     }
-
-    // The category the rubric keys on: the caller's, else the row's, else
-    // the run's. A reaped task used to reach here with none and fall to the
-    // generic rubric while its run had long been classified.
-    if (!category || category === 'unknown') {
-      const fromTask = task.taskCategory && task.taskCategory !== 'unknown' ? task.taskCategory : undefined;
-      const fromRun = this.store.getRun(runId)?.taskCategory;
-      category = fromTask ?? (fromRun && fromRun !== 'unknown' ? fromRun : undefined);
-    }
-
-    // Select rubric: task_rollup preferred, fall back to category, then general.
-    const rubric = this.store.getCurrentRubric('task_rollup')
-      ?? (category ? this.store.getCurrentRubric(category) : null)
-      ?? this.store.getCurrentRubric('general');
-    if (!rubric) return;
-
-    const TURN_CAP = 10;
-    const clipped = turns.slice(0, TURN_CAP);
-    const lines: string[] = [];
-    for (const t of clipped) {
-      const idx = t.turn_index as number;
-      const prompt = ((t.prompt as string | null) ?? '').slice(0, 1500);
-      const response = ((t.response as string | null) ?? '').slice(0, 2500);
-      lines.push(`[Turn ${idx}] User: ${prompt || '(empty)'}`);
-      if (response) lines.push(`Agent: ${response}`);
-    }
-    if (turns.length > TURN_CAP) {
-      lines.push(`… (${turns.length - TURN_CAP} more turns omitted)`);
-    }
-
-    // The canonical SessionSample gives the judge the typed tool trajectory
-    // (req #5/#6) and per-sample cost (req #7) — context the turn rows lack.
-    const sample = this.store.getSample(taskId);
-    const trajectoryLines = sample ? buildTrajectoryLines(sample) : [];
-    const costLine = sample
-      ? `cost: ${sample.cost.inputTokens}in/${sample.cost.outputTokens}out tok, $${sample.cost.costUsd.toFixed(4)}, model ${sample.model.modelId}`
-      : '';
-
-    const judgePrompt = [
-      rubric.prompt,
-      '',
-      '--- TASK CONTEXT ---',
-      `task_category: ${category ?? task.taskCategory ?? 'unknown'}`,
-      `turn_count: ${turns.length}`,
-      `boundary_signal: ${boundarySignal ?? task.boundarySignal}`,
-      ...(costLine ? [costLine] : []),
-      '',
-      '--- TURNS ---',
-      ...lines,
-      ...(trajectoryLines.length ? ['', '--- TASK TRAJECTORY ---', ...trajectoryLines] : []),
-      '',
-      'Respond with strict JSON only.',
-    ].join('\n');
+    const { task, rubric, sample, prompt: judgePrompt } = input;
+    category = input.category;
 
     try {
       // callJudgeWithMeta carries the effective backend label across the
@@ -914,25 +857,128 @@ function runCommand(command: string, cwd: string, timeoutMs: number): Promise<Cm
 
 // ─── Layer 2 execution ────────────────────────────────────────────────────────
 
+/** What the task judge is asked about one task. `ready` carries the prompt
+ *  and what it was built from; `declined` is a task the judge must not grade
+ *  (task-gradeability.ts); `missing` is a task, turn list or rubric that is
+ *  not there. */
+export type TaskJudgeInput =
+  | { kind: 'missing' }
+  | { kind: 'declined'; reason: NotGradeableReason }
+  | {
+      kind: 'ready';
+      task: ApmeTaskRow;
+      category: string | undefined;
+      rubric: ApmeRubricRow;
+      sample: SessionSample | null;
+      prompt: string;
+    };
+
+/** Build the task judge's prompt from the store, reading and never writing.
+ *
+ *  The live judge (`runTaskEval`) and the reference judge
+ *  (`reference-judge.ts`) both build their prompt here. An agreement number
+ *  between two judges that were shown different prompts compares the prompts,
+ *  not the judges. Stamping a declined task is the live judge's side effect,
+ *  so it stays there.
+ *
+ *  `field` rewrites each piece of task text (prompt, reply, tool input, error,
+ *  subagent summary) BEFORE it is clipped. The live judge passes none, so its
+ *  prompt is unchanged; the reference judge passes its redactor, because a
+ *  credential cut by the clip loses the shape that identifies it — a private
+ *  key loses its END line. */
+export function buildTaskJudgeInput(
+  store: ApmeStore,
+  { runId, taskId, category, boundarySignal }: { runId: string; taskId: string; category?: string; boundarySignal?: string },
+  { field = (text: string) => text }: { field?: (text: string) => string } = {},
+): TaskJudgeInput {
+  const task = store.getTask(taskId);
+  if (!task) return { kind: 'missing' };
+  const turns = store.listTurnsForTask(taskId);
+  if (turns.length === 0) return { kind: 'missing' };
+
+  // A verdict about the agent's work needs the agent's work — see
+  // task-gradeability.ts for what that means and what it measured.
+  const gradeability = taskGradeability(turns);
+  if (!gradeability.gradeable) return { kind: 'declined', reason: gradeability.reason };
+
+  // The category the rubric keys on: the caller's, else the row's, else
+  // the run's. A reaped task used to reach here with none and fall to the
+  // generic rubric while its run had long been classified.
+  if (!category || category === 'unknown') {
+    const fromTask = task.taskCategory && task.taskCategory !== 'unknown' ? task.taskCategory : undefined;
+    const fromRun = store.getRun(runId)?.taskCategory;
+    category = fromTask ?? (fromRun && fromRun !== 'unknown' ? fromRun : undefined);
+  }
+
+  // Select rubric: task_rollup preferred, fall back to category, then general.
+  const rubric = store.getCurrentRubric('task_rollup')
+    ?? (category ? store.getCurrentRubric(category) : null)
+    ?? store.getCurrentRubric('general');
+  if (!rubric) return { kind: 'missing' };
+
+  const TURN_CAP = 10;
+  const clipped = turns.slice(0, TURN_CAP);
+  const lines: string[] = [];
+  for (const t of clipped) {
+    const idx = t.turn_index as number;
+    const prompt = field((t.prompt as string | null) ?? '').slice(0, 1500);
+    const response = field((t.response as string | null) ?? '').slice(0, 2500);
+    lines.push(`[Turn ${idx}] User: ${prompt || '(empty)'}`);
+    if (response) lines.push(`Agent: ${response}`);
+  }
+  if (turns.length > TURN_CAP) {
+    lines.push(`… (${turns.length - TURN_CAP} more turns omitted)`);
+  }
+
+  // The canonical SessionSample gives the judge the typed tool trajectory
+  // (req #5/#6) and per-sample cost (req #7) — context the turn rows lack.
+  const sample = store.getSample(taskId);
+  const trajectoryLines = sample ? buildTrajectoryLines(sample, 30, field) : [];
+  const costLine = sample
+    ? `cost: ${sample.cost.inputTokens}in/${sample.cost.outputTokens}out tok, $${sample.cost.costUsd.toFixed(4)}, model ${sample.model.modelId}`
+    : '';
+
+  const prompt = [
+    rubric.prompt,
+    '',
+    '--- TASK CONTEXT ---',
+    `task_category: ${category ?? task.taskCategory ?? 'unknown'}`,
+    `turn_count: ${turns.length}`,
+    `boundary_signal: ${boundarySignal ?? task.boundarySignal}`,
+    ...(costLine ? [costLine] : []),
+    '',
+    '--- TURNS ---',
+    ...lines,
+    ...(trajectoryLines.length ? ['', '--- TASK TRAJECTORY ---', ...trajectoryLines] : []),
+    '',
+    'Respond with strict JSON only.',
+  ].join('\n');
+
+  return { kind: 'ready', task, category, rubric, sample, prompt };
+}
+
 /** Render a SessionSample's typed trajectory as compact judge-prompt lines.
- *  Gives the judge tool-call sequences + model usage the turn rows omit. */
-export function buildTrajectoryLines(sample: SessionSample, cap = 30): string[] {
+ *  Gives the judge tool-call sequences + model usage the turn rows omit.
+ *  `field` rewrites each piece of task text before it is clipped (see
+ *  `buildTaskJudgeInput`). */
+export function buildTrajectoryLines(sample: SessionSample, cap = 30, field: (text: string) => string = (text) => text): string[] {
   const lines: string[] = [];
   const events: TrajectoryEvent[] = sample.events.slice(0, cap);
   for (const e of events) {
     switch (e.kind) {
       case 'tool': {
+        const error = e.error ? ` [err: ${field(String(e.error)).slice(0, 80)}]` : '';
         // A pruned tool call (#302, retention >30 days) has no `input` to
         // show — say so explicitly rather than rendering `tool X()`, which
         // reads to a judge as "called with no arguments" and is not what
         // happened.
         if (e.pruned) {
-          lines.push(`  tool ${e.name}(…) [payload pruned]${e.status ? ` → ${e.status}` : ''}${e.error ? ` [err: ${String(e.error).slice(0, 80)}]` : ''}`);
+          lines.push(`  tool ${e.name}(…) [payload pruned]${e.status ? ` → ${e.status}` : ''}${error}`);
           break;
         }
         let input = '';
-        try { input = e.input == null ? '' : JSON.stringify(e.input).slice(0, 120); } catch { input = ''; }
-        lines.push(`  tool ${e.name}(${input})${e.status ? ` → ${e.status}` : ''}${e.error ? ` [err: ${String(e.error).slice(0, 80)}]` : ''}`);
+        try { input = e.input == null ? '' : field(JSON.stringify(e.input)).slice(0, 120); } catch { input = ''; }
+        lines.push(`  tool ${e.name}(${input})${e.status ? ` → ${e.status}` : ''}${error}`);
         break;
       }
       case 'model':
@@ -940,7 +986,7 @@ export function buildTrajectoryLines(sample: SessionSample, cap = 30): string[] 
         break;
       case 'subagent': {
         const duration = e.durationMs == null ? '' : ` (${Math.round(e.durationMs / 1000)}s)`;
-        const summary = e.summary ? `: ${e.summary.slice(0, 160)}` : '';
+        const summary = e.summary ? `: ${field(e.summary).slice(0, 160)}` : '';
         lines.push(`  subagent ${e.name} → ${e.phase}${duration}${summary}`);
         break;
       }

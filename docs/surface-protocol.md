@@ -288,7 +288,11 @@ successful `PostToolUse` produces `tool_resolved` with `completed` text, and
 `PostToolUseFailure` produces a `tool_resolved` row with `failed` text. The
 optional `toolUseId` correlates the rows. Tool input and output are summarized,
 bounded, and common credential-shaped values are redacted. Clients that do not
-offer the capability receive the existing turn-level rows only.
+offer the capability receive the existing turn-level rows only. The daemon's
+bounded timeline buffer evicts these rows before any turn-level row, a request
+together with its result, so they never displace the rows every client reads.
+A capable client's history replay therefore holds only the most recent ones;
+the live stream carries all of them.
 
 ### companion-control/v1
 

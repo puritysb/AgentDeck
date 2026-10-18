@@ -25,8 +25,10 @@
  * debounced at 300 ms and a running script is cancelled by the next update.
  * Timer/mode changes also rerender cached quota. Receipt time advances only for
  * a changed response, with bounded per-session replay memory and cross-session
- * ordering checks. Accepted windows are a replacement snapshot: a missing
- * window retires its old value; a document with neither window changes nothing.
+ * ordering checks; against an OAuth-family reading those checks run at the
+ * precision both carriers share. Accepted windows are a replacement snapshot: a
+ * missing window retires its old value; a document with neither window changes
+ * nothing.
  *
  * `pnpm generate-claude-statusline-rules` emits the Swift mirror
  * (`ClaudeStatuslineRules.generated.swift`); the byte gate is
@@ -69,6 +71,25 @@ export const CLAUDE_STATUSLINE_CHANGE_EPSILON = 0.05;
 
 /** A `resets_at` above this is already epoch milliseconds, not seconds. */
 export const CLAUDE_STATUSLINE_MS_THRESHOLD = 1e11;
+
+/**
+ * The two carriers stamp one window at different precisions: the status line's
+ * `resets_at` is whole epoch seconds, OAuth's is microseconds, and OAuth's
+ * fraction lands on either side of that second (`20:50:00.323175+00:00`, then
+ * `20:49:59.609113+00:00` for the same window in this desk's usage cache,
+ * 2026-10-18). Compared against an OAuth-family reading, resets this close are
+ * one window in either direction.
+ */
+export const CLAUDE_STATUSLINE_CROSS_SOURCE_RESET_TOLERANCE_MS = 1000;
+
+/**
+ * OAuth's 5h/7d utilization has arrived as whole percent in every reading on
+ * this desk, while the status line carries the response header's finer value.
+ * Compared against an OAuth-family reading of the same window, a status-line
+ * percent up to this many points lower is the same observation rounded
+ * differently, not an older one.
+ */
+export const CLAUDE_STATUSLINE_CROSS_SOURCE_PERCENT_TOLERANCE = 1;
 /** Bounded per-session replay memory; idle sessions cannot repeatedly win by receipt time. */
 export const CLAUDE_STATUSLINE_SESSION_LIMIT = 128;
 
@@ -222,11 +243,21 @@ export function preserveClaudeUsageOnOAuth(
  * is intentional here; repaint epsilon is not a freshness threshold. A lower
  * reading for the same reset, or an older reset, cannot replace a fresh reading.
  * An aged high-water mark stops blocking legitimate account changes; a successful
- * OAuth read replaces it immediately. */
+ * OAuth read replaces it immediately.
+ *
+ * `currentSource` names where `current`'s windows came from. Between status-line
+ * readings the order is exact. Against an OAuth-family reading (`oauth`,
+ * `relay`, or an unknown source) it is read at the precision both carriers
+ * share. OAuth keeps a fractional reset second that lands on either side of the
+ * status line's whole second. Above it, every status-line reset reads as an
+ * older window: on 2026-10-18 that kept the 60 s OAuth poll running for 70
+ * minutes with sessions active on this desk's Node daemon. Below it, a stale
+ * lower percent reads as a newer window. */
 export function shouldAcceptClaudeStatusline(
   previousForSession: ClaudeStatuslineReading | null | undefined,
   current: ClaudeStatuslineReading | null | undefined,
   next: ClaudeStatuslineReading,
+  currentSource: ClaudeUsageSource | null = null,
 ): boolean {
   if (claudeStatuslineProgressRegressed(previousForSession, next)) return false;
   const equalWindow = (a: ClaudeStatuslineWindow | null, b: ClaudeStatuslineWindow | null) =>
@@ -238,15 +269,22 @@ export function shouldAcceptClaudeStatusline(
     && (previousForSession.inputTokens ?? null) === (next.inputTokens ?? null)
     && (previousForSession.outputTokens ?? null) === (next.outputTokens ?? null)) return false;
   if (current && classifyClaudeStatuslineAge(current.receivedAt, next.receivedAt) === 'fresh') {
+    const crossSource = currentSource !== 'statusline';
+    const resetSlack = crossSource ? CLAUDE_STATUSLINE_CROSS_SOURCE_RESET_TOLERANCE_MS : 0;
+    const percentSlack = crossSource ? CLAUDE_STATUSLINE_CROSS_SOURCE_PERCENT_TOLERANCE : 0;
+    // An unparseable reset is NaN, which compares false both ways: no claim.
+    const sameWindow = (x: string | null | undefined, y: string) =>
+      Math.abs(Date.parse(x ?? '') - Date.parse(y)) <= resetSlack;
     for (const key of ['fiveHour', 'sevenDay'] as const) {
       const a = current[key], b = next[key];
       // An idle session dropping its expired window cannot retire a newer
       // session's still-live window. Same-window retirement remains valid.
       if (a && !b && a.resetsAt && Date.parse(a.resetsAt) > next.receivedAt
-        && Date.parse(previousForSession?.[key]?.resetsAt ?? '') !== Date.parse(a.resetsAt)) return false;
+        && !sameWindow(previousForSession?.[key]?.resetsAt, a.resetsAt)) return false;
       if (!a?.resetsAt || !b?.resetsAt) continue;
-      if (Date.parse(b.resetsAt) < Date.parse(a.resetsAt)
-        || (Date.parse(b.resetsAt) === Date.parse(a.resetsAt) && b.usedPercent < a.usedPercent)) return false;
+      const delta = Date.parse(b.resetsAt) - Date.parse(a.resetsAt);
+      if (delta < -resetSlack) return false;
+      if (Math.abs(delta) <= resetSlack && b.usedPercent < a.usedPercent - percentSlack) return false;
     }
   }
   return true;

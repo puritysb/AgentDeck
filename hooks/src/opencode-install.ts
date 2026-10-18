@@ -56,7 +56,7 @@ function envOptOut(): boolean {
   return process.env.AGENTDECK_NO_OPENCODE_HOOKS === '1';
 }
 
-const PLUGIN_VERSION = 4;
+const PLUGIN_VERSION = 5;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -213,6 +213,12 @@ export const AgentDeckObserver = async ({ directory, client }) => {
   const promptSent = new Set();  // user messageIDs whose prompt_submit was posted
   const promptTimers = new Map();// user messageID -> flush timer
   const responses = new Map();   // sessionID -> latest assistant text
+  // sessionID -> { model, provider } of the turn's latest assistant message.
+  // Every assistant message.updated carries modelID/providerID, the first one
+  // included (10,474 of 10,474 in OpenCode 1.18.35's own event log,
+  // 2026-10-18); the stop is the only hook that tells the daemon which model
+  // answered, so APME turns from this plugin carried no model at all.
+  const models = new Map();
   const startedAt = new Map();   // sessionID -> turn start ms
   const toolPhase = new Map();   // tool callID -> "start" | "end"
   const parentOf = new Map();    // sessionID -> parent sessionID, or null (top level)
@@ -439,6 +445,11 @@ export const AgentDeckObserver = async ({ directory, client }) => {
               if (typeof timer.unref === "function") timer.unref();
               promptTimers.set(info.id, timer);
             }
+          } else if (info.role === "assistant" && typeof info.modelID === "string" && info.modelID.trim()) {
+            models.set(sessionID, {
+              model: info.modelID.trim().slice(0, 200),
+              provider: typeof info.providerID === "string" ? info.providerID.trim().slice(0, 80) : "",
+            });
           }
         } else if (type === "message.part.updated") {
           const part = props.part || {};
@@ -511,12 +522,16 @@ export const AgentDeckObserver = async ({ directory, client }) => {
         } else if (type === "session.idle") {
           const sessionID = props.sessionID;
           announce(sessionID);
+          const answered = models.get(sessionID);
           post("opencode_stop", {
             session_id: sessionID,
             last_assistant_message: responses.get(sessionID) || "",
+            ...(answered ? { model: answered.model } : {}),
+            ...(answered && answered.provider ? { model_provider: answered.provider } : {}),
             cwd,
           });
           responses.delete(sessionID);
+          models.delete(sessionID);
           startedAt.delete(sessionID);
           // Do NOT clear userMsgs/promptSent for this session. OpenCode
           // re-emits message.updated for a user message after the turn

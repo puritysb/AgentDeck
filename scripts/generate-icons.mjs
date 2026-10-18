@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { mkdirSync, readFileSync } from 'fs';
+import { mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { renderAgentDeckMarkCompact } from '../shared/dist/svg-renderers/session-slot-renderer.js';
@@ -20,29 +20,22 @@ const STROKE = 2.7;
 const CAP = 'stroke-linecap="round" stroke-linejoin="round" fill="none"';
 
 /**
- * Pull the single path out of an official brand SVG (24x24, fill=currentColor)
- * and scale it onto the 40x40 icon grid.
- *
- * DESIGN.md rule 6: brand marks are upstream — never redraw them. Using the real
- * file also means an upstream mark update flows into the icons for free.
+ * Usage-dial meter: an arc open at the bottom, a hub, and a needle ending at
+ * `tipX`. Both usage dials show any provider's plan usage, so their icon is a
+ * product glyph, never a provider's mark ("Action names and icons" in
+ * docs/streamdeck-layout.md). The dial's own LCD still draws the official mark
+ * of the provider it is showing, where the mark names the data.
  */
-function brandGlyph(name, { scale = 1.34, dx = 0, dy = 0 } = {}) {
-  const svg = readFileSync(resolve(__dirname, `../design/brand/${name}.svg`), 'utf-8');
-  const paths = [...svg.matchAll(/<path\b[^>]*\bd="([^"]+)"[^>]*>/g)].map((m) => m[1]);
-  if (paths.length === 0) throw new Error(`no path found in design/brand/${name}.svg`);
-  // Centre the 24-unit artwork on the 40-unit grid, then apply the caller's scale.
-  const offset = (40 - 24 * scale) / 2;
-  const inner = paths
-    .map((d) => `<path d="${d}" fill="white" fill-rule="evenodd" clip-rule="evenodd"/>`)
-    .join('');
-  return `<g transform="translate(${(offset + dx).toFixed(2)} ${(offset + dy).toFixed(2)}) scale(${scale})">${inner}</g>`;
+function meter(tipX) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <path d="M9.17 29.35A12.5 12.5 0 1 1 30.83 29.35" stroke="white" stroke-width="${STROKE}" ${CAP}/>
+    <path d="M20 23.1L${tipX} 18.28" stroke="white" stroke-width="${STROKE}" ${CAP}/>
+    <circle cx="20" cy="23.1" r="2.6" fill="white"/>
+  </svg>`;
 }
 
 // All SVGs designed at 40x40 viewBox, will be rendered at target sizes
 const svgs = {
-  // Plugin icon — rounded "C" with diamond accent (Claude-style)
-
-
   // Session Slot — the canonical AgentDeck dome-over-deck mark, from the shared
   // SSOT rather than redrawn. The compact reduction is used because Stream Deck
   // draws action-list icons at 20px, where the full mark's low-opacity waterline
@@ -51,21 +44,16 @@ const svgs = {
     ${renderAgentDeckMarkCompact(20, 20, 37, 'white')}
   </svg>`,
 
-  // Claude Usage (E2) — the official Claude Code mark. The action name supplies
-  // "usage"; the mark supplies "whose", which is what you need at a glance.
-  option: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
-    ${brandGlyph('claudecode', { scale: 1.28 })}
-  </svg>`,
+  // Usage Dial (E2) and Usage Dial 2 (E3) — the same meter with the needle
+  // leaning opposite ways; two actions sharing one icon are unpickable in the
+  // Stream Deck action list.
+  option: meter(25.75),
+  usage: meter(14.25),
 
-  // Codex Usage (E3) — official Codex mark, same treatment.
-  usage: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
-    ${brandGlyph('codex', { scale: 1.22 })}
-  </svg>`,
-
-  // Claude Limit (keypad) — a tank filled near the top: the product's own
-  // level-fill gauge language, reduced to a glyph. Deliberately NOT the Claude
-  // mark, which E2 already owns; two actions sharing one icon are unpickable in
-  // the Stream Deck action list. Reads at 20px because it's two solid shapes.
+  // Model Limit (keypad) — a tank filled near the top: the product's own
+  // level-fill gauge language, reduced to a glyph. A tank rather than the dials'
+  // meter, so a key and a dial never look alike in the action list. Reads at
+  // 20px because it's two solid shapes.
   limit: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
     <rect x="11.5" y="7.5" width="17" height="25" rx="4.5" stroke="white" stroke-width="${STROKE}" fill="none"/>
     <rect x="14.6" y="16.4" width="10.8" height="13" rx="2.4" fill="white"/>

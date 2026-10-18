@@ -47,6 +47,7 @@ export * from './idotmatrix-identity.js';
 export * from './llm-settings.js';
 export * from './mlx-safety.js';
 export * from './eval-schema.js';
+export * from './harness-queued-message.js';
 export * from './sample.js';
 export * from './apme-graph.js';
 export * from './pricing.js';

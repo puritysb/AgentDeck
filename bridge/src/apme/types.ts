@@ -25,6 +25,7 @@ export type {
   TurnEndSource,
   ApmeStopDeliveryRow,
   ApmeJudgeHealthRow,
+  ApmeAgentCoverageRow,
   EvalSchemaVersion,
 } from '@agentdeck/shared';
 

@@ -229,6 +229,30 @@ enum ActionFoldRules {
 `;
 }
 
+// JavaScript's `\s` as code-point ranges, read from the engine itself: the
+// TS envelope matcher skips `trimStart()` whitespace and accepts `[\s>]` after
+// the tag, both this set. A hand-written list would be one more mirror;
+// reading the engine lets the byte gate catch a set that ever moves. Without
+// the `u` flag `\s` matches single code units, so the BMP is the whole set.
+function jsWhitespaceRanges() {
+  const ranges = [];
+  for (let cp = 0; cp <= 0xffff; cp++) {
+    if (!/\s/.test(String.fromCharCode(cp))) continue;
+    const last = ranges[ranges.length - 1];
+    if (last && last[1] === cp - 1) last[1] = cp;
+    else ranges.push([cp, cp]);
+  }
+  return ranges;
+}
+
+function swiftScalarPatterns(ranges) {
+  const hex = (n) => `0x${n.toString(16).toUpperCase().padStart(4, '0')}`;
+  const items = ranges.map(([lo, hi]) => (lo === hi ? hex(lo) : `${hex(lo)}...${hex(hi)}`));
+  const lines = [];
+  for (let i = 0; i < items.length; i += 5) lines.push(items.slice(i, i + 5).join(', '));
+  return lines.join(',\n             ');
+}
+
 export function emitTaskGradeabilitySwift(rules) {
   return `${header('bridge/src/apme/task-gradeability.ts')}
 
@@ -246,9 +270,11 @@ enum TaskGradeabilityRules {
     static let workEvidenceMinToolCalls = ${rules.workEvidenceMinToolCalls}
     static let trivialPromptMaxChars = ${rules.trivialPromptMaxChars}
     static let trivialReplyMaxChars = ${rules.trivialReplyMaxChars}
+    static let notificationEnvelopeTag = "${rules.notificationEnvelopeTag}"
 
     static func notGradeableReason(_ turns: [[String: Any]]) -> String? {
         if turns.isEmpty { return "no_reply" }
+        if turns.allSatisfy({ isNotificationEnvelope($0["prompt"]) }) { return "notification_only" }
         let worked = turns.filter { text($0["end_source"]) != "aborted" }
         if worked.isEmpty { return "aborted_only" }
 
@@ -275,6 +301,41 @@ enum TaskGradeabilityRules {
 
     private static func text(_ value: Any?) -> String {
         (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// shared/src/harness-queued-message.ts: after leading whitespace the
+    /// prompt opens with the tag, ASCII letters in either case, followed by
+    /// \`>\` or whitespace (JavaScript's, see isJSWhitespace). Only leading
+    /// whitespace is skipped, because a trimmed tail could remove the
+    /// character that decides the match. A prompt that only quotes the tag
+    /// further in is the user's own text.
+    private static func isNotificationEnvelope(_ value: Any?) -> Bool {
+        guard let prompt = value as? String else { return false }
+        var rest = prompt.unicodeScalars.drop(while: isJSWhitespace)
+        for expected in ("<" + notificationEnvelopeTag).unicodeScalars {
+            guard let scalar = rest.first, asciiLowercased(scalar) == expected else { return false }
+            rest = rest.dropFirst()
+        }
+        guard let next = rest.first else { return false }
+        return next == ">" || isJSWhitespace(next)
+    }
+
+    /// JavaScript's \`\\s\`, the set \`trimStart()\` strips, as the generator's
+    /// engine reports it. Unicode's White_Space (\`properties.isWhitespace\`)
+    /// adds NEL U+0085 and leaves out BOM U+FEFF, so using it would decide a
+    /// prompt opening with either the other way.
+    private static func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case ${swiftScalarPatterns(rules.jsWhitespaceRanges)}:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func asciiLowercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        guard (0x41...0x5A).contains(scalar.value) else { return scalar }
+        return Unicode.Scalar(UInt8(scalar.value + 0x20))
     }
 
     private static func int(_ value: Any?) -> Int {
@@ -317,6 +378,8 @@ export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod) {
     workEvidenceMinToolCalls: taskGradeabilityMod.WORK_EVIDENCE_MIN_TOOL_CALLS,
     trivialPromptMaxChars: taskGradeabilityMod.TRIVIAL_PROMPT_MAX_CHARS,
     trivialReplyMaxChars: taskGradeabilityMod.TRIVIAL_REPLY_MAX_CHARS,
+    notificationEnvelopeTag: taskGradeabilityMod.NOTIFICATION_ENVELOPE_TAG,
+    jsWhitespaceRanges: jsWhitespaceRanges(),
   };
 }
 

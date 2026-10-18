@@ -4593,15 +4593,15 @@ apme
     if (rows.length === 0) { log(`No turns started in the last ${opts.since}.`); return; }
 
     log(`\n  Turns started in the last ${opts.since} — how each one's end was learned`);
-    log(`  ${'Agent'.padEnd(14)} ${'Turns'.padEnd(7)} ${'Stop'.padEnd(7)} ${'Synth'.padEnd(7)} ${'NoStop'.padEnd(7)} ${'Esc'.padEnd(6)} ${'Abort'.padEnd(6)} ${'Folded'.padEnd(7)} ${'SessEnd'.padEnd(8)} ${'Reaped'.padEnd(7)} ${'Open'.padEnd(6)} ${'?'.padEnd(6)} Stop loss`);
-    log(`  ${'─'.repeat(14)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(7)} ${'─'.repeat(8)} ${'─'.repeat(7)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(9)}`);
+    log(`  ${'Agent'.padEnd(14)} ${'Turns'.padEnd(7)} ${'Stop'.padEnd(7)} ${'Synth'.padEnd(7)} ${'NoStop'.padEnd(7)} ${'Esc'.padEnd(6)} ${'Abort'.padEnd(6)} ${'Folded'.padEnd(7)} ${'Inject'.padEnd(7)} ${'SessEnd'.padEnd(8)} ${'Reaped'.padEnd(7)} ${'Open'.padEnd(6)} ${'?'.padEnd(6)} Stop loss`);
+    log(`  ${'─'.repeat(14)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(8)} ${'─'.repeat(7)} ${'─'.repeat(6)} ${'─'.repeat(6)} ${'─'.repeat(9)}`);
     for (const r of rows) {
       // Which buckets the ratio may read is defined once, in shared — see
       // `stopDeliveryLoss`. Restating it here is how the instrument would come
       // to measure something other than what its legend claims.
       const { adjudicated, ratio } = stopDeliveryLoss(r);
       const rate = ratio != null ? `${(ratio * 100).toFixed(0)}% of ${adjudicated}` : '—';
-      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.total).padEnd(7)} ${String(r.stop).padEnd(7)} ${String(r.syntheticStop).padEnd(7)} ${String(r.nextPrompt).padEnd(7)} ${String(r.interrupted).padEnd(6)} ${String(r.aborted).padEnd(6)} ${String(r.superseded).padEnd(7)} ${String(r.sessionEnd).padEnd(8)} ${String(r.runClose).padEnd(7)} ${String(r.open).padEnd(6)} ${String(r.preInstrument).padEnd(6)} ${rate}`);
+      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.total).padEnd(7)} ${String(r.stop).padEnd(7)} ${String(r.syntheticStop).padEnd(7)} ${String(r.nextPrompt).padEnd(7)} ${String(r.interrupted).padEnd(6)} ${String(r.aborted).padEnd(6)} ${String(r.superseded).padEnd(7)} ${String(r.injected).padEnd(7)} ${String(r.sessionEnd).padEnd(8)} ${String(r.runClose).padEnd(7)} ${String(r.open).padEnd(6)} ${String(r.preInstrument).padEnd(6)} ${rate}`);
     }
     log('');
     log("  Synth  = Stop hook dropped, recovered from the agent's own record (transcript watchdog; rollout at the next prompt for Codex)");
@@ -4609,6 +4609,7 @@ apme
     log('  Esc    = user cancelled the turn — Claude Code owes no Stop, so not a loss');
     log('  Abort  = usage limit / auth / API error ended the turn — no Stop is fired for those');
     log('  Folded = a second prompt arrived before this one ran; one turn served both');
+    log('  Inject = a queued message (task notification, agent or cross-session message) arrived mid-turn — the Stop was still owed and closed the turn it opened, so not a loss');
     log('  Reaped = the run was reaped under the open turn — the daemon that would have taken its Stop was gone (a restart)');
     log('  ?      = closed before end_source existed — signal unknown, never guessed');
     log('');
@@ -4699,7 +4700,7 @@ apme
     // them for having no agent reply. Computing that here would mean loading
     // every turn of every aged-out task.
     const logLegend = () => {
-      log('  Declined = the judge correctly refused: no reply, aborted-only, or trivial. Not a miss.');
+      log('  Declined = the judge correctly refused: no reply, aborted-only, trivial, or only background-task notices. Not a miss.');
       log('  Waiting  = unjudged but still inside the drain\'s lookback — the judge may yet reach it.');
       log(`  AgedOut  = unjudged and older than the drain's ${TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000}-day lookback. Nothing will judge these.`);
       log('  Coverage = judged / (judged + waiting + aged out). Declined rows are not in the denominator.');
@@ -4770,6 +4771,323 @@ apme
     // zeros and this line is the only place the leak shows.
     logAgedOutTotal();
     logLegend();
+  });
+
+/** `mlx:mlx-community/gemma-4-26b-a4b-it-4bit` → `mlx:gemma-4-26b-a4b-it-4bit`. */
+function shortJudgeLabel(label: string | null): string {
+  if (!label) return 'unknown';
+  const colon = label.indexOf(':');
+  const backend = colon >= 0 ? label.slice(0, colon) : '';
+  const model = (colon >= 0 ? label.slice(colon + 1) : label).split('/').pop() ?? label;
+  return backend ? `${backend}:${model}` : model;
+}
+
+function score2(value: number | null): string {
+  return value == null ? '—' : value.toFixed(2);
+}
+
+function signed2(value: number | null): string {
+  return value == null ? '—' : `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
+}
+
+function printReferenceReport(report: import('./apme/reference-judge.js').ReferenceReport): void {
+  const s = report.stats;
+  const ci = (range: [number, number] | null, fmt: (v: number) => string) =>
+    range ? ` (95% CI ${fmt(range[0])} … ${fmt(range[1])})` : '';
+  log(`\n  ${report.judge} · sample ${report.sample}: ${report.attempts} attempt(s), ${report.failures} failed, ${s.n} compared with a local verdict`);
+  if (report.sample !== 'uniform') log('  A filtered sample: these figures hold for that slice, not for every judged task.');
+  for (const f of report.failureReasons.slice(0, 3)) log(`    failed ×${f.count}: ${f.reason}`);
+  if (s.n === 0) return;
+  log(`  MAE ${score2(s.mae)}${ci(s.maeCi, (v) => v.toFixed(2))}   bias ${signed2(s.bias)}${ci(s.biasCi, (v) => signed2(v))}  (bias > 0: the local judge scores higher)`);
+  log(`  Spearman ${score2(s.spearman)}   same outcome band ${s.bucketAgreement == null ? '—' : `${Math.round(s.bucketAgreement * 100)}%`}   Cohen's kappa ${score2(s.kappa)}`);
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+  log(`  Scores at exactly 0 or 1: local ${pct(s.localExtremeShare)}, reference ${pct(s.referenceExtremeShare)}`);
+  if (s.n < 30) log(`  n=${s.n}: read these as direction, not as a measurement.`);
+  log('  Outcome bands, local (rows) × reference (columns):');
+  log(`    ${''.padEnd(8)} ${'success'.padStart(8)} ${'partial'.padStart(8)} ${'fail'.padStart(8)}`);
+  for (const l of ['success', 'partial', 'fail'] as const) {
+    const row = s.confusion[l];
+    log(`    ${l.padEnd(8)} ${String(row.success).padStart(8)} ${String(row.partial).padStart(8)} ${String(row.fail).padStart(8)}`);
+  }
+  const groups = (title: string, rows: import('./apme/reference-judge.js').ReferenceGroupStats[], label: (k: string) => string) => {
+    if (rows.length < 2) return;
+    log(`  By ${title}:`);
+    for (const g of rows) log(`    ${label(g.key).padEnd(34)} n=${String(g.n).padEnd(4)} MAE ${score2(g.mae)}  bias ${signed2(g.bias)}`);
+  };
+  groups('local judge', report.byLocalJudge, shortJudgeLabel);
+  groups('category', report.byCategory, (k) => k);
+  if (report.medianLatencyMs != null || report.medianInputTokens != null) {
+    log(`  Per call: median ${report.medianLatencyMs == null ? '—' : `${Math.round(report.medianLatencyMs / 1000)} s`}, median ${report.medianInputTokens == null ? '—' : `${Math.round(report.medianInputTokens / 1000)}k`} input tokens`);
+  }
+  if (report.disagreements.length > 0) {
+    log('  Largest disagreements:');
+    for (const d of report.disagreements) {
+      log(`    ${d.taskId.slice(0, 8)}  ${(d.category ?? 'unknown').padEnd(12)} local ${d.local.toFixed(2)}  ref ${d.reference.toFixed(2)}  Δ ${signed2(d.delta)}  ${shortJudgeLabel(d.localJudge)}`);
+      if (d.localSummary) log(`      local: ${d.localSummary.slice(0, 160)}`);
+      if (d.referenceSummary) log(`      ref:   ${d.referenceSummary.slice(0, 160)}`);
+      if (d.referenceMissed.length > 0) log(`      ref missed: ${d.referenceMissed.slice(0, 3).join(' · ').slice(0, 200)}`);
+    }
+  }
+}
+
+apme
+  .command('reference-judge')
+  .description(
+    'Score tasks the local judge already scored with a stronger model through your Codex CLI login ' +
+    '(codex exec), to measure the local judge. Default is a DRY RUN that lists what would be sent and ' +
+    'prints the --run command that sends that list; pass --run to send. Each call sends that task\'s ' +
+    'prompts, replies and tool trajectory to the model behind your Codex login. Credentials with a ' +
+    'recognizable shape are redacted first (best effort: a credential with no such shape is sent).',
+  )
+  .option('--run', 'Actually call the reference model (default: dry run)')
+  .option('-n, --limit <n>', 'Tasks to score in this run', '10')
+  .option('--since <window>', 'Only tasks closed within this window before --until, e.g. 7d / 2w', '30d')
+  .option('--until <time>', 'Read the pool as it stood at this time, epoch ms or ISO (default: now); the dry run prints it for --run')
+  .option('--expect <digest>', 'Send nothing unless the picked list matches this digest (the dry run prints it)')
+  .option('--retry-parked', 'Also send tasks parked after repeated failed attempts in this sample')
+  .option('--model <model>', 'Codex model (default: the `model` set in ~/.codex/config.toml)')
+  .option('--effort <effort>', 'Reasoning effort: low / medium / high / xhigh / max (default: high)')
+  .option('--category <category>', 'Only tasks of this category')
+  .option('--local-band <band>', 'Only tasks the local judge put in this band: success / partial / fail')
+  .option('--project <names>', 'Only tasks from these projects, comma-separated, as the Work board names them: an allow-list of what may be sent')
+  .option('--seed <seed>', 'Sampling seed: the same seed keeps the same order', 'agentdeck')
+  .option('--timeout <sec>', 'Per-task timeout in seconds', '300')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const ref = await import('./apme/reference-judge.js');
+    const { readKnownTokens } = await import('./auth.js');
+    const { constants: osConstants } = await import('os');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+
+    const windowMs = parseLookbackWindow(opts.since);
+    if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+    const limit = Number(opts.limit);
+    if (!Number.isInteger(limit) || limit <= 0) { log(`Invalid --limit: ${opts.limit}`); process.exit(1); }
+    const timeoutSec = Number(opts.timeout);
+    if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) { log(`Invalid --timeout: ${opts.timeout}`); process.exit(1); }
+    let untilMs = Date.now();
+    if (opts.until !== undefined) {
+      const until = ref.parseReferenceUntil(String(opts.until), untilMs);
+      if ('error' in until) { log(until.error); process.exit(1); }
+      untilMs = until.untilMs;
+    }
+    const model: string | null = opts.model ?? ref.readCodexDefaultModel();
+    if (!model) {
+      log('No --model given and ~/.codex/config.toml sets no `model`. Pass --model <name>.');
+      process.exit(1);
+    }
+    const effort: string = opts.effort ?? ref.DEFAULT_REFERENCE_EFFORT;
+    if (opts.localBand && !ref.OUTCOME_BUCKETS.includes(opts.localBand)) {
+      log(`Invalid --local-band: ${opts.localBand} (success / partial / fail)`);
+      process.exit(1);
+    }
+    const projects: string[] = typeof opts.project === 'string'
+      ? opts.project.split(',').map((p: string) => p.trim()).filter(Boolean)
+      : [];
+    if (opts.project !== undefined && projects.length === 0) { log(`Invalid --project: ${opts.project}`); process.exit(1); }
+    const retryParked = Boolean(opts.retryParked);
+    const judge = ref.referenceJudgeTag(model, effort);
+    const sample = ref.referenceSampleLabel({ category: opts.category, localBand: opts.localBand, projects });
+
+    const plan = ref.planReferenceRun(apme.store, {
+      judge, sample, untilMs, windowMs, limit, seed: String(opts.seed),
+      category: opts.category, localBand: opts.localBand, projects, retryParked,
+    });
+    const asOf = new Date(untilMs).toISOString();
+    log(`\n  Reference judge ${judge} · sample ${sample} · pool as of ${asOf}`);
+    log(`  ${plan.pool.length} locally judged task(s) closed in the ${opts.since} before then; ${plan.scored.size} already scored by this judge in this sample; ` +
+      `${plan.parked.size} parked after ${ref.REFERENCE_PARK_AFTER_FAILURES} failed attempts${plan.parked.size > 0 ? ' (--retry-parked sends them)' : ''}; ${plan.picks.length} picked.`);
+    if (opts.expect !== undefined && String(opts.expect) !== plan.digest) {
+      log(`  The picked list is ${plan.digest}, not ${opts.expect}: what the pool held at ${asOf} changed (a task re-categorized or removed). Nothing was sent; run the dry run again.\n`);
+      process.exit(1);
+    }
+    if (plan.picks.length === 0) { log(''); return; }
+
+    const secrets = readKnownTokens();
+    if (!opts.run) {
+      log(`  ${'Task'.padEnd(9)} ${'Project'.padEnd(16)} ${'Category'.padEnd(12)} ${'Agent'.padEnd(12)} ${'Local'.padEnd(6)} ${'Local judge'.padEnd(30)} Prompt`);
+      let tokens = 0;
+      for (const pick of plan.picks) {
+        const input = ref.buildReferenceInput(apme.store, pick, secrets);
+        const size = input.kind === 'ready'
+          ? `${input.prompt.length} chars${input.redactions > 0 ? `, ${input.redactions} redacted` : ''}`
+          : `skipped (${input.kind === 'declined' ? `declined: ${input.reason}` : 'missing'})`;
+        if (input.kind === 'ready') tokens += ref.estimateCodexInputTokens(input.prompt);
+        log(`  ${pick.taskId.slice(0, 8).padEnd(9)} ${(pick.project ?? '?').slice(0, 16).padEnd(16)} ${(pick.category ?? 'unknown').padEnd(12)} ${(pick.agentType ?? '?').padEnd(12)} ${pick.localOverall.toFixed(2).padEnd(6)} ${shortJudgeLabel(pick.localJudge).padEnd(30)} ${size}`);
+      }
+      log(`\n  Estimated input: ~${Math.round(tokens / 1000)}k tokens (the prompts, plus ~${Math.round(ref.CODEX_FIXED_INPUT_TOKENS / 1000)}k of Codex's own instructions per call).`);
+      log('  --run sends each prompt above to the model behind your Codex login. Credentials with a recognizable');
+      log('  shape are redacted (the count above); a credential with no such shape is sent as it is.');
+      log('  To send exactly this list:');
+      log(`    ${ref.referenceRunCommand({
+        untilMs, since: String(opts.since), limit, model, effort, seed: String(opts.seed),
+        category: opts.category, localBand: opts.localBand, projects,
+        timeoutSec: opts.timeout === '300' ? undefined : timeoutSec, retryParked, digest: plan.digest,
+      })}`);
+      log('  This was a DRY RUN: nothing was sent.\n');
+      return;
+    }
+
+    // Picks scored or parked after --until (an earlier run of this command)
+    // are dropped, not replaced: a run never sends what its dry run did not list.
+    const handled = ref.handledSince(apme.store, plan, { judge, sample, retryParked });
+    const picks = plan.picks.filter((p) => !handled.has(p.taskId));
+    if (handled.size > 0) log(`  ${handled.size} of them scored or parked since ${asOf}: not sent again.`);
+
+    const pairs: Array<{ local: number; reference: number }> = [];
+    let stoppedBecause: string | null = null;
+    const { interrupted } = await ref.withInterruptAbort(async (signal) => {
+      let index = 0;
+      let failedInARow = 0;
+      for (const pick of picks) {
+        if (signal.aborted) break;
+        index++;
+        const tag = `  [${index}/${picks.length}] ${pick.taskId.slice(0, 8)}`;
+        const input = ref.buildReferenceInput(apme.store, pick, secrets);
+        if (input.kind !== 'ready') { log(`${tag} skipped (${input.kind === 'declined' ? `declined: ${input.reason}` : 'missing'})`); continue; }
+        const schema = ref.verdictSchemaFromRubric(input.local.rubric.prompt);
+        const result = await ref.runCodexJudge(input.prompt, { model, effort, schema, timeoutMs: timeoutSec * 1000, signal });
+        const row = ref.referenceEvalRow({ pick, input, result, judge, sample, createdAt: Date.now() });
+        if (!row) {
+          // Interrupted, or Codex could not be started: nothing about the task.
+          if (result.end === 'not_started') stoppedBecause = result.error;
+          log(`${tag} ${result.end === 'interrupted' ? 'interrupted' : result.error}; nothing recorded`);
+          break;
+        }
+        apme.store.insertReferenceEval(row);
+        const category = (input.local.category ?? 'unknown').padEnd(12);
+        const secs = `${Math.round(result.latencyMs / 1000)} s`;
+        const redactNote = input.redactions > 0 ? `, ${input.redactions} redacted` : '';
+        if (row.overall == null) {
+          log(`${tag} ${category} failed after ${secs}: ${(row.error ?? 'unparseable verdict').slice(0, 160)}${redactNote}`);
+          failedInARow++;
+          if (failedInARow >= ref.REFERENCE_STOP_AFTER_CONSECUTIVE_FAILURES) {
+            stoppedBecause = `${failedInARow} calls in a row failed, which is more likely Codex or the network than the tasks`;
+            break;
+          }
+          continue;
+        }
+        failedInARow = 0;
+        pairs.push({ local: pick.localOverall, reference: row.overall });
+        log(`${tag} ${category} local ${pick.localOverall.toFixed(2)}  ref ${row.overall.toFixed(2)}  Δ ${signed2(pick.localOverall - row.overall)}  ${secs}${result.usage ? `, ${Math.round(result.usage.inputTokens / 1000)}k in` : ''}${redactNote}`);
+      }
+    }, (signal) => log(`\n  ${signal}: stopping the call in flight and every process it started…`));
+
+    const stats = ref.computeAgreement(pairs);
+    const parkedNow = ref.parkedReferenceTasks(apme.store.referenceFailureCounts(judge, sample), apme.store.referenceVerdictTaskIds(judge, sample));
+    log(`\n  This run: n=${stats.n}, MAE ${score2(stats.mae)}, bias ${signed2(stats.bias)}, same outcome band ${stats.bucketAgreement == null ? '—' : `${Math.round(stats.bucketAgreement * 100)}%`}.`);
+    log(`  Parked in this sample: ${parkedNow.size} task(s) after ${ref.REFERENCE_PARK_AFTER_FAILURES} failed attempts${parkedNow.size > 0 ? '; --retry-parked sends them again' : ''}.`);
+    if (stoppedBecause) log(`  Stopped early: ${stoppedBecause}.`);
+    log(`  Every reference verdict so far: agentdeck apme agreement${sample === 'uniform' ? '' : ` --sample ${sample}`}\n`);
+    if (interrupted) process.exit(128 + (osConstants.signals[interrupted] ?? 0));
+    if (stoppedBecause) process.exitCode = 1;
+  });
+
+apme
+  .command('agreement')
+  .description('How closely the local judge agrees with the reference judge (scores from `apme reference-judge`)')
+  .option('--judge <tag>', 'Only this reference judge, e.g. codex:gpt-6-astra@high')
+  .option('--sample <design>', 'Only this sampling design, e.g. uniform or local_band=fail')
+  .option('--since <window>', 'Only reference verdicts made within this window')
+  .option('--top <n>', 'Largest disagreements to list per judge', '5')
+  .option('--json', 'Emit JSON instead of the report')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const { buildReferenceReports } = await import('./apme/reference-judge.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+    let sinceMs: number | undefined;
+    if (opts.since) {
+      const windowMs = parseLookbackWindow(opts.since);
+      if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+      sinceMs = Date.now() - windowMs;
+    }
+    const top = Number(opts.top);
+    const rows = apme.store.listReferenceEvals({ judge: opts.judge, sample: opts.sample, sinceMs });
+    const reports = buildReferenceReports(rows, {
+      top: Number.isInteger(top) && top >= 0 ? top : 5,
+      localSummary: (taskId) => apme.store.getTask(taskId)?.summary ?? null,
+    });
+    if (opts.json) {
+      log(JSON.stringify({ judges: reports }, null, 2));
+      return;
+    }
+    if (reports.length === 0) {
+      log('\n  No reference verdicts yet. Run `agentdeck apme reference-judge` (dry run), then add --run.\n');
+      return;
+    }
+    for (const report of reports) printReferenceReport(report);
+    log('');
+  });
+
+/** A capture rate as text, rounded DOWN for the reason `coverageText` gives. */
+export function captureRateText(part: number, whole: number): string {
+  if (whole <= 0) return '—';
+  return `${Math.floor((part / whole) * 100)}% of ${whole}`;
+}
+
+apme
+  .command('coverage')
+  .description('Per-agent coverage — whether each agent\'s work reached the judge with its reply and model')
+  .option('--since <window>', 'Lookback window, e.g. 7d / 2w / 60d (default 30d, the judge drain\'s lookback)', '30d')
+  .option('--json', 'Emit JSON instead of the table')
+  .action(async (opts) => {
+    const { initApme } = await import('./apme/index.js');
+    const { TASK_JUDGE_DRAIN_WINDOW_MS } = await import('./apme/runner.js');
+    const apme = await initApme();
+    if (!apme) { log('APME not available'); process.exit(1); }
+
+    const windowMs = parseLookbackWindow(opts.since);
+    if (windowMs == null) { log(`Unrecognized --since value: ${opts.since}`); process.exit(1); }
+    const nowMs = Date.now();
+    const sinceMs = nowMs - windowMs;
+    const agedCutoffMs = nowMs - TASK_JUDGE_DRAIN_WINDOW_MS;
+    const rows = apme.store.agentCoverage({ sinceMs, agedCutoffMs });
+
+    if (opts.json) {
+      log(JSON.stringify({
+        since: opts.since,
+        sinceMs,
+        drainWindowDays: TASK_JUDGE_DRAIN_WINDOW_MS / 86_400_000,
+        // Rates travel with the counts, as in judge-health: the denominators
+        // (finished turns; judged + waiting + aged out) are the instrument.
+        agents: rows.map((r) => ({
+          ...r,
+          replyRate: r.finishedTurns > 0 ? r.repliedTurns / r.finishedTurns : null,
+          modelRate: r.finishedTurns > 0 ? r.modelTurns / r.finishedTurns : null,
+          coverage: judgeCoverage(r),
+        })),
+      }, null, 2));
+      return;
+    }
+    if (rows.length === 0) { log(`\n  No APME data since ${localDay(sinceMs)} (--since ${opts.since}).\n`); return; }
+
+    log(`\n  Work since ${localDay(sinceMs)} (--since ${opts.since}) — what each agent left for the judge`);
+    log(`  ${'Agent'.padEnd(14)} ${'Runs'.padEnd(6)} ${'Turns'.padEnd(7)} ${'Reply'.padEnd(13)} ${'Model'.padEnd(13)} ${'Tasks'.padEnd(7)} ${'Judged'.padEnd(7)} ${'Declined'.padEnd(9)} ${'Waiting'.padEnd(8)} ${'AgedOut'.padEnd(8)} Coverage`);
+    log(`  ${'─'.repeat(14)} ${'─'.repeat(6)} ${'─'.repeat(7)} ${'─'.repeat(13)} ${'─'.repeat(13)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(9)} ${'─'.repeat(8)} ${'─'.repeat(8)} ${'─'.repeat(9)}`);
+    for (const r of rows) {
+      log(`  ${r.agentType.slice(0, 14).padEnd(14)} ${String(r.runs).padEnd(6)} ${String(r.turns).padEnd(7)} ${captureRateText(r.repliedTurns, r.finishedTurns).padEnd(13)} ${captureRateText(r.modelTurns, r.finishedTurns).padEnd(13)} ${String(r.closedTasks).padEnd(7)} ${String(r.judged).padEnd(7)} ${String(r.declined).padEnd(9)} ${String(r.waiting).padEnd(8)} ${String(r.agedOut).padEnd(8)} ${coverageText(judgeCoverage(r))}`);
+    }
+    const reasons = rows
+      .map((r) => {
+        const parts = [
+          r.declinedNoReply > 0 ? `no reply ${r.declinedNoReply}` : '',
+          r.declinedAbortedOnly > 0 ? `aborted ${r.declinedAbortedOnly}` : '',
+          r.declinedTrivial > 0 ? `trivial ${r.declinedTrivial}` : '',
+          r.declinedNotificationOnly > 0 ? `notice-only ${r.declinedNotificationOnly}` : '',
+        ].filter(Boolean);
+        return parts.length > 0 ? `${r.agentType} (${parts.join(', ')})` : '';
+      })
+      .filter(Boolean);
+    log('');
+    if (reasons.length > 0) log(`  Declined by reason: ${reasons.join('; ')}`);
+    log('  Reply    = finished turns (a Stop, or one recovered from the agent\'s own record) that kept the agent\'s reply');
+    log('  Model    = finished turns that know which model served them — the scorecard ranks by the turn\'s model');
+    log('  Declined = the judge correctly refused: no reply, aborted-only, trivial, or only background-task notices. Not a miss.');
+    log('  Coverage = judged / (judged + waiting + aged out), as in judge-health. Declined rows are not in the denominator.');
+    log('  An agent absent from the table recorded nothing in the window; docs/apme.md lists the agents with no APME producer.');
+    log('');
   });
 
 apme

@@ -143,6 +143,44 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         XCTAssertNil(unknown.modelId)
     }
 
+    /// Mirror of Node's Stop-path `updateModel`: Codex and the OpenCode
+    /// observer report the answering model on their stop hook. The stop
+    /// payloads are the shapes the producers send (OpenCode observer v5 reads
+    /// `providerID` off the assistant message; values from OpenCode 1.18.35's
+    /// own store).
+    func testStopHookModelStampsTheTurnItClosed() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        let collector = ApmeCollector(store: tmp.store)
+        let cases: [(prefix: String, sid: String, stop: [String: Any], model: String?, provider: String?)] = [
+            ("opencode_", "ses_zai", ["model": "glm-5.3", "model_provider": "zai-coding-plan",
+                                      "last_assistant_message": "done"], "glm-5.3", "zai"),
+            // The endpoint outranks the model id's maker: served by MLX, not by Qwen.
+            ("opencode_", "ses_mlx", ["model": "mlx-community/Qwen3.6-35B-A3B-4bit", "model_provider": "mlx"],
+             "mlx-community/Qwen3.6-35B-A3B-4bit", "local"),
+            ("codex_", "thread-1", ["model": "gpt-5.6-sol", "last_assistant_message": "ok"], "gpt-5.6-sol", "openai"),
+            // A stop that names no model claims nothing.
+            ("opencode_", "ses_none", ["last_assistant_message": "done"], nil, nil),
+        ]
+        for c in cases {
+            for (event, extra) in [("session_start", [String: Any]()), ("user_prompt_submit", ["prompt": "go"])] {
+                let hook = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(
+                    event: c.prefix + event, json: extra, sessionId: c.sid))
+                collector.handleHook(event: hook.event, data: hook.payload)
+                DaemonServer.stampApmeStopIdentity(hook, collector: collector)
+            }
+            let stop = try XCTUnwrap(DaemonServer.normalizeApmeObservedHook(
+                event: c.prefix + "stop", json: c.stop, sessionId: c.sid))
+            collector.handleHook(event: stop.event, data: stop.payload)
+            DaemonServer.stampApmeStopIdentity(stop, collector: collector)
+            let run = try XCTUnwrap(tmp.store.listRuns().first { $0.sessionId == c.sid })
+            let turn = try XCTUnwrap(tmp.store.listTurns(runId: run.id).first)
+            XCTAssertEqual(turn["end_source"] as? String, "stop", c.sid)
+            XCTAssertEqual(turn["model_id"] as? String, c.model, c.sid)
+            XCTAssertEqual(turn["provider"] as? String, c.provider, c.sid)
+        }
+    }
+
     func testAllTodosCompleted_trueWhenEveryStatusIsCompleted() async {
         let data: [String: Any] = [
             "tool_name": "TodoWrite",

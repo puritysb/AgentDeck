@@ -9,15 +9,53 @@ static bool hasNew = false;
 static uint32_t lastQueryMs = 0;
 constexpr uint32_t QUERY_INTERVAL_MS = 5000;
 
+// The responder lives only while the STA has an address, and it is stopped
+// before the radio goes off — never after.
+//
+// On Arduino 3, WiFi.mode(WIFI_OFF) destroys both default netifs, and the
+// next WIFI_STA creates new ones. The IDF mDNS component caches each netif
+// pointer when it looks one up (mdns_init() looks up every interface that
+// exists) and nothing tells it about the destroy. The cache survives a park
+// in two ways: an STA that never associated sends no STA_DISCONNECTED to
+// drop it, and when one does, the disable it triggers looks the netif up
+// again while esp_wifi_stop() is still running, before the destroy. The next
+// join's GOT_IP then enables the STA socket through the dead netif:
+// LoadProhibited in esp_netif_is_netif_up ← join_group ← mdns_priv_pcb_enable,
+// 86 Box, 2026-10-18, two seconds after a wifi_provision that the daemon sent
+// when it reopened the serial port of the parked board. mdns_free() walks the
+// same cache, so stopping after WIFI_OFF crashes the same way. Started on
+// demand, the responder also stops costing internal heap on boards parked
+// behind USB serial.
+static bool started = false;
+static uint32_t lastStartAttemptMs = 0;
+
 namespace Net {
 
 void mdnsInit() {
+    if (started) return;
+    const uint32_t now = millis();
+    if (lastStartAttemptMs != 0 && now - lastStartAttemptMs < QUERY_INTERVAL_MS) return;
+    lastStartAttemptMs = now;
     if (!MDNS.begin("agentdeck-display")) {
+        // begin() can fail after mdns_init() succeeded (hostname); free what
+        // it started so no cache is left running behind `started == false`.
+        MDNS.end();
         Serial.println("[mDNS] Failed to start");
         return;
     }
+    started = true;
     Serial.println("[mDNS] Started, browsing for _agentdeck._tcp");
     memset(&discovered, 0, sizeof(discovered));
+    hasNew = false;
+    lastQueryMs = 0;
+}
+
+void mdnsStop() {
+    if (!started) return;
+    MDNS.end();
+    started = false;
+    lastStartAttemptMs = 0;
+    Serial.println("[mDNS] Stopped");
 }
 
 /**
@@ -45,6 +83,9 @@ static bool isRoutableIpv4Literal(const char* s) {
 }
 
 bool mdnsPoll(BridgeInfo& out) {
+    mdnsInit();
+    if (!started) return false;
+
     uint32_t now = millis();
     if (now - lastQueryMs < QUERY_INTERVAL_MS) {
         if (hasNew) {

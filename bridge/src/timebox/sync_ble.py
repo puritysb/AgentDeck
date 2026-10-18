@@ -31,13 +31,15 @@ from matrix_sync_common import (  # noqa: E402
     DEFAULT_URL,
     POLL_INTERVAL,
     BRIDGE_GONE_EXIT_SEC,
+    RECONNECT_BASE_SEC,
+    RECONNECT_MAX_SEC,
+    ReconnectBackoff,
     StatusReporter,
     fetch_display_state,
     bridge_reachable,
     resolve_display_brightness as _resolve_display_brightness_common,
 )
 
-RECONNECT_DELAY = 3.0
 # Force a re-push of the current frame at least this often even when the content
 # is unchanged. A stateful write-without-response panel gives no delivery ACK, so
 # a frame lost to an RF glitch or a brief dual-writer overlap (daemon restart)
@@ -207,6 +209,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
     # exiting, so process liveness tells it nothing about whether the panel is
     # actually being driven.
     status = StatusReporter()
+    backoff = ReconnectBackoff(RECONNECT_BASE_SEC, RECONNECT_MAX_SEC)
     stop = asyncio.Event()
     # Why we're stopping — decides the farewell. 'signal' = clean daemon shutdown
     # (no successor → mark the panel OFFLINE). 'orphan' = parent died (a successor daemon
@@ -272,6 +275,7 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
             async with BleakClient(address, timeout=15.0, disconnected_callback=on_disconnect) as client:
                 print(f"BLE connected (MTU={client.mtu_size})")
                 status.connected()
+                backoff.reset()
 
                 last_key = ""
                 last_sent_at = time.monotonic()
@@ -402,9 +406,14 @@ async def run(address: str, url: str, brightness: int, gamma: float, sat: float,
             if once:
                 raise
             try:
-                await asyncio.wait_for(stop.wait(), timeout=RECONNECT_DELAY)
+                await asyncio.wait_for(stop.wait(), timeout=backoff.next_delay())
             except asyncio.TimeoutError:
                 pass
+            # A panel that is off is not a daemon that is gone (see
+            # BRIDGE_GONE_EXIT_SEC). Probe AFTER the pause: probed before it, a
+            # capped pause alone would outlast the bridge-gone window.
+            if not stop.is_set() and bridge_reachable(url):
+                last_bridge_ok = time.monotonic()
 
 
 def main() -> None:

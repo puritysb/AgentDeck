@@ -116,6 +116,7 @@ daemon 없이 session bridge 단독 사용 시 데이터만 축적되고 coding 
 | `bridge/src/apme/collector.ts` | 수집 경계 — session/turn lifecycle, hook → steps, transcript/rollout response → turns |
 | `bridge/src/apme/classifier.ts` | Task signals 계산 + rule-based + MLX fallback 분류 |
 | `bridge/src/apme/runner.ts` | Run-level (coding) + turn-level (non-coding) 평가 파이프라인 |
+| `bridge/src/apme/reference-judge.ts` | Reference judge (CLI 전용) — `codex exec` 호출, 루브릭 템플릿 → strict schema, 송출 전 마스킹, agreement 계산 |
 | `bridge/src/foundation-models-helper.ts` | CLI-only Foundation Models Swift helper resolver / JSONL process manager |
 | `bridge/fm-helper/AgentDeckFMHelper.swift` | macOS 26+ Swift helper source bundled with the CLI package |
 | `bridge/src/apme/outcome.ts` | Outcome 판정 (committed/iterated/abandoned 등) + composite score |
@@ -180,7 +181,8 @@ task rollup judge 는 텍스트가 있으면 무엇이든 채점했고, 그 "텍
 정렬 맨 위에 떴다. 규칙은 `bridge/src/apme/task-gradeability.ts` **한 곳**(runner 와
 reaper 의 enqueue 게이트가 같이 읽는다): `no_reply`(에이전트 응답 없음) ·
 `aborted_only`(모든 턴이 클라이언트 종료 — 한도/인증/API, "응답"은 안내문) ·
-`trivial`(툴 없는 단일 교환, 프롬프트 ≤12자·응답 ≤200자 — 인사말). 거부된 task 는
+`trivial`(툴 없는 단일 교환, 프롬프트 ≤12자·응답 ≤200자 — 인사말) ·
+`notification_only`(모든 턴이 `<task-notification>` 으로 열림 — 아래). 거부된 task 는
 `notes_json={"notGradeable":…}` 로 이유가 찍히고 Work 판이 `not graded · no reply
 captured` 처럼 그대로 말한다 — 조용히 건너뛰면 "unjudged" 가 백로그로 읽힌다.
 
@@ -196,6 +198,21 @@ Codex 는 훅의 `model`, Claude 는 transcript(단 `<synthetic>` — 클라이�
 codex 턴 732건은 rollout 전체 스캔으로 응답을 1회 복원했다(`efficiency_json.
 response_source=rollout_backfill_2026-09-03`).
 
+**OpenCode 는 observer plugin v5 부터 Stop 에 모델을 싣는다.** 그 전 플러그인의
+`opencode_stop` 에는 모델이 없어서 30일간 끝난 관측 OpenCode 턴 39개의 model_id 가 전부
+NULL 이었다(`agentdeck apme coverage`, 2026-10-18). OpenCode 는 assistant `message.updated`
+마다 `modelID`/`providerID` 를 싣는다 — 자체 이벤트 로그에서 10,474건 전부, 완료 전
+첫 갱신 포함(1.18.35). 플러그인은 턴의 마지막 assistant 메시지 값을 세션별로 들고 있다가
+Stop 에 `model`/`model_provider` 로 보내고 턴과 함께 버린다(child 세션 값은 부모 턴에
+섞지 않는다). `providerID` 는 endpoint 이므로 모델 id 보다 우선한다:
+`mlx-community/Qwen…` 은 모델 id 만으로는 `alibaba` 지만 MLX 가 서빙했으니 `local` 이다.
+허용 목록 밖의 이름(`zai-coding-plan`, OpenCode Zen 의 `opencode`)은 모델 id 로 내려가고,
+둘 다 모르면 `unknown` 그대로다. Swift 데몬은 훅 Stop 의 `model` 을 아예 턴에 찍지 않았다
+— run 을 열 때 `model_name` 만 읽으니 Codex 턴도 모델이 없었다 — 그래서
+`DaemonServer.stampApmeStopIdentity` 가 Node 의 Stop 경로와 같은 일을 한다. 기존
+플러그인 파일은 `agentdeck daemon install`(또는 setup, `agentdeck opencode`)이 다시 쓸 때
+v5 가 된다.
+
 **Stop 시 빈 transcript 읽기는 답이 아니다.** Claude Code 는 마지막 assistant 레코드를 쓰는
 도중에 Stop 훅을 돌린다 — 실측: Stop 21:20:22Z, 1,638자 응답 레코드 21:20:22.395Z. 한 주
 Claude stop 턴 344건 중 113건이 그렇게 응답 없이 보관됐다. `deferred-reply-read.ts` 가
@@ -210,6 +227,28 @@ Claude stop 턴 344건 중 113건이 그렇게 응답 없이 보관됐다. `defe
 "응답 없음=거부" 였고 헤드리스/워크플로 에이전트(마지막이 Write 나 Bash, 맺음말 없음)
 67건의 타당한 판정을 철회했다가, 툴 궤적(호출 ≥3 또는 파일 기록)을 작업 증거로 인정한 뒤
 64건이 재입장했다.
+
+**백그라운드 알림만으로 열린 task 는 판정하지 않는다** (`notification_only`, 2026-10-18).
+백그라운드 작업이 끝나면 Claude Code 는 `<task-notification>` 봉투를 사용자 프롬프트로
+큐에 넣고, 세션이 유휴면 새 턴으로 전달한다. 30일 실측(Node 스토어): 닫힌 Claude task
+414건 중 **70건이 이 알림 턴만으로** 이뤄졌고, 그중 64건이 채점돼 평균 0.77 — 나머지
+task 의 0.91 보다 낮았다. 요청이 없으니 judge 가 무엇을 기준으로 채점할지 추측한 것이다.
+원인은 task 분할이다: 큐 메시지(알림·`<agent-message>`·`<cross-session-message>`)로만 된
+task 93건 중 81건이 바로 앞 task 가 `idle_gap` 으로 닫힌 직후였다 — 15분 유휴 간격이
+백그라운드 작업이 아직 도는 동안 원래 task 를 닫고, 완료 알림이 의도 없는 새 task 를 연다.
+봉투 판정은 `shared/src/harness-queued-message.ts` 와 같다(선행 공백 뒤 프롬프트 맨 앞,
+대소문자 무관, 태그 뒤 `>` 또는 공백). 사람이 친 프롬프트가 하나라도 있으면 판정
+대상이고, 다른 세션의 `<cross-session-message>` 는 요청이라 판정한다. `<agent-message>` 도
+질문이나 요청을 실을 수 있어 거부하지 않는다. 기존 판정은 Node 데몬이 시작할 때 위 철회가
+걷어낸다(30일 창 안, 2026-10-18 이 기계 기준 64건). Swift 데몬에는 철회 경로가 없어, 앞으로 닫히는 task 에만
+적용된다.
+
+기각한 대안 둘. (1) 세션의 백그라운드 작업이 살아 있는 동안 idle gap 을 보류: 원인을
+고치지만, 기다리는 사이 사용자가 친 새 요청이 이전 task 에 합쳐지고, 개발 서버처럼 끝나지
+않는 백그라운드 작업이면 task 가 무기한 열린다. 두 collector 의 상태 기계도 같이 바꿔야
+한다. (2) 알림이 오면 닫힌 task 를 다시 연다: 이미 내려진 판정을 다시 내려야 하고, 한 번
+닫힌 task 가 닫힌 상태로 남지 않는다. 이 규칙의 한계도 적어 둔다 — 알림 뒤에 에이전트가 한
+작업은 원래 task 로 돌아가지 않으므로, 이제 어느 task 의 점수에도 들어가지 않는다.
 
 **judge 백로그는 데몬 틱이 배출한다.** task 의 judge 호출은 collector 의 close 경로에서
 한 번 발화하므로 재시작 중·judge 오프라인·probe 미완이면 영영 잃었다 — closed 미채점
@@ -229,6 +268,7 @@ Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-
 | `interrupted` | 사용자가 ESC 로 취소 — Claude Code 는 취소 시 hook 을 **하나도 emit 하지 않으므로** 애초에 올 Stop 이 없었다. 유실이 아니다 |
 | `aborted` | **클라이언트가** 턴을 끝냄 — 사용량 한도(`You've hit your session limit`), 인증 만료(`Please run /login`), 크레딧 소진, API 429/529. assistant 레코드 하나에 `stop_reason: "stop_sequence"` 로 기록되고 Stop hook 은 발화하지 않는다. 취소와 같은 이유로 유실이 아니다 |
 | `superseded` | 이 프롬프트의 턴이 **돌기도 전에** 다음 프롬프트가 도착 — 큐잉된 메시지와 `<task-notification>` 주입은 ~130ms 간격 쌍으로 들어오고, 모델 턴 하나가 둘을 처리하며 Stop 도 하나만 빚진다(마지막 것에 대해). 밀려난 행은 "프롬프트당 턴 1개" 계수 방식의 산물이지 유실이 아니다 |
+| `injected` | 턴이 **실행 중일 때** Claude Code 가 큐잉한 메시지(백그라운드 작업의 `<task-notification>`, 서브에이전트의 `<agent-message>`, 다른 세션의 `<cross-session-message>`)가 배달됨 — 실행 중 턴의 도구 경계에서 `UserPromptSubmit` 이 발화하므로 턴이 끝나기도 전에 밀려난다. 그 시점엔 빚진 Stop 이 없었고, 뒤따르는 Stop 하나가 그 메시지가 연 턴을 닫는다. 유실이 아니다 |
 | `session_end` / `clear` | 턴이 열린 채로 세션이 끝나거나 `/clear` 로 잘림 |
 | `run_close` | 열린 턴 밑에서 abandoned-run reaper 가 run 을 닫음. 실측(2026-09-03, 5.5일): 52건 중 45건이 턴 시작과 다음 턴 사이에 **데몬 재시작**을 끼고 있었다 — 에이전트가 Stop 을 잃은 게 아니라 받을 프로세스가 없었다. `stop-health` 의 `Reaped` 열로 따로 세고, 비율에는 넣지 않는다(세션 종료로 접어 세던 시절 codex 유실 29% 가 11% 로 읽혔다) |
 | `NULL` | 아직 열려 있음(`ended_at IS NULL`), 또는 컬럼 도입 이전 행 |
@@ -245,11 +285,17 @@ Claude 턴을 닫는 권한은 Stop hook **하나뿐**이고 그 전달은 fire-
 
 **`superseded` 는 계수 방식의 산물이다.** 턴은 `UserPromptSubmit` 마다 생성되는데, 큐잉된 메시지와 `<task-notification>` 주입은 ~130ms 간격 쌍으로 도착하고 Claude 는 그 둘을 **모델 턴 하나로** 처리한다. 그래서 앞 행은 "돌지도 않은 턴"이고 Stop 은 마지막 행 하나에만 빚진다. 판별 근거는 시간 임계값이 아니라 transcript 다 — 턴이 열린 뒤 assistant 레코드가 **하나도** 없으면 그 턴은 돈 적이 없다. transcript 를 못 읽으면 `next_prompt` 로 남긴다(읽을 수 없음 ≠ 근거 없음).
 
+**`injected` 는 실행 중에 배달된 큐 메시지다 (2026-10-18).** Claude Code 는 백그라운드 작업 완료·서브에이전트 결과·다른 세션의 SendMessage 를 사용자 프롬프트로 큐잉하고, 세션이 놀고 있으면 새 턴으로, **턴이 돌고 있으면 그 턴의 다음 도구 경계에서** 배달하며 어느 쪽이든 `UserPromptSubmit` 을 발화한다. 후자에서 collector 는 아직 끝나지 않은 턴을 다음 프롬프트로 닫았고, 그게 `next_prompt`(미복구 유실)로 집계됐다. 실측(30일, 한 스토어): Claude `next_prompt` 587건 중 **517건이 이 모양** — 들어온 프롬프트가 큐 메시지 봉투로 시작하고, transcript 에 턴이 열린 뒤 `end_turn` 이 하나도 없었다. 재분류하면 Claude Stop 유실은 **35% → 8%** 로 읽힌다(나머지 70건 = 봉투 없는 타이핑 프롬프트 65 + 끝난 뒤 Stop 을 잃은 5).
+
+판별엔 두 사실이 모두 필요하다(`superseded` 와 같은 원칙). ① 들어온 프롬프트가 `<task-notification>` / `<agent-message` / `<cross-session-message` 봉투로 **시작**한다 — hook 시점엔 이것만이 "큐잉됐다"는 증거다: 같은 메시지의 transcript `queued_command` 레코드는 hook 보다 ~0.5초 늦게 쓰인다(2026-10-18 실측: hook 00:32:53.826Z, 큐 제거 00:32:54.302Z). 판정 SSOT 는 `shared/src/harness-queued-message.ts`. ② transcript 에 그 턴이 열린 뒤의 `end_turn` 이 없다(`readOpenTurnEvidence.completedAt`; slack 창 안의 더 오래된 `end_turn` 은 이전 턴의 것). 턴이 **끝난 뒤** 알림이 세션을 깨운 경우엔 Stop 을 진짜로 잃은 것이므로 `next_prompt` 로 남는다. 타이핑한 프롬프트도 Claude Code 가 큐잉하지만 봉투가 없어 hook 시점엔 구분할 수 없으므로 `next_prompt` 로 남는다. 우선순위는 `interrupted` → `aborted` → `superseded` → `injected` → `next_prompt`.
+
+**Swift 데몬은 이 구분을 하지 않는다.** 밀려난 턴은 항상 `next_prompt` 로 닫는다 — 샌드박스 앱은 transcript 를 읽을 수 없어 ②를 확인할 수 없고, `superseded`/`interrupted` 판별도 같은 이유로 Node 전용이다(기존 비대칭).
+
 ```bash
 agentdeck apme stop-health --since 7d [--agent claude-code]
 ```
 
-분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·중단된 턴·밀려난 턴·세션 종료로 닫힌 턴·reaper 가 닫은 턴(`Reaped`)·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 어느 버킷이 분자·분모에 들어가는지는 `stopDeliveryLoss()`(`@agentdeck/shared`) 한 곳에만 있다 — 소비자가 그 규칙을 다시 적으면 범례가 주장하는 것과 다른 값을 재게 된다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
+분모는 **판정 가능한 턴만** — `stop + synthetic_stop + next_prompt`. 열린 턴·취소된 턴·중단된 턴·밀려난 턴·실행 중 큐 메시지에 밀린 턴(`Inject`)·세션 종료로 닫힌 턴·reaper 가 닫은 턴(`Reaped`)·도입 이전 행은 Stop 도착 여부의 증거가 아니므로 비율에서 제외한다. 어느 버킷이 분자·분모에 들어가는지는 `stopDeliveryLoss()`(`@agentdeck/shared`) 한 곳에만 있다 — 소비자가 그 규칙을 다시 적으면 범례가 주장하는 것과 다른 값을 재게 된다. 다만 `total` 에는 열린 턴이 포함되는데, 열린 턴이야말로 "아직 안 온 Stop" 이라 분모에서 빼면 측정하려는 실패를 숨기게 되기 때문이다.
 
 ### 판정 반복 루프와 repetition penalty
 
@@ -381,7 +427,7 @@ agentdeck apme judge-health --since 14d [--json]
 
 | 열 | 뜻 |
 |---|---|
-| `Declined` | task-gradeability 가 거부 — 응답 없음·중단만 있음·사소함. **실패가 아니다**: 에이전트의 작업에 대한 판정은 에이전트의 작업을 필요로 한다 |
+| `Declined` | task-gradeability 가 거부 — 응답 없음·중단만 있음·사소함·백그라운드 알림만. **실패가 아니다**: 에이전트의 작업에 대한 판정은 에이전트의 작업을 필요로 한다 |
 | `Waiting` | 미판정이지만 아직 배출기의 조회 창 **안**. 판정이 도달할 수 있다 |
 | `AgedOut` | 미판정이고 창 **밖**. 배출기가 더는 이 행을 판정자에게 내놓을 수 없다 — 아무것도 이걸 판정하지 않는다 |
 
@@ -424,6 +470,67 @@ summary 만 보고 고르던 동안 그런 작업은 **매 tick 다시 판정 �
 
 `Close → verdict` 는 평균이 아니라 백분위다. 몇 주 뒤에 backfill 된 작업 하나가 평균을
 실제 값 전부보다 위로 끌어올린다.
+
+### coverage — 에이전트별로 무엇이 판정까지 도달했는가
+
+```bash
+agentdeck apme coverage --since 30d [--json]
+```
+
+`judge-health` 는 날짜별 합계라서, 작업이 판정에 아예 닿지 않는 에이전트를 합계 속에 숨긴다.
+이 명령은 같은 질문을 **에이전트별로** 묻고, 판정이 기대는 두 캡처 사실 — 끝난 턴이
+에이전트의 응답을 지녔는가, 그 턴을 어느 모델이 처리했는지 아는가 — 을 같이 보여준다.
+
+| 열 | 뜻 |
+|---|---|
+| `Reply` | 끝난 턴(`stop` + `synthetic_stop`) 중 비어 있지 않은 응답을 가진 비율. 끝나지 않은 턴(밀려남·취소·중단·`injected`)은 응답을 빚지지 않으므로 분모에 없다 |
+| `Model` | 끝난 턴 중 `model_id` 를 가진 비율 — scorecard 는 **턴의** 모델로 순위를 매기므로, 없는 턴은 순위에 들 수 없다 |
+| `Declined` / `Waiting` / `AgedOut` / `Coverage` | `judge-health` 와 같은 술어(`JUDGED_SQL` / `DECLINED_SQL`), 같은 배출 창, 같은 `judgeCoverage()` — 두 명령은 작업 하나를 다르게 셀 수 없다(테스트가 합계를 맞대어 고정). 거부 사유별 개수는 표 아래 한 줄과 JSON 에 실린다 |
+
+창은 각 사실이 원래 쓰던 계기의 것을 따른다: run·턴은 `started_at`(stop-health), 작업은
+`ended_at`(judge-health). 그래서 창 이전에 시작된 run 은 턴을 보태도 `Runs` 에는 세지 않는다.
+비율은 `coverageText` 와 같은 이유로 **내림**한다.
+
+첫 실측(2026-10-18, `--since 30d`, 이 PR 의 수정 **이전** 데이터):
+
+| 에이전트 | Runs | Turns | Reply | Model | Tasks | Judged | Declined | Coverage |
+|---|---|---|---|---|---|---|---|---|
+| claude-code | 195 | 1909 | 79% of 1181 | 98% of 1181 | 413 | 381 | 14 | 95% of 399 |
+| codex-cli | 455 | 1074 | 96% of 883 | 98% of 883 | 547 | 502 | 26 | 96% of 521 |
+| hermes | 16 | 16 | 100% of 14 | 100% of 14 | 16 | 14 | 2 | 100% of 14 |
+| kiro-cli | 8 | 8 | 100% of 8 | 0% of 8 | 8 | 0 | 8 (전부 trivial) | — |
+| openclaw | 100 | 127 | 99% of 109 | 99% of 109 | 92 | 80 | 12 | 100% of 80 |
+| opencode | 14 | 44 | 87% of 39 | 0% of 39 | 29 | 25 | 4 | 100% of 25 |
+
+**Claude 의 `Reply` 79% 는 데몬의 Stop 응답 라우팅 결함이었다.** 데몬은 Stop 이 실어 온 응답을
+어느 턴에 붙일지 **타임라인**의 "열린 턴" 판정 — 세션의 최근 24행 안에 완료가 뒤따르지 않은
+`chat_start` 가 있는가 — 으로 골랐다. 흔한 두 턴이 거기에 열린 `chat_start` 를 갖지 않는다:
+`<task-notification>` 이 연 턴(타임라인은 그 프롬프트를 저신호로 버린다), 그리고 자기 도구
+행들이 프롬프트를 24행 창 밖으로 밀어낼 만큼 긴 턴. 그 응답은 **이전 턴**으로 갔다 — 이전 턴에
+응답이 있으면 버려지고, 없으면 한 턴 일찍 붙었다. Stop 시점의 transcript 읽기가 비어서 지연
+재읽기(턴이 닫힌 뒤 도착)로 넘어간 경우만 살아남았다. 실측(30일): Stop 으로 닫힌 Claude 턴
+1,145건 중 **558건이 이 경로**를 탔고 그중 **247건이 응답 없이** 남았다 — 열린 턴으로 간 587건은
+0건. 이 경로를 탄 턴은 알림이 연 턴 432건 중 417건, 그 밖의 턴 중 도구 12회 이상인 173건 중
+136건, 그보다 짧은 540건 중 5건이었다. 이제 응답의 주인은 **collector 의 열린 턴**이
+정한다(`ApmeCollector.recordStopReply`; 열린 턴이 없을 때만 마지막으로 닫힌 턴에, 그 턴에 응답이
+없을 때만). 지난 행은 backfill 하지 않았다 — transcript 에 응답이 남아 있어 복구는 가능하지만
+별도 결정이다. 같은 24행 판정은 기기 타임라인의 `chat_response` 행 발행도 정하므로, 긴 Claude
+턴은 타임라인에도 응답 행이 빠질 수 있다(후속 과제, 이 PR 범위 밖).
+
+**에이전트별 APME 생산자 (2026-10-18):**
+
+| 에이전트 | 생산자 | 빠진 것 |
+|---|---|---|
+| claude-code | Claude 훅(`UserPromptSubmit` / 도구 / `Stop`) + transcript | — |
+| codex-cli | `codex_*` 훅 + rollout | — (데스크톱 앱의 턴도 `codex_*` 훅으로 들어오면 codex-cli 행이 된다; codex-app 행은 없다) |
+| openclaw | Gateway 이벤트(세션 키별 run) | — |
+| hermes | `hermes_*` 훅 | — |
+| opencode | 옵저버 플러그인(`opencode_*` 훅) | 플러그인의 `opencode_stop` 이 모델을 싣지 않음 → `Model 0%` |
+| kiro-cli / kiro-ide | Kiro 타임라인 피드(`chat_start` / `chat_response`) | 도구·모델 없음; kiro-ide 세션도 kiro-cli 로 연다; 기록된 작업 8건이 전부 trivial 로 거부 |
+| antigravity | **없음** — 패시브 옵저버는 roster/상태용 transcript 폴링만 하고, 데몬은 `antigravity_*` 훅을 받을 준비만 돼 있다(설치기 없음) | 전부 |
+
+표에 없는 에이전트는 창 안에 기록이 없다는 뜻이고, 위 표가 그 0 이 "안 썼다"인지 "생산자가
+없다"인지를 가른다.
 
 ### steps — 훅 이벤트 + tool 호출 기록
 
@@ -500,6 +607,19 @@ Store 초기화 시:
 ```
 id, run_id, verdict (approve|reject|neutral), note, ts
 ```
+
+### reference_evals — reference judge 의 두 번째 판정 (2026-10-18)
+
+```
+id, task_id, run_id, judge ('codex:<model>@<effort>'),
+sample ('uniform' | 'local_band=fail' | 'project=agentdeck' …), category, rubric_ver,
+prompt_sha, overall, scores_json, verdict_json, error,
+local_judge, local_overall, local_rubric_ver, local_judged_at,
+input_tokens, cached_input_tokens, output_tokens, reasoning_tokens,
+latency_ms, created_at
+```
+
+`agentdeck apme reference-judge --run` 만 쓴다. `evals` 와 분리한 이유: scorecard, outcome, Work 판 어떤 쿼리도 reference 판정을 제품 자신의 판정으로 오인할 수 없게. `local_*` 는 비교 시점의 로컬 판정 스냅샷이고, 실패한 호출도 행으로 남는다(`overall` NULL, `error`). `sample` 은 task 를 뽑은 설계다 — 설계가 다른 행은 다른 질문에 답하므로 보고서가 따로 낸다. 아래 [Reference judge](#reference-judge-2026-10-18) 절 참고.
 
 ### 집계 뷰
 
@@ -854,6 +974,59 @@ composite = 0.40 × outcomeScore
 
 자동 실행 조건도 같은 설계의 일부였다: vibe correlation < 0.4 이면 재튜닝, 단 disagreement 샘플 최소 3개. 위 경고대로 이 트리거 역시 코드에 없다.
 
+## Reference judge (2026-10-18)
+
+로컬 judge 의 판정을 믿지 않고 잰다. 2026-10-16 포지션 워크숍 결정 ⑪ — "`codex exec` 로 구동하는 고급 모델을 reference judge 로, 로컬 judge 와의 agreement 지표, 그리고 불일치로 루브릭을 고치는 OPRO 루프. 사람 레이블은 reference 를 보정할 뿐" — 의 앞 두 조각이다. OPRO 루프는 아직 없다(위 절). `agentdeck apme reference-judge` 가 판정하고 `agentdeck apme agreement` 가 보고한다. 명령 표와 옵션: [cli.md § Evaluation](cli.md#evaluation-apme).
+
+**같은 프롬프트.** 로컬 판정이 끝난 task 의 판정 요청을 `buildTaskJudgeInput` 으로 다시 만든다 — `runTaskEval` 이 판정 요청을 만드는 바로 그 함수다. 두 judge 가 다른 프롬프트를 봤다면 agreement 는 judge 가 아니라 프롬프트를 잰다. `apme-reference-judge.test.ts` 가 라이브 judge 에 전달된 문자열과 같음을 고정한다. 다른 점은 송출 전 마스킹뿐이고, 마스킹은 **필드마다 잘라내기 전에** 한다(`buildTaskJudgeInput` 의 `field` — 턴의 프롬프트·응답, 도구 입력·오류, 서브에이전트 요약). 잘린 뒤에 가리면 credential 이 자기를 알아보게 하는 모양을 잃는다: 1,500자 필드에서 잘린 PEM 키에는 END 줄이 없다. 그 뒤 프롬프트 전체를 한 번 더 훑는다. 로컬 judge 의 프롬프트는 바이트 그대로이고 `prompt_sha` 는 그 해시다. 가리는 것: 이 머신의 페어링 토큰(서빙 중인 것 + accepted ring) 그대로; PEM private key 블록(END 줄이 없으면 그 필드 끝까지); `redactSecrets` 의 접두사; `sk-`, `AKIA`, `npm_`, `AIza`, `xox?-`, GitHub(`gh[oprsu]_`, `github_pat_`), Hugging Face(`hf_`), JWT; 레이블 붙은 값 — `Authorization:` 헤더(`Basic`·`Bearer`·`token`), 대소문자 무관 `bearer`, URL 의 `user:password@`(scheme·host 는 남긴다), 이름이 secret 을 말하는 할당·플래그(`DB_PASSWORD=…`, `"api_key": "…"`, `--password …`, z.ai 의 `ANTHROPIC_AUTH_TOKEN=<hex>.<alnum>`). **best effort 다** — 이 모양 어디에도 들지 않는 credential(레이블 없는 임의 문자열, 일반 단어 비밀번호)은 그대로 나간다. 마스킹이 필드를 줄이면 로컬 judge 에게서 잘려 나간 뒷부분이 reference 에게는 보일 수 있다; dry run 이 task 마다 마스킹 수를 보여준다. 커밋 해시와 UUID, 그리고 secret 을 이름만 말하는 코드(`getToken()`, `password: string`, `max_tokens`, `TOKEN_TYPE=bearer`)는 남긴다 — judge 가 증거로 읽는다.
+
+**`codex exec` 호출.** 사용자 자신의 Codex 로그인으로 부르니 API 키가 없다. 플래그마다 이유가 있다:
+
+| 플래그 | 이유 |
+|---|---|
+| `--ephemeral` | rollout 을 쓰지 않는다 — AgentDeck 의 Codex rollout reader 가 judge 를 세션으로 보지 않는다 |
+| `--ignore-user-config` | `~/.codex/config.toml` 에는 AgentDeck 자신의 Codex 훅이 있다. 읽히면 judge 가 데몬에 Codex 세션으로 보고되고 APME run 이 열린다(2026-10-01 headless 홍수). 사용자의 model/effort 기본값도 빠지므로 `-m`/`-c model_reasoning_effort` 로 넘긴다 — 모델 기본값은 같은 파일의 최상위 `model` 을 직접 읽는다 |
+| `-s read-only`, 빈 임시 `-C` | 스키마 파일은 그 디렉터리 밖에 둔다. read-only 는 쓰기만 막는다 — 읽기는 아래 두 행이 막는다 |
+| `--disable` × 16: `shell_tool` `unified_exec` `shell_snapshot` `code_mode_host` `view_image` `apps` `plugins` `browser_use` `computer_use` `image_generation` `multi_agent` `skill_search` `tool_suggest` `sleep_tool` `goals` `hooks` (`REFERENCE_DISABLED_FEATURES`) | 모델에게 도구가 없다 — 비교 대상인 로컬 judge 에도 없다. 파일을 읽거나 서브에이전트에 물어 낸 판정은 프롬프트보다 많이 본 판정이고, 그런 호출 하나하나가 로컬 데이터가 머신 밖으로 나가는 길이다. `code_mode_host` 를 끄면 code mode 는 fail closed. `hooks` 는 `--ignore-user-config` 의 이중 잠금. 모르는 기능 이름은 `codex exec` 가 거부하므로, 이름이 바뀐 기능은 켜진 채 도는 대신 호출이 실패한다 |
+| `-c web_search=disabled` | 웹 검색은 기능이 아니라 설정이고 `--ignore-user-config` 아래에서도 기본으로 켜져 있다. 모르는 `-c` 키는 경고만 내고 무시되므로, "unrecognized configuration" 경고가 나온 실행의 판정은 버린다(`isolationBreach`) |
+| `--output-schema` | 루브릭의 `Return strict JSON` 템플릿에서 만든 strict schema(`verdictSchemaFromRubric`) — 로컬 judge 가 요청받은 축 그대로 답하게. 템플릿을 못 읽으면 스키마 없이 부르고 `parseJudgeJson` 이 판정한다 |
+| `--json`, 프롬프트는 stdin(`-`) | JSONL 이벤트: 마지막 `agent_message` = 판정, `turn.completed.usage` = 토큰. stdin 을 닫지 않으면 `codex exec` 는 영원히 기다린다 |
+
+격리는 실측으로 확인했다(2026-10-18): 12회 호출 동안 새 rollout 0, 그 시간대에 시작된 APME run·turn 0. 도구 차단 후 4회도 rollout·shell snapshot·run·turn 모두 0.
+
+도구 차단도 실측으로 정했다(codex-cli 0.160.1, "가능하면 직접 확인하라"는 합성 프롬프트). read-only 샌드박스인데도 모델은 `rg` 로 `/etc/hosts` 를 읽었고, 기본 설정에서는 웹 검색을 2회 했다. shell 만 끄면 code mode 의 `exec` 도구를 대신 두 번 불렀다. 이 호출은 `--json` 이벤트 어디에도 없고 `RUST_LOG=codex_core=info` 의 `ToolCall: exec` 로만 보였으며, 입력 토큰이 10k 에서 64k 로 늘었다. 위 전부를 끈 구성에서는 ToolCall 0, 요청 1회(10,015 토큰). 이벤트에 도구 item(`command_execution`, `web_search` …)이 하나라도 나오면 그 판정은 저장하지 않고 실패로 남긴다(`isolationBreach`). 이벤트에 안 보이는 호출은 감지가 아니라 차단(`code_mode_host` off)으로 다룬다.
+
+**타임아웃과 중단은 프로세스 트리 전체를 멈춘다.** npm `codex` 래퍼는 네이티브 바이너리를 stdio 를 물려준 자식으로 띄우고 SIGINT/SIGTERM/SIGHUP 만 넘긴다. 그래서 래퍼만 SIGKILL 하던 첫 구현은 타임아웃 뒤에도 진짜 Codex 를 파이프를 연 채 남겨 두었다. POSIX 에서는 judge 를 자기 프로세스 그룹으로 띄우고(`detached`), 타임아웃이면 그룹에 SIGTERM, 2 s 뒤에도 남아 있으면 SIGKILL 을 보낸 다음 임시 디렉터리를 지운다. 그룹은 터미널의 Ctrl-C 를 받지 않으므로 `--run` 동안은 CLI 가 SIGINT/SIGTERM/SIGHUP 을 받아 같은 정지를 하고 끝난다(종료 코드 128 + 신호 번호). Windows 는 `taskkill /T /F` 를 먼저 — 트리를 뿌리부터 걸으므로 뿌리가 살아 있을 때 — 그다음 뿌리를 죽인다. stdout·stderr 는 스트림으로 디코딩한다(청크 경계에서 갈린 한글이 깨지지 않게).
+
+effort 기본값은 `high` — 사용자 Codex 기본값이 `ultra` 여도 따르지 않는다. `ultra` 는 서브에이전트에 위임하는데 판정 하나에는 쓸모가 없다.
+
+**저장.** `reference_evals` 테이블(위 Data schema). `evals` 가 아니므로 scorecard·outcome·Work 판 어떤 쿼리도 reference 판정을 제품의 판정으로 읽지 않는다. 실패한 호출(타임아웃 포함)도 행이다. 중단된 호출(Ctrl-C)과 시작조차 못 한 호출(`codex` 없음)은 행을 남기지 않는다 — task 에 대해 아무것도 말하지 않는다. 같은 (judge, 설계)에서 실패 행이 두 개인 task 는 재실행이 보내지 않는다(park; `--retry-parked` 가 다시 보낸다): 매번 실패하는 task 가 매 실행의 자리를 차지하지 않게. 실패가 세 번 연달아 나면 실행이 멈춘다 — 로그인 만료나 네트워크 장애는 모든 호출을 실패시키고, 그 실패 하나하나가 task 를 park 쪽으로 민다. 스키마 변경은 없다: 실패 행은 이미 있었다.
+
+**표본.** `--since`(기본 30일 — `apme prune` 기본 창과 같아서 tool payload 가 아직 지워지지 않은 task 다) 안의 로컬 판정 task 위에서 균등하게, 순서는 (seed, task id) 해시. 재실행은 같은 설계에서 이미 판정했거나 park 된 task 를 건너뛰고 다음으로 간다. dry run 은 풀을 한 시각(`--until`, 기본 지금)의 상태로 읽는다 — 그때까지 닫힌 task, 각자 그때까지의 마지막 로컬 판정, 그때까지 판정·park 된 task 제외 — 그리고 그 시각과 뽑힌 목록의 digest 를 박은 `--run` 명령을 출력한다. 그 명령은 같은 풀을 읽으니 같은 목록을 뽑고, digest 가 다르면(그사이 task 가 다시 분류되거나 지워졌다) 아무것도 보내지 않는다(`--expect`). 그사이 판정·park 된 pick(같은 명령을 먼저 돌렸다)은 빠지고 다른 task 로 채우지 않는다 — run 은 dry run 이 보여준 목록의 부분집합만 보낸다. `--until` 없이 친 `--run` 은 그 순간의 풀에서 뽑는다. 다른 설계에서 판정한 task 는 건너뛰지 않는다 — 건너뛰면 그 task 가 이 설계의 표본에서 빠진다. 균등 순서 20·21번째가 fail 밴드 표본의 task 였으니, 건너뛰었다면 균등 표본이 fail 을 덜 셌을 것이다. `--local-band`·`--category` 는 표본을 좁힌다. `--project` 는 허용 목록이다 — 적은 프로젝트(Work 판의 `project_name`, 대소문자 무시)의 task 만 뽑으므로 나머지 프로젝트의 텍스트는 머신 밖으로 나가지 않는다. dry run 표에 task 마다 프로젝트가 나온다. 각 행은 자기 설계(`sample`: `uniform`, `local_band=fail` …)를 기록하고 보고서는 (judge, 설계)별로 따로 낸다 — 좁힌 표본의 MAE 는 모집단 추정이 아니라 그 조각의 값이고, `local_band=fail` 의 밴드 일치율은 로컬 fail 의 정밀도다.
+
+**지표**(`apme agreement`): n, MAE(95% 부트스트랩 CI), bias = 평균(local − reference)(양수 = 로컬이 후함), Spearman(동점은 평균 순위), outcome 밴드 일치율과 Cohen's κ(`deriveTaskOutcome` 의 0.75/0.5 경계), confusion matrix, 정확히 0 또는 1 인 점수 비율, 로컬 judge 모델·카테고리별 분해, 가장 큰 불일치(양쪽 요약 + reference 의 missed). judge 태그(`codex:<model>@<effort>`)마다 따로 — 다른 모델·effort 는 다른 계기다.
+
+**비용**(2026-10-18, `gpt-6-astra@high`): 호출당 중앙값 12 s. 입력 토큰은 Codex 자신의 고정분에 프롬프트를 더한 값이다. 고정분은 도구를 다 끈 지금 9.7–10.2k 이고, 도구가 켜져 있던 첫 측정에서는 15.7k 였다. 프롬프트는 한글 음절당 0.91 토큰, 그 밖의 문자당 0.28 토큰이다(실제 프롬프트 20개에 맞춘 값, 잔차 1.1k 이내). dry run 의 추정이 이 식이다(`estimateCodexInputTokens`). 첫 측정의 12 task 는 143 s 걸렸다.
+
+### 첫 측정 (2026-10-18)
+
+로컬 judge `mlx:gemma-4-26b-a4b-it-4bit`, reference `codex:gpt-6-astra@high`, 30일 창의 로컬 판정 task 996개.
+
+| 설계 | n | 결과 |
+|---|---|---|
+| `uniform` | 12 | MAE 0.24(CI 0.10–0.43), bias +0.08(CI −0.14–+0.28), 같은 밴드 9/12, κ −0.09, Spearman −0.31. 로컬 점수 12/12 가 정확히 0 또는 1, reference 는 1/12 |
+| `local_band=fail` | 8 | reference 가 fail 로 확인 2/8(정밀도 25%), 6건은 0.92–0.96 |
+
+이 20건은 도구가 켜진 채 판정했지만 도구는 쓰이지 않았다. 20개 프롬프트를 다시 만들어 보니 `prompt_sha` 가 20/20 일치했고, 입력 토큰을 프롬프트 크기에 회귀한 잔차는 모두 −566…+1,018 토큰이다. 도구 호출에는 고정분(약 15.7k)을 다시 보내는 두 번째 요청이 필요하다. 웹 검색은 결과를 입력에 더한다(합성 프롬프트에서 2회에 +36k). 도구를 끈 뒤 균등 표본에 4건을 더했다(n=16): MAE 0.23(CI 0.12–0.36), bias +0.11(CI −0.07–+0.25), 같은 밴드 12/16, κ −0.07.
+
+1. **로컬 judge 는 사실상 이진 판정이다.** 30일 창 996개 중 1.00 이 70.6%, 0.00 이 19.7%, 그 사이는 약 10%. gemma 전체 1,805건 중 1,311건이 1.0, 289건이 0.0이다. 앞선 Qwen3.6-35B 는 773건 중 218건만 1.0 이었다. 그래서 위의 κ 와 Spearman 은 측정이 아니라 동점의 산물이다 — 축이 거의 두 값뿐이면 순위 상관이 설 자리가 없다.
+2. **로컬 fail 의 60% 가 한 배치의 오판이다.** 30일 창 로컬 fail(점수 < 0.5) 216건 중 130건이 2026-10-01 headless `codex exec` 이미지 배치다(그 배치 140건 중 130건 fail). 로컬 judge 의 이유는 매번 같다 — "DONE 만 답하고 실제 생성은 안 했다, tool 호출은 파일 복사를 시도했다". trajectory 는 imagegen skill 읽기 → 이미지 툴 호출 → `~/.codex/generated_images/…` 의 결과를 요청 경로로 `cp` → `DONE` 이다. 작업은 됐고, 증거는 로컬 judge 가 본 바로 그 프롬프트 안에 있다. reference 는 표본에 든 이 배치 7건을 전부 0.92–0.96 으로 뒤집었다. reference 가 확인한 fail 2건은 이 배치가 아니었다(광고 소재 교체를 거부한 opencode task 0.22, `<task-notification>` 만 있는 task 0.40).
+3. **사용자 작업이 아닌 task 가 판정 풀에 있다.** 첫 프롬프트가 `<task-notification>` 인 task 75건, Codex Desktop 백그라운드 스레드 98건(ambient suggestions 34건 09-21–09-29, composer suggestion 64건 10-10–10-17). 수집 단계 drop 규칙이 생긴 뒤에도 그 전 행은 남아 있다. 균등 표본 12건 중 1건(로컬 1.00, reference 0.30)이 composer suggestion 이었다.
+
+**이 측정이 정하지 않는 것.** reference 는 정답이 아니다. 워크숍 결정대로 사람 레이블로 보정해야 하는데, `vibe_feedback` 은 run 단위라 task 단위 레이블 경로가 아직 없다. n 이 작다(CI 를 같이 읽을 것). 저장된 로컬 판정은 그 시점의 프롬프트로 만들어졌다 — 루브릭은 모든 판정이 같은 버전(3469)이지만, turn 응답 backfill 이나 payload prune 이 이후 프롬프트를 바꿨을 수 있다.
+
+**후속.** (1) task-gradeability 가 `<task-notification>` 만 있는 task 를 거절하고, 이미 남은 Codex 백그라운드 스레드 판정을 `retractUngradeableVerdicts` 처럼 소급 철회 — 양 데몬 규칙이라 Node SSOT + Swift 생성 미러. (2) 이미지 배치 오판은 OPRO 루프의 첫 표적: 불일치 사례(이 테이블)로 루브릭을 고치고 같은 표본으로 재채점. (3) task 단위 사람 레이블 경로로 reference 보정.
+
 ## Daemon HTTP API
 
 | Method | Path | Description |
@@ -1125,15 +1298,7 @@ start/completion·duration·summary 를 읽고, 양 데몬의 `/apme/graph` 는 
 
 ## Test coverage
 
-| File | Tests | Coverage |
-|---|---|---|
-| `apme-collector.test.ts` | 9 | run lifecycle, usage/model update, listRuns, rubric seed, evals, scorecard, multi-turn 사이클, setLastClosedTurnResponse fallback, disabled graceful |
-| `apme-classifier.test.ts` | 17 | computeSignals (tool counts, plan mode, web search), classifyRun (coding/planning/research/debugging/refactoring/review/conversation/ops/unknown), classifyRunSmart (LLM fallback) |
-| `apme-runner.test.ts` | 20 | detectLanguage, parseJudgeJson, shouldJudge gating, runner flow (mock det+judge), real spawn, no-changes skip, buildJudgePrompt, enqueueTurn |
-| `apme-tuner.test.ts` | 19 | correlation math, parseProposal, extractOverall, disagreement collection, vibeCorrelation, tune accept/reject/unparseable/insufficient/disabled |
-| `apme-http.test.ts` | 10 | 503 uninit, GET runs/run/scorecard/rubric, POST vibe/recommend, 404, agent filter |
-
-**총 75 tests.** 모든 테스트는 실제 SQLite (`better-sqlite3` `createRequire` 해석) + 실제 `spawn` 명령 실행.
+APME 테스트는 `bridge/src/__tests__/apme-*.test.ts` 다(2026-10-18 기준 43개 파일). 파일별 개수 표는 두지 않는다. 이전 표는 5개 파일, 75개 테스트에서 멈춰 있었고 소스 트리에 없는 `apme-tuner.test.ts` 까지 적고 있었다(튜너는 위 OPRO 절에 적힌 대로 아직 없다). store 를 쓰는 테스트는 실제 SQLite(`better-sqlite3`, `createRequire` 해석)를 연다. 두 데몬이 같게 판정해야 하는 규칙(judge 응답 게이트, task gradeability, task 제목)은 `shared/` 의 벡터 파일(`apme-judge-response-vectors.json`, `apme-judge-api-response-vectors.json`, `task-gradeability-vectors.json`, `task-title-vectors.json`)을 Node·Swift 두 스위트가 재생한다.
 
 ## Schema versioning — `agentdeck-eval/v1`
 

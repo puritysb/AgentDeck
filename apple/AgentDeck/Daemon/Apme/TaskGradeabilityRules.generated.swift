@@ -16,9 +16,11 @@ enum TaskGradeabilityRules {
     static let workEvidenceMinToolCalls = 3
     static let trivialPromptMaxChars = 12
     static let trivialReplyMaxChars = 200
+    static let notificationEnvelopeTag = "task-notification"
 
     static func notGradeableReason(_ turns: [[String: Any]]) -> String? {
         if turns.isEmpty { return "no_reply" }
+        if turns.allSatisfy({ isNotificationEnvelope($0["prompt"]) }) { return "notification_only" }
         let worked = turns.filter { text($0["end_source"]) != "aborted" }
         if worked.isEmpty { return "aborted_only" }
 
@@ -45,6 +47,42 @@ enum TaskGradeabilityRules {
 
     private static func text(_ value: Any?) -> String {
         (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// shared/src/harness-queued-message.ts: after leading whitespace the
+    /// prompt opens with the tag, ASCII letters in either case, followed by
+    /// `>` or whitespace (JavaScript's, see isJSWhitespace). Only leading
+    /// whitespace is skipped, because a trimmed tail could remove the
+    /// character that decides the match. A prompt that only quotes the tag
+    /// further in is the user's own text.
+    private static func isNotificationEnvelope(_ value: Any?) -> Bool {
+        guard let prompt = value as? String else { return false }
+        var rest = prompt.unicodeScalars.drop(while: isJSWhitespace)
+        for expected in ("<" + notificationEnvelopeTag).unicodeScalars {
+            guard let scalar = rest.first, asciiLowercased(scalar) == expected else { return false }
+            rest = rest.dropFirst()
+        }
+        guard let next = rest.first else { return false }
+        return next == ">" || isJSWhitespace(next)
+    }
+
+    /// JavaScript's `\s`, the set `trimStart()` strips, as the generator's
+    /// engine reports it. Unicode's White_Space (`properties.isWhitespace`)
+    /// adds NEL U+0085 and leaves out BOM U+FEFF, so using it would decide a
+    /// prompt opening with either the other way.
+    private static func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x0009...0x000D, 0x0020, 0x00A0, 0x1680, 0x2000...0x200A,
+             0x2028...0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func asciiLowercased(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+        guard (0x41...0x5A).contains(scalar.value) else { return scalar }
+        return Unicode.Scalar(UInt8(scalar.value + 0x20))
     }
 
     private static func int(_ value: Any?) -> Int {

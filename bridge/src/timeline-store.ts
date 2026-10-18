@@ -40,6 +40,9 @@ const PROJECTED_TYPES: ReadonlySet<string> = new Set([
   'chat_start', 'chat_response', 'chat_end', 'tool_request', 'tool_resolved', 'tool_exec',
 ]);
 
+/** A session's turn skeleton: the prompt row and the rows that close it. */
+const CHAT_ROW_TYPES: ReadonlySet<string> = new Set(['chat_start', 'chat_response', 'chat_end']);
+
 export class BridgeTimelineStore {
   private entries: TimelineEntry[] = [];
   private listeners: EntryListener[] = [];
@@ -150,6 +153,26 @@ export class BridgeTimelineStore {
         this.entries.splice(idx, 1);
         return;
       }
+    }
+    // Claude's per-tool hook rows (`toolEvent`, claude-hook-timeline.ts) go
+    // first. Only a surface that negotiated `timeline.tool-events.read` ever
+    // receives them, and no first-party client does, but they are up to two
+    // rows per tool call (exact dedup folds only a repeat of the same tool
+    // name within 8 s). Left to the FIFO below like a real approval pair, they
+    // pushed out each turn's chat_start, its oldest row. Measured 2026-10-18
+    // on a live daemon: 138 of the 200 rows were these and 60 were task rows,
+    // leaving one chat_start and no reply across 23.6 h, so a reconnecting
+    // device's history and `timeline.json` carried almost no conversation. A
+    // request leaves with its result, so an opted-in surface never replays
+    // half a pair.
+    const toolEventIdx = this.entries.findIndex((e) => e.toolEvent === true);
+    if (toolEventIdx >= 0) {
+      const [shed] = this.entries.splice(toolEventIdx, 1);
+      if (shed.toolUseId) {
+        const partner = this.entries.findIndex((e) => e.toolEvent === true && e.toolUseId === shed.toolUseId);
+        if (partner >= 0) this.entries.splice(partner, 1);
+      }
+      return;
     }
     // Shed the oldest `tool_exec` before any chat/turn row. Observed codex/
     // opencode command rows carry real sessionIds + command detail, so they
@@ -435,14 +458,24 @@ export class BridgeTimelineStore {
   }
 
   /** Recent entries attributed to one session, for the `query_session_timeline`
-   *  poll — lets a device that connects mid-session fill its Detail view. */
-  getHistoryForSession(sessionId: string, since?: number, limit = 16): TimelineEntry[] {
+   *  poll — lets a device that connects mid-session fill its Detail view.
+   *  `toolEvents: false` leaves Claude's per-tool hook rows out BEFORE the
+   *  limit, for a client that may not receive them: filtered after it, the
+   *  last sixteen rows of a busy turn could all be tool rows, leaving such a
+   *  client no chat rows at all. */
+  getHistoryForSession(
+    sessionId: string,
+    since?: number,
+    limit = 16,
+    opts: { toolEvents?: boolean } = {},
+  ): TimelineEntry[] {
     // sessions_list ids for passively-observed sessions are prefixed
     // ("observed:claude:<uuid>") while timeline entries are keyed by the raw uuid,
     // so accept either form.
     const raw = rawSessionId(sessionId);
     const matched = this.entries.filter(
-      (e) => (e.sessionId != null && rawSessionId(e.sessionId) === raw) && (since == null || e.ts > since),
+      (e) => (e.sessionId != null && rawSessionId(e.sessionId) === raw) && (since == null || e.ts > since)
+        && (opts.toolEvents !== false || e.toolEvent !== true),
     );
     matched.sort((a, b) => a.ts - b.ts);
     // `limit` applies to the chat/tool stream; task hierarchy rows ride along
@@ -452,6 +485,19 @@ export class BridgeTimelineStore {
     const taskRows = matched.filter(isTaskRow);
     const rest = matched.filter((e) => !isTaskRow(e)).slice(-limit);
     return [...taskRows, ...rest].sort((a, b) => a.ts - b.ts);
+  }
+
+  /** Every chat_start / chat_response / chat_end of one session still in the
+   *  buffer, oldest first. Turn decisions (is a turn open at this Stop or
+   *  SessionEnd?) read this instead of a `getHistoryForSession` window, which
+   *  counts every other row too: a long turn's own tool rows pushed its
+   *  chat_start out of a fixed 24-row read, so its reply was emitted with no
+   *  `startedAt` and a SessionEnd left it spinning. */
+  getChatRowsForSession(sessionId: string): TimelineEntry[] {
+    const raw = rawSessionId(sessionId);
+    return this.entries
+      .filter((e) => CHAT_ROW_TYPES.has(e.type) && e.sessionId != null && rawSessionId(e.sessionId) === raw)
+      .sort((a, b) => a.ts - b.ts);
   }
 
   updateEntryStatus(approvalId: string, status: 'approved' | 'denied' | 'abandoned'): void {

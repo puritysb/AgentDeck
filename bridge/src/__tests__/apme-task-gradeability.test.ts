@@ -7,7 +7,7 @@ import { ApmeStore } from '../apme/store.js';
 import { ApmeCollector } from '../apme/collector.js';
 import { ApmeRunner } from '../apme/runner.js';
 import type { ApmeConfig } from '../apme/settings.js';
-import { taskGradeability, readNotGradeable, TRIVIAL_PROMPT_MAX_CHARS } from '../apme/task-gradeability.js';
+import { taskGradeability, readNotGradeable, TRIVIAL_PROMPT_MAX_CHARS, type NotGradeableReason } from '../apme/task-gradeability.js';
 
 /**
  * A verdict about the agent's work needs the agent's work. Measured before
@@ -87,6 +87,22 @@ describe('taskGradeability', () => {
     expect(taskGradeability([turn({ prompt: 'hello', response: 'ok', tool_calls: 1 })])).toEqual({ gradeable: true });
   });
 
+  it('a task opened only by background-job notices has no request to grade, whatever work followed', () => {
+    const notice = (id: string) => `<task-notification>\n<task-id>${id}</task-id>\n<status>completed</status>\n</task-notification>`;
+    expect(taskGradeability([
+      turn({ prompt: notice('bg1'), response: 'The suite passed.', tool_calls: 1 }),
+      turn({ prompt: notice('bg2'), response: 'Fixed the type error and rebuilt.', tool_calls: 6 }),
+    ])).toEqual({ gradeable: false, reason: 'notification_only' });
+    // A request someone typed, or another session sent, is something to grade against.
+    expect(taskGradeability([
+      turn({ prompt: 'run the suite in the background and fix what fails', response: 'Started it.', tool_calls: 1 }),
+      turn({ prompt: notice('bg3'), response: 'Fixed the failing test.', tool_calls: 4 }),
+    ])).toEqual({ gradeable: true });
+    expect(taskGradeability([
+      turn({ prompt: '<cross-session-message from="lead">re-run the release build</cross-session-message>', response: 'It passes.', tool_calls: 3 }),
+    ])).toEqual({ gradeable: true });
+  });
+
   it("honours the collector's response_kind tag over raw text", () => {
     expect(taskGradeability([turn({ response: 'leftover', efficiency_json: JSON.stringify({ response_kind: 'tool_only' }) } as never)]))
       .toEqual({ gradeable: false, reason: 'no_reply' });
@@ -94,6 +110,7 @@ describe('taskGradeability', () => {
 
   it('reads the reason back off notes_json and ignores judge notes', () => {
     expect(readNotGradeable(JSON.stringify({ notGradeable: 'aborted_only' }))).toBe('aborted_only');
+    expect(readNotGradeable(JSON.stringify({ notGradeable: 'notification_only' }))).toBe('notification_only');
     expect(readNotGradeable(JSON.stringify({ reasoning: 'x', done: [], missed: [] }))).toBeNull();
     expect(readNotGradeable(null)).toBeNull();
     expect(readNotGradeable('not json')).toBeNull();
@@ -112,7 +129,7 @@ describe('shared vector file parity (shared/task-gradeability-vectors.json)', ()
   }
   interface Vector {
     turns: VectorTurn[];
-    expected: 'no_reply' | 'aborted_only' | 'trivial' | null;
+    expected: NotGradeableReason | null;
     note: string;
   }
   const here = dirname(fileURLToPath(import.meta.url));
@@ -252,6 +269,7 @@ describe('retractUngradeableVerdicts', () => {
     seed('t-abort', { response: "You've hit your session limit", end_source: 'aborted' });
     seed('t-hello', { prompt: 'hello', response: 'Hi there!' });
     seed('t-real', { response: 'Refactored the module and the suite is green.', tool_calls: 5 });
+    seed('t-notice', { prompt: '<task-notification>\n<task-id>bg1</task-id>\n</task-notification>', response: 'The background build passed.', tool_calls: 4 });
     seed('t-cancelled', { tool_calls: 2 }, 'abandoned');
 
     // Declined under the stricter first cut, but its trajectory is real work.
@@ -261,10 +279,10 @@ describe('retractUngradeableVerdicts', () => {
     store.updateTurn('u-w', { endedAt: now - 2000, endSource: 'stop', toolCalls: 11, filesCreated: 2 });
 
     const r = retractUngradeableVerdicts(store, now - 86_400_000);
-    expect(r).toEqual({ no_reply: 2, aborted_only: 1, trivial: 1, readmitted: 1 });
+    expect(r).toEqual({ no_reply: 2, aborted_only: 1, trivial: 1, notification_only: 1, readmitted: 1 });
     expect(store.getTask('t-declined-worker')!.notesJson).toBeNull();
 
-    for (const id of ['t-silent', 't-abort', 't-hello']) {
+    for (const id of ['t-silent', 't-abort', 't-hello', 't-notice']) {
       const t = store.getTask(id)!;
       expect(t.compositeScore).toBeNull();
       expect(t.summary).toBeNull();
@@ -272,10 +290,11 @@ describe('retractUngradeableVerdicts', () => {
       expect(store.listEvalsForTask(id)).toHaveLength(0);
     }
     expect(readNotGradeable(store.getTask('t-silent')!.notesJson)).toBe('no_reply');
+    expect(readNotGradeable(store.getTask('t-notice')!.notesJson)).toBe('notification_only');
     expect(store.getTask('t-cancelled')!.outcome).toBe('abandoned'); // the user's statement survives
     expect(store.getTask('t-real')!.compositeScore).toBe(0.1);
     expect(store.listEvalsForTask('t-real')).toHaveLength(1);
     // Idempotent.
-    expect(retractUngradeableVerdicts(store, now - 86_400_000)).toEqual({ no_reply: 0, aborted_only: 0, trivial: 0, readmitted: 0 });
+    expect(retractUngradeableVerdicts(store, now - 86_400_000)).toEqual({ no_reply: 0, aborted_only: 0, trivial: 0, notification_only: 0, readmitted: 0 });
   });
 });

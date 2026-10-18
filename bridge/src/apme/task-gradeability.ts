@@ -17,7 +17,7 @@
  * reads as a backlog.
  */
 
-import type { TurnEndSource } from '@agentdeck/shared';
+import { harnessQueuedMessageTag, type HarnessQueuedMessageTag, type TurnEndSource } from '@agentdeck/shared';
 
 export type NotGradeableReason =
   /** No turn carries an agent reply and the tool trajectory is too thin to
@@ -27,7 +27,12 @@ export type NotGradeableReason =
    *  only "reply" is the abort notice, which is not the agent's work. */
   | 'aborted_only'
   /** A single tool-less exchange too short to be a task (a greeting). */
-  | 'trivial';
+  | 'trivial'
+  /** Every turn was opened by a `<task-notification>`: a background job the
+   *  session started, reporting back after the task that started it had
+   *  closed. Nobody asked for anything, so there is no request to grade the
+   *  work against. */
+  | 'notification_only';
 
 export type TaskGradeability =
   | { gradeable: true }
@@ -58,6 +63,16 @@ export const WORK_EVIDENCE_MIN_TOOL_CALLS = 3;
  *  real instruction seen ("add a feature", 13). */
 export const TRIVIAL_PROMPT_MAX_CHARS = 12;
 export const TRIVIAL_REPLY_MAX_CHARS = 200;
+
+/** The queued envelope a finished background job arrives in. A task opened
+ *  only by these has no request: measured over 30 days (2026-10-18), 70 of
+ *  414 Claude tasks were notification-only and 64 of them had been judged, at
+ *  a mean 0.77 against 0.91 for the rest. 81 of the 93 tasks made only of
+ *  queued messages followed a task the 15-minute idle gap had closed while
+ *  the background job it started was still running. A task opened by another
+ *  session's message (`cross-session-message`) stays gradeable: that message
+ *  is a request, from an agent. */
+export const NOTIFICATION_ENVELOPE_TAG: HarnessQueuedMessageTag = 'task-notification';
 
 const CLIENT_ENDED: ReadonlySet<TurnEndSource> = new Set(['aborted']);
 
@@ -90,6 +105,9 @@ function hasTextReply(t: GradeabilityTurn): boolean {
 
 export function taskGradeability(turns: readonly GradeabilityTurn[]): TaskGradeability {
   if (turns.length === 0) return { gradeable: false, reason: 'no_reply' };
+  if (turns.every((t) => harnessQueuedMessageTag(t.prompt) === NOTIFICATION_ENVELOPE_TAG)) {
+    return { gradeable: false, reason: 'notification_only' };
+  }
   const worked = turns.filter((t) => !CLIENT_ENDED.has(t.end_source as TurnEndSource));
   if (worked.length === 0) return { gradeable: false, reason: 'aborted_only' };
   const replied = worked.filter(hasTextReply);
@@ -123,7 +141,7 @@ export function retractUngradeableVerdicts(
   },
   sinceMs: number,
 ): Record<NotGradeableReason, number> & { readmitted: number } {
-  const out = { no_reply: 0, aborted_only: 0, trivial: 0, readmitted: 0 };
+  const out = { no_reply: 0, aborted_only: 0, trivial: 0, notification_only: 0, readmitted: 0 };
   for (const { id } of store.listJudgedTasks(sinceMs)) {
     const g = taskGradeability(store.listTurnsForTask(id));
     if (g.gradeable) continue;
@@ -145,6 +163,7 @@ export const NOT_GRADEABLE_LABEL: Record<NotGradeableReason, string> = {
   no_reply: 'no reply captured',
   aborted_only: 'ended by the client (limit / auth / API)',
   trivial: 'trivial exchange',
+  notification_only: 'background-task notice, no request',
 };
 
 /** The `notes_json` shape written for a declined task, so the row can say
@@ -158,7 +177,7 @@ export function readNotGradeable(notesJson: unknown): NotGradeableReason | null 
   if (typeof notesJson !== 'string' || notesJson.length === 0) return null;
   try {
     const r = (JSON.parse(notesJson) as { notGradeable?: unknown }).notGradeable;
-    return r === 'no_reply' || r === 'aborted_only' || r === 'trivial' ? r : null;
+    return r === 'no_reply' || r === 'aborted_only' || r === 'trivial' || r === 'notification_only' ? r : null;
   } catch {
     return null;
   }

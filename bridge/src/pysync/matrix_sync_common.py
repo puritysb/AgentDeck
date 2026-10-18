@@ -19,7 +19,39 @@ POLL_INTERVAL = 1.5  # seconds; balanced for BLE bandwidth
 # (crash / SIGKILL / sleep-kill / launchd) — the client should exit cleanly after
 # leaving the panel in a safe state instead of looping forever as an orphan that
 # holds the single-central BLE link hostage.
+#
+# Only a daemon that stopped answering may run this clock out. A client that
+# cannot reach its PANEL refreshes it with `bridge_reachable` after each failed
+# attempt: it used to advance only from fetches made while connected, so a panel
+# that was switched off read as a dead daemon and the client exited every 30 s to
+# be respawned (915 Timebox respawns in 24 h, measured 2026-10-18).
 BRIDGE_GONE_EXIT_SEC = 30.0
+
+# Pause between attempts to reach a panel that is not there. Every attempt is a
+# BLE scan (bleak finds the address by scanning before it connects), so a fixed
+# 3 s pause scanned almost without a break. Doubling up to the cap keeps an
+# absent panel's scan time near what the old exit-and-respawn cycle cost, and a
+# panel that comes back is found within one capped pause plus one scan.
+RECONNECT_BASE_SEC = 3.0
+RECONNECT_MAX_SEC = 30.0
+
+
+class ReconnectBackoff:
+    """Pause before the next connection attempt: doubles with each consecutive
+    failure up to `cap`, and starts over from `base` once a connection succeeds."""
+
+    def __init__(self, base=RECONNECT_BASE_SEC, cap=RECONNECT_MAX_SEC):
+        self._base = base
+        self._cap = cap
+        self._next = base
+
+    def next_delay(self):
+        delay = self._next
+        self._next = min(self._cap, self._next * 2)
+        return delay
+
+    def reset(self):
+        self._next = self._base
 
 
 def http_get_bytes(url: str, timeout: float = 3.0) -> bytes:

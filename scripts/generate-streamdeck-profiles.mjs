@@ -38,7 +38,7 @@ const pluginVersion = `${JSON.parse(readFileSync(resolve(root, 'plugin/package.j
 
 // --- SSOT: every bundled profile -------------------------------------------
 // Keypad is entirely `session-slot`; decks with dials get the four fixed roles
-// E1 Volume / E2 Claude Usage / E3 Codex Usage / E4 Launcher (E5/E6 unassigned).
+// E1 Volume / E2 Usage Dial / E3 Usage Dial 2 / E4 Launcher (E5/E6 unassigned).
 const PROFILES = [
   { name: 'agentdeck-sd',       display: 'AgentDeck SD',     deviceType: 0,  model: '20GAA9902', columns: 5, rows: 3, dials: false },
   { name: 'agentdeck-sdmini',   display: 'AgentDeck SD Mini', deviceType: 1, model: '20GAI9901', columns: 3, rows: 2, dials: false },
@@ -47,10 +47,13 @@ const PROFILES = [
   { name: 'agentdeck-sdplusxl', display: 'AgentDeck SD+ XL', deviceType: 13, model: '20GBX9901', columns: 9, rows: 4, dials: true },
 ];
 
+// Each role's name is the plugin manifest's action Name for that UUID
+// (plugin/src/__tests__/streamdeck-profiles-sync.test.ts holds the pair together).
+const KEYPAD_ROLE = { name: 'Session Slot', uuid: `${PLUGIN_UUID}.session-slot` };
 const ENCODER_ROLES = [
   { name: 'Volume',       uuid: `${PLUGIN_UUID}.utility-dial` },
-  { name: 'Claude Usage', uuid: `${PLUGIN_UUID}.option-dial` },
-  { name: 'Codex Usage',  uuid: `${PLUGIN_UUID}.iterm-dial` },
+  { name: 'Usage Dial',   uuid: `${PLUGIN_UUID}.option-dial` },
+  { name: 'Usage Dial 2', uuid: `${PLUGIN_UUID}.iterm-dial` },
   { name: 'Launcher',     uuid: `${PLUGIN_UUID}.launcher` },
 ];
 
@@ -78,9 +81,9 @@ function keypadController(p) {
   for (let r = 0; r < p.rows; r++) {
     for (let c = 0; c < p.columns; c++) {
       Actions[`${c},${r}`] = {
-        ActionID: id(p.name, `kp:${c},${r}`), LinkedTitle: true, Name: 'Session Slot',
+        ActionID: id(p.name, `kp:${c},${r}`), LinkedTitle: true, Name: KEYPAD_ROLE.name,
         Plugin: plugin(), Resources: null, Settings: {}, State: 0,
-        States: [{ ...KEY_STATE }], UUID: `${PLUGIN_UUID}.session-slot`,
+        States: [{ ...KEY_STATE }], UUID: KEYPAD_ROLE.uuid,
       };
     }
   }
@@ -217,7 +220,7 @@ function profileBytes(p) {
   return zip(dirs, files);
 }
 
-export { PROFILES, profileBytes, PLUGIN_DIR };
+export { PROFILES, KEYPAD_ROLE, ENCODER_ROLES, profileBytes, PLUGIN_DIR };
 
 // --- main (only when invoked directly, not when imported by the drift gate) --
 function main() {

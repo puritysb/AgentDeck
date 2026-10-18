@@ -181,7 +181,7 @@ describe('turns.end_source', () => {
     const seen: Array<{ path: string; since: number }> = [];
     const c = new ApmeCollector(store, undefined, (path, since) => {
       seen.push({ path, since });
-      return { interruptedAt: since + 1_000, abortedAt: null, sawAssistant: true };
+      return { interruptedAt: since + 1_000, abortedAt: null, sawAssistant: true, completedAt: null };
     });
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
@@ -197,7 +197,7 @@ describe('turns.end_source', () => {
     // idleness first or the daemon restarted mid-turn — and an aborted turn is
     // exactly the shape that then sits open until the next morning's prompt.
     const c = new ApmeCollector(store, undefined, (_p, since) =>
-      ({ interruptedAt: null, abortedAt: since + 2_000, sawAssistant: true }));
+      ({ interruptedAt: null, abortedAt: since + 2_000, sawAssistant: true, completedAt: null }));
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
@@ -210,7 +210,7 @@ describe('turns.end_source', () => {
     // one model turn serves both and owes exactly one Stop, which closes the
     // last of them. The first row never ran, so nothing was lost for it.
     const c = new ApmeCollector(store, undefined, () =>
-      ({ interruptedAt: null, abortedAt: null, sawAssistant: false }));
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: false, completedAt: null }));
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
@@ -224,7 +224,7 @@ describe('turns.end_source', () => {
     // the tail can hide the assistant work behind it. A tool call is
     // independent proof the turn ran.
     const c = new ApmeCollector(store, undefined, () =>
-      ({ interruptedAt: null, abortedAt: null, sawAssistant: false }));
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: false, completedAt: null }));
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
     c.ingestHook(SID, 'PreToolUse', { tool_name: 'Bash', transcript_path: '/t.jsonl' });
@@ -235,7 +235,7 @@ describe('turns.end_source', () => {
 
   it('no evidence in the window still means `next_prompt` — absence is never a verdict', () => {
     const c = new ApmeCollector(store, undefined, () =>
-      ({ interruptedAt: null, abortedAt: null, sawAssistant: true }));
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: true, completedAt: null }));
     const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'first' }, transcript_path: '/t.jsonl' });
     c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'second' }, transcript_path: '/t.jsonl' });
@@ -249,7 +249,7 @@ describe('turns.end_source', () => {
     let probed = 0;
     const c = new ApmeCollector(store, undefined, () => {
       probed++;
-      return { interruptedAt: Date.now(), abortedAt: null, sawAssistant: true };
+      return { interruptedAt: Date.now(), abortedAt: null, sawAssistant: true, completedAt: null };
     });
     c.openRun({ sessionId: 'codex-sess', agentType: 'codex-cli' });
     c.ingestHook('codex-sess', 'UserPromptSubmit', { message: { content: 'a' }, transcript_path: '/t.jsonl' });
@@ -278,6 +278,86 @@ describe('turns.end_source', () => {
 
       expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
     }
+  });
+
+  // A queued message (`<task-notification>`, `<agent-message>`,
+  // `<cross-session-message>`) is delivered at a tool boundary of a RUNNING
+  // turn and fires UserPromptSubmit there. The run's one Stop is still owed
+  // and closes the turn that message opened, so the displaced row is not a
+  // lost hook — 517 of 587 Claude `next_prompt` rows in one 30-day window.
+  const RUNNING = { interruptedAt: null, abortedAt: null, sawAssistant: true, completedAt: null };
+  const QUEUED = [
+    '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>',
+    '<agent-message from="worker-1">done</agent-message>',
+    '  <cross-session-message from="peer">ping</cross-session-message>',
+  ];
+
+  it('a running turn displaced by a queued message is `injected`, not a lost Stop', () => {
+    for (const [i, queued] of QUEUED.entries()) {
+      const sid = `sess-inject-${i}`;
+      const c = new ApmeCollector(store, undefined, () => RUNNING);
+      const runId = c.openRun({ sessionId: sid, agentType: 'claude-code' }) as string;
+      c.ingestHook(sid, 'UserPromptSubmit', { message: { content: 'fix the build' }, transcript_path: '/t.jsonl' });
+      c.ingestHook(sid, 'UserPromptSubmit', { prompt: queued, transcript_path: '/t.jsonl' });
+      c.noteTurnStop(sid);
+
+      const rows = turnsOf(store, runId);
+      expect(rows.map((r) => r.end_source), queued).toEqual(['injected', 'stop']);
+    }
+  });
+
+  it('a turn that finished before the queued message arrived lost its Stop — `next_prompt`', () => {
+    // An end_turn at or after the turn opened means the turn was done and the
+    // session sat idle until the notification woke it: a Stop WAS owed.
+    const c = new ApmeCollector(store, undefined, (_p, since) => ({ ...RUNNING, completedAt: since + 5_000 }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'fix the build' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { prompt: QUEUED[0], transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
+  });
+
+  it('the previous turn\'s end_turn inside the slack window does not finish this one', () => {
+    // The probe window opens 2 s before the turn did, so the record that ended
+    // the PREVIOUS turn can be the newest end_turn it sees.
+    const c = new ApmeCollector(store, undefined, (_p, since) => ({ ...RUNNING, completedAt: since + 500 }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'fix the build' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { prompt: QUEUED[0], transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('injected');
+  });
+
+  it('a typed prompt into a running turn stays `next_prompt` — it carries no envelope', () => {
+    // Claude Code queues typed prompts too, but nothing at hook time says so,
+    // and a prompt that merely MENTIONS a tag is the user's own text.
+    for (const typed of ['and also update the docs', 'what does <task-notification> mean?']) {
+      const sid = `sess-typed-${typed.length}`;
+      const c = new ApmeCollector(store, undefined, () => RUNNING);
+      const runId = c.openRun({ sessionId: sid, agentType: 'claude-code' }) as string;
+      c.ingestHook(sid, 'UserPromptSubmit', { message: { content: 'fix the build' }, transcript_path: '/t.jsonl' });
+      c.ingestHook(sid, 'UserPromptSubmit', { message: { content: typed }, transcript_path: '/t.jsonl' });
+
+      expect(turnsOf(store, runId)[0].end_source, typed).toBe('next_prompt');
+    }
+  });
+
+  it('a queued message displacing a turn that never ran is still `superseded`', () => {
+    const c = new ApmeCollector(store, undefined, () => ({ ...RUNNING, sawAssistant: false }));
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { prompt: QUEUED[0], transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { prompt: QUEUED[1], transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('superseded');
+  });
+
+  it('a queued message never makes an unreadable transcript into a verdict', () => {
+    const c = new ApmeCollector(store, undefined, () => null);
+    const runId = c.openRun({ sessionId: SID, agentType: 'claude-code' }) as string;
+    c.ingestHook(SID, 'UserPromptSubmit', { message: { content: 'fix the build' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(SID, 'UserPromptSubmit', { prompt: QUEUED[0], transcript_path: '/t.jsonl' });
+
+    expect(turnsOf(store, runId)[0].end_source).toBe('next_prompt');
   });
 
   it('the response still lands on the turn when the Stop closes it first', () => {
@@ -353,6 +433,20 @@ describe('ApmeStore.stopDelivery', () => {
     const [row] = store.stopDelivery({ sinceMs: 0 });
     expect(row.stop).toBe(0);
     expect(row.preInstrument).toBe(1);
+  });
+
+  it('counts injected turns in their own column, outside every loss bucket', () => {
+    const sid = 'sess-inj';
+    const c = new ApmeCollector(store, undefined, () =>
+      ({ interruptedAt: null, abortedAt: null, sawAssistant: true, completedAt: null }));
+    c.openRun({ sessionId: sid, agentType: 'claude-code' });
+    c.ingestHook(sid, 'UserPromptSubmit', { message: { content: 'p1' }, transcript_path: '/t.jsonl' });
+    c.ingestHook(sid, 'UserPromptSubmit', { prompt: '<task-notification>done', transcript_path: '/t.jsonl' });
+    c.noteTurnStop(sid);
+
+    const [row] = store.stopDelivery({ sinceMs: 0 });
+    expect(row).toMatchObject({ total: 2, stop: 1, injected: 1, nextPrompt: 0 });
+    expect(stopDeliveryLoss(row)).toEqual({ adjudicated: 1, lost: 0, ratio: 0 });
   });
 
   it('windows on started_at and can filter to one agent', () => {

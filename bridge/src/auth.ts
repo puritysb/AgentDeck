@@ -105,6 +105,14 @@ export function getAcceptedTokens(): string[] {
   return tokens;
 }
 
+/** Every pairing token this machine holds on disk — the served one and the
+ *  accepted ring — without minting one when none exists. For scrubbing text
+ *  that leaves the machine. */
+export function readKnownTokens(): string[] {
+  const served = readTokenFile(tokenFile());
+  return [...(served ? [served] : []), ...getAcceptedTokens()];
+}
+
 function writeAcceptedTokens(tokens: string[]): void {
   const dir = dataDir();
   const bounded = tokens.slice(0, MAX_ACCEPTED_TOKENS);

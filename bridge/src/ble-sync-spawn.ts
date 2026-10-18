@@ -294,8 +294,8 @@ export interface SigabrtCircuitBreaker {
  * macOS kills it outright. Respawning re-rolls that kill every backoff period
  * — 60+ crash dialogs and diagnostic reports a day (measured 2026-08-20) for a
  * loop that can never succeed until the user grants the permission. A clean
- * exit ("device not found") resets the streak, so a healthy scan loop against
- * a powered-off panel never trips this.
+ * exit resets the streak, and a client looking for a powered-off panel retries
+ * in-process instead of exiting, so a healthy scan loop never trips this.
  */
 export function createSigabrtCircuitBreaker(
   what: string,

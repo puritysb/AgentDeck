@@ -373,6 +373,13 @@ interface WifiEsp32Device {
   uptimeSec?: number;
   resetReason?: string;
   resetReasonCode?: number;
+  /** Internal-heap level and failed allocations (protocol.ts DeviceInfoMessage). */
+  freeHeapKb?: number;
+  minFreeHeapKb?: number;
+  largestFreeBlockKb?: number;
+  allocFailures?: number;
+  allocFailLastBytes?: number;
+  allocFailLastCaps?: number;
   otaSupported?: boolean;
   otaSlotCount?: number;
   otaSlotSize?: number;
@@ -804,6 +811,14 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     uptimeSec,
     resetReason,
     resetReasonCode,
+    // The serial registry always carried these; a WiFi-only board's never
+    // reached /devices.
+    freeHeapKb: typeof d.freeHeapKb === 'number' ? d.freeHeapKb : undefined,
+    minFreeHeapKb: typeof d.minFreeHeapKb === 'number' ? d.minFreeHeapKb : undefined,
+    largestFreeBlockKb: typeof d.largestFreeBlockKb === 'number' ? d.largestFreeBlockKb : undefined,
+    allocFailures: typeof d.allocFailures === 'number' ? d.allocFailures : undefined,
+    allocFailLastBytes: typeof d.allocFailLastBytes === 'number' ? d.allocFailLastBytes : undefined,
+    allocFailLastCaps: typeof d.allocFailLastCaps === 'number' ? d.allocFailLastCaps : undefined,
     otaSupported: typeof d.otaSupported === 'boolean' ? d.otaSupported : undefined,
     otaSlotCount: typeof d.otaSlotCount === 'number' ? d.otaSlotCount : undefined,
     otaSlotSize: typeof d.otaSlotSize === 'number' ? d.otaSlotSize : undefined,
@@ -993,6 +1008,7 @@ export function __resetWifiEsp32OtaState(): void {
 export const __wifiOtaTestApi = {
   registerWifiEsp32,
   unregisterWifiEsp32Socket,
+  listWifiEsp32Devices,
   handleEsp32OtaReply,
   performWifiEsp32Ota,
   resolveStagedFwBoard,
@@ -3843,7 +3859,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // must not pin "+N" on a row that no longer exists.
           subagentTimeline?.forget(hookSid);
           coordination.forget(hookSid);
-          const rows = core.bridgeTimeline.getHistoryForSession(hookSid, undefined, 24);
+          const rows = core.bridgeTimeline.getChatRowsForSession(hookSid);
           let lastStart: TimelineEntry | undefined;
           let lastCompletionTs = 0;
           for (const row of rows) {
@@ -3938,10 +3954,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // transcript holds it. `transcript_path` on a Codex hook is its
             // ROLLOUT, which the Claude reader cannot parse — so every Codex
             // run persisted model_id=NULL while the payload said `gpt-5.6`.
+            // The OpenCode observer (v5) sends `model` plus the endpoint it
+            // came from as `model_provider`.
             const inlineModel = typeof json.model === 'string' ? json.model.trim() : '';
+            const inlineProvider = typeof json.model_provider === 'string' ? json.model_provider.trim() : '';
             const tp = json.transcript_path;
             if (inlineModel) {
-              apme.collector.updateModel(hookSid, inlineModel);
+              apme.collector.updateModel(hookSid, inlineModel, inlineProvider || undefined);
             } else if (hookAgentType === 'claude-code' && typeof tp === 'string' && tp) {
               const model = readModelFromTranscript(tp);
               if (model) apme.collector.updateModel(hookSid, model);
@@ -3996,9 +4015,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // `result`, the Swift daemon's field chain). Only emit while a turn is
         // actually open (a chat_start newer than the session's last
         // completion) so a duplicate/late Stop or an interrupted turn doesn't
-        // re-emit the previous response.
+        // re-emit the previous response. The session's chat rows are read
+        // whole: a window over all its rows let a long turn's own tool rows
+        // push its chat_start out of view.
         if (boundary === 'stop') {
-          const rows = core.bridgeTimeline.getHistoryForSession(hookSid, undefined, 24);
+          const rows = core.bridgeTimeline.getChatRowsForSession(hookSid);
           let lastStart: TimelineEntry | undefined;
           let lastResponse: TimelineEntry | undefined;
           let lastCompletionTs = 0;
@@ -4065,13 +4086,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // turns against silence. Empty text is still worth recording — it
           // tags `response_kind` tool_only/empty so the runner skips judging.
           if (apme) {
-            if (turnOpen) apme.collector.setTurnResponse(hookSid, responseText);
-            else if (responseText.length > 0) {
-              // No open turn: a missed prompt hook or a late/duplicate stop.
-              // The last-closed fallback refuses to overwrite an existing
-              // response, so a duplicate stop is a no-op instead of a clobber.
-              apme.collector.setLastClosedTurnResponse(hookSid, responseText);
-            }
+            // Which turn the reply belongs to is the COLLECTOR's question, not
+            // `turnOpen`'s: the timeline drops `<task-notification>` prompts and
+            // a long turn's prompt scrolls out of the 24 rows read above, so it
+            // reads either turn as closed (see `recordStopReply`).
+            apme.collector.recordStopReply(hookSid, responseText);
             // Close the APME turn on the Stop that ended it, tagged with which
             // Stop that was. Runs AFTER the response capture above (the
             // trajectory event wants the still-active turn) and is a no-op when
@@ -5224,8 +5243,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // (permanent). Narrowing the readmission window would trade that for
       // never readmitting a class of task at all, which is the worse loss.
       const r = retractUngradeableVerdicts(apme.store, Date.now() - TASK_JUDGE_DRAIN_WINDOW_MS);
-      const n = r.no_reply + r.aborted_only + r.trivial;
-      if (n > 0) log(`[agentdeck] APME withdrew ${n} verdict(s) reached without the agent's work — no reply ${r.no_reply}, client-ended ${r.aborted_only}, trivial ${r.trivial}`);
+      const n = r.no_reply + r.aborted_only + r.trivial + r.notification_only;
+      if (n > 0) log(`[agentdeck] APME withdrew ${n} verdict(s) reached without the agent's work — no reply ${r.no_reply}, client-ended ${r.aborted_only}, trivial ${r.trivial}, notice-only ${r.notification_only}`);
       if (r.readmitted > 0) log(`[agentdeck] APME re-admitted ${r.readmitted} declined task(s) to the judge backlog — their tool trajectory is the agent's work`);
     } catch (err) {
       log(`[agentdeck] APME verdict retraction failed: ${String(err)}`);
@@ -6243,7 +6262,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const since = (msg as { since?: unknown }).since;
       if (typeof sessionId === 'string' && sessionId) {
         const sinceMs = typeof since === 'number' ? since : undefined;
-        let entries = core.bridgeTimeline.getHistoryForSession(sessionId, sinceMs);
+        const toolEvents = surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY);
+        let entries = core.bridgeTimeline.getHistoryForSession(sessionId, sinceMs, undefined, { toolEvents });
         // Passively-observed sessions never push timeline rows (the relay only
         // covers managed + hook sessions), so the store comes back empty for
         // them. Reconstruct a recent-activity timeline from their transcript so
@@ -6263,7 +6283,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             entries = kiroTimelineForSession(sessionId, { since: sinceMs });
           } catch { /* read-only best effort */ }
         }
-        if (!surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY)) {
+        if (!toolEvents) {
           entries = entries.filter((entry) => entry.toolEvent !== true);
         }
         // Boards keep their ≤4096 B frame rule here too; dashboards get the
@@ -6535,8 +6555,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         })() : undefined);
       // Recent request↔response lines so the judge evaluates the diff
       // against what the user actually asked (not just code in isolation).
-      const recentActivity = core.bridgeTimeline.getHistoryForSession(sessionId, undefined, 16)
+      const recentActivity = core.bridgeTimeline.getChatRowsForSession(sessionId)
         .filter((e) => e.type === 'chat_start' || e.type === 'chat_response')
+        .slice(-16)
         .map((e) => `${e.type === 'chat_start' ? 'USER' : 'AGENT'}: ${e.raw}`)
         .join('\n');
       void runSessionReview({

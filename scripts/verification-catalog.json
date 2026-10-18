@@ -1027,6 +1027,7 @@
         "bridge/src/__tests__/ollama-residency.test.ts",
         "bridge/src/__tests__/fm-helper-*.test.ts",
         "shared/src/__tests__/apme-*.test.ts",
+        "shared/src/__tests__/harness-queued-message.test.ts",
         "shared/src/__tests__/llm-settings.test.ts",
         "shared/src/__tests__/mlx-*.test.ts",
         "shared/src/__tests__/model-*.test.ts",

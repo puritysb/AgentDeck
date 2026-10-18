@@ -762,7 +762,7 @@ async function loadWork(offset){
       const gap=t.turnCount>t.answeredTurns
         ?'<span title="'+(t.turnCount-t.answeredTurns)+' turn(s) archived without a reply" style="color:var(--yellow)">◍</span>':'';
       const open=!t.endedAt;
-      const NG={no_reply:'no reply captured',aborted_only:'ended by the client',trivial:'trivial exchange'};
+      const NG={no_reply:'no reply captured',aborted_only:'ended by the client',trivial:'trivial exchange',notification_only:'background-task notice, no request'};
       const score=t.overallScore!=null?fs(t.overallScore)
         :open?'<span class="badge badge-pending">open</span>'
         :t.notGradeable?'<span class="chip" title="the judge declined this task: '+esc(NG[t.notGradeable]||t.notGradeable)+'" style="color:var(--dim)">not graded · '+esc(NG[t.notGradeable]||t.notGradeable)+'</span>'

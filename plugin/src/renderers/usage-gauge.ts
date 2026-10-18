@@ -630,7 +630,7 @@ export function renderUsageEncoderScopedSingle(data: UsageEncoderData, scoped: U
   );
 }
 
-/** 144×144 keypad tile for the worst per-model scoped cap (the "Claude Limit"
+/** 144×144 keypad tile for the worst per-model scoped cap (the "Model Limit"
  *  button). Reuses the level-fill gauge; `undefined` renders the unknown tile. */
 export function renderUsageLimitGauge(scoped?: UsageEncoderScoped): string {
   return renderUsageGauge({

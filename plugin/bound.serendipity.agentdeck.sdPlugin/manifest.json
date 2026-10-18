@@ -20,11 +20,12 @@
     },
     {
       "Icon": "static/imgs/limit",
-      "Name": "Claude Limit",
+      "Name": "Model Limit",
+      "Tooltip": "The tightest per-model plan cap on your Claude account, such as a weekly model limit. Press to refresh.",
       "States": [
         {
           "Image": "static/imgs/keys/limit",
-          "Name": "Claude Limit",
+          "Name": "Model Limit",
           "ShowTitle": false
         }
       ],
@@ -37,11 +38,12 @@
     },
     {
       "Icon": "static/imgs/option",
-      "Name": "Claude Usage",
+      "Name": "Usage Dial",
+      "Tooltip": "Plan usage for Claude, Codex, Z.ai or Antigravity. Starts on Claude; tap to switch provider, hold to follow your active agents.",
       "States": [
         {
           "Image": "static/imgs/keys/option",
-          "Name": "Claude Usage",
+          "Name": "Usage Dial",
           "ShowTitle": false
         }
       ],
@@ -83,11 +85,12 @@
     },
     {
       "Icon": "static/imgs/usage",
-      "Name": "Codex Usage",
+      "Name": "Usage Dial 2",
+      "Tooltip": "A second plan usage dial for Claude, Codex, Z.ai or Antigravity. Starts on Codex; tap to switch provider.",
       "States": [
         {
           "Image": "static/imgs/keys/usage",
-          "Name": "Codex Usage",
+          "Name": "Usage Dial 2",
           "ShowTitle": false
         }
       ],

@@ -25,7 +25,7 @@ import type { SessionEntry } from '../session-registry.js';
 import type { ApmeStore } from './store.js';
 import type { ApmeRunRow, ApmeTaskRow } from './types.js';
 import type { AgentType, TelemetrySpan, ApmeSampleEventRow, SampleModelConfig, TrajectoryEventKind, TurnEndSource } from '@agentdeck/shared';
-import { CiWaitTracker, ciWaitForegroundMs, AGENT_IDLE_GAP_MS, deriveTaskTitle, isPricedModel, normalizeModelProvider, priceUsd } from '@agentdeck/shared';
+import { CiWaitTracker, ciWaitForegroundMs, AGENT_IDLE_GAP_MS, deriveTaskTitle, isHarnessQueuedMessage, isPricedModel, normalizeModelProvider, priceUsd } from '@agentdeck/shared';
 import type { ApmeHwSampler } from './hw-sampler.js';
 import { classifyRunSmart, computeSignals, classify } from './classifier.js';
 import { readOpenTurnEvidence, claudeTurnCompletionSince, type OpenTurnEvidence, type ClaudeTurnCompletion } from './claude-transcript-reader.js';
@@ -521,7 +521,7 @@ export class ApmeCollector {
       // and no watchdog recovered it either, or the synthetic Stop would have
       // closed it already. That is the unrecovered-loss bucket, UNLESS the
       // user cancelled it, in which case no Stop was ever owed.
-      const displaced = this.resolveDisplacedTurn(sessionId, data);
+      const displaced = this.resolveDisplacedTurn(sessionId, data, prompt);
       if (displaced.response) this.setTurnResponse(sessionId, displaced.response);
       this.closeTurn(sessionId, displaced.source, displaced.endedAt);
       // Open new turn
@@ -735,7 +735,7 @@ export class ApmeCollector {
    *  `next_prompt` is the only bucket that means "a Stop was owed and never
    *  came", so everything that reaches here for some other reason has to be
    *  told apart before it inflates the very loss rate this instrument
-   *  measures. Three do, and one bounded tail read answers all three — on this
+   *  measures. Four do, and one bounded tail read answers all four — on this
    *  path only, since a healthy turn is closed by its Stop long before this
    *  runs:
    *
@@ -751,8 +751,18 @@ export class ApmeCollector {
    *     injections arrive in pairs ~130 ms apart; Claude serves both with one
    *     model turn and owes exactly one Stop, which closes the LAST of them.
    *     A displaced row with no assistant record behind it at all is that
-   *     artifact, not a lost hook. */
-  private resolveDisplacedTurn(sessionId: string, data: Record<string, unknown>): DisplacedTurnVerdict {
+   *     artifact, not a lost hook.
+   *   - A turn STILL RUNNING. Claude Code delivers a queued message (a
+   *     background task's `<task-notification>`, a subagent's
+   *     `<agent-message>`, another session's `<cross-session-message>`) at the
+   *     next tool boundary of a running turn and fires `UserPromptSubmit` for
+   *     it; the run's one Stop is still owed and closes the turn that message
+   *     opened. */
+  private resolveDisplacedTurn(
+    sessionId: string,
+    data: Record<string, unknown>,
+    incomingPrompt: string | null,
+  ): DisplacedTurnVerdict {
     const turn = this.sessionToTurn.get(sessionId);
     // No open turn: closeTurn no-ops, so the value is immaterial.
     if (!turn) return { source: 'next_prompt' };
@@ -795,6 +805,19 @@ export class ApmeCollector {
       // truncate the walk and hide the assistant work behind it. A turn that
       // called tools demonstrably ran whatever the transcript says.
       if (!evidence.sawAssistant && turn.toolCalls === 0) return { source: 'superseded' };
+      // The turn ran (the line above). Calling it displaced mid-run takes two
+      // facts again. The envelope says the incoming prompt was queued, and at
+      // hook time nothing else can: the transcript's `queued_command` record
+      // for it lands about half a second later. The transcript says no
+      // `end_turn` was written since this turn opened (an older one is the
+      // previous turn's, inside the slack window). A turn that DID finish and
+      // then sat until a notification woke the session lost its Stop, and
+      // stays `next_prompt` — so does a typed prompt, which carries no
+      // envelope even when Claude Code queued it.
+      if (
+        isHarnessQueuedMessage(incomingPrompt) &&
+        (evidence.completedAt == null || evidence.completedAt < turn.startedAt)
+      ) return { source: 'injected' };
       return { source: 'next_prompt' };
     } catch {
       return { source: 'next_prompt' };
@@ -1444,6 +1467,31 @@ export class ApmeCollector {
     }
   }
 
+  /** Record the reply a Stop hook carries, on the turn that Stop ends.
+   *
+   *  That turn is the collector's open one whenever it has one — even an
+   *  empty reply is recorded there, since it tags `response_kind` so the
+   *  runner skips judging silence. With no open turn (a missed prompt hook,
+   *  a late or duplicate Stop) the reply goes to the last closed turn only if
+   *  that turn has none, so a duplicate is a no-op rather than a clobber.
+   *
+   *  The daemon used to choose between the two with its TIMELINE's idea of an
+   *  open turn — a `chat_start` among the session's last 24 rows with no
+   *  completion after it — and two common turns have none there: one that a
+   *  `<task-notification>` opened (the timeline drops that prompt as low
+   *  signal), and one long enough that its own tool rows push its prompt out
+   *  of the window. Their reply went to the PREVIOUS turn instead: dropped
+   *  when that turn had one, landing a turn early when it did not. Only a Stop
+   *  whose transcript read came back empty escaped, because the deferred
+   *  re-read lands after the turn has closed. Measured 2026-10-18 over 30
+   *  days: 558 of 1,145 Claude turns closed at a Stop took that path and 247
+   *  of them kept no reply, against none of the 587 that reached their open
+   *  turn. */
+  recordStopReply(sessionId: string, response: string): void {
+    if (this.sessionToTurn.has(sessionId)) this.setTurnResponse(sessionId, response);
+    else if (response.length > 0) this.setLastClosedTurnResponse(sessionId, response);
+  }
+
   /** Apply response to the last closed turn if it has no response yet.
    *  Used as fallback when Stop hook doesn't fire (PTY output capture). */
   setLastClosedTurnResponse(sessionId: string, response: string): void {
@@ -1475,11 +1523,19 @@ export class ApmeCollector {
     } catch { /* ignore */ }
     const ctx = this.sampleCtxForTurn(sessionId, turnId);
     if (ctx) {
-      this.appendSampleEvent(ctx, {
-        kind: 'assistant_message',
-        dedupCore: hashCore(response.slice(0, 400)),
-        payloadObj: { text: response.slice(0, 10_000), responseKind: kind },
-      });
+      const payloadObj = { text: response.slice(0, 10_000), responseKind: kind };
+      // A Stop whose transcript read came back empty already wrote this turn's
+      // slot with '' — fill it, or the turn carries two assistant messages.
+      const existingEvent = this.store.findAssistantMessageEvent(ctx.taskId, turnId);
+      if (existingEvent?.id != null) {
+        this.store.updateSampleEvent(existingEvent.id, { payload: safeStringify(payloadObj), ts: Date.now() });
+      } else {
+        this.appendSampleEvent(ctx, {
+          kind: 'assistant_message',
+          dedupCore: hashCore(response.slice(0, 400)),
+          payloadObj,
+        });
+      }
     }
   }
 
@@ -1845,8 +1901,12 @@ export class ApmeCollector {
     return nextRunId;
   }
 
-  /** Update model id when the bridge resolves which model is in use. */
-  updateModel(sessionId: string, modelId: string | undefined | null): void {
+  /** Update model id when the bridge resolves which model is in use.
+   *  `providerName` is the endpoint the producer names beside the model
+   *  (OpenCode's `providerID`); without it the provider is read off the
+   *  model id, which names the weights' maker rather than whose endpoint
+   *  served them — `mlx-community/Qwen…` reads as Qwen, not local. */
+  updateModel(sessionId: string, modelId: string | undefined | null, providerName?: string | null): void {
     if (!this.store.enabled || !modelId) return;
     if (!this.sessionToRun.has(sessionId)) return;
     // The TURN is the scorecard's identity source (`turns.model_id`), and
@@ -1854,7 +1914,7 @@ export class ApmeCollector {
     // Codex turn carried NULL there (465 + 183 in one week, 2026-09-03) and
     // the per-model scorecard ranked nothing. The run keeps its
     // latest-observed value for legacy readers.
-    this.updateTurnIdentity(sessionId, modelId);
+    this.updateTurnIdentity(sessionId, modelId, providerName ?? undefined);
   }
 
   /** Persist the model/provider on the assistant message's own turn.

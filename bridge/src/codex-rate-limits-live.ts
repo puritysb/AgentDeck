@@ -279,7 +279,7 @@ export function pickAccountWideLiveLimits(
   return null;
 }
 
-function codexBinary(): string {
+export function codexBinary(): string {
   return process.env.AGENTDECK_CODEX_BIN || (process.platform === 'win32' ? 'codex.cmd' : 'codex');
 }
 

@@ -30,6 +30,7 @@ import type {
   ApmeTaskListRow,
   ApmeStopDeliveryRow,
   ApmeJudgeHealthRow,
+  ApmeAgentCoverageRow,
 } from './types.js';
 import type {
   ApmeSampleEventRow,
@@ -341,6 +342,41 @@ CREATE TABLE IF NOT EXISTS vibe_feedback (
   note       TEXT,
   ts         INTEGER NOT NULL
 );
+
+-- Reference judge (agentdeck apme reference-judge): a second verdict on a task
+-- the local judge already scored, kept OUT of evals so no scorecard, outcome or
+-- Work board query can mistake it for the product's own verdict. local_* is a
+-- snapshot of the local verdict it was compared against. A failed call is a
+-- row too (overall NULL, error set): the reference judge's own failure rate is
+-- part of what it measures, and a rerun stops re-sending a task after two of
+-- them in one design. sample names the design the task was drawn under
+-- ('uniform', or the filters, e.g. 'local_band=fail'): rows from different
+-- designs answer different questions and are reported apart.
+CREATE TABLE IF NOT EXISTS reference_evals (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id             TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  run_id              TEXT NOT NULL,
+  judge               TEXT NOT NULL,
+  sample              TEXT NOT NULL,
+  category            TEXT,
+  rubric_ver          INTEGER,
+  prompt_sha          TEXT NOT NULL,
+  overall             REAL,
+  scores_json         TEXT,
+  verdict_json        TEXT,
+  error               TEXT,
+  local_judge         TEXT,
+  local_overall       REAL,
+  local_rubric_ver    INTEGER,
+  local_judged_at     INTEGER,
+  input_tokens        INTEGER,
+  cached_input_tokens INTEGER,
+  output_tokens       INTEGER,
+  reasoning_tokens    INTEGER,
+  latency_ms          INTEGER,
+  created_at          INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reference_evals_task ON reference_evals(task_id, judge);
 
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs(model_id);
 CREATE INDEX IF NOT EXISTS idx_runs_agent ON runs(agent_type);
@@ -703,6 +739,50 @@ const TASK_VIEW_SQL: Record<Exclude<ApmeTaskView, 'attention'>, string> = {
   reported: `(t.ended_at IS NOT NULL AND ${TASK_SCORE_SQL} IS NULL)`,
   orphaned: `t.boundary_signal = 'orphaned'`,
 };
+
+/** A closed task with its latest local `task_judge` verdict — what the
+ *  reference judge is offered and compares against. */
+export interface ApmeLocalVerdictRow {
+  taskId: string;
+  runId: string;
+  agentType: string | null;
+  /** The run's `project_name`, as the Work board shows it. */
+  project: string | null;
+  category: string | null;
+  endedAt: number;
+  summary: string | null;
+  localOverall: number;
+  localJudge: string | null;
+  localRubricVer: number | null;
+  localJudgedAt: number;
+}
+
+/** One reference-judge attempt (table `reference_evals`). */
+export interface ApmeReferenceEvalRow {
+  id?: number;
+  taskId: string;
+  runId: string;
+  judge: string;
+  /** Sampling design: `uniform`, or the filters it was drawn under. */
+  sample: string;
+  category: string | null;
+  rubricVer: number | null;
+  promptSha: string;
+  overall: number | null;
+  scoresJson: string | null;
+  verdictJson: string | null;
+  error: string | null;
+  localJudge: string | null;
+  localOverall: number | null;
+  localRubricVer: number | null;
+  localJudgedAt: number | null;
+  inputTokens: number | null;
+  cachedInputTokens: number | null;
+  outputTokens: number | null;
+  reasoningTokens: number | null;
+  latencyMs: number | null;
+  createdAt: number;
+}
 
 export class ApmeStore {
   private db: BetterSqliteDb | null = null;
@@ -1143,11 +1223,12 @@ export class ApmeStore {
    *  they are reported separately instead of being folded into any bucket,
    *  because their closing signal is genuinely unknown (see the migration).
    *
-   *  `interrupted`, `aborted` and `superseded` are their own columns rather
-   *  than part of any loss bucket: each is a turn for which Claude Code owes no
-   *  Stop at all, so counting them as dropped hooks would report the user's own
-   *  ESC key, their exhausted usage window, and an artifact of counting turns
-   *  per prompt as infrastructure loss. `stopDeliveryLoss` in
+   *  `interrupted`, `aborted`, `superseded` and `injected` are their own
+   *  columns rather than part of any loss bucket: each is a turn for which
+   *  Claude Code owed no Stop at the moment it was closed, so counting them as
+   *  dropped hooks would report the user's own ESC key, their exhausted usage
+   *  window, an artifact of counting turns per prompt, and a background task
+   *  finishing mid-turn as infrastructure loss. `stopDeliveryLoss` in
    *  `@agentdeck/shared` owns which buckets the ratio may read.
    */
   /** What "judged" means, in one place.
@@ -1242,6 +1323,93 @@ export class ApmeStore {
     return { n: vals.length, p50Ms: at(0.5), p90Ms: at(0.9), maxMs: vals[vals.length - 1], excluded };
   }
 
+  /** Per-agent coverage: how much of each agent's work was captured well
+   *  enough to judge, and what the judge made of it.
+   *
+   *  Each fact keeps the window its own instrument already uses, so the
+   *  commands count the same rows: runs and turns by `started_at` (as
+   *  `stopDelivery`), tasks by `ended_at` with the drain's `agedCutoffMs` (as
+   *  `judgeHealth`, through the same `JUDGED_SQL` / `DECLINED_SQL`). A run
+   *  that started before the window can therefore contribute turns without
+   *  being counted as a run. */
+  agentCoverage(opts: { sinceMs: number; agedCutoffMs: number }): ApmeAgentCoverageRow[] {
+    if (!this.db) return [];
+    const runs = this.db.prepare(
+      `SELECT r.agent_type AS agentType, COUNT(*) AS runs
+         FROM runs r
+        WHERE r.started_at >= ?
+        GROUP BY r.agent_type`,
+    ).all(opts.sinceMs) as Array<Record<string, unknown>>;
+    const turns = this.db.prepare(
+      `SELECT r.agent_type AS agentType,
+              COUNT(*) AS turns,
+              SUM(t.end_source IN ('stop','synthetic_stop')) AS finishedTurns,
+              SUM(t.end_source IN ('stop','synthetic_stop')
+                  AND t.response IS NOT NULL AND trim(t.response) <> '') AS repliedTurns,
+              SUM(t.end_source IN ('stop','synthetic_stop')
+                  AND t.model_id IS NOT NULL AND trim(t.model_id) <> '' AND t.model_id <> 'unknown') AS modelTurns
+         FROM turns t JOIN runs r ON r.id = t.run_id
+        WHERE t.started_at >= ?
+        GROUP BY r.agent_type`,
+    ).all(opts.sinceMs) as Array<Record<string, unknown>>;
+    // Reasons as `retractTaskVerdict` and the runner's gradeability stamp
+    // write them (`JSON.stringify`, so no whitespace around the colon).
+    const declinedFor = (reason: string) =>
+      `SUM(NOT ${ApmeStore.JUDGED_SQL} AND t.notes_json LIKE '%"notGradeable":"${reason}"%')`;
+    const tasks = this.db.prepare(
+      `SELECT r.agent_type AS agentType,
+              COUNT(*) AS closedTasks,
+              SUM(${ApmeStore.JUDGED_SQL}) AS judged,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND ${ApmeStore.DECLINED_SQL}) AS declined,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
+                  AND t.ended_at >= ?) AS waiting,
+              SUM(NOT ${ApmeStore.JUDGED_SQL} AND NOT ${ApmeStore.DECLINED_SQL}
+                  AND t.ended_at < ?) AS agedOut,
+              ${declinedFor('no_reply')} AS declinedNoReply,
+              ${declinedFor('aborted_only')} AS declinedAbortedOnly,
+              ${declinedFor('trivial')} AS declinedTrivial,
+              ${declinedFor('notification_only')} AS declinedNotificationOnly
+         FROM tasks t JOIN runs r ON r.id = t.run_id
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ?
+        GROUP BY r.agent_type`,
+    ).all(opts.agedCutoffMs, opts.agedCutoffMs, opts.sinceMs) as Array<Record<string, unknown>>;
+    const byAgent = new Map<string, ApmeAgentCoverageRow>();
+    const row = (agentType: unknown): ApmeAgentCoverageRow => {
+      const key = String(agentType ?? 'unknown');
+      let r = byAgent.get(key);
+      if (!r) {
+        r = {
+          agentType: key, runs: 0, turns: 0, finishedTurns: 0, repliedTurns: 0, modelTurns: 0,
+          closedTasks: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0,
+          declinedNoReply: 0, declinedAbortedOnly: 0, declinedTrivial: 0, declinedNotificationOnly: 0,
+        };
+        byAgent.set(key, r);
+      }
+      return r;
+    };
+    for (const r of runs) row(r.agentType).runs = Number(r.runs ?? 0);
+    for (const r of turns) {
+      const out = row(r.agentType);
+      out.turns = Number(r.turns ?? 0);
+      out.finishedTurns = Number(r.finishedTurns ?? 0);
+      out.repliedTurns = Number(r.repliedTurns ?? 0);
+      out.modelTurns = Number(r.modelTurns ?? 0);
+    }
+    for (const r of tasks) {
+      const out = row(r.agentType);
+      out.closedTasks = Number(r.closedTasks ?? 0);
+      out.judged = Number(r.judged ?? 0);
+      out.declined = Number(r.declined ?? 0);
+      out.waiting = Number(r.waiting ?? 0);
+      out.agedOut = Number(r.agedOut ?? 0);
+      out.declinedNoReply = Number(r.declinedNoReply ?? 0);
+      out.declinedAbortedOnly = Number(r.declinedAbortedOnly ?? 0);
+      out.declinedTrivial = Number(r.declinedTrivial ?? 0);
+      out.declinedNotificationOnly = Number(r.declinedNotificationOnly ?? 0);
+    }
+    return [...byAgent.values()].sort((a, b) => a.agentType.localeCompare(b.agentType));
+  }
+
   stopDelivery(opts: { sinceMs: number; agentType?: string } = { sinceMs: 0 }): ApmeStopDeliveryRow[] {
     if (!this.db) return [];
     const params: unknown[] = [opts.sinceMs];
@@ -1256,6 +1424,7 @@ export class ApmeStore {
               SUM(t.end_source = 'interrupted') AS interrupted,
               SUM(t.end_source = 'aborted') AS aborted,
               SUM(t.end_source = 'superseded') AS superseded,
+              SUM(t.end_source = 'injected') AS injected,
               SUM(t.end_source IN ('session_end','clear')) AS sessionEnd,
               SUM(t.end_source = 'run_close') AS runClose,
               SUM(t.ended_at IS NULL) AS open,
@@ -1274,6 +1443,7 @@ export class ApmeStore {
       interrupted: Number(r.interrupted ?? 0),
       aborted: Number(r.aborted ?? 0),
       superseded: Number(r.superseded ?? 0),
+      injected: Number(r.injected ?? 0),
       sessionEnd: Number(r.sessionEnd ?? 0),
       runClose: Number(r.runClose ?? 0),
       open: Number(r.open ?? 0),
@@ -1751,6 +1921,130 @@ export class ApmeStore {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(next, row.purpose, row.prompt, row.weights, row.createdAt, row.parentVer ?? null, row.notes ?? null);
     return next;
+  }
+
+  // ─── Reference judge ─────────────────────────────────────────────────────────
+
+  /** Closed tasks the local judge scored, newest first, each with its LATEST
+   *  `task_judge` overall verdict. Declined tasks never carry one, so they
+   *  cannot appear. `category` mirrors the judge's own resolution: the task's,
+   *  else the run's. `untilMs` reads the pool as it stood then — tasks closed
+   *  by then, each with the latest verdict made by then — so a later run can
+   *  pick from the pool a dry run listed. */
+  listLocallyJudgedTasks(opts: { sinceMs: number; untilMs?: number; limit: number }): ApmeLocalVerdictRow[] {
+    if (!this.db) return [];
+    const until = opts.untilMs ?? Number.MAX_SAFE_INTEGER;
+    const rows = this.db.prepare(
+      `SELECT t.id AS task_id, t.run_id, r.agent_type, r.project_name,
+              COALESCE(NULLIF(t.task_category, 'unknown'), NULLIF(r.task_category, 'unknown')) AS category,
+              t.ended_at, t.summary,
+              e.score AS local_overall, e.judge_model, e.rubric_ver, e.created_at AS judged_at
+         FROM tasks t
+         JOIN runs r ON r.id = t.run_id
+         JOIN evals e ON e.id = (
+              SELECT e2.id FROM evals e2
+               WHERE e2.task_id = t.id AND e2.layer = 'task_judge' AND e2.metric = 'overall'
+                 AND e2.score IS NOT NULL AND e2.created_at <= ?
+               ORDER BY e2.created_at DESC, e2.id DESC LIMIT 1)
+        WHERE t.ended_at IS NOT NULL AND t.ended_at >= ? AND t.ended_at <= ?
+        ORDER BY t.ended_at DESC, t.id DESC
+        LIMIT ?`,
+    ).all(until, opts.sinceMs, until, opts.limit) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      taskId: r.task_id as string,
+      runId: r.run_id as string,
+      agentType: (r.agent_type as string | null) ?? null,
+      project: (r.project_name as string | null) ?? null,
+      category: (r.category as string | null) ?? null,
+      endedAt: r.ended_at as number,
+      summary: (r.summary as string | null) ?? null,
+      localOverall: r.local_overall as number,
+      localJudge: (r.judge_model as string | null) ?? null,
+      localRubricVer: (r.rubric_ver as number | null) ?? null,
+      localJudgedAt: r.judged_at as number,
+    }));
+  }
+
+  insertReferenceEval(row: ApmeReferenceEvalRow): number {
+    if (!this.db) return 0;
+    const info = this.db.prepare(
+      `INSERT INTO reference_evals
+        (task_id, run_id, judge, sample, category, rubric_ver, prompt_sha, overall, scores_json, verdict_json, error,
+         local_judge, local_overall, local_rubric_ver, local_judged_at,
+         input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, latency_ms, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(
+      row.taskId, row.runId, row.judge, row.sample, row.category, row.rubricVer, row.promptSha,
+      row.overall, row.scoresJson, row.verdictJson, row.error,
+      row.localJudge, row.localOverall, row.localRubricVer, row.localJudgedAt,
+      row.inputTokens, row.cachedInputTokens, row.outputTokens, row.reasoningTokens, row.latencyMs,
+      row.createdAt,
+    );
+    return Number(info.lastInsertRowid);
+  }
+
+  /** Task ids this judge already produced a verdict for in this sampling
+   *  design (by `untilMs`, when given). Failed attempts do not count, so a
+   *  rerun retries them (`referenceFailureCounts` bounds that). A verdict
+   *  made for another design does not count either: skipping it would drop
+   *  that task from this design's sample, and a uniform sample that skips the
+   *  fail-band sample's tasks under-counts fails. */
+  referenceVerdictTaskIds(judge: string, sample: string, untilMs?: number): Set<string> {
+    if (!this.db) return new Set();
+    const rows = this.db.prepare(
+      `SELECT DISTINCT task_id FROM reference_evals
+        WHERE judge = ? AND sample = ? AND overall IS NOT NULL AND created_at <= ?`,
+    ).all(judge, sample, untilMs ?? Number.MAX_SAFE_INTEGER) as Array<{ task_id: string }>;
+    return new Set(rows.map((r) => r.task_id));
+  }
+
+  /** Failed attempts (`overall` NULL) per task for this judge and sampling
+   *  design, made by `untilMs` when given. */
+  referenceFailureCounts(judge: string, sample: string, untilMs?: number): Map<string, number> {
+    if (!this.db) return new Map();
+    const rows = this.db.prepare(
+      `SELECT task_id, COUNT(*) AS failures FROM reference_evals
+        WHERE judge = ? AND sample = ? AND overall IS NULL AND created_at <= ?
+        GROUP BY task_id`,
+    ).all(judge, sample, untilMs ?? Number.MAX_SAFE_INTEGER) as Array<{ task_id: string; failures: number }>;
+    return new Map(rows.map((r) => [r.task_id, r.failures]));
+  }
+
+  /** Reference attempts, oldest first; `judge` and `sample` narrow. */
+  listReferenceEvals(opts: { judge?: string; sample?: string; sinceMs?: number } = {}): ApmeReferenceEvalRow[] {
+    if (!this.db) return [];
+    const where: string[] = [];
+    const args: unknown[] = [];
+    if (opts.judge) { where.push('judge = ?'); args.push(opts.judge); }
+    if (opts.sample) { where.push('sample = ?'); args.push(opts.sample); }
+    if (opts.sinceMs != null) { where.push('created_at >= ?'); args.push(opts.sinceMs); }
+    const rows = this.db.prepare(
+      `SELECT * FROM reference_evals ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY created_at ASC, id ASC`,
+    ).all(...args) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id as number,
+      taskId: r.task_id as string,
+      runId: r.run_id as string,
+      judge: r.judge as string,
+      sample: r.sample as string,
+      category: (r.category as string | null) ?? null,
+      rubricVer: (r.rubric_ver as number | null) ?? null,
+      promptSha: r.prompt_sha as string,
+      overall: (r.overall as number | null) ?? null,
+      scoresJson: (r.scores_json as string | null) ?? null,
+      verdictJson: (r.verdict_json as string | null) ?? null,
+      error: (r.error as string | null) ?? null,
+      localJudge: (r.local_judge as string | null) ?? null,
+      localOverall: (r.local_overall as number | null) ?? null,
+      localRubricVer: (r.local_rubric_ver as number | null) ?? null,
+      localJudgedAt: (r.local_judged_at as number | null) ?? null,
+      inputTokens: (r.input_tokens as number | null) ?? null,
+      cachedInputTokens: (r.cached_input_tokens as number | null) ?? null,
+      outputTokens: (r.output_tokens as number | null) ?? null,
+      reasoningTokens: (r.reasoning_tokens as number | null) ?? null,
+      latencyMs: (r.latency_ms as number | null) ?? null,
+      createdAt: r.created_at as number,
+    }));
   }
 
   // ─── Vibe ────────────────────────────────────────────────────────────────────

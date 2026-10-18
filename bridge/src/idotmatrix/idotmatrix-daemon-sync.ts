@@ -17,7 +17,7 @@
  */
 
 import { type ChildProcess } from 'child_process';
-import { loadIDotMatrixDevices, type IDotMatrixDevice } from './idotmatrix-settings.js';
+import { loadIDotMatrixDevices, readIDotMatrixDevicesStrict, type IDotMatrixDevice } from './idotmatrix-settings.js';
 import {
   createSigabrtCircuitBreaker,
   createSyncCycleSquelch,
@@ -37,6 +37,7 @@ let startedAt = 0;
 const link = createBleLinkTracker();
 /** Address+brightness of the device the running child is driving (for reload-on-change). */
 let runningKey: string | null = null;
+let configRecheckTimer: ReturnType<typeof setInterval> | null = null;
 
 /** Identity of the driven config — a change means the running child is stale. */
 function deviceKey(d: IDotMatrixDevice): string {
@@ -47,6 +48,16 @@ const MAX_BACKOFF_MS = 60_000;
 const BASE_BACKOFF_MS = 5_000;
 /** If the process stayed up at least this long, treat the next exit as fresh. */
 const HEALTHY_UPTIME_MS = 30_000;
+/**
+ * How often a child that has not reached its panel re-reads the configured
+ * device. The device is read when the child spawns, and a client that could not
+ * find its panel used to exit and be respawned every minute or two, re-reading
+ * it on the way: a panel re-paired to a new address was picked up without a
+ * daemon restart. The client now keeps retrying in-process (sync.py), so the
+ * supervisor re-reads the settings itself. A connected panel keeps the config
+ * it started with until the daemon restarts, as before.
+ */
+const CONFIG_RECHECK_MS = 30_000;
 
 function log(msg: string): void {
   // Match the daemon's `[agentdeck]` stderr prefix.
@@ -119,13 +130,19 @@ function spawnSync(venvPython: string, syncScript: string, httpPort: number): vo
     { onStatus: (payload) => link.applyStatusLine(payload) },
   );
   child = proc;
+  armConfigRecheck(httpPort);
 
   proc.on('error', (err: Error) => {
     log(`BLE sync failed to spawn: ${err.message}`);
   });
 
   proc.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
-    if (child === proc) child = null;
+    // A child that was stopped, or replaced by a re-config restart, is not ours
+    // to respawn. The restart clears `stopping` before the old child's exit
+    // arrives, so without this check that exit would schedule a spawn that
+    // orphans the replacement.
+    if (child !== proc) return;
+    child = null;
     if (stopping) return;
     // A long healthy run resets the backoff so a one-off crash recovers fast.
     // Clean code=0 exits are abnormal for daemon-managed sync children (normal
@@ -159,6 +176,25 @@ function spawnSync(venvPython: string, syncScript: string, httpPort: number): vo
   });
 }
 
+function armConfigRecheck(httpPort: number): void {
+  if (configRecheckTimer) return;
+  configRecheckTimer = setInterval(() => {
+    // The count passed to snapshot() only shapes its reason text.
+    if (stopping || !child || link.snapshot(1).connected) return;
+    const devices = readIDotMatrixDevicesStrict();
+    // Unreadable settings say nothing about the device: keep the running client.
+    if (devices === null) return;
+    if (devices.length === 0) {
+      log('iDotMatrix removed from settings; stopping BLE sync');
+      void stopIDotMatrixSync();
+      return;
+    }
+    // startIDotMatrixSync restarts the child when the configured device changed.
+    if (deviceKey(devices[0]) !== runningKey) startIDotMatrixSync(httpPort);
+  }, CONFIG_RECHECK_MS);
+  if (configRecheckTimer.unref) configRecheckTimer.unref();
+}
+
 /**
  * Stop the managed BLE sync and cancel any pending respawn.
  *
@@ -173,6 +209,10 @@ export async function stopIDotMatrixSync(awaitFarewell = false): Promise<void> {
   if (respawnTimer) {
     clearTimeout(respawnTimer);
     respawnTimer = null;
+  }
+  if (configRecheckTimer) {
+    clearInterval(configRecheckTimer);
+    configRecheckTimer = null;
   }
   const proc = child;
   child = null;

@@ -343,8 +343,10 @@ no subprocesses.
 | `agentdeck apme scorecard` | Model scorecard by category and overall |
 | `agentdeck apme stop-health` | Stop-hook delivery rate — how turns actually closed (`--since 7d`, `--agent`) |
 | `agentdeck apme judge-health` | Judge coverage — whether closed work actually got a verdict (`--since 14d`, `--json`) |
+| `agentdeck apme coverage` | Per-agent coverage — reply and model capture on finished turns, and judge coverage per agent (`--since 30d`, `--json`) |
 | `agentdeck apme prune` | Reclaim `apme.sqlite` disk space by clearing old tool payloads (`--older-than 30`, `--apply`, `--vacuum`) |
-| `agentdeck apme tune` | Trigger rubric auto-tuner (OPRO loop) |
+| `agentdeck apme reference-judge` | Re-score tasks the local judge already scored with a stronger model through your Codex CLI login (dry run by default; `--run`, `--limit 10`, `--since 30d`, `--until`, `--expect`, `--retry-parked`, `--model`, `--effort high`, `--category`, `--local-band`, `--project`) |
+| `agentdeck apme agreement` | How closely the local judge agrees with the reference judge: MAE, bias, outcome bands, largest disagreements per judge and sampling design (`--judge`, `--sample`, `--since`, `--top`, `--json`) |
 | `agentdeck apme vibe <runId> <verdict>` | Label a run (`approve`/`reject`/`neutral`) |
 | `agentdeck apme tag <runId> <category>` | Manually set task category |
 | `agentdeck apme reclassify` | Re-run classifier on unclassified runs |
@@ -371,6 +373,41 @@ is at least 1.1x the file's current size — otherwise it explains why it
 skipped and leaves the file as `--apply` left it. There is no automatic or
 background pruning; run this by hand (or from your own cron/launchd) when you
 want the space back.
+
+`apme reference-judge` measures the local judge instead of trusting it. It
+rebuilds the prompt a task's local verdict came from, with the same builder
+(the only difference is the redaction below), sends it through
+`codex exec` to a stronger model on your own Codex login (no API key), and
+stores that second verdict in its own `reference_evals` table, so nothing
+the product scores or sorts on changes. Default is a **dry run** listing the
+tasks, prompt sizes, redaction counts and an input-token estimate; `--run`
+sends them. Each call sends that task's prompts, replies and tool trajectory
+to the model behind your Codex login. Redaction is **best effort**: this
+machine's pairing tokens, private keys and credentials with a recognizable
+shape (known prefixes such as `sk-`, `ghp_` or `hf_`, JWTs, `Authorization`
+headers, URL passwords, `KEY=value` where the name says secret) are replaced,
+each field before it is clipped so a key the clip cuts is still caught; a
+credential with none of these shapes is sent as it is. The
+reference model gets no tools (no shell, file or image reads, web search,
+connectors or subagents), like the local judge it is compared with, and a
+verdict whose run shows a tool call is discarded. The
+sample is uniform over the locally judged tasks in `--since`, in a stable
+hash order, so a rerun continues with new tasks. The dry run reads the pool
+as it stood at one time and prints the `--run` command that sends that list:
+it carries `--until` (the dry run's time) and `--expect` (a digest of the
+list), and sends nothing if the list no longer matches. A `--run` typed
+without them picks from the pool as it is when you type it. A task whose call
+failed twice in the same sample is parked (`--retry-parked` sends it again),
+a run stops after three failed calls in a row, and Ctrl-C stops the call in
+flight along with every process Codex started and records nothing for it.
+`--local-band fail` instead asks how many of the local judge's
+failures the reference confirms. `--project AgentDeck,other` is an allow-list:
+only those projects' tasks are picked, so a client project's text never leaves
+the machine. The dry run lists each task's project. The model defaults to the `model` in
+`~/.codex/config.toml`, effort to `high`. `apme agreement` reports every
+reference verdict so far per judge (model@effort). CLI only, Node daemon
+install: the App Store app spawns no subprocess, and no daemon path calls it.
+Detail and the first measurement: [apme.md § Reference judge](apme.md#reference-judge-2026-10-18).
 
 ### Device Setup
 

@@ -52,6 +52,24 @@ describe('updateModel stamps the turn, not just the run', () => {
     c.updateModel('s2', 'claude-opus-5');
     expect(store.listTurns(runId)[0]!.model_id).toBe('claude-opus-5');
   });
+
+  it('a provider the producer names is the endpoint, ahead of the model id\'s maker', () => {
+    // OpenCode's providerID, values from OpenCode 1.18.35's own store.
+    const c = new ApmeCollector(store);
+    const stamp = (sid: string, model: string, provider?: string) => {
+      const runId = c.openRun({ sessionId: sid, agentType: 'opencode', projectName: 'demo' })!;
+      c.ingestHook(sid, 'UserPromptSubmit', { prompt: 'go' });
+      c.noteTurnStop(sid);
+      c.updateModel(sid, model, provider);
+      return store.listTurns(runId)[0]!;
+    };
+    expect(stamp('mlx', 'mlx-community/Qwen3.6-35B-A3B-4bit', 'mlx').provider).toBe('local');
+    expect(stamp('bare', 'mlx-community/Qwen3.6-35B-A3B-4bit').provider).toBe('alibaba');
+    // An endpoint name outside the allow-list falls back to the model id.
+    expect(stamp('plan', 'glm-5.3', 'zai-coding-plan')).toMatchObject({ model_id: 'glm-5.3', provider: 'zai' });
+    // Two unknowns stay unknown rather than combining into a claim.
+    expect(stamp('zen', 'big-pickle', 'opencode').provider).toBeNull();
+  });
 });
 
 describe('readModelFromTranscript', () => {

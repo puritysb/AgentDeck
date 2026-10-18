@@ -6503,6 +6503,7 @@ final class DaemonServer {
         // UNIQUE(task_id, dedup_key) collapse hook/SSE echoes inside one DB.
         if !apmeHandledEarly, let hook = normalizedApmeHook {
             apmeCollector?.handleHook(event: hook.event, data: hook.payload)
+            Self.stampApmeStopIdentity(hook, collector: apmeCollector)
         }
         // Coordination evidence carried BY the hook itself (the Node daemon's
         // `CoordinationTracker` hook half): a received cross-session envelope
@@ -10014,7 +10015,11 @@ final class DaemonServer {
            let oldest = claudeStatuslineSessions.min(by: { $0.value.receivedAtMs < $1.value.receivedAtMs })?.key {
             claudeStatuslineSessions.removeValue(forKey: oldest)
         }
-        guard ClaudeStatuslineRules.shouldAccept(previousForSession: previousForSession, current: current, next: reading) else {
+        // A sibling relay's OAuth reading keeps its fractional reset second and
+        // whole percent; the ordering check must know which carrier `current` is.
+        let currentSource = cachedApiUsage != nil ? claudeUsageSource : "statusline"
+        guard ClaudeStatuslineRules.shouldAccept(
+            previousForSession: previousForSession, current: current, next: reading, currentSource: currentSource) else {
             return ClaudeStatuslineIngest(applied: false, broadcast: false)
         }
         let prev = claudeStatusline
@@ -12318,6 +12323,25 @@ final class DaemonServer {
         if let model = hook.payload["model_name"] as? String {
             collector.updateTurnIdentity(modelId: model, provider: nil, sessionId: sessionId)
         }
+    }
+
+    /// A Stop hook that names its model stamps the turn it just closed, as
+    /// Node's Stop path does with `updateModel`: Codex hooks carry `model`,
+    /// the OpenCode observer (v5) `model` plus `model_provider`. The run-open
+    /// read of `model_name` never sees a model reported at Stop, so these
+    /// turns carried no model on this daemon. Node also stamps at
+    /// `session_end`; no hook producer sends a model there, and this daemon's
+    /// `session_end` drops the run before a stamp could find it.
+    static func stampApmeStopIdentity(
+        _ hook: (event: String, payload: [String: Any])?, collector: ApmeCollector?
+    ) {
+        guard let hook, let collector, hook.event == "stop",
+              let sessionId = nonEmptyString(hook.payload["session_id"]),
+              let model = nonEmptyString(hook.payload["model"]) else { return }
+        collector.updateTurnIdentity(
+            modelId: String(model.prefix(200)),
+            provider: nonEmptyString(hook.payload["model_provider"]).map { String($0.prefix(80)) },
+            sessionId: sessionId)
     }
 
     /// Explicit new-turn signal for a Codex thread (`codex_session_start`,

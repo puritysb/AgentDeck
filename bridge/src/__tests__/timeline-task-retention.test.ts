@@ -65,6 +65,60 @@ describe('BridgeTimelineStore task-row retention', () => {
     expect(history.some((e) => e.type === 'tool_exec')).toBe(true); // some tool rows still fit
   });
 
+  it("sheds Claude's per-tool hook rows before any turn row, each request with its result", () => {
+    // `toolEvent` rows reach only a surface that negotiated
+    // `timeline.tool-events.read`; no first-party client does. Kept like an
+    // approval pair, they used to evict the turn rows every client reads.
+    const store = new BridgeTimelineStore();
+    store.addEntry(entry({ type: 'chat_start', sessionId: 's1', raw: 'refactor the module' }));
+    for (let i = 0; i < 150; i++) {
+      const toolUseId = `toolu_${i}`;
+      store.addEntry(entry({ type: 'tool_request', sessionId: 's1', toolEvent: true, toolUseId, raw: `Tool${i} requested` }));
+      store.addEntry(entry({ type: 'tool_resolved', sessionId: 's1', toolEvent: true, toolUseId, raw: `Tool${i} completed` }));
+      if (i % 10 === 0) store.addEntry(entry({ type: 'chat_response', sessionId: 's1', raw: `progress ${i}` }));
+    }
+    store.addEntry(entry({ type: 'chat_response', sessionId: 's1', raw: 'Done.' }));
+    const history = store.getHistory();
+    expect(history.length).toBeLessThanOrEqual(200);
+    expect(history.some((e) => e.type === 'chat_start' && e.raw === 'refactor the module')).toBe(true);
+    expect(history.filter((e) => e.type === 'chat_response')).toHaveLength(16);
+    // The newest tool rows still fill what is left, and none is half a pair.
+    const tools = history.filter((e) => e.toolEvent === true);
+    expect(tools.length).toBeGreaterThan(0);
+    expect(tools.some((e) => e.toolUseId === 'toolu_149')).toBe(true);
+    const byId = new Map<string, string[]>();
+    for (const e of tools) byId.set(e.toolUseId!, [...(byId.get(e.toolUseId!) ?? []), e.type]);
+    for (const types of byId.values()) expect(types.sort()).toEqual(['tool_request', 'tool_resolved']);
+  });
+
+  it('getHistoryForSession can leave per-tool hook rows out before applying its limit', () => {
+    const store = new BridgeTimelineStore();
+    store.addEntry(entry({ type: 'chat_start', sessionId: 's1', raw: 'run the suite' }));
+    for (let i = 0; i < 10; i++) {
+      store.addEntry(entry({ type: 'tool_request', sessionId: 's1', toolEvent: true, toolUseId: `t${i}`, raw: `Tool${i} requested` }));
+      store.addEntry(entry({ type: 'tool_resolved', sessionId: 's1', toolEvent: true, toolUseId: `t${i}`, raw: `Tool${i} completed` }));
+    }
+    // The last 16 rows are all tool rows: a client that cannot receive them
+    // used to be left with nothing once they were filtered out afterwards.
+    expect(store.getHistoryForSession('s1').some((e) => e.type === 'chat_start')).toBe(false);
+    const readable = store.getHistoryForSession('s1', undefined, 16, { toolEvents: false });
+    expect(readable.map((e) => e.type)).toEqual(['chat_start']);
+  });
+
+  it('getChatRowsForSession reads the whole turn skeleton past any number of other rows', () => {
+    const store = new BridgeTimelineStore();
+    store.addEntry(entry({ type: 'chat_start', sessionId: 'session-uuid', raw: 'first' }));
+    store.addEntry(entry({ type: 'chat_end', sessionId: 'session-uuid', raw: 'Completed · 4s' }));
+    store.addEntry(entry({ type: 'chat_start', sessionId: 'session-uuid', raw: 'second' }));
+    for (let i = 0; i < 40; i++) {
+      store.addEntry(entry({ type: 'tool_exec', sessionId: 'session-uuid', subagentId: `a${i}`, raw: `Subagent ${i}` }));
+      store.addEntry(entry({ type: 'tool_request', sessionId: 'session-uuid', toolEvent: true, toolUseId: `t${i}`, raw: `Tool${i} requested` }));
+    }
+    store.addEntry(entry({ type: 'chat_start', sessionId: 'other-uuid', raw: 'elsewhere' }));
+    expect(store.getChatRowsForSession('observed:claude:session-uuid').map((e) => e.raw))
+      .toEqual(['first', 'Completed · 4s', 'second']);
+  });
+
   it('getHistoryForSession returns task rows beyond the per-session limit', () => {
     const store = new BridgeTimelineStore();
     store.addEntry(entry({ type: 'task_start', taskId: 'T1', sessionId: 's1', raw: 'Task 1' }));

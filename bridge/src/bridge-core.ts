@@ -734,6 +734,9 @@ export class BridgeCore {
       fiveHour: u.fiveHourPercent == null ? null : { usedPercent: u.fiveHourPercent, resetsAt: u.fiveHourResetsAt },
       sevenDay: u.sevenDayPercent == null ? null : { usedPercent: u.sevenDayPercent, resetsAt: u.sevenDayResetsAt },
     } : this.claudeStatusline;
+    // OAuth readings carry a fractional reset second and whole percent; the
+    // ordering check must know which carrier it is comparing against.
+    const currentSource: ClaudeUsageSource | null = u ? this.claudeUsageSource : 'statusline';
     // Remember rejected documents too: an idle session must not become fresh
     // merely because another session (or OAuth) replaced the account reading.
     if (claudeStatuslineProgressRegressed(previousForSession, reading)) return { applied: false, broadcast: false };
@@ -742,7 +745,7 @@ export class BridgeCore {
     if (this.claudeStatuslineSessions.size > CLAUDE_STATUSLINE_SESSION_LIMIT) {
       this.claudeStatuslineSessions.delete(this.claudeStatuslineSessions.keys().next().value!);
     }
-    if (!shouldAcceptClaudeStatusline(previousForSession, current, reading)) return { applied: false, broadcast: false };
+    if (!shouldAcceptClaudeStatusline(previousForSession, current, reading, currentSource)) return { applied: false, broadcast: false };
     const prev = this.claudeStatusline;
     const changed = claudeStatuslineChanged(prev, reading);
     const resumed = classifyClaudeStatuslineAge(prev?.receivedAt ?? null, reading.receivedAt) !== 'fresh';

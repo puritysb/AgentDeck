@@ -21,6 +21,9 @@ from matrix_sync_common import (  # noqa: E402
     DEFAULT_URL,
     POLL_INTERVAL,
     BRIDGE_GONE_EXIT_SEC,
+    RECONNECT_BASE_SEC,
+    RECONNECT_MAX_SEC,
+    ReconnectBackoff,
     StatusReporter,
     fetch_display_state as _fetch_display_state_sync,
     bridge_reachable as _bridge_reachable_sync,
@@ -137,6 +140,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
     # exiting, so process liveness tells it nothing about whether the panel is
     # actually being driven.
     status = StatusReporter()
+    backoff = ReconnectBackoff(RECONNECT_BASE_SEC, RECONNECT_MAX_SEC)
 
     manager = ConnectionManager()
     
@@ -204,6 +208,7 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
                 await manager.connectByAddress(address)
                 print("Connected to Bluetooth device!")
                 status.connected()
+                backoff.reset()
 
                 # Settle: the panel drops commands sent too soon after the GATT
                 # link comes up. Without this the first setBrightness is lost on a
@@ -371,7 +376,12 @@ async def run_sync(address: str, url: str, brightness: int = 100, boost: float =
                 await manager.disconnect()
             except Exception:
                 pass
-            await _interruptible_sleep(stop_event, 3.0)
+            await _interruptible_sleep(stop_event, backoff.next_delay())
+            # A panel that is off is not a daemon that is gone (see
+            # BRIDGE_GONE_EXIT_SEC). Probe AFTER the pause: probed before it, a
+            # capped pause alone would outlast the bridge-gone window.
+            if not stop_event.is_set() and await bridge_reachable(url):
+                last_bridge_ok = time.monotonic()
 
     # Loop exited (shutdown requested). Leave the panel showing OFFLINE instead
     # of a frozen dashboard frame, then drop the BLE link.

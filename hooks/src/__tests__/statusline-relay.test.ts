@@ -282,6 +282,10 @@ describe.skipIf(process.platform !== 'win32')('the Windows relay script, execute
     server = null;
   });
 
+  // Each case starts PowerShell, and the Git Bash case an MSYS pipeline as well:
+  // 1-3 s on a healthy runner, but a slow Windows runner needed 16 s for the
+  // Git Bash case in install.test.ts, which carries the same 40 s bound. The 10 s
+  // default timed the Git Bash case out on 2026-10-17 and 2026-10-18.
   it.each([
     'Git Bash', 'PowerShell stream', 'PowerShell pipeline',
     'PowerShell native stream', 'PowerShell native pipeline', 'PowerShell literal input',
@@ -352,7 +356,7 @@ describe.skipIf(process.platform !== 'win32')('the Windows relay script, execute
     expect(received.map((r) => r.path)).toEqual(['/health', '/claude/statusline']);
     expect(received[1].body).toBe(document);
     expect(stdout).toBe(expected[shell]);
-  });
+  }, 40_000);
 });
 
 describe.skipIf(process.platform === 'win32')('file-system wrappers', () => {

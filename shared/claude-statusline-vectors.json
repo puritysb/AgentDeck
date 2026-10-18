@@ -280,6 +280,78 @@
       "current": null,
       "next": { "fiveHour": { "usedPercent": 23.54, "resetsAt": null } },
       "accepted": true, "regressed": false
+    },
+    {
+      "name": "an OAuth reading's microsecond reset is the status line's whole-second window (live usage cache, 2026-10-18)",
+      "previousForSession": null,
+      "current": { "fiveHour": { "usedPercent": 7, "resetsAt": "2026-10-17T20:50:00.323175+00:00" }, "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.323192+00:00" } },
+      "currentSource": "oauth",
+      "next": { "fiveHour": { "usedPercent": 7, "resetsAt": "2026-10-17T20:50:00.000Z" }, "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": true, "regressed": false
+    },
+    {
+      "name": "a status-line percent within one point below OAuth's whole percent is the same observation",
+      "previousForSession": null,
+      "current": { "sevenDay": { "usedPercent": 24, "resetsAt": "2026-10-22T02:00:00.323192+00:00" } },
+      "currentSource": "oauth",
+      "next": { "sevenDay": { "usedPercent": 23.4, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": true, "regressed": false
+    },
+    {
+      "name": "a status-line percent more than one point below OAuth for the same window is still older",
+      "previousForSession": null,
+      "current": { "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.323192+00:00" } },
+      "currentSource": "oauth",
+      "next": { "sevenDay": { "usedPercent": 38.9, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": false, "regressed": false
+    },
+    {
+      "name": "an older window stays rejected across carriers",
+      "previousForSession": null,
+      "current": { "fiveHour": { "usedPercent": 5, "resetsAt": "2026-10-16T06:00:00.323175+00:00" } },
+      "currentSource": "oauth",
+      "next": { "fiveHour": { "usedPercent": 90, "resetsAt": "2026-10-16T01:00:00.000Z" } },
+      "accepted": false, "regressed": false
+    },
+    {
+      "name": "a sibling relay of an OAuth reading compares at OAuth's precision",
+      "previousForSession": null,
+      "current": { "fiveHour": { "usedPercent": 7, "resetsAt": "2026-10-17T20:50:00.323175+00:00" } },
+      "currentSource": "relay",
+      "next": { "fiveHour": { "usedPercent": 6.6, "resetsAt": "2026-10-17T20:50:00.000Z" } },
+      "accepted": true, "regressed": false
+    },
+    {
+      "name": "a session may retire its own window while OAuth holds the same window at microsecond precision",
+      "previousForSession": { "fiveHour": { "usedPercent": 90, "resetsAt": "2026-10-17T20:50:00.000Z" }, "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "current": { "fiveHour": { "usedPercent": 90, "resetsAt": "2026-10-17T20:50:00.323175+00:00" }, "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.323192+00:00" } },
+      "currentSource": "oauth",
+      "next": { "sevenDay": { "usedPercent": 40, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": true, "regressed": false
+    },
+    {
+      "name": "an OAuth fraction below the whole second is still the status line's window (live usage cache, 03:46 KST)",
+      "previousForSession": null,
+      "current": { "fiveHour": { "usedPercent": 18, "resetsAt": "2026-10-17T20:49:59.609113+00:00" }, "sevenDay": { "usedPercent": 42, "resetsAt": "2026-10-22T01:59:59.609132+00:00" } },
+      "currentSource": "oauth",
+      "next": { "fiveHour": { "usedPercent": 17.6, "resetsAt": "2026-10-17T20:50:00.000Z" }, "sevenDay": { "usedPercent": 41.5, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": true, "regressed": false
+    },
+    {
+      "name": "below the second, a status line more than one point lower for the same window is still older",
+      "previousForSession": null,
+      "current": { "sevenDay": { "usedPercent": 42, "resetsAt": "2026-10-22T01:59:59.609132+00:00" } },
+      "currentSource": "oauth",
+      "next": { "sevenDay": { "usedPercent": 40.5, "resetsAt": "2026-10-22T02:00:00.000Z" } },
+      "accepted": false, "regressed": false
+    },
+    {
+      "name": "between status-line readings the order stays exact",
+      "previousForSession": null,
+      "current": { "fiveHour": { "usedPercent": 40, "resetsAt": "2026-10-16T01:00:00.000Z" } },
+      "currentSource": "statusline",
+      "next": { "fiveHour": { "usedPercent": 39.9, "resetsAt": "2026-10-16T01:00:00.000Z" } },
+      "accepted": false, "regressed": false
     }
   ],
   "oauthOrdering": [

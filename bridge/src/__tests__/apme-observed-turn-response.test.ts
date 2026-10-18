@@ -147,3 +147,83 @@ describe('observed turn response archiving', () => {
       .toBe('session_message_projection');
   });
 });
+
+/**
+ * Which turn a Stop's reply belongs to is the collector's question.
+ *
+ * The daemon used to answer it with its TIMELINE: a `chat_start` among the
+ * session's last 24 rows with no completion after it. The timeline drops a
+ * `<task-notification>` prompt, and a long turn's own tool rows push its
+ * prompt out of those 24 — so both turns read as closed and their reply went
+ * to the PREVIOUS turn: dropped when that turn had one, a turn early when it
+ * did not. Over 30 days (2026-10-18) 558 of 1,145 Claude Stop turns took that
+ * path and 247 kept no reply, against none of the 587 that reached their
+ * open turn.
+ */
+describe('Stop reply attribution (recordStopReply)', () => {
+  let store!: ApmeStore;
+  let collector!: ApmeCollector;
+  beforeEach(async () => {
+    store = await makeStore();
+    collector = new ApmeCollector(store);
+    collector.openRun({ sessionId: SID, agentType: 'claude-code', projectName: 'AgentDeck' });
+  });
+  afterEach(() => { cleanup(store); });
+
+  /** One Stop as the daemon delivers it: the reply, then the close. */
+  function stop(reply: string) {
+    collector.recordStopReply(SID, reply);
+    collector.noteTurnStop(SID);
+  }
+
+  it('lands each reply on the turn its Stop closes, whatever opened that turn', () => {
+    driveTurn(collector, 'fix the build');
+    stop('build fixed');
+    // Delivered to an idle session: a fresh turn the timeline cannot see.
+    driveTurn(collector, '<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>');
+    stop('the background test run passed');
+
+    const turns = store.listTurns(collector.getRunId(SID)!);
+    expect(turns.map((t) => t.response)).toEqual(['build fixed', 'the background test run passed']);
+  });
+
+  it('never lands a reply a turn early when the previous turn kept none', () => {
+    // The off-by-one chain: a replyless turn used to absorb the NEXT turn's
+    // reply, and that turn then absorbed the one after it.
+    driveTurn(collector, 'run the migration');
+    stop('');
+    driveTurn(collector, '<task-notification>done</task-notification>');
+    stop('migration finished cleanly');
+
+    const turns = store.listTurns(collector.getRunId(SID)!);
+    expect(turns.map((t) => t.response)).toEqual(['', 'migration finished cleanly']);
+    expect(JSON.parse(String(turns[0].efficiency_json)).response_kind).toBe('tool_only');
+  });
+
+  it('with no open turn, fills the last closed turn once and never clobbers it', () => {
+    driveTurn(collector, 'only turn');
+    collector.noteTurnStop(SID);
+    collector.recordStopReply(SID, 'recovered late');
+    collector.recordStopReply(SID, 'duplicate Stop');
+    collector.recordStopReply(SID, '');
+
+    expect(store.listTurns(collector.getRunId(SID)!)[0].response).toBe('recovered late');
+  });
+
+  it('fills the empty slot an early Stop wrote when the deferred re-read finds the reply', () => {
+    // The Stop's transcript read came back empty (Claude had not written the
+    // record yet), so the open turn got '' and closed; the daemon's deferred
+    // re-read then applies the reply to the last closed turn.
+    driveTurn(collector, 'run the full suite');
+    stop('');
+    collector.setLastClosedTurnResponse(SID, 'all 412 tests passed');
+
+    const turn = store.listTurns(collector.getRunId(SID)!)[0];
+    expect(turn.response).toBe('all 412 tests passed');
+    const assistants = store.listSampleEventRows(String(turn.task_id))
+      .filter((e) => e.kind === 'assistant_message' && e.turnId === turn.id);
+    expect(assistants).toHaveLength(1);
+    expect(JSON.parse(String(assistants[0].payload)))
+      .toMatchObject({ text: 'all 412 tests passed', responseKind: 'text' });
+  });
+});

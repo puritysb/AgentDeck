@@ -89,5 +89,127 @@
     ],
     "expected": null,
     "note": "length parity uses JavaScript UTF-16 code units"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification>\n<task-id>bg1</task-id>\n<status>completed</status>\n<summary>Background command \"pnpm test\" completed (exit code 0)</summary>\n</task-notification>", "response": "The test run passed; nothing to fix.", "toolCalls": 1, "endSource": "stop" },
+      { "prompt": "<task-notification>\n<task-id>bg2</task-id>\n<status>failed</status>\n<summary>Background command \"pnpm build\" failed with exit code 1</summary>\n</task-notification>", "response": "The build failed on a type error in the parser; I fixed it and the build passes again.", "toolCalls": 6, "filesModified": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "a task opened only by background-job notices has no request to grade, whatever work followed"
+  },
+  {
+    "turns": [
+      { "prompt": "run the test suite in the background and fix whatever fails", "response": "Started the suite in the background.", "toolCalls": 1, "endSource": "stop" },
+      { "prompt": "<task-notification>\n<task-id>bg2</task-id>\n<status>failed</status>\n<summary>Background command \"pnpm build\" failed with exit code 1</summary>\n</task-notification>", "response": "Fixed the failing parser test.", "toolCalls": 4, "filesModified": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a typed request beside notices keeps the task gradeable"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification>\n<task-id>bg1</task-id>\n<status>completed</status>\n<summary>Background command \"pnpm test\" completed (exit code 0)</summary>\n</task-notification>", "response": "Usage limit reached", "toolCalls": 2, "endSource": "aborted" }
+    ],
+    "expected": "notification_only",
+    "note": "the notice rule is checked before the abort rule"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification>\n<task-id>bg1</task-id>\n<status>completed</status>\n<summary>Background command \"pnpm test\" completed (exit code 0)</summary>\n</task-notification>", "response": "Noted.", "toolCalls": 0, "endSource": "stop" },
+      { "response": "Re-ran the suite; all green.", "toolCalls": 3, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a turn with no captured prompt is not a notice"
+  },
+  {
+    "turns": [
+      { "prompt": "<cross-session-message from=\"reviewer\">please re-run the release build and report back</cross-session-message>", "response": "Re-ran the release build; it passes.", "toolCalls": 3, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "another session's message is a request, so it stays gradeable"
+  },
+  {
+    "turns": [
+      { "prompt": "<agent-message from=\"worker\">which branch should the fix go on?</agent-message>", "response": "Put it on the release branch and open a PR against master.", "toolCalls": 0, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "only the background-job notice is declined; a teammate's message can carry a request"
+  },
+  {
+    "turns": [
+      { "prompt": "why did <task-notification> fire twice in the last session?", "response": "Two background jobs finished, so each one sent its own notice.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a prompt that quotes the tag further in is the user's own text"
+  },
+  {
+    "turns": [
+      { "prompt": "\n  <task-notification>\n<task-id>bg1</task-id>\n<status>completed</status>\n<summary>Background command \"pnpm test\" completed (exit code 0)</summary>\n</task-notification>", "response": "The test run passed.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "leading whitespace before the envelope is skipped"
+  },
+  {
+    "turns": [
+      { "prompt": "<TASK-NOTIFICATION id=\"bg3\">done</TASK-NOTIFICATION>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "the tag matches in either case and may carry attributes"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification ", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "whitespace after the tag name opens the envelope even at the end of the prompt"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a tag name with nothing after it is not the envelope"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notifications>bg4 done</task-notifications>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a longer tag name is not the envelope"
+  },
+  {
+    "turns": [
+      { "prompt": "<tas\u212A-notification>bg5 done</tas\u212A-notification>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "case folding is ASCII-only: the Kelvin sign U+212A is not a k"
+  },
+  {
+    "turns": [
+      { "prompt": "﻿<task-notification>\n<task-id>bg6</task-id>\n<status>completed</status>\n</task-notification>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "a leading BOM U+FEFF is JavaScript whitespace and is skipped"
+  },
+  {
+    "turns": [
+      { "prompt": "\u0085<task-notification>\n<task-id>bg7</task-id>\n<status>completed</status>\n</task-notification>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a leading NEL U+0085 is not JavaScript whitespace, so the prompt does not open with the envelope"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification﻿id=\"bg8\">done</task-notification>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": "notification_only",
+    "note": "a BOM U+FEFF after the tag name opens the envelope"
+  },
+  {
+    "turns": [
+      { "prompt": "<task-notification\u0085id=\"bg9\">done</task-notification>", "response": "Picked up the result.", "toolCalls": 1, "endSource": "stop" }
+    ],
+    "expected": null,
+    "note": "a NEL U+0085 after the tag name does not open the envelope"
   }
 ]

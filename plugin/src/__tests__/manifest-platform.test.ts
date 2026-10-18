@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 interface PluginManifest {
   Version: string;
+  Actions: Array<{ Name: string; States: Array<{ Name?: string }>; UUID: string }>;
   OS: Array<{ Platform: string; MinimumVersion: string }>;
   Profiles: Array<{
     Name: string;
@@ -52,5 +53,18 @@ describe('bundled profile selection contract', () => {
   it('does not programmatically switch profiles after connecting', () => {
     const pluginSource = readFileSync(new URL('../plugin.ts', import.meta.url), 'utf8');
     expect(pluginSource).not.toMatch(/profiles\.switchToProfile\s*\(/);
+  });
+});
+
+// docs/streamdeck-layout.md "Action names and icons": an action is named for
+// what it does, never after a provider. Provider names belong in its tooltip.
+describe('action naming contract', () => {
+  const VENDOR_NAMES = /\b(claude|anthropic|codex|openai|chatgpt|gpt|gemini|google|antigravity|kiro|z\.ai|glm|cursor|opencode|openclaw)\b/i;
+
+  it('names no action or action state after a provider', () => {
+    for (const action of manifest.Actions) {
+      expect(action.Name, action.UUID).not.toMatch(VENDOR_NAMES);
+      for (const state of action.States) expect(state.Name ?? '', action.UUID).not.toMatch(VENDOR_NAMES);
+    }
   });
 });

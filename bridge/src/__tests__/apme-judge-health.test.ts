@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ApmeStore } from '../apme/store.js';
 import { TASK_JUDGE_DRAIN_WINDOW_MS } from '../apme/runner.js';
 import { judgeCoverage, type ApmeJudgeHealthRow } from '@agentdeck/shared';
-import { coverageText, duration, judgeHealthWindowStart, localDay } from '../cli.js';
+import { captureRateText, coverageText, duration, judgeHealthWindowStart, localDay } from '../cli.js';
 
 const row = (o: Partial<ApmeJudgeHealthRow>): ApmeJudgeHealthRow =>
   ({ day: 'd', closed: 0, judged: 0, declined: 0, waiting: 0, agedOut: 0, ...o });
@@ -276,5 +276,95 @@ describe('judge-health presentation', () => {
     // can never shorten the window below what was asked for.
     expect(snapped).toBeLessThanOrEqual(now - 86_400_000);
     expect(localDay(snapped)).toBe('2026-09-06');
+  });
+});
+
+describe('ApmeStore.agentCoverage', () => {
+  let dir: string;
+  let store: ApmeStore;
+  const NOW = Date.now();
+  const HOUR = 3_600_000;
+  let turnSeq = 0;
+
+  beforeEach(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'ad-agent-coverage-'));
+    store = new ApmeStore(join(dir, 'apme.sqlite'));
+    expect(await store.init()).toBe(true);
+  });
+  afterEach(() => { store.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  const run = (id: string, agentType: string, startedAt = NOW - 2 * HOUR) =>
+    store.insertRun({ id, sessionId: `s-${id}`, agentType, startedAt } as never);
+  const turn = (runId: string, f: { endSource?: string; response?: string; modelId?: string; startedAt?: number }) => {
+    const id = `t${++turnSeq}`;
+    store.insertTurn({ id, runId, turnIndex: turnSeq, startedAt: f.startedAt ?? NOW - HOUR });
+    store.updateTurn(id, { endSource: f.endSource, response: f.response, modelId: f.modelId, endedAt: NOW - HOUR + 1 });
+  };
+  const task = (id: string, runId: string, endedAt: number, extra: Record<string, unknown> = {}) => {
+    store.insertTask({ id, runId, taskIndex: 0, boundarySignal: 'manual', startedAt: endedAt - 1000 });
+    store.updateTask(id, { endedAt, ...extra } as never);
+  };
+
+  it('rolls up capture and judge facts per agent', () => {
+    run('c1', 'claude-code');
+    turn('c1', { endSource: 'stop', response: 'answer', modelId: 'claude-opus-5-5' });
+    turn('c1', { endSource: 'stop', response: '  ', modelId: 'claude-opus-5-5' });   // blank is no reply
+    turn('c1', { endSource: 'synthetic_stop', response: 'recovered' });               // no model
+    turn('c1', { endSource: 'injected' });                                             // not finished
+    turn('c1', { endSource: 'next_prompt', response: 'late', modelId: 'claude-opus-5-5' }); // not finished
+    run('o1', 'opencode');
+    turn('o1', { endSource: 'stop', response: 'ok', modelId: 'unknown' });           // 'unknown' is no model
+    task('k-judged', 'c1', NOW - HOUR, { compositeScore: 0.9 });
+    task('k-noreply', 'c1', NOW - HOUR, { notesJson: JSON.stringify({ notGradeable: 'no_reply' }) });
+    task('k-trivial', 'o1', NOW - HOUR, { notesJson: JSON.stringify({ notGradeable: 'trivial' }) });
+    task('k-notice', 'c1', NOW - HOUR, { notesJson: JSON.stringify({ notGradeable: 'notification_only' }) });
+    task('k-waiting', 'o1', NOW - HOUR);
+
+    const rows = store.agentCoverage({ sinceMs: NOW - 86_400_000, agedCutoffMs: NOW - TASK_JUDGE_DRAIN_WINDOW_MS });
+    expect(rows.map((r) => r.agentType)).toEqual(['claude-code', 'opencode']);
+    expect(rows[0]).toMatchObject({
+      runs: 1, turns: 5, finishedTurns: 3, repliedTurns: 2, modelTurns: 2,
+      closedTasks: 3, judged: 1, declined: 2, waiting: 0, agedOut: 0,
+      declinedNoReply: 1, declinedAbortedOnly: 0, declinedTrivial: 0, declinedNotificationOnly: 1,
+    });
+    expect(rows[1]).toMatchObject({
+      runs: 1, turns: 1, finishedTurns: 1, repliedTurns: 1, modelTurns: 0,
+      closedTasks: 2, judged: 0, declined: 1, waiting: 1, declinedTrivial: 1,
+    });
+    // The per-agent split is the per-day one regrouped: same predicates, so
+    // the two commands can never disagree about a task.
+    const daily = store.judgeHealth({ sinceMs: NOW - 86_400_000, agedCutoffMs: NOW - TASK_JUDGE_DRAIN_WINDOW_MS });
+    const sum = (k: 'judged' | 'declined' | 'waiting' | 'agedOut') => daily.reduce((n, r) => n + r[k], 0);
+    expect(rows.reduce((n, r) => n + r.judged, 0)).toBe(sum('judged'));
+    expect(rows.reduce((n, r) => n + r.declined, 0)).toBe(sum('declined'));
+    expect(rows.reduce((n, r) => n + r.waiting, 0)).toBe(sum('waiting'));
+  });
+
+  it('a declined task whose verdict was retracted still counts under its reason', () => {
+    run('c1', 'claude-code');
+    task('k', 'c1', NOW - HOUR, { notesJson: JSON.stringify({ notGradeable: 'aborted_only', retractedAt: NOW }) });
+    const [r] = store.agentCoverage({ sinceMs: NOW - 86_400_000, agedCutoffMs: 0 });
+    expect(r).toMatchObject({ declined: 1, declinedAbortedOnly: 1 });
+  });
+
+  it('windows turns and runs on their start and tasks on their close', () => {
+    run('old', 'codex-cli', NOW - 10 * 86_400_000);
+    turn('old', { endSource: 'stop', startedAt: NOW - 10 * 86_400_000 });
+    turn('old', { endSource: 'stop', response: 'r', modelId: 'gpt-5' });
+    task('k-old', 'old', NOW - 9 * 86_400_000);
+    task('k-new', 'old', NOW - HOUR);
+
+    const [r] = store.agentCoverage({ sinceMs: NOW - 86_400_000, agedCutoffMs: NOW - TASK_JUDGE_DRAIN_WINDOW_MS });
+    // The run predates the window, so it contributes a turn without being counted.
+    expect(r).toMatchObject({ agentType: 'codex-cli', runs: 0, turns: 1, finishedTurns: 1, closedTasks: 1 });
+  });
+});
+
+describe('captureRateText', () => {
+  it('rounds DOWN, like coverage — a loss instrument never rounds toward perfect', () => {
+    expect(captureRateText(469, 471)).toBe('99% of 471');
+    expect(captureRateText(471, 471)).toBe('100% of 471');
+    expect(captureRateText(0, 39)).toBe('0% of 39');
+    expect(captureRateText(0, 0)).toBe('—');
   });
 });

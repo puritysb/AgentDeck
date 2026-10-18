@@ -35,6 +35,25 @@ export function loadIDotMatrixDevices(): IDotMatrixDevice[] {
   return Array.isArray(settings.idotmatrixDevices) ? settings.idotmatrixDevices : [];
 }
 
+/**
+ * The configured devices, or `null` when settings.json exists but cannot be
+ * read or parsed. `loadIDotMatrixDevices` folds that case into "none
+ * configured", which is fine for a one-off read; a caller that acts on absence
+ * must not, because settings.json is rewritten in place and a read can land
+ * mid-write.
+ */
+export function readIDotMatrixDevicesStrict(settingsPath = SETTINGS_PATH): IDotMatrixDevice[] | null {
+  try {
+    if (!existsSync(settingsPath)) return [];
+    const settings: unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    if (typeof settings !== 'object' || settings === null) return null;
+    const devices = (settings as Record<string, unknown>).idotmatrixDevices;
+    return Array.isArray(devices) ? devices : [];
+  } catch {
+    return null;
+  }
+}
+
 export function saveIDotMatrixDevices(devices: IDotMatrixDevice[]): void {
   const settings = readSettings();
   settings.idotmatrixDevices = devices;

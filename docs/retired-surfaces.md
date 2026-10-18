@@ -82,9 +82,9 @@ encoder handles LCD touch today.**
 ### iTerm session manager dial (E3)
 
 E3 once managed iTerm sessions. **Residue:** the action UUID is still
-`iterm-dial`, because UUIDs are immutable after distribution — E3 is now the
-Codex usage gauge. The same applies to `utility-dial` (now Volume) and
-`option-dial` (now Claude Usage). The mapping is in
+`iterm-dial`, because UUIDs are immutable after distribution — E3 is now
+Usage Dial 2, a plan usage gauge that starts on Codex. The same applies to
+`utility-dial` (now Volume) and `option-dial` (now Usage Dial). The mapping is in
 [Stream Deck+ Layout](streamdeck-layout.md).
 
 ### Encoder takeover wide canvas

@@ -281,6 +281,21 @@ export type ResponseKind = 'text' | 'tool_only' | 'empty';
  *                       displaced row is an artifact of counting turns per
  *                       `UserPromptSubmit`; the evidence is that the transcript
  *                       holds no assistant record at all since the turn opened.
+ *   - `injected`        a message Claude Code queued for the session — a
+ *                       background task's `<task-notification>`, a subagent's
+ *                       `<agent-message>`, another session's
+ *                       `<cross-session-message>` — was delivered while this
+ *                       turn was still RUNNING. Claude Code fires
+ *                       `UserPromptSubmit` for it mid-turn, so the turn is
+ *                       displaced without having ended: no Stop was owed at
+ *                       that moment, and the one Stop that follows closes the
+ *                       turn the message opened. Measured 2026-10-18 over 30
+ *                       days on one store: 517 of 587 Claude `next_prompt`
+ *                       closes were displaced this way, and Claude's Stop loss
+ *                       read 35% where 8% of adjudicable turns lost their Stop.
+ *                       The evidence is the incoming prompt's envelope plus a
+ *                       transcript holding assistant work but no `end_turn`
+ *                       since the turn opened.
  *   - `session_end`     the session ended while the turn was open (an
  *                       abandoned turn).
  *   - `run_close`       the abandoned-run reaper closed the run out from under
@@ -301,6 +316,7 @@ export type TurnEndSource =
   | 'interrupted'
   | 'aborted'
   | 'superseded'
+  | 'injected'
   | 'session_end'
   | 'run_close'
   | 'clear';
@@ -320,6 +336,10 @@ export interface ApmeStopDeliveryRow {
   aborted: number;
   /** Prompts folded into the following turn before they ran. No Stop owed. */
   superseded: number;
+  /** Turns displaced mid-run by a queued harness message (a task
+   *  notification, an agent or cross-session message). The turn had not
+   *  ended, so no Stop was owed — beside the loss buckets, never inside them. */
+  injected: number;
   /** `session_end` + `clear`: the turn was open when the user ended or reset
    *  the session. No longer includes `run_close`, which is a different fact. */
   sessionEnd: number;
@@ -367,10 +387,52 @@ export interface ApmeJudgeHealthRow {
  *  denominator IS the instrument. Declined tasks are excluded because refusing
  *  to grade an empty task is the judge working correctly, not a miss; waiting
  *  and aged-out rows stay in, because both are work that should have been
- *  graded and is not. */
-export function judgeCoverage(row: ApmeJudgeHealthRow): { adjudicable: number; ratio: number | null } {
+ *  graded and is not. The per-day and per-agent rollups both pass through
+ *  here, so the two commands cannot disagree about what "covered" means. */
+export function judgeCoverage(
+  row: Pick<ApmeJudgeHealthRow, 'judged' | 'waiting' | 'agedOut'>,
+): { adjudicable: number; ratio: number | null } {
   const adjudicable = row.judged + row.waiting + row.agedOut;
   return { adjudicable, ratio: adjudicable > 0 ? row.judged / adjudicable : null };
+}
+
+/** Per-agent coverage rollup over a window (`ApmeStore.agentCoverage`).
+ *
+ *  `judge-health` answers "did each day's work get a verdict" for the store as
+ *  a whole; this answers the same question per AGENT, together with the two
+ *  capture facts a verdict rests on — whether a finished turn kept the agent's
+ *  reply, and whether a turn knows which model served it. A per-day total
+ *  hides an agent whose work never reaches the judge at all: on 2026-10-18 one
+ *  store's Kiro tasks were all declined as trivial, no OpenCode or Kiro turn
+ *  carried a model, and finished Claude turns that started from a
+ *  `<task-notification>` held a reply 60% of the time against 89% for a typed
+ *  prompt. */
+export interface ApmeAgentCoverageRow {
+  agentType: string;
+  /** Runs started in the window. */
+  runs: number;
+  /** Turns started in the window. */
+  turns: number;
+  /** Turns closed by a Stop the agent sent or one recovered from its own
+   *  record (`stop` + `synthetic_stop`) — the turns that finished and so owe
+   *  a reply. The denominator of the reply rate. */
+  finishedTurns: number;
+  /** Of `finishedTurns`, those holding a non-empty reply. */
+  repliedTurns: number;
+  /** Of `finishedTurns`, those carrying a model id — the scorecard ranks by
+   *  the turn's model, so a turn without one cannot be ranked. */
+  modelTurns: number;
+  /** Tasks closed in the window, split exactly as `ApmeJudgeHealthRow`. */
+  closedTasks: number;
+  judged: number;
+  declined: number;
+  waiting: number;
+  agedOut: number;
+  /** `declined`, by the reason `task-gradeability` stamped. */
+  declinedNoReply: number;
+  declinedAbortedOnly: number;
+  declinedTrivial: number;
+  declinedNotificationOnly: number;
 }
 
 /** The Stop-delivery rate a row actually supports.
@@ -379,10 +441,10 @@ export function judgeCoverage(row: ApmeJudgeHealthRow): { adjudicable: number; r
  *  the whole instrument and a second consumer restating it would quietly
  *  measure something else. Only turns whose Stop can be adjudicated are in the
  *  denominator: a real Stop, a recovered one, or a turn the next prompt
- *  displaced while it was genuinely running. Cancels, client aborts, superseded
- *  prompts, session ends, still-open turns and pre-column rows are not evidence
- *  either way — a turn for which Claude Code never owed a Stop cannot report a
- *  dropped one. */
+ *  displaced with nothing to say it had not ended. Cancels, client aborts,
+ *  superseded prompts, queued messages injected into a running turn, session
+ *  ends, still-open turns and pre-column rows are not evidence either way — a
+ *  turn for which Claude Code never owed a Stop cannot report a dropped one. */
 export function stopDeliveryLoss(row: ApmeStopDeliveryRow): { adjudicated: number; lost: number; ratio: number | null } {
   const adjudicated = row.stop + row.syntheticStop + row.nextPrompt;
   const lost = row.syntheticStop + row.nextPrompt;
