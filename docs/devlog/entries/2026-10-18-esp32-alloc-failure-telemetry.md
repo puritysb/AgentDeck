@@ -81,9 +81,12 @@ the measurement build:
   but three things differ from the runs above and none of them was measured.
 - **Where the internal RAM goes.** ips_35 boots with 238 KB of internal heap
   and has 35–41 KB left once its UI is up, before WiFi carries anything.
-  t_embed goes from 188 KB to 44 KB. These builds also keep every WiFi and lwIP
-  buffer in internal RAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` is off) and
-  reserve none of it (`CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0`).
+  t_embed goes from 188 KB to 44 KB. These builds keep the WiFi driver's
+  internal-only buffers in internal RAM and reserve none of it
+  (`CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=0`). lwIP allocates its buffers with
+  plain `malloc` (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` is off), which takes
+  internal RAM first for 4 KB or less and then spills to PSRAM. (This entry
+  first said every WiFi and lwIP buffer stays in internal RAM; lwIP's do not.)
 
 For anyone repeating this: opening these native-USB ports from pyserial resets
 the board (`USB_UART_CHIP_RESET`), and the daemon's open does not. The first
@@ -99,9 +102,10 @@ above report `2dac4169-dirty` for that reason alone: they are this branch
 merged with the mDNS fix (#565), which the test boards already carried.
 
 **Left open.**
-- A serial-attached board's `device_info` is a snapshot taken when its
-  connection is identified, and the daemon does not ask again. On those boards
-  the `[HeapFail]` line is the live signal.
+- A serial-attached board's `device_info` is only as fresh as the Node
+  daemon's once-a-minute re-request (`sendHeartbeat`), so on those boards the
+  `[HeapFail]` line is the live signal. (This entry first said the daemon
+  never asks again; it does.)
 - The Swift daemon surfaces none of the heap fields.
 - Whether to free or reserve internal RAM for WiFi before an OTA is the next
   decision, and the counter is how to judge it.

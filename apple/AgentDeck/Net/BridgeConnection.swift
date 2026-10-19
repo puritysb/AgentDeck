@@ -155,7 +155,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
             self.reconnectAttempt = savedAttempt
         }
 
-        print("[BridgeConnection] connecting to \(urlString)")
+        print("[BridgeConnection] connecting to \(PairingCredential.redacted(urlString))")
 
         let config = URLSessionConfiguration.default
         // timeoutIntervalForRequest applies per outstanding URLSession receive

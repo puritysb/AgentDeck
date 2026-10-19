@@ -668,7 +668,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     private func trySavedUrl() {
         guard !isTerminating else { return }
         if let url = selectedBridgeURL ?? savedUrl {
-            print("[Waterfall] trying saved URL: \(url)")
+            print("[Waterfall] trying saved URL: \(PairingCredential.redacted(url))")
             waterfallStage = .savedUrl
             connectTo(url: url)
 
@@ -747,7 +747,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             // A saved/manual endpoint can be reachable without advertising mDNS.
             // Other computers in the list must not suppress its direct attempt.
             if self.autoConnectPollCount == 8, let url = self.retryBridgeURL {
-                print("[AutoConnect] trying selected URL after discovery window: \(url)")
+                print("[AutoConnect] trying selected URL after discovery window: \(PairingCredential.redacted(url))")
                 timer.invalidate()
                 self.autoConnectTimer = nil
                 self.waterfallStage = .savedUrl

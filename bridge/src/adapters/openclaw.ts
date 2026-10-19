@@ -6,6 +6,7 @@ import { homedir } from 'os';
 import { createPublicKey, createPrivateKey, sign as cryptoSign, randomUUID } from 'crypto';
 import WebSocket from 'ws';
 import { debug, log, logError } from '../logger.js';
+import { localTrustOf, logLocalTrustRefusal } from '../auth.js';
 import { summarizeResponse } from '../timeline-summarizer.js';
 import { nextOpenClawSteeringKey, openClawMainSessionKeyFromHello, pickOpenClawSteeringKey } from '@agentdeck/shared';
 import { extractTopicHint, extractTopicHintWithKind, promptSnippetFallback, prepareMarkdownDetail } from '@agentdeck/shared';
@@ -317,6 +318,15 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
     // Create bare HTTP server for WsServer (plugin) attachment.
     this.httpServer = createServer((req, res) => {
+      // Loopback-bound and read-only, but a page whose host name re-resolves
+      // to 127.0.0.1 reads it same-origin; /diag is the session's history.
+      const verdict = localTrustOf(req);
+      if (verdict !== 'trusted') {
+        logLocalTrustRefusal('OpenClaw bridge', verdict, req);
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
       if (req.method === 'GET' && req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({

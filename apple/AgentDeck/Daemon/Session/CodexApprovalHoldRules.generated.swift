@@ -1,0 +1,119 @@
+// GENERATED FILE — DO NOT EDIT.
+// Source of truth: shared/src/codex-approval-hold.ts
+// Regenerate: pnpm generate-codex-approval-hold (drift gated by shared/src/__tests__/codex-approval-hold-sync.test.ts)
+#if os(macOS)
+import Foundation
+
+/// Codex device approvals — the opt-in `PermissionRequest` hold. What a hold
+/// request means, when one is held, how long, what the hook prints and which
+/// events end it; the open hold itself is an `ObservedSteering` gate of kind
+/// `.codexApproval`. Codex waits for the hook before drawing its prompt, so a
+/// held request is a prompt the terminal would have drawn anyway, and the
+/// person at the terminal sees "Running hook" until it is released. Behaviour
+/// is pinned by `shared/codex-approval-hold-vectors.json`
+/// (`CodexApprovalHoldTests`).
+enum CodexApprovalHoldRules {
+    /// Lower-case: `HTTPServer` request header keys.
+    static let header = "x-agentdeck-hold"
+    static let denyMessage = "Denied from the user's AgentDeck controller."
+    /// Release this long before the command's own curl budget runs out.
+    static let holdMarginMs = 3000
+    /// Shorter than this, a hold is a stall that no one can answer in time.
+    static let holdMinMs = 5000
+    /// The end of the turn a hold waits in releases it early (`ended`).
+    static let releasingEvents: Set<String> = [
+        "codex_stop",
+        "codex_session_end",
+        "codex_turn_complete",
+        "codex_interrupt",
+        "codex_user_prompt_submit",
+    ]
+
+    /// What the hold handler prints for an outcome. Empty prints nothing,
+    /// which Codex reads as no decision: its own prompt appears as if the hook
+    /// were absent. Deny carries a message because Codex hands it to the model.
+    static func decisionBody(_ outcome: String) -> String {
+        let decision: [String: Any]
+        switch outcome {
+        case "allow": decision = ["behavior": "allow"]
+        case "deny": decision = ["behavior": "deny", "message": denyMessage]
+        default: return ""
+        }
+        let body: [String: Any] = [
+            "hookSpecificOutput": ["hookEventName": "PermissionRequest", "decision": decision],
+        ]
+        guard JSONSerialization.isValidJSONObject(body),
+              let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else {
+            return ""
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// How long to hold a request whose command waits `header` seconds, given
+    /// the daemon's configured hold. nil = do not hold: a header this daemon
+    /// cannot read is not a budget it may spend.
+    static func holdMilliseconds(header: String?, defaultMs: Int) -> Int? {
+        guard let header else { return nil }
+        let value = header.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...4).contains(value.utf8.count),
+              value.utf8.allSatisfy({ $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }),
+              let seconds = Int(value) else { return nil }
+        let holdMs = min(defaultMs, seconds * 1000 - holdMarginMs)
+        return holdMs >= holdMinMs ? holdMs : nil
+    }
+
+    /// A deck's Allow / Deny keys answer a held approval with an option press
+    /// on the session, not with `permission_decision`. Allow first.
+    static let allowIndex = 0
+    static let denyIndex = 1
+    /// `respond` carries the option's shortcut.
+    static let allowWords: Set<String> = ["y", "yes"]
+    static let denyWords: Set<String> = ["n", "no"]
+
+    /// The decision an option press makes on a held approval. nil = not an
+    /// Allow or a Deny, and nothing is resolved.
+    static func pressDecision(type: String, index: Int?, value: String?) -> String? {
+        switch type {
+        case "select_option":
+            if index == allowIndex { return "allow" }
+            if index == denyIndex { return "deny" }
+            return nil
+        case "respond":
+            guard let value else { return nil }
+            let word = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if allowWords.contains(word) { return "allow" }
+            if denyWords.contains(word) { return "deny" }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    struct Eligibility: Equatable {
+        /// `AGENTDECK_OBSERVED_APPROVAL` kill switch, shared with Claude's hold.
+        var enabled: Bool
+        var clientCount: Int
+        var sessionId: String
+        /// A Codex background thread (ambient suggestions, memory consolidation).
+        var background: Bool
+        /// A headless `codex exec` folded under the session that launched it.
+        var execChild: Bool
+        /// A row shows the session; otherwise no device can show the prompt.
+        var visible: Bool
+        var alreadyHeld: Bool
+    }
+
+    static func decision(_ e: Eligibility) -> (hold: Bool, reason: String) {
+        if !e.enabled { return (false, "disabled") }
+        if e.sessionId.isEmpty { return (false, "no-session") }
+        if e.background { return (false, "background-thread") }
+        if e.execChild { return (false, "exec-child") }
+        if e.clientCount <= 0 { return (false, "no-client") }
+        if !e.visible { return (false, "not-visible") }
+        // One per session: a second approval (a parallel call) passes straight
+        // to its terminal prompt.
+        if e.alreadyHeld { return (false, "already-held") }
+        return (true, "device-approval")
+    }
+}
+#endif

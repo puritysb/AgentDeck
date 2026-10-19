@@ -401,10 +401,10 @@ async function selectRun(id){
     const tm=startedAt?new Date(startedAt).toLocaleString():'—';
 
     let h='<div class="detail-header">';
-    h+='<h2>'+agentType+' / '+modelId+' / '+projectName+'</h2>';
+    h+='<h2>'+esc(agentType)+' / '+esc(modelId)+' / '+esc(projectName)+'</h2>';
     h+='<div class="meta-row">';
     h+='<span>🕐 '+tm+(dur?' · '+fd(dur):'')+'</span>';
-    if(taskCategory)h+='<span><span class="badge-cat">'+taskCategory+'</span></span>';
+    if(taskCategory)h+='<span><span class="badge-cat">'+esc(taskCategory)+'</span></span>';
     h+='<span style="font-family:monospace;font-size:11px;color:var(--dim);cursor:pointer" onclick="navigator.clipboard.writeText(\\''+run.id+'\\');this.textContent=\\'copied!\\';;setTimeout(()=>this.textContent=\\''+run.id.slice(0,12)+'\\',1000)" title="Click to copy full ID">'+run.id.slice(0,12)+'</span>';
     if(sessionId)h+='<button class="session-link" data-session="'+esc(sessionId)+'" data-project="'+esc(projectName==='—'?'':projectName)+'" data-agent="'+esc(agentType)+'" onclick="openWorkSessionFrom(this,event)" title="Open every task collected from this native session">View session work</button>';
     h+='</div></div>';
@@ -437,13 +437,13 @@ async function selectRun(id){
       h+='<div class="section"><div class="section-head"><span>Composite Score</span><span class="section-score" style="color:'+barColor(pct)+'">'+pct+'%</span></div>';
       h+='<div class="composite-bar"><div class="composite-fill" style="width:'+pct+'%;background:'+barColor(pct)+'"></div></div>';
       const je=evals.find(e=>e.metric==='overall'&&e.layer==='llm_judge');
-      h+='<div class="weight-line">outcome('+(outcome||'—')+')×0.4 + judge('+(je?Math.round(je.score*100)+'%':'—')+')×0.3 + efficiency×0.2 + vibe('+(vibe?.verdict||'—')+')×0.1</div>';
+      h+='<div class="weight-line">outcome('+esc(outcome||'—')+')×0.4 + judge('+(je?Math.round(je.score*100)+'%':'—')+')×0.3 + efficiency×0.2 + vibe('+esc(vibe?.verdict||'—')+')×0.1</div>';
       h+='</div>';
     }
 
     // Outcome
     if(outcome){
-      h+='<div class="section"><div class="section-head"><span>Outcome</span><span style="font-size:11px;color:var(--dim)">'+outcomeConf.toUpperCase()+'</span></div>';
+      h+='<div class="section"><div class="section-head"><span>Outcome</span><span style="font-size:11px;color:var(--dim)">'+esc(String(outcomeConf).toUpperCase())+'</span></div>';
       h+=fo(outcome)+'</div>';
     }
 
@@ -474,7 +474,7 @@ async function selectRun(id){
       h+='<div class="metric-grid">';
       for(const e of jEvals.filter(e=>e.metric!=='overall')){
         const p=Math.round(e.score*100);
-        h+='<div class="metric-card"><div class="val" style="color:'+barColor(p)+'">'+p+'%</div><div class="lbl">'+e.metric.replace(/_/g,' ')+'</div></div>';
+        h+='<div class="metric-card"><div class="val" style="color:'+barColor(p)+'">'+p+'%</div><div class="lbl">'+esc(e.metric.replace(/_/g,' '))+'</div></div>';
       }
       h+='</div>';
       if(ov?.raw){try{
@@ -504,8 +504,8 @@ async function selectRun(id){
       for(const e of dEvals){
         const icon=e.score===1?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--red)">✗</span>';
         let info='';
-        if(e.raw){try{const r=JSON.parse(e.raw);info=' <span style="color:var(--dim);font-size:11px">('+r.command+', '+(r.durationMs?Math.round(r.durationMs/1000)+'s':'')+')</span>'}catch{}}
-        h+='<div style="padding:4px 0">'+icon+' '+e.metric+info+'</div>';
+        if(e.raw){try{const r=JSON.parse(e.raw);info=' <span style="color:var(--dim);font-size:11px">('+esc(r.command)+', '+(r.durationMs?Math.round(r.durationMs/1000)+'s':'')+')</span>'}catch{}}
+        h+='<div style="padding:4px 0">'+icon+' '+esc(e.metric)+info+'</div>';
       }
       h+='</div>';
     }else if(layer1Skipped){
@@ -534,12 +534,12 @@ async function selectRun(id){
         h+='<div class="turn-card">';
         h+='<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
         h+='<span class="turn-idx">Task '+(idx+1)+'</span>';
-        h+='<span style="font-size:11px;color:var(--dim)">'+sigLabel+(turnSpan?' · '+turnSpan:'')+' · '+dur+'</span>';
+        h+='<span style="font-size:11px;color:var(--dim)">'+esc(sigLabel)+(turnSpan?' · '+turnSpan:'')+' · '+dur+'</span>';
         if(cscore!=null)h+=fs(cscore);else h+='<span style="font-size:11px;color:var(--dim)">…</span>';
         h+='</div>';
         const ocGlyph=oc==='success'?'✓':oc==='partial'?'△':oc==='fail'?'✗':oc==='abandoned'?'⊘':'';
         const ocColor=oc==='success'?'var(--green)':oc==='fail'?'var(--red)':oc==='partial'?'var(--orange)':oc==='abandoned'?'var(--dim)':'var(--dim)';
-        if(cat||oc)h+='<div style="margin-top:4px">'+(cat?'<span class="badge-cat">'+cat+'</span>':'')+(oc?' <span style="font-size:11px;color:'+ocColor+';margin-left:6px">'+ocGlyph+' '+oc+'</span>':'')+'</div>';
+        if(cat||oc)h+='<div style="margin-top:4px">'+(cat?'<span class="badge-cat">'+esc(cat)+'</span>':'')+(oc?' <span style="font-size:11px;color:'+ocColor+';margin-left:6px">'+ocGlyph+' '+esc(oc)+'</span>':'')+'</div>';
         if(summary)h+='<div style="color:var(--muted);font-size:12px;margin:6px 0 0;padding:6px 8px;background:var(--bg);border-radius:4px;border-left:2px solid var(--accent)">'+esc(summary.slice(0,500))+'</div>';
         h+='</div>';
       }
@@ -579,11 +579,11 @@ async function selectRun(id){
     h+='<button class="vibe-btn vibe-approve" onclick="submitVibe(\\''+run.id+'\\',\\'approve\\')">👍 Approve</button>';
     h+='<button class="vibe-btn vibe-reject" onclick="submitVibe(\\''+run.id+'\\',\\'reject\\')">👎 Reject</button>';
     h+='<button class="vibe-btn" style="background:var(--surface);color:var(--muted);border:1px solid var(--border);margin-left:auto" onclick="copyRunReport(\\''+run.id+'\\')">📋 Copy Report</button>';
-    if(vibe)h+='<span class="vibe-current">'+vibe.verdict+(vibe.note?' — '+esc(vibe.note):'')+'</span>';
+    if(vibe)h+='<span class="vibe-current">'+esc(vibe.verdict)+(vibe.note?' — '+esc(vibe.note):'')+'</span>';
     h+='</div>';
 
     el.innerHTML=h;
-  }catch(e){el.innerHTML='<div class="detail-empty">Error: '+e.message+'</div>'}
+  }catch(e){el.innerHTML='<div class="detail-empty">Error: '+esc(e.message)+'</div>'}
 }
 
 function copyRunReport(rid){
@@ -882,18 +882,18 @@ async function loadScorecard(){
   try{const r=await fetch(api('/apme/scorecard'));const d=await r.json();const c=d.scorecards||[];
   if(!c.length){document.getElementById('scorecard-content').innerHTML='<div class="empty">No scorecard data yet</div>';return}
   let h='<table><thead><tr><th>Model</th><th>Agent</th><th>Runs</th><th>Score</th><th>Tests</th><th>Cost</th><th>$/Quality</th></tr></thead><tbody>';
-  for(const s of c)h+='<tr><td>'+s.modelId+'</td><td>'+s.agentType+'</td><td>'+s.runs+'</td><td>'+fs(s.avgOverall)+'</td><td>'+fs(s.avgTestsPass)+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td><td>'+(s.costPerQuality!=null?'$'+s.costPerQuality.toFixed(2):'—')+'</td></tr>';
+  for(const s of c)h+='<tr><td>'+esc(s.modelId)+'</td><td>'+esc(s.agentType)+'</td><td>'+s.runs+'</td><td>'+fs(s.avgOverall)+'</td><td>'+fs(s.avgTestsPass)+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td><td>'+(s.costPerQuality!=null?'$'+s.costPerQuality.toFixed(2):'—')+'</td></tr>';
   h+='</tbody></table>';document.getElementById('scorecard-content').innerHTML=h;
-  }catch(e){document.getElementById('scorecard-content').innerHTML='<div class="empty">Error: '+e.message+'</div>'}
+  }catch(e){document.getElementById('scorecard-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
 }
 
 async function loadCategories(){
   try{const r=await fetch(api('/apme/categories'));const d=await r.json();const c=d.categories||[];
   if(!c.length){document.getElementById('categories-content').innerHTML='<div class="empty">No category data yet</div>';return}
   let h='<table><thead><tr><th>Category</th><th>Model</th><th>Runs</th><th>Score</th><th>Tests</th><th>Cost</th></tr></thead><tbody>';
-  for(const s of c)h+='<tr><td><span class="badge-cat">'+s.taskCategory+'</span></td><td>'+s.modelId+'</td><td>'+s.runs+'</td><td>'+fs(s.avgOverall)+'</td><td>'+fs(s.avgTestsPass)+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td></tr>';
+  for(const s of c)h+='<tr><td><span class="badge-cat">'+esc(s.taskCategory)+'</span></td><td>'+esc(s.modelId)+'</td><td>'+s.runs+'</td><td>'+fs(s.avgOverall)+'</td><td>'+fs(s.avgTestsPass)+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td></tr>';
   h+='</tbody></table>';document.getElementById('categories-content').innerHTML=h;
-  }catch(e){document.getElementById('categories-content').innerHTML='<div class="empty">Error: '+e.message+'</div>'}
+  }catch(e){document.getElementById('categories-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
 }
 
 /**
@@ -928,7 +928,7 @@ async function loadRecommend(){
     }
     h+='</div>';
     el.innerHTML=h;
-  }catch(e){document.getElementById('recommend-content').innerHTML='<div class="empty">Error: '+e.message+'</div>'}
+  }catch(e){document.getElementById('recommend-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
 }
 
 /* ── Graph tab ──────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@
 #include "../audio/mic_capture.h"
 #include "protocol.h"
 #include "wifi_manager.h"
+#include "wifi_cred_id.generated.h"
 #include "ws_client.h"
 #include "serial_client.h"
 #include "../state/agent_state.h"
@@ -13,6 +14,7 @@
 #include "../util/utf8.h"
 #include "../util/memory.h"
 #include "../util/heap_telemetry.h"
+#include "../util/internal_reserve.h"
 #include "config.h"
 #include <ArduinoJson.h>
 #include <cmath>
@@ -999,10 +1001,13 @@ static void handleWifiProvision(JsonObject& obj) {
     const char* bridgeIp = obj["bridgeIp"] | "";
     uint16_t bridgePort = obj["bridgePort"] | BRIDGE_DEFAULT_PORT;
     const char* authToken = obj["authToken"] | "";
+    // Which credentials these are, recorded beside them for device_info. A
+    // provision without one (an older daemon) clears the record.
+    const char* credId = obj["credId"] | "";
 
     if (ssid[0] == '\0' || password[0] == '\0') {
         Serial.println("[Provision] Missing SSID or password");
-        Serial.println("{\"type\":\"wifi_provision_ack\",\"success\":false,\"error\":\"missing credentials\"}");
+        Serial.println("{\"type\":\"wifi_provision_ack\",\"success\":false,\"joined\":false,\"error\":\"missing credentials\"}");
         return;
     }
 
@@ -1027,6 +1032,11 @@ static void handleWifiProvision(JsonObject& obj) {
     Net::wifiSaveAuthToken(authToken);
 
     bool ok = false;
+    // Whether this provision joined the network, as opposed to saving the
+    // credentials for when USB goes away: the ack says which, so a daemon
+    // never reports a board as connected that only stored them.
+    bool joined = false;
+    const char* failure = "connection failed";
 #if defined(BOARD_T_DISPLAY_PRO) || defined(AGENTDECK_DEFER_BOOT_WIFI_JOIN) || \
     (defined(BOARD_IPS10) && !defined(BOARD_HAS_VOICE_CAPTURE))
     if (Net::serialConnected()) {
@@ -1037,13 +1047,16 @@ static void handleWifiProvision(JsonObject& obj) {
         // on the e-ink panels a join here was the radio that never parked
         // again (net/radio_park_policy.h).
         // WiFi comes up from the serial-death path when USB actually goes away.
-        Net::wifiSaveProvisionedCredentials(ssid, password);
+        ok = Net::wifiSaveProvisionedCredentials(ssid, password, credId);
+        if (!ok) failure = "credentials not saved";
         Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
-        ok = true;
     } else
 #endif
     {
-        ok = Net::wifiConnectWith(ssid, password);
+        bool refused = false;
+        ok = Net::wifiConnectWith(ssid, password, credId, &refused);
+        joined = ok;
+        if (refused) failure = "credentials not saved";
     }
     if (ok) {
         // A voice-capable IPS10 is deliberately dual-home: its 115200-baud
@@ -1069,10 +1082,13 @@ static void handleWifiProvision(JsonObject& obj) {
     JsonDocument resp;
     resp["type"] = "wifi_provision_ack";
     resp["success"] = ok;
-    if (ok) {
+    resp["joined"] = joined;
+    if (joined) {
+        // Only from this join: the address buffer outlives the connection it
+        // was set by, so a save-only ack would carry an earlier join's.
         resp["ip"] = Net::wifiLocalIP();
-    } else {
-        resp["error"] = "connection failed";
+    } else if (!ok) {
+        resp["error"] = failure;
     }
     char buf[256];
     serializeJson(resp, buf, sizeof(buf));
@@ -1315,6 +1331,7 @@ static void handleOtaEnd(JsonObject& obj) {
 
     sendOtaAck(otaId, "end", UINT32_MAX, otaRx.written, otaRx.written);
     resetOtaRx();
+    InternalReserve::logState("ota-end");
     delay(250);
     ESP.restart();
 }
@@ -1379,6 +1396,13 @@ static void sendDeviceInfo() {
     resp["wifiConfigured"] = Net::wifiConfigured();
     resp["wifiConnected"] = Net::wifiConnected();
     resp["wifiRadioParked"] = Net::wifiRadioParked();
+    // Which provision the stored credentials came from ("" = none): lets the
+    // daemon leave a parked board that already holds its credentials alone.
+    // Always present — absent means firmware that predates it — and on the
+    // serial copy only (see the tail).
+    char credId[WifiCredId::HEX_LENGTH + 1];
+    Net::wifiLoadCredId(credId, sizeof(credId));
+    resp["wifiCredId"] = credId;
     resp["uptimeSec"] = millis() / 1000;
     {
         esp_reset_reason_t resetReason = esp_reset_reason();
@@ -1389,12 +1413,14 @@ static void sendDeviceInfo() {
     // DeviceInfoMessage): ESP-Hosted kills the board with an assert when an
     // internal allocation fails, so the low-watermark across successive
     // device_info frames is the leak-vs-burst discriminator.
-    resp["freeHeapKb"] = (uint32_t)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
-    resp["minFreeHeapKb"] = (uint32_t)(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    // The internal reserve (util/internal_reserve.h) is left out of all three,
+    // so they mean what they meant before it existed; it has fields of its own.
+    resp["freeHeapKb"] = InternalReserve::heapFreeBytes(MALLOC_CAP_INTERNAL) / 1024;
+    resp["minFreeHeapKb"] = InternalReserve::heapMinFreeBytes(MALLOC_CAP_INTERNAL) / 1024;
     // DMA-capable contiguous headroom — the number the hosted SDIO streaming
     // RX allocation actually needs (one buffer per coalesced burst).
-    resp["largestFreeBlockKb"] = (uint32_t)(
-        heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024);
+    resp["largestFreeBlockKb"] =
+        InternalReserve::heapLargestFreeBlock(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA) / 1024;
     // Whether an allocation actually failed (util/heap_telemetry.h): the
     // low-water mark above reads 0 on boards where every request still
     // succeeded in PSRAM. Size and caps say which request it was.
@@ -1404,6 +1430,18 @@ static void sendDeviceInfo() {
         if (failures > 0) {
             resp["allocFailLastBytes"] = HeapTelemetry::lastFailedBytes();
             resp["allocFailLastCaps"] = HeapTelemetry::lastFailedCaps();
+        }
+    }
+    // The internal pool malloc() cannot take (util/internal_reserve.h), on a
+    // board whose firmware asks for one. Absent: none asked for. 0: asked for
+    // and not carved (no PSRAM found at boot). Otherwise its size, what is free
+    // in it now, and its low-water mark since setup(): how far the allocations
+    // that must be internal have had to fall back on it.
+    if (InternalReserve::requestedBytes() > 0) {
+        resp["internalReserveKb"] = InternalReserve::capacityBytes() / 1024;
+        if (InternalReserve::capacityBytes() > 0) {
+            resp["internalReserveFreeKb"] = InternalReserve::freeBytes() / 1024;
+            resp["internalReserveMinKb"] = InternalReserve::minFreeBytes() / 1024;
         }
     }
     // Debug aid: what this board actually holds — lets a host-side probe
@@ -1563,6 +1601,7 @@ static void sendDeviceInfo() {
     }
     sendDeviceInfoFrame(resp, buf, sizeof(buf), true, false);
     if (Net::wsConnected()) {
+        resp.remove("wifiCredId");  // serial only, as below
         JsonArray caps = resp["capabilities"].as<JsonArray>();
         if (Audio::speakerAudible()) caps.add("audio_out");
         sendDeviceInfoFrame(resp, buf, sizeof(buf), false, true);
@@ -1570,7 +1609,14 @@ static void sendDeviceInfo() {
 #else
     // Both transports: serial for the USB-attached identify flow, WS so a
     // WiFi-only board (TRMNL 7.5") is registrable by the daemon without a cable.
-    sendDeviceInfoFrame(resp, buf, sizeof(buf), true, Net::wsConnected());
+    // The credential id stays on the serial copy: the WebSocket carries the
+    // pairing token in plaintext, and the two together are an offline test for
+    // WiFi password guesses. Only the serial copy decides provisioning.
+    sendDeviceInfoFrame(resp, buf, sizeof(buf), true, false);
+    if (Net::wsConnected()) {
+        resp.remove("wifiCredId");
+        sendDeviceInfoFrame(resp, buf, sizeof(buf), false, true);
+    }
 #endif
 }
 

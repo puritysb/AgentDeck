@@ -30,10 +30,12 @@ import { createServer, type Server, type ServerResponse } from 'http';
 import { createHash, randomUUID } from 'crypto';
 import WebSocket from 'ws';
 import { trackDaemonSockets } from './daemon-socket-drain.js';
-import { BridgeCore, buildCappedTimelineHistory, ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES } from './bridge-core.js';
+import { BridgeCore } from './bridge-core.js';
 import { buildDisplayStateEvent } from './display-dim.js';
 import { SERIAL_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import { prepareForSerial } from './esp32-serial.js';
+import { boardTimelineSeed } from './board-timeline-entry.js';
+import { wireSessionTimelineReplies } from './session-timeline-reply.js';
 import { deliverOrientation, OrientationRequestError, parseEsp32Layout } from './esp32-orientation.js';
 import { OpenClawAdapter } from './adapters/openclaw.js';
 import { BridgeLogStream } from './log-stream.js';
@@ -72,8 +74,12 @@ import {
 import { askEchoMatches, askGateDecision, askPressVerdict } from './ask-gate.js';
 import {
   registerPending, resolvePending, resolvePendingWithReason,
-  sweepStalePending, drainAllPending, isPendingRequest,
+  sweepStalePending, drainAllPending, isPendingRequest, passPending,
 } from './permission-resolver.js';
+import {
+  CODEX_APPROVAL_HOLD_HEADER, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
+} from '@agentdeck/shared';
+import { CodexApprovalHolds } from './codex-approval-hold.js';
 import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion, buildAskAnswerReason,
   consumeStop, requestStop, clearStop, STOP_DENY_REASON,
@@ -203,7 +209,7 @@ import { CLAUDE_STATUSLINE_ROUTE, parseClaudeStatusline } from '@agentdeck/share
 import { TASK_JUDGE_DRAIN_WINDOW_MS } from './apme/runner.js';
 import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
 import { AGENT_IDLE_GAP_MS, canonicalBoardId, resolveGatewayHealth } from '@agentdeck/shared';
-import { getOrCreateToken, isLocalConnection, validateToken } from './auth.js';
+import { getOrCreateToken, isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
   closePairingWindow,
@@ -232,7 +238,7 @@ import { CodexOtelTracker, CODEX_OTEL_TRACES_PATH, spanNameSummary } from './cod
 import { CodexHookReplayGuard } from './codex-hook-replay.js';
 import { HookCodexSessions, buildCodexPermissionQuestion } from './hook-codex-sessions.js';
 import { HubStateDriverTracker, resolveHubFrameIdentity, shapeHubFrame } from './hub-state-identity.js';
-import { CodexAmbientSessions } from './codex-ambient-hooks.js';
+import { CodexAmbientSessions, isCodexBackgroundCwd } from './codex-ambient-hooks.js';
 import { HermesSessions } from './hermes-sessions.js';
 import { ObservedTurnWatchdogs } from './observed-turn-watchdogs.js';
 import {
@@ -273,9 +279,11 @@ import {
   describeDaemonPosture,
   resolveDaemonPosture,
 } from './network-posture.js';
-import { esp32ConnectionCount, getESP32DeviceInfo, onESP32Message, sendAuthProvisionToAll, sendWifiProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, holdESP32SerialBoard, releaseESP32SerialHold, sanitizeRssiDbm } from './esp32-serial.js';
+import { describeWifiProvisionAck, esp32ConnectionCount, esp32SerialRunning, getESP32DeviceInfo, onESP32Message, parseWifiProvisionAck, provisionSerialBoards, sendAuthProvisionToAll, sendLegacyRearmProvision, sendWifiProvisionToAll, handleESP32Wake, getESP32Ports, getSerialConnectionStatus, getSerialLastError, getSerialReachableBoards, releaseESP32SerialPorts, holdESP32SerialBoard, releaseESP32SerialHold, sanitizeRssiDbm, wifiSetupBoards } from './esp32-serial.js';
+import { buildWifiProvision } from './esp32-wifi-cred.js';
+import { applyWifiSetup, parseWifiSetupBody, readWifiSetupBody, wifiSetupAuthorized, wifiSetupRefusal, wifiSetupStatus, type WifiSetupDeps } from './esp32-wifi-setup.js';
 import { clampLeaseSeconds, clearLease, readLease, writeLease } from './esp32-flash-lease.js';
-import { loadWifiConfig } from './wifi-config.js';
+import { loadWifiConfig, saveWifiConfig } from './wifi-config.js';
 import { getAdbDeviceCountCached, getCachedAdbDevices } from './adb-reverse.js';
 import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
@@ -380,6 +388,9 @@ interface WifiEsp32Device {
   allocFailures?: number;
   allocFailLastBytes?: number;
   allocFailLastCaps?: number;
+  internalReserveKb?: number;
+  internalReserveFreeKb?: number;
+  internalReserveMinKb?: number;
   otaSupported?: boolean;
   otaSlotCount?: number;
   otaSlotSize?: number;
@@ -819,6 +830,9 @@ function registerWifiEsp32(d: Record<string, unknown>, ws: WebSocket): void {
     allocFailures: typeof d.allocFailures === 'number' ? d.allocFailures : undefined,
     allocFailLastBytes: typeof d.allocFailLastBytes === 'number' ? d.allocFailLastBytes : undefined,
     allocFailLastCaps: typeof d.allocFailLastCaps === 'number' ? d.allocFailLastCaps : undefined,
+    internalReserveKb: typeof d.internalReserveKb === 'number' ? d.internalReserveKb : undefined,
+    internalReserveFreeKb: typeof d.internalReserveFreeKb === 'number' ? d.internalReserveFreeKb : undefined,
+    internalReserveMinKb: typeof d.internalReserveMinKb === 'number' ? d.internalReserveMinKb : undefined,
     otaSupported: typeof d.otaSupported === 'boolean' ? d.otaSupported : undefined,
     otaSlotCount: typeof d.otaSlotCount === 'number' ? d.otaSlotCount : undefined,
     otaSlotSize: typeof d.otaSlotSize === 'number' ? d.otaSlotSize : undefined,
@@ -1830,6 +1844,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
   const codexAmbientSessions = new CodexAmbientSessions();
   const codexHookReplay = new CodexHookReplayGuard();
+  // Open Codex device-approval holds — shared/src/codex-approval-hold.ts.
+  const codexApprovalHolds = new CodexApprovalHolds();
   const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
@@ -2078,22 +2094,41 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
   let relayUplink: RelayUplink | null = null;
 
+  // GET/POST /esp32/wifi. Resolved per request: the port is settled only once
+  // the bind succeeds, and the token can change under a running daemon.
+  const esp32WifiSetupDeps = (): WifiSetupDeps => ({
+    loadConfig: loadWifiConfig,
+    saveConfig: saveWifiConfig,
+    serialRunning: esp32SerialRunning,
+    boards: wifiSetupBoards,
+    provision: provisionSerialBoards,
+    authToken: getOrCreateToken,
+    bridgeIp: getLanIp,
+    bridgePort: port,
+  });
+
   const httpServer = createServer((req, res) => {
-    // LAN default-deny (issue #145): a request that is neither same-machine
-    // nor token-bearing reaches exactly one route — a minimal GET /health
-    // with no pairingToken, no module/device inventory, no session state.
+    // LAN default-deny (issue #145): a request that is neither from a local
+    // program nor token-bearing reaches exactly one route — a minimal GET
+    // /health with no pairingToken, no module/device inventory, no session
+    // state. A web page on this machine is not a local program here.
     // Everything else 401s here, before any route dispatch. The per-route
     // token checks further down remain as defense in depth.
     {
       const gatePathname = (() => {
         try { return new URL(req.url ?? '/', 'http://localhost').pathname; } catch { return '/'; }
       })();
+      const authorized = isAuthorizedHttpRequest(req);
       const decision = gateHttpRequest(
         req.method ?? 'GET',
         gatePathname,
-        isAuthorizedHttpRequest(req),
+        authorized,
         pairingWindowOpen(),
       );
+      if (!authorized && isLocalConnection(req.socket.remoteAddress ?? '')) {
+        const verdict = localTrustOf(req);
+        if (verdict !== 'trusted') logLocalTrustRefusal('HTTP', verdict, req);
+      }
       if (decision === 'public-health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(buildPublicHealth(port)));
@@ -2762,6 +2797,44 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       clearLease();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, wasSuspended: was !== null }));
+      return;
+    }
+    // ===== ESP32 WiFi credentials =====
+    // Loopback plus the token as a bearer, like /integrations/zai: the WiFi
+    // password never crosses the LAN. The macOS app's Wi-Fi sheet and
+    // `agentdeck wifi-setup` call this on whichever daemon holds the port; the
+    // Swift daemon answers in the same shape (esp32-wifi-setup.ts).
+    if (pathname === '/esp32/wifi' && (req.method === 'GET' || req.method === 'POST')) {
+      const respond = (result: { status: number; body: Record<string, unknown> }) => {
+        res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(result.body));
+      };
+      if (!wifiSetupAuthorized(req.socket.remoteAddress, req.headers.authorization, validateToken)) {
+        respond(wifiSetupRefusal());
+        return;
+      }
+      if (req.method === 'GET') {
+        respond(wifiSetupStatus(esp32WifiSetupDeps()));
+        return;
+      }
+      req.setTimeout(10_000, () => req.destroy());
+      readWifiSetupBody(req).then((bytes) => {
+        req.setTimeout(0);
+        const body = parseWifiSetupBody(bytes);
+        if (!body.ok) {
+          respond({ status: 400, body: { ok: false, error: 'invalid-body' } });
+          return;
+        }
+        const result = applyWifiSetup(body.value, esp32WifiSetupDeps());
+        if (result.status === 200) {
+          const boards = (result.body.boards as Array<{ sent: boolean }>);
+          log(`[agentdeck] ESP32 WiFi credentials updated; provision sent to ${boards.filter((b) => b.sent).length} of ${boards.length} serial board(s)`);
+        }
+        respond(result);
+      }).catch(() => {
+        // Dropped by the timeout or the drain bound: there is no one to answer.
+        if (!res.headersSent && !res.destroyed) respond({ status: 400, body: { ok: false, error: 'invalid-body' } });
+      });
       return;
     }
     if (req.method === 'GET' && pathname === '/esp32/serial/status') {
@@ -3469,6 +3542,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (Number.isInteger(headerPid) && headerPid > 1 && json.agentdeck_pid == null) {
           json.agentdeck_pid = headerPid;
         }
+        // Codex device approval (opt-in): the hold handler's twin of the
+        // notification, answered by the hold alone. The notification handler
+        // owns ingestion; this payload carries no tool_use_id the replay guard
+        // could pair, so ingesting it would record every approval twice.
+        const holdHeader = req.headers[CODEX_APPROVAL_HOLD_HEADER];
+        if (eventName === 'codex_permission_request' && holdHeader !== undefined) {
+          holdCodexApproval(json, Array.isArray(holdHeader) ? holdHeader[0] : holdHeader, res);
+          return;
+        }
         // Harness identity comes from the payload, not the endpoint (#490): a
         // Codex payload under an unprefixed name (`/hooks/Stop`) is the
         // `codex_*` event it is, and one Codex event instance delivered by two
@@ -3641,7 +3723,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // an approval runs the tool (tool_start/tool_end), a denial or
           // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
           const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
-          if (codexSid) {
+          const heldRequestId = codexSid ? codexApprovalHolds.requestIdFor(codexSid) : undefined;
+          if (codexSid && heldRequestId) {
+            // A held device approval owns the prompt until it is released: a
+            // parallel call's notification or tool hooks must not swap the
+            // question under its button. Only the end of the turn it waits
+            // in releases it early (the hook is likely gone with the turn).
+            if (codexHoldReleasedBy(eventName)) {
+              codexApprovalHolds.end(codexSid);
+              passPending(heldRequestId);
+            }
+          } else if (codexSid) {
             if (eventName === 'codex_permission_request') {
               // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
               // a Codex rollout may be appended while the approval waits, and
@@ -4087,9 +4179,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           // tags `response_kind` tool_only/empty so the runner skips judging.
           if (apme) {
             // Which turn the reply belongs to is the COLLECTOR's question, not
-            // `turnOpen`'s: the timeline drops `<task-notification>` prompts and
-            // a long turn's prompt scrolls out of the 24 rows read above, so it
-            // reads either turn as closed (see `recordStopReply`).
+            // `turnOpen`'s: the timeline drops `<task-notification>` prompts, so
+            // it reads a turn one of them opened as closed (see
+            // `recordStopReply`).
             apme.collector.recordStopReply(hookSid, responseText);
             // Close the APME turn on the Stop that ended it, tagged with which
             // Stop that was. Runs AFTER the response capture above (the
@@ -4937,6 +5029,36 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
   });
 
+  // The reply to a `query_session_timeline`, for a WebSocket client (the raw
+  // handler below) and a board on USB alike; registered before the serial
+  // module can open a port. Tool rows go only to a surface that opted in.
+  const sessionTimelineReply = wireSessionTimelineReplies({
+    resolveSessionId: resolveDeviceSessionId,
+    entriesFor: (sessionId, sinceMs, toolEvents) => {
+      let entries = core.bridgeTimeline.getHistoryForSession(sessionId, sinceMs, undefined, { toolEvents });
+      // Passively-observed sessions never push timeline rows (the relay only
+      // covers managed + hook sessions), so the store comes back empty for
+      // them. Reconstruct a recent-activity timeline from their transcript so
+      // the device's Detail view isn't stuck on "No recent activity yet".
+      if (entries.length === 0) {
+        try {
+          entries = transcriptTimelineForSession(sessionId, { since: sinceMs });
+        } catch { /* read-only best effort */ }
+      }
+      // Kiro keeps its transcript in its OWN store, so the Claude reader
+      // above can never find one — and no `kiro_*` hook has ever reached
+      // this daemon (v2 has no global hook surface at all), so the timeline
+      // store is empty for it too. Without this branch an observed Kiro
+      // session's Detail view is empty whatever it does.
+      if (entries.length === 0 && sessionId.startsWith('observed:kiro')) {
+        try {
+          entries = kiroTimelineForSession(sessionId, { since: sinceMs });
+        } catch { /* read-only best effort */ }
+      }
+      return entries;
+    },
+  });
+
   // mDNS + device modules
   const deviceModules = createDefaultModules('daemon' as any);
   // AGENTDECK_DAEMON_NO_SERIAL=1 leaves the daemon fully functional over WiFi
@@ -5037,8 +5159,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // ticker shows the real latest event instead of whatever its ring last
       // held. Kept to 6 entries — the whole line must stay well under the
       // small (4KB) serial RX buffers on non-TRMNL 7.5" boards; prepareForSerial
-      // byte-caps each entry's raw/detail at send time.
-      const recent = core.bridgeTimeline.getHistory().slice(-6);
+      // byte-caps each entry's raw/detail at send time. Claude's tool rows are
+      // left out before the six are counted, since boards never receive them.
+      const recent = boardTimelineSeed(core.bridgeTimeline.getHistory(), 6);
       if (recent.length > 0) {
         events.push({ type: 'timeline_history', entries: recent } as BridgeEvent);
       }
@@ -5103,8 +5226,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // ONE serial message handler. `onESP32Message` REPLACES rather than adds,
     // so a second registration silently unhooks the first — which is why the
     // credential re-arm below shares this callback with WiFi auto-provisioning
-    // instead of registering beside it.
-    const wifiConfig = loadWifiConfig();
+    // instead of registering beside it. The WiFi config is read on each
+    // device_info rather than once here, so credentials saved after startup
+    // (POST /esp32/wifi, `agentdeck wifi-setup`, a hand edit) apply without a
+    // restart.
     const lanIp = getLanIp();
     // Boards flashed before `auth_provision` existed cannot be re-armed by it —
     // they drop the unknown type silently, and the daemon has no way to tell
@@ -5112,7 +5237,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // that stays quiet falls back to the one message its firmware does
     // understand. It is a FALLBACK because it costs a WiFi re-associate: it
     // fires once per board per token, only after the silence, and only when the
-    // user has auto-provisioning on (it carries their WiFi credentials).
+    // user has auto-provisioning on (it carries their WiFi credentials). A board
+    // reporting `wifiCredId` is never sent it (`sendLegacyRearmProvision`).
     const legacyRearmTimers = new Map<string, NodeJS.Timeout>();
     // Bounds the fallback to once per board per token. The rule and the
     // measurement that forced it live in the module.
@@ -5124,6 +5250,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       legacyRearmTimers.delete(portPath);
     };
     onESP32Message((portPath, msg) => {
+      const wifiConfig = msg.type === 'device_info' ? loadWifiConfig() : null;
       // Keep every serial-attached board armed with the token this daemon is
       // actually serving. Deliberately not gated on auto-provision: a board
       // needs a valid credential whether or not this machine hands out WiFi
@@ -5152,14 +5279,15 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               // re-armed again when the token next changes, or when the daemon
               // restarts — both of which are real events, unlike a 30s poll.
               legacyRearm.markRearmed(armedPort, currentToken);
-              const sent = sendWifiProvision(armedPort, {
-                type: 'wifi_provision' as const,
-                ssid: wifiConfig.ssid,
-                password: wifiConfig.password,
+              // The credentials as they are now, not as they were 1.5 s ago.
+              const rearmConfig = loadWifiConfig() ?? wifiConfig;
+              const sent = sendLegacyRearmProvision(armedPort, buildWifiProvision({
+                ssid: rearmConfig.ssid,
+                password: rearmConfig.password,
                 bridgeIp: lanIp,
                 bridgePort: port,
                 authToken: getOrCreateToken(),
-              });
+              }));
               if (sent) {
                 log(`[agentdeck] ${armedPort}: firmware predates auth_provision — re-armed over the legacy WiFi provision path`);
               }
@@ -5177,23 +5305,26 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (msg.changed) log(`[agentdeck] ESP32 pairing token re-armed on ${portPath}`);
       }
 
+      if (msg.type === 'wifi_provision_ack') {
+        log(`[agentdeck] ESP32 ${describeWifiProvisionAck(parseWifiProvisionAck(msg, Date.now()))} (${portPath})`);
+        return;
+      }
       if (!wifiConfig?.autoProvision) return;
       const shouldRefreshIps10Endpoint = msg.type === 'device_info' &&
         msg.board === 'ips_10' &&
         msg.wifiConnected &&
         !msg.wifiRadioParked;
       if (msg.type === 'device_info' && (!msg.wifiConnected || shouldRefreshIps10Endpoint)) {
-        const sent = sendWifiProvisionToAll({
-          type: 'wifi_provision' as const,
+        // Built per send: the credential id each board is compared against is
+        // derived from the token this very message carries.
+        const sent = sendWifiProvisionToAll(buildWifiProvision({
           ssid: wifiConfig.ssid,
           password: wifiConfig.password,
           bridgeIp: lanIp,
           bridgePort: port,
           authToken: getOrCreateToken(),
-        });
+        }));
         if (sent > 0) log(`[agentdeck] WiFi provision sent to ${sent} ESP32 device(s) after ${portPath}`);
-      } else if (msg.type === 'wifi_provision_ack') {
-        log(msg.success ? `[agentdeck] ESP32 WiFi connected: ${msg.ip} ✓` : `[agentdeck] ESP32 WiFi failed: ${msg.error || 'unknown'}`);
       }
     });
   }
@@ -5485,6 +5616,89 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       peers.push({ sessionId: rawSessionId(s.id), pid: s.pid, agentType: s.agentType, projectName: s.projectName });
     }
     return peers;
+  }
+  /** Whether any row shows this Codex session — observer, OTel or hook. */
+  function codexSessionShown(sid: string): boolean {
+    if (hookCodexSessions.snapshot().some((s) => s.sessionId === sid)) return true;
+    return codexOtel.applyTo(passiveSessionObserver.collect([])).some((s) =>
+      (s.agentType === 'codex-cli' || s.agentType === 'codex-app') && rawSessionId(s.id) === sid);
+  }
+  /** Answer a Codex hold request (shared/src/codex-approval-hold.ts): hold it for a
+   *  device's Allow/Deny, or answer at once with nothing so Codex draws its own
+   *  prompt. A held request shows the prompt with its button; a released one
+   *  leaves the prompt as display-only, since Codex is drawing it now. */
+  function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): void {
+    const sid = typeof json.session_id === 'string' ? json.session_id : '';
+    const question = buildCodexPermissionQuestion(json);
+    const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS);
+    const background = sid !== '' && (codexAmbientSessions.isAmbient(sid) || isCodexBackgroundCwd(json.cwd));
+    const execChild = sid !== '' && codexExecChildren.knows(sid);
+    const verdict = holdMs === null
+      ? { hold: false, reason: 'no-budget' }
+      : codexHoldDecision({
+        enabled: OBSERVED_APPROVAL_ENABLED,
+        clientCount: core.wsServer.getClientCount(),
+        sessionId: sid,
+        background,
+        execChild,
+        visible: sid !== '' && codexSessionShown(sid),
+        alreadyHeld: sid !== '' && codexApprovalHolds.requestIdFor(sid) !== undefined,
+      });
+    if (!verdict.hold || holdMs === null) {
+      debug('daemon', `Codex approval not held: ${verdict.reason} (${sid.slice(0, 8) || 'no session'})`);
+      // The display-only prompt still belongs on the row when Codex ran only
+      // this handler (the notification one untrusted or removed).
+      if (sid && !background && !execChild && !codexApprovalHolds.requestIdFor(sid) && !getAwaitingOverlay(sid)) {
+        setAwaitingOverlay(sid, question, undefined, { sticky: true });
+        core.broadcastSessionsList().catch(() => {});
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('');
+      return;
+    }
+    const requestId = codexApprovalHolds.begin(sid);
+    debug('daemon', `Codex approval held: req=${requestId} sid=${sid.slice(0, 8)} for ${holdMs} ms`);
+    setAwaitingOverlay(sid, question, requestId, { sticky: true });
+    core.broadcastSessionsList().catch(() => {});
+    registerPending(requestId, res, {
+      sessionId: sid,
+      tool: typeof json.tool_name === 'string' ? json.tool_name : undefined,
+      timeoutMs: holdMs,
+      buildBody: codexApprovalDecisionBody,
+      onResolved: (decision) => {
+        const outcome = codexApprovalHolds.finish(sid, requestId, decision);
+        const current = getAwaitingOverlay(sid);
+        if (current?.requestId === requestId) {
+          if (outcome === 'pass') setAwaitingOverlay(sid, current.question, undefined, { sticky: true });
+          else clearAwaitingOverlay(sid);
+        }
+        core.broadcastSessionsList().catch(() => {});
+      },
+    });
+    // Codex killed the hook (Ctrl+C, quit): nothing will read an answer now.
+    res.on('close', () => {
+      if (isPendingRequest(requestId)) passPending(requestId);
+    });
+  }
+  /** A deck's Allow / Deny keys on a held Codex approval send an option press
+   *  on the session (the Stream Deck: `select_option` 0 / 1 inside
+   *  `session_command`), never `permission_decision`. Answer the hold through
+   *  the resolution `permission_decision` uses. False = no hold is open on the
+   *  session, and the caller routes the command as before. */
+  function answerCodexApproval(sessionId: string, command: Record<string, unknown>): boolean {
+    const sid = rawSessionId(sessionId);
+    const press = codexApprovalHolds.press(sid, command, getAwaitingOverlay(sid));
+    if (!press) return false;
+    if (press.kind === 'answer') {
+      debug('daemon', `Codex approval answered by a press: ${press.decision} (${sid.slice(0, 8)})`);
+      resolvePending(press.requestId, press.decision);
+    } else if (press.kind === 'stale') {
+      debug('daemon', `Codex approval press dropped: answers a prompt the hold no longer shows (${sid.slice(0, 8)})`);
+      core.broadcastSessionsList().catch(() => {});
+    } else {
+      debug('daemon', `Codex approval press ignored: not an Allow or a Deny (${sid.slice(0, 8)})`);
+    }
+    return true;
   }
   /** Undo everything a Codex thread's hooks created before it was classified
    *  as not-a-session (ambient suggestion thread, headless child). */
@@ -6258,43 +6472,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       // device that connected mid-session can fill its Detail view on demand
       // (the live timeline_event stream is forward-only). Useful for any
       // reconnecting surface, not just the XTeink X3.
-      const sessionId = resolveDeviceSessionId((msg as { sessionId?: unknown }).sessionId);
-      const since = (msg as { since?: unknown }).since;
-      if (typeof sessionId === 'string' && sessionId) {
-        const sinceMs = typeof since === 'number' ? since : undefined;
-        const toolEvents = surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY);
-        let entries = core.bridgeTimeline.getHistoryForSession(sessionId, sinceMs, undefined, { toolEvents });
-        // Passively-observed sessions never push timeline rows (the relay only
-        // covers managed + hook sessions), so the store comes back empty for
-        // them. Reconstruct a recent-activity timeline from their transcript so
-        // the device's Detail view isn't stuck on "No recent activity yet".
-        if (entries.length === 0) {
-          try {
-            entries = transcriptTimelineForSession(sessionId, { since: sinceMs });
-          } catch { /* read-only best effort */ }
-        }
-        // Kiro keeps its transcript in its OWN store, so the Claude reader
-        // above can never find one — and no `kiro_*` hook has ever reached
-        // this daemon (v2 has no global hook surface at all), so the timeline
-        // store is empty for it too. Without this branch an observed Kiro
-        // session's Detail view is empty whatever it does.
-        if (entries.length === 0 && sessionId.startsWith('observed:kiro')) {
-          try {
-            entries = kiroTimelineForSession(sessionId, { since: sinceMs });
-          } catch { /* read-only best effort */ }
-        }
-        if (!toolEvents) {
-          entries = entries.filter((entry) => entry.toolEvent !== true);
-        }
-        // Boards keep their ≤4096 B frame rule here too; dashboards get the
-        // dashboard ceiling (a Detail view asking for a session's rows).
-        const historyEvent = buildCappedTimelineHistory(entries,
-          core.wsServer.isEsp32Client(sender) ? ESP32_INITIAL_TIMELINE_HISTORY_MAX_BYTES : undefined, { sessionId });
-        if (historyEvent) {
-          try {
-            sender.send(JSON.stringify(historyEvent));
-          } catch { /* client disconnecting */ }
-        }
+      const historyEvent = sessionTimelineReply(msg, {
+        toolEvents: surfaceHasCapability(surfaceNegotiations.get(sender), CLAUDE_TOOL_EVENTS_CAPABILITY),
+        board: core.wsServer.isEsp32Client(sender),
+      });
+      if (historyEvent) {
+        try {
+          sender.send(JSON.stringify(historyEvent));
+        } catch { /* client disconnecting */ }
       }
       return true; // consumed
     }
@@ -6640,6 +6825,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }
         return;
       }
+      // Observed Codex: the deck's Allow / Deny keys answer a held approval.
+      // With no hold open the press is dropped below, as before.
+      if (typeof sessionId === 'string' && answerCodexApproval(sessionId, command)) return;
       const sessions = listActiveSessions();
       const target = sessions.find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (!target) {
@@ -6667,6 +6855,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         handleObservedClaudeCommand(sessionId.slice('observed:claude:'.length), cmd as any);
         return;
       }
+      if (answerCodexApproval(sessionId, cmd as unknown as Record<string, unknown>)) return;
       const target = listActiveSessions().find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (target) {
         userFocusedSessionId = sessionId;
@@ -7632,13 +7821,23 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.startOllamaProbe();
   core.startMlxProbe();
   core.startAntigravityProbe();
-  // Level-triggered: `onAvailable` runs on every tick the port is open, and
-  // connectGatewayAdapter's own guards make it a no-op while an adapter lives.
-  core.startGatewayProbe(5000,
-    () => connectGatewayAdapter(),
-    () => { if (gatewayAdapter && !gatewayAdapter.isAlive()) disconnectGatewayAdapter(); },
-  );
-  core.startGatewayHealthCheck();
+  // AGENTDECK_DAEMON_NO_GATEWAY=1 skips the Gateway probe, the only path to the
+  // OpenClaw adapter and the `openclaw doctor` schedule (the opt-in `openclaw`
+  // APME judge backend still dials the Gateway). The E2E suites set it: their
+  // daemon runs with a temp HOME, where a doctor run bootstraps a fresh
+  // OpenClaw state dir (npm and bun installs) that outlives the daemon and
+  // races the suite's cleanup. Isolation gate only; normal daemons keep the
+  // probe, and the startup line below says which.
+  const gatewayProbeOn = process.env.AGENTDECK_DAEMON_NO_GATEWAY !== '1';
+  if (gatewayProbeOn) {
+    // Level-triggered: `onAvailable` runs on every tick the port is open, and
+    // connectGatewayAdapter's own guards make it a no-op while an adapter lives.
+    core.startGatewayProbe(5000,
+      () => connectGatewayAdapter(),
+      () => { if (gatewayAdapter && !gatewayAdapter.isAlive()) disconnectGatewayAdapter(); },
+    );
+    core.startGatewayHealthCheck();
+  }
   core.startUsageTick();
   core.startApiUsagePolling(60_000, () => fetchUsageRelayed(port));
   // z.ai GLM Coding Plan — an independent provider-account poll; no-ops as a
@@ -7981,7 +8180,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // Name the build in the log, once. A daemon log that does not say which build
   // wrote it cannot answer "was this fixed before or after that restart?" —
   // and on a dev checkout the answer changes several times a day.
-  log(`[agentdeck] Daemon running (build ${startupBuildId ?? 'unknown'}). Gateway probe active.`);
+  log(`[agentdeck] Daemon running (build ${startupBuildId ?? 'unknown'}). Gateway probe ${
+    gatewayProbeOn ? 'active' : 'off (AGENTDECK_DAEMON_NO_GATEWAY=1)'}.`);
 
   // Worker side of the daemon relay (#273): only on an explicit relay.json
   // opt-in, read once here — `agentdeck relay set` asks for a restart.

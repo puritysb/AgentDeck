@@ -1903,7 +1903,7 @@ struct SettingsScreen: View {
             hardwareRow(
                 icon: "antenna.radiowaves.left.and.right",
                 title: "ESP32 boards",
-                subtitle: "Send Wi-Fi credentials over USB. Works with 86Box, IPS 3.5\" and round AMOLED displays.",
+                subtitle: "Save Wi-Fi credentials and send them to boards on USB. Works with 86Box, IPS 3.5\" and round AMOLED displays.",
                 buttonLabel: "Set up…",
                 action: { showESP32Sheet = true }
             )
@@ -1938,7 +1938,7 @@ struct SettingsScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(isPresented: $showESP32Sheet) {
-            ESP32ProvisionSheet()
+            ESP32ProvisionSheet(daemonPort: Int(daemonService.port))
         }
         .sheet(isPresented: $showPixooSheet) {
             PixooSheet()
@@ -2415,6 +2415,28 @@ struct SettingsScreen: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(!preferences.codexConfigInstalled)
+            }
+
+            // Codex device approvals — the opt-in hold handler. A change
+            // rewrites the managed block under the existing consent; the
+            // config file stays the only record of the choice.
+            if preferences.codexConfigInstalled {
+                Toggle(isOn: Binding(
+                    get: { preferences.codexApprovalsInstalled },
+                    set: { CodexConfigInstaller.setApprovals($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Answer Codex approvals from devices")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white)
+                        Text("When Codex asks to run a command, it first waits up to \(Int(ObservedSteering.holdTimeoutSeconds)) seconds for Allow or Deny from a connected device, then shows its own prompt as usual. Codex asks you to review the new hook the next time it starts.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(TerrariumHUD.subtext)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(Color(red: 0.231, green: 0.51, blue: 0.965))
+                .padding(.top, 4)
             }
         }
     }

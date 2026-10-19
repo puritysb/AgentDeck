@@ -4,7 +4,7 @@ import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { detachedEnv, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
+import { beforeSwap, detachedEnv, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
 
 const roots: string[] = [];
 function fixture() {
@@ -100,6 +100,21 @@ describe('local deployment runtime handover', () => {
       now: () => clock,
       sleep: async (ms: number) => { clock += ms; },
     })).rejects.toThrow('build old differs from installed new');
+  });
+
+  it('discards the staged app when a step before the swap fails, and keeps it otherwise', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'agentdeck-staged-')));
+    roots.push(dir);
+    const staged = join(dir, 'AgentDeck.deploy-staged.app');
+    const stage = () => mkdirSync(join(staged, 'Contents'), { recursive: true });
+    const quitTimeout = new Error('Installed app did not quit; preserving it');
+    await expect(beforeSwap(staged, async () => { stage(); throw quitTimeout; })).rejects.toBe(quitTimeout);
+    expect(existsSync(staged)).toBe(false);
+    // A step that fails before anything was copied still reports its own error.
+    const noSource = new Error('stage-app failed');
+    await expect(beforeSwap(staged, async () => { throw noSource; })).rejects.toBe(noSource);
+    await beforeSwap(staged, async () => { stage(); });
+    expect(existsSync(staged)).toBe(true);
   });
 
   it('keeps the newest app backups and leaves unrelated files alone', () => {

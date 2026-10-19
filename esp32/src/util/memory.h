@@ -25,6 +25,8 @@
 #include <Arduino.h>
 #include <esp_heap_caps.h>
 
+#include "internal_reserve.h"
+
 // Nothrow versions of std::make_unique. Return nullptr on allocation failure
 // instead of calling abort() (the default for bare `new` when exceptions are
 // disabled on ESP32).
@@ -75,10 +77,11 @@ ScopedCleanup<F> makeScopedCleanup(F f) {
 // Log free heap AND largest contiguous free block. The gap between the two is
 // the fragmentation signal — a large free heap with a small largest block means
 // the next big allocation will fail even though "free heap" looks healthy.
-// PSRAM totals are appended only when present.
+// PSRAM totals are appended only when present. The internal reserve is left
+// out (util/internal_reserve.h); its own lines start with "[Reserve]".
 inline void logHeap(const char* tag) {
-  size_t intFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-  size_t intBlk = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+  size_t intFree = InternalReserve::heapFreeBytes(MALLOC_CAP_INTERNAL);
+  size_t intBlk = InternalReserve::heapLargestFreeBlock(MALLOC_CAP_INTERNAL);
 #if defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147) || defined(BOARD_LED8X32)
   Serial.printf("[HEAP] %s internal free=%uKB largest=%uKB\n", tag,
                 (unsigned)(intFree / 1024), (unsigned)(intBlk / 1024));

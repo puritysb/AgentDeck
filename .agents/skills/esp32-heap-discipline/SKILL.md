@@ -88,9 +88,32 @@ fixed to a stack local.)
   fires only after the last fallback): `allocFailures` /
   `allocFailLastBytes` / `allocFailLastCaps` in `device_info`, and a numeric
   `[HeapFail]` serial line that the daemon logs under `esp32-heap`. On a
-  serial-attached board `device_info` is a connect-time snapshot, so read the
-  line. A deliberate attempt with a fallback (internal buffer, then PSRAM)
-  counts too, so judge a count by its size and caps.
+  serial-attached board the Node daemon re-requests `device_info` about once
+  a minute, so read the line when you need the moment it happened. A
+  deliberate attempt with a fallback (internal buffer, then PSRAM) counts
+  too, so judge a count by its size and caps.
+- **On T-Embed the last 16 KB of internal RAM is not malloc's.** On the boards
+  `config.h` names (`AGENTDECK_INTERNAL_RESERVE`; only `t_embed`, the one
+  board measured with it) `util/internal_reserve.h` carves
+  `INTERNAL_RESERVE_BYTES` out of internal RAM at the top of `setup()` and
+  registers it as a heap without `MALLOC_CAP_DEFAULT`, at the lowest priority.
+  Plain `malloc` never reaches it, so small mallocs spill to PSRAM instead of
+  starving the WiFi driver; an explicit internal or DMA request (the WiFi
+  driver's internal buffers, task stacks and other FreeRTOS objects, your own
+  `MALLOC_CAP_INTERNAL` buffers; not lwIP's buffers, which use plain `malloc`
+  in these builds) falls back on it once internal DRAM refuses, and one that
+  does not ask for DMA tries it before RTC fast RAM. So a large internal buffer
+  allocated at init has that much less to draw on, and the pool is no place
+  for a buffer that could live in PSRAM. Read internal heap figures through
+  `InternalReserve::heapFreeBytes` / `heapMinFreeBytes` /
+  `heapLargestFreeBlock`: a plain `heap_caps_*` query for INTERNAL or DMA
+  counts the pool's untouched 16 KB as headroom malloc cannot reach.
+  `device_info` carries `internalReserveKb`, `internalReserveFreeKb` and the
+  low-water mark `internalReserveMinKb`; never call
+  `heap_caps_monitor_local_minimum_free_size_stop()`, which zeroes that mark.
+  Before adding a board, measure its parked internal low-water mark and a WiFi
+  OTA with the pool: box_86 parks at 13 KB, where this pool would leave
+  malloc no internal RAM at all.
 
 ## Justify every allocation
 

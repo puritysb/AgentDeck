@@ -5,6 +5,8 @@
  * handleSerialLine, port patterns) without requiring real serial hardware.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import * as logger from '../logger.js';
 import { SERIAL_FORWARDED_EVENTS, DISPLAY_FORWARDED_EVENTS } from '@agentdeck/shared/protocol';
 import type {
@@ -13,7 +15,7 @@ import type {
   BridgeEvent,
   WifiProvisionMessage,
 } from '@agentdeck/shared/protocol';
-import { State, PermissionMode } from '@agentdeck/shared';
+import { State, PermissionMode, type TimelineEntry } from '@agentdeck/shared';
 import ciProjection from '../../../shared/ci-wait-projection-vectors.json';
 import {
   prepareForSerial,
@@ -35,13 +37,26 @@ import {
   TIMELINE_HISTORY_BYTE_BUDGET,
   shouldSendWifiProvision,
   shouldSendAuthProvision,
+  shouldSendLegacyRearm,
+  sendWifiProvisionToAll,
+  sendAuthProvisionToAll,
+  sendLegacyRearmProvision,
+  __setConnectionsForTest,
+  esp32DeviceInfoRow,
   shouldRetryDeviceInfoIdentify,
   isSerialReachableForDedup,
   recordForeignProbeFailure,
   isForeignPortDenylisted,
   __resetForeignPortState,
+  sendEventToBoard,
+  setSerialCommandSink,
+  setSerialTimelineQueryHandler,
   type SerialConnection,
 } from '../esp32-serial.js';
+import { boardTimelineSeed } from '../board-timeline-entry.js';
+import { buildWifiProvision } from '../esp32-wifi-cred.js';
+import { wireSessionTimelineReplies } from '../session-timeline-reply.js';
+import { resolveSessionIdPrefix } from '../session-id-resolve.js';
 
 describe('CI waiting evidence projection', () => {
   it('serializes the same pending/terminal evidence as the full waitingOn policy', () => {
@@ -196,6 +211,34 @@ describe('handleSerialLine (source)', () => {
     expect(conn.deviceInfo!.rssiDbm).toBeUndefined();
   });
 
+  it('carries the WiFi credential id only as a string', () => {
+    const conn = mockConn();
+    handleSerialLine(conn, '{"type":"device_info","board":"t_embed","version":"1.9.3","wifiConfigured":false,"wifiConnected":false,"wifiRadioParked":true,"wifiCredId":"4fbb066b2801b4ae"}');
+    expect(conn.deviceInfo!.wifiCredId).toBe('4fbb066b2801b4ae');
+    handleSerialLine(conn, '{"type":"device_info","board":"t_embed","version":"1.9.3","wifiConfigured":false,"wifiConnected":false,"wifiCredId":""}');
+    expect(conn.deviceInfo!.wifiCredId).toBe('');
+    // Older firmware never sends the key: no information, not "none stored".
+    handleSerialLine(conn, '{"type":"device_info","board":"t_embed","version":"1.9.2","wifiConfigured":false,"wifiConnected":false}');
+    expect(conn.deviceInfo!.wifiCredId).toBeUndefined();
+    handleSerialLine(conn, '{"type":"device_info","board":"t_embed","version":"1.9.3","wifiConfigured":false,"wifiConnected":false,"wifiCredId":42}');
+    expect(conn.deviceInfo!.wifiCredId).toBeUndefined();
+  });
+
+  it('keeps the credential id off /devices and out of the device cache', () => {
+    const conn = mockConn();
+    conn.port = '/dev/cu.usbserial-credid';
+    handleSerialLine(conn, '{"type":"device_info","board":"t_embed","version":"1.9.3","wifiConfigured":false,"wifiConnected":false,"wifiRadioParked":true,"wifiCredId":"4fbb066b2801b4ae"}');
+    // The live connection keeps it: it decides provisioning.
+    expect(conn.deviceInfo!.wifiCredId).toBe('4fbb066b2801b4ae');
+    const row = esp32DeviceInfoRow(conn, Date.now());
+    expect(row.board).toBe('t_embed');
+    expect(row.wifiRadioParked).toBe(true);
+    expect(row).not.toHaveProperty('wifiCredId');
+    const cache = JSON.parse(readFileSync(join(process.env.AGENTDECK_DATA_DIR!, 'esp32-device-cache.json'), 'utf-8'));
+    expect(cache[conn.port]?.board).toBe('t_embed');
+    expect(cache[conn.port]).not.toHaveProperty('wifiCredId');
+  });
+
   it('skips debug lines (non-JSON)', () => {
     const conn = mockConn();
     handleSerialLine(conn, '[WiFi] Connected to network');
@@ -233,6 +276,28 @@ describe('handleSerialLine (source)', () => {
       expect(log).toHaveBeenCalledTimes(1);
       expect(log).toHaveBeenCalledWith('esp32-heap', `${conn.port}: ${event}`);
       expect(conn.panicLogUntil).toBeUndefined();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('retains numeric internal-reserve lines and nothing appended to them', () => {
+    const log = vi.spyOn(logger, 'logTagged').mockImplementation(() => {});
+    try {
+      const conn = mockConn();
+      const boot = '[Reserve] at=boot capacity=15360 regions=1 requested=16384';
+      const heapFail = '[Reserve] at=heap-fail capacity=15360 free=14336 min=9216 allocFailures=1';
+      const otaEnd = '[Reserve] at=ota-end capacity=15360 free=15360 min=9216 allocFailures=1';
+      handleSerialLine(conn, boot);
+      handleSerialLine(conn, heapFail);
+      handleSerialLine(conn, otaEnd);
+      handleSerialLine(conn, otaEnd + ' ssid=private');
+      handleSerialLine(conn, '[Reserve] at=boot capacity=lots');
+      handleSerialLine(conn, '[Reserve] internal pool 15360 B usable');
+      expect(log).toHaveBeenCalledTimes(3);
+      expect(log).toHaveBeenNthCalledWith(1, 'esp32-heap', `${conn.port}: ${boot}`);
+      expect(log).toHaveBeenNthCalledWith(2, 'esp32-heap', `${conn.port}: ${heapFail}`);
+      expect(log).toHaveBeenNthCalledWith(3, 'esp32-heap', `${conn.port}: ${otaEnd}`);
     } finally {
       log.mockRestore();
     }
@@ -719,6 +784,110 @@ describe('prepareForSerial (source)', () => {
   });
 });
 
+// ─── Claude tool rows ───────────────────────────────────────────────
+// Per-tool hook rows (`toolEvent`) go only to clients that offer
+// `timeline.tool-events.read`, and a board offers nothing. The WiFi transformer
+// always dropped them; serial sent every one, so a board's 64-row ring filled
+// with them on USB and not on WiFi.
+
+describe('Claude tool rows on the serial path', () => {
+  const chat = (i: number) => ({ ts: 1752700000000 + i, type: 'chat_start', raw: `row ${i}` });
+  const tool = (i: number) => ({ ts: 1752700000000 + i, type: 'tool_request', raw: 'Read requested', toolEvent: true });
+  // A pending flush timer keeps sendToConnection from scheduling a real write,
+  // so the queue is what the board would be sent.
+  const queueConn = () => ({
+    port: '/dev/cu.usbmodem-test', connected: true, deviceInfo: { board: 't_embed' },
+    writeQueue: [] as string[], writeTimer: {} as ReturnType<typeof setTimeout>,
+  }) as unknown as SerialConnection;
+
+  it('drops a live tool row and still sends every other timeline row', () => {
+    const conn = queueConn();
+    sendEventToBoard(conn, { type: 'timeline_event', entry: tool(1) } as any);
+    expect(conn.writeQueue).toEqual([]);
+    sendEventToBoard(conn, { type: 'timeline_event', entry: chat(2) } as any);
+    // The flag decides, not the type: a tool_request without it (an approval
+    // row) is a turn-level row every client reads.
+    sendEventToBoard(conn, { type: 'timeline_event', entry: { ...chat(3), type: 'tool_request', raw: 'Bash' } } as any);
+    expect(conn.writeQueue.map((line) => JSON.parse(line).entry.raw)).toEqual(['row 2', 'Bash']);
+  });
+
+  it('ships a history frame with tool rows exactly as it ships one without them', () => {
+    // Cut to the 64-row ring first, these 104 rows would keep only rows
+    // 40–63 and lose the rest to tool rows the board must not get anyway.
+    const chats = Array.from({ length: 64 }, (_, i) => chat(i));
+    const entries = [...chats, ...Array.from({ length: 40 }, (_, i) => tool(100 + i))];
+    const prepared = prepareForSerial({ type: 'timeline_history', entries } as any) as any;
+    expect(prepared).toEqual(prepareForSerial({ type: 'timeline_history', entries: chats } as any));
+    expect(prepared.entries.length).toBeGreaterThan(24);
+    expect(prepared.entries[prepared.entries.length - 1].raw).toBe('row 63');
+  });
+
+  it('seeds a connecting board with the newest rows it may show', () => {
+    const history = [chat(1), chat(2), tool(3), chat(4), tool(5), tool(6), tool(7), tool(8), tool(9), tool(10)];
+    expect(boardTimelineSeed(history, 3).map((entry) => entry.raw)).toEqual(['row 1', 'row 2', 'row 4']);
+  });
+});
+
+describe('query_session_timeline over serial', () => {
+  // A pending flush timer keeps sendToConnection from scheduling a real write,
+  // so the queue is what the board would be sent.
+  const queueConn = () => ({
+    port: '/dev/cu.usbmodem-knob', connected: true, deviceInfo: { board: 't_embed' }, deviceInfoFresh: true,
+    lastReadAt: 0, writeQueue: [] as string[], writeTimer: {} as ReturnType<typeof setTimeout>,
+  }) as unknown as SerialConnection;
+  // A real session id is a 36-char UUID. The board holds the 31-byte cut its
+  // sessions_list carried, asks with that, and strcmp()s the reply against it.
+  const FULL_ID = 'a3dab322-5f0e-4c6b-9d1a-7e2f40c0ffee';
+  const BOARD_ID = FULL_ID.slice(0, 31);
+  const wire = (rows: Array<Record<string, unknown>>) => wireSessionTimelineReplies({
+    resolveSessionId: (raw) => (typeof raw === 'string' && raw ? resolveSessionIdPrefix(raw, [FULL_ID]) : ''),
+    entriesFor: (sessionId) => (sessionId === FULL_ID ? rows : []) as unknown as TimelineEntry[],
+  });
+
+  it('answers the board on its own line, under the id the board asked with', () => {
+    const commands: unknown[] = [];
+    setSerialCommandSink((cmd) => commands.push(cmd));
+    wire([
+      { ts: 1752700000000, type: 'chat_start', raw: 'run the suite', sessionId: FULL_ID },
+      { ts: 1752700001000, type: 'tool_request', raw: 'Bash requested', sessionId: FULL_ID, toolEvent: true },
+      // A long reply as the newest row: 9 KB of detail, past the whole budget.
+      { ts: 1752700002000, type: 'chat_response', raw: 'x'.repeat(300), detail: '完'.repeat(3000), sessionId: FULL_ID },
+    ]);
+    try {
+      const conn = queueConn();
+      handleSerialLine(conn, JSON.stringify({ type: 'query_session_timeline', sessionId: BOARD_ID }));
+      expect(commands).toEqual([]);
+      expect(conn.writeQueue).toHaveLength(1);
+      const reply = JSON.parse(conn.writeQueue[0]);
+      expect(reply.type).toBe('timeline_history');
+      expect(reply.sessionId).toBe(BOARD_ID);
+      expect(reply.entries.map((e: { type: string }) => e.type)).toEqual(['chat_start', 'chat_response']);
+      expect(reply.entries[1].raw).toHaveLength(119);
+      expect(Buffer.byteLength(reply.entries[1].detail, 'utf8')).toBeLessThanOrEqual(199);
+      expect(reply.entries[1].localHm).toMatch(/^\d\d:\d\d$/);
+
+      // The commands that share the old forward list still reach the sink.
+      handleSerialLine(conn, '{"type":"focus_session","sessionId":"s1"}');
+      expect(commands).toEqual([{ type: 'focus_session', sessionId: 's1' }]);
+    } finally {
+      setSerialCommandSink(null);
+      setSerialTimelineQueryHandler(null);
+    }
+  });
+
+  it('sends nothing for a session with no rows to answer with', () => {
+    wire([]);
+    try {
+      const conn = queueConn();
+      handleSerialLine(conn, JSON.stringify({ type: 'query_session_timeline', sessionId: BOARD_ID }));
+      handleSerialLine(conn, '{"type":"query_session_timeline","sessionId":""}');
+      expect(conn.writeQueue).toEqual([]);
+    } finally {
+      setSerialTimelineQueryHandler(null);
+    }
+  });
+});
+
 // ─── WiFi provision message shape ───────────────────────────────────
 
 describe('WiFi provision protocol', () => {
@@ -744,26 +913,62 @@ describe('WiFi provision protocol', () => {
     expect(shouldSendWifiProvision({
       connected: true,
       provisionSent: false,
+      deviceInfoFresh: true,
       deviceInfo: { board: 'ips_10', wifiConfigured: false, wifiConnected: false },
     } as any)).toBe(true);
 
     expect(shouldSendWifiProvision({
       connected: true,
       provisionSent: false,
+      deviceInfoFresh: true,
       deviceInfo: { board: 'ips_10', wifiConfigured: true, wifiConnected: false, wifiRadioParked: true },
     } as any)).toBe(false);
 
     expect(shouldSendWifiProvision({
       connected: true,
       provisionSent: false,
+      deviceInfoFresh: true,
       deviceInfo: { board: 'ips_10', wifiConfigured: true, wifiConnected: true },
     } as any)).toBe(true);
 
     expect(shouldSendWifiProvision({
       connected: true,
       provisionSent: false,
+      deviceInfoFresh: true,
       deviceInfo: { board: 'ttgo_t_display', wifiConfigured: true, wifiConnected: true },
     } as any)).toBe(false);
+  });
+
+  it('decides on what the board said over this connection, not the device cache', () => {
+    // A cache-seeded record describes an earlier connection and never carries
+    // the credential id; the board's own device_info re-runs the fan-out.
+    const parked = {
+      connected: true,
+      provisionSent: false,
+      deviceInfo: { board: 't_embed', wifiConfigured: false, wifiConnected: false, wifiRadioParked: true },
+    } as any;
+    expect(shouldSendWifiProvision({ ...parked, deviceInfoFresh: false }, '4fbb066b2801b4ae')).toBe(false);
+    expect(shouldSendWifiProvision({ ...parked, deviceInfoFresh: true }, '4fbb066b2801b4ae')).toBe(true);
+  });
+
+  it('leaves a parked board alone when it already holds these credentials', () => {
+    const conn = (info: Record<string, unknown>) => ({
+      connected: true, provisionSent: false, deviceInfoFresh: true, deviceInfo: info,
+    } as any);
+    const credId = '4fbb066b2801b4ae';
+    // Generic board: the driver is off, so it reads unconfigured.
+    const generic = { board: 't_embed', wifiConfigured: false, wifiConnected: false, wifiRadioParked: true };
+    expect(shouldSendWifiProvision(conn({ ...generic, wifiCredId: credId }), credId)).toBe(false);
+    expect(shouldSendWifiProvision(conn({ ...generic, wifiCredId: '' }), credId)).toBe(true);
+    // Persisted board: reads configured from its own store, yet changed credentials reach it.
+    const persisted = { board: 't_display_pro', wifiConfigured: true, wifiConnected: false, wifiRadioParked: true };
+    expect(shouldSendWifiProvision(conn({ ...persisted, wifiCredId: '7de137f03d5a8983' }), credId)).toBe(true);
+    expect(shouldSendWifiProvision(conn({ ...persisted, wifiCredId: credId }), credId)).toBe(false);
+    // Firmware that predates the id keeps today's rule.
+    expect(shouldSendWifiProvision(conn(generic), credId)).toBe(true);
+    expect(shouldSendWifiProvision(conn(persisted), credId)).toBe(false);
+    // So does a daemon with no id to offer.
+    expect(shouldSendWifiProvision(conn({ ...persisted, wifiCredId: '7de137f03d5a8983' }), null)).toBe(false);
   });
 
   it('re-arms the pairing token on boards the WiFi gate skips', () => {
@@ -773,6 +978,7 @@ describe('WiFi provision protocol', () => {
     // token would never reach it if the two shared a gate.
     const online = {
       connected: true,
+      deviceInfoFresh: true,
       deviceInfo: { board: 'ttgo_t_display', wifiConfigured: true, wifiConnected: true },
     } as any;
     expect(shouldSendWifiProvision({ ...online, provisionSent: false })).toBe(false);
@@ -782,6 +988,7 @@ describe('WiFi provision protocol', () => {
   it('costs one write per board per token, not one per device_info frame', () => {
     const conn = {
       connected: true,
+      deviceInfoFresh: true,
       deviceInfo: { board: '86box', wifiConfigured: true, wifiConnected: true },
       authTokenSent: 'token-1',
     } as any;
@@ -795,6 +1002,12 @@ describe('WiFi provision protocol', () => {
       connected: true, deviceInfo: null,
     } as any, 'token-1')).toBe(false);
 
+    // A record seeded from the device cache describes an earlier connection:
+    // the tty may belong to another device now, or to a board still booting.
+    expect(shouldSendAuthProvision({
+      connected: true, deviceInfoFresh: false, deviceInfo: { board: '86box' },
+    } as any, 'token-1')).toBe(false);
+
     expect(shouldSendAuthProvision({
       connected: false, deviceInfo: { board: '86box' },
     } as any, 'token-1')).toBe(false);
@@ -803,6 +1016,93 @@ describe('WiFi provision protocol', () => {
     expect(shouldSendAuthProvision({
       connected: true, deviceInfo: { board: '86box' },
     } as any, '')).toBe(false);
+  });
+});
+
+describe('serial provisioning fan-out over the live connection list', () => {
+  const msg = buildWifiProvision({
+    ssid: 'DeskNet', password: 'fanout-pw', bridgeIp: '192.168.1.50', bridgePort: 9120, authToken: 'fanout-token',
+  });
+  const parked = { wifiConfigured: false, wifiConnected: false, wifiRadioParked: true };
+
+  function fakeConn(port: string, deviceInfo: Record<string, unknown>, deviceInfoFresh: boolean): SerialConnection {
+    return {
+      port,
+      fd: null,
+      stream: { destroyed: false, writable: true, write: () => true } as any,
+      reader: null,
+      readBuf: '',
+      connected: true,
+      deviceInfo: deviceInfo as SerialConnection['deviceInfo'],
+      deviceInfoFresh,
+      provisionSent: false,
+      connectedAt: Date.now(),
+      lastReadAt: Date.now(),
+      lastWriteAt: Date.now(),
+      lastDeviceInfoRequestAt: 0,
+      deviceInfoRequestsSent: 0,
+      writeQueue: [],
+      writeTimer: null,
+    };
+  }
+
+  /** Run `fn` against these connections only; stop their flush timers after. */
+  function withConnections(conns: SerialConnection[], fn: () => void): void {
+    const restore = __setConnectionsForTest(conns);
+    try {
+      fn();
+    } finally {
+      restore();
+      for (const c of conns) {
+        c.connected = false;
+        if (c.writeTimer) clearTimeout(c.writeTimer);
+      }
+    }
+  }
+
+  const sentTypes = (c: SerialConnection) => c.writeQueue.map((json) => JSON.parse(json).type);
+
+  it('sends WiFi credentials only to a board that identified here and holds other ones', () => {
+    expect(msg.credId).toMatch(/^[0-9a-f]{16}$/);
+    const holds = fakeConn('/dev/cu.fanout-holds', { board: 't_embed', ...parked, wifiCredId: msg.credId }, true);
+    const differs = fakeConn('/dev/cu.fanout-differs', { board: 't_embed', ...parked, wifiCredId: '0000000000000000' }, true);
+    const cached = fakeConn('/dev/cu.fanout-cached', { board: 't_embed', ...parked }, false);
+    withConnections([holds, differs, cached], () => {
+      expect(sendWifiProvisionToAll(msg)).toBe(1);
+    });
+    expect(sentTypes(holds)).toEqual([]);
+    expect(sentTypes(differs)).toEqual(['wifi_provision']);
+    expect(JSON.parse(differs.writeQueue[0]).credId).toBe(msg.credId);
+    expect(sentTypes(cached)).toEqual([]);
+  });
+
+  it('arms the token only on a board that identified on this connection', () => {
+    const live = fakeConn('/dev/cu.fanout-live', { board: '86box', ...parked }, true);
+    const cached = fakeConn('/dev/cu.fanout-cached-auth', { board: '86box', ...parked }, false);
+    let armed: string[] = [];
+    withConnections([live, cached], () => {
+      armed = sendAuthProvisionToAll({ type: 'auth_provision', authToken: 'fanout-token', bridgeIp: '192.168.1.50', bridgePort: 9120 });
+    });
+    expect(armed).toEqual([live.port]);
+    expect(sentTypes(live)).toEqual(['auth_provision']);
+    expect(sentTypes(cached)).toEqual([]);
+  });
+
+  it('sends the legacy re-arm only to identified firmware that reports no credential id', () => {
+    const old = fakeConn('/dev/cu.fanout-old', { board: '86box', wifiConfigured: true, wifiConnected: false }, true);
+    const knowsId = fakeConn('/dev/cu.fanout-new', { board: '86box', ...parked, wifiCredId: '' }, true);
+    const cached = fakeConn('/dev/cu.fanout-cached-legacy', { board: '86box', wifiConfigured: true, wifiConnected: false }, false);
+    withConnections([old, knowsId, cached], () => {
+      expect(sendLegacyRearmProvision(old.port, msg)).toBe(true);
+      // Firmware that reports the id also understands auth_provision: its
+      // silence is a lost frame, and a full provision would wake its radio.
+      expect(sendLegacyRearmProvision(knowsId.port, msg)).toBe(false);
+      expect(sendLegacyRearmProvision(cached.port, msg)).toBe(false);
+    });
+    expect(sentTypes(old)).toEqual(['wifi_provision']);
+    expect(sentTypes(knowsId)).toEqual([]);
+    expect(sentTypes(cached)).toEqual([]);
+    expect(shouldSendLegacyRearm({ connected: true, deviceInfoFresh: true, deviceInfo: { board: '86box', wifiCredId: '4fbb066b2801b4ae' } } as any)).toBe(false);
   });
 });
 

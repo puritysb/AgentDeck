@@ -74,10 +74,10 @@ Dispatch on the top-level `"type"`. The forwarded sets are defined in `protocol.
 
 | `type` | Purpose |
 |---|---|
-| `timeline_event` | Incremental activity-log row. `ts` is epoch-ms; entries also carry `localHm` = daemon host-local "HH:MM" (both daemons stamp it now) — RTC-less clients render `localHm` for the wall time rather than deriving from `ts` in UTC. |
-| `timeline_history` | Backfill of recent timeline rows on (re)connect. A reply to `query_session_timeline` includes top-level `sessionId`; constrained clients may replace their mixed live ring with that session-specific batch so unrelated busy sessions cannot evict the requested Detail rows. |
+| `timeline_event` | Incremental activity-log row. `ts` is epoch-ms; entries also carry `localHm` = daemon host-local "HH:MM" (both daemons stamp it now) — RTC-less clients render `localHm` for the wall time rather than deriving from `ts` in UTC. Rows flagged `toolEvent` (Claude Code's per-tool hook rows) are opt-in through `timeline.tool-events.read`; the Node daemon never sends them to a board, over serial or WiFi. The macOS app's daemon writes none of its own and drops any it reads from a `timeline.json` the Node daemon wrote. |
+| `timeline_history` | Backfill of recent timeline rows on (re)connect. A reply to `query_session_timeline` includes top-level `sessionId`. Both daemons give a board exactly the id it asked with (board ids arrive cut to 31 bytes, so a board can match the reply against the id it holds) and other clients the full session id. Constrained clients may replace their mixed live ring with that session-specific batch so unrelated busy sessions cannot evict the requested Detail rows. |
 | `display_state` | Host display on/off + optional `dim {enabled, mode, level}`. Absent `dim` ⇒ legacy full-off. Level is percent 1–100 → scale to the board's backlight domain, floored at 1. Optional `hostHm`: the daemon's host-local `"HH:MM"` at send time — re-sent with every re-sync (5 s serial, 15 s WebSocket), it is the wall clock for a board without NTP or timezone. Absent ⇒ keep the last estimate. AgentDeck e-ink firmware prints it as the "as of" band (`esp32/src/util/host_clock.h`). |
-| `wifi_provision` | Credentials pushed over serial (USB provisioning flow). |
+| `wifi_provision` | Credentials pushed over serial (USB provisioning flow): `{ssid, password, bridgeIp, bridgePort, authToken, credId?}`. `credId` (2026-10-18, up to 16 lowercase hex) names these credentials. A client that wants the daemon to stop re-provisioning it while its radio is off stores the id beside the credentials it came with and reports it as `device_info.wifiCredId` — see below for the write order. Optional: a client that ignores it keeps the earlier behaviour. |
 | `auth_provision` | Pairing token pushed over serial, on its own: `{authToken, bridgeIp?, bridgePort?}`. Store the token durably (NVS) and restore it at boot — a board that forgets its credential is closed 4001 on every dial (#145) and discovery no longer carries one (#149), so serial is the only way back. Do **not** join WiFi or reconnect from this message; the existing reconnect path picks the new token up under its own policy guards. An absent/empty `authToken` means "no information" — never clear a working credential. Reply `auth_provision_ack {success, changed?, error?}`. |
 | `set_orientation` | `landscape` bool; portrait↔landscape toggle. |
 | `device_info_request` | Reply with `device_info` (see below). X3/X4 already announce `device_info` on initial connect; request/reply parity remains recommended for host diagnostics. |
@@ -93,7 +93,8 @@ the Arduino `Update` class.
 
 ### `device_info` (identity + capability announcement)
 
-Emitted on connect and in reply to `device_info_request`, over **both** transports.
+Emitted on connect and in reply to `device_info_request`, over **both** transports
+(`wifiCredId` alone stays on the serial copy).
 `device_info.board` is the **SSOT match key** the daemon and `agentdeck esp32-ota` use to
 route to a board; a client that never emits it never appears on the dashboard. Fields (from
 `sendDeviceInfo`, `esp32/src/net/protocol.cpp`):
@@ -106,6 +107,7 @@ route to a board; a client that never emits it never appears on the dashboard. F
 | `buildEpoch` | Build timestamp (uint32). |
 | `protocolRevision` | `PROTOCOL_REVISION`. |
 | `wifiConfigured` / `wifiConnected` | Provisioning + link state. `ip` when connected. |
+| `wifiCredId` | Optional, **serial copy only**: the `credId` of the provision the stored credentials came from, `""` when none. Absent means "this firmware does not know the field", and each daemon falls back to its earlier rule ([which boards get a provision](esp32.md#which-boards-get-a-wifi-provision)); so a client that supports it sends it on every serial `device_info`, `""` included. Never send it over WiFi: beside the pairing token in the WebSocket URL it is an offline test for WiFi password guesses. The record may be missing when the board does hold the credentials (that costs one redundant provision) but must never name credentials it does not hold, or the daemon will never send the ones it needs. So: forget the old id before writing different credentials and record the new one after; record none when the write fails or the provision carried no valid id; leave it alone when re-joining stored credentials; and clear it whenever credentials can change without a provision (captive portal, reset). Reference: `esp32/src/net/wifi_cred_id_store.h`. |
 | `otaSupported`, `otaSlotCount`, `otaSlotSize`, `otaFreeSketchSpace`, `otaReason` | OTA capability. `otaReason` only when unsupported. |
 | `timelineCount`, `sessionCount`, `usageFiveH`, `processingCount` | Debug aids — let a host-side probe (`daemon /devices`) distinguish "data never parsed" from "render gating" without stealing the serial port. |
 | `repaintCount`, `fullRefreshCount` | Optional e-ink observability counters. Both are monotonic since boot; `repaintCount` advances only when physical panel I/O starts after content/rate gating, and `fullRefreshCount` is its full-window subset. Both daemons expose them through USB-serial and WiFi registrations. |
@@ -140,6 +142,10 @@ A client with buttons must derive controls from the wire payload, never merely f
 - X3/X4 port: Pocket Daily Reader `src/agentdeck/{ws_client,protocol,mdns_discovery,udp_discovery,agent_state,agent_commands}.*`.
   It emits `client_register` plus `device_info` on connect; `display_state`/`set_orientation`
   remain optional accept-and-ignore messages for this reader activity.
+- XTeink fork and `credId` (2026-10-18): nothing to re-port. A client that never reports
+  `wifiCredId` keeps the decision it had, and its WiFi `device_info` must not carry the
+  field anyway. Port the store only if the fork accepts `wifi_provision` over USB and is
+  re-provisioned while its radio is parked.
 - Change discipline: edits to `DISPLAY_FORWARDED_EVENTS`/`SERIAL_FORWARDED_EVENTS` in
   `protocol.ts` or to the `device_info` field list must be reflected into both the
   first-party parser and the X3 port. See the port-sync sections in

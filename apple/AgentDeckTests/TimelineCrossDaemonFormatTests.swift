@@ -115,6 +115,16 @@ final class TimelineCrossDaemonFormatTests: XCTestCase {
     }
     """
 
+    /// Claude's opt-in per-tool rows, in the key set and order of a real
+    /// `tool_request`/`tool_resolved` pair the Node daemon wrote (read
+    /// 2026-10-19); the command, ids and timestamps are stand-ins.
+    private let nodeToolRequest = """
+    {"ts":1787096910000,"type":"tool_request","raw":"Bash requested","detail":"pnpm vitest run","sessionId":"a3dab322-fe25-42fc-9080-d1c84326e8c8","toolUseId":"toolu_01XyZ0aBcDeFgHiJkLmNoPqR","agentType":"claude-code","toolEvent":true,"projectName":"foundby-site"}
+    """
+    private let nodeToolResolved = """
+    {"ts":1787096912000,"type":"tool_resolved","raw":"Bash completed","detail":"pnpm vitest run","sessionId":"a3dab322-fe25-42fc-9080-d1c84326e8c8","toolUseId":"toolu_01XyZ0aBcDeFgHiJkLmNoPqR","agentType":"claude-code","toolEvent":true,"projectName":"foundby-site"}
+    """
+
     private func writeNodeFile(_ rows: [String]) throws -> URL {
         let url = dir.appendingPathComponent("timeline.json")
         try "[\(rows.joined(separator: ","))]".write(to: url, atomically: true, encoding: .utf8)
@@ -139,6 +149,17 @@ final class TimelineCrossDaemonFormatTests: XCTestCase {
         XCTAssertEqual(closed?.raw, "Session end · 20m 5s")
         XCTAssertEqual(entries.map(\.ts), entries.map(\.ts).sorted(),
                        "carried-over history must stay chronological")
+    }
+
+    func testDropsTheOptInToolRowsTheNodeDaemonWrote() async throws {
+        // Only the Node daemon serves these, and only to a surface that asked
+        // for them. Decoded without their flag they were ordinary tool rows,
+        // which this daemon sent to every client, boards included.
+        let file = try writeNodeFile([nodeChatStart, nodeToolRequest, nodeToolResolved])
+        let store = DaemonTimelineStore(persistFile: file)
+        await store.start()
+        let entries = await store.getAll()
+        XCTAssertEqual(entries.map(\.type), ["chat_start"])
     }
 
     func testKeepsTheAttributionTheOtherDaemonRecorded() async throws {

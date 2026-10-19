@@ -5,14 +5,32 @@
 // the first-boot handshake. Auto-detection of the current SSID and Keychain
 // password lookup both required `networksetup` / `security` subprocesses,
 // which are not allowed under Apple Review Guideline 2.5.2 — the
-// ESP32ProvisionSheet asks the user to type both fields directly.
+// ESP32ProvisionSheet asks the user to type both fields directly, and the
+// daemon saves them through `POST /esp32/wifi` (ESP32WifiSetup.swift).
 
 import Foundation
 
-struct WifiConfig: Codable {
+struct WifiConfig: Codable, Equatable, Sendable {
     let ssid: String
     let password: String
     var autoProvision: Bool = true
+
+    init(ssid: String, password: String, autoProvision: Bool = true) {
+        self.ssid = ssid
+        self.password = password
+        self.autoProvision = autoProvision
+    }
+
+    private enum CodingKeys: String, CodingKey { case ssid, password, autoProvision }
+
+    /// Node parity (`loadWifiConfig`): anything but a literal `false` keeps
+    /// auto-provisioning on, an absent key included.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ssid = try container.decode(String.self, forKey: .ssid)
+        password = try container.decode(String.self, forKey: .password)
+        autoProvision = (try? container.decodeIfPresent(Bool.self, forKey: .autoProvision)) ?? true
+    }
 }
 
 private final class WifiConfigDataBox: @unchecked Sendable {
@@ -34,15 +52,22 @@ private final class WifiConfigDataBox: @unchecked Sendable {
 
 enum WifiConfigManager {
     private static let configFile = AuthManager.agentDeckDir.appendingPathComponent("wifi-config.json")
-    // .userInteractive: DaemonServer.startDeviceModules calls load() from the
-    // main actor and sync-waits via DispatchSemaphore. .userInitiated still
-    // leaves a one-step inversion (User-interactive → User-initiated) that TPC
-    // flags. The work is a single Data(contentsOf:) bounded by a 700 ms cap,
-    // so the elevated QoS is justified for the main-actor critical path.
+    // .userInteractive: the daemon reads this synchronously and waits on a
+    // DispatchSemaphore. .userInitiated still leaves a one-step inversion
+    // (User-interactive → User-initiated) that TPC flags. The work is a single
+    // Data(contentsOf:) bounded by a 700 ms cap, so the elevated QoS is
+    // justified for that critical path.
     private static let readQueue = DispatchQueue(label: "dev.agentdeck.wifi-config.read", qos: .userInteractive)
     private static let readTimeout: DispatchTimeInterval = .milliseconds(700)
 
-    static func load() -> WifiConfig? {
+    /// The saved credentials, or nil when none are saved or the read did not
+    /// finish in time. Read from the file on every call, as the Node daemon
+    /// reads its own: the daemon consults it on each board's `device_info` and
+    /// each `/esp32/wifi` request, and an unsandboxed build shares
+    /// `~/.agentdeck/wifi-config.json` with a Node daemon that may have changed
+    /// it while this one stood down. A copy held in memory would push the old
+    /// credentials back to every parked board after such a handover.
+    static func current() -> WifiConfig? {
         let box = WifiConfigDataBox()
         let semaphore = DispatchSemaphore(value: 0)
         readQueue.async {
@@ -63,7 +88,7 @@ enum WifiConfigManager {
     static func save(_ config: WifiConfig) throws {
         try FileManager.default.createDirectory(at: AuthManager.agentDeckDir, withIntermediateDirectories: true)
         let data = try JSONEncoder.pretty.encode(config)
-        try data.write(to: configFile)
+        try data.write(to: configFile, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
     }
 

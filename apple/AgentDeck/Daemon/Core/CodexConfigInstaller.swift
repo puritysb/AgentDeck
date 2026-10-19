@@ -8,7 +8,9 @@
 //   1. `[features] hooks = true` + inline `[hooks]` tables
 //      Official Codex lifecycle hooks send one JSON object on stdin. We
 //      register UserPromptSubmit / PreToolUse / PostToolUse / Stop and POST
-//      the exact stdin body to daemon `/hooks/codex_*` endpoints.
+//      the exact stdin body to daemon `/hooks/codex_*` endpoints. Opt-in:
+//      a second PermissionRequest handler that holds the request for a
+//      device's Allow/Deny (`ApprovalsPolicy`, CodexApprovalHoldRules).
 //
 //   2. `notify = ["sh", "-c", "<snippet>", "agentdeck-notify"]`
 //      Optional turn-complete fallback when the user does not already own a
@@ -32,6 +34,29 @@ import UniformTypeIdentifiers
 enum CodexConfigInstaller {
 
     private static let codexConfigFilename = "config.toml"
+
+    /// Whether AgentDeck's `PermissionRequest` group also carries the
+    /// device-approval hold — a second handler that waits for a device's
+    /// Allow/Deny before Codex draws its own prompt. Off unless the user turns
+    /// it on, because both costs land on the person at the terminal: Codex
+    /// shows its startup "Review hooks" screen for any new handler, and while
+    /// a hold waits the terminal prompt does not appear. `auto` keeps whatever
+    /// the managed block already carries, so the install pass that runs at
+    /// every daemon start never adds or drops it. The config file is the only
+    /// record of the choice. Mirror of `CodexApprovalsPolicy` in
+    /// hooks/src/codex-install.ts.
+    enum ApprovalsPolicy {
+        case auto, on, off
+    }
+
+    /// Marks the hold request (`CodexApprovalHoldRules.header`, which a server
+    /// reads lower-cased). Same endpoint as the notification on purpose: a
+    /// daemon or installer that predates the hold falls back to the default.
+    static let approvalHoldHeader = "X-AgentDeck-Hold"
+    /// curl's budget for the held POST; the daemon holds for less.
+    private static let approvalHoldWaitSeconds = 55
+    /// Codex kills a hook after `timeout` seconds; it must exceed curl's budget.
+    private static let approvalHoldTimeoutSeconds = 60
 
     enum InstallError: LocalizedError {
         case access, features, hooks, unreadable, write, changed, wrongFile
@@ -88,7 +113,7 @@ enum CodexConfigInstaller {
     // MARK: - Public entry points
 
     @MainActor
-    static func installIfNeeded(daemonHttpPort: Int? = nil) {
+    static func installIfNeeded(daemonHttpPort: Int? = nil, approvals: ApprovalsPolicy = .auto) {
         switch AppPreferences.shared.codexConfigConsent {
         case .unknown:
             DaemonLogger.shared.info("Codex config awaiting user consent from Settings")
@@ -118,17 +143,32 @@ enum CodexConfigInstaller {
         defer { url.stopAccessingSecurityScopedResource() }
 
         do {
-            try updateConfig(at: url) { try preparedConfig($0, daemonHttpPort: daemonHttpPort) }
+            var withApprovals = false
+            try updateConfig(at: url) {
+                let updated = try preparedConfig($0, daemonHttpPort: daemonHttpPort, approvals: approvals)
+                withApprovals = hasApprovalHold(updated)
+                return updated
+            }
             AppPreferences.shared.codexConfigInstalled = true
+            AppPreferences.shared.codexApprovalsInstalled = withApprovals
             AppPreferences.shared.codexConfigError = nil
-            DaemonLogger.shared.info("Codex observation installed")
+            DaemonLogger.shared.info("Codex observation installed\(withApprovals ? " with device approvals" : "")")
         } catch {
             reportFailure(error)
         }
     }
 
+    /// Settings toggle: add or remove the hold handler under the consent the
+    /// user already gave.
+    @MainActor
+    static func setApprovals(_ enabled: Bool) {
+        installIfNeeded(approvals: enabled ? .on : .off)
+    }
+
     /// Refuse conflicting user-owned settings instead of silently aborting.
-    static func preparedConfig(_ original: String, daemonHttpPort: Int? = nil) throws -> String {
+    static func preparedConfig(
+        _ original: String, daemonHttpPort: Int? = nil, approvals: ApprovalsPolicy = .auto
+    ) throws -> String {
         if let issue = MiniToml.configEditIssue(original) { throw InstallError.unsupported(issue) }
         let outside = MiniToml.removeManagedBlock(in: original)
         let hasFeatures = MiniToml.hasTableOutsideFence(in: outside, table: "features")
@@ -137,12 +177,30 @@ enum CodexConfigInstaller {
         if MiniToml.hasIncompatibleHookTableOutsideFence(in: outside) { throw InstallError.hooks }
         let includeNotify = !MiniToml.hasTopLevelKeyOutsideFence(in: outside, key: "notify")
         let includeOtel = !MiniToml.hasTableOutsideFence(in: outside, table: "otel")
+        let includeApprovalHold = approvals == .on || (approvals == .auto && hasApprovalHold(original))
         let body = managedBlockBody(
             includeNotify: includeNotify, includeOtel: includeOtel,
             otelEndpoint: includeOtel ? buildOtelEndpoint(daemonHttpPort: daemonHttpPort) : nil,
-            includeFeatures: !hasFeatures
+            includeFeatures: !hasFeatures,
+            includeApprovalHold: includeApprovalHold
         )
         return MiniToml.applyManagedBlock(in: original, body: body)
+    }
+
+    /// Whether the managed block already carries the hold handler.
+    static func hasApprovalHold(_ text: String) -> Bool {
+        guard let open = text.range(of: MiniToml.openFence),
+              let close = text.range(of: MiniToml.closeFence, range: open.upperBound..<text.endIndex) else {
+            return false
+        }
+        return text[open.upperBound..<close.lowerBound]
+            .split(whereSeparator: \.isNewline)
+            .contains { line in
+                let key = line.drop(while: { $0 == " " || $0 == "\t" })
+                guard key.hasPrefix("command") else { return false }
+                return key.dropFirst("command".count).drop(while: { $0 == " " || $0 == "\t" }).hasPrefix("=")
+                    && line.contains(approvalHoldHeader)
+            }
     }
 
     /// Accept only an unambiguous existing opt-in. Never change a user-owned
@@ -175,6 +233,7 @@ enum CodexConfigInstaller {
                 return MiniToml.removeManagedBlock(in: $0)
             }
             AppPreferences.shared.codexConfigInstalled = false
+            AppPreferences.shared.codexApprovalsInstalled = false
             AppPreferences.shared.codexConfigError = nil
             DaemonLogger.shared.info("Codex observation removed")
         } catch {
@@ -274,7 +333,8 @@ enum CodexConfigInstaller {
         includeNotify: Bool = true,
         includeOtel: Bool = true,
         otelEndpoint: String? = nil,
-        includeFeatures: Bool = true
+        includeFeatures: Bool = true,
+        includeApprovalHold: Bool = false
     ) -> String {
         var lines: [String] = [
             "# Codex lifecycle hooks. Command hooks receive JSON on stdin;",
@@ -291,7 +351,7 @@ enum CodexConfigInstaller {
 
         if includeFeatures { lines.append(contentsOf: ["[features]", "hooks = true"]) }
         lines.append("")
-        lines.append(contentsOf: buildLifecycleHookTables())
+        lines.append(contentsOf: buildLifecycleHookTables(includeApprovalHold: includeApprovalHold))
 
         if includeOtel {
             lines.append("")
@@ -326,23 +386,26 @@ enum CodexConfigInstaller {
     /// curl line differs: Claude hooks pipe stdin (`-d @-`), Codex notify
     /// hands the JSON payload as `$1`.
     private static func buildNotifySnippet(event: String) -> String {
-        let lines = [
-            #"PORT="${AGENTDECK_PORT:-}""#,
-            #"case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac"#,
-            #"if [ -z "$PORT" ]; then"#,
-            #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
-            #"    [ -f "$F" ] || continue"#,
-            #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
-            #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
-            #"  done"#,
-            #"fi"#,
-            #"PORT="${PORT:-9120}""#,
+        (posixPortPreamble + [
             "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' --data-raw \"$1\" 2>/dev/null || true",
-        ]
-        return lines.joined(separator: "\n")
+        ]).joined(separator: "\n")
     }
 
-    private static func buildLifecycleHookTables() -> [String] {
+    /// PORT resolution shared by every POSIX snippet below.
+    private static let posixPortPreamble: [String] = [
+        #"PORT="${AGENTDECK_PORT:-}""#,
+        #"case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac"#,
+        #"if [ -z "$PORT" ]; then"#,
+        #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
+        #"    [ -f "$F" ] || continue"#,
+        #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
+        #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
+        #"  done"#,
+        #"fi"#,
+        #"PORT="${PORT:-9120}""#,
+    ]
+
+    private static func buildLifecycleHookTables(includeApprovalHold: Bool = false) -> [String] {
         let hooks: [(codexEvent: String, agentDeckEvent: String, matcher: String?)] = [
             ("SessionStart", "codex_session_start", "startup|resume|clear"),
             ("UserPromptSubmit", "codex_user_prompt_submit", nil),
@@ -367,6 +430,17 @@ enum CodexConfigInstaller {
             lines.append("command = \(MiniToml.quoted(buildLifecycleHookCommand(event: hook.agentDeckEvent)))")
             // Codex 0.151+ caps Interrupt at three seconds.
             lines.append("timeout = \(hook.codexEvent == "Interrupt" ? 3 : 5)")
+            // The hold is a second handler in AgentDeck's own group, never a
+            // group of its own. Codex keys trust by group and handler index and
+            // hashes each handler alone, so this leaves the notification
+            // handler trusted and re-keys nobody; a new group ahead of a
+            // user's would re-key theirs.
+            if includeApprovalHold && hook.codexEvent == "PermissionRequest" {
+                lines.append("[[hooks.\(hook.codexEvent).hooks]]")
+                lines.append("type = \"command\"")
+                lines.append("command = \(MiniToml.quoted(buildApprovalHoldCommand()))")
+                lines.append("timeout = \(approvalHoldTimeoutSeconds)")
+            }
         }
         return lines
     }
@@ -379,20 +453,28 @@ enum CodexConfigInstaller {
     }
 
     private static func buildStdinPostSnippet(event: String) -> String {
-        let lines = [
-            #"PORT="${AGENTDECK_PORT:-}""#,
-            #"case "$PORT" in ''|*[!0-9]*) PORT="" ;; *) [ "$PORT" -ge 1 ] 2>/dev/null && [ "$PORT" -le 65535 ] 2>/dev/null || PORT="" ;; esac"#,
-            #"if [ -z "$PORT" ]; then"#,
-            #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
-            #"    [ -f "$F" ] || continue"#,
-            #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
-            #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
-            #"  done"#,
-            #"fi"#,
-            #"PORT="${PORT:-9120}""#,
+        (posixPortPreamble + [
             "curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \"http://127.0.0.1:$PORT/hooks/\(event)\" -H 'Content-Type: application/json' -H \"X-AgentDeck-Pid: $PPID\" -d @- >/dev/null 2>&1 || true",
-        ]
-        return lines.joined(separator: "\n")
+        ]).joined(separator: "\n")
+    }
+
+    /// The hold handler: post the `PermissionRequest` payload with the hold
+    /// header, wait for the daemon's answer, and print it only when it is a
+    /// decision. Every other outcome (no daemon, a daemon without the hold, a
+    /// timeout, an empty pass) prints nothing and exits 0, which Codex reads
+    /// as no decision: its own prompt appears as if the handler were absent.
+    /// Byte-identical with `buildCodexApprovalHoldCommand` in
+    /// hooks/src/codex-install.ts — Codex hashes the command for trust, so a
+    /// one-byte drift re-prompts (shared/codex-approval-hold-vectors.json).
+    static func buildApprovalHoldCommand() -> String {
+        "exec sh -c \(shellSingleQuoted(buildApprovalHoldSnippet()))"
+    }
+
+    private static func buildApprovalHoldSnippet() -> String {
+        (posixPortPreamble + [
+            "R=$(curl -sf --connect-timeout 0.2 --max-time \(approvalHoldWaitSeconds) -X POST \"http://127.0.0.1:$PORT/hooks/codex_permission_request\" -H 'Content-Type: application/json' -H \"X-AgentDeck-Pid: $PPID\" -H \"\(approvalHoldHeader): \(approvalHoldWaitSeconds)\" -d @- 2>/dev/null) || R=\"\"",
+            #"case "$R" in *'"hookSpecificOutput"'*) printf '%s' "$R" ;; esac"#,
+        ]).joined(separator: "\n")
     }
 
     private static func shellSingleQuoted(_ s: String) -> String {

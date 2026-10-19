@@ -1,8 +1,10 @@
 #include "serial_client.h"
 #include "protocol.h"
 #include "wifi_manager.h"
+#include "wifi_cred_id.generated.h"
 #include "ws_client.h"
 #include "../state/agent_state.h"
+#include "../util/memory.h"
 #include "../util/ota_capability.h"
 #include "../util/reset_reason.h"
 #if defined(BOARD_T_EMBED)
@@ -138,6 +140,10 @@ static void sendDeviceInfoSerial() {
     }
     resp["wifiConnected"] = wifiConnected();
     resp["wifiRadioParked"] = wifiRadioParked();
+    // Always present, serial only — protocol.cpp sendDeviceInfo has the why.
+    char credId[WifiCredId::HEX_LENGTH + 1];
+    wifiLoadCredId(credId, sizeof(credId));
+    resp["wifiCredId"] = credId;
     resp["uptimeSec"] = millis() / 1000;
 #if defined(BOARD_EINK_SURFACE)
     // Keep the unsolicited USB device_info frame in lockstep with the
@@ -250,10 +256,27 @@ static void sendDeviceInfoSerial() {
     resp["otaFreeSketchSpace"] = ota.freeSketchSpace;
     if (!ota.supported) resp["otaReason"] = ota.reason;
 
-    // Mirrors protocol.cpp: sized for the fattest board's field set —
-    // serializeJson truncates silently on overflow.
-    char buf[896];
-    serializeJson(resp, buf, sizeof(buf));
+    // Mirrors protocol.cpp's sendDeviceInfoFrame: 896 bytes on the stack hold
+    // the usual frame, and one that outgrows them (the credential id took the
+    // fattest boards' worst case, t_display_pro, to the limit) goes out from a
+    // measured, fallible heap buffer held for this one send — on the PSRAM
+    // boards malloc retries in PSRAM. serializeJson would otherwise truncate it
+    // silently into a line the daemon cannot parse.
+    char stackBuf[896];
+    char* buf = stackBuf;
+    size_t cap = sizeof(stackBuf);
+    const size_t need = measureJson(resp) + 1;
+    std::unique_ptr<char[]> grown;
+    if (need > cap) {
+        grown = makeUniqueNoThrow<char[]>(need);
+        if (!grown) {
+            Serial.printf("[Serial] device_info needs %u bytes: not sent\n", (unsigned)need);
+            return;
+        }
+        buf = grown.get();
+        cap = need;
+    }
+    serializeJson(resp, buf, cap);
     serialWriteJsonLine(buf);
 }
 

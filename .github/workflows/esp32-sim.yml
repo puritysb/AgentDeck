@@ -28,10 +28,18 @@
 # the default-branch cache warm, and PR runs restore from it (warm-cache full
 # build is ~1–2 minutes; a cold first run measured 3m47s, and only a
 # platformio.ini change pays the toolchain download again).
+#
+# A PR is compiled against the master it was tested with, so two ESP32 PRs that
+# each fit can break master together. #565 and #566 merged 8 s apart on
+# 2026-10-18, each green, and master's TTGO then overflowed static DRAM by 8
+# bytes, which nothing reported. The push run compiles master as merged, with
+# the same scope rule: a merge commit's first parent is the previous master tip.
 name: ESP32 Sim Compile
 
 on:
   pull_request:
+    branches: [master]
+  push:
     branches: [master]
 
 permissions:
@@ -53,11 +61,21 @@ jobs:
           # PR's net change against the base tip.
           fetch-depth: 2
 
-      - name: Does this PR touch the ESP32 tree?
+      - name: Does this change touch the ESP32 tree?
         id: scope
+        env:
+          # A push is diffed against the tip it replaced, so a push of several
+          # commits is judged whole rather than by its last commit.
+          PUSH_BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
-          if ! base=$(git rev-parse --verify --quiet HEAD^1); then
-            echo "No first parent (PR not mergeable?) — compiling to stay safe."
+          base=''
+          if [ -n "$PUSH_BEFORE" ]; then
+            git fetch --quiet --depth=1 origin "$PUSH_BEFORE" && base=$PUSH_BEFORE
+          else
+            base=$(git rev-parse --verify --quiet HEAD^1) || base=''
+          fi
+          if [ -z "$base" ]; then
+            echo "No base to diff against (PR not mergeable?) — compiling to stay safe."
             echo 'run=true' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -66,7 +84,7 @@ jobs:
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
-            echo 'No `esp32/**` change in this PR — nothing to compile.' >> "$GITHUB_STEP_SUMMARY"
+            echo 'No `esp32/**` change here — nothing to compile.' >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Cache PlatformIO (sim)

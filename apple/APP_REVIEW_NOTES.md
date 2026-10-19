@@ -52,7 +52,7 @@ AgentDeck Dashboard requires `com.apple.security.network.server`. The app is not
 
 - Binding is limited to loopback and the local network interfaces. The app opens no firewall rules, performs no port mapping/UPnP, and accepts no traffic from the public internet.
 - Endpoints are read-only dashboard reads plus the local hook POST endpoint.
-- Connections from outside the machine must be paired (the iOS companion pairs via a QR code / auth token shown on the Mac). This is enforced at the socket layer: a non-local WebSocket upgrade without the pairing token is rejected with 401, non-local HTTP requests without the token are denied except a minimal `GET /health` that carries no credentials or session data, and the Bonjour TXT record never contains the token.
+- Connections from outside the machine must be paired (the iOS companion pairs via a QR code / auth token shown on the Mac). This is enforced at the socket layer: a non-local WebSocket upgrade without the pairing token is rejected with 401, non-local HTTP requests without the token are denied except a minimal `GET /health` that carries no credentials or session data, and the Bonjour TXT record never contains the token. A web page open in a browser on the Mac is held to the same rule: it connects from the machine itself, so its `Host` and `Origin` headers identify it, and it must carry the token.
 - Since 1.2.0 a refused device additionally surfaces as a pending entry in the Mac's **Pair a Device** window, where the user may approve that specific device. Approval is granted on the Mac by the user and scoped to the one device (its random per-install id, or its address for devices that predate the id header); it mints no credential, opens no new endpoint, and a device can never approve itself. The default with no user action remains refusal.
 - The learning pack is a non-executable signed-bundle resource. Before serving it, the Swift daemon verifies its CC BY-SA 4.0 source ledger and attribution, transfer MD5, fixed-format header checksum, and payload SHA-256. It reads no external file and starts no process.
 
@@ -294,7 +294,7 @@ No account required. To see the app's features:
 2. Click "Preview Devices" from the menu bar to see how AgentDeck renders sessions on the built-in preview targets — no real hardware required.
 3. After hooks are enabled, sessions the user starts independently appear automatically in the dashboard. AgentDeck never launches Terminal scripts or command-line tools itself.
 4. Click "Pair iPad" to show a QR code the iOS companion app can scan.
-5. Open Settings → Hardware Setup to see the in-app flows for ESP32 and Pixoo provisioning (no subprocess calls; writes serial config directly).
+5. Open Settings → ESP32 & Pixoo to see the in-app flows for ESP32 and Pixoo provisioning (no subprocess calls; the ESP32 sheet hands the Wi-Fi credentials to AgentDeck's own local service, which saves them and writes them to boards on USB serial).
 
 ## Review instructions — iPhone/iPad
 

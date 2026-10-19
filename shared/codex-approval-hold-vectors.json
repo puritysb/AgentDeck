@@ -1,0 +1,331 @@
+{
+  "$comment": "Codex device approvals (the opt-in PermissionRequest hold). Rules: shared/src/codex-approval-hold.ts (Swift: generated CodexApprovalHoldRules). Replayed by shared/src/__tests__/codex-approval-hold.test.ts, bridge/src/__tests__/codex-approval-hold.test.ts, hooks/src/__tests__/codex-install.test.ts and apple/AgentDeckTests/CodexApprovalHoldTests.swift. 'posixHoldCommand' is the exact command both installers emit (Codex hashes it for trust, so a one-byte drift re-prompts every user); 'posixPermissionRequestGroup' is AgentDeck's PermissionRequest group as both write it into config.toml, the hold as its second handler. 'decisions' is the hook stdout per device decision (null = print nothing, Codex shows its own prompt). 'budgets' maps the hold header (the command's wait in seconds) and the daemon's configured hold to the hold actually used (null = do not hold). 'eligibility' is when a daemon holds at all. 'presses' maps an option press on a held approval to its decision, as a deck's Allow / Deny keys send it (null = not an answer; nothing is resolved). 'releasingEvents' end the turn a hold waits in and release it early; 'nonReleasingEvents' must not (a parallel call's tool hooks and notification leave the open hold alone). 'capturedPermissionRequest' is a verbatim codex-cli 0.160.1 PermissionRequest stdin payload (2026-10-18, home path scrubbed); it carries no tool_use_id.",
+  "header": "x-agentdeck-hold",
+  "posixHoldCommand": "exec sh -c 'PORT=\"${AGENTDECK_PORT:-}\"\ncase \"$PORT\" in '\"'\"''\"'\"'|*[!0-9]*) PORT=\"\" ;; *) [ \"$PORT\" -ge 1 ] 2>/dev/null && [ \"$PORT\" -le 65535 ] 2>/dev/null || PORT=\"\" ;; esac\nif [ -z \"$PORT\" ]; then\n  for F in \"$HOME/.agentdeck/daemon.json\" \"$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json\" \"$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json\"; do\n    [ -f \"$F\" ] || continue\n    P=$(python3 -c \"import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('\"'\"'httpPort'\"'\"') or d.get('\"'\"'port'\"'\"');print(p if type(p) is int and 1 <= p <= 65535 else '\"'\"''\"'\"')\" \"$F\" 2>/dev/null)\n    [ -n \"$P\" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 \"http://127.0.0.1:$P/health\" >/dev/null 2>&1 && { PORT=\"$P\"; break; }\n  done\nfi\nPORT=\"${PORT:-9120}\"\nR=$(curl -sf --connect-timeout 0.2 --max-time 55 -X POST \"http://127.0.0.1:$PORT/hooks/codex_permission_request\" -H '\"'\"'Content-Type: application/json'\"'\"' -H \"X-AgentDeck-Pid: $PPID\" -H \"X-AgentDeck-Hold: 55\" -d @- 2>/dev/null) || R=\"\"\ncase \"$R\" in *'\"'\"'\"hookSpecificOutput\"'\"'\"'*) printf '\"'\"'%s'\"'\"' \"$R\" ;; esac'",
+  "posixPermissionRequestGroup": "[[hooks.PermissionRequest]]\nmatcher = \"*\"\n[[hooks.PermissionRequest.hooks]]\ntype = \"command\"\ncommand = \"exec sh -c 'PORT=\\\"${AGENTDECK_PORT:-}\\\"\\ncase \\\"$PORT\\\" in '\\\"'\\\"''\\\"'\\\"'|*[!0-9]*) PORT=\\\"\\\" ;; *) [ \\\"$PORT\\\" -ge 1 ] 2>/dev/null && [ \\\"$PORT\\\" -le 65535 ] 2>/dev/null || PORT=\\\"\\\" ;; esac\\nif [ -z \\\"$PORT\\\" ]; then\\n  for F in \\\"$HOME/.agentdeck/daemon.json\\\" \\\"$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json\\\" \\\"$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json\\\"; do\\n    [ -f \\\"$F\\\" ] || continue\\n    P=$(python3 -c \\\"import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('\\\"'\\\"'httpPort'\\\"'\\\"') or d.get('\\\"'\\\"'port'\\\"'\\\"');print(p if type(p) is int and 1 <= p <= 65535 else '\\\"'\\\"''\\\"'\\\"')\\\" \\\"$F\\\" 2>/dev/null)\\n    [ -n \\\"$P\\\" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 \\\"http://127.0.0.1:$P/health\\\" >/dev/null 2>&1 && { PORT=\\\"$P\\\"; break; }\\n  done\\nfi\\nPORT=\\\"${PORT:-9120}\\\"\\ncurl -sf --connect-timeout 0.2 --max-time 0.8 -X POST \\\"http://127.0.0.1:$PORT/hooks/codex_permission_request\\\" -H '\\\"'\\\"'Content-Type: application/json'\\\"'\\\"' -H \\\"X-AgentDeck-Pid: $PPID\\\" -d @- >/dev/null 2>&1 || true'\"\ntimeout = 5\n[[hooks.PermissionRequest.hooks]]\ntype = \"command\"\ncommand = \"exec sh -c 'PORT=\\\"${AGENTDECK_PORT:-}\\\"\\ncase \\\"$PORT\\\" in '\\\"'\\\"''\\\"'\\\"'|*[!0-9]*) PORT=\\\"\\\" ;; *) [ \\\"$PORT\\\" -ge 1 ] 2>/dev/null && [ \\\"$PORT\\\" -le 65535 ] 2>/dev/null || PORT=\\\"\\\" ;; esac\\nif [ -z \\\"$PORT\\\" ]; then\\n  for F in \\\"$HOME/.agentdeck/daemon.json\\\" \\\"$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json\\\" \\\"$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json\\\"; do\\n    [ -f \\\"$F\\\" ] || continue\\n    P=$(python3 -c \\\"import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('\\\"'\\\"'httpPort'\\\"'\\\"') or d.get('\\\"'\\\"'port'\\\"'\\\"');print(p if type(p) is int and 1 <= p <= 65535 else '\\\"'\\\"''\\\"'\\\"')\\\" \\\"$F\\\" 2>/dev/null)\\n    [ -n \\\"$P\\\" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 \\\"http://127.0.0.1:$P/health\\\" >/dev/null 2>&1 && { PORT=\\\"$P\\\"; break; }\\n  done\\nfi\\nPORT=\\\"${PORT:-9120}\\\"\\nR=$(curl -sf --connect-timeout 0.2 --max-time 55 -X POST \\\"http://127.0.0.1:$PORT/hooks/codex_permission_request\\\" -H '\\\"'\\\"'Content-Type: application/json'\\\"'\\\"' -H \\\"X-AgentDeck-Pid: $PPID\\\" -H \\\"X-AgentDeck-Hold: 55\\\" -d @- 2>/dev/null) || R=\\\"\\\"\\ncase \\\"$R\\\" in *'\\\"'\\\"'\\\"hookSpecificOutput\\\"'\\\"'\\\"'*) printf '\\\"'\\\"'%s'\\\"'\\\"' \\\"$R\\\" ;; esac'\"\ntimeout = 60",
+  "decisions": [
+    {
+      "decision": "allow",
+      "body": {
+        "hookSpecificOutput": {
+          "hookEventName": "PermissionRequest",
+          "decision": {
+            "behavior": "allow"
+          }
+        }
+      }
+    },
+    {
+      "decision": "deny",
+      "body": {
+        "hookSpecificOutput": {
+          "hookEventName": "PermissionRequest",
+          "decision": {
+            "behavior": "deny",
+            "message": "Denied from the user's AgentDeck controller."
+          }
+        }
+      }
+    },
+    {
+      "decision": "pass",
+      "body": null
+    },
+    {
+      "decision": "ended",
+      "body": null
+    }
+  ],
+  "budgets": [
+    {
+      "name": "installed command, default hold",
+      "header": "55",
+      "defaultMs": 25000,
+      "holdMs": 25000
+    },
+    {
+      "name": "installed command, longest configurable hold",
+      "header": "55",
+      "defaultMs": 50000,
+      "holdMs": 50000
+    },
+    {
+      "name": "a shorter command budget caps the hold below it",
+      "header": "20",
+      "defaultMs": 25000,
+      "holdMs": 17000
+    },
+    {
+      "name": "surrounding whitespace is tolerated",
+      "header": " 55 ",
+      "defaultMs": 25000,
+      "holdMs": 25000
+    },
+    {
+      "name": "a budget too short to be worth a stall does not hold",
+      "header": "7",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "zero does not hold",
+      "header": "0",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "empty does not hold",
+      "header": "",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "non-numeric does not hold",
+      "header": "yes",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "fractional does not hold",
+      "header": "55.5",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "negative does not hold",
+      "header": "-55",
+      "defaultMs": 25000,
+      "holdMs": null
+    },
+    {
+      "name": "absurdly long budget is not a number we trust",
+      "header": "99999",
+      "defaultMs": 25000,
+      "holdMs": null
+    }
+  ],
+  "eligibility": [
+    {
+      "name": "connected device, visible session",
+      "input": {},
+      "hold": true,
+      "reason": "device-approval"
+    },
+    {
+      "name": "kill switch",
+      "input": {
+        "enabled": false
+      },
+      "hold": false,
+      "reason": "disabled"
+    },
+    {
+      "name": "no session id",
+      "input": {
+        "sessionId": ""
+      },
+      "hold": false,
+      "reason": "no-session"
+    },
+    {
+      "name": "Codex background thread",
+      "input": {
+        "background": true
+      },
+      "hold": false,
+      "reason": "background-thread"
+    },
+    {
+      "name": "headless codex exec child",
+      "input": {
+        "execChild": true
+      },
+      "hold": false,
+      "reason": "exec-child"
+    },
+    {
+      "name": "no device connected",
+      "input": {
+        "clientCount": 0
+      },
+      "hold": false,
+      "reason": "no-client"
+    },
+    {
+      "name": "no row shows the session",
+      "input": {
+        "visible": false
+      },
+      "hold": false,
+      "reason": "not-visible"
+    },
+    {
+      "name": "a hold already open on the session",
+      "input": {
+        "alreadyHeld": true
+      },
+      "hold": false,
+      "reason": "already-held"
+    },
+    {
+      "name": "kill switch wins over everything",
+      "input": {
+        "enabled": false,
+        "background": true,
+        "clientCount": 0
+      },
+      "hold": false,
+      "reason": "disabled"
+    }
+  ],
+  "eligibilityDefaults": {
+    "enabled": true,
+    "clientCount": 1,
+    "sessionId": "019a0000-0000-7000-8000-000000000001",
+    "background": false,
+    "execChild": false,
+    "visible": true,
+    "alreadyHeld": false
+  },
+  "presses": [
+    {
+      "name": "Allow key (Stream Deck: select_option 0)",
+      "press": {
+        "type": "select_option",
+        "index": 0
+      },
+      "decision": "allow"
+    },
+    {
+      "name": "Deny key (Stream Deck: select_option 1)",
+      "press": {
+        "type": "select_option",
+        "index": 1
+      },
+      "decision": "deny"
+    },
+    {
+      "name": "any other index is not an answer",
+      "press": {
+        "type": "select_option",
+        "index": 2
+      },
+      "decision": null
+    },
+    {
+      "name": "a negative index is not an answer",
+      "press": {
+        "type": "select_option",
+        "index": -1
+      },
+      "decision": null
+    },
+    {
+      "name": "an index sent as a string is not an answer",
+      "press": {
+        "type": "select_option",
+        "index": "0"
+      },
+      "decision": null
+    },
+    {
+      "name": "select_option without an index is not an answer",
+      "press": {
+        "type": "select_option"
+      },
+      "decision": null
+    },
+    {
+      "name": "respond y allows",
+      "press": {
+        "type": "respond",
+        "value": "y"
+      },
+      "decision": "allow"
+    },
+    {
+      "name": "respond yes allows, whatever its case and padding",
+      "press": {
+        "type": "respond",
+        "value": " YES "
+      },
+      "decision": "allow"
+    },
+    {
+      "name": "respond n denies",
+      "press": {
+        "type": "respond",
+        "value": "n"
+      },
+      "decision": "deny"
+    },
+    {
+      "name": "respond no denies",
+      "press": {
+        "type": "respond",
+        "value": "No"
+      },
+      "decision": "deny"
+    },
+    {
+      "name": "an unknown word is not an answer",
+      "press": {
+        "type": "respond",
+        "value": "a"
+      },
+      "decision": null
+    },
+    {
+      "name": "an empty word is not an answer",
+      "press": {
+        "type": "respond",
+        "value": ""
+      },
+      "decision": null
+    },
+    {
+      "name": "respond without a value is not an answer",
+      "press": {
+        "type": "respond"
+      },
+      "decision": null
+    },
+    {
+      "name": "a stop is not an answer",
+      "press": {
+        "type": "interrupt"
+      },
+      "decision": null
+    }
+  ],
+  "releasingEvents": [
+    "codex_interrupt",
+    "codex_session_end",
+    "codex_stop",
+    "codex_turn_complete",
+    "codex_user_prompt_submit"
+  ],
+  "nonReleasingEvents": [
+    "codex_permission_request",
+    "codex_session_start",
+    "codex_subagent_start",
+    "codex_subagent_stop",
+    "codex_tool_end",
+    "codex_tool_start"
+  ],
+  "capturedPermissionRequest": {
+    "session_id": "01a14c63-917d-74d0-856f-de683da6c230",
+    "turn_id": "01a14c63-9500-7e71-b111-797a42405911",
+    "transcript_path": "/Users/dev/.codex/sessions/2026/10/18/rollout-2026-10-18T09-22-36-01a14c63-917d-74d0-856f-de683da6c230.jsonl",
+    "cwd": "/Users/dev/AgentDeck",
+    "hook_event_name": "PermissionRequest",
+    "model": "gpt-6-astra",
+    "permission_mode": "default",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "printf HOLD_PROBE_OK",
+      "description": "AgentDeck approval probe"
+    }
+  },
+  "capturedQuestion": "Approve Bash: printf HOLD_PROBE_OK"
+}

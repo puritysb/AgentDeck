@@ -9,6 +9,7 @@
 #if defined(BOARD_SPK_CODEC_ES8311)
 #include "es8311_codec.h"
 #endif
+#include "../util/internal_reserve.h"
 
 #include <Arduino.h>
 #include <ESP_I2S.h>
@@ -242,13 +243,13 @@ bool playbackInit() {
     // (assert sdio_rx_get_buffer). A few KB held from boot costs far less than
     // a board that can only speak while its radio is parked.
     Serial.printf("[Speaker] internal heap before I2S: %u KB free\n",
-                  (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+                  (unsigned)(InternalReserve::heapFreeBytes(MALLOC_CAP_INTERNAL) / 1024));
     if (!ensureI2sOpen(16000)) {
         Serial.println("[Speaker] I2S channel unavailable at init — playback will retry per utterance");
     }
     Serial.printf("[Speaker] playback ready (%u KB ring, internal heap %u KB)\n",
                   (unsigned)(RING_BYTES / 1024),
-                  (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024));
+                  (unsigned)(InternalReserve::heapFreeBytes(MALLOC_CAP_INTERNAL) / 1024));
 #if defined(BOARD_SPK_CODEC_ES8311)
     // Probe now so `audio_out` is answerable from the first device_info rather
     // than only after an utterance has already been attempted and lost.

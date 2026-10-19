@@ -1,0 +1,195 @@
+{
+  "comment": "GET/POST /esp32/wifi, answered field for field by both daemons (bridge/src/esp32-wifi-setup.ts, apple/AgentDeck/Daemon/Server/ESP32WifiSetup.swift), because the macOS app calls whichever daemon holds the port. Replayed by bridge/src/__tests__/esp32-wifi-setup.test.ts and apple/AgentDeckTests/ESP32WifiSetupTests.swift with fake dependencies: `boardsReply` is what the fake board lister returns, `provisionReply` what the fake fan-out returns. credId is the shared rule's id of DeskNet / the password under `token` (shared/esp32-wifi-provision-vectors.json pins the id itself). `bodies` are POST bodies as bytes, `text` (UTF-8) or `hex`, padded with spaces to `padTo` bytes when given; `value` is what a valid one parses to.",
+  "token": "setup-token-0123456789abcdef",
+  "bridgeIp": "192.168.1.50",
+  "bridgePort": 9120,
+  "credId": "9f9033776c736252",
+  "boardsReply": [
+    { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": false, "provisionedAt": 0, "ack": null }
+  ],
+  "provisionReply": [
+    { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "sent": true, "reason": "credentials-differ" }
+  ],
+  "status": [
+    {
+      "name": "nothing configured",
+      "config": null, "serial": true,
+      "boardsAskedWith": null,
+      "response": { "ok": true, "configured": false, "ssid": "", "autoProvision": false, "serial": true, "boards": [
+        { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": false, "provisionedAt": 0, "ack": null }
+      ] }
+    },
+    {
+      "name": "configured: the SSID and never the password; boards judged against the configured id",
+      "config": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": true }, "serial": true,
+      "boardsAskedWith": "9f9033776c736252",
+      "response": { "ok": true, "configured": true, "ssid": "DeskNet", "autoProvision": true, "serial": true, "boards": [
+        { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": false, "provisionedAt": 0, "ack": null }
+      ] }
+    },
+    {
+      "name": "a daemon without the serial channel lists no boards and asks for none",
+      "config": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": false }, "serial": false,
+      "response": { "ok": true, "configured": true, "ssid": "DeskNet", "autoProvision": false, "serial": false, "boards": [] }
+    }
+  ],
+  "apply": [
+    {
+      "name": "saved, then sent to the serial boards as an operator request",
+      "body": { "ssid": "DeskNet", "password": "correct horse battery staple" }, "serial": true,
+      "status": 200,
+      "response": { "ok": true, "saved": true, "autoProvision": true, "boards": [
+        { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "sent": true, "reason": "credentials-differ" }
+      ] },
+      "saved": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": true },
+      "provisioned": { "credId": "9f9033776c736252", "manual": true }
+    },
+    {
+      "name": "autoProvision false is kept, and this request still sends",
+      "body": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": false }, "serial": true,
+      "status": 200,
+      "response": { "ok": true, "saved": true, "autoProvision": false, "boards": [
+        { "port": "/dev/cu.usbmodem1101", "board": "t_embed", "sent": true, "reason": "credentials-differ" }
+      ] },
+      "saved": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": false },
+      "provisioned": { "credId": "9f9033776c736252", "manual": true }
+    },
+    {
+      "name": "a daemon without the serial channel saves and sends nothing",
+      "body": { "ssid": "DeskNet", "password": "correct horse battery staple" }, "serial": false,
+      "status": 200,
+      "response": { "ok": true, "saved": true, "autoProvision": true, "boards": [] },
+      "saved": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": true },
+      "provisioned": null
+    },
+    {
+      "name": "a missing SSID is an empty one",
+      "body": { "password": "correct horse battery staple" }, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "ssid-missing" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "a short password",
+      "body": { "ssid": "DeskNet", "password": "seven77" }, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "password-too-short" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "a non-string password is a missing one",
+      "body": { "ssid": "DeskNet", "password": 12345678 }, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "password-too-short" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "a control character",
+      "body": { "ssid": "DeskNet", "password": "pass\nword1" }, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "control-character" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "autoProvision must be a boolean",
+      "body": { "ssid": "DeskNet", "password": "correct horse battery staple", "autoProvision": "yes" }, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "invalid-body" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "an array is not a request",
+      "body": ["DeskNet", "correct horse battery staple"], "serial": true,
+      "status": 400, "response": { "ok": false, "error": "invalid-body" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "a string is not a request",
+      "body": "DeskNet", "serial": true,
+      "status": 400, "response": { "ok": false, "error": "invalid-body" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "null is not a request",
+      "body": null, "serial": true,
+      "status": 400, "response": { "ok": false, "error": "invalid-body" }, "saved": null, "provisioned": null
+    },
+    {
+      "name": "a failed save sends nothing",
+      "body": { "ssid": "DeskNet", "password": "correct horse battery staple" }, "serial": true, "saveFails": true,
+      "status": 500, "response": { "ok": false, "error": "save-failed" }, "saved": null, "provisioned": null
+    }
+  ],
+  "authorized": [
+    { "name": "IPv4 loopback with the token", "remoteAddress": "127.0.0.1", "authorization": "Bearer setup-token-0123456789abcdef", "authorized": true },
+    { "name": "IPv6 loopback with the token", "remoteAddress": "::1", "authorization": "Bearer setup-token-0123456789abcdef", "authorized": true },
+    { "name": "mapped IPv4 loopback with the token", "remoteAddress": "::ffff:127.0.0.1", "authorization": "Bearer setup-token-0123456789abcdef", "authorized": true },
+    { "name": "a LAN address holding the token", "remoteAddress": "192.168.1.23", "authorization": "Bearer setup-token-0123456789abcdef", "authorized": false },
+    { "name": "a mapped LAN address holding the token", "remoteAddress": "::ffff:192.168.1.23", "authorization": "Bearer setup-token-0123456789abcdef", "authorized": false },
+    { "name": "loopback without a token", "remoteAddress": "127.0.0.1", "authorization": null, "authorized": false },
+    { "name": "loopback with an empty bearer", "remoteAddress": "127.0.0.1", "authorization": "Bearer ", "authorized": false },
+    { "name": "loopback with a wrong token", "remoteAddress": "127.0.0.1", "authorization": "Bearer wrong-token", "authorized": false },
+    { "name": "loopback with the token but no scheme", "remoteAddress": "127.0.0.1", "authorization": "setup-token-0123456789abcdef", "authorized": false }
+  ],
+  "refusal": { "status": 403, "response": { "ok": false, "error": "local-token-required" } },
+  "rows": [
+    {
+      "name": "a board holding the configured credentials",
+      "deviceInfo": { "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "wifiCredId": "9f9033776c736252" },
+      "expectedCredId": "9f9033776c736252", "provisionedAt": 0, "ack": null,
+      "row": { "port": "/dev/cu.row", "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": true, "provisionedAt": 0, "ack": null }
+    },
+    {
+      "name": "a board holding other credentials, sent a provision and answering it",
+      "deviceInfo": { "board": "86box", "wifiConnected": false, "wifiRadioParked": true, "wifiCredId": "" },
+      "expectedCredId": "9f9033776c736252", "provisionedAt": 1790000000000,
+      "ack": { "success": true, "joined": true, "ip": "192.168.1.23", "error": "", "at": 1790000001000 },
+      "row": { "port": "/dev/cu.row", "board": "86box", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": false, "provisionedAt": 1790000000000,
+        "ack": { "success": true, "joined": true, "ip": "192.168.1.23", "error": "", "at": 1790000001000 } }
+    },
+    {
+      "name": "firmware that predates the id cannot tell",
+      "deviceInfo": { "board": "ttgo", "wifiConnected": true },
+      "expectedCredId": "9f9033776c736252", "provisionedAt": 0, "ack": null,
+      "row": { "port": "/dev/cu.row", "board": "ttgo", "wifiConnected": true, "wifiRadioParked": null, "holdsCredentials": null, "provisionedAt": 0, "ack": null }
+    },
+    {
+      "name": "nothing configured to compare cannot tell",
+      "deviceInfo": { "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "wifiCredId": "9f9033776c736252" },
+      "expectedCredId": null, "provisionedAt": 0, "ack": null,
+      "row": { "port": "/dev/cu.row", "board": "t_embed", "wifiConnected": false, "wifiRadioParked": true, "holdsCredentials": null, "provisionedAt": 0, "ack": null }
+    },
+    {
+      "name": "no device_info on this connection",
+      "deviceInfo": null,
+      "expectedCredId": "9f9033776c736252", "provisionedAt": 0, "ack": null,
+      "row": { "port": "/dev/cu.row", "board": "", "wifiConnected": null, "wifiRadioParked": null, "holdsCredentials": null, "provisionedAt": 0, "ack": null }
+    }
+  ],
+  "acks": [
+    { "name": "a join", "message": { "type": "wifi_provision_ack", "success": true, "joined": true, "ip": "192.168.1.23" }, "recorded": { "success": true, "joined": true, "ip": "192.168.1.23", "error": "" } },
+    { "name": "saved for when it leaves USB, without an address", "message": { "type": "wifi_provision_ack", "success": true, "joined": false }, "recorded": { "success": true, "joined": false, "ip": "", "error": "" } },
+    { "name": "firmware that predates joined: its success may be either, its ip an earlier join's", "message": { "type": "wifi_provision_ack", "success": true, "ip": "192.168.1.23" }, "recorded": { "success": true, "joined": null, "ip": "192.168.1.23", "error": "" } },
+    { "name": "only a JSON boolean says joined: not the number 1", "message": { "type": "wifi_provision_ack", "success": true, "joined": 1, "ip": "192.168.1.23" }, "recorded": { "success": true, "joined": null, "ip": "192.168.1.23", "error": "" } },
+    { "name": "nor the string true", "message": { "type": "wifi_provision_ack", "success": true, "joined": "true" }, "recorded": { "success": true, "joined": null, "ip": "", "error": "" } },
+    { "name": "a failure, control characters stripped", "message": { "type": "wifi_provision_ack", "success": false, "error": "connection\u0007 failed" }, "recorded": { "success": false, "joined": null, "ip": "", "error": "connection failed" } },
+    { "name": "anything but a literal true is a failure", "message": { "type": "wifi_provision_ack", "success": "true", "ip": 5 }, "recorded": { "success": false, "joined": null, "ip": "", "error": "" } },
+    { "name": "a long reason is clipped to 80 characters", "message": { "type": "wifi_provision_ack", "success": false, "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }, "recorded": { "success": false, "joined": null, "ip": "", "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } },
+    { "name": "the number 1 is not true", "message": { "type": "wifi_provision_ack", "success": 1, "ip": "192.168.1.23" }, "recorded": { "success": false, "joined": null, "ip": "192.168.1.23", "error": "" } },
+    { "name": "a clip never splits a surrogate pair", "message": { "type": "wifi_provision_ack", "success": false, "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d\ude00" }, "recorded": { "success": false, "joined": null, "ip": "", "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" } },
+    { "name": "a pair that fits is kept", "message": { "type": "wifi_provision_ack", "success": false, "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d\ude00" }, "recorded": { "success": false, "joined": null, "ip": "", "error": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d\ude00" } }
+  ],
+  "bodies": [
+    { "name": "no body is an empty object", "text": "", "valid": true, "value": {} },
+    { "name": "an object", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\"}", "valid": true, "value": { "ssid": "DeskNet", "password": "correct horse battery staple" } },
+    { "name": "UTF-8 text is kept as it is", "text": "{\"ssid\":\"카페 와이파이\",\"password\":\"pässwörd-123\"}", "valid": true, "value": { "ssid": "카페 와이파이", "password": "pässwörd-123" } },
+    { "name": "an escaped surrogate pair is one character", "text": "{\"ssid\":\"\\ud83d\\ude00 net\",\"password\":\"correct horse battery staple\"}", "valid": true, "value": { "ssid": "😀 net", "password": "correct horse battery staple" } },
+    { "name": "a bare string is JSON: apply refuses it, not the parser", "text": "\"DeskNet\"", "valid": true, "value": "DeskNet" },
+    { "name": "a key named twice is not a body: the parsers keep different ones", "text": "{\"ssid\":\"First\",\"ssid\":\"Second\",\"password\":\"correct horse battery staple\"}", "valid": false },
+    { "name": "an escaped spelling names the same key", "text": "{\"ssid\":\"First\",\"\\u0073sid\":\"Second\",\"password\":\"correct horse battery staple\"}", "valid": false },
+    { "name": "nor twice in a nested object", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\",\"extra\":{\"a\":1,\"a\":2}}", "valid": false },
+    { "name": "the same key in two objects is two keys", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\",\"extra\":[{\"a\":1},{\"a\":2}]}", "valid": true, "value": { "ssid": "DeskNet", "password": "correct horse battery staple", "extra": [{ "a": 1 }, { "a": 2 }] } },
+    { "name": "brackets, commas and escaped quotes inside a string are text", "text": "{\"ssid\":\"a,}],{\\\"b\\\\\",\"password\":\"correct horse battery staple\"}", "valid": true, "value": { "ssid": "a,}],{\"b\\", "password": "correct horse battery staple" } },
+    { "name": "4096 bytes is the limit", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\"}", "padTo": 4096, "valid": true, "value": { "ssid": "DeskNet", "password": "correct horse battery staple" } },
+    { "name": "4097 bytes is over it", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\"}", "padTo": 4097, "valid": false },
+    { "name": "not JSON", "text": "{\"ssid\":", "valid": false },
+    { "name": "whitespace alone is not JSON", "text": "   ", "valid": false },
+    { "name": "a comma before a closing brace is not JSON", "text": "{\"ssid\":\"DeskNet\",}", "valid": false },
+    { "name": "nor before a closing bracket", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\",\"extra\":[1,2,]}", "valid": false },
+    { "name": "a byte-order mark is not JSON", "hex": "efbbbf7b7d", "valid": false },
+    { "name": "a byte that is never UTF-8", "hex": "7b2273736964223a224465736bff4e6574222c2270617373776f7264223a22636f727265637420686f727365206261747465727920737461706c65227d", "valid": false },
+    { "name": "a sequence cut short", "hex": "7b2273736964223a22eab0222c2270617373776f7264223a22636f727265637420686f727365206261747465727920737461706c65227d", "valid": false },
+    { "name": "an overlong encoding", "hex": "7b2273736964223a22c0af222c2270617373776f7264223a22636f727265637420686f727365206261747465727920737461706c65227d", "valid": false },
+    { "name": "a surrogate encoded as UTF-8", "hex": "7b2273736964223a22eda080222c2270617373776f7264223a22636f727265637420686f727365206261747465727920737461706c65227d", "valid": false },
+    { "name": "an escaped half of a surrogate pair", "text": "{\"ssid\":\"Desk\\ud800Net\",\"password\":\"correct horse battery staple\"}", "valid": false },
+    { "name": "or a key holding one", "text": "{\"ssid\":\"DeskNet\",\"password\":\"correct horse battery staple\",\"\\ud800\":1}", "valid": false }
+  ]
+}

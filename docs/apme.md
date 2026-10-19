@@ -514,8 +514,9 @@ agentdeck apme coverage --since 30d [--json]
 136건, 그보다 짧은 540건 중 5건이었다. 이제 응답의 주인은 **collector 의 열린 턴**이
 정한다(`ApmeCollector.recordStopReply`; 열린 턴이 없을 때만 마지막으로 닫힌 턴에, 그 턴에 응답이
 없을 때만). 지난 행은 backfill 하지 않았다 — transcript 에 응답이 남아 있어 복구는 가능하지만
-별도 결정이다. 같은 24행 판정은 기기 타임라인의 `chat_response` 행 발행도 정하므로, 긴 Claude
-턴은 타임라인에도 응답 행이 빠질 수 있다(후속 과제, 이 PR 범위 밖).
+별도 결정이다. 기기 타임라인의 `chat_response` 행도 같은 24행 판정으로 발행됐는데, 지금은
+세션의 chat 행 전부를 읽어 판정하므로(`getChatRowsForSession`, #574) 긴 턴의 응답 행은 더
+빠지지 않는다. 알림이 연 턴은 타임라인에 `chat_start` 가 없으니 여전히 응답 행이 없다.
 
 **에이전트별 APME 생산자 (2026-10-18):**
 
@@ -525,7 +526,7 @@ agentdeck apme coverage --since 30d [--json]
 | codex-cli | `codex_*` 훅 + rollout | — (데스크톱 앱의 턴도 `codex_*` 훅으로 들어오면 codex-cli 행이 된다; codex-app 행은 없다) |
 | openclaw | Gateway 이벤트(세션 키별 run) | — |
 | hermes | `hermes_*` 훅 | — |
-| opencode | 옵저버 플러그인(`opencode_*` 훅) | 플러그인의 `opencode_stop` 이 모델을 싣지 않음 → `Model 0%` |
+| opencode | 옵저버 플러그인(`opencode_*` 훅) | v5 이전 플러그인은 `opencode_stop` 에 모델을 싣지 않는다 → 다시 설치하기 전까지 `Model 0%` |
 | kiro-cli / kiro-ide | Kiro 타임라인 피드(`chat_start` / `chat_response`) | 도구·모델 없음; kiro-ide 세션도 kiro-cli 로 연다; 기록된 작업 8건이 전부 trivial 로 거부 |
 | antigravity | **없음** — 패시브 옵저버는 roster/상태용 transcript 폴링만 하고, 데몬은 `antigravity_*` 훅을 받을 준비만 돼 있다(설치기 없음) | 전부 |
 
@@ -1049,7 +1050,7 @@ effort 기본값은 `high` — 사용자 Codex 기본값이 `ultra` 여도 따�
 
 라우트 표는 `bridge/src/apme/http.ts` 의 실제 분기와 1:1이다. 예전에 실려 있던 `POST /apme/tune` 은 구현된 적이 없어 삭제했다(위 auto-tuning 절 참고).
 
-모든 응답은 JSON + `Access-Control-Allow-Origin: *`. APME 미초기화 시 503.
+모든 응답은 JSON 이고 `Access-Control-Allow-Origin` 은 없다. 같은 머신에서 온 GET 은 어떤 페이지가 보냈든 로컬 신뢰를 유지하므로, 그 헤더가 있으면 사용자가 연 아무 웹 페이지나 프롬프트·task 제목·판정을 읽는다([docs/daemon.md § LAN security model](daemon.md#lan-security-model-issue-145)). 대시보드는 같은 출처의 `/apme` 에서 서빙되므로 CORS 가 필요 없다. APME 미초기화 시 503.
 
 ### Unified activity projection
 

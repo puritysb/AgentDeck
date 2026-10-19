@@ -1254,24 +1254,28 @@ export class SessionSlotManager {
   /**
    * Content cells for an observed (hook-only) session's detail view. Every
    * actionable cell maps to something actually deliverable:
-   *   - held gate (Claude PreToolUse / OpenCode permission.asked) → Allow/Deny
+   *   - held gate (Claude PreToolUse / OpenCode permission.asked / Codex
+   *     opt-in approval hold) → Allow/Deny
    *   - processing → live readouts + STOP only
    *   - OpenCode idle → immediate injection presets
-   *   - REVIEW (independent eval) → everywhere, including control-less Codex
+   *   - REVIEW (independent eval) → everywhere, including Codex
    */
   private observedContentSlot(
     session: SessionInfo | undefined, idx: number,
     isAwaiting: boolean, isProcessing: boolean,
   ): SessionSlotConfig {
     // Delivery paths: Claude = hook RPC (gate / soft stop / turn-end queue),
-    // OpenCode = observer-plugin queue (immediate). Codex = notify-only.
+    // OpenCode = observer-plugin queue (immediate). Codex = its held
+    // PermissionRequest hook (opt-in) and nothing else: the daemon maps these
+    // option presses to the hold's decision.
     const isOpenCodeObserved = session?.agentType === 'opencode';
     if (isAwaiting) {
       if (session?.requestId) {
         // Device-native gate semantics (permit/deny THIS tool call) — the
         // daemon only surfaces requestIds for genuine prompts (held
-        // PreToolUse gate / OpenCode permission.asked), so these two answers
-        // cannot mismatch the terminal prompt.
+        // PreToolUse gate / OpenCode permission.asked / held Codex
+        // PermissionRequest), so these two answers cannot mismatch the
+        // terminal prompt.
         if (idx === 0) return { type: 'option', option: { label: 'Allow', shortcut: 'y', index: 0 }, optionIndex: 0 };
         if (idx === 1) return { type: 'option', option: { label: 'Deny', shortcut: 'n', index: 1 }, optionIndex: 1 };
         return this.awaitingStatusCard(session, idx - 2, false);

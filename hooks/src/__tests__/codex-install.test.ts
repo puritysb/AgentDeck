@@ -11,6 +11,7 @@ import {
   hasTableOutsideFence,
   hasIncompatibleHookTableOutsideFence,
   quoted,
+  configEditIssue,
   OPEN_FENCE,
   CLOSE_FENCE,
 } from '../codex-mini-toml.js';
@@ -19,6 +20,9 @@ import {
   installCodexHooksIfNeeded,
   uninstallCodexHooks,
   windowsNotifyScriptContent,
+  buildCodexApprovalHoldCommand,
+  hasCodexApprovalHold,
+  codexApprovalsPolicyFromEnv,
 } from '../codex-install.js';
 
 // ─── codex-mini-toml ────────────────────────────────────────────────────
@@ -716,6 +720,207 @@ describe('codex-install: install / uninstall (file I/O)', () => {
   });
 });
 
+// ─── codex-install: device approvals (PermissionRequest hold) ───────────
+
+const HOLD_VECTORS = JSON.parse(readFileSync(new URL('../../../shared/codex-approval-hold-vectors.json', import.meta.url), 'utf8')) as {
+  posixHoldCommand: string;
+  posixPermissionRequestGroup: string;
+  decisions: Array<{ decision: string; body: unknown }>;
+  capturedPermissionRequest: Record<string, unknown>;
+};
+
+/** The text of AgentDeck's PermissionRequest group, matcher through its last handler. */
+function permissionGroup(body: string): string {
+  return body.split('[[hooks.PermissionRequest]]')[1].split('\n\n')[0];
+}
+
+describe('codex-install: device approvals', () => {
+  let tmp: string;
+  let configPath: string;
+  let notifyScriptPath: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'codex-approvals-test-'));
+    configPath = join(tmp, 'config.toml');
+    notifyScriptPath = join(tmp, 'codex-notify.ps1');
+    delete process.env.AGENTDECK_NO_CODEX_HOOKS;
+    delete process.env.AGENTDECK_CODEX_APPROVALS;
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+    delete process.env.AGENTDECK_CODEX_APPROVALS;
+  });
+
+  const install = (codexApprovals?: 'auto' | 'on' | 'off') =>
+    installCodexHooksIfNeeded({ configPath, daemonHttpPort: 9120, notifyScriptPath, platform: 'linux', ...(codexApprovals ? { codexApprovals } : {}) });
+
+  it('emits exactly the shared hold command (Codex hashes it for trust)', () => {
+    expect(buildCodexApprovalHoldCommand('linux')).toBe(HOLD_VECTORS.posixHoldCommand);
+    expect(buildCodexApprovalHoldCommand('darwin')).toBe(HOLD_VECTORS.posixHoldCommand);
+  });
+
+  it('writes the PermissionRequest group the Swift installer writes', () => {
+    for (const platform of ['linux', 'darwin'] as const) {
+      expect(managedBlockBody({ platform, includeApprovalHold: true })).toContain(HOLD_VECTORS.posixPermissionRequestGroup);
+    }
+  });
+
+  it('adds the hold as a second handler and leaves every other byte of the block alone', () => {
+    const plain = managedBlockBody({ platform: 'linux', includeOtel: false });
+    const held = managedBlockBody({ platform: 'linux', includeOtel: false, includeApprovalHold: true });
+    // The notification handler keeps its exact text, so its trust hash holds;
+    // no group is added, so no other group's trust key moves.
+    expect(permissionGroup(held).startsWith(`${permissionGroup(plain)}\n[[hooks.PermissionRequest.hooks]]`)).toBe(true);
+    expect(held).toBe(plain.replace(permissionGroup(plain), permissionGroup(held)));
+    expect(held.match(/\[\[hooks\.PermissionRequest\]\]/g)).toHaveLength(1);
+    const hold = permissionGroup(held).split('[[hooks.PermissionRequest.hooks]]')[2];
+    expect(hold).toContain(`command = ${quoted(HOLD_VECTORS.posixHoldCommand)}`);
+    expect(hold).toContain('timeout = 60');
+  });
+
+  it('is off by default, on when asked, kept by a plain refresh, and removed when turned off', () => {
+    expect(install()).toMatchObject({ installed: true, approvals: false });
+    const plain = readFileSync(configPath, 'utf-8');
+    expect(hasCodexApprovalHold(plain)).toBe(false);
+
+    expect(install('on')).toMatchObject({ installed: true, approvals: true });
+    const held = readFileSync(configPath, 'utf-8');
+    expect(hasCodexApprovalHold(held)).toBe(true);
+    expect(install('on').approvals).toBe(true);
+    expect(readFileSync(configPath, 'utf-8')).toBe(held);
+
+    // A refresh (setup, `agentdeck codex`, the other installer) keeps the choice.
+    expect(install()).toMatchObject({ installed: true, approvals: true });
+    expect(readFileSync(configPath, 'utf-8')).toBe(held);
+
+    expect(install('off')).toMatchObject({ installed: true, approvals: false });
+    expect(readFileSync(configPath, 'utf-8')).toBe(plain);
+  });
+
+  it('reads AGENTDECK_CODEX_APPROVALS as the default policy', () => {
+    expect(codexApprovalsPolicyFromEnv({})).toBe('auto');
+    expect(codexApprovalsPolicyFromEnv({ AGENTDECK_CODEX_APPROVALS: '1' })).toBe('on');
+    expect(codexApprovalsPolicyFromEnv({ AGENTDECK_CODEX_APPROVALS: ' On ' })).toBe('on');
+    expect(codexApprovalsPolicyFromEnv({ AGENTDECK_CODEX_APPROVALS: 'false' })).toBe('off');
+    expect(codexApprovalsPolicyFromEnv({ AGENTDECK_CODEX_APPROVALS: 'maybe' })).toBe('auto');
+    process.env.AGENTDECK_CODEX_APPROVALS = '1';
+    expect(install().approvals).toBe(true);
+    process.env.AGENTDECK_CODEX_APPROVALS = '0';
+    expect(install().approvals).toBe(false);
+  });
+
+  it('keeps trust records and user hooks through on and off, and uninstall leaves no residue', () => {
+    const user = [
+      'model = "gpt-5"',
+      '',
+      '[[hooks.PermissionRequest]]',
+      'matcher = "*"',
+      '[[hooks.PermissionRequest.hooks]]',
+      'type = "command"',
+      'command = "workmux notify"',
+      '',
+      '[hooks.state."/Users/me/.codex/config.toml:permission_request:0:0"]',
+      'trusted_hash = "sha256:abc"',
+      '',
+    ].join('\n');
+    writeFileSync(configPath, user);
+    install('on');
+    const held = readFileSync(configPath, 'utf-8');
+    expect(held.split(CLOSE_FENCE)[1]).toContain('command = "workmux notify"');
+    expect(held.split(CLOSE_FENCE)[1]).toContain('trusted_hash = "sha256:abc"');
+    expect(configEditIssue(held)).toBeUndefined();
+    install('off');
+    expect(readFileSync(configPath, 'utf-8').split(CLOSE_FENCE)[1]).toBe(held.split(CLOSE_FENCE)[1]);
+    install('on');
+    uninstallCodexHooks({ configPath, notifyScriptPath });
+    expect(readFileSync(configPath, 'utf-8')).toBe(user);
+  });
+
+  it('is recognised as AgentDeck-owned, so an installer without the hold rewrites the block cleanly', () => {
+    // An installer that predates the hold drops every group whose commands are
+    // all its own (`/hooks/codex_`) and whose fields are all generated. Adding
+    // a field it does not know (statusMessage) would instead make it refuse
+    // the whole file.
+    const withHold = applyManagedBlock('model = "keep"\n', managedBlockBody({ platform: 'linux', includeApprovalHold: true }));
+    expect(configEditIssue(withHold)).toBeUndefined();
+    expect(removeManagedBlock(withHold)).toBe('model = "keep"\n');
+    expect(permissionGroup(managedBlockBody({ platform: 'linux', includeApprovalHold: true }))).not.toMatch(/statusMessage|async/);
+  });
+
+  it('emits a Windows hold that echoes only a decision', () => {
+    const body = managedBlockBody({ platform: 'win32', includeOtel: false, includeNotify: false, includeApprovalHold: true });
+    const hold = permissionGroup(body).split('[[hooks.PermissionRequest.hooks]]')[2];
+    const encoded = hold.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)?.[1];
+    expect(encoded).toBeTruthy();
+    const script = Buffer.from(encoded!, 'base64').toString('utf16le');
+    expect(script).toContain("$agentDeckHeaders['X-AgentDeck-Hold'] = '55'");
+    expect(script).toContain('/hooks/codex_permission_request');
+    expect(script).toContain('Invoke-WebRequest -UseBasicParsing -Method Post -TimeoutSec 55');
+    expect(script).toContain(`.Contains('"hookSpecificOutput"')`);
+    expect(script.trimEnd().endsWith('exit 0')).toBe(true);
+    expect(hold).toContain('timeout = 60');
+    expect(hasCodexApprovalHold(applyManagedBlock('', body))).toBe(true);
+    expect(configEditIssue(applyManagedBlock('', body))).toBeUndefined();
+  });
+
+  it.skipIf(process.platform === 'win32')('prints only a daemon decision, and nothing for any other answer', async () => {
+    const allow = JSON.stringify(HOLD_VECTORS.decisions.find((d) => d.decision === 'allow')?.body);
+    const payload = JSON.stringify(HOLD_VECTORS.capturedPermissionRequest);
+    const answers: Array<{ status: number; body: string; expected: string }> = [
+      { status: 200, body: allow, expected: allow },
+      { status: 200, body: '', expected: '' },
+      { status: 200, body: '{"received":true}', expected: '' },
+      { status: 404, body: allow, expected: '' },
+    ];
+    for (const answer of answers) {
+      let seen: { hold?: string; pid?: string; path?: string; body: string } | undefined;
+      const server = createServer((req, res) => {
+        let data = '';
+        req.on('data', (chunk) => { data += chunk; });
+        req.on('end', () => {
+          seen = { hold: req.headers['x-agentdeck-hold'] as string | undefined, pid: req.headers['x-agentdeck-pid'] as string | undefined, path: req.url, body: data };
+          res.writeHead(answer.status, { 'Content-Type': 'application/json' });
+          res.end(answer.body);
+        });
+      });
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      try {
+        const port = (server.address() as { port: number }).port;
+        const result = await runHold(port, payload);
+        expect(result).toEqual({ code: 0, stdout: answer.expected });
+        expect(seen).toEqual({ hold: '55', pid: String(process.pid), path: '/hooks/codex_permission_request', body: payload });
+      } finally {
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    }
+    // No daemon at all: nothing printed, success, and no wait.
+    const closed = await new Promise<number>((resolve) => {
+      const probe = createServer();
+      probe.listen(0, '127.0.0.1', () => {
+        const port = (probe.address() as { port: number }).port;
+        probe.close(() => resolve(port));
+      });
+    });
+    const started = Date.now();
+    expect(await runHold(closed, payload)).toEqual({ code: 0, stdout: '' });
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+function runHold(port: number, payload: string): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('/bin/sh', ['-c', buildCodexApprovalHoldCommand(process.platform)], {
+      env: { ...process.env, AGENTDECK_PORT: String(port) },
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let stdout = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.once('error', reject);
+    child.once('exit', (code) => resolve({ code, stdout }));
+    child.stdin.end(payload);
+  });
+}
 
 describe('shared lossless config cases', () => {
   const cases = JSON.parse(readFileSync(new URL('../../../shared/codex-config-edit-vectors.json', import.meta.url), 'utf8')) as Array<{name: string; input: string; allowed: boolean; stripped?: string}>;

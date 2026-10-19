@@ -68,6 +68,11 @@ struct DaemonTimelineEntry: Codable, Sendable {
     /// instant, which content dedup reads as one row. Keying off an id is what
     /// lets identical-looking siblings coexist.
     var subagentId: String? = nil
+    /// Set on Claude's per-tool hook rows. Mirrors `TimelineEntry.toolEvent`.
+    /// This daemon never produces those rows; the flag is decoded only so one
+    /// read back from a Node-written timeline.json can be recognised, and
+    /// `normalizeForStorage` drops it.
+    var toolEvent: Bool? = nil
 }
 
 actor DaemonTimelineStore {
@@ -194,9 +199,11 @@ actor DaemonTimelineStore {
     }
 
     /// Evict a single entry to enforce `maxEntries`, protecting task rows —
-    /// mirrors `BridgeTimelineStore.evictOne`. Task rows only leave under
-    /// their own cap, and an in-flight task's `task_start` (no matching
-    /// `task_end` yet) is never evicted.
+    /// mirrors `BridgeTimelineStore.evictOne`, except for its first tier,
+    /// Claude's opt-in tool rows, which this store never holds
+    /// (`normalizeForStorage`). Task rows only leave under their own cap, and
+    /// an in-flight task's `task_start` (no matching `task_end` yet) is never
+    /// evicted.
     private func evictOne() {
         let taskRowCount = entries.lazy.filter { Self.isTaskRow($0) }.count
         if taskRowCount > maxTaskEntries {
@@ -327,7 +334,10 @@ actor DaemonTimelineStore {
         if let data = try? JSONEncoder().encode(entries) {
             let persistFile = persistFile
             Self.ioQueue.async {
-                try? data.write(to: persistFile)
+                // Atomic (temp file, then rename), as the handover snapshot
+                // already was: a plain write truncates first, so a quit or crash
+                // mid-write left a cut-off file that decodes to no rows at all.
+                try? data.write(to: persistFile, options: .atomic)
             }
         }
         dirty = false
@@ -484,6 +494,12 @@ actor DaemonTimelineStore {
     }
 
     static func normalizeForStorage(_ entry: DaemonTimelineEntry) -> DaemonTimelineEntry? {
+        // Claude's per-tool hook rows are opt-in (`timeline.tool-events.read`),
+        // and only the Node daemon produces or serves them. They reach this
+        // store only by rehydrating a timeline.json the Node daemon wrote (an
+        // unsigned build shares ~/.agentdeck). Decoded without their flag, they
+        // read as ordinary tool rows, and every client got them, boards included.
+        if entry.toolEvent == true { return nil }
         guard !Self.shouldDropLowSignalEntry(entry) else { return nil }
         guard entry.agentType == "openclaw",
               entry.type == "model_call",

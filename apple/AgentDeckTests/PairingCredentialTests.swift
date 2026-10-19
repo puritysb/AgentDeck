@@ -35,6 +35,13 @@ final class PairingCredentialTests: XCTestCase {
 
     // MARK: - Token extraction
 
+    func testRedactedKeepsTheEndpointAndHidesOnlyTheTokenValue() {
+        XCTAssertEqual(PairingCredential.redacted("ws://192.168.1.5:9120?token=abc123&clientType=esp32"),
+                       "ws://192.168.1.5:9120?token=redacted&clientType=esp32")
+        XCTAssertEqual(PairingCredential.redacted("ws://192.168.1.5:9120"), "ws://192.168.1.5:9120")
+        XCTAssertFalse(PairingCredential.redacted("ws://h:9120/?token=abc123").contains("abc123"))
+    }
+
     func testTokenExtraction() {
         XCTAssertEqual(PairingCredential.token(in: paired), "abcdef0123456789abcdef0123456789")
         XCTAssertNil(PairingCredential.token(in: discovered))

@@ -1386,6 +1386,33 @@ actor OpenClawAdapter {
         }
     }
 
+    /// A device decision that names its approval (`permission_decision`).
+    /// Resolves the ACTIVE approval only when `requestId` is that approval's own
+    /// id; any other id resolves nothing. No surface puts an OpenClaw approval
+    /// id on a row, so this is a defensive path, never the deck's.
+    @discardableResult
+    func resolvePendingApproval(requestId: String, decision: String) -> Bool {
+        guard let activeId = activeApprovalId(), activeId == requestId else { return false }
+        // Only the two params the resolve takes: the whole device command
+        // dragged `type`/`requestId` along with a decision spelling the
+        // Gateway does not accept.
+        return resolvePendingApproval(command: ["type": "respond", "value": decision])
+    }
+
+    /// The id of the approval on display, exec or plugin.
+    func activeApprovalId() -> String? {
+        switch activeApproval() {
+        case .exec(let prompt): return prompt.id
+        case .plugin(let prompt): return prompt.id
+        case nil: return nil
+        }
+    }
+
+    /// Tests drive the event path a Gateway frame takes, without a socket.
+    func receiveGatewayEventForTesting(_ rawEvent: String, payload: [String: Any]) {
+        handleGatewayEvent(ADGatewayEventName(rawValue: rawEvent), rawEvent: rawEvent, payload: payload)
+    }
+
     private func resolvePendingExecApproval(_ prompt: OpenClawApprovalPrompt, command: [String: Any]) -> Bool {
         let type = command["type"] as? String ?? ""
         let decision: ExecApprovalDecision?

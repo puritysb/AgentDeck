@@ -33,7 +33,9 @@ reply with the old routing and the reply with the new one. Not backfilled: the
 replies are still in the transcripts, but rewriting history is a separate call.
 The same 24-row predicate also gates the device timeline's `chat_response` row,
 so long Claude turns can lack a reply row there too. That is a separate change
-with device-facing effects, left out of this PR.
+with device-facing effects, left out of this PR. (#574, merged the same day,
+closed it: the Stop handler now reads the session's chat rows whole with
+`getChatRowsForSession`.)
 
 ## A running turn was counted as a lost Stop
 

@@ -79,6 +79,14 @@ describe('APME HTTP routes', () => {
     }
   });
 
+  // A GET from this machine keeps local trust whatever page sent it, so the
+  // only thing between a web page and the task history is this header.
+  it('answers without Access-Control-Allow-Origin, so another origin cannot read task history', async () => {
+    const response = await fetch(`${base}/apme/runs`, { headers: { Origin: 'https://evil.example' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
   it('serves bounded cross-task communications without tool payloads or unrelated relations', async () => {
     const now = Date.now();
     for (const sid of ['sender', 'receiver']) {

@@ -1239,6 +1239,10 @@ final class DaemonServer {
     /// overwrite their awaiting_permission overlay from parallel tool hooks
     /// while the device decision is pending (≤ hold timeout).
     private var heldGateSessionIds: Set<String> = []
+    /// Open Codex device-approval holds: session key → the requestId devices
+    /// answer (CodexApprovalHoldRules). A held session is also in
+    /// `heldGateSessionIds` until its hold is released.
+    private var codexHoldRequestBySession: [String: String] = [:]
     /// A structured direct-Claude AskUserQuestion wait.
     ///
     /// One call may carry up to four question groups while SessionInfo has room
@@ -2708,22 +2712,29 @@ final class DaemonServer {
         // which also silently took the device→daemon command channel and the
         // credential re-arm with it whenever this machine had no WiFi config.
         let lanIp = AuthManager.getLanIP() ?? "127.0.0.1"
-        let wifiConfig = WifiConfigManager.load()
-        let provisionMsg: SendableDict? = wifiConfig.map { config in
-            SendableDict([
-                "type": "wifi_provision",
-                "ssid": config.ssid,
-                "password": config.password,
-                "bridgeIp": lanIp,
-                "bridgePort": Int(port),
-                "authToken": auth.token,
-            ])
-        }
-        let autoProvision = wifiConfig?.autoProvision == true
+        // The WiFi config is read on each device_info rather than once here, so
+        // credentials saved after startup (POST /esp32/wifi from the Wi-Fi
+        // sheet, or a Node daemon writing a shared file while this one stood
+        // down) apply without a restart.
         let daemonPort = Int(port)
         await serial.serial.setOnMessage { [weak self] portPath, msg in
             guard let self else { return }
             guard let type = msg["type"] as? String else { return }
+            // A request with a reply: answer the board that asked, on its own
+            // line, shaped like every other serial frame. As a forwarded
+            // command it reached `handleCommand`, which has no case for it, so
+            // a board on USB (the knob's History view) never got its rows.
+            // Node parity: setSerialTimelineQueryHandler.
+            if type == "query_session_timeline" {
+                guard let rawSid = msg["sessionId"] as? String, !rawSid.isEmpty else { return }
+                let since = msg["since"] as? Double
+                Task { @DaemonActor [weak self] in
+                    guard let self else { return }
+                    let reply = SendableDict(await self.sessionTimelineReply(rawSid, since: since, board: true))
+                    await self.serialModule?.serial.sendEvent(reply.value, toPort: portPath)
+                }
+                return
+            }
             // Device→daemon command channel over serial. A board whose WiFi is
             // parked (serial-primary) still steers; without this its taps were
             // dropped by the device_info-only parser.
@@ -2739,7 +2750,14 @@ final class DaemonServer {
                 Task { await self.serialModule?.serial.noteAuthProvisionAck(port: portPath) }
                 return
             }
+            if type == "wifi_provision_ack" {
+                // ESP32Serial keeps the ack for GET /esp32/wifi; this is the log line.
+                DaemonLogger.shared.info("ESP32 \(ESP32Serial.WifiProvisionAck(message: msg, at: 0).logLine) (\(portPath))")
+                return
+            }
             guard type == "device_info" else { return }
+            let wifiConfig = WifiConfigManager.current()
+            let autoProvision = wifiConfig?.autoProvision == true
 
             // Keep every serial-attached board armed with the token this daemon
             // serves — regardless of the auto-provision setting, and regardless
@@ -2755,19 +2773,16 @@ final class DaemonServer {
                 // Firmware that predates `auth_provision` drops it silently, and
                 // silence is the only signal we get. Give it a moment, then fall
                 // back to the one message it does understand. It costs a WiFi
-                // re-associate, hence: once per board per token, only after the
+                // re-associate, hence: once per connection per token, only after the
                 // silence, and only with auto-provisioning on (it carries the
                 // user's WiFi credentials).
                 guard !armed.isEmpty, autoProvision, let config = wifiConfig else { return }
                 try? await Task.sleep(for: .milliseconds(Self.legacyRearmGraceMilliseconds))
-                let legacy = SendableDict([
-                    "type": "wifi_provision",
-                    "ssid": config.ssid,
-                    "password": config.password,
-                    "bridgeIp": lanIp,
-                    "bridgePort": daemonPort,
-                    "authToken": AuthManager.shared.token,
-                ])
+                // The credentials as they are now, not as they were before the grace.
+                let rearmConfig = WifiConfigManager.current() ?? config
+                let legacy = SendableDict(ESP32Serial.wifiProvisionMessage(
+                    ssid: rearmConfig.ssid, password: rearmConfig.password,
+                    bridgeIP: lanIp, bridgePort: daemonPort, authToken: AuthManager.shared.token))
                 for armedPort in armed {
                     let sent = await self.serialModule?.serial
                         .sendLegacyProvisionIfUnacked(port: armedPort, legacy.value) ?? false
@@ -2777,9 +2792,14 @@ final class DaemonServer {
                 }
             }
 
-            if autoProvision, let provisionMsg, msg["wifiConnected"] as? Bool != true {
+            if autoProvision, let config = wifiConfig, msg["wifiConnected"] as? Bool != true {
                 Task {
-                    let sent = await self.serialModule?.serial.sendWifiProvisionToAll(provisionMsg.value) ?? 0
+                    // Built per send, from the token served now: each board is
+                    // compared against the credential id this message carries.
+                    let provision = SendableDict(ESP32Serial.wifiProvisionMessage(
+                        ssid: config.ssid, password: config.password,
+                        bridgeIP: lanIp, bridgePort: daemonPort, authToken: AuthManager.shared.token))
+                    let sent = await self.serialModule?.serial.sendWifiProvisionToAll(provision.value) ?? 0
                     if sent > 0 {
                         DaemonLogger.shared.info("WiFi provision sent to \(sent) ESP32 connection(s); trigger port \(portPath)")
                     }
@@ -2819,6 +2839,44 @@ final class DaemonServer {
         return .json(["error": "Unauthorized — pairing token required for LAN access"], status: 401)
     }
 
+    /// The access policy as the server installs it, short of the pairing
+    /// window's async read: who counts as same-machine, who carries a
+    /// credential, then `httpAccessResponse`. Kept here rather than in the
+    /// closure so a test of it is a test of the wiring
+    /// (`DaemonAccessPolicyWiringTests`).
+    nonisolated static func accessPolicyResponse(
+        for request: HTTPServer.HTTPRequest, daemonPort: UInt16, pairingWindowOpen: Bool
+    ) -> HTTPServer.HTTPResponse? {
+        let sameMachine = AuthManager.shared.isLocalConnection(request.remoteIP)
+        // A web page in a browser here connects from this machine too; its
+        // Host and Origin tell it from a local program (LocalTrust). A page
+        // is answered as a network peer would be.
+        let localTrust = sameMachine
+            ? LocalTrust.verdict(for: request, port: Int(daemonPort)) : nil
+        let isLocal = localTrust == .trusted
+        var tokenValid = false
+        if let t = request.queryParams["token"], AuthManager.shared.validateToken(t) { tokenValid = true }
+        if !tokenValid, let auth = request.headers["authorization"], auth.hasPrefix("Bearer "),
+           AuthManager.shared.validateToken(String(auth.dropFirst("Bearer ".count))) { tokenValid = true }
+        // An operator-approved peer is authenticated; it simply carries its
+        // credential as an address rather than a token (PairingKnockStore).
+        // Folded in here rather than as a third parameter so
+        // httpAccessResponse stays the pure truth table its test drives —
+        // "authenticated" is one input, however the peer earned it. An
+        // approval names a device on the network: none was ever granted to
+        // a web page on this machine.
+        let authenticated = tokenValid || (!sameMachine && PairingKnockStore.shared.isApproved(
+            ip: request.remoteIP,
+            deviceId: request.headers[PairingCodeRules.DEVICE_ID_HEADER]))
+        if let localTrust, localTrust != .trusted, !authenticated {
+            LocalTrust.logRefusal(surface: "HTTP", verdict: localTrust, headers: request.headers)
+        }
+        return httpAccessResponse(
+            method: request.method, path: request.path,
+            isLocal: isLocal, tokenValid: authenticated, daemonPort: daemonPort,
+            pairingWindowOpen: pairingWindowOpen)
+    }
+
     /// A request body as a JSON object, or empty when there is nothing usable.
     ///
     /// Empty rather than nil on purpose for the pairing routes: an unparseable
@@ -2829,6 +2887,58 @@ final class DaemonServer {
     nonisolated static func jsonBody(_ body: Data?) -> [String: Any] {
         guard let body, !body.isEmpty else { return [:] }
         return ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any]) ?? [:]
+    }
+
+    /// `GET` / `POST /esp32/wifi` as the routes answer them; the token check
+    /// and the daemon's dependencies are injected so XCTest drives this very
+    /// handler (ESP32WifiSetupTests). nil deps = the server is going away.
+    nonisolated static func esp32WifiRouteResponse(
+        _ request: HTTPServer.HTTPRequest,
+        validateToken: (String) -> Bool,
+        deps: () async -> ESP32WifiSetup.Deps?
+    ) async -> HTTPServer.HTTPResponse {
+        guard ESP32WifiSetup.authorized(
+            remoteAddress: request.remoteIP, authorization: request.headers["authorization"],
+            validateToken: validateToken) else {
+            return wifiSetupResponse(ESP32WifiSetup.refusal())
+        }
+        let isPost = request.method == "POST"
+        let body: Any? = isPost ? ESP32WifiSetup.parseBody(request.body) : nil
+        if isPost, body == nil {
+            return wifiSetupResponse(ESP32WifiSetup.Response(status: 400, body: ["ok": false, "error": "invalid-body"]))
+        }
+        guard let deps = await deps() else {
+            return .json(["ok": false, "error": "daemon unavailable"], status: 503)
+        }
+        guard isPost else { return wifiSetupResponse(await ESP32WifiSetup.status(deps)) }
+        let result = await ESP32WifiSetup.apply(body: body, deps: deps)
+        if result.status == 200, let boards = result.body["boards"] as? [[String: Any]] {
+            let sent = boards.filter { $0["sent"] as? Bool == true }.count
+            DaemonLogger.shared.info("ESP32 WiFi credentials updated; provision sent to \(sent) of \(boards.count) serial board(s)")
+        }
+        return wifiSetupResponse(result)
+    }
+
+    nonisolated static func wifiSetupResponse(_ result: ESP32WifiSetup.Response) -> HTTPServer.HTTPResponse {
+        let json = HTTPServer.HTTPResponse.json(result.body, status: result.status)
+        var headers = json.headers
+        headers["Cache-Control"] = "no-store"
+        return HTTPServer.HTTPResponse(status: json.status, headers: headers, body: json.body)
+    }
+
+    /// What `/esp32/wifi` reads and drives, resolved per request: the token can
+    /// change under a running daemon (Node: `esp32WifiSetupDeps`).
+    func esp32WifiSetupDeps(port: UInt16) -> ESP32WifiSetup.Deps {
+        let serial = serialModule?.serial
+        return ESP32WifiSetup.Deps(
+            loadConfig: { WifiConfigManager.current() },
+            saveConfig: { try WifiConfigManager.save($0) },
+            serialRunning: { serial != nil },
+            boards: { await serial?.wifiSetupBoards(expectedCredId: $0) ?? [] },
+            provision: { msg, manual in await serial?.provisionBoards(msg.value, manual: manual) ?? [] },
+            authToken: { AuthManager.shared.token },
+            bridgeIP: { AuthManager.getLanIP() ?? "127.0.0.1" },
+            bridgePort: Int(port))
     }
 
     private func weatherConfig() -> SwiftWeatherConfig? {
@@ -3141,24 +3251,8 @@ final class DaemonServer {
         // module inventory, no session state. Everything else 401s before
         // route dispatch (stream routes included — see HTTPServer.handle).
         await httpServer.setAccessPolicy { request in
-            let isLocal = AuthManager.shared.isLocalConnection(request.remoteIP)
-            var tokenValid = false
-            if let t = request.queryParams["token"], AuthManager.shared.validateToken(t) { tokenValid = true }
-            if !tokenValid, let auth = request.headers["authorization"], auth.hasPrefix("Bearer "),
-               AuthManager.shared.validateToken(String(auth.dropFirst("Bearer ".count))) { tokenValid = true }
             let pairingOpen = await PairingWindowStore.shared.isOpen()
-            // An operator-approved peer is authenticated; it simply carries its
-            // credential as an address rather than a token (PairingKnockStore).
-            // Folded in here rather than as a third parameter so
-            // httpAccessResponse stays the pure truth table its test drives —
-            // "authenticated" is one input, however the peer earned it.
-            let authenticated = tokenValid || PairingKnockStore.shared.isApproved(
-                ip: request.remoteIP,
-                deviceId: request.headers[PairingCodeRules.DEVICE_ID_HEADER])
-            return Self.httpAccessResponse(
-                method: request.method, path: request.path,
-                isLocal: isLocal, tokenValid: authenticated, daemonPort: daemonPort,
-                pairingWindowOpen: pairingOpen)
+            return Self.accessPolicyResponse(for: request, daemonPort: daemonPort, pairingWindowOpen: pairingOpen)
         }
 
         // ── Pairing code ──────────────────────────────────────────────────
@@ -3338,11 +3432,11 @@ final class DaemonServer {
         // the LAN access policy: unauthenticated remote peers get 401.
         await httpServer.get("/setup-status") { [weak self] _ in
             let health = await self?.buildModuleHealth().value ?? ["state": "disconnected"]
-            return .json([
+            return HTTPServer.HTTPResponse.json([
                 "status": "ok", "mode": "daemon", "port": daemonPort,
                 "state": health["state"] as? String ?? "disconnected",
                 "isSwift": true,
-            ] as [String: Any])
+            ] as [String: Any]).allowingAnyOrigin()
         }
 
         await httpServer.get("/dashboard/providers") { [weak self] _ in
@@ -3605,6 +3699,22 @@ final class DaemonServer {
             return .json(["ok": true, "wasSuspended": was])
         }
 
+        // ESP32 WiFi credentials (Node parity: `/esp32/wifi` in daemon-server.ts).
+        // Loopback plus the token as a bearer, like Node's /integrations/zai:
+        // the WiFi password never crosses the LAN. The Wi-Fi sheet and
+        // `agentdeck wifi-setup` call this on whichever daemon holds the port,
+        // and ESP32WifiSetup.swift answers in the shape both daemons share.
+        await httpServer.get("/esp32/wifi") { [weak self] request in
+            await Self.esp32WifiRouteResponse(
+                request, validateToken: { AuthManager.shared.validateToken($0) },
+                deps: { await self?.esp32WifiSetupDeps(port: daemonPort) })
+        }
+        await httpServer.post("/esp32/wifi") { [weak self] request in
+            await Self.esp32WifiRouteResponse(
+                request, validateToken: { AuthManager.shared.validateToken($0) },
+                deps: { await self?.esp32WifiSetupDeps(port: daemonPort) })
+        }
+
         // WiFi OTA push to a connected ESP32 board (Node parity:
         // POST /esp32/ota in daemon-server.ts). Body:
         //   { target, firmwarePath? , firmwareB64? }
@@ -3863,6 +3973,13 @@ final class DaemonServer {
             // agent process. The only session→process link this daemon has.
             let hookPid = Int(request.headers["x-agentdeck-pid"] ?? "")
             guard let self else { return .json(["received": true]) }
+            // Codex device approval (opt-in): the hold handler's twin of the
+            // notification, answered by the hold alone and never ingested —
+            // the notification handler already was (CodexApprovalHoldRules).
+            if rawName == "codex_permission_request",
+               let budget = request.headers[CodexApprovalHoldRules.header] {
+                return await self.holdCodexApproval(body: bodyData, budgetHeader: budget)
+            }
             // A Codex payload on a Claude endpoint is never a Claude steering
             // call (#490): no PreToolUse gate, no Stop directive — the queued
             // deck command would be handed to Codex. Ingest it (re-routed in
@@ -3929,14 +4046,20 @@ final class DaemonServer {
             return await self.pixooPngResponse()
         }
 
+        // The frame and its stream are readable from any origin, as the Node
+        // daemon's are: a rendered terrarium image carries no secret.
         await httpServer.get("/pixoo/frame") { [weak self] _ in
-            guard let self else { return .text("No frame available", status: 204) }
-            return await self.pixooFrameResponse()
+            guard let self else {
+                return HTTPServer.HTTPResponse.text("No frame available", status: 204).allowingAnyOrigin()
+            }
+            return await self.pixooFrameResponse().allowingAnyOrigin()
         }
 
         await httpServer.stream("/pixoo/stream") { [weak self] _, conn in
             guard let self else {
-                let raw = Data((HTTPServer.formatHTTPHeaders(status: 503, headers: ["Content-Type": "text/plain"]) + "Connection: close\r\n\r\nPreview unavailable").utf8)
+                let raw = Data((HTTPServer.formatHTTPHeaders(status: 503, headers: [
+                    "Content-Type": "text/plain", HTTPServer.allowAnyOriginHeader: "*",
+                ]) + "Connection: close\r\n\r\nPreview unavailable").utf8)
                 conn.send(raw) { _ in conn.cancel() }
                 return
             }
@@ -4009,6 +4132,7 @@ final class DaemonServer {
             "Content-Type": "text/event-stream",
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            HTTPServer.allowAnyOriginHeader: "*",
         ]) + "\r\n"
 
         let sentHeader = await Self.send(conn, data: Data(header.utf8))
@@ -4453,14 +4577,13 @@ final class DaemonServer {
         // its Detail view without waiting for live events.
         if cmd["type"] as? String == "query_session_timeline" {
             guard let rawSid = cmd["sessionId"] as? String, !rawSid.isEmpty else { return }
-            let sid = resolveDeviceSessionId(rawSid)
             let since = cmd["since"] as? Double
             Task { @DaemonActor [weak self] in
                 guard let self else { return }
-                let entries = await self.timelineStore.historyForSession(sid, since: since)
-                let dicts = entries.map { self.claudeCodeEntryDict($0) }
-                let msg: [String: Any] = ["type": "timeline_history", "sessionId": sid, "entries": dicts]
-                if let data = msg.jsonData { conn.send(data) }
+                let reply = await self.sessionTimelineReply(rawSid, since: since, board: self.isBoardClient(conn))
+                // A board gets the frame size it can take, as in its connect
+                // burst; a full 16-row reply could overrun its 4 KB buffer.
+                if let data = self.frameForClient(reply, conn)?.jsonData { conn.send(data) }
             }
             return
         }
@@ -4489,17 +4612,7 @@ final class DaemonServer {
             // shrinks the payload instead of blasting the full dashboard state that
             // used to overrun the board's buffer and flap the socket.
             @DaemonActor func esp32Shaped(_ event: [String: Any]) -> Data? {
-                guard let reg = self.cachedWifiEsp32[conn.id] else {
-                    // Not registered yet — but a board tagged in its upgrade
-                    // URL is still an ESP32: shape (or drop) from frame zero.
-                    // The unshaped full-state frame used to land here when the
-                    // burst won the race against the board's device_info and
-                    // choked its 4 KB line buffer into a reconnect loop.
-                    return conn.isEsp32
-                        ? ESP32Serial.wifiEsp32Forward(event, deviceInfo: nil)?.jsonData
-                        : event.jsonData
-                }
-                return ESP32Serial.wifiEsp32Forward(event, deviceInfo: ESP32Serial.wifiDeviceInfo(reg.devices.first))?.jsonData
+                self.frameForClient(event, conn)?.jsonData
             }
 
             @DaemonActor func surfaceAllows(_ event: [String: Any]) -> Bool {
@@ -4931,6 +5044,45 @@ final class DaemonServer {
         return matches.count == 1 ? matches[matches.startIndex] : raw
     }
 
+    /// The reply to a `query_session_timeline`, for whichever transport asked:
+    /// a WebSocket client, or a board on USB through the serial handler.
+    private func sessionTimelineReply(_ rawSid: String, since: Double?, board: Bool) async -> [String: Any] {
+        let sid = resolveDeviceSessionId(rawSid)
+        let entries = await timelineStore.historyForSession(sid, since: since)
+        return Self.sessionTimelineReplyFrame(requested: rawSid, resolved: sid, board: board,
+                                              entries: entries.map { claudeCodeEntryDict($0) })
+    }
+
+    /// A board gets back the id it SENT. It matches the reply against that id
+    /// (the T-Embed knob `strcmp`s its `scrubSessionId[32]`), and board ids
+    /// arrive cut to 31 bytes, so echoing the resolved 36-char UUID or 52-char
+    /// observed id made it discard every reply. Board shaping trims the rows
+    /// before its byte budget. Node parity: `buildSessionTimelineReply`.
+    nonisolated static func sessionTimelineReplyFrame(
+        requested: String, resolved: String, board: Bool, entries: [[String: Any]]
+    ) -> [String: Any] {
+        ["type": "timeline_history", "sessionId": board ? requested : resolved, "entries": entries]
+    }
+
+    private func isBoardClient(_ conn: WebSocketConnection) -> Bool {
+        cachedWifiEsp32[conn.id] != nil || conn.isEsp32
+    }
+
+    /// A frame addressed to one WebSocket client: a board gets the serial-size
+    /// frame (or nil, for an event it never displays), anything else the frame
+    /// as built.
+    private func frameForClient(_ event: [String: Any], _ conn: WebSocketConnection) -> [String: Any]? {
+        guard let reg = cachedWifiEsp32[conn.id] else {
+            // Not registered yet — but a board tagged in its upgrade
+            // URL is still an ESP32: shape (or drop) from frame zero.
+            // The unshaped full-state frame used to land here when the
+            // burst won the race against the board's device_info and
+            // choked its 4 KB line buffer into a reconnect loop.
+            return conn.isEsp32 ? ESP32Serial.wifiEsp32Forward(event, deviceInfo: nil) : event
+        }
+        return ESP32Serial.wifiEsp32Forward(event, deviceInfo: ESP32Serial.wifiDeviceInfo(reg.devices.first))
+    }
+
     private func handleCommand(_ cmd: [String: Any]) {
         guard let type = cmd["type"] as? String else { return }
         DaemonLogger.shared.debug("Daemon", "cmd: \(type)")
@@ -5001,19 +5153,17 @@ final class DaemonServer {
                 return
             }
             let gw = gatewayAdapter
-            // Send ONLY the two params the method takes. Forwarding the whole
-            // device command dragged `type`/`requestId` into the RPC alongside a
-            // decision spelling the Gateway does not accept.
-            let cmdBox = SendableDict(["type": "respond", "value": decision])
             Task {
                 if await ObservedSteering.shared.resolveGate(requestId: requestId, decision: decision) != nil {
                     return // held route handler resumes + clears the overlay
                 }
-                if let gw {
-                    await gw.resolvePendingApproval(command: cmdBox.value)
-                } else {
-                    DaemonLogger.shared.debug("Daemon", "permission_decision: no gate/gateway for request \(requestId)")
+                // Only the OpenClaw approval this id names. Falling through on
+                // any id resolved whichever approval was up — so a late press
+                // for an answered Codex hold or Claude gate approved it.
+                if let gw, await gw.resolvePendingApproval(requestId: requestId, decision: decision) {
+                    return
                 }
+                DaemonLogger.shared.info("permission_decision: no gate or approval for request \(requestId), nothing resolved")
             }
             return
         }
@@ -5093,6 +5243,18 @@ final class DaemonServer {
                 }
             }
             return
+        }
+
+        // Observed Codex: a deck's Allow / Deny keys answer a held approval
+        // with an option press on the session — inside session_command (the
+        // Stream Deck) or bare with its sessionId (multi-up panels) — never
+        // with permission_decision. Ahead of the focused-session fallback
+        // below, which hands a bare press to a focused Claude session. With no
+        // hold open the routes below take the command as before.
+        if let sessionId = cmd["sessionId"] as? String {
+            let press: [String: Any]? = type == "session_command" ? cmd["command"] as? [String: Any]
+                : type == "select_option" ? cmd : nil
+            if let press, answerCodexApproval(sessionId: sessionId, command: press) { return }
         }
 
         // `client_register` is intercepted in `handleWSCommand` (it needs
@@ -6112,6 +6274,14 @@ final class DaemonServer {
             claudeTranscriptPathBySession[sessionId] = tp
         }
 
+        // A held Codex approval waits inside one turn. The turn ending (Ctrl+C,
+        // stop, a new prompt) releases it before the state below is applied —
+        // the hold would otherwise keep `updateSessionHookState` out.
+        if isCodexEvent, let sessionId, codexHoldRequestBySession[sessionId] != nil,
+           CodexApprovalHoldRules.releasingEvents.contains(event) {
+            await releaseCodexHold(sessionId: sessionId)
+        }
+
         switch event {
         case "codex_session_start":
             _ = stateMachine.transition(trigger: "session_start", source: .hook)
@@ -6382,14 +6552,12 @@ final class DaemonServer {
             // terminal). The next lifecycle hook on the session ends the wait:
             // an approval runs the tool, a denial or Ctrl+C ends the turn, a
             // new prompt supersedes it — all of which pass through
-            // updateSessionHookState and overwrite the state.
-            if let sessionId, var entry = pushedSessionsById[sessionId] {
-                entry.state = "awaiting_permission"
-                entry.question = Self.codexPermissionQuestion(json)
-                entry.requestId = nil
-                pushedSessionsById[sessionId] = entry
-                upsertIntoCachedSessions(entry)
-                broadcastSessionsList()
+            // updateSessionHookState and overwrite the state. A held device
+            // approval owns the prompt and its button until it is released, so
+            // a parallel call's notification must not swap the question.
+            if let sessionId, codexHoldRequestBySession[sessionId] == nil {
+                showCodexApprovalPrompt(
+                    sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
             }
         case "codex_interrupt":
             // The user's Ctrl+C on an active turn: no Stop follows, so close
@@ -7720,7 +7888,7 @@ final class DaemonServer {
 
     nonisolated static let serialForwardableCommands: Set<String> = [
         "select_option", "session_command", "permission_decision",
-        "peripheral_event", "query_session_timeline", "focus_session", "review_run",
+        "peripheral_event", "focus_session", "review_run",
     ]
 
     /// Mirrors the Node `looksLikePermissionMessage` regex.
@@ -8196,6 +8364,154 @@ final class DaemonServer {
             "decision": "block",
             "reason": "The user sent this follow-up from their AgentDeck controller: \"\(directive)\". Carry out this instruction now.",
         ])
+    }
+
+    /// Answer a Codex hold request (CodexApprovalHoldRules): hold it for a
+    /// device's Allow/Deny, or answer at once with nothing so Codex draws its
+    /// own prompt. A held request shows the prompt with its button; a released
+    /// one leaves it display-only, since Codex is drawing it now. Mirror of the
+    /// Node daemon's `holdCodexApproval`.
+    private func holdCodexApproval(body: Data, budgetHeader: String) async -> HTTPServer.HTTPResponse {
+        guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
+            return .text("")
+        }
+        let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
+        let question = Self.codexPermissionQuestion(json)
+        let holdMs = CodexApprovalHoldRules.holdMilliseconds(
+            header: budgetHeader, defaultMs: Int(ObservedSteering.holdTimeoutSeconds * 1000))
+        let background = !sid.isEmpty && (codexAmbientThreads.isAmbient(sid)
+            || CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]))
+        let execChild = !sid.isEmpty && codexExecChildren.knows(sid)
+        let verdict: (hold: Bool, reason: String) = holdMs == nil
+            ? (false, "no-budget")
+            : CodexApprovalHoldRules.decision(.init(
+                enabled: ObservedSteering.gateEnabled,
+                clientCount: activeWSConnectionIds.count,
+                sessionId: sid,
+                background: background,
+                execChild: execChild,
+                visible: pushedSessionsById[sid].map { Self.isCodexSession(sessionId: sid, entry: $0) } ?? false,
+                alreadyHeld: codexHoldRequestBySession[sid] != nil))
+        guard verdict.hold, let holdMs,
+              let requestId = await ObservedSteering.shared.beginCodexGate(
+                  sessionId: sid, clientCount: activeWSConnectionIds.count,
+                  holdSeconds: TimeInterval(holdMs) / 1000) else {
+            DaemonLogger.shared.debug("Steering", "Codex approval not held: \(verdict.hold ? "gate busy" : verdict.reason) (\(sid.prefix(14)))")
+            // The display-only prompt still belongs on the row when Codex ran
+            // only this handler (the notification one untrusted or removed).
+            if !sid.isEmpty, !background, !execChild, codexHoldRequestBySession[sid] == nil,
+               let entry = pushedSessionsById[sid], entry.state != "awaiting_permission" {
+                showCodexApprovalPrompt(sessionId: sid, question: question, requestId: nil)
+            }
+            return .text("")
+        }
+        codexHoldRequestBySession[sid] = requestId
+        heldGateSessionIds.insert(sid)
+        showCodexApprovalPrompt(sessionId: sid, question: question, requestId: requestId)
+        DaemonLogger.shared.info("Steering: Codex approval held (\(sid.prefix(14))) req=\(requestId) for \(holdMs) ms")
+
+        let decision = await ObservedSteering.shared.awaitGate(requestId: requestId)
+
+        // `releaseCodexHold` already dropped the records of a hold whose turn
+        // ended; one this handler still owns is dropped here.
+        let ended = codexHoldRequestBySession[sid] != requestId
+        if !ended {
+            codexHoldRequestBySession.removeValue(forKey: sid)
+            heldGateSessionIds.remove(sid)
+        }
+        let outcome = ended ? "ended" : decision
+        if var entry = pushedSessionsById[sid], entry.requestId == requestId {
+            entry.requestId = nil
+            // Undecided (pass): Codex draws its prompt now, so the question
+            // stays, display-only. Decided or ended: the wait is over.
+            if outcome != "pass", entry.state == "awaiting_permission" {
+                entry.state = "processing"
+                entry.question = nil
+            }
+            pushedSessionsById[sid] = entry
+            upsertIntoCachedSessions(entry)
+        }
+        broadcastSessionsList()
+        DaemonLogger.shared.info("Steering: Codex approval released (\(sid.prefix(14))) → \(outcome)")
+        return .text(CodexApprovalHoldRules.decisionBody(outcome))
+    }
+
+    /// What an option press on a session does to its open Codex hold.
+    enum CodexApprovalPress: Equatable {
+        /// Resolve the hold as a `permission_decision` for `requestId` would.
+        case answer(requestId: String, decision: String)
+        /// Neither an Allow nor a Deny: nothing is resolved.
+        case notAnAnswer
+        /// Echoes a prompt the hold does not show: nothing is resolved, and the
+        /// row is re-sent so the device redraws the live one.
+        case stale
+    }
+
+    /// A deck's Allow / Deny keys answer a hold with an option press on the
+    /// session, never with `permission_decision`. nil = no hold is open, or the
+    /// command is not an option press: it takes its usual route. `shown*` is
+    /// the prompt on the session's row. Mirror of the Node
+    /// `CodexApprovalHolds.press`.
+    nonisolated static func codexApprovalPress(
+        command: [String: Any], heldRequestId: String?, shownRequestId: String?, shownQuestion: String?
+    ) -> CodexApprovalPress? {
+        let type = command["type"] as? String ?? ""
+        guard type == "select_option" || type == "respond", let heldRequestId else { return nil }
+        guard let decision = CodexApprovalHoldRules.pressDecision(
+            type: type, index: command["index"] as? Int, value: command["value"] as? String) else {
+            return .notAnAnswer
+        }
+        // A press that echoes its question must name the prompt this hold
+        // shows: the session may already be on its next approval, and an Allow
+        // aimed at the previous one would approve a command nobody saw.
+        if let echo = command["question"] as? String {
+            guard shownRequestId == heldRequestId, let shownQuestion, !shownQuestion.isEmpty,
+                  ObservedSteering.askEchoMatches(echo, shownQuestion) else { return .stale }
+        }
+        return .answer(requestId: heldRequestId, decision: decision)
+    }
+
+    /// Answer a held Codex approval from a deck's option press through the
+    /// resolution `permission_decision` uses. False = no hold is open on the
+    /// session. Node twin: `answerCodexApproval`.
+    private func answerCodexApproval(sessionId: String, command: [String: Any]) -> Bool {
+        let shown = pushedSessionsById[sessionId]
+        guard let press = Self.codexApprovalPress(
+            command: command, heldRequestId: codexHoldRequestBySession[sessionId],
+            shownRequestId: shown?.requestId, shownQuestion: shown?.question) else { return false }
+        switch press {
+        case .answer(let requestId, let decision):
+            DaemonLogger.shared.info("Steering: Codex approval answered by a press (\(sessionId.prefix(14))) → \(decision)")
+            handleCommand(["type": "permission_decision", "requestId": requestId, "decision": decision])
+        case .stale:
+            DaemonLogger.shared.info("Steering: Codex approval press dropped (\(sessionId.prefix(14))): answers a prompt the hold no longer shows")
+            broadcastSessionsList()
+        case .notAnAnswer:
+            DaemonLogger.shared.debug("Steering", "Codex approval press ignored: not an Allow or a Deny (\(sessionId.prefix(14)))")
+        }
+        return true
+    }
+
+    /// Release an open Codex hold whose turn ended. Its handler finds the
+    /// records gone and reports `ended`: the prompt is cleared, not kept, and
+    /// Codex gets no decision.
+    private func releaseCodexHold(sessionId: String) async {
+        guard let requestId = codexHoldRequestBySession.removeValue(forKey: sessionId) else { return }
+        heldGateSessionIds.remove(sessionId)
+        await ObservedSteering.shared.endGate(requestId: requestId)
+    }
+
+    /// Put a Codex approval prompt on the session's row: answerable (with the
+    /// requestId a device sends back) while a hold is open, display-only
+    /// otherwise.
+    private func showCodexApprovalPrompt(sessionId: String, question: String, requestId: String?) {
+        guard var entry = pushedSessionsById[sessionId] else { return }
+        entry.state = "awaiting_permission"
+        entry.question = question
+        entry.requestId = requestId
+        pushedSessionsById[sessionId] = entry
+        upsertIntoCachedSessions(entry)
+        broadcastSessionsList()
     }
 
     // MARK: - On-demand independent review (REVIEW deck button)

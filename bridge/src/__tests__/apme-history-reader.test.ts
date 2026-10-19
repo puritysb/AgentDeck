@@ -94,6 +94,20 @@ describe('APME read-only history worker', () => {
     missing.close();
   });
 
+  // A GET from this machine keeps local trust whatever page sent it, so the
+  // only thing between a web page and the task history is this header.
+  it('answers a history read without Access-Control-Allow-Origin', async () => {
+    const apme = { store, historyReader: reader(fixture()) } as ApmeModule;
+    const server = createServer((req, res) => { void handleApmeRequest(req, res, apme); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const response = await fetch(`${base}/apme/tasks`, { headers: { Origin: 'https://evil.example' } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('access-control-allow-origin')).toBeNull();
+    } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  });
+
   it('keeps HTTP health responsive during a blocked history read, then returns 503 without a synchronous fallback', async () => {
     const historyReader = reader(fixture(), 350);
     await historyReader.read('tasks', 'ready');

@@ -10,6 +10,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CODEX_APPROVAL_HOLD_HEADER, codexApprovalHoldMs } from '@agentdeck/shared';
 import { HookServer } from '../hook-server.js';
 import { ClaudeCodeAdapter } from '../adapters/claude-code.js';
 import { CodexCliAdapter } from '../adapters/codex-cli.js';
@@ -32,6 +33,15 @@ const vector = (name: string) => {
 };
 const codexStop = () => vector('Codex Stop (captured)');
 const claudeStop = () => vector('Claude Code Stop');
+/** The captured Codex PermissionRequest payload the opt-in hold handler posts. */
+const codexPermission = () => (JSON.parse(readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../../../shared/codex-approval-hold-vectors.json'), 'utf8',
+)) as { capturedPermissionRequest: Record<string, unknown> }).capturedPermissionRequest;
+
+async function bridgePort(bridge: HookServer): Promise<number> {
+  await bridge.listen(0);
+  return ((bridge as unknown as { server: Server }).server.address() as AddressInfo).port;
+}
 
 describe('ManagedHookGate', () => {
   it('each managed adapter owns its own harness (the codex bridge is agentType codex-cli)', () => {
@@ -82,13 +92,19 @@ describe('createDaemonHookForwarder', () => {
     while (daemons.length) await new Promise((r) => daemons.pop()!.close(r));
   });
 
-  async function fakeDaemon(reply: string): Promise<{ port: number; seen: Array<{ url?: string; pid?: string; body: string }> }> {
-    const seen: Array<{ url?: string; pid?: string; body: string }> = [];
+  type Seen = { url?: string; pid?: string; hold?: string; body: string };
+  async function fakeDaemon(reply: string): Promise<{ port: number; seen: Seen[] }> {
+    const seen: Seen[] = [];
     const server = createServer((req, res) => {
       let body = '';
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
-        seen.push({ url: req.url, pid: req.headers['x-agentdeck-pid'] as string | undefined, body });
+        seen.push({
+          url: req.url,
+          pid: req.headers['x-agentdeck-pid'] as string | undefined,
+          hold: req.headers[CODEX_APPROVAL_HOLD_HEADER] as string | undefined,
+          body,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(reply);
       });
@@ -135,6 +151,26 @@ describe('createDaemonHookForwarder', () => {
     expect(await slow('codex_stop', '{}', {})).toBeNull();
   });
 
+  it('restates a Codex hold request to the wait this hop can give, which is too short to hold', async () => {
+    const sent: Array<Record<string, string>> = [];
+    const forward = createDaemonHookForwarder({
+      ownPort: () => 9123,
+      findDaemonPort: async () => 9120,
+      fetchImpl: (async (_url: string, init: { headers: Record<string, string> }) => {
+        sent.push(init.headers);
+        return new Response('', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    await forward('codex_permission_request', '{}', { 'X-AgentDeck-Pid': '4242', [CODEX_APPROVAL_HOLD_HEADER]: '55' });
+    await forward('codex_permission_request', '{}', { 'X-AgentDeck-Pid': '4242' });
+    const hold = sent[0][CODEX_APPROVAL_HOLD_HEADER];
+    expect(Number(hold)).toBeLessThanOrEqual(forwardTimeoutMs('codex_permission_request') / 1000);
+    expect(codexApprovalHoldMs(hold, 25_000)).toBeNull();
+    expect(sent[0]['X-AgentDeck-Pid']).toBe('4242');
+    // The notification stays a notification.
+    expect(sent[1][CODEX_APPROVAL_HOLD_HEADER]).toBeUndefined();
+  });
+
   it('bounds the wait just under each hook script’s own deadline', () => {
     expect(forwardTimeoutMs('PreToolUse')).toBeLessThan(60_000);
     expect(forwardTimeoutMs('Stop')).toBeLessThan(10_000);
@@ -170,5 +206,50 @@ describe('createDaemonHookForwarder', () => {
     expect(daemon.seen[0].url).toBe('/hooks/Stop');
     expect(daemon.seen[0].pid).toBe('4242');
     expect(JSON.parse(daemon.seen[0].body)).toEqual(codexStop().payload);
+  });
+
+  it('a nested Codex hold request reaches the daemon still marked as one, so the daemon neither ingests nor holds it', async () => {
+    const daemon = await fakeDaemon('');
+    const bridge = new HookServer();
+    bridge.setOwnHarness('claude-code');
+    bridge.setForeignHookForwarder(createDaemonHookForwarder({ ownPort: () => -1, findDaemonPort: async () => daemon.port }));
+    const emitted: string[] = [];
+    bridge.on('hook', ({ event }: { event: string }) => emitted.push(event));
+    const port = await bridgePort(bridge);
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/hooks/codex_permission_request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Pid': '4242', 'X-AgentDeck-Hold': '55' },
+        body: JSON.stringify(codexPermission()),
+      });
+      expect(await res.text()).toBe('');
+    } finally {
+      await bridge.close();
+    }
+    expect(emitted).toEqual([]);
+    expect(daemon.seen).toHaveLength(1);
+    expect(daemon.seen[0].url).toBe('/hooks/codex_permission_request');
+    expect(daemon.seen[0].hold).toBeDefined();
+    expect(codexApprovalHoldMs(daemon.seen[0].hold, 25_000)).toBeNull();
+  });
+
+  it('a managed Codex bridge drives its session from the notification and answers the hold twin without emitting it', async () => {
+    const bridge = new HookServer();
+    bridge.setOwnHarness('codex');
+    const emitted: string[] = [];
+    bridge.on('hook', ({ event }: { event: string }) => emitted.push(event));
+    const port = await bridgePort(bridge);
+    try {
+      const post = (headers: Record<string, string>) => fetch(`http://127.0.0.1:${port}/hooks/codex_permission_request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(codexPermission()),
+      });
+      expect(await (await post({})).text()).toBe(JSON.stringify({ received: true }));
+      expect(await (await post({ 'X-AgentDeck-Hold': '55' })).text()).not.toContain('hookSpecificOutput');
+    } finally {
+      await bridge.close();
+    }
+    expect(emitted).toEqual(['codex_permission_request']);
   });
 });

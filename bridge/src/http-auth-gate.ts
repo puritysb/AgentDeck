@@ -7,7 +7,10 @@
  * single chokepoint the request handler consults before dispatching routes:
  *
  * - Same-machine connections (loopback or any of this host's own addresses)
- *   are fully trusted, matching the WS server's long-standing policy.
+ *   are fully trusted, matching the WS server's long-standing policy, unless
+ *   their `Host` or `Origin` shows a web page in a browser on this machine
+ *   (`shared/src/local-trust.ts`). Such a request needs the token like a
+ *   remote one.
  * - A remote request is authorized only by pairing token (`?token=` query or
  *   `Authorization: Bearer`).
  * - Unauthorized remote requests reach exactly one always-on route: a minimal
@@ -28,17 +31,21 @@
  */
 import type { IncomingMessage } from 'http';
 import { DEVICE_ID_HEADER } from '@agentdeck/shared';
-import { isLocalConnection, validateToken } from './auth.js';
+import { isLocalConnection, localTrustOf, validateToken } from './auth.js';
 import { deviceIdFromHeaders, isApprovedPeer } from './pairing-knocks.js';
 
 export type HttpGateDecision = 'allow' | 'public-health' | 'pair-redeem' | 'deny';
 
-/** True when the request is same-machine or carries a valid pairing token. */
+/**
+ * True when the request is from a local program (same machine, and not a web
+ * page: see `localTrustOf`) or carries a valid pairing token.
+ */
 export function isAuthorizedHttpRequest(
-  req: Pick<IncomingMessage, 'url' | 'headers'> & { socket: { remoteAddress?: string } },
+  req: Pick<IncomingMessage, 'url' | 'headers' | 'method'> & { socket: { remoteAddress?: string; localPort?: number } },
 ): boolean {
   const ip = req.socket.remoteAddress ?? '';
-  if (isLocalConnection(ip)) return true;
+  const local = isLocalConnection(ip);
+  if (local && localTrustOf(req) === 'trusted') return true;
 
   try {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -52,6 +59,10 @@ export function isAuthorizedHttpRequest(
   if (typeof auth === 'string' && auth.startsWith('Bearer ') && validateToken(auth.slice(7))) {
     return true;
   }
+
+  // A same-machine request that lost local trust is a web page. An approval
+  // names a device on the network; none was ever granted to a page here.
+  if (local) return false;
 
   // An operator-approved peer is authenticated; it simply carries its
   // credential as a device id (or, for a client too old to send one, as its

@@ -21,6 +21,8 @@ import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
 import {
+  OPEN_FENCE,
+  CLOSE_FENCE,
   applyManagedBlock,
   removeManagedBlock,
   hasTopLevelKeyOutsideFence,
@@ -55,6 +57,9 @@ export interface InstallOptions {
   platform?: NodeJS.Platform;
   /** Override the Windows notify sidecar script path (tests). */
   notifyScriptPath?: string;
+  /** Device approvals for Codex; `AGENTDECK_CODEX_APPROVALS=1|0` is the
+   *  default. See `CodexApprovalsPolicy`. */
+  codexApprovals?: CodexApprovalsPolicy;
 }
 
 export interface InstallResult {
@@ -64,7 +69,39 @@ export interface InstallResult {
   /** Non-fatal degradation while `installed === true` (e.g. the Windows
    *  notify sidecar could not be written, so notify was omitted). */
   warning?: string;
+  /** Whether the installed block carries the device-approval hold. */
+  approvals?: boolean;
 }
+
+/** Whether AgentDeck's `PermissionRequest` group also carries the
+ *  device-approval hold — a second handler that waits for a device's
+ *  Allow/Deny before Codex draws its own prompt. Off by default for two
+ *  reasons that both land on the person at the terminal: Codex shows its
+ *  startup "Review hooks" screen for any new handler, and while a hold waits
+ *  the terminal prompt does not appear. `auto` keeps whatever the managed
+ *  block already carries, so a refresh never adds or drops it; `on` adds it;
+ *  `off` removes it. The config file is the only record of the choice. */
+export type CodexApprovalsPolicy = 'auto' | 'on' | 'off';
+
+export function codexApprovalsPolicyFromEnv(env: NodeJS.ProcessEnv = process.env): CodexApprovalsPolicy {
+  const v = (env.AGENTDECK_CODEX_APPROVALS ?? '').trim().toLowerCase();
+  if (v === '1' || v === 'on' || v === 'true') return 'on';
+  if (v === '0' || v === 'off' || v === 'false') return 'off';
+  return 'auto';
+}
+
+/** Marks the hold request. It posts to the same `codex_permission_request`
+ *  endpoint as the notification handler on purpose: a daemon that predates
+ *  the hold reads it as one more notification and answers at once, and an
+ *  installer that predates it recognises the command as its own
+ *  (`/hooks/codex_`) and rewrites the block without it. Both fall back to
+ *  the default instead of an error. The value is the command's wait budget
+ *  in seconds; the daemon holds for less. */
+const CODEX_APPROVAL_HOLD_HEADER = 'X-AgentDeck-Hold';
+/** curl's budget for the held POST. */
+const CODEX_APPROVAL_HOLD_WAIT_SECONDS = 55;
+/** Codex kills a hook after `timeout` seconds; it must exceed curl's budget. */
+const CODEX_APPROVAL_HOLD_TIMEOUT_SECONDS = 60;
 
 /** Honour `AGENTDECK_NO_CODEX_HOOKS=1` from the environment. Callers
  *  should also accept a `--no-codex-hooks` flag and short-circuit before
@@ -110,6 +147,7 @@ interface ManagedBlockOptions {
   daemonHttpPort?: number;
   platform?: NodeJS.Platform;
   notifyScriptPath?: string;
+  includeApprovalHold?: boolean;
 }
 
 /** Assemble the body of the AgentDeck-managed fence. Tests call this
@@ -142,7 +180,7 @@ export function managedBlockBody(opts: ManagedBlockOptions = {}): string {
   if (opts.includeFeatures !== false) lines.push('[features]', 'hooks = true');
 
   lines.push('');
-  lines.push(...buildLifecycleHookTables(platform));
+  lines.push(...buildLifecycleHookTables(platform, opts.includeApprovalHold === true));
 
   if (includeOtel) {
     lines.push('');
@@ -226,7 +264,7 @@ const LIFECYCLE_HOOKS: LifecycleHook[] = [
   { codexEvent: 'Interrupt',        agentDeckEvent: 'codex_interrupt',          matcher: null },
 ];
 
-function buildLifecycleHookTables(platform: NodeJS.Platform): string[] {
+function buildLifecycleHookTables(platform: NodeJS.Platform, includeApprovalHold = false): string[] {
   const lines: string[] = [];
   for (let idx = 0; idx < LIFECYCLE_HOOKS.length; idx++) {
     const hook = LIFECYCLE_HOOKS[idx];
@@ -240,8 +278,51 @@ function buildLifecycleHookTables(platform: NodeJS.Platform): string[] {
     lines.push(`command = ${quoted(buildLifecycleHookCommand(hook.agentDeckEvent, platform))}`);
     // Interrupt has a three-second hard maximum in Codex (0.151+).
     lines.push(`timeout = ${hook.codexEvent === 'Interrupt' ? 3 : 5}`);
+    // The hold is a second handler in AgentDeck's own group, never a group of
+    // its own. Codex keys trust by group and handler index and hashes each
+    // handler alone, so this leaves the notification handler trusted and
+    // re-keys nobody; a new group ahead of a user's would re-key theirs.
+    if (includeApprovalHold && hook.codexEvent === 'PermissionRequest') {
+      lines.push(`[[hooks.${hook.codexEvent}.hooks]]`);
+      lines.push(`type = "command"`);
+      lines.push(`command = ${quoted(buildCodexApprovalHoldCommand(platform))}`);
+      lines.push(`timeout = ${CODEX_APPROVAL_HOLD_TIMEOUT_SECONDS}`);
+    }
   }
   return lines;
+}
+
+/** The hold handler: post the `PermissionRequest` payload with the hold
+ *  header, wait for the daemon's answer, and print it only when it is a
+ *  decision. Every other outcome (no daemon, a daemon without the hold, a
+ *  timeout, an empty pass) prints nothing and exits 0, which Codex reads as
+ *  no decision: its own prompt appears as if the handler were absent. */
+export function buildCodexApprovalHoldCommand(platform: NodeJS.Platform = process.platform): string {
+  if (platform === 'win32') {
+    return `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${windowsEncodedCommand(buildWindowsApprovalHoldSnippet())}`;
+  }
+  return `exec sh -c ${shellSingleQuoted(buildApprovalHoldSnippet())}`;
+}
+
+function buildApprovalHoldSnippet(): string {
+  return posixPortPreamble().concat([
+    `R=$(curl -sf --connect-timeout 0.2 --max-time ${CODEX_APPROVAL_HOLD_WAIT_SECONDS} -X POST "http://127.0.0.1:$PORT/hooks/codex_permission_request" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -H "${CODEX_APPROVAL_HOLD_HEADER}: ${CODEX_APPROVAL_HOLD_WAIT_SECONDS}" -d @- 2>/dev/null) || R=""`,
+    `case "$R" in *'"hookSpecificOutput"'*) printf '%s' "$R" ;; esac`,
+  ]).join('\n');
+}
+
+/** Whether the managed block already carries the hold handler. */
+export function hasCodexApprovalHold(text: string): boolean {
+  const open = text.indexOf(OPEN_FENCE);
+  const close = open < 0 ? -1 : text.indexOf(CLOSE_FENCE, open);
+  if (close < 0) return false;
+  for (const line of text.slice(open, close).split(/\r?\n/)) {
+    if (!/^\s*command\s*=/.test(line)) continue;
+    if (line.includes(CODEX_APPROVAL_HOLD_HEADER)) return true;
+    const encoded = line.match(/-EncodedCommand\s+([A-Za-z0-9+/=]+)/)?.[1];
+    if (encoded && Buffer.from(encoded, 'base64').toString('utf16le').includes(CODEX_APPROVAL_HOLD_HEADER)) return true;
+  }
+  return false;
 }
 
 /** Official Codex lifecycle hooks pass their JSON payload on stdin.
@@ -270,13 +351,31 @@ function buildWindowsLifecycleHookCommand(event: string): string {
   return `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${windowsEncodedCommand(buildWindowsStdinPostSnippet(event))}`;
 }
 
+// Read raw stdin as UTF-8: [Console]::In decodes with the console's OEM
+// codepage (e.g. CP949) and would garble non-ASCII payload text.
+const WINDOWS_UTF8_STDIN = '(New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)).ReadToEnd()';
+
 function buildWindowsStdinPostSnippet(event: string): string {
-  // Read raw stdin as UTF-8: [Console]::In decodes with the console's OEM
-  // codepage (e.g. CP949) and would garble non-ASCII payload text.
-  return buildWindowsPostSnippet(
-    event,
-    '(New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)).ReadToEnd()'
-  );
+  return buildWindowsPostSnippet(event, WINDOWS_UTF8_STDIN);
+}
+
+/** Windows hold handler. Invoke-WebRequest, not Invoke-RestMethod: the answer
+ *  is echoed verbatim, and Invoke-RestMethod would parse it into an object. */
+function buildWindowsApprovalHoldSnippet(): string {
+  return [
+    `$ErrorActionPreference = 'SilentlyContinue'`,
+    `$ProgressPreference = 'SilentlyContinue'`,
+    ...windowsCodexPidPreamble(),
+    ...windowsPortPreamble(),
+    `$body = ${WINDOWS_UTF8_STDIN}`,
+    `$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
+    `$agentDeckHeaders['${CODEX_APPROVAL_HOLD_HEADER}'] = '${CODEX_APPROVAL_HOLD_WAIT_SECONDS}'`,
+    `try {`,
+    `  $agentDeckAnswer = [string](Invoke-WebRequest -UseBasicParsing -Method Post -TimeoutSec ${CODEX_APPROVAL_HOLD_WAIT_SECONDS} -Uri ('http://127.0.0.1:' + $port + '/hooks/codex_permission_request') -ContentType 'application/json; charset=utf-8' -Headers $agentDeckHeaders -Body $bytes).Content`,
+    `  if ($agentDeckAnswer.Contains('"hookSpecificOutput"')) { [Console]::Out.Write($agentDeckAnswer) }`,
+    `} catch {}`,
+    `exit 0`,
+  ].join('\n');
 }
 
 /** Body of the Windows notify sidecar script (`-File` execution binds
@@ -315,6 +414,20 @@ function buildWindowsPostSnippet(event: string, bodyExpression: string): string 
     `$ErrorActionPreference = 'SilentlyContinue'`,
     `$ProgressPreference = 'SilentlyContinue'`,
     ...windowsCodexPidPreamble(),
+    ...windowsPortPreamble(),
+    `$body = ${bodyExpression}`,
+    // Post UTF-8 bytes: Invoke-RestMethod encodes string bodies as
+    // ISO-8859-1 when the content type carries no charset, replacing
+    // non-ASCII payload characters with '?'.
+    `$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
+    `try { Invoke-RestMethod -Method Post -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $port + '/hooks/${event}') -ContentType 'application/json; charset=utf-8' -Headers $agentDeckHeaders -Body $bytes | Out-Null } catch {}`,
+    `exit 0`,
+  ].join('\n');
+}
+
+/** Windows port resolver shared by the post and hold snippets. */
+function windowsPortPreamble(): string[] {
+  return [
     `[int]$port = 0`,
     `[int]$candidate = 0`,
     `if (!([int]::TryParse([string]$env:AGENTDECK_PORT, [ref]$candidate)) -or $candidate -lt 1 -or $candidate -gt 65535) { $candidate = 0 }`,
@@ -339,14 +452,7 @@ function buildWindowsPostSnippet(event: string, bodyExpression: string): string 
     `  }`,
     `}`,
     `if ($port -eq 0) { $port = 9120 }`,
-    `$body = ${bodyExpression}`,
-    // Post UTF-8 bytes: Invoke-RestMethod encodes string bodies as
-    // ISO-8859-1 when the content type carries no charset, replacing
-    // non-ASCII payload characters with '?'.
-    `$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]$body)`,
-    `try { Invoke-RestMethod -Method Post -TimeoutSec 1 -Uri ('http://127.0.0.1:' + $port + '/hooks/${event}') -ContentType 'application/json; charset=utf-8' -Headers $agentDeckHeaders -Body $bytes | Out-Null } catch {}`,
-    `exit 0`,
-  ].join('\n');
+  ];
 }
 
 function windowsEncodedCommand(s: string): string {
@@ -447,6 +553,10 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
     }
   }
 
+  const approvalsPolicy = opts.codexApprovals ?? codexApprovalsPolicyFromEnv();
+  const approvals = approvalsPolicy === 'on'
+    || (approvalsPolicy === 'auto' && hasCodexApprovalHold(original));
+
   const otelEndpoint = includeOtel ? buildOtelEndpoint(opts.daemonHttpPort) : undefined;
   const body = managedBlockBody({
     includeFeatures: !hasFeatures,
@@ -456,16 +566,17 @@ export function installCodexHooksIfNeeded(opts: InstallOptions = {}): InstallRes
     daemonHttpPort: opts.daemonHttpPort,
     platform,
     notifyScriptPath,
+    includeApprovalHold: approvals,
   });
   const updated = applyManagedBlock(original, body);
 
   if (updated === original) {
-    return { installed: true, warning };
+    return { installed: true, warning, approvals };
   }
 
   if (readText(path) !== original) return { installed: false, reason: 'config.toml changed during setup; retry' };
   if (writeTextAtomic(updated, path)) {
-    return { installed: true, warning };
+    return { installed: true, warning, approvals };
   }
   return { installed: false, reason: `write failed: ${path}` };
 }

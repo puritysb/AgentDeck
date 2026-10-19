@@ -370,6 +370,7 @@
       "evidence": ["tests/e2e/daemon-hub.e2e.test.ts", "tests/e2e/daemon-relay.e2e.test.ts"],
       "proves": [
         "the real agentdeck daemon start process boots in an empty HOME and answers /health",
+        "the daemon under test starts with its OpenClaw Gateway probe off and leaves no OpenClaw state in its temp HOME",
         "privacy-scrubbed real Hermes CI terminal callbacks open an unknown foreground wait and clear its matching invocation through actual daemon HTTP/WS; the capture used a local fixture watcher, not a GitHub verdict",
         "Claude hook events posted to /hooks/* drive the WebSocket state stream (idle → processing → idle)",
         "the exact hook shell snippet the installer writes finds the daemon through daemon.json and delivers events",
@@ -384,6 +385,7 @@
         "a real Claude/Codex process (events are posted with the documented payload shape)",
         "LAN pairing and default-deny from another machine (every same-host address is trusted by design; the gate itself is unit-tested in http-auth-gate.test.ts)",
         "device modules (all disabled with --local)",
+        "the OpenClaw Gateway integration (its probe is off in the daemon under test); that the daemon never contacts a Gateway is observed only where one runs, which CI does not",
         "the daemon relay across two machines, through a real ssh -L forward or with a pairing token over a LAN (the relay e2e uses one host's loopback)"
       ]
     },
@@ -639,7 +641,7 @@
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/esp32-sim.yml",
       "job": "compile",
-      "trigger": "PRs touching esp32/**",
+      "trigger": "PRs and master pushes touching esp32/**",
       "blocking": true,
       "required": true,
       "command": "bash esp32/sim/run-tests.sh",
@@ -654,7 +656,7 @@
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/esp32-sim.yml",
       "job": "compile",
-      "trigger": "PRs touching esp32/**",
+      "trigger": "PRs and master pushes touching esp32/**",
       "blocking": true,
       "required": true,
       "command": "pio run (every esp32/sim env)",
@@ -668,7 +670,7 @@
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/esp32-sim.yml",
       "job": "ttgo",
-      "trigger": "PRs touching esp32/** or the ESP32 compile/release workflows",
+      "trigger": "PRs and master pushes touching esp32/** or the ESP32 compile/release workflows",
       "blocking": true,
       "required": false,
       "command": "pio run -e ttgo",
@@ -856,7 +858,7 @@
     {
       "id": "security",
       "name": "LAN security & pairing",
-      "question": "Is the LAN surface default-deny, and does pairing hand out credentials only with the operator's consent?",
+      "question": "Is the LAN surface default-deny, does a browser page on this machine get no more than a LAN peer, and does pairing hand out credentials only with the operator's consent?",
       "icon": "▣",
       "match": [
         "bridge/src/__tests__/http-auth-gate.test.ts",
@@ -865,6 +867,8 @@
         "bridge/src/__tests__/network-posture.test.ts",
         "bridge/src/__tests__/discovery-security.test.ts",
         "bridge/src/__tests__/ws-server-auth.test.ts",
+        "bridge/src/__tests__/local-trust-*.test.ts",
+        "shared/src/__tests__/local-trust*.test.ts",
         "shared/src/__tests__/pairing-code*.test.ts"
       ]
     },
@@ -929,7 +933,7 @@
     {
       "id": "observed",
       "name": "Agent observation & hooks",
-      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts, including missing-PID revalidation for partial process snapshots, Hermes observer setup/discovery diagnostics, explicit loopback delivery without a registry, captured Hermes child suppression, and background work (Claude snapshots, Codex rollout terminals, OpenCode and Hermes plugin reports) through one tracker with executable Node/Swift parity?",
+      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts, including missing-PID revalidation for partial process snapshots, Hermes observer setup/discovery diagnostics, explicit loopback delivery without a registry, captured Hermes child suppression, the opt-in Codex device-approval hold (shared rules, a generated Swift mirror and both installers' exact hold command), and background work (Claude snapshots, Codex rollout terminals, OpenCode and Hermes plugin reports) through one tracker with executable Node/Swift parity?",
       "icon": "◈",
       "match": [
         "hooks/src/__tests__/*.test.ts",
@@ -939,6 +943,7 @@
         "bridge/src/__tests__/codex-background-terminals.test.ts",
         "bridge/src/__tests__/background-work.test.ts",
         "bridge/src/__tests__/codex-hook-replay.test.ts",
+        "bridge/src/__tests__/codex-approval-hold.test.ts",
         "bridge/src/__tests__/managed-hook-harness.test.ts",
         "bridge/src/__tests__/codex-exec-children.test.ts",
         "bridge/src/__tests__/codex-auth.test.ts",
@@ -963,6 +968,7 @@
         "shared/src/__tests__/claude-permission-rules*.test.ts",
         "shared/src/__tests__/claude-background-jobs*.test.ts",
         "shared/src/__tests__/hook-harness*.test.ts",
+        "shared/src/__tests__/codex-approval-hold*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
         "shared/src/__tests__/subagent-activity.test.ts",
         "shared/src/__tests__/ci-wait*.test.ts",
@@ -1082,6 +1088,7 @@
         "bridge/src/__tests__/calendar.test.ts",
         "bridge/src/__tests__/desk-awareness.test.ts",
         "shared/src/__tests__/esp32-boards.test.ts",
+        "shared/src/__tests__/esp32-wifi-provision*.test.ts",
         "shared/src/__tests__/idotmatrix-identity.test.ts",
         "shared/src/__tests__/mdns-identity.test.ts",
         "shared/src/__tests__/d200h-*.test.ts",

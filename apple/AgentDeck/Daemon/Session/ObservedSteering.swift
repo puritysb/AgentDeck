@@ -151,10 +151,12 @@ actor ObservedSteering {
     /// Which kind of hook hold this is. They resolve differently: a permission
     /// gate carries a device's allow/deny, while an ask-gate carries the user's
     /// chosen options (delivered as the deny reason by the caller) and must
-    /// never feed the auto-approval learner.
+    /// never feed the auto-approval learner. A Codex approval carries allow/deny
+    /// too, but Codex is already asking, so it predicts and teaches nothing.
     enum GateKind {
         case permission
         case ask
+        case codexApproval
     }
 
     private struct HeldGate {
@@ -165,6 +167,9 @@ actor ObservedSteering {
         /// The held call's `tool_use_id`, shared with its PostToolUse — the
         /// learner matches on it so a parallel tool cannot teach this gate.
         var toolUseId: String? = nil
+        /// Replaces the kind's hold: a Codex hold is bounded by the wait its
+        /// hook command names (`CodexApprovalHoldRules.holdMilliseconds`).
+        var timeoutSeconds: TimeInterval? = nil
         var continuation: CheckedContinuation<String, Never>?
     }
     private var heldGates: [String: HeldGate] = [:]
@@ -351,6 +356,32 @@ actor ObservedSteering {
         return requestId
     }
 
+    /// Register a hold for a Codex `PermissionRequest` the caller already found
+    /// eligible (`CodexApprovalHoldRules.decision`). Like the ask-gate it needs
+    /// no predictor: the hook fires only when Codex is about to ask, so a hold
+    /// never invents a question. Same kill switch as the permission gate.
+    func beginCodexGate(sessionId: String, clientCount: Int, holdSeconds: TimeInterval) -> String? {
+        guard Self.gateEnabled else { return nil }
+        guard clientCount > 0 else { return nil }
+        guard !heldBySession.contains(sessionId) else { return nil }
+        let requestId = UUID().uuidString.lowercased()
+        heldGates[requestId] = HeldGate(
+            sessionId: sessionId, kind: .codexApproval, tool: "PermissionRequest",
+            signature: "PermissionRequest", timeoutSeconds: holdSeconds, continuation: nil)
+        heldBySession.insert(sessionId)
+        return requestId
+    }
+
+    /// Release a held gate whose wait is over for a reason other than a device
+    /// or its timer — the Codex turn it waited in ended. Resolves to `ended`.
+    @discardableResult
+    func endGate(requestId: String) -> String? {
+        guard let gate = heldGates.removeValue(forKey: requestId) else { return nil }
+        heldBySession.remove(gate.sessionId)
+        gate.continuation?.resume(returning: "ended")
+        return gate.sessionId
+    }
+
     /// Is this a held ask-gate (as opposed to a permission gate)? Answer
     /// routing needs the distinction: an option index must never collapse into
     /// a binary allow/deny.
@@ -359,12 +390,14 @@ actor ObservedSteering {
     }
 
     /// Suspend until a device decision or timeout. Resolves to "allow" /
-    /// "deny" / "answered" / "pass" (pass = empty hook body → Claude's normal
-    /// flow, which for an ask-gate means its question picker appears in the
-    /// user's own terminal exactly as if the daemon had never held it).
+    /// "deny" / "answered" / "pass" / "ended" (pass = empty hook body → Claude's
+    /// normal flow, which for an ask-gate means its question picker appears in
+    /// the user's own terminal exactly as if the daemon had never held it;
+    /// ended = `endGate`).
     func awaitGate(requestId: String) async -> String {
         guard let gate = heldGates[requestId] else { return "pass" }
-        let timeout = gate.kind == .ask ? Self.askHoldTimeoutSeconds : Self.holdTimeoutSeconds
+        let timeout = gate.timeoutSeconds
+            ?? (gate.kind == .ask ? Self.askHoldTimeoutSeconds : Self.holdTimeoutSeconds)
         return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
             guard heldGates[requestId] != nil else { cont.resume(returning: "pass"); return }
             heldGates[requestId]?.continuation = cont

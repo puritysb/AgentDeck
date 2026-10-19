@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import type { Server, IncomingMessage } from 'http';
 import type { BridgeEvent, PluginCommand } from './types.js';
-import { isLocalConnection, validateToken } from './auth.js';
+import { isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import { mayAdoptEsp32, noteEsp32Adopted } from './pairing-window.js';
 import { debug, log } from './logger.js';
 import { DEVICE_ID_HEADER, normalizeDeviceId, WS_PING_INTERVAL_MS, State } from '@agentdeck/shared';
@@ -159,7 +159,21 @@ export class WsServer {
     this.wss.on('connection', (ws, req: IncomingMessage) => {
       // Token auth for remote connections
       const remoteIp = req.socket.remoteAddress || '';
-      if (!isLocalConnection(remoteIp)) {
+      const local = isLocalConnection(remoteIp);
+      const localTrust = local ? localTrustOf(req, true) : null;
+      if (localTrust !== null && localTrust !== 'trusted') {
+        // A web page in a browser on this machine: a WebSocket has no CORS, so
+        // without this it would read every frame and send device commands. It
+        // needs the token. It is never a pairing knock: approving a
+        // same-machine address would hand local trust to every page.
+        const url = new URL(req.url || '/', 'http://localhost');
+        if (!validateToken(url.searchParams.get('token') || '')) {
+          logLocalTrustRefusal('WebSocket', localTrust, req);
+          ws.close(4001, 'Unauthorized');
+          return;
+        }
+        debug('WS', 'Same-machine web page authenticated with the pairing token');
+      } else if (!local) {
         const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
         const token = url.searchParams.get('token') || '';
         // The id a client offers on the handshake, if it offers one. Read here

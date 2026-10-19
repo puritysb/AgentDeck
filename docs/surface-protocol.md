@@ -292,7 +292,9 @@ offer the capability receive the existing turn-level rows only. The daemon's
 bounded timeline buffer evicts these rows before any turn-level row, a request
 together with its result, so they never displace the rows every client reads.
 A capable client's history replay therefore holds only the most recent ones;
-the live stream carries all of them.
+the live stream carries all of them. Only the Node daemon produces these rows;
+the macOS app's daemon produces none and drops any it reads back from a shared
+`timeline.json`.
 
 ### companion-control/v1
 

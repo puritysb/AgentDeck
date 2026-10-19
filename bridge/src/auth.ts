@@ -1,9 +1,10 @@
 import { randomBytes } from 'crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { homedir, networkInterfaces } from 'os';
-import { getLanIp } from '@agentdeck/shared';
-import { debug } from './logger.js';
+import { homedir, hostname, networkInterfaces } from 'os';
+import type { IncomingHttpHeaders } from 'http';
+import { getLanIp, localTrustVerdict, type LocalTrustVerdict } from '@agentdeck/shared';
+import { debug, log } from './logger.js';
 
 const LEGACY_DIR = join(homedir(), '.agentdeck');
 const TOKEN_LENGTH = 32; // 32 hex chars = 16 bytes
@@ -239,6 +240,61 @@ export function isLocalConnection(ip: string): boolean {
     }
   }
   return false;
+}
+
+/** The parts of a Node request that same-machine trust reads. */
+export interface LocalTrustRequestLike {
+  method?: string;
+  headers: IncomingHttpHeaders;
+  socket: { localPort?: number };
+}
+
+/**
+ * Whether a request from this machine may skip the pairing token: the rule in
+ * `shared/src/local-trust.ts`. A web page in a browser here connects from this
+ * machine as well, and its `Host` and `Origin` headers are what tell it apart
+ * from a local program. The port is the one the request arrived on, which is
+ * the port this server's own pages carry in their origin.
+ */
+export function localTrustOf(req: LocalTrustRequestLike, upgrade = false): LocalTrustVerdict {
+  return localTrustVerdict(
+    {
+      method: req.method ?? 'GET',
+      upgrade,
+      origin: firstHeader(req.headers.origin),
+      host: firstHeader(req.headers.host),
+    },
+    { port: req.socket.localPort ?? 0, isLocalAddress: isLocalConnection, hostNames: [hostname()] },
+  );
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+const LOCAL_TRUST_REFUSAL_LOG_MS = 60_000;
+const localTrustRefusalLoggedAt = new Map<string, number>();
+
+/**
+ * Say why a same-machine request had to authenticate like a LAN peer: once a
+ * minute per surface and reason, so a page retrying in a loop cannot flood the
+ * log. The header came from a web page, so it is clipped and reduced to URL
+ * characters before it reaches a terminal.
+ */
+export function logLocalTrustRefusal(
+  surface: string,
+  verdict: Exclude<LocalTrustVerdict, 'trusted'>,
+  req: LocalTrustRequestLike,
+  now = Date.now(),
+): void {
+  const key = `${surface}:${verdict}`;
+  if (now - (localTrustRefusalLoggedAt.get(key) ?? 0) < LOCAL_TRUST_REFUSAL_LOG_MS) return;
+  localTrustRefusalLoggedAt.set(key, now);
+  const header = verdict === 'foreign-host' ? 'Host' : 'Origin';
+  const value = firstHeader(verdict === 'foreign-host' ? req.headers.host : req.headers.origin) ?? '';
+  const shown = value.replace(/[^a-zA-Z0-9:/._\-[\]%]/g, '').slice(0, 80) || '(empty)';
+  log(`[agentdeck] A same-machine ${surface} request with ${header} ${shown} is a web page, not a local program; `
+    + 'it was answered as a LAN peer (pairing token required)');
 }
 
 /**

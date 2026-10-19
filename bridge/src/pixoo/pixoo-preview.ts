@@ -57,6 +57,10 @@ export function rgbToBmp(rgb: Uint8Array, w: number, h: number): Buffer {
 
 // ─── Pixoo Live Preview HTML ────────────────────────────────────────────────
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] || c);
+}
+
 export function pixooLiveHtml(
   meta: { agentType?: string; projectName?: string },
   initialFps: number = 10,
@@ -66,7 +70,7 @@ export function pixooLiveHtml(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pixoo Live — ${meta.projectName || 'AgentDeck'}</title>
+<title>Pixoo Live — ${escapeHtml(meta.projectName || 'AgentDeck')}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0a0a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif;

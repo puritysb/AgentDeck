@@ -62,21 +62,45 @@ static CiCompanion::Memo ciMemos[CI_CUE_SLOTS];
 static_assert(sizeof(ciMemos) <= 256, "CI helper memo budget must remain bounded");
 static_assert(sizeof(CiCueSnapshot) * CI_CUE_SLOTS <= 128, "CI frame snapshot belongs on the stack");
 
-// Sin lookup table for fast sin/cos
-static float sinTable[SIN_TABLE_SIZE];
-static bool sinTableInit = false;
+// Sin lookup table for fast sin/cos, computed at compile time so it lives in
+// flash (.rodata). A table filled on first use sat in static DRAM, and the
+// classic-ESP32 TTGO has no 1 KB of that to spare: master stopped linking
+// there by 8 bytes once two firmware changes that each fit were merged.
+namespace {
+struct SinTable { float v[SIN_TABLE_SIZE]; };
+
+// Taylor series for |x| <= pi; the first omitted term is below 2e-13, far
+// under a float's resolution.
+constexpr double taylorSin(double x) {
+    double term = x;
+    double sum = x;
+    for (int n = 1; n <= 12; n++) {
+        term *= -x * x / ((2.0 * n) * (2.0 * n + 1.0));
+        sum += term;
+    }
+    return sum;
+}
+
+constexpr SinTable makeSinTable() {
+    SinTable t{};
+    for (int i = 0; i < SIN_TABLE_SIZE; i++) {
+        // The upper half of the turn is folded to negative angles.
+        int k = i < SIN_TABLE_SIZE / 2 ? i : i - SIN_TABLE_SIZE;
+        t.v[i] = (float)taylorSin(k * (2.0 * M_PI / SIN_TABLE_SIZE));
+    }
+    return t;
+}
+
+constexpr SinTable sinTable = makeSinTable();
+static_assert(sinTable.v[SIN_TABLE_SIZE / 4] > 0.9999999f && sinTable.v[SIN_TABLE_SIZE / 4] <= 1.0f,
+              "the compile-time sine table must peak at a quarter turn");
+}  // namespace
 
 float fastSin(float rad) {
-    if (!sinTableInit) {
-        for (int i = 0; i < SIN_TABLE_SIZE; i++) {
-            sinTable[i] = sinf((float)i / SIN_TABLE_SIZE * 2.0f * M_PI);
-        }
-        sinTableInit = true;
-    }
     float norm = fmodf(rad, 2.0f * M_PI);
     if (norm < 0) norm += 2.0f * M_PI;
     int idx = (int)(norm / (2.0f * M_PI) * SIN_TABLE_SIZE) % SIN_TABLE_SIZE;
-    return sinTable[idx];
+    return sinTable.v[idx];
 }
 
 float fastCos(float rad) {

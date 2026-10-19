@@ -6,9 +6,11 @@ const authMocks = vi.hoisted(() => ({
   isLocal: false,
 }));
 
-vi.mock('../auth.js', () => ({
+// `localTrustOf` stays real: it reads only the request's own headers.
+vi.mock('../auth.js', async (importOriginal) => ({
   isLocalConnection: () => authMocks.isLocal,
   validateToken: (t: string) => t === 'machine-token',
+  localTrustOf: (await importOriginal<typeof import('../auth.js')>()).localTrustOf,
 }));
 
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from '../http-auth-gate.js';
@@ -21,17 +23,23 @@ import {
 
 function fakeReq(over: {
   url?: string;
+  method?: string;
   remoteAddress?: string;
   authorization?: string;
   deviceId?: string;
+  origin?: string;
+  host?: string;
 }) {
   const headers: Record<string, string> = {};
   if (over.authorization) headers.authorization = over.authorization;
   if (over.deviceId) headers['x-agentdeck-device'] = over.deviceId;
+  if (over.origin) headers.origin = over.origin;
+  if (over.host) headers.host = over.host;
   return {
     url: over.url ?? '/',
+    method: over.method,
     headers,
-    socket: { remoteAddress: over.remoteAddress ?? '192.0.2.55' },
+    socket: { remoteAddress: over.remoteAddress ?? '192.0.2.55', localPort: 9120 },
   };
 }
 
@@ -146,6 +154,42 @@ describe('isAuthorizedHttpRequest', () => {
   });
 });
 
+// A web page in a browser on this machine connects from 127.0.0.1 too. Its
+// Host and Origin headers are what tell it from a local program
+// (shared/src/local-trust.ts; the full table is in local-trust-vectors.json).
+describe('a same-machine web page is not a local program', () => {
+  beforeEach(() => { authMocks.isLocal = true; });
+  afterEach(() => { authMocks.isLocal = false; });
+  const local = (over: Parameters<typeof fakeReq>[0]) => fakeReq({ remoteAddress: '127.0.0.1', ...over });
+
+  it('trusts a local program, which sends neither header or names this machine', () => {
+    expect(isAuthorizedHttpRequest(local({ host: '127.0.0.1:9120' }))).toBe(true);
+    expect(isAuthorizedHttpRequest(local({ method: 'POST', host: 'localhost:9120' }))).toBe(true);
+  });
+
+  it('refuses a DNS-rebinding page, whose Host is its own domain', () => {
+    expect(isAuthorizedHttpRequest(local({ url: '/health', host: 'rebind.example:9120' }))).toBe(false);
+  });
+
+  it('refuses a cross-origin POST, which needs no CORS preflight as text/plain', () => {
+    expect(isAuthorizedHttpRequest(local({ method: 'POST', origin: 'https://evil.example' }))).toBe(false);
+  });
+
+  it('keeps a cross-origin GET trusted: the browser hides the answer without ACAO', () => {
+    expect(isAuthorizedHttpRequest(local({ method: 'GET', origin: 'https://evil.example' }))).toBe(true);
+  });
+
+  it("trusts a POST from a page the daemon served, by the daemon's own port", () => {
+    expect(isAuthorizedHttpRequest(local({ method: 'POST', origin: 'http://127.0.0.1:9120' }))).toBe(true);
+    expect(isAuthorizedHttpRequest(local({ method: 'POST', origin: 'http://127.0.0.1:3000' }))).toBe(false);
+  });
+
+  it('admits such a page with the pairing token, as it would a LAN peer', () => {
+    expect(isAuthorizedHttpRequest(local({ method: 'POST', origin: 'https://evil.example', url: '/x?token=machine-token' }))).toBe(true);
+    expect(isAuthorizedHttpRequest(local({ host: 'rebind.example:9120', authorization: 'Bearer machine-token' }))).toBe(true);
+  });
+});
+
 // The third way a peer is authorized, beside same-machine and a token: the
 // operator approved it. Folded into `isAuthorizedHttpRequest` rather than added
 // as a `gateHttpRequest` parameter, so the truth table above stays pure.
@@ -172,6 +216,20 @@ describe('operator approval authorizes an HTTP request', () => {
 
   it('refuses an unapproved remote peer', () => {
     expect(isAuthorizedHttpRequest(fakeReq({ remoteAddress: IP }))).toBe(false);
+  });
+
+  it('never admits a same-machine web page by approval', () => {
+    // An approval names a device on the network. Were a loopback address
+    // approvable, one grant would hand local trust to every page.
+    authMocks.isLocal = true;
+    try {
+      approvePeer(peerKey('127.0.0.1', null));
+      expect(isAuthorizedHttpRequest(
+        fakeReq({ remoteAddress: '127.0.0.1', method: 'POST', origin: 'https://evil.example' }),
+      )).toBe(false);
+    } finally {
+      authMocks.isLocal = false;
+    }
   });
 
   it('admits it once the operator approves its address', () => {

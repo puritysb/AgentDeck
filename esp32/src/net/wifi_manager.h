@@ -41,8 +41,19 @@ bool wifiConfigured();
  * Saves credentials to WiFiManager for future auto-connect.
  * Blocks up to 10 seconds waiting for connection.
  * Returns true on success.
+ *
+ * `credId` is the provision's credential id ("" when it carried none), recorded
+ * with the credentials it came with (see wifiLoadCredId). nullptr — a re-join of
+ * credentials already stored — leaves the record alone. On boards that rejoin
+ * the driver's config, an old id that cannot be cleared means the credentials
+ * are not written and the radio is not touched: false, with `refused` (when
+ * given) set so the provision ack can say so. Boards that persist a provision
+ * join first and save it only after a successful join; there a refused clear
+ * leaves the saved credentials and their id as they were, and the call still
+ * returns true for the join.
  */
-bool wifiConnectWith(const char* ssid, const char* password);
+bool wifiConnectWith(const char* ssid, const char* password, const char* credId = nullptr,
+                     bool* refused = nullptr);
 
 #if defined(BOARD_T_DISPLAY_PRO)
 /**
@@ -58,9 +69,22 @@ bool wifiTryDeferredJoin();
  * Persist daemon-provisioned WiFi credentials without changing radio state.
  * Used when USB serial is primary and the radio is parked (IPS10, the
  * T-Display-S3-Pro and the AGENTDECK_DEFER_BOOT_WIFI_JOIN e-ink panels); the
- * credentials are joined when the radio is restored.
+ * credentials are joined when the radio is restored. False when nothing was
+ * saved, including when the old credential id could not be cleared first.
  */
-void wifiSaveProvisionedCredentials(const char* ssid, const char* password);
+bool wifiSaveProvisionedCredentials(const char* ssid, const char* password, const char* credId);
+
+/**
+ * Which `wifi_provision` the stored WiFi credentials came from ("" = none), for
+ * `device_info.wifiCredId`. Lets a daemon tell "already holds my credentials"
+ * from "needs them" while the radio is parked, which wifiConfigured() cannot: a
+ * parked radio reads unconfigured on most boards. The board never computes an
+ * id, only remembers one, and forgets it whenever its credentials can change
+ * without a provision (portal, reset) — net/wifi_cred_id_store.h. Report it
+ * over USB serial only: beside the pairing token on the WebSocket it would be
+ * an offline test for WiFi password guesses.
+ */
+bool wifiLoadCredId(char* out, size_t outLen);
 
 /**
  * Store/load a daemon bridge endpoint learned during serial WiFi provisioning.

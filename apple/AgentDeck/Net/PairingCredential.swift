@@ -46,6 +46,17 @@ enum PairingCredential {
         return lhs == rhs
     }
 
+    /// The URL as a log line may show it. The pairing token is the credential
+    /// every paired device carries, and these lines reach the Xcode console,
+    /// test logs and diagnostic bundles, so its value is replaced; that one was
+    /// present stays visible.
+    static func redacted(_ url: String) -> String {
+        guard var comps = URLComponents(string: url),
+              let items = comps.queryItems, items.contains(where: { $0.name == "token" }) else { return url }
+        comps.queryItems = items.map { $0.name == "token" ? URLQueryItem(name: "token", value: "redacted") : $0 }
+        return comps.string ?? url
+    }
+
     /// The `token` query item of a URL, if it carries one.
     static func token(in url: String?) -> String? {
         guard let url, let comps = URLComponents(string: url) else { return nil }

@@ -1,67 +1,63 @@
 #if os(macOS)
-// ESP32ProvisionSheet.swift — User-facing Wi-Fi provisioning for ESP32 boards.
+// ESP32ProvisionSheet.swift — User-facing Wi-Fi setup for ESP32 boards.
 //
-// Before this sheet, users had to edit `~/.agentdeck/wifi-config.json` by
-// hand or run `agentdeck wifi-setup` from a terminal. Neither works from
-// the App Store build. This sheet gives a 3-step flow:
+// The sheet hands the credentials to AgentDeck's daemon — the in-process one,
+// or the one this app is a client of — through `POST /esp32/wifi`
+// (ESP32WifiSetupClient). The daemon saves them and sends a `wifi_provision`
+// to every ESP32 on USB serial, and with auto-send on, boards plugged in later
+// get them from the saved config. The sheet then shows each board's answer.
 //
-//   1. Detect a connected ESP32 over USB serial.
-//   2. Take SSID + password from the user (Wi-Fi picker would require
-//      CoreWLAN + Location Services, so we stay on plain text input —
-//      App Sandbox blocks `networksetup`/`security` subprocess calls
-//      anyway).
-//   3. Write a newline-delimited JSON config frame to the serial port and
-//      show the result.
+// Before this, the sheet wrote a `wifi.config` frame straight to the first
+// serial port it found — a message no firmware has ever parsed — on a port the
+// daemon was holding, and nothing in the app saved credentials for its daemon.
 //
-// Serial writes go through Darwin POSIX `open/write/close` at 115200 baud
-// — App Sandbox's `com.apple.security.device.serial` entitlement allows
-// this. We don't open the ESP32Serial actor here; the running daemon owns
-// that port and would race with our write. Instead we lean on the fact
-// that the daemon reopens the port after a disconnect, so we briefly own
-// the port for the provisioning write and let the daemon reclaim it
-// afterward.
+// SSID and password are typed by the user: a Wi-Fi picker would need CoreWLAN
+// and Location Services, and the App Sandbox blocks the `networksetup` /
+// `security` subprocesses anyway. The password is never read back from the
+// daemon, so changing anything means typing it again.
 
 import SwiftUI
-import AppKit
-import Darwin
 
 struct ESP32ProvisionSheet: View {
+    /// The port of the daemon this app runs or is a client of; 0 = none.
+    let daemonPort: Int
+
     @Environment(\.dismiss) private var dismiss
 
-    @State private var step: Step = .detecting
-    @State private var detectedPort: String?
-    @State private var ssid: String = ""
-    @State private var password: String = ""
-    @State private var sending: Bool = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
+    @State private var status: ESP32WifiStatus?
+    @State private var loading = false
+    @State private var loadError: String?
+    @State private var ssid = ""
+    @State private var password = ""
+    @State private var autoProvision = true
+    @State private var applying = false
+    @State private var applyError: String?
+    @State private var lastApply: ESP32WifiApplyResult?
+    @State private var applyTask: Task<Void, Never>?
+    @State private var watchTask: Task<Void, Never>?
 
-    private enum Step: Equatable {
-        case detecting
-        case enterCredentials
-        case sending
-        case success
-        case failure
-    }
-
-    private enum WriteResult: Sendable {
-        case success
-        case failure(String)
-    }
+    /// Seconds the sheet keeps asking for answers from the boards it sent to:
+    /// as long as the daemons hold a provision owed its ack.
+    private static let ackWatchSeconds = ESP32WifiProvisionRules.ackTimeoutMs / 1000
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             header
             Divider()
             content
-            Spacer()
+            Spacer(minLength: 0)
             Divider()
             footer
         }
         .padding(20)
-        .frame(width: 480, height: 440)
+        .frame(width: 500, height: 540)
         .aquariumSurface()
-        .onAppear(perform: detectPort)
+        .task { await load(prefill: true) }
+        .onDisappear {
+            // Neither may outlive the sheet: each asks the daemon again with its token.
+            applyTask?.cancel()
+            watchTask?.cancel()
+        }
     }
 
     // MARK: - Sections
@@ -74,262 +70,218 @@ struct ESP32ProvisionSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("ESP32 Wi-Fi Setup")
                     .font(.system(size: 16, weight: .semibold))
-                Text("Send Wi-Fi credentials to your ESP32 over USB.")
+                Text("AgentDeck saves these credentials and sends them to ESP32 boards on USB.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch step {
-        case .detecting: detectingView
-        case .enterCredentials: credentialsView
-        case .sending: sendingView
-        case .success: successView
-        case .failure: failureView
-        }
-    }
-
-    private var detectingView: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        if let status {
+            credentialsForm(status)
+            Divider()
+            boardsSection(status)
+        } else if let loadError {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(DesignTokens.UI.attn)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Spacer()
+                    Button("Try Again") { Task { await load(prefill: true) } }
+                        .buttonStyle(.bordered)
+                        .disabled(loading)
+                }
+            }
+        } else {
             HStack(spacing: 8) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Looking for a connected ESP32…")
+                Text("Checking ESP32 boards…")
                     .font(.system(size: 13))
-            }
-            Text("Plug your ESP32 into this Mac with a USB cable. CP210x/CH340/native USB are all supported.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Spacer()
-                Button("Try Again") { detectPort() }
-                    .buttonStyle(.bordered)
             }
         }
     }
 
-    private var credentialsView: some View {
+    private func credentialsForm(_ status: ESP32WifiStatus) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let port = detectedPort {
-                HStack(spacing: 6) {
-                    Circle().fill(.green).frame(width: 8, height: 8)
-                    Text("Found ESP32 at \(port)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             VStack(alignment: .leading, spacing: 6) {
-                Text("Wi-Fi SSID")
+                Text("Wi-Fi network name")
                     .font(.system(size: 12, weight: .medium))
                 TextField("MyNetwork", text: $ssid)
                     .textFieldStyle(.roundedBorder)
             }
-
             VStack(alignment: .leading, spacing: 6) {
-                Text("Wi-Fi Password")
+                Text("Wi-Fi password")
                     .font(.system(size: 12, weight: .medium))
-                SecureField("••••••••", text: $password)
+                SecureField(status.configured ? "Type it again to send" : "Password for this network", text: $password)
                     .textFieldStyle(.roundedBorder)
             }
-
-            Text("Type the network name and password you normally use for this Mac.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
-
-            if let errorMessage {
-                Text(errorMessage)
+            Toggle("Also send to boards plugged in later", isOn: $autoProvision)
+                .toggleStyle(.checkbox)
+                .font(.system(size: 12))
+            if let message = visibleProblem ?? applyError {
+                Text(message)
                     .font(.system(size: 11))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(DesignTokens.UI.error)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private var sendingView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("Sending configuration…")
-                    .font(.system(size: 13))
+    private func boardsSection(_ status: ESP32WifiStatus) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Boards on USB")
+                .font(.system(size: 12, weight: .medium))
+            if !status.serial {
+                note("AgentDeck isn't managing USB boards right now, so credentials are saved without being sent.")
+            } else if status.boards.isEmpty {
+                note(autoProvision
+                     ? "No ESP32 is connected over USB. A board plugged in later receives the saved credentials."
+                     : "No ESP32 is connected over USB.")
+            } else {
+                ForEach(status.boards) { board in
+                    boardRow(board)
+                }
             }
-            Text("Writing JSON frame to \(detectedPort ?? "the ESP32") at 115200 baud. The board should reboot and join your Wi-Fi network within a few seconds.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var successView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Configuration sent")
-                    .font(.system(size: 14, weight: .semibold))
+    private func boardRow(_ board: ESP32WifiStatus.Board) -> some View {
+        let line = ESP32WifiBoardLine.describe(board, outcome: lastApply?.boards.first { $0.port == board.port })
+        return HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(tone(line))
+                .frame(width: 8, height: 8)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(board.board.isEmpty ? (board.port as NSString).lastPathComponent : board.board)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                Text(line.text)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text(successMessage ?? "Your ESP32 should join your Wi-Fi network and appear in the session list shortly.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var failureView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text("Couldn't send configuration")
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            Text(errorMessage ?? "Unknown error.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var footer: some View {
         HStack {
-            Spacer()
-            switch step {
-            case .detecting:
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-            case .enterCredentials:
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button("Send") { send() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(ssid.isEmpty || password.count < 8 || detectedPort == nil)
-            case .sending:
-                EmptyView()
-            case .success:
-                Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-            case .failure:
-                Button("Retry") { step = .enterCredentials; errorMessage = nil }
-                    .buttonStyle(.bordered)
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
+            if let lastApply {
+                Text(summary(lastApply))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            Button(lastApply == nil ? "Cancel" : "Done") { dismiss() }
+                .keyboardShortcut(.cancelAction)
+            Button(sendsNow ? "Save & Send" : "Save") { apply() }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(applying || status == nil
+                          || ESP32WifiProvisionRules.credentialsProblem(ssid: ssid, password: password) != nil)
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // MARK: - Derived state
+
+    /// The shared credential rule's verdict, once there is a password to judge.
+    private var visibleProblem: String? {
+        guard !password.isEmpty else { return nil }
+        return ESP32WifiProvisionRules.credentialsProblem(ssid: ssid, password: password)
+            .flatMap(ESP32WifiSetupClient.credentialsMessage)
+    }
+
+    private var sendsNow: Bool {
+        guard let status else { return false }
+        return status.serial && !status.boards.isEmpty
+    }
+
+    private func summary(_ result: ESP32WifiApplyResult) -> String {
+        let sent = result.boards.filter(\.sent).count
+        return result.boards.isEmpty ? "Saved." : "Saved · sent to \(sent) of \(result.boards.count) board(s)."
+    }
+
+    private func tone(_ line: ESP32WifiBoardLine) -> Color {
+        switch line {
+        case .ok: return DesignTokens.UI.ok
+        case .waiting: return DesignTokens.UI.attn
+        case .failed: return DesignTokens.UI.error
+        case .neutral: return DesignTokens.UI.idle
         }
     }
 
     // MARK: - Actions
 
-    private func detectPort() {
-        step = .detecting
-        errorMessage = nil
-        Task {
-            let port = await Task.detached(priority: .userInitiated) {
-                Self.findESP32Port()
-            }.value
-            if let port {
-                detectedPort = port
-                step = .enterCredentials
-            } else {
-                // Stay on detecting step so user can retry; no error
-                // message needed — the copy already says "plug it in".
-                detectedPort = nil
-            }
-        }
-    }
-
-    private func send() {
-        step = .sending
-        errorMessage = nil
-        let payload: [String: String] = [
-            "type": "wifi.config",
-            "ssid": ssid,
-            "password": password,
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload),
-              let payloadLine = String(data: data, encoding: .utf8)
-        else {
-            errorMessage = "Couldn't serialize config."
-            step = .failure
+    private func load(prefill: Bool) async {
+        guard daemonPort > 0 else {
+            loadError = "AgentDeck's daemon isn't running."
             return
         }
-        let frame = payloadLine + "\n"
-        let portPath = detectedPort ?? ""
-        Task {
-            let result = await Task.detached(priority: .userInitiated) {
-                Self.writeSerial(port: portPath, line: frame)
-            }.value
-            switch result {
-            case .success:
-                successMessage = nil
-                step = .success
-            case .failure(let message):
-                errorMessage = message
-                step = .failure
+        loading = true
+        defer { loading = false }
+        do {
+            let next = try await ESP32WifiSetupClient.status(port: daemonPort)
+            status = next
+            loadError = nil
+            if prefill, next.configured {
+                if ssid.isEmpty { ssid = next.ssid }
+                autoProvision = next.autoProvision
+            }
+        } catch {
+            if status == nil { loadError = error.localizedDescription }
+        }
+    }
+
+    private func apply() {
+        guard !applying else { return }
+        applying = true
+        applyError = nil
+        let request = (ssid: ssid, password: password, autoProvision: autoProvision)
+        applyTask = Task {
+            defer { applying = false }
+            do {
+                let result = try await ESP32WifiSetupClient.apply(
+                    port: daemonPort, ssid: request.ssid, password: request.password,
+                    autoProvision: request.autoProvision)
+                if Task.isCancelled { return }
+                lastApply = result
+                await load(prefill: false)
+                // A watch started after the sheet closed would never be cancelled.
+                if Task.isCancelled { return }
+                watchAcks(Set(result.boards.filter(\.sent).map(\.port)))
+            } catch {
+                if !Task.isCancelled { applyError = error.localizedDescription }
             }
         }
     }
 
-    // MARK: - Port discovery
-
-    /// Scan `/dev/cu.*` for paths matching known ESP32 USB-UART identifiers.
-    /// CP210x → `cu.usbserial-*`, CH340 → `cu.wchusbserial*`, native USB →
-    /// `cu.usbmodem*`. Mirrors ESP32Serial's portPatterns but as a pure
-    /// function so the sheet can use it without poking at an actor.
-    private nonisolated static func findESP32Port() -> String? {
-        let fm = FileManager.default
-        guard let entries = try? fm.contentsOfDirectory(atPath: "/dev") else { return nil }
-        let regexes: [NSRegularExpression] = [
-            "usbserial-", "wchusbserial", "usbmodem",
-        ].compactMap { try? NSRegularExpression(pattern: $0) }
-        for name in entries where name.hasPrefix("cu.") {
-            let leaf = String(name.dropFirst(3))
-            let range = NSRange(leaf.startIndex..., in: leaf)
-            for rx in regexes where rx.firstMatch(in: leaf, range: range) != nil {
-                return "/dev/\(name)"
+    /// Re-reads the boards once a second until every board this send reached
+    /// has answered, or `ackWatchSeconds` pass.
+    private func watchAcks(_ ports: Set<String>) {
+        watchTask?.cancel()
+        guard !ports.isEmpty else { return }
+        watchTask = Task {
+            for _ in 0..<Self.ackWatchSeconds {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                guard let next = try? await ESP32WifiSetupClient.status(port: daemonPort) else { continue }
+                status = next
+                let waiting = next.boards.contains { ports.contains($0.port) && $0.ack == nil }
+                if !waiting { return }
             }
         }
-        return nil
-    }
-
-    // MARK: - Serial write
-
-    /// Open the serial port non-blocking, set 115200 baud, write the frame,
-    /// close. Kept intentionally small — no termios canonical mode config,
-    /// no read-back. The ESP32 firmware re-configures itself and reboots on
-    /// receiving `wifi.config`; verification happens via mDNS rediscovery.
-    private nonisolated static func writeSerial(port: String, line: String) -> WriteResult {
-        let fd = Darwin.open(port, O_RDWR | O_NOCTTY | O_NONBLOCK)
-        if fd < 0 {
-            return .failure("Couldn't open \(port): errno \(errno). Is the daemon holding the port? Try closing AgentDeck fully and reopening.")
-        }
-        defer { Darwin.close(fd) }
-        // Clear O_NONBLOCK for a synchronous write.
-        _ = fcntl(fd, F_SETFL, 0)
-        // Set 115200 baud + 8N1 raw mode via termios.
-        var tio = termios()
-        if tcgetattr(fd, &tio) == 0 {
-            cfmakeraw(&tio)
-            cfsetispeed(&tio, speed_t(115200))
-            cfsetospeed(&tio, speed_t(115200))
-            _ = tcsetattr(fd, TCSANOW, &tio)
-        }
-        let bytes = Array(line.utf8)
-        let written = bytes.withUnsafeBufferPointer { buf in
-            Darwin.write(fd, buf.baseAddress, buf.count)
-        }
-        if written == bytes.count {
-            return .success
-        }
-        return .failure("Wrote only \(written)/\(bytes.count) bytes (errno \(errno)).")
     }
 }
 #endif

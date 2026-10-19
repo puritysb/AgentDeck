@@ -209,6 +209,34 @@ final class ESP32WifiForwardTests: XCTestCase {
         XCTAssertEqual(kept.last?["ts"] as? Double, 63)
     }
 
+    /// A board's History reply (`query_session_timeline`) comes back under the
+    /// id the board asked with: the T-Embed knob strcmp()s it against the 31-byte
+    /// cut its roster gave it. A long reply as the newest row must not empty it.
+    func testSessionReplyKeepsTheBoardsIdAndTrimsALongReply() throws {
+        let resolved = "observed:codex:e2eb0a4d-5f0e-4c6b-9d1a-7e2f40c0ffee"
+        let requested = String(resolved.prefix(31))
+        let rows: [[String: Any]] = [
+            ["ts": 1752700000000.0, "type": "chat_start", "raw": "run the suite", "sessionId": resolved, "localHm": "10:00"],
+            ["ts": 1752700002000.0, "type": "chat_response", "raw": String(repeating: "x", count: 300),
+             "detail": String(repeating: "完", count: 3000), "sessionId": resolved, "localHm": "10:00"],
+        ]
+        let frame = DaemonServer.sessionTimelineReplyFrame(
+            requested: requested, resolved: resolved, board: true, entries: rows)
+        let knob = ESP32Serial.wifiDeviceInfo(["board": "t_embed"])
+        for shaped in [ESP32Serial.wifiEsp32Forward(frame, deviceInfo: knob),
+                       ESP32Serial.prepareForSerial(frame, deviceInfo: knob)] {
+            let reply = try XCTUnwrap(shaped)
+            XCTAssertEqual(reply["sessionId"] as? String, requested)
+            let entries = try XCTUnwrap(reply["entries"] as? [[String: Any]])
+            XCTAssertEqual(entries.map { $0["type"] as? String }, ["chat_start", "chat_response"])
+            XCTAssertLessThanOrEqual((entries[1]["detail"] as? String ?? "").utf8.count, 199)
+            XCTAssertLessThan(try XCTUnwrap(reply.jsonData).count, 4096)
+        }
+        let dashboard = DaemonServer.sessionTimelineReplyFrame(
+            requested: requested, resolved: resolved, board: false, entries: rows)
+        XCTAssertEqual(dashboard["sessionId"] as? String, resolved)
+    }
+
     /// The roster is capped at SERIAL_SESSIONS_CAP (Node parity). Uncapped, a
     /// burst of observed Claude sessions pushed the frame past the boards'
     /// 4 KB line buffer — serial firmware discards the line silently, but the

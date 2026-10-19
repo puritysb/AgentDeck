@@ -20,6 +20,7 @@
 #include "../boards/board_config.h"
 #include "util/memory.h"
 #include "util/heap_telemetry.h"
+#include "util/internal_reserve.h"
 #include "state/agent_state.h"
 #include "net/serial_client.h"
 #include "net/wifi_manager.h"
@@ -1197,6 +1198,9 @@ void setup() {
     // Before anything allocates in earnest, so device_info's allocFailures
     // covers the whole bring-up.
     HeapTelemetry::begin();
+    // Also before anything allocates: internal RAM is one large free block
+    // now, so the pool comes out as a single region.
+    InternalReserve::begin();
 #if defined(BOARD_EINK_SURFACE) || defined(BOARD_IPS10) || defined(BOARD_T_EMBED) || defined(BOARD_T_DISPLAY_PRO)
 #if defined(BOARD_T_EMBED)
     // 16384 on the only board that receives *audio* over serial. A spoken reply
@@ -1313,6 +1317,7 @@ void setup() {
         Serial.println("WARNING: No PSRAM found!");
     }
 #endif
+    InternalReserve::logBoot();
     // Boot heap snapshot — free + largest-free-block (fragmentation signal).
     logHeap("boot");
 

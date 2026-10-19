@@ -281,6 +281,13 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         didSet { defaults.set(codexConfigInstalled, forKey: Keys.codexConfigInstalled) }
     }
 
+    /// Whether that block also carries the Codex device-approval hold, as of
+    /// the last install pass (`CodexConfigInstaller.hasApprovalHold`). The
+    /// file is the record; this only remembers what the last pass found.
+    @Published var codexApprovalsInstalled: Bool {
+        didSet { defaults.set(codexApprovalsInstalled, forKey: Keys.codexApprovalsInstalled) }
+    }
+
     /// Live setup feedback; recomputed on every attempt rather than persisted.
     @Published var codexConfigError: String? = nil
 
@@ -384,6 +391,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         self.statuslineRelayPolicy = StatuslineRelayPolicy(rawValue: defaults.string(forKey: Keys.statuslineRelayPolicy) ?? "") ?? .auto
         self.codexConfigConsent = HookInstallConsent(rawValue: defaults.string(forKey: Keys.codexConfigConsent) ?? "") ?? .unknown
         self.codexConfigInstalled = defaults.object(forKey: Keys.codexConfigInstalled) as? Bool ?? false
+        self.codexApprovalsInstalled = defaults.object(forKey: Keys.codexApprovalsInstalled) as? Bool ?? false
         self.hasSeenDevicePreview = defaults.object(forKey: Keys.hasSeenDevicePreview) as? Bool ?? false
         self.hasSeenMonitorEmptyGuide = defaults.object(forKey: Keys.hasSeenMonitorEmptyGuide) as? Bool ?? false
         self.hasRequestedNotifications = defaults.object(forKey: Keys.hasRequestedNotifications) as? Bool ?? false
@@ -1024,6 +1032,7 @@ final class AppPreferences: ObservableObject, @unchecked Sendable {
         static let claudeSettingsPath = "prefs.claudeSettingsPath"
         static let codexConfigConsent = "prefs.codexConfigConsent"
         static let codexConfigInstalled = "prefs.codexConfigInstalled"
+        static let codexApprovalsInstalled = "prefs.codexApprovalsInstalled"
         static let codexConfigBookmark = "prefs.codexConfigBookmark"
         static let codexConfigPath = "prefs.codexConfigPath"
         static let codexUsageBookmark = "prefs.codexUsageBookmark"

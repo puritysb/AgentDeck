@@ -204,6 +204,16 @@ void setBrightness(int) {}   // no backlight on host
 // The sim drives MatrixPages::render* directly, so it owns this global instead.
 namespace Matrix { float smoothBrightness = 80.0f; }
 
+// ── Internal reserve (util/internal_reserve.cpp on-device) ──────────────────
+// logHeap (util/memory.h) reads the heap through these so a board's reserve is
+// left out of its figures. The host has no reserve: they are the heap shim's.
+#include <esp_heap_caps.h>
+#include "util/internal_reserve.h"
+namespace InternalReserve {
+uint32_t heapFreeBytes(uint32_t caps) { return heap_caps_get_free_size(caps); }
+uint32_t heapLargestFreeBlock(uint32_t caps) { return heap_caps_get_largest_free_block(caps); }
+}  // namespace InternalReserve
+
 // ── FastLED / WiFi shim instances ────────────────────────────────────────────
 const CRGB CRGB::Black = CRGB(0, 0, 0);
 SimFastLED FastLED;

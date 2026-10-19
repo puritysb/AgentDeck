@@ -34,6 +34,8 @@ interface PendingEntry {
   /** Fired exactly once when the entry resolves by any path (device decision,
    *  timeout, sweep, drain) so the caller can clear awaiting UI consistently. */
   onResolved?: (decision: PermissionDecision) => void;
+  /** The hook's own decision format. Default: Claude's PreToolUse. */
+  buildBody?: (decision: PermissionDecision) => string;
 }
 
 const pending = new Map<string, PendingEntry>();
@@ -63,7 +65,7 @@ function endWith(
   pending.delete(key);
   try {
     entry.res.writeHead(200, { 'Content-Type': 'application/json' });
-    entry.res.end(buildDecisionBody(decision, reason));
+    entry.res.end(entry.buildBody ? entry.buildBody(decision) : buildDecisionBody(decision, reason));
   } catch {
     /* client disconnected */
   }
@@ -79,7 +81,13 @@ function endWith(
 export function registerPending(
   requestId: string,
   res: ServerResponse,
-  opts: { sessionId?: string; tool?: string; timeoutMs: number; onResolved?: (decision: PermissionDecision) => void },
+  opts: {
+    sessionId?: string;
+    tool?: string;
+    timeoutMs: number;
+    onResolved?: (decision: PermissionDecision) => void;
+    buildBody?: (decision: PermissionDecision) => string;
+  },
 ): void {
   // Defensive: if a stale entry exists under this id, resolve it to pass first.
   const existing = pending.get(requestId);
@@ -100,6 +108,7 @@ export function registerPending(
     tool: opts.tool,
     createdAt: Date.now(),
     onResolved: opts.onResolved,
+    buildBody: opts.buildBody,
   });
   debug('permission', `registered pending ${requestId} (tool=${opts.tool ?? '?'} session=${opts.sessionId ?? '?'})`);
 }
@@ -139,6 +148,17 @@ export function resolvePendingWithReason(
   endWith(requestId, entry, decision, reason);
   debug('permission', `resolved pending ${requestId} → ${decision} (with reason)`);
   return sessionId;
+}
+
+/** Release a pending entry as `pass` now, firing its `onResolved` — for a
+ *  hold whose wait is over for a reason other than a device or the timer (the
+ *  turn ended, the hook's socket closed). Returns false when none is open. */
+export function passPending(requestId: string): boolean {
+  const entry = pending.get(requestId);
+  if (!entry) return false;
+  endWith(requestId, entry, 'pass');
+  debug('permission', `released pending ${requestId} → pass`);
+  return true;
 }
 
 /** Drop a pending entry without sending a decision (e.g. the hook's socket

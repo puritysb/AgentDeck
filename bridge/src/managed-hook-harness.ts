@@ -15,9 +15,10 @@
  * a hook's harness is read from its payload and prefix, never from the port it
  * reached. A hook of the bridge's own harness drives the session; any other
  * harness's hook is someone else's session and is handed to the local daemon
- * unchanged, as if `AGENTDECK_PORT` had not been set.
+ * unchanged, as if `AGENTDECK_PORT` had not been set — except that a Codex hold
+ * request carries this hop's shorter budget instead of its command's.
  */
-import { HOOK_HARNESS_PREFIXES, routeHookHarness } from '@agentdeck/shared';
+import { CODEX_APPROVAL_HOLD_HEADER, HOOK_HARNESS_PREFIXES, routeHookHarness } from '@agentdeck/shared';
 import { CodexHookReplayGuard } from './codex-hook-replay.js';
 
 /** The harness whose hooks a managed bridge owns — fixed by its adapter class
@@ -75,7 +76,9 @@ export type ForeignHookForwarder = (
 ) => Promise<ForwardedHookReply | null>;
 
 /** How long a forwarded hook may wait on the daemon — just under the hook
- *  script's own `--max-time`, so a held PreToolUse decision still arrives. */
+ *  script's own `--max-time`, so a held PreToolUse decision still arrives. A
+ *  Codex hold request gets the default too, which is below the hold minimum
+ *  (`codexApprovalHoldMs`): inside a managed PTY Codex shows its own prompt. */
 export function forwardTimeoutMs(eventName: string): number {
   if (eventName === 'PreToolUse') return 58_000;
   if (eventName === 'Stop') return 9_000;
@@ -115,10 +118,16 @@ export function createDaemonHookForwarder(deps: {
     if (!port || port === deps.ownPort()) return null;
     const budget = forwardTimeoutMs(eventName) - (now() - startedAt);
     if (budget <= 0) return null;
+    // A Codex hold request names how long its command waits; this hop waits
+    // only `budget`, and that is the wait the daemon may spend. Too short to
+    // hold, so the daemon answers at once without ingesting the request.
+    const forwarded = CODEX_APPROVAL_HOLD_HEADER in headers
+      ? { ...headers, [CODEX_APPROVAL_HOLD_HEADER]: String(Math.floor(budget / 1000)) }
+      : headers;
     try {
       const response = await fetchImpl(`http://127.0.0.1:${port}/hooks/${encodeURIComponent(eventName)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
+        headers: { 'Content-Type': 'application/json', ...forwarded },
         body,
         signal: AbortSignal.timeout(budget),
       });

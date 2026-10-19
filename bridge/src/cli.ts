@@ -114,6 +114,32 @@ function statuslinePolicyFromFlag(flag: unknown): 'on' | 'off' | undefined {
   return flag === true ? 'on' : flag === false ? 'off' : undefined;
 }
 
+/** `--codex-approvals` → add the Codex device-approval hold; `--no-codex-approvals`
+ *  → remove it; neither → keep what config.toml carries (`AGENTDECK_CODEX_APPROVALS`). */
+const codexApprovalsPolicyFromFlag = statuslinePolicyFromFlag;
+
+async function refreshCodexHooks(opts: { codexApprovals?: 'on' | 'off' } = {}): Promise<void> {
+  try {
+    const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
+    const result = installCodexHooksIfNeeded(opts.codexApprovals ? { codexApprovals: opts.codexApprovals } : {});
+    if (result.installed) {
+      log('Codex lifecycle hooks installed in ~/.codex/config.toml');
+      if (result.warning) log(`Codex hooks degraded: ${result.warning}`);
+      if (result.approvals && opts.codexApprovals === 'on') {
+        log('Codex device approvals: on. Codex asks you to review the new hook the next time it starts; trust it there.');
+        log('  While a device is connected, a Codex approval waits up to 25 s (AGENTDECK_APPROVAL_HOLD_MS) for its Allow/Deny before Codex shows its own prompt.');
+      } else if (result.approvals) {
+        log('Codex device approvals: on (kept). --no-codex-approvals removes them.');
+      } else if (opts.codexApprovals === 'off') {
+        log('Codex device approvals: off. Approvals appear only in the terminal; devices show them without buttons.');
+      }
+    } else if (result.reason) {
+      log(`Codex hooks skipped: ${result.reason}`);
+      if (opts.codexApprovals) log('Codex device approvals unchanged.');
+    }
+  } catch { /* hooks package not built yet — install still succeeds */ }
+}
+
 async function refreshClaudeHooks(opts: { statusline?: 'auto' | 'on' | 'off' } = {}): Promise<void> {
   try {
     const { installHooks } = await import('@agentdeck/hooks');
@@ -2258,8 +2284,11 @@ daemon
   .option('--loopback', 'Alias for --enterprise')
   .option('--statusline', 'Also install the Claude status-line relay when no status line is configured (one you already have is wrapped by default; a configured status line hides Claude Code\'s footer hints)')
   .option('--no-statusline', 'Remove the Claude status-line relay again, restoring your own status line')
+  .option('--codex-approvals', 'Let a connected device answer Codex approval prompts (Codex waits for the device before drawing its own prompt; it asks you to trust the new hook once)')
+  .option('--no-codex-approvals', 'Remove the Codex device-approval hook again; approvals appear only in the terminal')
   .action(async (opts) => {
     const postureArgs = daemonPostureArgs(opts);
+    const codexApprovals = codexApprovalsPolicyFromFlag(opts.codexApprovals);
     const {
       collectNativeDependencyDiagnostic,
       formatNativeDependencyDiagnosticReport,
@@ -2339,16 +2368,7 @@ daemon
       await refreshClaudeHooks({ statusline: statuslinePolicyFromFlag(opts.statusline) });
       await refreshKiroHooks();
       // Install Codex lifecycle hooks for parity with the macOS install path.
-      try {
-        const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
-        const result = installCodexHooksIfNeeded();
-        if (result.installed) {
-          log('Codex lifecycle hooks installed in ~/.codex/config.toml');
-          if (result.warning) log(`Codex hooks degraded: ${result.warning}`);
-        } else if (result.reason) {
-          log(`Codex hooks skipped: ${result.reason}`);
-        }
-      } catch { /* hooks package not built yet — task install still succeeds */ }
+      await refreshCodexHooks({ codexApprovals });
       // OpenCode observer plugin — standalone `opencode` runs report to the
       // daemon timeline the same way direct `codex` runs do.
       try {
@@ -2391,16 +2411,7 @@ daemon
       await refreshClaudeHooks({ statusline: statuslinePolicyFromFlag(opts.statusline) });
       await refreshKiroHooks();
       // Install Codex + OpenCode hooks for parity with the macOS/Windows paths.
-      try {
-        const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
-        const result = installCodexHooksIfNeeded();
-        if (result.installed) {
-          log('Codex lifecycle hooks installed in ~/.codex/config.toml');
-          if (result.warning) log(`Codex hooks degraded: ${result.warning}`);
-        } else if (result.reason) {
-          log(`Codex hooks skipped: ${result.reason}`);
-        }
-      } catch { /* hooks package not built yet — install still succeeds */ }
+      await refreshCodexHooks({ codexApprovals });
       try {
         const { installOpenCodeHooksIfNeeded, opencodePluginPath } = await import('@agentdeck/hooks');
         const result = installOpenCodeHooksIfNeeded();
@@ -2427,15 +2438,7 @@ daemon
     await refreshKiroHooks();
     // Install Codex lifecycle hooks parallel to the LaunchAgent install
     // so the daemon hub gets codex_* events as soon as Codex CLI runs.
-    try {
-      const { installCodexHooksIfNeeded } = await import('@agentdeck/hooks');
-      const result = installCodexHooksIfNeeded();
-      if (result.installed) {
-        log('Codex lifecycle hooks installed in ~/.codex/config.toml');
-      } else if (result.reason) {
-        log(`Codex hooks skipped: ${result.reason}`);
-      }
-    } catch { /* hooks package not built yet — daemon install still succeeds */ }
+    await refreshCodexHooks({ codexApprovals });
     // OpenCode observer plugin — standalone `opencode` runs report to the
     // daemon hub as opencode_* events, same pipeline as codex_*.
     try {
@@ -4282,6 +4285,7 @@ program
   .description('Configure WiFi for ESP32 independent operation (USB-free)')
   .option('--ssid <ssid>', 'WiFi network name (auto-detected from macOS if omitted)')
   .option('--password <password>', 'WiFi password (auto-fetched from Keychain if omitted)')
+  .option('-p, --port <port>', "Daemon port (default: the daemon this user's registry names)")
   .action(async (opts) => {
     const { detectCurrentSSID, getKeychainPassword, saveWifiConfig } = await import('./wifi-config.js');
 
@@ -4311,10 +4315,132 @@ program
       }
     }
 
+    const { wifiCredentialsProblem } = await import('@agentdeck/shared');
+    const problem = wifiCredentialsProblem(ssid, password);
+    if (problem) {
+      log(`Not saved: ${describeWifiCredentialsProblem(problem)}`);
+      process.exit(1);
+    }
+
+    // The daemon serving the port provisions the boards, so it is the one to
+    // tell: it saves the credentials where it reads them (the macOS app keeps
+    // its own copy in its container) and sends them to boards on USB now.
+    // Only this user's registry or an explicit --port names the daemon — never
+    // a probed default port, which could be another account's daemon, and
+    // this request carries the WiFi password. A registered port must still be
+    // answered by the registered process: a registry entry outlives a daemon
+    // whose pid was reused, and the port may then be anyone's.
+    const { readDaemonInfo, findExistingDaemon } = await import('./session-registry.js');
+    const info = readDaemonInfo();
+    const legacy = info ? null : findExistingDaemon();
+    const registered = info
+      ? { port: info.httpPort ?? info.port, pid: info.pid }
+      : legacy ? { port: legacy.port, pid: legacy.pid } : null;
+    const explicitPort = opts.port != null ? parseInt(opts.port, 10) : null;
+    if (explicitPort !== null && !(explicitPort >= 1 && explicitPort <= 65535)) {
+      log(`Not saved: --port ${opts.port} is not a port.`);
+      process.exit(1);
+    }
+    const port = explicitPort ?? registered?.port ?? null;
+    const post = port
+      ? await postWifiSetup(port, ssid, password, explicitPort === null ? registered?.pid : undefined)
+      : { outcome: 'no-daemon' as const };
+    if (post.outcome === 'applied') return;
+    if (post.outcome === 'refused') process.exit(1);
+
     saveWifiConfig({ ssid, password, autoProvision: true });
     log(`WiFi config saved: SSID="${ssid}" \u2192 ~/.agentdeck/wifi-config.json`);
-    log('Daemon will auto-provision ESP32 devices on next restart.');
+    if (post.outcome === 'no-route') {
+      log(post.isSwift
+        ? `The AgentDeck app serving port ${port} predates live WiFi setup: update the app, then set the credentials in its ESP32 Wi-Fi setup.`
+        : `The daemon on port ${port} predates live WiFi setup: restart it (\`agentdeck daemon restart\`) to provision boards.`);
+    } else if (post.outcome === 'not-registered') {
+      log(`Not sent: port ${port} is served by another process (pid ${post.pid}), not the daemon this user's registry names (pid ${registered?.pid}).`);
+      log(`If that is your daemon, pass --port ${port}.`);
+    } else if (post.outcome === 'unreachable') {
+      log(`The daemon on port ${port} did not answer. A Node daemon reads this file when a board next connects.`);
+    } else {
+      log('No daemon is registered for this user. A Node daemon reads this file when a board connects;');
+      log('a daemon in the macOS app keeps its own copy: use its ESP32 Wi-Fi setup, or pass --port.');
+    }
   });
+
+/** Plain words for the shared credential check (shared/src/esp32-wifi-provision.ts). */
+function describeWifiCredentialsProblem(problem: string): string {
+  switch (problem) {
+    case 'ssid-missing': return 'the network name is empty.';
+    case 'ssid-too-long': return 'a network name is at most 32 bytes.';
+    case 'password-too-short': return 'a WPA password is at least 8 characters (open networks are not supported).';
+    case 'password-too-long': return 'a WPA password is at most 63 bytes (UTF-8), or exactly 64 hex digits.';
+    case 'control-character': return 'the name or password contains a control character.';
+    default: return problem;
+  }
+}
+
+/** What a board did with a provision, in a few words (`reason` from the shared decision). */
+function describeWifiProvisionOutcome(board: { sent?: boolean; reason?: string }): string {
+  if (board.sent) return 'sent';
+  switch (board.reason) {
+    case 'credentials-match': return 'already holds these credentials';
+    case 'wifi-connected': return 'online — left alone';
+    case 'unidentified': return 'not identified yet — sent when it reports in';
+    default: return `not sent (${board.reason ?? 'unknown'})`;
+  }
+}
+
+/**
+ * POST the credentials to the running daemon. `applied` = saved and sent;
+ * `refused` = the daemon said no (reported); `no-route` = a daemon that
+ * predates the route; `not-registered` = the port is not served by
+ * `expectedPid`, so nothing was sent; `unreachable` = no answer. The caller
+ * writes the file for the last three.
+ */
+async function postWifiSetup(
+  port: number, ssid: string, password: string, expectedPid?: number,
+): Promise<
+  | { outcome: 'applied' | 'refused' | 'unreachable' }
+  | { outcome: 'no-route'; isSwift: boolean }
+  | { outcome: 'not-registered'; pid: string }
+> {
+  let res: Response;
+  let isSwift = false;
+  try {
+    // The route wants the token as a bearer. The daemon serving the port hands
+    // its own to a loopback caller on /health, which is also the token a Swift
+    // daemon holds (this user's ~/.agentdeck/auth-token may not be).
+    const health = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
+    const answer = (await health.json().catch(() => ({}))) as { pairingToken?: unknown; pid?: unknown; isSwift?: unknown };
+    if (expectedPid !== undefined && answer.pid !== expectedPid) {
+      return { outcome: 'not-registered', pid: typeof answer.pid === 'number' ? String(answer.pid) : 'unknown' };
+    }
+    isSwift = answer.isSwift === true;
+    const token = answer.pairingToken;
+    if (typeof token !== 'string' || token === '') return { outcome: 'unreachable' };
+    res = await fetch(`http://127.0.0.1:${port}/esp32/wifi`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ ssid, password, autoProvision: true }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    return { outcome: 'unreachable' };
+  }
+  if (res.status === 404) return { outcome: 'no-route', isSwift };
+  const json = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; boards?: Array<{ port?: string; board?: string; sent?: boolean; reason?: string }> };
+  if (!res.ok || json.ok !== true) {
+    log(`Not saved: the daemon on port ${port} answered ${res.status}${json.error ? ` (${describeWifiCredentialsProblem(json.error)})` : ''}`);
+    return { outcome: 'refused' };
+  }
+  log(`WiFi config saved by the daemon on port ${port}: SSID="${ssid}"`);
+  const boards = json.boards ?? [];
+  if (boards.length === 0) {
+    log('No ESP32 is connected over USB; each one gets these credentials when it connects.');
+  }
+  for (const board of boards) {
+    log(`  ${board.port ?? '?'}${board.board ? ` (${board.board})` : ''}: ${describeWifiProvisionOutcome(board)}`);
+  }
+  return { outcome: 'applied' };
+}
 
 // ===== TUI Dashboard =====
 

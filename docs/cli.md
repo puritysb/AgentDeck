@@ -217,7 +217,7 @@ in [daemon.md § Daemon relay](daemon.md#daemon-relay-worker-daemon-to-hub).
 | `agentdeck daemon restart` | Restart daemon — reads posture from the port it is actually on, restarts on its preferred port |
 | `agentdeck daemon status` | Show daemon status (says so when it is serving a fallback port) |
 | `agentdeck daemon port [n]` | Show or persist the preferred daemon port (`--clear` to forget it) |
-| `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task / systemd unit); `--enterprise` bakes the loopback posture into it; `--statusline` also installs the Claude status-line relay when no status line is configured (a status line you already have is wrapped by default, and a configured status line hides Claude Code's footer hints); `--no-statusline` removes the relay again and restores your own status line |
+| `agentdeck daemon install` | Register auto-start (macOS LaunchAgent / Windows Scheduled Task / systemd unit); `--enterprise` bakes the loopback posture into it; `--statusline` also installs the Claude status-line relay when no status line is configured (a status line you already have is wrapped by default, and a configured status line hides Claude Code's footer hints); `--no-statusline` removes the relay again and restores your own status line; `--codex-approvals` adds the Codex device-approval hold (a connected device can answer a Codex approval for up to 25 s before Codex shows its own prompt; Codex asks you to review the new hook once) and `--no-codex-approvals` removes it — without either flag, or `AGENTDECK_CODEX_APPROVALS=1`/`0`, a refresh keeps whatever is installed |
 | `agentdeck daemon uninstall` | Remove auto-start (LaunchAgent / Scheduled Task) |
 
 **Network posture on a shared or corporate network.** `--local` turns every
@@ -432,7 +432,7 @@ not the same act as finding one you never asked for.
 | `agentdeck timebox remove <address>` | Remove a Timebox device |
 | `agentdeck timebox test [target]` | Send one frame (BLE) |
 | `agentdeck timebox sync [target]` | Run foreground Timebox frame sync (BLE) |
-| `agentdeck wifi-setup` | ESP32 WiFi provisioning (serial) |
+| `agentdeck wifi-setup` | Save ESP32 WiFi credentials (`--ssid`, `--password`; SSID from the WiFi interface and password from the Keychain when omitted). With a daemon running, it hands them to that daemon (`POST /esp32/wifi`), which sends them to the boards on USB at once; `--port` names the daemon, otherwise the one this user's registry names, and then only while that port's `/health` reports the registered pid. It never probes ports for a daemon, since the request carries the password. With no daemon it only writes `~/.agentdeck/wifi-config.json`, which a Node daemon reads when a board connects; the macOS app's daemon keeps its own copy (Settings → ESP32 & Pixoo → ESP32 boards). See [esp32.md § Setting the credentials](esp32.md#setting-the-credentials-esp32wifi). |
 | `agentdeck esp32 orientation <target> <auto\|portrait\|landscape>` | Persist a T-Display-S3-Pro layout (portrait Pocket ↔ landscape Focus Strip); the board restarts when the layout changes. `auto` = portrait with a camera shield, else landscape. Node daemon only. |
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 

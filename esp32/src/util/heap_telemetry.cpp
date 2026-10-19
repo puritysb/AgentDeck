@@ -3,6 +3,8 @@
 #include <esp_attr.h>
 #include <esp_heap_caps.h>
 
+#include "internal_reserve.h"
+
 namespace HeapTelemetry {
 
 namespace {
@@ -43,10 +45,13 @@ void logIfChanged() {
     snprintf(line, sizeof(line),
              "[HeapFail] count=%lu lastBytes=%lu lastCaps=0x%lx internalFree=%lu internalMin=%lu internalLargest=%lu",
              (unsigned long)count, (unsigned long)lastFailedBytes(), (unsigned long)lastFailedCaps(),
-             (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned long)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
-             (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+             (unsigned long)InternalReserve::heapFreeBytes(MALLOC_CAP_INTERNAL),
+             (unsigned long)InternalReserve::heapMinFreeBytes(MALLOC_CAP_INTERNAL),
+             (unsigned long)InternalReserve::heapLargestFreeBlock(MALLOC_CAP_INTERNAL));
     Serial.println(line);
+    // The internal figures above leave the pool out; this is its side of the
+    // same moment, on a board that has one.
+    InternalReserve::logState("heap-fail");
 }
 
 }  // namespace HeapTelemetry

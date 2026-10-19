@@ -21,6 +21,8 @@ import {
 import { buildSendHttpGifCommands, PIXOO_MAX_ANIMATION_FRAMES } from '../pixoo/pixoo-client.js';
 import {
   PIXOO_PUSH_POLICY,
+  broadcastPixoo,
+  currentSubagentActivity,
   pixooLoopEnabled,
   pixooPushIntervalMs,
   resolvePixooPushMode,
@@ -124,5 +126,33 @@ describe('Pixoo loop push policy', () => {
     expect(pixooPushIntervalMs(false, 'loop')).toBe(PIXOO_PUSH_POLICY.loopRefreshMs);
     expect(pixooPushIntervalMs(true, 'loop')).toBe(PIXOO_PUSH_POLICY.loopStateChangeFloorMs);
     expect(PIXOO_PUSH_POLICY.loopRefreshMs).toBeGreaterThan(PIXOO_PUSH_POLICY.activeFrameRefreshMs);
+  });
+});
+
+describe('Pixoo subagent activity', () => {
+  const now = 1_800_000_000_000;
+  // The shape SubagentTimelineTracker emits for a three-child fan-out.
+  const dispatch = {
+    ts: now - 60_000, type: 'tool_exec', raw: 'Subagent ×3 dispatched · researcher', sessionId: 's1',
+    agentType: 'claude-code', startedAt: now - 60_000, subagentId: 'burst-1', summaryKind: 'progress',
+  };
+  // Sixty tool calls, as claude-hook-timeline.ts emits them.
+  const toolRows = Array.from({ length: 120 }, (_, i) => ({
+    ts: now - 50_000 + i * 100, type: i % 2 ? 'tool_resolved' : 'tool_request',
+    raw: i % 2 ? 'Read completed' : 'Read requested', sessionId: 's1', agentType: 'claude-code', toolEvent: true,
+  }));
+
+  it('keeps a running fan-out through a burst of Claude tool rows', () => {
+    broadcastPixoo({ type: 'timeline_history', entries: [] } as any);
+    try {
+      broadcastPixoo({ type: 'timeline_event', entry: dispatch } as any);
+      for (const entry of toolRows) broadcastPixoo({ type: 'timeline_event', entry } as any);
+      expect(currentSubagentActivity(now).s1?.activeCount).toBe(3);
+
+      broadcastPixoo({ type: 'timeline_history', entries: [dispatch, ...toolRows] } as any);
+      expect(currentSubagentActivity(now).s1?.activeCount).toBe(3);
+    } finally {
+      broadcastPixoo({ type: 'timeline_history', entries: [] } as any);
+    }
   });
 });

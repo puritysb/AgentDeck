@@ -62,6 +62,24 @@ export async function waitForDaemonHealth({ readRegistry, build, fetchImpl = fet
   }
 }
 
+/**
+ * Run the steps between staging the app and swapping it in, and discard the
+ * staged copy if one fails. Nothing installed has changed by then, so the
+ * copy is only this run's own build. Left in place, it trips the "needs
+ * inspection" guard on every later push: after the installed app outlasted the
+ * quit wait on 2026-10-18 17:15Z, the next six deployments stopped there over
+ * nine hours. The guard stays for a swap that was interrupted, which no catch
+ * here can see.
+ */
+export async function beforeSwap(staged, steps, remove = path => rmSync(path, { recursive: true, force: true })) {
+  try {
+    await steps();
+  } catch (error) {
+    remove(staged);
+    throw error;
+  }
+}
+
 /** Keep only the newest `keep` app backups; each is a full app bundle and one
  *  accrued per deployment (32 copies, 2.5 GB by 2026-10-11). */
 export function pruneAppBackups(dir, keep = 3) {
@@ -107,22 +125,29 @@ async function deploy() {
     const backup = join(root, 'diagnostics/backups', `AgentDeck-${Date.now()}.app`);
     mkdirSync(join(root, 'diagnostics/backups'), { recursive: true });
     if (existsSync(staged)) throw new Error('A staged app from an earlier deployment needs inspection');
-    run('stage-app', 'ditto', [sourceApp, staged]);
-    run('app-signature', 'codesign', ['--verify', '--deep', '--strict', staged]);
-    // CLI must remain linked to the persistent main tree (never runner _work).
-    if (realpathSync('/opt/homebrew/bin/agentdeck') !== join(root, 'bridge/dist/cli.js')) {
-      throw new Error('CLI is not linked to the persistent main checkout');
-    }
-    let appPid;
-    try { appPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'], { encoding: 'utf8' }).trim(); }
-    catch (error) { if (error.status !== 1) throw error; }
-    for (const pid of (appPid || '').split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
-    for (let attempt = 0; appPid && attempt < 20; attempt++) {
-      const alive = appPid.split('\n').some(pid => { try { process.kill(Number(pid), 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
-      if (!alive) { appPid = ''; break; }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-    if (appPid) throw new Error('Installed app did not quit; preserving it');
+    await beforeSwap(staged, async () => {
+      run('stage-app', 'ditto', [sourceApp, staged]);
+      run('app-signature', 'codesign', ['--verify', '--deep', '--strict', staged]);
+      // CLI must remain linked to the persistent main tree (never runner _work).
+      if (realpathSync('/opt/homebrew/bin/agentdeck') !== join(root, 'bridge/dist/cli.js')) {
+        throw new Error('CLI is not linked to the persistent main checkout');
+      }
+      let appPid;
+      try { appPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'], { encoding: 'utf8' }).trim(); }
+      catch (error) { if (error.status !== 1) throw error; }
+      for (const pid of (appPid || '').split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
+      // The app handles SIGTERM on its main queue, so a busy main thread delays
+      // it. The handler ran 5 to 6 s (2026-10-17) and about 40 s (10-18) after this
+      // signal, both times after a 10 s wait had given up. The app quit anyway,
+      // and the Mac had no app until the next deployment, 43 min and 8 h 49 min
+      // later.
+      for (let attempt = 0; appPid && attempt < 120; attempt++) {
+        const alive = appPid.split('\n').some(pid => { try { process.kill(Number(pid), 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
+        if (!alive) { appPid = ''; break; }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (appPid) throw new Error('Installed app did not quit within 60 s; preserving it');
+    });
     if (existsSync(target)) renameSync(target, backup);
     try {
       renameSync(staged, target);

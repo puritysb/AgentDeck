@@ -32,6 +32,7 @@ import {
 import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer, checkDeviceContent } from './pixoo-client.js';
 import { renderFrame, renderDisconnectedFrame, formatResetDetailed, renderPixooLoop, PIXOO_LOOP } from './pixoo-renderer.js';
 import { renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
+import { isToolEventRow } from '../board-timeline-entry.js';
 import { debug } from '../logger.js';
 
 const TAG = 'Pixoo';
@@ -201,7 +202,10 @@ export function broadcastPixoo(event: BridgeEvent): void {
       break;
     case 'timeline_event': {
       const entry = (event as { entry?: TimelineEntry }).entry;
-      if (entry) {
+      // Claude's opt-in tool rows carry nothing this panel reads, and two of
+      // them per tool call, from any busy Claude session, push a subagent
+      // dispatch row out of these 96 rows while its children still run.
+      if (entry && !isToolEventRow(entry)) {
         const upsert = (event as { upsert?: boolean }).upsert === true;
         const index = upsert
           ? lastTimelineEntries.findIndex((item) =>
@@ -217,9 +221,9 @@ export function broadcastPixoo(event: BridgeEvent): void {
       break;
     }
     case 'timeline_history':
-      lastTimelineEntries = [
-        ...((event as { entries?: TimelineEntry[] }).entries ?? []),
-      ].sort((a, b) => a.ts - b.ts).slice(-96);
+      lastTimelineEntries = ((event as { entries?: TimelineEntry[] }).entries ?? [])
+        .filter((entry) => !isToolEventRow(entry))
+        .sort((a, b) => a.ts - b.ts).slice(-96);
       break;
     case 'connection':
       if ((event as any).status === 'disconnected') {
@@ -435,7 +439,8 @@ function isAnimationActive(): boolean {
   return lastSessions?.some(s => s.alive && (s.state === 'processing' || s.state?.startsWith('awaiting'))) ?? false;
 }
 
-function currentSubagentActivity(now = Date.now()): SubagentActivityBySession {
+/** @internal Exported for testing only */
+export function currentSubagentActivity(now = Date.now()): SubagentActivityBySession {
   return deriveSubagentActivity(lastTimelineEntries, { now });
 }
 

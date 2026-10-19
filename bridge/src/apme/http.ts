@@ -290,7 +290,7 @@ async function sendHistory(res: ServerResponse, apme: ApmeModule, kind: HistoryK
     }
     const bytes = await apme.historyReader.read(kind, params.toString());
     if (res.destroyed || res.writableEnded) return;
-    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(Buffer.from(bytes));
   } catch {
     // Never retry synchronously on the real-time daemon after a worker timeout.
@@ -298,11 +298,15 @@ async function sendHistory(res: ServerResponse, apme: ApmeModule, kind: HistoryK
   }
 }
 
+// No `Access-Control-Allow-Origin` on any APME answer: they carry prompts, task
+// titles and verdicts, and a GET from this machine keeps local trust whatever
+// page sent it (shared/src/local-trust.ts), so that header would let any web
+// page the user visits read their task history. The dashboard is served from
+// /apme on this same origin and needs no CORS.
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
   });
   res.end(JSON.stringify(body));
 }

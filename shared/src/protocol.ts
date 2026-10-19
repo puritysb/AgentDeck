@@ -782,6 +782,16 @@ export interface WifiProvisionMessage {
   bridgeIp: string;
   bridgePort: number;
   authToken: string;
+  /**
+   * Id of exactly these credentials: HMAC-SHA256 keyed by `authToken` over
+   * the SSID and password, 16 lowercase hex characters (rules:
+   * `shared/src/esp32-wifi-provision.ts`). Absent when the daemon cannot form
+   * one, and from daemons that predate it. Firmware stores it beside the
+   * credentials and reports it back as {@link DeviceInfoMessage.wifiCredId};
+   * a provision without one clears the board's stored id. Older firmware
+   * ignores the unknown key.
+   */
+  credId?: string;
 }
 
 /**
@@ -827,6 +837,19 @@ export interface DeviceInfoMessage {
   wifiConnected: boolean;
   /** True when firmware intentionally powered WiFi down because USB serial is primary. */
   wifiRadioParked?: boolean;
+  /**
+   * The {@link WifiProvisionMessage.credId} stored with this board's WiFi
+   * credentials, or `""` when none is stored. Firmware that knows the field
+   * always sends it, so absence means older firmware, and each daemon falls
+   * back to its earlier rule (docs/esp32.md, "Which boards get a WiFi
+   * provision"). It answers what `wifiConfigured` cannot: a parked
+   * board reports `wifiConfigured: false` (its WiFi driver is off) while
+   * holding these credentials, and a board that persists a provision reports
+   * `true` while holding outdated ones. AgentDeck firmware sends it on the
+   * serial copy of `device_info` only, and the daemon keeps it off `/devices`:
+   * with the pairing token, it is an offline test for WiFi password guesses.
+   */
+  wifiCredId?: string;
   /** Board uptime in seconds at the moment the info frame was emitted. */
   uptimeSec?: number;
   /**
@@ -834,14 +857,16 @@ export interface DeviceInfoMessage {
    * ESP-Hosted WiFi glue asserts and reboots the board when an internal-heap
    * allocation fails (`pkt_rxbuff` / `copy_buff`) — the low-watermark trend
    * across successive device_info frames is what distinguishes a slow leak
-   * from a burst. Absent on firmware that predates the field.
+   * from a burst. Absent on firmware that predates the field. The internal
+   * reserve (internalReserveKb) is not counted in this or the next two.
    */
   freeHeapKb?: number;
   /**
    * Lowest internal-heap level since boot, in KB
-   * (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)). A 0 here does not
-   * mean an allocation failed: on PSRAM boards a malloc that misses internal
-   * RAM is retried in PSRAM. allocFailures answers that.
+   * (heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL)); since setup() on
+   * a board that carved an internal reserve (internalReserveKb > 0). A 0 here
+   * does not mean an allocation failed: on PSRAM boards a malloc that misses
+   * internal RAM is retried in PSRAM. allocFailures answers that.
    */
   minFreeHeapKb?: number;
   /**
@@ -863,6 +888,24 @@ export interface DeviceInfoMessage {
   allocFailLastBytes?: number;
   /** MALLOC_CAP_* mask of the most recent failed allocation; present when allocFailures > 0. */
   allocFailLastCaps?: number;
+  /**
+   * Usable size, in KB, of the internal-RAM pool that malloc() cannot take
+   * (firmware util/internal_reserve.h): the WiFi driver's internal buffers,
+   * task stacks, DMA buffers and other allocations that must be internal fall
+   * back on it once internal DRAM refuses them. Sent only by
+   * firmware that asks for a pool (T-Embed so far); absent means none was
+   * asked for. 0 means one was asked for and none could be carved (no PSRAM
+   * found at boot).
+   */
+  internalReserveKb?: number;
+  /** What is free in the pool now, in KB. Present when internalReserveKb > 0. */
+  internalReserveFreeKb?: number;
+  /**
+   * The pool's low-water mark since setup(), in KB, tracked by ESP-IDF on
+   * every allocation. Below internalReserveKb means something had to fall
+   * back on it. Present when internalReserveKb > 0.
+   */
+  internalReserveMinKb?: number;
   /** Board-held Codex window percentages; -1 means no window is displayed. */
   usageCodex5H?: number;
   usageCodex7D?: number;
@@ -1015,7 +1058,13 @@ export interface PhotoChunkMessage {
 export interface WifiProvisionAckMessage {
   type: 'wifi_provision_ack';
   success: boolean;
-  ip?: string;           // assigned IP on success
+  /**
+   * Whether the board joined the network (true) or only saved the credentials
+   * for when it leaves USB (false). Absent from firmware that predates it,
+   * whose `success` may mean either and whose `ip` may be an earlier join's.
+   */
+  joined?: boolean;
+  ip?: string;           // the address it joined with; only when `joined`
   error?: string;        // reason on failure
 }
 
