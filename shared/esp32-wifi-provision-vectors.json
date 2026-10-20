@@ -257,13 +257,18 @@
   ],
   "ackTimeoutMs": 30000,
   "ackLedger": [
-    { "name": "one provision, one answer", "events": [{ "write": 1000 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 1000 } },
-    { "name": "an answer that comes while a later provision is owed one is the earlier one's", "events": [{ "write": 1000 }, { "write": 4000 }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 4000 } },
-    { "name": "three provisions in a row", "events": [{ "write": 1000 }, { "write": 2000 }, { "write": 3000 }, { "ack": false }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 3000 } },
-    { "name": "an answer owed past the timeout was lost", "events": [{ "write": 1000 }, { "write": 31001 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 31001 } },
-    { "name": "at the timeout it is still owed", "events": [{ "write": 1000 }, { "write": 31000 }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 31000 } },
-    { "name": "an answer nothing was owed for is the latest", "events": [{ "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 0 } },
-    { "name": "each answered provision starts the count again", "events": [{ "write": 1000 }, { "ack": true }, { "write": 5000 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 5000 } },
-    { "name": "a provision still owed when the next is written", "events": [{ "write": 1000 }, { "write": 2000 }], "ledger": { "owed": 2, "lastWriteAt": 2000 } }
+    { "name": "one provision, one answer", "events": [{ "write": 1000 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 1000, "latestCredId": "" } },
+    { "name": "an answer that comes while a later provision is owed one is the earlier one's", "events": [{ "write": 1000 }, { "write": 4000 }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 4000, "latestCredId": "" } },
+    { "name": "three provisions in a row", "events": [{ "write": 1000 }, { "write": 2000 }, { "write": 3000 }, { "ack": false }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 3000, "latestCredId": "" } },
+    { "name": "an answer owed past the timeout was lost", "events": [{ "write": 1000 }, { "write": 31001 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 31001, "latestCredId": "" } },
+    { "name": "at the timeout it is still owed", "events": [{ "write": 1000 }, { "write": 31000 }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 31000, "latestCredId": "" } },
+    { "name": "an answer nothing was owed for is the latest", "events": [{ "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 0, "latestCredId": "" } },
+    { "name": "each answered provision starts the count again", "events": [{ "write": 1000 }, { "ack": true }, { "write": 5000 }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 5000, "latestCredId": "" } },
+    { "name": "a provision still owed when the next is written", "events": [{ "write": 1000 }, { "write": 2000 }], "ledger": { "owed": 2, "lastWriteAt": 2000, "latestCredId": "" } },
+    { "name": "an id-carrying answer to the latest provision settles everything owed", "events": [{ "write": 1000, "credId": "a1b2c3d4e5f60718" }, { "write": 2000, "credId": "0f1e2d3c4b5a6978" }, { "ack": true, "ackCredId": "0f1e2d3c4b5a6978" }], "ledger": { "owed": 0, "lastWriteAt": 2000, "latestCredId": "0f1e2d3c4b5a6978" } },
+    { "name": "an id-carrying answer to an earlier provision leaves the latest owed", "events": [{ "write": 1000, "credId": "a1b2c3d4e5f60718" }, { "write": 2000, "credId": "0f1e2d3c4b5a6978" }, { "ack": false, "ackCredId": "a1b2c3d4e5f60718" }, { "ack": true, "ackCredId": "0f1e2d3c4b5a6978" }], "ledger": { "owed": 0, "lastWriteAt": 2000, "latestCredId": "0f1e2d3c4b5a6978" } },
+    { "name": "an answer naming another provision leaves the only one owed", "events": [{ "write": 1000, "credId": "0f1e2d3c4b5a6978" }, { "ack": false, "ackCredId": "a1b2c3d4e5f60718" }, { "ack": true, "ackCredId": "0f1e2d3c4b5a6978" }], "ledger": { "owed": 0, "lastWriteAt": 1000, "latestCredId": "0f1e2d3c4b5a6978" } },
+    { "name": "old firmware names no provision, so the count decides", "events": [{ "write": 1000, "credId": "a1b2c3d4e5f60718" }, { "write": 2000, "credId": "0f1e2d3c4b5a6978" }, { "ack": false }, { "ack": true }], "ledger": { "owed": 0, "lastWriteAt": 2000, "latestCredId": "0f1e2d3c4b5a6978" } },
+    { "name": "a provision with no id falls back to the count", "events": [{ "write": 1000, "credId": "a1b2c3d4e5f60718" }, { "write": 2000 }, { "ack": false, "ackCredId": "a1b2c3d4e5f60718" }, { "ack": true, "ackCredId": "a1b2c3d4e5f60718" }], "ledger": { "owed": 0, "lastWriteAt": 2000, "latestCredId": "" } }
   ]
 }

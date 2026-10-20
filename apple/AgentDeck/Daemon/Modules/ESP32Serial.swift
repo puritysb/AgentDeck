@@ -716,7 +716,7 @@ actor ESP32Serial {
             if entry.send {
                 sendToConnection(&connections[i], json: json)
                 if connections[i].connected {
-                    markWifiProvisionWritten(&connections[i])
+                    markWifiProvisionWritten(&connections[i], credId: msg["credId"] as? String ?? "")
                     provisionFingerprintsByPort[connections[i].port] = fingerprint
                     sent = true
                 }
@@ -738,24 +738,26 @@ actor ESP32Serial {
         }
     }
 
-    private func markWifiProvisionWritten(_ conn: inout SerialConnection) {
-        Self.markWifiProvisionWritten(&conn, now: Self.epochMsNow())
+    private func markWifiProvisionWritten(_ conn: inout SerialConnection, credId: String) {
+        Self.markWifiProvisionWritten(&conn, now: Self.epochMsNow(), credId: credId)
     }
 
     /// Stamp a provision write (Node parity: `writeWifiProvision`, after its send).
-    nonisolated static func markWifiProvisionWritten(_ conn: inout SerialConnection, now: Int) {
+    nonisolated static func markWifiProvisionWritten(_ conn: inout SerialConnection, now: Int, credId: String = "") {
         conn.provisionSent = true
         conn.wifiProvisionSentAt = now
-        conn.wifiProvisionAckLedger = ESP32WifiProvisionRules.ackWritten(conn.wifiProvisionAckLedger, now: now)
+        conn.wifiProvisionAckLedger = ESP32WifiProvisionRules.ackWritten(
+            conn.wifiProvisionAckLedger, now: now, credId: credId)
         // The previous answer described the previous credentials.
         conn.wifiProvisionAck = nil
     }
 
     /// Keep a board's `wifi_provision_ack` as the answer to the latest
-    /// provision, unless a later provision is still owed one (Node parity:
-    /// `recordWifiProvisionAck`).
+    /// provision, unless it names an earlier one or a later provision is still
+    /// owed one (Node parity: `recordWifiProvisionAck`).
     nonisolated static func recordWifiProvisionAck(_ conn: inout SerialConnection, message: [String: Any], now: Int) {
-        let answer = ESP32WifiProvisionRules.ackAnswered(conn.wifiProvisionAckLedger)
+        let answer = ESP32WifiProvisionRules.ackAnswered(
+            conn.wifiProvisionAckLedger, ackCredId: message["credId"] as? String ?? "")
         conn.wifiProvisionAckLedger = answer.ledger
         guard answer.latest else { return }
         conn.wifiProvisionAck = WifiProvisionAck(message: message, at: now)
@@ -919,7 +921,7 @@ actor ESP32Serial {
               let json = String(data: data, encoding: .utf8) else { return false }
         sendToConnection(&connections[i], json: json)
         guard connections[i].connected else { return false }
-        markWifiProvisionWritten(&connections[i])
+        markWifiProvisionWritten(&connections[i], credId: msg["credId"] as? String ?? "")
         return true
     }
 

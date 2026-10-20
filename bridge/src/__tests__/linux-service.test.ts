@@ -19,7 +19,19 @@ import {
   getUnitDir,
   getUnitPath,
   installUnit,
+  getDaemonNodeTarget,
 } from '../linux-service.js';
+import { isAbsolute } from 'path';
+
+describe('getDaemonNodeTarget', () => {
+  // ExecStart must not depend on PATH (see windows-service.test.ts).
+  it('resolves absolute node + cli.js paths', () => {
+    const { node, cliJs } = getDaemonNodeTarget();
+    expect(node).toBe(process.execPath);
+    expect(isAbsolute(cliJs)).toBe(true);
+    expect(cliJs).toMatch(/cli\.js$/);
+  });
+});
 
 // The vitest harness pins AGENTDECK_DATA_DIR to a host tmpdir (vitest.setup.ts),
 // which on Windows is a `C:\…` path the systemd validator rightly rejects. Tests

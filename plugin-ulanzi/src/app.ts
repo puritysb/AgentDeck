@@ -35,6 +35,8 @@ import { ReconnectSupervisor } from './reconnect-supervisor.js';
 import { StateStore } from './state-store.js';
 import { settingsPickerAfterResponse } from './setting-picker-state.js';
 import { deckViewSignature } from './deck-signature.js';
+import { KeyRegistry } from './key-registry.js';
+import { StickySessionOrder } from './session-order.js';
 import { svgToBase64Png, GIF_ICON_SIZE, initRaster } from './raster.js';
 import { framesToGifBase64 } from './gif.js';
 import { launchCompanionApp } from './launch.js';
@@ -65,17 +67,15 @@ function cacheGif(key: string, gif: string): void {
   gifCache.set(key, gif);
 }
 
-interface Instance {
-  context: string;
-  key: string; // col_row
-  lastSig?: string;
-}
-
 const $UD: UlanziApi = new UlanziApiCtor();
 const daemon = new DaemonClient();
 const store = new StateStore();
 
-const instances = new Map<string, Instance>();
+/** Placed keys; only active contexts lay out (see key-registry.ts). */
+const keys = new KeyRegistry();
+/** List order: a session keeps the slot it first took (see session-order.ts). */
+const stickyOrder = new StickySessionOrder();
+let sessionOrder: string[] | undefined;
 let claudeWeeklyMode: ClaudeWeeklyMode = 'both';
 let savedSettings: Record<string, unknown> = {};
 let weeklyModeTouched = false;
@@ -100,7 +100,15 @@ function scheduleRender(): void {
 }
 
 function positions(): string[] {
-  return [...instances.values()].map((i) => i.key);
+  return keys.positions();
+}
+
+/** Forget every pushed tile and the deck signature, so the next render repaints
+ *  every active key. Any change to WHICH context holds a key needs this: the
+ *  sorted key list can be identical before and after. */
+function invalidateDeck(): void {
+  keys.invalidate();
+  lastDeckSig = '';
 }
 
 const dotExpiry = new DotExpiryRefresh(scheduleRender);
@@ -180,7 +188,7 @@ function deckFor(animFrame: number, animated: boolean) {
   // quota gauges — this surface has no encoder LCD to carry usage.
   return buildSessionDeck(
     layoutInput(),
-    { ...view, claudeWeeklyMode, zaiPairMode, animFrame, animated, showUsage: true, voiceState: store.voiceState, settings: openSettings() },
+    { ...view, claudeWeeklyMode, zaiPairMode, animFrame, animated, showUsage: true, voiceState: store.voiceState, settings: openSettings(), sessionOrder },
     positions(),
   );
 }
@@ -201,13 +209,13 @@ function dimAllKeys(): void {
   // clears every cached signature, so they all re-queue then.
   animPending.clear();
   const dataUri = `data:image/png;base64,${svgToBase64Png(BLACK_KEY_SVG)}`;
-  for (const inst of instances.values()) {
+  for (const inst of keys.activeInstances()) {
     // Clear lastSig so the wake repaint is not swallowed by the per-key dedup.
     inst.lastSig = '';
     pushQueue.set(inst.context, { dataUri, isGif: false });
   }
   lastDeckSig = '';
-  if (instances.size > 0) ensureDrainer();
+  if (keys.size > 0) ensureDrainer();
 }
 
 // ---- Background GIF encoding ----
@@ -241,8 +249,8 @@ async function drainAnimQueue(): Promise<void> {
       if (displayDimmed) break;
       const context: string = animPending.values().next().value!;
       animPending.delete(context);
-      const inst = instances.get(context);
-      if (!inst) continue;
+      const inst = keys.get(context);
+      if (!inst || !inst.active) continue;
       // Rotate this key's start point into the cycle so neighbouring buttons do
       // not orbit as one block. The decks are an even sample of a full cycle, so
       // the rotation is a pure phase shift — no extra frames are rendered.
@@ -310,7 +318,12 @@ function renderAll(): void {
   // voiceState is part of the signature: the VOICE tile is the only key that
   // changes on a voice_state event, and a sig that omits it swallows exactly
   // that repaint (the recurring deckSignature failure mode).
-  const sig = deckViewSignature(ev, { ...view, claudeWeeklyMode, zaiPairMode, voiceState: store.voiceState, settings: openSettings() }, positions());
+  const sig = deckViewSignature(
+    ev,
+    { ...view, claudeWeeklyMode, zaiPairMode, voiceState: store.voiceState, settings: openSettings(), sessionOrder },
+    positions(),
+    keys.layoutContexts(),
+  );
   if (sig === lastDeckSig) return;
   lastDeckSig = sig;
   lastRenderAt = Date.now();
@@ -329,7 +342,10 @@ function renderAll(): void {
   // UI updates but the hardware drops most, leaving stale keys.
   let changed = 0;
   let queuedAnim = 0;
-  for (const inst of instances.values()) {
+  // Inactive contexts (another page, or a key another context took) get no
+  // push: their lastSig is cleared when they deactivate, so they repaint in
+  // full the moment they come back.
+  for (const inst of keys.activeInstances()) {
     try {
       const cell = staticDeck.get(inst.key);
       const staticSvg = cell?.svg ?? '';
@@ -372,8 +388,7 @@ function renderAll(): void {
 // On re-open, force a full re-render: the keys we already know about may not be
 // re-announced via onAdd, so invalidate every cached signature and re-push.
 function resyncStudioBridge(): void {
-  lastDeckSig = '';
-  for (const inst of instances.values()) inst.lastSig = undefined;
+  invalidateDeck();
   scheduleRender();
 }
 const studioSupervisor = new ReconnectSupervisor({
@@ -401,25 +416,49 @@ $UD.onClose(() => { dlog(TAG, 'Ulanzi Studio bridge closed'); cancelActiveHold('
 $UD.onError((e) => { derr(TAG, `Ulanzi bridge error: ${e}`); studioSupervisor.noteClosed(); });
 studioSupervisor.start();
 
+/** A context lost its key (cleared, deactivated, or displaced by another). */
+function contextLeft(context: string, why: string): void {
+  animPending.delete(context);
+  pushQueue.delete(context);
+  // A key that disappears mid-hold (page change, profile switch) would
+  // otherwise leave the daemon capturing until its 30s cap.
+  const dispatch = voiceHold.disappear(context);
+  if (!dispatch) return;
+  const cmd = voiceCommandForAction(dispatch.action, dispatch.sessionId);
+  if (cmd) { dlog(TAG, `voice hold cancelled (${why})`); daemon.send({ ...cmd }); }
+}
+
 $UD.onAdd((m: UlanziMessage) => {
   flog('RAW', 'onAdd', m);
-  instances.set(m.context, { context: m.context, key: m.key });
-  dlog(TAG, `add key ${m.key}`);
+  const displaced = keys.add(m.context, m.key, m.active !== false);
+  for (const ctx of displaced) contextLeft(ctx, 'key replaced');
+  dlog(TAG, `add key ${m.key}${displaced.length ? ` (took it from ${displaced.length} other context(s))` : ''}`);
+  invalidateDeck();
   scheduleRender(); // coalesce the burst of per-key onAdd at startup
 });
 
+$UD.onSetActive((m: UlanziMessage) => {
+  flog('RAW', 'setactive', m);
+  const active = m.active === true;
+  const displaced = keys.setActive(m.context, m.key, active);
+  if (!active) contextLeft(m.context, 'key inactive');
+  for (const ctx of displaced) contextLeft(ctx, 'key replaced');
+  dlog(TAG, `setactive ${m.key} ${active}`);
+  invalidateDeck();
+  scheduleRender();
+});
+
 $UD.onClear((m: UlanziMessage) => {
+  flog('RAW', 'clear', m);
   const param = m.param as unknown;
   const items = Array.isArray(param) ? (param as Array<{ context: string }>) : [];
-  for (const it of items) {
-    instances.delete(it.context);
-    // A key that disappears mid-hold (page change, profile switch) would
-    // otherwise leave the daemon capturing until its 30s cap.
-    const dispatch = voiceHold.disappear(it.context);
-    if (!dispatch) continue;
-    const cmd = voiceCommandForAction(dispatch.action, dispatch.sessionId);
-    if (cmd) { dlog(TAG, 'voice hold cancelled (key removed)'); daemon.send({ ...cmd }); }
-  }
+  keys.clear(items.map((it) => it.context));
+  for (const it of items) contextLeft(it.context, 'key removed');
+  // Removing a key can hand its position back to a context that was waiting on
+  // it, and always changes what the remaining keys lay out: repaint, and do not
+  // let an unchanged-looking signature swallow it.
+  invalidateDeck();
+  scheduleRender();
 });
 
 /** One hold at a time, shared with the Stream Deck key's semantics. */
@@ -448,10 +487,27 @@ function voiceTargetFor(key: string): string | undefined {
   return (action.command as { sessionId?: string }).sessionId ?? '';
 }
 
+/**
+ * A press proves its context is on screen. An unknown or inactive context is
+ * (re)activated and the deck repainted before anything is dispatched — the old
+ * layout was computed without it, so acting on it would act on a stale cell.
+ * Returns false when the press must not be acted on.
+ */
+function claimPressedKey(m: UlanziMessage, phase: string): boolean {
+  const inst = keys.get(m.context);
+  if (inst?.active) return true;
+  flog(TAG, `${phase}: ${inst ? 'inactive' : 'unknown'} context ${m.context} (key=${m.key}) — activating`);
+  const displaced = keys.setActive(m.context, m.key, true);
+  for (const ctx of displaced) contextLeft(ctx, 'key replaced');
+  invalidateDeck();
+  renderAll();
+  return false;
+}
+
 function onPress(m: UlanziMessage): void {
   flog('RAW', 'press', m);
-  const inst = instances.get(m.context);
-  if (!inst) { flog(TAG, `press: no instance for context ${m.context} (key=${m.key})`); $UD.emit('add', m); return; }
+  if (!claimPressedKey(m, 'press')) return;
+  const inst = keys.get(m.context)!;
   const known = positions().sort();
   flog(TAG, `press key=${inst.key} view=${view.mode} positions=[${known.join(',')}]`);
   // VOICE is hold-to-talk, driven by the keydown/keyUp pair below. `run` fires
@@ -548,8 +604,8 @@ $UD.onKeyDown((m: UlanziMessage) => {
   // by ~2ms, so without this the first press after a re-add would be lost
   // entirely: keydown ignored, `run` registers the key and then skips it as a
   // VOICE tile, keyUp finds no hold.
-  if (!instances.has(m.context)) $UD.emit('add', m);
-  const inst = instances.get(m.context);
+  if (!keys.get(m.context)?.active) claimPressedKey(m, 'keydown');
+  const inst = keys.get(m.context);
   const sessionId = inst ? voiceTargetFor(inst.key) : undefined;
   if (sessionId === undefined) { flog('RAW', 'keydown(ignored)', m.key); return; }
   voiceHold.begin(m.context, sessionId || undefined);
@@ -595,6 +651,7 @@ daemon.on('event', (ev) => {
   }
   const pending = ev.type === 'session_settings' && view.openSessionId ? store.settingsFor(view.openSessionId)?.pending : undefined;
   if (store.apply(ev)) {
+    if (ev.type === 'sessions_list') sessionOrder = stickyOrder.update(store.roster());
     if (ev.type === 'session_settings') view = settingsPickerAfterResponse(view, ev, pending);
     scheduleRender();
   }

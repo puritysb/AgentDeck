@@ -375,6 +375,7 @@
         "Claude hook events posted to /hooks/* drive the WebSocket state stream (idle → processing → idle)",
         "the exact hook shell snippet the installer writes finds the daemon through daemon.json and delivers events",
         "PreToolUse and Stop hooks answer immediately when no device can approve, so Claude never stalls",
+        "the installed Claude PermissionRequest hook prints nothing and puts the tool's permission prompt on an observed Claude row within one broadcast; the later permission Notification leaves it as is; a held PreToolUse gate keeps its requestId through both signals and is released when its hook connection is aborted",
         "the timeline is persisted to timeline.json and replayed to a new client after a restart",
         "SIGTERM shuts the daemon down on its own and withdraws daemon.json",
         "loopback posture: the port is closed on the host's LAN address",
@@ -513,6 +514,7 @@
         "better-sqlite3 opens under each supported Node ABI on Windows",
         "hook installer, observer, state machine and daemon launcher/supervisor tests pass on Windows paths and shells",
         "native Codex hook runner sends the launcher PID through cmd.exe, preserves UTF-8 payloads, and omits guessed identity when CIM evidence is unavailable or cyclic",
+        "the Claude hook script run by powershell.exe makes no /health request, prints nothing for a fire-and-forget event, and writes the daemon's UTF-8 answer to stdout for PreToolUse and Stop",
         "Ulanzi discovery handles missing registries and foreign PIDs; native loopback HTTP/WS registers, exchanges frames and rediscovers a changed port after socket loss",
         "the daemon relay works between two real Windows daemons on loopback: a worker publishes an observed session to a hub, a hub-side decision lands in the worker's steering queue, and the row leaves when the worker stops"
       ],
@@ -613,10 +615,12 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift"],
+      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
         "attention navigation distinguishes fresh empty rosters from unavailable data, scopes session identity to a credential-free endpoint, bounds startup waits and preserves hardware focus during local inspection",
+        "the Swift daemon's cross-origin /setup-status answers exactly the secret-free key set of shared/setup-status-contract.json, with a session count and a Claude hook flag that never claims missing from inside the sandbox",
+        "the Swift daemon maps Claude PermissionRequest to the same display-only prompt as the permission Notification, counts the two once, never replaces a held gate or a question, and its HTTP listener releases a held gate undecided when the hook's connection closes",
         "communication graphs keep unrelated sessions isolated, resolve only explicit peer identity, retain one-way burst ages, and distinguish crossed messages and unavailable history; native graph rendering uses synthetic sessions; habitat currents require visible peers and follow resident parent and camera transforms",
         "selected-host discovery recovery survives network retry exhaustion while explicit stops and authentication refusals remain stopped",
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
@@ -868,6 +872,7 @@
         "bridge/src/__tests__/discovery-security.test.ts",
         "bridge/src/__tests__/ws-server-auth.test.ts",
         "bridge/src/__tests__/local-trust-*.test.ts",
+        "bridge/src/__tests__/setup-status.test.ts",
         "shared/src/__tests__/local-trust*.test.ts",
         "shared/src/__tests__/pairing-code*.test.ts"
       ]
@@ -933,7 +938,7 @@
     {
       "id": "observed",
       "name": "Agent observation & hooks",
-      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts, including missing-PID revalidation for partial process snapshots, Hermes observer setup/discovery diagnostics, explicit loopback delivery without a registry, captured Hermes child suppression, the opt-in Codex device-approval hold (shared rules, a generated Swift mirror and both installers' exact hold command), and background work (Claude snapshots, Codex rollout terminals, OpenCode and Hermes plugin reports) through one tracker with executable Node/Swift parity?",
+      "question": "Are Claude, Codex, OpenCode, Kiro, Antigravity and Hermes sessions seen, attributed and gated correctly from their hooks and transcripts, including missing-PID revalidation for partial process snapshots, Hermes observer setup/discovery diagnostics, explicit loopback delivery without a registry, captured Hermes child suppression, Claude PermissionRequest as the immediate display signal ahead of the permission Notification, the opt-in Codex device-approval hold (shared rules, a generated Swift mirror and both installers' exact hold command), and background work (Claude snapshots, Codex rollout terminals, OpenCode and Hermes plugin reports) through one tracker with executable Node/Swift parity?",
       "icon": "◈",
       "match": [
         "hooks/src/__tests__/*.test.ts",
@@ -1062,6 +1067,7 @@
       "icon": "▦",
       "match": [
         "bridge/src/__tests__/esp32-*.test.ts",
+        "bridge/src/__tests__/wifi-config.test.ts",
         "scripts/__tests__/esp32-*.test.ts",
         "bridge/src/__tests__/pixoo-*.test.ts",
         "bridge/src/__tests__/timebox-*.test.ts",

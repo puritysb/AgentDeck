@@ -36,7 +36,12 @@
 // / `sessionLabelText`, shared/src/session-labels.ts) on list keys and the
 // detail INFO tile — pinned below so a change to that rule fails the gate.
 // Known difference: Swift counts grapheme clusters where TS counts code points.
-// SYNC-HASH shared/src/d200h-layout.ts 5bfbaec4de8d2865bd98187fd87623138d5cf05b
+// Re-ported 2026-10-19 (Ulanzi QA): a position listed twice lays out once
+// (`sortPositions` dedupes), and BACK carries the open session's deck label.
+// Not ported, by scope: `DeckView.sessionOrder` (the plugin's sticky list order
+// is per-plugin state the preview does not have) and hiding the no-data Codex
+// credits tile (the preview only draws credits for a known balance).
+// SYNC-HASH shared/src/d200h-layout.ts 7465e5ced4194acef317cd14f9bc2a6cfd676976
 // SYNC-HASH shared/src/session-utils.ts 83ad7aaf29fa227e7841b772d33894ee2257f8c6
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
@@ -662,9 +667,14 @@ public enum D200HLayoutModel {
         let first = slots[0]
         let last = slots[slots.count - 1]
 
-        // BACK
+        // BACK — names the open session (TS `renderBackButton(backTitle)`,
+        // held to the status card's 18-character subtitle).
         let (fc, fr) = parse(first)
-        out.append(D200HKeySlot(position: first, col: fc, row: fr, kind: .back, label: "BACK", subtitle: "sessions", action: .back))
+        let backTitle = deckLabel(
+            sessionDeckLabels(foldCodexSessionsForDisplay(input.sessions))[sid],
+            projectName: sess?.projectName ?? "", max: 18
+        )
+        out.append(D200HKeySlot(position: first, col: fc, row: fr, kind: .back, label: "BACK", subtitle: backTitle.isEmpty ? "sessions" : backTitle, action: .back))
 
         // INFO header (slots[1], or first if only one slot)
         let infoPos = slots.count > 1 ? slots[1] : first
@@ -1312,8 +1322,12 @@ public enum D200HLayoutModel {
     // MARK: Position helpers
 
     /// Row-major order ("0_0","1_0",…,"4_2").
+    /// One key, one cell: a position listed twice is laid out once (TS
+    /// `sortPositions` de-duplicates for the same reason — two Studio contexts on
+    /// one key blanked a row on the device).
     static func sortPositions(_ positions: [String]) -> [String] {
-        positions.sorted { a, b in
+        var seen = Set<String>()
+        return positions.filter { seen.insert($0).inserted }.sorted { a, b in
             let (ac, ar) = parse(a)
             let (bc, br) = parse(b)
             return ar != br ? ar < br : ac < bc

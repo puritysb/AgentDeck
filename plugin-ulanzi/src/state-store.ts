@@ -5,6 +5,21 @@
  */
 import { SessionSettingsRequestTracker, type BridgeEvent, type SessionInfo, type SessionSetting } from '@agentdeck/shared';
 
+/**
+ * One row per session id, the LAST occurrence winning, in first-occurrence order.
+ * The daemon should never send a duplicate, but a duplicated row would put the
+ * same session on two keys and shift every key after it; the last copy is the
+ * one written latest into the frame.
+ */
+export function dedupeSessionsById<T extends { id: string }>(rows: readonly T[]): T[] {
+  const byId = new Map<string, T>();
+  for (const row of rows) {
+    if (!row || typeof row.id !== 'string') continue;
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 export class StateStore {
   /** Last raw state_update event (carries focused session's project/model/etc). */
   private lastState: Record<string, unknown> = { state: 'IDLE' };
@@ -94,7 +109,7 @@ export class StateStore {
     switch (ev.type) {
       case 'sessions_list':
         this.dot = ev.dot ?? null;
-        this.sessions = (e.sessions as SessionInfo[]) ?? [];
+        this.sessions = dedupeSessionsById((e.sessions as SessionInfo[]) ?? []);
         for (const id of this.sessionStates.keys()) {
           if (!this.sessions.some((session) => session.id === id)) this.sessionStates.delete(id);
         }
@@ -153,6 +168,11 @@ export class StateStore {
       default:
         return false;
     }
+  }
+
+  /** The roster as the daemon last sent it (de-duplicated), for list ordering. */
+  roster(): readonly SessionInfo[] {
+    return this.sessions;
   }
 
   /** Sessions with the optimistic REVIEWING flip applied (daemon rows win). */

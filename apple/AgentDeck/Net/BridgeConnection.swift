@@ -358,6 +358,16 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// A queued disconnect must not restart the state holder after an explicit
+    /// stop or host change. Preserve the failed socket's generation at delivery.
+    func dispatchDisconnect(generation: Int? = nil) {
+        let generation = generation ?? connectionGeneration
+        DispatchQueue.main.async {
+            guard !self.isTerminating, self.connectionGeneration == generation else { return }
+            self.onDisconnect?()
+        }
+    }
+
     // MARK: - Ping
 
     func startPingTimer() {
@@ -489,7 +499,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
 
             // Notify state holder immediately so UI shows disconnect
             if wasConnected && !refused {
-                DispatchQueue.main.async { self.onDisconnect?() }
+                self.dispatchDisconnect(generation: generation)
             }
 
             if refused {

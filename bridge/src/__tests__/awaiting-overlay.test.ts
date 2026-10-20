@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
+  setPermissionRequestOverlay,
   setAskUserQuestionOverlay,
   advanceAskUserQuestionOverlay,
   getAskUserQuestionAnswers,
@@ -501,5 +502,57 @@ describe('sticky overlays (Codex PermissionRequest)', () => {
       id: `observed:claude:${sid}`, state: 'processing', lastActivityAt: Date.now() + 60_000,
     }]);
     expect(dropped[0].state).toBe('processing');
+  });
+});
+
+describe('Claude PermissionRequest overlay (immediate display signal)', () => {
+  beforeEach(() => { _resetAwaitingOverlay(); });
+
+  it('shows the prompt with its tool at once, display-only', () => {
+    expect(setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build')).toBe(true);
+    expect(getAwaitingOverlay('sid-pr')).toMatchObject({
+      kind: 'permission', state: 'awaiting_permission', question: 'Allow Bash: rm -rf build', requestId: undefined,
+    });
+    // The same prompt again is no change, so no second broadcast.
+    expect(setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build')).toBe(false);
+  });
+
+  it('the later permission_prompt Notification keeps the PermissionRequest prompt (one prompt, not two)', () => {
+    setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build');
+    const before = getAwaitingOverlay('sid-pr');
+    expect(setPermissionNotificationOverlay('sid-pr', 'Claude needs your permission to use Bash')).toBe(false);
+    expect(getAwaitingOverlay('sid-pr')).toEqual(before);
+  });
+
+  it('the Notification alone still shows the prompt (Claude Code without PermissionRequest)', () => {
+    expect(setPermissionNotificationOverlay('sid-old', 'Claude needs your permission to use Bash')).toBe(true);
+    expect(getAwaitingOverlay('sid-old')).toMatchObject({ state: 'awaiting_permission', requestId: undefined });
+    // A PermissionRequest arriving after it upgrades the copy with the tool.
+    expect(setPermissionRequestOverlay('sid-old', 'Allow Bash: ls')).toBe(true);
+    expect(getAwaitingOverlay('sid-old')?.question).toBe('Allow Bash: ls');
+  });
+
+  it('never takes the requestId of a live device gate, from either signal', () => {
+    setAwaitingOverlay('sid-held', 'Allow Bash: npm publish', 'req-live');
+    const live = (id: string) => id === 'req-live';
+    expect(setPermissionRequestOverlay('sid-held', 'Allow Bash: rm -rf build', live)).toBe(false);
+    expect(setPermissionNotificationOverlay('sid-held', 'Claude needs your permission to use Bash', live)).toBe(false);
+    expect(getAwaitingOverlay('sid-held')).toMatchObject({ question: 'Allow Bash: npm publish', requestId: 'req-live' });
+    // Without a predicate any requestId counts as held.
+    expect(setPermissionRequestOverlay('sid-held', 'Allow Bash: rm -rf build')).toBe(false);
+  });
+
+  it('replaces a gate whose request is no longer open', () => {
+    setAwaitingOverlay('sid-dead', 'Allow Bash: npm publish', 'req-gone');
+    expect(setPermissionRequestOverlay('sid-dead', 'Allow Bash: npm publish', () => false)).toBe(true);
+    expect(getAwaitingOverlay('sid-dead')).toMatchObject({ requestId: undefined, question: 'Allow Bash: npm publish' });
+  });
+
+  it('keeps an AskUserQuestion option interaction', () => {
+    setAskUserQuestionOverlay('sid-ask', 'toolu-ask', {
+      questions: [{ question: 'Which deadline?', options: [{ label: '14 days' }, { label: '7 days' }] }],
+    });
+    expect(setPermissionRequestOverlay('sid-ask', 'Allow AskUserQuestion?')).toBe(false);
+    expect(getAwaitingOverlay('sid-ask')).toMatchObject({ kind: 'option', question: 'Which deadline?' });
   });
 });

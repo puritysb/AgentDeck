@@ -1066,6 +1066,11 @@ export interface WifiProvisionAckMessage {
   joined?: boolean;
   ip?: string;           // the address it joined with; only when `joined`
   error?: string;        // reason on failure
+  /**
+   * The {@link WifiProvisionMessage.credId} of the provision this answers.
+   * Absent from firmware that predates it and when that provision carried none.
+   */
+  credId?: string;
 }
 
 export interface AuthProvisionAckMessage {

@@ -23,7 +23,7 @@ describe('Node runtime support contract', () => {
 
 describe('parseSetupArgs', () => {
   it('prints next steps by default instead of installing the daemon', () => {
-    expect(parseSetupArgs([])).toEqual({ enterprise: false, autoInstallDaemon: false, statusline: false });
+    expect(parseSetupArgs([])).toEqual({ enterprise: false, autoInstallDaemon: false, statusline: false, surface: null });
   });
 
   it('--yes / -y finishes the install without a second command', () => {
@@ -39,6 +39,7 @@ describe('parseSetupArgs', () => {
       enterprise: true,
       autoInstallDaemon: true,
       statusline: false,
+      surface: null,
     });
   });
 
@@ -47,6 +48,7 @@ describe('parseSetupArgs', () => {
       enterprise: false,
       autoInstallDaemon: true,
       statusline: false,
+      surface: null,
     });
   });
 
@@ -55,6 +57,20 @@ describe('parseSetupArgs', () => {
       enterprise: false,
       autoInstallDaemon: false,
       statusline: true,
+      surface: null,
     });
+  });
+
+  it('--surface forces the deck host the next steps describe, in either spelling', () => {
+    expect(parseSetupArgs(['--yes', '--surface=ulanzi']).surface).toBe('ulanzi');
+    expect(parseSetupArgs(['--surface', 'streamdeck']).surface).toBe('streamdeck');
+    expect(parseSetupArgs(['--surface=D200H']).surface).toBe('ulanzi');
+    // --surface does not imply --yes: it only chooses what is printed.
+    expect(parseSetupArgs(['--surface=ulanzi']).autoInstallDaemon).toBe(false);
+  });
+
+  it('an unknown --surface value is ignored, like an unknown flag', () => {
+    expect(parseSetupArgs(['--surface=lcd']).surface).toBeNull();
+    expect(parseSetupArgs(['--surface']).surface).toBeNull();
   });
 });

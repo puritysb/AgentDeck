@@ -1083,6 +1083,10 @@ static void handleWifiProvision(JsonObject& obj) {
     resp["type"] = "wifi_provision_ack";
     resp["success"] = ok;
     resp["joined"] = joined;
+    // Which provision this answers: a daemon that wrote another since can tell
+    // this answer is not the later one's result. Echoed only in the id's own
+    // shape, so a malformed field cannot crowd the 256-byte line.
+    if (strlen(credId) == WifiCredId::HEX_LENGTH) resp["credId"] = credId;
     if (joined) {
         // Only from this join: the address buffer outlives the connection it
         // was set by, so a save-only ack would carry an earlier join's.

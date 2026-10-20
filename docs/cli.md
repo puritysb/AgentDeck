@@ -16,6 +16,10 @@ The daemon installs or refreshes the lifecycle integrations and observes agents
 started through their normal commands. The **daemon** (port 9120, `0.0.0.0` by
 default) aggregates all sessions for external clients.
 
+`npx @agentdeck/setup` installs this CLI. It accepts `--yes`, `--enterprise`, `--statusline` and
+`--surface=ulanzi|streamdeck`. If npm's global prefix is not writable, it installs into `~/.agentdeck/npm` instead.
+Both are described in [install.md § What `npx @agentdeck/setup` does](install.md#what-npx-agentdecksetup-does).
+
 > **Compatibility notice:** `agentdeck claude`, `agentdeck codex`,
 > `agentdeck opencode`, and `agentdeck monitor` are a long-term compatibility
 > path; no removal is planned ([#273](https://github.com/puritysb/AgentDeck/issues/273)).
@@ -432,7 +436,7 @@ not the same act as finding one you never asked for.
 | `agentdeck timebox remove <address>` | Remove a Timebox device |
 | `agentdeck timebox test [target]` | Send one frame (BLE) |
 | `agentdeck timebox sync [target]` | Run foreground Timebox frame sync (BLE) |
-| `agentdeck wifi-setup` | Save ESP32 WiFi credentials (`--ssid`, `--password`; SSID from the WiFi interface and password from the Keychain when omitted). With a daemon running, it hands them to that daemon (`POST /esp32/wifi`), which sends them to the boards on USB at once; `--port` names the daemon, otherwise the one this user's registry names, and then only while that port's `/health` reports the registered pid. It never probes ports for a daemon, since the request carries the password. With no daemon it only writes `~/.agentdeck/wifi-config.json`, which a Node daemon reads when a board connects; the macOS app's daemon keeps its own copy (Settings → ESP32 & Pixoo → ESP32 boards). See [esp32.md § Setting the credentials](esp32.md#setting-the-credentials-esp32wifi). |
+| `agentdeck wifi-setup` | Save ESP32 WiFi credentials (`--ssid`, `--password`; SSID from the WiFi interface and password from the Keychain when omitted). With a daemon running, it hands them to that daemon (`POST /esp32/wifi`), which sends them to the boards on USB at once; `--port` names the daemon, otherwise the one this user's registry names, and then only while that port's `/health` reports the registered pid. It never probes ports for a daemon, since the request carries the password. With no daemon it only writes `wifi-config.json` in the data dir (`~/.agentdeck`, or `AGENTDECK_DATA_DIR` when set), which a Node daemon reads when a board connects; the macOS app's daemon keeps its own copy (Settings → ESP32 & Pixoo → ESP32 boards). See [esp32.md § Setting the credentials](esp32.md#setting-the-credentials-esp32wifi). |
 | `agentdeck esp32 orientation <target> <auto\|portrait\|landscape>` | Persist a T-Display-S3-Pro layout (portrait Pocket ↔ landscape Focus Strip); the board restarts when the layout changes. `auto` = portrait with a camera shield, else landscape. Node daemon only. |
 | `agentdeck esp32-ota <target>` | Push ESP32 firmware over WiFi OTA (`--build` or `--firmware <path>`). Pull staging uses `--stage`; X3/X4 additionally require `--manifest <agentdeck-surface.json>` or both `--product-id` and `--update-channel`. |
 

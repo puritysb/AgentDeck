@@ -46,7 +46,9 @@ normally on stdin EOF when the daemon restarted.
 The full quick tier in the same worktree showed only `fm-helper-build.test.ts`
 compiling its own binary.
 
-**Not covered.** An e2e daemon still runs the default APME judge chain, which
-finds a local MLX server at `127.0.0.1:8800` or `:8080` when one is running. Its
-endpoint comes only from `settings.json`, and the z.ai e2e test rewrites that
-file mid-run, so pinning it needs that test to keep the key too.
+**Local MLX judge, closed the same day.** An e2e daemon also ran the default
+APME judge chain, whose MLX fallback is `127.0.0.1:8800`. With a developer's
+server listening there, one e2e run made four connections to it from short-lived
+daemons. Both e2e files now pin `llm.mlx.endpoint` to `http://127.0.0.1:9`, which
+refuses, and the z.ai test keeps that key when it rewrites `settings.json`. A
+rerun under the same `lsof` poll saw none.

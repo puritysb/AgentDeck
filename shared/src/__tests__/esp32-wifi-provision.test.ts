@@ -27,7 +27,11 @@ const VECTORS = JSON.parse(readFileSync(
   decisions: Array<{ name: string; input: Partial<WifiProvisionInput> } & WifiProvisionDecision>;
   credentials: Array<{ name: string; ssid: string; password: string; problem: WifiCredentialsProblem | null }>;
   ackTimeoutMs: number;
-  ackLedger: Array<{ name: string; events: Array<{ write: number } | { ack: boolean }>; ledger: WifiProvisionAckLedger }>;
+  ackLedger: Array<{
+    name: string;
+    events: Array<{ write: number; credId?: string } | { ack: boolean; ackCredId?: string }>;
+    ledger: WifiProvisionAckLedger;
+  }>;
 };
 
 describe('ESP32 WiFi provision rules (shared vectors)', () => {
@@ -81,9 +85,9 @@ describe('ESP32 WiFi provision rules (shared vectors)', () => {
       const expected: boolean[] = [];
       for (const event of v.events) {
         if ('write' in event) {
-          ledger = wifiProvisionAckWritten(ledger, event.write);
+          ledger = wifiProvisionAckWritten(ledger, event.write, event.credId);
         } else {
-          const answer = wifiProvisionAckAnswered(ledger);
+          const answer = wifiProvisionAckAnswered(ledger, event.ackCredId);
           answered.push(answer.latest);
           expected.push(event.ack);
           ledger = answer.ledger;

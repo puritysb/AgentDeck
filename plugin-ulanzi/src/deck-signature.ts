@@ -50,8 +50,22 @@ export function deckSignature(ev: Record<string, unknown>): string {
     ev.question ?? '', ev.navigable ?? '', ev.cursorIndex ?? '', opts, usage, sessions, JSON.stringify(ev.dot ?? null), ev.dot ? dotDeckPresentation(ev.dot as DotDeckSnapshot).label : ''].join('|');
 }
 
-/** Local preferences and placed keys change pixels even without a daemon tick. */
-export function deckViewSignature(ev: Record<string, unknown>, view: import('@agentdeck/shared').DeckView, positions: string[]): string {
+/**
+ * Local preferences and placed keys change pixels even without a daemon tick.
+ *
+ * `contexts` names WHICH Studio instance holds each key (`key=context`). The key
+ * set alone is not enough: replacing the action on a key (Studio's `add` for the
+ * new context, `clear` for the old) leaves the sorted positions identical, so the
+ * render returned early and the new context never received an image — a key
+ * that stayed blank after being placed (Ulanzi QA, 2026-10-19).
+ */
+export function deckViewSignature(
+  ev: Record<string, unknown>,
+  view: import('@agentdeck/shared').DeckView,
+  positions: string[],
+  contexts: string[] = [],
+): string {
   return JSON.stringify([view.mode, view.openSessionId, view.page ?? 0, view.picker ?? '', view.settings ?? null,
-    view.voiceState ?? 'idle', view.claudeWeeklyMode ?? 'both', view.zaiPairMode ?? 'both', [...positions].sort()]) + deckSignature(ev);
+    view.voiceState ?? 'idle', view.claudeWeeklyMode ?? 'both', view.zaiPairMode ?? 'both', [...positions].sort(),
+    view.sessionOrder ?? null, [...contexts].sort()]) + deckSignature(ev);
 }

@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync,
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execFile, execFileSync } from 'child_process';
+import { execFile, execFileSync, spawn } from 'child_process';
 import { createServer } from 'node:http';
 import { promisify } from 'node:util';
 import {
@@ -60,6 +60,8 @@ describe('Hook Installer', () => {
       expect(buildHookEntry('PreToolUse').matcher).toBe('*');
       expect(buildHookEntry('PostToolUse').matcher).toBe('*');
       expect(buildHookEntry('PostToolUseFailure').matcher).toBe('*');
+      // PermissionRequest matches on the tool name, like PreToolUse.
+      expect(buildHookEntry('PermissionRequest').matcher).toBe('*');
       expect(buildHookEntry('Stop').matcher).toBe('');
       expect(buildHookEntry('SessionStart').matcher).toBe('');
     });
@@ -278,11 +280,11 @@ describe('Hook Installer', () => {
     it('keeps the port discovery, validation and UTF-8 handling of the old one-liner', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('$env:AGENTDECK_PORT');
       expect(WINDOWS_HOOK_SCRIPT).toContain(".agentdeck\\daemon.json");
-      expect(WINDOWS_HOOK_SCRIPT).toContain('$port = 9120');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$ports += 9120');
       // Strict 1..65535 parsing: an unvalidated value containing '@' can make a
       // URL parser read 127.0.0.1:<value> as userinfo and post elsewhere.
       expect(WINDOWS_HOOK_SCRIPT).toContain('[int]::TryParse');
-      expect(WINDOWS_HOOK_SCRIPT).toContain('$candidate -gt 65535');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$candidate -le 65535');
       // Read stdin as UTF-8 — [Console]::In uses the OEM codepage (e.g. CP949).
       expect(WINDOWS_HOOK_SCRIPT).toContain('StreamReader([Console]::OpenStandardInput()');
       expect(WINDOWS_HOOK_SCRIPT).not.toContain('[Console]::In.ReadToEnd()');
@@ -291,8 +293,41 @@ describe('Hook Installer', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Text.Encoding]::UTF8.GetBytes');
       expect(WINDOWS_HOOK_SCRIPT).toContain('application/json; charset=utf-8');
       // Bounded, and never fails the host session.
-      expect(WINDOWS_HOOK_SCRIPT).toContain('-TimeoutSec 2');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$req.Timeout = $timeoutMs');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$req.ReadWriteTimeout = $timeoutMs');
       expect(WINDOWS_HOOK_SCRIPT).toContain('exit 0');
+    });
+
+    it('answers the request-response hooks on stdout within the POSIX bounds, and nothing else', () => {
+      // The pre-fix script piped every daemon answer to Out-Null with a 2 s
+      // timeout, so device Allow/Deny, soft STOP and queued directives never
+      // reached Claude on Windows.
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('Out-Null');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('-TimeoutSec');
+      const posixMaxTime = (event: string) => Number(/--max-time (\d+(?:\.\d+)?) /.exec(
+        buildHookCommand(event).split('\n').find((l) => l.includes(`/hooks/${event}`)) ?? '')?.[1]);
+      expect(posixMaxTime('PreToolUse')).toBe(60);
+      expect(posixMaxTime('Stop')).toBe(10);
+      expect(posixMaxTime('PermissionRequest')).toBe(0.8);
+      expect(WINDOWS_HOOK_SCRIPT).toContain(`if ($HookEvent -ceq 'PreToolUse') { $timeoutMs = ${posixMaxTime('PreToolUse') * 1000}; $respond = $true }`);
+      expect(WINDOWS_HOOK_SCRIPT).toContain(`elseif ($HookEvent -ceq 'Stop') { $timeoutMs = ${posixMaxTime('Stop') * 1000}; $respond = $true }`);
+      expect(WINDOWS_HOOK_SCRIPT).toContain(`$timeoutMs = ${posixMaxTime('PermissionRequest') * 1000}\n$respond = $false`);
+      // Only the request-response events write the body, as raw UTF-8 bytes.
+      expect(WINDOWS_HOOK_SCRIPT.match(/\$respond = \$true/g)).toHaveLength(2);
+      expect(WINDOWS_HOOK_SCRIPT).toContain('if ($respond) {');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('[Console]::OpenStandardOutput()');
+    });
+
+    it('posts without a per-hook /health probe or proxy detection, falling back only on a refused connection', () => {
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain("'/health'");
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('Invoke-RestMethod');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebRequest]::DefaultWebProxy = $null');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$req.Proxy = $null');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('Expect100Continue = $false');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebExceptionStatus]::ConnectFailure');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('if (-not $refused) { break }');
+      // A valid AGENTDECK_PORT is the only target, as on POSIX.
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$ports = @($candidate)');
     });
 
     it('omits the macOS App Store sandbox-container fallback paths', () => {
@@ -344,7 +379,7 @@ describe('Hook Installer', () => {
       for (const event of HOOK_EVENTS) {
         expect(result.hooks[event]).toHaveLength(1);
         const group = result.hooks[event][0];
-        const expectStar = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(event);
+        const expectStar = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest'].includes(event);
         expect(group.matcher).toBe(expectStar ? '*' : '');
         expect(group.hooks).toHaveLength(1);
         // The Windows form carries the port logic in the script file, not the
@@ -960,8 +995,8 @@ describe('migration 7 — unbounded curl self-heal', () => {
 
     const repaired = readFileSync(settingsPath, 'utf-8');
     if (process.platform !== 'win32') {
-      // 12 events minus the two request-response ones.
-      expect(repaired.split('--max-time 0.8').length - 1).toBe(10);
+      // Every event minus the two request-response ones.
+      expect(repaired.split('--max-time 0.8').length - 1).toBe(HOOK_EVENTS.length - 2);
       expect(repaired).toContain('--connect-timeout 0.2 --max-time 0.3');
       expect(repaired).toContain('--max-time 60');
       expect(repaired).toContain('--max-time 10');
@@ -997,4 +1032,77 @@ describe('uninstall wiring', () => {
     expect(branch).toContain('uninstallKiroHooks(');
     expect(branch).toContain('uninstallOpenCodeHooks(');
   });
+});
+
+describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed', () => {
+  // Windows PowerShell 5.1 is what `powershell` names in the installed
+  // command. Each case starts it once (1-3 s on a healthy runner).
+  const powershell = join(process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+
+  async function run(event: string, reply: (path: string) => { delayMs?: number; body: string }) {
+    const received: Array<{ method: string; path: string; body: string }> = [];
+    const server = createServer((req, res) => {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (c) => { body += c; });
+      req.on('end', () => {
+        received.push({ method: req.method ?? '', path: req.url ?? '', body });
+        const answer = reply(req.url ?? '');
+        setTimeout(() => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(answer.body);
+        }, answer.delayMs ?? 0);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const port = (server.address() as { port: number }).port;
+    const home = mkdtempSync(join(tmpdir(), 'agentdeck-winhook-'));
+    try {
+      mkdirSync(join(home, '.agentdeck'), { recursive: true });
+      writeFileSync(join(home, '.agentdeck', 'daemon.json'), JSON.stringify({ port }));
+      const script = ensureWindowsHookScript(home);
+      const payload = JSON.stringify({ hook_event_name: event, session_id: 'win-probe', tool_name: 'Bash', tool_input: { command: 'echo 한글' } });
+      const started = Date.now();
+      const { stdout, code } = await new Promise<{ stdout: Buffer; code: number | null }>((resolve, reject) => {
+        const child = spawn(powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script, '-HookEvent', event], {
+          env: { ...process.env, USERPROFILE: home, AGENTDECK_PORT: '' }, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        const chunks: Buffer[] = [];
+        child.stdout.on('data', (c: Buffer) => chunks.push(c));
+        child.on('error', reject);
+        child.on('close', (c) => resolve({ stdout: Buffer.concat(chunks), code: c }));
+        child.stdin.end(payload);
+      });
+      return { received, stdout, code, elapsedMs: Date.now() - started, payload };
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      rmSync(home, { recursive: true, force: true });
+    }
+  }
+
+  it('posts a fire-and-forget event straight to the daemon.json port, with no /health probe, and prints nothing', async () => {
+    const r = await run('PermissionRequest', () => ({ body: '{"received":true}' }));
+    expect(r.code).toBe(0);
+    expect(r.received.map((x) => `${x.method} ${x.path}`)).toEqual(['POST /hooks/PermissionRequest']);
+    expect(r.received[0].body).toBe(r.payload);
+    expect(r.stdout.length).toBe(0);
+  }, 40_000);
+
+  it('waits past the old 2 s cut-off for a held PreToolUse and writes the decision to stdout as UTF-8', async () => {
+    const decision = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: '덱에서 중지됨' } });
+    const r = await run('PreToolUse', () => ({ delayMs: 3_000, body: decision }));
+    expect(r.code).toBe(0);
+    expect(r.received.map((x) => x.path)).toEqual(['/hooks/PreToolUse']);
+    expect(r.stdout.toString('utf8')).toBe(decision);
+    expect(r.elapsedMs).toBeGreaterThanOrEqual(3_000);
+  }, 40_000);
+
+  it('writes a queued Stop directive to stdout, and nothing for an empty answer', async () => {
+    const directive = JSON.stringify({ decision: 'block', reason: 'The user sent this follow-up: "계속"' });
+    const blocked = await run('Stop', () => ({ body: directive }));
+    expect(blocked.stdout.toString('utf8')).toBe(directive);
+    const empty = await run('Stop', () => ({ body: '' }));
+    expect(empty.code).toBe(0);
+    expect(empty.stdout.length).toBe(0);
+  }, 60_000);
 });

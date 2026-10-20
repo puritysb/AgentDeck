@@ -116,11 +116,56 @@ export function setAwaitingOverlay(
   });
 }
 
-/** Notification permission prompts arrive several seconds after
- * AskUserQuestion's structured PreToolUse. Preserve an existing option
- * interaction instead of downgrading it to generic permission copy. */
-export function setPermissionNotificationOverlay(sessionId: string, question: string): boolean {
-  if (overlay.get(sessionId)?.kind === 'option') return false;
+/** A held device-approval gate owns its prompt and its `requestId` until its
+ *  resolver releases it; a display-only signal must not take either away.
+ *  Without a liveness predicate any `requestId` counts as held. */
+function holdsLiveGate(
+  entry: AwaitingEntry | undefined,
+  isLiveRequest?: (requestId: string) => boolean,
+): boolean {
+  if (!entry?.requestId) return false;
+  return isLiveRequest ? isLiveRequest(entry.requestId) : true;
+}
+
+/** Claude Code's `PermissionRequest` hook fires the moment it is about to draw
+ *  its permission dialog, carrying the tool and its input — so the deck can
+ *  show the prompt when the terminal does, instead of when the
+ *  `permission_prompt` Notification arrives about six seconds later. Display
+ *  only (no requestId). An AskUserQuestion option interaction and a held
+ *  device gate keep their prompt. Returns true when the overlay changed. */
+export function setPermissionRequestOverlay(
+  sessionId: string,
+  question: string,
+  isLiveRequest?: (requestId: string) => boolean,
+): boolean {
+  const current = getAwaitingOverlay(sessionId);
+  if (current?.kind === 'option') return false;
+  if (holdsLiveGate(current, isLiveRequest)) return false;
+  const trimmed = (question || '').replace(/\s+/g, ' ').trim().slice(0, MAX_QUESTION_LEN);
+  if (current && !current.requestId && current.question === trimmed) return false;
+  setAwaitingOverlay(sessionId, question);
+  return true;
+}
+
+/** Notification permission prompts arrive several seconds after the dialog
+ *  appeared. By then the prompt is usually on the deck already — from
+ *  AskUserQuestion's structured PreToolUse, a held device gate, or the
+ *  `PermissionRequest` hook — and the Notification's generic copy must not
+ *  replace it: an option interaction keeps its choices, a held gate keeps its
+ *  requestId, and a PermissionRequest prompt keeps its tool details. The
+ *  Notification sets the overlay only when nothing shows one (a Claude Code
+ *  that predates PermissionRequest, or an install without the hook). Every
+ *  later tool/turn hook clears whatever is shown, so an existing overlay is the
+ *  same prompt, never a previous one. */
+export function setPermissionNotificationOverlay(
+  sessionId: string,
+  question: string,
+  isLiveRequest?: (requestId: string) => boolean,
+): boolean {
+  const current = getAwaitingOverlay(sessionId);
+  if (current?.kind === 'option') return false;
+  if (holdsLiveGate(current, isLiveRequest)) return false;
+  if (current?.kind === 'permission' && !current.requestId) return false;
   setAwaitingOverlay(sessionId, question);
   return true;
 }

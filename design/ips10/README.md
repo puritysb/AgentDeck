@@ -1,6 +1,6 @@
 # IPS10 aquarium assets
 
-The active background is `ocean.png`, generated with the built-in image generation tool on 2026-09-23. It contains only underwater scenery; all logos, characters, text, gauges and interaction remain live LVGL objects. Original output is retained unchanged. `encode_ocean.py` performs the technical resize to 640×400 and RGB565 conversion, producing one shared 500 KiB flash-resident image, displayed at 2× on the landscape IPS10. No runtime decompression or full-screen canvas is allocated.
+The active background is `ocean.png`, generated with the built-in image generation tool on 2026-09-23. It contains only underwater scenery; all logos, characters, text, gauges and interaction remain live LVGL objects. Original output is retained unchanged. `encode_ocean.py` performs the technical resize to 640×400 and RGB565 conversion and stores the 500 KiB image as one zlib stream (84 KiB of flash). The firmware inflates it once with the ROM inflater into PSRAM (`oceanImage()` in `ips10_workspace.cpp`) and caches the scaled screen in a PSRAM canvas; internal SRAM is untouched. Stored raw, it left the 6 MB OTA slot 99.2% full (2026-10-19); compressed, the image is 5,813,728 B, 92.4%. It is displayed at 2× on the landscape IPS10.
 
 Run `python3 design/ips10/encode_ocean.py` to regenerate the header; add `--check` to detect PNG-to-consumer drift. Preview with the real IPS10 native interaction suite, not only the asset.
 

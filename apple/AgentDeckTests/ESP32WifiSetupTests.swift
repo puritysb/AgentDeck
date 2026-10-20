@@ -230,6 +230,22 @@ final class ESP32WifiSetupTests: XCTestCase {
         XCTAssertEqual(conn.wifiProvisionSentAt, 2_000)
     }
 
+    func testAnAckNamingAnEarlierProvisionIsNotTheLatestOnesResult() {
+        var conn = connection()
+        ESP32Serial.markWifiProvisionWritten(&conn, now: 1_000, credId: "0123456789abcdef")
+        ESP32Serial.markWifiProvisionWritten(&conn, now: 2_000, credId: "fedcba9876543210")
+        // The board names the provision it answers.
+        ESP32Serial.recordWifiProvisionAck(
+            &conn, message: ["type": "wifi_provision_ack", "success": true, "joined": false,
+                             "credId": "0123456789abcdef"], now: 3_000)
+        XCTAssertNil(conn.wifiProvisionAck)
+        ESP32Serial.recordWifiProvisionAck(
+            &conn, message: ["type": "wifi_provision_ack", "success": true, "joined": true, "ip": "192.168.1.23",
+                             "credId": "fedcba9876543210"], now: 4_000)
+        XCTAssertEqual(conn.wifiProvisionAck?.joined, true)
+        XCTAssertEqual(conn.wifiProvisionAckLedger.owed, 0)
+    }
+
     func testAnAckOwedPastTheSharedTimeoutIsPresumedLostAtTheNextWrite() {
         var conn = connection()
         ESP32Serial.markWifiProvisionWritten(&conn, now: 1_000)

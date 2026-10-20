@@ -33,6 +33,11 @@ export const HOOK_EVENTS = [
   'PostToolUseFailure',
   'Stop',
   'Notification',
+  // Display-only: Claude Code runs it the moment it is about to show its
+  // permission dialog, ~6 s before the `permission_prompt` Notification. The
+  // command is the fire-and-forget form and prints nothing, so it never
+  // decides the prompt (empty stdout = no decision, the dialog shows).
+  'PermissionRequest',
   'UserPromptSubmit',
   'SubagentStart',
   'SubagentStop',
@@ -110,7 +115,9 @@ export function buildHookCommand(eventName: string): string {
   // (Claude's `getSessionEndHookTimeoutMs()` floor), and a daemon that is
   // restarting holds the socket open without replying. An unbounded curl there
   // gets killed mid-flight and Claude prints `SessionEnd hook [...] failed:
-  // Hook cancelled` on exit.
+  // Hook cancelled` on exit. `PermissionRequest` belongs here on purpose: it
+  // is a display signal, and Claude Code waits for it before drawing the
+  // dialog, so it must return at once and print nothing (no decision).
   return preamble.concat([
     `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
@@ -131,8 +138,19 @@ export function buildHookCommand(eventName: string): string {
  * Port discovery matches the POSIX snippet, minus the macOS App Store sandbox
  * containers which do not exist on Windows:
  *   1. `$env:AGENTDECK_PORT`
- *   2. `%USERPROFILE%\.agentdeck\daemon.json` (verified with a `/health` probe)
+ *   2. `%USERPROFILE%\.agentdeck\daemon.json`
  *   3. `9120` fallback
+ * There is no `/health` probe per hook: the payload goes straight to the
+ * daemon.json port and moves on to 9120 only when that connection is refused
+ * (nothing received it, so it is never delivered twice). The probe was an
+ * extra PowerShell round trip on every hook, before the hook did its work.
+ *
+ * `PreToolUse` and `Stop` are request-response as on POSIX: the daemon's body
+ * (device Allow/Deny, soft-STOP deny, queued directive) is written to stdout
+ * as raw UTF-8 within the POSIX `--max-time` bounds (60 s / 10 s). The earlier
+ * script piped every response to `Out-Null` with a 2 s timeout, so on Windows
+ * no device decision, deck STOP or queued directive ever reached Claude.
+ * The request bypasses proxy auto-detection and `Expect: 100-continue`.
  *
  * Errors are swallowed and the exit code is always 0 so a dead daemon never
  * blocks or fails the host session.
@@ -147,39 +165,88 @@ param([Parameter(Mandatory = \$true)][ValidatePattern('^[A-Za-z_]+\$')][string]\
 
 \$ErrorActionPreference = 'SilentlyContinue'
 
-\$port = 0
-\$candidate = 0
-if (-not ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate)) -or \$candidate -lt 1 -or \$candidate -gt 65535) { \$candidate = 0 }
-\$port = \$candidate
+# PreToolUse and Stop are request-response, as in the POSIX hook: the daemon's
+# answer (a device Allow/Deny, a soft-STOP deny, a queued deck directive) is
+# written to stdout for Claude Code, bounded like the POSIX curl --max-time
+# (60 s / 10 s). Every other event is fire-and-forget: bounded like --max-time
+# 0.8, nothing printed.
+\$timeoutMs = 800
+\$respond = \$false
+if (\$HookEvent -ceq 'PreToolUse') { \$timeoutMs = 60000; \$respond = \$true }
+elseif (\$HookEvent -ceq 'Stop') { \$timeoutMs = 10000; \$respond = \$true }
 
-if (-not \$port) {
+# Ports in the order tried. \$env:AGENTDECK_PORT alone when it is valid;
+# otherwise the daemon.json port, then 9120. No /health probe first: the next
+# port is tried only when a connection is refused, which proves nothing
+# received the payload, so it is never delivered twice.
+\$ports = @()
+\$candidate = 0
+if ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
+  \$ports = @(\$candidate)
+} else {
   \$f = Join-Path \$env:USERPROFILE '.agentdeck\\daemon.json'
   if (Test-Path \$f) {
     try {
       \$d = Get-Content -Raw \$f | ConvertFrom-Json
       \$raw = if (\$d.httpPort) { \$d.httpPort } else { \$d.port }
       \$candidate = 0
-      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
-        try {
-          Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$candidate + '/health') -TimeoutSec 1 -ErrorAction Stop | Out-Null
-          \$port = \$candidate
-        } catch {}
-      }
+      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) { \$ports += \$candidate }
     } catch {}
   }
+  if (\$ports -notcontains 9120) { \$ports += 9120 }
 }
-if (-not \$port) { \$port = 9120 }
 
 # Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
 # codepage (e.g. CP949), garbling non-ASCII payload text.
 \$body = (New-Object System.IO.StreamReader([Console]::OpenStandardInput(), [System.Text.Encoding]::UTF8)).ReadToEnd()
-# Post UTF-8 bytes: Invoke-RestMethod encodes a string body as ISO-8859-1 when
-# the content type carries no charset, replacing non-ASCII characters with '?'.
+# Post UTF-8 bytes with an explicit charset; the daemon reads them as sent.
 \$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]\$body)
 
-try {
-  Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/hooks/' + \$HookEvent) -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
-} catch {}
+# A loopback POST needs no proxy: system proxy auto-detection (WPAD) and the
+# Expect: 100-continue wait can each add seconds before the request is sent.
+try { [System.Net.WebRequest]::DefaultWebProxy = \$null } catch {}
+try { [System.Net.ServicePointManager]::Expect100Continue = \$false } catch {}
+
+foreach (\$port in \$ports) {
+  try {
+    \$req = [System.Net.HttpWebRequest]::Create('http://127.0.0.1:' + \$port + '/hooks/' + \$HookEvent)
+    \$req.Method = 'POST'
+    \$req.Proxy = \$null
+    \$req.ContentType = 'application/json; charset=utf-8'
+    \$req.Timeout = \$timeoutMs
+    \$req.ReadWriteTimeout = \$timeoutMs
+    \$req.ContentLength = \$bytes.Length
+    \$stream = \$req.GetRequestStream()
+    \$stream.Write(\$bytes, 0, \$bytes.Length)
+    \$stream.Close()
+    \$resp = \$req.GetResponse()
+    if (\$respond) {
+      # Pass the daemon's UTF-8 bytes through unchanged: a console encoding
+      # would turn a non-ASCII directive or reason into '?'.
+      \$buffer = New-Object System.IO.MemoryStream
+      \$resp.GetResponseStream().CopyTo(\$buffer)
+      \$out = \$buffer.ToArray()
+      if (\$out.Length -gt 0) {
+        \$stdout = [Console]::OpenStandardOutput()
+        \$stdout.Write(\$out, 0, \$out.Length)
+        \$stdout.Flush()
+      }
+    }
+    \$resp.Close()
+    break
+  } catch {
+    # Only a refused connection moves on to the next port. A timeout, an HTTP
+    # error or anything else ends the hook: the daemon may have the payload.
+    \$e = \$_.Exception
+    \$refused = \$false
+    while (\$e) {
+      if (\$e -is [System.Net.WebException] -and \$e.Status -eq [System.Net.WebExceptionStatus]::ConnectFailure) { \$refused = \$true }
+      if (\$e -is [System.Net.Sockets.SocketException] -and \$e.SocketErrorCode -eq [System.Net.Sockets.SocketError]::ConnectionRefused) { \$refused = \$true }
+      \$e = \$e.InnerException
+    }
+    if (-not \$refused) { break }
+  }
+}
 
 # Never block or fail the tool call.
 exit 0
@@ -610,7 +677,7 @@ export function buildHookEntry(eventName: string, home: string = homedir()) {
   // Tool-specific hooks need a glob matcher to fire.
   // Empty string "" means "match nothing" for tool events — use "" for non-tool
   // events (SessionStart, Stop, etc.) where matcher is ignored.
-  const needsToolMatcher = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(eventName);
+  const needsToolMatcher = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest'].includes(eventName);
   return {
     matcher: needsToolMatcher ? '*' : '',
     hooks: [handler],
@@ -965,6 +1032,16 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     // change to Claude Code's footer, so only `installHooks` adds one, under
     // its policy.
     if (refreshStatuslineRelay(settings, process.platform, home)) migrated = true;
+
+    // Migration 13: the display-only `PermissionRequest` hook. Existing
+    // installs predate it, so they keep showing a permission prompt only when
+    // the Notification arrives ~6 s after the dialog. Checked by ownership,
+    // not presence: a user's own PermissionRequest hook must not hide ours.
+    const permissionRequestGroups = settings.hooks?.PermissionRequest;
+    if (!Array.isArray(permissionRequestGroups) || !permissionRequestGroups.some(isAgentDeckHookEntry)) {
+      applyHooks(settings, home);
+      migrated = true;
+    }
 
     if (migrated) {
       writeSettings(settingsPath, settings);

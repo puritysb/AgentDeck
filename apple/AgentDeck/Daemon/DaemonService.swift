@@ -131,6 +131,7 @@ final class DaemonService: ObservableObject {
     private static let takeoverYieldSeconds = Double(DaemonParityRules.takeoverYieldMs) / 1000
     private var signalSource: DispatchSourceSignal?
     private var sigintSource: DispatchSourceSignal?
+    private var terminationBackstops: [DispatchSourceSignal] = []
     private var listenerFailureRetries = 0
     private var squatterCleanupAttempted = false
     private var fallbackAttempted = false
@@ -1098,6 +1099,11 @@ final class DaemonService: ObservableObject {
         }
         intSource.resume()
         self.sigintSource = intSource
+
+        // Both handlers above run on the main queue, and so does the 5 s exit
+        // they arm. These start their own timer off it, so a busy main thread
+        // cannot hold a quit open (makeTerminationBackstop says why).
+        terminationBackstops = [SIGTERM, SIGINT].map { makeTerminationBackstop(signal: $0, after: 8) }
     }
 
     private static func handleTerminationSignal(name: String, service: DaemonService?) {
@@ -1430,4 +1436,35 @@ enum DeviceStatus: Equatable {
         }
     }
 }
+
+/// Arms a forced exit `seconds` after `signal` arrives, from a queue of its own.
+///
+/// DaemonService handles SIGTERM on the main queue and arms its 5 s forced exit
+/// inside that handler, so a busy main thread delays both. A local deployment
+/// measured the handler 5 to 6 s and about 40 s after its SIGTERM (2026-10-17
+/// and 10-18), and the app quit after the deployment had given up.
+/// This source shares nothing with the main thread, so the exit happens
+/// whatever the main thread is doing. The caller must have set the signal to
+/// SIG_IGN, as for any dispatch signal source.
+///
+/// Declared at file scope and `nonisolated` on purpose: a closure formed inside
+/// a @MainActor method inherits that isolation, and its runtime check traps when
+/// the closure runs on another queue (.claude/rules/swift-daemon.md).
+nonisolated func makeTerminationBackstop(
+    signal: Int32,
+    after seconds: Double,
+    queue: DispatchQueue = DispatchQueue(label: "bound.serendipity.agentdeck.termination-backstop"),
+    action: @escaping @Sendable () -> Void = {
+        NSLog("[AgentDeck] Signal shutdown backstop — forcing exit")
+        Darwin.exit(0)
+    }
+) -> DispatchSourceSignal {
+    let source = DispatchSource.makeSignalSource(signal: signal, queue: queue)
+    source.setEventHandler {
+        queue.asyncAfter(deadline: .now() + seconds, execute: action)
+    }
+    source.resume()
+    return source
+}
+
 #endif

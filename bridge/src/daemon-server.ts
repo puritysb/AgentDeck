@@ -62,6 +62,7 @@ import { loadRelayConfig } from './relay-config.js';
 import {
   setAwaitingOverlay,
   setPermissionNotificationOverlay,
+  setPermissionRequestOverlay,
   setAskUserQuestionOverlay,
   advanceAskUserQuestionOverlay,
   getAskUserQuestionAnswers,
@@ -350,6 +351,7 @@ import {
 } from './types.js';
 
 import { hookPayloadProjectName, resolveProjectNameFromCwdCached } from './utils/project-name.js';
+import { buildSetupStatusPayload, claudeHookPresence, withinBudget } from './setup-status.js';
 
 function exitProcessNow(code = 0): void {
   if (code === 0) {
@@ -2278,17 +2280,26 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // and ACAO there would hand the pairing token to any web page the user
     // happens to visit (the request comes from their own machine, so it passes
     // the local check). This payload is deliberately the public-health fields
-    // plus the session state word — no token, no modules, no session inventory.
+    // plus the session state word, the session COUNT and whether Claude hooks
+    // are installed — no token, no modules, no session inventory. Shape pinned
+    // for both daemons by shared/setup-status-contract.json (setup-status.ts).
     if (req.method === 'GET' && pathname === '/setup-status') {
-      const snap = core.stateMachine.getSnapshot();
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify({
-        status: 'ok', mode: 'daemon', port, state: snap.state, isSwift: false,
-      }));
+      void (async () => {
+        const snap = core.stateMachine.getSnapshot();
+        // The roster is the same pipeline sessions_list uses; bounded so a slow
+        // observer scan costs the panel a field, not an answer.
+        const roster = await withinBudget(core.buildSessionsSnapshot(), 1_000);
+        const cached = (core.getLastSessionsListEvent() as { sessions?: unknown[] } | null)?.sessions;
+        const sessions = roster ? roster.length : (Array.isArray(cached) ? cached.length : null);
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify(buildSetupStatusPayload({
+          port, state: snap.state, sessions, claudeHooks: claudeHookPresence(),
+        })));
+      })();
       return;
     }
     // ── Pairing window, operator side ─────────────────────────────────────
@@ -3591,7 +3602,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           PreToolUse: 'tool_start', PostToolUse: 'tool_end',
           PostToolUseFailure: 'tool_failure',
           Stop: 'stop', UserPromptSubmit: 'user_prompt_submit',
-          Notification: 'notification',
+          Notification: 'notification', PermissionRequest: 'permission_request',
         };
         const mapped = eventMap[eventName] ?? eventName;
         // Agent-prefixed lifecycle hooks (codex_* / opencode_*) reuse the
@@ -3802,7 +3813,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const toolUseId = typeof json.tool_use_id === 'string' ? json.tool_use_id : undefined;
           const toolInput = (json.tool_input && typeof json.tool_input === 'object')
             ? json.tool_input as Record<string, unknown> : undefined;
-          if (mapped === 'notification') {
+          if (mapped === 'permission_request') {
+            // Claude Code runs PermissionRequest as it is about to draw its
+            // permission dialog — the immediate signal, where the
+            // permission_prompt Notification below waits ~6 s of keyboard
+            // silence. Display-only: the installed hook prints nothing, so it
+            // never decides the prompt. Same overlay the Notification sets,
+            // with the tool details the Notification lacks; the later
+            // Notification keeps it (setPermissionNotificationOverlay), and the
+            // same tool/turn hooks clear it.
+            notePermissionPromptShown(claudeSid);
+            if (setPermissionRequestOverlay(claudeSid, buildGateQuestion(toolName, toolInput), isPendingRequest)) {
+              core.broadcastSessionsList().catch(() => {});
+            }
+          } else if (mapped === 'notification') {
             const message = typeof json.message === 'string' ? json.message : '';
             const notificationType = typeof json.notification_type === 'string' ? json.notification_type : undefined;
             if (isPermissionNotification(notificationType, message)) {
@@ -3811,9 +3835,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               // auto-approved (observed-steering learner).
               notePermissionPromptShown(claudeSid);
               // AskUserQuestion emits this generic permission notification
-              // several seconds after its structured PreToolUse. Never replace
-              // the real question/options with the generic message.
-              if (setPermissionNotificationOverlay(claudeSid, message)) {
+              // several seconds after its structured PreToolUse, a held gate
+              // owns its requestId, and PermissionRequest already showed this
+              // prompt with its tool. Never replace any of them.
+              if (setPermissionNotificationOverlay(claudeSid, message, isPendingRequest)) {
                 // Broadcast immediately rather than waiting for the 2s debounce
                 // or the 5s observer tick, so the prompt surfaces within one frame.
                 core.broadcastSessionsList().catch(() => {});
@@ -4340,6 +4365,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                     core.broadcastSessionsList().catch(() => {});
                   },
                 });
+                releaseHoldOnHookClose(requestId, res);
                 return; // response held open — resolved by device / timeout
               }
               debug('daemon', `AskUserQuestion not held: ${gate.reason} (${claudeSid.slice(0, 8)})`);
@@ -4382,6 +4408,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
                   core.broadcastSessionsList().catch(() => {});
                 },
               });
+              releaseHoldOnHookClose(requestId, res);
               return; // response held open — resolved by device / timeout
             }
           }
@@ -5676,6 +5703,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       },
     });
     // Codex killed the hook (Ctrl+C, quit): nothing will read an answer now.
+    releaseHoldOnHookClose(requestId, res);
+  }
+  /** A held hook whose HTTP client went away — the agent killed the hook,
+   *  the hook's own timeout fired (the pre-fix Windows script gave up after
+   *  2 s), the user quit — can no longer deliver a decision. Release it as
+   *  `pass` at once instead of keeping its device prompt (and the session's
+   *  one-hold slot) for the rest of the 25 s hold. */
+  function releaseHoldOnHookClose(requestId: string, res: import('http').ServerResponse): void {
     res.on('close', () => {
       if (isPendingRequest(requestId)) passPending(requestId);
     });

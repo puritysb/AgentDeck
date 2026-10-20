@@ -43,6 +43,45 @@ final class MonitorAttentionSelectionTests: XCTestCase {
             in: [], inspectedSessionID: first.id, controlFocusedSessionID: focused.id))
     }
 
+    func testInspectionFollowsDeclaredFoldMembershipWhenRepresentativeChanges() throws {
+        let hardware = waitingSession("hardware", question: "Hardware question")
+        var original = waitingSession("group-first", question: "First group question")
+        original.foldedSessionIds = ["group-first", "group-next"]
+        var state = DashboardState()
+        state.siblingSessions = [hardware, original]
+        state.focusedSessionId = hardware.id
+        let inspection = DashboardInspection()
+        inspection.select(original.id, state: state)
+
+        var replacement = waitingSession("group-next", question: "Next group question")
+        replacement.foldedSessionIds = original.foldedSessionIds
+        state.siblingSessions = [hardware, replacement]
+        let featured = try XCTUnwrap(MonitorAttentionSelection.featuredSession(
+            in: state.siblingSessions,
+            inspectedSessionID: inspection.sessionId,
+            controlFocusedSessionID: state.focusedSessionId))
+
+        XCTAssertEqual(inspection.sessionId, original.id, "The existing local selection survives roster updates")
+        XCTAssertEqual(featured.id, replacement.id)
+        XCTAssertEqual(featured.question, "Next group question")
+        XCTAssertEqual(state.focusedSessionId, hardware.id)
+    }
+
+    func testExactInspectionWinsOverAliasesAndControlFocusNeverFollowsAliases() {
+        let fallback = waitingSession("fallback", question: "First sorted question")
+        let exact = waitingSession("member", question: "Exact question")
+        var folded = waitingSession("representative", question: "Folded question")
+        folded.foldedSessionIds = [folded.id, exact.id]
+
+        XCTAssertEqual(MonitorAttentionSelection.featuredSession(
+            in: [fallback, folded, exact], inspectedSessionID: exact.id,
+            controlFocusedSessionID: fallback.id)?.id, exact.id)
+        XCTAssertEqual(MonitorAttentionSelection.featuredSession(
+            in: [fallback, folded], inspectedSessionID: nil,
+            controlFocusedSessionID: exact.id)?.id, fallback.id,
+                       "A folded display alias cannot make another session the control-focused card")
+    }
+
     private func waitingSession(_ id: String, question: String) -> SessionInfo {
         var session = SessionInfo(id: id, port: 9120, projectName: "Same project")
         session.alive = true

@@ -4,6 +4,8 @@
   "Name": "AgentDeck",
   "Description": "Monitor and steer AI coding agents (Claude Code, Codex, OpenCode, OpenClaw) from your D200H or D200X.",
   "Icon": "resources/icons/plugin.png",
+  "Category": "AgentDeck",
+  "CategoryIcon": "resources/icons/categoryIcon.png",
   "CodePath": "plugin/app.js",
   "Type": "JavaScript",
   "UUID": "com.ulanzi.ulanzistudio.agentdeck",

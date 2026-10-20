@@ -10,7 +10,21 @@ import {
   TASK_NAME,
   xmlEscape,
   buildScheduledTaskXml,
+  getDaemonNodeTarget,
 } from '../windows-service.js';
+import { isAbsolute } from 'path';
+
+describe('getDaemonNodeTarget', () => {
+  // The task must not depend on PATH: @agentdeck/setup may have installed the
+  // CLI into a per-user prefix only that setup run had on PATH.
+  it('resolves the running node and the cli.js beside this module as absolute paths', () => {
+    const { node, cliJs } = getDaemonNodeTarget();
+    expect(node).toBe(process.execPath);
+    expect(isAbsolute(node)).toBe(true);
+    expect(isAbsolute(cliJs)).toBe(true);
+    expect(cliJs).toMatch(/cli\.js$/);
+  });
+});
 
 describe('xmlEscape', () => {
   it('escapes XML metacharacters', () => {

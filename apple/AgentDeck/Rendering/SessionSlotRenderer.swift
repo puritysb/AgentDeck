@@ -36,7 +36,10 @@
 // Pin moved 2026-10-06 with NO port (#463): `formatModelEffort` now shows every
 // reported effort level (only the literal `default` is omitted) and
 // `renderDetailInfo` bounds the mode word — neither is in this mirror's scope.
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 8d1390d271d8f6e078e37fcbb4cc605fe78e8b87
+// Pin moved 2026-10-19 with NO port (Ulanzi QA): `renderBackButton` takes the
+// open session's name as its subtitle. This mirror has no BACK tile; the D200H
+// Device Preview draws BACK itself and carries the label (D200HLayoutModel).
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts ee8a897a1ca080b9e19053a5dc0948076145f974
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)

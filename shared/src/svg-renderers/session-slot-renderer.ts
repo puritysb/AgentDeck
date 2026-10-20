@@ -694,8 +694,9 @@ export function renderOpenAppQuadrant(quadrant: ClusterQuadrant, label = PASSIVE
   ].join('');
 }
 
-export function renderBackButton(): string {
-  return renderStatusCard({ icon: 'back', label: 'BACK', subtitle: 'sessions', tone: 'muted' });
+/** BACK to the session list. `title` names the session whose detail is open. */
+export function renderBackButton(title?: string): string {
+  return renderStatusCard({ icon: 'back', label: 'BACK', subtitle: title || 'sessions', tone: 'muted' });
 }
 
 export function renderNextPageButton(pageLabel: string): string {

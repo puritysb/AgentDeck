@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 enum HookInstaller {
     private static let hookEvents = [
         "SessionStart", "SessionEnd", "PreToolUse",
-        "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "UserPromptSubmit",
+        "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest", "UserPromptSubmit",
         "SubagentStart", "SubagentStop", "TaskCompleted", "TeammateIdle",
     ]
 
@@ -327,7 +327,9 @@ enum HookInstaller {
             return lines.joined(separator: "\n")
         }
         // Everything else is fire-and-forget telemetry — the reply (`{received:true}`)
-        // never steers Claude, so the POST must be bounded. Claude gives all
+        // never steers Claude, so the POST must be bounded. `PermissionRequest`
+        // is one of them on purpose: a display signal that Claude waits for
+        // before drawing its dialog, so it returns at once and prints nothing. Claude gives all
         // SessionEnd hooks a single ~1.5s abort budget, and a daemon that is
         // restarting keeps the socket open without answering: an unbounded curl
         // there gets killed and Claude prints
@@ -341,7 +343,7 @@ enum HookInstaller {
     private static func buildHookEntry(_ event: String) -> [String: Any] {
         // Tool-specific hooks need glob matcher "*" to fire. Empty "" means
         // "match nothing" for tool events. Non-tool events ignore matcher.
-        let needsToolMatcher = ["PreToolUse", "PostToolUse", "PostToolUseFailure"].contains(event)
+        let needsToolMatcher = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest"].contains(event)
         return [
             "matcher": needsToolMatcher ? "*" : "",
             "hooks": [[

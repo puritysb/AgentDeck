@@ -293,7 +293,21 @@ describe('serial layer behind the routes', () => {
     expect(board.wifiProvisionAck).toBeUndefined();
     recordWifiProvisionAck(board, { success: true, joined: false }, 4_000);
     expect(board.wifiProvisionAck).toEqual({ success: true, joined: false, ip: '', error: '', at: 4_000 });
-    expect(board.wifiProvisionAckLedger).toEqual({ owed: 0, lastWriteAt: 2_000 });
+    expect(board.wifiProvisionAckLedger).toEqual({ owed: 0, lastWriteAt: 2_000, latestCredId: msg.credId });
+  });
+
+  it('an ack naming an earlier provision is not shown as the latest one\'s result', () => {
+    const board = conn('/dev/cu.named', { ...parked, wifiCredId: '' });
+    use([board]);
+    const earlier = { ...msg, credId: '0123456789abcdef' };
+    writeWifiProvision(board, earlier, 1_000);
+    writeWifiProvision(board, msg, 2_000);
+    // The board names the provision it answers.
+    recordWifiProvisionAck(board, { success: true, joined: false, credId: earlier.credId }, 3_000);
+    expect(board.wifiProvisionAck).toBeUndefined();
+    recordWifiProvisionAck(board, { success: true, joined: true, ip: '192.168.1.23', credId: msg.credId }, 4_000);
+    expect(board.wifiProvisionAck).toMatchObject({ success: true, joined: true, ip: '192.168.1.23' });
+    expect(board.wifiProvisionAckLedger?.owed).toBe(0);
   });
 
   it('logs connected only for a board that says it joined (ESP32WifiSetupTests: the same lines)', () => {

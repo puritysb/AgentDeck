@@ -1,83 +1,134 @@
-# AgentDeck for D200H — Getting started
+# AgentDeck for Ulanzi D200H / D200X — Getting started
 
-Written for Ulanzi Studio reviewers and first-time users. Ulanzi's internal
-testers reported (2026-08-05) that dragging the action onto a key left them with
-no idea what to do next, which is the gap this page fills.
+AgentDeck puts your AI coding sessions (Claude Code, Codex, OpenCode, Kiro and
+others) on your Ulanzi keys: one key per session, its live state on the key,
+and your answer sent back with a press.
 
-## What this plugin is, and why an empty key is expected
+The plugin is a **thin client**, like an OBS plugin. It draws what a small
+AgentDeck program on the same computer, the *daemon*, reports, and it sends your
+key presses back to it. The plugin itself bundles no daemon, touches no USB HID
+and collects no analytics. Setup is therefore two things: run the daemon, then
+use your agents as usual.
 
-AgentDeck is a **thin client**, in the same sense as an OBS plugin: it draws
-what a local AgentDeck daemon reports and sends your key presses back to it. The
-plugin bundles no daemon, touches no USB HID, and collects no analytics.
+## Step 1 — run the AgentDeck daemon
 
-So on a machine where AgentDeck is not running yet, the keys are *supposed* to
-look inert — the center key shows **OFFLINE · Open AgentDeck** with the install
-command underneath. That is the plugin working correctly and telling you the
-daemon is the missing piece. Two steps fix it.
+Follow the section for your computer.
 
-## Step 1 — get the AgentDeck daemon running
+### Windows
 
-Either path is complete on its own. Pick one.
+1. Install [Node.js](https://nodejs.org/) 22 or later, if you do not have it.
+2. Open Windows Terminal, PowerShell or Command Prompt and run:
 
-**macOS 26+, no terminal** — install the free
-[AgentDeck Dashboard from the Mac App Store](https://apps.apple.com/app/id6784822497)
-and open it. The app carries its own daemon; there is nothing else to install,
-no account, and no Node.js. It requires macOS 26 or later, and it is not offered
-on every storefront — on an earlier macOS, or where the listing is unavailable,
-take the terminal path below. It is complete on its own, not a fallback.
+   ```text
+   npx -y @agentdeck/setup --yes
+   ```
 
-**macOS or Windows, from a terminal** — with Node.js 22+ installed:
+That one line installs the `agentdeck` command, starts the daemon now and at
+every sign-in (a per-user scheduled task, no administrator rights needed), and
+installs the reporting hooks for the coding agents it finds on this computer.
 
-```bash
-npx @agentdeck/setup
-```
+- **PowerShell says "running scripts is disabled on this system" (`npx.ps1`).**
+  Run the same line in Command Prompt (`cmd.exe`), or type `npx.cmd` in place of
+  `npx`. Nothing else needs to change.
+- **"npx is not recognized".** Node.js is missing or the terminal predates the
+  install. Install Node.js, then open a new terminal window.
+- **Keys still OFFLINE.** Run the command again; it is safe to repeat. Then run
+  `agentdeck status` to see whether the daemon is up and which port it uses.
 
-That installs the `agentdeck` CLI, starts the local daemon, and registers the
-lifecycle hooks for whichever agent CLI is already present.
+### macOS
 
-Both paths serve the same local WebSocket on port 9120, which is what this
-plugin connects to. Nothing leaves the machine.
+Pick one path; each is complete on its own.
 
-## Step 2 — start an agent session
+- **macOS 26 or later, no terminal.** Install the free
+  [AgentDeck Dashboard from the Mac App Store](https://apps.apple.com/app/id6784822497)
+  and open it. The app carries its own daemon: nothing else to install, no
+  account, no Node.js. It is not offered on every storefront.
+- **Any macOS, from Terminal.** With [Node.js](https://nodejs.org/) 22 or later:
 
-The deck mirrors real work, so it stays empty until there is some. In your own
-terminal, start any supported agent the way you normally would:
+  ```bash
+  npx -y @agentdeck/setup --yes
+  ```
+
+  This installs the `agentdeck` command, starts the daemon now and at every login
+  (a LaunchAgent), and installs the reporting hooks for the coding agents it
+  finds.
+
+Codex sessions started in the ChatGPT app appear too, once Codex integration is
+registered: the Terminal setup does it for you, and the App Store app asks in
+Settings.
+
+- **Keys still OFFLINE.** With the app, check that it is running; its icon is in
+  the menu bar. With the Terminal path, run the command again (it is safe to
+  repeat), then `agentdeck status`.
+
+Both paths serve the same local connection on port 9120, which is what the
+plugin talks to. Nothing leaves the computer.
+
+## Step 2 — start an agent
+
+In any project folder, start your agent the way you normally do:
 
 ```bash
 claude          # or: codex, opencode
 ```
 
-No AgentDeck-specific command is needed — the hooks installed in step 1 report
-the session automatically. Within a second or two the OFFLINE key is replaced by
-one key per live session.
+There is no AgentDeck-specific command. Sessions reach AgentDeck through
+**hooks**: small entries in each agent's own settings that report what the
+session is doing. The step 1 command installs them for Claude Code, Codex,
+OpenCode and Kiro, for whichever of those it finds. **If you install an agent
+after running setup, run the step 1 command again** so that agent gets its hooks
+too.
 
-If you only want to *see* the plugin render without running an agent, the
-Mac App Store app's built-in Device Preview draws every surface, D200H included,
-with simulated sessions.
+As soon as the session reports in, a key turns into that session.
 
-## Step 3 — read and use the keys
+## Step 3 — fill your keys
 
-Fill as many keys as you like with the single **AgentDeck** action; each key
-reflows on its own as work happens. There is nothing to configure per key.
+Drag the **AgentDeck** action onto every key you want AgentDeck to use. It is
+the only action; each key decides for itself what to show, and the layout spreads
+over exactly the keys you placed. There is nothing to configure per key.
 
-| On the key | Meaning |
+What the keys show before everything is running is itself a guide:
+
+| The keys show | It means |
 |---|---|
-| Agent mark + project name | Which session this key is bound to |
-| Green | Idle — waiting for your next prompt |
-| Blue | Processing — the agent is working |
-| **Amber** | **Waiting on you** — a permission, an option, or a diff to approve. This is the only state that animates |
-| Grey | Disconnected |
-| OFFLINE | No daemon reachable, or no session yet (see steps 1 and 2) |
+| One dark **OFFLINE** card across all keys | The plugin cannot reach the daemon. Do step 1. |
+| **HUB READY** and **NO SESSION** | The daemon runs, but no agent session exists yet. Do step 2. |
+| One key per session | Everything works. |
 
-Pressing a key focuses that session; when a session is waiting on you, the key
-becomes the answer control — pick an option, allow or deny, switch mode, or
-stop. The usage keys show quota with reset countdowns.
+## What the keys do
 
-## What differs between the two daemons
+- **Session keys.** One key per session, showing the agent, the project and
+  whether it is working, waiting for you, or done. A session waiting for you
+  (a permission, a choice, a diff to review) is amber, and amber is the only
+  state that animates.
+- **Press a session key** to open it. **BACK**, labelled with the session's
+  name, returns to the list. The next key shows what the session is doing. When
+  the agent asks a question, its answers appear as keys: press one to answer.
+  The last key is **Stop**, where the session allows it.
+- **Usage keys** show how much of your Claude and Codex subscription limits is
+  used in the current 5-hour and 7-day windows, with the time until each resets.
+- **More sessions than keys:** the last key becomes **MORE** and pages through
+  the rest.
+
+## Still stuck
+
+1. **Is the daemon running?** Open the Mac App Store app, or run
+   `agentdeck status` in a terminal.
+2. **Is it the same computer?** The plugin only talks to the daemon on this
+   computer (`127.0.0.1`). A daemon on another machine is not reachable by
+   design.
+3. **Port taken?** `agentdeck status` reports the port actually in use. The
+   daemon moves to the next free port when 9120 is occupied, and the plugin
+   looks there too.
+4. **The setup panel says no session, but the keys show sessions?** Trust the
+   keys. Older daemons cannot report a session count to the panel; updating with
+   the step 1 command fixes the panel.
+
+## What differs between the two macOS daemons
 
 Everything above works with either. One capability does not:
 
-| | Mac App Store app | `npx @agentdeck/setup` |
+| | Mac App Store app | `npx -y @agentdeck/setup --yes` |
 |---|---|---|
 | Session keys, states, steering, stop | Yes | Yes |
 | Codex rate limits | Yes | Yes |
@@ -86,27 +137,26 @@ Everything above works with either. One capability does not:
 
 The Claude row is a policy boundary, not a missing feature: Anthropic's terms
 prohibit third-party routing through subscription credentials, so the sandboxed
-app has no standalone path to those numbers and displays them only when a CLI
+app has no standalone path to those numbers and shows them only when a CLI
 daemon supplies them. Full matrix:
 [docs/appstore-feature-matrix.md](../../docs/appstore-feature-matrix.md).
-
-## If the keys still say OFFLINE
-
-1. **Is the daemon running?** Open the Mac App Store app, or run
-   `agentdeck status` in a terminal.
-2. **Is it the same machine?** The plugin only talks to `127.0.0.1:9120`. A
-   daemon on another computer is not reachable by design.
-3. **Port taken?** `agentdeck status` reports the port actually in use; the
-   daemon picks the next free one when 9120 is occupied, and the plugin follows
-   the same discovery.
-4. **Nothing to show?** A running daemon with no agent session still shows
-   OFFLINE on the D200H, because there is no session to draw. Start an agent
-   (step 2).
 
 ## Support
 
 - Issues: <https://github.com/puritysb/AgentDeck/issues>
 - Overview and device catalog: <https://puritysb.github.io/AgentDeck/>
+
+## Background for reviewers
+
+This page is the "Full guide" linked from the plugin's setup panel (opened in
+the system browser through the SDK's `openUrl`). It exists because Ulanzi's
+internal testers reported (2026-08-05) that dragging the action onto a key left
+them with no idea what to do next. The Ulanzi Studio QA round of 2026-10-19
+(plugin 1.8.1 on Windows) led to the current shape: separate Windows and macOS
+instructions, a setup command that starts the daemon (`--yes`), the hooks note,
+and the table of what the keys show before a session exists. The earlier version
+of this page said a running daemon with no session shows OFFLINE; the deck
+actually shows HUB READY / NO SESSION in that case.
 
 AgentDeck is an independent project, not affiliated with or endorsed by Ulanzi,
 Anthropic, OpenAI, or any other third party mentioned. All trademarks belong to

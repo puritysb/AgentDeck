@@ -221,8 +221,9 @@ export const WIFI_PROVISION_ACK_TIMEOUT_MS = 30_000;
 
 /**
  * Which provision a `wifi_provision_ack` answers. The board answers one
- * provision at a time, in the order written, and its ack names none, so each
- * serial connection counts the answers it is owed: an ack that arrives while a
+ * provision at a time, in the order written. Current firmware echoes the
+ * provision's `credId` in its ack; older firmware names none, so each serial
+ * connection also counts the answers it is owed: an ack that arrives while a
  * later provision is still owed one answers an earlier provision, and must not
  * be shown as the later one's result.
  */
@@ -231,24 +232,38 @@ export interface WifiProvisionAckLedger {
   owed: number;
   /** When the latest was written (epoch ms); 0 = none. */
   lastWriteAt: number;
+  /** The latest provision's `credId`; '' = it carried none. */
+  latestCredId: string;
 }
 
-export const WIFI_PROVISION_ACK_LEDGER_EMPTY: WifiProvisionAckLedger = { owed: 0, lastWriteAt: 0 };
+export const WIFI_PROVISION_ACK_LEDGER_EMPTY: WifiProvisionAckLedger = { owed: 0, lastWriteAt: 0, latestCredId: '' };
 
-/** The ledger after writing a provision at `now` (epoch ms). */
-export function wifiProvisionAckWritten(ledger: WifiProvisionAckLedger, now: number): WifiProvisionAckLedger {
+/** The ledger after writing a provision carrying `credId` at `now` (epoch ms). */
+export function wifiProvisionAckWritten(
+  ledger: WifiProvisionAckLedger,
+  now: number,
+  credId = '',
+): WifiProvisionAckLedger {
   const lost = ledger.owed > 0 && now - ledger.lastWriteAt > WIFI_PROVISION_ACK_TIMEOUT_MS;
-  return { owed: (lost ? 0 : ledger.owed) + 1, lastWriteAt: now };
+  return { owed: (lost ? 0 : ledger.owed) + 1, lastWriteAt: now, latestCredId: credId };
 }
 
 /**
- * An ack arrived: whether it answers the latest provision, and the ledger
- * after it. An ack nothing was owed for (a provision from before this
- * connection's count began) is taken as the latest answer.
+ * An ack arrived, naming `ackCredId` ('' = none): whether it answers the
+ * latest provision, and the ledger after it. When both the ack and the latest
+ * provision carry an id, the ids decide; a mismatch answers an earlier
+ * provision, and leaves the latest owed. Otherwise the count decides, and an
+ * ack nothing was owed for (a provision from before this connection's count
+ * began) is taken as the latest answer.
  */
 export function wifiProvisionAckAnswered(
   ledger: WifiProvisionAckLedger,
+  ackCredId = '',
 ): { latest: boolean; ledger: WifiProvisionAckLedger } {
-  if (ledger.owed > 1) return { latest: false, ledger: { owed: ledger.owed - 1, lastWriteAt: ledger.lastWriteAt } };
-  return { latest: true, ledger: { owed: 0, lastWriteAt: ledger.lastWriteAt } };
+  if (ledger.latestCredId !== '' && ackCredId !== '') {
+    if (ackCredId === ledger.latestCredId) return { latest: true, ledger: { ...ledger, owed: 0 } };
+    return { latest: false, ledger: { ...ledger, owed: ledger.owed > 1 ? ledger.owed - 1 : ledger.owed } };
+  }
+  if (ledger.owed > 1) return { latest: false, ledger: { ...ledger, owed: ledger.owed - 1 } };
+  return { latest: true, ledger: { ...ledger, owed: 0 } };
 }

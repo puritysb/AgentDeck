@@ -124,25 +124,43 @@ enum ESP32WifiProvisionRules {
     /// come; an answer owed for longer was lost.
     static let ackTimeoutMs = ${rules.ackTimeoutMs}
 
-    /// The answers a serial connection is owed. A \`wifi_provision_ack\` names
-    /// no provision, and the board takes provisions one at a time, in order.
+    /// The answers a serial connection is owed. Current firmware echoes the
+    /// provision's \`credId\` in its \`wifi_provision_ack\`; older firmware names
+    /// none, and the board takes provisions one at a time, in order.
     struct AckLedger: Equatable, Sendable {
         var owed = 0
         /// When the latest provision was written (epoch ms); 0 = none.
         var lastWriteAt = 0
+        /// The latest provision's \`credId\`; "" = it carried none.
+        var latestCredId = ""
     }
 
-    /// The ledger after writing a provision at \`now\` (epoch ms).
-    static func ackWritten(_ ledger: AckLedger, now: Int) -> AckLedger {
+    /// The ledger after writing a provision carrying \`credId\` at \`now\` (epoch ms).
+    static func ackWritten(_ ledger: AckLedger, now: Int, credId: String = "") -> AckLedger {
         let lost = ledger.owed > 0 && now - ledger.lastWriteAt > ackTimeoutMs
-        return AckLedger(owed: (lost ? 0 : ledger.owed) + 1, lastWriteAt: now)
+        return AckLedger(owed: (lost ? 0 : ledger.owed) + 1, lastWriteAt: now, latestCredId: credId)
     }
 
-    /// An ack arrived: whether it answers the latest provision, and the ledger
-    /// after it. An ack nothing was owed for is taken as the latest answer.
-    static func ackAnswered(_ ledger: AckLedger) -> (latest: Bool, ledger: AckLedger) {
-        if ledger.owed > 1 { return (false, AckLedger(owed: ledger.owed - 1, lastWriteAt: ledger.lastWriteAt)) }
-        return (true, AckLedger(owed: 0, lastWriteAt: ledger.lastWriteAt))
+    /// An ack arrived, naming \`ackCredId\` ("" = none): whether it answers the
+    /// latest provision, and the ledger after it. When both carry an id, the
+    /// ids decide; otherwise the count does, and an ack nothing was owed for is
+    /// taken as the latest answer.
+    static func ackAnswered(_ ledger: AckLedger, ackCredId: String = "") -> (latest: Bool, ledger: AckLedger) {
+        var next = ledger
+        if !ledger.latestCredId.isEmpty && !ackCredId.isEmpty {
+            if ackCredId == ledger.latestCredId {
+                next.owed = 0
+                return (true, next)
+            }
+            if ledger.owed > 1 { next.owed = ledger.owed - 1 }
+            return (false, next)
+        }
+        if ledger.owed > 1 {
+            next.owed = ledger.owed - 1
+            return (false, next)
+        }
+        next.owed = 0
+        return (true, next)
     }
 
     /// 802.11 caps an SSID at this many octets.

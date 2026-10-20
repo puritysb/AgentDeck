@@ -16,6 +16,7 @@ import {
   managedPtyCompatibilityNotice,
 } from '../cli.js';
 import { allModulesOff } from '../modules/types.js';
+import { isAbsolute } from 'path';
 
 // The claude action dynamically imports './index.js' (same module id as this
 // '../index.js') to reach startSession. The explicit factory matters:
@@ -421,6 +422,20 @@ describe('daemon autostart posture', () => {
     expect(plist.indexOf('<string>--loopback</string>')).toBeGreaterThan(
       plist.indexOf('<string>--foreground</string>'),
     );
+  });
+
+  it('the LaunchAgent launches absolute node + cli.js paths, never a PATH lookup', () => {
+    // @agentdeck/setup may install the CLI into a per-user npm prefix
+    // (~/.agentdeck/npm) that only this run's PATH knows about; autostart
+    // must not depend on the login PATH finding `agentdeck`.
+    const plist = buildPlist();
+    const array = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)?.[1] ?? '';
+    const programArgs = [...array.matchAll(/<string>([^<]*)<\/string>/g)].map((m) => m[1]);
+    expect(programArgs[0]).toBe(process.execPath);
+    expect(isAbsolute(programArgs[0])).toBe(true);
+    expect(isAbsolute(programArgs[1])).toBe(true);
+    expect(programArgs[1]).toMatch(/cli\.js$/);
+    expect(programArgs.slice(2, 4)).toEqual(['daemon', 'start']);
   });
 
   it('a plain LaunchAgent is byte-identical to the pre-posture one', () => {

@@ -45,3 +45,13 @@ permission was off, temporary enable/restore permission was unanswered, and the 
 relocked during automatic verification. The results above establish Shortcuts
 behavior, not notification activation. The fixture was stopped and the original
 saved connection restored after QA.
+
+### Duplicate installation follow-up, 2026-10-20
+
+Renaming the old TestFlight copy to `.app.disabled` did **not** stop Launch
+Services from recognizing its bundle contents: the default reverted after Finder
+visited it again, despite targeted unregister/register calls. Ordinary Finder
+rename also hid the original extension and appended `.app`; Get Info's **Name &
+Extension** was needed to change the actual suffix. An extension change alone is
+therefore not evidence that the duplicate is disabled. The old copy still passed
+strict/deep signature verification.

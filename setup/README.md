@@ -11,11 +11,14 @@ npx @agentdeck/setup
 That is the whole install, on every platform. The wizard:
 
 1. Checks prerequisites (Node.js 22, 24, or 26; your agent CLIs; platform build tools)
-2. Installs the [`@agentdeck/bridge`](https://www.npmjs.com/package/@agentdeck/bridge) package globally — this provides the `agentdeck` CLI and the local daemon
+2. Installs the [`@agentdeck/bridge`](https://www.npmjs.com/package/@agentdeck/bridge) package globally — this provides the `agentdeck` CLI and the local daemon. If npm's global prefix is not writable (system Node with a root-owned `/usr/local`), it installs into `~/.agentdeck/npm` and adds one marked PATH line to your login profile — never `sudo`
 3. Registers Claude Code lifecycle hooks so sessions report state automatically
 4. Seeds the local data directory
+5. Offers to install the daemon autostart (`--yes` installs it without asking); deck keys stay OFFLINE until it runs
 
-Then start the daemon and run your agent normally:
+Flags: `--yes`, `--enterprise` (loopback-only daemon, implies `--yes`), `--statusline`, `--surface=ulanzi|streamdeck` (which deck host the closing steps describe; detected otherwise). Details: [install.md](https://github.com/puritysb/AgentDeck/blob/master/docs/install.md#what-npx-agentdecksetup-does).
+
+Then start the daemon (if you did not let setup do it) and run your agent normally:
 
 ```bash
 agentdeck daemon install

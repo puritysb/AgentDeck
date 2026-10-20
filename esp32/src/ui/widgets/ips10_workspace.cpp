@@ -5,6 +5,7 @@
 #include "ips10_workspace.h"
 #include "../terrarium/creature_glyphs_generated.h"
 #include "ips10_ocean_generated.h"
+#include "miniz.h"  // ROM inflater (tinfl_decompress)
 #include "ips10_relief_claude_generated.h"
 #include "ips10_relief_codex_generated.h"
 #include "ips10_relief_openclaw_generated.h"
@@ -112,6 +113,43 @@ static uint32_t voiceLastUpdate=0;
 static char lastVoicePhase[24]{};
 static int meterLevel=0;
 
+// The background ships zlib-compressed (512,000 B -> 86,363 B of flash) and is
+// inflated once, on first use, by the ROM inflater. Raw, it left this board's
+// 6 MB OTA slot 99.2% full (2026-10-19). Device-lifetime owner of 512,000 B in
+// PSRAM, a cold-path image source like oceanPixels below; the inflater state
+// (~11 KB, too large for the loop stack) is freed as soon as it finishes.
+// nullptr means no ocean: callers keep the plain DeepSea fill.
+static const lv_image_dsc_t* oceanImage() {
+    static lv_image_dsc_t image{};
+    static bool attempted=false;
+    if(image.data)return &image;
+    if(attempted)return nullptr;
+    attempted=true;
+    auto* pixels=static_cast<uint8_t*>(heap_caps_malloc(IPS10Ocean::RawBytes,MALLOC_CAP_SPIRAM));
+    auto* inflater=static_cast<tinfl_decompressor*>(heap_caps_malloc(sizeof(tinfl_decompressor),MALLOC_CAP_SPIRAM));
+    auto cleanup=makeScopedCleanup([&]{heap_caps_free(inflater);});
+    if(!pixels||!inflater){
+        heap_caps_free(pixels);
+        Serial.println("[Workspace] ocean image unavailable: no PSRAM");
+        return nullptr;
+    }
+    tinfl_init(inflater);
+    size_t inBytes=sizeof(IPS10Ocean::compressed), outBytes=IPS10Ocean::RawBytes;
+    const tinfl_status status=tinfl_decompress(inflater,IPS10Ocean::compressed,&inBytes,pixels,pixels,&outBytes,
+        TINFL_FLAG_PARSE_ZLIB_HEADER|TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    if(status!=TINFL_STATUS_DONE||outBytes!=IPS10Ocean::RawBytes){
+        heap_caps_free(pixels);
+        Serial.printf("[Workspace] ocean image inflate failed: status %d, %u B\n",(int)status,(unsigned)outBytes);
+        return nullptr;
+    }
+    image.header.magic=LV_IMAGE_HEADER_MAGIC;
+    image.header.cf=LV_COLOR_FORMAT_RGB565;
+    image.header.w=IPS10Ocean::Width;image.header.h=IPS10Ocean::Height;image.header.stride=IPS10Ocean::Stride;
+    image.data_size=IPS10Ocean::RawBytes;image.data=pixels;
+    logHeap("ips10-ocean-image");
+    return &image;
+}
+
 // Cache the static ocean after scaling/blending, once per orientation. Only
 // this cold-path image source lives in PSRAM; hot LVGL/PPA draw buffers stay
 // internal. Device-lifetime owner, at most 2,048,000 B: too large for stack or
@@ -124,7 +162,7 @@ static bool cachedOcean(lv_obj_t* parent, int w, int h) {
     if(bytes>OceanBytes)return false;
     if(!oceanPixels) {
         oceanPixels=static_cast<uint8_t*>(heap_caps_malloc(OceanBytes,MALLOC_CAP_SPIRAM));
-        if(!oceanPixels){Serial.println("[Workspace] ocean cache unavailable; using flash source");return false;}
+        if(!oceanPixels){Serial.println("[Workspace] ocean cache unavailable; drawing the source image");return false;}
         logHeap("ips10-ocean-cache");
     }
     auto* canvas=lv_canvas_create(parent);
@@ -137,12 +175,16 @@ static bool cachedOcean(lv_obj_t* parent, int w, int h) {
         static lv_layer_t layer;
         static lv_draw_image_dsc_t draw;
         lv_canvas_init_layer(canvas,&layer);
-        lv_draw_image_dsc_init(&draw);draw.src=&IPS10Ocean::image;
-        draw.scale_x=draw.scale_y=w*400>=h*640?w*256/640:h*256/400;
-        draw.pivot={0,0};draw.opa=LV_OPA_30;
-        const int x=-(640*draw.scale_x/256-w)/2;
-        lv_area_t area={x,0,x+639,399};
-        lv_draw_image(&layer,&draw,&area);lv_canvas_finish_layer(canvas,&layer);
+        lv_draw_image_dsc_init(&draw);
+        if(const lv_image_dsc_t* ocean=oceanImage()) {
+            draw.src=ocean;
+            draw.scale_x=draw.scale_y=w*400>=h*640?w*256/640:h*256/400;
+            draw.pivot={0,0};draw.opa=LV_OPA_30;
+            const int x=-(640*draw.scale_x/256-w)/2;
+            lv_area_t area={x,0,x+639,399};
+            lv_draw_image(&layer,&draw,&area);
+        }
+        lv_canvas_finish_layer(canvas,&layer);
         oceanWidth=w;oceanHeight=h;
     }
     return true;
@@ -358,8 +400,8 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     voiceLastUpdate=0;lastVoicePhase[0]=0;meterLevel=0;
     const int w=g_screenW,h=g_screenH, railW=w>=1100?320:248;
     root=box(parent,0,0,w,h,Theme::DeepSea);lv_obj_set_style_radius(root,0,0);
-    if(!cachedOcean(root,w,h)) {
-    auto* ocean=lv_image_create(root);lv_image_set_src(ocean,&IPS10Ocean::image);
+    if(!cachedOcean(root,w,h)) if(const lv_image_dsc_t* oceanSrc=oceanImage()) {
+    auto* ocean=lv_image_create(root);lv_image_set_src(ocean,oceanSrc);
     const int oceanScale=w*400>=h*640?w*256/640:h*256/400;
     lv_image_set_pivot(ocean,0,0);lv_image_set_scale(ocean,oceanScale);lv_obj_set_x(ocean,-(640*oceanScale/256-w)/2);
     lv_obj_set_style_image_opa(ocean,LV_OPA_30,0);lv_obj_clear_flag(ocean,LV_OBJ_FLAG_CLICKABLE);

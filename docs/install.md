@@ -36,6 +36,41 @@ The Node bridge/tooling supports the maintained, prebuild-verified even lines **
 
 ---
 
+## What npx @agentdeck/setup does
+
+Flags: `--yes` / `-y` also runs `agentdeck daemon install`; `--enterprise` implies `--yes` with a loopback-only
+daemon; `--statusline` opts into the Claude status-line relay; `--surface=ulanzi|streamdeck` picks which deck host
+the closing steps describe instead of detecting it. Unknown flags and values are ignored.
+
+- **Where the bridge goes.** Setup asks `npm prefix -g` and checks that this user can write its
+  `node_modules/@agentdeck` directory (or its nearest existing parent) and its `bin` directory. When it cannot —
+  system Node from the nodejs.org installer puts the prefix at root-owned `/usr/local` — the bridge is installed into
+  a per-user prefix, `~/.agentdeck/npm` (`npm install -g --prefix ~/.agentdeck/npm @agentdeck/bridge`). An `EACCES`
+  from npm on the default prefix triggers the same fallback. Setup never uses `sudo`. Once a per-user install exists,
+  later runs update it in place so an older copy cannot shadow a newer one on `PATH`.
+- **Making a per-user install reachable.** The rest of the setup run uses `~/.agentdeck/npm/bin` on its own `PATH`.
+  On macOS and Linux, setup appends one line marked `# added by @agentdeck/setup` to your login profile. That is
+  `~/.zprofile` for zsh (the macOS default; `$ZDOTDIR` is respected). For bash it is whichever of `~/.bash_profile`,
+  `~/.bash_login` or `~/.profile` already exists, and otherwise `~/.bash_profile` on macOS or `~/.profile` on Linux.
+  A rerun does not add a second line. Setup does not edit profiles for fish or other shells; it prints the line to add instead. On Windows it does
+  not edit the persistent user `PATH` (`setx` truncates at 1024 characters, and a registry read-modify-write cannot be
+  verified here); it prints the directory to add. The daemon's autostart unit does not depend on `PATH` in either case:
+  the LaunchAgent, Scheduled Task and systemd unit run absolute `node` and `cli.js` paths.
+- **npm failures.** npm's stderr is shown and kept. A permission error (`EACCES`/`EPERM`) is never retried as a
+  source build. Only a native-module build failure (`node-gyp`, prebuild, `NODE_MODULE_VERSION`) retries once with a
+  node-pty source build, which needs Xcode Command Line Tools or a C toolchain. Any other failure is printed with
+  the tail of npm's output.
+- **Claude Code check.** `claude --version` must succeed (5 s timeout). A `claude` that is installed but cannot run, such as an npm
+  install whose native binary never arrived, is reported as a warning to reinstall Claude Code. The hooks are still
+  installed.
+- **Deck host.** Setup detects the Elgato Stream Deck app and Ulanzi Studio (macOS: `/Applications/Ulanzi Studio.app`
+  or `~/Library/Application Support/Ulanzi/UlanziDeck`; the Windows locations are listed in [Windows](windows.md)).
+  It prints steps only for the host that is present. If it finds neither, it lists both plugin links. A host
+  you do not use is never a warning.
+- **Daemon autostart.** Without `--yes`, an interactive run asks `Install it now and start it on every login? [y/N]`.
+  A non-interactive run, or a run that answers no, ends with a warning that deck keys stay OFFLINE until
+  `agentdeck daemon install` runs. When the CLI went into a per-user prefix, the warning gives its absolute path.
+
 ## Hermes observation setup
 
 Hermes observation is opt-in. Installing or updating the AgentDeck app does not

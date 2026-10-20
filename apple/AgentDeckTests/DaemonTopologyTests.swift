@@ -152,4 +152,24 @@ final class DaemonTopologyTests: XCTestCase {
         }
     }
 }
+
+/// The SIGTERM backstop must fire while the main thread is busy. The handler
+/// DaemonService runs on the main queue was measured 5 to 6 s and about 40 s
+/// late during local deployments (2026-10-17/18).
+final class TerminationBackstopTests: XCTestCase {
+    func testBackstopFiresWhileTheMainThreadIsBlocked() {
+        // SIGUSR2 stands in for SIGTERM, which would end the test host.
+        signal(SIGUSR2, SIG_IGN)
+        let fired = DispatchSemaphore(value: 0)
+        // A queue at the waiting thread's QoS, so the wait is not a priority inversion.
+        let queue = DispatchQueue(label: "termination-backstop-test", qos: .userInteractive)
+        let source = makeTerminationBackstop(signal: SIGUSR2, after: 0.05, queue: queue, action: { fired.signal() })
+        defer { source.cancel() }
+        kill(getpid(), SIGUSR2)
+        // This test runs on the main thread and blocks it here, so a backstop
+        // that needed the main queue could not fire until the wait gave up.
+        XCTAssertTrue(Thread.isMainThread)
+        XCTAssertEqual(fired.wait(timeout: .now() + 3), .success)
+    }
+}
 #endif

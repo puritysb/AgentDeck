@@ -75,6 +75,10 @@ async function health(port: number): Promise<Record<string, any> | undefined> {
 
 async function startDaemon(port: number, home: string): Promise<Daemon> {
   let output = '';
+  // Refuse the APME judge's local MLX fallback (daemon-hub.e2e.test.ts says why).
+  const dataDir = join(home, '.agentdeck');
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ llm: { mlx: { endpoint: 'http://127.0.0.1:9' } } }));
   const child = spawn(process.execPath, [
     CLI, 'daemon', 'start', '--foreground', '--local', '--loopback', '--no-build',
     '--port-window', `${port}-${port}`, '--port', String(port),
@@ -84,7 +88,7 @@ async function startDaemon(port: number, home: string): Promise<Daemon> {
       ...process.env,
       HOME: home,
       USERPROFILE: home,
-      AGENTDECK_DATA_DIR: join(home, '.agentdeck'),
+      AGENTDECK_DATA_DIR: dataDir,
       AGENTDECK_DAEMON_NO_SERIAL: '1',
       AGENTDECK_LOOPBACK_ONLY: '1',
       AGENTDECK_DAEMON_NO_GATEWAY: '1',

@@ -46,6 +46,43 @@ final class BridgeConnectionDeliveryTests: XCTestCase {
         XCTAssertEqual(connection.status, .disconnected)
     }
 
+    @MainActor
+    func testCurrentDisconnectDeliveryNotifiesOnMainQueue() async {
+        let connection = BridgeConnection()
+        var disconnectCount = 0
+        connection.onDisconnect = {
+            XCTAssertTrue(Thread.isMainThread)
+            disconnectCount += 1
+        }
+
+        connection.dispatchDisconnect()
+        XCTAssertEqual(disconnectCount, 0, "Transport callbacks remain asynchronous")
+        let drained = expectation(description: "current disconnect delivered")
+        DispatchQueue.main.async { drained.fulfill() }
+        await fulfillment(of: [drained], timeout: 1)
+
+        XCTAssertEqual(disconnectCount, 1)
+    }
+
+    @MainActor
+    func testExplicitStopRejectsAlreadyQueuedDisconnectDelivery() async {
+        let connection = BridgeConnection()
+        var disconnectCount = 0
+        connection.onDisconnect = { disconnectCount += 1 }
+
+        // Keep the main actor until the old callback and Stop are both queued.
+        // stopConnectionAttempts() uses this disconnect() generation boundary;
+        // delivering the old callback would let the holder reconnect afterward.
+        connection.dispatchDisconnect()
+        connection.disconnect()
+        let drained = expectation(description: "stale disconnect discarded")
+        DispatchQueue.main.async { drained.fulfill() }
+        await fulfillment(of: [drained], timeout: 1)
+
+        XCTAssertEqual(disconnectCount, 0)
+        XCTAssertEqual(connection.status, .disconnected)
+    }
+
     private static func rosterFrame(sessionID: String) -> String {
         """
         {"type":"sessions_list","sessions":[{"id":"\(sessionID)","port":9120,"projectName":"Project","alive":true,"state":"awaiting_option"}]}

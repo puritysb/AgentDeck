@@ -408,6 +408,13 @@ actor ObservedSteering {
         }
     }
 
+    /// Release a held gate as undecided now — the hook's socket closed, so no
+    /// answer can reach it. Same outcome as the timer (`pass`, learner armed
+    /// for a permission gate); a no-op when the gate already resolved.
+    func releaseUndecided(requestId: String) {
+        timeoutGate(requestId: requestId)
+    }
+
     private func timeoutGate(requestId: String) {
         guard let gate = heldGates.removeValue(forKey: requestId) else { return }
         heldBySession.remove(gate.sessionId)

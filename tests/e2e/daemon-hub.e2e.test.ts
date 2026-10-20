@@ -29,7 +29,7 @@
  * login Keychain through `security`, which can raise a Keychain dialog.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { createServer } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
@@ -88,8 +88,22 @@ async function health(port: number): Promise<Record<string, unknown> | undefined
   }
 }
 
+// The APME judge chain falls back to a local MLX server at 127.0.0.1:8800,
+// so a developer's running server answered these daemons (four connections in
+// one run, 2026-10-19). Pin an endpoint that refuses instead; tests that
+// rewrite settings.json keep this key.
+const NO_LOCAL_JUDGE = { llm: { mlx: { endpoint: 'http://127.0.0.1:9' } } };
+
+function pinNoLocalJudge(): void {
+  const file = join(dataDir, 'settings.json');
+  const current = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown> : {};
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(file, JSON.stringify({ ...current, ...NO_LOCAL_JUDGE }));
+}
+
 async function startDaemon(port: number): Promise<Daemon> {
   let output = '';
+  pinNoLocalJudge();
   const child = spawn(process.execPath, [
     CLI, 'daemon', 'start', '--foreground', '--local', '--loopback', '--no-build',
     '--port-window', `${port}-${port}`, '--port', String(port),
@@ -228,7 +242,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
     const headers = { Authorization: `Bearer ${(await health(daemon.port))?.pairingToken}`,
       'Content-Type': 'application/json' };
-    writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ unrelated: 'preserved' }));
+    writeFileSync(join(dataDir, 'settings.json'), JSON.stringify({ ...NO_LOCAL_JUDGE, unrelated: 'preserved' }));
     // PAYG skips provider I/O: this is a route/key-custody test, never a live account request.
     const fakeKey = 'sk-pay-route-test-only';
     const saved = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ apiKey: fakeKey }),
@@ -237,12 +251,12 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     const reply = await saved.text();
     expect(JSON.parse(reply)).toMatchObject({ configured: true, source: 'daemon-settings', editable: true, authFailed: false, verified: true });
     expect(reply).not.toContain(fakeKey);
-    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ unrelated: 'preserved', zaiApiKey: fakeKey });
+    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ ...NO_LOCAL_JUDGE, unrelated: 'preserved', zaiApiKey: fakeKey });
     if (POSIX) expect(statSync(join(dataDir, 'settings.json')).mode & 0o777).toBe(0o600);
     expect(await (await fetch(url, { headers })).text()).not.toContain(fakeKey);
     expect((await fetch(url, { method: 'POST', headers, body: JSON.stringify({ apiKey: 'invalid key' }) })).status).toBe(400);
     expect((await fetch(url, { method: 'DELETE', headers })).status).toBe(200);
-    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ unrelated: 'preserved' });
+    expect(JSON.parse(readFileSync(join(dataDir, 'settings.json'), 'utf8'))).toEqual({ ...NO_LOCAL_JUDGE, unrelated: 'preserved' });
     expect(daemon.log()).not.toContain(fakeKey);
   });
 
@@ -914,6 +928,103 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
       client.close();
     }
   });
+
+  it.runIf(POSIX)('shows a Claude permission prompt from PermissionRequest at once, once, and releases a held gate when its hook goes away', async () => {
+    const sid = 'e2e-claude-permreq-0001';
+    const rowId = `observed:claude:${sid}`;
+    const base = { ...SESSION, session_id: sid, permission_mode: 'default' };
+    const row = (frames: Frame[]) => {
+      const list = frames.filter((f) => f.type === 'sessions_list').at(-1);
+      return (list?.sessions as Array<Record<string, unknown>> | undefined)?.find((r) => r.id === rowId);
+    };
+    const settle = () => new Promise((r) => setTimeout(r, 400));
+    // Node Claude rows come from the process scan, never from hooks: stand
+    // up a process named `claude` (a symlink to sleep — macOS kills a copied
+    // platform binary, and ps reports the symlink path as argv[0]) and the
+    // session file Claude Code writes for it, in this suite's temp HOME.
+    const fakeBin = join(home, 'fake-claude-bin');
+    mkdirSync(fakeBin, { recursive: true });
+    const fakeClaude = join(fakeBin, 'claude');
+    symlinkSync('/bin/sleep', fakeClaude);
+    const proc = spawn(fakeClaude, ['600'], { stdio: 'ignore' });
+    mkdirSync(join(home, '.claude', 'sessions'), { recursive: true });
+    writeFileSync(join(home, '.claude', 'sessions', `${proc.pid}.json`),
+      JSON.stringify({ pid: proc.pid, sessionId: sid, cwd: base.cwd, startedAt: Date.now() }));
+    await postHook(daemon.port, 'SessionStart', { ...base, hook_event_name: 'SessionStart', source: 'startup' });
+    await postHook(daemon.port, 'UserPromptSubmit', { ...base, hook_event_name: 'UserPromptSubmit', prompt: 'permission request e2e' });
+    const client = await connect(daemon.port);
+    try {
+      await waitFor('Claude row', () => row(client.frames), 30_000);
+      // 1. The installed PermissionRequest command, run as Claude runs it:
+      //    nothing on stdout (no decision), and the prompt is on the row
+      //    within one broadcast — not the ~6 s the Notification waits.
+      const started = Date.now();
+      const hook = spawnSync('sh', ['-c', buildHookCommand('PermissionRequest')], {
+        input: JSON.stringify({ ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }),
+        env: { ...process.env, HOME: home, AGENTDECK_PORT: String(daemon.port) },
+        encoding: 'utf8',
+        timeout: 10_000,
+      });
+      expect(hook.status).toBe(0);
+      expect(hook.stdout).toBe('');
+      const shown = await waitFor('PermissionRequest prompt', () => {
+        const r = row(client.frames);
+        return r?.state === 'awaiting_permission' ? r : undefined;
+      });
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(shown.question).toBe('Allow Bash: rm -rf build');
+      expect(shown.requestId).toBeUndefined();
+      // 2. The permission_prompt Notification for the same dialog is the
+      //    same prompt: it neither replaces the tool details nor re-flips it.
+      await postHook(daemon.port, 'Notification', {
+        ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash',
+      });
+      await settle();
+      expect(row(client.frames)).toMatchObject({ state: 'awaiting_permission', question: 'Allow Bash: rm -rf build' });
+      // 3. Answered in the terminal: the tool runs and the prompt goes.
+      await postHook(daemon.port, 'PostToolUse', { ...base, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf build' }, tool_use_id: 'toolu_e2e_permreq_1' });
+      await waitFor('prompt cleared by PostToolUse', () => (row(client.frames)?.state !== 'awaiting_permission' ? true : undefined));
+
+      // 4. A held device gate (a connected client, a call Claude would ask
+      //    about) owns its requestId: neither display signal takes it.
+      const abort = new AbortController();
+      const held = fetch(`http://127.0.0.1:${daemon.port}/hooks/PreToolUse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Pid': String(process.pid) },
+        body: JSON.stringify({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' }, tool_use_id: 'toolu_e2e_permreq_2' }),
+        signal: abort.signal,
+      }).catch(() => null);
+      const gate = await waitFor('held gate', () => {
+        const r = row(client.frames);
+        return typeof r?.requestId === 'string' ? r : undefined;
+      });
+      await postHook(daemon.port, 'PermissionRequest', { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf other' } });
+      await postHook(daemon.port, 'Notification', {
+        ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt',
+        message: 'Claude needs your permission to use Bash',
+      });
+      await settle();
+      expect(row(client.frames)).toMatchObject({ requestId: gate.requestId, question: gate.question });
+      // 5. The hook's client goes away (Claude killed it, its timeout fired):
+      //    the gate is released at once, not after the 25 s hold.
+      const closedAt = Date.now();
+      abort.abort();
+      await held;
+      await waitFor('gate released on socket close', () => (row(client.frames) && !row(client.frames)?.requestId ? true : undefined), 5_000);
+      expect(Date.now() - closedAt).toBeLessThan(5_000);
+      // Claude now draws its own dialog, announced by PermissionRequest.
+      await postHook(daemon.port, 'PermissionRequest', { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } });
+      await waitFor('display-only prompt after the release', () => {
+        const r = row(client.frames);
+        return r?.state === 'awaiting_permission' && r.question === 'Allow Bash: rm -rf dist' && !r.requestId ? true : undefined;
+      });
+      await postHook(daemon.port, 'Stop', { ...base, hook_event_name: 'Stop' });
+    } finally {
+      client.close();
+      proc.kill();
+    }
+  }, 60_000);
 
   it.runIf(POSIX)('accepts events from the installed hook snippet, which finds the daemon via daemon.json', async () => {
     // The exact shell text `agentdeck`'s installer writes into

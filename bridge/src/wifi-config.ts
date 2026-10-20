@@ -1,7 +1,8 @@
 /**
  * WiFi credential management for ESP32 auto-provisioning.
  *
- * Stores SSID/password in ~/.agentdeck/wifi-config.json.
+ * Stores SSID/password in <data dir>/wifi-config.json (`AGENTDECK_DATA_DIR`,
+ * else ~/.agentdeck), like every other file the daemon keeps.
  * Can auto-detect current macOS WiFi SSID and query Keychain for password.
  */
 
@@ -9,10 +10,24 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
-import { debug } from './logger.js';
+import { debug, log } from './logger.js';
 
-const AGENTDECK_DIR = join(homedir(), '.agentdeck');
-const WIFI_CONFIG_FILE = join(AGENTDECK_DIR, 'wifi-config.json');
+const LEGACY_DIR = join(homedir(), '.agentdeck');
+
+// Resolved per call, from the same override every other data file honours.
+// It used to be fixed at ~/.agentdeck, so a daemon run with AGENTDECK_DATA_DIR
+// (a captured systemd unit, a throwaway test daemon) read the user's real
+// credentials while keeping everything else elsewhere.
+function dataDir(): string {
+  return process.env.AGENTDECK_DATA_DIR || LEGACY_DIR;
+}
+
+/** Where the credentials live for this process. */
+export function wifiConfigPath(): string {
+  return join(dataDir(), 'wifi-config.json');
+}
+
+let legacyHintShown = false;
 
 export interface WifiConfig {
   ssid: string;
@@ -23,8 +38,18 @@ export interface WifiConfig {
 /** Load saved WiFi config, or null if not configured. */
 export function loadWifiConfig(): WifiConfig | null {
   try {
-    if (!existsSync(WIFI_CONFIG_FILE)) return null;
-    const data = JSON.parse(readFileSync(WIFI_CONFIG_FILE, 'utf-8'));
+    const file = wifiConfigPath();
+    if (!existsSync(file)) {
+      // Say where an earlier save went, without reading it: under an override
+      // that file belongs to another data dir, and tests must never load it.
+      const legacy = join(LEGACY_DIR, 'wifi-config.json');
+      if (!legacyHintShown && file !== legacy && existsSync(legacy)) {
+        legacyHintShown = true;
+        log(`[wifi-config] No WiFi config in ${dataDir()}; one exists in ~/.agentdeck. Run \`agentdeck wifi-setup\` with AGENTDECK_DATA_DIR set to use it here.`);
+      }
+      return null;
+    }
+    const data = JSON.parse(readFileSync(file, 'utf-8'));
     if (data.ssid && data.password) {
       return {
         ssid: data.ssid,
@@ -41,8 +66,8 @@ export function loadWifiConfig(): WifiConfig | null {
 /** Save WiFi config to disk. */
 export function saveWifiConfig(config: WifiConfig): void {
   try {
-    mkdirSync(AGENTDECK_DIR, { recursive: true });
-    writeFileSync(WIFI_CONFIG_FILE, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
+    mkdirSync(dataDir(), { recursive: true });
+    writeFileSync(wifiConfigPath(), JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
     debug('wifi-config', `Saved WiFi config for SSID: ${config.ssid}`);
   } catch (err) {
     debug('wifi-config', `Failed to save wifi-config.json: ${err}`);

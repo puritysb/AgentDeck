@@ -76,6 +76,7 @@
 
   <div class="ad-actions">
     <button id="tutorial" class="primary" type="button" data-localize="openTutorial">Setup tutorial</button>
+    <a id="tutorialBrowser" href="./tutorial.html" data-localize="tutorialBrowser">Open in browser instead</a>
   </div>
   <!-- Where the window goes. Verified on Ulanzi Studio + D200H (2026-08-08):
        openView sometimes opens BEHIND the Studio window and Studio does not
@@ -124,9 +125,18 @@
         </svg>
         <p class="ad-step-x" data-localize="s1MacApp">Install AgentDeck Dashboard — free on the Mac App Store, macOS 26 or later — and open it. No terminal needed.</p>
         <p class="ad-step-x" data-localize="s1MacOr">On an earlier macOS, or where the App Store app is not offered, use Terminal:</p>
+        <div class="ad-cmd">
+          <code id="cmdMac">npx -y @agentdeck/setup --yes</code>
+          <button class="ad-copy" id="copyMac" type="button" data-localize="copy">Copy</button>
+        </div>
+        <p class="ad-step-note" data-localize="s1MacNote">The Terminal path needs Node.js 22 or later. It installs the agentdeck command, starts the daemon now and at every login, and installs hooks for the coding agents it finds.</p>
+        <p class="ad-step-note" data-localize="s1MacDesktop">Codex sessions started in the ChatGPT app show up too, once Codex integration is registered: the Terminal setup does it for you, and the App Store app asks in Settings.</p>
+        <p class="ad-step-note" data-localize="s1MacTrouble">Keys still OFFLINE? With the app, check that it is running — its icon is in the menu bar. With the Terminal path, run the command again — it is safe to repeat.</p>
       </div>
 
-      <!-- Windows: terminal only. -->
+      <!-- Windows: terminal only. Nothing about macOS, the App Store or the
+           ChatGPT app belongs in this pane (Ulanzi QA 1.8.1: a Windows tester
+           read the macOS notes as instructions). -->
       <div id="paneWin" class="hide">
         <svg class="ad-art" viewBox="0 0 262 84" aria-hidden="true">
           <rect x="0.5" y="0.5" width="261" height="83" rx="8" fill="none" stroke="currentColor" opacity="0.3"/>
@@ -140,14 +150,15 @@
           <rect x="14" y="52" width="96" height="5" rx="999" fill="currentColor" opacity="0.25"/>
           <rect x="14" y="64" width="150" height="5" rx="999" fill="currentColor" opacity="0.18"/>
         </svg>
-        <p class="ad-step-x" data-localize="s1Win">Open Terminal or PowerShell and run:</p>
+        <p class="ad-step-x" data-localize="s1Win">Open Windows Terminal, PowerShell or Command Prompt and run:</p>
+        <div class="ad-cmd">
+          <code id="cmdWin">npx -y @agentdeck/setup --yes</code>
+          <button class="ad-copy" id="copyWin" type="button" data-localize="copy">Copy</button>
+        </div>
+        <p class="ad-step-note" data-localize="s1WinNote">Needs Node.js 22 or later. Setup installs the agentdeck command, starts the daemon now and at every sign-in, and installs hooks for the coding agents it finds.</p>
+        <p class="ad-step-note" data-localize="s1WinPs">If PowerShell says running scripts is disabled (npx.ps1), run the same line in Command Prompt (cmd.exe), or type npx.cmd in place of npx.</p>
+        <p class="ad-step-note" data-localize="s1WinTrouble">Keys still OFFLINE? Run the command again — it is safe to repeat — then press Check again. If npx is not found, install Node.js and open a new terminal window.</p>
       </div>
-
-      <div class="ad-cmd">
-        <code id="cmd">npx @agentdeck/setup</code>
-        <button class="ad-copy" id="copy" type="button" data-localize="copy">Copy</button>
-      </div>
-      <p class="ad-step-note" data-localize="s1Note">Node.js 22+ is the only prerequisite. The Claude and Codex CLIs are optional — install neither and setup still completes.</p>
     </div>
   </div>
 
@@ -176,7 +187,7 @@
         <rect x="28" y="52" width="120" height="5" rx="999" fill="currentColor" opacity="0.25"/>
       </svg>
       <p class="ad-step-x" data-localize="s2Body">In any project folder, start your agent the way you normally do — claude, codex or opencode. There is no AgentDeck-specific command.</p>
-      <p class="ad-step-note" data-localize="s2Note">Desktop apps count too: macOS picks up Codex sessions from the ChatGPT app once Codex integration is registered — the terminal setup does it for you, and the App Store app asks in Settings.</p>
+      <p class="ad-step-note" data-localize="s2Hooks">Sessions reach AgentDeck through hooks. The step 1 command installs them for Claude Code, Codex, OpenCode and Kiro — whichever it finds on this computer. Installed an agent after setup? Run the step 1 command again.</p>
     </div>
   </div>
 
@@ -228,9 +239,16 @@
         </g>
       </svg>
       <p class="ad-step-x" data-localize="s3Body">Drop the AgentDeck action on every key you want to use — it is the only action there is, and each key decides for itself what to show. The layout spreads over exactly the keys you placed: one per session first, then the answer keys, mode, stop and usage as room allows.</p>
-      <p class="ad-step-note" data-localize="s3Note">Before steps 1 and 2 are done, every key forms one dark OFFLINE card. That is the plugin working — it is telling you the daemon is the missing piece.</p>
+      <p class="ad-step-note" data-localize="s3Note">Until step 1 is done, your keys form one dark OFFLINE card. With the daemon running but no agent session yet, they read HUB READY and NO SESSION. Either way the plugin is working — it is showing you which step is missing.</p>
     </div>
   </div>
+
+  <!-- What the keys do — the two levels of shared/src/d200h-layout.ts: the
+       session list, and one session's detail view. -->
+  <div class="uspi-heading" data-localize="keysTitle">What the keys do</div>
+  <p class="ad-step-x" data-localize="keysSession">One key per session: the agent, the project, and whether it is working, waiting for you, or done.</p>
+  <p class="ad-step-x" data-localize="keysDetail">Press a session key to open it. BACK, labelled with the session's name, returns to the list; the next key shows what the session is doing; when the agent asks a question, its answers appear as keys; the last key is Stop, where the session allows it.</p>
+  <p class="ad-step-x" data-localize="keysUsage">Usage keys show how much of your Claude and Codex subscription limits is used in the current 5-hour and 7-day windows.</p>
 
   <p class="ad-foot" data-localize="thin">AgentDeck is a thin client, like an OBS plugin: it draws what the local daemon reports and bundles no daemon of its own.</p>
 

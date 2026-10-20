@@ -1965,23 +1965,28 @@ export function writeWifiProvision(conn: SerialConnection, msg: WifiProvisionMes
   sendToConnection(conn, JSON.stringify(msg), true);
   conn.provisionSent = true;
   conn.wifiProvisionSentAt = now;
-  conn.wifiProvisionAckLedger = wifiProvisionAckWritten(conn.wifiProvisionAckLedger ?? WIFI_PROVISION_ACK_LEDGER_EMPTY, now);
+  conn.wifiProvisionAckLedger = wifiProvisionAckWritten(
+    conn.wifiProvisionAckLedger ?? WIFI_PROVISION_ACK_LEDGER_EMPTY, now, msg.credId ?? '');
   // The previous answer described the previous credentials.
   conn.wifiProvisionAck = undefined;
 }
 
 /**
  * Keep a board's `wifi_provision_ack` as the answer to the latest provision,
- * unless a later provision is still owed one: the board answers in order and
- * names no provision, so that ack is an earlier provision's.
+ * unless it names an earlier provision's `credId`, or (firmware that names
+ * none) a later provision is still owed one: the board answers in order, so
+ * that ack is an earlier provision's.
  * @internal Exported for testing only
  */
 export function recordWifiProvisionAck(
   conn: SerialConnection,
-  msg: { success?: unknown; joined?: unknown; ip?: unknown; error?: unknown },
+  msg: { success?: unknown; joined?: unknown; ip?: unknown; error?: unknown; credId?: unknown },
   now = Date.now(),
 ): void {
-  const answer = wifiProvisionAckAnswered(conn.wifiProvisionAckLedger ?? WIFI_PROVISION_ACK_LEDGER_EMPTY);
+  const answer = wifiProvisionAckAnswered(
+    conn.wifiProvisionAckLedger ?? WIFI_PROVISION_ACK_LEDGER_EMPTY,
+    typeof msg.credId === 'string' ? msg.credId : '',
+  );
   conn.wifiProvisionAckLedger = answer.ledger;
   if (!answer.latest) return;
   conn.wifiProvisionAck = parseWifiProvisionAck(msg, now);

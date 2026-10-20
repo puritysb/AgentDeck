@@ -87,9 +87,11 @@ final class ESP32WifiProvisionRulesTests: XCTestCase {
             var expected: [Bool] = []
             for event in try XCTUnwrap(vector["events"] as? [[String: Any]], name) {
                 if let at = event["write"] as? Int {
-                    ledger = ESP32WifiProvisionRules.ackWritten(ledger, now: at)
+                    ledger = ESP32WifiProvisionRules.ackWritten(
+                        ledger, now: at, credId: event["credId"] as? String ?? "")
                 } else {
-                    let answer = ESP32WifiProvisionRules.ackAnswered(ledger)
+                    let answer = ESP32WifiProvisionRules.ackAnswered(
+                        ledger, ackCredId: event["ackCredId"] as? String ?? "")
                     answered.append(answer.latest)
                     expected.append(try XCTUnwrap(event["ack"] as? Bool, name))
                     ledger = answer.ledger
@@ -99,7 +101,8 @@ final class ESP32WifiProvisionRulesTests: XCTestCase {
             let end = try XCTUnwrap(vector["ledger"] as? [String: Any], name)
             XCTAssertEqual(ledger, ESP32WifiProvisionRules.AckLedger(
                 owed: try XCTUnwrap(end["owed"] as? Int, name),
-                lastWriteAt: try XCTUnwrap(end["lastWriteAt"] as? Int, name)), name)
+                lastWriteAt: try XCTUnwrap(end["lastWriteAt"] as? Int, name),
+                latestCredId: try XCTUnwrap(end["latestCredId"] as? String, name)), name)
         }
     }
 

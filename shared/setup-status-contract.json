@@ -1,0 +1,7 @@
+{
+  "description": "GET /setup-status — the one daemon route a browser page may read cross-origin (Access-Control-Allow-Origin: *), so it carries no secret. Both daemons answer with exactly these keys: bridge/src/setup-status.ts (Node) and DaemonServer.setupStatusPayload (Swift). Replayed by bridge/src/__tests__/setup-status.test.ts and apple/AgentDeckTests/SetupStatusContractTests.swift.",
+  "keys": ["status", "mode", "port", "state", "isSwift", "sessions", "claudeHooks"],
+  "claudeHooksValues": ["installed", "missing", "unknown"],
+  "forbiddenKeyPattern": "token|secret|credential|password|pairing",
+  "forbiddenKeys": ["pairingToken", "modules", "devices", "pid", "sessionIds", "projects"]
+}

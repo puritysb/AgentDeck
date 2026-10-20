@@ -18,9 +18,20 @@ enum MonitorAttentionSelection {
         inspectedSessionID: String?,
         controlFocusedSessionID: String?
     ) -> SessionInfo? {
-        for preferredID in [inspectedSessionID, controlFocusedSessionID] {
-            guard let preferredID else { continue }
-            for session in awaitingSessions where session.id == preferredID {
+        if let inspectedSessionID {
+            for session in awaitingSessions where session.id == inspectedSessionID {
+                return session
+            }
+            // A Codex group's representative can change while the Dashboard
+            // keeps inspecting one of its explicitly declared members.
+            for session in awaitingSessions where (session.foldedSessionIds ?? []).contains(inspectedSessionID) {
+                return session
+            }
+        }
+        if let controlFocusedSessionID {
+            // Control focus never follows a display alias: aggregate prompt
+            // options and cursor state belong to this exact session only.
+            for session in awaitingSessions where session.id == controlFocusedSessionID {
                 return session
             }
         }

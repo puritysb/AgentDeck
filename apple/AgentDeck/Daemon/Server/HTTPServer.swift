@@ -302,12 +302,33 @@ actor HTTPServer {
             return true
         }
 
-        let response = await route(request)
+        // A handler that holds the request (a hook gate) learns through the
+        // task-local signal when the peer gives up before the answer is ready.
+        let peerClose = HTTPPeerCloseSignal()
+        Self.watchPeerClose(on: conn, signal: peerClose)
+        let response = await HTTPRequestContext.$peerClose.withValue(peerClose) {
+            await route(request)
+        }
+        peerClose.finish()
         let raw = Self.formatHTTPResponse(response)
         conn.send(content: raw, completion: .contentProcessed({ _ in
             conn.cancel()
         }))
         return true
+    }
+
+    /// Fire `signal` when the peer closes (or resets) the connection while the
+    /// request is being handled. The request is fully read by now, and a hook
+    /// client sends nothing more before the answer, so the one outstanding
+    /// receive completes only on EOF or an error. Data instead (a pipelining
+    /// client) ends the watch without firing. The `conn.cancel()` after the
+    /// response also completes it, after `finish()`, where firing is a no-op.
+    nonisolated static func watchPeerClose(on conn: NWConnection, signal: HTTPPeerCloseSignal) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 1) { data, _, isComplete, error in
+            if error != nil || (isComplete && (data?.isEmpty ?? true)) {
+                signal.fire()
+            }
+        }
     }
 
     /// Route a request to matching handler (used by WebSocketServer for HTTP delegation).
@@ -458,5 +479,54 @@ actor HTTPServer {
         }
         return header
     }
+}
+
+/// One in-flight HTTP request's "the peer went away" signal. Fires at most
+/// once, and never after `finish()` (the response is being written, so the
+/// close is our own). A handler registered after the peer already closed runs
+/// at once. Handlers run outside the lock, on whatever queue fired.
+final class HTTPPeerCloseSignal: @unchecked Sendable {
+    private enum Phase { case open, closed, finished }
+    private let lock = NSLock()
+    private var phase: Phase = .open
+    private var handlers: [@Sendable () -> Void] = []
+
+    func onClose(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock()
+        switch phase {
+        case .open:
+            handlers.append(handler)
+            lock.unlock()
+        case .closed:
+            lock.unlock()
+            handler()
+        case .finished:
+            lock.unlock()
+        }
+    }
+
+    func fire() {
+        lock.lock()
+        guard phase == .open else { lock.unlock(); return }
+        phase = .closed
+        let pending = handlers
+        handlers = []
+        lock.unlock()
+        for handler in pending { handler() }
+    }
+
+    func finish() {
+        lock.lock()
+        if phase == .open { phase = .finished }
+        handlers = []
+        lock.unlock()
+    }
+}
+
+/// Per-request context `HTTPServer.handle` binds around route dispatch, so a
+/// handler deep inside `DaemonServer` can reach its own request's connection
+/// state without the route signature carrying it.
+enum HTTPRequestContext {
+    @TaskLocal static var peerClose: HTTPPeerCloseSignal?
 }
 #endif

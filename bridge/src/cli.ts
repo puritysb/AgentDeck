@@ -4287,7 +4287,7 @@ program
   .option('--password <password>', 'WiFi password (auto-fetched from Keychain if omitted)')
   .option('-p, --port <port>', "Daemon port (default: the daemon this user's registry names)")
   .action(async (opts) => {
-    const { detectCurrentSSID, getKeychainPassword, saveWifiConfig } = await import('./wifi-config.js');
+    const { detectCurrentSSID, getKeychainPassword, saveWifiConfig, wifiConfigPath } = await import('./wifi-config.js');
 
     let ssid = opts.ssid as string | undefined;
     let password = opts.password as string | undefined;
@@ -4349,7 +4349,7 @@ program
     if (post.outcome === 'refused') process.exit(1);
 
     saveWifiConfig({ ssid, password, autoProvision: true });
-    log(`WiFi config saved: SSID="${ssid}" \u2192 ~/.agentdeck/wifi-config.json`);
+    log(`WiFi config saved: SSID="${ssid}" \u2192 ${wifiConfigPath()}`);
     if (post.outcome === 'no-route') {
       log(post.isSwift
         ? `The AgentDeck app serving port ${port} predates live WiFi setup: update the app, then set the credentials in its ESP32 Wi-Fi setup.`

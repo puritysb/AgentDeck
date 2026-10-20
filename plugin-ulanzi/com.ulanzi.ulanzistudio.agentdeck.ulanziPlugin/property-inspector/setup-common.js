@@ -1,7 +1,7 @@
 /*
   Shared behaviour for the two setup surfaces (inspector.html panel and
   tutorial.html H5 page): the live daemon probe, the step marking it drives,
-  the platform tabs and the copy button.
+  the platform tabs, the copy buttons and the links that leave the panel.
 
   Exposed as one global, `AgentDeckSetup`, because a Property Inspector is
   plain <script> tags — the SDK libs are globals too ($UD, Utils), so a module
@@ -10,7 +10,15 @@
 window.AgentDeckSetup = (function () {
   'use strict';
 
-  var CMD = 'npx @agentdeck/setup';
+  // One line for every platform. `-y` answers npx's own "install this
+  // package?" prompt; `--yes` is setup's, and it is what installs and STARTS the
+  // daemon autostart (LaunchAgent / per-user Scheduled Task / systemd --user)
+  // and refreshes the agents' hooks. Without it setup only offers to.
+  var CMD = 'npx -y @agentdeck/setup --yes';
+  // The user-facing guide. Opened through Studio ($UD.openUrl → the system
+  // browser): a target=_blank link inside Studio's webview did nothing visible
+  // on Windows (Ulanzi QA, 1.8.1).
+  var GUIDE_URL = 'https://github.com/puritysb/AgentDeck/blob/master/marketplace/ulanzi/GETTING-STARTED.md';
   // 9120 is the daemon's port; it moves to the next free one only when 9120 is
   // taken (a stale listener, a second daemon), so probe a short range rather
   // than assuming.
@@ -28,6 +36,7 @@ window.AgentDeckSetup = (function () {
     foundOpaque: 'Something is answering on port {port} — that is the daemon.',
     notFound: 'No AgentDeck daemon answered on this computer.',
     detailNoSession: 'No agent session yet. Do step 2 and the keys fill in.',
+    detailHooksMissing: 'No agent session yet, and Claude Code has no AgentDeck hooks. Install Claude Code if you have not, then run the setup command again.',
     detailSession: 'A session is live. Your keys should be showing it now.',
     detailOpaque: 'This panel cannot read the details from here, so step 2 is unchecked. The keys themselves are the real indicator.',
     detailNotFound: 'Start with step 1. If it is running and this still finds nothing, the check may be blocked here — trust the keys.',
@@ -64,10 +73,23 @@ window.AgentDeckSetup = (function () {
   }
 
   // ── clipboard ───────────────────────────────────────────────────────
+  // Each platform pane carries its own command row, so a copy button copies the
+  // command shown beside it (its `.ad-cmd` row's <code>), falling back to CMD.
+  function commandFor(button) {
+    var row = button.parentNode;
+    var code = row && row.querySelector ? row.querySelector('code') : null;
+    var text = code ? String(code.textContent || '').trim() : '';
+    return text || CMD;
+  }
+
   function bindCopy() {
-    var button = document.getElementById('copy');
-    if (!button) return;
+    var buttons = document.querySelectorAll('.ad-copy');
+    for (var i = 0; i < buttons.length; i++) bindCopyButton(buttons[i]);
+  }
+
+  function bindCopyButton(button) {
     button.addEventListener('click', function () {
+      var command = commandFor(button);
       var done = function () {
         button.textContent = t('copied');
         setTimeout(function () { button.textContent = t('copy'); }, 1500);
@@ -77,7 +99,7 @@ window.AgentDeckSetup = (function () {
       // claiming success.
       var fallback = function () {
         var area = document.createElement('textarea');
-        area.value = CMD;
+        area.value = command;
         area.setAttribute('readonly', '');
         area.style.position = 'fixed';
         area.style.opacity = '0';
@@ -89,10 +111,40 @@ window.AgentDeckSetup = (function () {
         if (ok) done();
       };
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(CMD).then(done, fallback);
+        navigator.clipboard.writeText(command).then(done, fallback);
       } else {
         fallback();
       }
+    });
+  }
+
+  // ── links that leave the panel ──────────────────────────────────────
+  // Studio's webview does not hand a target=_blank link to the system browser,
+  // so the click looked dead. The SDK's openUrl asks Studio to open it; with no
+  // Studio socket (a plain browser) window.open is the honest fallback.
+  function studioConnected() {
+    return typeof $UD !== 'undefined' && typeof $UD.openUrl === 'function'
+      && !!$UD.websocket && $UD.websocket.readyState === 1;
+  }
+
+  // `local` paths are relative to the plugin root (`./property-inspector/…`);
+  // `pageRelative` is the same file seen from this page, for window.open.
+  function openExternal(url, local, param, pageRelative) {
+    if (studioConnected()) {
+      $UD.openUrl(url, !!local, param || null);
+      return true;
+    }
+    var opened = null;
+    try { opened = window.open(local ? (pageRelative || url) : url, '_blank', 'noopener'); } catch (e) { opened = null; }
+    return !!opened;
+  }
+
+  function bindGuide() {
+    var guide = document.getElementById('guide');
+    if (!guide) return;
+    guide.addEventListener('click', function (event) {
+      event.preventDefault();
+      openExternal(GUIDE_URL, false);
     });
   }
 
@@ -154,6 +206,29 @@ window.AgentDeckSetup = (function () {
     }
   }
 
+  // Step 2's verdict from a readable status payload: whether a session is
+  // live, and which detail string to show.
+  function sessionLive(health) {
+    // `sessions` is the count the deck shows (daemons from 2026-10-19 on). The
+    // state word cannot stand in for it: the daemon says `disconnected` whenever
+    // no MANAGED session is focused, which is the normal case for observed
+    // claude/codex sessions — so the panel said "No agent session yet" over a
+    // full deck (Ulanzi QA, 1.8.1). An older daemon sends no count; only then
+    // does the state word decide. `null` means the daemon could not count in
+    // time, which is no information, not zero. (Never read pairingToken from
+    // this payload — it must not appear in a webview, logged or rendered.)
+    var count = (typeof health.sessions === 'number' && isFinite(health.sessions)) ? health.sessions : null;
+    var live = count != null
+      ? count > 0
+      : (typeof health.state === 'string' && health.state !== 'disconnected');
+    // `missing` is a definite answer (the daemon read ~/.claude/settings.json);
+    // `unknown` or an absent field says nothing, so it adds no hint.
+    var detail = live
+      ? 'detailSession'
+      : (health.claudeHooks === 'missing' ? 'detailHooksMissing' : 'detailNoSession');
+    return { live: live, detail: detail };
+  }
+
   function report(hit) {
     var health = hit.health;
     if (!health) {
@@ -163,15 +238,11 @@ window.AgentDeckSetup = (function () {
       markSteps(true, false);
       return;
     }
-    // `state` is the daemon's session state machine: `disconnected` means no
-    // session is attached. There is no session COUNT on /health, so this is the
-    // honest signal for "step 2 is done". (Never read pairingToken from this
-    // payload — it must not appear in a webview, logged or rendered.)
-    var live = typeof health.state === 'string' && health.state !== 'disconnected';
+    var verdict = sessionLive(health);
     paint(true,
       (health.isSwift ? t('foundApp') : t('foundCli')).replace('{port}', String(hit.port)),
-      live ? t('detailSession') : t('detailNoSession'));
-    markSteps(true, live);
+      t(verdict.detail));
+    markSteps(true, verdict.live);
   }
 
   function check() {
@@ -190,10 +261,11 @@ window.AgentDeckSetup = (function () {
   function init() {
     bindTabs();
     bindCopy();
+    bindGuide();
     var recheck = document.getElementById('recheck');
     if (recheck) recheck.addEventListener('click', check);
     check();
   }
 
-  return { init: init, check: check, t: t, command: CMD };
+  return { init: init, check: check, t: t, command: CMD, guideUrl: GUIDE_URL, openExternal: openExternal, sessionLive: sessionLive };
 })();

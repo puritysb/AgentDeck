@@ -219,5 +219,25 @@ for (const [size, suffix] of [[28, ''], [56, '@2x']]) {
 }
 console.log('  category.png (28x28) + category@2x.png (56x56) — white AgentDeck mark');
 
+// ---- Ulanzi Studio plugin icons (plugin-ulanzi) -------------------------------
+//
+// Same canonical brand PNG, at the sizes Ulanzi's SDK sample plugins ship:
+// plugin icon 144x144 (the old 96x96 read soft in Studio's plugin list, Ulanzi
+// QA 2026-10-19) and a 196x196 CategoryIcon, the size the SDK's analogclock
+// sample uses. Studio draws both on its own surface, not on the Stream Deck
+// app's dark sidebar, so the full-colour mark is used for both.
+const ulanziIconDir = resolve(
+  __dirname,
+  '../plugin-ulanzi/com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/icons',
+);
+for (const [name, size] of [['plugin', 144], ['categoryIcon', 196]]) {
+  await sharp(brandSource)
+    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toFile(resolve(ulanziIconDir, `${name}.png`));
+  count++;
+  console.log(`  ulanzi ${name}.png (${size}x${size}) — from design/brand/agentdeck-icon.png`);
+}
+
 console.log(`\nGenerated ${count} icon files in ${outputDir}`);
 console.log(`Generated ${keyCount} key state images in ${keyOutputDir}`);

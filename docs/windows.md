@@ -44,7 +44,24 @@ installation command from the new location.
 
 For a normal installation without a source checkout, use
 `npx @agentdeck/setup`; that installer also makes the `agentdeck` command
-available. Daemon installation does not by itself diagnose a Stream Deck
+available. On Windows, setup:
+
+- **Detects Ulanzi Studio without a warning about Stream Deck.** If Ulanzi Studio is found and the Stream Deck app is not,
+  the closing steps describe the Ulanzi plugin and nothing is said about Stream Deck. The paths it checks have **not
+  been verified on a real Windows install**: `%APPDATA%\Ulanzi\UlanziDeck`, `%ProgramFiles%\Ulanzi Studio`,
+  `%ProgramFiles%\UlanziStudio`, `%ProgramFiles(x86)%\Ulanzi Studio` and `%LOCALAPPDATA%\Programs\Ulanzi Studio`.
+  If none of them matches, setup lists both deck hosts. Pass `--surface=ulanzi` to choose the Ulanzi steps.
+- **Falls back to a per-user prefix without editing your PATH.** The default npm prefix (`%APPDATA%\npm`) is
+  user-writable. If the global prefix is not, setup installs into `%USERPROFILE%\.agentdeck\npm` and prints the
+  directory to add under Environment Variables → User variables → Path. It does not edit the
+  persistent user `PATH`: `setx` truncates values at 1024 characters, and a registry read-modify-write could flatten
+  `%VAR%` entries, which has not been checked on a real Windows machine. The Scheduled Task runs absolute `node.exe` and
+  `cli.js` paths, so autostart does not need the `PATH` entry.
+- **Reports an `EPERM` instead of retrying.** It usually means a running daemon or antivirus holds a file. Stop the
+  daemon with `agentdeck daemon stop` and run setup again.
+
+Run `npx -y @agentdeck/setup --yes` to install daemon autostart in the same run. Without `--yes`, an interactive
+PowerShell asks before installing it. Daemon installation does not by itself diagnose a Stream Deck
 plugin that remains OFFLINE; that connectivity report is tracked separately
 in [#303](https://github.com/puritysb/AgentDeck/issues/303).
 
@@ -71,7 +88,7 @@ The managed ConPTY path is a long-term compatibility path with no removal planne
 session's terminal from the deck: observed Windows sessions have no
 terminal-injection rung. New ordinary Windows workflows should install the
 daemon and run agents normally.
-- **Hooks** — Claude Code hook entries run `powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.agentdeck\agentdeck-hook.ps1" -HookEvent <Event>`; the script reads `daemon.json`, probes `/health`, and POSTs the payload via `Invoke-RestMethod`. The body must stay in a **script file** — Claude Code spawns hook commands through a POSIX shell (Git Bash) on Windows, which expands every `$name` out of an inlined `-Command` before PowerShell parses it.
+- **Hooks** — Claude Code hook entries run `powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.agentdeck\agentdeck-hook.ps1" -HookEvent <Event>`; the script reads `daemon.json` and POSTs the payload to that port with no `/health` probe and no proxy lookup, trying 9120 only when the connection is refused. Only `PreToolUse` (60 s) and `Stop` (10 s) wait for the daemon's answer and write it to stdout, matching the POSIX command; every other event is fire-and-forget (0.8 s). The body must stay in a **script file** — Claude Code spawns hook commands through a POSIX shell (Git Bash) on Windows, which expands every `$name` out of an inlined `-Command` before PowerShell parses it.
 - **Status-line relay** — when `agentdeck daemon install` wraps (or, with `--statusline`, installs) the Claude status line, the `statusLine` command is `powershell -NoProfile -ExecutionPolicy Bypass -File "%USERPROFILE%\.agentdeck\agentdeck-statusline.ps1" [-OriginalB64 <base64>]`: the same `daemon.json` discovery and `/health` probe, a bounded POST of Claude's status document to `/claude/statusline`, then your own status-line command — carried as base64 so the outer shell has nothing to expand — run through Git Bash (`CLAUDE_CODE_GIT_BASH_PATH`, else `bash` on `PATH`), or through the relay's PowerShell executable when Bash is absent, matching [Claude Code's documented shell selection](https://code.claude.com/docs/en/statusline#windows-configuration). Both paths receive the same UTF-8 stdin document and preserve your command's stdout. `--no-statusline` removes it and restores your command.
 - **`agentdeck daemon install` / `uninstall`** — registers a per-user **Scheduled Task** `AgentDeckDaemon` with a logon trigger (built-in `schtasks.exe`, no admin elevation), the Windows analog of the macOS LaunchAgent. `install` registers + starts it now and installs Codex hooks; `uninstall` stops the daemon and removes the task. A real Windows Service is intentionally **not** used — it runs in session 0 with no desktop/device access, breaking USB-HID (D200H), audio (wake-word), and the Stream Deck app. See [daemon.md → Autostart](daemon.md#autostart-loginlogon).
 - **The daemon runs with no console window.** The task's action is `daemon autostart`, a launcher that spawns the daemon detached with no console and exits; an action that is the daemon itself gets a console attached by Task Scheduler, which showed up as a permanent terminal window and taskbar button for the whole session (no task setting suppresses it — `<Hidden>` only hides the task in the Task Scheduler UI). The daemon's output goes to `%USERPROFILE%\.agentdeck\daemon-stdout.log` / `daemon-stderr.log`, so a logon start is diagnosed from those files, not from a window; `agentdeck daemon status` reports what is serving. Mechanism, measurements and the rejected alternatives: [daemon.md → Autostart](daemon.md#autostart-loginlogon).

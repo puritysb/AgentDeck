@@ -36,7 +36,7 @@ import {
 } from './svg-renderers/index.js';
 import { sessionNowSummary, sessionSettingOptionLabel } from './session-settings.js';
 import { State, type PromptOption } from './states.js';
-import { sortSessions, foldCodexSessionsForDisplay } from './session-utils.js';
+import { sortSessions, foldCodexSessionsForDisplay, sessionWeight } from './session-utils.js';
 import { sessionDeckLabels, sessionLabelText } from './session-labels.js';
 import type { SessionInfo, SessionSetting, SubscriptionInfo, CodexRateLimits, CodexRateLimitWindow, CodexLunaReserve, ScopedUsageLimit, ZaiRateLimits, ZaiWindow } from './protocol.js';
 import { Brand, Tide, UI } from './design-tokens.js';
@@ -617,7 +617,14 @@ function buildUsageTiles(state: DashState, budget: number = USAGE_PREFERRED_POS.
   // Plus shape, Claude keeps its two familiar tiles and Codex 5H+7D share one.
   // If a binding scoped cap also exists, Claude compacts too, preserving all
   // five readings in three physical keys.
-  const creditsTile: SessionDeckCell | undefined = !cx?.primary && !cx?.secondary && (cx?.credits || cx?.limitId)
+  // A credits readout needs a reading. A windowless block that carries only a
+  // limit id (a voided or not-yet-read Codex snapshot, `{ limitId: 'codex' }`)
+  // rendered as "CODEX —" — a key that looked like a broken Codex control and
+  // said nothing (Ulanzi QA, 2026-10-19). No balance and no unlimited flag is no
+  // data, so the provider takes no key; retain-on-absent still holds upstream,
+  // because a block whose later frame brings a balance draws it again.
+  const creditsTile: SessionDeckCell | undefined = !cx?.primary && !cx?.secondary
+    && (cx?.credits?.balance != null || cx?.credits?.unlimited === true)
     ? { svg: renderCreditsTile({ limitId: cx.limitId, balance: cx.credits?.balance, unlimited: cx.credits?.unlimited }), action }
     : undefined;
   const pairedWeekly = scopedTank != null && claudeWindows.some(w => w.window === '7d');
@@ -742,6 +749,14 @@ export interface DeckView {
    * consumers keep the full grid for sessions.
    */
   showUsage?: boolean;
+  /**
+   * Caller-held list order: session ids in the order their keys should appear
+   * (an explicit `weight` still outranks it). The Ulanzi plugin passes the order
+   * in which it first saw each session, so a new session appends instead of
+   * jumping ahead of an older one by agent kind. Omitted, the list uses
+   * `sortSessions` exactly as every other surface does.
+   */
+  sessionOrder?: string[];
   claudeWeeklyMode?: ClaudeWeeklyMode;
   /** Which z.ai reading a folded z.ai key shows (`buildUsageTiles`). */
   zaiPairMode?: ZaiPairMode;
@@ -749,7 +764,10 @@ export interface DeckView {
 
 /** Row-major position order ("0_0","1_0",…,"4_2"). */
 function sortPositions(positions: string[]): string[] {
-  return [...positions].sort((a, b) => {
+  // One key, one cell: the deck is a Map keyed by position, so a position listed
+  // twice (two Studio instances reporting the same key) would be written twice
+  // and the later, emptier cell would win — a blank row on the device.
+  return [...new Set(positions)].sort((a, b) => {
     const [ac, ar] = a.split('_').map(Number);
     const [bc, br] = b.split('_').map(Number);
     return ar !== br ? ar - br : ac - bc;
@@ -961,17 +979,45 @@ export function buildSessionDeck(stateEvt: any, view: DeckView, positions: strin
   return buildList(state, view, slots, animFrame, animated, out);
 }
 
+/**
+ * List order for a caller that keeps its own (`DeckView.sessionOrder`): explicit
+ * weight first, exactly as `sortSessions` ranks it, then the caller's order. A
+ * folded Codex row takes the earliest position of any member, since the member
+ * that represents the fold changes with which one is waiting. Rows the caller
+ * has not placed yet follow in `sortSessions` order, which is also the tie-break.
+ */
+function orderSessionsByCaller<T extends { id: string; weight?: number; foldedSessionIds?: string[] }>(rows: T[], order: string[]): T[] {
+  const position = new Map<string, number>();
+  order.forEach((id, i) => { if (!position.has(id)) position.set(id, i); });
+  const fallback = new Map(sortSessions(rows).map((row, i) => [row, i] as const));
+  const rank = (row: T) => Math.min(
+    ...[row.id, ...(row.foldedSessionIds ?? [])].map((id) => position.get(id) ?? Number.POSITIVE_INFINITY),
+  );
+  return [...rows].sort((a, b) => {
+    const wa = sessionWeight(a.weight);
+    const wb = sessionWeight(b.weight);
+    if (wa !== wb) return wa < wb ? -1 : 1;
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra < rb ? -1 : 1;
+    return fallback.get(a)! - fallback.get(b)!;
+  });
+}
+
 /** A session key wraps its name over up to four lines; a tagged label is held
  *  to this length so the id tag never lands in the wrapper's ellipsis. */
 const SESSION_KEY_LABEL_CHARS = 28;
 /** `renderDetailInfo` draws the name on one 10-character line. */
 const DETAIL_INFO_LABEL_CHARS = 10;
+/** BACK's subtitle line (`renderStatusCard` holds a subtitle to 18 characters). */
+const BACK_TITLE_CHARS = 18;
 
 function buildList(
   state: DashState, view: DeckView, slots: string[], animFrame: number, animated: boolean,
   out: Map<string, SessionDeckCell>,
 ): Map<string, SessionDeckCell> {
-  const sessions = sortSessions(foldCodexSessionsForDisplay(state.allSessions));
+  const folded = foldCodexSessionsForDisplay(state.allSessions);
+  const sessions = view.sessionOrder ? orderSessionsByCaller(folded, view.sessionOrder) : sortSessions(folded);
   // Same project + same agent would render as identical keys (#544); label the
   // whole roster, not one page, so siblings on different pages differ too.
   const labels = sessionDeckLabels(sessions);
@@ -1138,7 +1184,13 @@ function buildDetail(
 
   const first = slots[0];
   const last = slots[slots.length - 1];
-  out.set(first, { svg: renderBackButton(), action: { kind: 'back' } });
+  const deckLabels = sessionDeckLabels(foldCodexSessionsForDisplay(state.allSessions));
+  // BACK carries the session's name: the detail view replaces every key at once,
+  // and without a title it did not read as ONE session's page (Ulanzi QA,
+  // 2026-10-19). The INFO tile keeps its own 10-character name beside it.
+  const backTitle = sessionLabelText(deckLabels.get(sid), BACK_TITLE_CHARS)
+    ?? (sess?.projectName || state.projectName || undefined);
+  out.set(first, { svg: renderBackButton(backTitle), action: { kind: 'back' } });
   out.set(slots[1] ?? first, {
     // Mode and effort come from the session's own row (#463). The global
     // `state.mode` belongs to whichever session last drove the state machine,
@@ -1146,10 +1198,7 @@ function buildDetail(
     svg: renderDetailInfo(
       heroSess, sState as State, tool, model,
       sess?.permissionMode ?? (focused && sess?.controlMode !== 'observed' ? state.mode || undefined : undefined),
-      sessionLabelText(
-        sessionDeckLabels(foldCodexSessionsForDisplay(state.allSessions)).get(sid),
-        DETAIL_INFO_LABEL_CHARS,
-      ),
+      sessionLabelText(deckLabels.get(sid), DETAIL_INFO_LABEL_CHARS),
       sess?.effortLevel),
     action: null,
   });
@@ -1204,7 +1253,7 @@ function buildDetail(
 
   if (view.picker) {
     // BACK leaves the picker, not the session.
-    out.set(first, { svg: renderBackButton(), action: { kind: 'picker-close' } });
+    out.set(first, { svg: renderBackButton(backTitle), action: { kind: 'picker-close' } });
     cells.push(...settingPickerCells(view.picker, view.settings, sid));
   } else if (awaitingState(sState)) {
     // A focused PTY session reports `navigable` on the live state_update; a
