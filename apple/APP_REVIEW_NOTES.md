@@ -94,6 +94,27 @@ and do not expose child-agent controls.
 
 AgentDeck posts a local `UNUserNotification` when a monitored session genuinely waits for the user's response (e.g. Claude Code shows a permission prompt in the user's terminal), and clears it the moment the session moves on. Nothing is requested at launch: authorization is asked only when the user presses "Choose Notifications…" on the last setup step or in Settings → Dashboard, which shows the system dialog directly. If notifications were turned off, the same button explains that and opens AgentDeck's page in System Settings → Notifications. No push notifications, no remote notification service — everything is local.
 
+Clicking a notification opens that session in the macOS Dashboard. The request
+includes a credential-free host identity and session ID; it does not answer the
+prompt or change the control target on connected hardware. If the host changed,
+the session ended, or the roster cannot be refreshed, the app explains that the
+session could not be opened instead of selecting another session.
+
+## macOS Shortcuts
+
+The main macOS app exposes **List Waiting Sessions** and **Open Session** through
+App Intents. Both actions run in the foreground. The list returns the project,
+agent, question and observation time for live sessions awaiting a response; it
+requires a recent session roster and reports unavailable data as an error, not
+as an empty queue. Open Session uses the same local Dashboard navigation as a
+notification click. Startup readiness is bounded to eight seconds. These actions
+do not launch coding agents, approve requests or execute commands. They add no
+extension, entitlement, helper, external service or new permission prompt.
+
+To review: in macOS Shortcuts, add AgentDeck's List Waiting Sessions, choose an
+item from its result and pass it to Open Session. A live empty roster returns an
+empty list; a disconnected app reports that its session list is unavailable.
+
 ## Bluetooth entitlement (`com.apple.security.device.bluetooth`)
 
 > This section is also the canonical reply to the Guideline 2.4.5(i) question "describe how and where the app uses `com.apple.security.device.bluetooth`".

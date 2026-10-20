@@ -22,27 +22,29 @@ import UserNotifications
 
 @MainActor
 enum AttentionNotifier {
-    /// sessionId → question we last notified for. Repeated sessions_list
+    nonisolated static let referenceKey = "agentdeck.attentionSession"
+    /// Endpoint-scoped session reference → question we last notified for. Repeated sessions_list
     /// frames with the same awaiting state must not re-fire the banner.
     private static var notified: [String: String] = [:]
 
     /// Diff the latest sessions_list against what we've notified:
     /// newly-awaiting sessions post, no-longer-awaiting (or vanished)
     /// sessions clear.
-    static func sync(sessions: [SessionInfo]) {
+    static func sync(snapshot: AttentionSessionSnapshot) {
         var stillAwaiting: Set<String> = []
 
-        for session in sessions {
-            guard let stateRaw = session.state,
+        for session in snapshot.sessions {
+            guard session.alive, let stateRaw = session.state,
                   AgentConnectionState(rawValue: stateRaw)?.isAwaiting == true,
                   let question = session.question?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !question.isEmpty
             else { continue }
 
-            stillAwaiting.insert(session.id)
-            if notified[session.id] != question {
-                notified[session.id] = question
-                post(sessionId: session.id,
+            let reference = AttentionSessionReference(endpoint: snapshot.endpoint, sessionID: session.id)
+            stillAwaiting.insert(reference.id)
+            if notified[reference.id] != question {
+                notified[reference.id] = question
+                post(reference: reference,
                      projectName: session.projectName ?? session.agentType ?? "Agent",
                      question: question)
             }
@@ -54,18 +56,23 @@ enum AttentionNotifier {
         }
     }
 
-    private static func post(sessionId: String, projectName: String, question: String) {
+    static func content(reference: AttentionSessionReference, projectName: String, question: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "\(projectName) needs your response"
         content.body = question
         content.sound = .default
-        content.threadIdentifier = sessionId
+        content.threadIdentifier = reference.id
+        content.userInfo = [referenceKey: reference.id]
+        return content
+    }
 
-        // identifier == sessionId so a re-post (question changed) replaces the
+    private static func post(reference: AttentionSessionReference, projectName: String, question: String) {
+
+        // Endpoint-scoped identity means a re-post (question changed) replaces the
         // delivered notification instead of stacking a second banner.
         let request = UNNotificationRequest(
-            identifier: sessionId,
-            content: content,
+            identifier: reference.id,
+            content: content(reference: reference, projectName: projectName, question: question),
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request) { error in
