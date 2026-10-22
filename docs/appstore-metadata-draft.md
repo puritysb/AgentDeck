@@ -12,19 +12,29 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
-## Unreleased macOS attention actions
+## Prepared macOS 1.9.2 update text
 
-Copy for the next macOS build containing the attention actions; this is not a
-version decision or a claim that the feature is already in the Store. The iOS
-copy is unchanged. Verify Shortcuts discovery and notification navigation on the
-signed candidate before submission.
+Copy for the macOS-only candidate in the [release decision](../RELEASING.md).
+This candidate has not been uploaded or submitted. The macOS 1.9.1 review and
+the released iOS 1.9.1 app remain unchanged; the iOS copy below is unchanged.
+Verify Shortcuts discovery and notification navigation on the signed candidate
+before submission. Use the following text for macOS What's New when that
+submission is authorized.
 
-- **English:** Open the session that needs you directly from its notification.
-  Use Shortcuts to list sessions waiting for a response and open one in the Dashboard.
-- **Korean:** 알림을 눌러 응답이 필요한 세션으로 바로 이동하세요. 단축어에서
-  응답을 기다리는 세션을 조회하고 대시보드에서 열 수 있습니다.
-- **Japanese:** 通知から対応が必要なセッションを直接開けます。ショートカットで
-  応答待ちのセッションを一覧にし、ダッシュボードで開くこともできます。
+- **English:** Strengthens local connection security and keeps pairing tokens out
+  of connection logs. Improves reconnection, session history and Wi-Fi setup for
+  connected displays. Adds opt-in Claude usage readings and Codex approval
+  responses. Open waiting sessions from notifications, or list and open them with
+  Shortcuts.
+- **Korean:** 로컬 연결 보안을 강화하고 연결 로그에 페어링 토큰이 남지 않도록
+  개선했습니다. 재연결, 세션 기록, 연결된 디스플레이의 Wi-Fi 설정을 개선했습니다.
+  선택적으로 Claude 사용량을 확인하고 Codex 승인 요청에 응답할 수 있습니다.
+  알림을 눌러 응답을 기다리는 세션으로 이동하거나, 단축어에서 해당 세션을 조회하고
+  열 수 있습니다.
+- **Japanese:** ローカル接続のセキュリティを強化し、接続ログにペアリングトークンが
+  残らないようにしました。再接続、セッション履歴、接続したディスプレイのWi-Fi設定を
+  改善しました。任意でClaudeの使用量を確認し、Codexの承認要求に応答できます。
+  通知から応答待ちのセッションを開いたり、ショートカットで一覧表示して開いたりできます。
 
 ---
 

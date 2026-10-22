@@ -95,6 +95,38 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-22 browser trust security patch preparation
+
+This is a preparation record, not a delivery receipt. The candidate starts at
+master `4b839281177c66b07a6ad125788059db5b6bd968`, including
+[#583](https://github.com/puritysb/AgentDeck/pull/583) and the accumulated fixes
+merged since each channel's previous release. It is not a security-only
+cherry-pick. Version decisions were recorded before editing the manifests.
+
+| Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.2, all four registry latest tags re-read October 22 | 1.9.2 | 1.9.3 | Patch: enforce browser Host/Origin trust, close reflected-script and cross-origin data paths, and complete existing observation/control workflows | Node daemon, managed session bridges, hooks and setup |
+| Apple / macOS | 1.9.0 READY_FOR_SALE | 1.9.1 / 8601 VALID, IN_REVIEW, AFTER_APPROVAL | 1.9.2; build assigned by CI above 8601 | Patch: enforce the same browser boundary and include the accumulated daemon, timeline and attention-navigation corrections | macOS-only signed candidate; preserve the existing 1.9.1 review |
+| Apple / iOS | 1.9.1 READY_FOR_SALE | 1.9.1 / 8501 VALID | No delivery in this round | No iOS daemon exposure to repair | Shared Apple version mirrors become 1.9.2 for candidate builds; no iOS upload or Apple tag |
+| Android, ESP32, Stream Deck, Ulanzi | Existing delivery identities | Unchanged | Unchanged | Existing same-major clients remain supported | No new target artifact or physical acceptance is claimed |
+
+Apple state and consumed builds were read from
+[ASC store-status run 39786791116](https://github.com/puritysb/AgentDeck/actions/runs/39786791116)
+on October 22. Recheck that floor and the in-review version before any upload.
+Use a manual `apple-release.yml` run on the reviewed candidate with
+`release_version=1.9.2`, `platform=macos`, `upload=false` to prepare the signed
+archive/export. CI assigns the build number; the local default is unchanged.
+Do not push an Apple tag for this macOS-only delivery, since tags upload both
+platforms. npm publication is a later `npm-v1.9.3` tag after acceptance.
+
+Acceptance must include the full verification receipt, clean four-package
+installation/soak, Node and Swift browser-trust regressions, and the exported
+macOS package's App Store/Dot/signature checks. Record skips and unattested
+hardware/live gates explicitly. No credentials are rotated during preparation;
+the patch blocks new browser access but does not itself revoke an already-read
+pairing token. Existing token custody/accepted-ring behavior must be considered
+before claiming revocation across Node/Swift handover.
+
 ### 2026-10-14 iDotMatrix readability correction
 
 Version decision recorded before manifest edits. App Store Connect's app list

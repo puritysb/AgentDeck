@@ -15,9 +15,9 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status** (App Store Connect, 2026-10-13): iOS and macOS `1.9.0` / `7901` are Ready for Distribution. `1.9.1` is the patch candidate; build upload and review submission are recorded separately in [RELEASING.md](../RELEASING.md).
+**Release status** ([App Store Connect readback, 2026-10-22](https://github.com/puritysb/AgentDeck/actions/runs/39786791116)): iOS `1.9.1` / `8501` and macOS `1.9.0` / `7901` are Ready for Distribution; macOS `1.9.1` / `8601` is In Review. The macOS notes below prepare `1.9.2`; that candidate has not been uploaded or submitted, and the existing review remains unchanged. Build, upload and submission evidence is recorded separately in [RELEASING.md](../RELEASING.md).
 
-_Paste the relevant sections into App Store Connect's "Notes" field when submitting `apple-v<version>`._
+_Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._
 
 ## What AgentDeck does
 
@@ -478,8 +478,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 1.9.1
-This patch refines existing setup and connection recovery, completes background-work count presentation on device renderers, preserves partially known evaluation costs during startup, and repairs per-creature history inspection without changing other devices’ control targets. The iDotMatrix display keeps the agent creature visible with separate WORK/JOBS counts and immediate amber WAIT for human attention. Dot is entirely excluded from this macOS/iOS submission, including setup, authentication, hosting, cloud connections and companion rendering. No hidden or remote switch enables it.
+NEW IN 1.9.2 — MACOS ONLY
+This accumulated patch strengthens local-server access checks, removes pairing tokens from connection logs, repairs connection recovery and request parsing, and improves device history and Wi-Fi setup. Browser pages do not gain a local program's trust merely by running on this Mac: Host/Origin checks require the pairing token for other sites. Status-line usage readings and Codex approval hooks remain opt-in. Notification clicks and foreground Shortcuts open the selected session without answering its prompt or changing a hardware control target. Dot remains entirely excluded; no hidden or remote switch enables it. This candidate does not replace the released iOS app.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors local coding-agent sessions, ingests user-enabled hooks, serves the dashboard, pairs companions and evaluates turns. Users start agents independently. Optional Hermes rows from an existing relay are read-only; the app offers no relay installer.
@@ -488,6 +488,9 @@ REVIEW WITHOUT AGENTS OR HARDWARE
 1. Choose an aquarium appearance in first-use setup. Agent integrations and optional devices can be skipped. Open Dashboard finishes setup.
 2. Open Device Preview from the menu bar to explore bundled synthetic sessions and device renderers.
 3. Devices > Pair Device opens companion approval and a QR code. Pairing is optional. Settings > Dashboard > Set Up AgentDeck reopens setup.
+
+SHORTCUTS / NOTIFICATIONS
+In macOS Shortcuts, add List Waiting Sessions and pass a result to Open Session. With a fresh empty roster, the list is empty; unavailable data produces an error. With an observed session awaiting a response, a result or its notification opens that session in Dashboard. Neither action approves requests, runs commands or launches agents. No new entitlement or permission is required.
 
 WEATHERKIT (Guideline 5.2.5)
 Settings > Dashboard > Weather context > Use Current Location. After permission, the weather pill displays Apple's Weather attribution when WeatherKit supplies the data; clicking opens Apple's legal page. Apple weather stays in-app/in-memory; portable displays use attributed MET Norway data.
