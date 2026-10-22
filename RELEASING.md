@@ -288,6 +288,52 @@ checks, new signed export and actual Mac Studio/runtime acceptance are all
 required before delivery. A stale listener, ignored restriction or required
 manual recovery blocks acceptance under the soak criteria above.
 
+#### Additional Store export and MacBook verification — 2026-10-23
+
+A separate macOS-only export from the same source
+`2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` succeeded in
+[run 39816233165](https://github.com/puritysb/AgentDeck/actions/runs/39816233165),
+using Xcode 26.3 (17C529), `platform=macos`, `upload=false`.
+The universal arm64/x86_64 Store package is **1.9.2 / 9001**, SHA-256
+`27a98e8c006761405f5e7f451bf9cba8f30aad582c2693e4a709e539265d7847`.
+Its Apple Distribution app and 3rd Party Mac Developer Installer package
+signatures use Serendipity Bound team QF36NDHYHD. Local strict signature,
+Sandbox, Store-invariant and Dot-exclusion checks passed. ASC upload, iOS and
+public-release jobs were skipped. This additional export has its own identity;
+separate 8901 Store and 2026102301 development-app records do not establish
+runtime acceptance of 9001.
+
+The [MacBook full receipt](verification/receipts/2026-10-22-2121b33-macbook.json)
+covers the same clean source on arm64 Node 26.8.1: 25 automated gates passed,
+Windows was locally skipped, and all three lab gates remain unattested.
+Final CI for source 2121b334 passed 13 jobs with one conditional TTGO skip;
+the Windows Node 26 job passed its isolated retry after two Git Bash timeouts.
+[Fresh ASC status](https://github.com/puritysb/AgentDeck/actions/runs/39813543247)
+still showed macOS 1.9.0 public, macOS 1.9.1 / 8601 VALID and IN_REVIEW with
+AFTER_APPROVAL, and iOS 1.9.1 / 8501 public; no review state was changed.
+
+An SSH attempt to create a Development-signed derivative of 9001 failed despite
+matching valid profile, certificate and target registration: codesign returned
+`errSecInternalComponent`, keychain inspection returned `User interaction is
+not allowed`, and `launchctl asuser` returned `Operation not permitted`.
+This attempt produced no development archive and installed or launched no app.
+It does not invalidate the separately installed Development build 2026102301 or
+its recorded observations. Creating the additional 9001-derived execution
+artifact requires local logged-in Terminal keychain access and the bundled
+signing/comparison helpers. Machine-specific input paths are in its README.
+
+The [new draft bundle](https://github.com/puritysb/AgentDeck/releases/tag/untagged-68b66024d9a137399dc9),
+retrieval identifier `candidate-security-patch-2121b334`, preserves 16 assets:
+the original 9001 Store package, extracted Store app, four retained npm tarballs,
+new and historical receipts, manifest/checksums, README, signing/comparison
+helpers and evidence. All 16 assets were downloaded again into an empty
+directory: GitHub API digests and original bytes matched, and all 15 entries
+in `SHA256SUMS` passed. The release remains `draft=true`, `published_at=null`,
+with no corresponding Git tag. Keep the original Store package and extracted
+Store-signed app unchanged; local execution requires the separately
+Development-signed copy. The earlier npm tarballs retain their e21b817 source
+and accepted hashes; they were not repacked.
+
 ### 2026-10-14 iDotMatrix readability correction
 
 Version decision recorded before manifest edits. App Store Connect's app list
