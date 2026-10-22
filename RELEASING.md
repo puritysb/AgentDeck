@@ -216,7 +216,7 @@ gh release download candidate-security-patch-e21b817 --repo puritysb/AgentDeck -
 (cd diagnostics/security-patch-candidate && shasum -a 256 -c SHA256SUMS)
 ```
 
-The corrected Store candidate is now **macOS 1.9.2 / 8901**, archived and exported
+The first corrected Store candidate was **macOS 1.9.2 / 8901**, archived and exported
 from `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` on Xcode 26.3 by
 [run 39812413109](https://github.com/puritysb/AgentDeck/actions/runs/39812413109),
 which completed successfully with `platform=macos`, `upload=false`. Artifact
@@ -413,8 +413,9 @@ not allowed`, and `launchctl asuser` returned `Operation not permitted`.
 This attempt produced no development archive and installed or launched no app.
 It does not invalidate the separately installed Development build 2026102301 or
 its recorded observations. Creating the additional 9001-derived execution
-artifact requires local logged-in Terminal keychain access and the bundled
-signing/comparison helpers. Machine-specific input paths are in its README.
+artifact required local logged-in keychain access and the bundled
+signing/comparison helpers; that step subsequently succeeded as recorded below.
+Machine-specific input paths are in its README.
 The user chose to hand off this signing step for execution on Mac Studio;
 the inputs, helpers and README have been copied there and their hashes checked.
 
@@ -429,6 +430,45 @@ with no corresponding Git tag. Keep the original Store package and extracted
 Store-signed app unchanged; local execution requires the separately
 Development-signed copy. The earlier npm tarballs retain their e21b817 source
 and accepted hashes; they were not repacked.
+
+#### Store 9001 local execution and timeline responsiveness — 2026-10-23
+
+Mac Studio successfully created and installed a separate Development-signed
+derivative of Store build **1.9.2 / 9001** using the retained signing helper.
+The original Store app remains unchanged and passes its distribution archive
+gate. The derivative uses the registered Mac Studio provisioning profile and
+Apple Development certificate, preserves Sandbox and all executable entitlements,
+and does not enable `get-task-allow`. Strict/deep code-signature verification
+passed. The comparison helper found no differences in 21 regular resource files
+or either architecture's non-signature Mach-O sections. Its ZIP SHA-256 is
+`c9d3d53c372618b1865835aa05148975acd9c2aae9edbfa0737a04ea85113d36`.
+The previous Development app was preserved as a verified ZIP before replacement.
+
+The installed canonical app launched, connected to the existing Node owner and
+displayed live sessions, usage and the Integrations settings. Subsequent automated
+UI reads and input attempts repeatedly exceeded 30 seconds, including after a fresh launch. Two
+process samples placed approximately half of the main-thread samples in the
+timeline's lazy-row rendering path. Disassembly of the exact stripped 9001
+binary identified `TimelineStripView.swift`'s row closure; each row re-read a
+computed property that regrouped and classified the complete timeline. Host
+load was high, but this repeated app work is independently evidenced. The QA
+app was stopped after capture; the Node owner and connected hardware were kept
+running. This is a failed responsiveness check, not accepted runtime evidence.
+
+The correction computes one immutable timeline snapshot per body evaluation
+and shares it with deferred rows, detail panels and scroll callbacks. It retains
+pre-display-filter task closures and refreshes on same-count response updates.
+The local Debug build passed the new regression tests, and a new process sample
+showed that the repeated grouping path was no longer a leading cost. Automated
+UI access still timed out, however; manual dashboard and Settings responsiveness
+has not yet been confirmed. The Release and Debug samples differ in build mode
+and host load and do not establish a speed improvement percentage or resolution
+of the UI access failure.
+The changed executable requires new source verification and a new signed Store
+candidate; 8901 and 9001 remain evidence for their original source only.
+Local signing, equivalence, installation and failure diagnostics are retained
+under `diagnostics/release597-candidate-9001/` and
+`diagnostics/apple-xcode/20261023-073946/`.
 
 ### 2026-10-14 iDotMatrix readability correction
 

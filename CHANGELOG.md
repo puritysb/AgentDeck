@@ -59,6 +59,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - iOS app: connection and discovery logs no longer print the pairing token or its prefix. The macOS correction is included in the Apple 1.9.2 candidate; this iOS change awaits a separate delivery.
 
+- iOS app: timeline rows reuse one grouped history per render, reducing repeated classification work in busy dashboards. The macOS correction is planned for the replacement Apple 1.9.2 candidate; iOS delivery is separate.
+
 - ESP32 firmware: Wi-Fi provisioning acknowledgements report whether a board joined, saved the credentials for later, or failed. The corresponding Node/macOS setup routes are included in the candidates below; new firmware delivery is separate.
 
 - ESP32 firmware: stop mDNS before parking the Wi-Fi radio, fixing a crash on rejoining after USB reprovisioning. The responder starts again after the board has an address.
@@ -74,11 +76,18 @@ This cumulative security and stability patch includes the fixes merged through
 under Unreleased until their own delivery.
 
 October 23 candidate update: the macOS startup correction below is included in
-the signed **1.9.2 / 8901** export from `2121b334`. Full automatic verification
-passed; Mac Studio runtime acceptance remains partial, as recorded in
+the signed **1.9.2 / 8901 and 9001** exports from `2121b334`. Full automatic verification
+passed; Mac Studio testing then encountered automated UI access timeouts and
+observed repeated timeline classification on the main thread. The snapshot
+correction reduces that repeated work, but automated UI access still times out
+in the local Debug build; manual responsiveness is not yet confirmed.
+The timeline correction requires a new signed candidate.
+Runtime acceptance remains partial, as recorded in
 [RELEASING.md](RELEASING.md#current-mac-studio-evidence-2026-10-23). The earlier
 1.9.2 / 8801 package from `e21b817b` is retained only for reproduction/comparison;
 it does not contain this fix. The four accepted npm 1.9.3 tarballs are unchanged.
+
+- macOS app: busy timelines no longer regroup and classify the entire history for each visible row. Rows, detail panels and scrolling now share one render snapshot, preserving session filters and completed-task state while reducing main-thread work.
 
 - Security, Node daemon and macOS app: a web page open in a browser on the same computer can no longer use the daemon as if it were a local program. Both daemons let any connection from the same machine in without the pairing token, and a browser connects from the same machine too. A page could open the daemon's WebSocket, read the session roster and timeline, and send device commands. It could post hooks or a shutdown with a plain-text form post. Through a host name that re-resolves to the computer itself, it could read `/health` and the pairing token in it. The macOS app also answered every request with `Access-Control-Allow-Origin: *`, so on a Mac running the app any page could read the pairing token with one ordinary request. A same-machine request now keeps that trust only when its `Host` names this computer. A WebSocket, or a request that changes something, must also carry no `Origin` or the daemon's own. Any other request needs the pairing token, as a device on the network does. A computer's bare name or a domain name no longer counts as this computer, because the network's DNS answers those; `localhost`, its IP addresses and its own `.local` name do. A session bridge's status page no longer copies a value from the address bar into its script, which let any site open that page and run its own script with the bridge's trust. The CLI, hooks, deck plugins, ESP32 boards and the APME dashboard work as before, including the dashboard opened through a port forward such as `ssh -L`. Another site's page can now read only `/setup-status`, the Node daemon's `/display-state` and the Pixoo preview frames. The Node daemon's APME API and a session bridge's event stream carry prompts and task history, and they are no longer readable cross-origin. The update does not revoke a pairing token a page may already have read. For a Node-owned daemon, `agentdeck token rotate` replaces the Node token and accepted ring, followed by `agentdeck daemon restart` and device re-pairing. This is not complete revocation across Node/Swift handover: the macOS app has no rotation control and its adoption path can retain the previous token in its accepted ring.
 
