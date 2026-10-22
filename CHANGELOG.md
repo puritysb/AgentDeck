@@ -45,6 +45,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
+
+- Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
+
+- Stream Deck and Ulanzi: a weekly-only Claude usage snapshot clears an older 5-hour reading instead of retaining a stale tile.
+
 - Stream Deck and Ulanzi decks: two sessions of the same agent in the same project no longer draw identical keys. Each gets a short session-id tag (`chezmoi #5f8f`), the start of the id shown by Claude Code's `/status`, and the detail INFO tile names the tagged session, so the session a voice prompt will reach is identifiable. A lone session looks as before (#544).
 
 - ESP32 WiFi provisioning: a board parked on USB serial is no longer sent the WiFi credentials it already holds on every serial reopen, lease resume and daemon restart. Each of those provisions woke a radio the board then had to park again. A provision now carries a credential id: an HMAC keyed by the pairing token, never a bare hash of the password. The board stores the id beside the credentials and reports it as `device_info.wifiCredId`, over USB only, and both daemons skip a board whose id matches. Boards that persist a provision (IPS10, T-Display-S3-Pro, NM-EPD-420, EPD47) now also receive changed credentials, which they never did. Older firmware and older daemons keep the old behaviour, and rotating the pairing token re-provisions each board once. Neither daemon writes WiFi credentials to a serial port before a board has identified itself on that connection. On most boards a provision now also reaches flash when it follows a failed captive-portal save; it used to be held in RAM only and lost at the next reboot.
@@ -55,6 +61,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - ESP32 firmware: Wi-Fi provisioning acknowledgements report whether a board joined, saved the credentials for later, or failed. The corresponding Node/macOS setup routes are included in the candidates below; new firmware delivery is separate.
 
+- ESP32 firmware: stop mDNS before parking the Wi-Fi radio, fixing a crash on rejoining after USB reprovisioning. The responder starts again after the board has an address.
+
+- ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
+
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
 Preparation candidate: npm and macOS only. These versions have not been published
@@ -63,11 +73,12 @@ This cumulative security and stability patch includes the fixes merged through
 `4b839281`; it is not a #583-only backport. Other device/plugin updates remain
 under Unreleased until their own delivery.
 
-October 23 candidate update: the macOS startup correction below requires a new
-signed macOS candidate and Mac Studio acceptance. The earlier 1.9.2 / 8801
-package from `e21b817b` is retained only for reproduction/comparison; it does not
-contain this fix and cannot serve as its approval or deployment evidence. The
-four accepted npm 1.9.3 tarballs are unchanged.
+October 23 candidate update: the macOS startup correction below is included in
+the signed **1.9.2 / 8901** export from `2121b334`. Full automatic verification
+passed; Mac Studio runtime acceptance remains partial, as recorded in
+[RELEASING.md](RELEASING.md#current-mac-studio-evidence-2026-10-23). The earlier
+1.9.2 / 8801 package from `e21b817b` is retained only for reproduction/comparison;
+it does not contain this fix. The four accepted npm 1.9.3 tarballs are unchanged.
 
 - Security, Node daemon and macOS app: a web page open in a browser on the same computer can no longer use the daemon as if it were a local program. Both daemons let any connection from the same machine in without the pairing token, and a browser connects from the same machine too. A page could open the daemon's WebSocket, read the session roster and timeline, and send device commands. It could post hooks or a shutdown with a plain-text form post. Through a host name that re-resolves to the computer itself, it could read `/health` and the pairing token in it. The macOS app also answered every request with `Access-Control-Allow-Origin: *`, so on a Mac running the app any page could read the pairing token with one ordinary request. A same-machine request now keeps that trust only when its `Host` names this computer. A WebSocket, or a request that changes something, must also carry no `Origin` or the daemon's own. Any other request needs the pairing token, as a device on the network does. A computer's bare name or a domain name no longer counts as this computer, because the network's DNS answers those; `localhost`, its IP addresses and its own `.local` name do. A session bridge's status page no longer copies a value from the address bar into its script, which let any site open that page and run its own script with the bridge's trust. The CLI, hooks, deck plugins, ESP32 boards and the APME dashboard work as before, including the dashboard opened through a port forward such as `ssh -L`. Another site's page can now read only `/setup-status`, the Node daemon's `/display-state` and the Pixoo preview frames. The Node daemon's APME API and a session bridge's event stream carry prompts and task history, and they are no longer readable cross-origin. The update does not revoke a pairing token a page may already have read. For a Node-owned daemon, `agentdeck token rotate` replaces the Node token and accepted ring, followed by `agentdeck daemon restart` and device re-pairing. This is not complete revocation across Node/Swift handover: the macOS app has no rotation control and its adoption path can retain the previous token in its accepted ring.
 
@@ -97,19 +108,27 @@ four accepted npm 1.9.3 tarballs are unchanged.
 
 - macOS app: the T-Embed knob's History view now fills, on a cable and over WiFi. On USB the app's daemon passed the knob's query for one session's rows to a command handler that ignored it; on both transports the answer came back under the session's full id, which the knob, holding the 31-byte id its roster gave it, discarded. A board now gets back the id it asked with. Over WiFi the answer is now also shaped like every other frame a board receives, rows cut to the board's buffers and the frame to about 3.5 KB, where it used to send up to 16 full rows that could overrun the board's 4 KB buffer. The app now also writes its timeline file atomically, so a quit or crash in the middle of a write can no longer leave a cut-off file that starts the timeline empty.
 
-- Node daemon: opt-in observed-session relay shares worker sessions with a hub and routes supported session controls back over the worker's existing outbound connection. Unavailable workers expire, and controls remain restricted to the worker's own advertised sessions.
+- Node daemon: an experimental, opt-in observed-session relay shares worker sessions with a hub and routes supported session controls back over the worker's existing outbound connection. Unavailable workers expire, and controls remain restricted to the worker's own advertised sessions. Two-daemon loopback tests pass; two-computer, SSH-forwarded and Windows-worker acceptance remains separate.
 
 - Node daemon voice and session control: cmux sessions receive prompts through their native surface route; target selection follows the intended session rather than whichever terminal happens to be focused. Existing terminal routes and session-ID targeting remain in place. A LaunchAgent-owned daemon needs cmux Automation mode (see [voice setup](docs/voice-setup.md)); the standalone macOS app does not run cmux.
 
-- macOS app: click an attention notification to open its session, or use Shortcuts to list sessions waiting for a response and open one in the Dashboard. Opt-in collaboration views improve navigation among related work without automatically deciding or answering for the user.
+- macOS app: click an attention notification to open its session, or use Shortcuts to list sessions waiting for a response and open one in the Dashboard. Opening a session leaves its prompt unanswered and keeps the hardware control target unchanged. An unavailable roster is reported as unavailable, rather than as an empty waiting list.
 
-- macOS app: improve reconnect and daemon failover behavior, preserve chat history through busy tool activity and daemon ownership changes, and omit pairing tokens from connection/discovery logs.
+- macOS app: the optional experimental Collaboration view shows observed messages between sessions, with matching currents in the aquarium. Only explicit requests for a reply start a waiting timer; uncertain replies and missing peers remain unconfirmed. The view does not infer a dependency from sessions sharing a project.
 
-- macOS app: stopping or changing daemon settings during startup now invalidates the old startup before a replacement can take over. A late completion, readiness callback or retry cannot restore the old port or network posture, undo a newer stop, or remove the replacement daemon's registry record. Controlled startup/cancellation regressions accompany the correction; acceptance on Mac Studio and a new signed macOS export remain pending.
+- macOS app: recover the preferred connection after interrupted or exhausted retries, keep healthy WebSockets open beyond the former two-minute limit, and avoid treating a slow local daemon as an absent one. Connection and discovery logs omit pairing tokens. The separate Node timeline fix above prevents tool rows from displacing conversation history; the Swift daemon did not have that tool-row eviction problem.
+
+- macOS app voice: dictated prompts addressed to an OpenClaw Gateway session now reach that session. Delivery diagnostics distinguish sent, queued and undeliverable prompts, including observed agents that have no prompt delivery path in the standalone app.
+
+- macOS app: stopping or changing daemon settings during startup now invalidates the old startup before a replacement can take over. A late completion, readiness callback or retry cannot restore the old port or network posture, undo a newer stop, or remove the replacement daemon's registry record. Seven service and four production-helper regressions cover the correction. The signed 1.9.2 / 8901 export and full automatic checks passed; Mac Studio runtime acceptance remains partial.
 
 - macOS build: split the communication graph's position calculations into explicitly typed intermediate values so the Xcode 26.3 release compiler can build the app. Node positions and layout rules are unchanged.
 
-- Node setup and Windows hooks: improve Ulanzi onboarding and restore Claude permission-request handling on Windows. Existing agent observation remains opt-in.
+- Claude permission attention, Node daemon and macOS app: the PermissionRequest hook displays the request when Claude is about to ask, with Notification retained as a fallback. It preserves the identity of an already answerable request. A hook that disconnects releases an undecided hold so the agent can continue its normal prompt flow.
+
+- Windows Claude hooks: approval, question and STOP responses now reach Claude instead of being discarded. Hooks also avoid a separate health probe before every event.
+
+- Node setup: an unwritable global npm directory falls back to a user-owned installation, and installation errors retain their useful cause. Setup checks whether Claude actually runs, detects Ulanzi Studio, gives host-specific next steps and offers daemon installation during interactive setup.
 
 - ESP32 provisioning, daemon side: Node and macOS recognize a board's credential ID and avoid sending unchanged Wi-Fi settings again when compatible firmware reports that ID. Older firmware retains the existing provisioning behavior; the matching firmware changes await their own release.
 
