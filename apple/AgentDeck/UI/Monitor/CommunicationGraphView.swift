@@ -140,11 +140,18 @@ struct CommunicationGraphView: View {
         let width: CGFloat = expanded ? max(760, CGFloat(network.nodes.count) * 62) : max(310, CGFloat(network.nodes.count) * 42)
         let height: CGFloat = expanded ? max(390, width * 0.5) : max(230, width * 0.65)
         let nodeWidth: CGFloat = expanded ? 130 : 98
-        let points = Dictionary(uniqueKeysWithValues: network.nodes.enumerated().map { index, node in
-            let angle = Double(index) / Double(max(1, network.nodes.count)) * .pi * 2 - .pi / 2
-            return (node.id, CGPoint(x: width / 2 + cos(angle) * (width / 2 - nodeWidth / 2 - 8),
-                                    y: height / 2 + sin(angle) * (height / 2 - 38)))
-        })
+        let centerX: CGFloat = width / 2
+        let centerY: CGFloat = height / 2
+        let radiusX: CGFloat = width / 2 - nodeWidth / 2 - 8
+        let radiusY: CGFloat = height / 2 - 38
+        let nodeCount: Double = Double(max(1, network.nodes.count))
+        let pointPairs: [(String, CGPoint)] = network.nodes.enumerated().map { index, node in
+            let angle: Double = Double(index) / nodeCount * Double.pi * 2 - Double.pi / 2
+            let x: CGFloat = centerX + CGFloat(cos(angle)) * radiusX
+            let y: CGFloat = centerY + CGFloat(sin(angle)) * radiusY
+            return (node.id, CGPoint(x: x, y: y))
+        }
+        let points = Dictionary(uniqueKeysWithValues: pointPairs)
         var occupied = points.values.map { CGRect(x: $0.x-nodeWidth/2, y: $0.y-32, width: nodeWidth, height: 64) }
         var badges: [String: CGRect] = [:]
         for link in network.links {

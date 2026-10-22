@@ -99,6 +99,8 @@ under Unreleased until their own delivery.
 
 - macOS app: improve reconnect and daemon failover behavior, preserve chat history through busy tool activity and daemon ownership changes, and omit pairing tokens from connection/discovery logs.
 
+- macOS build: split the communication graph's position calculations into explicitly typed intermediate values so the Xcode 26.3 release compiler can build the app. Node positions and layout rules are unchanged.
+
 - Node setup and Windows hooks: improve Ulanzi onboarding and restore Claude permission-request handling on Windows. Existing agent observation remains opt-in.
 
 - ESP32 provisioning, daemon side: Node and macOS recognize a board's credential ID and avoid sending unchanged Wi-Fi settings again when compatible firmware reports that ID. Older firmware retains the existing provisioning behavior; the matching firmware changes await their own release.

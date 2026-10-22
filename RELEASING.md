@@ -103,6 +103,14 @@ master `4b839281177c66b07a6ad125788059db5b6bd968`, including
 merged since each channel's previous release. It is not a security-only
 cherry-pick. Version decisions were recorded before editing the manifests.
 
+The first signed-candidate run exposed an existing Xcode 26.3 type-checking
+timeout in the communication graph's position expression, despite passing
+local Xcode 27.1 builds. [Run 39790524243](https://github.com/puritysb/AgentDeck/actions/runs/39790524243)
+stopped before export: its attempted build 8701 is not an exported or uploaded
+artifact. The candidate also separates that expression into explicitly typed
+intermediate calculations without changing its geometry; the corrected commit
+must pass the signed archive again.
+
 | Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
 | --- | --- | --- | --- | --- | --- |
 | npm / four public packages | 1.9.2, all four registry latest tags re-read October 22 | 1.9.2 | 1.9.3 | Patch: enforce browser Host/Origin trust, close reflected-script and cross-origin data paths, and complete existing observation/control workflows | Node daemon, managed session bridges, hooks and setup |
