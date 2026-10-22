@@ -17,24 +17,50 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 Copy for the macOS-only candidate in the [release decision](../RELEASING.md).
 This candidate has not been uploaded or submitted. The macOS 1.9.1 review and
 the released iOS 1.9.1 app remain unchanged; the iOS copy below is unchanged.
-Verify Shortcuts discovery and notification navigation on the signed candidate
-before submission. Use the following text for macOS What's New when that
-submission is authorized.
+**Acceptance pending:** finish Shortcuts and notification cases, direct Claude
+status-line freshness and runtime checks of the exported Store candidate. Real
+Codex Allow/Deny and unanswered fallback passed with a native controller under
+Node and the Development-signed app; physical deck-button acceptance is
+separate. See the measured scope and open gates in the
+[release decision](../RELEASING.md#current-mac-studio-evidence-2026-10-23) before
+using this copy. The collaboration view is an opt-in experiment showing observed
+messages, not an inferred dependency map.
 
-- **English:** Strengthens local connection security and keeps pairing tokens out
-  of connection logs. Improves reconnection, session history and Wi-Fi setup for
-  connected displays. Adds opt-in Claude usage readings and Codex approval
-  responses. Open waiting sessions from notifications, or list and open them with
-  Shortcuts.
-- **Korean:** 로컬 연결 보안을 강화하고 연결 로그에 페어링 토큰이 남지 않도록
-  개선했습니다. 재연결, 세션 기록, 연결된 디스플레이의 Wi-Fi 설정을 개선했습니다.
-  선택적으로 Claude 사용량을 확인하고 Codex 승인 요청에 응답할 수 있습니다.
-  알림을 눌러 응답을 기다리는 세션으로 이동하거나, 단축어에서 해당 세션을 조회하고
-  열 수 있습니다.
-- **Japanese:** ローカル接続のセキュリティを強化し、接続ログにペアリングトークンが
-  残らないようにしました。再接続、セッション履歴、接続したディスプレイのWi-Fi設定を
-  改善しました。任意でClaudeの使用量を確認し、Codexの承認要求に応答できます。
-  通知から応答待ちのセッションを開いたり、ショートカットで一覧表示して開いたりできます。
+### English — macOS What's New
+
+```text
+• Open a session directly from its attention notification, or use Shortcuts to list and open sessions waiting for your response.
+• See observed messages between sessions in the optional experimental Collaboration view and aquarium.
+• View Claude's 5-hour and 7-day usage through the optional status-line integration. Claude permission requests appear when the agent asks for approval.
+• Enable optional device approvals to answer Codex requests from a connected deck. If nobody answers within 25 seconds, Codex shows its own prompt as usual.
+• Strengthen local connection security and keep pairing tokens out of connection logs. Improve reconnection and protect saved conversation history from interrupted writes. Connection settings now take effect reliably, even during startup.
+• Restore T-Embed session history and improve Wi-Fi setup for USB-connected ESP32 displays. Detailed setup results depend on the display firmware.
+• Fix dictated prompts addressed to OpenClaw Gateway sessions and improve delivery diagnostics.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• 응답 요청 알림을 눌러 해당 세션을 바로 열거나, 단축어로 응답을 기다리는 세션을 조회하고 열 수 있습니다.
+• 선택적으로 켜는 실험적 Collaboration 화면과 아쿠아리움에서 실제로 관측된 세션 간 메시지를 확인할 수 있습니다.
+• 선택적 상태 표시줄 연동으로 Claude의 5시간·7일 사용량을 확인할 수 있습니다. Claude가 승인을 요청하면 대시보드에도 요청을 표시합니다.
+• 설정에서 기기 승인을 활성화하면 연결된 덱에서 Codex 승인 요청에 응답할 수 있습니다. 25초 동안 응답이 없으면 Codex가 평소처럼 자체 확인창을 표시합니다.
+• 로컬 연결 보안을 강화하고 연결 로그에서 페어링 토큰을 제거했습니다. 재연결을 개선하고 저장 중 중단으로 대화 기록이 손상되는 문제를 수정했습니다. 앱을 시작하는 중에도 연결 설정 변경이 안정적으로 반영됩니다.
+• T-Embed의 세션 기록 조회와 USB로 연결된 ESP32 디스플레이의 Wi-Fi 설정을 개선했습니다. 상세 설정 결과는 디스플레이 펌웨어의 지원에 따라 표시됩니다.
+• OpenClaw Gateway 세션으로 지정한 음성 입력이 전달되지 않던 문제를 수정하고 전달 진단을 개선했습니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• 応答を求める通知から該当セッションを直接開けます。ショートカットで応答待ちのセッションを一覧表示して開くこともできます。
+• 任意で有効にする実験的なCollaborationビューとアクアリウムで、実際に観測されたセッション間のメッセージを確認できます。
+• 任意のステータスライン連携でClaudeの5時間・7日間の使用量を確認できます。Claudeが承認を求めると、ダッシュボードにも要求を表示します。
+• 設定でデバイス承認を有効にすると、接続したデッキからCodexの承認要求に応答できます。25秒以内に応答がなければ、Codexが通常どおり独自の確認画面を表示します。
+• ローカル接続のセキュリティを強化し、接続ログからペアリングトークンを除きました。再接続を改善し、保存中の中断による会話履歴の破損を防ぎます。起動中でも接続設定の変更が確実に反映されるようになりました。
+• T-Embedのセッション履歴と、USB接続したESP32ディスプレイのWi-Fi設定を改善しました。詳細な設定結果の表示には対応するディスプレイのファームウェアが必要です。
+• OpenClaw Gatewayセッション宛ての音声入力が届かない問題を修正し、配信診断を改善しました。
+```
 
 ---
 

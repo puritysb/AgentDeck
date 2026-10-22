@@ -215,11 +215,21 @@ gh release download candidate-security-patch-e21b817 --repo puritysb/AgentDeck -
 (cd diagnostics/security-patch-candidate && shasum -a 256 -c SHA256SUMS)
 ```
 
-The corrected app requires a new macOS-only 1.9.2 archive and signed export from
-the validated source, with a fresh CI-assigned build number and `upload=false`.
-Recheck the ASC build floor first. Record its source SHA, CI run, package hash,
-app/package signing identities and successful App Store/Dot archive and export
-checks. A new archive/export has not yet been recorded here.
+The corrected Store candidate is now **macOS 1.9.2 / 8901**, archived and exported
+from `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` on Xcode 26.3 by
+[run 39812413109](https://github.com/puritysb/AgentDeck/actions/runs/39812413109),
+which completed successfully with `platform=macos`, `upload=false`. Artifact
+`apple-macos-1.9.2-89-1` was downloaded and its ZIP digest matched GitHub. The
+package SHA-256 is
+`4770b062aa10559515c98e47c4a02a99565239c1bd0f741d40b12a6d3dd3a6c5`.
+The extracted universal arm64/x86_64 app has bundle
+`bound.serendipity.agent.deck`; strict/deep signature verification, Sandbox and
+App Store/Dot-exclusion checks passed. Its app signer is **Apple Distribution:
+Serendipity Bound (QF36NDHYHD)** and package signer is **3rd Party Mac Developer
+Installer: Serendipity Bound (QF36NDHYHD)**. The App Store upload step, iOS build and
+public-release job were skipped. This verifies the exported artifact, not its installed
+runtime behavior. Recheck ASC's build floor and current review state before any
+later upload; the earlier 8801 package remains only a comparison baseline.
 
 Complete the [three-mode soak](#pre-tag-three-mode-daemon-soak) on Mac Studio
 with that corrected signed app and the retained npm packages, using supported
@@ -276,17 +286,98 @@ DotPreviewRelease suite executed **1,345 tests with 8 skipped and no failures**.
 macOS Release, iOS Release/DotPreviewRelease, macOS DotPreviewRelease and their
 artifact boundaries, plus the relevant fast checks. The separately completed
 Debug checks above account for that explicit skip. App Store submission package
-validation also passed. These are source/build checks, not a replacement signed
-archive or Mac Studio runtime acceptance; the pushed head's CI remains separate.
+validation also passed. These are source/build checks; the corrected signed
+export is recorded above and partial Mac Studio observations below. These
+earlier test counts are retained separately from the clean-source full run.
 
-On Mac Studio, compare the old baseline with the corrected signed build while
-changing port or loopback settings during startup and issuing stop/restart in
-quick succession. Confirm the final listener, `/health` posture and displayed
-settings agree with the latest request, and that a stopped app does not later
-publish readiness or delete its replacement's registry. The corrected-source
-checks, new signed export and actual Mac Studio/runtime acceptance are all
-required before delivery. A stale listener, ignored restriction or required
-manual recovery blocks acceptance under the soak criteria above.
+The final [full verification receipt](verification/receipts/2026-10-22-2121b33.json)
+covers clean source `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` on arm64
+Node 26.5.0: **25 automated gates passed** in 44 minutes 14 seconds, including
+coverage (6,777 passed / 17 skipped), daemon E2E (29 passed), native builds,
+App Store submission limits, all ESP32 simulator variants, the TTGO target
+build and clean npm package acceptance (12/12, including its 60-second soak).
+macOS Debug executed 1,326 tests (1,322 passed / 4 skipped); DotPreview executed
+1,345 (1,336 passed / 9 skipped), with no failures. The receipt explicitly skips
+Windows on this Mac and attests an ESP32 Robot skip because this candidate
+delivers no firmware. Its `device-deploy` and `swift-codex-live` manual gates
+remain unattested; the scoped runtime observations below do not rewrite those
+receipt states.
+
+All checks on the same pushed source completed: **13 jobs passed**, with the
+path-conditional TTGO job skipped. [Main CI](https://github.com/puritysb/AgentDeck/actions/runs/39811583046)
+includes Windows Node 22/24/26 and macOS native parity;
+[Apple Tests](https://github.com/puritysb/AgentDeck/actions/runs/39811583083),
+[Design System](https://github.com/puritysb/AgentDeck/actions/runs/39811583245)
+and [ESP32 simulator](https://github.com/puritysb/AgentDeck/actions/runs/39811583008)
+also passed.
+
+#### Current Mac Studio evidence 2026-10-23
+
+**Partially verified; not accepted for release.** The final full-verification
+receipt and corrected signed export passed; the remaining runtime checks below
+are open.
+There has been no merge, delivery tag, npm publication, App Store upload or
+submission, or public release. The existing macOS 1.9.1 review and iOS delivery
+remain unchanged.
+
+Runtime observations used the canonical installed **Development-signed** app
+from `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd`, version **1.9.2 / 2026102301**
+(recorded PIDs 34806, then 60939 after the fixture relaunch). They do not establish
+runtime acceptance of the exported Store package **1.9.2 / 8901**. The installed
+CLI resolves to the retained **npm 1.9.3** candidate, build `84a9de8e009e`
+(recorded PIDs 17441, then 59132), rather than a source-tree CLI.
+
+| Check | Measured result and limit |
+| --- | --- |
+| CLI and Swift observations | CLI-first coexistence snapshot passed. The initial Node soak had 2 health probes time out at 5 seconds out of 27 (slowest successful probe 3,954.89 ms); a later recovery soak passed 27/27 (worst 127.57 ms). Swift passed a 130-second soak, 27/27 (worst 37.2 ms). Both owners passed the browser-boundary probe. Retain the initial failure alongside the recovery. |
+| CLI stop → Swift reclaim | Automatic 9120 recovery took **145.394 seconds** between the last Node response at 16:32:08.399Z and first Swift response at 16:34:33.793Z. The path included fallback port 9121 and a 120-second cooldown. All 245 listener samples were readable; none showed two owners of 9120. This records eventual recovery, not a seamless handover. |
+| Swift → CLI takeover | Supported CLI start completed with both processes present. The last Swift response at 16:44:26.950Z and first Node response at 16:45:35.745Z were **68.795 seconds** apart. No two owners of 9120 were observed; 2 of 41 listener samples were unreadable and remain unknown. A subsequent 130-second Node soak passed 27/27 (median 154.23 ms, worst 1,903.45 ms). |
+| Timeline continuity | After both handovers, the Node owner's WebSocket history contained the earlier Node Allow turn and the Swift real-turn and Allow replies. The app had also displayed the earlier Node turns while Swift owned the hub. This verifies those observed rows; it is not a fingerprint comparison of credential stores. |
+| Real agent and downstream delivery | A directly launched Codex turn produced `AGENTDECK_RELEASE597_SWIFT_OK`; the app accessibility tree and a Lenovo display screenshot showed the turn. Earlier Node-driven display evidence is retained separately. Swift synthetic replay also passed, but is separate from this real turn. |
+| Optional Codex approval | Codex 0.163 in its normal, user-trusted hook flow exercised Allow, Deny and unanswered fallback under both owners. Fallback elapsed **25,003 ms (Node)** and **25,027 ms (Swift)**; Codex's native confirmation appeared and was cancelled with Escape. Answers came from a native WebSocket controller, not a physical deck button. |
+| Settings and startup intent | Rapid UI changes through ports 19681 → 19682 → 19681 → 9120 ended on the latest requested port; old listeners closed. Device-module disable/enable restored the expected posture. No trace proves that these UI changes landed while `isStarting` was true: the deterministic race evidence remains the 7 service and 4 helper tests. A temporary LLDB logpoint pause was excluded from acceptance measurements. |
+| Attention navigation and usage | Warm Shortcuts UI listed the two controlled A/B sessions and Open selected B correctly, with zero fixture mutations. Claude usage was available in the app and visible on Lenovo gauges; this does not directly verify freshness from the optional live status-line integration. |
+
+The existing four-second module-teardown budget expired during handover and
+late Serial cleanup was observed. This is a remaining lifecycle caveat: the
+observations above do not prove that every device module completed teardown
+before the next phase. The long handover intervals and this cleanup behavior
+remain subject to the three-mode soak criteria; no waiver is recorded here.
+
+Remaining acceptance: verify the installed and running identity of the exact
+Store candidate and its relevant behavior; complete cold, stale-session,
+no-target and unavailable-daemon Shortcuts cases, notification navigation, and
+direct live Claude status-line freshness. A saved-reference Shortcuts invocation
+for a terminated session had not returned a verified result when the Mac locked;
+it was cancelled, and remaining UI work awaits unlock. Physical deck-button
+approvals, sleep/wake recovery and credential-store identity across both
+handovers are not established by the measurements above. Do not change the
+submission notes' acceptance status to complete on the strength of the warm
+fixture alone.
+
+Local evidence is retained under `diagnostics/release597-*`, with Store package
+identity/signature records under `diagnostics/apple-candidate-39812413109/`.
+These private diagnostics are not committed. Rollback material remains in
+`diagnostics/release597-baseline/`: `AgentDeck-before.zip`, the prior app bundle,
+`identity.json`, `apple-preferences.plist`, `node-settings.json`,
+`daemon-launchagent.plist` and `codex-config.toml`. Use the recorded previous
+CLI target and supported daemon lifecycle when restoring; preserve the current
+user data and do not publish private absolute paths or credential files.
+
+After the screen locked, the fixture-pinned QA app, local fixture server and
+Codex test terminal were closed. The installed Development-signed candidate
+and rollback bundle remain available; the CLI candidate continues serving 9120
+as PID 59132, build `84a9de8e009e`. Reopen the app normally for further testing;
+the synthetic endpoint was supplied only as a launch argument. No test
+notification or unanswered approval was intentionally left active.
+
+The final document-only follow-up passed the changed-area documentation,
+catalog, mirror and submission checks, plus all 12 release-note tests. Its three
+macOS What's New blocks contain 1,023 English, 596 Korean and 540 Japanese
+characters; the copy-ready macOS Review Notes block contains 3,712 characters.
+All are below the 4,000-character field limit. Native executable checks above
+belong to clean source `2121b334`; only documentation and its receipt were
+changed afterward.
 
 ### 2026-10-14 iDotMatrix readability correction
 

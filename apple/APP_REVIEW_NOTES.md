@@ -19,6 +19,14 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 _Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._
 
+**Candidate acceptance pending:** remaining Shortcuts and notification cases,
+direct Claude status-line freshness, and runtime checks of the exported Store
+candidate. Real Codex Allow/Deny and unanswered fallback passed with a native
+controller under Node and the Development-signed app; physical deck-button
+acceptance is separate. This preparation status is not part of either Notes
+field; see the measured scope and open gates in [RELEASING.md](../RELEASING.md)
+before submission.
+
 ## What AgentDeck does
 
 AgentDeck Dashboard is a real-time monitoring and evaluation app for AI coding agents (Claude Code, opt-in Codex lifecycle hooks, opt-in OpenCode local-server monitoring, opt-in Kiro CLI observation read from a user-granted `~/.kiro` folder, and OpenClaw Gateway sessions). The submitted macOS app's built-in Swift daemon owns the dashboard server, hook ingestion, session state, local-network pairing, APME Layer 2 evaluation, and native hardware modules. It shows live status, tool activity, and quality scores on Mac and on the paired iOS companion. When an agent genuinely waits on a question, AgentDeck shows the choices the agent itself supplied. The user may answer from the app, in which case the app replies to that agent's own local hook request with the option the user chose; if nobody answers, the request is released untouched and the agent's normal prompt appears in the user's terminal. AgentDeck never invents a choice and never proceeds on the user's behalf.
@@ -79,6 +87,18 @@ AgentDeck can optionally register hooks in `~/.claude/settings.json` so Claude C
 5. Writes are scoped to this single user-selected file; the app reads no other files in `~/.claude/`.
 
 The UI also offers a "Remove" button that deletes our hook entries and revokes the bookmark.
+
+The `PermissionRequest` event makes Claude's actual permission request visible
+as it is about to ask, with its permission Notification as a fallback. This
+display signal never creates an answerable request or replaces a held request's
+identity. AgentDeck does not approve anything merely because the event arrived.
+
+The optional Claude status-line integration receives Claude's own 5-hour and
+7-day usage readings through a local HTTP endpoint. Settings offers Wrap /
+Always / Off; an existing user status line is preserved and restored on removal.
+With no status line configured, enabling one is an explicit choice because it
+replaces Claude's footer hints. The standalone app needs neither a Claude OAuth
+token nor another AgentDeck daemon for these readings.
 
 When Claude Code uses child agents or agent teams, the same opt-in integration
 receives lifecycle-only `SubagentStart`, `SubagentStop`, `TaskCompleted`, and
@@ -238,6 +258,14 @@ Codex (OpenAI's CLI) is observed through a fully opt-in path that mirrors the Cl
 6. At runtime, Codex (the user's separately-installed CLI) is what eventually executes that snippet under its own process tree — not AgentDeck. AgentDeck itself only receives HTTP POSTs.
 
 The Settings panel offers a "Remove" button that strips AgentDeck's fenced block and revokes the bookmark; it leaves all user-authored TOML keys untouched. Reviewers without Codex installed see "Not configured"; the panel remains inert.
+
+Device approvals are a separate, off-by-default option in the Codex Integrations
+row. Enabling it adds a second `PermissionRequest` handler to AgentDeck's managed
+hook block; Codex asks the user to review that hook. With a connected device and
+a visible session, its local HTTP request can wait up to 25 seconds for a user
+Allow/Deny choice. If unanswered, disconnected or no longer applicable, the hold
+returns no decision and Codex continues its own prompt flow. The Swift app only
+answers the local HTTP request; it never launches Codex or decides automatically.
 
 Separately, the Codex Integrations row offers an optional **usage display** that mirrors the Antigravity `state.vscdb` pattern exactly: the user explicitly picks their `~/.codex` folder through an `NSOpenPanel` (`canChooseDirectories`, starting at `~/.codex` resolved via `getpwuid(getuid()).pw_dir`, no preselection, no enumeration before selection), AgentDeck stores an app-scoped security-scoped bookmark to that one folder, and reads are performed inside a `startAccessingSecurityScopedResource()` / `defer stop` pair under the existing `com.apple.security.files.user-selected.read-write` entitlement. From that folder AgentDeck reads only `auth.json` (ChatGPT plan + subscription expiry) and the trailing bytes of the newest `sessions/.../rollout-*.jsonl` file (the `rate_limits` snapshot Codex itself writes — a 5h/7d-style usage gauge). For live account quota, the access token and account ID from that same user-selected `auth.json` are used only for a read-only HTTPS GET to `https://chatgpt.com/backend-api/wham/usage`, the endpoint used by Codex itself. Native URLSession polls at most every 30 seconds automatically with an 8-second request/10-second resource timeout and failure backoff; redirects, disk HTTP caching and cookies are disabled. Credentials are not logged or copied to storage, and AgentDeck neither refreshes tokens nor redeems reset credits. Local rollout snapshots remain the fallback. There is no home-relative-path entitlement and no subprocess; when the user has not granted the folder the row simply shows the plan/usage region collapsed. A "Remove access" button revokes the bookmark.
 
@@ -479,35 +507,36 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.2 — MACOS ONLY
-This accumulated patch strengthens local-server access checks, removes pairing tokens from connection logs, repairs connection recovery and request parsing, and improves device history and Wi-Fi setup. Browser pages do not gain a local program's trust merely by running on this Mac: Host/Origin checks require the pairing token for other sites. Status-line usage readings and Codex approval hooks remain opt-in. Notification clicks and foreground Shortcuts open the selected session without answering its prompt or changing a hardware control target. Dot remains entirely excluded; no hidden or remote switch enables it. This candidate does not replace the released iOS app.
+This patch strengthens local-server Host/Origin checks, removes pairing tokens from connection logs, repairs reconnection and request parsing, protects saved history from interrupted writes, and improves display history and Wi-Fi setup. Dictated prompts now reach their selected OpenClaw Gateway session. Pages from other sites require pairing rather than inheriting a local program's trust. Dot is entirely excluded. The released iOS app is unchanged.
 
 WHAT IT DOES
-The sandboxed Swift daemon monitors local coding-agent sessions, ingests user-enabled hooks, serves the dashboard, pairs companions and evaluates turns. Users start agents independently. Optional Hermes rows from an existing relay are read-only; the app offers no relay installer.
+The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.
 
 REVIEW WITHOUT AGENTS OR HARDWARE
-1. Choose an aquarium appearance in first-use setup. Agent integrations and optional devices can be skipped. Open Dashboard finishes setup.
-2. Open Device Preview from the menu bar to explore bundled synthetic sessions and device renderers.
-3. Devices > Pair Device opens companion approval and a QR code. Pairing is optional. Settings > Dashboard > Set Up AgentDeck reopens setup.
+1. Choose an aquarium appearance. Skip integrations/devices and choose Open Dashboard.
+2. Open Device Preview from the menu bar for bundled synthetic sessions and renderers.
+3. Devices > Pair Device opens optional companion approval/QR pairing. Settings > Dashboard > Set Up AgentDeck reopens setup.
 
 SHORTCUTS / NOTIFICATIONS
-In macOS Shortcuts, add List Waiting Sessions and pass a result to Open Session. With a fresh empty roster, the list is empty; unavailable data produces an error. With an observed session awaiting a response, a result or its notification opens that session in Dashboard. Neither action approves requests, runs commands or launches agents. No new entitlement or permission is required.
+In Shortcuts, add List Waiting Sessions and pass a result to Open Session. A fresh empty roster returns no items; unavailable data produces an error. A result or attention notification opens that session in Dashboard without answering its prompt or changing hardware focus. No new entitlement is added; notification permission is requested only by user action.
+
+OPTIONAL AGENT INTEGRATIONS
+With explicit configuration-file consent, Claude's status-line integration supplies 5h/7d usage without an OAuth token, and its PermissionRequest hook shows real approval requests. Codex device approvals are separately opt-in and require Codex's hook trust review. With a device connected, a hook waits up to 25 seconds for the user's Allow/Deny choice; no answer returns to Codex's usual prompt. The app never decides automatically or launches the agent.
 
 WEATHERKIT (Guideline 5.2.5)
-Settings > Dashboard > Weather context > Use Current Location. After permission, the weather pill displays Apple's Weather attribution when WeatherKit supplies the data; clicking opens Apple's legal page. Apple weather stays in-app/in-memory; portable displays use attributed MET Norway data.
+Settings > Dashboard > Weather context > Use Current Location. After permission, Apple Weather attribution appears with WeatherKit data and links to Apple's legal page. Apple weather stays in-app/in-memory; portable displays use attributed MET Norway data.
 
 NO SUBPROCESS (Guideline 2.5.2)
-The app spawns no subprocess, writes no shell scripts and bundles no helper executable. CI checks the final signed artifact for forbidden paths, extra executables, Dot payloads and home-relative-path entitlements.
+The app spawns no subprocess and bundles no helper executable. The signed-artifact gate checks forbidden paths, extra executables, Dot payloads and home-relative-path entitlements.
 
 ENTITLEMENTS
-network.server: Network.framework hosts authenticated local HTTP/WebSocket sessions for paired companions, localhost hooks and optional deck plugins. No router mapping or public cloud listener is configured.
-Bonjour (_agentdeck._tcp): discovers the Mac; Local Network usage is explained before pairing. Discovery never includes a token.
-device.bluetooth: optional CoreBluetooth LED displays, inert unless paired.
-device.audio-input: optional voice input. device.serial: optional USB displays.
-weatherkit: native weather and linked attribution described above.
-files.user-selected.read-write + bookmarks.app-scope: integration setup explains access, then requires the user to select the agent configuration file/folder in the system picker. Removal controls undo AgentDeck's integration entries. No home-relative-path exception or App Group is used.
+network.server: Network.framework accepts HTTP/WebSocket connections from paired companions, localhost hooks and optional decks. No public cloud listener or router mapping.
+Bonjour (_agentdeck._tcp): local discovery, with explained Local Network access; no token in discovery.
+device.bluetooth: optional paired CoreBluetooth displays. device.audio-input: optional voice. device.serial: optional USB displays. weatherkit: weather and attribution above.
+files.user-selected.read-write + bookmarks.app-scope: users select integration files/folders in the system picker after an explanation. Removal undoes AgentDeck's entries. No home-relative-path exception or App Group.
 
 PRIVACY / EVALUATION
-Evaluation defaults to on-device Apple Intelligence Foundation Models. Remote alternatives are opt-in user-configured endpoints/keys (Anthropic, OpenAI-compatible, or local MLX); only then does turn content reach the chosen endpoint, as disclosed in App Privacy. No analytics/advertising SDK or AgentDeck cloud backend. Apple's review prompt requires all live sessions to be idle on three distinct days; dates and a 180-day cooldown remain local.
+Evaluation defaults to on-device Apple Intelligence. Only opt-in remote backends send turn content to a user-chosen endpoint, as disclosed in App Privacy. No analytics, ads or AgentDeck cloud backend. Review-prompt eligibility and cooldown remain local.
 
 Hardware is optional. Review requires no purchase, plugin installation or API key.
 Contact: admin@foundby.kr
