@@ -172,6 +172,67 @@ stand in for those runtime observations. Recheck registry/ASC state and final
 PR CI before delivery; this record authorizes no publication or review-state
 change by itself.
 
+#### Mac Studio acceptance handoff — 2026-10-23
+
+At 00:24 KST, all checks for PR #597 head
+`dbb458c32986eaa7d713cc36e7e9dfa14a2f76ac` had completed: **13 jobs passed** and
+the path-conditional TTGO job was skipped. [Main CI](https://github.com/puritysb/AgentDeck/actions/runs/39799283895)
+includes Windows Node 22/24/26 and macOS native parity;
+[Apple Tests](https://github.com/puritysb/AgentDeck/actions/runs/39799283953),
+[Design System](https://github.com/puritysb/AgentDeck/actions/runs/39799283905)
+and [ESP32 simulator](https://github.com/puritysb/AgentDeck/actions/runs/39799284039)
+also passed. The PR remains draft; no merge or public delivery is recorded.
+The later handoff commit changes documentation only, so the accepted executable
+source remains `e21b817b3b5497089086b1bbb6312a1c41ccbb16`.
+
+The exact four npm tarballs, macOS package, full receipt and portable hash
+manifest are retained in the authenticated
+[draft acceptance bundle](https://github.com/puritysb/AgentDeck/releases/tag/untagged-d2cf0fb6e763f9af54cb).
+This is artifact storage, not an npm/App Store release. Its retrieval identifier
+is `candidate-security-patch-e21b817`; no delivery tag is needed. This also avoids
+depending on the original Apple Actions artifact's seven-day retention.
+All eight assets were downloaded again into an empty directory: API digests,
+local source bytes and all seven entries in `SHA256SUMS` matched. The release
+remains `draft=true`, `published_at=null`, with no corresponding Git tag.
+On Mac Studio, use a clean, dedicated checkout of `codex/security-patch-release`,
+then retrieve and verify the exact candidates before installation:
+
+```bash
+mkdir -p diagnostics/security-patch-candidate
+gh release download candidate-security-patch-e21b817 --repo puritysb/AgentDeck --dir diagnostics/security-patch-candidate
+(cd diagnostics/security-patch-candidate && shasum -a 256 -c SHA256SUMS)
+```
+
+Complete the [three-mode soak](#pre-tag-three-mode-daemon-soak) on Mac Studio,
+using the supported lifecycle commands and the deploy skill's privacy preflight.
+Record the previous installed CLI/app identities and rollback path first. The
+candidate CLI must be the installed command's actual target, not a source-tree
+binary that happens to report 1.9.3. Use the recorded 1.9.2 / 8801 signed app for
+this coordinated candidate; verify its launch/signing identity rather than
+assuming an exported package is a running installation.
+
+| Stage | Evidence to record on Mac Studio |
+| --- | --- |
+| Swift only | CLI stopped, exactly one expected 9120 owner, `isSwift: true`, a real directly launched agent turn, app and physical downstream updates |
+| CLI only | App quit, installed CLI 1.9.3 and native ABI identity, `isSwift: false`, a real turn, downstream update and release-relevant CLI action |
+| Coexistence and both handovers | Swift → CLI takeover, one listener and no duplicate roster; CLI stop → automatic Swift reclaim; measured recovery time, retained timeline/credentials and hooks working without reinstall |
+| Browser boundary | Rebinding Host and cross-origin HTTP/WS requests remain rejected by each owner; trusted native clients still work after handover |
+| Live app checks | Signed Shortcuts navigation, connected-device output and the opt-in Swift Codex replay; also run a real Codex turn because the replay uses synthetic events |
+
+Static lifecycle review additionally found a startup/restart race to reproduce
+before delivery: [`DaemonService.start()`](apple/AgentDeck/Daemon/DaemonService.swift)
+launches an unretained task and captures the port/posture before awaited startup;
+`stop()` cancels external-attach and health retries but does not invalidate that
+local startup. A Settings restart while `isStarting` is true can be dropped by
+the start guard, after which the old task can publish its old configuration.
+The existing external-attach generation tests do not cover this local-start
+interleaving. This is a source-review finding, not a measured device failure.
+On Mac Studio, exercise a port or loopback change during startup and confirm the
+final listener, `/health` posture and displayed settings agree. A stale listener,
+ignored restriction or required manual recovery blocks delivery under the soak
+criteria above; retain the observation and fix/retest rather than marking the
+current candidate accepted.
+
 ### 2026-10-14 iDotMatrix readability correction
 
 Version decision recorded before manifest edits. App Store Connect's app list
