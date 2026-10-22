@@ -77,6 +77,9 @@ struct DaemonInfo: Codable, Sendable {
     let pid: Int
     let startedAt: String
     let httpPort: Int?    // HTTP server port (may differ from WS port)
+    /// Distinguishes rapid replacements in one app process on the same port.
+    /// Older Node/Swift rows omit it and remain readable.
+    var instanceId: String? = nil
 }
 
 struct DaemonSessionEntry: Codable, Sendable, Identifiable {
@@ -137,7 +140,14 @@ final class SessionRegistry: Sendable {
     private static let probeFailureTracker = SessionProbeFailureTracker()
     private static let probeFailureThreshold = 3
 
+    private let dataDirectory: URL?
+
+    init(dataDirectory: URL? = nil) {
+        self.dataDirectory = dataDirectory
+    }
+
     private var dataDir: URL {
+        if let dataDirectory { return dataDirectory }
         if let env = ProcessInfo.processInfo.environment["AGENTDECK_DATA_DIR"] {
             return URL(fileURLWithPath: env)
         }
@@ -275,6 +285,22 @@ final class SessionRegistry: Sendable {
     func removeDaemonInfo() {
         let daemonFile = daemonFile
         Self.ioQueue.async {
+            try? FileManager.default.removeItem(at: daemonFile)
+        }
+    }
+
+    /// A retired instance must not remove the row a replacement has written.
+    /// Compare and delete together on the same queue as registry writes.
+    func removeDaemonInfo(ifMatching expected: DaemonInfo) {
+        let daemonFile = daemonFile
+        Self.ioQueue.async {
+            guard let data = try? Data(contentsOf: daemonFile),
+                  let current = try? JSONDecoder().decode(DaemonInfo.self, from: data),
+                  current.pid == expected.pid,
+                  current.port == expected.port,
+                  current.startedAt == expected.startedAt,
+                  current.httpPort == expected.httpPort,
+                  current.instanceId == expected.instanceId else { return }
             try? FileManager.default.removeItem(at: daemonFile)
         }
     }

@@ -63,6 +63,12 @@ This cumulative security and stability patch includes the fixes merged through
 `4b839281`; it is not a #583-only backport. Other device/plugin updates remain
 under Unreleased until their own delivery.
 
+October 23 candidate update: the macOS startup correction below requires a new
+signed macOS candidate and Mac Studio acceptance. The earlier 1.9.2 / 8801
+package from `e21b817b` is retained only for reproduction/comparison; it does not
+contain this fix and cannot serve as its approval or deployment evidence. The
+four accepted npm 1.9.3 tarballs are unchanged.
+
 - Security, Node daemon and macOS app: a web page open in a browser on the same computer can no longer use the daemon as if it were a local program. Both daemons let any connection from the same machine in without the pairing token, and a browser connects from the same machine too. A page could open the daemon's WebSocket, read the session roster and timeline, and send device commands. It could post hooks or a shutdown with a plain-text form post. Through a host name that re-resolves to the computer itself, it could read `/health` and the pairing token in it. The macOS app also answered every request with `Access-Control-Allow-Origin: *`, so on a Mac running the app any page could read the pairing token with one ordinary request. A same-machine request now keeps that trust only when its `Host` names this computer. A WebSocket, or a request that changes something, must also carry no `Origin` or the daemon's own. Any other request needs the pairing token, as a device on the network does. A computer's bare name or a domain name no longer counts as this computer, because the network's DNS answers those; `localhost`, its IP addresses and its own `.local` name do. A session bridge's status page no longer copies a value from the address bar into its script, which let any site open that page and run its own script with the bridge's trust. The CLI, hooks, deck plugins, ESP32 boards and the APME dashboard work as before, including the dashboard opened through a port forward such as `ssh -L`. Another site's page can now read only `/setup-status`, the Node daemon's `/display-state` and the Pixoo preview frames. The Node daemon's APME API and a session bridge's event stream carry prompts and task history, and they are no longer readable cross-origin. The update does not revoke a pairing token a page may already have read. For a Node-owned daemon, `agentdeck token rotate` replaces the Node token and accepted ring, followed by `agentdeck daemon restart` and device re-pairing. This is not complete revocation across Node/Swift handover: the macOS app has no rotation control and its adoption path can retain the previous token in its accepted ring.
 
 - macOS app: a hook whose text contains `Upgrade: websocket`, such as a turn in a session about WebSockets, is no longer dropped. The app's daemon looked for that phrase anywhere in a request, body included, and sent such a hook down its WebSocket path, where it was discarded.
@@ -98,6 +104,8 @@ under Unreleased until their own delivery.
 - macOS app: click an attention notification to open its session, or use Shortcuts to list sessions waiting for a response and open one in the Dashboard. Opt-in collaboration views improve navigation among related work without automatically deciding or answering for the user.
 
 - macOS app: improve reconnect and daemon failover behavior, preserve chat history through busy tool activity and daemon ownership changes, and omit pairing tokens from connection/discovery logs.
+
+- macOS app: stopping or changing daemon settings during startup now invalidates the old startup before a replacement can take over. A late completion, readiness callback or retry cannot restore the old port or network posture, undo a newer stop, or remove the replacement daemon's registry record. Controlled startup/cancellation regressions accompany the correction; acceptance on Mac Studio and a new signed macOS export remain pending.
 
 - macOS build: split the communication graph's position calculations into explicitly typed intermediate values so the Xcode 26.3 release compiler can build the app. Node positions and layout rules are unchanged.
 

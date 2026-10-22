@@ -116,6 +116,7 @@ actor WebSocketServer {
     ///   (enterprise posture — see `DaemonPosture`). The caller is responsible
     ///   for not attaching a Bonjour service to a loopback-bound listener.
     func start(port: UInt16, loopbackOnly: Bool = false) async throws {
+        try Task.checkCancellation()
         let params = NWParameters.tcp  // Raw TCP — no WebSocket protocol layer
         params.allowLocalEndpointReuse = true  // SO_REUSEADDR — allows rebind after TIME_WAIT/crash
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -150,44 +151,51 @@ actor WebSocketServer {
         let failedHandler = onListenerFailed
         // stateUpdateHandler fires on ioQueue (serial); ResumeGate is only touched there.
         let gate = ResumeGate()
-        // A start that does not reach `.ready` must leave nothing ASSIGNED.
-        // It leaks no port — a listener that never bound holds none, and the
-        // only throw here is pre-bind — but `self.listener` would keep pointing
-        // at a dead listener, and the Bonjour re-publish path above reads
-        // `self.listener?.service` on a timer. Hygiene, deliberately not
-        // claimed as the #306 fix.
+        // An unsuccessful attempt must leave no listener assigned, including
+        // cancellation racing with `.ready`. Clean up only this attempt's
+        // listener so a replacement's assignment remains intact.
         do {
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    if gate.tryResume() {
-                        DaemonLogger.shared.info("Server listening on port \(port) (HTTP + WebSocket + mDNS)")
-                        cont.resume()
+            try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    listener.stateUpdateHandler = { state in
+                        switch state {
+                        case .ready:
+                            if gate.tryResume() {
+                                DaemonLogger.shared.info("Server listening on port \(port) (HTTP + WebSocket + mDNS)")
+                                cont.resume()
+                            }
+                        case .failed(let error):
+                            DaemonLogger.shared.error("Server listener failed: \(error)")
+                            if gate.tryResume() {
+                                cont.resume(throwing: error)
+                            } else {
+                                // Post-bind failure — route to external handler for teardown/retry.
+                                failedHandler?(error)
+                            }
+                        case .cancelled:
+                            if gate.tryResume() {
+                                cont.resume(throwing: WebSocketServerError.listenerCancelled)
+                            }
+                        default:
+                            break
+                        }
                     }
-                case .failed(let error):
-                    DaemonLogger.shared.error("Server listener failed: \(error)")
-                    if gate.tryResume() {
-                        cont.resume(throwing: error)
-                    } else {
-                        // Post-bind failure — route to external handler for teardown/retry.
-                        failedHandler?(error)
+
+                    listener.newConnectionHandler = { [weak self] nwConn in
+                        Task { await self?.handleNewConnection(nwConn) }
                     }
-                case .cancelled:
-                    if gate.tryResume() {
-                        cont.resume(throwing: WebSocketServerError.listenerCancelled)
-                    }
-                default:
-                    break
+
+                    listener.start(queue: Self.ioQueue)
                 }
+                // Cancellation can race with `.ready`; do not report that bind as a
+                // successful startup after the caller has already stopped the attempt.
+                try Task.checkCancellation()
+            } onCancel: {
+                // NWListener cancellation drives `.cancelled`, which resumes the
+                // continuation even when the listener never reached `.ready`.
+                listener.cancel()
             }
-
-            listener.newConnectionHandler = { [weak self] nwConn in
-                Task { await self?.handleNewConnection(nwConn) }
-            }
-
-            listener.start(queue: Self.ioQueue)
-        }
         } catch {
             listener.cancel()
             if self.listener === listener { self.listener = nil }

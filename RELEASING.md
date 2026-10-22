@@ -135,9 +135,11 @@ the patch blocks new browser access but does not itself revoke an already-read
 pairing token. Existing token custody/accepted-ring behavior must be considered
 before claiming revocation across Node/Swift handover.
 
-Candidate evidence, October 22 (all executable artifacts below use clean source
-`e21b817b3b5497089086b1bbb6312a1c41ccbb16`; subsequent changes only record this
-evidence):
+Historical candidate evidence, October 22 (all executable artifacts below use
+clean source `e21b817b3b5497089086b1bbb6312a1c41ccbb16`). This source predates
+the Swift startup correction described in the Mac Studio handoff below. Its
+macOS package and checks do not establish acceptance of the corrected source;
+the exact four npm tarballs are unchanged by that Swift-only correction.
 
 - The [full verification receipt](verification/receipts/2026-10-22-e21b817.json)
   records **25 automated gates passed**, including build/typecheck, coverage,
@@ -182,8 +184,10 @@ includes Windows Node 22/24/26 and macOS native parity;
 [Design System](https://github.com/puritysb/AgentDeck/actions/runs/39799283905)
 and [ESP32 simulator](https://github.com/puritysb/AgentDeck/actions/runs/39799284039)
 also passed. The PR remains draft; no merge or public delivery is recorded.
-The later handoff commit changes documentation only, so the accepted executable
-source remains `e21b817b3b5497089086b1bbb6312a1c41ccbb16`.
+Those results cover the earlier candidate, before the subsequent Swift startup
+correction. Local validation of that correction is recorded below; its pushed
+source SHA and CI results are tracked separately on
+[PR #597](https://github.com/puritysb/AgentDeck/pull/597).
 
 The exact four npm tarballs, macOS package, full receipt and portable hash
 manifest are retained in the authenticated
@@ -194,8 +198,16 @@ depending on the original Apple Actions artifact's seven-day retention.
 All eight assets were downloaded again into an empty directory: API digests,
 local source bytes and all seven entries in `SHA256SUMS` matched. The release
 remains `draft=true`, `published_at=null`, with no corresponding Git tag.
-On Mac Studio, use a clean, dedicated checkout of `codex/security-patch-release`,
-then retrieve and verify the exact candidates before installation:
+The stored **macOS 1.9.2 / 8801** package does not contain the startup correction.
+Keep it only as a baseline for reproducing and comparing the race on Mac Studio;
+do not reuse it or its archive/signature results as approval or deployment
+acceptance for the corrected app. The four accepted **npm 1.9.3** tarballs and
+their hashes remain unchanged. The draft bundle's original manifest and receipt
+continue to identify its original source; do not relabel them as a newer build.
+
+On Mac Studio, use a clean, dedicated checkout of the reviewed
+`codex/security-patch-release` head. Retrieve the preserved npm packages and old
+macOS comparison baseline, verifying their identity before any installation:
 
 ```bash
 mkdir -p diagnostics/security-patch-candidate
@@ -203,13 +215,19 @@ gh release download candidate-security-patch-e21b817 --repo puritysb/AgentDeck -
 (cd diagnostics/security-patch-candidate && shasum -a 256 -c SHA256SUMS)
 ```
 
-Complete the [three-mode soak](#pre-tag-three-mode-daemon-soak) on Mac Studio,
-using the supported lifecycle commands and the deploy skill's privacy preflight.
-Record the previous installed CLI/app identities and rollback path first. The
-candidate CLI must be the installed command's actual target, not a source-tree
-binary that happens to report 1.9.3. Use the recorded 1.9.2 / 8801 signed app for
-this coordinated candidate; verify its launch/signing identity rather than
-assuming an exported package is a running installation.
+The corrected app requires a new macOS-only 1.9.2 archive and signed export from
+the validated source, with a fresh CI-assigned build number and `upload=false`.
+Recheck the ASC build floor first. Record its source SHA, CI run, package hash,
+app/package signing identities and successful App Store/Dot archive and export
+checks. A new archive/export has not yet been recorded here.
+
+Complete the [three-mode soak](#pre-tag-three-mode-daemon-soak) on Mac Studio
+with that corrected signed app and the retained npm packages, using supported
+lifecycle commands and the deploy skill's privacy preflight. Record the previous
+installed CLI/app identities and rollback path first. The candidate CLI must be
+the installed command's actual target, not a source-tree binary that happens to
+report 1.9.3. Verify the corrected app's installed and running build/signing
+identity; the old 8801 baseline does not satisfy this acceptance.
 
 | Stage | Evidence to record on Mac Studio |
 | --- | --- |
@@ -219,19 +237,56 @@ assuming an exported package is a running installation.
 | Browser boundary | Rebinding Host and cross-origin HTTP/WS requests remain rejected by each owner; trusted native clients still work after handover |
 | Live app checks | Signed Shortcuts navigation, connected-device output and the opt-in Swift Codex replay; also run a real Codex turn because the replay uses synthetic events |
 
-Static lifecycle review additionally found a startup/restart race to reproduce
-before delivery: [`DaemonService.start()`](apple/AgentDeck/Daemon/DaemonService.swift)
-launches an unretained task and captures the port/posture before awaited startup;
-`stop()` cancels external-attach and health retries but does not invalidate that
-local startup. A Settings restart while `isStarting` is true can be dropped by
-the start guard, after which the old task can publish its old configuration.
-The existing external-attach generation tests do not cover this local-start
-interleaving. This is a source-review finding, not a measured device failure.
-On Mac Studio, exercise a port or loopback change during startup and confirm the
-final listener, `/health` posture and displayed settings agree. A stale listener,
-ignored restriction or required manual recovery blocks delivery under the soak
-criteria above; retain the observation and fix/retest rather than marking the
-current candidate accepted.
+Static lifecycle review found a startup/restart race in the old candidate:
+[`DaemonService.start()`](apple/AgentDeck/Daemon/DaemonService.swift) launched an
+unretained task and captured the port/posture before awaited startup; `stop()`
+did not invalidate that local startup. A Settings restart while `isStarting`
+was true could be dropped, after which the old task could publish its old
+configuration. This remains a source-review finding, not a measured Mac Studio
+failure.
+
+The correction retains and cancels local startup, invalidates its generation
+before actor hops, and waits for started services and their teardown before a
+replacement starts. Generation and instance checks reject obsolete readiness,
+errors, owner callbacks and delayed retries; a newer stop supersedes a pending
+restart. Health/fallback/reclaim decisions and delayed Dashboard connection work
+must also preserve the latest lifecycle intent. Production startup checks
+cancellation between stages, and registry removal matches the owning instance
+so a retired daemon cannot erase its replacement's record.
+
+The new [service regressions](apple/AgentDeckTests/LocalDaemonStartupTests.swift)
+cover seven interleavings: stop during factory creation, restart with newer
+port/posture, stop during service startup, restart waiting for startup and
+shutdown, stop superseding that restart, callbacks from a replaced daemon, and
+bounded teardown timeout followed by recovery after cleanup actually finishes.
+The [production helper regressions](apple/AgentDeckTests/DaemonStartupCancellationTests.swift)
+cover instance-matched registry removal, cancellation between device modules,
+shutdown permission between modules without task cancellation, and cancellation
+before listener creation. These tests exercise controlled suspensions without
+using the shared daemon port or live credentials.
+
+Local source validation on October 23: `pnpm verify:quick` passed all 13 selected
+automated gates (Vitest **6,777 passed / 17 skipped**); the opt-in macOS daemon
+E2E was skipped, not counted as passing. macOS Debug executed **1,325 tests with
+3 skipped and no failures**. After the final lifecycle refinements, a focused
+Debug run passed **36 tests**, including all **7 service + 4 helper regressions**,
+external-attach retries, topology and port fallback. The final macOS
+DotPreviewRelease suite executed **1,345 tests with 8 skipped and no failures**.
+`pnpm verify:changed --base HEAD --skip apple-macos` passed all 10 selected gates:
+macOS Release, iOS Release/DotPreviewRelease, macOS DotPreviewRelease and their
+artifact boundaries, plus the relevant fast checks. The separately completed
+Debug checks above account for that explicit skip. App Store submission package
+validation also passed. These are source/build checks, not a replacement signed
+archive or Mac Studio runtime acceptance; the pushed head's CI remains separate.
+
+On Mac Studio, compare the old baseline with the corrected signed build while
+changing port or loopback settings during startup and issuing stop/restart in
+quick succession. Confirm the final listener, `/health` posture and displayed
+settings agree with the latest request, and that a stopped app does not later
+publish readiness or delete its replacement's registry. The corrected-source
+checks, new signed export and actual Mac Studio/runtime acceptance are all
+required before delivery. A stale listener, ignored restriction or required
+manual recovery blocks acceptance under the soak criteria above.
 
 ### 2026-10-14 iDotMatrix readability correction
 
