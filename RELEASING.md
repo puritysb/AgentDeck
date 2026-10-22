@@ -107,9 +107,9 @@ The first signed-candidate run exposed an existing Xcode 26.3 type-checking
 timeout in the communication graph's position expression, despite passing
 local Xcode 27.1 builds. [Run 39790524243](https://github.com/puritysb/AgentDeck/actions/runs/39790524243)
 stopped before export: its attempted build 8701 is not an exported or uploaded
-artifact. The candidate also separates that expression into explicitly typed
-intermediate calculations without changing its geometry; the corrected commit
-must pass the signed archive again.
+artifact. The candidate separates that expression into explicitly typed
+intermediate calculations without changing its geometry. The corrected source
+passed the signed archive on Xcode 26.3, as recorded below.
 
 | Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
 | --- | --- | --- | --- | --- | --- |
@@ -134,6 +134,43 @@ hardware/live gates explicitly. No credentials are rotated during preparation;
 the patch blocks new browser access but does not itself revoke an already-read
 pairing token. Existing token custody/accepted-ring behavior must be considered
 before claiming revocation across Node/Swift handover.
+
+Candidate evidence, October 22 (all executable artifacts below use clean source
+`e21b817b3b5497089086b1bbb6312a1c41ccbb16`; subsequent changes only record this
+evidence):
+
+- The [full verification receipt](verification/receipts/2026-10-22-e21b817.json)
+  records **25 automated gates passed**, including build/typecheck, coverage,
+  protocol and design drift, Node/Swift trust regressions, native builds and
+  packaged daemon acceptance. Vitest passed 6,777 tests (17 skipped), daemon E2E
+  passed 29, and Android passed 505. Windows is locally skipped because this is
+  a macOS host; final PR Windows CI remains a separate check.
+- The exact four npm **1.9.3** tarballs passed all 12 clean-package acceptance
+  checks, including native ABI, hooks, reconnect/history and the isolated
+  60-second soak (60 health responses, worst 5 ms, no JSON parse errors).
+  The accepted tarballs and acceptance report were retained without repacking.
+- [Signed macOS candidate run 39795413564](https://github.com/puritysb/AgentDeck/actions/runs/39795413564)
+  succeeded with `platform=macos`, `upload=false`. The actual universal package
+  is **1.9.2 / 8801**, bundle `bound.serendipity.agent.deck`; package/app signature,
+  Sandbox and exported Store/Dot checks passed. Its SHA-256 is
+  `871a31858cafaeb4d04dac54890995b5762648227aa7d97586a766a71cd46b0e`.
+  It was neither installed nor uploaded, submitted or released.
+
+| Accepted npm tarball | SHA-256 |
+| --- | --- |
+| `agentdeck-bridge-1.9.3.tgz` | `acb8ab2a129ae438a7f1accc46567c9357bdd4f48e78261157e98606208b7b93` |
+| `agentdeck-hooks-1.9.3.tgz` | `3ed469fec6bbb8bc1d524bd72f9d570c4eb53ef6f014e4fde9e337e496686cd1` |
+| `agentdeck-setup-1.9.3.tgz` | `2da21addd2b56dbae292e6fb82e4fe92bb01300950958d58970135415943c410` |
+| `agentdeck-shared-1.9.3.tgz` | `f541eaf071a00dfa66b177049ec7e329ea2e6f9111631822dbdc83b9ff8951dc` |
+
+Before publication, complete acceptance of the installed CLI-only, Swift-only
+and coexistence/handover modes, a live Swift Codex turn and relevant connected
+device output. The receipt leaves `device-deploy` and `swift-codex-live`
+unattested; its `esp32-robot` hardware gate is also unattested, and this candidate
+does not deliver firmware. Isolated package tests and archive validation do not
+stand in for those runtime observations. Recheck registry/ASC state and final
+PR CI before delivery; this record authorizes no publication or review-state
+change by itself.
 
 ### 2026-10-14 iDotMatrix readability correction
 
