@@ -97,36 +97,41 @@ observed portal/artifact state; do not present a candidate as public.
 
 ### 2026-10-23 macOS Settings responsiveness replacement
 
-This is a new replacement decision, not a delivery receipt. The source starts
-at master `069266848e48f64badc227221000a5c8cd2c8e3a`, which includes the dashboard
-Keychain correction in [PR #599](https://github.com/puritysb/AgentDeck/pull/599).
-The additional Settings/rendering correction is being prepared in this worktree;
-its final source identity and CI build number have not been assigned.
+**Build 9401 was submitted at 23:26:58 KST on October 23 and is Waiting for
+Review, with automatic release after approval.** Its artifact and scoped local runtime checks are complete;
+it is not publicly released. The source is merge
+`24be55d2fa41462d1ab6106a2006e73876573fb6` from
+[PR #600](https://github.com/puritysb/AgentDeck/pull/600), whose tree matches verified
+`e0757488f439f9b8c0dadb719c8a5c5e89596302`. It includes the dashboard Keychain
+correction in [PR #599](https://github.com/puritysb/AgentDeck/pull/599) and the
+Settings/rendering correction measured below.
 
 The [read-only ASC run](https://github.com/puritysb/AgentDeck/actions/runs/39950220874)
-on **October 23 at 21:01 KST** still reports macOS 1.9.2 and submission
+on **October 23 at 21:01 KST** reported macOS 1.9.2 and submission
 `5e08427d-e1dc-4657-933e-609e9e6cbf1f` as `WAITING_FOR_REVIEW`, with
-`AFTER_APPROVAL`. Build 9301 (`c39ded43-0bd9-4868-9a2e-15485a34ea52`) remains
+`AFTER_APPROVAL`. Build 9301 (`c39ded43-0bd9-4868-9a2e-15485a34ea52`) was
 `VALID` and unexpired. The subsequent read of the
 [macOS version page](https://appstoreconnect.apple.com/apps/6784822497/distribution/macos/version/inflight)
-also confirmed that 9301 remains the exact attached build. Its original
+also confirmed that 9301 was the exact attached build before replacement. Its original
 submission is recorded in the
 [earlier 9301 delivery](#macos-192-replacement-delivery-2026-10-23).
-Public macOS remains 1.9.0 and iOS remains 1.9.1. The current submission has not
-been withdrawn by this preparation. Sanitized readback is retained under
+The last verified public versions are macOS 1.9.0 and iOS 1.9.1. The portal
+subsequently confirmed withdrawal of 9301 and exact association of 9401;
+preparation and submission readbacks are recorded below.
+Sanitized pre-replacement readback is retained under
 `diagnostics/release599-asc-status-39950220874/`.
 
 | Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
 | --- | --- | --- | --- | --- | --- |
-| Apple / macOS App Store | 1.9.0 | 1.9.2 / 9301, Waiting for Review | 1.9.2 / new CI build above 9301, number pending | Existing 1.9 correction: remove an unused synchronous Keychain read from dashboard rendering and suspend the optional aquarium renderer while editing Settings | Replace the unreleased macOS build after verification; preserve automatic release after approval |
+| Apple / macOS App Store | 1.9.0 | 1.9.2 / 9401 Valid; 9301 submission withdrawn | 1.9.2 / 9401 Waiting for Review | Existing 1.9 correction: remove an unused synchronous Keychain read from dashboard rendering and suspend the optional aquarium renderer while editing Settings | Replaced the unreleased macOS build; automatic release after approval retained |
 | Apple / iOS and other channels | Existing delivery identities | Unchanged | No delivery | No new product milestone or coordinated version bump | No Apple tag, iOS upload, npm or device/plugin publication |
 
 The user requested a corrected macOS submission before release. Retaining the
 unreleased 1.9.2 product version follows the [version policy](#choosing-a-version);
-the new artifact receives a new build number. Replacing 9301 requires withdrawing
-its pending submission and starts a new review queue entry. Recheck ASC before
-that action: if 1.9.2 has become public, changed executable content instead needs
-1.9.3 and a revised delivery decision.
+the new artifact received a new build number. Replacing 9301 required withdrawing
+its pending submission and starting a new review queue entry. The version was
+still unreleased at replacement; once public, changed executable content will
+need a new patch and a revised delivery decision.
 
 The Keychain issue and its limited attribution are documented in the
 [PR #599 investigation](docs/devlog/entries/2026-10-23-settings-main-thread-keychain.md).
@@ -135,7 +140,7 @@ Settings navigation difference: six tab changes took about **24 seconds with
 3D**, versus **5 seconds with 2D**. These are observed interaction/automation
 durations, not input-to-paint measurements. They support removing the background
 RealityView while Settings is frontmost; they do not establish the cause of every
-historical AX timeout. The proposed change also suspends rendering when the
+historical AX timeout. The correction also suspends rendering when the
 dashboard is minimized or fully hidden, then restores the aquarium when eligible.
 The suspended view uses a static 2D aquarium; restoration retains the scene
 entities, camera pose/component state, user's 3D preference and session state.
@@ -165,19 +170,75 @@ automation/AX overhead; input-to-paint latency remains unmeasured. The raw recei
 is `diagnostics/settings-rendering-v5.json`, alongside the v5 samples and lifecycle
 log in the main checkout.
 
-**Release verification pending:** required quick/changed/full checks are in
-progress. The earlier 9301 and PR #599 receipts do not cover this combined source;
-the signed Release archive and exact-Store-build validation remain pending.
-This local Debug result is not a new upload, submission or public release.
-Existing physical deck-input and sleep/wake gaps remain unverified.
+**Source verification complete:** the required quick/changed checks passed, and
+the clean [full receipt](verification/receipts/2026-10-23-e075748.json) records
+`dirty=false` with all **25 automatic gates passing in 26 min 3 s**. PR #600
+passed 13 CI checks; the TTGO PR check was skipped. Windows runtime was skipped
+locally and passed in CI on Node 22/24/26. Three lab gates remain unattested; physical deck input and actual system
+sleep/wake remain unverified.
 
-The current ASC helper has no submission-cancellation action, and its preparation
-guards permit replacing only 9201 or retaining the exact requested target build.
-For a 9301 replacement, use the authorized portal to withdraw the old submission
-and associate the exact new `VALID` build before reusing `release-prepare` and
-`release-submit`, or review a narrowly scoped helper change first. Preserve the
-EN/KO/JA copy, reviewer notes and `AFTER_APPROVAL` readbacks. The earlier 9301
-delivery record below remains historical evidence for that artifact.
+**9401 artifact:** the macOS-only
+[release run 39964340470](https://github.com/puritysb/AgentDeck/actions/runs/39964340470)
+succeeded at source `24be55d2`. The package's actual identity is **1.9.2 / 9401**.
+Artifact `12507216675`, named `apple-macos-1.9.2-94-1`, has SHA-256
+`72ba5b40015d373f65b07d40c555f02134c6d4ab0292ad8b22ee9f8730dbf2b8`;
+the package SHA-256 is
+`80cdf75579a2d62f4b9759a80fce6970dc09d562a0f81828ccbb3b6e93875c2f`.
+The original Store artifact passed strict code-signature, package-signing and
+App Store/Dot exclusion checks. The
+[ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39967776397)
+confirmed build `b2a048ef-fdb2-4d8f-ba87-a34dbd4d377a` as macOS 1.9.2 / 9401,
+`VALID`, unexpired, uploaded at **2026-10-23T14:08:50Z**. This processing result
+does not establish that 9401 is attached or submitted for review.
+
+**9401 runtime scope:** a Development-signed derivative for the provisioned
+Mac Studio preserved the original entitlements, with all code and resources
+verified equivalent to the Store export. In installed **PID 79713**, two Settings
+close cycles and a minimize/restore cycle visually restored the complete 3D
+scene, with seven live sessions present. Six Settings clicks plus AX reads took
+**6.485 seconds**. The 30-second Settings sample had **2,561** main-thread
+sightings and zero DisplayLinkClock/frame-pacing sightings; the 10-second
+minimized sample had **858** main-thread sightings and zero for both branches.
+Scene assembly occurred once and first-frame diagnostics appeared four times.
+This verifies the Store code/resources under Development signing; it is not
+execution under the original distribution signature.
+
+A combined AX/Raise/AX operation took **34.530 seconds**, followed by a
+**3.554-second** screenshot that showed restored 3D. These tool durations include
+automation and AX work; input-to-paint latency remains unmeasured. Receipts are
+retained in `diagnostics/release600-runtime/`: `artifact-receipt.json`,
+`runtime-acceptance.json` and `asc-status-39967776397.json`.
+
+**9401 submission:** the portal withdrew the old 9301 submission and attached
+9401 before the guarded API workflow ran. The
+[preparation run 39969347034](https://github.com/puritysb/AgentDeck/actions/runs/39969347034)
+confirmed the exact build, EN/KO/JA What's New, macOS reviewer notes and
+`AFTER_APPROVAL`. The initial submission attempt created the intended draft/item
+but stopped before submission while the version's Ready for Review state was
+still propagating. After portal confirmation, the
+[resumed run 39969655330](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
+reused that draft and confirmed submission at **2026-10-23T14:27:02.393Z**
+(23:27 KST). Submission ID: `ab60c632-4870-4b07-b22e-8b367a2d13a8`;
+version ID: `cbac8056-fffe-4efa-b5c3-0b1becb2ba71`; build ID:
+`b2a048ef-fdb2-4d8f-ba87-a34dbd4d377a`.
+
+The [final readback 39969780932](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
+succeeded at **14:27:42 UTC**. It confirmed version and new submission as
+`WAITING_FOR_REVIEW`, `AFTER_APPROVAL`, and 9401 `VALID` and unexpired. Apple's
+actual `submittedDate` is **2026-10-23T14:26:58.418Z (23:26:58 KST)**; this
+differs from the helper's success timestamp above. The old 9301 submission
+`5e08427d-e1dc-4657-933e-609e9e6cbf1f` is `COMPLETE`. The portal independently
+showed 1.9.2 Waiting for Review with build 9401. Public macOS remains 1.9.0 and
+iOS remains 1.9.1; submission is not public availability.
+
+The submitted `{whatsNew, notes}` JSON retains SHA-256
+`53c224bbb3c8dfeedf54fdfe321aa7a37b4e8cebdcf0076cd1329171beeb2bac`.
+EN/KO/JA What's New lengths are 1,272 / 714 / 641 characters; macOS review notes
+are 3,931 characters. The preparation/submission logs, final status JSON and
+portal receipt `asc-9401-submitted.png` are retained under
+`diagnostics/release600-runtime/`. No Apple tag, iOS upload or other-channel
+publication was performed. The earlier 9301 delivery below remains historical
+evidence for its own artifact.
 
 ### 2026-10-22 browser trust security patch preparation
 

@@ -331,11 +331,12 @@ adaptive frame pacing, while e-ink emphasizes static counts and status. See
 the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-10-13).
 
 **Apple delivery, 2026-10-23:** the verified public Store versions are macOS
-**1.9.0** and iOS/iPadOS **1.9.1**. The replacement macOS **1.9.2 / 9301**
-passed signing and App Store artifact checks, reached Valid processing status
-and is **Waiting for Review**, with automatic release after Apple approval.
-The earlier 9201 submission was withdrawn; 1.9.2 is not publicly released. See the
-[replacement delivery record](RELEASING.md#macos-192-replacement-delivery-2026-10-23).
+**1.9.0** and iOS/iPadOS **1.9.1**. The replacement macOS **1.9.2 / 9401**
+passed signing, App Store artifact and local runtime checks, reached Valid
+processing status and was **submitted at 23:26:58 KST**. It is **Waiting for
+Review**, with automatic release after Apple approval. It includes the Dashboard and Settings responsiveness
+corrections. The earlier 9301 submission was withdrawn; 1.9.2 is not publicly
+released. See the [replacement delivery record](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
 
 **Historical delivery, 2026-10-14:** npm 1.9.2 was public, with clearer creature-led
 iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
