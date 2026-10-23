@@ -2319,11 +2319,11 @@ struct SettingsScreen: View {
                 .disabled(!preferences.hooksInstalled)
             }
 
-            // Claude status-line relay — the token-free source of the Claude
-            // usage gauge. Same three-way policy as the CLI installers; a
+            // Status-line receipts are diagnostic-only in Swift.
+            // Same three-way policy as the CLI installers; a
             // change re-applies the hooks file under the existing consent.
             if preferences.hooksInstalled {
-                Text("Claude usage via the status line")
+                Text("Claude status-line integration")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.white)
                     .padding(.top, 4)
@@ -2338,7 +2338,7 @@ struct SettingsScreen: View {
                 .onChange(of: preferences.statuslineRelayPolicy) { _, _ in
                     HookInstaller.installIfNeeded()
                 }
-                Text("Forwards Claude Code's own rate_limits to the daemon for the Claude usage gauge — no token involved. Wrap mine: only around a status line you already have. Always: installs one even without yours, which makes Claude Code hide its footer hints. Off: removes it and restores yours.")
+                Text("Shares Claude Code status-line updates for integration diagnostics. Wrap mine: only around a status line you already have. Always: installs one even without yours, which makes Claude Code hide its footer hints. Off: removes it and restores yours.")
                     .font(.system(size: 11))
                     .foregroundStyle(TerrariumHUD.subtext)
                     .fixedSize(horizontal: false, vertical: true)

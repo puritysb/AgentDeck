@@ -330,12 +330,20 @@ and Pantone retains 1.10.0. Native 3D background companions now share geometry a
 adaptive frame pacing, while e-ink emphasizes static counts and status. See
 the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-10-13).
 
-**Other delivery, 2026-10-14:** npm 1.9.2 is public, with clearer creature-led
+**Apple delivery, 2026-10-23:** the verified public Store versions are macOS
+**1.9.0** and iOS/iPadOS **1.9.1**. The replacement macOS **1.9.2 / 9301**
+passed signing and App Store artifact checks, reached Valid processing status
+and is **Waiting for Review**, with automatic release after Apple approval.
+The earlier 9201 submission was withdrawn; 1.9.2 is not publicly released. See the
+[replacement delivery record](RELEASING.md#macos-192-replacement-delivery-2026-10-23).
+
+**Historical delivery, 2026-10-14:** npm 1.9.2 was public, with clearer creature-led
 iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
-Store artifact checks and was submitted; it is awaiting review with automatic
-release after approval. iOS 1.9.1 / 8501 remains in its existing review submission.
-Apple 1.9.0 remains the verified public Store version. Stream Deck and Ulanzi
-1.8.1 are public on GitHub and awaiting marketplace review; ESP32 1.9.2 is public.
+Store artifact checks and was submitted with automatic release after approval;
+iOS 1.9.1 / 8501 was also awaiting review. Apple 1.9.0 was the verified public
+Store version at that readback; the October 23 status above supersedes it.
+Stream Deck and Ulanzi 1.8.1 were public on GitHub and awaiting marketplace
+review; ESP32 1.9.2 was public.
 See the [release delivery record](RELEASING.md#2026-10-14-idotmatrix-readability-correction).
 
 **Previous delivery, 2026-10-12:** Android 1.9.0 (26) is public on Google Play
@@ -346,7 +354,7 @@ All four npm packages and their `latest` tags are public at 1.9.0. ESP32 1.9.0
 firmware is public for twelve boards; all 60 binaries match the release manifest.
 
 At that October 12 readback, Apple 1.9.0 / 7901 was Waiting for Review; the
-October 13 check above supersedes that status. Elgato
+October 23 Apple check above supersedes that status. Elgato
 1.8 is public (Marketplace read October 11). Ulanzi 1.8.0 remains submitted,
 with 1.6.0 the last verified public version. Neither deck plugin was republished
 in this round. See the [additional-channel delivery readback](RELEASING.md#additional-190-delivery-readback-2026-10-12)

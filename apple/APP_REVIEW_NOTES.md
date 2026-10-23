@@ -15,27 +15,61 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status, October 23 at 10:13 KST:** macOS **1.9.2 / 9201** is submitted
-and **Waiting for Review**, under submission
+**Replacement submitted, October 23:** these macOS notes describe
+the submitted **1.9.2 / 9301** build. Standalone Swift receives Claude status-line
+observations for diagnostics only; it does not promote them into current
+account quota, gauges or subscription display. A documented interface does not
+make a session snapshot a verified current-account reading. The earlier runtime
+checks below do not validate this correction. Session observation and external
+Node quota policy are unchanged.
+
+The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+from `7e3d3033` succeeded at **2026-10-23 03:15:06 UTC**. The package's Info.plist
+confirms **1.9.2 / 9301**; strict Apple Distribution signing for `QF36NDHYHD`,
+package signing and App Store/Dot exclusion checks passed. All 25 automatic
+full-verification gates passed in **21m 56s**; source CI passed 13 checks and skipped
+the TTGO target compile check. The
+[preparation readback](https://github.com/puritysb/AgentDeck/actions/runs/39894326306)
+confirmed build 9301 Valid, its exact version association, `AFTER_APPROVAL`
+release and matching English, Korean, Japanese and macOS reviewer text.
+Apple recorded the [submission](https://github.com/puritysb/AgentDeck/actions/runs/39894729567)
+at **12:23:33 KST on October 23**, under submission
+`5e08427d-e1dc-4657-933e-609e9e6cbf1f`. The
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39894803126)
+confirmed **Waiting for Review** and `AFTER_APPROVAL`. This is not a public release.
+This status is outside the Notes field; see the
+[replacement delivery record](../RELEASING.md#macos-192-replacement-delivery-2026-10-23).
+
+**9201 withdrawn:** the [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39886718986)
+at **10:55:45 KST on October 23** confirmed macOS 1.9.2 **Developer Rejected**;
+the portal showed the 10:13 submission as deleted. Build **9201 remains Valid**
+as an uploaded artifact but is no longer under review. The
+[Claude accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23)
+records the decision and withdrawal separately from the historical checks below.
+
+**Historical delivery, October 23 at 10:13 KST:** macOS **1.9.2 / 9201** was submitted
+and entered **Waiting for Review**, under submission
 `f8ec7cb8-636e-4c1c-8026-f67a8fe4c582`. The prior 1.9.1 / 8601 submission was
 cancelled. The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
 from `6d1b3238` succeeded and [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
 confirmed build 9201 Valid. The English, Korean and Japanese What's New and the
-macOS Review Notes were saved and matched exactly after reload. Automatic
-release after approval and immediate availability to all users are selected;
-existing ratings are retained. **1.9.2 is not yet publicly released.** iOS is
-unchanged and npm 1.9.3 remains unpublished. Build, upload and submission
-evidence is recorded separately in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
+macOS Review Notes then in use were saved and matched exactly after reload.
+Automatic release after approval and immediate availability to all users were
+selected; existing ratings were retained. **1.9.2 is not yet publicly released.** iOS is
+unchanged and npm 1.9.3 remains unpublished. Build, upload, submission
+and withdrawal evidence is recorded separately in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
 
 _Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._
 
 **Earlier candidate acceptance, October 23 — build 9101:** the Development-signed
 derivative preserves the exported Store candidate's Release code, resources
 and entitlements. The measured Shortcuts cases and actual system notification
-click passed. A session-matched, fresh direct Swift status-line snapshot
-recorded Claude usage at 33% for 5 hours and 9% for 7 days. Gauge rendering is
+click passed. A session-matched Swift status-line snapshot, classified as fresh
+by that build, recorded Claude usage at 33% for 5 hours and 9% for 7 days. Gauge rendering is
 still unverified because Claude is hidden in the user's existing Displayed
-providers selection; that preference remains unchanged. Real Codex
+providers selection; that preference remains unchanged. These receipts establish
+what the earlier build accepted, not that it represented current account usage.
+They do not validate the replacement policy. Real Codex
 Allow/Deny and unanswered fallback passed with a native controller under Node
 and the Development-signed app. Intermittent accessibility timeouts remain
 unexplained; later 2–6-second tool operations do not measure UI input latency.
@@ -46,7 +80,7 @@ observed handover; cold launch, reboot and sleep/wake persistence were not.
 This preparation status is not part of either Notes field; see the measured
 scope and remaining limits in the [October 23 follow-up](../RELEASING.md#macos-192-authorization-and-acceptance-follow-up-2026-10-23).
 
-**Submitted build 9201 checks:** archive/package signatures and the Dot gate
+**Historical build 9201 checks:** archive/package signatures and the Dot gate
 passed. The derivative made by replacing its signing passed comparison against
 the 9201 Store app. Cold Shortcuts List Waiting Sessions plus Count returned 0
 in **3.56 seconds**, launching app PID **23875** while Node PID **69242** stayed
@@ -123,12 +157,16 @@ as it is about to ask, with its permission Notification as a fallback. This
 display signal never creates an answerable request or replaces a held request's
 identity. AgentDeck does not approve anything merely because the event arrived.
 
-The optional Claude status-line integration receives Claude's own 5-hour and
-7-day usage readings through a local HTTP endpoint. Settings offers Wrap /
-Always / Off; an existing user status line is preserved and restored on removal.
-With no status line configured, enabling one is an explicit choice because it
-replaces Claude's footer hints. The standalone app needs neither a Claude OAuth
-token nor another AgentDeck daemon for these readings.
+The optional Claude status-line integration receives session observations
+through a local HTTP endpoint. In the replacement macOS 1.9.2 candidate these
+observations provide diagnostic metadata only: the standalone Swift daemon
+does not use them to display 5-hour/7-day account usage or a Claude subscription.
+Claude's documented status-line interface does not prove that a session
+snapshot represents current account usage. Settings offers Wrap / Always / Off;
+an existing user status line is preserved and restored on removal. With no
+status line configured, enabling one is an explicit choice because it hides
+Claude's footer hints. No direct OAuth access or subprocess is added. Session
+monitoring and the external Node daemon's existing quota policy are unchanged.
 
 When Claude Code uses child agents or agent teams, the same opt-in integration
 receives lifecycle-only `SubagentStart`, `SubagentStop`, `TaskCompleted`, and
@@ -537,7 +575,7 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.2 — MACOS ONLY
-This patch strengthens local-server Host/Origin checks, removes pairing tokens from connection logs, repairs reconnection and request parsing, protects saved history from interrupted writes, and improves display history and Wi-Fi setup. Dictated prompts now reach their selected OpenClaw Gateway session. Pages from other sites require pairing rather than inheriting a local program's trust. Dot is entirely excluded. The released iOS app is unchanged.
+This patch strengthens local-server Host/Origin checks, removes pairing tokens from connection logs, repairs reconnection and request parsing, protects saved history from interrupted writes, and improves display history and Wi-Fi setup. It hides Claude readings that cannot be verified as current account usage in the standalone app. Dictated prompts now reach their selected OpenClaw Gateway session. Pages from other sites require pairing rather than inheriting a local program's trust. Dot is entirely excluded. The released iOS app is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.
@@ -551,7 +589,7 @@ SHORTCUTS / NOTIFICATIONS
 In Shortcuts, add List Waiting Sessions and pass a result to Open Session. A fresh empty roster returns no items; unavailable data produces an error. A result or attention notification opens that session in Dashboard without answering its prompt or changing hardware focus. No new entitlement is added; notification permission is requested only by user action.
 
 OPTIONAL AGENT INTEGRATIONS
-With explicit configuration-file consent, Claude's status-line integration supplies 5h/7d usage without an OAuth token, and its PermissionRequest hook shows real approval requests. Codex device approvals are separately opt-in and require Codex's hook trust review. With a device connected, a hook waits up to 25 seconds for the user's Allow/Deny choice; no answer returns to Codex's usual prompt. The app never decides automatically or launches the agent.
+With explicit configuration-file consent, Claude's PermissionRequest hook shows real approval requests. Optional status-line observations supply diagnostics only, not current-account quota or subscription display; no direct OAuth access is added. Session monitoring is unchanged. Codex device approvals are separately opt-in and require Codex's hook trust review. With a device connected, a hook waits up to 25 seconds for the user's Allow/Deny choice; no answer returns to Codex's usual prompt. The app never decides automatically or launches the agent.
 
 WEATHERKIT (Guideline 5.2.5)
 Settings > Dashboard > Weather context > Use Current Location. After permission, Apple Weather attribution appears with WeatherKit data and links to Apple's legal page. Apple weather stays in-app/in-memory; portable displays use attributed MET Norway data.
