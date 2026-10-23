@@ -249,7 +249,6 @@ extension AgentStateHolder {
         // authoritative for hook installation, suppress the two consent nudges.
         let externalDaemonOwnsHooks = daemonService.isUsingExternalDaemon
 
-        let anthropicSaved = anthropicAdminKeySavedValue()
         let types = Self.visibleAgentTypes(in: state)
         let shouldSurfaceClaude = preferences.onboardingAgents == nil
             ? Self.shouldSurfaceClaudeSetup(for: state)
@@ -261,6 +260,7 @@ extension AgentStateHolder {
             "codex", selected: preferences.onboardingAgents,
             configured: preferences.codexConfigConsent == .accepted,
             live: types.contains("codex-cli") || types.contains("codex-app"))
+        // These setup prompts exclude Admin API; never query its Keychain while rendering.
         let descriptors: [IntegrationDescriptor] = [
             shouldSurfaceClaude ? IntegrationCatalog.claudeCode : nil,
             shouldSurfaceCodex ? IntegrationCatalog.codex : nil,
@@ -272,7 +272,7 @@ extension AgentStateHolder {
                 for: descriptor,
                 state: state,
                 preferences: preferences,
-                anthropicKeySaved: anthropicSaved
+                anthropicKeySaved: false
             )
             guard status.needsAttention else { return nil }
             return SetupItem(
@@ -379,14 +379,13 @@ extension AgentStateHolder {
     }
     #else
     func setupNeededItems(preferences: AppPreferences) -> [SetupItem] {
-        let anthropicSaved = anthropicAdminKeySavedValue()
         let descriptors = Self.iOSSetupDescriptors
         return descriptors.compactMap { descriptor in
             let status = IntegrationStatusEvaluator.status(
                 for: descriptor,
                 state: state,
                 preferences: preferences,
-                anthropicKeySaved: anthropicSaved
+                anthropicKeySaved: false
             )
             guard status.needsAttention else { return nil }
             // iOS users can't fix any of this here — point them at the Mac.
@@ -413,17 +412,6 @@ extension AgentStateHolder {
     /// no equivalent hook-readiness field in the wire protocol.
     static var iOSSetupDescriptors: [IntegrationDescriptor] {
         [IntegrationCatalog.openClaw]
-    }
-
-    /// Anthropic Admin key presence — Keychain on App Store, env on CLI.
-    /// Checked once per `setupNeededItems` call so the catalog evaluator
-    /// can render a meaningful "Connected" detail when applicable.
-    private func anthropicAdminKeySavedValue() -> Bool {
-        #if os(macOS)
-        return AnthropicAdminApiClient.shared.hasKey()
-        #else
-        return false
-        #endif
     }
 }
 
