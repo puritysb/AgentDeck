@@ -15,19 +15,36 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Replacement candidate preparation, October 23:** these macOS notes describe
-the revised 1.9.2 candidate. Standalone Swift receives Claude status-line
+**Replacement submitted, October 23:** these macOS notes describe
+the submitted **1.9.2 / 9301** build. Standalone Swift receives Claude status-line
 observations for diagnostics only; it does not promote them into current
 account quota, gauges or subscription display. A documented interface does not
-make a session snapshot a verified current-account reading. The replacement
-build number is not yet assigned, and the earlier checks below do not validate
-this correction. Session observation and external Node quota policy are unchanged.
+make a session snapshot a verified current-account reading. The earlier runtime
+checks below do not validate this correction. Session observation and external
+Node quota policy are unchanged.
+
+The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+from `7e3d3033` succeeded at **2026-10-23 03:15:06 UTC**. The package's Info.plist
+confirms **1.9.2 / 9301**; strict Apple Distribution signing for `QF36NDHYHD`,
+package signing and App Store/Dot exclusion checks passed. All 25 automatic
+full-verification gates passed in **21m 56s**; source CI passed 13 checks and skipped
+the TTGO target compile check. The
+[preparation readback](https://github.com/puritysb/AgentDeck/actions/runs/39894326306)
+confirmed build 9301 Valid, its exact version association, `AFTER_APPROVAL`
+release and matching English, Korean, Japanese and macOS reviewer text.
+Apple recorded the [submission](https://github.com/puritysb/AgentDeck/actions/runs/39894729567)
+at **12:23:33 KST on October 23**, under submission
+`5e08427d-e1dc-4657-933e-609e9e6cbf1f`. The
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39894803126)
+confirmed **Waiting for Review** and `AFTER_APPROVAL`. This is not a public release.
+This status is outside the Notes field; see the
+[replacement delivery record](../RELEASING.md#macos-192-replacement-delivery-2026-10-23).
 
 **9201 withdrawn:** the [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39886718986)
 at **10:55:45 KST on October 23** confirmed macOS 1.9.2 **Developer Rejected**;
 the portal showed the 10:13 submission as deleted. Build **9201 remains Valid**
-as an uploaded artifact but is no longer under review. No replacement build
-has been assigned. The [Claude accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23)
+as an uploaded artifact but is no longer under review. The
+[Claude accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23)
 records the decision and withdrawal separately from the historical checks below.
 
 **Historical delivery, October 23 at 10:13 KST:** macOS **1.9.2 / 9201** was submitted

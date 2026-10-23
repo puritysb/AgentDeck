@@ -59,7 +59,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - iOS app: connection and discovery logs no longer print the pairing token or its prefix. The macOS correction is included in the Apple 1.9.2 candidate; this iOS change awaits a separate delivery.
 
-- iOS app: timeline rows reuse one grouped history per render, reducing repeated classification work in busy dashboards. The macOS correction is included in the replacement Apple 1.9.2 / 9101 candidate; iOS delivery is separate.
+- iOS app: timeline rows reuse one grouped history per render, reducing repeated classification work in busy dashboards. The macOS correction is included in the Apple 1.9.2 replacement; iOS delivery is separate.
 
 - ESP32 firmware: Wi-Fi provisioning acknowledgements report whether a board joined, saved the credentials for later, or failed. The corresponding Node/macOS setup routes are included in the candidates below; new firmware delivery is separate.
 
@@ -69,11 +69,27 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-**A replacement is being prepared after the Claude accuracy reassessment.**
+**macOS 1.9.2 / 9301 was submitted after the Claude accuracy reassessment.**
 Standalone macOS no longer promotes status-line documents into account quota;
 Claude session observation remains available. The earlier 33% / 9% receipt
 proved collection, not current-account accuracy. See the
 [decision and replacement record](RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
+
+The [replacement upload](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+from `7e3d3033` succeeded at **2026-10-23 03:15:06 UTC**. The package's actual
+Info.plist identifies **1.9.2 / 9301**; strict Apple Distribution signing for
+team `QF36NDHYHD`, package signing and App Store/Dot exclusion checks passed.
+All 25 automatic full-verification gates passed in **21m 56s**, and source CI
+reported 13 passes with the TTGO target compile check skipped. The
+[preparation readback](https://github.com/puritysb/AgentDeck/actions/runs/39894326306)
+confirmed build 9301 Valid, its exact version association, automatic release
+after approval and matching English, Korean, Japanese and reviewer text.
+Apple recorded the [submission](https://github.com/puritysb/AgentDeck/actions/runs/39894729567)
+at **12:23:33 KST on October 23**. The
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39894803126)
+confirmed **Waiting for Review** and `AFTER_APPROVAL`. This is not a public release.
+Earlier runtime checks retain their build-specific scope; see the
+[replacement delivery record](RELEASING.md#macos-192-replacement-delivery-2026-10-23).
 
 Earlier, at **10:13 KST on October 23**, macOS **1.9.2 / 9201** was submitted and entered
 **Waiting for Review**, replacing the cancelled 1.9.1 / 8601 submission.

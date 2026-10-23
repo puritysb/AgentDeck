@@ -733,9 +733,71 @@ Rejected and its 10:13 submission as removed. The independent
 at **10:55:45 KST** confirmed `DEVELOPER_REJECTED`; 9201 remains a valid uploaded
 artifact, but is no longer under review. The replacement must use a later build.
 
-Replacement delivery and exact-build validation are recorded here after they
-complete. The earlier physical-button/sleep-wake gaps and intermittent UI-access
-timeouts remain unverified; this correction does not change their status.
+Replacement delivery and exact-build validation follow below. The earlier
+physical-button/sleep-wake gaps and intermittent UI-access timeouts remain
+unverified; this correction does not change their status.
+
+#### macOS 1.9.2 replacement delivery 2026-10-23
+
+The correction follows merged [PR #597](https://github.com/puritysb/AgentDeck/pull/597)
+in [PR #598](https://github.com/puritysb/AgentDeck/pull/598). Executable source is
+`7e3d3033c5966a31c973e17274cecc7096af1dd1`. The clean-tree
+[full verification receipt](verification/receipts/2026-10-23-7e3d303.json)
+passed all **25 automated gates in 21 min 56 s**. It was committed before upload;
+the remote delivery ref remained fixed to that verified source. Coverage tests
+passed **6,805** with 17 skips, daemon E2E **29**, macOS XCTest **1,328**
+with 4 skips, and optimized DotPreview XCTest **1,342** with 9 skips. The new
+ASC preparation/submission mock suite passed 28 tests, and independent review
+found no remaining actionable issue. Source CI passed 13 checks; the unrelated
+TTGO PR check was skipped. The local full tier also compiled TTGO.
+
+The [macOS-only release run 39892713289](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+archived with Xcode 26.3 and uploaded successfully at **12:15:06 KST**. The
+downloaded package's Info.plist confirms **1.9.2 / 9301**, bundle
+`bound.serendipity.agent.deck`, and `AgentDeckDotSupport=excluded`. Its strict
+code-signature check confirms **Apple Distribution: Serendipity Bound
+(QF36NDHYHD)**; the installer is signed by **3rd Party Mac Developer Installer**
+for the same team. Both CI and the downloaded Store app passed
+`verify-appstore-archive.sh`, including the Dot exclusion check.
+
+The package SHA-256 is
+`f71d5424841abce42306d2bff67ef5bf42211fbb748251cbdbae4abe9e06f01d`;
+the retained artifact ZIP digest is
+`64f2a669a7c6df9472e5abfd7b8d50727fdc941e0a62117e6e8f655737393346`.
+Artifact name: `apple-macos-1.9.2-93-1`, ID `12476230832`. Local package, signatures,
+verifier output and delivery logs are retained under
+`diagnostics/release598-delivery-39892713289/`.
+
+**Delivery state: submitted, Waiting for Review; automatic release after
+approval.** The [preparation run](https://github.com/puritysb/AgentDeck/actions/runs/39894326306)
+confirmed 9301 as `VALID`, attached the exact build and read back the repository
+copy at **12:19:05 KST**. The
+[submission run](https://github.com/puritysb/AgentDeck/actions/runs/39894729567)
+succeeded, and the independent
+[ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39894803126)
+confirmed macOS 1.9.2 and submission
+`5e08427d-e1dc-4657-933e-609e9e6cbf1f` as `WAITING_FOR_REVIEW`, with Apple
+`submittedDate` **2026-10-23T03:23:33.303Z (12:23:33 KST)** and
+`releaseType=AFTER_APPROVAL`. Build
+`c39ded43-0bd9-4868-9a2e-15485a34ea52` is 9301, `VALID`, not expired and belongs
+to macOS 1.9.2. Public macOS remains 1.9.0 and iOS remains 1.9.1. No Apple tag,
+iOS upload, npm publication, firmware or deck-plugin publication was performed.
+
+The exact repository submission copy has SHA-256
+`2ba1f4c4bcf35a0ee95db7ed3d46b608e458ba553a8490490213a24a81f971b3`
+over the API helper's `{whatsNew, notes}` JSON. EN/KO/JA What's New lengths are
+1,121 / 637 / 583 characters, and the macOS reviewer field is 3,908 characters.
+Both preparation and submission read these fields, the exact attached 9301
+build and `AFTER_APPROVAL` back successfully. The delivery logs and JSON receipts
+are retained beside the downloaded package.
+
+This candidate's `device-deploy` and `swift-codex-live` manual gates remain
+unattested; ESP32 Robot was skipped because there is no firmware delivery.
+Windows runtime was skipped locally and passed in source CI on Node 22/24/26.
+Physical deck input and sleep/wake remain unverified, and intermittent AX
+timeouts remain unexplained. Earlier 9101/9201 runtime receipts keep their
+original build scope; the new quota policy is covered by actual loopback HTTP
+handler tests, not a claim of new physical-device acceptance.
 
 ### 2026-10-14 iDotMatrix readability correction
 
