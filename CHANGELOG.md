@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- macOS app: dashboard setup prompts no longer query the Keychain on the main thread for an Admin API setting they do not use, removing unnecessary synchronous work while the dashboard renders.
+
 - Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
 
 - Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
