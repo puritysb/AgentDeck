@@ -14,14 +14,33 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 
 ## Prepared macOS 1.9.2 update text
 
-Copy for the macOS-only update in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
+**Replacement candidate preparation, October 23:** the copy below describes the
+revised macOS 1.9.2 candidate. Standalone Swift retains Claude status-line
+observation for diagnostics but does not present its session snapshots as
+current account quota or a subscription. Support for the documented interface
+does not establish current-account accuracy. Session observation and the
+external Node daemon's quota policy are unchanged. The replacement build number
+has not been assigned; earlier artifact and acceptance records do not validate
+this correction.
+
+**9201 withdrawn:** at **10:55:45 KST on October 23**, the
+[ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39886718986)
+confirmed macOS 1.9.2 **Developer Rejected**, and the portal showed the 10:13
+submission as deleted. Build **9201 remains Valid** as an uploaded artifact
+but is no longer under review. No replacement build has been assigned. See the
+[Claude accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
+
+**Historical 9201 delivery:** see the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23)
+for the earlier upload and submission evidence.
 The macOS-only [upload run 39879934528](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
 from source `6d1b3238` succeeded; [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
 confirmed build **9201 Valid**. At **10:13 KST on October 23**, macOS
 **1.9.2 / 9201** was submitted and entered **Waiting for Review**, replacing the
 cancelled 1.9.1 / 8601 submission. The English, Korean and Japanese What's New
-and macOS Review Notes were saved and matched exactly after reload. Automatic
-release after Apple approval is selected; **1.9.2 is not yet publicly released**.
+and macOS Review Notes then in use were saved and matched exactly after reload.
+Automatic release after Apple approval was selected. This historical submission
+does not contain the correction described by the replacement copy below;
+**1.9.2 is not yet publicly released**.
 The released iOS app and its copy below are unchanged; npm 1.9.3 remains
 unpublished.
 
@@ -30,15 +49,18 @@ unpublished.
 permission was allowed. A saved reference to a terminated session required
 reselection without opening another session. Stale and disconnected rosters
 returned explicit unavailable errors with no output, preserving the distinction
-from a fresh empty waiting-session list. Direct Swift Claude status-line
-freshness, real-turn timeline display and Settings/Dashboard/Connection
-interactions passed, and the Node owner was restored afterward. The initial
+from a fresh empty waiting-session list. The earlier build accepted direct
+Swift Claude status-line observations. Real-turn timeline display and
+Settings/Dashboard/Connection interactions passed, and the Node owner was
+restored afterward. The initial
 health receipt captured source and freshness metadata, not numeric windows;
 its live status-line reading already established that at least one valid
 numeric window was accepted. A later session-matched Swift snapshot recorded
 5-hour usage at 33% and 7-day usage at 9%. Dashboard gauge rendering remains
 unverified because Claude is hidden in the user's existing Displayed providers
-selection; that preference remains unchanged.
+selection; that preference remains unchanged. Those receipts establish what the
+earlier build accepted, not that the values represented current account usage;
+they do not validate the replacement candidate's policy.
 Notification permission and delivery to Notification Center history were
 confirmed; the OS suppressed banners and sound during screen sharing. Clicking
 the actual macOS notification opened the requested session's timeline. The
@@ -52,7 +74,7 @@ acceptance is separate. See the measured scope and open gates in the
 using this copy. The collaboration view is an opt-in experiment showing observed
 messages, not an inferred dependency map.
 
-**Additional 9201 checks:** archive/package signing and the Dot gate passed.
+**Historical 9201 checks:** archive/package signing and the Dot gate passed.
 The derivative made by replacing its signing passed comparison against the
 9201 Store app. Cold Shortcuts List Waiting Sessions plus Count returned 0 in
 **3.56 seconds**, launching a new app process while the Node owner stayed
@@ -65,7 +87,7 @@ semantic equivalence between the two builds has not been established.
 ```text
 • Open a session directly from its attention notification, or use Shortcuts to list and open sessions waiting for your response.
 • See observed messages between sessions in the optional experimental Collaboration view and aquarium.
-• View Claude's 5-hour and 7-day usage through the optional status-line integration. Claude permission requests appear when the agent asks for approval.
+• Improve Claude usage reliability in the standalone Mac app by hiding readings that cannot be verified as current account usage. Claude permission requests appear when the agent asks for approval.
 • Enable optional device approvals to answer Codex requests from a connected deck. If nobody answers within 25 seconds, Codex shows its own prompt as usual.
 • Strengthen local connection security and keep pairing tokens out of connection logs. Improve reconnection and protect saved conversation history from interrupted writes. Connection settings now take effect reliably, even during startup. Reduce repeated work when displaying busy timelines.
 • Restore T-Embed session history and improve Wi-Fi setup for USB-connected ESP32 displays. Detailed setup results depend on the display firmware.
@@ -77,7 +99,7 @@ semantic equivalence between the two builds has not been established.
 ```text
 • 응답 요청 알림을 눌러 해당 세션을 바로 열거나, 단축어로 응답을 기다리는 세션을 조회하고 열 수 있습니다.
 • 선택적으로 켜는 실험적 Collaboration 화면과 아쿠아리움에서 실제로 관측된 세션 간 메시지를 확인할 수 있습니다.
-• 선택적 상태 표시줄 연동으로 Claude의 5시간·7일 사용량을 확인할 수 있습니다. Claude가 승인을 요청하면 대시보드에도 요청을 표시합니다.
+• Mac 앱을 단독으로 사용할 때 현재 계정 사용량으로 확인되지 않은 Claude 수치를 숨기도록 개선했습니다. Claude가 승인을 요청하면 대시보드에도 요청을 표시합니다.
 • 설정에서 기기 승인을 활성화하면 연결된 덱에서 Codex 승인 요청에 응답할 수 있습니다. 25초 동안 응답이 없으면 Codex가 평소처럼 자체 확인창을 표시합니다.
 • 로컬 연결 보안을 강화하고 연결 로그에서 페어링 토큰을 제거했습니다. 재연결을 개선하고 저장 중 중단으로 대화 기록이 손상되는 문제를 수정했습니다. 앱을 시작하는 중에도 연결 설정 변경이 안정적으로 반영됩니다. 기록이 많은 타임라인의 반복 처리도 줄였습니다.
 • T-Embed의 세션 기록 조회와 USB로 연결된 ESP32 디스플레이의 Wi-Fi 설정을 개선했습니다. 상세 설정 결과는 디스플레이 펌웨어의 지원에 따라 표시됩니다.
@@ -89,7 +111,7 @@ semantic equivalence between the two builds has not been established.
 ```text
 • 応答を求める通知から該当セッションを直接開けます。ショートカットで応答待ちのセッションを一覧表示して開くこともできます。
 • 任意で有効にする実験的なCollaborationビューとアクアリウムで、実際に観測されたセッション間のメッセージを確認できます。
-• 任意のステータスライン連携でClaudeの5時間・7日間の使用量を確認できます。Claudeが承認を求めると、ダッシュボードにも要求を表示します。
+• Macアプリを単独で使用する際、現在のアカウント使用量として確認できないClaudeの数値を非表示にしました。Claudeが承認を求めると、ダッシュボードにも要求を表示します。
 • 設定でデバイス承認を有効にすると、接続したデッキからCodexの承認要求に応答できます。25秒以内に応答がなければ、Codexが通常どおり独自の確認画面を表示します。
 • ローカル接続のセキュリティを強化し、接続ログからペアリングトークンを除きました。再接続を改善し、保存中の中断による会話履歴の破損を防ぎます。起動中でも接続設定の変更が確実に反映されるようになりました。履歴の多いタイムラインで繰り返される処理も減らしました。
 • T-Embedのセッション履歴と、USB接続したESP32ディスプレイのWi-Fi設定を改善しました。詳細な設定結果の表示には対応するディスプレイのファームウェアが必要です。

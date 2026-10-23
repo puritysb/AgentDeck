@@ -1783,18 +1783,14 @@ final class DaemonServer {
     private var lastApiFetchTime: Date = .distantPast
     private static let usageStaleTTL: TimeInterval = 600  // 10 minutes
     private var apiUsageStale = false
-    /// Newest Claude Code status-line reading — the sanctioned subscription-
-    /// window source (`ClaudeStatuslineRules`, generated from
-    /// shared/src/claude-statusline.ts). Nil until one arrives.
-    private var claudeStatusline: ClaudeStatuslineRules.Reading?
-    private var claudeStatuslineSessions: [String: ClaudeStatuslineRules.Reading] = [:]
+    /// Diagnostic receipt only. Claude's status-line document has neither an
+    /// account identity nor a quota observation timestamp, so receipt cannot
+    /// establish current account usage (including after idle rerenders/resets).
+    private var claudeStatuslineReceipt: (receivedAtMs: Double, sessionId: String?)?
     /// Where the Claude 5h/7d numbers in `cachedApiUsage` came from:
-    /// "statusline", "relay" (a sibling bridge's OAuth read) or "oauth".
+    /// "relay" (a sibling bridge's account reading) or "oauth".
     private var claudeUsageSource: String?
-    /// Last live OAuth-family reading (relay or direct) — the only carrier of
-    /// the per-model scoped caps and extra-usage fields, which ride along with
-    /// a status-line reading while this one is recent.
-    private var lastOAuthFamilyUsage: ApiUsageData?
+    /// Last live OAuth-family observation time, retained for diagnostics.
     private var lastOAuthFamilyFetchTime: Date = .distantPast
 
     // Anthropic Admin API (Console) usage — independent from subscription
@@ -2138,7 +2134,7 @@ final class DaemonServer {
         }
 
         // 1. Setup HTTP routes + Bonjour, then start unified server
-        await setupHTTPRoutes()
+        await setupHTTPRoutes(using: httpServer)
         try checkStartupActive()
         setupWifiOta()
         await wsServer.setHTTPHandler(httpServer)
@@ -2281,15 +2277,6 @@ final class DaemonServer {
             Task { @DaemonActor in
                 guard let self else { return }
                 var event = box.value
-                if (event["type"] as? String) == "usage_update", self.claudeStatuslineIsFresh,
-                   var ownUsage = self.buildUsageEvent() {
-                    // Unstamped focused-session quota cannot replace a fresh
-                    // account observation; its per-session counters still flow.
-                    for key in ClaudeStatuslineRules.relayedSessionUsageFields {
-                        if let value = event[key] { ownUsage[key] = value }
-                    }
-                    event = ownUsage
-                }
                 // Host probes are authoritative even when a focused session bridge
                 // runs an older version. Its model catalog cannot replace residency.
                 if ["state_update", "usage_update"].contains(event["type"] as? String ?? "") {
@@ -2343,7 +2330,7 @@ final class DaemonServer {
                 let usage = box.value
                 self.updateRelayedCodexAuthStatus(from: usage)
                 // Sync rate-limit values (already adjusted by bridge's adjustUsagePercent)
-                if !self.claudeStatuslineIsFresh, let current = self.cachedApiUsage,
+                if let current = self.cachedApiUsage,
                    usage["fiveHourPercent"] is NSNumber || usage["sevenDayPercent"] is NSNumber {
                     self.cachedApiUsage = Self.syncRelayedClaudeUsage(current, usage)
                     self.apiUsagePreAdjusted = true
@@ -3305,7 +3292,9 @@ final class DaemonServer {
         }
     }
 
-    private func setupHTTPRoutes() async {
+    /// Route registration is separate from service startup so integration tests
+    /// can exercise the real handlers without registry, device or hook changes.
+    func setupHTTPRoutes(using httpServer: HTTPServer) async {
         let daemonPort = self.port
         // Captured by value: posture is immutable for the server's lifetime,
         // and a `self?`-with-fallback read inside the /health closure would
@@ -3443,7 +3432,7 @@ final class DaemonServer {
             }
             // Get judge backend status as Sendable value
             let judgeBackend = await DaemonActor.run { [weak self] in self?.cachedJudgeBackendStatus }
-            // Claude gauge source (status-line relay vs OAuth-family), Node parity.
+            // Account usage source and diagnostic-only status-line receipt.
             let claudeUsage = await DaemonActor.run { [weak self] in self?.claudeUsageHealth() }
             var payload: [String: Any] = [
                 "status": "ok", "mode": "daemon", "port": daemonPort,
@@ -4021,8 +4010,8 @@ final class DaemonServer {
         }
 
         // Claude Code status-line relay — the installed status line POSTs
-        // Claude's whole status document and the daemon keeps only the
-        // subscription windows (ClaudeStatuslineRules). Same-machine only: the
+        // Claude's whole status document and the daemon keeps only diagnostic
+        // receipt metadata, never account quota. Same-machine only: the
         // access policy already 401s a LAN peer without a token, and a
         // token-bearing peer has no business feeding this daemon a quota
         // reading either. The body crosses as Sendable `Data`; parsing happens
@@ -10476,99 +10465,27 @@ final class DaemonServer {
         let broadcast: Bool
     }
 
-    /// `POST /claude/statusline` — see `ClaudeStatuslineRules`. The reading owns
-    /// the 5h/7d numbers and the freshness clock; the scoped caps and
-    /// extra-usage fields only an OAuth-family reading carries ride along while
-    /// that reading is recent, and drop after that rather than freeze. The
-    /// status line fires on every message boundary and every broadcast repaints
-    /// every surface, so a broadcast goes out only for a repaint-worthy change.
+    /// A valid status-line document proves delivery, not current account quota.
+    /// Keep the endpoint for installed integrations and diagnostics, but never
+    /// promote its windows, counters or receipt time into usage/billing state.
     private func ingestClaudeStatusline(_ body: Data) -> ClaudeStatuslineIngest {
         let nowMs = Date().timeIntervalSince1970 * 1000
         guard let payload = try? JSONSerialization.jsonObject(with: body),
               let reading = ClaudeStatuslineRules.parse(payload, receivedAtMs: nowMs) else {
             return ClaudeStatuslineIngest(applied: false, broadcast: false)
         }
-        let key = reading.sessionId ?? ""
-        let previousForSession = claudeStatuslineSessions[key]
-        let current = cachedApiUsage.map { u in
-            ClaudeStatuslineRules.Reading(
-                fiveHour: u.fiveHourPercent.map { .init(usedPercent: $0, resetsAt: u.fiveHourResetsAt) },
-                sevenDay: u.sevenDayPercent.map { .init(usedPercent: $0, resetsAt: u.sevenDayResetsAt) },
-                sessionId: nil, model: nil, version: nil,
-                receivedAtMs: lastApiFetchTime.timeIntervalSince1970 * 1000)
-        } ?? claudeStatusline
-        guard !ClaudeStatuslineRules.progressRegressed(previous: previousForSession, next: reading) else {
-            return ClaudeStatuslineIngest(applied: false, broadcast: false)
-        }
-        claudeStatuslineSessions[key] = reading
-        if claudeStatuslineSessions.count > ClaudeStatuslineRules.sessionLimit,
-           let oldest = claudeStatuslineSessions.min(by: { $0.value.receivedAtMs < $1.value.receivedAtMs })?.key {
-            claudeStatuslineSessions.removeValue(forKey: oldest)
-        }
-        // A sibling relay's OAuth reading keeps its fractional reset second and
-        // whole percent; the ordering check must know which carrier `current` is.
-        let currentSource = cachedApiUsage != nil ? claudeUsageSource : "statusline"
-        guard ClaudeStatuslineRules.shouldAccept(
-            previousForSession: previousForSession, current: current, next: reading, currentSource: currentSource) else {
-            return ClaudeStatuslineIngest(applied: false, broadcast: false)
-        }
-        let prev = claudeStatusline
-        let changed = ClaudeStatuslineRules.changed(prev: prev, next: reading)
-        let resumed = ClaudeStatuslineRules.age(receivedAtMs: prev?.receivedAtMs, nowMs: nowMs) != .fresh
-        claudeStatusline = reading
-        let lastOAuthMs: Double? = lastOAuthFamilyFetchTime == .distantPast
-            ? nil : lastOAuthFamilyFetchTime.timeIntervalSince1970 * 1000
-        let carry = ClaudeStatuslineRules.oauthCarryOverFresh(lastOAuthFetchAtMs: lastOAuthMs, nowMs: nowMs)
-            ? lastOAuthFamilyUsage : nil
-        cachedApiUsage = ApiUsageData(
-            fiveHourPercent: reading.fiveHour?.usedPercent,
-            fiveHourResetsAt: reading.fiveHour?.resetsAt,
-            sevenDayPercent: reading.sevenDay?.usedPercent,
-            sevenDayResetsAt: reading.sevenDay?.resetsAt,
-            scopedLimits: carry?.scopedLimits ?? [],
-            extraUsageEnabled: carry?.extraUsageEnabled ?? false,
-            extraUsageMonthlyLimit: carry?.extraUsageMonthlyLimit,
-            extraUsageUsedCredits: carry?.extraUsageUsedCredits,
-            extraUsageUtilization: carry?.extraUsageUtilization,
-            inferredBillingType: "subscription",
-            fetchedAt: reading.receivedAtMs / 1000,
-            stale: false
-        )
-        lastApiFetchTime = Date(timeIntervalSince1970: reading.receivedAtMs / 1000)
-        apiUsageStale = false
-        apiUsagePreAdjusted = false
-        stateMachine.billingType = "subscription"
-        let sourceChanged = claudeUsageSource != "statusline"
-        claudeUsageSource = "statusline"
-        if resumed {
-            DaemonLogger.shared.info("Claude usage: status-line relay is the live source")
-        }
-        let broadcast = changed || sourceChanged
-        if broadcast { broadcastUsage() }
-        return ClaudeStatuslineIngest(applied: true, broadcast: broadcast)
+        claudeStatuslineReceipt = (reading.receivedAtMs, reading.sessionId)
+        return ClaudeStatuslineIngest(applied: false, broadcast: false)
     }
 
-    /// Recent statusline evidence protects a newer OAuth correction as well
-    /// when focused-session usage has no observation timestamp.
-    private var claudeStatuslineIsFresh: Bool {
-        ClaudeStatuslineRules.age(
-            receivedAtMs: claudeStatusline?.receivedAtMs,
-            nowMs: Date().timeIntervalSince1970 * 1000) == .fresh
-    }
-
-    /// Only the token-free statusline source survives a failed OAuth fetch.
-    private var claudeStatuslineIsLive: Bool {
-        claudeUsageSource == "statusline" && claudeStatuslineIsFresh
-    }
-
-    /// `/health.claudeUsage`, Node parity (`BridgeCore.claudeUsageDiagnostics`):
-    /// which source feeds the Claude gauge and whether the status line is live.
+    /// `/health.claudeUsage`: receipt age diagnoses integration delivery only.
+    /// `statuslineLive` stays false because status-line quota is not displayed.
     /// A tuple of Sendable values so the nonisolated `/health` closure can
     /// carry it across the actor hop.
     func claudeUsageHealth() -> (source: String?, receivedAtMs: Int?, age: String, session: String?, lastOAuthFamilyMs: Int?, live: Bool) {
         let nowMs = Date().timeIntervalSince1970 * 1000
         let age: String
-        switch ClaudeStatuslineRules.age(receivedAtMs: claudeStatusline?.receivedAtMs, nowMs: nowMs) {
+        switch ClaudeStatuslineRules.age(receivedAtMs: claudeStatuslineReceipt?.receivedAtMs, nowMs: nowMs) {
         case .fresh: age = "fresh"
         case .aged: age = "aged"
         case .unknown: age = "unknown"
@@ -10577,11 +10494,11 @@ final class DaemonServer {
             ? nil : Self.wireEpochMs(lastOAuthFamilyFetchTime.timeIntervalSince1970 * 1000)
         return (
             claudeUsageSource,
-            claudeStatusline.map { Self.wireEpochMs($0.receivedAtMs) },
+            claudeStatuslineReceipt.map { Self.wireEpochMs($0.receivedAtMs) },
             age,
-            claudeStatusline?.sessionId,
+            claudeStatuslineReceipt?.sessionId,
             lastOAuth,
-            claudeStatuslineIsLive
+            false
         )
     }
 
@@ -10590,18 +10507,31 @@ final class DaemonServer {
         // account observation. Successful newer account reads replace all windows.
         if !reading.stale, let fetchedAt = reading.fetchedAt, fetchedAt > 0,
            fetchedAt >= lastOAuthFamilyFetchTime.timeIntervalSince1970 {
-            lastOAuthFamilyUsage = reading
             lastOAuthFamilyFetchTime = Date(timeIntervalSince1970: fetchedAt)
         }
         if let current = cachedApiUsage,
            ClaudeStatuslineRules.preserveUsageOnOAuth(
             currentFetchedAt: lastApiFetchTime.timeIntervalSince1970,
             nextFetchedAt: reading.fetchedAt ?? 0,
-            fresh: !reading.stale, statuslineLive: claudeStatuslineIsLive) {
+            fresh: !reading.stale, statuslineLive: false) {
             return current
         }
         claudeUsageSource = source
         return reading
+    }
+
+    /// Apply a timestamped account reading without changing its observation
+    /// time. Also used by route integration tests without starting the pollers.
+    func applyOAuthFamilyReading(_ reading: ApiUsageData, source: String) {
+        cachedApiUsage = foldOAuthFamilyReading(reading, source: source)
+        if let fetchedAt = cachedApiUsage?.fetchedAt {
+            lastApiFetchTime = Date(timeIntervalSince1970: fetchedAt)
+            apiUsageStale = cachedApiUsage?.stale ?? false
+        } else {
+            // Unknown age is never made fresh at receipt.
+            apiUsageStale = true
+        }
+        apiUsagePreAdjusted = false
     }
 
     private func fetchUsageRelayed() async {
@@ -10614,19 +10544,7 @@ final class DaemonServer {
             if let usage = await fetchUsageViaHTTP(port: sibling.port) {
                 updateRelayedCodexAuthStatus(from: usage)
                 // Parse relayed dict back into ApiUsageData for caching
-                cachedApiUsage = foldOAuthFamilyReading(parseRelayedUsage(usage), source: "relay")
-                if let fetchedAt = cachedApiUsage?.fetchedAt {
-                    lastApiFetchTime = Date(timeIntervalSince1970: fetchedAt)
-                    apiUsageStale = cachedApiUsage?.stale ?? false
-                } else {
-                    // Unreachable now that `fetchUsageViaHTTP` rejects an
-                    // unstamped payload outright; kept as the floor. Stamping
-                    // `Date()` here would make numbers of unknown age the one
-                    // reading `usageStaleTTL` can never retire, so leave the
-                    // clock alone and say the value is stale instead.
-                    apiUsageStale = true
-                }
-                apiUsagePreAdjusted = false  // raw data from HTTP, needs adjustment
+                applyOAuthFamilyReading(parseRelayedUsage(usage), source: "relay")
                 oauthConnected = usage["oauthConnected"] as? Bool ?? true
                 // Infer billing type
                 if let inferred = cachedApiUsage?.inferredBillingType {
@@ -10659,9 +10577,7 @@ final class DaemonServer {
                 "Usage Tier 3 skipped: direct OAuth usage unavailable in Swift daemon",
                 minInterval: 300
             )
-            // The sandboxed app's one standalone Claude source is the status-line
-            // relay; a cycle that finds no sibling must not retire its reading.
-            if cachedApiUsage != nil, !claudeStatuslineIsLive {
+            if cachedApiUsage != nil {
                 apiUsageStale = true
             }
             broadcastUsage()
@@ -10670,15 +10586,7 @@ final class DaemonServer {
 
         DaemonLogger.shared.throttledDebug("Daemon", key: "usage-relay:tier3-start", "Usage Tier 3: direct API", minInterval: 30)
         if let usage = await usageAPI.fetchUsage() {
-            cachedApiUsage = foldOAuthFamilyReading(usage, source: "oauth")
-            if let fetchedAt = cachedApiUsage?.fetchedAt {
-                lastApiFetchTime = Date(timeIntervalSince1970: fetchedAt)
-                apiUsageStale = cachedApiUsage?.stale ?? false
-            } else {
-                // Same floor as Tier 1: unknown age is not fresh.
-                apiUsageStale = true
-            }
-            apiUsagePreAdjusted = false  // raw data from API, needs adjustment
+            applyOAuthFamilyReading(usage, source: "oauth")
             oauthConnected = usageAPI.tokenStatus == .valid
             if let inferred = usage.inferredBillingType {
                 stateMachine.billingType = inferred
@@ -10697,7 +10605,7 @@ final class DaemonServer {
             // of showing cached numbers during the 10-min grace.
             switch usageAPI.tokenStatus {
             case .missing, .expired:
-                if !apiUsageStale, !claudeStatuslineIsLive {
+                if !apiUsageStale {
                     DaemonLogger.shared.debug("Daemon", "Token \(usageAPI.tokenStatus.rawValue) — marking cached usage stale so UI hides instead of showing frozen values")
                     apiUsageStale = true
                 }
@@ -11230,7 +11138,7 @@ final class DaemonServer {
         }
     }
 
-    private func buildFullStateEvent(agentType: String) -> [String: Any] {
+    func buildFullStateEvent(agentType: String) -> [String: Any] {
         var e: [String: Any] = [
             "type": "state_update",
             "state": stateMachine.state.rawValue,

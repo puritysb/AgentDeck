@@ -603,7 +603,7 @@ the candidate's executable source.
 
 #### macOS 1.9.2 delivery 2026-10-23
 
-**Submitted, not yet public:** at **10:13 KST**, the portal confirmed
+**Historical 9201 submission, superseded by the accuracy reassessment below:** at **10:13 KST**, the portal confirmed
 **macOS 1.9.2 / 9201 Waiting for Review**, submission
 `f8ec7cb8-636e-4c1c-8026-f67a8fe4c582`. The previous macOS 1.9.1 / 8601
 submission was withdrawn after 9201 had become **VALID**. English, Korean and
@@ -661,6 +661,81 @@ Retained local evidence: `diagnostics/release597-delivery-9201/` contains
 artifact/ASC validation, binary analysis and the submission screenshot;
 `diagnostics/release597-delivery-9201-runtime/` contains the derivative comparison,
 installation, cold-Shortcuts and UI smoke receipts, plus the previous 9101 backup.
+
+#### macOS 1.9.2 Claude accuracy reassessment 2026-10-23
+
+The owner requested an accuracy decision before release, recalling why Claude
+usage had previously been hidden. The September 13 decision removed stale
+quota instead of showing it with a stale badge and preserved an explicit
+Claude provider-hide preference; it did not remove Claude session observation.
+The October 16 status-line relay and October 18 cross-source precision repair
+are real improvements over `apple-v1.9.1`, but a received **33% / 9%** snapshot
+proves delivery, not current-account accuracy. The preceding submission's
+acceptance must not be read as proof of the stronger claim.
+
+**Decision: do not publish status-line documents as standalone Swift account
+quota.** Keep receipt diagnostics and Claude sessions, prompts, timelines and
+approval controls. A status-line POST must not update account percentages,
+resets, fetch timestamps, billing classification or subscription metadata, and
+must not claim a live account source. Valid existing external-daemon relay data
+is separate; this change does not certify or modify Node's OAuth policy.
+The user's display preference remains unchanged.
+
+This is a correction to the existing 1.9 promise, not a new feature milestone.
+Record the version decision before the replacement upload:
+
+| Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
+| --- | --- | --- | --- | --- | --- |
+| Apple / macOS | 1.9.0 | 1.9.2 / 9201, submission withdrawn | 1.9.2, new CI build above 9201 | Same unreleased version: stop promoting unverified status-line receipts into current account quota | macOS-only replacement; full verification and signed archive required |
+| iOS, npm, Android, firmware and deck plugins | Existing delivery identities | Unchanged | No publication | No unrelated channel delivery or new direct OAuth access | Existing session observation and external-daemon paths retained |
+
+The read-only audit executed the production TypeScript rules from `a4b4fc29`
+with synthetic inputs; it did not use an account, change user settings or
+inject values into the shared daemon. Seven cases are retained with source
+hashes under `diagnostics/release597-claude-accuracy-20261023/`:
+
+- An identical remembered idle document is rejected, as intended.
+- Removing an expired 5h window while keeping the unchanged weekly value and
+  API/token counters can renew the weekly reading's timestamp.
+- Lowering context/API counters with unchanged quota can be accepted as a
+  fresh reading although rebaselining is not a quota observation.
+- A first-seen or delayed document containing 20-minute-old quota and future
+  resets can be marked fresh on receipt. The payload has no source observation
+  timestamp with which to distinguish it from a new response.
+- Different sessions cannot be bound to the same account from this payload;
+  rejecting a lower same-window reading is not an account-identity check.
+- After the last window disappears, parsing returns no reading and leaves the
+  prior cache. The producer's reset adjustment can then synthesize **0%** from
+  an **80%** cached reading without any new quota observation. High percentages
+  have a separate five-minute sticky interval; this is not a claim that every
+  reading remains visible for the entire ten-minute cache bound.
+
+The [official status-line contract](https://code.claude.com/docs/en/statusline#available-data)
+documents percentages and reset times, but no quota observation timestamp or
+account identifier. It also runs on resume, compaction, timer and expiry events;
+receipt is therefore not itself an API observation. These are information and
+presentation limits, not a claim that Anthropic's reported percentages are
+incorrect.
+
+Alternatives considered: shortening the TTL or strengthening counter heuristics
+still cannot identify an old first document or its account; presenting a
+session-scoped last report with explicit unknown age/account is a different UI
+and wire contract; a supported account-bound, timestamped source could support
+the original account-gauge promise. The release uses omission until that
+contract is established. Reintroduction must prove restart/resume/eviction,
+expiry-only updates, account separation, no inferred zero after reset and
+explicit retirement across state, WebSocket and device snapshots. It also
+needs a source-to-display comparison distinct from mere receipt success.
+
+**9201 withdrawal confirmed:** the portal showed macOS 1.9.2 as Developer
+Rejected and its 10:13 submission as removed. The independent
+[ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39886718986)
+at **10:55:45 KST** confirmed `DEVELOPER_REJECTED`; 9201 remains a valid uploaded
+artifact, but is no longer under review. The replacement must use a later build.
+
+Replacement delivery and exact-build validation are recorded here after they
+complete. The earlier physical-button/sleep-wake gaps and intermittent UI-access
+timeouts remain unverified; this correction does not change their status.
 
 ### 2026-10-14 iDotMatrix readability correction
 

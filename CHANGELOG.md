@@ -69,10 +69,17 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-At **10:13 KST on October 23**, macOS **1.9.2 / 9201** was submitted and entered
+**A replacement is being prepared after the Claude accuracy reassessment.**
+Standalone macOS no longer promotes status-line documents into account quota;
+Claude session observation remains available. The earlier 33% / 9% receipt
+proved collection, not current-account accuracy. See the
+[decision and replacement record](RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
+
+Earlier, at **10:13 KST on October 23**, macOS **1.9.2 / 9201** was submitted and entered
 **Waiting for Review**, replacing the cancelled 1.9.1 / 8601 submission.
-It is **not yet publicly released**; automatic release after Apple approval is
-selected. The [macOS upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+That build was **not publicly released**; its submission was withdrawn, with
+`DEVELOPER_REJECTED` confirmed by [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39886718986)
+at **10:55:45 KST**. The [macOS upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
 from `6d1b3238` succeeded, and [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
 confirmed build 9201 Valid. npm 1.9.3 remains unpublished, and the released iOS
 app is unchanged. See the [delivery record](RELEASING.md#macos-192-delivery-2026-10-23).
@@ -126,7 +133,7 @@ acceptance results retain their recorded build scope.
 
 - Node daemon, Pixoo64: a session's subagent orbits stay up while its children work. The panel finds them in its last 96 timeline rows, and Claude's per-tool rows, two per tool call from any session, pushed the dispatch row out after about 50 tool calls. The panel no longer keeps those rows.
 
-- Claude usage gauge: a status-line relay. `agentdeck daemon install` (and `npx @agentdeck/setup`) now wraps the Claude Code status line you already have so Claude's own `rate_limits` document reaches the local daemon at `/claude/statusline`; with no status line configured it is opt-in (`--statusline`), because a configured status line hides Claude Code's footer hints. While those readings are fresh the Node daemon's poll of the undocumented OAuth usage endpoint stands down (one baseline read, then revalidation at least every 10 minutes even without per-model caps), and the sandboxed macOS app gains its first Claude 5h/7d gauge without a token or a sibling daemon. Uninstall restores your status line verbatim. `/health.claudeUsage` names the live source and counts the suppressed polls. Repeated idle renders and older cached readings do not renew quota freshness, and weekly-only snapshots clear the retired 5h window. On Windows the relay preserves the original command through Git Bash or PowerShell; the macOS app offers the same Wrap / Always / Off policy under Settings → Claude Code.
+- Claude status-line relay: the installers preserve an existing status line and relay its document to the local daemon. With none configured, this remains opt-in because a custom status line hides Claude Code's footer hints. Node retains its existing status-line/OAuth scheduling and cross-source precision repair. Standalone macOS records receipt diagnostics but omits account quota derived from these documents: they cannot identify the account or original observation time, and idle expiry or resumed state can otherwise appear fresh. Claude sessions and controls remain available, and the user's provider-display preference is preserved. Uninstall restores the original status line verbatim.
 
 - APME: a Claude turn's reply now lands on the turn its Stop closes. The Node daemon used to choose the turn by its timeline, which drops `<task-notification>` prompts and loses a long turn's prompt behind its own tool rows; those replies went to the previous turn and were dropped there (247 of 1,145 Claude Stop turns over 30 days kept no reply). A running turn displaced by a message Claude Code queued for it (a task notification, an agent or cross-session message) is now closed as `injected` rather than counted as a lost Stop, which had made Claude's Stop loss read 35% instead of 8%. New `agentdeck apme coverage` shows, per agent, how many finished turns kept their reply and model and how much of the work was judged.
 
