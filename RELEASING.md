@@ -1408,15 +1408,21 @@ to its release as the evidence of that Windows verification round, it is flagged
 prerelease so it never reads as latest, and `verification-*` does not match the
 `streamdeck-v*` workflow trigger. Check for inbound links before removing any tag.
 
-### "Manual" means an interactive portal, not "only a human"
+### "Manual" means a separate delivery action, not "only a human"
 
-Several steps here are marked _manual_ or _a separate App Store Connect action_. That describes the **absence of an API**, not the absence of an agent. Portals accept a signed-in browser, and browser automation is available to agents working in this repo.
+Several steps here are marked _manual_ or _a separate App Store Connect action_.
+That separates delivery from building and uploading; it does not make the action
+user-only. App Store Connect now supports
+[review-submission APIs](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app).
+Prefer an
+available authorized API; otherwise use the signed-in portal and browser tools.
 
 So an agent must not answer "I have no API access, so you'll have to do it." Before claiming a release step is impossible:
 
-- load the browser tools (they are frequently _deferred_ — `ToolSearch` for `mcp__claude-in-chrome__*` rather than assuming they are absent), then `list_connected_browsers`;
+- discover the service's supported API or connector and its existing authentication path; if that path lacks the required capability, discover the available browser tools;
 - **read state freely** — Play Console review status, ASC build list and submission readiness, Maker Console and Ulanzi submission status. Reading changes nothing and is never worth blocking on;
-- **ask before pressing a button that changes external state** — submitting for review, releasing to the public, replacing a build under review.
+- follow the task's existing authorization for review submission, public release or replacement of a pending build; ask only if the specific action has not been authorized;
+- read back the exact platform, version, attached build and submission state. A successful mutation request alone is not confirmation of delivery.
 
 On 2026-08-09 an agent with those tools loaded from the first turn never invoked one, concluded from the word "manual" that portal work was user-only, and reported CI uploads as finished releases. The tools were not missing; they were not looked for.
 
@@ -1624,6 +1630,39 @@ looking correct while the server still holds the previous text.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
+#### Guarded macOS review delivery
+
+The `asc-certificates.yml` maintenance workflow also supports the authorized
+macOS 1.9.2 replacement through Apple's official review-submission API. The
+credential remains in GitHub Actions. These actions are deliberately restricted
+to app `6784822497`, platform `MAC_OS`, version `1.9.2`, and an explicit processed
+replacement build greater than `9201`; changing that scope requires a reviewed
+script change.
+
+1. Complete the source and exported-artifact checks, upload the macOS candidate,
+   and read its actual CI build number and ASC processing state. An upload alone
+   does not submit it for review.
+2. Dispatch `asc-certificates.yml` on the reviewed source with
+   `action=release-prepare`, `release_version=1.9.2`, and
+   `release_build=<actual build number>`. Preparation reads the English, Korean
+   and Japanese macOS What's New text from `docs/appstore-metadata-draft.md` and
+   the macOS notes from `apple/APP_REVIEW_NOTES.md`, associates that exact valid
+   build, and sets automatic release after approval. It refuses to replace an
+   unexpected build association and reads the result back.
+3. After successful preparation, dispatch the same source and target with
+   `action=release-submit`. It rechecks the copy, build and release setting,
+   accepts only a draft containing exactly that version, then submits it and
+   reads back the state. Existing other submissions are not cancelled or edited.
+4. Record the workflow, source, version, build, submission identity and measured
+   review state. `WAITING_FOR_REVIEW` or `IN_REVIEW` is submitted, not public;
+   confirm `READY_FOR_SALE` separately before reporting a live release.
+
+A missing response is an unknown outcome: read back the state before retrying.
+Do not overlap dispatches or create a second submission to work around an
+uncertain response. An authorization error means this API key lacks the needed
+access; use the already authorized signed-in portal rather than broadening key
+permissions as part of a routine delivery.
+
 #### Dot development and Store builds
 
 Both Apple targets use one source tree. Standard `Debug` and `Release` configurations
@@ -1683,10 +1722,10 @@ bash scripts/build-apple-release.sh --all     # both + TestFlight upload
 **Identity and signing**
 
 - **Bundle ID**: `bound.serendipity.agent.deck` (App Store Connect 앱명: "AgentDeck Dashboard"). The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier and is unrelated to the app bundle ID.
-- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 2026-08-10부터 archive/export는 조직 전용 Distribution `.p12`와 명시적 App Store profiles를 쓰는 **manual signing**이다. ephemeral runner의 automatic signing이 release job마다 DEVELOPMENT 인증서를 새로 만들어 계정 상한을 세 차례 소진했기 때문이다. ASC API key는 업로드와 인증서 inventory에만 사용한다.
+- **Team**: 조직 `QF36NDHYHD` (Serendipity Bound) — 2026-07-10 개인 팀(R22679GY5Z)에서 이관. 2026-08-10부터 archive/export는 조직 전용 Distribution `.p12`와 명시적 App Store profiles를 쓰는 **manual signing**이다. ephemeral runner의 automatic signing이 release job마다 DEVELOPMENT 인증서를 새로 만들어 계정 상한을 세 차례 소진했기 때문이다. ASC API key는 업로드, 인증서 관리, 상태 조회와 위의 제한된 심사 제출에 사용하며 runner 밖으로 복사하지 않는다.
 - **CI**: `.github/workflows/apple-release.yml` — `apple-v*` 태그 → macOS-15 runner → archive → TestFlight 업로드.
 - **WeatherKit is enabled on the App ID in TWO places, and the entitlement proves only one of them.** In the developer portal, `bound.serendipity.agent.deck` carries WeatherKit under **Capabilities** (what the provisioning profile and the `com.apple.developer.weatherkit` entitlement reflect) and, separately, under **App Services** (what actually authorizes the JWT the framework mints at request time). With only the first, every build — dev or App Store, entitlement present, profile correct — has `WeatherService.weather(for:)` throw, and the Dashboard silently falls back to the MET Norway feed with *that* provider's attribution. That is what App Review saw on macOS 1.2.0 (5801) and why it asked, under Guideline 5.2.5, for proof of the ` Weather` mark: the mark is drawn only from a successful WeatherKit response, so it was on no screen anywhere, ours included (measured 2026-09-02 on a Debug build whose embedded profile carried `weatherkit=true`). The App Services toggle is account state, not binary state — flipping it needs no new build, and no profile regeneration — but it is also invisible from the repository, so check it first whenever the pill reads `MET Norway` on a Mac with a location set. `refreshNativeWeather` now logs the thrown error to `swift-daemon.log`.
-- **Secrets**: `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_INSTALLER_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, iOS/macOS profile secrets, plus upload-only `ASC_API_KEY_ID` / `ASC_ISSUER_ID` / `ASC_API_KEY_BASE64`. Step-by-step setup and no-upload dry-run: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
+- **Secrets**: `APPLE_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_INSTALLER_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, iOS/macOS profile secrets, plus `ASC_API_KEY_ID` / `ASC_ISSUER_ID` / `ASC_API_KEY_BASE64` for the bounded ASC operations above. Step-by-step setup and no-upload dry-run: [docs/asc-cert-setup.md](docs/asc-cert-setup.md).
 
 **Privacy-preserving usage analytics**
 

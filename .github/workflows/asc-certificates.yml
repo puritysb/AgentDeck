@@ -17,19 +17,37 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Certificate maintenance or read-only AgentDeck store status"
+        description: "Certificates, store status, or guarded macOS 1.9.2 release"
         required: true
         default: list
         type: choice
-        options: [list, revoke, store-status]
+        options: [list, revoke, store-status, release-prepare, release-submit]
       certificate_ids:
         description: "Comma-separated certificate ids (revoke only)"
         required: false
         type: string
+      release_version:
+        description: "Exact macOS version (release actions only; 1.9.2)"
+        required: false
+        default: "1.9.2"
+        type: string
+      release_build:
+        description: "Exact valid replacement build greater than 9201 (release actions only)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# A lost response must be read back, never handled by overlapping dispatches.
+concurrency:
+  group: asc-agentdeck-maintenance
+  cancel-in-progress: false
 
 jobs:
   certificates:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -37,16 +55,25 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run certificate maintenance
+      - name: Run bounded App Store Connect operation
         env:
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_ACTION: ${{ inputs.action }}
+          ASC_CERTIFICATE_IDS: ${{ inputs.certificate_ids }}
+          ASC_RELEASE_VERSION: ${{ inputs.release_version }}
+          ASC_RELEASE_BUILD: ${{ inputs.release_build }}
         run: |
-          if [ "${{ inputs.action }}" = "revoke" ]; then
-            node scripts/asc-certificates.mjs revoke "${{ inputs.certificate_ids }}"
-          elif [ "${{ inputs.action }}" = "store-status" ]; then
-            node scripts/asc-certificates.mjs store-status
-          else
-            node scripts/asc-certificates.mjs list
-          fi
+          case "$ASC_ACTION" in
+            revoke)
+              node scripts/asc-certificates.mjs revoke "$ASC_CERTIFICATE_IDS"
+              ;;
+            release-prepare|release-submit)
+              node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD"
+              ;;
+            list|store-status)
+              node scripts/asc-certificates.mjs "$ASC_ACTION"
+              ;;
+            *) exit 2 ;;
+          esac

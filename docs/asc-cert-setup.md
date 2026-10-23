@@ -30,7 +30,7 @@ An Apple signing certificate belongs to a developer team, not a bundle ID. The M
 | `MACOS_PROVISIONING_PROFILE_BASE64`     | Mac App Store profile for `QF36NDHYHD.bound.serendipity.agent.deck`                                          |
 | `ASC_API_KEY_ID`                        | Organization App Store Connect API key ID                                                                    |
 | `ASC_ISSUER_ID`                         | Organization App Store Connect issuer ID                                                                     |
-| `ASC_API_KEY_BASE64`                    | Base64-encoded organization `.p8`; used only for upload and certificate inventory                            |
+| `ASC_API_KEY_BASE64`                    | Base64-encoded organization `.p8`; used for upload, certificate maintenance, store status and the guarded review actions in [RELEASING.md](../RELEASING.md#guarded-macos-review-delivery) |
 
 The legacy `APPLE_CERTIFICATE_BASE64` secret is not read by the current workflow. Remove it only after the manual-signing dry-run succeeds.
 
