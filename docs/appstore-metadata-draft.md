@@ -17,12 +17,25 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 Copy for the macOS-only candidate in the [release decision](../RELEASING.md).
 This candidate has not been uploaded or submitted. The macOS 1.9.1 review and
 the released iOS 1.9.1 app remain unchanged; the iOS copy below is unchanged.
-**Acceptance pending:** finish Shortcuts and notification cases, direct Claude
-status-line freshness and runtime checks of the exported Store candidate. Real
-Codex Allow/Deny and unanswered fallback passed with a native controller under
-Node and the Development-signed app; physical deck-button acceptance is
-separate. See the measured scope and open gates in the
-[release decision](../RELEASING.md#current-mac-studio-evidence-2026-10-23) before
+**Acceptance remains partial:** the installed Development app derived from Store build
+9101 passed cold Shortcuts List Waiting Sessions plus Count after output
+permission was allowed. A saved reference to a terminated session required
+reselection without opening another session. Stale and disconnected rosters
+returned explicit unavailable errors with no output, preserving the distinction
+from a fresh empty waiting-session list. Direct Swift Claude status-line
+freshness, real-turn timeline display and Settings/Dashboard/Connection
+interactions passed, and the Node owner was restored afterward. Upstream numeric
+rate limits were absent, so 5-hour/7-day gauge display remains unverified.
+Notification permission and delivery to Notification Center history were
+confirmed; the OS suppressed banners and sound during screen sharing. Clicking
+the actual macOS notification opened the requested session's timeline. The
+requested Shortcuts and notification cases passed within their recorded scope.
+Earlier intermittent AgentDeck accessibility timeouts under the Node owner remain
+unexplained; successful Swift-owner interactions do not resolve them.
+Earlier Codex Allow/Deny and unanswered fallback passed with a native controller
+under Node and the previous `2121b334` Development app; physical deck-button
+acceptance is separate. See the measured scope and open gates in the
+[release decision](../RELEASING.md#store-9101-verification-and-local-acceptance-2026-10-23) before
 using this copy. The collaboration view is an opt-in experiment showing observed
 messages, not an inferred dependency map.
 

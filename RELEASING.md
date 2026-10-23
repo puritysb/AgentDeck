@@ -318,6 +318,9 @@ also passed.
 **Partially verified; not accepted for release.** The final full-verification
 receipt and corrected signed export passed; the remaining runtime checks below
 are open.
+The following table records the earlier `2121b334` observations. Replacement
+build 9101 and its current acceptance scope are recorded in the
+[later evidence section](#store-9101-verification-and-local-acceptance-2026-10-23).
 There has been no merge, delivery tag, npm publication, App Store upload or
 submission, or public release. The existing macOS 1.9.1 review and iOS delivery
 remain unchanged.
@@ -346,8 +349,8 @@ observations above do not prove that every device module completed teardown
 before the next phase. The long handover intervals and this cleanup behavior
 remain subject to the three-mode soak criteria; no waiver is recorded here.
 
-Remaining acceptance: continue the outstanding runtime cases with the recorded
-Development-signed app, recording any replacement's source/build/signing identity
+Remaining acceptance at that checkpoint: continue the outstanding runtime cases
+with the recorded Development-signed app, recording any replacement's source/build/signing identity
 separately. Store-package runtime acceptance remains unclaimed. Complete cold, stale-session,
 no-target and unavailable-daemon Shortcuts cases, notification navigation, and
 direct live Claude status-line freshness. A saved-reference Shortcuts invocation
@@ -453,22 +456,95 @@ binary identified `TimelineStripView.swift`'s row closure; each row re-read a
 computed property that regrouped and classified the complete timeline. Host
 load was high, but this repeated app work is independently evidenced. The QA
 app was stopped after capture; the Node owner and connected hardware were kept
-running. This is a failed responsiveness check, not accepted runtime evidence.
+running. These observations establish failed automated UI access; they do not
+establish its cause, manual input latency or a deadlock.
 
 The correction computes one immutable timeline snapshot per body evaluation
 and shares it with deferred rows, detail panels and scroll callbacks. It retains
 pre-display-filter task closures and refreshes on same-count response updates.
 The local Debug build passed the new regression tests, and a new process sample
 showed that the repeated grouping path was no longer a leading cost. Automated
-UI access still timed out, however; manual dashboard and Settings responsiveness
-has not yet been confirmed. The Release and Debug samples differ in build mode
-and host load and do not establish a speed improvement percentage or resolution
+UI access initially still timed out. After unlock, navigation through the
+Settings gear, Dashboard and Connection UI succeeded in Debug. Manual dashboard
+and Settings latency has not been measured. The Release and Debug samples differ
+in build mode and host load and do not establish a speed improvement percentage or resolution
 of the UI access failure.
-The changed executable requires new source verification and a new signed Store
-candidate; 8901 and 9001 remain evidence for their original source only.
+The replacement source verification and signed candidate are recorded below;
+8901 and 9001 remain evidence for their original source only.
 Local signing, equivalence, installation and failure diagnostics are retained
 under `diagnostics/release597-candidate-9001/` and
 `diagnostics/apple-xcode/20261023-073946/`.
+
+#### Store 9101 verification and local acceptance 2026-10-23
+
+The timeline snapshot correction is committed as
+`5c87f1a5e8eb22b1d5dd0d1cb928c3d1bc4cdee2`. Its clean-source
+[full verification receipt](verification/receipts/2026-10-22-5c87f1a.json)
+records **25 automated gates passed** on arm64 Node 26.5.0 in 28 minutes
+22 seconds. Windows is a local platform skip; ESP32 Robot is explicitly skipped
+because this candidate delivers no firmware. The `device-deploy` and
+`swift-codex-live` manual gates remain unattested. Source CI also passed:
+5 Main CI jobs, 6 Apple jobs, Design System and ESP32 simulator. These source
+checks do not complete the runtime cases below.
+
+The macOS-only, `upload=false`
+[release run 39870567655](https://github.com/puritysb/AgentDeck/actions/runs/39870567655)
+produced **1.9.2 / 9101**, artifact `apple-macos-1.9.2-91-1`. Its downloaded ZIP
+matched GitHub's digest. The original PKG SHA-256 is
+`a1c7e7d3d0d003cedcac95f3e1aa9fb5447ecc63ec269a2acbd990e94c89102c`;
+the extracted Store app ZIP SHA-256 is
+`16b2b37affcc4372f6281349852eb4dae400e418d6b9340650a65cbef7686e61`.
+The original Apple Distribution app passed strict/deep signature verification,
+the Store archive gate and Dot exclusion. The separate Mac Studio
+Development-signed derivative preserved Sandbox, full entitlements and
+`get-task-allow=false`; its registered device/profile/certificate checks passed.
+All 21 regular resource files and both architectures' normalized non-signature
+Mach-O bytes matched. The derivative ZIP SHA-256 is
+`598743c53a2e63567094b2d9063142e2f8f70ce2ea8e404906f6b7229ffdc671`.
+The original Store artifacts remain unchanged. Installation at the canonical
+app path matched the prepared derivative; the previous Debug app was backed up
+and the existing Node daemon PID remained unchanged.
+
+| 9101 runtime check | Measured result and limit |
+| --- | --- |
+| Ordinary launch and UI access | The installed derivative connected to the existing Node owner and its dashboard was read successfully once. Subsequent automated AgentDeck accessibility reads and input attempts repeatedly timed out at 30 seconds, while Shortcuts and System Settings access completed promptly. Later, the 9101 Settings gear, Dashboard and Connection UI were operated successfully several times while Swift owned the daemon. The earlier Node-owner timeouts are intermittent observations of unresolved cause; neither the later success nor RealityKit frame-pacing waits in process samples establish their cause or a deadlock. |
+| Initial cold Shortcuts attempt | The CLI watchdog expired at 25.09 seconds, but framework logs show List Waiting Sessions and Count completed successfully after 2.36 seconds. A subsequent warm run waited at the output security prompt and completed after Allow Always. That phase sequence supports an output-permission wait for the first cold attempt; the watchdog result is not evidence of an AgentDeck snapshot timeout. |
+| Authorized cold Shortcuts | With no AgentDeck app process running beforehand, List Waiting Sessions plus Count exited successfully in **2.92 seconds**, returned **0** for the empty waiting-session list and launched the canonical 9101 app as new PID **99417**. The Node owner remained PID 59132. This verifies cold List/Count and process launch, not Open Session, dashboard navigation or a nonempty waiting roster. |
+| Saved reference after session termination | With the third-round fixture, selecting B and running the saved shortcut first displayed `TIMELINE · QA Attention B`. After B terminated, running the same saved shortcut opened the OS Shortcuts Session picker with an empty list and Done disabled; it was cancelled. A was not selected automatically. At that saved-reference checkpoint, the fixture had recorded zero mutations and hardware focus was A. This verifies Open with no selectable live target in that fixture. |
+| Stale and missing roster | After fixture roster updates were paused for 21 seconds, List Waiting Sessions plus Count returned the expected exit 1 in **8.56 seconds**, with an explicit unavailable/out-of-date error and no output. Disconnecting the app to produce a nil roster returned the same error, exit 1 and no output in **8.46 seconds**. Neither case became a successful count of zero. These exercise stale and absent roster handling; the production daemon was not stopped. |
+| Direct Swift Claude status line | The canonical 9101 app, PID **99417**, initially used fallback port 9121 and then reclaimed 9120. A real interactive Claude TTY turn completed, and its prompt and reply appeared in the Dashboard timeline. The post-response receipt recorded a fresh, live `statusline` source, a matching session ID and receipt after the turn started. The upstream event contained no numeric `rate_limits`, so unknown usage was appropriate; this does not verify the 5-hour/7-day gauge values. |
+| Notification permission and delivery | Notifications were enabled and the app displayed “Notifications are on”. They remain enabled at the user's request. OS logs confirmed registration and delivery to Notification Center history; banners and sound were suppressed with `resolutionReason: display shared`. Posting and history delivery succeeded despite that presentation suppression. |
+| System notification click | The user clicked the actual macOS `QA Attention B` notification. The app accessibility tree changed from `TIMELINE · QA Attention A` to `TIMELINE · QA Attention B`; OS logs recorded the default response at **09:11:45 KST** and app activation. The fixture recorded **zero incoming commands only within the callback window [09:11:44, 09:11:47) KST**. The complete round contained **16 `focus_session` commands** from the user's separate in-app card interactions, so the round as a whole was not command-free. |
+| Return to Node ownership | Supported `agentdeck daemon start --no-build` exited 0. After Swift stood down at **2026-10-23T00:00:19.770Z**, the 00:00:41.177Z health receipt confirmed Node PID **42253**, build `84a9de8e009e`, on port **9120**, with `isSwift=false`, `loopbackOnly=false` and `noDeviceModules=false`. This records restored ownership and posture; the earlier handover timing and continuity limits remain as recorded. |
+
+Acceptance remains partial. The requested Shortcuts cases and actual system
+notification click passed within the measured scope above: fresh waiting-empty
+is covered by cold List/Count, Open with no selectable target by terminated B,
+and unavailable results by the stale and nil-roster cases. Direct Swift
+status-line freshness and the observed Settings/Dashboard/Connection
+interactions also passed. Numeric Claude 5-hour/7-day gauge display remains
+unverified because upstream numeric `rate_limits` were absent. The earlier
+intermittent Node-owner accessibility timeouts remain unresolved and separate
+from the resolved Shortcuts output prompt.
+Earlier physical deck-button, sleep/wake and credential-store continuity gaps
+remain open; the new observations do not close them.
+
+After the fixture reset, the app reconnected to Node on 9120 and the cleanup
+readback showed eight real sessions, the QA timeline filter cleared and the
+fixture shut down. Node PID **42253**, build `84a9de8e009e`, remained the owner.
+Notifications stayed enabled at the user's request.
+
+The read-only ASC check at **08:28 KST on October 23** found the prior state
+unchanged: macOS 1.9.1 / 8601 remained in review and iOS 1.9.1 remained released.
+No 1.9.2 upload, submission or public release occurred. Candidate provenance,
+signing, comparison and installation receipts, plus
+`cold-shortcuts-authorized-probe.json`, `shortcuts-framework-findings.json`,
+`claude-statusline-tty-after-response.json`, `owner-restore-current.json`,
+`runtime-acceptance.json`, `stale-roster-shortcut.json` and
+`missing-roster-shortcut.json`,
+are retained under `diagnostics/release597-candidate-5c87f1a5/`. The local
+diagnostics are not committed. Release/Debug and host-load differences prevent
+treating the process samples as a measured performance improvement percentage.
 
 ### 2026-10-14 iDotMatrix readability correction
 

@@ -59,7 +59,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - iOS app: connection and discovery logs no longer print the pairing token or its prefix. The macOS correction is included in the Apple 1.9.2 candidate; this iOS change awaits a separate delivery.
 
-- iOS app: timeline rows reuse one grouped history per render, reducing repeated classification work in busy dashboards. The macOS correction is planned for the replacement Apple 1.9.2 candidate; iOS delivery is separate.
+- iOS app: timeline rows reuse one grouped history per render, reducing repeated classification work in busy dashboards. The macOS correction is included in the replacement Apple 1.9.2 / 9101 candidate; iOS delivery is separate.
 
 - ESP32 firmware: Wi-Fi provisioning acknowledgements report whether a board joined, saved the credentials for later, or failed. The corresponding Node/macOS setup routes are included in the candidates below; new firmware delivery is separate.
 
@@ -75,17 +75,23 @@ This cumulative security and stability patch includes the fixes merged through
 `4b839281`; it is not a #583-only backport. Other device/plugin updates remain
 under Unreleased until their own delivery.
 
-October 23 candidate update: the macOS startup correction below is included in
-the signed **1.9.2 / 8901 and 9001** exports from `2121b334`. Full automatic verification
-passed; Mac Studio testing then encountered automated UI access timeouts and
-observed repeated timeline classification on the main thread. The snapshot
-correction reduces that repeated work, but automated UI access still times out
-in the local Debug build; manual responsiveness is not yet confirmed.
-The timeline correction requires a new signed candidate.
+October 23 candidate update: the signed **macOS 1.9.2 / 9101** export from
+`5c87f1a5` includes the startup and timeline snapshot corrections. Clean-source
+full verification and source CI passed. A Development-signed derivative with
+the same Release code and resources was installed on Mac Studio. Cold Shortcuts
+List Waiting Sessions and Count completed after the output permission was
+allowed, and a saved reference to a terminated session required reselection
+without opening another session. Stale and missing rosters returned explicit
+unavailable errors rather than a successful empty result. Clicking the actual
+macOS notification opened the requested session's timeline. Under the Swift
+owner, a real Claude turn and fresh status-line relay were observed, and
+Settings/Dashboard navigation passed. Numeric Claude usage gauges remain unverified.
+Earlier intermittent UI-access timeouts under the Node owner remain unexplained.
 Runtime acceptance remains partial, as recorded in
-[RELEASING.md](RELEASING.md#current-mac-studio-evidence-2026-10-23). The earlier
-1.9.2 / 8801 package from `e21b817b` is retained only for reproduction/comparison;
-it does not contain this fix. The four accepted npm 1.9.3 tarballs are unchanged.
+[RELEASING.md](RELEASING.md#store-9101-verification-and-local-acceptance-2026-10-23).
+Builds 8901 and 9001 from `2121b334` predate the snapshot correction; 8801 from
+`e21b817b` also predates the startup correction. They remain comparison evidence
+for their own source. The four accepted npm 1.9.3 tarballs are unchanged.
 
 - macOS app: busy timelines no longer regroup and classify the entire history for each visible row. Rows, detail panels and scrolling now share one render snapshot, preserving session filters and completed-task state while reducing main-thread work.
 
