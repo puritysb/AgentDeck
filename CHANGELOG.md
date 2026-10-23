@@ -69,8 +69,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-Preparation candidate: npm and macOS only. These versions have not been published
-or uploaded. The in-review macOS 1.9.1 and public iOS 1.9.1 remain unchanged.
+Prepared candidates: npm and macOS only. Neither has been published or uploaded
+at the October 23 follow-up checkpoint. The user authorized macOS 1.9.2 upload,
+replacement of the 1.9.1 review submission and automatic release after Apple
+approval; npm publication and iOS submission are outside that authorization.
+The existing macOS review and public iOS release remain unchanged at this checkpoint.
 This cumulative security and stability patch includes the fixes merged through
 `4b839281`; it is not a #583-only backport. Other device/plugin updates remain
 under Unreleased until their own delivery.
@@ -85,10 +88,14 @@ without opening another session. Stale and missing rosters returned explicit
 unavailable errors rather than a successful empty result. Clicking the actual
 macOS notification opened the requested session's timeline. Under the Swift
 owner, a real Claude turn and fresh status-line relay were observed, and
-Settings/Dashboard navigation passed. Numeric Claude usage gauges remain unverified.
+Settings/Dashboard navigation passed. A later session-matched Swift snapshot
+recorded Claude usage at 33% for 5 hours and 9% for 7 days. Dashboard gauge
+rendering remains unverified because Claude is hidden by the user's existing
+provider selection; a display-preference response is pending.
 Earlier intermittent UI-access timeouts under the Node owner remain unexplained.
-Runtime acceptance remains partial, as recorded in
-[RELEASING.md](RELEASING.md#store-9101-verification-and-local-acceptance-2026-10-23).
+Physical deck-button and sleep/wake checks were skipped and remain unverified.
+Runtime acceptance remains partial, as recorded in the
+[October 23 follow-up](RELEASING.md#macos-192-authorization-and-acceptance-follow-up-2026-10-23).
 Builds 8901 and 9001 from `2121b334` predate the snapshot correction; 8801 from
 `e21b817b` also predates the startup correction. They remain comparison evidence
 for their own source. The four accepted npm 1.9.3 tarballs are unchanged.

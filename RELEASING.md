@@ -512,18 +512,19 @@ and the existing Node daemon PID remained unchanged.
 | Authorized cold Shortcuts | With no AgentDeck app process running beforehand, List Waiting Sessions plus Count exited successfully in **2.92 seconds**, returned **0** for the empty waiting-session list and launched the canonical 9101 app as new PID **99417**. The Node owner remained PID 59132. This verifies cold List/Count and process launch, not Open Session, dashboard navigation or a nonempty waiting roster. |
 | Saved reference after session termination | With the third-round fixture, selecting B and running the saved shortcut first displayed `TIMELINE · QA Attention B`. After B terminated, running the same saved shortcut opened the OS Shortcuts Session picker with an empty list and Done disabled; it was cancelled. A was not selected automatically. At that saved-reference checkpoint, the fixture had recorded zero mutations and hardware focus was A. This verifies Open with no selectable live target in that fixture. |
 | Stale and missing roster | After fixture roster updates were paused for 21 seconds, List Waiting Sessions plus Count returned the expected exit 1 in **8.56 seconds**, with an explicit unavailable/out-of-date error and no output. Disconnecting the app to produce a nil roster returned the same error, exit 1 and no output in **8.46 seconds**. Neither case became a successful count of zero. These exercise stale and absent roster handling; the production daemon was not stopped. |
-| Direct Swift Claude status line | The canonical 9101 app, PID **99417**, initially used fallback port 9121 and then reclaimed 9120. A real interactive Claude TTY turn completed, and its prompt and reply appeared in the Dashboard timeline. The post-response receipt recorded a fresh, live `statusline` source, a matching session ID and receipt after the turn started. The upstream event contained no numeric `rate_limits`, so unknown usage was appropriate; this does not verify the 5-hour/7-day gauge values. |
+| Direct Swift Claude status line | The canonical 9101 app, PID **99417**, initially used fallback port 9121 and then reclaimed 9120. A real interactive Claude TTY turn completed, and its prompt and reply appeared in the Dashboard timeline. The post-response receipt recorded a fresh, live `statusline` source, a matching session ID and receipt after the turn started. It captured `/health.claudeUsage` source and freshness metadata, which omits numeric windows. A live status-line reading establishes that at least one valid numeric `rate_limits` window was accepted; the individual 5-hour/7-day values and their display were not captured. |
 | Notification permission and delivery | Notifications were enabled and the app displayed “Notifications are on”. They remain enabled at the user's request. OS logs confirmed registration and delivery to Notification Center history; banners and sound were suppressed with `resolutionReason: display shared`. Posting and history delivery succeeded despite that presentation suppression. |
 | System notification click | The user clicked the actual macOS `QA Attention B` notification. The app accessibility tree changed from `TIMELINE · QA Attention A` to `TIMELINE · QA Attention B`; OS logs recorded the default response at **09:11:45 KST** and app activation. The fixture recorded **zero incoming commands only within the callback window [09:11:44, 09:11:47) KST**. The complete round contained **16 `focus_session` commands** from the user's separate in-app card interactions, so the round as a whole was not command-free. |
 | Return to Node ownership | Supported `agentdeck daemon start --no-build` exited 0. After Swift stood down at **2026-10-23T00:00:19.770Z**, the 00:00:41.177Z health receipt confirmed Node PID **42253**, build `84a9de8e009e`, on port **9120**, with `isSwift=false`, `loopbackOnly=false` and `noDeviceModules=false`. This records restored ownership and posture; the earlier handover timing and continuity limits remain as recorded. |
 
-Acceptance remains partial. The requested Shortcuts cases and actual system
+At this checkpoint, acceptance remained partial. The requested Shortcuts cases and actual system
 notification click passed within the measured scope above: fresh waiting-empty
 is covered by cold List/Count, Open with no selectable target by terminated B,
 and unavailable results by the stale and nil-roster cases. Direct Swift
 status-line freshness and the observed Settings/Dashboard/Connection
-interactions also passed. Numeric Claude 5-hour/7-day gauge display remains
-unverified because upstream numeric `rate_limits` were absent. The earlier
+interactions also passed. At least one valid numeric Claude usage window was
+accepted, but the receipt captured only source and freshness metadata, so the
+individual 5-hour/7-day values and their display were still unverified. The earlier
 intermittent Node-owner accessibility timeouts remain unresolved and separate
 from the resolved Shortcuts output prompt.
 Earlier physical deck-button, sleep/wake and credential-store continuity gaps
@@ -545,6 +546,53 @@ signing, comparison and installation receipts, plus
 are retained under `diagnostics/release597-candidate-5c87f1a5/`. The local
 diagnostics are not committed. Release/Debug and host-load differences prevent
 treating the process samples as a measured performance improvement percentage.
+
+#### macOS 1.9.2 authorization and acceptance follow-up 2026-10-23
+
+The user authorized uploading **macOS 1.9.2**, replacing the existing macOS
+**1.9.1** review submission with it, and releasing automatically after Apple
+approval. This retains the already allocated 1.9.2 patch version; it allocates
+no new version and includes neither iOS submission nor npm publication.
+Authorization is recorded separately from delivery: **no 1.9.2 upload or
+submission had occurred at this checkpoint**.
+
+The **09:27 KST** [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39878219953)
+still reported macOS **1.9.1 IN_REVIEW**, with build **8601 VALID**. The portal's
+review details showed the October 14 submission still in review and displayed
+no reviewer message. The existing review had not yet been replaced.
+
+The follow-up at **2026-10-23T00:38:08Z** captured numeric Claude usage directly
+from the Swift owner, PID **99417**, on port **9120**. A health → usage → health
+probe matched the test session at both ends, reported the same fresh, live
+status-line snapshot, and recorded **5-hour usage 33%** and **7-day usage 9%**.
+This closes the numeric-receipt gap above. The earlier receipt contained only
+health metadata; its missing numeric fields did not establish an upstream
+omission. Dashboard gauge rendering remains unverified: Claude was unchecked
+in the user's existing **Displayed providers** selection, and a response to
+whether it should be shown is pending. That hidden row is consistent with the
+saved display preference, not evidence of a quota-ingestion failure.
+
+After Node stopped, the same Swift app automatically moved from fallback port
+9121 to 9120 in approximately **142 seconds**, including the existing
+**120-second bind cooldown**. This is eventual recovery, not seamless handover;
+the earlier four-second module-teardown timeout remains a separate caveat.
+The runtime pairing-token comparison matched between Node and Swift, without
+publishing the token or its fingerprint. This does not establish credential
+continuity on disk or across sleep/wake.
+
+The earlier 30-second accessibility timeouts still have no established cause.
+Later automated operations with the same app PID while connected to Node
+completed in **2–6 seconds**; those are tool-operation durations, not measured
+UI input latency or proof that the intermittent issue is resolved. Physical
+deck-button and sleep/wake checks were **skipped** because the user could not
+perform those actions at the time. They remain unverified, not passed or
+waived, and release authorization does not change that evidence status.
+
+The sanitized numeric receipt is
+`diagnostics/release597-candidate-5c87f1a5/swift-numeric-usage-followup-matched.json`.
+The existing source, archive and signed-derivative checks remain applicable;
+this follow-up adds runtime observations and authorization without changing
+the candidate's executable source.
 
 ### 2026-10-14 iDotMatrix readability correction
 

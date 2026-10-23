@@ -15,17 +15,25 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status** ([App Store Connect readback, 2026-10-22](https://github.com/puritysb/AgentDeck/actions/runs/39786791116)): iOS `1.9.1` / `8501` and macOS `1.9.0` / `7901` are Ready for Distribution; macOS `1.9.1` / `8601` is In Review. The macOS notes below prepare `1.9.2`; that candidate has not been uploaded or submitted, and the existing review remains unchanged. Build, upload and submission evidence is recorded separately in [RELEASING.md](../RELEASING.md).
+**Release status:** the [October 23, 09:27 KST ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39878219953) still reports macOS `1.9.1` In Review with build `8601` Valid. The portal shows the October 14 submission still in review and no reviewer message. The [October 22 public-release readback](https://github.com/puritysb/AgentDeck/actions/runs/39786791116) recorded iOS `1.9.1` / `8501` and macOS `1.9.0` / `7901` as Ready for Distribution. The user has authorized macOS `1.9.2` upload, replacement of the `1.9.1` submission and automatic release after Apple approval; iOS and npm delivery are outside that authorization. No `1.9.2` upload or submission has occurred at this checkpoint. Build, upload and submission evidence is recorded separately in [RELEASING.md](../RELEASING.md).
 
 _Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._
 
-**Candidate acceptance pending:** remaining Shortcuts and notification cases,
-direct Claude status-line freshness, and runtime checks of the exported Store
-candidate. Real Codex Allow/Deny and unanswered fallback passed with a native
-controller under Node and the Development-signed app; physical deck-button
-acceptance is separate. This preparation status is not part of either Notes
-field; see the measured scope and open gates in [RELEASING.md](../RELEASING.md)
-before submission.
+**Candidate acceptance follow-up, October 23:** the 9101 Development-signed
+derivative preserves the exported Store candidate's Release code, resources
+and entitlements. The measured Shortcuts cases and actual system notification
+click passed. A session-matched, fresh direct Swift status-line snapshot
+recorded Claude usage at 33% for 5 hours and 9% for 7 days. Gauge rendering is
+still unverified because Claude is hidden in the user's existing Displayed
+providers selection; a display-preference response is pending. Real Codex
+Allow/Deny and unanswered fallback passed with a native controller under Node
+and the Development-signed app. Intermittent accessibility timeouts remain
+unexplained; later 2–6-second tool operations do not measure UI input latency.
+Physical deck-button and sleep/wake checks were skipped because direct user
+interaction was unavailable; neither is a pass or waiver. Runtime token
+continuity was observed, but credential continuity on disk remains unverified.
+This preparation status is not part of either Notes field; see the measured
+scope and remaining limits in the [October 23 follow-up](../RELEASING.md#macos-192-authorization-and-acceptance-follow-up-2026-10-23).
 
 ## What AgentDeck does
 
