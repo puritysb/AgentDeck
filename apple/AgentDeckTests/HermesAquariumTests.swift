@@ -5,6 +5,183 @@ import RealityKit
 
 final class HermesAquariumTests: XCTestCase {
     @MainActor
+    func testAquariumRemountCancelsOldSubscriptionAndRejectsLateFramesAndDisappearance() throws {
+        let scene = AquariumSceneState()
+        let camera = PerspectiveCamera()
+        scene.cameraRig.camera = camera
+        var cancellations = 0
+        var previous: UUID?
+
+        for index in 0..<20 {
+            let mount = UUID()
+            scene.beginMount(mount)
+            scene.synchronize(TerrariumState(), size: CGSize(width: 800, height: 600),
+                              viewingMode: true, reduceMotion: false, active: true)
+            scene.installSubscription(mountID: mount) { cancellations += 1 }
+            XCTAssertEqual(cancellations, index)
+            if let previous {
+                let transform = camera.transform
+                XCTAssertFalse(scene.step(1, mountID: previous))
+                XCTAssertEqual(camera.transform, transform, "A queued frame from the removed renderer cannot move the camera")
+                scene.endMount(previous)
+                XCTAssertTrue(scene.isMounted(mount), "The old child's onDisappear cannot tear down its replacement")
+                XCTAssertEqual(cancellations, index)
+            }
+            XCTAssertTrue(scene.step(1 / 60, mountID: mount))
+            previous = mount
+        }
+
+        let last = try XCTUnwrap(previous)
+        scene.suspend()
+        scene.endMount(last)
+        scene.suspend()
+        XCTAssertEqual(cancellations, 20, "Each renderer subscription is cancelled exactly once")
+        XCTAssertFalse(scene.step(1, mountID: last))
+        scene.installSubscription(mountID: last) { cancellations += 1 }
+        XCTAssertEqual(cancellations, 21, "A late subscription is immediately cancelled instead of retained")
+    }
+
+    @MainActor
+    func testAquariumRemountDetachesOldContentAfterStoppingFramesAndReleasesItsOwner() {
+        let scene = AquariumSceneState()
+        let first = UUID()
+        let second = UUID()
+        var operations: [String] = []
+        var oldContent: NSObject? = NSObject()
+        weak var retainedContent = oldContent
+        scene.beginMount(first)
+        scene.synchronize(TerrariumState(), size: CGSize(width: 800, height: 600),
+                          viewingMode: false, reduceMotion: false, active: true)
+        scene.installSubscription(mountID: first) { operations.append("cancel first") }
+        scene.installDetachment(mountID: first) { [owner = oldContent!] in
+            withExtendedLifetime(owner) {
+                XCTAssertFalse(scene.step(1, mountID: first))
+                XCTAssertFalse(scene.residents.animate)
+                operations.append("detach first")
+            }
+        }
+        oldContent = nil
+        XCTAssertNotNil(retainedContent, "Content remains available for explicit removal while mounted")
+        scene.beginMount(second)
+        XCTAssertEqual(operations, ["cancel first", "detach first"])
+        XCTAssertNil(retainedContent, "An old RealityView content/renderer cannot be retained after detach")
+
+        scene.installSubscription(mountID: second) { operations.append("cancel second") }
+        scene.installDetachment(mountID: second) { operations.append("detach second") }
+        scene.endMount(first)
+        XCTAssertEqual(operations.count, 2, "Late disappearance must not remove the new renderer's entities")
+        scene.endMount(second)
+        scene.suspend()
+        XCTAssertEqual(operations, ["cancel first", "detach first", "cancel second", "detach second"])
+    }
+
+    @MainActor
+    func testAquariumSuspensionPreservesGraphCameraAndResidentsThenAppliesLatestRoster() async throws {
+        let loader = AquariumAssetLoader()
+        await loader.load()
+        let loaded = try XCTUnwrap(loader.loaded)
+        let scene = AquariumSceneState()
+        try scene.prepare(loaded)
+        let originalModels = scene.entities.dropFirst().map(ObjectIdentifier.init)
+        var state = TerrariumState()
+        state.hermesCreatures = [
+            .init(id: "keep", projectName: "Hermes", activity: .working),
+            .init(id: "departed", projectName: "Hermes", activity: .idle),
+        ]
+        var lifetime = AquariumRendererLifetime()
+        lifetime.appear()
+        let first = lifetime.identity
+        scene.beginMount(first)
+        var camera = try XCTUnwrap(scene.cameraRig.camera)
+        scene.synchronize(state, size: CGSize(width: 800, height: 600),
+                          viewingMode: true, reduceMotion: false, active: true)
+        let resident = try XCTUnwrap(scene.residents.residents["keep"])
+        for _ in 0..<60 { XCTAssertTrue(scene.step(1 / 60, mountID: first)) }
+        let cameraTransform = camera.transform
+        let residentTransform = resident.transform
+        lifetime.disappear()
+        scene.suspend()
+        XCTAssertFalse(lifetime.isVisible)
+
+        for _ in 0..<3 { try scene.prepare(loaded) }
+        XCTAssertEqual(scene.entities.dropFirst().map(ObjectIdentifier.init), originalModels)
+        XCTAssertTrue(scene.cameraRig.camera === camera)
+        XCTAssertEqual(camera.transform, cameraTransform)
+        XCTAssertEqual(resident.transform, residentTransform)
+        XCTAssertEqual(scene.residents.templateCount, 7)
+        XCTAssertEqual(scene.residents.shoal.positions.count, 14, "Reattachment must not append duplicate fish")
+
+        state.hermesCreatures = [
+            .init(id: "keep", projectName: "Hermes", activity: .waiting),
+            .init(id: "arrived", projectName: "Hermes", activity: .idle),
+        ]
+        // Even if SwiftUI skips the covered view's intermediate body, this
+        // identity change prevents reuse of the renderer whose make has run.
+        lifetime.appear()
+        let second = lifetime.identity
+        XCTAssertNotEqual(second, first)
+        XCTAssertTrue(lifetime.isVisible)
+        scene.beginMount(second)
+        let previousCamera = camera
+        camera = try XCTUnwrap(scene.cameraRig.camera)
+        XCTAssertFalse(camera === previousCamera, "Each renderer gets a fresh camera registration")
+        XCTAssertEqual(camera.transform, previousCamera.transform)
+        XCTAssertEqual(camera.camera, previousCamera.camera)
+        XCTAssertTrue(scene.residents.camera === camera)
+        scene.synchronize(state, size: CGSize(width: 1800, height: 600),
+                          viewingMode: false, reduceMotion: false, active: true)
+        XCTAssertTrue(scene.residents.residents["keep"] === resident)
+        XCTAssertNil(scene.residents.residents["departed"])
+        XCTAssertNotNil(scene.residents.residents["arrived"])
+        XCTAssertEqual(scene.residents.descriptors.first(where: { $0.id == "keep" })?.activity, .waiting)
+        XCTAssertTrue(scene.residents.labelsVisible)
+        XCTAssertFalse(scene.cameraRig.viewing)
+        XCTAssertEqual(camera.camera.fieldOfViewInDegrees, TerrariumRules.nativeCameraWideFov)
+        XCTAssertEqual(camera.transform, cameraTransform, "The first resumed frame starts from the retained camera pose")
+        XCTAssertTrue(scene.step(1 / 60, mountID: second))
+        XCTAssertNotEqual(camera.transform, cameraTransform)
+        let resumedTransform = camera.transform
+        lifetime.invalidateRenderer()
+        scene.suspend()
+        XCTAssertTrue(lifetime.isVisible, "Settings may suspend rendering while the Dashboard's outer view remains visible")
+        XCTAssertNotEqual(lifetime.identity, second, "Settings dismissal must not reuse the prior RealityView host identity")
+        try scene.prepare(loaded)
+        scene.beginMount(lifetime.identity)
+        let settingsCamera = camera
+        camera = try XCTUnwrap(scene.cameraRig.camera)
+        XCTAssertFalse(camera === settingsCamera)
+        XCTAssertEqual(camera.camera, settingsCamera.camera)
+        scene.synchronize(state, size: CGSize(width: 1800, height: 600),
+                          viewingMode: false, reduceMotion: false, active: true)
+        XCTAssertEqual(scene.entities.dropFirst().map(ObjectIdentifier.init), originalModels)
+        XCTAssertEqual(camera.transform, resumedTransform)
+        XCTAssertTrue(scene.residents.residents["keep"] === resident)
+        scene.suspend()
+    }
+
+    @MainActor
+    func testAquariumInactiveFramesStopButReduceMotionKeepsActiveFrameUpdates() {
+        let scene = AquariumSceneState()
+        scene.cameraRig.camera = PerspectiveCamera()
+        let mount = UUID()
+        scene.beginMount(mount)
+        scene.synchronize(TerrariumState(), size: CGSize(width: 800, height: 600),
+                          viewingMode: true, reduceMotion: true, active: true)
+        XCTAssertFalse(scene.residents.animate)
+        let initial = scene.cameraRig.camera?.transform
+        XCTAssertTrue(scene.step(1 / 60, mountID: mount), "Reduce Motion must retain the existing expiry-check path")
+        XCTAssertNotEqual(scene.cameraRig.camera?.transform, initial, "Reduce Motion applies the requested camera view without animation")
+        let transform = scene.cameraRig.camera?.transform
+        scene.updatePlayback(active: false, reduceMotion: true)
+        XCTAssertFalse(scene.step(60, mountID: mount))
+        XCTAssertEqual(scene.cameraRig.camera?.transform, transform)
+        scene.updatePlayback(active: true, reduceMotion: false)
+        XCTAssertTrue(scene.residents.animate)
+        XCTAssertTrue(scene.step(1 / 60, mountID: mount))
+        scene.suspend()
+    }
+
+    @MainActor
     func testCameraSurvivesInvalidFrameIntervalsAndContinuesViewingMotion() throws {
         let rig = AquariumCameraRig()
         let camera = PerspectiveCamera()

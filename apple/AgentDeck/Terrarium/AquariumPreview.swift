@@ -27,6 +27,7 @@ struct AquariumPreview: View {
 
 @available(iOS 18.0, macOS 15.0, *)
 struct LivingAquariumScene: View {
+    var renderingEnabled = true
     var viewingMode = false
     var terrariumState = TerrariumState()
     var communications = AquariumCommunications.empty
@@ -36,97 +37,25 @@ struct LivingAquariumScene: View {
     #endif
     var onCreatureTapped: ((String) -> Void)?
     var onBackgroundTapped: (() -> Void)?
-    @State private var residents = AquariumResidents()
+    @State private var scene = AquariumSceneState()
     #if AGENTDECK_DOT_PREVIEW
     @State private var dot = DotAquariumResident()
     @State private var showDot = false
     #endif
-    @State private var cameraRig = AquariumCameraRig()
-    @State private var cancelUpdate: (() -> Void)?
-    @State private var visible = false
+    @State private var rendererLifetime = AquariumRendererLifetime()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var controllers: [AnimationPlaybackController] = []
     @State private var assets = AquariumAssetLoader()
+
+    private var residents: AquariumResidents { scene.residents }
+    private var visible: Bool { rendererLifetime.isVisible }
 
     var body: some View {
         GeometryReader { geometry in
-            if let loaded = assets.loaded {
-                RealityView { content in
-                    aquariumAssetLogger.info("Assembling aquarium at \(geometry.size.width, privacy: .public) × \(geometry.size.height, privacy: .public)")
-                    content.camera = .virtual
-                    let camera = PerspectiveCamera()
-                    camera.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
-                    camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
-                    content.add(camera)
-                    #if AGENTDECK_DOT_PREVIEW
-                    content.add(dot.root)
-                    #endif
-                    cameraRig.camera = camera
-                    residents.camera = camera
-                    #if AGENTDECK_DOT_PREVIEW
-                    dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-                    #endif
-                cameraRig.viewing = viewingMode
-                    cameraRig.reduceMotion = reduceMotion
-                    let background = Entity()
-                    background.name = "aquarium-background"
-                    background.position.z = -5
-                    background.components.set(CollisionComponent(shapes: [.generateBox(size: [100,100,0.01])]))
-                    background.components.set(InputTargetComponent())
-                    content.add(background)
-                    let sun = DirectionalLight()
-                    sun.light.intensity = 5_000
-                    sun.look(at: [0, 0, 0], from: [-4, 8, 5], relativeTo: nil)
-                    content.add(sun)
-                    let fill = DirectionalLight()
-                    fill.light.intensity = 900
-                    fill.look(at: [0, 1, 0], from: [4, 4, -4], relativeTo: nil)
-                    content.add(fill)
-                    do {
-                        let root = loaded.habitat
-                        applyWaterMaterial(to: root)
-                        content.add(root)
-                        residents.shoal.load(root)
-                        content.add(residents.shoal.root)
-                        // USDZ exposes the same tracks through global and per-node libraries.
-                        // Playing all of them overlays competing transforms; use one scene clip.
-                        var playback: [AnimationPlaybackController] = []
-                        if let animation = root.availableAnimations.first {
-                            playback.append(root.playAnimation(animation.repeat(), startsPaused: true))
-                        }
-                        controllers = playback
-                        let library = loaded.residents
-                        residents.loadTemplates(library)
-                        guard residents.templateCount == 6 else { throw CocoaError(.fileReadCorruptFile) }
-                        residents.loadHermesTemplate(loaded.hermes)
-                        guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
-                        residents.loadCiCompanion(loaded.ciCompanion)
-                        content.add(residents.root)
-                        residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
-                        let stepFrame = frameStepper()
-                        let subscription = content.subscribe(to: SceneEvents.Update.self) { event in
-                            stepFrame(event.deltaTime)
-                        }
-                        cancelUpdate = { subscription.cancel() }
-                        aquariumAssetLogger.info("Assembled aquarium with \(residents.templateCount) templates; camera attached: \(camera.scene != nil)")
-                    } catch {
-                        assets.reportSceneFailure(error, templateCount: residents.templateCount)
-                    }
-                } update: { _ in
-                    #if AGENTDECK_DOT_PREVIEW
-                    dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-                    #endif
-                cameraRig.viewing = viewingMode
-                    cameraRig.reduceMotion = reduceMotion
-                    residents.labelsVisible = !viewingMode
-                    #if AGENTDECK_DOT_PREVIEW
-                    dot.labelsVisible = !viewingMode
-                    #endif
-                    cameraRig.camera?.camera.fieldOfViewInDegrees = geometry.size.width / max(1, geometry.size.height) > CGFloat(TerrariumRules.nativeCameraWideAspect) ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
-                    residents.sync(terrariumState, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
-                }
+            if renderingEnabled, visible, let loaded = assets.loaded {
+                realitySurface(loaded: loaded, size: geometry.size)
+                .id(rendererLifetime.identity)
                 .overlay {
                     AquariumCommunicationOverlay(communications: communications, labels: !viewingMode, labelInsets: communicationLabelInsets) { id in
                         residents.communicationPosition(id, aspect: Float(geometry.size.width / max(1, geometry.size.height)))
@@ -148,7 +77,7 @@ struct LivingAquariumScene: View {
                     }
                 }
             } else {
-                TerrariumView(terrariumState: terrariumState, communications: communications,
+                TerrariumView(terrariumState: terrariumState, animationPaused: !renderingEnabled || !visible, communications: communications,
                               showsCommunicationLabels: !viewingMode, communicationLabelInsets: communicationLabelInsets, onCreatureTapped: onCreatureTapped, onBackgroundTapped: onBackgroundTapped)
                     .overlay { if let failure = assets.failure { Text(failure).padding().background(.regularMaterial) } }
             }
@@ -175,21 +104,311 @@ struct LivingAquariumScene: View {
         }
         .onChange(of: dotSnapshot?.appearance?.id) { _, _ in dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000)) }
         #endif
-        .onAppear { visible = true; updatePlayback() }
-        .onChange(of: controllers.count) { _, _ in updatePlayback() }
+        .onAppear { rendererLifetime.appear(); updatePlayback() }
+        .onChange(of: renderingEnabled) { _, enabled in
+            if !enabled {
+                rendererLifetime.invalidateRenderer()
+                scene.suspend()
+            }
+            updatePlayback()
+        }
         .onChange(of: reduceMotion) { _, _ in updatePlayback() }
         .onChange(of: scenePhase) { _, _ in updatePlayback() }
         .onDisappear {
-            visible = false
+            rendererLifetime.disappear()
             assets.invalidate()
             updatePlayback()
-            cancelUpdate?()
-            cancelUpdate = nil
+            scene.suspend()
         }
     }
 
-    /// The water enclosure should recede, not reflect the key light like a wall.
-    /// A token-bound unlit material also avoids a bright horizon across imports.
+    private func realitySurface(loaded: AquariumAssetLoader.Assets, size: CGSize) -> AquariumRealitySurface {
+        var surface = AquariumRealitySurface(
+            scene: scene, loaded: loaded, state: terrariumState, size: size,
+            viewingMode: viewingMode, reduceMotion: reduceMotion,
+            active: visible && renderingEnabled && scenePhase == .active,
+            onFailure: { assets.reportSceneFailure($0, templateCount: residents.templateCount) }
+        )
+        #if AGENTDECK_DOT_PREVIEW
+        surface.companion = dot.root
+        surface.updateCompanion = {
+            dot.labelsVisible = !viewingMode
+            dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
+        }
+        surface.stepCompanion = { [weak dot] in dot?.step($0) }
+        #endif
+        return surface
+    }
+
+    private func updatePlayback() {
+        let active = visible && renderingEnabled && scenePhase == .active
+        scene.updatePlayback(active: active, reduceMotion: reduceMotion)
+        #if AGENTDECK_DOT_PREVIEW
+        dot.animate = active && !reduceMotion
+        #endif
+    }
+}
+
+/// SwiftUI may retain a covered view and coalesce its offscreen body updates.
+/// A new identity on disappearance still forces a fresh renderer on return.
+struct AquariumRendererLifetime {
+    private(set) var isVisible = false
+    private(set) var identity = UUID()
+
+    mutating func appear() { isVisible = true }
+
+    mutating func invalidateRenderer() { identity = UUID() }
+
+    mutating func disappear() {
+        guard isVisible else { return }
+        isVisible = false
+        invalidateRenderer()
+    }
+}
+
+/// Only this child owns a renderer lifetime. The parent retains the imported
+/// assets and scene state while Settings or an obscured Dashboard suspends it.
+@available(iOS 18.0, macOS 15.0, *)
+private struct AquariumRealitySurface: View {
+    let scene: AquariumSceneState
+    let loaded: AquariumAssetLoader.Assets
+    let state: TerrariumState
+    let size: CGSize
+    let viewingMode: Bool
+    let reduceMotion: Bool
+    let active: Bool
+    let onFailure: (Error) -> Void
+    var companion: Entity?
+    var updateCompanion: () -> Void = {}
+    var stepCompanion: (Double) -> Void = { _ in }
+    @State private var mountID = UUID()
+
+    var body: some View {
+        RealityView { content in
+            guard !Task.isCancelled else { return }
+            do {
+                try scene.prepare(loaded)
+                scene.beginMount(mountID)
+                content.camera = .virtual
+                for entity in scene.entities { content.add(entity) }
+                if let companion { content.add(companion) }
+                // A retained entity may still belong to the old RealityView's
+                // content. Remove it through that owner before another mount
+                // attaches it; dropping the SwiftUI child alone is insufficient.
+                let mountedContent = content
+                let mountedEntities = scene.entities + (companion.map { [$0] } ?? [])
+                scene.installDetachment(mountID: mountID) {
+                    for entity in mountedEntities { mountedContent.remove(entity) }
+                    let attached = mountedEntities.filter { $0.scene != nil }.count
+                    aquariumAssetLogger.notice("Detached aquarium renderer; roots still attached: \(attached)")
+                }
+                synchronize()
+                scene.startAnimationsIfNeeded()
+                let attached = mountedEntities.filter { $0.scene != nil }.count
+                aquariumAssetLogger.notice("Attached aquarium renderer; roots attached: \(attached)/\(mountedEntities.count)")
+                let token = mountID
+                let companionFrame = stepCompanion
+                let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak scene = scene] event in
+                    if scene?.step(event.deltaTime, mountID: token) == true {
+                        companionFrame(event.deltaTime)
+                    }
+                }
+                scene.installSubscription(mountID: mountID) { subscription.cancel() }
+            } catch {
+                onFailure(error)
+            }
+        } update: { _ in
+            guard scene.isMounted(mountID) else { return }
+            synchronize()
+        }
+        .onDisappear { scene.endMount(mountID) }
+    }
+
+    private func synchronize() {
+        scene.synchronize(state, size: size, viewingMode: viewingMode,
+                          reduceMotion: reduceMotion, active: active)
+        updateCompanion()
+    }
+}
+
+/// Model identity, camera motion and animation clocks outlive the RealityView.
+/// Renderer subscriptions do not: a late callback from an old mount is inert.
+@available(iOS 18.0, macOS 15.0, *)
+@MainActor
+final class AquariumSceneState {
+    let residents = AquariumResidents()
+    let cameraRig = AquariumCameraRig()
+    private(set) var entities: [Entity] = []
+    private(set) var controllers: [AnimationPlaybackController] = []
+    private var habitat: Entity?
+    private var habitatAnimation: AnimationResource?
+    private var suspendedAnimationTime: TimeInterval = 0
+    private var currentMount: UUID?
+    private var cancelUpdate: (() -> Void)?
+    private var detachContent: (() -> Void)?
+    private var updatesEnabled = false
+    private var playing = false
+    private var reportedMountFrame = false
+
+    func prepare(_ loaded: AquariumAssetLoader.Assets) throws {
+        guard entities.isEmpty else { return }
+        let camera = PerspectiveCamera()
+        camera.look(at: [0, 1.65, -0.7], from: [0, 4.8, 14], relativeTo: nil)
+        cameraRig.camera = camera
+        residents.camera = camera
+        let background = Entity()
+        background.name = "aquarium-background"
+        background.position.z = -5
+        background.components.set(CollisionComponent(shapes: [.generateBox(size: [100, 100, 0.01])]))
+        background.components.set(InputTargetComponent())
+        let sun = DirectionalLight()
+        sun.light.intensity = 5_000
+        sun.look(at: [0, 0, 0], from: [-4, 8, 5], relativeTo: nil)
+        let fill = DirectionalLight()
+        fill.light.intensity = 900
+        fill.look(at: [0, 1, 0], from: [4, 4, -4], relativeTo: nil)
+        applyWaterMaterial(to: loaded.habitat)
+        residents.shoal.load(loaded.habitat)
+        residents.loadTemplates(loaded.residents)
+        guard residents.templateCount == 6 else { throw CocoaError(.fileReadCorruptFile) }
+        residents.loadHermesTemplate(loaded.hermes)
+        guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
+        residents.loadCiCompanion(loaded.ciCompanion)
+        habitat = loaded.habitat
+        habitatAnimation = loaded.habitat.availableAnimations.first?.repeat()
+        entities = [camera, background, sun, fill, loaded.habitat, residents.shoal.root, residents.root]
+        aquariumAssetLogger.notice("Assembled aquarium with \(self.residents.templateCount) templates")
+    }
+
+    func beginMount(_ id: UUID) {
+        suspend()
+        // Register a fresh camera in each renderer without resetting the
+        // retained camera pose, projection or camera-rig interpolation state.
+        if let previous = cameraRig.camera,
+           let index = entities.firstIndex(where: { $0 === previous }) {
+            let camera = PerspectiveCamera()
+            camera.transform = previous.transform
+            camera.camera = previous.camera
+            entities[index] = camera
+            cameraRig.camera = camera
+            residents.camera = camera
+        }
+        currentMount = id
+        reportedMountFrame = false
+        aquariumAssetLogger.notice("Mounted aquarium renderer \(id.uuidString, privacy: .public)")
+    }
+
+    func isMounted(_ id: UUID) -> Bool { currentMount == id }
+
+    func installSubscription(mountID: UUID, cancel: @escaping () -> Void) {
+        guard isMounted(mountID) else { cancel(); return }
+        cancelUpdate?()
+        cancelUpdate = cancel
+    }
+
+    func installDetachment(mountID: UUID, detach: @escaping () -> Void) {
+        guard isMounted(mountID) else { detach(); return }
+        detachContent?()
+        detachContent = detach
+    }
+
+    func endMount(_ id: UUID) {
+        guard isMounted(id) else { return }
+        suspend()
+    }
+
+    func suspend() {
+        if let currentMount { aquariumAssetLogger.notice("Suspended aquarium renderer \(currentMount.uuidString, privacy: .public)") }
+        currentMount = nil
+        let cancel = cancelUpdate
+        cancelUpdate = nil
+        cancel?()
+        if let controller = controllers.first, controller.isValid, controller.time.isFinite {
+            suspendedAnimationTime = controller.time
+        }
+        updatePlayback(active: false, reduceMotion: cameraRig.reduceMotion)
+        // Keep RealityViewContent alive only until its own roots are removed.
+        // Clear ownership before invoking cleanup so late callbacks cannot
+        // retain or detach a replacement renderer.
+        let detach = detachContent
+        detachContent = nil
+        detach?()
+    }
+
+    func synchronize(_ state: TerrariumState, size: CGSize, viewingMode: Bool,
+                     reduceMotion: Bool, active: Bool) {
+        cameraRig.viewing = viewingMode
+        cameraRig.reduceMotion = reduceMotion
+        let aspect = Float(size.width / max(1, size.height))
+        cameraRig.camera?.camera.fieldOfViewInDegrees = aspect > TerrariumRules.nativeCameraWideAspect
+            ? TerrariumRules.nativeCameraWideFov : TerrariumRules.nativeCameraFov
+        residents.labelsVisible = !viewingMode
+        updatePlayback(active: active, reduceMotion: reduceMotion)
+        residents.sync(state, aspect: aspect)
+    }
+
+    func startAnimationsIfNeeded() {
+        // USDZ exposes the same tracks through global and per-node libraries.
+        // One retained scene clip avoids competing transforms after remounting.
+        if let controller = controllers.first, controller.isValid, !controller.isComplete, !controller.isStopped {
+            applyPlayback()
+            return
+        }
+        // A destroyed RealityKit scene can invalidate its playback controller.
+        // Keep the graph, but recreate that controller at the saved playhead.
+        if let habitat, let habitatAnimation {
+            let controller = habitat.playAnimation(habitatAnimation, startsPaused: true)
+            controller.time = suspendedAnimationTime
+            controllers = [controller]
+        }
+        applyPlayback()
+    }
+
+    func updatePlayback(active: Bool, reduceMotion: Bool) {
+        updatesEnabled = currentMount != nil && active
+        playing = updatesEnabled && !reduceMotion
+        residents.animate = playing
+        applyPlayback()
+    }
+
+    private func applyPlayback() {
+        for controller in controllers {
+            if playing { controller.resume() }
+            else { controller.pause() }
+        }
+    }
+
+    @discardableResult
+    func step(_ seconds: TimeInterval, mountID: UUID) -> Bool {
+        guard isMounted(mountID), updatesEnabled, cameraRig.step(seconds) else { return false }
+        if !reportedMountFrame {
+            reportedMountFrame = true
+            let camera = cameraRig.camera
+            let cameraState = renderState(camera)
+            let habitatState = renderState(habitat)
+            let residentState = renderState(residents.root)
+            let finite: Bool
+            if let transform = camera?.transform {
+                let values = [transform.translation.x, transform.translation.y, transform.translation.z,
+                              transform.rotation.vector.x, transform.rotation.vector.y, transform.rotation.vector.z, transform.rotation.vector.w,
+                              transform.scale.x, transform.scale.y, transform.scale.z]
+                finite = values.allSatisfy { $0.isFinite }
+            } else {
+                finite = false
+            }
+            aquariumAssetLogger.notice("Aquarium first frame \(mountID.uuidString, privacy: .public): camera [\(cameraState, privacy: .public)] finite=\(finite); habitat [\(habitatState, privacy: .public)]; residents [\(residentState, privacy: .public)]")
+        }
+        // Keep expiry checks alive on a retained active scene under Reduce Motion.
+        residents.step(seconds)
+        return true
+    }
+
+    private func renderState(_ entity: Entity?) -> String {
+        guard let entity else { return "missing" }
+        return "active=\(entity.isActive),anchored=\(entity.isAnchored),enabled=\(entity.isEnabledInHierarchy)"
+    }
+
+    /// A token-bound unlit material lets the enclosure recede behind residents.
     private func applyWaterMaterial(to entity: Entity) {
         if entity.name.lowercased().contains("garden") && entity.name.lowercased().contains("water"),
            var model = entity.components[ModelComponent.self] {
@@ -202,44 +421,6 @@ struct LivingAquariumScene: View {
             entity.components.set(model)
         }
         for child in entity.children { applyWaterMaterial(to: child) }
-    }
-
-    private func companionStepper() -> (Double) -> Void {
-        #if AGENTDECK_DOT_PREVIEW
-        return { [weak dot] in dot?.step($0) }
-        #else
-        return { _ in }
-        #endif
-    }
-
-    private func frameStepper() -> (TimeInterval) -> Void {
-        let stepCompanion = companionStepper()
-        return { [weak residents, weak cameraRig] seconds in
-            // Reject the whole frame before resident/fish integration too.
-            guard cameraRig?.step(seconds) == true else { return }
-            residents?.step(seconds)
-            stepCompanion(seconds)
-        }
-    }
-
-    private func updatePlayback() {
-        let playing = visible && !reduceMotion && scenePhase == .active
-        residents.animate = playing
-        #if AGENTDECK_DOT_PREVIEW
-        dot.animate = playing
-        #endif
-        // Keep expiry checks alive on a retained visible scene even under Reduce Motion.
-        if visible && scenePhase == .active, cancelUpdate == nil, let scene = residents.root.scene {
-            let stepFrame = frameStepper()
-            let subscription = scene.subscribe(to: SceneEvents.Update.self) { event in
-                stepFrame(event.deltaTime)
-            }
-            cancelUpdate = { subscription.cancel() }
-        }
-        for controller in controllers {
-            if !playing { controller.pause() }
-            else { controller.resume() }
-        }
     }
 }
 

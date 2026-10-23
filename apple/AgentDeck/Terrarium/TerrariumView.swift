@@ -4,6 +4,7 @@ import SwiftUI
 
 struct TerrariumView: View {
     let terrariumState: TerrariumState
+    var animationPaused = false
     var includeHabitat: Bool = true
     var communications = AquariumCommunications.empty
     var showsCommunicationLabels = true
@@ -26,16 +27,16 @@ struct TerrariumView: View {
     @State private var renderer = TerrariumRenderer()
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: animationPaused)) { timeline in
             Canvas { context, size in
                 let dt = renderer.deltaTime(now: timeline.date)
 
-                renderer.animateHermes = !reduceMotion
-                renderer.animateCompanions = !reduceMotion
+                renderer.animateHermes = !reduceMotion && !animationPaused
+                renderer.animateCompanions = !reduceMotion && !animationPaused
                 renderer.update(dt: dt, state: terrariumState)
                 renderer.draw(context: &context, size: size, includeHabitat: includeHabitat,
                               communications: communications, communicationDate: timeline.date,
-                              communicationMotion: !reduceMotion, communicationLabels: showsCommunicationLabels, communicationLabelInsets: communicationLabelInsets)
+                              communicationMotion: !reduceMotion && !animationPaused, communicationLabels: showsCommunicationLabels, communicationLabelInsets: communicationLabelInsets)
 
             }
         }

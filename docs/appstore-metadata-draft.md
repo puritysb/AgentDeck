@@ -14,15 +14,21 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 
 ## Prepared macOS 1.9.2 update text
 
-**Replacement submitted, October 23:** the copy below describes the
-submitted macOS **1.9.2 / 9301** build. Standalone Swift retains Claude status-line
+**Further replacement in preparation, October 23:** the copy below includes
+the dashboard Keychain and Settings rendering corrections for a new macOS
+**1.9.2** build; its CI number and verification are pending. The existing 9301
+submission still reads **Waiting for Review / AFTER_APPROVAL**, and the portal
+confirms 9301 remains attached. This new copy has not been submitted. See the
+[replacement decision](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+
+Standalone Swift retains Claude status-line
 observation for diagnostics but does not present its session snapshots as
 current account quota or a subscription. Support for the documented interface
 does not establish current-account accuracy. Session observation and the
 external Node daemon's quota policy are unchanged. Earlier artifact and runtime
 acceptance records do not validate this correction.
 
-The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+**Historical 9301 delivery:** the [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
 from `7e3d3033` succeeded at **2026-10-23 03:15:06 UTC**. The package's Info.plist
 confirms **1.9.2 / 9301**; strict Apple Distribution signing for `QF36NDHYHD`,
 package signing and App Store/Dot exclusion checks passed. All 25 automatic
@@ -105,6 +111,7 @@ semantic equivalence between the two builds has not been established.
 • Improve Claude usage reliability in the standalone Mac app by hiding readings that cannot be verified as current account usage. Claude permission requests appear when the agent asks for approval.
 • Enable optional device approvals to answer Codex requests from a connected deck. If nobody answers within 25 seconds, Codex shows its own prompt as usual.
 • Strengthen local connection security and keep pairing tokens out of connection logs. Improve reconnection and protect saved conversation history from interrupted writes. Connection settings now take effect reliably, even during startup. Reduce repeated work when displaying busy timelines.
+• Improve Dashboard and Settings responsiveness by removing unnecessary work. The aquarium pauses while you edit settings and resumes when you return.
 • Restore T-Embed session history and improve Wi-Fi setup for USB-connected ESP32 displays. Detailed setup results depend on the display firmware.
 • Fix dictated prompts addressed to OpenClaw Gateway sessions and improve delivery diagnostics.
 ```
@@ -117,6 +124,7 @@ semantic equivalence between the two builds has not been established.
 • Mac 앱을 단독으로 사용할 때 현재 계정 사용량으로 확인되지 않은 Claude 수치를 숨기도록 개선했습니다. Claude가 승인을 요청하면 대시보드에도 요청을 표시합니다.
 • 설정에서 기기 승인을 활성화하면 연결된 덱에서 Codex 승인 요청에 응답할 수 있습니다. 25초 동안 응답이 없으면 Codex가 평소처럼 자체 확인창을 표시합니다.
 • 로컬 연결 보안을 강화하고 연결 로그에서 페어링 토큰을 제거했습니다. 재연결을 개선하고 저장 중 중단으로 대화 기록이 손상되는 문제를 수정했습니다. 앱을 시작하는 중에도 연결 설정 변경이 안정적으로 반영됩니다. 기록이 많은 타임라인의 반복 처리도 줄였습니다.
+• 대시보드와 설정 화면의 불필요한 처리를 줄였습니다. 설정을 편집하는 동안 아쿠아리움을 일시 정지하고 돌아오면 다시 이어서 표시합니다.
 • T-Embed의 세션 기록 조회와 USB로 연결된 ESP32 디스플레이의 Wi-Fi 설정을 개선했습니다. 상세 설정 결과는 디스플레이 펌웨어의 지원에 따라 표시됩니다.
 • OpenClaw Gateway 세션으로 지정한 음성 입력이 전달되지 않던 문제를 수정하고 전달 진단을 개선했습니다.
 ```
@@ -129,6 +137,7 @@ semantic equivalence between the two builds has not been established.
 • Macアプリを単独で使用する際、現在のアカウント使用量として確認できないClaudeの数値を非表示にしました。Claudeが承認を求めると、ダッシュボードにも要求を表示します。
 • 設定でデバイス承認を有効にすると、接続したデッキからCodexの承認要求に応答できます。25秒以内に応答がなければ、Codexが通常どおり独自の確認画面を表示します。
 • ローカル接続のセキュリティを強化し、接続ログからペアリングトークンを除きました。再接続を改善し、保存中の中断による会話履歴の破損を防ぎます。起動中でも接続設定の変更が確実に反映されるようになりました。履歴の多いタイムラインで繰り返される処理も減らしました。
+• ダッシュボードと設定画面の不要な処理を減らしました。設定の編集中はアクアリウムを一時停止し、戻ると再開します。
 • T-Embedのセッション履歴と、USB接続したESP32ディスプレイのWi-Fi設定を改善しました。詳細な設定結果の表示には対応するディスプレイのファームウェアが必要です。
 • OpenClaw Gatewayセッション宛ての音声入力が届かない問題を修正し、配信診断を改善しました。
 ```

@@ -45,8 +45,6 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
-- macOS app: dashboard setup prompts no longer query the Keychain on the main thread for an Admin API setting they do not use, removing unnecessary synchronous work while the dashboard renders.
-
 - Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
 
 - Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
@@ -71,7 +69,16 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-**macOS 1.9.2 / 9301 was submitted after the Claude accuracy reassessment.**
+**A further macOS 1.9.2 replacement is in preparation; its new CI build number
+and verification are pending.** It adds the dashboard Keychain correction from
+[#599](https://github.com/puritysb/AgentDeck/pull/599) and the Settings rendering
+correction below. The [21:01 KST ASC readback on October 23](https://github.com/puritysb/AgentDeck/actions/runs/39950220874)
+still shows the existing 1.9.2 submission as Waiting for Review with automatic
+release after approval; 9301 remains Valid. The new candidate has not been
+uploaded or submitted. See the
+[replacement decision](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+
+**Earlier delivery: macOS 1.9.2 / 9301 was submitted after the Claude accuracy reassessment.**
 Standalone macOS no longer promotes status-line documents into account quota;
 Claude session observation remains available. The earlier 33% / 9% receipt
 proved collection, not current-account accuracy. See the
@@ -136,6 +143,10 @@ running; Dashboard, Settings and return navigation also passed. These are
 additional 9201 checks. Builds 9101 and 9201 are not byte-identical, and full
 semantic equivalence between them has not been established; the earlier
 acceptance results retain their recorded build scope.
+
+- macOS app, new replacement candidate: dashboard setup prompts no longer query the Keychain on the main thread for an Admin API setting they do not use, removing unnecessary synchronous work while the dashboard renders (#599). This correction is not in build 9301.
+
+- macOS app, new replacement candidate: pause the optional aquarium renderer while Settings is frontmost or the dashboard is minimized or fully hidden, then restore it without changing the user's 3D preference or session state. This targets the Settings delay reproduced with background 3D rendering; combined-source and exact-build verification are pending, and build 9301 does not include this change.
 
 - macOS app: busy timelines no longer regroup and classify the entire history for each visible row. Rows, detail panels and scrolling now share one render snapshot, preserving session filters and completed-task state while reducing main-thread work.
 
