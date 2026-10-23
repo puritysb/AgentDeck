@@ -43,6 +43,35 @@ private func resolveTimelineLayoutMode(
 }
 #endif
 
+/// One immutable input for a render pass, including its deferred lazy rows and
+/// scroll callbacks. Regrouping inside each row repeatedly classified the whole
+/// history on the main thread, adding repeated work under live traffic.
+struct TimelineRenderSnapshot {
+    let entries: [TimelineEntry]
+    let filteredEntries: [TimelineEntry]
+    let groups: [GroupedEntry]
+    let displayedEntries: [TimelineEntry]
+
+    init(
+        entries: [TimelineEntry],
+        filter: TimelineSessionFilter? = nil,
+        groupEntries: ([TimelineEntry]) -> [GroupedEntry] = {
+            timelineDisplayGroupsForDashboard(groupConsecutive($0))
+        }
+    ) {
+        self.entries = entries
+        filteredEntries = filter.map { filter in
+            entries.filter { $0.matchesTimelineFilter(filter) }
+        } ?? entries
+        groups = groupEntries(filteredEntries)
+        displayedEntries = groups.map(\.entry)
+    }
+
+    func focusedGroup(at index: Int) -> GroupedEntry? {
+        groups.indices.contains(index) ? groups[index] : groups.last
+    }
+}
+
 struct TimelineStripView: View {
     var usesMetalHabitat = false
 
@@ -92,15 +121,6 @@ struct TimelineStripView: View {
         layoutMode == .compact ? .compact : .regular
     }
 
-    /// Read grouped entries — triggers re-render via timelineVersion observation.
-    /// The daemon persists a low-level event stream, but this dashboard panel
-    /// renders task/turn lifecycle rows: an in-flight `chat_start` is visible
-    /// until a matching completion arrives, then the completion/result row
-    /// becomes the unit shown in the list.
-    private var grouped: [GroupedEntry] {
-        timelineDisplayGroups(groupConsecutive(filteredEntries))
-    }
-
     /// Accessed in body to register SwiftUI observation on timeline changes
     private var timelineVersion: Int { stateHolder.timelineVersion }
 
@@ -112,27 +132,15 @@ struct TimelineStripView: View {
         timelineFilter?.sessionId ?? "all"
     }
 
-    private var filteredEntries: [TimelineEntry] {
-        let entries = stateHolder.timelineStore.entries
-        guard let filter = timelineFilter else { return entries }
-        return entries.filter { entry in
-            entry.matchesTimelineFilter(filter)
-        }
-    }
-
-    private var focusedGroup: GroupedEntry? {
-        if grouped.isEmpty { return nil }
-        if focusedIndex < 0 || focusedIndex >= grouped.count {
-            return grouped.last
-        }
-        return grouped[focusedIndex]
-    }
-
     var body: some View {
-        Group {
+        let snapshot = TimelineRenderSnapshot(
+            entries: stateHolder.timelineStore.entries,
+            filter: timelineFilter
+        )
+        return Group {
             switch layoutMode {
-            case .regular: regularBody
-            case .compact: compactBody
+            case .regular: regularBody(snapshot)
+            case .compact: compactBody(snapshot)
             }
         }
         .padding(.horizontal, layoutMode == .compact ? 8 : 16)
@@ -144,13 +152,13 @@ struct TimelineStripView: View {
     }
 
     /// Regular layout: 65/35 HStack (iPad / macOS / iPhone landscape).
-    private var regularBody: some View {
+    private func regularBody(_ snapshot: TimelineRenderSnapshot) -> some View {
         GeometryReader { geo in
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     timelineHeader
                         .zIndex(1)
-                    timelineList(allowExpand: false)
+                    timelineList(allowExpand: false, snapshot: snapshot)
                 }
                 .frame(width: geo.size.width * 0.65, alignment: .topLeading)
                 .frame(maxHeight: .infinity, alignment: .topLeading)
@@ -160,7 +168,7 @@ struct TimelineStripView: View {
                     .frame(width: 1)
                     .padding(.vertical, 8)
 
-                detailPane(focusedGroup)
+                detailPane(snapshot.focusedGroup(at: focusedIndex), snapshot: snapshot)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -169,7 +177,7 @@ struct TimelineStripView: View {
     /// Compact layout: single-column with tap-to-expand inline detail.
     /// Used on iPhone portrait where the right detail pane is too narrow to
     /// be useful (~120 dp after split).
-    private var compactBody: some View {
+    private func compactBody(_ snapshot: TimelineRenderSnapshot) -> some View {
         // Pin the column to the top of its allotted area so the empty-state
         // text ("TIMELINE" + "No events yet") doesn't drift to centre on
         // iPhone portrait — host gives the strip a fixed sand-fraction
@@ -178,7 +186,7 @@ struct TimelineStripView: View {
         VStack(alignment: .leading, spacing: 0) {
             timelineHeader
                 .zIndex(1)
-            timelineList(allowExpand: true)
+            timelineList(allowExpand: true, snapshot: snapshot)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -220,8 +228,9 @@ struct TimelineStripView: View {
     // makes 0→N an ordinary content change the handler below already covers.
     // (A ScrollView top-anchors its content, so the empty-state text keeps the
     // top alignment its own frame used to force.)
-    private func timelineList(allowExpand: Bool) -> some View {
-        GeometryReader { viewport in
+    private func timelineList(allowExpand: Bool, snapshot: TimelineRenderSnapshot) -> some View {
+        let grouped = snapshot.groups
+        return GeometryReader { viewport in
             ScrollViewReader { proxy in
                 ScrollView {
                     if grouped.isEmpty {
@@ -240,7 +249,7 @@ struct TimelineStripView: View {
                                     if let dayLabel = timelineDayBreakLabel(at: index, in: grouped) {
                                         dayBreakRow(dayLabel)
                                     }
-                                    compactLogRow(group, index: index, allowMultiline: allowExpand)
+                                    compactLogRow(group, index: index, allowMultiline: allowExpand, snapshot: snapshot)
                                         .id(index)
                                         .onTapGesture {
                                             if allowExpand {
@@ -251,7 +260,7 @@ struct TimelineStripView: View {
                                             }
                                         }
                                     if allowExpand && expandedIndex == index {
-                                        inlineDetailPane(group)
+                                        inlineDetailPane(group, snapshot: snapshot)
                                             .padding(.leading, 18)
                                             .padding(.trailing, 6)
                                             .padding(.vertical, 4)
@@ -272,7 +281,8 @@ struct TimelineStripView: View {
                                 ) { _, contentMaxY in
                                     updateStickToBottom(
                                         contentMaxY: contentMaxY,
-                                        viewportHeight: viewport.size.height
+                                        viewportHeight: viewport.size.height,
+                                        groupCount: grouped.count
                                     )
                                 }
                             }
@@ -309,15 +319,15 @@ struct TimelineStripView: View {
     }
 
     /// Re-evaluates sticky-bottom from the scroll position.
-    private func updateStickToBottom(contentMaxY: CGFloat, viewportHeight: CGFloat) {
+    private func updateStickToBottom(contentMaxY: CGFloat, viewportHeight: CGFloat, groupCount: Int) {
         guard viewportHeight > 0 else { return }
         // A relayout caused by the row set itself changing is not the user
         // moving: the appended row lands below the viewport before the
         // scroll-to-bottom above has run, which would read as "scrolled away"
         // and disengage the very mode that is about to scroll. Re-baseline and
         // keep the current mode.
-        guard stickyLayoutCount == grouped.count else {
-            stickyLayoutCount = grouped.count
+        guard stickyLayoutCount == groupCount else {
+            stickyLayoutCount = groupCount
             return
         }
         stickToBottom = contentMaxY <= viewportHeight + Self.stickyBottomSlop
@@ -343,15 +353,16 @@ struct TimelineStripView: View {
     // MARK: - Compact Log Row
 
     @ViewBuilder
-    private func compactLogRow(_ group: GroupedEntry, index: Int, allowMultiline: Bool) -> some View {
+    private func compactLogRow(_ group: GroupedEntry, index: Int, allowMultiline: Bool, snapshot: TimelineRenderSnapshot) -> some View {
         if group.entry.type == .taskStart || group.entry.type == .taskEnd {
-            taskHeaderRow(group, index: index)
+            taskHeaderRow(group, index: index, snapshot: snapshot)
         } else {
-            turnRow(group, index: index, allowMultiline: allowMultiline)
+            turnRow(group, index: index, allowMultiline: allowMultiline, snapshot: snapshot)
         }
     }
 
-    private func turnRow(_ group: GroupedEntry, index: Int, allowMultiline: Bool) -> some View {
+    private func turnRow(_ group: GroupedEntry, index: Int, allowMultiline: Bool, snapshot: TimelineRenderSnapshot) -> some View {
+        let grouped = snapshot.groups
         let isSelected = index == focusedIndex ||
             (focusedIndex < 0 && index == grouped.count - 1)
         let isChatEnd = group.entry.type == .chatEnd
@@ -417,7 +428,7 @@ struct TimelineStripView: View {
         let isRotating: Bool = {
             if isFolded { return false }
             if group.entry.type == .chatStart && isCompleted { return false }
-            return timelineIsRotatingEntry(group.entry, siblings: grouped.map(\.entry))
+            return timelineIsRotatingEntry(group.entry, siblings: snapshot.displayedEntries)
         }()
 
         return VStack(alignment: .leading, spacing: 0) {
@@ -689,7 +700,8 @@ struct TimelineStripView: View {
     /// tapped row. Mirrors the right-side detail pane's content shape but
     /// laid out vertically inside the list.
     @ViewBuilder
-    private func inlineDetailPane(_ group: GroupedEntry) -> some View {
+    private func inlineDetailPane(_ group: GroupedEntry, snapshot: TimelineRenderSnapshot) -> some View {
+        let grouped = snapshot.groups
         let entry = group.entry
         // Folded/queued prompt: the shared reply lives on the following turn,
         // so borrow its body here instead of showing an empty detail.
@@ -697,7 +709,7 @@ struct TimelineStripView: View {
             ? timelineSupersedingGroup(for: group, in: grouped) : nil
         let bodyGroup = foldedInto ?? group
         VStack(alignment: .leading, spacing: 4) {
-            let lifecycleRows = lifecycleDetailRows(for: entry)
+            let lifecycleRows = lifecycleDetailRows(for: entry, snapshot: snapshot)
             if !lifecycleRows.isEmpty {
                 HStack(spacing: 8) {
                     ForEach(Array(lifecycleRows.enumerated()), id: \.offset) { _, row in
@@ -755,7 +767,9 @@ struct TimelineStripView: View {
     /// score/outcome. `task_end` rows never render standalone — they are
     /// data-only closure records (spinner stop, judge upsert vehicle, reaper
     /// synthesis). Contract SSOT: shared/src/timeline-task-display.ts.
-    private func taskHeaderRow(_ group: GroupedEntry, index: Int) -> some View {
+    private func taskHeaderRow(_ group: GroupedEntry, index: Int, snapshot: TimelineRenderSnapshot) -> some View {
+        let grouped = snapshot.groups
+        let filteredEntries = snapshot.filteredEntries
         let entry = group.entry
         // Closure lookup + spinner must see PRE-display-filter rows: the
         // matching task_end is filtered out of `grouped` by design, so
@@ -871,8 +885,10 @@ struct TimelineStripView: View {
 
     // MARK: - Detail Pane
 
-    private func detailPane(_ group: GroupedEntry?) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private func detailPane(_ group: GroupedEntry?, snapshot: TimelineRenderSnapshot) -> some View {
+        let grouped = snapshot.groups
+        let filteredEntries = snapshot.filteredEntries
+        return VStack(alignment: .leading, spacing: 0) {
             if let group {
                 // Mirror the turnRow's hasResponse-aware spinner stop —
                 // detail pane shares the same chat_start row identity,
@@ -903,7 +919,7 @@ struct TimelineStripView: View {
                 let headerSymbol = isFolded ? "arrow.turn.down.right" : sfSymbol(for: iconKey)
                 let isRotating: Bool = (isFolded || isTurnCompleted)
                     ? false
-                    : timelineIsRotatingEntry(group.entry, siblings: grouped.map(\.entry))
+                    : timelineIsRotatingEntry(group.entry, siblings: snapshot.displayedEntries)
                 let countSuffix = group.count > 1 ? " (×\(group.count))" : ""
 
                 // Header: type badge chip + timestamp
@@ -931,7 +947,7 @@ struct TimelineStripView: View {
                         .foregroundStyle(TerrariumHUD.subtext)
                     #if os(macOS)
                     if usesMetalHabitat {
-                        Button { copyDetail(group) } label: { Image(systemName: "doc.on.doc") }
+                        Button { copyDetail(group, snapshot: snapshot) } label: { Image(systemName: "doc.on.doc") }
                             .buttonStyle(.plain)
                             .foregroundStyle(TerrariumHUD.subtext)
                             .help("Copy event details")
@@ -951,7 +967,7 @@ struct TimelineStripView: View {
                         .padding(.horizontal, 8)
                 }
 
-                let lifecycleRows = lifecycleDetailRows(for: group.entry)
+                let lifecycleRows = lifecycleDetailRows(for: group.entry, snapshot: snapshot)
                 if !lifecycleRows.isEmpty {
                     Spacer().frame(height: 4)
                     VStack(alignment: .leading, spacing: 1) {
@@ -1092,12 +1108,12 @@ struct TimelineStripView: View {
     #if os(macOS)
     /// Metal-backed RealityView exposes an AppKit selectable-text flip in this
     /// overlay. Keep visible details copyable without that native text backing.
-    private func copyDetail(_ group: GroupedEntry) {
+    private func copyDetail(_ group: GroupedEntry, snapshot: TimelineRenderSnapshot) {
         let bodyGroup = group.entry.type == .chatStart
-            ? timelineSupersedingGroup(for: group, in: grouped) ?? group : group
+            ? timelineSupersedingGroup(for: group, in: snapshot.groups) ?? group : group
         let entry = timelineDetailEntryForDashboard(bodyGroup)
         var lines = [formatTimeSeconds(group.entry.date), sourceLabel(for: group.entry)]
-        lines += lifecycleDetailRows(for: group.entry).map { "\($0.label) \($0.value)" }
+        lines += lifecycleDetailRows(for: group.entry, snapshot: snapshot).map { "\($0.label) \($0.value)" }
         lines.append(timelineSummaryTextForDashboard(group))
         if !group.toolActivity.isEmpty { lines.append("Tool activity\n" + group.toolDetail) }
         if let detail = entry.detail, shouldShowDetail(entry: entry, detail: detail) { lines.append(detail) }
@@ -1182,10 +1198,6 @@ struct TimelineStripView: View {
 
     // MARK: - Helpers
 
-    private func timelineDisplayGroups(_ groups: [GroupedEntry]) -> [GroupedEntry] {
-        timelineDisplayGroupsForDashboard(groups)
-    }
-
     private func hasLaterCompletion(for start: TimelineEntry, in groups: [GroupedEntry]) -> Bool {
         timelineHasLaterCompletion(for: start, in: groups)
     }
@@ -1202,8 +1214,8 @@ struct TimelineStripView: View {
         timelineSameContext(a, b)
     }
 
-    private func lifecycleDetailRows(for entry: TimelineEntry) -> [(label: String, value: String)] {
-        let startMs = entry.startedAt ?? pairedStart(for: entry)?.ts
+    private func lifecycleDetailRows(for entry: TimelineEntry, snapshot: TimelineRenderSnapshot) -> [(label: String, value: String)] {
+        let startMs = entry.startedAt ?? pairedStart(for: entry, snapshot: snapshot)?.ts
         let endMs = entry.endedAt ?? (isCompletionEntry(entry) || entry.type == .evalResult ? entry.ts : nil)
         var rows: [(String, String)] = []
         if let startMs {
@@ -1218,8 +1230,8 @@ struct TimelineStripView: View {
         return rows
     }
 
-    private func pairedStart(for entry: TimelineEntry) -> TimelineEntry? {
-        stateHolder.timelineStore.entries.last { candidate in
+    private func pairedStart(for entry: TimelineEntry, snapshot: TimelineRenderSnapshot) -> TimelineEntry? {
+        snapshot.entries.last { candidate in
             candidate.type == .chatStart &&
                 candidate.ts <= entry.ts &&
                 entry.ts - candidate.ts <= 12 * 60 * 60 * 1000 &&

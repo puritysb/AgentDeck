@@ -95,6 +95,573 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-22 browser trust security patch preparation
+
+This is a preparation record, not a delivery receipt. The candidate starts at
+master `4b839281177c66b07a6ad125788059db5b6bd968`, including
+[#583](https://github.com/puritysb/AgentDeck/pull/583) and the accumulated fixes
+merged since each channel's previous release. It is not a security-only
+cherry-pick. Version decisions were recorded before editing the manifests.
+
+The first signed-candidate run exposed an existing Xcode 26.3 type-checking
+timeout in the communication graph's position expression, despite passing
+local Xcode 27.1 builds. [Run 39790524243](https://github.com/puritysb/AgentDeck/actions/runs/39790524243)
+stopped before export: its attempted build 8701 is not an exported or uploaded
+artifact. The candidate separates that expression into explicitly typed
+intermediate calculations without changing its geometry. The corrected source
+passed the signed archive on Xcode 26.3, as recorded below.
+
+| Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.2, all four registry latest tags re-read October 22 | 1.9.2 | 1.9.3 | Patch: enforce browser Host/Origin trust, close reflected-script and cross-origin data paths, and complete existing observation/control workflows | Node daemon, managed session bridges, hooks and setup |
+| Apple / macOS | 1.9.0 READY_FOR_SALE | 1.9.1 / 8601 VALID, IN_REVIEW, AFTER_APPROVAL | 1.9.2; build assigned by CI above 8601 | Patch: enforce the same browser boundary and include the accumulated daemon, timeline and attention-navigation corrections | macOS-only signed candidate; preserve the existing 1.9.1 review |
+| Apple / iOS | 1.9.1 READY_FOR_SALE | 1.9.1 / 8501 VALID | No delivery in this round | No iOS daemon exposure to repair | Shared Apple version mirrors become 1.9.2 for candidate builds; no iOS upload or Apple tag |
+| Android, ESP32, Stream Deck, Ulanzi | Existing delivery identities | Unchanged | Unchanged | Existing same-major clients remain supported | No new target artifact or physical acceptance is claimed |
+
+Apple state and consumed builds were read from
+[ASC store-status run 39786791116](https://github.com/puritysb/AgentDeck/actions/runs/39786791116)
+on October 22. Recheck that floor and the in-review version before any upload.
+Use a manual `apple-release.yml` run on the reviewed candidate with
+`release_version=1.9.2`, `platform=macos`, `upload=false` to prepare the signed
+archive/export. CI assigns the build number; the local default is unchanged.
+Do not push an Apple tag for this macOS-only delivery, since tags upload both
+platforms. npm publication is a later `npm-v1.9.3` tag after acceptance.
+
+Acceptance must include the full verification receipt, clean four-package
+installation/soak, Node and Swift browser-trust regressions, and the exported
+macOS package's App Store/Dot/signature checks. Record skips and unattested
+hardware/live gates explicitly. No credentials are rotated during preparation;
+the patch blocks new browser access but does not itself revoke an already-read
+pairing token. Existing token custody/accepted-ring behavior must be considered
+before claiming revocation across Node/Swift handover.
+
+Historical candidate evidence, October 22 (all executable artifacts below use
+clean source `e21b817b3b5497089086b1bbb6312a1c41ccbb16`). This source predates
+the Swift startup correction described in the Mac Studio handoff below. Its
+macOS package and checks do not establish acceptance of the corrected source;
+the exact four npm tarballs are unchanged by that Swift-only correction.
+
+- The [full verification receipt](verification/receipts/2026-10-22-e21b817.json)
+  records **25 automated gates passed**, including build/typecheck, coverage,
+  protocol and design drift, Node/Swift trust regressions, native builds and
+  packaged daemon acceptance. Vitest passed 6,777 tests (17 skipped), daemon E2E
+  passed 29, and Android passed 505. Windows is locally skipped because this is
+  a macOS host; final PR Windows CI remains a separate check.
+- The exact four npm **1.9.3** tarballs passed all 12 clean-package acceptance
+  checks, including native ABI, hooks, reconnect/history and the isolated
+  60-second soak (60 health responses, worst 5 ms, no JSON parse errors).
+  The accepted tarballs and acceptance report were retained without repacking.
+- [Signed macOS candidate run 39795413564](https://github.com/puritysb/AgentDeck/actions/runs/39795413564)
+  succeeded with `platform=macos`, `upload=false`. The actual universal package
+  is **1.9.2 / 8801**, bundle `bound.serendipity.agent.deck`; package/app signature,
+  Sandbox and exported Store/Dot checks passed. Its SHA-256 is
+  `871a31858cafaeb4d04dac54890995b5762648227aa7d97586a766a71cd46b0e`.
+  It was neither installed nor uploaded, submitted or released.
+
+| Accepted npm tarball | SHA-256 |
+| --- | --- |
+| `agentdeck-bridge-1.9.3.tgz` | `acb8ab2a129ae438a7f1accc46567c9357bdd4f48e78261157e98606208b7b93` |
+| `agentdeck-hooks-1.9.3.tgz` | `3ed469fec6bbb8bc1d524bd72f9d570c4eb53ef6f014e4fde9e337e496686cd1` |
+| `agentdeck-setup-1.9.3.tgz` | `2da21addd2b56dbae292e6fb82e4fe92bb01300950958d58970135415943c410` |
+| `agentdeck-shared-1.9.3.tgz` | `f541eaf071a00dfa66b177049ec7e329ea2e6f9111631822dbdc83b9ff8951dc` |
+
+Before publication, complete acceptance of the installed CLI-only, Swift-only
+and coexistence/handover modes, a live Swift Codex turn and relevant connected
+device output. The receipt leaves `device-deploy` and `swift-codex-live`
+unattested; its `esp32-robot` hardware gate is also unattested, and this candidate
+does not deliver firmware. Isolated package tests and archive validation do not
+stand in for those runtime observations. Recheck registry/ASC state and final
+PR CI before delivery; this record authorizes no publication or review-state
+change by itself.
+
+#### Mac Studio acceptance handoff — 2026-10-23
+
+At 00:24 KST, all checks for PR #597 head
+`dbb458c32986eaa7d713cc36e7e9dfa14a2f76ac` had completed: **13 jobs passed** and
+the path-conditional TTGO job was skipped. [Main CI](https://github.com/puritysb/AgentDeck/actions/runs/39799283895)
+includes Windows Node 22/24/26 and macOS native parity;
+[Apple Tests](https://github.com/puritysb/AgentDeck/actions/runs/39799283953),
+[Design System](https://github.com/puritysb/AgentDeck/actions/runs/39799283905)
+and [ESP32 simulator](https://github.com/puritysb/AgentDeck/actions/runs/39799284039)
+also passed. The PR remains draft; no merge or public delivery is recorded.
+Those results cover the earlier candidate, before the subsequent Swift startup
+correction. Local validation of that correction is recorded below; its pushed
+source SHA and CI results are tracked separately on
+[PR #597](https://github.com/puritysb/AgentDeck/pull/597).
+
+The exact four npm tarballs, macOS package, full receipt and portable hash
+manifest are retained in the authenticated
+[draft acceptance bundle](https://github.com/puritysb/AgentDeck/releases/tag/untagged-d2cf0fb6e763f9af54cb).
+This is artifact storage, not an npm/App Store release. Its retrieval identifier
+is `candidate-security-patch-e21b817`; no delivery tag is needed. This also avoids
+depending on the original Apple Actions artifact's seven-day retention.
+All eight assets were downloaded again into an empty directory: API digests,
+local source bytes and all seven entries in `SHA256SUMS` matched. The release
+remains `draft=true`, `published_at=null`, with no corresponding Git tag.
+The stored **macOS 1.9.2 / 8801** package does not contain the startup correction.
+Keep it as historical artifact/signature evidence. Runtime comparison requires
+a separately Development-signed app from its recorded source; do not reuse the
+Store package or its archive/signature results as approval or deployment
+acceptance for the corrected app. The four accepted **npm 1.9.3** tarballs and
+their hashes remain unchanged. The draft bundle's original manifest and receipt
+continue to identify its original source; do not relabel them as a newer build.
+
+On Mac Studio, use a clean, dedicated checkout of the reviewed
+`codex/security-patch-release` head. Retrieve the preserved npm packages and old
+macOS comparison baseline, verifying their identity before any installation:
+
+```bash
+mkdir -p diagnostics/security-patch-candidate
+gh release download candidate-security-patch-e21b817 --repo puritysb/AgentDeck --dir diagnostics/security-patch-candidate
+(cd diagnostics/security-patch-candidate && shasum -a 256 -c SHA256SUMS)
+```
+
+The first corrected Store candidate was **macOS 1.9.2 / 8901**, archived and exported
+from `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` on Xcode 26.3 by
+[run 39812413109](https://github.com/puritysb/AgentDeck/actions/runs/39812413109),
+which completed successfully with `platform=macos`, `upload=false`. Artifact
+`apple-macos-1.9.2-89-1` was downloaded and its ZIP digest matched GitHub. The
+package SHA-256 is
+`4770b062aa10559515c98e47c4a02a99565239c1bd0f741d40b12a6d3dd3a6c5`.
+The extracted universal arm64/x86_64 app has bundle
+`bound.serendipity.agent.deck`; strict/deep signature verification, Sandbox and
+App Store/Dot-exclusion checks passed. Its app signer is **Apple Distribution:
+Serendipity Bound (QF36NDHYHD)** and package signer is **3rd Party Mac Developer
+Installer: Serendipity Bound (QF36NDHYHD)**. The App Store upload step, iOS build and
+public-release job were skipped. This verifies the exported artifact, not its installed
+runtime behavior. Recheck ASC's build floor and current review state before any
+later upload; the earlier 8801 package remains only a comparison baseline.
+
+Complete the [three-mode soak](#pre-tag-three-mode-daemon-soak) on Mac Studio
+with the Development-signed acceptance app identified below and the retained
+npm packages, using supported
+lifecycle commands and the deploy skill's privacy preflight. Record the previous
+installed CLI/app identities and rollback path first. The candidate CLI must be
+the installed command's actual target, not a source-tree binary that happens to
+report 1.9.3. Verify the corrected app's installed and running build/signing
+identity; the old 8801 baseline does not satisfy this acceptance.
+
+| Stage | Evidence to record on Mac Studio |
+| --- | --- |
+| Swift only | CLI stopped, exactly one expected 9120 owner, `isSwift: true`, a real directly launched agent turn, app and physical downstream updates |
+| CLI only | App quit, installed CLI 1.9.3 and native ABI identity, `isSwift: false`, a real turn, downstream update and release-relevant CLI action |
+| Coexistence and both handovers | Swift → CLI takeover, one listener and no duplicate roster; CLI stop → automatic Swift reclaim; measured recovery time, retained timeline/credentials and hooks working without reinstall |
+| Browser boundary | Rebinding Host and cross-origin HTTP/WS requests remain rejected by each owner; trusted native clients still work after handover |
+| Live app checks | Signed Shortcuts navigation, connected-device output and the opt-in Swift Codex replay; also run a real Codex turn because the replay uses synthetic events |
+
+Static lifecycle review found a startup/restart race in the old candidate:
+[`DaemonService.start()`](apple/AgentDeck/Daemon/DaemonService.swift) launched an
+unretained task and captured the port/posture before awaited startup; `stop()`
+did not invalidate that local startup. A Settings restart while `isStarting`
+was true could be dropped, after which the old task could publish its old
+configuration. This remains a source-review finding, not a measured Mac Studio
+failure.
+
+The correction retains and cancels local startup, invalidates its generation
+before actor hops, and waits for started services and their teardown before a
+replacement starts. Generation and instance checks reject obsolete readiness,
+errors, owner callbacks and delayed retries; a newer stop supersedes a pending
+restart. Health/fallback/reclaim decisions and delayed Dashboard connection work
+must also preserve the latest lifecycle intent. Production startup checks
+cancellation between stages, and registry removal matches the owning instance
+so a retired daemon cannot erase its replacement's record.
+
+The new [service regressions](apple/AgentDeckTests/LocalDaemonStartupTests.swift)
+cover seven interleavings: stop during factory creation, restart with newer
+port/posture, stop during service startup, restart waiting for startup and
+shutdown, stop superseding that restart, callbacks from a replaced daemon, and
+bounded teardown timeout followed by recovery after cleanup actually finishes.
+The [production helper regressions](apple/AgentDeckTests/DaemonStartupCancellationTests.swift)
+cover instance-matched registry removal, cancellation between device modules,
+shutdown permission between modules without task cancellation, and cancellation
+before listener creation. These tests exercise controlled suspensions without
+using the shared daemon port or live credentials.
+
+Local source validation on October 23: `pnpm verify:quick` passed all 13 selected
+automated gates (Vitest **6,777 passed / 17 skipped**); the opt-in macOS daemon
+E2E was skipped, not counted as passing. macOS Debug executed **1,325 tests with
+3 skipped and no failures**. After the final lifecycle refinements, a focused
+Debug run passed **36 tests**, including all **7 service + 4 helper regressions**,
+external-attach retries, topology and port fallback. The final macOS
+DotPreviewRelease suite executed **1,345 tests with 8 skipped and no failures**.
+`pnpm verify:changed --base HEAD --skip apple-macos` passed all 10 selected gates:
+macOS Release, iOS Release/DotPreviewRelease, macOS DotPreviewRelease and their
+artifact boundaries, plus the relevant fast checks. The separately completed
+Debug checks above account for that explicit skip. App Store submission package
+validation also passed. These are source/build checks; the corrected signed
+export is recorded above and partial Mac Studio observations below. These
+earlier test counts are retained separately from the clean-source full run.
+
+The final [full verification receipt](verification/receipts/2026-10-22-2121b33.json)
+covers clean source `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` on arm64
+Node 26.5.0: **25 automated gates passed** in 44 minutes 14 seconds, including
+coverage (6,777 passed / 17 skipped), daemon E2E (29 passed), native builds,
+App Store submission limits, all ESP32 simulator variants, the TTGO target
+build and clean npm package acceptance (12/12, including its 60-second soak).
+macOS Debug executed 1,326 tests (1,322 passed / 4 skipped); DotPreview executed
+1,345 (1,336 passed / 9 skipped), with no failures. The receipt explicitly skips
+Windows on this Mac and attests an ESP32 Robot skip because this candidate
+delivers no firmware. Its `device-deploy` and `swift-codex-live` manual gates
+remain unattested; the scoped runtime observations below do not rewrite those
+receipt states.
+
+All checks on the same pushed source completed: **13 jobs passed**, with the
+path-conditional TTGO job skipped. [Main CI](https://github.com/puritysb/AgentDeck/actions/runs/39811583046)
+includes Windows Node 22/24/26 and macOS native parity;
+[Apple Tests](https://github.com/puritysb/AgentDeck/actions/runs/39811583083),
+[Design System](https://github.com/puritysb/AgentDeck/actions/runs/39811583245)
+and [ESP32 simulator](https://github.com/puritysb/AgentDeck/actions/runs/39811583008)
+also passed.
+
+#### Current Mac Studio evidence 2026-10-23
+
+**Partially verified; not accepted for release.** The final full-verification
+receipt and corrected signed export passed; the remaining runtime checks below
+are open.
+The following table records the earlier `2121b334` observations. Replacement
+build 9101 and its current acceptance scope are recorded in the
+[later evidence section](#store-9101-verification-and-local-acceptance-2026-10-23).
+There has been no merge, delivery tag, npm publication, App Store upload or
+submission, or public release. The existing macOS 1.9.1 review and iOS delivery
+remain unchanged.
+
+Runtime observations used the canonical installed **Development-signed** app
+from `2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd`, version **1.9.2 / 2026102301**
+(recorded PIDs 34806, then 60939 after the fixture relaunch). They do not establish
+runtime acceptance of the exported Store package **1.9.2 / 8901**. The installed
+CLI resolves to the retained **npm 1.9.3** candidate, build `84a9de8e009e`
+(recorded PIDs 17441, then 59132), rather than a source-tree CLI.
+
+| Check | Measured result and limit |
+| --- | --- |
+| CLI and Swift observations | CLI-first coexistence snapshot passed. The initial Node soak had 2 health probes time out at 5 seconds out of 27 (slowest successful probe 3,954.89 ms); a later recovery soak passed 27/27 (worst 127.57 ms). Swift passed a 130-second soak, 27/27 (worst 37.2 ms). Both owners passed the browser-boundary probe. Retain the initial failure alongside the recovery. |
+| CLI stop → Swift reclaim | Automatic 9120 recovery took **145.394 seconds** between the last Node response at 16:32:08.399Z and first Swift response at 16:34:33.793Z. The path included fallback port 9121 and a 120-second cooldown. All 245 listener samples were readable; none showed two owners of 9120. This records eventual recovery, not a seamless handover. |
+| Swift → CLI takeover | Supported CLI start completed with both processes present. The last Swift response at 16:44:26.950Z and first Node response at 16:45:35.745Z were **68.795 seconds** apart. No two owners of 9120 were observed; 2 of 41 listener samples were unreadable and remain unknown. A subsequent 130-second Node soak passed 27/27 (median 154.23 ms, worst 1,903.45 ms). |
+| Timeline continuity | After both handovers, the Node owner's WebSocket history contained the earlier Node Allow turn and the Swift real-turn and Allow replies. The app had also displayed the earlier Node turns while Swift owned the hub. This verifies those observed rows; it is not a fingerprint comparison of credential stores. |
+| Real agent and downstream delivery | A directly launched Codex turn produced `AGENTDECK_RELEASE597_SWIFT_OK`; the app accessibility tree and a Lenovo display screenshot showed the turn. Earlier Node-driven display evidence is retained separately. Swift synthetic replay also passed, but is separate from this real turn. |
+| Optional Codex approval | Codex 0.163 in its normal, user-trusted hook flow exercised Allow, Deny and unanswered fallback under both owners. Fallback elapsed **25,003 ms (Node)** and **25,027 ms (Swift)**; Codex's native confirmation appeared and was cancelled with Escape. Answers came from a native WebSocket controller, not a physical deck button. |
+| Settings and startup intent | Rapid UI changes through ports 19681 → 19682 → 19681 → 9120 ended on the latest requested port; old listeners closed. Device-module disable/enable restored the expected posture. No trace proves that these UI changes landed while `isStarting` was true: the deterministic race evidence remains the 7 service and 4 helper tests. A temporary LLDB logpoint pause was excluded from acceptance measurements. |
+| Attention navigation and usage | Warm Shortcuts UI listed the two controlled A/B sessions and Open selected B correctly, with zero fixture mutations. Claude usage was available in the app and visible on Lenovo gauges; this does not directly verify freshness from the optional live status-line integration. |
+
+The existing four-second module-teardown budget expired during handover and
+late Serial cleanup was observed. This is a remaining lifecycle caveat: the
+observations above do not prove that every device module completed teardown
+before the next phase. The long handover intervals and this cleanup behavior
+remain subject to the three-mode soak criteria; no waiver is recorded here.
+
+Remaining acceptance at that checkpoint: continue the outstanding runtime cases
+with the recorded Development-signed app, recording any replacement's source/build/signing identity
+separately. Store-package runtime acceptance remains unclaimed. Complete cold, stale-session,
+no-target and unavailable-daemon Shortcuts cases, notification navigation, and
+direct live Claude status-line freshness. A saved-reference Shortcuts invocation
+for a terminated session had not returned a verified result when the Mac locked;
+it was cancelled, and remaining UI work awaits unlock. Physical deck-button
+approvals, sleep/wake recovery and credential-store identity across both
+handovers are not established by the measurements above. Do not change the
+submission notes' acceptance status to complete on the strength of the warm
+fixture alone.
+
+Local evidence is retained under `diagnostics/release597-*`, with Store package
+identity/signature records under `diagnostics/apple-candidate-39812413109/`.
+These private diagnostics are not committed. Rollback material remains in
+`diagnostics/release597-baseline/`: `AgentDeck-before.zip`, the prior app bundle,
+`identity.json`, `apple-preferences.plist`, `node-settings.json`,
+`daemon-launchagent.plist` and `codex-config.toml`. Use the recorded previous
+CLI target and supported daemon lifecycle when restoring; preserve the current
+user data and do not publish private absolute paths or credential files.
+
+After the screen locked, the fixture-pinned QA app, local fixture server and
+Codex test terminal were closed. The installed Development-signed candidate
+and rollback bundle remain available; the CLI candidate continues serving 9120
+as PID 59132, build `84a9de8e009e`. Reopen the app normally for further testing;
+the synthetic endpoint was supplied only as a launch argument. No test
+notification or unanswered approval was intentionally left active.
+
+The final document-only follow-up passed the changed-area documentation,
+catalog, mirror and submission checks, plus all 12 release-note tests. Its three
+macOS What's New blocks contain 1,023 English, 596 Korean and 540 Japanese
+characters; the copy-ready macOS Review Notes block contains 3,712 characters.
+All are below the 4,000-character field limit. Native executable checks above
+belong to clean source `2121b334`; only documentation and its receipt were
+changed afterward.
+
+#### Additional Store export and MacBook verification — 2026-10-23
+
+A separate macOS-only export from the same source
+`2121b3345c3ea12c7c20f12b0f33d4fba64e8dcd` succeeded in
+[run 39816233165](https://github.com/puritysb/AgentDeck/actions/runs/39816233165),
+using Xcode 26.3 (17C529), `platform=macos`, `upload=false`.
+The universal arm64/x86_64 Store package is **1.9.2 / 9001**, SHA-256
+`27a98e8c006761405f5e7f451bf9cba8f30aad582c2693e4a709e539265d7847`.
+Its Apple Distribution app and 3rd Party Mac Developer Installer package
+signatures use Serendipity Bound team QF36NDHYHD. Local strict signature,
+Sandbox, Store-invariant and Dot-exclusion checks passed. ASC upload, iOS and
+public-release jobs were skipped. This additional export has its own identity;
+separate 8901 Store and 2026102301 development-app records do not establish
+runtime acceptance of 9001.
+
+The [MacBook full receipt](verification/receipts/2026-10-22-2121b33-macbook.json)
+covers the same clean source on arm64 Node 26.8.1: 25 automated gates passed,
+Windows was locally skipped, and all three lab gates remain unattested.
+Final CI for source 2121b334 passed 13 jobs with one conditional TTGO skip;
+the Windows Node 26 job passed its isolated retry after two Git Bash timeouts.
+[Fresh ASC status](https://github.com/puritysb/AgentDeck/actions/runs/39813543247)
+still showed macOS 1.9.0 public, macOS 1.9.1 / 8601 VALID and IN_REVIEW with
+AFTER_APPROVAL, and iOS 1.9.1 / 8501 public; no review state was changed.
+
+An SSH attempt to create a Development-signed derivative of 9001 failed despite
+matching valid profile, certificate and target registration: codesign returned
+`errSecInternalComponent`, keychain inspection returned `User interaction is
+not allowed`, and `launchctl asuser` returned `Operation not permitted`.
+This attempt produced no development archive and installed or launched no app.
+It does not invalidate the separately installed Development build 2026102301 or
+its recorded observations. Creating the additional 9001-derived execution
+artifact required local logged-in keychain access and the bundled
+signing/comparison helpers; that step subsequently succeeded as recorded below.
+Machine-specific input paths are in its README.
+The user chose to hand off this signing step for execution on Mac Studio;
+the inputs, helpers and README have been copied there and their hashes checked.
+
+The [new draft bundle](https://github.com/puritysb/AgentDeck/releases/tag/untagged-68b66024d9a137399dc9),
+retrieval identifier `candidate-security-patch-2121b334`, preserves 16 assets:
+the original 9001 Store package, extracted Store app, four retained npm tarballs,
+new and historical receipts, manifest/checksums, README, signing/comparison
+helpers and evidence. All 16 assets were downloaded again into an empty
+directory: GitHub API digests and original bytes matched, and all 15 entries
+in `SHA256SUMS` passed. The release remains `draft=true`, `published_at=null`,
+with no corresponding Git tag. Keep the original Store package and extracted
+Store-signed app unchanged; local execution requires the separately
+Development-signed copy. The earlier npm tarballs retain their e21b817 source
+and accepted hashes; they were not repacked.
+
+#### Store 9001 local execution and timeline responsiveness — 2026-10-23
+
+Mac Studio successfully created and installed a separate Development-signed
+derivative of Store build **1.9.2 / 9001** using the retained signing helper.
+The original Store app remains unchanged and passes its distribution archive
+gate. The derivative uses the registered Mac Studio provisioning profile and
+Apple Development certificate, preserves Sandbox and all executable entitlements,
+and does not enable `get-task-allow`. Strict/deep code-signature verification
+passed. The comparison helper found no differences in 21 regular resource files
+or either architecture's non-signature Mach-O sections. Its ZIP SHA-256 is
+`c9d3d53c372618b1865835aa05148975acd9c2aae9edbfa0737a04ea85113d36`.
+The previous Development app was preserved as a verified ZIP before replacement.
+
+The installed canonical app launched, connected to the existing Node owner and
+displayed live sessions, usage and the Integrations settings. Subsequent automated
+UI reads and input attempts repeatedly exceeded 30 seconds, including after a fresh launch. Two
+process samples placed approximately half of the main-thread samples in the
+timeline's lazy-row rendering path. Disassembly of the exact stripped 9001
+binary identified `TimelineStripView.swift`'s row closure; each row re-read a
+computed property that regrouped and classified the complete timeline. Host
+load was high, but this repeated app work is independently evidenced. The QA
+app was stopped after capture; the Node owner and connected hardware were kept
+running. These observations establish failed automated UI access; they do not
+establish its cause, manual input latency or a deadlock.
+
+The correction computes one immutable timeline snapshot per body evaluation
+and shares it with deferred rows, detail panels and scroll callbacks. It retains
+pre-display-filter task closures and refreshes on same-count response updates.
+The local Debug build passed the new regression tests, and a new process sample
+showed that the repeated grouping path was no longer a leading cost. Automated
+UI access initially still timed out. After unlock, navigation through the
+Settings gear, Dashboard and Connection UI succeeded in Debug. Manual dashboard
+and Settings latency has not been measured. The Release and Debug samples differ
+in build mode and host load and do not establish a speed improvement percentage or resolution
+of the UI access failure.
+The replacement source verification and signed candidate are recorded below;
+8901 and 9001 remain evidence for their original source only.
+Local signing, equivalence, installation and failure diagnostics are retained
+under `diagnostics/release597-candidate-9001/` and
+`diagnostics/apple-xcode/20261023-073946/`.
+
+#### Store 9101 verification and local acceptance 2026-10-23
+
+The timeline snapshot correction is committed as
+`5c87f1a5e8eb22b1d5dd0d1cb928c3d1bc4cdee2`. Its clean-source
+[full verification receipt](verification/receipts/2026-10-22-5c87f1a.json)
+records **25 automated gates passed** on arm64 Node 26.5.0 in 28 minutes
+22 seconds. Windows is a local platform skip; ESP32 Robot is explicitly skipped
+because this candidate delivers no firmware. The `device-deploy` and
+`swift-codex-live` manual gates remain unattested. Source CI also passed:
+5 Main CI jobs, 6 Apple jobs, Design System and ESP32 simulator. These source
+checks do not complete the runtime cases below.
+
+The macOS-only, `upload=false`
+[release run 39870567655](https://github.com/puritysb/AgentDeck/actions/runs/39870567655)
+produced **1.9.2 / 9101**, artifact `apple-macos-1.9.2-91-1`. Its downloaded ZIP
+matched GitHub's digest. The original PKG SHA-256 is
+`a1c7e7d3d0d003cedcac95f3e1aa9fb5447ecc63ec269a2acbd990e94c89102c`;
+the extracted Store app ZIP SHA-256 is
+`16b2b37affcc4372f6281349852eb4dae400e418d6b9340650a65cbef7686e61`.
+The original Apple Distribution app passed strict/deep signature verification,
+the Store archive gate and Dot exclusion. The separate Mac Studio
+Development-signed derivative preserved Sandbox, full entitlements and
+`get-task-allow=false`; its registered device/profile/certificate checks passed.
+All 21 regular resource files and both architectures' normalized non-signature
+Mach-O bytes matched. The derivative ZIP SHA-256 is
+`598743c53a2e63567094b2d9063142e2f8f70ce2ea8e404906f6b7229ffdc671`.
+The original Store artifacts remain unchanged. Installation at the canonical
+app path matched the prepared derivative; the previous Debug app was backed up
+and the existing Node daemon PID remained unchanged.
+
+| 9101 runtime check | Measured result and limit |
+| --- | --- |
+| Ordinary launch and UI access | The installed derivative connected to the existing Node owner and its dashboard was read successfully once. Subsequent automated AgentDeck accessibility reads and input attempts repeatedly timed out at 30 seconds, while Shortcuts and System Settings access completed promptly. Later, the 9101 Settings gear, Dashboard and Connection UI were operated successfully several times while Swift owned the daemon. The earlier Node-owner timeouts are intermittent observations of unresolved cause; neither the later success nor RealityKit frame-pacing waits in process samples establish their cause or a deadlock. |
+| Initial cold Shortcuts attempt | The CLI watchdog expired at 25.09 seconds, but framework logs show List Waiting Sessions and Count completed successfully after 2.36 seconds. A subsequent warm run waited at the output security prompt and completed after Allow Always. That phase sequence supports an output-permission wait for the first cold attempt; the watchdog result is not evidence of an AgentDeck snapshot timeout. |
+| Authorized cold Shortcuts | With no AgentDeck app process running beforehand, List Waiting Sessions plus Count exited successfully in **2.92 seconds**, returned **0** for the empty waiting-session list and launched the canonical 9101 app as new PID **99417**. The Node owner remained PID 59132. This verifies cold List/Count and process launch, not Open Session, dashboard navigation or a nonempty waiting roster. |
+| Saved reference after session termination | With the third-round fixture, selecting B and running the saved shortcut first displayed `TIMELINE · QA Attention B`. After B terminated, running the same saved shortcut opened the OS Shortcuts Session picker with an empty list and Done disabled; it was cancelled. A was not selected automatically. At that saved-reference checkpoint, the fixture had recorded zero mutations and hardware focus was A. This verifies Open with no selectable live target in that fixture. |
+| Stale and missing roster | After fixture roster updates were paused for 21 seconds, List Waiting Sessions plus Count returned the expected exit 1 in **8.56 seconds**, with an explicit unavailable/out-of-date error and no output. Disconnecting the app to produce a nil roster returned the same error, exit 1 and no output in **8.46 seconds**. Neither case became a successful count of zero. These exercise stale and absent roster handling; the production daemon was not stopped. |
+| Direct Swift Claude status line | The canonical 9101 app, PID **99417**, initially used fallback port 9121 and then reclaimed 9120. A real interactive Claude TTY turn completed, and its prompt and reply appeared in the Dashboard timeline. The post-response receipt recorded a fresh, live `statusline` source, a matching session ID and receipt after the turn started. It captured `/health.claudeUsage` source and freshness metadata, which omits numeric windows. A live status-line reading establishes that at least one valid numeric `rate_limits` window was accepted; the individual 5-hour/7-day values and their display were not captured. |
+| Notification permission and delivery | Notifications were enabled and the app displayed “Notifications are on”. They remain enabled at the user's request. OS logs confirmed registration and delivery to Notification Center history; banners and sound were suppressed with `resolutionReason: display shared`. Posting and history delivery succeeded despite that presentation suppression. |
+| System notification click | The user clicked the actual macOS `QA Attention B` notification. The app accessibility tree changed from `TIMELINE · QA Attention A` to `TIMELINE · QA Attention B`; OS logs recorded the default response at **09:11:45 KST** and app activation. The fixture recorded **zero incoming commands only within the callback window [09:11:44, 09:11:47) KST**. The complete round contained **16 `focus_session` commands** from the user's separate in-app card interactions, so the round as a whole was not command-free. |
+| Return to Node ownership | Supported `agentdeck daemon start --no-build` exited 0. After Swift stood down at **2026-10-23T00:00:19.770Z**, the 00:00:41.177Z health receipt confirmed Node PID **42253**, build `84a9de8e009e`, on port **9120**, with `isSwift=false`, `loopbackOnly=false` and `noDeviceModules=false`. This records restored ownership and posture; the earlier handover timing and continuity limits remain as recorded. |
+
+At this checkpoint, acceptance remained partial. The requested Shortcuts cases and actual system
+notification click passed within the measured scope above: fresh waiting-empty
+is covered by cold List/Count, Open with no selectable target by terminated B,
+and unavailable results by the stale and nil-roster cases. Direct Swift
+status-line freshness and the observed Settings/Dashboard/Connection
+interactions also passed. At least one valid numeric Claude usage window was
+accepted, but the receipt captured only source and freshness metadata, so the
+individual 5-hour/7-day values and their display were still unverified. The earlier
+intermittent Node-owner accessibility timeouts remain unresolved and separate
+from the resolved Shortcuts output prompt.
+Earlier physical deck-button, sleep/wake and credential-store continuity gaps
+remain open; the new observations do not close them.
+
+After the fixture reset, the app reconnected to Node on 9120 and the cleanup
+readback showed eight real sessions, the QA timeline filter cleared and the
+fixture shut down. Node PID **42253**, build `84a9de8e009e`, remained the owner.
+Notifications stayed enabled at the user's request.
+
+The read-only ASC check at **08:28 KST on October 23** found the prior state
+unchanged: macOS 1.9.1 / 8601 remained in review and iOS 1.9.1 remained released.
+No 1.9.2 upload, submission or public release occurred. Candidate provenance,
+signing, comparison and installation receipts, plus
+`cold-shortcuts-authorized-probe.json`, `shortcuts-framework-findings.json`,
+`claude-statusline-tty-after-response.json`, `owner-restore-current.json`,
+`runtime-acceptance.json`, `stale-roster-shortcut.json` and
+`missing-roster-shortcut.json`,
+are retained under `diagnostics/release597-candidate-5c87f1a5/`. The local
+diagnostics are not committed. Release/Debug and host-load differences prevent
+treating the process samples as a measured performance improvement percentage.
+
+#### macOS 1.9.2 authorization and acceptance follow-up 2026-10-23
+
+The user authorized uploading **macOS 1.9.2**, replacing the existing macOS
+**1.9.1** review submission with it, and releasing automatically after Apple
+approval. This retains the already allocated 1.9.2 patch version; it allocates
+no new version and includes neither iOS submission nor npm publication.
+Authorization is recorded separately from delivery: **no 1.9.2 upload or
+submission had occurred at this checkpoint**.
+
+The **09:27 KST** [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39878219953)
+still reported macOS **1.9.1 IN_REVIEW**, with build **8601 VALID**. The portal's
+review details showed the October 14 submission still in review and displayed
+no reviewer message. The existing review had not yet been replaced.
+
+The follow-up at **2026-10-23T00:38:08Z** captured numeric Claude usage directly
+from the Swift owner, PID **99417**, on port **9120**. A health → usage → health
+probe matched the test session at both ends, reported the same fresh, live
+status-line snapshot, and recorded **5-hour usage 33%** and **7-day usage 9%**.
+This closes the numeric-receipt gap above. The earlier receipt contained only
+health metadata; its missing numeric fields did not establish an upstream
+omission. Dashboard gauge rendering remains unverified: Claude was unchecked
+in the user's existing **Displayed providers** selection. The user asked about
+the status-line integration's terms; the display preference remains unchanged.
+That hidden row is consistent with the
+saved display preference, not evidence of a quota-ingestion failure.
+
+After Node stopped, the same Swift app automatically moved from fallback port
+9121 to 9120 in approximately **142 seconds**, including the existing
+**120-second bind cooldown**. This is eventual recovery, not seamless handover;
+the earlier four-second module-teardown timeout remains a separate caveat.
+The runtime pairing-token comparison matched between Node and Swift, without
+publishing the token or its fingerprint. A read-only follow-up at
+**2026-10-23T00:46:33Z** also verified that the Node and sandboxed Swift
+`auth-token` files, normalized according to their production readers, matched
+each other, the pre-handover runtime value and the restored Node owner's value.
+Neither process used a data-directory override. This closes the disk continuity
+gap for that handover; cold launch, reboot, sleep/wake and other credential
+stores remain outside this measurement. The sanitized receipt is
+`diagnostics/release597-candidate-5c87f1a5/credential-store-continuity.json`.
+
+The earlier 30-second accessibility timeouts still have no established cause.
+Later automated operations with the same app PID while connected to Node
+completed in **2–6 seconds**; those are tool-operation durations, not measured
+UI input latency or proof that the intermittent issue is resolved. Physical
+deck-button and sleep/wake checks were **skipped** because the user could not
+perform those actions at the time. They remain unverified, not passed or
+waived, and release authorization does not change that evidence status.
+
+The sanitized numeric receipt is
+`diagnostics/release597-candidate-5c87f1a5/swift-numeric-usage-followup-matched.json`.
+The existing source, archive and signed-derivative checks remain applicable;
+this follow-up adds runtime observations and authorization without changing
+the candidate's executable source.
+
+#### macOS 1.9.2 delivery 2026-10-23
+
+**Submitted, not yet public:** at **10:13 KST**, the portal confirmed
+**macOS 1.9.2 / 9201 Waiting for Review**, submission
+`f8ec7cb8-636e-4c1c-8026-f67a8fe4c582`. The previous macOS 1.9.1 / 8601
+submission was withdrawn after 9201 had become **VALID**. English, Korean and
+Japanese What's New and the macOS review Notes were saved and read back after
+a page reload, exactly matching their copy-ready source blocks. Automatic
+release after approval, immediate availability to all users and existing
+ratings were retained. iOS 1.9.1 remains public; no iOS, npm, firmware or plugin
+delivery was performed. Apple has not provided a reason for the old review's
+delay in the observed portal; the replacement does not establish a faster
+review schedule.
+
+The [post-submission ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39882876721)
+at **10:14:52 KST** independently confirmed version 1.9.2
+`WAITING_FOR_REVIEW` / `AFTER_APPROVAL`, the new submission's timestamp
+**10:13:16.561 KST**, and build 9201 `VALID`. This readback lists versions and
+builds separately; the submitted version's attachment to 9201 was verified in
+the portal. Public macOS remains 1.9.0 and public iOS remains 1.9.1.
+
+The macOS-only [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+archived source `6d1b3238be656b49c45c8c8823f9c59ae3cfa4f0` and succeeded.
+Artifact `apple-macos-1.9.2-92-1` matched GitHub's downloaded ZIP digest. Package
+and app signatures, both architectures' strict checks, sandbox/entitlements,
+the final App Store archive gate and Dot exclusion passed. The
+[pre-submission ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
+confirmed build `db8a35ec-9f44-4df5-861b-361bb24bf79d` as **VALID**; upload was
+recorded at **01:01:32 UTC**. No Apple tag or GitHub Release was created for
+this single-platform delivery.
+
+The retained Store package SHA-256 is
+`3b4a230eb9321daea4f98dd96a595cc1d5939ecfe6667618af36032cf860283d`;
+the GitHub artifact ZIP SHA-256 is
+`d33419c17b27d5d26d5d593b1cb0fa7ef89d565a306966709f471dc03c636dee`.
+
+Executable source/build inputs match the full-verified `5c87f1a5` candidate,
+but **9101 and 9201 are not identical binaries**. Eighteen of 21 regular
+non-signing files are byte-identical; the remaining changes are the build
+number and equivalent AppIntents JSON serialization. The only function whose
+length changed on either architecture is `ApmeStore.getSampleDict(_:)`
+(arm64 +16 bytes, x86_64 +48 bytes). Its compiled register/branch layout differs;
+whole-program semantic equivalence was not proven. Matching source and toolchain
+are consistent with compiler layout variation, not proof of its precise cause.
+
+For separate **9201** runtime evidence, a Development-signed copy retained
+the Store artifact's entitlements and passed the signing-only byte-equivalence
+check on both architectures. Installed at `/Applications/AgentDeck.app`, it
+passed cold Shortcuts **List Waiting Sessions + Count** in **3.56 seconds**,
+returning **0** and starting app PID **23875** while Node owner **69242** stayed
+on 9120. Dashboard, Settings, its Dashboard pane and return to the dashboard
+also completed. Display preferences were preserved. This is additional smoke
+coverage of 9201, not a rerun of every 9101 acceptance case. Physical buttons,
+sleep/wake and the unexplained intermittent UI-access timeout remain recorded
+limitations.
+
+Retained local evidence: `diagnostics/release597-delivery-9201/` contains
+artifact/ASC validation, binary analysis and the submission screenshot;
+`diagnostics/release597-delivery-9201-runtime/` contains the derivative comparison,
+installation, cold-Shortcuts and UI smoke receipts, plus the previous 9101 backup.
+
 ### 2026-10-14 iDotMatrix readability correction
 
 Version decision recorded before manifest edits. App Store Connect's app list

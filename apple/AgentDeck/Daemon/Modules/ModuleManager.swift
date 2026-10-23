@@ -24,8 +24,9 @@ final class ModuleManager {
         modules.append(module)
     }
 
-    func startAll() async {
+    func startAll(shouldContinue: @DaemonActor @Sendable () -> Bool = { true }) async {
         for module in modules {
+            guard !Task.isCancelled, shouldContinue() else { return }
             DaemonLogger.shared.debug("Modules", "Starting \(module.name)")
             await module.start()
         }

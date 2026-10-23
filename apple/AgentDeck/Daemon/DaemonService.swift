@@ -87,7 +87,30 @@ final class DaemonService: ObservableObject {
         }
     }
 
-    private var server: DaemonServer?
+    private var server: (any InProcessDaemonRuntime)?
+
+    struct LocalStartupConfiguration {
+        var port: Int
+        var posture: DaemonPosture
+    }
+
+    struct LocalStartupDependencies {
+        var teardownTimeout: Double = 8
+        var configuration: @MainActor () -> LocalStartupConfiguration = {
+            .init(port: AppPreferences.shared.daemonPort, posture: .init(
+                loopbackOnly: AppPreferences.shared.daemonLoopbackOnly,
+                noDeviceModules: AppPreferences.shared.daemonNoDeviceModules))
+        }
+        var makeDaemon: @MainActor (Int?, DaemonPosture) async throws -> any InProcessDaemonRuntime = {
+            try await DaemonServer(port: $0, debug: false, posture: $1)
+        }
+    }
+    private let localStartup: LocalStartupDependencies
+    private var localStartupTask: Task<Void, Never>?
+    private var localStartupGeneration: UInt64 = 0
+    /// Kept even after a bounded wait expires. A later retry must still wait
+    /// for the old startup and teardown before touching the same devices.
+    private var localTeardownTask: Task<Void, Never>?
 
     private var isStarting = false
     private var readyUrl: String?
@@ -185,7 +208,7 @@ final class DaemonService: ObservableObject {
     /// (set by auto-fallback when the configured port is stuck) takes
     /// precedence; otherwise falls back to user's Settings value.
     private var effectivePort: Int {
-        sessionOverridePort ?? AppPreferences.shared.daemonPort
+        sessionOverridePort ?? localStartup.configuration().port
     }
 
     nonisolated static func promotionTargetPort(currentPort: UInt16, effectivePort: Int) -> Int {
@@ -226,8 +249,10 @@ final class DaemonService: ObservableObject {
         return next
     }
 
-    init(automaticallyStart: Bool = true, externalAttach: ExternalAttachDependencies = .init()) {
+    init(automaticallyStart: Bool = true, externalAttach: ExternalAttachDependencies = .init(),
+         localStartup: LocalStartupDependencies = .init()) {
         self.externalAttach = externalAttach
+        self.localStartup = localStartup
         guard automaticallyStart else { return }
         // Hosted XCTest launches the app too. Tests must not acquire the live
         // daemon, rewrite integrations or probe connected devices at startup.
@@ -253,94 +278,158 @@ final class DaemonService: ObservableObject {
             return
         }
         invalidateExternalAttach()
+        localStartupGeneration &+= 1
+        let generation = localStartupGeneration
         isStarting = true
         errorMessage = nil
         bindFailureReason = nil; blockingProcesses = []
 
-        let port = effectivePort
-        Task {
-            defer { self.isStarting = false }
+        // Snapshot Settings before the first suspension; restart supplies the
+        // next snapshot and invalidates every continuation from this attempt.
+        let configuration = localStartup.configuration()
+        let requestedPort = sessionOverridePort ?? configuration.port
+        let usingDefault = requestedPort == AppPreferences.defaultDaemonPort && sessionOverridePort == nil
+        let portArg: Int? = usingDefault ? nil : requestedPort
+        let teardown = localTeardownTask
+        localStartupTask = Task { [self] in
+            defer {
+                if generation == localStartupGeneration {
+                    isStarting = false
+                    localStartupTask = nil
+                }
+            }
+            guard localStartupIsCurrent(generation),
+                  await waitForLocalTeardown(teardown), localStartupIsCurrent(generation) else { return }
             do {
-                // Pass nil only when we're binding the default and the user
-                // didn't force an override; that preserves the singleton-guard
-                // path (health probe + stale registry cleanup). Otherwise we
-                // pass an explicit port and skip that path.
-                let usingDefault = (port == AppPreferences.defaultDaemonPort && sessionOverridePort == nil)
-                let portArg: Int? = usingDefault ? nil : port
-                // Resolved once per start, so the bind, the Bonjour ad, the
-                // module set, and the startup log cannot disagree. A Settings
-                // change takes effect through DaemonService.restart().
-                let posture = DaemonPosture(
-                    loopbackOnly: AppPreferences.shared.daemonLoopbackOnly,
-                    noDeviceModules: AppPreferences.shared.daemonNoDeviceModules
-                )
-                let daemon = try await DaemonServer(port: portArg, debug: false, posture: posture)
-                await daemon.setShutdownHandler { [weak self] in
-                    Task { @MainActor [weak self] in
-                        guard let self else { return }
-                        DaemonLogger.shared.info("In-process daemon shutdown completed, transitioning to external daemon...")
-                        self.server = nil
-                        self.isRunning = false
-                        self.port = 0
-                        self.readyUrl = nil
+                let daemon = try await localStartup.makeDaemon(portArg, configuration.posture)
+                // An unstarted instance has no services to tear down. In
+                // particular, do not let its shutdown touch shared registry data.
+                guard localStartupIsCurrent(generation) else { return }
+                await daemon.setShutdownHandler { [weak self, weak daemon] in
+                    Task { @MainActor in
+                        guard let self, let daemon,
+                              self.owns(daemon, generation: generation) else { return }
+                        let transition = self.beginLocalTeardown()
+                        guard await self.waitForLocalTeardown(self.localTeardownTask),
+                              transition == self.localStartupGeneration else { return }
                         await self.connectToExternalDaemon()
                     }
                 }
-                await daemon.setStandDownRequestedHandler { [weak self] in
-                    Task { @MainActor in self?.standDownForTakeover() }
-                }
-                self.server = daemon
-                self.inProcessDaemonEpoch += 1
-                self.port = daemon.port
-                self.isRunning = true
-                self.changeOwnership(.tookOwnership)
-                self.localFailureCount = 0
-                self.externalFailureCount = 0
-                self.errorMessage = nil
-
-                // Wire listener-failed callback BEFORE starting — catches POST-bind
-                // listener failures (network changes, system-sleep edge cases).
-                // Pre-bind/EADDRINUSE now surfaces as a throw from startServices().
-                await daemon.setListenerFailedHandler { [weak self] error in
-                    Task { @MainActor [weak self] in
-                        await self?.handleListenerFailure(error: error)
+                guard localStartupIsCurrent(generation) else { return }
+                await daemon.setStandDownRequestedHandler { [weak self, weak daemon] in
+                    Task { @MainActor in
+                        guard let self, let daemon,
+                              self.owns(daemon, generation: generation) else { return }
+                        self.standDownForTakeover()
                     }
                 }
+                guard localStartupIsCurrent(generation) else { return }
+                await daemon.setListenerFailedHandler { [weak self, weak daemon] error in
+                    Task { @MainActor in
+                        guard let self, let daemon,
+                              self.owns(daemon, generation: generation) else { return }
+                        await self.handleListenerFailure(error: error)
+                    }
+                }
+                guard localStartupIsCurrent(generation) else { return }
+                server = daemon
+                inProcessDaemonEpoch &+= 1
+                port = daemon.port
+                isRunning = true
+                changeOwnership(.tookOwnership)
+                localFailureCount = 0
+                externalFailureCount = 0
+                errorMessage = nil
 
-                // Run daemon (awaits NWListener `.ready`; throws on bind failure).
                 do {
-                    try await daemon.startServices { [weak self] in
-                        await self?.publishDashboardReady(daemon)
+                    try await daemon.startServices { [weak self, weak daemon] in
+                        guard let daemon else { return }
+                        await self?.publishDashboardReady(daemon, generation: generation)
                     }
                 } catch {
-                    // Bind failed — tear down partial state and route to startup-failure handler.
-                    await daemon.shutdown()
-                    self.server = nil
-                    self.isRunning = false
-                    self.port = 0
-                    self.readyUrl = nil
-                    await self.handleStartupBindFailure(error: error, attemptedPort: Int(daemon.port))
+                    // A stop/restart owns cleanup after cancellation. The old
+                    // task must finish without clearing or stopping its successor.
+                    guard owns(daemon, generation: generation) else { return }
+                    clearLocalOwner()
+                    let cleanup = Task { await daemon.shutdown() }
+                    localTeardownTask = cleanup
+                    guard await waitForLocalTeardown(cleanup), localStartupIsCurrent(generation) else { return }
+                    await handleStartupBindFailure(error: error, attemptedPort: Int(daemon.port))
                     return
                 }
-                self.startHealthMonitor()
-
+                guard owns(daemon, generation: generation) else { return }
+                startHealthMonitor()
             } catch DaemonError.alreadyRunning(let port) {
-                // Another daemon (e.g. Node.js) is running — connect as client instead
-                await self.connectToExternalDaemon(port: port)
+                guard localStartupIsCurrent(generation) else { return }
+                await connectToExternalDaemon(port: port)
             } catch {
-                self.server = nil
-                self.isRunning = false
-                self.changeOwnership(.toreDown)
-                self.port = 0
-                self.readyUrl = nil
-                self.errorMessage = "Daemon failed: \(error.localizedDescription)"
-                DaemonLogger.shared.error(self.errorMessage!)
+                guard localStartupIsCurrent(generation) else { return }
+                clearLocalOwner()
+                errorMessage = "Daemon failed: \(error.localizedDescription)"
+                DaemonLogger.shared.error(errorMessage!)
             }
         }
     }
 
-    private func publishDashboardReady(_ daemon: DaemonServer) {
-        guard server === daemon else { return }
+    private func localStartupIsCurrent(_ generation: UInt64) -> Bool {
+        !Task.isCancelled && generation == localStartupGeneration
+    }
+
+    private func owns(_ daemon: any InProcessDaemonRuntime, generation: UInt64) -> Bool {
+        localStartupIsCurrent(generation) && server === daemon
+    }
+
+    private func clearLocalOwner() {
+        server = nil
+        isRunning = false
+        changeOwnership(.toreDown)
+        port = 0
+        readyUrl = nil
+    }
+
+    private func waitForLocalTeardown(_ task: Task<Void, Never>?) async -> Bool {
+        guard let task else { return true }
+        let generation = localStartupGeneration
+        let timeout = localStartup.teardownTimeout
+        // Keep the budget's sleep alive when the caller is superseded. A
+        // cancelled caller would otherwise spin on its immediately throwing
+        // sleep until the deadline. This waiter remains bounded either way.
+        let waiter = Task {
+            await withBudget(seconds: timeout, "local startup and shutdown") { await task.value }
+        }
+        let completed = await waiter.value
+        if !completed, generation == localStartupGeneration {
+            errorMessage = "Previous daemon is still stopping. Retry after cleanup completes."
+        }
+        return completed
+    }
+
+    /// Invalidate synchronously before any actor hop. Only an instance that
+    /// entered startServices needs a join; a suspended factory can be discarded.
+    @discardableResult
+    private func beginLocalTeardown() -> UInt64 {
+        localStartupGeneration &+= 1
+        let startup = localStartupTask
+        startup?.cancel()
+        localStartupTask = nil
+        isStarting = false
+        let current = server
+        clearLocalOwner()
+        if let current {
+            let previous = localTeardownTask
+            localTeardownTask = Task {
+                await previous?.value
+                await startup?.value
+                await current.setShutdownHandler(nil)
+                await current.setStandDownRequestedHandler(nil)
+                await current.shutdown()
+            }
+        }
+        return localStartupGeneration
+    }
+
+    private func publishDashboardReady(_ daemon: any InProcessDaemonRuntime, generation: UInt64) {
+        guard owns(daemon, generation: generation) else { return }
         let wsUrl = "ws://127.0.0.1:\(daemon.port)"
         readyUrl = wsUrl
         listenerFailureRetries = 0
@@ -349,6 +438,9 @@ final class DaemonService: ObservableObject {
         DaemonLogger.shared.info("Daemon ready — dashboard can connect to \(wsUrl)")
         onReady?(wsUrl)
     }
+
+    /// A delayed dashboard connection must not pin an endpoint retired by stop.
+    func isCurrentReadyURL(_ url: String) -> Bool { readyUrl == url }
 
     /// Bounce only the OpenClaw Gateway adapter — leaves the daemon, session
     /// bridges, device modules, and WS server untouched. Use after OpenClaw
@@ -363,7 +455,9 @@ final class DaemonService: ObservableObject {
     /// after the user changes the daemon port in Settings. Clears any
     /// session-scoped fallback so the new user choice is honored exactly.
     func restart() async {
-        await stop()
+        let generation = beginStop()
+        guard await waitForLocalTeardown(localTeardownTask),
+              generation == localStartupGeneration else { return }
         listenerFailureRetries = 0
         squatterCleanupAttempted = false
         fallbackAttempted = false
@@ -379,17 +473,18 @@ final class DaemonService: ObservableObject {
 
     /// Stop daemon
     func stop() async {
+        beginStop()
+        await waitForLocalTeardown(localTeardownTask)
+    }
+
+    @discardableResult
+    private func beginStop() -> UInt64 {
         invalidateExternalAttach()
         takeoverRetryTask?.cancel()
         takeoverRetryTask = nil
         healthMonitorTask?.cancel()
         healthMonitorTask = nil
-        await server?.shutdown()
-        server = nil
-        isRunning = false
-        changeOwnership(.toreDown)
-        port = 0
-        readyUrl = nil
+        return beginLocalTeardown()
     }
 
     /// Which port to look for an external daemon on.
@@ -464,11 +559,12 @@ final class DaemonService: ObservableObject {
     /// with no daemon has to be correct on its own terms, and the cost of being
     /// wrong is a port held until the app quits. `server = nil` alone is not a
     /// teardown; only `shutdown()` cancels the listener.
-    private func releaseInProcessDaemon() async {
-        guard let current = server else { return }
-        DaemonLogger.shared.info("Releasing in-process daemon on port \(port) before becoming a client")
-        server = nil
-        await withBudget(seconds: 8, "daemon release") { await current.shutdown() }
+    private func releaseInProcessDaemon() async -> Bool {
+        if server != nil {
+            DaemonLogger.shared.info("Releasing in-process daemon on port \(port) before becoming a client")
+            beginLocalTeardown()
+        }
+        return await waitForLocalTeardown(localTeardownTask)
     }
 
     private func invalidateExternalAttach() {
@@ -505,7 +601,7 @@ final class DaemonService: ObservableObject {
 
         guard var resolvedPort else {
             if abandonIfStale("port lookup") { return }
-            await self.releaseInProcessDaemon()
+            guard await self.releaseInProcessDaemon() else { return }
             if abandonIfStale("port lookup teardown") { return }
             self.isRunning = false
             self.changeOwnership(.toreDown)
@@ -596,7 +692,7 @@ final class DaemonService: ObservableObject {
             }
             if abandonIfStale("stale-registry check") { return }
             DaemonLogger.shared.info("External daemon on port \(resolvedPort) is stale — starting local daemon instead")
-            await self.releaseInProcessDaemon()
+            guard await self.releaseInProcessDaemon() else { return }
             if abandonIfStale("stale-registry teardown") { return }
             self.isRunning = false
             self.changeOwnership(.toreDown)
@@ -634,7 +730,7 @@ final class DaemonService: ObservableObject {
             // path that sent us here would send us here again.
             if abandonIfStale("ownership check") { return }
             DaemonLogger.shared.info("Daemon on port \(resolvedPort) belongs to another user — not attaching to it; starting our own daemon instead")
-            await self.releaseInProcessDaemon()
+            guard await self.releaseInProcessDaemon() else { return }
             if abandonIfStale("ownership teardown") { return }
             self.isRunning = false
             self.changeOwnership(.toreDown)
@@ -661,7 +757,7 @@ final class DaemonService: ObservableObject {
         // the fleet must not have to be re-provisioned to keep talking to us.
         if abandonIfStale("client handover") { return }
         let wsUrl = "ws://127.0.0.1:\(resolvedPort)"
-        await self.releaseInProcessDaemon()
+        guard await self.releaseInProcessDaemon() else { return }
         if abandonIfStale("client handover teardown") { return }
         AuthManager.shared.adoptPeerToken(health["pairingToken"] as? String)
         self.port = UInt16(resolvedPort)
@@ -678,7 +774,7 @@ final class DaemonService: ObservableObject {
     }
 
     private func syncResolvedPortState(actualPort: Int) {
-        let configuredPort = AppPreferences.shared.daemonPort
+        let configuredPort = localStartup.configuration().port
         sessionOverridePort = Self.resolvedSessionOverridePort(
             configuredPort: configuredPort,
             actualPort: actualPort
@@ -715,12 +811,9 @@ final class DaemonService: ObservableObject {
         }
         DaemonLogger.shared.error("Listener failure detected — tearing down and retrying: \(error)")
         let attemptedPort = Int(port)
-        await server?.shutdown()
-        server = nil
-        isRunning = false
-        changeOwnership(.toreDown)
-        port = 0
-        readyUrl = nil
+        let generation = beginLocalTeardown()
+        guard await waitForLocalTeardown(localTeardownTask),
+              generation == localStartupGeneration else { return }
         await retryOrFallback(error: error, attemptedPort: attemptedPort)
     }
 
@@ -733,14 +826,17 @@ final class DaemonService: ObservableObject {
     }
 
     /// Shared failure path: probe for external daemon → connect as client, else
-    /// exponential backoff retry (1s/2s/4s, max 3). On retry exhaustion, clear
-    /// daemon.json so stale entries don't leak to plugin/TUI clients.
+    /// exponential backoff retry (1s/2s/4s, max 3). Registry cleanup belongs to
+    /// the daemon instance that actually registered its listener.
     private func retryOrFallback(error: Error, attemptedPort: Int) async {
+        let generation = localStartupGeneration
+        guard localStartupIsCurrent(generation) else { return }
         let registry = SessionRegistry.shared
         let probePort = attemptedPort > 0 ? attemptedPort : AppPreferences.shared.daemonPort
         if attemptedPort > 0 { failedBindPortsAt[attemptedPort] = Date() }
-        if let health = await registry.probeDaemonHealth(port: probePort),
-           health["mode"] as? String == "daemon" {
+        let health = await registry.probeDaemonHealth(port: probePort)
+        guard localStartupIsCurrent(generation) else { return }
+        if health?["mode"] as? String == "daemon" {
             DaemonLogger.shared.info("Port \(probePort) held by healthy external daemon — switching to client mode")
             listenerFailureRetries = 0
             squatterCleanupAttempted = false
@@ -762,7 +858,8 @@ final class DaemonService: ObservableObject {
                 // (defer → isStarting=false) before we re-enter.
                 Task { @MainActor [weak self] in
                     try? await Task.sleep(for: .milliseconds(500))
-                    self?.start()
+                    guard let self, self.localStartupIsCurrent(generation) else { return }
+                    self.start()
                 }
                 return
             }
@@ -772,6 +869,7 @@ final class DaemonService: ObservableObject {
         let userExplicitPort = AppPreferences.shared.daemonPort
         let onDefault = (userExplicitPort == AppPreferences.defaultDaemonPort) && (sessionOverridePort == nil)
         let alt = await registry.findAvailablePort(excluding: failedBindPorts)
+        guard localStartupIsCurrent(generation) else { return }
         DaemonLogger.shared.info("retryOrFallback diag: userExplicitPort=\(userExplicitPort) onDefault=\(onDefault) fallbackAttempted=\(fallbackAttempted) squatterNothing=\(squatterCleanupFoundNothing) findAvailable=\(alt.map(String.init) ?? "nil") attemptedPort=\(attemptedPort)")
 
         // If squatter cleanup found no owned siblings AND we're on the default
@@ -788,7 +886,10 @@ final class DaemonService: ObservableObject {
             blockingProcesses = PortDiagnostics.collectBlockers(port: userExplicitPort)
             bindFailureReason = "Port \(userExplicitPort) is held by another process. Daemon started on fallback port \(altPort). Clean up the blocking process to restore port \(userExplicitPort)."
             isOnFallbackPort = true
-            Task { @MainActor [weak self] in self?.start() }
+            Task { @MainActor [weak self] in
+                guard let self, self.localStartupIsCurrent(generation) else { return }
+                self.start()
+            }
             return
         }
 
@@ -812,14 +913,16 @@ final class DaemonService: ObservableObject {
             // Retry budget exhausted. Try fallback port one more time (handles
             // the case where user-configured port or retry-loop scenarios
             // didn't match the fast-path above).
-            if onDefault, !fallbackAttempted,
-               let alt = await registry.findAvailablePort(excluding: failedBindPorts), alt != userExplicitPort {
+            if onDefault, !fallbackAttempted, let alt, alt != userExplicitPort {
                 fallbackAttempted = true
                 sessionOverridePort = alt
                 listenerFailureRetries = 0
                 squatterCleanupAttempted = false
                 DaemonLogger.shared.info("Port \(userExplicitPort) stuck after retries — falling back to \(alt)")
-                Task { @MainActor [weak self] in self?.start() }
+                Task { @MainActor [weak self] in
+                    guard let self, self.localStartupIsCurrent(generation) else { return }
+                    self.start()
+                }
                 return
             }
 
@@ -840,8 +943,8 @@ final class DaemonService: ObservableObject {
             DaemonLogger.shared.error("\(errorMessage!) — \(reason)")
             listenerFailureRetries = 0
             squatterCleanupAttempted = false
-            // Don't leave a stale daemon.json pointing at a port we never actually owned.
-            registry.removeDaemonInfo()
+            // DaemonServer removes only its own registry receipt during shutdown.
+            // A bind failure never licenses deleting another daemon's row.
             return
         }
 
@@ -850,7 +953,8 @@ final class DaemonService: ObservableObject {
         DaemonLogger.shared.info("Retrying daemon start in \(backoffSec)s (attempt \(listenerFailureRetries)/\(Self.maxListenerFailureRetries))")
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(backoffSec))
-            self?.start()
+            guard let self, self.localStartupIsCurrent(generation) else { return }
+            self.start()
         }
     }
 
@@ -979,14 +1083,16 @@ final class DaemonService: ObservableObject {
     private func reclaimCanonicalPortIfNeeded() async {
         guard isOnFallbackPort, !isStarting, !isReclaimingPort,
               isRunning, let current = server else { return }
-        let canonical = AppPreferences.shared.daemonPort
+        let generation = localStartupGeneration
+        let canonical = localStartup.configuration().port
         guard Int(port) != canonical else { return }
         isReclaimingPort = true
         defer { isReclaimingPort = false }
 
         let registry = SessionRegistry.shared
-        if let health = await registry.probeDaemonHealth(port: canonical, patient: true),
-           (health["mode"] as? String) == "daemon" {
+        let health = await registry.probeDaemonHealth(port: canonical, patient: true)
+        guard owns(current, generation: generation) else { return }
+        if let health, (health["mode"] as? String) == "daemon" {
             // Another user's daemon on the canonical port is not a hub to
             // concede to — standing down for it would trade a working hub for
             // a client session showing someone else's work. Keep the fallback
@@ -999,11 +1105,12 @@ final class DaemonService: ObservableObject {
                 return
             }
             DaemonLogger.shared.info("Healthy daemon reappeared on canonical port \(canonical) — standing down fallback-port hub (\(port)) to client mode")
-            await standDownServer(current)
+            guard await standDownServer(current) else { return }
             await connectToExternalDaemon(port: canonical)
             return
         }
-        guard await LocalPortProbe.status(port: canonical) == .notListening else { return }
+        let status = await LocalPortProbe.status(port: canonical)
+        guard owns(current, generation: generation), status == .notListening else { return }
         // No TCP listener does not guarantee NWListener can bind: NECP can
         // retain a reservation after listener cancellation. When
         // we've actually watched that happen recently, believe the listener over
@@ -1017,12 +1124,16 @@ final class DaemonService: ObservableObject {
             return
         }
         DaemonLogger.shared.info("Canonical port \(canonical) is free — reclaiming it from fallback port \(port)")
-        await standDownServer(current)
+        guard await standDownServer(current) else { return }
+        let transition = localStartupGeneration
         // Scheduled, not called inline: `start()` guards re-entry with
         // `isStarting` and clears it in its Task's `defer`, so a start() reached
         // from inside that Task is swallowed with no log and no retry. Hopping
         // first lets the defer run. (Same rule as the three other call sites.)
-        Task { @MainActor [weak self] in self?.start() }
+        Task { @MainActor [weak self] in
+            guard let self, self.localStartupIsCurrent(transition) else { return }
+            self.start()
+        }
     }
 
     /// Yield the canonical port to an incoming CLI (Node) daemon that requested
@@ -1045,7 +1156,7 @@ final class DaemonService: ObservableObject {
         DaemonLogger.shared.info("Stand-down requested by CLI daemon — yielding port \(port), becoming a client of \(canonical)")
         yieldUntil = Date().addingTimeInterval(Self.takeoverYieldSeconds)
         Task { @MainActor in
-            await standDownServer(current)
+            guard await standDownServer(current) else { return }
             await connectToExternalDaemon(port: canonical)
         }
     }
@@ -1055,12 +1166,10 @@ final class DaemonService: ObservableObject {
     /// connect targets the canonical port. Suppresses the server's onShutdown
     /// callback — that path auto-transitions to external-daemon mode, and the
     /// caller here chooses the next state itself.
-    private func standDownServer(_ current: DaemonServer) async {
-        await current.setShutdownHandler(nil)
-        server = nil
-        isRunning = false
-        port = 0
-        readyUrl = nil
+    private func standDownServer(_ current: any InProcessDaemonRuntime) async -> Bool {
+        guard server === current else { return false }
+        invalidateExternalAttach()
+        let generation = beginLocalTeardown()
         sessionOverridePort = nil
         fallbackAttempted = false
         // NOTE: failedBindPortsAt is deliberately NOT cleared here. It is
@@ -1076,7 +1185,8 @@ final class DaemonService: ObservableObject {
         // `isReclaimingPort` guard through a `defer` that a suspended await can
         // never reach. An unbounded wait here does not just delay the reclaim,
         // it permanently disables the retry that would have caught it.
-        await withBudget(seconds: 8, "daemon shutdown") { await current.shutdown() }
+        let completed = await waitForLocalTeardown(localTeardownTask)
+        return completed && generation == localStartupGeneration
     }
 
     // MARK: - Signal Handling

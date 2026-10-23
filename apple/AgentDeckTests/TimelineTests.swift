@@ -5,6 +5,98 @@ import XCTest
 
 final class TimelineTests: XCTestCase {
 
+    func testRenderSnapshotGroupsBusyHistoryOnceForDeferredRowReads() {
+        // Long Unicode prompts exercise the expensive lowercase/classifier
+        // path observed in the live dashboard's main-thread sample.
+        var entries = (0..<2000).map { index in
+            TimelineEntry(
+                ts: Double(index + 1) * 1000,
+                type: .chatStart,
+                raw: "Request \(index) " + String(repeating: "출시 상태를 확인하세요. ", count: 64),
+                sessionId: "session-\(index)"
+            )
+        }
+        var groupingCalls = 0
+        let snapshot = TimelineRenderSnapshot(entries: entries, groupEntries: { input in
+            groupingCalls += 1
+            return timelineDisplayGroupsForDashboard(groupConsecutive(input))
+        })
+        XCTAssertEqual(snapshot.groups.count, 2000)
+
+        // Lazy rows and scroll/detail callbacks outlive body evaluation.
+        // Reading their captured snapshot must neither regroup nor observe
+        // a different history after the source buffer changes.
+        let deferredRows = snapshot.groups.indices.map { index in
+            { () -> Double? in
+                XCTAssertEqual(snapshot.displayedEntries.count, snapshot.groups.count)
+                XCTAssertEqual(snapshot.groups[index].entry.id, snapshot.displayedEntries[index].id)
+                return snapshot.focusedGroup(at: index)?.entry.id
+            }
+        }
+        entries.removeAll()
+        for (index, readRow) in deferredRows.enumerated() {
+            XCTAssertEqual(readRow(), Double(index + 1) * 1000)
+        }
+        XCTAssertEqual(snapshot.focusedGroup(at: -1)?.entry.id, 2_000_000)
+        XCTAssertEqual(snapshot.focusedGroup(at: 2000)?.entry.id, 2_000_000)
+        XCTAssertEqual(groupingCalls, 1, "Row/detail/scroll reads must reuse the render's classification")
+    }
+
+    func testRenderSnapshotRefreshesSameCountResponseUpsertWithoutChangingPriorSnapshot() throws {
+        let start = TimelineEntry(ts: 1000, type: .chatStart, raw: "Inspect release", sessionId: "s", startedAt: 1000)
+        var entries = [start, TimelineEntry(
+            ts: 2000, type: .chatResponse, raw: "First reply", detail: "Original details", sessionId: "s", startedAt: 1000
+        )]
+        let first = TimelineRenderSnapshot(entries: entries)
+        entries[1] = TimelineEntry(
+            ts: 2000, type: .chatResponse, raw: "Updated reply", detail: "Revised details", sessionId: "s", startedAt: 1000
+        )
+        let updated = TimelineRenderSnapshot(entries: entries)
+
+        XCTAssertEqual(first.groups.count, 1)
+        XCTAssertEqual(updated.groups.count, first.groups.count)
+        XCTAssertEqual(updated.groups.map(\.id), first.groups.map(\.id))
+        XCTAssertEqual(try XCTUnwrap(first.focusedGroup(at: -1)).mergedResponse?.detail, "Original details")
+        XCTAssertEqual(try XCTUnwrap(updated.focusedGroup(at: -1)).mergedResponse?.detail, "Revised details")
+    }
+
+    func testRenderSnapshotRetainsFilteredTaskClosureForHeaderAndStopsSpinner() throws {
+        let header = TimelineEntry(ts: 1000, type: .taskStart, raw: "Verify release", sessionId: "s", taskId: "task")
+        let closure = TimelineEntry(ts: 2000, type: .taskEnd, raw: "Completed", sessionId: "s", taskId: "task", taskScore: 0.9)
+        let other = TimelineEntry(ts: 3000, type: .chatStart, raw: "Other session", sessionId: "other")
+        let snapshot = TimelineRenderSnapshot(entries: [header, closure, other], filter: TimelineSessionFilter(
+            sessionId: "s", projectName: nil, agentType: nil
+        ))
+
+        XCTAssertEqual(snapshot.entries.count, 3)
+        XCTAssertEqual(snapshot.filteredEntries.map(\.id), [1000, 2000])
+        XCTAssertEqual(snapshot.groups.map(\.entry.type), [.taskStart])
+        let displayed = try XCTUnwrap(snapshot.focusedGroup(at: 0))
+        let task = timelineTaskHeaderDisplay(for: displayed.entry, in: snapshot.filteredEntries)
+        XCTAssertTrue(task.closed)
+        XCTAssertEqual(task.taskScore, 0.9)
+        XCTAssertFalse(timelineIsRotatingEntry(displayed.entry, siblings: snapshot.filteredEntries))
+    }
+
+    func testRenderSnapshotReplacesSessionFilterAndHandlesEmptySelection() {
+        let entries = [
+            TimelineEntry(ts: 1000, type: .chatStart, raw: "First request", sessionId: "one"),
+            TimelineEntry(ts: 2000, type: .chatStart, raw: "Second request", sessionId: "two")
+        ]
+        let first = TimelineRenderSnapshot(entries: entries, filter: TimelineSessionFilter(
+            sessionId: "observed:codex:one", projectName: nil, agentType: nil
+        ))
+        let second = TimelineRenderSnapshot(entries: entries, filter: TimelineSessionFilter(
+            sessionId: "observed:codex:two", projectName: nil, agentType: nil
+        ))
+        let empty = TimelineRenderSnapshot(entries: [], filter: nil)
+        XCTAssertEqual(first.focusedGroup(at: -1)?.entry.sessionId, "one")
+        XCTAssertEqual(second.focusedGroup(at: 10)?.entry.sessionId, "two")
+        XCTAssertNil(empty.focusedGroup(at: -1))
+        XCTAssertNil(empty.focusedGroup(at: 0))
+        XCTAssertTrue(empty.displayedEntries.isEmpty)
+    }
+
     @MainActor
     func testDashboardInspectionIsLocalAndIncludesOnlyDeclaredFoldMembers() {
         var state = DashboardState()

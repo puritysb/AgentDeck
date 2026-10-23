@@ -1058,6 +1058,10 @@ final class DaemonServer {
     private let httpServer = HTTPServer()
     private let stateMachine = StateMachine()
     private let registry = SessionRegistry.shared
+    /// Shutdown can interleave with any startup await on the daemon actor.
+    /// Once stopped, this instance must never bind or start another subsystem.
+    private var startupStopped = false
+    private var registeredDaemonInfo: DaemonInfo?
     private let auth = AuthManager.shared
     private let portableWeather = SwiftPortableMetWeatherProvider()
     private let surfaceFirmware = SwiftSurfaceFirmwareStore(baseDirectory: AgentDeckPaths.baseDirectory)
@@ -1847,6 +1851,7 @@ final class DaemonServer {
     // MARK: - Init
 
     init(port: Int?, debug: Bool, posture: DaemonPosture = .open) async throws {
+        try Task.checkCancellation()
         self.posture = posture
         self.timelineRelay = TimelineRelay(selfPort: port ?? SessionRegistry.defaultPort)
         self.focusRelay = SessionFocusRelay()
@@ -1857,12 +1862,16 @@ final class DaemonServer {
         // Singleton guard — only when using default port
         if port == nil {
             if let existing = registry.readDaemonInfo() {
-                if let health = await registry.probeDaemonHealth(port: existing.port),
+                let health = await registry.probeDaemonHealth(port: existing.port)
+                try Task.checkCancellation()
+                if let health,
                    health["mode"] as? String == "daemon" {
                     DaemonLogger.shared.info("Daemon already running on port \(existing.port) (PID \(existing.pid))")
                     throw DaemonError.alreadyRunning(port: existing.port)
                 }
-                if !(await registry.isPortBindable(existing.port)) {
+                let bindable = await registry.isPortBindable(existing.port)
+                try Task.checkCancellation()
+                if !bindable {
                     DaemonLogger.shared.info("Daemon registry exists on port \(existing.port) but health probe is not ready yet; treating as startup race")
                     throw DaemonError.alreadyRunning(port: existing.port)
                 }
@@ -1870,12 +1879,16 @@ final class DaemonServer {
                 registry.removeDaemonInfo()
             }
             if let existing = registry.findExistingDaemon() {
-                if let health = await registry.probeDaemonHealth(port: existing.port),
+                let health = await registry.probeDaemonHealth(port: existing.port)
+                try Task.checkCancellation()
+                if let health,
                    health["mode"] as? String == "daemon" {
                     DaemonLogger.shared.info("Daemon already running on port \(existing.port)")
                     throw DaemonError.alreadyRunning(port: existing.port)
                 }
-                if !(await registry.isPortBindable(existing.port)) {
+                let bindable = await registry.isPortBindable(existing.port)
+                try Task.checkCancellation()
+                if !bindable {
                     DaemonLogger.shared.info("Daemon session entry exists on port \(existing.port) but health probe is not ready yet; treating as startup race")
                     throw DaemonError.alreadyRunning(port: existing.port)
                 }
@@ -1888,11 +1901,15 @@ final class DaemonServer {
             // read (`~/.agentdeck` vs the group container). Without this scan
             // the app would bind 9120 and two daemons would coexist.
             // `requestedPort` is excluded — it gets its own probe below.
-            if let scannedPort = await registry.scanForDaemonPort(excluding: [requestedPort]) {
+            let scannedPort = await registry.scanForDaemonPort(excluding: [requestedPort])
+            try Task.checkCancellation()
+            if let scannedPort {
                 DaemonLogger.shared.info("Daemon discovered via port scan on \(scannedPort) — connecting as client")
                 throw DaemonError.alreadyRunning(port: scannedPort)
             }
-            if let health = await registry.probeDaemonHealth(port: requestedPort) {
+            let health = await registry.probeDaemonHealth(port: requestedPort)
+            try Task.checkCancellation()
+            if let health {
                 // Another user's daemon on this port is neither a hub to join
                 // nor one to evict — take a port of our own instead. Deciding
                 // it HERE and not at the connect site matters: `alreadyRunning`
@@ -1902,7 +1919,9 @@ final class DaemonServer {
                 if health["mode"] as? String == "daemon",
                    LocalPeerOwnership.isForeignDaemon(health: health) {
                     DaemonLogger.shared.info("Port \(requestedPort) is held by another user's daemon — taking a port of our own")
-                    if let alt = await registry.findAvailablePort() {
+                    let alt = await registry.findAvailablePort()
+                    try Task.checkCancellation()
+                    if let alt {
                         resolvedPort = UInt16(alt)
                     } else {
                         throw DaemonError.noPortAvailable
@@ -1910,7 +1929,9 @@ final class DaemonServer {
                 } else if health["mode"] as? String == "daemon" {
                     throw DaemonError.alreadyRunning(port: requestedPort)
                 }
-                if let alt = await registry.findAvailablePort() {
+                let alt = await registry.findAvailablePort()
+                try Task.checkCancellation()
+                if let alt {
                     resolvedPort = UInt16(alt)
                 } else {
                     throw DaemonError.noPortAvailable
@@ -1967,14 +1988,22 @@ final class DaemonServer {
     private let dotOwnership = UUID()
     #endif
 
+    private func checkStartupActive() throws {
+        try Task.checkCancellation()
+        guard !startupStopped else { throw CancellationError() }
+    }
+
     func startServices(onDashboardReady: (@Sendable () async -> Void)? = nil) async throws {
+        try checkStartupActive()
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.owned(by: dotOwnership)
         do { try DotHost.shared.resumeIfEnabled() } catch { DaemonLogger.shared.error("Dot configuration could not be loaded") }
         #endif
         // 0. Initialize APME store + collector + runner
         let store = ApmeStore()
-        if await store.openWithTimeout() {
+        let storeOpened = await store.openWithTimeout()
+        try checkStartupActive()
+        if storeOpened {
             apmeStore = store
             let collector = ApmeCollector(store: store)
             apmeCollector = collector
@@ -2110,8 +2139,10 @@ final class DaemonServer {
 
         // 1. Setup HTTP routes + Bonjour, then start unified server
         await setupHTTPRoutes()
+        try checkStartupActive()
         setupWifiOta()
         await wsServer.setHTTPHandler(httpServer)
+        try checkStartupActive()
 
         // Bonjour mDNS advertisement on the same listener.
         // Security (issue #145): the TXT record must never carry the pairing
@@ -2128,11 +2159,13 @@ final class DaemonServer {
             // the feature while every drift gate stayed green.
             await wsServer.setBonjourService(
                 MdnsAdvertisement.service(port: port, lanIP: AuthManager.getLanIP()))
+            try checkStartupActive()
         }
 
         // Await listener `.ready` — throws on bind failure (EADDRINUSE etc).
         // Registry writes must NOT happen before this succeeds.
         try await wsServer.start(port: port, loopbackOnly: posture.loopbackOnly)
+        try checkStartupActive()
         DaemonLogger.shared.info(posture.describe(port: port))
 
         // 2. Register session (only after listener is actually bound)
@@ -2143,15 +2176,19 @@ final class DaemonServer {
             startedAt: ISO8601DateFormatter().string(from: Date())
         )
         registry.register(entry)
-        registry.writeDaemonInfo(DaemonInfo(
+        let daemonInfo = DaemonInfo(
             port: Int(port),
             pid: Int(ProcessInfo.processInfo.processIdentifier),
             startedAt: ISO8601DateFormatter().string(from: Date()),
-            httpPort: nil
-        ))
+            httpPort: nil,
+            instanceId: sessionId
+        )
+        registry.writeDaemonInfo(daemonInfo)
+        registeredDaemonInfo = daemonInfo
 
         // 3. Setup WS handlers
         await setupWSHandlers()
+        try checkStartupActive()
 
         // 4. Wire state machine
         stateMachine.onStateChanged = { [weak self] oldState, newState in
@@ -2160,10 +2197,12 @@ final class DaemonServer {
 
         // 5. Start timeline store
         await timelineStore.start()
+        try checkStartupActive()
         // Seed the per-session milestone caches + board timeline ring from the
         // persisted store so device cards are meaningful immediately after a
         // daemon restart (not just after the next live milestone).
         await seedBoardTimelineCaches()
+        try checkStartupActive()
         // Orphan task_start reaper. The dashboard's `timelineIsInFlightTask`
         // gate spins the leading task icon until a matching `task_end` with
         // the same `taskId` appears in the visible siblings — but a previous
@@ -2178,11 +2217,13 @@ final class DaemonServer {
         // session_end / idle_gap) in case it ends up downstream of the
         // tuner or judge.
         await reapOrphanTaskStarts()
+        try checkStartupActive()
 
         // 6. Start display monitor
         loadDisplaySleepDimFromSettings()
         serialEventSnapshot.setDisplayDim(currentDimDict())
         await displayMonitor.start()
+        try checkStartupActive()
         await displayMonitor.setOnStateChanged { [weak self] displayOn in
             Task { @DaemonActor in
                 guard let self else { return }
@@ -2213,11 +2254,14 @@ final class DaemonServer {
 
         // The listener, handlers and restored timeline are usable now. Slow
         // device discovery must not pin the dashboard to a retired fallback port.
+        try checkStartupActive()
         await onDashboardReady?()
+        try checkStartupActive()
 
         // 7. Start device modules
         DaemonLogger.shared.info("startServices: step7 startDeviceModules begin")
-        await startDeviceModules()
+        try await startDeviceModules()
+        try checkStartupActive()
         DaemonLogger.shared.info("startServices: step7 startDeviceModules done")
 
         // 8. Start timeline relay (subscribes to sibling WS)
@@ -2227,7 +2271,9 @@ final class DaemonServer {
                 self?.handleRelayedEvent(box.value)
             }
         }
+        try checkStartupActive()
         await timelineRelay.start()
+        try checkStartupActive()
         DaemonLogger.shared.info("startServices: step8 timelineRelay done")
 
         // 8b. Set up focus relay event callback — merge daemon metadata before broadcasting
@@ -2288,6 +2334,8 @@ final class DaemonServer {
             }
         }
 
+        try checkStartupActive()
+
         // 8c. Sync daemon usage cache when relay receives usage_update (prevents oscillation)
         await focusRelay.setOnUsageRelayed { [weak self] (box: SendableDict) in
             Task { @DaemonActor in
@@ -2306,6 +2354,7 @@ final class DaemonServer {
         DaemonLogger.shared.info("startServices: step8c focusRelay done")
 
         // 9. Start polling
+        try checkStartupActive()
         startAllPolling()
         DaemonLogger.shared.info("startServices: step9 startAllPolling done")
 
@@ -2335,7 +2384,11 @@ final class DaemonServer {
         // `DaemonServer` falls back within 9120-9139). Without this,
         // a Codex turn started after a fallback-startup would push
         // OTel spans to a stale port and the dashboard would go dark.
-        await MainActor.run { CodexConfigInstaller.installIfNeeded(daemonHttpPort: Int(port)) }
+        try await MainActor.run {
+            try Task.checkCancellation()
+            CodexConfigInstaller.installIfNeeded(daemonHttpPort: Int(port))
+        }
+        try checkStartupActive()
         if AppPreferences.shared.codexConfigConsent != .accepted {
             DaemonLogger.shared.info("startServices: step11b CodexConfigInstaller skipped (no consent)")
         } else {
@@ -2394,7 +2447,8 @@ final class DaemonServer {
                 ])
             }
         }
-        await MainActor.run { [weak self] in
+        try await MainActor.run { [weak self] in
+            try Task.checkCancellation()
             guard let self else { return }
             let voiceAssistant = DaemonVoiceAssistant()
             self.voiceAssistant = voiceAssistant
@@ -2403,6 +2457,7 @@ final class DaemonServer {
             voiceAssistant.onWakeWordDetected = voiceWakeWord
             _ = voiceAssistant.start()
         }
+        try checkStartupActive()
         DaemonLogger.shared.info("startServices: step12 voiceAssistant done")
 
         // 12.5. OpenCode observer — opt-in (Settings → Integrations, default
@@ -2503,7 +2558,8 @@ final class DaemonServer {
         }
     }
 
-    private func startDeviceModules() async {
+    private func startDeviceModules() async throws {
+        try checkStartupActive()
         let portInt = Int(port)
 
         // mDNS: Bonjour is attached to unified WebSocketServer listener — no separate module needed
@@ -2540,6 +2596,7 @@ final class DaemonServer {
 
             // Wire external client count (ESP32 serial connections count as clients for polling guards)
             await wsServer.setExternalClientCountProvider { await serial.serial.connectionCount }
+            try checkStartupActive()
         }
 
         // Pixoo
@@ -2552,6 +2609,7 @@ final class DaemonServer {
                     self?.broadcastStateUpdate()
                 }
             }
+            try checkStartupActive()
             pixooSettingsObserver = NotificationCenter.default.addObserver(
                 forName: .pixooSettingsChanged, object: nil, queue: .main
             ) { _ in
@@ -2569,6 +2627,7 @@ final class DaemonServer {
                     self?.broadcastStateUpdate()
                 }
             }
+            try checkStartupActive()
             idotmatrixSettingsObserver = NotificationCenter.default.addObserver(
                 forName: .idotmatrixSettingsChanged, object: nil, queue: .main
             ) { _ in
@@ -2586,6 +2645,7 @@ final class DaemonServer {
                     self?.broadcastStateUpdate()
                 }
             }
+            try checkStartupActive()
             timeboxSettingsObserver = NotificationCenter.default.addObserver(
                 forName: .timeboxSettingsChanged, object: nil, queue: .main
             ) { _ in
@@ -2619,6 +2679,7 @@ final class DaemonServer {
         // timestamps. Do not wait for an unrelated state change to leave SYNC.
         if idotmatrix != nil || timebox != nil {
             let history = await timelineStore.getAll() // Store is bounded; projection filters result rows before capping.
+            try checkStartupActive()
             let rosterSeed = SendableDict(buildSessionsListEvent())
             let historySeed = SendableDict([
                 "type": "timeline_history",
@@ -2626,16 +2687,21 @@ final class DaemonServer {
             ])
             if let idotmatrix {
                 await idotmatrix.handleEvent(rosterSeed.value)
+                try checkStartupActive()
                 await idotmatrix.handleEvent(historySeed.value)
+                try checkStartupActive()
             }
             if let timebox {
                 await timebox.handleEvent(rosterSeed.value)
+                try checkStartupActive()
                 await timebox.handleEvent(historySeed.value)
+                try checkStartupActive()
             }
         }
 
         // Start all
-        await moduleManager.startAll()
+        await moduleManager.startAll { !self.startupStopped }
+        try checkStartupActive()
         DaemonLogger.shared.info("startDeviceModules: moduleManager.startAll done")
 
         // Seed initial state so serial heartbeat has data from the start
@@ -2700,6 +2766,7 @@ final class DaemonServer {
                 Task { await timeboxRef.handleEvent(timeboxEventBox.value) }
             }
         }
+        try checkStartupActive()
         DaemonLogger.shared.info("startDeviceModules: wsServer.onBroadcast done")
 
         // Everything below wires the ESP32 serial channel; in a posture with
@@ -2806,6 +2873,7 @@ final class DaemonServer {
                 }
             }
         }
+        try checkStartupActive()
     }
 
     // MARK: - HTTP Routes
@@ -9821,17 +9889,20 @@ final class DaemonServer {
         sessionPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
-                guard let self else { break }
+                guard !Task.isCancelled, let self, !self.startupStopped else { break }
                 await self.refreshSessions()
+                guard !Task.isCancelled, !self.startupStopped else { break }
                 // Self-heal: re-write daemon.json if it was deleted externally
                 // (bridge instances may remove it due to PID-check race conditions)
-                if self.registry.readDaemonInfo() == nil {
+                // Preserve the instance identity and update its receipt too.
+                // readDaemonInfo expires stamps after 24h, so a self-heal must
+                // refresh the timestamp rather than repeatedly write an expired row.
+                if self.registry.readDaemonInfo() == nil, let receipt = self.registeredDaemonInfo {
                     let info = DaemonInfo(
-                        port: Int(self.port),
-                        pid: Int(ProcessInfo.processInfo.processIdentifier),
+                        port: receipt.port, pid: receipt.pid,
                         startedAt: ISO8601DateFormatter().string(from: Date()),
-                        httpPort: nil
-                    )
+                        httpPort: receipt.httpPort, instanceId: receipt.instanceId)
+                    self.registeredDaemonInfo = info
                     self.registry.writeDaemonInfo(info)
                     DaemonLogger.shared.debug("Daemon", "Self-healed daemon.json (was deleted externally)")
                 }
@@ -12052,6 +12123,7 @@ final class DaemonServer {
     // MARK: - Shutdown
 
     func shutdown() async {
+        startupStopped = true
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.release(dotOwnership)
         #endif
@@ -12110,8 +12182,11 @@ final class DaemonServer {
             NotificationCenter.default.removeObserver(observer)
             displaySettingsObserver = nil
         }
-        registry.deregister(sessionId)
-        registry.removeDaemonInfo()
+        if let registeredDaemonInfo {
+            registry.deregister(sessionId)
+            registry.removeDaemonInfo(ifMatching: registeredDaemonInfo)
+            self.registeredDaemonInfo = nil
+        }
 
         // Reached unconditionally now — see the budget above.
         await wsServer.stop()
