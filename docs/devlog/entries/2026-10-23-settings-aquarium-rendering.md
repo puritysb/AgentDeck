@@ -116,8 +116,43 @@ close delay nor input-to-paint latency. Those automation limits remain distinct
 from the observed rendering correction.
 
 The raw receipt is `diagnostics/settings-rendering-v5.json`, with the v5
-Settings/minimized samples and lifecycle log in the main checkout. Required
-quick/changed/full verification is in progress, with results still pending.
-This is local Debug evidence, not acceptance of a signed Store artifact or a
-new submission. Earlier 9301/9101/9201 receipts do not cover this correction;
-physical deck input and sleep/wake remain unverified.
+Settings/minimized samples and lifecycle log in the main checkout. The clean
+[full verification receipt](verification/receipts/2026-10-23-e075748.json)
+at `e0757488f439f9b8c0dadb719c8a5c5e89596302` records `dirty=false` and all
+**25 automatic gates passing in 26 min 3 s**. [PR #600](https://github.com/puritysb/AgentDeck/pull/600)
+merged as `24be55d2fa41462d1ab6106a2006e73876573fb6`, with the same tree as that
+verified source. Source CI passed 13 checks with the TTGO PR check skipped;
+Windows runtime was skipped locally and passed in CI on Node 22/24/26. Three
+lab gates remain unattested.
+
+The macOS 9401 [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39964340470)
+succeeded and the Store artifact passed signing and archive checks. A
+Development-signed derivative with equivalent code/resources and unchanged
+entitlements passed two Settings-close cycles and a minimize/restore cycle in
+PID 79713, with seven live sessions. Its six click/AX pairs totalled **6.485 s**;
+Settings and minimized samples again had no DisplayLinkClock/frame-pacing
+sightings. These are separate 9401 measurements, not a relabelling of the v5
+Debug data above. Full evidence and tool-timing limits are in the
+[delivery record](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+Physical deck input and sleep/wake remain unverified.
+
+### Submission state propagation stopped the first attempt safely
+
+After the portal withdrew 9301 and attached 9401,
+[preparation](https://github.com/puritysb/AgentDeck/actions/runs/39969347034)
+read back the exact build and release copy. The
+[first submit run](https://github.com/puritysb/AgentDeck/actions/runs/39969479997)
+created the intended draft and item, but stopped before the final mutation
+because the version's Ready for Review state had not propagated yet. The portal
+then showed the ready version and correct 9401 association. A
+[resumed run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
+reused the same draft, confirmed submission at **2026-10-23T14:27:02.393Z**,
+and returned submission `ab60c632-4870-4b07-b22e-8b367a2d13a8`.
+No duplicate draft or broader guard was needed. The exact copy hash stayed
+`53c224bbb3c8dfeedf54fdfe321aa7a37b4e8cebdcf0076cd1329171beeb2bac` and
+`AFTER_APPROVAL` was retained. The
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
+confirmed the version and new submission as `WAITING_FOR_REVIEW`, with 9401
+`VALID` and unexpired and the old submission `COMPLETE`. Apple's actual
+submission time was **2026-10-23T14:26:58.418Z**, before the helper returned.
+This is not a public-release claim. Logs are in `diagnostics/release600-runtime/`.

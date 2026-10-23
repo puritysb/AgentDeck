@@ -69,14 +69,20 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-**A further macOS 1.9.2 replacement is in preparation; its new CI build number
-and verification are pending.** It adds the dashboard Keychain correction from
-[#599](https://github.com/puritysb/AgentDeck/pull/599) and the Settings rendering
-correction below. The [21:01 KST ASC readback on October 23](https://github.com/puritysb/AgentDeck/actions/runs/39950220874)
-still shows the existing 1.9.2 submission as Waiting for Review with automatic
-release after approval; 9301 remains Valid. The new candidate has not been
-uploaded or submitted. See the
-[replacement decision](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+**macOS 1.9.2 / 9401 was submitted at 23:26:58 KST on October 23** and is
+**Waiting for Review**, with automatic release after approval, replacing the
+withdrawn 9301 submission. It adds the
+dashboard Keychain correction from [#599](https://github.com/puritysb/AgentDeck/pull/599)
+and the Settings rendering correction from [#600](https://github.com/puritysb/AgentDeck/pull/600).
+All 25 automatic full-verification gates passed in **26m 3s**; source CI passed
+13 checks with TTGO skipped. The Store artifact passed signing and archive
+checks, and a Development-signed derivative with equivalent code/resources
+passed the scoped Settings, 3D restoration and minimize/restore checks.
+The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
+confirmed the exact 9401 build and release copy; the
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
+confirmed the review state. This is not a public release;
+see the [delivery record](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
 
 **Earlier delivery: macOS 1.9.2 / 9301 was submitted after the Claude accuracy reassessment.**
 Standalone macOS no longer promotes status-line documents into account quota;
@@ -144,9 +150,9 @@ additional 9201 checks. Builds 9101 and 9201 are not byte-identical, and full
 semantic equivalence between them has not been established; the earlier
 acceptance results retain their recorded build scope.
 
-- macOS app, new replacement candidate: dashboard setup prompts no longer query the Keychain on the main thread for an Admin API setting they do not use, removing unnecessary synchronous work while the dashboard renders (#599). This correction is not in build 9301.
+- macOS app: dashboard setup prompts no longer query the Keychain on the main thread for an Admin API setting they do not use, removing unnecessary synchronous work while the dashboard renders (#599). This correction is included in build 9401, not the earlier 9301.
 
-- macOS app, new replacement candidate: pause the optional aquarium renderer while Settings is frontmost or the dashboard is minimized or fully hidden, then restore it without changing the user's 3D preference or session state. This targets the Settings delay reproduced with background 3D rendering; combined-source and exact-build verification are pending, and build 9301 does not include this change.
+- macOS app: the optional aquarium renderer pauses while Settings is frontmost or the dashboard is minimized or fully hidden, then resumes without changing the user's 3D preference or session state. This targets the Settings delay reproduced with background 3D rendering. Build 9401 includes the correction and passed scoped runtime checks using a Development-signed derivative of its Store code/resources.
 
 - macOS app: busy timelines no longer regroup and classify the entire history for each visible row. Rows, detail panels and scrolling now share one render snapshot, preserving session filters and completed-task state while reducing main-thread work.
 

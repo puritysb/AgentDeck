@@ -15,12 +15,14 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Further replacement in preparation, October 23:** these macOS notes include
-the dashboard Keychain and Settings rendering corrections for a new **1.9.2**
-build; its CI number and verification are pending. The existing 9301 submission
-still reads **Waiting for Review / AFTER_APPROVAL**, and the portal confirms
-9301 remains attached. These revised notes have not been submitted. See the
-[replacement decision](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+**9401 submitted, October 23:** these macOS notes were submitted with
+**1.9.2 / 9401** at **23:26:58 KST**, replacing the withdrawn 9301 submission.
+They include the dashboard Keychain and Settings rendering corrections.
+The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
+confirmed the exact build, repository copy and `AFTER_APPROVAL` setting. The
+[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
+confirmed **Waiting for Review**. Artifact checks and scoped local runtime checks passed; this is not a public
+release. See the [delivery record](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
 
 Standalone Swift receives Claude status-line
 observations for diagnostics only; it does not promote them into current
