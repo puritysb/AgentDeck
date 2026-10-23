@@ -14,18 +14,31 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 
 ## Prepared macOS 1.9.2 update text
 
-Copy for the macOS-only candidate in the [release decision](../RELEASING.md).
-This candidate has not been uploaded or submitted. The macOS 1.9.1 review and
-the released iOS 1.9.1 app remain unchanged; the iOS copy below is unchanged.
-**Acceptance remains partial:** the installed Development app derived from Store build
+Copy for the macOS-only update in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
+The macOS-only [upload run 39879934528](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+from source `6d1b3238` succeeded; [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
+confirmed build **9201 Valid**. At **10:13 KST on October 23**, macOS
+**1.9.2 / 9201** was submitted and entered **Waiting for Review**, replacing the
+cancelled 1.9.1 / 8601 submission. The English, Korean and Japanese What's New
+and macOS Review Notes were saved and matched exactly after reload. Automatic
+release after Apple approval is selected; **1.9.2 is not yet publicly released**.
+The released iOS app and its copy below are unchanged; npm 1.9.3 remains
+unpublished.
+
+**Earlier acceptance remains scoped to build 9101:** the installed Development app derived from Store build
 9101 passed cold Shortcuts List Waiting Sessions plus Count after output
 permission was allowed. A saved reference to a terminated session required
 reselection without opening another session. Stale and disconnected rosters
 returned explicit unavailable errors with no output, preserving the distinction
 from a fresh empty waiting-session list. Direct Swift Claude status-line
 freshness, real-turn timeline display and Settings/Dashboard/Connection
-interactions passed, and the Node owner was restored afterward. Upstream numeric
-rate limits were absent, so 5-hour/7-day gauge display remains unverified.
+interactions passed, and the Node owner was restored afterward. The initial
+health receipt captured source and freshness metadata, not numeric windows;
+its live status-line reading already established that at least one valid
+numeric window was accepted. A later session-matched Swift snapshot recorded
+5-hour usage at 33% and 7-day usage at 9%. Dashboard gauge rendering remains
+unverified because Claude is hidden in the user's existing Displayed providers
+selection; that preference remains unchanged.
 Notification permission and delivery to Notification Center history were
 confirmed; the OS suppressed banners and sound during screen sharing. Clicking
 the actual macOS notification opened the requested session's timeline. The
@@ -35,9 +48,17 @@ unexplained; successful Swift-owner interactions do not resolve them.
 Earlier Codex Allow/Deny and unanswered fallback passed with a native controller
 under Node and the previous `2121b334` Development app; physical deck-button
 acceptance is separate. See the measured scope and open gates in the
-[release decision](../RELEASING.md#store-9101-verification-and-local-acceptance-2026-10-23) before
+[October 23 follow-up](../RELEASING.md#macos-192-authorization-and-acceptance-follow-up-2026-10-23) before
 using this copy. The collaboration view is an opt-in experiment showing observed
 messages, not an inferred dependency map.
+
+**Additional 9201 checks:** archive/package signing and the Dot gate passed.
+The derivative made by replacing its signing passed comparison against the
+9201 Store app. Cold Shortcuts List Waiting Sessions plus Count returned 0 in
+**3.56 seconds**, launching a new app process while the Node owner stayed
+running. Dashboard, Settings and return navigation passed. The earlier 9101
+results retain their build scope: 9201 is not byte-identical to 9101, and full
+semantic equivalence between the two builds has not been established.
 
 ### English — macOS What's New
 

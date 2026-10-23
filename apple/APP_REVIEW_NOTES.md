@@ -15,25 +15,47 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Release status:** the [October 23, 09:27 KST ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39878219953) still reports macOS `1.9.1` In Review with build `8601` Valid. The portal shows the October 14 submission still in review and no reviewer message. The [October 22 public-release readback](https://github.com/puritysb/AgentDeck/actions/runs/39786791116) recorded iOS `1.9.1` / `8501` and macOS `1.9.0` / `7901` as Ready for Distribution. The user has authorized macOS `1.9.2` upload, replacement of the `1.9.1` submission and automatic release after Apple approval; iOS and npm delivery are outside that authorization. No `1.9.2` upload or submission has occurred at this checkpoint. Build, upload and submission evidence is recorded separately in [RELEASING.md](../RELEASING.md).
+**Release status, October 23 at 10:13 KST:** macOS **1.9.2 / 9201** is submitted
+and **Waiting for Review**, under submission
+`f8ec7cb8-636e-4c1c-8026-f67a8fe4c582`. The prior 1.9.1 / 8601 submission was
+cancelled. The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+from `6d1b3238` succeeded and [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
+confirmed build 9201 Valid. The English, Korean and Japanese What's New and the
+macOS Review Notes were saved and matched exactly after reload. Automatic
+release after approval and immediate availability to all users are selected;
+existing ratings are retained. **1.9.2 is not yet publicly released.** iOS is
+unchanged and npm 1.9.3 remains unpublished. Build, upload and submission
+evidence is recorded separately in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
 
 _Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._
 
-**Candidate acceptance follow-up, October 23:** the 9101 Development-signed
+**Earlier candidate acceptance, October 23 — build 9101:** the Development-signed
 derivative preserves the exported Store candidate's Release code, resources
 and entitlements. The measured Shortcuts cases and actual system notification
 click passed. A session-matched, fresh direct Swift status-line snapshot
 recorded Claude usage at 33% for 5 hours and 9% for 7 days. Gauge rendering is
 still unverified because Claude is hidden in the user's existing Displayed
-providers selection; a display-preference response is pending. Real Codex
+providers selection; that preference remains unchanged. Real Codex
 Allow/Deny and unanswered fallback passed with a native controller under Node
 and the Development-signed app. Intermittent accessibility timeouts remain
 unexplained; later 2–6-second tool operations do not measure UI input latency.
 Physical deck-button and sleep/wake checks were skipped because direct user
 interaction was unavailable; neither is a pass or waiver. Runtime token
-continuity was observed, but credential continuity on disk remains unverified.
+continuity and matching Node/Swift disk token values were verified across the
+observed handover; cold launch, reboot and sleep/wake persistence were not.
 This preparation status is not part of either Notes field; see the measured
 scope and remaining limits in the [October 23 follow-up](../RELEASING.md#macos-192-authorization-and-acceptance-follow-up-2026-10-23).
+
+**Submitted build 9201 checks:** archive/package signatures and the Dot gate
+passed. The derivative made by replacing its signing passed comparison against
+the 9201 Store app. Cold Shortcuts List Waiting Sessions plus Count returned 0
+in **3.56 seconds**, launching app PID **23875** while Node PID **69242** stayed
+running. Dashboard, the Settings pane and return navigation passed. This does
+not extend 9101's full acceptance record to 9201: although the executable source
+inputs were unchanged, generated metadata ordering and the compiled
+`ApmeStore.getSampleDict` function length differ. Byte identity and full semantic
+equivalence between 9101 and 9201 have not been established. This internal
+acceptance record is not part of either Notes field.
 
 ## What AgentDeck does
 

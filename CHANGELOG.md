@@ -69,16 +69,18 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-Prepared candidates: npm and macOS only. Neither has been published or uploaded
-at the October 23 follow-up checkpoint. The user authorized macOS 1.9.2 upload,
-replacement of the 1.9.1 review submission and automatic release after Apple
-approval; npm publication and iOS submission are outside that authorization.
-The existing macOS review and public iOS release remain unchanged at this checkpoint.
+At **10:13 KST on October 23**, macOS **1.9.2 / 9201** was submitted and entered
+**Waiting for Review**, replacing the cancelled 1.9.1 / 8601 submission.
+It is **not yet publicly released**; automatic release after Apple approval is
+selected. The [macOS upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+from `6d1b3238` succeeded, and [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
+confirmed build 9201 Valid. npm 1.9.3 remains unpublished, and the released iOS
+app is unchanged. See the [delivery record](RELEASING.md#macos-192-delivery-2026-10-23).
 This cumulative security and stability patch includes the fixes merged through
 `4b839281`; it is not a #583-only backport. Other device/plugin updates remain
 under Unreleased until their own delivery.
 
-October 23 candidate update: the signed **macOS 1.9.2 / 9101** export from
+Earlier October 23 candidate acceptance: the signed **macOS 1.9.2 / 9101** export from
 `5c87f1a5` includes the startup and timeline snapshot corrections. Clean-source
 full verification and source CI passed. A Development-signed derivative with
 the same Release code and resources was installed on Mac Studio. Cold Shortcuts
@@ -91,7 +93,7 @@ owner, a real Claude turn and fresh status-line relay were observed, and
 Settings/Dashboard navigation passed. A later session-matched Swift snapshot
 recorded Claude usage at 33% for 5 hours and 9% for 7 days. Dashboard gauge
 rendering remains unverified because Claude is hidden by the user's existing
-provider selection; a display-preference response is pending.
+provider selection; that preference remains unchanged.
 Earlier intermittent UI-access timeouts under the Node owner remain unexplained.
 Physical deck-button and sleep/wake checks were skipped and remain unverified.
 Runtime acceptance remains partial, as recorded in the
@@ -99,6 +101,16 @@ Runtime acceptance remains partial, as recorded in the
 Builds 8901 and 9001 from `2121b334` predate the snapshot correction; 8801 from
 `e21b817b` also predates the startup correction. They remain comparison evidence
 for their own source. The four accepted npm 1.9.3 tarballs are unchanged.
+
+Source CI passed across all four workflows. The submitted **9201** archive
+passed archive/package signing and Dot gates.
+A derivative made by replacing its signing passed comparison against that
+9201 Store app. Its cold Shortcuts List Waiting Sessions plus Count returned
+0 in **3.56 seconds**, launching a new app process while the Node owner stayed
+running; Dashboard, Settings and return navigation also passed. These are
+additional 9201 checks. Builds 9101 and 9201 are not byte-identical, and full
+semantic equivalence between them has not been established; the earlier
+acceptance results retain their recorded build scope.
 
 - macOS app: busy timelines no longer regroup and classify the entire history for each visible row. Rows, detail panels and scrolling now share one render snapshot, preserving session filters and completed-task state while reducing main-thread work.
 

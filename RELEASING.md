@@ -568,8 +568,9 @@ status-line snapshot, and recorded **5-hour usage 33%** and **7-day usage 9%**.
 This closes the numeric-receipt gap above. The earlier receipt contained only
 health metadata; its missing numeric fields did not establish an upstream
 omission. Dashboard gauge rendering remains unverified: Claude was unchecked
-in the user's existing **Displayed providers** selection, and a response to
-whether it should be shown is pending. That hidden row is consistent with the
+in the user's existing **Displayed providers** selection. The user asked about
+the status-line integration's terms; the display preference remains unchanged.
+That hidden row is consistent with the
 saved display preference, not evidence of a quota-ingestion failure.
 
 After Node stopped, the same Swift app automatically moved from fallback port
@@ -577,8 +578,14 @@ After Node stopped, the same Swift app automatically moved from fallback port
 **120-second bind cooldown**. This is eventual recovery, not seamless handover;
 the earlier four-second module-teardown timeout remains a separate caveat.
 The runtime pairing-token comparison matched between Node and Swift, without
-publishing the token or its fingerprint. This does not establish credential
-continuity on disk or across sleep/wake.
+publishing the token or its fingerprint. A read-only follow-up at
+**2026-10-23T00:46:33Z** also verified that the Node and sandboxed Swift
+`auth-token` files, normalized according to their production readers, matched
+each other, the pre-handover runtime value and the restored Node owner's value.
+Neither process used a data-directory override. This closes the disk continuity
+gap for that handover; cold launch, reboot, sleep/wake and other credential
+stores remain outside this measurement. The sanitized receipt is
+`diagnostics/release597-candidate-5c87f1a5/credential-store-continuity.json`.
 
 The earlier 30-second accessibility timeouts still have no established cause.
 Later automated operations with the same app PID while connected to Node
@@ -593,6 +600,67 @@ The sanitized numeric receipt is
 The existing source, archive and signed-derivative checks remain applicable;
 this follow-up adds runtime observations and authorization without changing
 the candidate's executable source.
+
+#### macOS 1.9.2 delivery 2026-10-23
+
+**Submitted, not yet public:** at **10:13 KST**, the portal confirmed
+**macOS 1.9.2 / 9201 Waiting for Review**, submission
+`f8ec7cb8-636e-4c1c-8026-f67a8fe4c582`. The previous macOS 1.9.1 / 8601
+submission was withdrawn after 9201 had become **VALID**. English, Korean and
+Japanese What's New and the macOS review Notes were saved and read back after
+a page reload, exactly matching their copy-ready source blocks. Automatic
+release after approval, immediate availability to all users and existing
+ratings were retained. iOS 1.9.1 remains public; no iOS, npm, firmware or plugin
+delivery was performed. Apple has not provided a reason for the old review's
+delay in the observed portal; the replacement does not establish a faster
+review schedule.
+
+The [post-submission ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39882876721)
+at **10:14:52 KST** independently confirmed version 1.9.2
+`WAITING_FOR_REVIEW` / `AFTER_APPROVAL`, the new submission's timestamp
+**10:13:16.561 KST**, and build 9201 `VALID`. This readback lists versions and
+builds separately; the submitted version's attachment to 9201 was verified in
+the portal. Public macOS remains 1.9.0 and public iOS remains 1.9.1.
+
+The macOS-only [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39879934528)
+archived source `6d1b3238be656b49c45c8c8823f9c59ae3cfa4f0` and succeeded.
+Artifact `apple-macos-1.9.2-92-1` matched GitHub's downloaded ZIP digest. Package
+and app signatures, both architectures' strict checks, sandbox/entitlements,
+the final App Store archive gate and Dot exclusion passed. The
+[pre-submission ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/39881726973)
+confirmed build `db8a35ec-9f44-4df5-861b-361bb24bf79d` as **VALID**; upload was
+recorded at **01:01:32 UTC**. No Apple tag or GitHub Release was created for
+this single-platform delivery.
+
+The retained Store package SHA-256 is
+`3b4a230eb9321daea4f98dd96a595cc1d5939ecfe6667618af36032cf860283d`;
+the GitHub artifact ZIP SHA-256 is
+`d33419c17b27d5d26d5d593b1cb0fa7ef89d565a306966709f471dc03c636dee`.
+
+Executable source/build inputs match the full-verified `5c87f1a5` candidate,
+but **9101 and 9201 are not identical binaries**. Eighteen of 21 regular
+non-signing files are byte-identical; the remaining changes are the build
+number and equivalent AppIntents JSON serialization. The only function whose
+length changed on either architecture is `ApmeStore.getSampleDict(_:)`
+(arm64 +16 bytes, x86_64 +48 bytes). Its compiled register/branch layout differs;
+whole-program semantic equivalence was not proven. Matching source and toolchain
+are consistent with compiler layout variation, not proof of its precise cause.
+
+For separate **9201** runtime evidence, a Development-signed copy retained
+the Store artifact's entitlements and passed the signing-only byte-equivalence
+check on both architectures. Installed at `/Applications/AgentDeck.app`, it
+passed cold Shortcuts **List Waiting Sessions + Count** in **3.56 seconds**,
+returning **0** and starting app PID **23875** while Node owner **69242** stayed
+on 9120. Dashboard, Settings, its Dashboard pane and return to the dashboard
+also completed. Display preferences were preserved. This is additional smoke
+coverage of 9201, not a rerun of every 9101 acceptance case. Physical buttons,
+sleep/wake and the unexplained intermittent UI-access timeout remain recorded
+limitations.
+
+Retained local evidence: `diagnostics/release597-delivery-9201/` contains
+artifact/ASC validation, binary analysis and the submission screenshot;
+`diagnostics/release597-delivery-9201-runtime/` contains the derivative comparison,
+installation, cold-Shortcuts and UI smoke receipts, plus the previous 9101 backup.
 
 ### 2026-10-14 iDotMatrix readability correction
 
