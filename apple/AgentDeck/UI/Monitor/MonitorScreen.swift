@@ -49,6 +49,7 @@ struct MonitorScreen: View {
     @AppStorage("dashboardCollaborationEnabled") private var collaborationEnabled = false
     @ObservedObject private var attentionAccess = AttentionSessionAccess.shared
     @State private var sessionOpenError: String?
+    @State private var aquariumRenderingEnabled = true
     #endif
 
     @StateObject private var inspection = DashboardInspection()
@@ -154,6 +155,10 @@ struct MonitorScreen: View {
                 Text(sessionOpenError ?? "")
             }
             .environmentObject(communications)
+            .background {
+                AquariumWindowActivityReader(renderingEnabled: $aquariumRenderingEnabled)
+                    .allowsHitTesting(false)
+            }
             .task(id: "\(communicationPort)|\(stateHolder.state.bridgeConnected)|\(communications.refreshID)") {
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
@@ -280,6 +285,9 @@ struct MonitorScreen: View {
     private func livingAquariumScene(labelInsets: EdgeInsets) -> LivingAquariumScene {
         var scene = LivingAquariumScene(viewingMode: hudHidden, terrariumState: terrariumState, communications: waterCommunications, communicationLabelInsets: labelInsets,
                                         onCreatureTapped: handleCreatureTap, onBackgroundTapped: backgroundTapHandler)
+        #if os(macOS)
+        scene.renderingEnabled = aquariumRenderingEnabled
+        #endif
         #if AGENTDECK_DOT_PREVIEW
         scene.dotSnapshot = stateHolder.state.dot
         #endif

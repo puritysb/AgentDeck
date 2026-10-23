@@ -245,6 +245,7 @@
 		4A948102669D8D93A2D2EEE0 /* MenuBarDensityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797940FBA5A10EC295F401FE /* MenuBarDensityPolicy.swift */; };
 		4AA7D220242CD3041FB589D8 /* SessionFocusRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788166EF7E8CB65CDE3D3D67 /* SessionFocusRelay.swift */; };
 		4AB62E6F5AAD589513F54F32 /* ExternalAttachRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */; };
+		4AF6271704E832A69C53C115 /* AquariumWindowActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02BC2502C0EBC4C1257BD7BF /* AquariumWindowActivity.swift */; };
 		4B12BD71DAC0B74F7FB41BDA /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
 		4B1AADA88205A8EBD2E50248 /* AquariumPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A8B97F270C72DDB67D85B5 /* AquariumPreview.swift */; };
 		4B34D6CBC040FE9BE5E51856 /* OctopusCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 776467350B975D0CA1A18E84 /* OctopusCreature.swift */; };
@@ -292,6 +293,7 @@
 		581FB47554F19C7FB58A531F /* ApmeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8E176199605E14D2EAF35A1 /* ApmeStore.swift */; };
 		584C4C85DE3E5789C8B8DBF9 /* ApmePricing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86C2853DD31CC81F421A2A1F /* ApmePricing.swift */; };
 		58591ABC081F2367FEE6B563 /* OpenClawAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427B912EBD043285F0A0008D /* OpenClawAdapter.swift */; };
+		586F2BCF3A67997BD94E89D0 /* AquariumWindowRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2839E33D03EEDBAB45C48C /* AquariumWindowRenderingTests.swift */; };
 		587F1862A0D492B2996A4ABD /* NOTICE.md in Resources */ = {isa = PBXBuildFile; fileRef = 6B62112FACCFA943D1AF75F7 /* NOTICE.md */; };
 		5885567AA794EB28CB6FF248 /* BridgeConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A702CCCE11B4450E9EED163 /* BridgeConnection.swift */; };
 		58E5710560C2B86ACFA1A460 /* SwiftSurfaceProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C734B04F5E770B8B5FE2B70 /* SwiftSurfaceProtocolTests.swift */; };
@@ -331,6 +333,7 @@
 		65A8A69BC77EC2A72BAA51E6 /* MdnsAdvertisementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AA98B9C59A1E5068133D134 /* MdnsAdvertisementTests.swift */; };
 		65AA35DBAE5753D637A04865 /* HermesSwim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC7DB1B1460CCEF53951DD /* HermesSwim.swift */; };
 		6678969903C6A061CFE809EA /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D17A24E0C5B16A097D62E9 /* AuthManager.swift */; };
+		67B7E7113A1C297C88EE0247 /* AquariumWindowActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02BC2502C0EBC4C1257BD7BF /* AquariumWindowActivity.swift */; };
 		67BC9141429FBD039D306858 /* ApmeRecommender.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */; };
 		67DE7845FCE75F95098DD679 /* MicroGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF67F9EA0CB4FD3EE8C963A /* MicroGlyphs.swift */; };
 		67FA80518E8F347B39576FCC /* StatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E6BEE1A730418C1EBDC048 /* StatusBadge.swift */; };
@@ -769,6 +772,7 @@
 		EE753FF7DE0ABAD0C43ACA08 /* InProcessDaemonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFC45336194DC534315B79F /* InProcessDaemonRuntime.swift */; };
 		EE83F0F9F55D68644A722D50 /* ApmeReadIndexes.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F9FDF17CAE4968078B9841 /* ApmeReadIndexes.generated.swift */; };
 		EE91D7CCEFEA94B80A2A4FCD /* SetupNeededCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC179B8F91EF42F5EBDE911 /* SetupNeededCard.swift */; };
+		EF4BB803759C7972ED2EC386 /* AquariumWindowRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2839E33D03EEDBAB45C48C /* AquariumWindowRenderingTests.swift */; };
 		EFB490B9C3DFC1FC911A8E3C /* ExternalAttachRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */; };
 		F04C9951C6E7B99B371B7A9D /* TaskGradeabilityRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A5E894C58B03EE5C8EF791 /* TaskGradeabilityRules.generated.swift */; };
 		F0C03AF0FCFD56AC72DE9FD3 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908DB05568DE4E828CD7FCE6 /* Logger.swift */; };
@@ -848,6 +852,7 @@
 		006CBD6A3ADAE5DCD1EBBDB3 /* AppMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppMetadata.swift; sourceTree = "<group>"; };
 		009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexObservationOwnership.swift; sourceTree = "<group>"; };
 		01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationsView.swift; sourceTree = "<group>"; };
+		02BC2502C0EBC4C1257BD7BF /* AquariumWindowActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AquariumWindowActivity.swift; sourceTree = "<group>"; };
 		0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigInstallerTests.swift; sourceTree = "<group>"; };
 		03941C6DD60609AB9D1E12C1 /* SessionWeightRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionWeightRules.generated.swift; sourceTree = "<group>"; };
 		03F618D3253FD55D4DD7D5AF /* SerialModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SerialModule.swift; sourceTree = "<group>"; };
@@ -1155,6 +1160,7 @@
 		BC86BC8920ED9B001F7AFF10 /* UsageSeverity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageSeverity.generated.swift; sourceTree = "<group>"; };
 		BD0E2EA7731BD5950B02CCBE /* DotMCPStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotMCPStore.swift; sourceTree = "<group>"; };
 		BDEFB32CAC64614A563E7C31 /* SwiftSurfaceFirmwareStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftSurfaceFirmwareStore.swift; sourceTree = "<group>"; };
+		BF2839E33D03EEDBAB45C48C /* AquariumWindowRenderingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AquariumWindowRenderingTests.swift; sourceTree = "<group>"; };
 		BF375E0449F60AC0F0430C60 /* ZaiQuotaRulesVectorsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZaiQuotaRulesVectorsTests.swift; sourceTree = "<group>"; };
 		BF517661B1BEF3ACD330054D /* RockFormation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RockFormation.swift; sourceTree = "<group>"; };
 		C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeRecommender.swift; sourceTree = "<group>"; };
@@ -1339,6 +1345,7 @@
 				AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */,
 				B2A10490A1827E5EC7D6FA08 /* AppMetadataTests.swift */,
 				6F0A3614C2DF6495CAB410B1 /* AppReviewPromptTests.swift */,
+				BF2839E33D03EEDBAB45C48C /* AquariumWindowRenderingTests.swift */,
 				F319423D12FE16538847B2A6 /* AttentionSessionAccessTests.swift */,
 				F070B3A171B0BC3B4905885D /* AttentionSessionRosterTests.swift */,
 				BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */,
@@ -1787,6 +1794,7 @@
 			isa = PBXGroup;
 			children = (
 				4BE102D050319B6A78A505B3 /* AquariumSurface.swift */,
+				02BC2502C0EBC4C1257BD7BF /* AquariumWindowActivity.swift */,
 				A7F99A265E8C83A287F7DB71 /* DaemonOfflineAffordance.swift */,
 				F028824993D611B356EA86D3 /* SessionFormatters.swift */,
 				994D1D1B196FDCC4F72E391B /* Formatting */,
@@ -2208,6 +2216,7 @@
 				10BE28607B397D243923E2D5 /* AppMetadataTests.swift in Sources */,
 				26CD84217792773330924DA0 /* AppReviewPromptTests.swift in Sources */,
 				295942533870EAD425D871FE /* AppleBuildBoundaryTests.swift in Sources */,
+				586F2BCF3A67997BD94E89D0 /* AquariumWindowRenderingTests.swift in Sources */,
 				8C3A34C398DE186BC55126AE /* AttentionSessionAccessTests.swift in Sources */,
 				232A8351C96692EBE12A63B6 /* AttentionSessionRosterTests.swift in Sources */,
 				797EB64211FFF8F679AD9729 /* AuthTokenAdoptionTests.swift in Sources */,
@@ -2326,6 +2335,7 @@
 				073878269396F77212DC560B /* AppMetadataTests.swift in Sources */,
 				7E151A499F63C5A8F7896DD4 /* AppReviewPromptTests.swift in Sources */,
 				91690383EAD320DBC7CDFC1B /* AppleBuildBoundaryTests.swift in Sources */,
+				EF4BB803759C7972ED2EC386 /* AquariumWindowRenderingTests.swift in Sources */,
 				774B82B71B727D336DA72CAB /* AttentionSessionAccessTests.swift in Sources */,
 				910050480C05082FABE55EB3 /* AttentionSessionRosterTests.swift in Sources */,
 				709FD2470C5B2365B1702151 /* AuthTokenAdoptionTests.swift in Sources */,
@@ -2471,6 +2481,7 @@
 				C39BADC18C8D030A110B5158 /* AquariumResidents.swift in Sources */,
 				3A341BC1D4421CE024022F05 /* AquariumShoal.swift in Sources */,
 				9B95E3162542EDD34CF868C1 /* AquariumSurface.swift in Sources */,
+				67B7E7113A1C297C88EE0247 /* AquariumWindowActivity.swift in Sources */,
 				0A2C81CEDF264AFA229180E4 /* AttentionNotifier.swift in Sources */,
 				FEEAB16BAED7AAD30A5C4EB6 /* AttentionSessionAccess.swift in Sources */,
 				60C2C9FBF69B82F90039B8DC /* AttentionSessionIntents.swift in Sources */,
@@ -2758,6 +2769,7 @@
 				C15BFCC30330EE47DC42BA03 /* AquariumResidents.swift in Sources */,
 				6530D175E50846D9A760CF72 /* AquariumShoal.swift in Sources */,
 				0264C182D89757B656DFE108 /* AquariumSurface.swift in Sources */,
+				4AF6271704E832A69C53C115 /* AquariumWindowActivity.swift in Sources */,
 				1CB839431F35EF9304A1EEBF /* AttentionNotifier.swift in Sources */,
 				FEE72EA19EDA357DBF73D02A /* AttentionSessionAccess.swift in Sources */,
 				2660B8D1446042E4B0FB2EAD /* AttentionSessionIntents.swift in Sources */,

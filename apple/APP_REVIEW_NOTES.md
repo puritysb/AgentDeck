@@ -15,15 +15,21 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Replacement submitted, October 23:** these macOS notes describe
-the submitted **1.9.2 / 9301** build. Standalone Swift receives Claude status-line
+**Further replacement in preparation, October 23:** these macOS notes include
+the dashboard Keychain and Settings rendering corrections for a new **1.9.2**
+build; its CI number and verification are pending. The existing 9301 submission
+still reads **Waiting for Review / AFTER_APPROVAL**, and the portal confirms
+9301 remains attached. These revised notes have not been submitted. See the
+[replacement decision](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+
+Standalone Swift receives Claude status-line
 observations for diagnostics only; it does not promote them into current
 account quota, gauges or subscription display. A documented interface does not
 make a session snapshot a verified current-account reading. The earlier runtime
 checks below do not validate this correction. Session observation and external
 Node quota policy are unchanged.
 
-The [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
+**Historical 9301 delivery:** the [upload run](https://github.com/puritysb/AgentDeck/actions/runs/39892713289)
 from `7e3d3033` succeeded at **2026-10-23 03:15:06 UTC**. The package's Info.plist
 confirms **1.9.2 / 9301**; strict Apple Distribution signing for `QF36NDHYHD`,
 package signing and App Store/Dot exclusion checks passed. All 25 automatic
@@ -575,7 +581,7 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.2 — MACOS ONLY
-This patch strengthens local-server Host/Origin checks, removes pairing tokens from connection logs, repairs reconnection and request parsing, protects saved history from interrupted writes, and improves display history and Wi-Fi setup. It hides Claude readings that cannot be verified as current account usage in the standalone app. Dictated prompts now reach their selected OpenClaw Gateway session. Pages from other sites require pairing rather than inheriting a local program's trust. Dot is entirely excluded. The released iOS app is unchanged.
+This patch hardens local-server Host/Origin checks, omits pairing tokens from logs, repairs reconnection and request parsing, and protects saved history. Dashboard rendering avoids an unused Keychain read. While Settings is frontmost, a static 2D view replaces the aquarium; returning restores its 3D scene and camera. Hidden or minimized dashboards also suspend rendering. Standalone Claude status-line snapshots do not become account quota. Device history, Wi-Fi setup and Gateway voice delivery are improved. Other sites need pairing. Dot is excluded; iOS is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

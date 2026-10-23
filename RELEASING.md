@@ -95,6 +95,90 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-23 macOS Settings responsiveness replacement
+
+This is a new replacement decision, not a delivery receipt. The source starts
+at master `069266848e48f64badc227221000a5c8cd2c8e3a`, which includes the dashboard
+Keychain correction in [PR #599](https://github.com/puritysb/AgentDeck/pull/599).
+The additional Settings/rendering correction is being prepared in this worktree;
+its final source identity and CI build number have not been assigned.
+
+The [read-only ASC run](https://github.com/puritysb/AgentDeck/actions/runs/39950220874)
+on **October 23 at 21:01 KST** still reports macOS 1.9.2 and submission
+`5e08427d-e1dc-4657-933e-609e9e6cbf1f` as `WAITING_FOR_REVIEW`, with
+`AFTER_APPROVAL`. Build 9301 (`c39ded43-0bd9-4868-9a2e-15485a34ea52`) remains
+`VALID` and unexpired. The subsequent read of the
+[macOS version page](https://appstoreconnect.apple.com/apps/6784822497/distribution/macos/version/inflight)
+also confirmed that 9301 remains the exact attached build. Its original
+submission is recorded in the
+[earlier 9301 delivery](#macos-192-replacement-delivery-2026-10-23).
+Public macOS remains 1.9.0 and iOS remains 1.9.1. The current submission has not
+been withdrawn by this preparation. Sanitized readback is retained under
+`diagnostics/release599-asc-status-39950220874/`.
+
+| Target / routes | Last verified public | Uploaded / reserved | Proposed | Class and previous → new behavior | Applicability |
+| --- | --- | --- | --- | --- | --- |
+| Apple / macOS App Store | 1.9.0 | 1.9.2 / 9301, Waiting for Review | 1.9.2 / new CI build above 9301, number pending | Existing 1.9 correction: remove an unused synchronous Keychain read from dashboard rendering and suspend the optional aquarium renderer while editing Settings | Replace the unreleased macOS build after verification; preserve automatic release after approval |
+| Apple / iOS and other channels | Existing delivery identities | Unchanged | No delivery | No new product milestone or coordinated version bump | No Apple tag, iOS upload, npm or device/plugin publication |
+
+The user requested a corrected macOS submission before release. Retaining the
+unreleased 1.9.2 product version follows the [version policy](#choosing-a-version);
+the new artifact receives a new build number. Replacing 9301 requires withdrawing
+its pending submission and starts a new review queue entry. Recheck ASC before
+that action: if 1.9.2 has become public, changed executable content instead needs
+1.9.3 and a revised delivery decision.
+
+The Keychain issue and its limited attribution are documented in the
+[PR #599 investigation](docs/devlog/entries/2026-10-23-settings-main-thread-keychain.md).
+After that correction, a same-process 3D → 2D → 3D comparison reproduced a
+Settings navigation difference: six tab changes took about **24 seconds with
+3D**, versus **5 seconds with 2D**. These are observed interaction/automation
+durations, not input-to-paint measurements. They support removing the background
+RealityView while Settings is frontmost; they do not establish the cause of every
+historical AX timeout. The proposed change also suspends rendering when the
+dashboard is minimized or fully hidden, then restores the aquarium when eligible.
+The suspended view uses a static 2D aquarium; restoration retains the scene
+entities, camera pose/component state, user's 3D preference and session state.
+Each renderer receives a fresh camera object: retaining the old camera left
+earlier candidates blank even when frame callbacks and scene association resumed.
+The failed candidates and measurement limits are recorded in the
+[rendering investigation](docs/devlog/entries/2026-10-23-settings-aquarium-rendering.md).
+
+**Local v5 runtime evidence:** Debug **1.9.2/5, PID 10511**, built from the
+uncommitted correction above `06926684`, restored the habitat, fish and residents
+visually after two Settings-close cycles, with eight live sessions present.
+The debug dylib SHA-256 is
+`11c1383e43dac8e184e57b4d1ec696cec2427d9c5bc21afc05b995e17545900b`.
+The final six Settings clicks plus AX reads totalled **7.121 seconds**, compared
+with the same-process baseline's **23.421 seconds**; the earlier v2 5.520-second
+result belongs to a candidate that failed 3D restoration. The v5 30-second
+Settings sample recorded **2,240** main-thread sightings and zero DisplayLinkClock
+or frame-pacing sightings. A 10-second minimized sample recorded **738**
+main-thread sightings and zero for both rendering branches; Raise visibly
+restored 3D in the same process. Mount diagnostics showed active, anchored,
+enabled roots with finite transforms, and asset import/assembly each ran once.
+
+One combined AX-read/close/screenshot call exceeded its 30-second budget after
+Settings had already closed; later separate captures showed the restored scene.
+This is not a measured 30-second close delay. Interaction measurements include
+automation/AX overhead; input-to-paint latency remains unmeasured. The raw receipt
+is `diagnostics/settings-rendering-v5.json`, alongside the v5 samples and lifecycle
+log in the main checkout.
+
+**Release verification pending:** required quick/changed/full checks are in
+progress. The earlier 9301 and PR #599 receipts do not cover this combined source;
+the signed Release archive and exact-Store-build validation remain pending.
+This local Debug result is not a new upload, submission or public release.
+Existing physical deck-input and sleep/wake gaps remain unverified.
+
+The current ASC helper has no submission-cancellation action, and its preparation
+guards permit replacing only 9201 or retaining the exact requested target build.
+For a 9301 replacement, use the authorized portal to withdraw the old submission
+and associate the exact new `VALID` build before reusing `release-prepare` and
+`release-submit`, or review a narrowly scoped helper change first. Preserve the
+EN/KO/JA copy, reviewer notes and `AFTER_APPROVAL` readbacks. The earlier 9301
+delivery record below remains historical evidence for that artifact.
+
 ### 2026-10-22 browser trust security patch preparation
 
 This is a preparation record, not a delivery receipt. The candidate starts at
@@ -1666,7 +1750,13 @@ The receipt proves the App Store _distributed_ that exact version-and-build, whi
 
 A successful CI upload reaches App Store Connect/TestFlight; public App Store release remains a separate App Store Connect action.
 
-While a version sits in **Waiting for Review**, do not upload a replacement build for it: attaching one requires a developer reject, which loses the queue position without helping. Land further work on the next patch instead.
+While a version sits in **Waiting for Review**, preserve its queue position by
+default. An explicitly authorized correction before public release may replace
+that unreleased version with a new build: record the reason and review-queue
+reset in the version decision, withdraw the pending submission, then verify the
+exact replacement association and resubmission. Unrelated follow-up work belongs
+in a later patch. Once the version is public, changed executable content requires
+a new patch under [Choosing a version](#choosing-a-version).
 
 **A rejection is the opposite case, and it moves the tag.** A rejected version keeps its `MARKETING_VERSION`, so the replacement ships under the same Apple version — and rule 6 below requires the tag to match that version exactly. Re-pointing `apple-v<VERSION>` at the fix commit and force-pushing is therefore the intended path (CI derives the build number from `run_number * 100 + run_attempt`, so it stays monotonic across re-tags). The cost is that the tag no longer identifies the commit that produced the build already in the store: after a re-tag, that commit is recoverable only from the earlier workflow run for the same tag (`gh run list --workflow=apple-release.yml`). Record it in the changelog entry rather than relying on the tag.
 
