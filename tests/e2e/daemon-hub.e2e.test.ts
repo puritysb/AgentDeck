@@ -972,7 +972,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
-  it.runIf(POSIX)('shows a Claude permission prompt from PermissionRequest at once, once, and releases a held gate when its hook goes away', async () => {
+  it.runIf(POSIX)('shows Claude Attention only for a real waiting notification, never for speculative hooks', async () => {
     const sid = 'e2e-claude-permreq-0001';
     const rowId = `observed:claude:${sid}`;
     const base = { ...SESSION, session_id: sid, permission_mode: 'default' };
@@ -999,9 +999,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     try {
       await waitFor('Claude row', () => row(client.frames), 30_000);
       // 1. The installed PermissionRequest command, run as Claude runs it:
-      //    nothing on stdout (no decision), and the prompt is on the row
-      //    within one broadcast — not the ~6 s the Notification waits.
-      const started = Date.now();
+      //    nothing on stdout (no decision), and no speculative Attention.
       const hook = spawnSync('sh', ['-c', buildHookCommand('PermissionRequest')], {
         input: JSON.stringify({ ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }),
         env: { ...process.env, HOME: home, AGENTDECK_PORT: String(daemon.port) },
@@ -1010,58 +1008,47 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
       });
       expect(hook.status).toBe(0);
       expect(hook.stdout).toBe('');
-      const shown = await waitFor('PermissionRequest prompt', () => {
-        const r = row(client.frames);
-        return r?.state === 'awaiting_permission' ? r : undefined;
-      });
-      expect(Date.now() - started).toBeLessThan(2_000);
-      expect(shown.question).toBe('Allow Bash: rm -rf build');
-      expect(shown.requestId).toBeUndefined();
-      // 2. The permission_prompt Notification for the same dialog is the
-      //    same prompt: it neither replaces the tool details nor re-flips it.
+      await settle();
+      expect(row(client.frames)?.state).not.toBe('awaiting_permission');
+      // A PermissionRequest can be automatically answered or headlessly denied.
+      // Only Claude's waiting notification confirms that a user prompt is up.
       await postHook(daemon.port, 'Notification', {
         ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt',
         message: 'Claude needs your permission to use Bash',
       });
-      await settle();
-      expect(row(client.frames)).toMatchObject({ state: 'awaiting_permission', question: 'Allow Bash: rm -rf build' });
+      const shown = await waitFor('real waiting prompt', () => {
+        const r = row(client.frames);
+        return r?.state === 'awaiting_permission' ? r : undefined;
+      });
+      expect(shown.question).toBe('Claude needs your permission to use Bash');
+      expect(shown.requestId).toBeUndefined();
       // 3. Answered in the terminal: the tool runs and the prompt goes.
       await postHook(daemon.port, 'PostToolUse', { ...base, hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf build' }, tool_use_id: 'toolu_e2e_permreq_1' });
       await waitFor('prompt cleared by PostToolUse', () => (row(client.frames)?.state !== 'awaiting_permission' ? true : undefined));
 
-      // 4. A held device gate (a connected client, a call Claude would ask
-      //    about) owns its requestId: neither display signal takes it.
-      const abort = new AbortController();
-      const held = fetch(`http://127.0.0.1:${daemon.port}/hooks/PreToolUse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Pid': String(process.pid) },
-        body: JSON.stringify({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' }, tool_use_id: 'toolu_e2e_permreq_2' }),
-        signal: abort.signal,
-      }).catch(() => null);
-      const gate = await waitFor('held gate', () => {
-        const r = row(client.frames);
-        return typeof r?.requestId === 'string' ? r : undefined;
+      // Even with a device attached, an unlisted Bash command must pass
+      // PreToolUse immediately. The old predictor held it for 25 seconds.
+      const frameStart = client.frames.length;
+      const started = Date.now();
+      const pre = await fetch(`http://127.0.0.1:${daemon.port}/hooks/PreToolUse`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...base, hook_event_name: 'PreToolUse', tool_name: 'Bash',
+          tool_input: { command: 'git -C /tmp status --short' }, tool_use_id: 'toolu_no_hold' }),
+        signal: AbortSignal.timeout(5_000),
       });
-      await postHook(daemon.port, 'PermissionRequest', { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf other' } });
-      await postHook(daemon.port, 'Notification', {
-        ...base, hook_event_name: 'Notification', notification_type: 'permission_prompt',
-        message: 'Claude needs your permission to use Bash',
-      });
+      expect(await pre.text()).toBe('');
+      expect(Date.now() - started).toBeLessThan(5_000);
+      await postHook(daemon.port, 'PermissionRequest', { ...base, hook_event_name: 'PermissionRequest',
+        tool_name: 'Bash', tool_input: { command: 'git -C /tmp status --short' } });
+      await postHook(daemon.port, 'Notification', { ...base, notification_type: 'idle_prompt',
+        message: 'Claude needs your permission to use Bash' });
       await settle();
-      expect(row(client.frames)).toMatchObject({ requestId: gate.requestId, question: gate.question });
-      // 5. The hook's client goes away (Claude killed it, its timeout fired):
-      //    the gate is released at once, not after the 25 s hold.
-      const closedAt = Date.now();
-      abort.abort();
-      await held;
-      await waitFor('gate released on socket close', () => (row(client.frames) && !row(client.frames)?.requestId ? true : undefined), 5_000);
-      expect(Date.now() - closedAt).toBeLessThan(5_000);
-      // Claude now draws its own dialog, announced by PermissionRequest.
-      await postHook(daemon.port, 'PermissionRequest', { ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } });
-      await waitFor('display-only prompt after the release', () => {
-        const r = row(client.frames);
-        return r?.state === 'awaiting_permission' && r.question === 'Allow Bash: rm -rf dist' && !r.requestId ? true : undefined;
-      });
+      for (const frame of client.frames.slice(frameStart)) {
+        if (frame.type !== 'sessions_list') continue;
+        const r = (frame.sessions as Array<Record<string, unknown>>).find((r) => r.id === rowId);
+        expect(r?.state).not.toBe('awaiting_permission');
+        expect(r?.requestId).toBeUndefined();
+      }
       await postHook(daemon.port, 'Stop', { ...base, hook_event_name: 'Stop' });
     } finally {
       client.close();

@@ -10,10 +10,10 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion,
-  buildAskAnswerReason, gateSignature,
+  buildAskAnswerReason,
   requestStop, clearStop, isStopRequested, consumeStop,
   queueDirective, takeDirective, takeDirectiveForStop, queuedDirectiveCount, clearOnUserPrompt,
-  notePermissionPromptShown, noteToolEnd, steeringSnapshot,
+  noteToolEnd, steeringSnapshot,
   _resetSteering,
 } from '../observed-steering.js';
 import {
@@ -58,184 +58,20 @@ afterEach(() => {
   rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
-describe('shouldHoldPreToolUse — precision guards (never hold auto-approved calls)', () => {
-  it('holds a prompt-prone Bash call with no matching rules (the genuine-wait case)', () => {
-    const d = shouldHoldPreToolUse(baseCtx());
-    expect(d.hold).toBe(true);
-    expect(d.requestId).toBeTruthy();
-  });
-
-  it('never holds when disabled', () => {
-    expect(shouldHoldPreToolUse(baseCtx({ enabled: false })).hold).toBe(false);
-  });
-
-  it('never holds with zero connected clients (nobody can answer)', () => {
-    expect(shouldHoldPreToolUse(baseCtx({ clientCount: 0 })).hold).toBe(false);
-  });
-
-  it('never holds never-prompt tools (Read/Glob/Grep/TodoWrite)', () => {
-    for (const tool of ['Read', 'Glob', 'Grep', 'TodoWrite']) {
-      expect(shouldHoldPreToolUse(baseCtx({ tool, toolInput: {} })).hold).toBe(false);
-    }
-  });
-
-  it('never holds MCP tools (per-server trust state is invisible)', () => {
-    expect(shouldHoldPreToolUse(baseCtx({ tool: 'mcp__github__create_issue', toolInput: {} })).hold).toBe(false);
-  });
-
-  it('never holds unknown tools (not in the prompt-prone set)', () => {
-    expect(shouldHoldPreToolUse(baseCtx({ tool: 'SomeFutureTool', toolInput: {} })).hold).toBe(false);
-  });
-
-  it('never holds in auto-approving permission modes', () => {
-    for (const mode of ['bypassPermissions', 'dontAsk', 'auto', 'plan']) {
-      expect(shouldHoldPreToolUse(baseCtx({ permissionMode: mode })).hold).toBe(false);
-    }
-  });
-
-  it('acceptEdits: never holds edit-family tools, still holds Bash', () => {
-    expect(shouldHoldPreToolUse(baseCtx({
-      permissionMode: 'acceptEdits', tool: 'Edit', toolInput: { file_path: '/x' },
-    })).hold).toBe(false);
-    expect(shouldHoldPreToolUse(baseCtx({ permissionMode: 'acceptEdits' })).hold).toBe(true);
-  });
-
-  it('never holds when a user-level allow rule prefix-matches the command', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(git push:*)'] });
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-  });
-
-  it('never holds when a PROJECT-LOCAL allow rule matches (session "always allow" persists here)', () => {
-    writeSettings(cwd, 'settings.local.json', { allow: ['Bash(git push:*)'] });
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-  });
-
-  it('never holds on a bare tool-name allow rule', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash'] });
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-  });
-
-  it('never holds a non-Bash tool when any allow rule exists for it (loose spec match)', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['WebFetch(domain:github.com)'] });
-    expect(shouldHoldPreToolUse(baseCtx({
-      tool: 'WebFetch', toolInput: { url: 'https://example.com' },
-    })).hold).toBe(false);
-  });
-
-  it('never holds when a deny rule may match (Claude auto-denies without prompting)', () => {
-    writeSettings(homeDir, 'settings.json', { deny: ['Bash(git push:*)'] });
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-  });
-
-  it('never holds when ANY settings file is unparseable (rule picture unknown)', () => {
-    mkdirSync(join(homeDir, '.claude'), { recursive: true });
-    writeFileSync(join(homeDir, '.claude', 'settings.json'), '{ not json');
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-  });
-
-  it('compound command: every segment must be covered — an uncovered second segment still holds', () => {
-    // Claude Code matches each subcommand independently, so `Bash(git status *)`
-    // does not approve `git status && rm -rf /`: the prompt is genuine.
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(git status:*)'] });
-    expect(shouldHoldPreToolUse(baseCtx({
-      toolInput: { command: 'git status && rm -rf /' },
-    })).hold).toBe(true);
-  });
-
-  it('compound command: allow rules plus the built-in read-only set covering every segment suppress the hold', () => {
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(npm test *)'] });
-    expect(shouldHoldPreToolUse(baseCtx({
-      toolInput: { command: 'cd packages/api && npm test -- --watch | tail -20' },
-    })).hold).toBe(false);
-  });
-
-  it('space-star allow rules (the form the permission dialog writes) suppress the hold', () => {
-    // The 2026-09-05 defect: only the legacy `:*` spelling was understood, so
-    // every `Bash(curl *)` rule matched nothing and each batch was held 25 s.
-    writeSettings(homeDir, 'settings.json', { allow: ['Bash(curl *)'] });
-    expect(shouldHoldPreToolUse(baseCtx({
-      permissionMode: 'acceptEdits',
-      toolInput: { command: 'curl -sL -A "Mozilla/5.0" https://example.com' },
-    })).hold).toBe(false);
-  });
-
-  it('acceptEdits auto-approves the filesystem commands without any rule', () => {
-    expect(shouldHoldPreToolUse(baseCtx({
-      permissionMode: 'acceptEdits',
-      toolInput: { command: 'mkdir -p data/out && cp a.json data/out/' },
-    })).hold).toBe(false);
-  });
-
-  it('built-in read-only commands never hold in default mode', () => {
-    expect(shouldHoldPreToolUse(baseCtx({
-      toolInput: { command: 'git status --short' },
-    })).hold).toBe(false);
-  });
-
-  it('holds on a strict ask-rule match (Claude will definitely prompt)', () => {
-    writeSettings(homeDir, 'settings.json', { ask: ['Bash(git push:*)'] });
-    const d = shouldHoldPreToolUse(baseCtx());
-    expect(d.hold).toBe(true);
-    expect(d.reason).toContain('ask');
-  });
-
-  it('allows only one held gate per session (parallel tool calls pass through)', () => {
-    const first = shouldHoldPreToolUse(baseCtx());
-    expect(first.hold).toBe(true);
-    expect(shouldHoldPreToolUse(baseCtx({ toolInput: { command: 'npm test' } })).hold).toBe(false);
-  });
-});
-
-describe('auto-approval learner (session "always allow" is invisible — learn it)', () => {
-  it('suppresses a signature after undecided release + tool_end with no permission prompt', () => {
-    const d = shouldHoldPreToolUse(baseCtx());
-    expect(d.hold).toBe(true);
-    // Timeout release (pass) arms the learner; tool ran right after.
-    gateReleased('sid-1', d.requestId!, { undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' } });
-    noteToolEnd('sid-1', 'Bash');
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
-    expect(shouldHoldPreToolUse(baseCtx()).reason).toContain('learned');
-  });
-
-  it('does NOT suppress when a permission prompt was shown in between (genuine wait)', () => {
-    const d = shouldHoldPreToolUse(baseCtx());
-    gateReleased('sid-1', d.requestId!, { undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' } });
-    notePermissionPromptShown('sid-1');
-    noteToolEnd('sid-1', 'Bash');
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(true);
-  });
-
-  it('does NOT learn from device-decided releases', () => {
-    const d = shouldHoldPreToolUse(baseCtx());
-    gateReleased('sid-1', d.requestId!, { undecided: false, tool: 'Bash', toolInput: { command: 'git push origin master' } });
-
-    noteToolEnd('sid-1', 'Bash');
-    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(true);
-  });
-
-  it('a release that recorded its tool_use_id learns only from ITS OWN PostToolUse (a parallel Bash must not teach it)', () => {
-    const d = shouldHoldPreToolUse(baseCtx());
-    gateReleased('sid-1', d.requestId!, {
-      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held',
+describe('PreToolUse cannot prove a human wait', () => {
+  for (const mode of [undefined, 'default', 'acceptEdits', 'auto', 'dontAsk', 'plan', 'bypassPermissions']) {
+    it(`passes unlisted calls through in ${mode ?? 'unknown'} mode`, () => {
+      for (const tool of ['Bash', 'Edit', 'WebSearch', 'mcp__server__tool']) {
+        const decision = shouldHoldPreToolUse(baseCtx({ tool, permissionMode: mode }));
+        expect(decision.hold).toBe(false);
+        expect(decision.requestId).toBeUndefined();
+      }
     });
-    // An unrelated allowlisted Bash finishing inside the 15-minute window
-    // must NOT teach the held signature.
-    noteToolEnd('sid-1', 'Bash', 'toolu_other');
-    const d2 = shouldHoldPreToolUse(baseCtx());
-    expect(d2.hold).toBe(true);
-    // Its own completion does teach it.
-    gateReleased('sid-1', d2.requestId!, {
-      undecided: true, tool: 'Bash', toolInput: { command: 'git push origin master' }, toolUseId: 'toolu_held2',
-    });
-    noteToolEnd('sid-1', 'Bash', 'toolu_held2');
-    const d3 = shouldHoldPreToolUse(baseCtx());
-    expect(d3.hold).toBe(false);
-    expect(d3.reason).toBe('signature learned auto-approved');
-  });
-
-  it('signature granularity: Bash uses the first two command tokens', () => {
-    expect(gateSignature('Bash', { command: 'git push origin master' })).toBe('Bash|git push');
-    expect(gateSignature('Edit', { file_path: '/x' })).toBe('Edit');
+  }
+  it('does not invent a hold even for an ask rule (other hooks can decide it)', () => {
+    writeSettings(homeDir, 'settings.json', { ask: ['Bash(git push *)'] });
+    expect(shouldHoldPreToolUse(baseCtx()).hold).toBe(false);
+    expect(shouldHoldPreToolUse(baseCtx()).requestId).toBeUndefined();
   });
 });
 
@@ -387,7 +223,7 @@ describe('beginAskGate (AskUserQuestion always prompts — no precision guards)'
     // Claude auto-approves, so it must not suppress any signature.
     gateReleased('sid-ask', gate.requestId!, { undecided: false, tool: 'AskUserQuestion' });
     noteToolEnd('sid-ask', 'AskUserQuestion');
-    expect(shouldHoldPreToolUse(baseCtx({ sessionId: 'sid-ask' })).hold).toBe(true);
+    expect(shouldHoldPreToolUse(baseCtx({ sessionId: 'sid-ask' })).hold).toBe(false);
   });
 });
 

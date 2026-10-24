@@ -8,9 +8,11 @@ import { debug } from './logger.js';
 // Note: braille chars (⠋⠙⠹…) are used by other CLIs (npm, etc.), NOT Claude Code
 const SPINNER_CHARS = /[✢✳✶✻✽]/;
 
-const YES_NO_ALWAYS = /Yes,\s*allow once|No,\s*deny|Always allow/i;
-const PERMISSION_YN = /\(Y\)es.*\/\(N\)o|\(y\/n\)/i;
-const DIFF_PROMPT = /\(V\)iew diff.*\(A\)pply.*\(D\)eny|\(a\)pply.*\(d\)eny.*\(v\)iew/i;
+// Permission text in tool output or quoted examples is not a choice. Require
+// a rendered choice line (optionally numbered/cursored/boxed), not a substring.
+const YES_NO_ALWAYS = /^[ \t│┃]*(?:❯[ \t]*)?(?:\d{1,2}[.)][ \t]*)?(?:Yes,[ \t]*allow once|No,[ \t]*deny|Always allow)[ \t│┃]*$/im;
+const PERMISSION_YN = /(?:\(Y\)es[ \t]*\/[ \t]*\(N\)o|\(y\/n\))[ \t]*[?:]?[ \t]*$/im;
+const DIFF_PROMPT = /(?:\(V\)iew diff[^\r\n]*\(A\)pply[^\r\n]*\(D\)eny|\(a\)pply[^\r\n]*\(d\)eny[^\r\n]*\(v\)iew)[ \t│┃]*$/im;
 // ANSI stripping can remove spaces (e.g. "❯3.Haiku" instead of "❯ 3. Haiku")
 const OPTION_NUMBERED = /^\s*❯?\s*\d{1,2}[.)]\s*.+/m;
 const OPTION_BULLET = /^\s*[►▸●○]\s+.+/m;
@@ -397,14 +399,16 @@ export class OutputParser extends EventEmitter {
 
     // --- Pre-scan: idle prompt & interactive content detection ---
     const hasIdlePrompt = IDLE_PROMPT.test(chunk);
+    const hasNavigablePrompt = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
+    const hasSelectionBullet = /^[ \t]*[►▸●][ \t]+/m.test(chunk);
+    const hasOptionInteraction = hasNavigablePrompt || hasSelectionBullet || this.interactivePromptActive;
     const hasInteractive =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) ||
-      OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk);
-    const hasNavigablePrompt = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
+      (hasOptionInteraction && (OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)));
     const hasAuthoritativePrompt =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
-      PERMISSION_YN.test(chunk) || hasNavigablePrompt;
+      PERMISSION_YN.test(chunk) || hasNavigablePrompt || hasSelectionBullet;
 
     // Arm from fresh evidence only. Re-reading the append-only buffer here can
     // resurrect an answered prompt and suppress real processing indefinitely.
@@ -558,14 +562,14 @@ export class OutputParser extends EventEmitter {
     }
 
     // --- Option list (debounced — PTY chunks may split option data) ---
-    // Guard: real interactive option prompts arrive in small TUI redraws (<200 non-ws chars).
-    // Large chunks (≥200) are Claude's response text which may contain numbered lists
-    // (e.g. "1. First approach\n2. Second approach") — these are NOT interactive options.
-    // Exception: ❯ cursor before a numbered option is a definitive TUI indicator —
-    // Claude response text never contains "❯ 1." so this bypasses the size guard safely.
+    // A small numbered list can be streamed response text too. A selection
+    // cursor/bullet or an already confirmed prompt admits picker redraws;
+    // the size bound below only limits ambiguous redraws, never proves a wait.
     const chunkNonWs = chunk.replace(/\s/g, '').length;
     const hasNavigableCursor = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
-    if ((OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
+    // Size alone cannot distinguish a streamed response list from a picker.
+    // Require a selection cursor or an already confirmed interactive prompt.
+    if (hasOptionInteraction && (OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
       debug('Parser', 'option pattern detected — starting/resetting debounce');
       this.resetIdleTimer();
       this.resetOptionTimer();

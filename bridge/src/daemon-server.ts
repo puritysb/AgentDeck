@@ -109,9 +109,8 @@ import {
 import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
 
-/** Observed-session device approval gate (PreToolUse hold). Default ON — the
- *  precision guards in observed-steering.ts/claude-permission-rules.ts ensure
- *  only genuine would-prompt calls are held. Kill switch for field issues. */
+/** Device approval holds, including the opt-in human Codex handler. Claude's
+ *  speculative PreToolUse permission gate stays passive in the shared rules. */
 const OBSERVED_APPROVAL_ENABLED = process.env.AGENTDECK_OBSERVED_APPROVAL !== '0';
 /** How long a held gate waits for a device decision before releasing the tool
  *  call to Claude's own permission flow. Must stay well under the hook curl's
@@ -3798,8 +3797,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // The ended session's identity must not ride on later broadcasts.
         if (mapped === 'session_end' && earlyHookSid !== 'daemon-hook') hubDriver.noteSessionEnd(earlyHookSid);
         // Per-session awaiting overlay for observed/direct-`claude` sessions.
-        // Permission prompts stay Notification-driven and display-only unless
-        // the precision PreToolUse gate below owns a real requestId.
+        // Permission prompts are Notification-driven and display-only.
+        // The legacy PreToolUse permission gate stays passive.
         // AskUserQuestion is different: its PreToolUse payload already carries
         // question/options/tool_use_id, so preserve that structured lifecycle
         // as awaiting_option until the matching PostToolUse/Failure. This avoids
@@ -3814,15 +3813,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const toolInput = (json.tool_input && typeof json.tool_input === 'object')
             ? json.tool_input as Record<string, unknown> : undefined;
           if (mapped === 'permission_request') {
-            // Claude Code runs PermissionRequest as it is about to draw its
-            // permission dialog — the immediate signal, where the
-            // permission_prompt Notification below waits ~6 s of keyboard
-            // silence. Display-only: the installed hook prints nothing, so it
-            // never decides the prompt. Same overlay the Notification sets,
-            // with the tool details the Notification lacks; the later
-            // Notification keeps it (setPermissionNotificationOverlay), and the
-            // same tool/turn hooks clear it.
-            notePermissionPromptShown(claudeSid);
+            // Observation only: this event also precedes automatic hook/SDK
+            // decisions and headless denials. Notification confirms a human wait.
             if (setPermissionRequestOverlay(claudeSid, buildGateQuestion(toolName, toolInput), isPendingRequest)) {
               core.broadcastSessionsList().catch(() => {});
             }
@@ -4371,12 +4363,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               debug('daemon', `AskUserQuestion not held: ${gate.reason} (${claudeSid.slice(0, 8)})`);
             }
           }
-          // 3. Device-approval gate: hold the response for a device decision,
-          //    but ONLY for calls the precision guards say Claude would
-          //    genuinely prompt for (see shouldHoldPreToolUse — mode gate,
-          //    never-prompt/prompt-prone sets, allowlist prediction, learned
-          //    auto-approvals, connected-client check). Anything uncertain
-          //    falls through to the empty pass-through below.
+          // 3. Legacy permission-gate compatibility path. The shared predictor
+          //    is always passive; PreToolUse cannot prove a human wait.
           if (claudeSid) {
             const gate = shouldHoldPreToolUse({
               sessionId: claudeSid,

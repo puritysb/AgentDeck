@@ -1,20 +1,13 @@
 /**
- * Claude Code permission prediction — the single source of truth for "would
- * Claude Code actually prompt the user for this tool call?".
+ * Legacy Claude permission-rule matching and passive hold compatibility API.
  *
- * Both daemons hold an observed session's PreToolUse for a device decision
- * ONLY when this module predicts a genuine prompt. A false hold costs the user
- * twice: the deck shows PERM for a decision Claude never asked for, and the
- * hook response is held for the whole timeout (25 s) before Claude's own
- * allow rule lets the call through. Measured 2026-09-05: two `acceptEdits`
- * worker sessions whose every `curl`/`mkdir` was allowlisted by
- * `Bash(curl *)` / `Bash(mkdir *)` were held on every batch, because the
- * predictor understood only the legacy `Bash(curl:*)` spelling — 67 of the
- * 73 Bash rules in the user's settings were in the space form and matched
- * nothing. The Swift daemon carried the same defect as a hand mirror, which
- * is why the matcher now lives here and is GENERATED into Swift
- * (`pnpm generate-claude-permission-rules`), with behavior pinned by
- * `shared/claude-permission-vectors.json` that both suites replay.
+ * PreToolUse fires before Claude decides whether to ask a human. Session
+ * approvals, sandbox policy and other hooks are invisible here, so even an
+ * ask rule cannot prove a human wait. Both daemons therefore pass permission
+ * calls through; the waiting permission_prompt Notification owns Attention.
+ * Structured AskUserQuestion device holds are independent and remain active.
+ * The matching helpers remain for compatibility and are generated into Swift
+ * behind the shared vector and byte gates.
  *
  * Rule semantics follow the Claude Code permissions reference
  * (https://code.claude.com/docs/en/permissions):
@@ -37,10 +30,17 @@
  *   - `timeout`/`nice`/`nohup`/… wrappers and leading `VAR=value` assignments
  *     are stripped before matching
  *
+ * PreToolUse permission holds are retired: even an ask rule can be answered
+ * by another hook before any human prompt. The matching helpers remain for
+ * compatibility; predictPreToolUseHold never creates a permission wait.
+ *
  * Every uncertainty resolves toward "don't hold": a missed hold means the user
  * answers in the terminal exactly as before, while a false hold nags them with
  * a prompt Claude never showed and stalls the agent for the hold timeout.
  */
+
+/** Exact legacy Notification sentence; structured notification_type takes priority. */
+export const CLAUDE_PERMISSION_NOTIFICATION_PATTERN = '^Claude needs your permission to use [^\\r\\n]+[.!]?$';
 
 // ─── Permission modes ───
 
@@ -476,21 +476,9 @@ export interface PreToolUseHoldPrediction {
  * The daemons layer session state on top (connected clients, one held gate
  * per session, learned auto-approvals).
  */
-export function predictPreToolUseHold(input: PreToolUseHoldInput): PreToolUseHoldPrediction {
-  const tool = input.tool;
-  if (!tool) return { hold: false, reason: 'no tool name' };
-  if (tool.startsWith('mcp__')) return { hold: false, reason: 'mcp tool (trust state unknown)' };
-  if (NEVER_PROMPT_TOOLS.has(tool)) return { hold: false, reason: 'never-prompt tool' };
-  if (!PROMPT_PRONE_TOOLS.has(tool)) return { hold: false, reason: 'not prompt-prone' };
-  if (!shouldGatePreToolUse(input.permissionMode, tool)) {
-    return { hold: false, reason: `permission_mode=${input.permissionMode || 'default'} auto-approves` };
-  }
-  const command = typeof input.toolInput?.command === 'string' ? input.toolInput.command : undefined;
-  const verdict = evaluatePermissionRules(tool, command, input.rules, { permissionMode: input.permissionMode });
-  if (verdict === 'unknown') return { hold: false, reason: 'settings unreadable' };
-  if (verdict === 'deny') return { hold: false, reason: 'deny rule may match' };
-  if (verdict === 'allow') return { hold: false, reason: 'allow rule or built-in auto-approval covers the call' };
-  return { hold: true, reason: verdict === 'ask' ? 'ask rule matches' : 'prompt-prone, no rule match' };
+export function predictPreToolUseHold(_input: PreToolUseHoldInput): PreToolUseHoldPrediction {
+  // Kept as a compatibility API for both daemons. Rules cannot prove a wait.
+  return { hold: false, reason: 'PreToolUse does not prove a user wait' };
 }
 
 // ─── Learner ───

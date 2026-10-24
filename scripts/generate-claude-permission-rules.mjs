@@ -41,6 +41,7 @@ function swiftStringList(values, indent = '        ') {
 
 export function rulesFrom(mod) {
   return {
+    permissionNotificationPattern: mod.CLAUDE_PERMISSION_NOTIFICATION_PATTERN,
     permissionModes: [...mod.CLAUDE_PERMISSION_MODES],
     neverPromptTools: [...mod.NEVER_PROMPT_TOOLS].sort(),
     promptProneTools: [...mod.PROMPT_PRONE_TOOLS].sort(),
@@ -64,7 +65,7 @@ export function emitSwift(rules) {
 import Foundation
 
 /// Claude Code permission prediction — the Swift half of the SSOT that decides
-/// whether an observed session's PreToolUse would genuinely prompt the user.
+/// the retired permission-hold compatibility API (always passive).
 /// See shared/src/claude-permission-rules.ts for the rule rationale; parity
 /// is pinned by shared/claude-permission-vectors.json, replayed by BOTH suites
 /// (vitest claude-permission-rules.test.ts / ClaudePermissionRulesTests).
@@ -73,6 +74,8 @@ import Foundation
 /// \`Array.from(text)\` — never grapheme clusters, whose canonical equivalence
 /// would accept a rule the TS side refuses.
 enum ClaudePermissionRules {
+
+    static let permissionNotificationPattern = ${JSON.stringify(rules.permissionNotificationPattern)}
 
     /// Values Claude Code writes into a hook payload's \`permission_mode\`.
     static let permissionModes: [String] = [
@@ -461,21 +464,8 @@ ${swiftStringList(rules.acceptEditsFsCommands)}
         permissionMode: String?,
         rules: MergedRules?
     ) -> HoldPrediction {
-        if tool.isEmpty { return HoldPrediction(hold: false, reason: "no tool name") }
-        if tool.hasPrefix("mcp__") { return HoldPrediction(hold: false, reason: "mcp tool (trust state unknown)") }
-        if neverPromptTools.contains(tool) { return HoldPrediction(hold: false, reason: "never-prompt tool") }
-        if !promptProneTools.contains(tool) { return HoldPrediction(hold: false, reason: "not prompt-prone") }
-        if !shouldGatePreToolUse(permissionMode: permissionMode, tool: tool) {
-            let mode = permissionMode?.isEmpty == false ? permissionMode! : "default"
-            return HoldPrediction(hold: false, reason: "permission_mode=\\(mode) auto-approves")
-        }
-        switch evaluatePermissionRules(tool: tool, command: command, rules: rules, permissionMode: permissionMode) {
-        case .unknown: return HoldPrediction(hold: false, reason: "settings unreadable")
-        case .deny: return HoldPrediction(hold: false, reason: "deny rule may match")
-        case .allow: return HoldPrediction(hold: false, reason: "allow rule or built-in auto-approval covers the call")
-        case .ask: return HoldPrediction(hold: true, reason: "ask rule matches")
-        case .none: return HoldPrediction(hold: true, reason: "prompt-prone, no rule match")
-        }
+        // Compatibility API: neither settings nor command text proves a wait.
+        return HoldPrediction(hold: false, reason: "PreToolUse does not prove a user wait")
     }
 
     // MARK: - Learner

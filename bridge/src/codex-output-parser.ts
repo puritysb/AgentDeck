@@ -29,12 +29,13 @@ const IDLE_PROMPT = /›\s|^[❯>]\s/m;
 // Codex status line with model info: "› prompt   gpt-5.4 medium · 47% left · ~/path"
 const CODEX_STATUS_LINE = /[❯›]\s.*(?:gpt-|o\d|codex)[\w.-]*\s.*·.*~/;
 
-// Sandbox approval prompts — Codex asks user to approve shell commands/file writes
-const APPROVAL_ALLOW = /\bAllow\b.*\bDeny\b|\bapprove\b.*\bdeny\b/i;
-const APPROVAL_YN = /\(y\)es.*\(n\)o|\[Y\/n\]|\[y\/N\]/i;
-const APPROVAL_ALWAYS = /Always\s+allow|Allow\s+once/i;
+// Sandbox approval prompts. Require rendered affordance lines: command output
+// quoting approval words must not become an invented Allow/Deny interaction.
+const APPROVAL_ALLOW = /^[ \t]*(?:Allow[^\r\n?]*\?[ \t]*)?(?:Allow|approve)[ \t]+(?:Deny|deny)[ \t]*$/im;
+const APPROVAL_YN = /(?:\(y\)es[ \t]*\/?[ \t]*\(n\)o|\[Y\/n\]|\[y\/N\])[ \t]*[?:]?[ \t]*$/im;
+const APPROVAL_ALWAYS = /^[ \t]*(?:[›❯>][ \t]*)?(?:\d+\.[ \t]*)?(?:Allow[ \t]+once|Always[ \t]+allow)(?:[ \t]+(?:Always[ \t]+allow|Deny))*[ \t]*$/im;
 const CODEX_COMMAND_APPROVAL =
-  /Would you like to run the following command\?|Yes,\s*proceed\s*\(y\)|Yes,\s+and\s+don['’]t\s+ask\s+again|No,\s+and\s+tell\s+Codex|Press enter to confirm or esc to cancel/i;
+  /^[ \t]*(?:Would you like to run the following command\?|Press enter to confirm or esc to cancel)[ \t]*$|^[ \t]*(?:[›❯>][ \t]*)?\d+\.[ \t]*(?:Yes,[ \t]*proceed[ \t]*\(y\)|Yes,[ \t]+and[ \t]+don['’]t[ \t]+ask[ \t]+again|No,[ \t]+and[ \t]+tell[ \t]+Codex)/im;
 
 // Tool/command execution indicators
 const TOOL_RUNNING = /(?:Running|Executing|Ran)(?:\s+in\s+\S+)?:\s*[`"]?(.+?)[`"]?\s*$/m;

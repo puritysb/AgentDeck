@@ -5,10 +5,9 @@
  * hooks form a synchronous RPC channel that supports three steering
  * primitives, all resolved here:
  *
- *   1. Device approval — a held PreToolUse response (permission-resolver.ts)
- *      answers a genuine permission prompt with allow/deny. Gate eligibility
- *      is decided by `shouldHoldPreToolUse` below (precision-first: every
- *      uncertainty resolves to "don't hold" — see claude-permission-rules.ts).
+ *   1. Structured AskUserQuestion answers through a bounded held hook.
+ *      Permission-only PreToolUse holds are retired: settings and command
+ *      text cannot prove a human wait. The compatibility gate stays passive.
  *   2. Soft STOP — a stop flag consumed by the next PreToolUse, which returns
  *      `deny` with an instruction to halt. Not an instant Ctrl+C (pure text
  *      generation runs to the next tool call), but a real stop at the next
@@ -30,7 +29,6 @@ import {
   gateSignature,
   predictPreToolUseHold,
 } from '@agentdeck/shared';
-import { loadMergedPermissionRules } from './claude-permission-rules.js';
 import { debug } from './logger.js';
 
 export { gateSignature };
@@ -236,9 +234,9 @@ export interface HoldContext {
 }
 
 /**
- * Should this PreToolUse be held for device approval? Precision-first: hold
- * ONLY when every check says Claude would genuinely prompt the user. Any
- * uncertainty → pass through untouched (Claude's normal flow, zero latency).
+ * Compatibility permission gate. The shared predictor is passive: only a
+ * real waiting Notification may create permission Attention. No settings
+ * files are probed on this path.
  */
 export function shouldHoldPreToolUse(ctx: HoldContext): HoldDecision {
   if (!ctx.enabled) return { hold: false, reason: 'disabled' };
@@ -255,7 +253,7 @@ export function shouldHoldPreToolUse(ctx: HoldContext): HoldDecision {
     tool: ctx.tool,
     toolInput: ctx.toolInput,
     permissionMode: ctx.permissionMode,
-    rules: loadMergedPermissionRules(ctx.cwd),
+    rules: null, // Retired predictor must not probe settings on every tool call.
   });
   if (!prediction.hold) return { hold: false, reason: prediction.reason };
   const requestId = randomUUID();

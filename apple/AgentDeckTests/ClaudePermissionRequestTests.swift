@@ -1,5 +1,5 @@
 // ClaudePermissionRequestTests.swift — Claude Code's `PermissionRequest` hook
-// as an immediate display signal, and releasing a held hook gate when the
+// as an observation-only event, and releasing a held hook gate when the
 // hook's socket closes. Mirror of the Node daemon's
 // `setPermissionRequestOverlay` / `setPermissionNotificationOverlay` and
 // `releaseHoldOnHookClose` (bridge/src/__tests__/awaiting-overlay.test.ts,
@@ -43,28 +43,25 @@ final class ClaudePermissionRequestTests: XCTestCase {
 
     // MARK: - Overlay decision
 
-    func testPermissionRequestShowsThePromptAtOnce() {
-        XCTAssertEqual(question(.permissionRequest, "Allow Bash: rm -rf build"), "Allow Bash: rm -rf build")
-        XCTAssertEqual(question(.permissionRequest, "Allow Bash: ls", state: "idle"), "Allow Bash: ls")
-    }
-
-    func testTheNotificationAfterPermissionRequestCountsOnce() {
-        // PermissionRequest put the tool's prompt up; the ~6 s Notification for
-        // the same dialog must not replace it with its generic text.
-        XCTAssertNil(question(.notification, "Claude needs your permission to use Bash",
-                              state: "awaiting_permission", current: "Allow Bash: rm -rf build"))
-        // A repeated PermissionRequest for the same dialog writes nothing.
+    func testPermissionRequestAloneDoesNotProveAHumanWait() {
+        XCTAssertNil(question(.permissionRequest, "Allow Bash: rm -rf build"))
+        XCTAssertNil(question(.permissionRequest, "Allow Bash: ls", state: "idle"))
         XCTAssertNil(question(.permissionRequest, "Allow Bash: rm -rf build",
-                              state: "awaiting_permission", current: "Allow Bash: rm -rf build"))
+                              state: "awaiting_permission", current: "A real prompt"))
     }
 
-    func testTheNotificationAloneIsStillTheFallback() {
+    func testOnlyTheWaitingNotificationShowsPermissionAttention() {
         XCTAssertEqual(question(.notification, "  Claude needs your permission to use Bash  "),
                        "Claude needs your permission to use Bash")
-        // …and a PermissionRequest arriving after it upgrades the text.
-        XCTAssertEqual(question(.permissionRequest, "Allow Bash: rm -rf build",
-                                state: "awaiting_permission", current: "Claude needs your permission to use Bash"),
-                       "Allow Bash: rm -rf build")
+        XCTAssertNil(question(.notification, "Claude needs your permission to use Bash",
+                              state: "awaiting_permission", current: "A real prompt"))
+    }
+
+    func testUnstructuredStatusTextIsNotAPermissionPrompt() {
+        for message in ["No longer needs your permission", "Not requesting permission",
+                        "Output: Claude needs your permission to use Bash", "permission to use was granted"] {
+            XCTAssertFalse(DaemonServer.isPermissionNotification(notificationType: nil, message: message))
+        }
     }
 
     func testNeitherSignalReplacesAHeldGateOrAQuestion() {

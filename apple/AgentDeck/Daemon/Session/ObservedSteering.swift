@@ -7,13 +7,9 @@ import Foundation
 /// The daemon cannot type into an observed session's terminal, but Claude Code
 /// hooks form a synchronous RPC channel supporting three primitives:
 ///
-///   1. Device approval — the `/hooks/PreToolUse` route suspends (async
-///      handler) until a device answers `permission_decision` or the hold
-///      times out. Eligibility is decided by `beginGate` below, precision-
-///      first: the FIRST gate (removed 2026-05) held every call and popped
-///      Allow/Deny for tools Claude auto-approves; this one holds only calls
-///      it verified Claude would genuinely prompt for, and every uncertainty
-///      resolves to "don't hold".
+///   1. Structured AskUserQuestion answers through a bounded held hook.
+///      Permission-only PreToolUse holds are retired: command text/settings
+///      cannot prove a human wait. The compatibility gate stays passive.
 ///   2. Soft STOP — a stop flag consumed by the next PreToolUse (deny + halt
 ///      instruction). Not an instant Ctrl+C, but a real stop at the next tool
 ///      boundary. User-initiated, so zero false-popup risk.
@@ -21,7 +17,7 @@ import Foundation
 ///      the Stop hook as `{decision:"block", reason}`. Bounded: one directive
 ///      per turn end, hard queue cap, empty queue always lets the turn end.
 ///
-/// Sandbox note: the permission-rule predictor requires POSITIVE proof that
+/// Legacy matcher note: the retired permission-rule predictor required proof that
 /// the full rule surface (`~/.claude` + `<cwd>/.claude`) is readable — it
 /// probes with a directory listing. In the App Store sandbox that probe
 /// fails, so the gate self-disables (verdict `unknown` → never hold): a
@@ -321,7 +317,7 @@ actor ObservedSteering {
             tool: tool,
             command: commandText,
             permissionMode: permissionMode,
-            rules: loadMergedRules(cwd: cwd)
+            rules: nil // Retired predictor must not probe settings for every tool.
         )
         guard prediction.hold else { return nil }
         let requestId = UUID().uuidString.lowercased()
