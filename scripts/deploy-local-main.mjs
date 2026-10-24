@@ -2,7 +2,7 @@
 // Repository-side development tooling, never bundled into the Apple app.
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync,
-  renameSync, rmSync, realpathSync } from 'node:fs';
+  renameSync, rmSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -80,6 +80,51 @@ export async function beforeSwap(staged, steps, remove = path => rmSync(path, { 
   }
 }
 
+/** An unreadable receipt is unknown, never permission to replace a Store app. */
+export function hasAppStoreReceipt(target, stat = statSync) {
+  try {
+    stat(join(target, 'Contents/_MASReceipt/receipt'));
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/** Preserve Store delivery; development swaps recover the original even when
+ * moving it to the backup fails (e.g. macOS denies app-management access). */
+export async function installMacApp({ target, staged, backup, prepare, quit, launch,
+  rename = renameSync }) {
+  if (hasAppStoreReceipt(target)) return { action: 'preserved-app-store', backup: null };
+  if (existsSync(staged)) throw new Error('A staged app from an earlier deployment needs inspection');
+  let quitAttempted = false;
+  let backedUp = false;
+  let installed = false;
+  try {
+    await beforeSwap(staged, async () => {
+      await prepare();
+      // An App Store install may have completed during the build/staging work.
+      if (hasAppStoreReceipt(target)) throw new Error('App Store installation appeared during deployment; preserving it');
+      quitAttempted = true;
+      await quit();
+      if (existsSync(target)) { rename(target, backup); backedUp = true; }
+    });
+    rename(staged, target);
+    installed = true;
+    await launch();
+    return { action: backedUp ? 'replaced-development' : 'installed-development', backup: backedUp ? backup : null };
+  } catch (error) {
+    // If recovery itself fails, keep all remaining copies for inspection.
+    if (backedUp) {
+      if (installed) rename(target, staged);
+      rename(backup, target);
+    }
+    if (quitAttempted && existsSync(target)) await launch();
+    rmSync(staged, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 /** Keep only the newest `keep` app backups; each is a full app bundle and one
  *  accrued per deployment (32 copies, 2.5 GB by 2026-10-11). */
 export function pruneAppBackups(dir, keep = 3) {
@@ -124,39 +169,35 @@ async function deploy() {
     const staged = '/Applications/AgentDeck.deploy-staged.app';
     const backup = join(root, 'diagnostics/backups', `AgentDeck-${Date.now()}.app`);
     mkdirSync(join(root, 'diagnostics/backups'), { recursive: true });
-    if (existsSync(staged)) throw new Error('A staged app from an earlier deployment needs inspection');
-    await beforeSwap(staged, async () => {
-      run('stage-app', 'ditto', [sourceApp, staged]);
-      run('app-signature', 'codesign', ['--verify', '--deep', '--strict', staged]);
-      // CLI must remain linked to the persistent main tree (never runner _work).
-      if (realpathSync('/opt/homebrew/bin/agentdeck') !== join(root, 'bridge/dist/cli.js')) {
-        throw new Error('CLI is not linked to the persistent main checkout');
-      }
-      let appPid;
-      try { appPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'], { encoding: 'utf8' }).trim(); }
-      catch (error) { if (error.status !== 1) throw error; }
-      for (const pid of (appPid || '').split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
-      // The app handles SIGTERM on its main queue, so a busy main thread delays
-      // it. The handler ran 5 to 6 s (2026-10-17) and about 40 s (10-18) after this
-      // signal, both times after a 10 s wait had given up. The app quit anyway,
-      // and the Mac had no app until the next deployment, 43 min and 8 h 49 min
-      // later.
-      for (let attempt = 0; appPid && attempt < 120; attempt++) {
-        const alive = appPid.split('\n').some(pid => { try { process.kill(Number(pid), 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
-        if (!alive) { appPid = ''; break; }
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      if (appPid) throw new Error('Installed app did not quit within 60 s; preserving it');
-    });
-    if (existsSync(target)) renameSync(target, backup);
-    try {
-      renameSync(staged, target);
-      run('open-app', 'open', [target], 60_000, detachedEnv());
-    } catch (error) {
-      if (existsSync(target)) renameSync(target, staged);
-      if (existsSync(backup)) { renameSync(backup, target); execFileSync('open', [target], { env: detachedEnv() }); }
-      throw error;
+    // CLI must remain linked to the persistent main tree (never runner _work).
+    if (realpathSync('/opt/homebrew/bin/agentdeck') !== join(root, 'bridge/dist/cli.js')) {
+      throw new Error('CLI is not linked to the persistent main checkout');
     }
+    const appDeployment = await installMacApp({ target, staged, backup,
+      prepare: async () => {
+        run('stage-app', 'ditto', [sourceApp, staged]);
+        run('app-signature', 'codesign', ['--verify', '--deep', '--strict', staged]);
+      },
+      quit: async () => {
+        let appPid;
+        try { appPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'], { encoding: 'utf8' }).trim(); }
+        catch (error) { if (error.status !== 1) throw error; }
+        for (const pid of (appPid || '').split('\n').filter(Boolean)) process.kill(Number(pid), 'SIGTERM');
+        // The app handles SIGTERM on its main queue, so a busy main thread delays
+        // it. The handler ran 5 to 6 s (2026-10-17) and about 40 s (10-18) after this
+        // signal, both times after a 10 s wait had given up. The app quit anyway,
+        // and the Mac had no app until the next deployment, 43 min and 8 h 49 min
+        // later.
+        for (let attempt = 0; appPid && attempt < 120; attempt++) {
+          const alive = appPid.split('\n').some(pid => { try { process.kill(Number(pid), 0); return true; } catch (e) { if (e.code === 'ESRCH') return false; throw e; } });
+          if (!alive) { appPid = ''; break; }
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (appPid) throw new Error('Installed app did not quit within 60 s; preserving it');
+      },
+      launch: async () => { run('open-app', 'open', [target], 60_000, detachedEnv()); },
+    });
+    console.log(`macOS app: ${appDeployment.action}`);
     // An unsupervised restart spawns the daemon detached with this environment.
     run('daemon-restart', process.execPath, ['bridge/dist/cli.js', 'daemon', 'restart'], 180_000, detachedEnv());
     run('plugin-deploy', 'pnpm', ['plugin:deploy']);
@@ -166,11 +207,13 @@ async function deploy() {
     if (!build) throw new Error('Installed daemon build identity is unknown');
     const { registry, health } = await waitForDaemonHealth({ build,
       readRegistry: () => JSON.parse(readFileSync(join(homedir(), '.agentdeck/daemon.json'), 'utf8')) });
-    const runningAppPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'],
-      { encoding: 'utf8', timeout: 5000 }).trim();
+    let runningAppPid = null;
+    try { runningAppPid = execFileSync('pgrep', ['-f', '^/Applications/AgentDeck.app/Contents/MacOS/AgentDeck$'],
+      { encoding: 'utf8', timeout: 5000 }).trim(); }
+    catch (error) { if (error.status !== 1 || appDeployment.action !== 'preserved-app-store') throw error; }
     const receipt = { verifiedAt: new Date().toISOString(), commit: sha, trigger: process.env.GITHUB_EVENT_NAME || 'manual',
       workflowRun: process.env.GITHUB_RUN_ID || null, daemon: { pid: health.pid, port: registry.port, build },
-      macOS: { path: target, pid: runningAppPid, backup }, pixoo: health.modules?.pixoo, plugin: { verified: true } };
+      macOS: { path: target, pid: runningAppPid, ...appDeployment }, pixoo: health.modules?.pixoo, plugin: { verified: true } };
     const receiptPath = join(root, 'diagnostics/latest-main-deployment.json');
     writeFileSync(`${receiptPath}.tmp`, JSON.stringify(receipt, null, 2));
     renameSync(`${receiptPath}.tmp`, receiptPath);
