@@ -330,19 +330,20 @@ and Pantone retains 1.10.0. Native 3D background companions now share geometry a
 adaptive frame pacing, while e-ink emphasizes static counts and status. See
 the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-10-13).
 
-**Apple delivery, 2026-10-23:** the verified public Store versions are macOS
-**1.9.0** and iOS/iPadOS **1.9.1**. The replacement macOS **1.9.2 / 9401**
-passed signing, App Store artifact and local runtime checks, reached Valid
-processing status and was **submitted at 23:26:58 KST**. It is **Waiting for
-Review**, with automatic release after Apple approval. It includes the Dashboard and Settings responsiveness
-corrections. The earlier 9301 submission was withdrawn; 1.9.2 is not publicly
-released. See the [replacement delivery record](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+**Apple delivery, 2026-10-24:** macOS **1.9.2 / 9401 is public** in the
+[Mac App Store](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac),
+with Dashboard and Settings responsiveness corrections. Apple reports
+`READY_FOR_SALE` and the review submission is complete; the public listing's
+release time is **07:07:56 KST on October 24**, independently confirmed at
+09:26 KST. iOS/iPadOS remains **1.9.1**. Physical button input, actual system
+sleep/wake and the unattested lab gates remain follow-up verification. See the
+[public release receipt](RELEASING.md#2026-10-24-macos-192-9401-public-release).
 
 **Historical delivery, 2026-10-14:** npm 1.9.2 was public, with clearer creature-led
 iDotMatrix status and counts verified on hardware. macOS 1.9.1 / 8601 passed the
 Store artifact checks and was submitted with automatic release after approval;
 iOS 1.9.1 / 8501 was also awaiting review. Apple 1.9.0 was the verified public
-Store version at that readback; the October 23 status above supersedes it.
+Store version at that readback; the October 24 status above supersedes it.
 Stream Deck and Ulanzi 1.8.1 were public on GitHub and awaiting marketplace
 review; ESP32 1.9.2 was public.
 See the [release delivery record](RELEASING.md#2026-10-14-idotmatrix-readability-correction).
