@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
-import { realpathSync } from 'node:fs';
+import { realpathSync, readFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { beforeSwap, detachedEnv, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeSwap, detachedEnv, hasAppStoreReceipt, installMacApp, pruneAppBackups, validateCheckout, waitForDaemonHealth } from '../deploy-local-main.mjs';
 
 const roots: string[] = [];
 function fixture() {
@@ -126,5 +126,101 @@ describe('local deployment runtime handover', () => {
     expect(readdirSync(dir).sort()).toEqual(['AgentDeck-200.app', 'AgentDeck-300.app', 'AgentDeck-400.app', 'notes.txt']);
     expect(pruneAppBackups(join(dir, 'missing'))).toEqual([]);
     expect(existsSync(join(dir, 'notes.txt'))).toBe(true);
+  });
+});
+
+describe('macOS installation provenance and recovery', () => {
+  function appFixture() {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'agentdeck-store-deploy-')));
+    roots.push(dir);
+    const target = join(dir, 'AgentDeck.app');
+    const staged = join(dir, 'AgentDeck.deploy-staged.app');
+    const backup = join(dir, 'AgentDeck-123.app');
+    mkdirSync(target);
+    writeFileSync(join(target, 'build'), '9401');
+    const receipt = () => {
+      mkdirSync(join(target, 'Contents/_MASReceipt'), { recursive: true });
+      writeFileSync(join(target, 'Contents/_MASReceipt/receipt'), 'store receipt');
+    };
+    const prepare = vi.fn(async () => { mkdirSync(staged); writeFileSync(join(staged, 'build'), 'development'); });
+    const quit = vi.fn(async () => {});
+    const launch = vi.fn(async () => {});
+    return { target, staged, backup, receipt, prepare, quit, launch };
+  }
+
+  it('never stages, quits or replaces a Store app, including when an old stage is present', async () => {
+    const f = appFixture(); f.receipt(); mkdirSync(f.staged);
+    const rename = vi.fn();
+    expect(await installMacApp({ ...f, rename })).toEqual({ action: 'preserved-app-store', backup: null });
+    for (const action of [f.prepare, f.quit, f.launch, rename]) expect(action).not.toHaveBeenCalled();
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('9401');
+    expect(readFileSync(join(f.target, 'Contents/_MASReceipt/receipt'), 'utf8')).toBe('store receipt');
+    expect(existsSync(f.staged)).toBe(true); // Does not remove an interrupted deployment's evidence.
+  });
+
+  it('does not treat a failed receipt probe as a development installation', () => {
+    const denied = Object.assign(new Error('receipt denied'), { code: 'EACCES' });
+    expect(() => hasAppStoreReceipt('/unused', () => { throw denied; })).toThrow(denied);
+    expect(hasAppStoreReceipt('/unused', () => { throw Object.assign(new Error(), { code: 'ENOENT' }); })).toBe(false);
+  });
+
+  it('protects a Store install that appears while preparing the development build', async () => {
+    const f = appFixture();
+    const prepare = async () => { await f.prepare(); f.receipt(); };
+    await expect(installMacApp({ ...f, prepare })).rejects.toThrow('App Store installation appeared');
+    expect(f.quit).not.toHaveBeenCalled(); expect(f.launch).not.toHaveBeenCalled();
+    expect(existsSync(f.staged)).toBe(false);
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('9401');
+  });
+
+  it('cleans its stage and relaunches the original when moving the backup is denied', async () => {
+    const f = appFixture();
+    const denied = Object.assign(new Error('rename denied'), { code: 'EACCES' });
+    await expect(installMacApp({ ...f, rename: () => { throw denied; } })).rejects.toThrow(denied);
+    expect(f.quit).toHaveBeenCalledOnce(); expect(f.launch).toHaveBeenCalledOnce();
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('9401');
+    expect(existsSync(f.staged)).toBe(false); expect(existsSync(f.backup)).toBe(false);
+  });
+
+  it('restores the backup and cleans its stage when installing the staged app fails', async () => {
+    const f = appFixture();
+    const rename = (from: string, to: string) => {
+      if (from === f.staged) throw new Error('swap denied');
+      renameSync(from, to);
+    };
+    await expect(installMacApp({ ...f, rename })).rejects.toThrow('swap denied');
+    expect(f.launch).toHaveBeenCalledOnce();
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('9401');
+    expect(existsSync(f.staged)).toBe(false); expect(existsSync(f.backup)).toBe(false);
+  });
+
+  it('still replaces a development app and retains the previous build', async () => {
+    const f = appFixture();
+    expect(await installMacApp(f)).toEqual({ action: 'replaced-development', backup: f.backup });
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('development');
+    expect(readFileSync(join(f.backup, 'build'), 'utf8')).toBe('9401');
+    expect(f.quit).toHaveBeenCalledOnce(); expect(f.launch).toHaveBeenCalledOnce();
+    expect(existsSync(f.staged)).toBe(false);
+  });
+
+  it('rolls back a new build that fails to launch', async () => {
+    const f = appFixture();
+    const launch = vi.fn().mockRejectedValueOnce(new Error('launch failed')).mockResolvedValueOnce(undefined);
+    await expect(installMacApp({ ...f, launch })).rejects.toThrow('launch failed');
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(readFileSync(join(f.target, 'build'), 'utf8')).toBe('9401');
+    expect(existsSync(f.staged)).toBe(false);
+  });
+
+  it('keeps both recovery copies when restoring the backup fails', async () => {
+    const f = appFixture();
+    const rename = (from: string, to: string) => {
+      if (from === f.staged || from === f.backup) throw new Error('recovery denied');
+      renameSync(from, to);
+    };
+    await expect(installMacApp({ ...f, rename })).rejects.toThrow('recovery denied');
+    expect(readFileSync(join(f.backup, 'build'), 'utf8')).toBe('9401');
+    expect(readFileSync(join(f.staged, 'build'), 'utf8')).toBe('development');
+    expect(f.launch).not.toHaveBeenCalled();
   });
 });
