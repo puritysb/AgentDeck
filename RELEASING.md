@@ -123,19 +123,42 @@ upload, replacement submission or manual release action is pending for 9401.
 | [#600](https://github.com/puritysb/AgentDeck/pull/600) | Merged; Settings/hidden/minimized rendering suspension and verified 3D restoration, shipped in 9401 |
 | [#601](https://github.com/puritysb/AgentDeck/pull/601) | Merged; records the exact 9401 artifact, runtime scope and replacement submission |
 
-**Verification follow-up:** release completion does not attest tests that were
-not run. The full source receipt and scoped 9401 runtime evidence below remain
-the verification record. No related release PR remains open.
+**Post-release acceptance, October 25:** the actual App Store installation
+(`1.9.2 / 9401`, with its Store receipt) passed the signed/sandboxed Swift replay:
+**15 assertions, 71 WebSocket roster frames**, including terminal expiry and
+synthetic-row cleanup. Its executable SHA-256 is
+`b730880f02ae9a1397beaef267ccfdd7922a2119bd457ba74d8f10584cbdcac5`.
+This supersedes the earlier Development-signed runtime scope for these checks;
+the original full source receipt remains unchanged.
 
-| Outstanding verification | Evidence boundary / next check |
+The operator also reported normal Settings navigation/3D restoration,
+Stream Deck+ and D200H physical buttons, and sleep/wake recovery. These are
+operator attestations, separate from the automated replay and health samples.
+No related release PR remains open.
+
+| Verification | Final result and evidence boundary |
 | --- | --- |
-| Physical deck-button input | Real switch presses were unavailable; verify session focus and approval/denial on connected hardware when an operator is present |
-| Actual Mac sleep/wake | Minimize/restore and lifecycle tests passed, but do not substitute for system sleep; sleep the Mac, wake it and verify dashboard/device reconnection |
-| Settings input-to-paint latency | Interaction timings include AX/automation overhead; the remaining long AX/Raise call does not establish app latency. Measure direct interaction and frame response if the delay recurs |
-| `esp32-robot`, `device-deploy`, `swift-codex-live` lab gates | All three remain unattested in the full receipt; run each applicable catalogued lab procedure and record a separate attestation before claiming full hardware/live coverage |
+| Physical deck-button input | Operator reports Stream Deck+ and D200H session/detail/BACK operation passed. This does not attest a new physical Allow/Deny round |
+| Mac sleep/wake recovery | Operator reports the requested sleep/wake and app/deck recovery passed. The captured observer/power log did not independently establish OS suspension or a recovery duration |
+| Settings and 3D restoration | Operator reports normal tab switching and 3D restoration. Numerical input-to-paint latency remains unmeasured; earlier AX/tool timings are not that measurement |
+| `swift-codex-live` | Passed on the original Store-signed 9401 installation after local Keychain consent; 15 assertions and own-row cleanup passed |
+| `device-deploy` | Scoped macOS/Stream Deck/D200H acceptance complete. iDotMatrix and 11 serial boards were connected. Timebox Mini timed out during Swift acceptance and connected after Node restoration; it is outside the passed Store device scope. Mobile targets were not redeployed |
+| `esp32-robot` | Not run; this macOS delivery contains no firmware change. The original full receipt's three manual-gate fields are historical and were not rewritten |
+
+First-run Keychain consent initially blocked HTTP progress; after the operator
+handled it, health answered in 0.100 s and later 0.028 s. Bluetooth consent
+restored iDotMatrix. Stream Deck discovery resumed after the operator enabled
+only **Elgato Stream Deck → AgentDeck** and **Ulanzi Studio → AgentDeck** under
+macOS Files and Folders. No Full Disk Access grant or source repair was needed.
+The permission and signing distinction is recorded in the
+[Store acceptance incident](docs/devlog/entries/2026-10-25-store-9401-live-acceptance.md);
+the reusable setup path is in the [Stream Deck guide](docs/streamdeck-layout.md#macos-app-data-access).
+The bounded observer was stopped, and the original launchd-managed Node daemon
+was restored on 9120 with build `84a9de8e009e` after Swift-only testing.
 
 The local public-release receipt, ASC output and runtime evidence are retained
-with the release diagnostics. The records below are historical checkpoints;
+with the release diagnostics, including `swift-codex-live-9401-post-consent.json`
+and `acceptance-progress.json`. The records below are historical checkpoints;
 their Waiting for Review and older public-version observations are superseded
 by this release receipt.
 

@@ -39,6 +39,20 @@ are on screen. `plugin/src/__tests__/manifest-platform.test.ts` rejects a provid
 name. Until 2026-10-18 the three usage actions were called Claude Limit, Claude Usage and Codex Usage, and
 the two dials used the Claude Code and Codex marks as their icons.
 
+## macOS app-data access
+
+When the App Store app serves the daemon, macOS can separately deny the deck
+host access to AgentDeck's sandbox data, including the daemon location file.
+The plugin can then report that the daemon is missing even while the app is
+running. In **System Settings → Privacy & Security → Files and Folders**, expand
+**Elgato Stream Deck** and enable only its **AgentDeck** entry. For the D200H
+plugin, do the same under **Ulanzi Studio**. These are separate host grants;
+AgentDeck's own Bluetooth grant does not supply them.
+
+This grants each selected host access to AgentDeck's saved app data. Leave
+unrelated app entries unchanged; Full Disk Access is not required. Allow the
+plugin's next connection retry, and reopen the host if macOS requests it.
+
 ## Keypad
 
 All keypad buttons are `session-slot`; the plugin reads the physical device grid from Stream Deck and maps `slot = row * columns + column`.

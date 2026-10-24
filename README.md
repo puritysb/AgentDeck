@@ -335,8 +335,9 @@ the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-
 with Dashboard and Settings responsiveness corrections. Apple reports
 `READY_FOR_SALE` and the review submission is complete; the public listing's
 release time is **07:07:56 KST on October 24**, independently confirmed at
-09:26 KST. iOS/iPadOS remains **1.9.1**. Physical button input, actual system
-sleep/wake and the unattested lab gates remain follow-up verification. See the
+09:26 KST. iOS/iPadOS remains **1.9.1**. On October 25 the actual Store build
+passed 15 Swift live assertions; the operator confirmed Settings/3D restoration,
+Stream Deck+/D200H buttons and sleep/wake recovery. See the scoped results in the
 [public release receipt](RELEASING.md#2026-10-24-macos-192-9401-public-release).
 
 **Historical delivery, 2026-10-14:** npm 1.9.2 was public, with clearer creature-led
