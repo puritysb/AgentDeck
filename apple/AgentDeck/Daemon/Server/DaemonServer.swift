@@ -427,6 +427,14 @@ enum CodexRolloutResponseReader {
         return ObservedAgentSettings.latestTurnContext(inRolloutTail: readTail(file, maxBytes: tailBytes))
     }
 
+    static func approvalReviewer(sessionId: String, transcriptPath: String?, turnId: String?, sessionsRoot: URL? = nil) -> String? {
+        let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            ?? locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot)
+        guard let file else { return nil }
+        return CodexApprovalHoldRules.reviewer(
+            inRollout: readTail(file, maxBytes: CodexApprovalHoldRules.contextBytes), turnId: turnId)
+    }
+
     static func lastAgentMessage(sessionId: String, sessionsRoot: URL? = nil) -> String? {
         guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot) else { return nil }
         let text = readTail(file, maxBytes: tailBytes)
@@ -6625,18 +6633,22 @@ final class DaemonServer {
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_permission_request":
-            // Codex PERM: `PermissionRequest` fires only when Codex is ABOUT TO
-            // ASK the user (approval_policy on-request) — a genuine awaiting
-            // signal with no prediction, display-only (respond in the
-            // terminal). The next lifecycle hook on the session ends the wait:
+            // PermissionRequest runs before reviewer routing. Explicit automatic
+            // review is working activity, not a human approval prompt. Other
+            // requests remain display-only (respond in the terminal).
+            // The next lifecycle hook on the session ends the wait:
             // an approval runs the tool, a denial or Ctrl+C ends the turn, a
             // new prompt supersedes it — all of which pass through
             // updateSessionHookState and overwrite the state. A held device
             // approval owns the prompt and its button until it is released, so
             // a parallel call's notification must not swap the question.
-            if let sessionId, codexHoldRequestBySession[sessionId] == nil {
+            if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+               codexApprovalReviewer(json: json) != "auto_review" {
                 showCodexApprovalPrompt(
                     sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
+            } else if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+                      pushedSessionsById[sessionId]?.state == "awaiting_permission" {
+                updateSessionHookState(sessionId: sessionId, state: "processing")
             }
         case "codex_interrupt":
             // The user's Ctrl+C on an active turn: no Stop follows, so close
@@ -8220,6 +8232,18 @@ final class DaemonServer {
         scheduleSessionsListBroadcast()
     }
 
+    private func codexApprovalReviewer(json: [String: Any]) -> String? {
+        if let reviewer = json["approvals_reviewer"] as? String { return reviewer }
+        let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
+        let read: (URL?) -> String? = { dir in
+            CodexRolloutResponseReader.approvalReviewer(
+                sessionId: Self.codexBareId(sid), transcriptPath: json["transcript_path"] as? String,
+                turnId: json["turn_id"] as? String,
+                sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+        }
+        return AppPreferences.shared.withCodexDirectoryAccess { read($0) } ?? read(nil)
+    }
+
     private func codexRolloutTurnContext(sessionId: String) -> [String: Any]? {
         let bare = Self.codexBareId(sessionId)
         return AppPreferences.shared.withCodexDirectoryAccess { dir -> [String: Any]? in
@@ -8533,6 +8557,7 @@ final class DaemonServer {
         guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
             return .text("")
         }
+        guard codexApprovalReviewer(json: json) != "auto_review" else { return .text("") }
         let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
         let question = Self.codexPermissionQuestion(json)
         let holdMs = CodexApprovalHoldRules.holdMilliseconds(

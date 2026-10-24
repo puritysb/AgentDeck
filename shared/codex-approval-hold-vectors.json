@@ -327,5 +327,181 @@
       "description": "AgentDeck approval probe"
     }
   },
-  "capturedQuestion": "Approve Bash: printf HOLD_PROBE_OK"
+  "capturedQuestion": "Approve Bash: printf HOLD_PROBE_OK",
+  "reviewerRecords": [
+    {
+      "name": "automatic turn context",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1",
+            "approvals_reviewer": "auto_review"
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": "auto_review"
+    },
+    {
+      "name": "human turn context",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1",
+            "approvals_reviewer": "user"
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": "user"
+    },
+    {
+      "name": "mid-turn switch to human",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1",
+            "approvals_reviewer": "auto_review"
+          }
+        },
+        {
+          "type": "event_msg",
+          "payload": {
+            "type": "thread_settings_applied",
+            "thread_settings": {
+              "approvals_reviewer": "user"
+            }
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": "user"
+    },
+    {
+      "name": "mid-turn switch to automatic",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1",
+            "approvals_reviewer": "user"
+          }
+        },
+        {
+          "type": "event_msg",
+          "payload": {
+            "type": "thread_settings_applied",
+            "thread_settings": {
+              "approvals_reviewer": "auto_review"
+            }
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": "auto_review"
+    },
+    {
+      "name": "new legacy turn must not inherit automatic review",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t0",
+            "approvals_reviewer": "auto_review"
+          }
+        },
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1"
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": null
+    },
+    {
+      "name": "wrong turn is unknown",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t0",
+            "approvals_reviewer": "auto_review"
+          }
+        }
+      ],
+      "turnId": "t1",
+      "reviewer": null
+    },
+    {
+      "name": "new unknown settings must not inherit old review",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "turn_id": "t1",
+            "approvals_reviewer": "auto_review"
+          }
+        },
+        {
+          "type": "event_msg",
+          "payload": {
+            "type": "thread_settings_applied",
+            "thread_settings": {}
+          }
+        }
+      ],
+      "reviewer": null
+    },
+    {
+      "name": "quoted settings are not evidence",
+      "records": [
+        {
+          "type": "response_item",
+          "payload": {
+            "type": "message",
+            "content": "\"turn_context\" \"approvals_reviewer\": \"auto_review\""
+          }
+        },
+        {
+          "type": "response_item",
+          "payload": {
+            "type": "thread_settings_applied",
+            "thread_settings": {
+              "approvals_reviewer": "auto_review"
+            }
+          }
+        }
+      ],
+      "reviewer": null
+    },
+    {
+      "name": "unreadable legacy record",
+      "records": [
+        null,
+        [],
+        {
+          "type": "turn_context",
+          "payload": null
+        }
+      ],
+      "reviewer": null
+    },
+    {
+      "name": "unrecognized reviewer stays distinct",
+      "records": [
+        {
+          "type": "turn_context",
+          "payload": {
+            "approvals_reviewer": "future_reviewer"
+          }
+        }
+      ],
+      "reviewer": "future_reviewer"
+    }
+  ]
 }

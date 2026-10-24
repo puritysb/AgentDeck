@@ -85,6 +85,19 @@ final class CodexApprovalHoldTests: XCTestCase {
 
     // MARK: - Daemon rules
 
+    func testReviewerRecords() throws {
+        let rows = try XCTUnwrap(try vectors()["reviewerRecords"] as? [[String: Any]])
+        for row in rows {
+            let records = try XCTUnwrap(row["records"] as? [Any])
+            let lines = try records.map { record in
+                String(decoding: try JSONSerialization.data(withJSONObject: record, options: [.fragmentsAllowed]), as: UTF8.self)
+            }
+            let text = (["torn line"] + lines + ["{incomplete"]).joined(separator: "\n")
+            XCTAssertEqual(CodexApprovalHoldRules.reviewer(inRollout: text, turnId: row["turnId"] as? String),
+                           row["reviewer"] as? String, row["name"] as? String ?? "?")
+        }
+    }
+
     func testHeaderAndDecisionBodies() throws {
         let v = try vectors()
         XCTAssertEqual(CodexApprovalHoldRules.header, v["header"] as? String)

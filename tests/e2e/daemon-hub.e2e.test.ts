@@ -811,6 +811,49 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('keeps automatic Codex review working without Attention or a device hold, and preserves human approval', async () => {
+    const transcript = join(home, 'auto-review-rollout.jsonl');
+    const thread = '01a16f08-8632-7b03-8f6f-00000000e301';
+    const turn = 'auto-review-turn';
+    const base = { session_id: thread, turn_id: turn, transcript_path: transcript, cwd: '/tmp/auto-review-project',
+      permission_mode: 'default', tool_name: 'Bash', tool_input: { command: 'git status' } };
+    const context = (reviewer: string) => writeFileSync(transcript, JSON.stringify({
+      type: 'turn_context', payload: { turn_id: turn, approvals_reviewer: reviewer },
+    }) + '\n');
+    context('auto_review');
+    await postHook(daemon.port, 'codex_user_prompt_submit', { ...base, prompt: 'automatic approval test' });
+    const client = await connect(daemon.port);
+    const row = () => (client.frames.filter((f) => f.type === 'sessions_list').at(-1)?.sessions as
+      Array<Record<string, unknown>> | undefined)?.find((r) => r.id === `observed:codex:${thread}`);
+    try {
+      await waitFor('working automatic-review session', () => row()?.state === 'processing' ? true : undefined);
+      const first = client.frames.length;
+      await postHook(daemon.port, 'codex_permission_request', base);
+      const started = Date.now();
+      const held = await fetch(`http://127.0.0.1:${daemon.port}/hooks/codex_permission_request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Hold': '55' },
+        body: JSON.stringify(base), signal: AbortSignal.timeout(5_000),
+      });
+      expect(await held.text()).toBe('');
+      expect(Date.now() - started).toBeLessThan(5_000);
+      // Tool progress forces a fresh row frame; inspect every intervening frame
+      // too so even a transient Attention flash fails this regression.
+      await postHook(daemon.port, 'codex_tool_start', base);
+      await waitFor('post-review tool progress', () => row()?.currentTask === 'Bash' ? true : undefined);
+      const rows = client.frames.slice(first).filter((f) => f.type === 'sessions_list')
+        .flatMap((f) => f.sessions as Array<Record<string, unknown>>).filter((r) => r.id === `observed:codex:${thread}`);
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((r) => r.state !== 'awaiting_permission' && !r.requestId)).toBe(true);
+      // Same tool and hook, different reviewer: the real human prompt remains.
+      context('user');
+      await postHook(daemon.port, 'codex_permission_request', base);
+      await waitFor('real human approval', () => row()?.state === 'awaiting_permission' ? true : undefined);
+      await postHook(daemon.port, 'codex_tool_end', base);
+      await waitFor('human prompt resolved', () => row()?.state === 'processing' ? true : undefined);
+      await postHook(daemon.port, 'codex_stop', base);
+    } finally { client.close(); }
+  });
+
   it.runIf(POSIX)('holds a Codex approval for a device decision, from a deck key too, and releases it when the turn ends', async () => {
     const vectors = JSON.parse(readFileSync(join(ROOT, 'shared/codex-approval-hold-vectors.json'), 'utf8')) as {
       capturedPermissionRequest: Record<string, unknown>;
