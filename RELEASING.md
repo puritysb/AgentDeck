@@ -95,11 +95,56 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-24 macOS 1.9.2 / 9401 public release
+
+**macOS 1.9.2 / 9401 is released.** The
+[read-only ASC run 40044777874](https://github.com/puritysb/AgentDeck/actions/runs/40044777874)
+confirmed version `cbac8056-fffe-4efa-b5c3-0b1becb2ba71` as `MAC_OS`,
+`1.9.2`, `READY_FOR_SALE`, with `AFTER_APPROVAL`; submission
+`ab60c632-4870-4b07-b22e-8b367a2d13a8` is `COMPLETE`. Build
+`b2a048ef-fdb2-4d8f-ba87-a34dbd4d377a` remains `9401`, `VALID` and unexpired.
+The exact version/build association was verified at submission below; this
+status workflow reads those resources separately.
+
+The [official Korean Mac App Store listing](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac)
+independently showed **version 1.9.2 for macOS 26.0+** at **09:26 KST on
+October 24**. Its current-release timestamp is **2026-10-23T22:07:56Z
+(October 24, 07:07:56 KST)**. This confirms public availability as well as
+approval; the timestamp is the public release time, not a measured approval
+time. The universal app's iOS 1.9.1 lookup result is not macOS release evidence.
+The review/release monitor was stopped after this confirmation. No further
+upload, replacement submission or manual release action is pending for 9401.
+
+| Related PR | Final state and scope |
+| --- | --- |
+| [#597](https://github.com/puritysb/AgentDeck/pull/597) | Merged; release preparation, startup/lifecycle corrections and earlier candidate delivery |
+| [#598](https://github.com/puritysb/AgentDeck/pull/598) | Merged; standalone Swift no longer promotes unverified Claude status-line receipts into account quota; superseded 9301 delivery |
+| [#599](https://github.com/puritysb/AgentDeck/pull/599) | Merged; removes the unused synchronous dashboard Keychain read |
+| [#600](https://github.com/puritysb/AgentDeck/pull/600) | Merged; Settings/hidden/minimized rendering suspension and verified 3D restoration, shipped in 9401 |
+| [#601](https://github.com/puritysb/AgentDeck/pull/601) | Merged; records the exact 9401 artifact, runtime scope and replacement submission |
+
+**Verification follow-up:** release completion does not attest tests that were
+not run. The full source receipt and scoped 9401 runtime evidence below remain
+the verification record. No related release PR remains open.
+
+| Outstanding verification | Evidence boundary / next check |
+| --- | --- |
+| Physical deck-button input | Real switch presses were unavailable; verify session focus and approval/denial on connected hardware when an operator is present |
+| Actual Mac sleep/wake | Minimize/restore and lifecycle tests passed, but do not substitute for system sleep; sleep the Mac, wake it and verify dashboard/device reconnection |
+| Settings input-to-paint latency | Interaction timings include AX/automation overhead; the remaining long AX/Raise call does not establish app latency. Measure direct interaction and frame response if the delay recurs |
+| `esp32-robot`, `device-deploy`, `swift-codex-live` lab gates | All three remain unattested in the full receipt; run each applicable catalogued lab procedure and record a separate attestation before claiming full hardware/live coverage |
+
+The local public-release receipt, ASC output and runtime evidence are retained
+with the release diagnostics. The records below are historical checkpoints;
+their Waiting for Review and older public-version observations are superseded
+by this release receipt.
+
 ### 2026-10-23 macOS Settings responsiveness replacement
 
-**Build 9401 was submitted at 23:26:58 KST on October 23 and is Waiting for
-Review, with automatic release after approval.** Its artifact and scoped local runtime checks are complete;
-it is not publicly released. The source is merge
+**At the October 23 checkpoint, build 9401 was submitted at 23:26:58 KST and
+was Waiting for Review, with automatic release after approval.** Its artifact
+and scoped local runtime checks were complete. The October 24 receipt above
+confirms its subsequent public release. The source is merge
 `24be55d2fa41462d1ab6106a2006e73876573fb6` from
 [PR #600](https://github.com/puritysb/AgentDeck/pull/600), whose tree matches verified
 `e0757488f439f9b8c0dadb719c8a5c5e89596302`. It includes the dashboard Keychain
@@ -115,7 +160,8 @@ on **October 23 at 21:01 KST** reported macOS 1.9.2 and submission
 also confirmed that 9301 was the exact attached build before replacement. Its original
 submission is recorded in the
 [earlier 9301 delivery](#macos-192-replacement-delivery-2026-10-23).
-The last verified public versions are macOS 1.9.0 and iOS 1.9.1. The portal
+At that pre-replacement checkpoint, the verified public versions were macOS
+1.9.0 and iOS 1.9.1. The portal
 subsequently confirmed withdrawal of 9301 and exact association of 9401;
 preparation and submission readbacks are recorded below.
 Sanitized pre-replacement readback is retained under
@@ -228,8 +274,9 @@ succeeded at **14:27:42 UTC**. It confirmed version and new submission as
 actual `submittedDate` is **2026-10-23T14:26:58.418Z (23:26:58 KST)**; this
 differs from the helper's success timestamp above. The old 9301 submission
 `5e08427d-e1dc-4657-933e-609e9e6cbf1f` is `COMPLETE`. The portal independently
-showed 1.9.2 Waiting for Review with build 9401. Public macOS remains 1.9.0 and
-iOS remains 1.9.1; submission is not public availability.
+showed 1.9.2 Waiting for Review with build 9401. At that submission readback,
+public macOS was still 1.9.0 and iOS was 1.9.1; public availability was confirmed
+separately in the October 24 receipt above.
 
 The submitted `{whatsNew, notes}` JSON retains SHA-256
 `53c224bbb3c8dfeedf54fdfe321aa7a37b4e8cebdcf0076cd1329171beeb2bac`.
