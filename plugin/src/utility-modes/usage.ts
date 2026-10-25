@@ -103,9 +103,9 @@ export function formatResetAbsolute(iso?: string): string {
 /**
  * Subscription renewal date, e.g. "Aug 5" — the year is added only when the
  * boundary is far enough out (annual plans) that the month alone is ambiguous.
- * The upstream value is the NEXT renewal, already rolled forward from Codex's
- * one-shot `auth.json` snapshot (`resolveChatGptRenewalDate`), so this is a
- * live boundary rather than the stale stamp the token carries.
+ * The upstream value preserves a future reported end; an expired auth snapshot
+ * gets a monthly calendar estimate from `resolveChatGptRenewalDate`. Formatting
+ * this value does not establish a verified billing date.
  */
 export function formatRenewalDate(iso?: string): string {
   if (!iso) return '';

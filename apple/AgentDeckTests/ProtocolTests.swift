@@ -1088,79 +1088,25 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(UsageAPIClient.normalizeCodexCaptureTimestamp(nil))
     }
 
-    // Codex stamps the login-time billing window `[active_start, active_until]`
-    // into auth.json's id_token and never recomputes it on silent refresh, so
-    // for an auto-renewing plan `active_until` drifts into the past mid-cycle.
-    // `resolveChatGptRenewalDate` rolls that stale snapshot forward to the next
-    // real renewal boundary. Mirror of bridge/src/__tests__/codex-auth.test.ts.
-    func testResolveChatGptRenewalDateRollsStaleMonthlyWindowForward() {
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        // Window Jun 6 → Jul 6, today Jul 8 → next boundary Aug 5.
-        let out = UsageAPIClient.resolveChatGptRenewalDate(
-            activeStart: "2026-06-06T06:21:49+00:00",
-            activeUntil: "2026-07-06T06:21:49+00:00",
-            now: now
-        )
-        XCTAssertEqual(out, "2026-08-05T06:21:49.000Z")
-    }
-
-    func testResolveChatGptRenewalDateRollsStaleAnnualWindowForward() {
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        let out = UsageAPIClient.resolveChatGptRenewalDate(
-            activeStart: "2025-01-01T00:00:00Z",
-            activeUntil: "2026-01-01T00:00:00Z",
-            now: now
-        )
-        XCTAssertEqual(out, "2027-01-01T00:00:00.000Z")
-    }
-
-    func testResolveChatGptRenewalDatePassesFutureDateThrough() {
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        let out = UsageAPIClient.resolveChatGptRenewalDate(
-            activeStart: "2026-06-06",
-            activeUntil: "2026-08-01T00:00:00Z",
-            now: now
-        )
-        XCTAssertEqual(out, "2026-08-01T00:00:00Z")
-    }
-
-    func testResolveChatGptRenewalDateLeavesPastRawWithoutStart() {
-        // Renderers still surface "renewal needed" as a genuine last resort.
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        let out = UsageAPIClient.resolveChatGptRenewalDate(
-            activeStart: nil,
-            activeUntil: "2026-07-06T06:21:49+00:00",
-            now: now
-        )
-        XCTAssertEqual(out, "2026-07-06T06:21:49+00:00")
-    }
-
-    func testResolveChatGptRenewalDateLeavesUntrustworthyShortWindowRaw() {
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        let out = UsageAPIClient.resolveChatGptRenewalDate(
-            activeStart: "2026-07-01",
-            activeUntil: "2026-07-05T00:00:00Z",
-            now: now
-        )
-        XCTAssertEqual(out, "2026-07-05T00:00:00Z")
-    }
-
-    func testResolveChatGptRenewalDatePassesMalformedAndEmptyThrough() {
-        let now = ISO8601DateFormatter().date(from: "2026-07-08T00:00:00Z")!
-        XCTAssertEqual(
-            UsageAPIClient.resolveChatGptRenewalDate(
-                activeStart: "2026-06-06", activeUntil: "not-a-date", now: now),
-            "not-a-date"
-        )
-        XCTAssertNil(
-            UsageAPIClient.resolveChatGptRenewalDate(
-                activeStart: "2026-06-06", activeUntil: nil, now: now)
-        )
-        XCTAssertEqual(
-            UsageAPIClient.resolveChatGptRenewalDate(
-                activeStart: "garbage", activeUntil: "2026-07-06T00:00:00Z", now: now),
-            "2026-07-06T00:00:00Z"
-        )
+    // The same vectors exercise the Node policy and the existing Swift mirror.
+    func testResolveChatGptRenewalDateSharedVectors() throws {
+        struct Vector: Decodable {
+            let name: String
+            let activeUntil: String?
+            let now: String
+            let expected: String?
+        }
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/codex-renewal-vectors.json")
+        let vectors = try JSONDecoder().decode([Vector].self, from: Data(contentsOf: url))
+        for vector in vectors {
+            let now = try XCTUnwrap(ISO8601DateFormatter().date(from: vector.now))
+            XCTAssertEqual(
+                UsageAPIClient.resolveChatGptRenewalDate(activeUntil: vector.activeUntil, now: now),
+                vector.expected, vector.name
+            )
+        }
     }
     #endif
 

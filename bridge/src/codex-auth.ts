@@ -37,49 +37,37 @@ function stringField(...values: unknown[]): string | undefined {
   return undefined;
 }
 
-const DAY_MS = 86_400_000;
-
 /**
- * Resolve the ChatGPT subscription's *next* renewal date from the snapshot
- * Codex embeds in `auth.json`.
- *
- * Codex stamps `chatgpt_subscription_active_until` (and `..._active_start`)
- * into the `id_token` once, at `codex login` — the pair describes the billing
- * window that was current at `chatgpt_subscription_last_checked`. Crucially,
- * silent token refreshes carry that same snapshot forward verbatim: the window
- * is NOT recomputed on renewal. So for an auto-renewing plan the snapshot's end
- * slides into the past within a cycle even though the subscription is alive and
- * paid — which downstream surfaces (macOS/Android dashboard, D200H) misread as a
- * false "renewal needed".
- *
- * Given the snapshot window `[activeStart, activeUntil]`, roll the end forward
- * by whole billing periods until it lands strictly in the future, yielding the
- * next real renewal boundary. The raw `activeUntil` is returned untouched when
- * it is already future, unparseable, or the window can't be trusted (missing
- * start, non-positive period, or a period outside the monthly/annual 20–400d
- * band) so genuine "malformed"/"unknown" signals still reach the renderers.
+ * Prefer the reported future subscription end verbatim. An expired auth snapshot
+ * is not a current billing date, and its start/end span is not a billing cadence
+ * (it can include multiple months or a promotion). With only that old end date,
+ * estimate the next boundary on a monthly calendar, anchored to its UTC day/time.
+ * Clamp short months without losing the original day in subsequent months.
+ * Missing or malformed dates remain unknown; never manufacture an anchor.
+ * Swift's existing mirror is pinned by shared/codex-renewal-vectors.json.
  */
 export function resolveChatGptRenewalDate(
-  activeStart: string | undefined,
   activeUntil: string | undefined,
   now: Date,
 ): string | undefined {
   if (!activeUntil) return activeUntil;
-  const until = Date.parse(activeUntil);
-  if (Number.isNaN(until)) return activeUntil;
-  const nowMs = now.getTime();
-  if (until > nowMs) return activeUntil; // already future — trust the snapshot
-  if (!activeStart) return activeUntil; // no window to derive a period from
-  const start = Date.parse(activeStart);
-  if (Number.isNaN(start)) return activeUntil;
-  const period = until - start;
-  // Only roll monthly/annual-ish windows; anything shorter or longer is not a
-  // trustworthy billing cadence and is left as-is.
-  if (period < 20 * DAY_MS || period > 400 * DAY_MS) return activeUntil;
-  const missed = Math.max(1, Math.ceil((nowMs - until) / period));
-  let rolled = until + missed * period;
-  if (rolled <= nowMs) rolled += period; // guarantee strictly future
-  return new Date(rolled).toISOString();
+  const until = new Date(activeUntil);
+  if (!Number.isFinite(until.getTime()) || !Number.isFinite(now.getTime())) return activeUntil;
+  if (until > now) return activeUntil;
+
+  const monthlyBoundary = (months: number): Date => {
+    const candidate = new Date(until);
+    candidate.setUTCDate(1);
+    candidate.setUTCMonth(until.getUTCMonth() + months);
+    const monthEnd = new Date(candidate);
+    monthEnd.setUTCMonth(candidate.getUTCMonth() + 1, 0);
+    candidate.setUTCDate(Math.min(until.getUTCDate(), monthEnd.getUTCDate()));
+    return candidate;
+  };
+  const months = Math.max(1,
+    (now.getUTCFullYear() - until.getUTCFullYear()) * 12 + now.getUTCMonth() - until.getUTCMonth());
+  const candidate = monthlyBoundary(months);
+  return (candidate > now ? candidate : monthlyBoundary(months + 1)).toISOString();
 }
 
 function authNamespace(payload?: Record<string, unknown> | null): Record<string, unknown> | undefined {
@@ -130,20 +118,8 @@ export function readCodexAuthStatus(): CodexAuthStatus | null {
       accessPayload?.subscription_active_until,
       idPayload?.subscription_active_until,
     );
-    const subscriptionActiveStart = stringField(
-      raw.chatgpt_subscription_active_start,
-      accessAuth?.chatgpt_subscription_active_start,
-      idAuth?.chatgpt_subscription_active_start,
-      accessPayload?.chatgpt_subscription_active_start,
-      idPayload?.chatgpt_subscription_active_start,
-      accessPayload?.subscription_active_start,
-      idPayload?.subscription_active_start,
-    );
-    // Codex never refreshes the login-time window snapshot, so for an
-    // auto-renewing plan the raw `active_until` drifts into the past mid-cycle.
-    // Roll it to the next real renewal boundary before it reaches any renderer.
+    // Future reported dates win; expired snapshots get a monthly estimate.
     const subscriptionActiveUntil = resolveChatGptRenewalDate(
-      subscriptionActiveStart,
       subscriptionActiveUntilRaw,
       new Date(),
     );

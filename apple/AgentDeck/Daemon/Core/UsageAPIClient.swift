@@ -427,22 +427,8 @@ final class UsageAPIClient: Sendable {
             string(accessPayload, key: "subscription_active_until"),
             string(idPayload, key: "subscription_active_until"),
         ])
-        let subscriptionActiveStart = firstString([
-            string(json, key: "chatgpt_subscription_active_start"),
-            string(accessAuth, key: "chatgpt_subscription_active_start"),
-            string(idAuth, key: "chatgpt_subscription_active_start"),
-            string(accessPayload, key: "chatgpt_subscription_active_start"),
-            string(idPayload, key: "chatgpt_subscription_active_start"),
-            string(accessPayload, key: "subscription_active_start"),
-            string(idPayload, key: "subscription_active_start"),
-        ])
-        // Codex never refreshes the login-time window snapshot, so for an
-        // auto-renewing plan the raw `active_until` drifts into the past
-        // mid-cycle. Roll it to the next real renewal boundary before it reaches
-        // any renderer (macOS/D200H/ESP32) — mirrors the Node SSOT
-        // `resolveChatGptRenewalDate` in bridge/src/codex-auth.ts.
+        // Future reported dates win; expired snapshots get a monthly estimate.
         let subscriptionActiveUntil = Self.resolveChatGptRenewalDate(
-            activeStart: subscriptionActiveStart,
             activeUntil: subscriptionActiveUntilRaw,
             now: Date()
         )
@@ -501,47 +487,30 @@ final class UsageAPIClient: Sendable {
         )
     }
 
-    private static let codexRenewalDaySeconds: TimeInterval = 86_400
-
-    /// Resolve the ChatGPT subscription's *next* renewal date from the login
-    /// snapshot Codex embeds in `auth.json`.
-    ///
-    /// Codex stamps `chatgpt_subscription_active_until` (and `..._active_start`)
-    /// once, at `codex login`, and silent token refreshes carry that same window
-    /// forward verbatim — so for an auto-renewing plan the snapshot's end slides
-    /// into the past mid-cycle even though the subscription is alive and paid,
-    /// which downstream surfaces (macOS/Android dashboard, D200H, ESP32 e-ink)
-    /// misread as a false "renewal needed". Given the window `[start, until]`,
-    /// roll the end forward by whole billing periods until it is strictly future
-    /// — the next real renewal boundary. The raw `until` is returned untouched
-    /// when it is already future, unparseable, or the window can't be trusted
-    /// (missing start, non-positive period, or a period outside the
-    /// monthly/annual 20–400d band) so genuine "malformed"/"unknown" signals
-    /// still reach the renderers.
-    ///
-    /// Hand-ported mirror of `resolveChatGptRenewalDate` in
-    /// `bridge/src/codex-auth.ts` — keep the two in lockstep.
+    /// Mirror of bridge/src/codex-auth.ts, pinned by the same renewal vectors.
+    /// Preserve a future reported date. Otherwise estimate monthly from the old
+    /// UTC end date; the auth start/end span does not establish billing cadence.
+    /// Always add months to the original anchor so February's clamp cannot drift.
     static func resolveChatGptRenewalDate(
-        activeStart: String?,
         activeUntil: String?,
         now: Date
     ) -> String? {
-        guard let activeUntil else { return activeUntil }
-        guard let until = parseCodexRenewalDate(activeUntil) else { return activeUntil }
-        if until > now { return activeUntil } // already future — trust the snapshot
-        guard let activeStart, let start = parseCodexRenewalDate(activeStart) else {
-            return activeUntil // no window to derive a period from
-        }
-        let period = until.timeIntervalSince(start)
-        // Only roll monthly/annual-ish windows; anything shorter (incl. a
-        // non-positive/malformed period) or longer is not a trustworthy cadence.
-        if period < 20 * codexRenewalDaySeconds || period > 400 * codexRenewalDaySeconds {
+        guard let activeUntil, let until = parseCodexRenewalDate(activeUntil),
+              now.timeIntervalSince1970.isFinite else { return activeUntil }
+        if until > now { return activeUntil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let months = max(1,
+            (calendar.component(.year, from: now) - calendar.component(.year, from: until)) * 12
+                + calendar.component(.month, from: now) - calendar.component(.month, from: until))
+        guard let candidate = calendar.date(byAdding: .month, value: months, to: until) else {
             return activeUntil
         }
-        let missed = max(1, Int((now.timeIntervalSince(until) / period).rounded(.up)))
-        var rolled = until.addingTimeInterval(Double(missed) * period)
-        if rolled <= now { rolled = rolled.addingTimeInterval(period) } // guarantee strictly future
-        return codexRenewalISOString(rolled)
+        if candidate > now { return codexRenewalISOString(candidate) }
+        guard let next = calendar.date(byAdding: .month, value: months + 1, to: until) else {
+            return activeUntil
+        }
+        return codexRenewalISOString(next)
     }
 
     private static func parseCodexRenewalDate(_ raw: String) -> Date? {

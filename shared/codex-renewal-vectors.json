@@ -1,0 +1,122 @@
+[
+  {
+    "name": "reported future date is preserved exactly",
+    "activeUntil": "2026-12-11T00:46:22+00:00",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "2026-12-11T00:46:22+00:00"
+  },
+  {
+    "name": "reported future annual date is not shortened",
+    "activeUntil": "2027-01-01T00:00:00Z",
+    "now": "2026-07-08T00:00:00Z",
+    "expected": "2027-01-01T00:00:00Z"
+  },
+  {
+    "name": "reported future date-only value is preserved",
+    "activeUntil": "2026-11-10",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "2026-11-10"
+  },
+  {
+    "name": "reported future date preserves offset and precision",
+    "activeUntil": "2026-11-10T21:28:05.123+09:00",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "2026-11-10T21:28:05.123+09:00"
+  },
+  {
+    "name": "Dec 11 regression: old October end estimates November 10",
+    "activeUntil": "2026-10-10T12:28:05+00:00",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "2026-11-10T12:28:05.000Z"
+  },
+  {
+    "name": "one calendar month rather than thirty days",
+    "activeUntil": "2026-07-06T06:21:49+00:00",
+    "now": "2026-07-08T00:00:00Z",
+    "expected": "2026-08-06T06:21:49.000Z"
+  },
+  {
+    "name": "many missed months keep the reported end day",
+    "activeUntil": "2025-02-06T06:21:49Z",
+    "now": "2026-07-08T00:00:00Z",
+    "expected": "2026-08-06T06:21:49.000Z"
+  },
+  {
+    "name": "same-month candidate still in the future",
+    "activeUntil": "2026-01-20T12:00:00Z",
+    "now": "2026-10-10T00:00:00Z",
+    "expected": "2026-10-20T12:00:00.000Z"
+  },
+  {
+    "name": "equal boundary moves strictly into the next month",
+    "activeUntil": "2026-10-10T12:28:05Z",
+    "now": "2026-10-10T12:28:05Z",
+    "expected": "2026-11-10T12:28:05.000Z"
+  },
+  {
+    "name": "equal rolled boundary moves strictly into the next month",
+    "activeUntil": "2026-08-10T12:28:05Z",
+    "now": "2026-10-10T12:28:05Z",
+    "expected": "2026-11-10T12:28:05.000Z"
+  },
+  {
+    "name": "January 31 clamps to February 28",
+    "activeUntil": "2026-01-31T12:00:00Z",
+    "now": "2026-02-01T00:00:00Z",
+    "expected": "2026-02-28T12:00:00.000Z"
+  },
+  {
+    "name": "January 31 anchor survives a short February",
+    "activeUntil": "2026-01-31T12:00:00Z",
+    "now": "2026-03-01T00:00:00Z",
+    "expected": "2026-03-31T12:00:00.000Z"
+  },
+  {
+    "name": "leap-year February clamps to 29",
+    "activeUntil": "2028-01-31T12:00:00Z",
+    "now": "2028-02-01T00:00:00Z",
+    "expected": "2028-02-29T12:00:00.000Z"
+  },
+  {
+    "name": "February 29 anchor survives the following year",
+    "activeUntil": "2028-02-29T12:00:00Z",
+    "now": "2029-03-01T00:00:00Z",
+    "expected": "2029-03-29T12:00:00.000Z"
+  },
+  {
+    "name": "year boundary",
+    "activeUntil": "2026-12-15T12:00:00Z",
+    "now": "2026-12-20T00:00:00Z",
+    "expected": "2027-01-15T12:00:00.000Z"
+  },
+  {
+    "name": "UTC anchor is independent of the host timezone",
+    "activeUntil": "2026-01-31T01:28:05.123+09:00",
+    "now": "2026-02-01T00:00:00Z",
+    "expected": "2026-02-28T16:28:05.123Z"
+  },
+  {
+    "name": "old date-only value can anchor a monthly estimate",
+    "activeUntil": "2026-10-10",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "2026-11-10T00:00:00.000Z"
+  },
+  {
+    "name": "missing end has no estimate",
+    "activeUntil": null,
+    "now": "2026-10-26T00:00:00Z",
+    "expected": null
+  },
+  {
+    "name": "empty end has no estimate",
+    "activeUntil": "",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": ""
+  },
+  {
+    "name": "malformed end cannot anchor an estimate",
+    "activeUntil": "not-a-date",
+    "now": "2026-10-26T00:00:00Z",
+    "expected": "not-a-date"
+  }
+]

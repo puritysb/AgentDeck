@@ -150,8 +150,9 @@ identical to the `7D` panel E2 draws beside a live `5H`.
 The freed column carries a side card set one type step below the gauge (18px vs
 26px), so it reads as context rather than a second instrument. It never restates
 the gauge: best-available is the **subscription** behind the quota
-(`CHATGPT / PLUS / Renews Aug 5`, the renewal rolled forward from Codex's
-one-shot `auth.json` snapshot by `resolveChatGptRenewalDate`), then the bare plan
+(`CHATGPT / PLUS / Renews Aug 6`, preserving a future reported end from Codex's
+`auth.json`, otherwise estimating monthly from its old end date with
+`resolveChatGptRenewalDate`), then the bare plan
 tier, then the window's **absolute** reset instant (`Sat 18:02` — the one fact the
 gauge's relative countdown does not carry). Nothing knowable means no card, which
 drops the encoder back to the two-panel layout. Providers still reporting both
