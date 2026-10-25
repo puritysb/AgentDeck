@@ -167,11 +167,14 @@ export class OutputParser extends EventEmitter {
   private lastNavigableEmit = false;
   private lastCursorIndex = 0;
   private pendingAnsi = '';
+  // Only an unfinished selection prefix from the current terminal line, never
+  // an old prompt from the append-only buffer. PTY chunks can split `❯ 1.`.
+  private pendingOptionPrefix = '';
   // Cooldown after emitting permission/diff prompt — suppresses false idle
   // from user prompt echo (❯ text) in the same PTY batch
   private interactiveCooldown: ReturnType<typeof setTimeout> | null = null;
   // Explicit lifecycle for a prompt that is currently visible in the managed
-  // terminal. This is armed only from the current PTY chunk (never historical
+  // terminal. This is armed only from fresh PTY fragments (never historical
   // buffer contents) and cleared by authoritative user input / idle / reset.
   // While armed, Claude's concurrent status-line spinner redraws must not turn
   // AWAITING back into PROCESSING.
@@ -383,13 +386,18 @@ export class OutputParser extends EventEmitter {
   }
 
   private detectPatterns(chunk: string): void {
+    const optionChunk = this.pendingOptionPrefix + chunk;
+    const lastLine = optionChunk.slice(Math.max(optionChunk.lastIndexOf('\n'), optionChunk.lastIndexOf('\r')) + 1);
+    this.pendingOptionPrefix = lastLine.length <= 64 && /^[ \t]*(?:❯[ \t]*\d{0,2}|[►▸●][ \t]*)$/.test(lastLine)
+      ? lastLine : '';
+
     // --- Always extract metadata ---
     this.parseStatusLine(chunk);
     this.parseToolAction(chunk);
     this.parseProjectName(chunk);
     // Skip model parsing when chunk contains numbered options — option labels
     // like "Opus 4.6" match MODEL_INFO and overwrite the real model name
-    if (!OPTION_NUMBERED.test(chunk)) {
+    if (!OPTION_NUMBERED.test(optionChunk)) {
       this.parseModelInfo(chunk);
       this.parseEffortLevel(chunk);
     }
@@ -399,13 +407,13 @@ export class OutputParser extends EventEmitter {
 
     // --- Pre-scan: idle prompt & interactive content detection ---
     const hasIdlePrompt = IDLE_PROMPT.test(chunk);
-    const hasNavigablePrompt = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
-    const hasSelectionBullet = /^[ \t]*[►▸●][ \t]+/m.test(chunk);
+    const hasNavigablePrompt = /^[ \t]*❯[ \t]*\d{1,2}[.)]/m.test(optionChunk);
+    const hasSelectionBullet = /^[ \t]*[►▸●][ \t]+/m.test(optionChunk);
     const hasOptionInteraction = hasNavigablePrompt || hasSelectionBullet || this.interactivePromptActive;
     const hasInteractive =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) ||
-      (hasOptionInteraction && (OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)));
+      (hasOptionInteraction && (OPTION_NUMBERED.test(optionChunk) || OPTION_BULLET.test(optionChunk)));
     const hasAuthoritativePrompt =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) || hasNavigablePrompt || hasSelectionBullet;
@@ -566,10 +574,10 @@ export class OutputParser extends EventEmitter {
     // cursor/bullet or an already confirmed prompt admits picker redraws;
     // the size bound below only limits ambiguous redraws, never proves a wait.
     const chunkNonWs = chunk.replace(/\s/g, '').length;
-    const hasNavigableCursor = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
+    const hasNavigableCursor = hasNavigablePrompt;
     // Size alone cannot distinguish a streamed response list from a picker.
     // Require a selection cursor or an already confirmed interactive prompt.
-    if (hasOptionInteraction && (OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
+    if (hasOptionInteraction && (OPTION_NUMBERED.test(optionChunk) || OPTION_BULLET.test(optionChunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
       debug('Parser', 'option pattern detected — starting/resetting debounce');
       this.resetIdleTimer();
       this.resetOptionTimer();
@@ -1283,6 +1291,7 @@ export class OutputParser extends EventEmitter {
    * prompts resolve on any non-navigation input.
    */
   notifyUserInput(data: string): void {
+    if (data.length > 0) this.pendingOptionPrefix = '';
     if (!this.interactivePromptActive || !data) return;
 
     const withoutNavigation = data.replace(/\x1b\[[ABCD]/g, '');
@@ -1328,6 +1337,7 @@ export class OutputParser extends EventEmitter {
   reset(): void {
     this.buffer = '';
     this.pendingAnsi = '';
+    this.pendingOptionPrefix = '';
     this.spinnerActive = false;
     this.seenFirstIdle = false;
     this.pendingModeSwitch = false;

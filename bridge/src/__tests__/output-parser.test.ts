@@ -36,6 +36,53 @@ describe('OutputParser', () => {
     vi.useRealTimers();
   });
 
+  describe('fresh picker prefixes split across PTY chunks', () => {
+    it.each([
+      ['after cursor', ['❯ ', '1. Default\n  2. Sonnet\n']],
+      ['before period after a newline', ['Choose a model:\n  ❯', ' ', '1', '. Default\n  2. Sonnet\n']],
+      ['before closing parenthesis', ['Choose a model:\n❯ 1', ') Default\n  2) Sonnet\n']],
+    ])('detects a new picker split %s', (_name, chunks) => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+
+      for (const chunk of chunks) p.feed(chunk);
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].options.map((option: PromptOption) => option.label)).toEqual(['Default', 'Sonnet']);
+      expect(events[0]).toMatchObject({ navigable: true, cursorIndex: 0 });
+    });
+
+    it.each(['newline', 'newline with output', 'user input', 'reset'])('discards an unfinished prefix after %s', (boundary) => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+      p.feed('❯ ');
+      if (boundary === 'newline') p.feed('\n');
+      if (boundary === 'user input') p.notifyUserInput('\r');
+      if (boundary === 'reset') p.reset();
+
+      p.feed(`${boundary === 'newline with output' ? '\n' : ''}1. First result\n2. Second result\n`);
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(0);
+    });
+
+    it('does not reuse an answered picker to arm later numbered output', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+      p.feed('❯ ');
+      p.feed('1. Default\n2. Sonnet\n');
+      vi.advanceTimersByTime(200);
+      expect(events).toHaveLength(1);
+
+      p.notifyUserInput('\r');
+      p.feed('\nResults:\n1. First result\n2. Second result\n');
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+    });
+  });
+
   // === Option Parsing: Basic ===
 
   describe('basic option parsing', () => {
