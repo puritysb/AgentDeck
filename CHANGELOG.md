@@ -69,20 +69,32 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-22 — npm 1.9.3, Apple 1.9.2
 
-**macOS 1.9.2 / 9401 was submitted at 23:26:58 KST on October 23** and is
-**Waiting for Review**, with automatic release after approval, replacing the
-withdrawn 9301 submission. It adds the
+**macOS 1.9.2 / 9401 was publicly released on October 24 at 07:07:56 KST.**
+The [read-only ASC run](https://github.com/puritysb/AgentDeck/actions/runs/40044777874)
+confirmed `READY_FOR_SALE` and submission `COMPLETE`; the
+[official Mac App Store listing](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac)
+independently confirmed public availability. The released build replaces the
+withdrawn 9301 submission and includes the
 dashboard Keychain correction from [#599](https://github.com/puritysb/AgentDeck/pull/599)
 and the Settings rendering correction from [#600](https://github.com/puritysb/AgentDeck/pull/600).
-All 25 automatic full-verification gates passed in **26m 3s**; source CI passed
-13 checks with TTGO skipped. The Store artifact passed signing and archive
+
+**Post-release acceptance, October 25:** the actual Store-signed, sandboxed
+9401 installation passed the Swift replay with **15 assertions and 71 WebSocket
+roster frames**, including terminal expiry and synthetic-row cleanup. Operator
+reports of Settings/3D restoration, physical deck buttons and sleep/wake recovery
+are separate from that automated evidence. See the
+[public release and acceptance record](RELEASING.md#2026-10-24-macos-192-9401-public-release).
+npm 1.9.3 remains unpublished; this macOS release does not change the iOS release.
+
+Before release, all 25 automatic full-verification gates passed in **26m 3s**;
+source CI passed 13 checks with TTGO skipped. The Store artifact passed signing and archive
 checks, and a Development-signed derivative with equivalent code/resources
 passed the scoped Settings, 3D restoration and minimize/restore checks.
 The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
-confirmed the exact 9401 build and release copy; the
-[final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
-confirmed the review state. This is not a public release;
-see the [delivery record](RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+confirmed the exact 9401 build and release copy on October 23; that day's
+[readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
+recorded Waiting for Review. These are historical submission checkpoints,
+superseded by the public release above.
 
 **Earlier delivery: macOS 1.9.2 / 9301 was submitted after the Claude accuracy reassessment.**
 Standalone macOS no longer promotes status-line documents into account quota;
@@ -102,7 +114,8 @@ after approval and matching English, Korean, Japanese and reviewer text.
 Apple recorded the [submission](https://github.com/puritysb/AgentDeck/actions/runs/39894729567)
 at **12:23:33 KST on October 23**. The
 [final readback](https://github.com/puritysb/AgentDeck/actions/runs/39894803126)
-confirmed **Waiting for Review** and `AFTER_APPROVAL`. This is not a public release.
+confirmed **Waiting for Review** and `AFTER_APPROVAL`. The 9301 submission was
+later withdrawn and was never publicly released.
 Earlier runtime checks retain their build-specific scope; see the
 [replacement delivery record](RELEASING.md#macos-192-replacement-delivery-2026-10-23).
 
