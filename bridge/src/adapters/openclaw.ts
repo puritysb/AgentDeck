@@ -37,6 +37,7 @@ import type { AdapterContext, ChatEventPayload } from '@agentdeck/shared';
 import { openClawSessionSettings, isSessionSettingsTargetKey, isSessionSettingKey, isSessionSettingValue, SESSION_SETTINGS_RULES, type SessionSetting } from '@agentdeck/shared';
 import {
   isApprovalGoneError,
+  openClawOperatorScopes,
   parseExecApprovalRequest,
   decisionForOptionIndex,
   decisionForRespondValue,
@@ -2232,8 +2233,7 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
 
     // Scopes must match between signed payload and request params — Gateway
     // reconstructs the payload from request params for signature verification.
-    const scopes = this.deviceAuthToken?.scopes
-      ?? ['operator.admin', 'operator.approvals', 'operator.read'];
+    const scopes = openClawOperatorScopes(this.deviceAuthToken?.scopes);
     const sharedToken = this.sharedGatewayToken ?? '';
     const deviceToken = this.deviceAuthToken?.token ?? '';
 

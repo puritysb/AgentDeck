@@ -321,7 +321,6 @@ actor OpenClawAdapter {
     private let clientPlatform = "darwin"
     private let clientDeviceFamily = "mac"
     private let defaultRole = "operator"
-    private let defaultScopes = ["operator.read", "operator.write", "operator.approvals"]
 
     private var _onEvent: (@Sendable ([String: Any]) -> Void)?
     private var _onConnectionChanged: (@Sendable (Bool) -> Void)?
@@ -1093,7 +1092,7 @@ actor OpenClawAdapter {
                 deviceAuthToken = DeviceAuthToken(
                     token: token,
                     role: canonical.role ?? defaultRole,
-                    scopes: canonical.scopes?.isEmpty == false ? canonical.scopes ?? defaultScopes : defaultScopes
+                    scopes: OpenClawApprovalRules.operatorScopes(granted: canonical.scopes)
                 )
             } else {
                 deviceAuthToken = nil
@@ -1118,7 +1117,7 @@ actor OpenClawAdapter {
             deviceId: Data(SHA256.hash(data: publicKeyRaw)).hexString,
             deviceToken: nil,
             role: defaultRole,
-            scopes: defaultScopes
+            scopes: OpenClawApprovalRules.defaultOperatorScopes
         )
         try saveStoredAppStoreIdentity(stored)
         return stored
@@ -1803,17 +1802,10 @@ actor OpenClawAdapter {
     }
 
     private func sendConnectRequest(nonce: String) {
-        // In fallback mode every device-derived value is suppressed so the
-        // request is genuinely token-only. Otherwise scopes inherit from the
-        // stored device token (so re-connects keep the operator scopes that
-        // were granted at pairing time) and fall back to defaults if empty.
-        var scopes: [String]
-        if disableDeviceAuthForNextConnect {
-            scopes = defaultScopes
-        } else {
-            scopes = deviceAuthToken?.scopes ?? defaultScopes
-            if scopes.isEmpty { scopes = defaultScopes }
-        }
+        // Fallback suppresses device credentials, but the requested scopes
+        // still retain the stored grant exactly, including an empty grant.
+        // The shared default applies only when no device grant exists.
+        let scopes = OpenClawApprovalRules.operatorScopes(granted: deviceAuthToken?.scopes)
 
         var params: [String: Any] = [
             "minProtocol": protocolVersion,
@@ -1997,7 +1989,7 @@ actor OpenClawAdapter {
               let token = auth["deviceToken"] as? String,
               !token.isEmpty else { return }
         let role = auth["role"] as? String ?? defaultRole
-        let scopes = (auth["scopes"] as? [String]) ?? defaultScopes
+        let scopes = OpenClawApprovalRules.operatorScopes(granted: auth["scopes"] as? [String])
         deviceAuthToken = DeviceAuthToken(token: token, role: role, scopes: scopes)
 
         do {

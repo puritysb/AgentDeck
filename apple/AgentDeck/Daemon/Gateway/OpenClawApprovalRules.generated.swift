@@ -66,6 +66,13 @@ struct OpenClawApprovalPrompt: Sendable, Equatable {
 }
 
 enum OpenClawApprovalRules {
+    /// Default visibility matches Node; never widen an existing device grant.
+    static let defaultOperatorScopes: [String] = ["operator.admin","operator.approvals","operator.read"]
+
+    static func operatorScopes(granted: [String]?) -> [String] {
+        guard let granted else { return defaultOperatorScopes }
+        return granted
+    }
 
     /// Parse a raw `exec.approval.requested` payload.
     ///

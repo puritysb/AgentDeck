@@ -399,6 +399,7 @@ describe('OpenClawAdapter gateway protocol', () => {
     expect(sent.params.client.version).not.toBe('0.3.0');
     expect(sent.params.client.deviceFamily).toBe('mac');
     expect(sent.params.role).toBe('operator');
+    expect(sent.params.scopes).toEqual(['operator.admin', 'operator.approvals', 'operator.read']);
     expect(sent.params.caps).toContain('tool-events');
     // The Gateway (openclaw 2026.9.x canDeliverApprovals) pushes
     // `exec.approval.requested`/`resolved` only to connections advertising an
@@ -406,6 +407,23 @@ describe('OpenClawAdapter gateway protocol', () => {
     // unreachable, and a PERM raised while the link stayed up never reached
     // any deck (2026-09-19 live measurement against openclaw 2026.9.4).
     expect(sent.params.caps).toContain('approvals');
+  });
+
+  it.each([
+    { granted: ['operator.read'], fallback: false },
+    { granted: [], fallback: false },
+    { granted: ['operator.read'], fallback: true },
+    { granted: [], fallback: true },
+  ])('preserves a device grant: $granted, fallback=$fallback', ({ granted, fallback }) => {
+    const internal = adapter as unknown as {
+      deviceAuthToken: { token: string; role: string; scopes: string[] };
+      disableDeviceAuthForNextConnect: boolean;
+    };
+    internal.deviceAuthToken = { token: 'test-token', role: 'operator', scopes: granted };
+    internal.disableDeviceAuthForNextConnect = fallback;
+    simulateMessage({ type: 'event', event: 'connect.challenge', payload: { nonce: 'test' } });
+    const sent = JSON.parse(wsInstance.send.mock.calls[0][0]);
+    expect(sent.params.scopes).toEqual(granted);
   });
 
   it('becomes alive after hello-ok response', () => {
