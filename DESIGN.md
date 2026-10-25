@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-10-09
-revision: 2026-10-09
+reviewed: 2026-10-25
+revision: 2026-10-25
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -422,10 +422,10 @@ grammar, laid out per panel:
 | Masthead | Mark · session count by state (`2 working · 3 idle`) · **as-of time** | A persisted image must say when it was true. Never a bare `S:5`. |
 | Needs you | Only when a session awaits. **Inverted block**: who, what it asks, the options | Inversion is paper's amber: the one loud thing, and it does not move. |
 | Working | One row per working session: brand mark · project (largest type) · live activity line | Real activity or nothing. No filler (`Working. Waiting for the next update.`). The zone heading names the state once; rows do not repeat it. |
-| Quiet | Idle sessions as one wrapped line of mark + name; offline as a count | Idle rows never take a working row's space. The mark disambiguates same-named sessions. |
+| Quiet | Android: readable idle rows after working sessions. Compact firmware: wrapped mark + name; offline as a count | Keep quiet work subordinate to active work. The mark disambiguates same-named sessions. |
 | Usage | Per provider: a line with mark · name · plan (`Codex  Pro · until Oct 10`), then its windows as aligned rows — window · bar · `42%` · `4h 37m`; captions `used` / `resets in` once | A plan belongs to its provider, never a loose note. Columns line up so the eye runs down the numbers; one bar width per zone. Absent providers are absent: one subscription is one group, a plan without metered windows is its line alone, none draws no zone. `!` at critical, `?` when stale. |
 | Done | Latest finished agent work: time · mark · project · one line | A judged task's summary first, otherwise an answered turn's first sentence. A prompt still waiting for its answer, automated turns, abandoned tasks and tool noise are not "done". |
-| Terrarium | The aquarium, in whatever space the text zones leave | Optional and never over a zone; dropped below a useful height rather than shown as a keyhole. |
+| Terrarium | Android: an explicitly selected Frame mode, separate from the work-and-usage dashboard | Show a living habitat with at most eight prioritized residents, readable state and motion cues, and an explicit population count when others are outside the scene; every session remains in the dashboard roster. The header mode control and attention remain visible outside the aquarium. Native firmware keeps its panel-specific scene budget and may omit the scene when space is insufficient. |
 
 **Panel capabilities.** Tone, refresh and motion are properties of the panel,
 and each is used where it exists:
@@ -434,16 +434,62 @@ and each is used where it exists:
 |---|---|---|---|
 | Tone | Black ink on white; no gradients or scenes. NM-EPD-420's red is spent only on what needs the reader; LilyGo's grey levels only on secondary ink | Terrarium in grey gradients; text zones stay black on white | Session hues (§2.7 paper palette) on the zone heading, the needs-you band and usage severity; brand marks in brand colour; colour terrarium |
 | Refresh | Per panel: TRMNL paints partial windows with a full clean about every fifth; NM-EPD-420 has only ~10 s full tri-colour cycles, so repaints wait for a settled change; LilyGo follows its page refresh policy | Per zone: sessions A2 fast, usage and done DU slow, needs-you one GC16 clean | Same zones; colour layers skip the software layer so the CFA samples colour |
-| Motion | None | Terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
+| Motion | None | Only Frame mounts the aquarium; its terrarium animates only while a creature is active, at ≤10 partial frames/s, and rests otherwise | Same as grey |
 | Sound | NM-EPD-420 only (ES8311 codec): a two-note chime when a session starts waiting on the reader, since a ~10 s repaint cannot flash; spoken replies route to it as `audio_out` | None | None |
 
 Judge a board by a human glance, not by data completeness: what a reader takes
 in within a second or two must be the few facts they act on.
 
-Layout: portrait puts Usage in the white space beside Now, then the terrarium, then Done (the terrarium yields about two fifths of its height when there is finished work, and Done shows as many items as that height holds); landscape reads text
-down one column beside a full-height terrarium window. Fixed zones so a change
-refreshes only its own zone; type sizes step, never shrink to fit. Empty states
-state facts (`No sessions`), never placeholders.
+**Android layout.** One work-and-usage dashboard is the default. Portrait puts
+work above a compact usage region; landscape puts work on the left and usage on
+the right. Both regions stay on screen together. The full ranked roster lives
+in the work region; it is not a three-session preview or a separate destination.
+Finished work follows the roster. Each region scrolls independently within its
+available space, with a visible scroll affordance when content overflows. A long
+roster must not push usage offscreen, and expanded usage must not cover the
+roster. There is no global pager or separate Sessions / Usage navigation.
+
+Usage includes every available provider with its primary windows. Additional
+provider limits expand inline, with their hidden count and any critical hidden
+usage identified before expansion. Provider columns depend on the measured
+content width and font scale, not orientation alone: use two compact columns
+when readable, then one column or stacked numeric rows as needed. Labels wrap;
+type never shrinks to fit. Reading positions and provider expansion survive
+rotation. A header control explicitly switches to Frame and back to the
+dashboard; Frame fills the remaining area and retains its mode across rotation.
+Attention remains visible in both modes, and the dashboard reserves no space
+for the scene.
+
+Frame gives residents room to move through the habitat. Claude and OpenClaw
+walk through its lower depths; other species swim through the water. Their
+body direction and gaze follow travel with bounded turns. A sharp reversal
+slows the resident before turning and accelerating again; a stopped resident
+keeps its final direction instead of snapping back to face the viewer. Working
+residents travel to a destination, finish braking, then begin task gestures.
+Quiet residents alternate slow exploration and rest; quiet Hermes keeps a fixed
+resting position. Waiting and CI waiting brake to a stop. Sleeping freezes
+position and gait immediately. State updates retain the current location.
+
+Use canonical silhouettes, with feet, claws and tails moving with actual
+travel and separate gestures during work pauses. Walking and swimming strength
+rises and falls with speed, settling to planted feet or quiet fins at rest;
+small drift must not restart a gait or flip the resident's direction. Preserve
+readable identifying glyphs, including terminal prompts, through body turns.
+Small contact shadows and water wakes follow the resident. Residents steer
+around each other, while upright names with a light text halo and attached CI
+cues preserve identity without turning the scene into cards. Keep the shared
+resident priority and population limit, leaving open habitat between bodies in
+either orientation.
+
+**Native firmware layout.** Retain each panel's fixed-zone composition and
+refresh budget; Android's navigation does not imply pages or touch controls on
+firmware. Where the panel includes a scene, portrait puts Usage beside Now, then
+the terrarium, then Done; finished work can take about two fifths of the scene's
+height. Landscape puts the text column beside the scene. Done shows as many items
+as its height holds. Firmware that cannot afford a scene omits it.
+
+Refresh only the affected zones. Type sizes step, never shrink to fit. Empty
+states state facts (`No sessions`), never placeholders.
 
 ---
 
@@ -488,7 +534,9 @@ these movements while keeping explicit status cues visible.
 Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
 
 Creature status is a shape-and-contrast grammar, never a set of tiny letter
-codes. Idle creatures are dim and still with no badge. Working creatures keep
+codes. Idle creatures are dim with no badge. They stay still on static surfaces;
+Android Frame also permits slow exploration alternating with rest, except for quiet
+Hermes, whose resting position stays fixed. Working creatures keep
 their identity mark and add a cyan geometric spark or floor halo. Input-needed
 creatures use a solid amber `!` badge; errors use the same high-salience badge
 in coral. Colour is redundant with shape and motion so working, idle, and
@@ -505,8 +553,8 @@ translucent water, never opaque cards. A tag lying over another resident's body
 yields: its backing fades so the body shows through, and a WORKING badge fades
 with it — the badge is the state signal, not a card. In a dense tank (five or more residents) an idle tag collapses to a
 title-only chip low on its own body, and an idle chip that would collide with a
-tag already placed drops out — the roster still lists it. Paper (Android e-ink) has no translucency to spend, so it takes only the
-ordering half: priority tags paint last and a colliding idle tag drops out.
+tag already placed drops out — the roster still lists it. Paper (Android e-ink)
+uses upright text with a light halo, without a rectangular backing: priority names paint last and a colliding idle name drops out.
 ESP32 boards draw tags per creature and apply the density half — idle tags
 hide at the same resident count. Floor-standing residents (idle, waiting,
 asleep) are also spread apart before they are drawn, so the band layout's
