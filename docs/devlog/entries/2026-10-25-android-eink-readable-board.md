@@ -184,7 +184,7 @@ On Pantone, those calls delayed the nominal 25-second restart to 43.24 seconds
 in a 44-second clip. Its captions passed but its restart duration was inadequate.
 Those captures are retained under `superseded-transition/`; replacement 50-second
 recordings dispatch state changes on a separate timer at 5, 18 and 31 seconds
-(actual error at most 0.01 seconds), leaving 19 seconds to observe resumed work.
+(recorded dispatch times differ by at most 0.01 seconds), leaving 19 seconds to observe resumed work.
 A video-duration check alone would not have caught that evidence gap.
 
 All four post-Frame dashboard cases reach work row 32, scope 10 and the last
