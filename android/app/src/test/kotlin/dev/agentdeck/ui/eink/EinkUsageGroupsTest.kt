@@ -32,6 +32,15 @@ class EinkUsageGroupsTest {
     }
 
     @Test
+    fun `per model allowance names survive projection in full`() {
+        val label = "Long model weekly allowance"
+        val groups = buildEinkUsageGroups(DashboardState(usage = UsageUpdate(
+            scopedLimits = listOf(dev.agentdeck.net.ScopedUsageLimit(label = label, percent = 42.0)),
+        )), now)
+        assertEquals(label, groups.single().windows.single().label)
+    }
+
+    @Test
     fun `a plan attaches to its own provider, with a readable until`() {
         val groups = buildEinkUsageGroups(
             DashboardState(

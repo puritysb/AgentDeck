@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-25T02:29:10.029Z",
+  "finished_at": "2026-10-25T02:29:10.031Z",
+  "duration_ms": 2,
+  "commit": "51cd81040f712423f385d8d1774c505d96801f13",
+  "branch": "HEAD",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "pass",
+      "attested": true,
+      "note": "Pantone 6 and Crema S only; APK 0c74fde56dc3d2106125a92ce37c46cda3c67ec65ecc7775af28e3a315553b9e installed and hash matched; 16 Frame cases with direction/brake/rest/restart and 32 sessions, 4 work/usage endpoint cases across landscape and portrait; original modes/orientation/fonts and real host restored; diagnostics/eink-facing-review/evidence.json; physical panel ghosting not measured."
+    }
+  ]
+}

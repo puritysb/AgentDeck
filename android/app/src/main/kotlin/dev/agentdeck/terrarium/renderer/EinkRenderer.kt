@@ -1,7 +1,6 @@
 package dev.agentdeck.terrarium.renderer
 
 import android.graphics.Bitmap
-import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
@@ -24,17 +23,16 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.IntSize
-import dev.agentdeck.terrarium.ciCompanionPosition
 import dev.agentdeck.terrarium.ciCompanionActive
 import dev.agentdeck.terrarium.ciCompanionBitmap
 import dev.agentdeck.terrarium.drawCiCompanion
 import dev.agentdeck.terrarium.TerrariumRules
 import dev.agentdeck.terrarium.aquariumResidents
+import dev.agentdeck.terrarium.visibleAquariumResidents
 import dev.agentdeck.terrarium.CrayfishVisualState
 import dev.agentdeck.terrarium.CreatureGeometry
 import dev.agentdeck.terrarium.OctopusVisualState
 import dev.agentdeck.terrarium.TetraVisualState
-import dev.agentdeck.terrarium.TerrariumLayout
 import dev.agentdeck.terrarium.TerrariumState
 import dev.agentdeck.terrarium.CreatureNameTagStyle
 import dev.agentdeck.terrarium.creatureNameTagMetric
@@ -56,6 +54,8 @@ private const val EINK_PARTIAL_FRAME_MS = 100L
 /** Total animation cycle frames — fish patrol uses the full range, creatures use % 4. */
 private const val EINK_ANIM_CYCLE = 32
 
+private fun Int.floorMod(modulus: Int): Int = ((this % modulus) + modulus) % modulus
+
 // Octopus (Claude robot) and crayfish (OpenClaw) silhouettes are rendered from the
 // canonical SVG paths in CreatureGeometry via canvas.drawPath — drawPath works on
 // supported e-ink (the old "no drawPath" comments were based on an unverified claim).
@@ -69,10 +69,6 @@ internal fun einkAnimationFrameIntervalMs(physicalEink: Boolean): Long =
 
 internal fun einkAnimationFrameAdvance(elapsedMs: Long): Float =
     (elapsedMs.coerceAtLeast(0).toFloat() / EINK_MOTION_UNIT_MS).coerceAtMost(1.5f)
-
-private fun frameMod4(frame: Float): Int = floor(frame).toInt().floorMod(4)
-
-private fun Int.floorMod(modulus: Int): Int = ((this % modulus) + modulus) % modulus
 
 /**
  * E-ink terrarium renderer — draws creatures into an offscreen bitmap,
@@ -111,15 +107,14 @@ fun EinkTerrariumView(
         // Reusable render target — NOT displayed directly, only used as renderEinkFrame target
         var reusableBitmap by remember { mutableStateOf<Bitmap?>(null) }
         var animFrame by remember { mutableFloatStateOf(0f) }
+        var residentTimeSeconds by remember { mutableStateOf(0.0) }
         val currentState by rememberUpdatedState(state)
         // Persistent swimming state — survives recomposition, state lives across frames
         val fishSchool = remember { EinkFishSchool() }
+        val residentMotion = remember { EinkResidentMotion() }
 
-        val hasActiveCreatures = state.octopus != OctopusVisualState.SLEEPING ||
-            state.crayfish != CrayfishVisualState.DORMANT ||
-            state.cloudCreatures.any { it.visualState != OctopusVisualState.SLEEPING } ||
-            state.openCodeCreatures.any { it.visualState != OctopusVisualState.SLEEPING } ||
-            state.antigravityCreatures.any { it.visualState != OctopusVisualState.SLEEPING }
+        val visibleResidents = visibleAquariumResidents(aquariumResidents(state), state.focusedSessionId)
+        val hasActiveCreatures = visibleResidents.any { it.state != OctopusVisualState.SLEEPING }
         val isAnimating = hasActiveCreatures && !snapshotMode
 
         // Vsync pacing drops overdue frames instead of adding render time to a sleep.
@@ -129,7 +124,7 @@ fun EinkTerrariumView(
                 // caller decide whether that frame warrants an EPD refresh.
                 val bmp = reusableBitmap?.takeIf { it.width == widthPx && it.height == heightPx }
                     ?: Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
-                renderedBitmap = renderEinkFrame(currentState, widthPx, heightPx, 0f, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface)
+                renderedBitmap = renderEinkFrame(currentState, widthPx, heightPx, 0f, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface, residentTimeSeconds = residentTimeSeconds, residentMotion = residentMotion)
                 hostView.postInvalidate()
                 onFrameRendered?.invoke(false)
                 return@LaunchedEffect
@@ -146,12 +141,13 @@ fun EinkTerrariumView(
                     val frameAdvance = einkAnimationFrameAdvance(now - lastFrameAt)
                     lastFrameAt = now
                     animFrame = (animFrame + frameAdvance) % EINK_ANIM_CYCLE.toFloat()
+                    residentTimeSeconds += frameAdvance.toDouble() * EINK_MOTION_UNIT_MS / 1000.0
                     val s = currentState
                     val streaming = s.tetra == TetraVisualState.STREAMING
                     fishSchool.update(streaming, frameAdvance,
                         hovering = s.tetra == TetraVisualState.HOVERING)
                     renderedBitmap = renderEinkFrame(currentState, widthPx, heightPx, animFrame, bmp,
-                        skipDither = true, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface)
+                        skipDither = true, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface, residentTimeSeconds = residentTimeSeconds, residentMotion = residentMotion)
                     hostView.postInvalidate()
                     onFrameRendered?.invoke(true)
                 } catch (e: Exception) {
@@ -163,15 +159,11 @@ fun EinkTerrariumView(
         // Force immediate re-render on state change (e.g. FLOATING→WORKING).
         // The animation loop picks up currentState automatically, but we also render
         // one frame immediately so the transition does not wait for the next animation frame.
-        val agentsKey = state.agents.map { it.visualState }
-        val cloudsKey = state.cloudCreatures.map { it.visualState }
-        val openCodeKey = state.openCodeCreatures.map { it.visualState }
-        val antigravityKey = state.antigravityCreatures.map { it.visualState }
-        LaunchedEffect(snapshotMode, state.ciWaits, state.ciWaitingIds, state.octopus, state.crayfish, state.tetra, state.environment, agentsKey, cloudsKey, openCodeKey, antigravityKey, widthPx, heightPx) {
+        LaunchedEffect(snapshotMode, state, widthPx, heightPx) {
             val bmp = reusableBitmap?.takeIf { it.width == widthPx && it.height == heightPx }
                 ?: Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
             val frame = if (snapshotMode) 0f else animFrame
-            renderedBitmap = renderEinkFrame(currentState, widthPx, heightPx, frame, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface)
+            renderedBitmap = renderEinkFrame(currentState, widthPx, heightPx, frame, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface, residentTimeSeconds = residentTimeSeconds, residentMotion = residentMotion)
             hostView.postInvalidate()
             onFrameRendered?.invoke(false)
         }
@@ -181,7 +173,7 @@ fun EinkTerrariumView(
             if (renderedBitmap == null || renderedBitmap?.width != widthPx || renderedBitmap?.height != heightPx) {
                 val bmp = reusableBitmap?.takeIf { it.width == widthPx && it.height == heightPx }
                     ?: Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888).also { reusableBitmap = it }
-                renderedBitmap = renderEinkFrame(state, widthPx, heightPx, 0f, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface)
+                renderedBitmap = renderEinkFrame(state, widthPx, heightPx, 0f, bmp, fishSchool = fishSchool, habitat = habitat, textScale = density.density,ciSprite = ciSprite, ciTypeface = ciTypeface, residentTimeSeconds = residentTimeSeconds, residentMotion = residentMotion)
                 hostView.postInvalidate()
                 onFrameRendered?.invoke(false)
             }
@@ -206,6 +198,98 @@ internal fun showEinkCiCompanionCaptions(state: TerrariumState): Boolean {
     } <= 1
 }
 
+/** Neutral geometric effort cues stay legible on monochrome EPD; working never flashes. */
+private fun drawEinkResidentActivity(
+    canvas: android.graphics.Canvas, paint: Paint,
+    item: dev.agentdeck.terrarium.AquariumResident, pose: EinkResidentPose,
+    x: Float, y: Float, selected: Boolean,
+) {
+    val unit = pose.home.body * .55f
+    paint.style = Paint.Style.FILL
+    paint.alpha = 255
+    paint.color = GRAY_CREATURE
+    if (selected) {
+        for (side in -1..1 step 2) {
+            val rail = x + side * unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_X
+            canvas.drawRect(rail - unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_WIDTH / 2,
+                y - unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_HEIGHT / 2,
+                rail + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_WIDTH / 2,
+                y + unit * TerrariumRules.NATIVE_ACTIVITY_SELECTION_HEIGHT / 2, paint)
+        }
+    }
+    if (item.state == OctopusVisualState.ASKING) {
+        val radius = pose.home.body * .18f
+        val bubbleX = einkQuestionBubbleX(x, pose.home.body, canvas.width)
+        paint.style = Paint.Style.FILL
+        paint.color = einkPick(GRAY_AIR, COLOR_AIR)
+        canvas.drawCircle(bubbleX, y, radius, paint)
+        paint.style = Paint.Style.STROKE
+        paint.color = GRAY_CREATURE
+        paint.strokeWidth = pose.home.body * .012f
+        canvas.drawCircle(bubbleX, y, radius, paint)
+        paint.style = Paint.Style.FILL
+        paint.textSize = radius * 1.5f
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText("?", bubbleX, y + radius * .5f, paint)
+        paint.textAlign = Paint.Align.LEFT
+    }
+    // Work has a place and an action: a small disturbed patch accompanies a
+    // grounded resident's task strokes. Travel is expressed by gait, not meter bars.
+    if (!pose.home.grounded && pose.workAmount > .1f) {
+        paint.color = einkPick(GRAY_SIGNAL, COLOR_BUBBLE)
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = maxOf(1.2f, pose.home.body * .01f)
+        for (index in 0..2) {
+            val progress = (pose.workPhase * .13f + index / 3f) % 1f
+            val reach = pose.home.body * (.68f - progress * .16f)
+            canvas.drawCircle(x + reach * .75f,
+                y + pose.home.body * (.40f - progress * .55f),
+                pose.home.body * .022f * pose.workAmount, paint)
+        }
+        paint.style = Paint.Style.FILL
+    }
+    if (pose.home.grounded && pose.workAmount > .1f) {
+        paint.color = einkPick(GRAY_GRAVEL, COLOR_SAND)
+        for (index in 0..2) {
+            val phase = (pose.workPhase * .22f + index / 3f) % 1f
+            val direction = if (index % 2 == 0) -1f else 1f
+            canvas.drawCircle(x + direction * pose.home.body * (.35f + phase * .17f),
+                y + pose.home.body * (.36f - phase * .16f),
+                pose.home.body * .018f * (1f - phase) * pose.workAmount, paint)
+        }
+    }
+}
+
+/** Water trails indicate direction; they disappear when a resident stops to work or wait. */
+private fun drawEinkTravelWake(canvas: android.graphics.Canvas, paint: Paint, pose: EinkResidentPose, width: Int, height: Int) {
+    if (pose.home.grounded || pose.locomotionAmount <= .01f) return
+    // Retained orientation and the eased gait envelope let the wake shorten
+    // through braking instead of disappearing at a velocity threshold.
+    val ux = pose.lookX
+    val uy = pose.lookY
+    val effort = pose.locomotionAmount
+    val body = pose.home.body
+    val cx = pose.slot.centerXFraction * width
+    val cy = pose.slot.centerYFraction * height
+    paint.color = einkPick(GRAY_SIGNAL, COLOR_BUBBLE)
+    paint.style = Paint.Style.STROKE
+    paint.strokeWidth = maxOf(.5f, body * .009f * effort)
+    paint.strokeCap = Paint.Cap.ROUND
+    for (side in -1..1 step 2) {
+        val startX = cx - ux * body * .52f - uy * body * .18f * side
+        val startY = cy - uy * body * .52f + ux * body * .18f * side
+        val path = android.graphics.Path().apply {
+            moveTo(startX, startY)
+            quadTo(startX - ux * body * .15f * effort - uy * body * .06f * side * effort,
+                startY - uy * body * .15f * effort + ux * body * .06f * side * effort,
+                startX - ux * body * .30f * effort, startY - uy * body * .30f * effort)
+        }
+        canvas.drawPath(path, paint)
+    }
+    paint.style = Paint.Style.FILL
+    paint.strokeCap = Paint.Cap.BUTT
+}
+
 /**
  * Render a single e-ink frame with optional animation. Reuses [target] bitmap to avoid allocation.
  * Live residents render with alpha over a cached habitat; the physical monochrome
@@ -219,6 +303,8 @@ internal fun renderEinkFrame(
     textScale: Float = 1f,
     ciSprite: Bitmap? = null,
     ciTypeface: android.graphics.Typeface? = null,
+    residentTimeSeconds: Double = animFrame.toDouble() * EINK_MOTION_UNIT_MS / 1000.0,
+    residentMotion: EinkResidentMotion? = null,
 ): Bitmap {
     val bitmap = if (target != null && target.width == width && target.height == height) {
         target.eraseColor(0)
@@ -230,7 +316,6 @@ internal fun renderEinkFrame(
     val paint = Paint().apply { isAntiAlias = habitat != null }
 
     einkTagQueue.set(mutableListOf())
-    einkCiAnchors.get().clear()
 
     if (Log.isLoggable("EinkFrame", Log.VERBOSE)) {
         Log.v("EinkFrame", "agents=${state.agents.size} clouds=${state.cloudCreatures.size} oc=${state.openCodeCreatures.size} cf=${state.crayfish} frame=$animFrame")
@@ -243,29 +328,57 @@ internal fun renderEinkFrame(
     }
 
     // Back-layer fish (behind creatures for 3D depth)
-    drawEinkDataParticles(canvas, paint, width, height, state.tetra, state.agents.size, state.crayfish, animFrame, layer = 0, fishSchool = fishSchool)
+    drawEinkFishSchool(canvas, paint, width, height, state.tetra, layer = 0, fishSchool = fishSchool)
 
-    // Creatures (4-frame cycle for limb animation)
-    if (state.agents.isEmpty()) {
-        // No agents — skip octopus drawing
-    } else if (state.agents.size > 1) {
-        val slots = dev.agentdeck.terrarium.layoutOctopusesByProject(
-            state.agents.map { dev.agentdeck.terrarium.AgentLayoutInfo(it.sessionId, it.displayName) }
-        )
-        for (i in state.agents.indices) {
-            val slot = slots.getOrElse(i) { slots.last() }
-            drawEinkOctopus(canvas, paint, width, height,
-                state.agents[i].visualState, state.agents[i].agentType,
+    // Reuse the native aquarium's priority and capacity policy. The roster
+    // retains every session; a crowd never shrinks the scene into tiny marks.
+    val residents = visibleAquariumResidents(aquariumResidents(state), state.focusedSessionId)
+    val poses = (residentMotion ?: EinkResidentMotion()).advance(residents, residentTimeSeconds, width, height)
+    val anchors = mutableMapOf<String, Pair<Float, Float>>()
+    // A small contact shadow travels with the creature rather than marking a fixed icon slot.
+    poses.filter { it.home.grounded }.forEach { pose ->
+        val x = pose.slot.centerXFraction * width
+        val y = pose.slot.centerYFraction * height
+        val body = pose.home.body
+        paint.style = Paint.Style.FILL
+        paint.color = einkPick(GRAY_GRAVEL, COLOR_SAND)
+        canvas.drawOval(x - body * .43f, y + body * .32f,
+            x + body * .43f, y + body * .39f, paint)
+    }
+    for (pose in poses) drawEinkTravelWake(canvas, paint, pose, width, height)
+    // Far residents paint first. Labels remain upright and are resolved together below.
+    residents.indices.sortedBy { poses[it].slot.centerYFraction }.forEach { i ->
+        val resident = residents[i]
+        val pose = poses[i]
+        val slot = pose.slot
+        val cx = slot.centerXFraction * width
+        val cy = slot.centerYFraction * height
+        canvas.save()
+        canvas.rotate(pose.rollDegrees, cx, cy)
+        canvas.scale(pose.widthScale, pose.heightScale, cx, cy)
+        when (resident.kind) {
+            "claudecode" -> drawEinkOctopus(canvas, paint, width, height, resident.state,
                 centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
-                scaleFactor = slot.scaleFactor, animFrame = animFrame,
-                swimFrame = animFrame, displayName = state.agents[i].displayName)
+                scaleFactor = slot.scaleFactor, displayName = resident.title, pose = pose)
+            "codex" -> drawEinkCloud(canvas, paint, width, height, resident.state,
+                centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
+                scaleFactor = slot.scaleFactor, displayName = resident.title, pose = pose)
+            "opencode", "kiro", "hermes" -> drawEinkOpenCode(canvas, paint, width, height, resident.state,
+                centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
+                scaleFactor = slot.scaleFactor,
+                agentType = if (resident.kind == "kiro") "kiro-cli" else resident.kind,
+                displayName = resident.title, pose = pose)
+            "antigravity" -> drawEinkAntigravity(canvas, paint, width, height, resident.state,
+                centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
+                scaleFactor = slot.scaleFactor, displayName = resident.title, pose = pose)
+            "openclaw" -> drawEinkCrayfish(canvas, paint, width, height, state.crayfish, animFrame,
+                centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
+                scaleFactor = slot.scaleFactor, pose = pose)
         }
-    } else {
-        // Use agent's own visualState (not state.octopus which reflects daemon's state)
-        val agent = state.agents[0]
-        drawEinkOctopus(canvas, paint, width, height, agent.visualState, agent.agentType,
-            animFrame = animFrame, swimFrame = animFrame,
-            displayName = agent.displayName)
+        canvas.restore()
+        anchors[resident.id] = slot.centerXFraction to slot.centerYFraction
+        drawEinkResidentActivity(canvas, paint, resident, pose, cx, cy,
+            resident.id == state.focusedSessionId)
     }
     // Pop burst particles (1-frame effect when leaving ASKING state)
     if (state.popBurstPositions.isNotEmpty()) {
@@ -284,67 +397,16 @@ internal fun renderEinkFrame(
         }
     }
 
-    drawEinkCrayfish(canvas, paint, width, height, state.crayfish, animFrame)
-
-    // Cloud creatures (Codex CLI agents — float in upper area)
-    if (state.cloudCreatures.isNotEmpty()) {
-        val cloudSlots = dev.agentdeck.terrarium.layoutCloudCreatures(state.cloudCreatures.size)
-        for (i in state.cloudCreatures.indices) {
-            val slot = cloudSlots.getOrElse(i) { cloudSlots.last() }
-            drawEinkCloud(canvas, paint, width, height,
-                state.cloudCreatures[i].visualState,
-                centerXFraction = slot.centerXFraction,
-                centerYFraction = slot.centerYFraction,
-                scaleFactor = slot.scaleFactor,
-                animFrame = animFrame,
-                swimFrame = animFrame,
-                allowHorizontalWander = state.cloudCreatures.size == 1,
-                displayName = state.cloudCreatures[i].displayName)
-        }
-    }
-
-    // OpenCode creatures (nested-square logo agents)
-    if (state.openCodeCreatures.isNotEmpty()) {
-        val openCodeSlots = dev.agentdeck.terrarium.vectorMarkSlots(state.openCodeCreatures)
-        for (i in state.openCodeCreatures.indices) {
-            val slot = openCodeSlots.getOrElse(i) { openCodeSlots.last() }
-            drawEinkOpenCode(canvas, paint, width, height,
-                state.openCodeCreatures[i].visualState,
-                centerXFraction = slot.centerXFraction,
-                centerYFraction = slot.centerYFraction,
-                scaleFactor = slot.scaleFactor,
-                animFrame = animFrame,
-                swimFrame = animFrame,
-                agentType = state.openCodeCreatures[i].agentType,
-                displayName = state.openCodeCreatures[i].displayName)
-        }
-    }
-
-    // Antigravity creatures (peak/arc logo agents)
-    if (state.antigravityCreatures.isNotEmpty()) {
-        val antigravitySlots = dev.agentdeck.terrarium.layoutAntigravityCreatures(state.antigravityCreatures.size)
-        for (i in state.antigravityCreatures.indices) {
-            val slot = antigravitySlots.getOrElse(i) { antigravitySlots.last() }
-            drawEinkAntigravity(canvas, paint, width, height,
-                state.antigravityCreatures[i].visualState,
-                centerXFraction = slot.centerXFraction,
-                centerYFraction = slot.centerYFraction,
-                scaleFactor = slot.scaleFactor,
-                animFrame = animFrame,
-                swimFrame = animFrame,
-                displayName = state.antigravityCreatures[i].displayName)
-        }
-    }
 
     if(ciSprite!=null) {
         val ciPaint = Paint(paint).apply { typeface = ciTypeface }
-        val all=state.agents+state.cloudCreatures+state.openCodeCreatures+state.antigravityCreatures
+        val all = residents
         for(item in all) {
-            val wait=state.ciWaits[item.sessionId] ?: continue
-            if(!ciCompanionActive(wait) || item.visualState==OctopusVisualState.ASKING)continue
+            val wait=state.ciWaits[item.id] ?: continue
+            if(!ciCompanionActive(wait) || item.state==OctopusVisualState.ASKING)continue
             // Preserve each renderer's actual rest/swim home rather than relocating it.
-            val center=einkCiAnchors.get().getOrNull(all.indexOf(item)) ?: continue
-            drawCiCompanion(canvas,ciPaint,ciSprite,center,ciCompanionPosition(center,TerrariumRules.CI_COMPANION_STATIC_ANGLE,width.toFloat(),height.toFloat()),
+            val center=anchors[item.id] ?: continue
+            drawCiCompanion(canvas,ciPaint,ciSprite,center,einkCompanionPosition(poses[all.indexOf(item)], width, height),
                 wait,textScale=textScale,ink=if(einkColorEnabled)null else GRAY_CREATURE,
                 showCaption=showEinkCiCompanionCaptions(state))
         }
@@ -356,7 +418,7 @@ internal fun renderEinkFrame(
     if (queuedTags != null) flushEinkNameTags(canvas, paint, queuedTags)
 
     // Front-layer fish (in front of creatures for 3D depth)
-    drawEinkDataParticles(canvas, paint, width, height, state.tetra, state.agents.size, state.crayfish, animFrame, layer = 1, fishSchool = fishSchool)
+    drawEinkFishSchool(canvas, paint, width, height, state.tetra, layer = 1, fishSchool = fishSchool)
 
     // Snap to native 16-level grayscale — only on B&W e-ink state-change renders.
     // Color e-ink: skip to preserve RGB colors for CFA rendering.
@@ -661,6 +723,62 @@ private fun drawGrassStroke(canvas: android.graphics.Canvas, paint: Paint, baseX
 
 // --- Creatures ---
 
+/** Close the exact source feature cutouts before moving their opaque layers.
+ * Union preserves the shaded silhouette, avoiding old eyes or a second prompt.
+ */
+private fun einkBodyWithoutFeatures(source: android.graphics.Path, agent: String): android.graphics.Path =
+    android.graphics.Path(source).apply {
+        for (layer in dev.agentdeck.terrarium.CreatureBrandFeatures.layers[agent].orEmpty()) {
+            if (!layer.hole) for (feature in layer.nativePaths) op(feature, android.graphics.Path.Op.UNION)
+        }
+    }
+private val einkClaudeBody by lazy { einkBodyWithoutFeatures(CreatureGeometry.octopusNativePath, "claudecode") }
+private val einkCodexBody by lazy { einkBodyWithoutFeatures(CreatureGeometry.codexNativePath, "codex") }
+private val einkOpenClawBody by lazy { einkBodyWithoutFeatures(CreatureGeometry.openClawBodyNativePaths.first(), "openclaw") }
+
+/** The source eyes/prompt look ahead while remaining legible, never reflected. */
+private fun drawEinkLookingFeatures(
+    canvas: android.graphics.Canvas, paint: Paint, agent: String, pose: EinkResidentPose?,
+    centerY: Float, reachX: Float, reachY: Float,
+) {
+    canvas.save()
+    if (pose != null) {
+        canvas.translate(pose.lookX * reachX, pose.lookY * reachY)
+        canvas.scale(1f - kotlin.math.abs(pose.lookX) * .16f, 1f, 12f, centerY)
+    }
+    dev.agentdeck.terrarium.CreatureBrandFeatures.drawNative(canvas, paint, agent, monochromeCreature = !einkColorEnabled)
+    canvas.restore()
+}
+
+/** A bounded edge-on projection keeps a turning swimmer present on paper. */
+private fun einkSwimmerWidth(pose: EinkResidentPose?): Float =
+    if (pose == null) 1f else .18f + .82f * kotlin.math.abs(pose.facing)
+
+/** Blend only the narrow middle of a turn, never flip a full-width silhouette.
+ * Layers are bounded in source-art coordinates, so the normal opaque path does
+ * not allocate a full-scene intermediate bitmap for each resident.
+ */
+private inline fun drawEinkFacingSilhouette(
+    canvas: android.graphics.Canvas, pose: EinkResidentPose?, nativeSide: Float,
+    width: Float, height: Float, draw: () -> Unit,
+) {
+    if (pose == null) { draw(); return }
+    val rightWeight = ((pose.facing + .15f) / .30f).coerceIn(0f, 1f)
+    val projection = einkSwimmerWidth(pose)
+    for (side in -1..1 step 2) {
+        val weight = if (side > 0) rightWeight else 1f - rightWeight
+        val alpha = (weight * 255f).toInt()
+        if (alpha == 0) continue
+        val save = if (alpha == 255) canvas.save() else
+            canvas.saveLayerAlpha(-width * .3f, -height * .3f, width * 1.3f, height * 1.3f, alpha)
+        canvas.translate(width / 2f, height / 2f)
+        canvas.scale(side * nativeSide * projection, 1f)
+        canvas.translate(-width / 2f, -height / 2f)
+        draw()
+        canvas.restoreToCount(save)
+    }
+}
+
 /** E-ink octopus — 14×5 pixel block rendering matching the color OctopusCreature grid. */
 @Suppress("UNUSED_PARAMETER")
 private fun drawMonochromeCreatureOutline(canvas: android.graphics.Canvas, paint: Paint, path: android.graphics.Path) {
@@ -674,7 +792,7 @@ private fun drawMonochromeCreatureOutline(canvas: android.graphics.Canvas, paint
     canvas.drawPath(path, outline)
 }
 
-private fun drawEinkOctopus(
+internal fun drawEinkOctopus(
     canvas: android.graphics.Canvas, paint: Paint, w: Int, h: Int,
     state: OctopusVisualState,
     _agentType: String? = null,
@@ -682,27 +800,12 @@ private fun drawEinkOctopus(
     centerYFraction: Float = 0.42f,
     scaleFactor: Float = 1f,
     animFrame: Float = 0f,
-    swimFrame: Float = 0f,
     displayName: String? = null,
+    pose: EinkResidentPose? = null,
 ) {
-    // WORKING: slow horizontal wander (sin-based, stateless)
-    val wanderX = if (state == OctopusVisualState.WORKING) {
-        val phase = swimFrame + ((centerXFraction * 100).toInt() * 13)
-        0.08f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
-    } else 0f
+    val cx = w * centerXFraction
+    val cy = h * centerYFraction
 
-    val cx = w * (centerXFraction + wanderX)
-    // Y-position by state — staggered by X position for natural multi-session variety
-    val standingOffset = (centerXFraction - 0.38f) * 0.25f
-    val cy = when (state) {
-        OctopusVisualState.SLEEPING -> h * (0.78f + standingOffset * 0.5f)
-        OctopusVisualState.FLOATING -> h * (0.76f + standingOffset).coerceAtMost(0.80f)
-        OctopusVisualState.ASKING -> h * (0.76f + standingOffset).coerceAtMost(0.80f)
-        OctopusVisualState.WORKING -> h * (centerYFraction +
-            0.02f * kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat())
-    }
-
-    einkCiAnchors.get().add(cx/w to cy/h)
 
     // Canonical 24×24 Claude Code robot SVG path (EvenOdd eye cutouts) — shared
     // with the tablet renderer via CreatureGeometry, replacing the old 12×8 block grid.
@@ -727,9 +830,32 @@ private fun drawEinkOctopus(
     canvas.scale(svgScale, svgScale)
     canvas.translate(-CreatureGeometry.OCTOPUS_VIEWBOX / 2f, -CreatureGeometry.OCTOPUS_VIEWBOX / 2f)
     if (!einkColorEnabled && dev.agentdeck.terrarium.CreatureBrandFeatures.monochromeLightBodyAgents.contains("claudecode")) paint.color = GRAY_AIR
-    drawAquariumMark(canvas, paint, CreatureGeometry.octopusNativePath)
-    if (!einkColorEnabled && dev.agentdeck.terrarium.CreatureBrandFeatures.monochromeLightBodyAgents.contains("claudecode")) drawMonochromeCreatureOutline(canvas, paint, CreatureGeometry.octopusNativePath)
-    dev.agentdeck.terrarium.CreatureBrandFeatures.drawNative(canvas, paint, "claudecode", monochromeCreature = !einkColorEnabled)
+    val phase = pose?.phase ?: 0f
+    val gait = pose?.locomotionAmount ?: 0f
+    val work = pose?.workAmount ?: 0f
+    fun drawPart(left: Float, top: Float, right: Float, bottom: Float, dx: Float = 0f, dy: Float = 0f) {
+        canvas.save()
+        canvas.translate(dx, dy)
+        canvas.clipRect(left, top, right, bottom)
+        drawAquariumMark(canvas, paint, einkClaudeBody)
+        if (!einkColorEnabled) drawMonochromeCreatureOutline(canvas, paint, einkClaudeBody)
+        canvas.restore()
+    }
+    drawPart(3f, 0f, 21f, 17.079f)
+    for (side in -1..1 step 2) {
+        val reach = kotlin.math.sin((pose?.workPhase ?: 0f) * 1.25f + if (side > 0) 1.8f else 0f) * work
+        drawPart(if (side < 0) -1f else 21f, 10.949f,
+            if (side < 0) 3f else 25f, 14.051f,
+            dy = reach * 1.1f + (pose?.lookX ?: 0f) * side * .32f)
+    }
+    val feet = listOf(4.487f to 6f, 7.488f to 9f, 15f to 16.513f, 18f to 19.513f)
+    feet.forEachIndexed { index, (left, right) ->
+        val stroke = kotlin.math.sin(phase + index % 2 * kotlin.math.PI.toFloat())
+        drawPart(left, 17.079f, right, 20.1f,
+            dx = stroke * gait * .55f * (pose?.facing ?: 1f),
+            dy = -maxOf(0f, stroke) * gait * 1.15f)
+    }
+    drawEinkLookingFeatures(canvas, paint, "claudecode", pose, 9.5f, 1.85f, .70f)
     canvas.restore()
 
     // Name tag FIRST (behind bubble) — multi-session only
@@ -737,27 +863,7 @@ private fun drawEinkOctopus(
         drawEinkNameTag(canvas, paint, cx, startY, scaleFactor, displayName, w, labelRankOf(state))
     }
 
-    // ASKING: speech bubble with "?" — beside body center
-    if (state == OctopusVisualState.ASKING) {
-        val bubbleR = bodyWidth * 0.25f * scaleFactor
-        val bubbleX = cx + bodyWidth * 0.6f
-        val bubbleY = cy
 
-        paint.color = einkPick(GRAY_AIR, COLOR_AIR)
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-        paint.color = einkPick(GRAY_OCTO_LIMB, COLOR_OCTO_LIMB)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * scaleFactor
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-
-        paint.color = android.graphics.Color.BLACK
-        paint.style = Paint.Style.FILL
-        paint.textSize = bubbleR * 1.4f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("?", bubbleX, bubbleY + bubbleR * 0.45f, paint)
-        paint.textAlign = Paint.Align.LEFT
-    }
 }
 
 /** A measured e-ink tag waiting for the frame's resolve pass (DESIGN.md §6.4). */
@@ -819,29 +925,25 @@ private fun paintEinkNameTag(
     )
     val tagTop = (layout.tagBottomY - layout.tagHeight).coerceAtLeast(2f)
 
-    // Background rounded rect for readability
-    paint.color = einkPick(GRAY_WATER_BG, COLOR_WATER_BG)
-    paint.style = Paint.Style.FILL
-    val rect = RectF(cx - layout.tagWidth / 2, tagTop, cx + layout.tagWidth / 2, tagTop + layout.tagHeight)
-    canvas.drawRoundRect(rect, 3f, 3f, paint)
-    // Border for separation from background
-    paint.color = einkPick(GRAY_OCTO_LIMB, COLOR_OCTO_LIMB)
-    paint.style = Paint.Style.STROKE
-    paint.strokeWidth = 1f
-    canvas.drawRoundRect(rect, 3f, 3f, paint)
-
-    // Text in dark gray for contrast
-    paint.color = GRAY_CREATURE
-    paint.style = Paint.Style.FILL
+    val textX = cx.coerceIn(layout.tagWidth / 2f + 2f, w - layout.tagWidth / 2f - 2f)
     paint.textSize = layout.fontSize
-
+    fun line(value: String, baseline: Float) {
+        val visible = android.text.TextUtils.ellipsize(value, android.text.TextPaint(paint),
+            layout.tagWidth * CreatureNameTagStyle.TEXT_WIDTH_RATIO, android.text.TextUtils.TruncateAt.END).toString()
+        paint.style = Paint.Style.STROKE
+        paint.strokeJoin = Paint.Join.ROUND
+        paint.strokeWidth = maxOf(2f, layout.fontSize * .26f)
+        paint.color = GRAY_AIR
+        canvas.drawText(visible, textX, baseline, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = GRAY_CREATURE
+        canvas.drawText(visible, textX, baseline, paint)
+    }
     if (layout.lines.size == 1) {
-        canvas.drawText(layout.lines[0], cx, layout.tagBottomY - layout.tagHeight * 0.25f, paint)
+        line(layout.lines[0], tagTop + layout.tagHeight * .75f)
     } else {
-        val topTextY = tagTop + layout.fontSize * CreatureNameTagStyle.MULTILINE_EXTRA_RATIO + layout.fontSize
-        for (i in layout.lines.indices) {
-            canvas.drawText(layout.lines[i], cx, topTextY + i * layout.lineHeight, paint)
-        }
+        val firstY = tagTop + layout.fontSize * CreatureNameTagStyle.MULTILINE_EXTRA_RATIO + layout.fontSize
+        layout.lines.forEachIndexed { index, value -> line(value, firstY + index * layout.lineHeight) }
     }
 
     paint.textAlign = Paint.Align.LEFT
@@ -850,64 +952,21 @@ private fun paintEinkNameTag(
 /**
  * E-ink Codex creature using the canonical design/brand/codex.svg path.
  *
- * Y position depends on state:
- *  - WORKING: hovers in the layout slot (upper swim area)
- *  - IDLE/FLOATING/ASKING: rests near the ground so idle sessions don't clutter the sky
- *  - SLEEPING: ground level, dim
+ * Its position and state-driven pose are supplied by the habitat projection.
  */
-private fun drawEinkCloud(
+internal fun drawEinkCloud(
     canvas: android.graphics.Canvas, paint: Paint, w: Int, h: Int,
     state: OctopusVisualState,
     centerXFraction: Float = 0.55f,
     centerYFraction: Float = 0.20f,
     scaleFactor: Float = 1f,
     animFrame: Float = 0f,
-    swimFrame: Float = 0f,
     displayName: String? = null,
-    allowHorizontalWander: Boolean = true,
+    pose: EinkResidentPose? = null,
 ) {
-    // Horizontal wander when WORKING (same pattern as octopus)
-    val wanderX = if (allowHorizontalWander && state == OctopusVisualState.WORKING) {
-        val phase = swimFrame + ((centerXFraction * 100).toInt() * 11)
-        0.06f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
-    } else 0f
+    val cx = w * centerXFraction
+    val cy = h * centerYFraction
 
-    val cx = w * (centerXFraction + wanderX)
-    // State-based Y: WORKING uses layout swim slot (top),
-    // IDLE/SLEEPING rests near ground so idle sessions don't hover up top.
-    // homeY-relative (not a shared constant) so idle Cloud creatures rest in
-    // their own strip instead of converging with OpenCode/Antigravity.
-    val restY = (centerYFraction + 0.30f).coerceIn(0.58f, 0.62f)
-    val baseYFraction = when (state) {
-        OctopusVisualState.WORKING -> centerYFraction
-        OctopusVisualState.ASKING -> (centerYFraction + restY) * 0.5f
-        OctopusVisualState.FLOATING -> restY
-        OctopusVisualState.SLEEPING -> restY + 0.02f
-    }
-    val bobY = when (state) {
-        OctopusVisualState.SLEEPING -> h * 0.006f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 12).toFloat()
-        OctopusVisualState.FLOATING -> h * 0.008f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 10).toFloat()
-        OctopusVisualState.ASKING -> h * 0.006f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 6).toFloat()
-        OctopusVisualState.WORKING -> h * 0.02f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat()
-    }
-    val cy = h * baseYFraction + bobY
-
-    einkCiAnchors.get().add(cx/w to cy/h)
-
-    // Breath animation — subtle scale pulse for active states
-    val breathScale = when (state) {
-        OctopusVisualState.WORKING -> 1f + 0.04f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 2.0).toFloat()
-        OctopusVisualState.ASKING -> 1f + 0.02f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 2.0).toFloat()
-        OctopusVisualState.FLOATING -> 1f + 0.015f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 2.0).toFloat()
-        OctopusVisualState.SLEEPING -> 0.95f
-    }
 
     val bodyColor = if (state == OctopusVisualState.SLEEPING) {
         einkPick(GRAY_CLOUD_SLEEP, COLOR_CLOUD_SLEEP)
@@ -918,19 +977,26 @@ private fun drawEinkCloud(
     // Keep it a little larger than the tablet color renderer: e-ink loses fine
     // detail and the prompt cutout must stay readable from a desk distance.
     val bodyRadius = w * 0.070f * scaleFactor
-    val br = bodyRadius * breathScale
+    val br = bodyRadius
     paint.style = Paint.Style.FILL
     paint.color = bodyColor
 
     val markSize = br * 1.25f
-    val path = android.graphics.Path(CreatureGeometry.codexNativePath)
-    val matrix = android.graphics.Matrix().apply {
-        setScale(markSize / CreatureGeometry.CODEX_VIEWBOX, markSize / CreatureGeometry.CODEX_VIEWBOX)
-        postTranslate(cx - markSize / 2f, cy - markSize / 2f)
+    canvas.save()
+    canvas.translate(cx, cy)
+    canvas.scale(markSize / CreatureGeometry.CODEX_VIEWBOX, markSize / CreatureGeometry.CODEX_VIEWBOX)
+    canvas.translate(-CreatureGeometry.CODEX_VIEWBOX / 2f, -CreatureGeometry.CODEX_VIEWBOX / 2f)
+    // The cloud has depth in its travel direction; its terminal remains >_, not _<.
+    canvas.save()
+    if (pose != null) {
+        canvas.translate(12f, 12f)
+        canvas.skew(0f, -pose.lookX * .055f)
+        canvas.translate(-12f, -12f)
     }
-    path.transform(matrix)
-    drawAquariumMark(canvas, paint, path)
-    dev.agentdeck.terrarium.CreatureBrandFeatures.drawNative(canvas, paint, "codex", matrix, monochromeCreature = !einkColorEnabled)
+    drawAquariumMark(canvas, paint, einkCodexBody)
+    canvas.restore()
+    drawEinkLookingFeatures(canvas, paint, "codex", pose, 12f, 1.65f, .85f)
+    canvas.restore()
 
     // Effective body extents for positioning
     val bodyHeight = markSize / 2f
@@ -941,27 +1007,7 @@ private fun drawEinkCloud(
         drawEinkNameTag(canvas, paint, cx, cy - bodyHeight, scaleFactor, displayName, w, labelRankOf(state))
     }
 
-    // ASKING: speech bubble with "?" beside body (same pattern as octopus)
-    if (state == OctopusVisualState.ASKING) {
-        val bubbleR = bodyExtentX * 0.35f
-        val bubbleX = cx + bodyExtentX + bubbleR * 0.8f
-        val bubbleY = cy
 
-        paint.color = einkPick(GRAY_AIR, COLOR_AIR)
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-        paint.color = einkPick(GRAY_CLOUD_PROMPT, COLOR_CLOUD_PROMPT)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * scaleFactor
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-
-        paint.color = android.graphics.Color.BLACK
-        paint.style = Paint.Style.FILL
-        paint.textSize = bubbleR * 1.4f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("?", bubbleX, bubbleY + bubbleR * 0.45f, paint)
-        paint.textAlign = Paint.Align.LEFT
-    }
 }
 
 /** E-ink crayfish — front-facing SVG path rendering with claw/antenna animation. */
@@ -970,53 +1016,22 @@ private fun drawEinkCloud(
  * Outer frame (#F1ECEC) + inner square (#4B4646).
  * Geometric and clean — no organic features.
  */
-private fun drawEinkOpenCode(
+internal fun drawEinkOpenCode(
     canvas: android.graphics.Canvas, paint: Paint, w: Int, h: Int,
     state: OctopusVisualState,
     centerXFraction: Float = 0.48f,
     centerYFraction: Float = 0.40f,
     scaleFactor: Float = 1f,
     animFrame: Float = 0f,
-    swimFrame: Float = 0f,
     agentType: String? = "opencode",
     displayName: String? = null,
+    pose: EinkResidentPose? = null,
 ) {
     val isKiro = agentType == "kiro-cli" || agentType == "kiro-ide"
     val isHermes = agentType == "hermes"
-    val wanderX = if (state == OctopusVisualState.WORKING) {
-        val phase = swimFrame + ((centerXFraction * 100).toInt() * 9)
-        0.06f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
-    } else 0f
+    val cx = w * centerXFraction
+    val cy = h * centerYFraction
 
-    // Resting states stay left of the crayfish floor territory (e-ink crayfish
-    // sits at x 0.75) — the band's right edge otherwise lands on its claws.
-    val anchorX = if (state == OctopusVisualState.WORKING) centerXFraction
-    else centerXFraction.coerceAtMost(TerrariumLayout.CRAYFISH_CLEAR_MAX_X)
-    val cx = w * (anchorX + wanderX)
-    // State-based Y: WORKING uses layout swim slot (mid-upper),
-    // IDLE/SLEEPING rests near ground so idle sessions don't hover in the water.
-    // homeY-relative (not a shared constant) so idle OpenCode creatures rest in
-    // their own strip instead of converging with Cloud/Antigravity.
-    val restY = (centerYFraction + 0.18f).coerceIn(0.59f, 0.63f)
-    val baseYFraction = when (state) {
-        OctopusVisualState.WORKING -> centerYFraction
-        OctopusVisualState.ASKING -> (centerYFraction + restY) * 0.5f
-        OctopusVisualState.FLOATING -> restY
-        OctopusVisualState.SLEEPING -> restY + 0.01f
-    }
-    val bobY = when (state) {
-        OctopusVisualState.SLEEPING -> h * 0.006f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 14).toFloat()
-        OctopusVisualState.FLOATING -> h * 0.008f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 10).toFloat()
-        OctopusVisualState.ASKING -> h * 0.005f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 6).toFloat()
-        OctopusVisualState.WORKING -> h * 0.02f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat()
-    }
-    val cy = h * baseYFraction + bobY
-
-    einkCiAnchors.get().add(cx/w to cy/h)
 
     // Canonical OpenCode ring, Kiro ghost or Hermes Nous girl. They share the
     // motion/layout mechanics, but never substitute one agent's silhouette for
@@ -1027,7 +1042,11 @@ private fun drawEinkOpenCode(
         val markPaths = if (isHermes) geometry.hermesNativePaths else listOf(geometry.kiroNativePath)
         val bodyColor = if (isHermes) einkPick(GRAY_HERMES_BODY, COLOR_HERMES_BODY) else einkPick(GRAY_KIRO_BODY, COLOR_KIRO_BODY)
         val markSize = w * 0.052f * scaleFactor * if (einkColorEnabled) 2.0f else 1.75f
-        val svgScale = markSize / viewBox
+        // The mermaid includes the canonical 40-high tail below the 24-high head.
+        // Fit the complete generated art into the body envelope, never crop its fluke.
+        val artworkWidth = if (isHermes) dev.agentdeck.terrarium.HermesMermaid2D.VIEW_W else viewBox
+        val artworkHeight = if (isHermes) dev.agentdeck.terrarium.HermesMermaid2D.VIEW_H else viewBox
+        val svgScale = markSize / artworkHeight
         paint.style = Paint.Style.FILL
         paint.color = if (state == OctopusVisualState.SLEEPING) {
             if (isHermes) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_SLEEP) else einkPick(GRAY_KIRO_SLEEP, COLOR_KIRO_SLEEP)
@@ -1037,34 +1056,30 @@ private fun drawEinkOpenCode(
         canvas.save()
         canvas.translate(cx, cy)
         canvas.scale(svgScale, svgScale)
-        canvas.translate(-viewBox / 2f, -viewBox / 2f)
+        canvas.translate(-artworkWidth / 2f, -artworkHeight / 2f)
         if (isHermes) {
-            drawEinkHermesMermaid(canvas, paint, state)
+            drawEinkHermesMermaid(canvas, paint, state, pose)
         } else {
-            for (markPath in markPaths) drawAquariumMark(canvas, paint, markPath)
+            canvas.save()
+            canvas.translate(viewBox / 2f, viewBox / 2f)
+            if (pose != null) canvas.rotate(pose.lookX * pose.locomotionAmount * 13f)
+            canvas.translate(-viewBox / 2f, -viewBox / 2f)
+            drawEinkFacingSilhouette(canvas, pose, 1f, viewBox, viewBox) {
+                for (markPath in markPaths) drawAquariumMark(canvas, paint, markPath)
+            }
+            canvas.restore()
         }
         canvas.restore()
 
         if (displayName != null) {
-            drawEinkNameTag(canvas, paint, cx, cy - markSize / 2f, scaleFactor, displayName, w, labelRankOf(state))
+            val pitch = Math.toRadians(((pose?.lookX ?: 0f) * (pose?.locomotionAmount ?: 0f) *
+                if (isHermes) 26f else 13f).toDouble())
+            val facingWidth = einkSwimmerWidth(pose)
+            val halfHeight = markSize / 2f * (kotlin.math.abs(kotlin.math.cos(pitch)).toFloat() +
+                artworkWidth / artworkHeight * facingWidth * kotlin.math.abs(kotlin.math.sin(pitch)).toFloat())
+            drawEinkNameTag(canvas, paint, cx, cy - halfHeight, scaleFactor, displayName, w, labelRankOf(state))
         }
-        if (state == OctopusVisualState.ASKING) {
-            val bubbleR = markSize * 0.25f * scaleFactor
-            val bubbleX = cx + markSize * 0.6f
-            paint.color = einkPick(GRAY_AIR, COLOR_AIR)
-            paint.style = Paint.Style.FILL
-            canvas.drawCircle(bubbleX, cy, bubbleR, paint)
-            paint.color = bodyColor
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.5f * scaleFactor
-            canvas.drawCircle(bubbleX, cy, bubbleR, paint)
-            paint.color = android.graphics.Color.BLACK
-            paint.style = Paint.Style.FILL
-            paint.textSize = bubbleR * 1.4f
-            paint.textAlign = Paint.Align.CENTER
-            canvas.drawText("?", bubbleX, cy + bubbleR * 0.45f, paint)
-            paint.textAlign = Paint.Align.LEFT
-        }
+
         return
     }
 
@@ -1096,49 +1111,24 @@ private fun drawEinkOpenCode(
     ring.transform(transform)
     paint.style = Paint.Style.FILL
     paint.color = frameColor
-    drawAquariumMark(canvas, paint, ring)
-
-    // Working state: subtle outer glow
-    if (state == OctopusVisualState.WORKING) {
-        val glowAlpha = (kotlin.math.sin(animFrame * kotlin.math.PI / 8) * 0.15f + 0.15f).toFloat()
-        paint.color = frameColor
-        paint.alpha = (glowAlpha * 255).toInt()
-        paint.strokeWidth = 2f * scaleFactor
-        canvas.drawRoundRect(
-            cx - rectW / 2f - 2f, cy - rectH / 2f - 2f,
-            cx + rectW / 2f + 2f, cy + rectH / 2f + 2f,
-            cornerR + 2f, cornerR + 2f, paint,
-        )
-        paint.alpha = 255
+    canvas.save()
+    if (pose != null) {
+        canvas.translate(cx, cy)
+        canvas.scale(.84f + .16f * kotlin.math.abs(pose.lookX), 1f)
+        canvas.skew(0f, -pose.lookX * .13f)
+        canvas.translate(-cx, -cy)
     }
+    drawAquariumMark(canvas, paint, ring)
+    canvas.restore()
+
     paint.style = Paint.Style.FILL
 
     // Name tag (behind bubble)
     if (displayName != null) {
-        drawEinkNameTag(canvas, paint, cx, cy - outerHalf, scaleFactor, displayName, w, labelRankOf(state))
+        drawEinkNameTag(canvas, paint, cx, cy - outerHalf * (1f + .104f * kotlin.math.abs(pose?.lookX ?: 0f)), scaleFactor, displayName, w, labelRankOf(state))
     }
 
-    // ASKING: speech bubble with "?" beside body
-    if (state == OctopusVisualState.ASKING) {
-        val bubbleR = outerSize * 0.25f * scaleFactor
-        val bubbleX = cx + outerSize * 0.6f
-        val bubbleY = cy
 
-        paint.color = einkPick(GRAY_AIR, COLOR_AIR)
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-        paint.color = einkPick(GRAY_OPENCODE_INNER, COLOR_OPENCODE_INNER)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * scaleFactor
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-
-        paint.color = android.graphics.Color.BLACK
-        paint.style = Paint.Style.FILL
-        paint.textSize = bubbleR * 1.4f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("?", bubbleX, bubbleY + bubbleR * 0.45f, paint)
-        paint.textAlign = Paint.Align.LEFT
-    }
 }
 
 private fun drawEinkAntigravity(
@@ -1148,36 +1138,12 @@ private fun drawEinkAntigravity(
     centerYFraction: Float = 0.28f,
     scaleFactor: Float = 1f,
     animFrame: Float = 0f,
-    swimFrame: Float = 0f,
     displayName: String? = null,
+    pose: EinkResidentPose? = null,
 ) {
-    val wanderX = if (state == OctopusVisualState.WORKING) {
-        val phase = swimFrame + ((centerXFraction * 100).toInt() * 7)
-        0.06f * kotlin.math.sin(phase * kotlin.math.PI / 16.0).toFloat()
-    } else 0f
+    val cx = w * centerXFraction
+    val cy = h * centerYFraction
 
-    val cx = w * (centerXFraction + wanderX)
-    val restY = (centerYFraction + 0.08f + (centerXFraction - 0.7f) * 0.04f)
-        .coerceIn(0.24f, 0.48f)
-    val baseYFraction = when (state) {
-        OctopusVisualState.WORKING -> centerYFraction
-        OctopusVisualState.ASKING -> (centerYFraction + restY) * 0.5f
-        OctopusVisualState.FLOATING -> restY
-        OctopusVisualState.SLEEPING -> restY + 0.01f
-    }
-    val bobY = when (state) {
-        OctopusVisualState.SLEEPING -> h * 0.006f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 14).toFloat()
-        OctopusVisualState.FLOATING -> h * 0.008f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 10).toFloat()
-        OctopusVisualState.ASKING -> h * 0.005f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 6).toFloat()
-        OctopusVisualState.WORKING -> h * 0.02f *
-            kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat()
-    }
-    val cy = h * baseYFraction + bobY
-
-    einkCiAnchors.get().add(cx/w to cy/h)
 
     // Peak/arc mark — filled silhouette of the canonical Antigravity path.
     val markSize = w * 0.052f * scaleFactor * if (einkColorEnabled) 2.15f else 1.8f
@@ -1219,6 +1185,10 @@ private fun drawEinkAntigravity(
     paint.shader = antigravityShader
     canvas.save()
     canvas.translate(cx, cy)
+    if (pose != null) {
+        canvas.rotate(pose.lookX * 11f + pose.turnAmount * 4f)
+        canvas.scale(.84f + .16f * kotlin.math.abs(pose.lookX), 1f)
+    }
     canvas.scale(svgScale, svgScale)
     canvas.translate(-dev.agentdeck.terrarium.CreatureGeometry.ANTIGRAVITY_VIEWBOX / 2f,
         -dev.agentdeck.terrarium.CreatureGeometry.ANTIGRAVITY_VIEWBOX / 2f)
@@ -1245,38 +1215,22 @@ private fun drawEinkAntigravity(
         drawEinkNameTag(canvas, paint, cx, cy - markHalf, scaleFactor, displayName, w, labelRankOf(state))
     }
 
-    // ASKING: speech bubble with "?" beside body
-    if (state == OctopusVisualState.ASKING) {
-        val bubbleR = markSize * 0.25f * scaleFactor
-        val bubbleX = cx + markSize * 0.6f
-        val bubbleY = cy
 
-        paint.color = einkPick(GRAY_AIR, COLOR_AIR)
-        paint.style = Paint.Style.FILL
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-        paint.color = einkPick(GRAY_ANTIGRAVITY_BODY, COLOR_ANTIGRAVITY_BODY)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f * scaleFactor
-        canvas.drawCircle(bubbleX, bubbleY, bubbleR, paint)
-
-        paint.color = android.graphics.Color.BLACK
-        paint.style = Paint.Style.FILL
-        paint.textSize = bubbleR * 1.4f
-        paint.textAlign = Paint.Align.CENTER
-        canvas.drawText("?", bubbleX, bubbleY + bubbleR * 0.45f, paint)
-        paint.textAlign = Paint.Align.LEFT
-    }
 }
 
 internal fun drawEinkCrayfish(
     canvas: android.graphics.Canvas, paint: Paint, w: Int, h: Int,
     state: CrayfishVisualState,
     animFrame: Float = 0f,
+    centerXFraction: Float = 0.75f,
+    centerYFraction: Float? = null,
+    scaleFactor: Float = 1f,
+    pose: EinkResidentPose? = null,
 ) {
     // Canonical projection uses DORMANT when there is no active OpenClaw row.
     // Availability/authentication flags alone must not invent a visible creature.
     if (state == CrayfishVisualState.DORMANT) return
-    val cx = w * 0.75f
+    val cx = w * centerXFraction
     // Y-position by state — sitting on rock when idle, floating up when active
     // ROUTING: bob animation (match tablet's sin(time*3f) * 0.05f)
     val baseY = when (state) {
@@ -1292,8 +1246,8 @@ internal fun drawEinkCrayfish(
         CrayfishVisualState.SICK -> h * 0.005f * kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat()  // very slow bob
         else -> 0f
     }
-    val cy = baseY + bobOffset
-    val bodyWidth = w * 0.11f
+    val cy = centerYFraction?.let { h * it } ?: (baseY + bobOffset)
+    val bodyWidth = w * 0.11f * scaleFactor
 
     val scale = bodyWidth / CreatureGeometry.OPENCLAW_VIEWBOX
     val offsetX = cx - CreatureGeometry.OPENCLAW_VIEWBOX / 2f * scale
@@ -1310,8 +1264,7 @@ internal fun drawEinkCrayfish(
         )
     }
 
-    // Exact design/brand/openclaw.svg mark. State motion moves the whole official
-    // silhouette instead of re-articulating an approximate body/claw construction.
+    // Articulate the separate canonical claw paths around their real shoulders.
     paint.style = Paint.Style.FILL
     paint.color = if (state == CrayfishVisualState.SICK) {
         einkPick(GRAY_CRAY_SICK, COLOR_CRAY_SICK)
@@ -1320,17 +1273,31 @@ internal fun drawEinkCrayfish(
     }
     paint.alpha = if (state == CrayfishVisualState.DORMANT) 105 else 255
     if (!einkColorEnabled && dev.agentdeck.terrarium.CreatureBrandFeatures.monochromeLightBodyAgents.contains("openclaw")) paint.color = GRAY_AIR
-    for (path in CreatureGeometry.openClawBodyNativePaths) {
+    val clawOrder = intArrayOf(1, 2, 0)
+    for (index in clawOrder) {
+        val path = if (index == 0) einkOpenClawBody else CreatureGeometry.openClawBodyNativePaths[index]
+        canvas.save()
+        if (index > 0 && pose != null) {
+            val side = if (index == 1) -1f else 1f
+            val offset = if (index == 1) 0f else 1.8f
+            val gaitStroke = kotlin.math.sin(pose.phase + offset) * pose.locomotionAmount * 9f
+            val workStroke = kotlin.math.sin(pose.workPhase + offset) * pose.workAmount * 23f
+            val shoulderX = if (index == 1) 4f else 20f
+            canvas.scale(1f + side * pose.lookX * .10f, 1f, shoulderX, 10.5f)
+            canvas.rotate(side * (gaitStroke + workStroke) + pose.lookX * 5f,
+                if (index == 1) 4f else 20f, 10.5f)
+        }
         drawAquariumMark(canvas, paint, path)
         if (!einkColorEnabled) drawMonochromeCreatureOutline(canvas, paint, path)
+        canvas.restore()
     }
-    dev.agentdeck.terrarium.CreatureBrandFeatures.drawNative(canvas, paint, "openclaw", monochromeCreature = !einkColorEnabled)
+    drawEinkLookingFeatures(canvas, paint, "openclaw", pose, 8f, 1.45f, .65f)
     paint.alpha = 255
 
     canvas.restore() // main transform
 
     // ROUTING: signal arcs (outside SVG transform)
-    if (state == CrayfishVisualState.ROUTING) {
+    if (state == CrayfishVisualState.ROUTING && pose == null) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.5f
         paint.color = einkPick(GRAY_SIGNAL, COLOR_CRAY_SIGNAL)
@@ -1347,75 +1314,17 @@ internal fun drawEinkCrayfish(
 
 // --- Data particles & labels ---
 
-private fun drawEinkDataParticles(
+private fun drawEinkFishSchool(
     canvas: android.graphics.Canvas, paint: Paint, w: Int, h: Int,
-    state: TetraVisualState,
-    agentCount: Int,
-    crayfishState: CrayfishVisualState = CrayfishVisualState.DORMANT,
-    animFrame: Float = 0f,
-    layer: Int = -1, // -1 = all, 0 = back (behind creatures), 1 = front
-    fishSchool: EinkFishSchool? = null,
+    state: TetraVisualState, layer: Int, fishSchool: EinkFishSchool?,
 ) {
-    if (state == TetraVisualState.ABSENT) return
-
-    val slots = dev.agentdeck.terrarium.layoutOctopuses(agentCount.coerceAtLeast(1))
-    val crayfishRouting = crayfishState == CrayfishVisualState.ROUTING
-    val fishSize = w * 0.012f
-
-    if (fishSchool != null) {
-        // Depth controls occlusion as well as size: the far side of the circuit
-        // passes behind agents, so a neon stripe cannot paint over their marks.
-        for (f in fishSchool.fish) {
-            val fishLayer = if (f.depth < 0.86f) 0 else 1
-            if (layer != -1 && fishLayer != layer) continue
-            drawEinkFish(canvas, paint, f.x * w, f.y * h, fishSize * f.depth,
-                f.facing, f.pitch, f.tailBeat)
-        }
-
-        // STREAMING: data particles (orbit around active agent or crayfish)
-        if (state == TetraVisualState.STREAMING && (layer == -1 || layer == 1)) {
-            val particleCenterX: Float
-            val particleCenterY: Float
-            if (agentCount > 0 && slots.isNotEmpty()) {
-                particleCenterX = w * slots[0].centerXFraction
-                particleCenterY = h * (slots[0].centerYFraction +
-                    0.02f * kotlin.math.sin(animFrame * kotlin.math.PI / 8).toFloat())
-            } else if (crayfishRouting) {
-                particleCenterX = w * 0.75f
-                particleCenterY = h * 0.55f
-            } else {
-                particleCenterX = Float.NaN
-                particleCenterY = Float.NaN
-            }
-            if (!particleCenterX.isNaN()) {
-                val agentX = particleCenterX
-                val agentY = particleCenterY
-                val particleR = w * 0.06f
-                paint.style = Paint.Style.FILL
-                paint.color = einkPick(GRAY_PARTICLE, COLOR_PARTICLE)
-                for (p in 0 until 4) {
-                    val angle = animFrame * 0.8 + p * kotlin.math.PI / 2.0
-                    val pr = particleR * (0.6f + 0.4f * kotlin.math.sin(animFrame * 0.5 + p * 1.2).toFloat())
-                    val px = agentX + kotlin.math.cos(angle).toFloat() * pr
-                    val py = agentY + kotlin.math.sin(angle).toFloat() * pr
-                    canvas.drawCircle(px, py, 1.5f + (p % 2) * 0.5f, paint)
-                }
-            }
-        }
-
-        // Dashed lines between agents (front layer only)
-        if ((layer == -1 || layer == 1) && slots.size > 1) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 0.5f
-            paint.color = GRAY_PARTICLE
-            paint.pathEffect = DashPathEffect(floatArrayOf(4f, 4f), 0f)
-            for (i in 0 until slots.size - 1) {
-                val a = slots[i]; val b = slots[i + 1]
-                canvas.drawLine(w * a.centerXFraction, h * a.centerYFraction,
-                    w * b.centerXFraction, h * b.centerYFraction, paint)
-            }
-            paint.pathEffect = null
-        }
+    if (state == TetraVisualState.ABSENT || fishSchool == null) return
+    val fishSize = w * .012f
+    for (fish in fishSchool.fish) {
+        val fishLayer = if (fish.depth < .86f) 0 else 1
+        if (fishLayer != layer) continue
+        drawEinkFish(canvas, paint, fish.x * w, fish.y * h, fishSize * fish.depth,
+            fish.facing, fish.pitch, fish.tailBeat)
     }
 }
 
@@ -1756,17 +1665,33 @@ private val hermesTailPath by lazy { androidx.core.graphics.PathParser.createPat
 private val hermesRimPath by lazy { androidx.core.graphics.PathParser.createPathFromPathData(dev.agentdeck.terrarium.HermesMermaid2D.RIM) }
 private val hermesFlukePath by lazy { androidx.core.graphics.PathParser.createPathFromPathData(dev.agentdeck.terrarium.HermesMermaid2D.FLUKE) }
 
-private fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint, state: OctopusVisualState) {
+internal fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint, state: OctopusVisualState, pose: EinkResidentPose? = null) {
     val asleep = state == OctopusVisualState.SLEEPING
     val headColor = paint.color
+    canvas.save()
+    // Nous girl's source face looks left. Turn the complete figure so her tail
+    // trails the same way; the name remains outside this body transform.
+    val centerX = dev.agentdeck.terrarium.HermesMermaid2D.VIEW_W / 2f
+    val centerY = dev.agentdeck.terrarium.HermesMermaid2D.VIEW_H / 2f
+    canvas.translate(centerX, centerY)
+    if (pose != null) canvas.rotate(pose.lookX * pose.locomotionAmount * 26f)
+    canvas.translate(-centerX, -centerY)
+    drawEinkFacingSilhouette(canvas, pose, -1f, centerX * 2f, centerY * 2f) {
     paint.style = Paint.Style.FILL
     paint.shader = null
+    val stroke = kotlin.math.sin(pose?.phase ?: 0f) * (pose?.locomotionAmount ?: 0f)
+    canvas.save()
+    canvas.rotate(stroke * 9f, 12f, 20f)
     paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_TAIL, COLOR_HERMES_TAIL)
     canvas.drawPath(hermesTailPath, paint)
     paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_RIM, COLOR_HERMES_RIM)
     canvas.drawPath(hermesRimPath, paint)
     paint.color = if (asleep) einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP) else einkPick(GRAY_HERMES_FLUKE, COLOR_HERMES_FLUKE)
+    canvas.save()
+    canvas.rotate(stroke * 8f, 21f, 33.6f)
     canvas.drawPath(hermesFlukePath, paint)
+    canvas.restore()
+    canvas.restore()
     val fade = android.graphics.LinearGradient(
         0f, dev.agentdeck.terrarium.HermesMermaid2D.FADE_START, 0f, dev.agentdeck.terrarium.HermesMermaid2D.FADE_END,
         headColor, headColor and 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP,
@@ -1775,6 +1700,6 @@ private fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint,
     for (markPath in dev.agentdeck.terrarium.CreatureGeometry.hermesNativePaths) canvas.drawPath(markPath, paint)
     paint.shader = null
     paint.color = headColor
+    }
+    canvas.restore()
 }
-
-private val einkCiAnchors=ThreadLocal.withInitial { mutableListOf<Pair<Float,Float>>() }

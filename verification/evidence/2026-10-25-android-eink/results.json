@@ -1,0 +1,349 @@
+{
+  "date": "2026-10-25",
+  "implementationCommit": "dad93e6ce3da4295c354a9aaebbd8b310e3edb11",
+  "verifiedSnapshot": {
+    "baseCommit": "51cd81040f712423f385d8d1774c505d96801f13",
+    "dirty": true,
+    "note": "Verification preceded the implementation commit; this evidence commit adds no executable changes."
+  },
+  "apkVersion": "1.10.1",
+  "versionCode": 28,
+  "apkSha256": "0c74fde56dc3d2106125a92ce37c46cda3c67ec65ecc7775af28e3a315553b9e",
+  "androidTests": {
+    "tests": 544,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frameDeviceCases": 16,
+  "dashboardDeviceCases": 4,
+  "totalRecordedSeconds": 513.0,
+  "devices": [
+    {
+      "name": "Pantone 6",
+      "serial": "AA007422R24C1300039",
+      "installedSha256Matches": true,
+      "restoredTo": "portrait Frame",
+      "realHostRestored": true,
+      "originalFontAndRotationRestored": true,
+      "animationOrRuntimeErrors": 0,
+      "orientations": [
+        {
+          "orientation": "portrait",
+          "framebuffer": [
+            1072,
+            1448
+          ],
+          "frameCases": {
+            "mixedWorkingWaitingResting": "pass",
+            "stopRestRestart": "pass",
+            "thirtyTwoSessionsEightVisible": "pass",
+            "eightWorkingResidents": "pass"
+          },
+          "dashboard": {
+            "workAndUsageTogether": "pass",
+            "session32Reached": "pass",
+            "scope10Reached": "pass",
+            "lastProviderReached": "pass"
+          },
+          "video": "pantone-facing-portrait-transition.mp4",
+          "dashboardTop": "pantone-after-frame32-portrait-top.png",
+          "dashboardEnds": "pantone-after-frame32-portrait-both-end.png",
+          "stateChanges": [
+            {
+              "seconds": 5.0,
+              "config": {
+                "ci": true,
+                "ciAll": true
+              },
+              "expected": "4 waiting"
+            },
+            {
+              "seconds": 18.01,
+              "config": {
+                "ci": false,
+                "ciAll": false,
+                "states": [
+                  "idle"
+                ]
+              },
+              "expected": "4 resting"
+            },
+            {
+              "seconds": 31.0,
+              "config": {
+                "states": [
+                  "processing"
+                ]
+              },
+              "expected": "4 working"
+            }
+          ],
+          "stateCaptionsVerified": [
+            "4 waiting",
+            "4 resting",
+            "4 working"
+          ],
+          "videoSeconds": 49.963711
+        },
+        {
+          "orientation": "landscape",
+          "framebuffer": [
+            1448,
+            1072
+          ],
+          "frameCases": {
+            "mixedWorkingWaitingResting": "pass",
+            "stopRestRestart": "pass",
+            "thirtyTwoSessionsEightVisible": "pass",
+            "eightWorkingResidents": "pass"
+          },
+          "dashboard": {
+            "workAndUsageTogether": "pass",
+            "session32Reached": "pass",
+            "scope10Reached": "pass",
+            "lastProviderReached": "pass"
+          },
+          "video": "pantone-facing-landscape-transition.mp4",
+          "dashboardTop": "pantone-after-frame32-landscape-top.png",
+          "dashboardEnds": "pantone-after-frame32-landscape-both-end.png",
+          "stateChanges": [
+            {
+              "seconds": 5.0,
+              "config": {
+                "ci": true,
+                "ciAll": true
+              },
+              "expected": "4 waiting"
+            },
+            {
+              "seconds": 18.01,
+              "config": {
+                "ci": false,
+                "ciAll": false,
+                "states": [
+                  "idle"
+                ]
+              },
+              "expected": "4 resting"
+            },
+            {
+              "seconds": 31.01,
+              "config": {
+                "states": [
+                  "processing"
+                ]
+              },
+              "expected": "4 working"
+            }
+          ],
+          "stateCaptionsVerified": [
+            "4 waiting",
+            "4 resting",
+            "4 working"
+          ],
+          "videoSeconds": 50.099933
+        }
+      ]
+    },
+    {
+      "name": "Crema S",
+      "serial": "CREMAA21W09235",
+      "installedSha256Matches": true,
+      "restoredTo": "landscape Work",
+      "realHostRestored": true,
+      "originalFontAndRotationRestored": true,
+      "animationOrRuntimeErrors": 0,
+      "orientations": [
+        {
+          "orientation": "portrait",
+          "framebuffer": [
+            1072,
+            1448
+          ],
+          "frameCases": {
+            "mixedWorkingWaitingResting": "pass",
+            "stopRestRestart": "pass",
+            "thirtyTwoSessionsEightVisible": "pass",
+            "eightWorkingResidents": "pass"
+          },
+          "dashboard": {
+            "workAndUsageTogether": "pass",
+            "session32Reached": "pass",
+            "scope10Reached": "pass",
+            "lastProviderReached": "pass"
+          },
+          "video": "crema-facing-portrait-transition.mp4",
+          "dashboardTop": "crema-after-frame32-portrait-top.png",
+          "dashboardEnds": "crema-after-frame32-portrait-both-end.png",
+          "stateChanges": [
+            {
+              "seconds": 5.0,
+              "config": {
+                "ci": true,
+                "ciAll": true
+              },
+              "expected": "4 waiting"
+            },
+            {
+              "seconds": 18.01,
+              "config": {
+                "ci": false,
+                "ciAll": false,
+                "states": [
+                  "idle"
+                ]
+              },
+              "expected": "4 resting"
+            },
+            {
+              "seconds": 31.0,
+              "config": {
+                "states": [
+                  "processing"
+                ]
+              },
+              "expected": "4 working"
+            }
+          ],
+          "stateCaptionsVerified": [
+            "4 waiting",
+            "4 resting",
+            "4 working"
+          ],
+          "videoSeconds": 50.117778
+        },
+        {
+          "orientation": "landscape",
+          "framebuffer": [
+            1448,
+            1072
+          ],
+          "frameCases": {
+            "mixedWorkingWaitingResting": "pass",
+            "stopRestRestart": "pass",
+            "thirtyTwoSessionsEightVisible": "pass",
+            "eightWorkingResidents": "pass"
+          },
+          "dashboard": {
+            "workAndUsageTogether": "pass",
+            "session32Reached": "pass",
+            "scope10Reached": "pass",
+            "lastProviderReached": "pass"
+          },
+          "video": "crema-facing-landscape-transition.mp4",
+          "dashboardTop": "crema-after-frame32-landscape-top.png",
+          "dashboardEnds": "crema-after-frame32-landscape-both-end.png",
+          "stateChanges": [
+            {
+              "seconds": 5.0,
+              "config": {
+                "ci": true,
+                "ciAll": true
+              },
+              "expected": "4 waiting"
+            },
+            {
+              "seconds": 18.01,
+              "config": {
+                "ci": false,
+                "ciAll": false,
+                "states": [
+                  "idle"
+                ]
+              },
+              "expected": "4 resting"
+            },
+            {
+              "seconds": 31.01,
+              "config": {
+                "states": [
+                  "processing"
+                ]
+              },
+              "expected": "4 working"
+            }
+          ],
+          "stateCaptionsVerified": [
+            "4 waiting",
+            "4 resting",
+            "4 working"
+          ],
+          "videoSeconds": 50.094633
+        }
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "file": "pantone-facing-portrait-transition.mp4",
+      "bytes": 5410904,
+      "sha256": "225af277a4efb20162047167d8ad7d8d5f9d9e162ec1598914b0cc3c632e9b76"
+    },
+    {
+      "file": "pantone-after-frame32-portrait-top.png",
+      "bytes": 171745,
+      "sha256": "56702e776f6df51cf29c1254a49a93fda3a950e0fc85dee35f601d441f61b3ce"
+    },
+    {
+      "file": "pantone-after-frame32-portrait-both-end.png",
+      "bytes": 154951,
+      "sha256": "65bc6fff217523127a4a0fd232c06c39aeb85f78123978fc94748cbf1769d56f"
+    },
+    {
+      "file": "pantone-facing-landscape-transition.mp4",
+      "bytes": 5280329,
+      "sha256": "33fa0eeae0a78a09111efbfa656647103640621ec821a746bc7455bec1d3332a"
+    },
+    {
+      "file": "pantone-after-frame32-landscape-top.png",
+      "bytes": 184185,
+      "sha256": "1c4dbba469cea3bd0818977c59003e8f0ba5af63c5b2bb9ca147239b9affb5f9"
+    },
+    {
+      "file": "pantone-after-frame32-landscape-both-end.png",
+      "bytes": 199771,
+      "sha256": "1063dc29ff8e59f783603776356b4135c600c8eddc6698f121a86c4d8b671b5b"
+    },
+    {
+      "file": "crema-facing-portrait-transition.mp4",
+      "bytes": 2057458,
+      "sha256": "0a45864a351d179886d5cf6ece6dfda3f2cce9ec89f3f6db9043c0043ea1a071"
+    },
+    {
+      "file": "crema-after-frame32-portrait-top.png",
+      "bytes": 162770,
+      "sha256": "73cb04adfe560002a71a378e664152a76ac087de0dd52484b8cc635878a84c9b"
+    },
+    {
+      "file": "crema-after-frame32-portrait-both-end.png",
+      "bytes": 147143,
+      "sha256": "924f0cb99f995a11ae27b3c5f44e78ae5554e6a403c731c7536f945a482f8ab9"
+    },
+    {
+      "file": "crema-facing-landscape-transition.mp4",
+      "bytes": 2258454,
+      "sha256": "87c8c629664cb213fe0cb82c73b9f56159d6493d78e79bd721ac1277645478e9"
+    },
+    {
+      "file": "crema-after-frame32-landscape-top.png",
+      "bytes": 180419,
+      "sha256": "123d4455cebd4e473d4121f8c861377f55ff38000561160157e2a415846dea1a"
+    },
+    {
+      "file": "crema-after-frame32-landscape-both-end.png",
+      "bytes": 195910,
+      "sha256": "0c45d45d021945d61a0aa82c484e08def186f0c4ec52181e6e30cde32989cdc6"
+    }
+  ],
+  "limitations": [
+    "Installed-device framebuffer captures and screenrecord; physical panel ghosting, refresh flashes, response time and ambient-light readability were not measured.",
+    "Synthetic sessions and usage from an isolated loopback fixture, not private live workspaces.",
+    "Four unmodified 50-second transition recordings are published here; the full local matrix contains sixteen recordings.",
+    "The original delayed 44-second transition attempts were superseded and are excluded."
+  ],
+  "fixtureShutdown": {
+    "clientsBeforeShutdown": 0,
+    "exitCode": 0
+  }
+}
