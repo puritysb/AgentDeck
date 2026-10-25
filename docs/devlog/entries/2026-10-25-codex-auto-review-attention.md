@@ -1,0 +1,9 @@
+# 2026-10-25 — Codex automatic approval was displayed as human Attention
+
+The live Node daemon showed Bash Attention during AgentDeck's Android work although the user had no choice to make. The rollout records the reviewer changing from `user` to `auto_review` at 2026-10-24 17:02 UTC; the active turn at 17:44 UTC retained automatic review. Codex's local diagnostic log records Guardian reviews for the same thread. This is separate from the historical Claude PreToolUse predictor failures.
+
+Codex's [upstream approval routing](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/core/src/tools/approvals.rs) runs PermissionRequest hooks before routing to Guardian or the user. `core/src/hook_runtime.rs` derives the hook's `permission_mode` from approval policy alone: on-request is `default` for either reviewer. Consequently the hook is evidence of an approval-stage decision, not proof that a human is waiting. The former unconditional overlay in both daemons made that distinction disappear; the optional hold could also intercept an automatic review before its own reviewer ran.
+
+Use the hook's rollout and the latest top-level turn/settings record as evidence. Do not guess from Bash command text, global configuration, or delay length. The existing Codex approval SSOT now owns reviewer parsing and the bounded probe size; both suites replay the same vectors. Explicit automatic review gets neither an overlay nor a hold; unknown/unreadable legacy evidence preserves the existing hook behavior. The bounded probe can miss settings older than its window, so absence must never be reported as a confirmed human reviewer. No hook command or trust record changes are needed.
+
+Rejected: suppressing all Bash Attention (hides real approvals), adding a delay (long automatic reviews still false-alert), and changing Codex's security/approval settings (changes policy instead of correcting observation).

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
-import { locateCodexRollout, codexRolloutIsSubagent, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
+import { codexApprovalReviewerForHook, locateCodexRollout, codexRolloutIsSubagent, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
 
 /**
  * Observed Codex response capture: codex_stop's payload rarely carries the
@@ -53,6 +53,17 @@ describe('codex rollout response reader', () => {
     writeRollout([{ type: 'session_meta', payload: { id: SID, source: { subagent: 'review' },
       base_instructions: 'x'.repeat(CODEX_OTEL_METADATA_RULES.headBytes) } }]);
     expect(await codexRolloutIsSubagent(SID, root)).toBeUndefined();
+  });
+
+  it('reads automatic review from the actual hook rollout beyond the response tail', () => {
+    const path = writeRollout([
+      { type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'auto_review' } },
+      { type: 'response_item', payload: { output: 'x'.repeat(200_000) } },
+    ]);
+    expect(codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBe('auto_review');
+    expect(codexApprovalReviewerForHook({ transcript_path: path, turn_id: 'other' })).toBeUndefined();
+    expect(codexApprovalReviewerForHook({ transcript_path: join(root, 'missing') })).toBeUndefined();
+    expect(codexApprovalReviewerForHook({ transcript_path: path, approvals_reviewer: 'user' })).toBe('user');
   });
 
   it('locates a rollout by the session uuid embedded in the filename', () => {

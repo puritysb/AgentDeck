@@ -18,6 +18,16 @@ const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
 const rules = rulesFrom(approval);
 
 describe('generated mirror in sync', () => {
+  it('both adapters use the shared scope resolver on their actual connect path', () => {
+    const node = readFileSync(`${repoRoot}bridge/src/adapters/openclaw.ts`, 'utf8');
+    const swift = readFileSync(`${repoRoot}apple/AgentDeck/Daemon/Gateway/OpenClawAdapter.swift`, 'utf8');
+    expect(node).toContain('openClawOperatorScopes(this.deviceAuthToken?.scopes)');
+    expect(swift).toContain('OpenClawApprovalRules.operatorScopes(granted: deviceAuthToken?.scopes)');
+    expect(swift).not.toContain('disableDeviceAuthForNextConnect ? nil : deviceAuthToken?.scopes');
+    expect(swift).toContain('OpenClawApprovalRules.operatorScopes(granted: canonical.scopes)');
+    expect(swift).toContain('OpenClawApprovalRules.operatorScopes(granted: auth["scopes"] as? [String])');
+  });
+
   for (const [rel, emit] of OUTPUTS) {
     it(`${rel} matches the SSOT`, () => {
       expect(readFileSync(`${repoRoot}${rel}`, 'utf8')).toBe(emit(rules));

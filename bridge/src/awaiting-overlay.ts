@@ -1,5 +1,5 @@
 import type { PromptOption } from '@agentdeck/shared';
-import { rawSessionId } from '@agentdeck/shared';
+import { CLAUDE_PERMISSION_NOTIFICATION_PATTERN, rawSessionId } from '@agentdeck/shared';
 
 /**
  * Hook-driven awaiting overlay for observed (non-PTY) sessions.
@@ -127,36 +127,20 @@ function holdsLiveGate(
   return isLiveRequest ? isLiveRequest(entry.requestId) : true;
 }
 
-/** Claude Code's `PermissionRequest` hook fires the moment it is about to draw
- *  its permission dialog, carrying the tool and its input — so the deck can
- *  show the prompt when the terminal does, instead of when the
- *  `permission_prompt` Notification arrives about six seconds later. Display
- *  only (no requestId). An AskUserQuestion option interaction and a held
- *  device gate keep their prompt. Returns true when the overlay changed. */
+/** PermissionRequest also fires for headless auto-denials and races automatic
+ * hooks/SDK hosts. It cannot prove a human wait. Keep the compatibility entry
+ * point passive; only permission_prompt may publish a permission overlay. */
 export function setPermissionRequestOverlay(
-  sessionId: string,
-  question: string,
-  isLiveRequest?: (requestId: string) => boolean,
+  _sessionId: string,
+  _question: string,
+  _isLiveRequest?: (requestId: string) => boolean,
 ): boolean {
-  const current = getAwaitingOverlay(sessionId);
-  if (current?.kind === 'option') return false;
-  if (holdsLiveGate(current, isLiveRequest)) return false;
-  const trimmed = (question || '').replace(/\s+/g, ' ').trim().slice(0, MAX_QUESTION_LEN);
-  if (current && !current.requestId && current.question === trimmed) return false;
-  setAwaitingOverlay(sessionId, question);
-  return true;
+  return false;
 }
 
-/** Notification permission prompts arrive several seconds after the dialog
- *  appeared. By then the prompt is usually on the deck already — from
- *  AskUserQuestion's structured PreToolUse, a held device gate, or the
- *  `PermissionRequest` hook — and the Notification's generic copy must not
- *  replace it: an option interaction keeps its choices, a held gate keeps its
- *  requestId, and a PermissionRequest prompt keeps its tool details. The
- *  Notification sets the overlay only when nothing shows one (a Claude Code
- *  that predates PermissionRequest, or an install without the hook). Every
- *  later tool/turn hook clears whatever is shown, so an existing overlay is the
- *  same prompt, never a previous one. */
+/** A permission_prompt Notification confirms Claude is waiting at a real
+ * dialog (about six seconds after it appears). Keep an existing question or
+ * live response, and otherwise publish a display-only terminal prompt. */
 export function setPermissionNotificationOverlay(
   sessionId: string,
   question: string,
@@ -425,7 +409,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function looksLikePermissionMessage(message: string): boolean {
   if (!message) return false;
-  return /needs? your permission|permission to use|requesting permission/i.test(message);
+  return new RegExp(CLAUDE_PERMISSION_NOTIFICATION_PATTERN, 'i').test(message.trim());
 }
 
 /**

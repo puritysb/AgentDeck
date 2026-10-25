@@ -427,6 +427,14 @@ enum CodexRolloutResponseReader {
         return ObservedAgentSettings.latestTurnContext(inRolloutTail: readTail(file, maxBytes: tailBytes))
     }
 
+    static func approvalReviewer(sessionId: String, transcriptPath: String?, turnId: String?, sessionsRoot: URL? = nil) -> String? {
+        let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            ?? locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot)
+        guard let file else { return nil }
+        return CodexApprovalHoldRules.reviewer(
+            inRollout: readTail(file, maxBytes: CodexApprovalHoldRules.contextBytes), turnId: turnId)
+    }
+
     static func lastAgentMessage(sessionId: String, sessionsRoot: URL? = nil) -> String? {
         guard let file = locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot) else { return nil }
         let text = readTail(file, maxBytes: tailBytes)
@@ -6208,18 +6216,10 @@ final class DaemonServer {
             armCodexBackgroundPoll()
         }
 
-        // Claude Code's `PermissionRequest` (a Codex payload was re-routed to
-        // `codex_permission_request` above): runs as Claude is about to draw
-        // its permission dialog, where the permission_prompt Notification
-        // waits ~6 s of keyboard silence. Display-only — the installed hook
-        // prints nothing, so it never decides the dialog — and nothing else:
-        // no timeline row, no APME step, no turn change. A subagent's dialog
-        // is drawn in its parent's terminal, so it lands on the parent's row
-        // (`session_id`) before child hooks are consumed below. The same
-        // tool/turn hooks that clear the Notification's prompt clear this one.
+        // PermissionRequest is not a human-wait signal: headless denials and
+        // automatic hook/SDK answers take this path too. It stays observation-only.
         if event == "permission_request" {
             if let sessionId = Self.hookSessionId(event: event, json: json), pushedSessionsById[sessionId] != nil {
-                Task { await ObservedSteering.shared.notePermissionPromptShown(sessionId: sessionId) }
                 let toolInput = json["tool_input"] as? [String: Any]
                 let question = Self.claudeGateQuestion(tool: json["tool_name"] as? String ?? "", toolInput: toolInput)
                 showClaudePermissionPrompt(sessionId: sessionId, signal: .permissionRequest, question: question)
@@ -6625,18 +6625,22 @@ final class DaemonServer {
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_permission_request":
-            // Codex PERM: `PermissionRequest` fires only when Codex is ABOUT TO
-            // ASK the user (approval_policy on-request) — a genuine awaiting
-            // signal with no prediction, display-only (respond in the
-            // terminal). The next lifecycle hook on the session ends the wait:
+            // PermissionRequest runs before reviewer routing. Explicit automatic
+            // review is working activity, not a human approval prompt. Other
+            // requests remain display-only (respond in the terminal).
+            // The next lifecycle hook on the session ends the wait:
             // an approval runs the tool, a denial or Ctrl+C ends the turn, a
             // new prompt supersedes it — all of which pass through
             // updateSessionHookState and overwrite the state. A held device
             // approval owns the prompt and its button until it is released, so
             // a parallel call's notification must not swap the question.
-            if let sessionId, codexHoldRequestBySession[sessionId] == nil {
+            if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+               codexApprovalReviewer(json: json) != "auto_review" {
                 showCodexApprovalPrompt(
                     sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
+            } else if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+                      pushedSessionsById[sessionId]?.state == "awaiting_permission" {
+                updateSessionHookState(sessionId: sessionId, state: "processing")
             }
         case "codex_interrupt":
             // The user's Ctrl+C on an active turn: no Stop follows, so close
@@ -7973,8 +7977,8 @@ final class DaemonServer {
     /// Mirrors the Node `looksLikePermissionMessage` regex.
     nonisolated static func looksLikePermissionMessage(_ message: String) -> Bool {
         guard !message.isEmpty else { return false }
-        let pattern = "needs? your permission|permission to use|requesting permission"
-        return message.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
+        let pattern = ClaudePermissionRules.permissionNotificationPattern
+        return message.trimmingCharacters(in: .whitespacesAndNewlines).range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// Is a Notification hook an actual permission prompt (awaiting decision)?
@@ -8220,6 +8224,18 @@ final class DaemonServer {
         scheduleSessionsListBroadcast()
     }
 
+    private func codexApprovalReviewer(json: [String: Any]) -> String? {
+        if let reviewer = json["approvals_reviewer"] as? String { return reviewer }
+        let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
+        let read: (URL?) -> String? = { dir in
+            CodexRolloutResponseReader.approvalReviewer(
+                sessionId: Self.codexBareId(sid), transcriptPath: json["transcript_path"] as? String,
+                turnId: json["turn_id"] as? String,
+                sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+        }
+        return AppPreferences.shared.withCodexDirectoryAccess { read($0) } ?? read(nil)
+    }
+
     private func codexRolloutTurnContext(sessionId: String) -> [String: Any]? {
         let bare = Self.codexBareId(sessionId)
         return AppPreferences.shared.withCodexDirectoryAccess { dir -> [String: Any]? in
@@ -8397,24 +8413,17 @@ final class DaemonServer {
         return String((preview.isEmpty ? "Allow \(tool)?" : "Allow \(tool): \(preview)").prefix(120))
     }
 
-    /// Which Claude signal says a permission dialog is up.
+    /// Claude permission-stage signals; only the waiting Notification proves a dialog.
     enum ClaudePermissionPromptSignal: Equatable {
-        /// The `PermissionRequest` hook — runs as Claude is about to draw the
-        /// dialog, carries the tool.
+        /// Observation only; automatic decisions and headless denials fire it too.
         case permissionRequest
         /// `Notification` with `notification_type: permission_prompt` — about
-        /// six seconds later, free text only. The fallback.
+        /// six seconds later, free text only. Confirms the human wait.
         case notification
     }
 
-    /// The question a Claude permission-prompt signal writes on the row, or nil
-    /// to leave the row as it is. Mirror of the Node daemon's
-    /// `setPermissionRequestOverlay` / `setPermissionNotificationOverlay`:
-    /// neither signal replaces an AskUserQuestion prompt or a held gate (whose
-    /// `requestId` is the device's only way to answer); PermissionRequest
-    /// replaces a display-only prompt unless it is already showing this
-    /// question; the Notification never replaces a prompt already shown, so
-    /// the two signals for one dialog count once.
+    /// Only a waiting Notification may publish permission Attention. Preserve
+    /// any question choices or held response already owned by the session.
     nonisolated static func claudePermissionPromptQuestion(
         signal: ClaudePermissionPromptSignal,
         question: String,
@@ -8423,6 +8432,9 @@ final class DaemonServer {
         askPending: Bool,
         gateHeld: Bool
     ) -> String? {
+        // PermissionRequest races automatic hook/host decisions and also runs
+        // when a headless call will be denied without a dialog.
+        if signal == .permissionRequest { return nil }
         if askPending || gateHeld || state == "awaiting_option" { return nil }
         let q = String(question.trimmingCharacters(in: .whitespacesAndNewlines).prefix(120))
         guard state == "awaiting_permission" else { return q }
@@ -8533,6 +8545,7 @@ final class DaemonServer {
         guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
             return .text("")
         }
+        guard codexApprovalReviewer(json: json) != "auto_review" else { return .text("") }
         let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
         let question = Self.codexPermissionQuestion(json)
         let holdMs = CodexApprovalHoldRules.holdMilliseconds(

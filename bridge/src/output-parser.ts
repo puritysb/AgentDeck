@@ -8,9 +8,11 @@ import { debug } from './logger.js';
 // Note: braille chars (⠋⠙⠹…) are used by other CLIs (npm, etc.), NOT Claude Code
 const SPINNER_CHARS = /[✢✳✶✻✽]/;
 
-const YES_NO_ALWAYS = /Yes,\s*allow once|No,\s*deny|Always allow/i;
-const PERMISSION_YN = /\(Y\)es.*\/\(N\)o|\(y\/n\)/i;
-const DIFF_PROMPT = /\(V\)iew diff.*\(A\)pply.*\(D\)eny|\(a\)pply.*\(d\)eny.*\(v\)iew/i;
+// Permission text in tool output or quoted examples is not a choice. Require
+// a rendered choice line (optionally numbered/cursored/boxed), not a substring.
+const YES_NO_ALWAYS = /^[ \t│┃]*(?:❯[ \t]*)?(?:\d{1,2}[.)][ \t]*)?(?:Yes,[ \t]*allow once|No,[ \t]*deny|Always allow)[ \t│┃]*$/im;
+const PERMISSION_YN = /(?:\(Y\)es[ \t]*\/[ \t]*\(N\)o|\(y\/n\))[ \t]*[?:]?[ \t]*$/im;
+const DIFF_PROMPT = /(?:\(V\)iew diff[^\r\n]*\(A\)pply[^\r\n]*\(D\)eny|\(a\)pply[^\r\n]*\(d\)eny[^\r\n]*\(v\)iew)[ \t│┃]*$/im;
 // ANSI stripping can remove spaces (e.g. "❯3.Haiku" instead of "❯ 3. Haiku")
 const OPTION_NUMBERED = /^\s*❯?\s*\d{1,2}[.)]\s*.+/m;
 const OPTION_BULLET = /^\s*[►▸●○]\s+.+/m;
@@ -165,11 +167,14 @@ export class OutputParser extends EventEmitter {
   private lastNavigableEmit = false;
   private lastCursorIndex = 0;
   private pendingAnsi = '';
+  // Only an unfinished selection prefix from the current terminal line, never
+  // an old prompt from the append-only buffer. PTY chunks can split `❯ 1.`.
+  private pendingOptionPrefix = '';
   // Cooldown after emitting permission/diff prompt — suppresses false idle
   // from user prompt echo (❯ text) in the same PTY batch
   private interactiveCooldown: ReturnType<typeof setTimeout> | null = null;
   // Explicit lifecycle for a prompt that is currently visible in the managed
-  // terminal. This is armed only from the current PTY chunk (never historical
+  // terminal. This is armed only from fresh PTY fragments (never historical
   // buffer contents) and cleared by authoritative user input / idle / reset.
   // While armed, Claude's concurrent status-line spinner redraws must not turn
   // AWAITING back into PROCESSING.
@@ -381,13 +386,18 @@ export class OutputParser extends EventEmitter {
   }
 
   private detectPatterns(chunk: string): void {
+    const optionChunk = this.pendingOptionPrefix + chunk;
+    const lastLine = optionChunk.slice(Math.max(optionChunk.lastIndexOf('\n'), optionChunk.lastIndexOf('\r')) + 1);
+    this.pendingOptionPrefix = lastLine.length <= 64 && /^[ \t]*(?:❯[ \t]*\d{0,2}|[►▸●][ \t]*)$/.test(lastLine)
+      ? lastLine : '';
+
     // --- Always extract metadata ---
     this.parseStatusLine(chunk);
     this.parseToolAction(chunk);
     this.parseProjectName(chunk);
     // Skip model parsing when chunk contains numbered options — option labels
     // like "Opus 4.6" match MODEL_INFO and overwrite the real model name
-    if (!OPTION_NUMBERED.test(chunk)) {
+    if (!OPTION_NUMBERED.test(optionChunk)) {
       this.parseModelInfo(chunk);
       this.parseEffortLevel(chunk);
     }
@@ -397,14 +407,16 @@ export class OutputParser extends EventEmitter {
 
     // --- Pre-scan: idle prompt & interactive content detection ---
     const hasIdlePrompt = IDLE_PROMPT.test(chunk);
+    const hasNavigablePrompt = /^[ \t]*❯[ \t]*\d{1,2}[.)]/m.test(optionChunk);
+    const hasSelectionBullet = /^[ \t]*[►▸●][ \t]+/m.test(optionChunk);
+    const hasOptionInteraction = hasNavigablePrompt || hasSelectionBullet || this.interactivePromptActive;
     const hasInteractive =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
       PERMISSION_YN.test(chunk) ||
-      OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk);
-    const hasNavigablePrompt = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
+      (hasOptionInteraction && (OPTION_NUMBERED.test(optionChunk) || OPTION_BULLET.test(optionChunk)));
     const hasAuthoritativePrompt =
       DIFF_PROMPT.test(chunk) || YES_NO_ALWAYS.test(chunk) ||
-      PERMISSION_YN.test(chunk) || hasNavigablePrompt;
+      PERMISSION_YN.test(chunk) || hasNavigablePrompt || hasSelectionBullet;
 
     // Arm from fresh evidence only. Re-reading the append-only buffer here can
     // resurrect an answered prompt and suppress real processing indefinitely.
@@ -558,14 +570,14 @@ export class OutputParser extends EventEmitter {
     }
 
     // --- Option list (debounced — PTY chunks may split option data) ---
-    // Guard: real interactive option prompts arrive in small TUI redraws (<200 non-ws chars).
-    // Large chunks (≥200) are Claude's response text which may contain numbered lists
-    // (e.g. "1. First approach\n2. Second approach") — these are NOT interactive options.
-    // Exception: ❯ cursor before a numbered option is a definitive TUI indicator —
-    // Claude response text never contains "❯ 1." so this bypasses the size guard safely.
+    // A small numbered list can be streamed response text too. A selection
+    // cursor/bullet or an already confirmed prompt admits picker redraws;
+    // the size bound below only limits ambiguous redraws, never proves a wait.
     const chunkNonWs = chunk.replace(/\s/g, '').length;
-    const hasNavigableCursor = /^\s*❯\s*\d{1,2}[.)]/m.test(chunk);
-    if ((OPTION_NUMBERED.test(chunk) || OPTION_BULLET.test(chunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
+    const hasNavigableCursor = hasNavigablePrompt;
+    // Size alone cannot distinguish a streamed response list from a picker.
+    // Require a selection cursor or an already confirmed interactive prompt.
+    if (hasOptionInteraction && (OPTION_NUMBERED.test(optionChunk) || OPTION_BULLET.test(optionChunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
       debug('Parser', 'option pattern detected — starting/resetting debounce');
       this.resetIdleTimer();
       this.resetOptionTimer();
@@ -1279,6 +1291,7 @@ export class OutputParser extends EventEmitter {
    * prompts resolve on any non-navigation input.
    */
   notifyUserInput(data: string): void {
+    if (data.length > 0) this.pendingOptionPrefix = '';
     if (!this.interactivePromptActive || !data) return;
 
     const withoutNavigation = data.replace(/\x1b\[[ABCD]/g, '');
@@ -1324,6 +1337,7 @@ export class OutputParser extends EventEmitter {
   reset(): void {
     this.buffer = '';
     this.pendingAnsi = '';
+    this.pendingOptionPrefix = '';
     this.spinnerActive = false;
     this.seenFirstIdle = false;
     this.pendingModeSwitch = false;

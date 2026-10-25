@@ -12,6 +12,17 @@ import XCTest
 /// daemon won.
 final class OpenClawApprovalErrorTests: XCTestCase {
 
+    func testDefaultScopesCanObserveOtherConnectionsApprovals() {
+        XCTAssertEqual(OpenClawApprovalRules.operatorScopes(granted: nil),
+                       ["operator.admin", "operator.approvals", "operator.read"])
+        XCTAssertEqual(OpenClawApprovalRules.operatorScopes(granted: []), [])
+    }
+
+    func testExistingRestrictedDeviceGrantIsPreserved() {
+        XCTAssertEqual(OpenClawApprovalRules.operatorScopes(granted: ["operator.read"]),
+                       ["operator.read"])
+    }
+
     private struct Vector: Decodable {
         let name: String
         let error: [String: JSONValue]

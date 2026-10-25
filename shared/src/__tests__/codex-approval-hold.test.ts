@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CODEX_APPROVAL_HOLD_HEADER,
   codexApprovalDecisionBody,
+  codexApprovalReviewerFromRollout,
   codexApprovalHoldMs,
   codexHoldDecision,
   codexHoldPressDecision,
@@ -16,6 +17,7 @@ import {
 const VECTORS = JSON.parse(readFileSync(
   fileURLToPath(new URL('../../codex-approval-hold-vectors.json', import.meta.url)), 'utf8')) as {
   header: string;
+  reviewerRecords: Array<{ name: string; records: unknown[]; turnId?: string; reviewer: string | null }>;
   decisions: Array<{ decision: CodexApprovalOutcome; body: unknown }>;
   budgets: Array<{ name: string; header: string; defaultMs: number; holdMs: number | null }>;
   eligibility: Array<{ name: string; input: Partial<CodexHoldEligibility>; hold: boolean; reason: string }>;
@@ -26,6 +28,13 @@ const VECTORS = JSON.parse(readFileSync(
 };
 
 describe('Codex approval hold rules (shared vectors)', () => {
+  for (const v of VECTORS.reviewerRecords) {
+    it(`reviewer: ${v.name}`, () => {
+      const text = ['torn line', ...v.records.map((r) => JSON.stringify(r)), '{incomplete'].join('\n');
+      expect(codexApprovalReviewerFromRollout(text, v.turnId)).toBe(v.reviewer ?? undefined);
+    });
+  }
+
   it('names the header both daemons read', () => {
     expect(CODEX_APPROVAL_HOLD_HEADER).toBe(VECTORS.header);
   });

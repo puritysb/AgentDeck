@@ -12,6 +12,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   isApprovalGoneError,
+  openClawOperatorScopes,
   parseExecApprovalRequest,
   decisionForOptionIndex,
   decisionForRespondValue,
@@ -264,5 +265,22 @@ describe('isApprovalGoneError — vectors shared with the Swift suite', () => {
     expect(isApprovalGoneError(undefined)).toBe(false);
     expect(isApprovalGoneError(42)).toBe(false);
     expect(isApprovalGoneError([])).toBe(false);
+  });
+});
+
+describe('Gateway approval observation scopes', () => {
+  it('can observe approvals created by another Gateway connection', () => {
+    expect(openClawOperatorScopes()).toEqual(['operator.admin', 'operator.approvals', 'operator.read']);
+    expect(openClawOperatorScopes(null)).toEqual(openClawOperatorScopes());
+  });
+
+  it('retains an existing restricted device grant without adding privileges', () => {
+    expect(openClawOperatorScopes([])).toEqual([]);
+    const grant = ['operator.read'];
+    const scopes = openClawOperatorScopes(grant);
+    expect(scopes).toEqual(grant);
+    scopes.push('local-test');
+    expect(grant).toEqual(['operator.read']);
+    expect(openClawOperatorScopes()).not.toContain('local-test');
   });
 });

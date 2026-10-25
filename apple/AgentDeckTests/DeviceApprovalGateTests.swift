@@ -68,7 +68,7 @@ final class DeviceApprovalGateTests: XCTestCase {
     func testFallsBackToRegexWhenNotificationTypeAbsent() {
         XCTAssertTrue(DaemonServer.isPermissionNotification(notificationType: nil, message: "Claude needs your permission to use Bash"))
         XCTAssertFalse(DaemonServer.isPermissionNotification(notificationType: nil, message: "Claude is waiting for your input"))
-        XCTAssertTrue(DaemonServer.isPermissionNotification(notificationType: "", message: "requesting permission"))
+        XCTAssertFalse(DaemonServer.isPermissionNotification(notificationType: "", message: "requesting permission"))
     }
 }
 #endif

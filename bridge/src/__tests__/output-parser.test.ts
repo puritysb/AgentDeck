@@ -13,6 +13,13 @@ function armParser(): OutputParser {
   return p;
 }
 
+/** Legacy picker redraws can omit the cursor after an actual prompt is up. */
+function armInteractiveParser(): OutputParser {
+  const p = armParser();
+  p.feed('Allow? (Y)es/(N)o\n');
+  return p;
+}
+
 /** Collect all emissions of a given event */
 function collectEvents(parser: OutputParser, event: string): any[] {
   const events: any[] = [];
@@ -29,11 +36,58 @@ describe('OutputParser', () => {
     vi.useRealTimers();
   });
 
+  describe('fresh picker prefixes split across PTY chunks', () => {
+    it.each([
+      ['after cursor', ['❯ ', '1. Default\n  2. Sonnet\n']],
+      ['before period after a newline', ['Choose a model:\n  ❯', ' ', '1', '. Default\n  2. Sonnet\n']],
+      ['before closing parenthesis', ['Choose a model:\n❯ 1', ') Default\n  2) Sonnet\n']],
+    ])('detects a new picker split %s', (_name, chunks) => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+
+      for (const chunk of chunks) p.feed(chunk);
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+      expect(events[0].options.map((option: PromptOption) => option.label)).toEqual(['Default', 'Sonnet']);
+      expect(events[0]).toMatchObject({ navigable: true, cursorIndex: 0 });
+    });
+
+    it.each(['newline', 'newline with output', 'user input', 'reset'])('discards an unfinished prefix after %s', (boundary) => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+      p.feed('❯ ');
+      if (boundary === 'newline') p.feed('\n');
+      if (boundary === 'user input') p.notifyUserInput('\r');
+      if (boundary === 'reset') p.reset();
+
+      p.feed(`${boundary === 'newline with output' ? '\n' : ''}1. First result\n2. Second result\n`);
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(0);
+    });
+
+    it('does not reuse an answered picker to arm later numbered output', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'option_prompt');
+      p.feed('❯ ');
+      p.feed('1. Default\n2. Sonnet\n');
+      vi.advanceTimersByTime(200);
+      expect(events).toHaveLength(1);
+
+      p.notifyUserInput('\r');
+      p.feed('\nResults:\n1. First result\n2. Second result\n');
+      vi.advanceTimersByTime(200);
+
+      expect(events).toHaveLength(1);
+    });
+  });
+
   // === Option Parsing: Basic ===
 
   describe('basic option parsing', () => {
     it('parses clean numbered options with newlines', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('  1. Default\n  2. Sonnet\n  3. Haiku\n');
@@ -48,7 +102,7 @@ describe('OutputParser', () => {
     });
 
     it('detects (recommended) marker', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('  1. Default (recommended)\n  2. Sonnet\n');
@@ -127,7 +181,7 @@ describe('OutputParser', () => {
     });
 
     it('extracts version numbers from · delimited labels', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.Opus4.6\u00B7Complex\n');
@@ -178,7 +232,7 @@ describe('OutputParser', () => {
     });
 
     it('resets debounce timer when new chunk with options arrives', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.First\n');
@@ -223,7 +277,7 @@ describe('OutputParser', () => {
 
   describe('model ID date rejection', () => {
     it('does NOT parse 20251001 from model ID as option number', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('\u23BFSetmodeltohaiku(claude-haiku-4-5-20251001)\n\n1.Default\n2.Sonnet\n3.Haiku\n');
@@ -237,7 +291,7 @@ describe('OutputParser', () => {
     });
 
     it('rejects large numbers that look like dates', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // "20251001." should not be parsed as option 20251001
@@ -253,7 +307,7 @@ describe('OutputParser', () => {
 
   describe('version number rejection', () => {
     it('does NOT parse version "4.6" followed by digit as option', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // "4.6" followed by digit (e.g. "4.60") — (?!\d) lookahead prevents matching
@@ -266,7 +320,7 @@ describe('OutputParser', () => {
     });
 
     it('does NOT parse "6)" from "4.6)" as option 6', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // "text4.6)something" — the "6)" should NOT be parsed as option 6
@@ -283,7 +337,7 @@ describe('OutputParser', () => {
 
   describe('stale buffer overwrite', () => {
     it('newer options overwrite older ones with same index', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Old options in buffer
@@ -305,6 +359,50 @@ describe('OutputParser', () => {
   // === Permission Prompts ===
 
   describe('permission prompts', () => {
+    it('does not reuse answered picker context for a later response list', () => {
+      const p = armInteractiveParser();
+      const options = collectEvents(p, 'option_prompt');
+      p.feed('1. Alpha\n2. Bravo\n');
+      vi.advanceTimersByTime(200);
+      expect(options).toHaveLength(1);
+      p.notifyUserInput('\r');
+      p.feed('1. First finding\n2. Second finding\n');
+      vi.advanceTimersByTime(200);
+      expect(options).toHaveLength(1);
+    });
+
+    it.each([false, true])('does not turn a short response list into Attention (working=%s)', (working) => {
+      const p = armParser();
+      const permission = collectEvents(p, 'permission_prompt');
+      const options = collectEvents(p, 'option_prompt');
+      const stopped = collectEvents(p, 'spinner_stop');
+      if (working) p.feed('✢ Working');
+      p.feed('1. First finding\n2. Second finding\n');
+      vi.advanceTimersByTime(500);
+      expect(permission).toHaveLength(0);
+      expect(options).toHaveLength(0);
+      expect(stopped).toHaveLength(0);
+    });
+
+    it.each([
+      'The command was automatically approved; Always allow was already saved.\n',
+      'Example: "Yes, allow once" or "No, deny".\n',
+      'console.log("Continue? (y/n)")\n',
+      'echo "(V)iew diff  (A)pply  (D)eny"\n',
+      'echo "Allow? (Y)es/(N)o"\n',
+      'The previous prompt used (y/n), but no input is required.\n',
+    ])('does not create a permission wait from tool output: %s', (output) => {
+      const p = armParser();
+      const permission = collectEvents(p, 'permission_prompt');
+      const options = collectEvents(p, 'option_prompt');
+      const diff = collectEvents(p, 'diff_prompt');
+      p.feed(output);
+      vi.advanceTimersByTime(500);
+      expect(permission).toHaveLength(0);
+      expect(options).toHaveLength(0);
+      expect(diff).toHaveLength(0);
+    });
+
     it('detects Yes/No/Always pattern', () => {
       const p = armParser();
       const events = collectEvents(p, 'permission_prompt');
@@ -523,7 +621,7 @@ describe('OutputParser', () => {
 
   describe('various option counts', () => {
     it('handles 1 option', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.OnlyOne\n');
@@ -534,7 +632,7 @@ describe('OutputParser', () => {
     });
 
     it('handles 2 options', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.Alpha\n2.Beta\n');
@@ -545,7 +643,7 @@ describe('OutputParser', () => {
     });
 
     it('handles 5+ options', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.One\n2.Two\n3.Three\n4.Four\n5.Five\n6.Six\n');
@@ -590,7 +688,7 @@ describe('OutputParser', () => {
 
   describe('option updates', () => {
     it('emits new options when data changes after first emission', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // First emission
@@ -630,7 +728,7 @@ describe('OutputParser', () => {
 
   describe('idle vs option debounce', () => {
     it('idle prompt is ignored when option debounce is pending', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const optEvents = collectEvents(p, 'option_prompt');
       const idleEvents = collectEvents(p, 'idle');
 
@@ -774,7 +872,7 @@ describe('OutputParser', () => {
       p.feed('✳');
       expect(events).toEqual(['spinner_start']);
 
-      p.feed('1. Alpha\n2. Bravo\n');
+      p.feed('❯ 1. Alpha\n2. Bravo\n');
       vi.advanceTimersByTime(200);
       expect(events).toContain('spinner_stop');
       expect(events).toContain('option');
@@ -822,7 +920,7 @@ describe('OutputParser', () => {
 
   describe('cleanOptionLabel (via parseOptions)', () => {
     it('deduplicates exact CamelCase matches', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // "SonnetSonnet4.6·desc" → CamelCase split → ["Sonnet","Sonnet"] → dedup → "Sonnet"
@@ -838,7 +936,7 @@ describe('OutputParser', () => {
     });
 
     it('preserves labels without · delimiter', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1. Simple label here\n');
@@ -848,7 +946,7 @@ describe('OutputParser', () => {
     });
 
     it('removes (recommended) from label text', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1. Default (recommended)\n');
@@ -861,7 +959,7 @@ describe('OutputParser', () => {
     });
 
     it('removes ✔ from label text', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1. Haiku ✔\n');
@@ -874,7 +972,7 @@ describe('OutputParser', () => {
     });
 
     it('extracts version from identity before middle dot', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('1.HaikuHaiku4.5\u00B7Fastest\n');
@@ -1511,7 +1609,7 @@ describe('OutputParser', () => {
 
   describe('buffer management', () => {
     it('truncates buffer when exceeding 8192 chars', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Fill buffer past 8192
@@ -1533,7 +1631,7 @@ describe('OutputParser', () => {
 
       // Feed option data that should be parseable from truncated buffer
       const events = collectEvents(p, 'option_prompt');
-      p.feed('\n1. First\n2. Second\n');
+      p.feed('\n❯ 1. First\n2. Second\n');
       vi.advanceTimersByTime(200);
 
       expect(events).toHaveLength(1);
@@ -2512,7 +2610,7 @@ describe('OutputParser', () => {
     });
 
     it('still works with scrambled TUI order after backward scan', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Stale content + scrambled options (ink TUI renders 2,1,3)
@@ -2561,7 +2659,7 @@ describe('OutputParser', () => {
 
   describe('option index ordering', () => {
     it('returns options sorted by index even when TUI lines arrive out of order', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // TUI buffer has options in scrambled order: 2, 1, 3
@@ -2599,7 +2697,7 @@ describe('OutputParser', () => {
     });
 
     it('handles bare ESC at end of chunk', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       p.feed('  1. Option A\n  2. Option B\x1b');
@@ -2614,7 +2712,7 @@ describe('OutputParser', () => {
     });
 
     it('does not buffer complete ANSI sequences', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Complete SGR — should not be held back
@@ -2651,7 +2749,7 @@ describe('OutputParser', () => {
     });
 
     it('still detects real options in small TUI chunks', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Small chunk — real interactive option prompt
@@ -2692,7 +2790,7 @@ describe('OutputParser', () => {
     });
 
     it('parses options using CUD (\\x1b[B) for vertical movement', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Options separated by CUD (cursor down) sequences
@@ -2815,7 +2913,7 @@ describe('OutputParser', () => {
     });
 
     it('handles options starting from non-zero index (buffer truncation)', () => {
-      const p = armParser();
+      const p = armInteractiveParser();
       const events = collectEvents(p, 'option_prompt');
 
       // Simulate buffer where option 1 was cut off

@@ -129,8 +129,8 @@ describe('awaiting-overlay', () => {
   describe('looksLikePermissionMessage', () => {
     it('matches genuine permission prompts', () => {
       expect(looksLikePermissionMessage('Claude needs your permission to use Bash')).toBe(true);
-      expect(looksLikePermissionMessage('Claude needs your permission to run this command')).toBe(true);
-      expect(looksLikePermissionMessage('Requesting permission to use Edit')).toBe(true);
+      expect(looksLikePermissionMessage('Claude needs your permission to run this command')).toBe(false);
+      expect(looksLikePermissionMessage('Requesting permission to use Edit')).toBe(false);
     });
     it('rejects the idle ping, non-permission status text, and empty messages', () => {
       expect(looksLikePermissionMessage('')).toBe(false);
@@ -154,7 +154,7 @@ describe('awaiting-overlay', () => {
     it('falls back to the message regex only when notification_type is absent', () => {
       expect(isPermissionNotification(undefined, 'Claude needs your permission to use Bash')).toBe(true);
       expect(isPermissionNotification(undefined, 'Claude is waiting for your input')).toBe(false);
-      expect(isPermissionNotification('', 'requesting permission')).toBe(true);
+      expect(isPermissionNotification('', 'requesting permission')).toBe(false);
     });
   });
 
@@ -505,54 +505,41 @@ describe('sticky overlays (Codex PermissionRequest)', () => {
   });
 });
 
-describe('Claude PermissionRequest overlay (immediate display signal)', () => {
+describe('Claude permission waits require a Notification', () => {
   beforeEach(() => { _resetAwaitingOverlay(); });
 
-  it('shows the prompt with its tool at once, display-only', () => {
-    expect(setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build')).toBe(true);
-    expect(getAwaitingOverlay('sid-pr')).toMatchObject({
-      kind: 'permission', state: 'awaiting_permission', question: 'Allow Bash: rm -rf build', requestId: undefined,
-    });
-    // The same prompt again is no change, so no second broadcast.
+  it('PermissionRequest alone never creates Attention (headless denial or automatic hook answer)', () => {
     expect(setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build')).toBe(false);
+    expect(getAwaitingOverlay('sid-pr')).toBeUndefined();
   });
 
-  it('the later permission_prompt Notification keeps the PermissionRequest prompt (one prompt, not two)', () => {
+  it('a real permission_prompt creates a display-only prompt, then tool progress clears it', () => {
     setPermissionRequestOverlay('sid-pr', 'Allow Bash: rm -rf build');
-    const before = getAwaitingOverlay('sid-pr');
-    expect(setPermissionNotificationOverlay('sid-pr', 'Claude needs your permission to use Bash')).toBe(false);
-    expect(getAwaitingOverlay('sid-pr')).toEqual(before);
+    expect(setPermissionNotificationOverlay('sid-pr', 'Claude needs your permission to use Bash')).toBe(true);
+    expect(getAwaitingOverlay('sid-pr')).toMatchObject({
+      state: 'awaiting_permission', question: 'Claude needs your permission to use Bash', requestId: undefined,
+    });
+    expect(setPermissionNotificationOverlay('sid-pr', 'repeated notification')).toBe(false);
+    clearAwaitingOverlay('sid-pr');
+    expect(getAwaitingOverlay('sid-pr')).toBeUndefined();
   });
 
-  it('the Notification alone still shows the prompt (Claude Code without PermissionRequest)', () => {
-    expect(setPermissionNotificationOverlay('sid-old', 'Claude needs your permission to use Bash')).toBe(true);
-    expect(getAwaitingOverlay('sid-old')).toMatchObject({ state: 'awaiting_permission', requestId: undefined });
-    // A PermissionRequest arriving after it upgrades the copy with the tool.
-    expect(setPermissionRequestOverlay('sid-old', 'Allow Bash: ls')).toBe(true);
-    expect(getAwaitingOverlay('sid-old')?.question).toBe('Allow Bash: ls');
-  });
-
-  it('never takes the requestId of a live device gate, from either signal', () => {
-    setAwaitingOverlay('sid-held', 'Allow Bash: npm publish', 'req-live');
-    const live = (id: string) => id === 'req-live';
-    expect(setPermissionRequestOverlay('sid-held', 'Allow Bash: rm -rf build', live)).toBe(false);
-    expect(setPermissionNotificationOverlay('sid-held', 'Claude needs your permission to use Bash', live)).toBe(false);
-    expect(getAwaitingOverlay('sid-held')).toMatchObject({ question: 'Allow Bash: npm publish', requestId: 'req-live' });
-    // Without a predicate any requestId counts as held.
-    expect(setPermissionRequestOverlay('sid-held', 'Allow Bash: rm -rf build')).toBe(false);
-  });
-
-  it('replaces a gate whose request is no longer open', () => {
-    setAwaitingOverlay('sid-dead', 'Allow Bash: npm publish', 'req-gone');
-    expect(setPermissionRequestOverlay('sid-dead', 'Allow Bash: npm publish', () => false)).toBe(true);
-    expect(getAwaitingOverlay('sid-dead')).toMatchObject({ requestId: undefined, question: 'Allow Bash: npm publish' });
-  });
-
-  it('keeps an AskUserQuestion option interaction', () => {
+  it('neither signal replaces an AskUserQuestion interaction or a live held gate', () => {
     setAskUserQuestionOverlay('sid-ask', 'toolu-ask', {
       questions: [{ question: 'Which deadline?', options: [{ label: '14 days' }, { label: '7 days' }] }],
     });
-    expect(setPermissionRequestOverlay('sid-ask', 'Allow AskUserQuestion?')).toBe(false);
-    expect(getAwaitingOverlay('sid-ask')).toMatchObject({ kind: 'option', question: 'Which deadline?' });
+    setAwaitingOverlay('sid-held', 'Allow Bash: npm publish', 'req-live');
+    for (const sid of ['sid-ask', 'sid-held']) {
+      const before = getAwaitingOverlay(sid);
+      expect(setPermissionRequestOverlay(sid, 'Allow Bash?')).toBe(false);
+      expect(setPermissionNotificationOverlay(sid, 'Claude needs your permission to use Bash')).toBe(false);
+      expect(getAwaitingOverlay(sid)).toEqual(before);
+    }
+  });
+
+  it.each(['No longer needs your permission', 'Not requesting permission',
+    'Output: Claude needs your permission to use Bash', 'permission to use was granted'])
+  ('does not turn arbitrary status text into a legacy permission prompt: %s', (message) => {
+    expect(isPermissionNotification(undefined, message)).toBe(false);
   });
 });

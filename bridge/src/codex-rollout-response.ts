@@ -25,7 +25,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { debug } from './logger.js';
 import { open as openAsync, readdir as readdirAsync } from 'fs/promises';
-import { CODEX_OTEL_METADATA_RULES, codexSessionMetaSubagentVerdict } from '@agentdeck/shared';
+import { CODEX_APPROVAL_CONTEXT_BYTES, codexApprovalReviewerFromRollout, CODEX_OTEL_METADATA_RULES, codexSessionMetaSubagentVerdict } from '@agentdeck/shared';
 
 /** Max day directories to inspect, newest first. */
 const MAX_DAY_DIRS = 30;
@@ -102,7 +102,7 @@ export async function codexRolloutIsSubagent(sessionId: string, sessionsRoot?: s
   return undefined;
 }
 
-function readTail(path: string, maxBytes: number): string {
+function readTail(path: string, maxBytes: number, allowFallback = true): string {
   try {
     const fd = openSync(path, 'r');
     try {
@@ -115,6 +115,7 @@ function readTail(path: string, maxBytes: number): string {
       closeSync(fd);
     }
   } catch {
+    if (!allowFallback) return '';
     try {
       return readFileSync(path, 'utf-8').slice(-maxBytes);
     } catch {
@@ -309,4 +310,17 @@ export function codexTurnCompletionSince(sessionId: string, sinceMs: number, ses
  */
 export function lastAgentMessageFromCodexRollout(sessionId: string, sessionsRoot?: string): string {
   return codexTurnOutcomeFromRollout(sessionId, sessionsRoot).text;
+}
+
+/** PermissionRequest fires before Codex chooses automatic vs human review.
+ * Read the hook's own rollout, with the existing locator as a legacy fallback.
+ * Never infer the reviewer from a command name, global config or tool timing. */
+export function codexApprovalReviewerForHook(json: Record<string, unknown>): string | undefined {
+  if (typeof json.approvals_reviewer === 'string') return json.approvals_reviewer;
+  const sid = typeof json.session_id === 'string' ? json.session_id : '';
+  const path = typeof json.transcript_path === 'string' && json.transcript_path
+    ? json.transcript_path : sid ? locateCodexRollout(sid) : null;
+  if (!path) return undefined;
+  return codexApprovalReviewerFromRollout(readTail(path, CODEX_APPROVAL_CONTEXT_BYTES, false),
+    typeof json.turn_id === 'string' ? json.turn_id : undefined);
 }

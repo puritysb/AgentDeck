@@ -109,9 +109,8 @@ import {
 import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
 
-/** Observed-session device approval gate (PreToolUse hold). Default ON — the
- *  precision guards in observed-steering.ts/claude-permission-rules.ts ensure
- *  only genuine would-prompt calls are held. Kill switch for field issues. */
+/** Device approval holds, including the opt-in human Codex handler. Claude's
+ *  speculative PreToolUse permission gate stays passive in the shared rules. */
 const OBSERVED_APPROVAL_ENABLED = process.env.AGENTDECK_OBSERVED_APPROVAL !== '0';
 /** How long a held gate waits for a device decision before releasing the tool
  *  call to Claude's own permission flow. Must stay well under the hook curl's
@@ -265,7 +264,7 @@ import {
   DeviceVoiceReplyRouter, speakableReply, spokenDigest, pcmFromWav, type ReplySink,
 } from './device-voice-reply.js';
 import { rawSessionId, isSessionSettingsRequestId, isSessionSettingsTargetKey, isSessionSettingKey, isSessionSettingValue, type AgentType, type SessionSettingsEvent, type StateSnapshot } from '@agentdeck/shared';
-import { codexTurnOutcomeFromRollout, codexTurnOutcomeFromRolloutPath, lastAgentMessageFromCodexRollout } from './codex-rollout-response.js';
+import { codexApprovalReviewerForHook, codexTurnOutcomeFromRollout, codexTurnOutcomeFromRolloutPath, lastAgentMessageFromCodexRollout } from './codex-rollout-response.js';
 import { callFoundationModelsHelper } from './foundation-models-helper.js';
 import {
   initModules,
@@ -3727,9 +3726,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
           });
-          // Codex PERM: `PermissionRequest` fires only when Codex is about to
-          // ask the user (approval_policy on-request), so it is a genuine
-          // awaiting signal with no prediction — display-only, respond in the
+          // Codex PermissionRequest precedes reviewer routing: an explicit
+          // auto_review setting means no human is waiting. Other requests
+          // retain the display-only approval prompt, answered in the
           // terminal. Any later lifecycle hook on the session ends the wait:
           // an approval runs the tool (tool_start/tool_end), a denial or
           // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
@@ -3745,7 +3744,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               passPending(heldRequestId);
             }
           } else if (codexSid) {
-            if (eventName === 'codex_permission_request') {
+            if (eventName === 'codex_permission_request' && codexApprovalReviewerForHook(json) !== 'auto_review') {
               // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
               // a Codex rollout may be appended while the approval waits, and
               // the explicit hook clears below already end this wait.
@@ -3798,8 +3797,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // The ended session's identity must not ride on later broadcasts.
         if (mapped === 'session_end' && earlyHookSid !== 'daemon-hook') hubDriver.noteSessionEnd(earlyHookSid);
         // Per-session awaiting overlay for observed/direct-`claude` sessions.
-        // Permission prompts stay Notification-driven and display-only unless
-        // the precision PreToolUse gate below owns a real requestId.
+        // Permission prompts are Notification-driven and display-only.
+        // The legacy PreToolUse permission gate stays passive.
         // AskUserQuestion is different: its PreToolUse payload already carries
         // question/options/tool_use_id, so preserve that structured lifecycle
         // as awaiting_option until the matching PostToolUse/Failure. This avoids
@@ -3814,15 +3813,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const toolInput = (json.tool_input && typeof json.tool_input === 'object')
             ? json.tool_input as Record<string, unknown> : undefined;
           if (mapped === 'permission_request') {
-            // Claude Code runs PermissionRequest as it is about to draw its
-            // permission dialog — the immediate signal, where the
-            // permission_prompt Notification below waits ~6 s of keyboard
-            // silence. Display-only: the installed hook prints nothing, so it
-            // never decides the prompt. Same overlay the Notification sets,
-            // with the tool details the Notification lacks; the later
-            // Notification keeps it (setPermissionNotificationOverlay), and the
-            // same tool/turn hooks clear it.
-            notePermissionPromptShown(claudeSid);
+            // Observation only: this event also precedes automatic hook/SDK
+            // decisions and headless denials. Notification confirms a human wait.
             if (setPermissionRequestOverlay(claudeSid, buildGateQuestion(toolName, toolInput), isPendingRequest)) {
               core.broadcastSessionsList().catch(() => {});
             }
@@ -4371,12 +4363,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               debug('daemon', `AskUserQuestion not held: ${gate.reason} (${claudeSid.slice(0, 8)})`);
             }
           }
-          // 3. Device-approval gate: hold the response for a device decision,
-          //    but ONLY for calls the precision guards say Claude would
-          //    genuinely prompt for (see shouldHoldPreToolUse — mode gate,
-          //    never-prompt/prompt-prone sets, allowlist prediction, learned
-          //    auto-approvals, connected-client check). Anything uncertain
-          //    falls through to the empty pass-through below.
+          // 3. Legacy permission-gate compatibility path. The shared predictor
+          //    is always passive; PreToolUse cannot prove a human wait.
           if (claudeSid) {
             const gate = shouldHoldPreToolUse({
               sessionId: claudeSid,
@@ -5656,6 +5644,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    *  leaves the prompt as display-only, since Codex is drawing it now. */
   function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): void {
     const sid = typeof json.session_id === 'string' ? json.session_id : '';
+    // An automatic reviewer owns this decision. Printing nothing leaves its
+    // policy untouched; neither a device prompt nor a device hold belongs here.
+    if (codexApprovalReviewerForHook(json) === 'auto_review') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('');
+      return;
+    }
     const question = buildCodexPermissionQuestion(json);
     const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS);
     const background = sid !== '' && (codexAmbientSessions.isAmbient(sid) || isCodexBackgroundCwd(json.cwd));

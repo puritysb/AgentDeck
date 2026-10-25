@@ -37,6 +37,18 @@
  */
 export type ExecApprovalDecision = 'allow-once' | 'allow-always' | 'deny';
 
+/** Default observer scopes for the machine-wide Gateway approval stream.
+ * operator.approvals admits approval RPCs but does not expose another
+ * connection's requests; operator.admin supplies that visibility. Existing
+ * device grants remain authoritative and are never expanded on reconnect. */
+export const OPENCLAW_APPROVAL_OPERATOR_SCOPES: readonly string[] = [
+  'operator.admin', 'operator.approvals', 'operator.read',
+];
+
+export function openClawOperatorScopes(granted?: readonly string[] | null): string[] {
+  return [...(granted ?? OPENCLAW_APPROVAL_OPERATOR_SCOPES)];
+}
+
 /** Full decision set, in the order the Gateway lists them. */
 export const EXEC_APPROVAL_DECISIONS: readonly ExecApprovalDecision[] = [
   'allow-once',

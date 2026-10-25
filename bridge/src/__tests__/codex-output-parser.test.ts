@@ -124,6 +124,22 @@ describe('CodexOutputParser', () => {
   });
 
   describe('permission prompt detection', () => {
+    it.each([
+      'The policy can approve or deny calls automatically.\n',
+      'Tool output: Allow this command? Allow  Deny\n',
+      'console.log("Allow once  Always allow  Deny")\n',
+      'echo "Run this command? (y)es / (n)o"\n',
+      'The old prompt was [Y/n], no choice is pending.\n',
+      'Example: "Would you like to run the following command?"\n',
+      'echo "Press enter to confirm or esc to cancel"\n',
+    ])('ignores quoted prompts and approval prose in command output: %s', (output) => {
+      const handler = vi.fn();
+      parser.on('permission_prompt', handler);
+      parser.feed(output);
+      vi.advanceTimersByTime(500);
+      expect(handler).not.toHaveBeenCalled();
+    });
+
     it('emits permission_prompt on Allow/Deny pattern', () => {
       const handler = vi.fn();
       parser.on('permission_prompt', handler);

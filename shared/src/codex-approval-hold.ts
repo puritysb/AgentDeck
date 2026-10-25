@@ -4,11 +4,11 @@
  * (Node `CodexApprovalHolds` in bridge/src/codex-approval-hold.ts, Swift the
  * `.codexApproval` gate in `ObservedSteering`).
  *
- * `PermissionRequest` fires only when Codex is about to ask the user, so unlike
- * Claude's PreToolUse hold nothing here is predicted: every held request is a
- * prompt the terminal would have drawn anyway. Codex waits for the hook before
- * drawing it (measured on codex-cli 0.160.1: the prompt appears ~120 ms after
- * the hook answers), which is what lets a device answer it — and is also the
+ * `PermissionRequest` runs BEFORE reviewer routing: auto-review requests fire
+ * it too. Only a user-reviewed request belongs on a device; the rollout
+ * records `approvals_reviewer`, which the hook payload currently omits.
+ * For human review, Codex waits for the hook before drawing the prompt
+ * (measured on codex-cli 0.160.1: it appears ~120 ms after the hook answers), which is what lets a device answer it — and is also the
  * whole cost: while a hold waits, the person at the terminal sees "Running
  * hook" instead of the prompt. Hence opt-in, installed as a second handler
  * next to the notification (hooks/src/codex-install.ts and
@@ -134,4 +134,35 @@ export function codexHoldDecision(e: CodexHoldEligibility): { hold: boolean; rea
   // that would then answer a different command.
   if (e.alreadyHeld) return { hold: false, reason: 'already-held' };
   return { hold: true, reason: 'device-approval' };
+}
+
+/** Bounded rollout probe used only on permission requests, in both daemons.
+ * Turn settings can be far behind a long tool transcript. */
+export const CODEX_APPROVAL_CONTEXT_BYTES = 8 * 1024 * 1024;
+
+/** Latest authoritative reviewer setting, never a quoted tool/message body.
+ * A newer settings record without a reviewer is unknown: do not reuse an old
+ * auto-review setting after a resume/turn change. Legacy/unreadable rollouts
+ * retain the existing PermissionRequest behavior; only explicit auto_review
+ * evidence suppresses Attention and the opt-in hold. */
+export function codexApprovalReviewerFromRollout(text: string, turnId?: string): string | undefined {
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line.includes('"turn_context"') && !line.includes('"thread_settings_applied"')) continue;
+    let record: Record<string, unknown>;
+    try { record = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
+    if (!record || typeof record !== 'object') continue;
+    const payload = record.payload as Record<string, unknown> | undefined;
+    if (!payload || typeof payload !== 'object') continue;
+    let settings: Record<string, unknown> | undefined;
+    if (record.type === 'turn_context') {
+      if (turnId && payload.turn_id !== turnId) return undefined;
+      settings = payload;
+    } else if (record.type === 'event_msg' && payload.type === 'thread_settings_applied') {
+      settings = payload.thread_settings as Record<string, unknown> | undefined;
+    } else continue;
+    return typeof settings?.approvals_reviewer === 'string' ? settings.approvals_reviewer : undefined;
+  }
+  return undefined;
 }

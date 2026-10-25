@@ -1,8 +1,8 @@
 [
   {
-    "note": "no rules, default mode: a prompt-prone Bash call is the genuine-wait case",
+    "note": "no rules, default mode: an unlisted Bash call does not prove a user wait",
     "tool": "Bash", "command": "git push origin master", "mode": "default",
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "space-star allow rule (the form the permission dialog writes) suppresses the hold",
@@ -27,7 +27,7 @@
   {
     "note": "the space before a trailing * is part of the rule: Bash(ls *) does not cover lsof",
     "tool": "Bash", "command": "lsof -nP -iTCP:9120", "mode": "default",
-    "rules": { "allow": ["Bash(ls *)"], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": ["Bash(ls *)"], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "Bash(ls*) has no space, so it does cover lsof",
@@ -58,17 +58,17 @@
   {
     "note": "Bash(* --version) does not cover node -v",
     "tool": "Bash", "command": "node -v", "mode": "default",
-    "rules": { "allow": ["Bash(* --version)"], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": ["Bash(* --version)"], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "two wildcards: Bash(* --help *) covers npm --help x but not the bare npm --help",
     "tool": "Bash", "command": "npm --help", "mode": "default",
-    "rules": { "allow": ["Bash(* --help *)"], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": ["Bash(* --help *)"], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "exact rule matches only the exact command",
     "tool": "Bash", "command": "npm run build --watch", "mode": "default",
-    "rules": { "allow": ["Bash(npm run build)"], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": ["Bash(npm run build)"], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "bare tool-name allow rule covers everything",
@@ -78,7 +78,7 @@
   {
     "note": "compound command: every subcommand must be covered — one uncovered segment still prompts",
     "tool": "Bash", "command": "git status && rm -rf /tmp/x", "mode": "default",
-    "rules": { "allow": ["Bash(git status *)"], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": ["Bash(git status *)"], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "compound command fully covered by allow rules and the read-only set",
@@ -98,7 +98,7 @@
   {
     "note": "default mode does NOT auto-approve mkdir/cp",
     "tool": "Bash", "command": "mkdir -p out/people && cp a.json out/people/", "mode": "default",
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "built-in read-only command never prompts (no rule needed)",
@@ -113,12 +113,12 @@
   {
     "note": "git branch with a name argument writes, so it is not read-only",
     "tool": "Bash", "command": "git branch feature/x", "mode": "default",
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "a write redirect makes a read-only command prompt",
     "tool": "Bash", "command": "ls > out.txt", "mode": "default",
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "a /dev/null redirect is not a write",
@@ -147,9 +147,9 @@
     "rules": { "allow": [], "deny": ["Bash(git push *)"], "ask": [] }, "hold": false
   },
   {
-    "note": "ask rule definitely prompts",
+    "note": "ask rule can still be answered automatically: no hold",
     "tool": "Bash", "command": "git push origin master", "mode": "default",
-    "rules": { "allow": ["Bash(git *)"], "deny": [], "ask": ["Bash(git push *)"] }, "hold": true
+    "rules": { "allow": ["Bash(git *)"], "deny": [], "ask": ["Bash(git push *)"] }, "hold": false
   },
   {
     "note": "unreadable settings: never hold",
@@ -179,7 +179,7 @@
   {
     "note": "absent mode is treated as default",
     "tool": "Bash", "command": "git push origin master", "mode": null,
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "acceptEdits: edit-family tools never hold",
@@ -187,9 +187,9 @@
     "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
-    "note": "default: Edit with no rule holds",
+    "note": "default: Edit with no rule does not prove a human wait",
     "tool": "Edit", "command": null, "mode": "default",
-    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": true
+    "rules": { "allow": [], "deny": [], "ask": [] }, "hold": false
   },
   {
     "note": "non-Bash tool with any allow rule for it: loose match suppresses the hold",

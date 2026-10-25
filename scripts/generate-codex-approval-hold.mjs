@@ -24,6 +24,7 @@ const str = (v) => JSON.stringify(v);
 export function rulesFrom(mod) {
   return {
     header: mod.CODEX_APPROVAL_HOLD_HEADER,
+    contextBytes: mod.CODEX_APPROVAL_CONTEXT_BYTES,
     denyMessage: mod.CODEX_APPROVAL_DENY_MESSAGE,
     marginMs: mod.CODEX_APPROVAL_HOLD_MARGIN_MS,
     minMs: mod.CODEX_APPROVAL_HOLD_MIN_MS,
@@ -48,8 +49,8 @@ import Foundation
 /// request means, when one is held, how long, what the hook prints and which
 /// events end it; the open hold itself is an \`ObservedSteering\` gate of kind
 /// \`.codexApproval\`. Codex waits for the hook before drawing its prompt, so a
-/// held request is a prompt the terminal would have drawn anyway, and the
-/// person at the terminal sees "Running hook" until it is released. Behaviour
+/// user-reviewed request can be answered on a device; automatic review must
+/// pass without a hold. A held hook shows "Running hook". Behaviour
 /// is pinned by \`shared/codex-approval-hold-vectors.json\`
 /// (\`CodexApprovalHoldTests\`).
 enum CodexApprovalHoldRules {
@@ -64,6 +65,30 @@ enum CodexApprovalHoldRules {
     static let releasingEvents: Set<String> = [
 ${events}
     ]
+
+    /// Bounded reviewer probe; a long turn can put its settings far behind tools.
+    static let contextBytes = ${rules.contextBytes}
+
+    /// PermissionRequest precedes reviewer routing. Read actual rollout records,
+    /// never a quoted command or tool result containing settings text.
+    static func reviewer(inRollout text: String, turnId: String? = nil) -> String? {
+        for line in text.split(separator: "\\n").reversed() {
+            guard line.contains("\\\"turn_context\\\"") || line.contains("\\\"thread_settings_applied\\\""),
+                  let data = String(line).data(using: .utf8),
+                  let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let payload = record["payload"] as? [String: Any] else { continue }
+            let settings: [String: Any]?
+            if record["type"] as? String == "turn_context" {
+                if let turnId, !turnId.isEmpty, payload["turn_id"] as? String != turnId { return nil }
+                settings = payload
+            } else if record["type"] as? String == "event_msg",
+                      payload["type"] as? String == "thread_settings_applied" {
+                settings = payload["thread_settings"] as? [String: Any]
+            } else { continue }
+            return settings?["approvals_reviewer"] as? String
+        }
+        return nil
+    }
 
     /// What the hold handler prints for an outcome. Empty prints nothing,
     /// which Codex reads as no decision: its own prompt appears as if the hook

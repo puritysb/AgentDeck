@@ -40,6 +40,7 @@ export function rulesFrom(mod) {
   const decisions = [...mod.EXEC_APPROVAL_DECISIONS];
   return {
     decisions,
+    operatorScopes: [...mod.OPENCLAW_APPROVAL_OPERATOR_SCOPES],
     display: Object.fromEntries(
       decisions.map((d) => [d, { label: mod.execApprovalDecisionLabel(d) }]),
     ),
@@ -125,6 +126,13 @@ struct OpenClawApprovalPrompt: Sendable, Equatable {
 }
 
 enum OpenClawApprovalRules {
+    /// Default visibility matches Node; never widen an existing device grant.
+    static let defaultOperatorScopes: [String] = ${JSON.stringify(rules.operatorScopes)}
+
+    static func operatorScopes(granted: [String]?) -> [String] {
+        guard let granted else { return defaultOperatorScopes }
+        return granted
+    }
 
     /// Parse a raw \`exec.approval.requested\` payload.
     ///
