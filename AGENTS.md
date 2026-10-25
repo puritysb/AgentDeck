@@ -123,6 +123,8 @@ This repo is built by switching between Claude Code, Codex, OpenCode, and Antigr
 - **Before commands that affect a daemon or system environment**, read [.claude/rules/daemon-lifecycle.md](.claude/rules/daemon-lifecycle.md) and use the supported `agentdeck daemon …` lifecycle commands. Port 9120 and connected hardware are shared across sessions.
 - **Keep verification proportional and report evidence.** Follow Verification scope below, distinguish source changes from installed/runtime state, and stop repeating successful checks unless a new change or unresolved failure warrants it. Report the result and remaining limitation concisely.
 
+- **Issue reviews** follow [the safety workflow](.agents/workflows/review-issue.md) before triage or reproduction; report the actual isolation used.
+
 ### Verification scope
 
 | Change | Required local checks before a commit |
