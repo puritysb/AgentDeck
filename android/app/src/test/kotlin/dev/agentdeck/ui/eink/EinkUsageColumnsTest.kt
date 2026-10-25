@@ -37,4 +37,12 @@ class EinkUsageColumnsTest {
         assertEquals(time, cols.time)
         assertTrue(cols.total <= 200.dp)
     }
+
+    @Test
+    fun `full width portrait gives a long model name its measured width`() {
+        val cols = usageColumns(544.dp, pct, time, preferredLabel = 190.dp)
+        assertEquals(190.dp, cols.label)
+        assertTrue(cols.bar >= 32.dp)
+        assertTrue(cols.total <= 544.dp)
+    }
 }

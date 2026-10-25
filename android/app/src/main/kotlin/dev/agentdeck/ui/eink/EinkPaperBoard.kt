@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -12,12 +13,12 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.HorizontalDivider
@@ -25,10 +26,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.runtime.key
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
@@ -255,7 +268,7 @@ private fun BoardRow(session: BoardSession, scale: EinkLayoutScale, onFocus: (St
     val bodySize: TextUnit = scale.sessionTitleFont
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxWidth().heightIn(min = 44.dp)
             .then(if (waiting) Modifier.background(band) else Modifier)
             .then(if (session.id != null) Modifier.clickable { onFocus(session.id) } else Modifier)
             .padding(horizontal = if (waiting) 8.dp else 0.dp, vertical = 5.dp),
@@ -304,11 +317,6 @@ private fun BoardRow(session: BoardSession, scale: EinkLayoutScale, onFocus: (St
 private fun NowZones(board: PaperBoard, scale: EinkLayoutScale, onFocus: (String) -> Unit) {
     val active = board.needsYou + board.working
     if (active.isNotEmpty()) {
-        // The heading carries the state (and, on colour e-ink, its hue) once for the zone.
-        val lead = if (board.needsYou.isEmpty()) AgentState.PROCESSING else AgentState.AWAITING_PERMISSION
-        ZoneLabel(if (board.needsYou.isEmpty()) "WORKING · ${board.working.size}"
-            else "NOW · ${board.needsYou.size} need you · ${board.working.size} working", scale,
-            color = stateColor(lead) ?: Ink)
         Column(verticalArrangement = Arrangement.spacedBy(scale.rowSpacing + 2.dp)) {
             active.forEach { BoardRow(it, scale, onFocus) }
         }
@@ -323,31 +331,8 @@ private fun NowZones(board: PaperBoard, scale: EinkLayoutScale, onFocus: (String
         }.joinToString("   ")
         ZoneLabel(label, scale)
         if (board.quiet.isNotEmpty()) {
-            // Name alone is ambiguous (a Claude session in the OpenClaw repo
-            // and the OpenClaw agent are both "OpenClaw"); the mark settles it.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                board.quiet.forEach { q ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = if (q.id != null) Modifier.clickable { onFocus(q.id) } else Modifier,
-                    ) {
-                        BrandIcon(agentType = q.agentType, isEink = !einkColorEnabled, size = 14.dp, tint = markTint())
-                        Column {
-                            Text(
-                                text = q.name,
-                                fontSize = scale.sessionTitleFont,
-                                color = Ink,
-                                maxLines = 1,
-                                modifier = Modifier.padding(start = 5.dp),
-                            )
-                            paperCiLine(q)?.let { ci -> Text(ci,fontSize = scale.sessionMetaFont,fontFamily = FontFamily.Monospace,
-                                color = Ink,modifier = Modifier.padding(start = 5.dp),maxLines = 1) }
-                        }
-                    }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(scale.rowSpacing)) {
+                board.quiet.forEach { BoardRow(it, scale, onFocus) }
             }
         }
     }
@@ -376,13 +361,13 @@ private fun BoardDivider() {
  * ran `78%` into `3d 9h` (#415).
  */
 @Composable
-private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
+private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale, heading: Boolean = true) {
     if (groups.isEmpty()) return
     val caption = scale.sessionMetaFont
     val body = (scale.sessionMetaFont.value + 2).sp
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val (pctW, timeW) = remember(groups, body, caption, density) {
+    val (pctW, timeW, labelWidths) = remember(groups, body, caption, density) {
         fun width(text: String, size: TextUnit, bold: Boolean = false): Dp = with(density) {
             measurer.measure(
                 text,
@@ -391,20 +376,30 @@ private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
                 maxLines = 1, softWrap = false,
             ).size.width.toDp()
         }
-        val resets = groups.flatMap { g -> g.windows.mapNotNull { it.reset } } + UsageWidestReset
-        maxOf(width(UsageWidestPct, usagePctFont(body), bold = true), width("used", caption)) to
-            maxOf(resets.maxOf { width(it, body) }, width("resets in", caption)) + UsageColumnGap
+        val visibleWindows = groups.flatMap { it.windows }
+        val resets = visibleWindows.mapNotNull { it.reset } + UsageWidestReset
+        val values = visibleWindows.map(::usageValue) + UsageWidestPct
+        Triple(
+            maxOf(values.maxOf { width(it, usagePctFont(body), bold = true) }, width("used", caption)) + UsageColumnGap,
+            maxOf(resets.maxOf { width(it, body) }, width("resets in", caption)) + UsageColumnGap,
+            visibleWindows.associate { it.label to width(it.label, body) },
+        )
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val cols = usageColumns(maxWidth, pctW, timeW)
-        Column(Modifier.width(cols.total), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
+        val labelW = maxOf(UsageLabelW, (labelWidths.values.maxOrNull() ?: 0.dp) + 8.dp)
+        val tableFitsLabels = UsageIndentW + labelW + pctW + timeW + UsageBarMinW <= maxWidth
+        val cols = usageColumns(maxWidth, pctW, timeW, preferredLabel = if (tableFitsLabels) labelW else UsageLabelW)
+        val stacked = cols.total > maxWidth || cols.bar < UsageBarMinW
+        Column(if (stacked) Modifier.fillMaxWidth() else Modifier.width(cols.total), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            if (heading) Row(verticalAlignment = Alignment.Bottom) {
                 Text("USAGE", fontSize = scale.sectionFont, fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
-                if (groups.any { it.windows.isNotEmpty() }) {
+                if (!stacked && groups.any { it.windows.isNotEmpty() }) {
                     Text("used", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
+                        letterSpacing = 0.sp,
                         textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.pct))
                     Text("resets in", fontSize = caption, fontFamily = FontFamily.Monospace, color = Ink,
+                        letterSpacing = 0.sp,
                         textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.time))
                 }
             }
@@ -413,13 +408,27 @@ private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale) {
                     Box(Modifier.width(UsageIndentW)) {
                         BrandIcon(agentType = group.agentType, isEink = !einkColorEnabled, size = 16.dp, tint = markTint())
                     }
-                    Text(group.provider, fontSize = body, lineHeight = body * 1.2f, fontWeight = FontWeight.Bold, color = Ink, maxLines = 1)
-                    group.plan?.let {
-                        Text(it, fontSize = caption, lineHeight = caption * 1.2f, fontFamily = FontFamily.Monospace, color = Ink, maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(group.provider, fontSize = scale.sessionTitleFont, lineHeight = scale.sessionTitleFont * 1.2f, fontWeight = FontWeight.Bold, color = Ink)
+                        group.plan?.let {
+                            Text(it, fontSize = caption, lineHeight = caption * 1.2f, fontFamily = FontFamily.Monospace, color = Ink)
+                        }
                     }
                 }
-                group.windows.forEach { UsageRow(it, cols, body) }
+                group.windows.forEach {
+                    when {
+                        stacked -> StackedUsageRow(it, body)
+                        (labelWidths[it.label] ?: 0.dp) + 8.dp > cols.label -> {
+                            Column(Modifier.fillMaxWidth()) {
+                                Text(it.label, fontSize = body, fontFamily = FontFamily.Monospace,
+                                    color = Ink, modifier = Modifier.padding(start = UsageIndentW, top = 3.dp))
+                                UsageRow(it.copy(label = ""), cols.copy(label = 0.dp, bar = cols.bar + cols.label), body)
+                            }
+                        }
+                        else -> UsageRow(it, cols, body)
+                    }
+                }
+
             }
         }
     }
@@ -439,6 +448,33 @@ private const val UsageWidestReset = "23h 59m"
 
 private fun usagePctFont(body: TextUnit) = (body.value + 2).sp
 
+private fun usageValue(row: EinkLimitLine): String {
+    val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
+    val used = if (row.remaining) 100.0 - pct else pct
+    return (row.value ?: "${pct.toInt()}%") +
+        if (row.stale) "?" else if (row.value == null && used >= 90) "!" else ""
+}
+
+/** Narrow screens and large system fonts trade a table for wrapping reading lines. */
+@Composable
+private fun StackedUsageRow(row: EinkLimitLine, body: TextUnit) {
+    Column(Modifier.fillMaxWidth().padding(start = UsageIndentW, bottom = 4.dp)) {
+        Text("${row.label} · ${usageValue(row)}", fontSize = usagePctFont(body),
+            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Ink)
+        if (row.value == null) {
+            val pct = (row.percent ?: 0.0).coerceIn(0.0, 100.0)
+            val used = if (row.remaining) 100.0 - pct else pct
+            Box(Modifier.fillMaxWidth().height(12.dp).border(1.5.dp, Ink)) {
+                val fill = if (einkColorEnabled && !row.stale) Color(UsageSeverity.color(used, onPaper = true)) else Ink
+                Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).toFloat()).background(fill))
+            }
+        }
+        row.reset?.let {
+            Text("resets in $it", fontSize = body, fontFamily = FontFamily.Monospace, color = Ink)
+        }
+    }
+}
+
 /** Column widths of the usage table. [total] never exceeds the zone unless even a zero-width bar cannot fit. */
 internal data class UsageColumns(val label: Dp, val bar: Dp, val pct: Dp, val time: Dp) {
     val total: Dp get() = UsageIndentW + label + bar + pct + time
@@ -451,9 +487,9 @@ internal data class UsageColumns(val label: Dp, val bar: Dp, val pct: Dp, val ti
  * the bar wider than what is left, so it cannot push the figures off the zone
  * (#415).
  */
-internal fun usageColumns(available: Dp, pct: Dp, time: Dp): UsageColumns {
+internal fun usageColumns(available: Dp, pct: Dp, time: Dp, preferredLabel: Dp = UsageLabelW): UsageColumns {
     val figures = UsageIndentW + pct + time
-    val label = (available - figures - UsageBarMinW).coerceIn(UsageLabelMinW, UsageLabelW)
+    val label = (available - figures - UsageBarMinW).coerceIn(UsageLabelMinW, preferredLabel)
     val bar = (available - figures - label).coerceIn(0.dp, UsageBarMaxW)
     return UsageColumns(label = label, bar = bar, pct = pct, time = time)
 }
@@ -467,7 +503,8 @@ private fun UsageRow(row: EinkLimitLine, cols: UsageColumns, body: TextUnit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.width(UsageIndentW))
         Text(row.label, fontSize = body, lineHeight = body * 1.15f, fontFamily = FontFamily.Monospace, color = Ink,
-            maxLines = 1, modifier = Modifier.width(cols.label))
+            letterSpacing = 0.sp,
+            modifier = Modifier.width(cols.label))
         if (row.value != null) {
             // A credit balance has no cap to fill against: no bar, just the figure.
             Box(Modifier.width(cols.bar))
@@ -478,17 +515,19 @@ private fun UsageRow(row: EinkLimitLine, cols: UsageColumns, body: TextUnit) {
             }
         }
         Text(
-            text = (row.value ?: "${pct.toInt()}%") + if (row.stale) "?" else if (critical) "!" else "",
+            text = usageValue(row),
             fontSize = usagePctFont(body),
             lineHeight = usagePctFont(body) * 1.15f,
             fontFamily = FontFamily.Monospace,
             fontWeight = if (critical) FontWeight.Bold else FontWeight.Medium,
+            letterSpacing = 0.sp,
             color = Ink,
             textAlign = TextAlign.End,
             maxLines = 1,
             modifier = Modifier.width(cols.pct),
         )
         Text(row.reset ?: "", fontSize = body, lineHeight = body * 1.15f, fontFamily = FontFamily.Monospace, color = Ink,
+            letterSpacing = 0.sp,
             textAlign = TextAlign.End, maxLines = 1, modifier = Modifier.width(cols.time))
     }
 }
@@ -537,61 +576,131 @@ private fun RecentZone(entries: List<TimelineEntry>, scale: EinkLayoutScale, lim
     }
 }
 
-/** One finished item is a project line plus up to two lines of text. */
-private val RecentItemHeight = 62.dp
-
-/** As many finished items as the zone's height holds — the zone is sized by the layout, not by the list. */
+/** The visible scroll rail belongs to its pane, so overflow never becomes a hidden page. */
 @Composable
-private fun RecentFill(entries: List<TimelineEntry>, scale: EinkLayoutScale, modifier: Modifier = Modifier, historyMode: Boolean = false) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val fits = ((maxHeight - 26.dp) / RecentItemHeight).toInt().coerceIn(1, 10)
-        Column { RecentZone(entries, scale, limit = fits, historyMode = historyMode) }
-    }
-}
-
-/** A text zone: its own partial-refresh region, sized to its content. */
-@Composable
-private fun TextZone(
-    zone: Zone,
-    triggerKey: Any,
-    sleepSnapshotMode: Boolean,
+private fun PaperScrollColumn(
+    scroll: ScrollState,
+    tag: String,
     modifier: Modifier = Modifier,
-    fill: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    EinkRefreshZone(
-        mode = zone.mode,
-        debounceMs = zone.debounceMs,
-        triggerKey = triggerKey,
-        sleepSnapshotMode = sleepSnapshotMode,
-        wrapContentHeight = !fill,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(
-            Modifier.fillMaxWidth().then(if (fill) Modifier.fillMaxHeight() else Modifier).background(Paper),
-            content = content,
-        )
+    Box(modifier.drawWithContent {
+        drawContent()
+        if (scroll.maxValue > 0 && size.height > 0) {
+            val viewport = scroll.viewportSize.toFloat().coerceAtLeast(1f)
+            val thumb = (size.height * viewport / (viewport + scroll.maxValue)).coerceIn(18.dp.toPx().coerceAtMost(size.height), size.height)
+            val top = (size.height - thumb) * scroll.value / scroll.maxValue
+            drawRect(Ink.copy(alpha = 0.2f), Offset(size.width - 1.dp.toPx(), 0f), Size(1.dp.toPx(), size.height))
+            drawRect(Ink, Offset(size.width - 3.dp.toPx(), top), Size(3.dp.toPx(), thumb))
+        }
+    }) {
+        Column(Modifier.fillMaxWidth().verticalScroll(scroll).testTag(tag).padding(end = 8.dp), content = content)
     }
 }
 
-/** Below this the terrarium is a keyhole, not a view: the zone gives the space back. */
-private val MinTankHeight = 150.dp
+private fun usageProviderKey(group: EinkUsageGroup) = group.provider + ":" + group.agentType
+
+private fun nearLimit(line: EinkLimitLine): Boolean {
+    if (line.stale || line.value != null || line.percent == null) return false
+    val used = if (line.remaining) 100.0 - line.percent else line.percent
+    return used >= 90
+}
+
+/** Column eligibility uses real numeric widths; long labels can wrap above their figures. */
+@Composable
+private fun usageMinimumWidth(groups: List<EinkUsageGroup>, scale: EinkLayoutScale): Dp {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
+    val body = (scale.sessionMetaFont.value + 2).sp
+    return remember(groups, density, body) {
+        fun width(text: String, font: TextUnit, bold: Boolean = false) = with(density) {
+            measurer.measure(text, TextStyle(fontSize = font, fontFamily = FontFamily.Monospace,
+                fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal), maxLines = 1, softWrap = false).size.width.toDp()
+        }
+        val windows = groups.flatMap { it.windows }
+        val pct = (windows.map(::usageValue) + UsageWidestPct).maxOf { width(it, usagePctFont(body), true) } + UsageColumnGap
+        val reset = (windows.mapNotNull { it.reset } + UsageWidestReset).maxOf { width(it, body) } + UsageColumnGap
+        UsageIndentW + UsageLabelW + pct + reset + UsageBarMinW
+    }
+}
 
 @Composable
-private fun TankZone(modifier: Modifier, tank: @Composable (Modifier) -> Unit) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        if (maxHeight >= MinTankHeight) tank(Modifier.fillMaxSize())
+private fun DashboardUsage(
+    groups: List<EinkUsageGroup>,
+    scale: EinkLayoutScale,
+    scroll: ScrollState,
+    expanded: List<String>,
+    toggle: (String) -> Unit,
+    landscape: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val visibleGroups = groups.map { if (usageProviderKey(it) in expanded) it else it.copy(windows = it.windows.take(2)) }
+    val minimumColumn = usageMinimumWidth(visibleGroups, scale)
+    Column(modifier.testTag("paper-usage").padding(horizontal = scale.contentPadding, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("USAGE", color = Ink, fontSize = scale.sectionFont, fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+            Text("used · resets in", color = Ink, fontSize = scale.sessionMetaFont, fontFamily = FontFamily.Monospace)
+        }
+        BoxWithConstraints(Modifier.weight(1f, fill = false).fillMaxWidth()) {
+            val columns = if (!landscape && maxWidth - 8.dp >= minimumColumn * 2 + 18.dp) 2 else 1
+            PaperScrollColumn(scroll, "paper-usage-scroll", Modifier.fillMaxWidth()) {
+                if (groups.isEmpty()) Text("No usage reported", color = Ink, fontSize = scale.sessionTitleFont)
+                groups.chunked(columns).forEach { row ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        row.forEach { group ->
+                            key(usageProviderKey(group)) {
+                                Column(Modifier.weight(1f).padding(bottom = 8.dp)) {
+                                    val open = usageProviderKey(group) in expanded
+                                    val shown = if (open) group else group.copy(windows = group.windows.take(2))
+                                    UsageZone(listOf(shown), scale, heading = false)
+                                    if (group.windows.size > 2) {
+                                        val hiddenCritical = group.windows.drop(2).count(::nearLimit)
+                                        val label = if (open) "Fewer limits" else "+${group.windows.size - 2} more limits" +
+                                            if (hiddenCritical > 0) " · $hiddenCritical near limit" else ""
+                                        Box(Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                                            .testTag("paper-usage-expand-${group.provider}")
+                                            .clickable(role = Role.Button) { toggle(usageProviderKey(group)) }
+                                            .padding(vertical = 5.dp), contentAlignment = Alignment.CenterStart) {
+                                            Text(label, color = Ink, fontSize = (scale.sessionMetaFont.value + 1).sp,
+                                                fontWeight = if (!open && hiddenCritical > 0) FontWeight.Bold else FontWeight.Normal)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (row.size < columns) Box(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
     }
 }
 
-/**
- * The board body under the masthead and the needs-you band. Every text zone
- * is its own partial-refresh region (sessions fast, usage and finished work
- * slow), and [tank] — the terrarium, with its own animated region — takes
- * whatever height the zones leave, never less than [MinTankHeight] and never
- * under a zone. In portrait the usage zone takes the white space beside the
- * session list rather than a band of its own, so the terrarium keeps its height.
- */
+@Composable
+private fun DashboardSessions(
+    board: PaperBoard,
+    timelineEntries: List<TimelineEntry>,
+    scale: EinkLayoutScale,
+    scroll: ScrollState,
+    onFocus: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.testTag("paper-sessions").padding(horizontal = scale.contentPadding, vertical = 6.dp)) {
+        Text(paperMastheadSummary(board), color = Ink, fontSize = scale.sectionFont,
+            lineHeight = scale.sectionFont * 1.3f, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 6.dp))
+        PaperScrollColumn(scroll, "paper-session-scroll", Modifier.weight(1f).fillMaxWidth()) {
+            NowZones(board, scale, onFocus)
+            if (timelineEntries.isNotEmpty()) {
+                BoardDivider()
+                RecentZone(timelineEntries, scale, limit = 3, historyMode = false)
+            }
+        }
+    }
+}
+
+/** Work and usage stay together. Only the header's explicit Frame mode mounts the tank. */
 @Composable
 internal fun EinkPaperBoard(
     state: DashboardState,
@@ -602,94 +711,71 @@ internal fun EinkPaperBoard(
     sleepSnapshotMode: Boolean,
     modifier: Modifier = Modifier,
     inspectionLabel: String? = null,
+    inspectionSessionId: String? = null,
     onClearInspection: () -> Unit = {},
+    showSessionList: Boolean = true,
+    frameMode: Boolean = false,
+    onExitFrame: () -> Unit = {},
     tank: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val scale = rememberEinkLayoutScale()
     val board = remember(state) { buildPaperBoard(state) }
-    val pad = scale.contentPadding + 4.dp
-    val nowKey = remember(board, inspectionLabel) {
-        (board.needsYou + board.working + board.quiet).joinToString("|") {
-            "${it.id}:${it.state}:${it.name}:${it.activity}:${it.question}:${it.ciWait}"
-        } + ":${board.offline}:$inspectionLabel"
-    }
+    val sessionsScroll = rememberScrollState()
+    val usageScroll = rememberScrollState()
+    val historyScroll = key(inspectionSessionId ?: inspectionLabel) { rememberScrollState() }
+    var expanded by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
+    val fontScale = LocalDensity.current.fontScale
     val historyMode = inspectionLabel != null
-    val hasRecent = remember(timelineEntries, historyMode) { paperRecent(timelineEntries, 1, historyMode).isNotEmpty() }
-    // Inspection is a reading surface. The normal roster/usage layout can
-    // consume all available height on a small reader, hiding the selected history.
-    if (historyMode) {
-        BackHandler(onBack = onClearInspection)
-        TextZone(Zone.CONTEXT_FAST, timelineEntries to inspectionLabel, sleepSnapshotMode,
-            modifier.fillMaxSize(), fill = true) {
-            Column(Modifier.fillMaxSize().padding(pad)) {
-                Text("History · $inspectionLabel  ×", color = Ink,
-                    modifier = Modifier.clickable(onClick = onClearInspection).padding(vertical = 8.dp))
-                HorizontalDivider(thickness = 1.dp, color = Ink)
-                if (!hasRecent) {
-                    Text("No events for this session", color = Ink, modifier = Modifier.padding(top = 8.dp))
-                } else {
-                    androidx.compose.runtime.key(inspectionLabel) {
-                        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp)) {
-                            RecentZone(timelineEntries, scale, limit = timelineEntries.size, historyMode = true)
-                        }
-                    }
-                }
-            }
+    val showFrame = frameMode && tank != null
+    BackHandler(enabled = historyMode || showFrame) {
+        if (historyMode) onClearInspection() else onExitFrame()
+    }
+    if (showFrame && !historyMode) {
+        Box(modifier.fillMaxSize().background(Paper).padding(scale.contentPadding).testTag("paper-terrarium")) {
+            tank?.invoke(Modifier.fillMaxSize())
         }
         return
     }
-    val sessions: @Composable ColumnScope.() -> Unit = {
-        Column(Modifier.padding(pad)) {
-            NowZones(board, scale, onFocusSession)
-        }
-    }
-    if (landscape) {
-        // Text reads down one column; the terrarium is a full-height window
-        // beside it, so neither depends on how much the other has to say.
-        Row(modifier = modifier.fillMaxSize().background(Paper)) {
-            Column(Modifier.weight(if (tank != null) 0.46f else 1f).fillMaxHeight()) {
-                TextZone(Zone.CONTEXT_FAST, nowKey, sleepSnapshotMode, content = sessions)
-                if (usage.isNotEmpty() || hasRecent) {
-                    HorizontalDivider(thickness = 1.dp, color = Ink, modifier = Modifier.padding(horizontal = pad))
-                }
-                TextZone(Zone.STATUS_SLOW, Triple(usage, timelineEntries, inspectionLabel), sleepSnapshotMode, Modifier.weight(1f), fill = true) {
-                    Column(Modifier.fillMaxHeight().padding(pad)) {
-                        UsageZone(usage, scale)
-                        if (usage.isNotEmpty() && hasRecent) BoardDivider()
-                        if (hasRecent) RecentFill(timelineEntries, scale, Modifier.weight(1f), historyMode)
+    EinkRefreshZone(
+        mode = Zone.CONTEXT_FAST.mode, debounceMs = Zone.CONTEXT_FAST.debounceMs,
+        triggerKey = listOf(board, usage, timelineEntries, expanded, inspectionSessionId, historyMode),
+        softTriggerKey = listOf(sessionsScroll.value, usageScroll.value, historyScroll.value),
+        qualityTriggerKey = if (viewportSize == IntSize.Zero) null else listOf(historyMode, viewportSize, fontScale),
+        sleepSnapshotMode = sleepSnapshotMode,
+        modifier = modifier.fillMaxSize().onSizeChanged { viewportSize = it },
+    ) {
+        if (historyMode) {
+            Column(Modifier.fillMaxSize().background(Paper).testTag("paper-history").padding(scale.contentPadding)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.heightIn(min = 44.dp).clickable(role = Role.Button, onClick = onClearInspection)
+                        .padding(end = 16.dp), contentAlignment = Alignment.CenterStart) {
+                        Text(if (showFrame) "Back to Frame" else "Back to Work", color = Ink, fontSize = scale.sessionTitleFont)
                     }
+                    Text("History · $inspectionLabel", color = Ink, fontSize = scale.sessionTitleFont,
+                        fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                }
+                PaperScrollColumn(historyScroll, "paper-history-scroll", Modifier.weight(1f).fillMaxWidth()) {
+                    if (paperRecent(timelineEntries, 1, true).isEmpty()) Text("No events for this session", color = Ink)
+                    else RecentZone(timelineEntries, scale, limit = timelineEntries.size, historyMode = true)
                 }
             }
-            if (tank != null) {
-                VerticalDivider(thickness = 2.dp, color = Ink)
-                TankZone(Modifier.weight(0.54f).fillMaxHeight().padding(pad), tank)
-            }
-        }
-    } else {
-        Column(modifier = modifier.fillMaxSize().background(Paper)) {
-            Row(Modifier.fillMaxWidth()) {
-                TextZone(Zone.CONTEXT_FAST, nowKey, sleepSnapshotMode,
-                    Modifier.weight(if (usage.isEmpty()) 1f else 0.55f), content = sessions)
-                if (usage.isNotEmpty()) {
-                    TextZone(Zone.STATUS_SLOW, usage, sleepSnapshotMode, Modifier.weight(0.45f)) {
-                        Column(Modifier.padding(start = 4.dp, top = pad, end = pad, bottom = pad)) {
-                            UsageZone(usage, scale)
-                        }
-                    }
+        } else BoxWithConstraints(Modifier.fillMaxSize().background(Paper).testTag("paper-dashboard")) {
+            val usageHeightCeiling = minOf(260.dp * fontScale, maxHeight * 0.45f)
+            val toggle: (String) -> Unit = { id -> expanded = if (id in expanded) expanded - id else expanded + id }
+            when {
+                !showSessionList -> DashboardUsage(usage, scale, usageScroll, expanded, toggle, false, Modifier.fillMaxSize())
+                landscape -> Row(Modifier.fillMaxSize()) {
+                    DashboardSessions(board, timelineEntries, scale, sessionsScroll, onFocusSession, Modifier.weight(0.59f).fillMaxHeight())
+                    VerticalDivider(Modifier.fillMaxHeight(), color = Ink, thickness = 1.dp)
+                    DashboardUsage(usage, scale, usageScroll, expanded, toggle, true, Modifier.weight(0.41f).fillMaxHeight())
                 }
-            }
-            // With finished work to show, the terrarium yields about two fifths
-            // of its height to it; without, it keeps the whole remainder.
-            val tankWeight = if (hasRecent) 0.6f else 1f
-            if (tank != null) {
-                TankZone(Modifier.weight(tankWeight).padding(horizontal = pad).padding(top = 4.dp, bottom = pad), tank)
-            } else {
-                Box(Modifier.weight(tankWeight))
-            }
-            if (hasRecent) {
-                HorizontalDivider(thickness = 2.dp, color = Ink)
-                TextZone(Zone.STATUS_SLOW, timelineEntries to inspectionLabel, sleepSnapshotMode, Modifier.weight(0.4f), fill = true) {
-                    RecentFill(timelineEntries, scale, Modifier.fillMaxHeight().padding(pad), historyMode)
+                else -> Column(Modifier.fillMaxSize()) {
+                    DashboardSessions(board, timelineEntries, scale, sessionsScroll, onFocusSession, Modifier.weight(1f).fillMaxWidth())
+                    HorizontalDivider(color = Ink, thickness = 1.dp)
+                    // Natural content height below the ceiling: one provider leaves more room for work.
+                    DashboardUsage(usage, scale, usageScroll, expanded, toggle, false,
+                        Modifier.fillMaxWidth().heightIn(max = usageHeightCeiling))
                 }
             }
         }

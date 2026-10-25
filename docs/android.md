@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Android maintainers
-reviewed: 2026-09-28
-revision: 2026-09-28
+reviewed: 2026-10-25
+revision: 2026-10-25
 source_of_truth: docs/android.md
 validators: [pnpm test:android]
 ---
@@ -21,8 +21,9 @@ Detailed reference for the AgentDeck Android app — build, device support, and 
 ![AgentDeck native 3D aquarium photographed on an Android tablet](https://puritysb.github.io/AgentDeck/media/android-tablet.jpg)
 
 Real devices photographed on September 28, 2026: the tablet above, Crema S in
-portrait, and Moaan Pantone in landscape below. The e-ink layouts keep session
-state and usage readable on paper-like displays.
+portrait, and Moaan Pantone in landscape below. These photographs show the
+September layout; the current reader layout is described in
+[Choose a view for your screen](#choose-a-view-for-your-screen).
 
 <p align="center">
   <a href="https://puritysb.github.io/AgentDeck/media/crema-eink.jpg"><img src="https://puritysb.github.io/AgentDeck/media/crema-eink.jpg" height="320" alt="Crema S e-ink reader running AgentDeck in portrait"></a>
@@ -73,10 +74,38 @@ Tap empty water to hide the panels and move closer; tap again to return. Up to
 eight foreground residents keep busy scenes readable while the roster retains
 all sessions. Fish are decorative and respond to nearby creatures.
 
-E-ink readers use a separate view: a static Blender-rendered background with
-restrained creature motion and panel-specific refresh handling. They do not run
-the continuous native 3D renderer. Color and monochrome readers share the same
-app, with contrast and refresh behavior adapted to the detected panel.
+E-ink readers start with one **work-and-usage dashboard**. Portrait places the
+full work list above usage; landscape places them side by side. Each region
+scrolls independently, so a long session list keeps usage visible and expanded
+usage keeps work visible. A scroll indicator shows when more content is
+available. There are no separate Sessions or Usage pages.
+
+Usage shows every provider with its primary limits. Tap a provider's additional
+limit count to expand its model-specific limits in place; critical hidden limits
+are flagged before expansion. Compact provider columns use the available width
+when the text fits and switch to a single column for longer labels or larger
+fonts. Region reading positions and expanded providers survive rotation.
+
+Choose **Frame** in the header to observe agents moving through the aquarium.
+Claude and OpenClaw walk through its lower depths while other species swim.
+Residents face where they are going, slow down for sharp turns, and ease into
+motion again. At a destination, a working agent finishes braking before starting
+its task gestures. Feet and tails settle as movement stops, and the resident
+keeps the direction it was facing. Quiet agents explore slowly and rest; quiet
+Hermes keeps its resting position. Waiting and CI waiting slow the resident to
+a stop, and sleeping freezes it immediately.
+
+Names remain upright and terminal glyphs remain readable through body turns.
+CI companions travel with the resident over a cached Blender-rendered habitat.
+Up to eight prioritized residents stay readable, with an explicit count when
+others are outside the scene; the full roster remains on the dashboard. The
+header toggle and attention remain visible so the reader can return to work or
+answer a waiting session, and rotating keeps
+the selected mode. The continuous native 3D renderer is not used on EPD. Color
+and monochrome readers share the same app, with contrast and refresh behavior
+adapted to the detected panel. See
+[Android UI](android-ui.md#refresh-constrained-projection) for the layout and
+refresh contract.
 
 [Watch the real-app demo](https://puritysb.github.io/AgentDeck/#aquarium).
 
@@ -315,9 +344,9 @@ The aquarium creatures respond to agent state in real-time:
 
 | Creature | Agent | Visual States |
 |----------|-------|---------------|
-| **Octopus** (14x5 pixel grid) | Claude Code | PROCESSING: starburst animation + tentacle wave. IDLE: rests near the sand. Per-session instances with name hats. `standingJitter` + depth offset for natural multi-session placement |
-| **Crayfish** (SVG path art) | OpenClaw | ROUTING: claw clap + signal waves + eye flash + glow pulse. SITTING: heartbeat glow (4s double-pulse teal). SICK: desaturated body, -12° tilt, drooping claws, dim flickering eyes (gateway doctor errors). DORMANT: completely still |
-| **Neon Tetra** (14 fish, 2 schools) | Ambient | Boids flocking with Lissajous school paths. Attracted to active agents — swim toward data particles during PROCESSING. 2 schools of 7 fish meet/scatter every ~20-30s |
+| **Claude resident** (canonical brand silhouette) | Claude Code | Frame: turns toward travel, walks between destinations with feet driven by distance, then settles before working hand gestures. Quiet: slower exploration and rest. Waiting: stops with a question cue and retains its direction. Its name stays upright. |
+| **Crayfish** (SVG path art) | OpenClaw | Frame: direction follows travel through the lower depths, with separate claw gestures during work pauses. Native aquarium: ROUTING adds claw clap, signal waves, eye flash and glow pulse; SITTING uses a heartbeat glow; SICK desaturates and droops the resident; DORMANT stays still. |
+| **Neon Tetra** | Ambient | Native aquarium: 14 fish in two schools use boids and Lissajous school paths. Frame: 12 fish in two schools follow continuous paths with turning body projection and tail strokes. These decorative schools remain separate from the agent residents. |
 
 ### Gateway Health → Crayfish SICK State
 

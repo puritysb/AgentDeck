@@ -70,6 +70,8 @@ fun EinkRefreshZone(
     sleepThrottleMs: Long = 60_000L,
     /** Size to the content's height instead of filling the offered height. */
     wrapContentHeight: Boolean = false,
+    /** Destination or viewport identity requiring a regional grayscale cleanup. */
+    qualityTriggerKey: Any? = null,
     content: @Composable () -> Unit,
 ) {
     // Keep a snapshot-backed reference to the latest content lambda so
@@ -80,6 +82,9 @@ fun EinkRefreshZone(
     // Track the view reference for vendor API calls
     var viewRef by remember { mutableStateOf<View?>(null) }
     var lastTrigger by remember { mutableLongStateOf(0L) }
+    // Record only completed cleanups. If fresh data cancels a pending geometry
+    // change, its replacement effect must still perform that cleanup.
+    var cleanedQualityKey by remember { mutableStateOf<Any?>(null) }
     // Race-protection state for the soft refresh path. Two gates so the
     // protection is ORDER-INDEPENDENT of debounceMs vs softDebounceMs and
     // robust to primary effect cancellation/relaunch:
@@ -109,7 +114,10 @@ fun EinkRefreshZone(
     // (different sessionId or question) does. Adding a zone-lifetime gate
     // here would suppress the flash for the next queued prompt when the
     // composable instance is reused across the dismiss-less transition.
-    LaunchedEffect(triggerKey, sleepSnapshotMode) {
+    // Structural cleanup shares the primary effect so simultaneous data and
+    // destination changes produce one quality refresh, never A2 then quality.
+    // It also uses the same pending/recent-primary gates as normal data paints.
+    LaunchedEffect(triggerKey, qualityTriggerKey, sleepSnapshotMode) {
         // Increment ON ENTRY so a relaunched effect's count contribution is
         // visible BEFORE the previous (cancelled) effect's finally decrements.
         // Net count stays >= 1 while ANY primary is in flight.
@@ -117,13 +125,21 @@ fun EinkRefreshZone(
         try {
             val now = System.currentTimeMillis()
             lastTrigger = now
+            if (qualityTriggerKey == null) cleanedQualityKey = null
             delay(debounceMs)
 
             // Only refresh if no newer trigger arrived during debounce
             if (lastTrigger == now) {
                 val view = viewRef
                 if (view != null) {
-                    if (sleepSnapshotMode && mode != RefreshMode.FULL_ONCE) {
+                    if (qualityTriggerKey != null && qualityTriggerKey != cleanedQualityKey) {
+                        // Navigation/rotation is an explicit reading change,
+                        // including while the host sleeps. Clean that new page
+                        // once; later background data still uses the sleep cap.
+                        EinkRefreshHelper.requestQualityRefresh(view)
+                        cleanedQualityKey = qualityTriggerKey
+                        lastSleepFireMs = if (sleepSnapshotMode) System.currentTimeMillis() else 0L
+                    } else if (sleepSnapshotMode && mode != RefreshMode.FULL_ONCE) {
                         val fireNow = System.currentTimeMillis()
                         val elapsed = fireNow - lastSleepFireMs
                         if (lastSleepFireMs == 0L || elapsed >= sleepThrottleMs) {

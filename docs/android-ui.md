@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Android maintainers
-reviewed: 2026-07-21
-revision: 2026-10-06
+reviewed: 2026-10-25
+revision: 2026-10-25
 source_of_truth: docs/android-ui.md
 validators: [bash design/lint.sh, pnpm test:android]
 ---
@@ -108,7 +108,7 @@ Timeline 은 raw event feed 가 아니라 의미 단위 projection 이다. 실�
 `sessionId`나 `runId`가 다르면 같은 `taskId`여도 툴 활동은 합치지 않는다.
 
 Android selects the most recently updated groups after chronological grouping:
-50 on LCD and three on e-ink. Tool result `endedAt`, merged reply and completion
+50 on LCD and three below the e-ink work roster. Tool result `endedAt`, merged reply and completion
 timestamps contribute to recency; equal activity timestamps preserve source
 group order. E-ink shows the latest meaningful child at the group's latest
 activity time, so a late tool result can supersede an older reply. Progress-only
@@ -133,45 +133,114 @@ hardware rotation fallback 처럼 판독성과 물리 표시 장치에 직접 �
 
 ### Refresh-constrained projection
 
-아래 3-section layout 이 e-ink 의 기본 projection 이다. 신규 구현은 tablet `MonitorScreen` overlay 를
-e-ink 에 그대로 얹지 말고, 이 projection 에 공통 Dashboard state/action 을 연결한다. 핵심 화면은
-Sessions / Terrarium / Timeline 이고, rate limit 은 데이터가 실제로 제공될 때만 수조 corner card 로 격하한다.
+Android readers open one **work-and-usage dashboard**. The terrarium is an
+explicit **Frame** mode. Common Dashboard state and actions feed both; neither
+view invents sessions or changes the meaning of focus, inspection, usage, or
+attention. Shared state labels, marks and contrast keep readers consistent with
+other e-ink devices; the six-inch layout uses its own available width and height.
 
-Landscape: 상단 chrome + `Sessions | Terrarium`, 하단 text Timeline
+The compact header keeps identity, snapshot time, rotation, Settings and the
+Frame toggle reachable. There is no Overview / Sessions / Usage tab row or
+global page footer. Frame selection, region reading positions and provider
+expansion survive rotation. These are local viewing choices, not commands to
+another device.
 
-```
-[AgentDeck icon] AgentDeck · :9120       S:4   rotate  settings
-──────────────────────────────────────────────────────────────
-[Sessions]                 ∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
-  agentdeck #1             🐙  🦞  cloud
-    opus-4 · ● PROC        sand / fish / state labels
-  agentdeck #2                                           USAGE
-    sonnet · ○ IDLE                                      5h ███░
-  codex-main
-    gpt-5 · ● PROC
-──────────────────────────────────────────────────────────────
-TIMELINE
-10:32 [agentdeck] Claude  [T ] Read file_path.ts
-10:33 [apme-tuner] Codex  [M ] Model call gpt-5
-10:33 [agentdeck] Claude  [==] TASK Update dashboard
-```
+| Mode | Portrait | Landscape |
+|---|---|---|
+| Dashboard (default) | Full ranked work roster above a compact usage region; usage uses two provider columns when content fits | Work roster on the left and usage on the right |
+| Frame | Aquarium fills the space beneath the header and any attention | Aquarium fills the space beneath the header and any attention |
 
-- Chrome: AgentDeck icon + wordmark + `:9120` + session count + rotate + settings. Rotate control 은 Settings button 표시 여부와 독립적으로 남긴다.
-- Landscape: 상단 row 는 Sessions(약 36%) | Terrarium(약 64%), 하단은 text Timeline(약 36%). Timeline 은 macOS/iOS/Android tablet 과 같은 task/event text projection 이며 vertical lane / chart timeline 을 쓰지 않는다.
-- Portrait: Chrome 아래 `Sessions / Terrarium / Timeline` 3단 full-width stack. Terrarium 은 세로로 길게 늘리지 않고 항상 가로 수조 장면으로 유지한다.
-- **Limits corner card**: 수조 모서리에 Claude, Codex, GLM/MCP 사용량과 구독 정보를 함께 표시한다. Claude stale 값은 숨기고, Codex/GLM stale 값은 마지막 수치에 `!`를 붙인다. 공급자 아이콘과 GLM 문자 라벨을 유지하며, 게이지만 가변 폭으로 줄여 퍼센트가 잘리지 않게 한다. 사용량·stale·구독 변경은 정지 화면에서도 refresh key에 포함된다. MODELS/DEVICES/Topology는 Settings/diagnostic 경로로 둔다.
+The dashboard gives work and usage separate bounded regions, visible together
+in both orientations. Work includes every session in waiting, working and quiet
+groups, followed by the latest finished items. It does not stop at a fixed
+preview count. When either collection exceeds its region, that region scrolls
+independently and shows a visible scroll affordance. Reaching the last session
+keeps usage visible; expanding and scrolling usage keeps the work region
+visible. Content growth never moves one region beneath the screen or lets it
+paint over the other. Text grows and wraps instead of shrinking to fit.
+
+- **Usage**: Every available provider appears with its primary windows. Extra
+  windows or model-specific limits expand below that provider, in the same
+  region; the disclosure names the hidden limit count and flags critical hidden
+  usage. A provider's plan stays with its identity, including when it has no
+  metered windows. Provider columns use measured content width and the actual
+  font scale. Two columns are used only when their labels, gauges and numeric
+  values fit; narrower or larger-type layouts fall back to one column. Long
+  labels wrap above their gauge, and numeric columns stack when necessary. All
+  scoped-limit names, percentages and reset strings remain reachable without
+  opening a separate full-screen view. Claude stale values are hidden;
+  Codex/GLM stale values retain the last figure with `?`, and critical usage adds
+  `!`. Data changes, provider expansion, selected mode and each region's scroll
+  position participate in refresh keys. MODELS/DEVICES/Topology remain in
+  Settings or diagnostics.
+- **Frame**: The aquarium is mounted only in Frame mode. It has no roster or
+  quota panels over the water. The header toggle returns to the work dashboard;
+  attention stays outside the aquarium and visible in both modes. Choosing
+  Frame is explicit rather than a timed switch that could hide work while
+  reading. Residents face their direction of travel through the habitat.
+  Working agents turn and accelerate toward a destination, brake, then pause
+  for working gestures. Quiet agents alternate slower exploration and rest;
+  quiet Hermes holds its resting position. Waiting and CI waiting brake the
+  resident to a stop; sleeping freezes motion. Stopping retains the last body
+  direction. Names and CI companions follow the resident. A compact activity
+  summary describes the visible residents; CI waiting counts as waiting.
 - **Settings parity**: tablet/iOS 와 같은 Connection / Mac integrations(read-only) / Display panels / Display & sleep / About 의미를 유지한다. 기록 탐색은 화면별 로컬 선택이며, option 응답만 명시적인 세션 제어 명령을 보낸다.
-- **Attention parity**: 어떤 세션이든 `awaiting_*` 상태가 되면 chrome 아래 full-width `ATTENTION` strip 을 별도 `FULL_ONCE` zone 으로 띄운다. focused session 이면 실제 question/options/cursor 를 표시하고, 다른 session 이면 iOS/tablet 과 동일하게 focus 후 `select_option` 을 보내며 parser 가 옵션을 못 준 경우 `Yes/No/Always` fallback 을 제공한다.
+- **Attention parity**: Any `awaiting_*` session can occupy the full-width
+  `ATTENTION` strip beneath the chrome in its own `FULL_ONCE` zone. Render only
+  the question, options and cursor supplied by the daemon. Selecting a delivered,
+  actionable option focuses that session and sends `select_option` for its actual
+  index. Observed sessions require the daemon's `liveAnswerable` signal before
+  enabling those choices. If no options were supplied, show `Respond in your
+  terminal`; if supplied choices cannot be delivered remotely, retain them as
+  disabled choices with `Choose in your terminal`. Never manufacture a
+  `Yes/No/Always` set.
 - **Orientation**: portrait/landscape 둘 다 지원한다. rotate control 은 `Settings button` 표시 여부와 독립적으로 남겨 화면 전환을 잃지 않게 하고, Pantone/RK3566 처럼 `requestedOrientation` 을 무시하는 기기는 `USER_ROTATION` fallback 을 함께 적용한다. `Auto` 는 `ACCELEROMETER_ROTATION` 을 다시 켜 system rotation 을 복원한다. 기본값은 e-ink landscape 고정, 일반 tablet 은 Auto 다.
-- 수조: Compose `clip(RoundedCornerShape)` 둥근 모서리 (내부 테두리 없음), 수면 파도, 해초, 자갈, 거품 — 수족관 느낌
+- **Frame habitat**: Compose `clip(RoundedCornerShape)` 둥근 모서리 (내부 테두리 없음), 수면 파도, 해초, 자갈, 거품 — 수족관 느낌
 - **Multi-agent visibility**: Bridge `/health`에서 sibling state 조회, Gateway TCP probe로 OpenClaw 감지. Daemon primary는 agent list에서 제외 (coding agent 아님). OpenClaw primary는 목록에 🦞로 표시하되 terrarium octopus에서는 제외 (crayfish가 담당)
 - **Crayfish 독립 상태**: sibling OpenClaw session의 state에서 ROUTING/SITTING 결정 (primary agentType 의존 제거)
-- **Refresh zones**: Chrome/Sessions A2(200ms), Attention `FULL_ONCE`(80ms + cursor soft refresh), Terrarium `EinkAnimatedRefreshZone`(callback 기반), Timeline A2(300ms). `LAYER_TYPE_SOFTWARE` on wrapper FrameLayout for B&W EPD grayscale, GPU layer for color e-ink. 수조 애니메이션: `EinkTerrariumView.onFrameRendered` 콜백 → B&W/color animation frame=A2 partial/animation mode(프레임마다 full flash 없음), state transition=500ms debounce 후 regional GC16(전체 flash 없음, callback 중복 요청 제거)
+- **Refresh zones**: Chrome and ordinary reading updates use A2 (200 ms);
+  scroll position uses the soft A2 trigger. Mode and viewport/font-scale
+  changes also update `qualityTriggerKey`: after the layout settles, one
+  `requestQualityRefresh` cleans the changed region in grayscale. Repeated data
+  updates or scrolling do not repeat this cleanup for the same key. Attention
+  uses `FULL_ONCE` (80 ms + cursor soft refresh), and Frame uses the callback-based
+  `EinkAnimatedRefreshZone`. The work-and-usage dashboard does not mount the
+  terrarium view or request aquarium animation frames. Preserve the wrapper's
+  `LAYER_TYPE_SOFTWARE` grayscale path and the renderer's color-capable GPU path.
+  Aquarium `EinkTerrariumView.onFrameRendered` callbacks request A2 partial or
+  animation-mode updates on B&W and color panels; state transitions request one
+  debounced regional GC16 cleanup after 500 ms, not a full-screen flash per frame.
 - **EPD vendor API**: Rockchip RK3566 (Pantone 6) — `android.os.EinkManager` system service, `setMode("2"=GC16/"12"=A2/"14"=DU)` + `sendOneFullFrame()`. Crema S 실측: IWG/Qualcomm sdm660, firmware `View.setDefaultUpdateMode()` + `invalidate()` / explicit `refreshScreen(...)`를 capability probe 후 사용한다. Onyx SDK fallback — `BaseDevice.setViewDefaultUpdateMode()`. 지원 근거 없는 `sys.eink.update` 쓰기는 제거했다. KOReader `RK35xxEPDController` 참고
-- **E-ink grayscale**: 네이티브 16-level 그레이, `DitherEngine.snapToNearestGray()` (에러 디퓨전 없음). 수조 내부 테두리 없음 — Compose `clip(RoundedCornerShape)` 만 사용. 크리처 부위별 그레이: body(0x44), limb/claw(0x33), starburst(0x99), sleeping=dimmed. 환경: sand(0xCC), fish body(0x55)+stripe(0xBB), rock outline(0x22), seaweed 2px. 멀티세션 Y stagger: `standingOffset = (centerXFraction - 0.38) * 0.10`
-- **Session overflow**: 세션 목록은 헤더·설정 영역을 고정하고 내부 목록만 스크롤한다. 영역이 부족하면 방향 안내를 표시해 세로 화면에서도 마지막 세션에 접근할 수 있다. 중복 프로젝트 이름의 `#N`은 스크롤 재구성 중에도 유지한다.
-- **Codex crowding**: Codex가 여러 개일 때는 공통 layout slot의 X 좌표를 유지하고 수직 bob만 적용해 가로 wander로 인한 캐릭터·이름표 겹침을 막는다.
-- **Static 3D habitat in e-ink layout**: LCD와 실제 전자책의 e-ink projection에는 Blender에서 제작한 정적인 배경을 캐시해 GPU에서 투명 크리처 비트맵과 별도로 합성한다. 공식 에이전트 실루엣·눈의 빈 공간·이름표·실제 사용량과 물고기는 런타임에서 그리며, 크리처에는 좌상단 조명의 명암과 안티앨리어싱을 적용한다. 흑백 변환은 배경 로드 때 한 번만 수행하며, 화면 회전 시 배경의 비율을 유지해 중앙 crop한다. 흑백 EPD 배경은 16단계의 밝은 명암으로 한 번 변환해 에이전트 대비를 확보하며, 시간에 따라 디더링하지 않는다. 가장자리 수초와 달팽이만 작은 범위에서 움직이고, 기포는 LCD/컬러에만 표시한다. 원본 및 재생성: `assets/terrarium/`.
+- **E-ink grayscale**: 네이티브 16-level 그레이, `DitherEngine.snapToNearestGray()` (에러 디퓨전 없음). 수조 내부 테두리 없음 — Compose `clip(RoundedCornerShape)` 만 사용. 크리처 부위별 그레이: body(0x44), limb/claw(0x33), starburst(0x99), sleeping=dimmed. 환경: sand(0xCC), fish body(0x55)+stripe(0xBB), rock outline(0x22), seaweed 2px. Frame의 세션 배치는 아래의 readable aquarium population 정책을 따른다.
+- **Session overflow**: 기본 작업 영역에 전체 정렬된 세션 목록을 유지한다. 영역 안에서 마지막 세션까지 스크롤할 때에도 사용량 영역은 보이며, 사용량을 펼쳐도 작업 영역은 밀려나지 않는다. 중복 프로젝트 이름의 `#N`은 스크롤 재구성 중에도 유지한다.
+- **Readable aquarium population**: Frame uses the shared native priority and maximum of eight residents: focus, attention, CI waiting/failure, then working sessions. The complete roster stays on the dashboard, and overflow is explicit, such as `8 of 24`. Resident count never turns the scene into progressively smaller marks.
+- **Habitat travel and behavior**: `EinkResidentMotion` keeps each session's
+  position, velocity, destination, orientation and behavior between frames.
+  Deterministic destinations span the habitat. Steering and neighbor avoidance
+  leave room to pass, with viewport bounds reserving room for bodies and labels.
+  Claude and OpenClaw move through lower ground depths; other species use the
+  water. Working alternates travel and task gestures at a destination; idle
+  alternates slower exploration and rest. Waiting and CI waiting stop travel,
+  sleeping freezes motion, and quiet Hermes holds its resting position. A fixed
+  integration step keeps the path independent of presentation cadence. State
+  changes preserve the current location instead of restarting a route.
+- **Direction and transitions**: Body direction and gaze follow steering at a
+  bounded turning rate. A sharp reversal brakes before turning and accelerating;
+  tiny positional corrections do not flip the resident. On stopping, retain the
+  last direction. Movement strength eases with actual speed, so walking and
+  swimming settle into rest. Work gestures and their dwell period begin after
+  arrival braking settles. Sleep deliberately freezes location and gait at once;
+  viewport or roster changes still resolve static geometry on the first frame.
+- **Visible activity and names**: Gait advances with meaningful distance
+  travelled; a separate work phase drives gestures during work pauses. Claude's
+  canonical feet and hands, OpenClaw's claws, and Hermes's generated tail
+  articulate while retaining the identifying geometry. Directional body
+  projection preserves readable terminal prompts and other identifying glyphs.
+  Small contact shadows move beneath ground residents, and water wakes follow
+  actual velocity. Names stay upright as text with a light halo and no
+  rectangular backing. Existing name priority and collision resolution remain,
+  and CI companions follow the actual resident position.
+- **Static 3D habitat in Frame mode**: LCD와 실제 전자책에서 e-ink Frame 모드를 선택하면 Blender에서 제작한 정적인 배경을 캐시해 GPU에서 투명 크리처 비트맵과 별도로 합성한다. 공식 에이전트 실루엣·눈의 빈 공간·이름표와 물고기는 런타임에서 그리며, 크리처에는 좌상단 조명의 명암과 안티앨리어싱을 적용한다. 흑백 변환은 배경 로드 때 한 번만 수행하며, 화면 회전 시 배경의 비율을 유지해 중앙 crop한다. 흑백 EPD 배경은 16단계의 밝은 명암으로 한 번 변환해 에이전트 대비를 확보하며, 시간에 따라 디더링하지 않는다. 가장자리 수초와 달팽이만 작은 범위에서 움직이고, 기포는 LCD/컬러에만 표시한다. 원본 및 재생성: `assets/terrarium/`.
 - **Animation pacing**: LCD에서 e-ink UI를 선택해도 실제 패널을 별도로 감지해 GPU/vsync 경로를 사용한다(기기 주사율 상한). 실제 EPD는 수조 view에 최대 10Hz A2 부분 갱신을 요청한다. 프레임 간격에 렌더 시간을 더하지 않고 늦은 프레임을 건너뛰며, 애니메이션 중 전체 픽셀의 회색 재변환을 생략한다. 400ms는 이동 속도의 기준 단위일 뿐 화면 갱신 간격이 아니다. 패널의 실제 응답률은 vendor/파형에 달려 있다.
 - **Fish motion**: `EinkFishSchool`은 힘 기반 boids 대신 넓은 순환 경로를 따라 두 무리가 유영한다. 개체별 앞뒤 간격과 수심 간격을 유지하고, 선회는 화면 평면 회전이 아니라 옆모습의 폭이 줄었다 반대 방향으로 향하는 yaw 투영으로 표현한다. 몸체는 유선형이고 꼬리는 연속 위상으로 움직이며, 원경의 물고기는 에이전트 뒤로 가려진다. STREAMING/HOVERING은 같은 경로의 속도만 부드럽게 바꾸며, 3.125ms simulation tick과 Double 위상은 100ms/400ms 화면 갱신 및 반복 순환에서 경로 연속성을 유지한다.
 - **Color e-ink (Kaleido 3)**: MOAAN Pantone 6 등 컬러 e-ink 지원. `DeviceProfile.isColorEink`(→ `einkColorEnabled`) + `einkPick(gray, color)`. 테라리움은 브라우저 동영상 재생 경로에 가깝게 **10fps fast partial refresh(A2/animation mode)** 를 사용한다. 논리 애니메이션 시간은 B&W e-ink 기준 400ms cadence로 스케일링해 프레임 수만 늘리고 크리처/물고기 속도는 유지한다. 상태 변경 시에는 중복 full flash 대신 regional GC16 refresh를 요청하고, 프레임 렌더에서는 `snapToNearestGray` 를 스킵해 RGB를 보존한다. UI 텍스트(게이지/타임라인/라벨)는 컬러 적용 (갱신 빈도 낮음). 컬러 팔레트: octopus terracotta `#C07058`, crayfish red `#CC3333`, tetra blue `#3366AA`+cyan `#55CCEE`, seaweed green `#336633`, sand `#D4B896`, water `#C8DDE8`. `manufacturer="rockchip"` (not "moaan"), `model="Pantone6"`
@@ -189,7 +258,7 @@ TIMELINE
 
 ## Creature Design — 도트 아트 통일
 
-- **OctopusCreature** (Claude Code): SVG path (claudecode.svg Antigravity, viewBox 24×24), terracotta, EvenOdd fill rule (눈은 투명 cutout). Android: Compose `PathParser` + `drawPath`. Apple: `CGPath` + `FillStyle(eoFill: true)`. **E-ink: `drawRect` 12×8 픽셀 그리드** (`canvas.drawPath()` e-ink Canvas 미지원 — silent fail). ESP32/TUI: 12×8/14×5 픽셀 그리드 유지. **E-ink 렌더링 제약**: `canvas.drawPath()`, `Path.op()` 등 복잡 Path 연산은 e-ink Canvas에서 silent fail → `drawRect`/`drawCircle`/`drawOval`/`drawLine` 기본 프리미티브만 사용. E-ink Cloud(Codex)는 단일 `drawOval` pill 실루엣 (이전 6-lobe clover는 각 원 개별 stroke로 seam 노출 → 단일 타원으로 대체), Crayfish도 `drawOval`+`drawLine` 조합. E-ink Cloud/OpenCode Y는 state 기반: WORKING만 layout swim slot 사용, FLOATING/SLEEPING은 지면 근처(Cloud ~0.56, OpenCode ~0.60)로 안착 — idle 세션이 상층에 떠있지 않도록. Standing 상태: per-instance `standingJitter` + X-correlated depth offset로 자연스러운 멀티세션 배치. **크리처 타입별 배치 분리**: Octopus homeX `0.20-0.50` (좌측), Cloud `0.30-0.55` (중앙), OpenCode `0.45-0.68` (우측), Crayfish `0.75-0.78` (최우측). Idle Y 지면 근접: Oct 0.62, Cloud 0.60, OC 0.61, Crayfish 0.64 (sand 0.65 바로 위). Swim Y 분리: Cloud 상층(0.05-0.25), OpenCode 중상층(0.25-0.50), Octopus 중층 `0.18~0.55 X`, `0.15~0.55 Y`. Pixoo: sand px54 기준 배치, HUD(px57)와 3px gap
+- **Canonical agent silhouettes**: Android e-ink draws the canonical `CreatureGeometry` SVG paths with `Canvas.drawPath`, including transparent eye cutouts, instead of approximating the agents as pixel grids or oval icons. The same brand assets feed the native aquarium. Hermes uses its shared mermaid geometry. The e-ink renderer applies grayscale or color shading and the scene placement policy above; ESP32/TUI keep their panel-specific pixel glyphs. Pixoo keeps sand at px54 with a 3px gap to the HUD at px57.
 - **CrayfishCreature** (OpenClaw): SVG Path 기반 front-facing 렌더링, red/teal gradient, `PathParser` + `withTransform` pivot rotation. SITTING: heartbeat glow (4초 주기 더블펄스), ROUTING: full animation (claw clap, signal waves, eye flash, glow pulse), SICK: 탈색+기울기+늘어진 집게+흐린 눈 (gateway 에러 시). `currentPosition()` + `isRouting()` — DataParticleSystem에 위치/상태 제공
 - **Neon Tetra**: 14마리 2개 무리(schoolId 0/1, 7마리씩), Lissajous 경로 school centers로 만남/흩어짐 반복. Boids: cohesion/alignment=같은 무리만, separation=전체. `SCHOOL_ATTRACTOR_WEIGHT=0.4` (먹이 있으면 무효). `TETRA_SWIM` 경계 `0.03~0.92 X`, `0.08~0.68 Y`. E-ink: 12마리 2무리(6+6), size `0.013f`, `einkPrevFishX` heading 추적, STREAMING시 에이전트 인력 30% + 데이터 파티클 4개. **가재 반응**: ROUTING 가재도 food crumb 산란 + school center 30% 인력 → 옥토퍼스 없을 때(OpenClaw primary) 가재가 물고기 유도
 - 독립 애니메이션 가능한 부위별 셀 타입 분리 (눈, 팔/집게, 다리 등)
@@ -199,7 +268,7 @@ TIMELINE
 
 `android/` — Jetpack Compose, minSdk 29, CATEGORY_HOME, NSD mDNS discovery, operator approval and six-digit pairing (no QR scanner), e-ink detection (Crema/Onyx/Kobo).
 
-**Screens**: onboarding until pairing completes, then a single dashboard — `EinkMonitorScreen` on e-ink devices (or when the Paper dashboard type is chosen), `TabletDashboard` (terrarium background + HUD overlay panels, connection overlay when disconnected) otherwise. Settings opens as a dialog from the dashboard. MonitorService: CPU wake lock + system stay-on + screen wake on state change (e-ink).
+**Screens**: onboarding until pairing completes, then one dashboard shell — `EinkMonitorScreen` with the work-and-usage dashboard and explicit Frame mode on e-ink devices (or when the Paper dashboard type is chosen), `TabletDashboard` (terrarium background + HUD overlay panels, connection overlay when disconnected) otherwise. Settings opens as a dialog from the dashboard. MonitorService: CPU wake lock + system stay-on + screen wake on state change (e-ink).
 
 The former Deck tab (encoder strip + 2×4 button grid mirroring the daemon's `encoder_state` / `button_state`) is gone: the app has ignored both frames since the tab was removed, and the Node daemon stopped producing them in #273 phase 0.
 

@@ -1,9 +1,5 @@
 package dev.agentdeck.ui.screen
 
-import dev.agentdeck.ui.eink.paperMastheadSummary
-
-import dev.agentdeck.ui.eink.buildPaperBoard
-
 import dev.agentdeck.ui.eink.EinkPaperBoard
 
 import android.content.res.Configuration
@@ -12,22 +8,20 @@ import dev.agentdeck.ui.common.ConnectionSetupGuide
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ScreenRotation
@@ -37,24 +31,26 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.agentdeck.R
 import dev.agentdeck.data.DisplayPreferences
 import dev.agentdeck.net.AgentState
 import dev.agentdeck.net.BridgeConnection
@@ -66,21 +62,18 @@ import dev.agentdeck.net.PairingCredential
 import dev.agentdeck.state.AgentStateHolder
 import dev.agentdeck.state.DashboardState
 import dev.agentdeck.state.TimelineStore
+import dev.agentdeck.state.TimelineSessionFilter
 import dev.agentdeck.ui.component.AgentDeckMark
-import dev.agentdeck.ui.component.BrandIcon
 import dev.agentdeck.ui.monitor.subscriptionTrailing
 import dev.agentdeck.util.ChatGPTPlan
 import dev.agentdeck.util.formatResetTime
 import dev.agentdeck.util.providerLimitRows
 import java.time.Instant
-import dev.agentdeck.ui.eink.EinkAgentPanel
 import dev.agentdeck.ui.eink.EinkAttentionPanel
 import dev.agentdeck.ui.eink.EinkAquariumFrame
 import dev.agentdeck.ui.eink.EinkSettingsOverlay
-import dev.agentdeck.ui.eink.EinkTimelinePanel
 import dev.agentdeck.ui.eink.rememberEinkLayoutScale
 import dev.agentdeck.ui.eink.buildEinkAttentionFeatured
-import dev.agentdeck.terrarium.renderer.einkColorEnabled
 import dev.agentdeck.terrarium.toTerrariumState
 import dev.agentdeck.ui.eink.EinkAnimatedRefreshZone
 import dev.agentdeck.ui.eink.EinkRefreshZone
@@ -89,6 +82,24 @@ import dev.agentdeck.ui.eink.Zone
 import dev.agentdeck.data.DashboardOrientation
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
+
+private val EinkInspectionSaver = listSaver<TimelineSessionFilter?, String>(
+    save = { filter ->
+        filter?.let {
+            listOf(it.sessionId, it.projectName.orEmpty(), it.agentType.orEmpty()) + it.memberSessionIds
+        } ?: emptyList()
+    },
+    restore = { values ->
+        values.takeIf { it.size >= 3 }?.let {
+            TimelineSessionFilter(
+                sessionId = it[0],
+                projectName = it[1].takeIf(String::isNotEmpty),
+                agentType = it[2].takeIf(String::isNotEmpty),
+                memberSessionIds = it.drop(3),
+            )
+        }
+    },
+)
 
 @Composable
 fun EinkMonitorScreen(
@@ -99,7 +110,9 @@ fun EinkMonitorScreen(
     val state by stateHolder.state.collectAsState()
     val connectionStatus by connection.status.collectAsState()
     val allTimelineEntries by TimelineStore.instance.entries.collectAsState()
-    var inspection by remember { mutableStateOf<dev.agentdeck.state.TimelineSessionFilter?>(null) }
+    var inspection by rememberSaveable(stateSaver = EinkInspectionSaver) {
+        mutableStateOf<TimelineSessionFilter?>(null)
+    }
     val inspectSession: (String) -> Unit = { id ->
         inspection = if (inspection?.sessionId == id) null else dev.agentdeck.state.timelineInspectionFilter(id, state)
     }
@@ -107,8 +120,10 @@ fun EinkMonitorScreen(
         inspection?.let { filter -> allTimelineEntries.filter { it.matchesTimelineFilter(filter) } } ?: allTimelineEntries
     }
     var showSettings by remember { mutableStateOf(false) }
+    var frameMode by rememberSaveable { mutableStateOf(false) }
 
     val configuration = LocalConfiguration.current
+    val snapshotTime = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date())
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val einkScale = rememberEinkLayoutScale()
     val currentUrl by connection.url.collectAsState()
@@ -189,13 +204,9 @@ fun EinkMonitorScreen(
                 onSettingsClick = { showSettings = true },
                 showSettingsButton = showSettingsButton,
             )
-        } else if (isLandscape) {
-            // App Store-ready E-ink projection:
-            //   chrome + optional attention strip
-            //   top row: Sessions | Terrarium
-            //   bottom row: text timeline
-            // Models/devices/large limits are intentionally absent; limits
-            // appear only as a small corner card when fresh usage data exists.
+        } else {
+            // Keep one composition across rotation: board mode, reading position,
+            // and local session inspection survive the responsive layout change.
             // Use state as key so toTerrariumState() recomputes when siblingSessions etc. change.
             // derivedStateOf + remember would capture the initial state parameter (plain value,
             // not a Compose State) and never re-evaluate — causing stale creature counts.
@@ -204,25 +215,27 @@ fun EinkMonitorScreen(
                 buildEinkTerrariumRefreshKey(state, terrariumState)
             }
 
-            // Stable key that captures session count + individual states (for refresh triggers)
-            val sessionsKey = state.siblingSessions.joinToString(",") {
-                "${it.id}:${it.agentType}:${it.state}:${it.projectName}:${it.waitingOn}"
-            }
-
             Column(modifier = Modifier.fillMaxSize()) {
                 EinkRefreshZone(
                     mode = Zone.CHROME.mode,
                     debounceMs = Zone.CHROME.debounceMs,
-                    triggerKey = listOf(state.agentState, sessionsKey, state.workerSessionCount, state.dot?.appearance?.id, state.dot?.reportState, state.dot?.hosting),
+                    triggerKey = listOf(state.dot, snapshotTime, frameMode, configuration.orientation, configuration.fontScale),
                     sleepSnapshotMode = sleepSnapshotMode,
-                    modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
+                    wrapContentHeight = true,
+                    modifier = Modifier.heightIn(min = einkScale.chromeHeight).fillMaxWidth(),
                 ) {
                     EinkDashboardChromeBar(
                         state = state,
+                        snapshotTime = snapshotTime,
                         displayPrefs = displayPrefs,
                         showSettingsButton = showSettingsButton,
                         onSettingsClick = { showSettings = true },
-                        modifier = Modifier.fillMaxSize(),
+                        frameMode = frameMode,
+                        onToggleFrame = {
+                            inspection = null
+                            frameMode = !frameMode
+                        },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
 
@@ -239,7 +252,12 @@ fun EinkMonitorScreen(
                         debounceMs = Zone.ATTENTION.debounceMs,
                         triggerKey = attentionIdentity,
                         softTriggerKey = featuredAttention.cursorIndex,
-                        modifier = Modifier.height(einkScale.attentionHeightLandscape).fillMaxWidth(),
+                        modifier = Modifier
+                            .height(
+                                (if (isLandscape) einkScale.attentionHeightLandscape else einkScale.attentionHeightPortrait) *
+                                    configuration.fontScale.coerceAtLeast(1f),
+                            )
+                            .fillMaxWidth(),
                     ) {
                         EinkAttentionPanel(
                             featured = featuredAttention,
@@ -257,13 +275,17 @@ fun EinkMonitorScreen(
                 HorizontalDivider(thickness = 2.dp, color = Color.Black)
                 EinkPaperBoard(
                     state = state,
-                    timelineEntries = if (showTimeline) timelineEntries else emptyList(),
-                    landscape = true,
+                    timelineEntries = if (showTimeline || inspection != null) timelineEntries else emptyList(),
+                    landscape = isLandscape,
                     onFocusSession = inspectSession,
                     inspectionLabel = inspection?.label,
+                    inspectionSessionId = inspection?.sessionId,
                     onClearInspection = { inspection = null },
                     usage = buildEinkUsageGroups(state),
                     sleepSnapshotMode = sleepSnapshotMode,
+                    showSessionList = showSessionList,
+                    frameMode = frameMode,
+                    onExitFrame = { frameMode = false },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 ) { tankModifier ->
                     EinkAnimatedRefreshZone(
@@ -279,21 +301,6 @@ fun EinkMonitorScreen(
                     }
                 }
             }
-        } else {
-            EinkPortraitLayout(
-                state = state,
-                timelineEntries = timelineEntries,
-                onInspectSession = inspectSession,
-                inspectionLabel = inspection?.label,
-                onClearInspection = { inspection = null },
-                connection = connection,
-                displayPrefs = displayPrefs,
-                sleepSnapshotMode = sleepSnapshotMode,
-                showSessionList = showSessionList,
-                showTimeline = showTimeline,
-                showSettingsButton = showSettingsButton,
-                onSettingsClick = { showSettings = true },
-            )
         }
 
         if (showSettings) {
@@ -366,7 +373,7 @@ internal fun buildEinkLimitRows(state: DashboardState, now: Instant = Instant.no
         }
         // Per-model scoped weekly caps (e.g. "Fable") beneath the account-wide windows.
         state.usage.scopedLimits?.forEach { s ->
-            rows.add(EinkLimitLine(label = s.label.trim().take(8), percent = s.percent, agentType = "claude-code",
+            rows.add(EinkLimitLine(label = s.label.trim(), percent = s.percent, agentType = "claude-code",
                 reset = s.resetsAt?.let(::formatResetTime)))
         }
     }
@@ -467,12 +474,15 @@ private fun formatEinkExpiry(iso: String?): String? {
 }
 
 @Composable
-private fun EinkDashboardChromeBar(
-    state: dev.agentdeck.state.DashboardState,
+internal fun EinkDashboardChromeBar(
+    state: DashboardState,
+    snapshotTime: String,
     displayPrefs: DisplayPreferences,
     showSettingsButton: Boolean,
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
+    frameMode: Boolean = false,
+    onToggleFrame: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val isCurrentlyLandscape =
@@ -480,78 +490,103 @@ private fun EinkDashboardChromeBar(
     val currentOrientation by displayPrefs.orientationFlow.collectAsState(
         initial = DashboardOrientation.defaultFor(isEink = true),
     )
-    Row(
+    Column(
         modifier = modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        AgentDeckMark(
-            size = 30.dp,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        state.dot?.takeIf { it.configured }?.let { dot ->
-            dev.agentdeck.ui.monitor.DotPaperGlyph(dot)
-            val label = dev.agentdeck.net.DotSurfaceRules.labels[dot.effectiveCode(System.currentTimeMillis())]
-            Text("DOT " + label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-        }
-        // Wordmark uses default sans (IBM Plex Sans where bundled, system sans
-        // otherwise). DESIGN.md §10-3 reserves Monospace for diagnostic/data
-        // glyphs — the brand line itself stays sans for identity.
-        Text(
-            text = "AgentDeck",
-            fontSize = 18.sp,
-            lineHeight = 21.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        state.workerSessionCount?.takeIf { state.gatewayConnected == true && it > 0 }?.let {
-            Text(
-                text = "W:$it",
-                fontSize = 12.sp,
-                lineHeight = 15.sp,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        // Paper keeps its image without power: say what is true and as of when.
-        Text(
-            text = paperMastheadSummary(buildPaperBoard(state)) + "  ·  " +
-                java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date()),
-            fontSize = 13.sp,
-            lineHeight = 16.sp,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-        EinkChromeIconButton(
-            onClick = {
-                scope.launch {
-                    val newOrientation = DashboardOrientation.nextManualOrientation(
-                        currentOrientation,
-                        isCurrentlyLandscape,
-                    )
-                    displayPrefs.setOrientation(newOrientation)
-                }
-            },
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                imageVector = Icons.Default.ScreenRotation,
-                contentDescription = "Rotate screen",
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(19.dp),
+            AgentDeckMark(
+                size = 28.dp,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-        }
-        if (showSettingsButton) {
+            // Stack the capture time with the identity, so the frame control
+            // shares this row instead of consuming a second navigation band.
+            // Session counts belong to the work pane and cannot displace it.
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "AgentDeck",
+                    fontSize = 18.sp,
+                    lineHeight = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = snapshotTime,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                modifier = Modifier
+                    .heightIn(min = 44.dp)
+                    .widthIn(min = 44.dp)
+                    .semantics {
+                        contentDescription = if (frameMode) "Return to work" else "Open frame mode"
+                    }
+                    .clickable(role = Role.Button, onClick = onToggleFrame),
+                shape = RoundedCornerShape(4.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        text = if (frameMode) "Work" else "Frame",
+                        fontSize = 12.sp,
+                        lineHeight = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
             EinkChromeIconButton(
-                onClick = onSettingsClick,
+                onClick = {
+                    scope.launch {
+                        val newOrientation = DashboardOrientation.nextManualOrientation(
+                            currentOrientation,
+                            isCurrentlyLandscape,
+                        )
+                        displayPrefs.setOrientation(newOrientation)
+                    }
+                },
             ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
+                    imageVector = Icons.Default.ScreenRotation,
+                    contentDescription = "Rotate screen",
                     tint = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.size(18.dp),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            if (showSettingsButton) {
+                EinkChromeIconButton(onClick = onSettingsClick) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Settings",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+        }
+        state.dot?.takeIf { it.configured }?.let { dot ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                dev.agentdeck.ui.monitor.DotPaperGlyph(dot)
+                val label = dev.agentdeck.net.DotSurfaceRules.labels[dot.effectiveCode(System.currentTimeMillis())]
+                Text(
+                    text = "Dot · $label",
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
@@ -565,9 +600,9 @@ private fun EinkChromeIconButton(
 ) {
     Surface(
         modifier = Modifier
-            .size(32.dp)
+            .size(44.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(3.dp),
+        shape = RoundedCornerShape(4.dp),
         border = BorderStroke(1.dp, Color.Black),
         color = MaterialTheme.colorScheme.background,
     ) {
@@ -881,101 +916,3 @@ private fun EinkReconnectingScreen(
         }
     }
 }
-
-@Composable
-private fun EinkPortraitLayout(
-    onInspectSession: (String) -> Unit,
-    inspectionLabel: String?,
-    onClearInspection: () -> Unit,
-    state: dev.agentdeck.state.DashboardState,
-    timelineEntries: List<dev.agentdeck.state.TimelineEntry>,
-    connection: BridgeConnection,
-    displayPrefs: DisplayPreferences,
-    sleepSnapshotMode: Boolean,
-    showSessionList: Boolean,
-    showTimeline: Boolean,
-    showSettingsButton: Boolean,
-    onSettingsClick: () -> Unit,
-) {
-    val einkScale = rememberEinkLayoutScale()
-    val terrariumState = remember(state) { state.toTerrariumState() }
-    val terrariumRefreshKey = remember(state, terrariumState) {
-        buildEinkTerrariumRefreshKey(state, terrariumState)
-    }
-    val featuredAttention = remember(state) { buildEinkAttentionFeatured(state) }
-    val sessionsKey = state.siblingSessions.joinToString(",") {
-        "${it.id}:${it.agentType}:${it.state}:${it.projectName}:${it.waitingOn}"
-    }
-
-    Column(modifier = Modifier.fillMaxSize()) {
-        EinkRefreshZone(
-            mode = Zone.CHROME.mode,
-            debounceMs = Zone.CHROME.debounceMs,
-            triggerKey = listOf(state.agentState, sessionsKey, state.workerSessionCount, state.dot?.appearance?.id, state.dot?.reportState, state.dot?.hosting),
-            sleepSnapshotMode = sleepSnapshotMode,
-            modifier = Modifier.height(einkScale.chromeHeight).fillMaxWidth(),
-        ) {
-            EinkDashboardChromeBar(
-                state = state,
-                displayPrefs = displayPrefs,
-                showSettingsButton = showSettingsButton,
-                onSettingsClick = onSettingsClick,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-
-        if (featuredAttention != null) {
-            HorizontalDivider(thickness = 1.dp, color = Color.Black)
-            val attentionIdentity = listOf(
-                featuredAttention.sessionId,
-                featuredAttention.question,
-                featuredAttention.promptType,
-                featuredAttention.options.map { it.label },
-            )
-            EinkRefreshZone(
-                mode = Zone.ATTENTION.mode,
-                debounceMs = Zone.ATTENTION.debounceMs,
-                triggerKey = attentionIdentity,
-                softTriggerKey = featuredAttention.cursorIndex,
-                modifier = Modifier.height(einkScale.attentionHeightPortrait).fillMaxWidth(),
-            ) {
-                EinkAttentionPanel(
-                    featured = featuredAttention,
-                    onFocusSession = { connection.sendFocusSession(it) },
-                    onSelectOption = { index ->
-                        connection.sendSelectOption(
-                            index, featuredAttention.sessionId, featuredAttention.question,
-                        )
-                    },
-                )
-            }
-        }
-
-        HorizontalDivider(thickness = 2.dp, color = Color.Black)
-        EinkPaperBoard(
-            state = state,
-            timelineEntries = if (showTimeline) timelineEntries else emptyList(),
-            landscape = false,
-            onFocusSession = onInspectSession,
-            inspectionLabel = inspectionLabel,
-            onClearInspection = onClearInspection,
-            usage = buildEinkUsageGroups(state),
-            sleepSnapshotMode = sleepSnapshotMode,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        ) { tankModifier ->
-            EinkAnimatedRefreshZone(
-                stateKey = terrariumRefreshKey,
-                sleepSnapshotMode = sleepSnapshotMode,
-                modifier = tankModifier,
-            ) { onFrameRendered ->
-                EinkAquariumFrame(
-                    state = terrariumState,
-                    snapshotMode = sleepSnapshotMode,
-                    onFrameRendered = onFrameRendered,
-                )
-            }
-        }
-    }
-}
-
-
