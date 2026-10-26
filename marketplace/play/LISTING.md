@@ -8,6 +8,30 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 1.10.2 release preparation — 2026-10-26
+
+The next Android patch is **1.10.2 / versionCode 29**, following the
+[recorded version decision](../../RELEASING.md#2026-10-26-non-dot-stability-release-decision). The October 26
+Play Console readback found **28** as the highest uploaded version code across
+15 App Bundles, with no unpublished changes or production/internal draft.
+GitHub APK and Google Play use the same product version. The
+[English, Korean and Japanese release notes](1.10.2/release-notes.json) describe
+the e-ink work-and-usage dashboard and clearer session behavior. Build and
+device acceptance are recorded separately; preparation does not mean upload,
+submission or publication.
+
+## 1.10.1 public — production readback (2026-10-26)
+
+Play Console confirms **28 (1.10.1)** is **available on Google Play**, with
+**100% rollout across 178 countries/regions**. The production release list shows
+publication on October 13 at **21:21 KST**; internal testing remains available
+as **28 (1.10.1)**, published October 13 at **11:42 KST**. There are no unpublished
+changes. This supersedes the review-pending observation below.
+
+The existing build has non-blocking recommendations for edge-to-edge display,
+deprecated edge-to-edge APIs and R8 optimization. These recommendations are not
+a policy rejection or evidence that the next candidate has passed those checks.
+
 ## 1.10.1 production submitted — 2026-10-13
 
 Production **28 (1.10.1)** is **in review**, with a full rollout to the existing

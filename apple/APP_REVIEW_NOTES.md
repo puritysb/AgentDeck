@@ -15,7 +15,12 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**9401 submitted, October 23:** these macOS notes were submitted with
+**Current candidate — macOS 1.9.3, October 26:** the marked macOS Notes field
+below is prepared for the authorized stability release. It is not an upload,
+submission or public-release receipt. The baseline is public macOS 1.9.2 / 9401;
+its delivery history below remains historical. iOS notes are unchanged.
+
+**Historical 9401 submission, October 23:** these macOS notes were submitted with
 **1.9.2 / 9401** at **23:26:58 KST**, replacing the withdrawn 9301 submission.
 They include the dashboard Keychain and Settings rendering corrections.
 The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
@@ -582,8 +587,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 1.9.2 — MACOS ONLY
-This patch hardens local-server Host/Origin checks, omits pairing tokens from logs, repairs reconnection and request parsing, and protects saved history. Dashboard rendering avoids an unused Keychain read. While Settings is frontmost, a static 2D view replaces the aquarium; returning restores its 3D scene and camera. Hidden or minimized dashboards also suspend rendering. Standalone Claude status-line snapshots do not become account quota. Device history, Wi-Fi setup and Gateway voice delivery are improved. Other sites need pairing. Dot is excluded; iOS is unchanged.
+NEW IN 1.9.3 — MACOS ONLY
+This stability patch keeps Attention tied to actual human responses: automatic approval reviews, ongoing processing and quoted prompts do not create false waiting states. Genuine OpenClaw approval requests remain visible. Independent Codex sessions remain separate even when they share a project or sorting priority. Estimated Codex renewal dates use calendar months when an expired-authentication subscription snapshot is retained. These are estimates, not live account readings. Dot is excluded; iOS is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.
