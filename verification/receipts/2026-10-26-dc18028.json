@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-26T13:49:49.335Z",
+  "finished_at": "2026-10-26T13:49:49.336Z",
+  "duration_ms": 1,
+  "commit": "dc18028aa6e919cfaed4817760cb3381a8020d35",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "pass",
+      "attested": true,
+      "note": "Apple9501-and-Android1.10.2-scoped-runtime-evidence-npm-remains-held"
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "pass",
+      "attested": true,
+      "note": "Apple9501-sandboxed-live15assertions44frames-plus-separate-real-model-and-Shortcuts"
+    }
+  ]
+}

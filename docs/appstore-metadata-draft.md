@@ -54,8 +54,11 @@ It includes the dashboard Keychain and Settings rendering corrections.
 The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
 confirmed the exact build, repository copy and `AFTER_APPROVAL` setting. The
 [final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
-confirmed **Waiting for Review**. Artifact checks and scoped local runtime checks passed; this is not a public
-release. See the [delivery record](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+confirmed **Waiting for Review** at that checkpoint. The
+[October 24 public-release receipt](../RELEASING.md#2026-10-24-macos-192-9401-public-release)
+supersedes that review status: macOS 1.9.2 / 9401 is public. The historical
+[submission record](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement)
+retains its original artifact and scoped runtime evidence.
 
 Standalone Swift retains Claude status-line
 observation for diagnostics but does not present its session snapshots as
@@ -97,9 +100,9 @@ cancelled 1.9.1 / 8601 submission. The English, Korean and Japanese What's New
 and macOS Review Notes then in use were saved and matched exactly after reload.
 Automatic release after Apple approval was selected. This historical submission
 does not contain the correction described by the replacement copy below;
-**1.9.2 is not yet publicly released**.
-The released iOS app and its copy below are unchanged; npm 1.9.3 remains
-unpublished.
+**1.9.2 was not yet publicly released at that checkpoint**.
+The released iOS app and its copy below are unchanged; npm 1.9.3 was
+unpublished at that checkpoint.
 
 **Earlier acceptance remains scoped to build 9101:** the installed Development app derived from Store build
 9101 passed cold Shortcuts List Waiting Sessions plus Count after output
