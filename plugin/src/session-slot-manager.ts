@@ -437,11 +437,8 @@ export class SessionSlotManager {
     // Canonical stable sort: agentType rank → projectName → startedAt → id
     this._sessions = sortSessions(alive).slice(0, MAX_SESSIONS);
 
-    // Reconcile focus / active ids against the folded session set. When Codex
-    // folds an old thread into a newer representative, the previously focused
-    // id disappears from the top-level list — re-point at the successor row
-    // (so detail view stays on the project), or exit detail if the project is
-    // gone entirely.
+    // Preserve focus by identity; explicit legacy folded rows can still supply
+    // a successor when an older producer removes a selected member.
     this.reconcileFoldedIds();
 
     // Same project + same agent would draw identical keys — tag those (#544).

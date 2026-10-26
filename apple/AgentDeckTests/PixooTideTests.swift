@@ -139,12 +139,12 @@ final class PixooTideTests: XCTestCase {
         XCTAssertEqual(scene([payload("x", "future-agent", "processing")]).marks.marks, [])
     }
 
-    func testDeadSessionsAreSkippedAndCodexRowsFoldByProject() {
+    func testDeadSessionsAreSkippedAndIndependentCodexRowsRemainSeparate() {
         var dead = payload("dead", "claude-code", "processing")
         dead["alive"] = false
         let built = scene([dead, payload("c1", "codex-cli", "idle"), payload("c2", "codex-cli", "idle")]
             .map { var row = $0; if row["agentType"] as? String == "codex-cli" { row["projectName"] = "p" }; return row })
-        XCTAssertEqual(built.marks.marks.map(\.glyph), [.codex])
+        XCTAssertEqual(built.marks.marks.map(\.glyph), [.codex, .codex])
     }
 
     func testPrimaryStandsInOnlyWhileSessionsWereNeverReceived() {

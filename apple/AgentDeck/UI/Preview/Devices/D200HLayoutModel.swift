@@ -10,7 +10,7 @@
 // the hardware shows. This file reproduces the *layout semantics* of
 // `buildSessionDeck` so the preview renders the same slot grid the firmware
 // actually produces: the session-centric two-level UX (list ↔ detail), the
-// same session ordering + Codex folding, the same fixed utility keys
+// same session ordering + independent Codex identities, the same fixed utility keys
 // (BACK / STOP / ESC / MORE), the same usage-tile reservation, and the OFFLINE
 // AgentDeck brand-mark hero.
 //
@@ -42,7 +42,7 @@
 // is per-plugin state the preview does not have) and hiding the no-data Codex
 // credits tile (the preview only draws credits for a known balance).
 // SYNC-HASH shared/src/d200h-layout.ts 7465e5ced4194acef317cd14f9bc2a6cfd676976
-// SYNC-HASH shared/src/session-utils.ts 83ad7aaf29fa227e7841b772d33894ee2257f8c6
+// SYNC-HASH shared/src/session-utils.ts e964d4e0fe0497a40bfb4f02b7de1eb2bf1cbf95
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
 //
@@ -112,7 +112,7 @@ public struct D200HSession: Equatable, Sendable {
     /// ISO-8601 start instant — used only as a stable secondary sort key.
     public var startedAt: String?
     /// Explicit deck/tab sort override (`--weight`, default 0); the PRIMARY
-    /// sort key and part of the Codex fold key. Mirrors shared SessionInfo.weight.
+    /// sort key. Mirrors shared SessionInfo.weight.
     public var weight: Int?
     public var options: [D200HOption]
     /// "observed" for hook-only sessions — they have no PTY, so whether their
@@ -130,7 +130,7 @@ public struct D200HSession: Equatable, Sendable {
     /// cwd, the originating session key. Most-decisive-first; the hero cell
     /// renders the head.
     public var questionDetail: String?
-    /// Codex display-fold bookkeeping (mutated by folding; supply nil/1 normally).
+    /// Explicit legacy display-group metadata, retained for older producers.
     public var groupSize: Int?
     public var foldedSessionIds: [String]?
 
@@ -1263,60 +1263,9 @@ public enum D200HLayoutModel {
 
     // MARK: Codex display folding (port of foldCodexSessionsForDisplay)
 
+    // Same identity-preserving projection as the daemon and shared TS helper.
     static func foldCodexSessionsForDisplay(_ sessions: [D200HSession]) -> [D200HSession] {
-        var passthrough: [D200HSession] = []
-        var codexByProject: [String: [D200HSession]] = [:]
-        var order: [String] = []   // preserve first-seen group order
-
-        for session in sessions {
-            let project = session.projectName.trimmingCharacters(in: .whitespaces)
-            if !isCodexSession(session) || project.isEmpty {
-                passthrough.append(session)
-                continue
-            }
-            // Weight participates in the fold key (mirrors the shared fold):
-            // distinct `--weight` pins on the same project must not collapse.
-            let key = "\(codexDisplayKind(session)):\(project.lowercased()):\(sessionWeight(session.weight))"
-            if codexByProject[key] != nil {
-                codexByProject[key]!.append(session)
-            } else {
-                codexByProject[key] = [session]
-                order.append(key)
-            }
-        }
-        for key in order {
-            passthrough.append(foldCodexProjectGroup(codexByProject[key]!))
-        }
-        return passthrough
-    }
-
-    static func isCodexSession(_ s: D200HSession) -> Bool {
-        s.agentType == "codex-cli" || s.agentType == "codex-app" || s.id.hasPrefix("codex:")
-    }
-
-    static func codexDisplayKind(_ s: D200HSession) -> String {
-        s.agentType == "codex-app" ? "codex-app" : "codex-cli"
-    }
-
-    static func foldCodexProjectGroup(_ group: [D200HSession]) -> D200HSession {
-        if group.count <= 1 { return group[0] }
-        let ranked = group.enumerated().sorted { lhs, rhs in
-            let a = lhs.element, b = rhs.element
-            let rd = DashboardDataRules.codexFoldStateRank(a.state) - DashboardDataRules.codexFoldStateRank(b.state)
-            if rd != 0 { return rd < 0 }
-            let aStarted = parseDate(a.startedAt)?.timeIntervalSince1970 ?? -.infinity
-            let bStarted = parseDate(b.startedAt)?.timeIntervalSince1970 ?? -.infinity
-            if aStarted != bStarted { return aStarted > bStarted }   // newest first
-            return a.id < b.id
-        }.map(\.element)
-
-        var folded = ranked[0]
-        folded.state = ranked[0].state
-        folded.foldedSessionIds = group.flatMap { $0.foldedSessionIds ?? [$0.id] }
-        folded.groupSize = group.reduce(0) { $0 + ($1.groupSize ?? 1) }
-        let currentTool = ranked.first { stateRank($0.state) == 0 && ($0.currentTool?.trimmingCharacters(in: .whitespaces).isEmpty == false) }?.currentTool
-        if stateRank(folded.state) != 1 { folded.currentTool = currentTool }
-        return folded
+        sessions
     }
 
     // MARK: Position helpers

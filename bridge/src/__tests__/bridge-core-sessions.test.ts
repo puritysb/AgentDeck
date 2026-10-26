@@ -47,6 +47,25 @@ describe('BridgeCore sessions_list', () => {
     expect(core.getLastSessionsListEvent()).toMatchObject({ dot: null, sessions: [] });
   });
 
+  it('broadcasts both independent Desktop chats with their own state and controls', async () => {
+    const rows = [
+      { id: 'observed:codex-app:11111111-1111-4111-8111-111111111111', port: 0,
+        projectName: 'AgentDeck', agentType: 'codex-app' as const, alive: true, state: 'awaiting_permission',
+        question: 'Approve only this session', requestId: 'own-approval', currentTool: 'Bash' },
+      { id: 'observed:codex-app:22222222-2222-4222-8222-222222222222', port: 0,
+        projectName: 'AgentDeck', agentType: 'codex-app' as const, alive: true, state: 'processing',
+        currentTool: 'other-tool' },
+    ];
+    mockBuildEnrichedSessionsList.mockResolvedValue(rows);
+    const broadcast = vi.spyOn(core.wsServer, 'broadcast').mockImplementation(() => {});
+    await core.broadcastSessionsList();
+    const frame = core.getLastSessionsListEvent();
+    expect(frame?.sessions).toHaveLength(2);
+    expect(frame?.sessions).toEqual(expect.arrayContaining(rows.map(row => expect.objectContaining(row))));
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({ type: 'sessions_list', sessions: frame?.sessions }));
+    expect((await core.buildSessionsSnapshot()).map(row => row.id).sort()).toEqual(rows.map(row => row.id).sort());
+  });
+
   it('broadcastSessionsList enriches sessions before broadcast', async () => {
     mockBuildEnrichedSessionsList.mockResolvedValue([
       {
@@ -119,7 +138,7 @@ describe('BridgeCore sessions_list', () => {
     expect(broadcast).toHaveBeenCalledTimes(3);
   });
 
-  it('folds same-project Codex App chats in the canonical snapshot', async () => {
+  it('preserves same-project independent Codex App chats in the canonical snapshot', async () => {
     mockBuildEnrichedSessionsList.mockResolvedValue([
       {
         id: 'observed:codex-app:old',
@@ -143,16 +162,13 @@ describe('BridgeCore sessions_list', () => {
 
     const sessions = await core.buildSessionsSnapshot();
 
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]).toMatchObject({
+    expect(sessions).toHaveLength(2);
+    expect(sessions.find(row => row.id === 'observed:codex-app:working')).toMatchObject({
       id: 'observed:codex-app:working',
       state: 'processing',
-      groupSize: 2,
-      foldedSessionIds: [
-        'observed:codex-app:old',
-        'observed:codex-app:working',
-      ],
     });
+    expect(sessions.find(row => row.id === 'observed:codex-app:old')).toMatchObject({ state: 'idle' });
+    expect(sessions.every(row => row.groupSize == null && row.foldedSessionIds == null)).toBe(true);
   });
 
   it("caches a connecting client's roster, so ids it shows resolve before the next broadcast", async () => {

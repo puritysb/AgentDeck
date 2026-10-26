@@ -1207,99 +1207,6 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(DashboardDataRules.sortSessions(sessions).map(\.id), ["4", "2", "1"])
     }
 
-    func testFoldCodexKeepsAwaitingMemberAndItsOwnControls() {
-        for state in ["awaiting_permission", "awaiting_option", "awaiting_diff"] {
-            let waiting: [String: Any] = ["id": "waiting", "agentType": "codex-cli", "projectName": "Audit",
-                "state": state, "question": "Approve Bash: printf audit", "requestId": "approval",
-                "currentTool": "Bash", "startedAt": "2026-09-05T10:00:00Z"]
-            let working: [String: Any] = ["id": "working", "agentType": "codex-cli", "projectName": "Audit",
-                "state": "processing", "currentTool": "other-tool", "startedAt": "2026-09-05T11:00:00Z"]
-            for rows in [[waiting, working], [working, waiting]] {
-                let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay(rows)[0]
-                XCTAssertEqual(folded["id"] as? String, "waiting")
-                XCTAssertEqual(folded["state"] as? String, state)
-                XCTAssertEqual(folded["question"] as? String, "Approve Bash: printf audit")
-                XCTAssertEqual(folded["requestId"] as? String, "approval")
-                XCTAssertEqual(folded["currentTool"] as? String, "Bash")
-            }
-        }
-    }
-
-    func testFoldCodexSessionPayloadsForDisplayCollapsesSameProject() {
-        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            [
-                "id": "codex:old",
-                "port": 9120,
-                "projectName": "AgentDeck",
-                "agentType": "codex-cli",
-                "alive": true,
-                "state": "idle",
-                "startedAt": "2026-04-11T10:00:00Z",
-            ],
-            [
-                "id": "codex:new",
-                "port": 9120,
-                "projectName": "AgentDeck",
-                "agentType": "codex-cli",
-                "alive": true,
-                "state": "processing",
-                "currentTool": "exec",
-                "startedAt": "2026-04-11T10:02:00Z",
-            ],
-            [
-                "id": "codex:missing-start",
-                "port": 9120,
-                "projectName": "AgentDeck",
-                "agentType": "codex-cli",
-                "alive": true,
-                "state": "processing",
-                "currentTool": "stale",
-            ],
-            [
-                "id": "claude:1",
-                "port": 9121,
-                "projectName": "AgentDeck",
-                "agentType": "claude-code",
-                "alive": true,
-                "state": "idle",
-            ],
-        ])
-
-        XCTAssertEqual(folded.count, 2)
-        let codex = folded.first { ($0["agentType"] as? String) == "codex-cli" }
-        XCTAssertEqual(codex?["id"] as? String, "codex:new")
-        XCTAssertEqual(codex?["state"] as? String, "processing")
-        XCTAssertEqual(codex?["currentTool"] as? String, "exec")
-        XCTAssertEqual(codex?["groupSize"] as? Int, 3)
-        XCTAssertEqual(codex?["foldedSessionIds"] as? [String], ["codex:old", "codex:new", "codex:missing-start"])
-    }
-
-    func testFoldCodexSessionPayloadsKeepsEmptyProjectSeparate() {
-        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            ["id": "codex:a", "port": 9120, "projectName": "", "agentType": "codex-cli", "alive": true],
-            ["id": "codex:b", "port": 9120, "projectName": "   ", "agentType": "codex-cli", "alive": true],
-        ])
-
-        XCTAssertEqual(folded.compactMap { $0["id"] as? String }, ["codex:a", "codex:b"])
-        XCTAssertNil(folded.first?["groupSize"])
-    }
-
-    func testFoldCodexSessionPayloadsKeepsCliAndAppSeparate() {
-        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            ["id": "codex:cli-1", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "processing"],
-            ["id": "codex:app-1", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-app", "alive": true, "state": "processing"],
-            ["id": "codex:app-2", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-app", "alive": true, "state": "idle"],
-        ])
-
-        let ids = Set(folded.compactMap { $0["id"] as? String })
-        XCTAssertEqual(folded.count, 2)
-        XCTAssertTrue(ids.contains("codex:cli-1"))
-        XCTAssertTrue(ids.contains("codex:app-1"))
-        let app = folded.first { ($0["agentType"] as? String) == "codex-app" }
-        XCTAssertEqual(app?["groupSize"] as? Int, 2)
-        XCTAssertEqual(app?["foldedSessionIds"] as? [String], ["codex:app-1", "codex:app-2"])
-    }
-
     func testSortSessionsClampsAndComparesExtremeWeightsSafely() {
         // Out-of-range wire values clamp to the documented bounds and
         // opposite-sign extremes order without overflow (three-way compare).
@@ -1316,34 +1223,29 @@ final class ProtocolTests: XCTestCase {
         XCTAssertEqual(DashboardDataRules.sessionWeight(nil), 0)
     }
 
-    func testFoldCodexSessionPayloadsNeverFoldsDistinctWeights() {
-        // Server-side fold runs BEFORE sortSessionPayloads in the Swift
-        // daemon's sessions_list build — a weight-blind key would collapse two
-        // pinned tabs on the wire where no client could recover them. Mirrors
-        // the shared fold's weight-band key.
-        let folded = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            ["id": "codex:tab-2", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "processing", "weight": 2],
-            ["id": "codex:tab-1", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 1],
-        ])
-        XCTAssertEqual(folded.count, 2)
-        let ordered = DashboardDataRules.sortSessionPayloads(folded)
-        XCTAssertEqual(ordered.compactMap { $0["id"] as? String }, ["codex:tab-1", "codex:tab-2"])
-    }
-
-    func testFoldCodexSessionPayloadsStillFoldsSharedWeightBand() {
-        // Both unweighted (band 0) and both explicitly weight 3 keep folding.
-        let unweighted = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            ["id": "codex:a", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle"],
-            ["id": "codex:b", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 0],
-        ])
-        XCTAssertEqual(unweighted.count, 1)
-
-        let sameWeight = DashboardDataRules.foldCodexSessionPayloadsForDisplay([
-            ["id": "codex:c", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 3],
-            ["id": "codex:d", "port": 9120, "projectName": "AgentDeck", "agentType": "codex-cli", "alive": true, "state": "idle", "weight": 3],
-        ])
-        XCTAssertEqual(sameWeight.count, 1)
-        XCTAssertEqual(sameWeight.first?["groupSize"] as? Int, 2)
+    func testIndependentCodexDisplayVectors() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/codex-display-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        for vector in vectors {
+            let name = try XCTUnwrap(vector["name"] as? String)
+            let rows = try XCTUnwrap(vector["sessions"] as? [[String: Any]])
+            let expected = try XCTUnwrap(vector["expectedIds"] as? [String])
+            let display = DashboardDataRules.foldCodexSessionPayloadsForDisplay(rows)
+            XCTAssertEqual(display.compactMap { $0["id"] as? String }, expected, name)
+            XCTAssertTrue(NSDictionary(dictionary: ["rows": display]).isEqual(to: ["rows": rows]), name)
+            let previewRows = rows.map { row in
+                D200HSession(id: row["id"] as? String ?? "", agentType: row["agentType"] as? String ?? "",
+                    state: row["state"] as? String ?? "idle", projectName: row["projectName"] as? String ?? "",
+                    currentTool: row["currentTool"] as? String, weight: row["weight"] as? Int,
+                    requestId: row["requestId"] as? String, question: row["question"] as? String,
+                    groupSize: row["groupSize"] as? Int, foldedSessionIds: row["foldedSessionIds"] as? [String])
+            }
+            let preview = D200HLayoutModel.foldCodexSessionsForDisplay(previewRows)
+            XCTAssertEqual(preview.map(\.id), expected, name)
+            XCTAssertEqual(preview, previewRows, name)
+        }
     }
 
     func testOpenClawDisplayLinesKeepsOnlyDefaultModel() {

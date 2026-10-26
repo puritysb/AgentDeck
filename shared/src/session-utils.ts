@@ -300,89 +300,15 @@ export interface FoldableSession {
 }
 
 /**
- * Collapse Codex companion-task rows for the same project into one display
- * session. Raw rows remain authoritative inside the daemon; every user-facing
- * surface should count this folded shape so completed one-turn Codex threads do
- * not look like simultaneously running sessions.
+ * Preserve independent top-level session identities on every display surface.
+ * A shared project, process or activity state is not parent/child evidence.
+ * Actual Codex children/background jobs are reduced by the observation layer.
  *
- * The fold key includes the normalized weight band: two same-project Codex
- * tabs pinned to *different* slots (`--weight 1` / `--weight 2`) must never
- * collapse into one representative — folding happens before sorting, so a
- * weight-blind key would silently discard one of the pinned tabs. Unweighted
- * sessions all share band 0 and fold exactly as before.
+ * Keep the historical export for callers and pass through legacy folded rows;
+ * their explicit member metadata still supports history/focus compatibility.
  */
 export function foldCodexSessionsForDisplay<T extends FoldableSession>(sessions: T[]): T[] {
-  const passthrough: T[] = [];
-  const codexByProject = new Map<string, T[]>();
-
-  for (const session of sessions) {
-    const project = session.projectName?.trim();
-    if (!isCodexSession(session) || !project) {
-      passthrough.push(session);
-      continue;
-    }
-    const key = `${codexDisplayKind(session)}:${project.toLocaleLowerCase()}:${sessionWeight(session.weight)}`;
-    const group = codexByProject.get(key);
-    if (group) group.push(session);
-    else codexByProject.set(key, [session]);
-  }
-
-  for (const group of codexByProject.values()) {
-    passthrough.push(foldCodexProjectGroup(group));
-  }
-
-  return passthrough;
-}
-
-function isCodexSession(session: FoldableSession): boolean {
-  return session.agentType === 'codex-cli' || session.agentType === 'codex-app' || session.id.startsWith('codex:');
-}
-
-function codexDisplayKind(session: FoldableSession): 'codex-cli' | 'codex-app' {
-  return session.agentType === 'codex-app' ? 'codex-app' : 'codex-cli';
-}
-
-// A folded row must expose the member waiting on the user. The general
-// activity rank favors processing; using it here hid live Codex approvals
-// whenever another task in the same project was still working.
-function codexFoldStateRank(state: string | undefined): number {
-  const rank = stateRank(state);
-  return rank === 1 ? -1 : rank;
-}
-
-function foldCodexProjectGroup<T extends FoldableSession>(group: T[]): T {
-  if (group.length <= 1) return group[0];
-
-  const ranked = [...group].sort((a, b) => {
-    const rankDiff = codexFoldStateRank(a.state) - codexFoldStateRank(b.state);
-    if (rankDiff !== 0) return rankDiff;
-
-    const aStarted = a.startedAt ? new Date(a.startedAt).getTime() : Number.NEGATIVE_INFINITY;
-    const bStarted = b.startedAt ? new Date(b.startedAt).getTime() : Number.NEGATIVE_INFINITY;
-    if (aStarted !== bStarted) return bStarted - aStarted;
-
-    return a.id.localeCompare(b.id);
-  });
-
-  const representative = ranked[0];
-  const foldedIds = group.flatMap(s => s.foldedSessionIds ?? [s.id]);
-  const groupSize = group.reduce((total, s) => total + (s.groupSize ?? 1), 0);
-  const currentTool = stateRank(representative.state) === 1
-    ? representative.currentTool
-    : ranked.find(s => stateRank(s.state) === 0 && s.currentTool?.trim())?.currentTool;
-
-  const folded = {
-    ...representative,
-    state: ranked[0].state,
-    groupSize,
-    foldedSessionIds: foldedIds,
-  } as T;
-  if (currentTool) {
-    folded.currentTool = currentTool;
-  } else {
-    delete folded.currentTool;
-  }
-  return folded;
+  return [...sessions];
 }
 
 // ===== Display Name Assignment =====

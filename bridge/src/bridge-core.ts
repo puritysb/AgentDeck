@@ -1077,10 +1077,9 @@ export class BridgeCore {
       snapshot.effortLevel ?? undefined,
     );
     if (this.sessionsEnricher) sessions = this.sessionsEnricher(sessions);
-    // Canonical user-facing projection. The Swift daemon already folds here;
-    // doing the same in Node keeps ESP32/native dashboards aligned with the
-    // Stream Deck and Pixoo consumers that otherwise had to fold locally.
-    // The raw registry remains untouched for routing and diagnostics.
+    // Canonical identity-preserving projection, shared with Swift and decks.
+    // Independent top-level sessions cannot be merged by project or activity;
+    // proven child relationships have already been reduced by observation.
     sessions = sortSessions(foldCodexSessionsForDisplay(sessions));
     // Attach the shared per-session activity one-liner to the FINAL list (covers
     // managed + observed sessions). Heuristic is immediate; a Foundation Models

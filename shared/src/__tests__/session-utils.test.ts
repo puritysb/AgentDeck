@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import {
   agentTypeRank, sortSessions, assignDisplayNames, naturalLabelCompare, foldCodexSessionsForDisplay,
@@ -232,75 +233,27 @@ describe('sortSessions weight override', () => {
   });
 });
 
-describe('foldCodexSessionsForDisplay', () => {
-  it.each(['awaiting_permission', 'awaiting_option', 'awaiting_diff'])(
-    'keeps %s visible with its own identity and controls beside a processing sibling', state => {
-      const waiting = { id: 'codex:waiting', agentType: 'codex-cli', projectName: 'Audit',
-        state, question: 'Approve Bash: printf audit', requestId: 'approval',
-        startedAt: '2026-09-05T10:00:00Z', currentTool: 'Bash' };
-      const working = { id: 'codex:working', agentType: 'codex-cli', projectName: 'Audit',
-        state: 'processing', startedAt: '2026-09-05T11:00:00Z', currentTool: 'other-tool' };
-      for (const rows of [[waiting, working], [working, waiting]]) {
-        const [folded] = foldCodexSessionsForDisplay(rows);
-        expect(folded).toMatchObject({ ...waiting, groupSize: 2 });
-        expect(foldCodexSessionsForDisplay([folded])[0]).toEqual(folded);
-      }
-      const [resolved] = foldCodexSessionsForDisplay([{ ...waiting, state: 'idle', question: undefined,
-        requestId: undefined }, working]);
-      expect(resolved.id).toBe(working.id);
-      expect(resolved).not.toHaveProperty('question');
-    });
+describe('independent Codex display identities', () => {
+  const vectors = JSON.parse(fs.readFileSync(new URL('../../codex-display-vectors.json', import.meta.url), 'utf8')) as {
+    name: string; sessions: FoldableSession[]; expectedIds: string[];
+  }[];
 
-  it('folds Codex CLI and Codex App separately even with the same project', () => {
-    const sessions: FoldableSession[] = [
-      { id: 'codex:cli', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'processing' },
-      { id: 'codex:app-1', projectName: 'AgentDeck', agentType: 'codex-app', state: 'processing' },
-      { id: 'codex:app-2', projectName: 'AgentDeck', agentType: 'codex-app', state: 'idle' },
-    ];
-    const folded = foldCodexSessionsForDisplay(sessions);
-
-    expect(folded).toHaveLength(2);
-    expect(folded.map(s => s.id).sort()).toEqual(['codex:app-1', 'codex:cli']);
-    expect(folded.find(s => s.agentType === 'codex-app')?.groupSize).toBe(2);
+  it.each(vectors)('$name', ({ sessions, expectedIds }) => {
+    const before = structuredClone(sessions);
+    const display = foldCodexSessionsForDisplay(sessions);
+    expect(display.map(s => s.id)).toEqual(expectedIds);
+    expect(display).toEqual(before); // controls and legacy member metadata stay with their owner
+    expect(sessions).toEqual(before);
+    expect(foldCodexSessionsForDisplay(display)).toEqual(display);
   });
 
-  it('never folds same-project Codex sessions pinned to distinct weights', () => {
-    // Folding runs BEFORE sortSessions on every surface — a weight-blind fold
-    // key would silently discard one of two pinned tabs.
-    const sessions: FoldableSession[] = [
-      { id: 'codex-tab-2', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'processing', weight: 2 },
-      { id: 'codex-tab-1', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 1 },
+  it('keeps independently pinned sessions in their explicit order', () => {
+    const sessions = [
+      { id: 'codex:second', agentType: 'codex-cli', projectName: 'Same', weight: 2 },
+      { id: 'codex:first', agentType: 'codex-cli', projectName: 'Same', weight: 1 },
     ];
-    const display = sortSessions(foldCodexSessionsForDisplay(sessions));
-    expect(display.map(s => s.id)).toEqual(['codex-tab-1', 'codex-tab-2']);
-  });
-
-  it('keeps distinct-weight sessions unfolded across state changes', () => {
-    const base: FoldableSession[] = [
-      { id: 'codex-tab-1', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 1 },
-      { id: 'codex-tab-2', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 2 },
-    ];
-    for (const state of ['processing', 'awaiting_option', 'idle', 'disconnected']) {
-      const flipped = base.map(s => (s.id === 'codex-tab-2' ? { ...s, state } : s));
-      const display = sortSessions(foldCodexSessionsForDisplay(flipped));
-      expect(display.map(s => s.id)).toEqual(['codex-tab-1', 'codex-tab-2']);
-    }
-  });
-
-  it('still folds same-project Codex sessions when both are unweighted or share a weight', () => {
-    const unweighted: FoldableSession[] = [
-      { id: 'codex:a', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle' },
-      { id: 'codex:b', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 0 },
-    ];
-    expect(foldCodexSessionsForDisplay(unweighted)).toHaveLength(1);
-
-    const sameWeight: FoldableSession[] = [
-      { id: 'codex:c', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 3 },
-      { id: 'codex:d', projectName: 'AgentDeck', agentType: 'codex-cli', state: 'idle', weight: 3 },
-    ];
-    const folded = foldCodexSessionsForDisplay(sameWeight);
-    expect(folded).toHaveLength(1);
-    expect(folded[0].groupSize).toBe(2);
+    expect(sortSessions(foldCodexSessionsForDisplay(sessions)).map(s => s.id))
+      .toEqual(['codex:first', 'codex:second']);
   });
 });
 

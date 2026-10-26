@@ -64,6 +64,20 @@ final class TimeboxProtocolTests: XCTestCase {
 
     // MARK: - Timebox Mini Agent Beacon
 
+    func testIndependentCodexWaitIsNotHiddenByWorkingSameProjectPeer() {
+        var state = DashboardState()
+        state.sessionsListReceived = true
+        state.siblingSessions = [
+            SessionInfo(id: "codex:working", port: 0, projectName: "Same", agentType: "codex-app", alive: true, state: "processing"),
+            SessionInfo(id: "codex:waiting", port: 0, projectName: "Same", agentType: "codex-app", alive: true, state: "awaiting_permission"),
+        ]
+        let frame = [UInt8](PixooRenderer().renderMicro(dashboardState: state))
+        var expected = [UInt8](repeating: 0, count: 11 * 11 * 3)
+        MicroGlyphs.paintBeacon(&expected, creature: .codex, aggregate: .awaiting, animFrame: 0)
+        // The middle rail is steady in awaiting; only its corners animate.
+        XCTAssertEqual(pixel(frame, 5, 0), pixel(expected, 5, 0))
+    }
+
     func testExhaustedQuotaDoesNotOverrideAgentBeacon() {
         var state = DashboardState()
         state.state = .idle

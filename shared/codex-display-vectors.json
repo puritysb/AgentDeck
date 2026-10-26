@@ -1,0 +1,167 @@
+[
+  {
+    "name": "independent Desktop chats in the same project both remain visible",
+    "sessions": [
+      {
+        "id": "observed:codex-app:11111111-1111-4111-8111-111111111111",
+        "agentType": "codex-app",
+        "projectName": "AgentDeck",
+        "state": "processing",
+        "startedAt": "2026-10-25T23:22:29Z"
+      },
+      {
+        "id": "observed:codex-app:22222222-2222-4222-8222-222222222222",
+        "agentType": "codex-app",
+        "projectName": "AgentDeck",
+        "state": "processing",
+        "startedAt": "2026-10-25T11:34:35Z"
+      }
+    ],
+    "expectedIds": [
+      "observed:codex-app:11111111-1111-4111-8111-111111111111",
+      "observed:codex-app:22222222-2222-4222-8222-222222222222"
+    ]
+  },
+  {
+    "name": "idle top-level peers are not inferred children",
+    "sessions": [
+      {
+        "id": "codex:idle",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "idle"
+      },
+      {
+        "id": "codex:working",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "processing"
+      }
+    ],
+    "expectedIds": [
+      "codex:idle",
+      "codex:working"
+    ]
+  },
+  {
+    "name": "waiting controls remain owned by their session",
+    "sessions": [
+      {
+        "id": "codex:waiting",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "awaiting_permission",
+        "requestId": "approval",
+        "question": "Approve this session",
+        "currentTool": "Bash"
+      },
+      {
+        "id": "codex:other",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "processing",
+        "currentTool": "other-tool"
+      }
+    ],
+    "expectedIds": [
+      "codex:waiting",
+      "codex:other"
+    ]
+  },
+  {
+    "name": "shared explicit weights do not establish a relationship",
+    "sessions": [
+      {
+        "id": "codex:a",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "idle",
+        "weight": 3
+      },
+      {
+        "id": "codex:b",
+        "agentType": "codex-cli",
+        "projectName": "Same",
+        "state": "idle",
+        "weight": 3
+      }
+    ],
+    "expectedIds": [
+      "codex:a",
+      "codex:b"
+    ]
+  },
+  {
+    "name": "missing project names do not merge identities",
+    "sessions": [
+      {
+        "id": "codex:a",
+        "agentType": "codex-app",
+        "projectName": ""
+      },
+      {
+        "id": "codex:b",
+        "agentType": "codex-app",
+        "projectName": ""
+      }
+    ],
+    "expectedIds": [
+      "codex:a",
+      "codex:b"
+    ]
+  },
+  {
+    "name": "CLI and Desktop identities both remain independent",
+    "sessions": [
+      {
+        "id": "codex:cli",
+        "agentType": "codex-cli",
+        "projectName": "Same"
+      },
+      {
+        "id": "codex:app",
+        "agentType": "codex-app",
+        "projectName": "Same"
+      },
+      {
+        "id": "claude:parent",
+        "agentType": "claude-code",
+        "projectName": "Same",
+        "subagents": {
+          "active": 2,
+          "peak": 2,
+          "completed": 0
+        }
+      }
+    ],
+    "expectedIds": [
+      "codex:cli",
+      "codex:app",
+      "claude:parent"
+    ]
+  },
+  {
+    "name": "legacy explicit member metadata is retained without inventing missing rows",
+    "sessions": [
+      {
+        "id": "codex:legacy",
+        "agentType": "codex-app",
+        "projectName": "Same",
+        "groupSize": 2,
+        "foldedSessionIds": [
+          "codex:legacy",
+          "codex:old"
+        ]
+      },
+      {
+        "id": "codex:independent",
+        "agentType": "codex-app",
+        "projectName": "Same"
+      }
+    ],
+    "expectedIds": [
+      "codex:legacy",
+      "codex:independent"
+    ]
+  }
+]

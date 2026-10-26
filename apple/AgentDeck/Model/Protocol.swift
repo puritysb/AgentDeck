@@ -179,35 +179,10 @@ enum DashboardDataRules {
         }
     }
 
+    // Mirrors shared/src/session-utils.ts: top-level identity is authoritative.
+    // Project names and activity are never evidence of a parent/child relation.
     static func foldCodexSessionPayloadsForDisplay(_ sessions: [[String: Any]]) -> [[String: Any]] {
-        var passthrough: [[String: Any]] = []
-        var codexByProject: [String: [[String: Any]]] = [:]
-        var codexProjectOrder: [String] = []
-
-        for session in sessions {
-            guard isCodexPayload(session),
-                  let project = nonEmptyString(session["projectName"]) else {
-                passthrough.append(session)
-                continue
-            }
-
-            // The fold key includes the normalized weight band: two same-project
-            // Codex tabs pinned to different `--weight` slots must never collapse
-            // into one representative — this fold runs before sortSessionPayloads,
-            // so a weight-blind key would discard a pinned tab on the wire.
-            // Mirrors shared foldCodexSessionsForDisplay.
-            let weight = sessionWeight((session["weight"] as? NSNumber)?.intValue ?? session["weight"] as? Int)
-            let key = "\(codexDisplayKind(session))|\(project.lowercased())|\(weight)"
-            if codexByProject[key] == nil { codexProjectOrder.append(key) }
-            codexByProject[key, default: []].append(session)
-        }
-
-        for key in codexProjectOrder {
-            guard let group = codexByProject[key], !group.isEmpty else { continue }
-            passthrough.append(foldCodexProjectGroup(group))
-        }
-
-        return passthrough
+        sessions
     }
 
     static func sortedModelCatalog(_ entries: [ModelCatalogEntry]) -> [ModelCatalogEntry] {
@@ -302,75 +277,6 @@ enum DashboardDataRules {
             return .greatestFiniteMagnitude
         }
         return date.timeIntervalSince1970
-    }
-
-    private static func isCodexPayload(_ session: [String: Any]) -> Bool {
-        let id = session["id"] as? String
-        let agentType = session["agentType"] as? String
-        return agentType == "codex-cli" || agentType == "codex-app" || id?.hasPrefix("codex:") == true
-    }
-
-    private static func codexDisplayKind(_ session: [String: Any]) -> String {
-        (session["agentType"] as? String) == "codex-app" ? "codex-app" : "codex-cli"
-    }
-
-    private static func nonEmptyString(_ value: Any?) -> String? {
-        guard let string = value as? String else { return nil }
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : string
-    }
-
-    // Mirrors shared/session-utils: folding must not hide an awaiting member
-    // behind a processing sibling. General session ordering remains unchanged.
-    static func codexFoldStateRank(_ state: String?) -> Int {
-        let rank = stateRank(state)
-        return rank == 1 ? -1 : rank
-    }
-
-    private static func foldCodexProjectGroup(_ group: [[String: Any]]) -> [String: Any] {
-        guard group.count > 1 else { return group[0] }
-
-        let ranked = group.sorted { lhs, rhs in
-            let rankDiff = codexFoldStateRank(lhs["state"] as? String) - codexFoldStateRank(rhs["state"] as? String)
-            if rankDiff != 0 { return rankDiff < 0 }
-
-            let lhsStarted = startedAtTime(lhs["startedAt"] as? String)
-            let rhsStarted = startedAtTime(rhs["startedAt"] as? String)
-            if lhsStarted != rhsStarted {
-                if lhsStarted == .greatestFiniteMagnitude { return false }
-                if rhsStarted == .greatestFiniteMagnitude { return true }
-                return lhsStarted > rhsStarted
-            }
-
-            let lhsId = (lhs["id"] as? String) ?? ""
-            let rhsId = (rhs["id"] as? String) ?? ""
-            return lhsId.localizedCaseInsensitiveCompare(rhsId) == .orderedAscending
-        }
-
-        var folded = ranked[0]
-        let memberIds = group.flatMap { session -> [String] in
-            if let ids = session["foldedSessionIds"] as? [String] { return ids }
-            if let id = session["id"] as? String { return [id] }
-            return []
-        }
-        let groupSize = group.reduce(0) { total, session in
-            total + ((session["groupSize"] as? Int) ?? 1)
-        }
-
-        folded["state"] = ranked.first?["state"] as? String
-        if stateRank(folded["state"] as? String) == 1 {
-            // Keep the waiting member's own tool, never a sibling's.
-        } else if let tool = ranked.compactMap({ session -> String? in
-            guard stateRank(session["state"] as? String) == 0 else { return nil }
-            return nonEmptyString(session["currentTool"])
-        }).first {
-            folded["currentTool"] = tool
-        } else {
-            folded.removeValue(forKey: "currentTool")
-        }
-        folded["groupSize"] = groupSize
-        folded["foldedSessionIds"] = memberIds
-        return folded
     }
 
     private static func modelRoleRank(_ role: String) -> Int {
@@ -1129,7 +1035,6 @@ struct AnyCodable: Codable, @unchecked Sendable {
         }
     }
 }
-
 
 /// CI evidence is independent of agent state; a full session row clears nil.
 struct CiWaitStatus: Codable, Equatable, Sendable {

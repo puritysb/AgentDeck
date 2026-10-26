@@ -44,7 +44,9 @@ selection must not authorize or redirect an answer.
 The menu-bar Control Tower session row selects a control target, not dashboard
 history; its help text states that scope.
 
-A folded Codex row's timeline includes its `foldedSessionIds` after canonical ID
+Independent top-level Codex sessions keep separate roster rows, controls and focus even when they share a project, process or weight. Child-agent reduction requires explicit ancestry at observation.
+
+A legacy folded Codex row's timeline includes its `foldedSessionIds` after canonical ID
 normalization (`observed:<agent>:<ID>`, Swift `codex:<ID>`, or bare `<ID>`),
 plus its representative ID. Matching a project name is allowed
 only for legacy entries without an ID, never as a way to merge distinct live

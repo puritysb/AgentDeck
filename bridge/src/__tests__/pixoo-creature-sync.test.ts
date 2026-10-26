@@ -25,10 +25,9 @@ function stateEvent(over: Partial<StateUpdateEvent> = {}): StateUpdateEvent {
   } as StateUpdateEvent;
 }
 
-describe('pixoo creature sync — Codex folding', () => {
-  it('draws one cloud per project, not one per codex thread', () => {
-    // Every Claude Code rescue/stop-gate spawns a fresh codex thread against the
-    // same workspace. Unfolded, this lights up 4 clouds for one project.
+describe('pixoo creature sync — independent Codex identities', () => {
+  it('draws one creature per independent Codex thread even in the same project', () => {
+    // Parent/child reduction happens at observation, not from shared project names.
     const snapshot = getCreatureLayoutSnapshot([
       session({ id: 'codex:1', projectName: 'AgentDeck' }),
       session({ id: 'codex:2', projectName: 'AgentDeck' }),
@@ -36,8 +35,9 @@ describe('pixoo creature sync — Codex folding', () => {
       session({ id: 'codex:4', projectName: 'AgentDeck' }),
     ], null);
 
-    expect(snapshot).toHaveLength(1);
-    expect(snapshot[0].creatureType).toBe('jellyfish');
+    expect(snapshot).toHaveLength(4);
+    expect(snapshot.every(row => row.creatureType === 'jellyfish')).toBe(true);
+    expect(new Set(snapshot.map(row => row.sessionId)).size).toBe(4);
   });
 
   it('keeps separate projects as separate clouds', () => {
@@ -49,17 +49,17 @@ describe('pixoo creature sync — Codex folding', () => {
     expect(snapshot).toHaveLength(2);
   });
 
-  it('surfaces the busiest state in a folded group', () => {
-    // A group where one thread is still working must not read as idle just
-    // because the idle sibling sorted first.
+  it('preserves each independent same-project session state', () => {
+    // A working peer must neither absorb idle peers nor overwrite their state.
     const snapshot = getCreatureLayoutSnapshot([
       session({ id: 'codex:1', projectName: 'AgentDeck', state: 'idle' }),
       session({ id: 'codex:2', projectName: 'AgentDeck', state: 'processing' }),
       session({ id: 'codex:3', projectName: 'AgentDeck', state: 'idle' }),
     ], null);
 
-    expect(snapshot).toHaveLength(1);
-    expect(snapshot[0].state).toBe('processing');
+    expect(snapshot).toHaveLength(3);
+    expect(snapshot.find(row => row.sessionId === 'codex:2')?.state).toBe('processing');
+    expect(snapshot.filter(row => row.state === 'idle')).toHaveLength(2);
   });
 
   it('does NOT fold Claude Code — several octopuses on one project is deliberate', () => {
@@ -150,15 +150,15 @@ describe('pixoo creature sync — the `_primary` fallback', () => {
   });
 
   it('does not stamp the stateEvent onto a real session', () => {
-    // stateEvent.sessionId can name a row that folding already collapsed;
-    // applying it to the representative would downgrade a busy group.
+    // A primary state frame must not overwrite another session's roster state.
     const snapshot = getCreatureLayoutSnapshot([
       session({ id: 'codex:1', projectName: 'AgentDeck', state: 'processing' }),
       session({ id: 'codex:2', projectName: 'AgentDeck', state: 'idle' }),
     ], stateEvent({ agentType: 'codex-cli', state: State.IDLE, sessionId: 'codex:2' }));
 
-    expect(snapshot).toHaveLength(1);
-    expect(snapshot[0].state).toBe('processing');
+    expect(snapshot).toHaveLength(2);
+    expect(snapshot.find(row => row.sessionId === 'codex:1')?.state).toBe('processing');
+    expect(snapshot.find(row => row.sessionId === 'codex:2')?.state).toBe('idle');
   });
 });
 
