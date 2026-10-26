@@ -267,12 +267,12 @@ describe('pinned observed sessions through the shared deck pipeline', () => {
     expect(sortSessions(folded).map((r) => r.id)).toEqual(['observed:codex:t1', 'observed:codex:t2']);
   });
 
-  it('unpinned same-project Codex rows still fold exactly as before', () => {
+  it('unpinned independent same-project Codex rows remain separate', () => {
     const store = new SessionOrderStore({ file: tmpStorePath() });
     const rows = [
       { id: 'observed:codex:t1', controlMode: 'observed' as const, agentType: 'codex-cli', projectName: 'Same', state: 'processing' },
       { id: 'observed:codex:t2', controlMode: 'observed' as const, agentType: 'codex-cli', projectName: 'Same', state: 'idle' },
     ];
-    expect(foldCodexSessionsForDisplay(rows.map((r) => store.applyTo(r)))).toHaveLength(1);
+    expect(foldCodexSessionsForDisplay(rows.map((r) => store.applyTo(r)))).toHaveLength(2);
   });
 });

@@ -74,8 +74,7 @@ enum PixooTide {
     ) -> Marks {
         var all: [Mark] = []
         if let sessions {
-            // Codex rows fold by project first, exactly like the aquarium: one
-            // workspace must not light up several cloud marks at once.
+            // Each independent top-level identity owns its mark and state.
             let alive = sessions.filter { ($0["alive"] as? Bool) ?? true }
             for session in DashboardDataRules.foldCodexSessionPayloadsForDisplay(alive) {
                 guard let id = session["id"] as? String,

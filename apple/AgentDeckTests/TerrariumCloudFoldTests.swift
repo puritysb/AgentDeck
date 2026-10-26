@@ -16,11 +16,7 @@ private final class SnapshotCompletion {
     }
 }
 
-/// Verify the render-time Codex creature fold introduced to suppress phantom
-/// Cloud creatures when Claude Code's rescue/stop-gate workflow spawns a fresh
-/// codex thread per turn. Without folding the same workspace lights up 4-5
-/// simultaneous Cloud sprites; the fold collapses them to one creature per
-/// `(agentType=codex-cli, projectName)` group.
+/// Independent top-level Codex identities stay separate in every aquarium projection.
 final class TerrariumCloudFoldTests: XCTestCase {
 
     func testBackgroundSnapshotDecodesProjectsAndClearsWithoutInventingAgents() throws {
@@ -1144,141 +1140,47 @@ final class TerrariumCloudFoldTests: XCTestCase {
         )
     }
 
-    /// Five back-to-back Codex Companion Tasks in the same workspace must
-    /// collapse to a single Cloud sprite, with `groupSize == 5` so the
-    /// renderer can optionally surface the count.
-    func testFiveCompanionTasksInOneProjectFoldToOneSprite() {
-        var state = DashboardState()
-        state.state = .idle
-        state.bridgeConnected = true
-        state.siblingSessions = (1...5).map { i in
-            session(
-                id: "codex:thread-\(i)",
-                project: "AgentDeck",
-                state: i == 5 ? "processing" : "idle",
-                startedAt: "2026-04-30T00:00:0\(i)Z"
-            )
-        }
-
-        let terrarium = state.toTerrariumState()
-
-        XCTAssertEqual(terrarium.cloudCreatures.count, 1, "Five threads sharing project=AgentDeck must fold to a single sprite")
-        let creature = terrarium.cloudCreatures[0]
-        XCTAssertEqual(creature.groupSize, 5, "groupSize should reflect the underlying thread count")
-        // The most-recent thread is the focus-relay representative.
-        XCTAssertEqual(creature.id, "codex:thread-5")
-        XCTAssertEqual(creature.projectName, "AgentDeck")
-        // Aggregate state = highest-priority member.
-        XCTAssertEqual(creature.state, .pulsing, "Any group member processing → group is processing")
-    }
-
-    /// Codex sessions in distinct projects must NOT collapse — fold is
-    /// scoped to projectName (mental model: "one Codex working in this
-    /// workspace").
-    func testDistinctProjectsRenderSeparateSprites() {
+    func testSameProjectCodexSessionsKeepTheirOwnSpritesAndStates() {
         var state = DashboardState()
         state.state = .idle
         state.bridgeConnected = true
         state.siblingSessions = [
-            session(id: "codex:a", project: "AgentDeck", state: "processing"),
-            session(id: "codex:b", project: "ViewTrans", state: "idle"),
-            session(id: "codex:c", project: "OpenClaw", state: "awaiting_permission"),
+            session(id: "codex:idle", project: "AgentDeck", state: "idle"),
+            session(id: "codex:waiting", project: "AgentDeck", state: "awaiting_permission"),
+            session(id: "codex:working", project: "AgentDeck", state: "processing"),
         ]
-
-        let terrarium = state.toTerrariumState()
-
-        XCTAssertEqual(terrarium.cloudCreatures.count, 3)
-        XCTAssertEqual(Set(terrarium.cloudCreatures.compactMap { $0.projectName }), ["AgentDeck", "ViewTrans", "OpenClaw"])
-        for c in terrarium.cloudCreatures {
-            XCTAssertEqual(c.groupSize, 1, "Singleton groups have groupSize 1")
-        }
+        let rows = state.toTerrariumState().cloudCreatures
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows.first { $0.id == "codex:idle" }?.state, .drifting)
+        XCTAssertEqual(rows.first { $0.id == "codex:waiting" }?.state, .waiting)
+        XCTAssertEqual(rows.first { $0.id == "codex:working" }?.state, .pulsing)
+        XCTAssertTrue(rows.allSatisfy { $0.groupSize == 1 })
     }
 
-    /// Codex App OTel and Codex CLI hooks may report the same workspace at
-    /// the same time. They must remain two visible Codex creatures instead
-    /// of folding solely by projectName.
-    func testCodexAppAndCliInSameProjectRenderSeparateSprites() {
+    func testAnonymousAndNamedCodexSessionsKeepSeparateIdentities() {
         var state = DashboardState()
-        state.state = .idle
         state.bridgeConnected = true
         state.siblingSessions = [
-            session(id: "codex:cli", project: "AgentDeck", state: "processing", agentType: "codex-cli"),
-            session(id: "codex:app-1", project: "AgentDeck", state: "processing", startedAt: "2026-04-30T00:00:01Z", agentType: "codex-app"),
-            session(id: "codex:app-2", project: "AgentDeck", state: "idle", startedAt: "2026-04-30T00:00:02Z", agentType: "codex-app"),
+            session(id: "codex:a", project: nil), session(id: "codex:b", project: ""),
+            session(id: "codex:c", project: "AgentDeck"), session(id: "codex:d", project: "AgentDeck"),
         ]
-
-        let terrarium = state.toTerrariumState()
-
-        XCTAssertEqual(terrarium.cloudCreatures.count, 2)
-        XCTAssertEqual(Set(terrarium.cloudCreatures.map(\.groupSize)), [1, 2])
-        XCTAssertEqual(Set(terrarium.cloudCreatures.compactMap { $0.projectName }), ["AgentDeck"])
+        XCTAssertEqual(Set(state.toTerrariumState().cloudCreatures.map(\.id)),
+            ["codex:a", "codex:b", "codex:c", "codex:d"])
     }
 
-    /// Empty / missing projectName MUST fold across distinct ids — when a
-    /// Companion Task arrives without a project tag (low-quality hook
-    /// payload, OTel span lacking `cwd`) the dashboard would otherwise
-    /// stack up multiple anonymous codex sprites, contradicting the
-    /// user's "one codex per dashboard" mental model. The fallback key
-    /// is shared so every empty-project codex collapses into one creature.
-    func testEmptyProjectsFoldIntoSingleSprite() {
+    func testCodexCliAndMultipleDesktopChatsRemainIndependent() {
         var state = DashboardState()
-        state.state = .idle
         state.bridgeConnected = true
         state.siblingSessions = [
-            session(id: "codex:1", project: nil, startedAt: "2026-04-30T00:00:01Z"),
-            session(id: "codex:2", project: "", startedAt: "2026-04-30T00:00:02Z"),
-            session(id: "codex:3", project: "", startedAt: "2026-04-30T00:00:03Z"),
+            session(id: "codex:cli", project: "AgentDeck", agentType: "codex-cli"),
+            session(id: "codex:app-a", project: "AgentDeck", agentType: "codex-app"),
+            session(id: "codex:app-b", project: "AgentDeck", agentType: "codex-app"),
         ]
-
-        let terrarium = state.toTerrariumState()
-        XCTAssertEqual(terrarium.cloudCreatures.count, 1, "Empty/nil project rows must collapse into one shared anonymous group")
-        XCTAssertEqual(terrarium.cloudCreatures[0].groupSize, 3)
-        // Most-recent thread is the representative.
-        XCTAssertEqual(terrarium.cloudCreatures[0].id, "codex:3")
+        XCTAssertEqual(Set(state.toTerrariumState().cloudCreatures.map(\.id)),
+            ["codex:cli", "codex:app-a", "codex:app-b"])
     }
 
-    /// Distinct named projects must still render as distinct sprites even
-    /// when an anonymous codex is also present — only the empty-project
-    /// rows share a fold key.
-    func testNamedProjectsStaySeparateFromAnonymousFold() {
-        var state = DashboardState()
-        state.state = .idle
-        state.bridgeConnected = true
-        state.siblingSessions = [
-            session(id: "codex:a", project: "AgentDeck"),
-            session(id: "codex:b", project: nil),
-            session(id: "codex:c", project: ""),
-            session(id: "codex:d", project: "ViewTrans"),
-        ]
-
-        let terrarium = state.toTerrariumState()
-        XCTAssertEqual(terrarium.cloudCreatures.count, 3, "AgentDeck + ViewTrans + (anonymous fold of b,c)")
-        let groupSizes = terrarium.cloudCreatures.map { $0.groupSize }.sorted()
-        XCTAssertEqual(groupSizes, [1, 1, 2])
-    }
-
-    /// Aggregate state precedence: processing > awaiting > idle > dormant.
-    func testAggregateStatePrecedence() {
-        var state = DashboardState()
-        state.state = .idle
-        state.bridgeConnected = true
-        state.siblingSessions = [
-            session(id: "codex:a", project: "P", state: "idle"),
-            session(id: "codex:b", project: "P", state: "awaiting_permission"),
-            session(id: "codex:c", project: "P", state: "processing"),
-        ]
-
-        let terrarium = state.toTerrariumState()
-
-        XCTAssertEqual(terrarium.cloudCreatures.count, 1)
-        XCTAssertEqual(terrarium.cloudCreatures[0].state, .pulsing)
-        XCTAssertEqual(terrarium.cloudCreatures[0].groupSize, 3)
-    }
-
-    /// Primary Codex session (focused) folds with siblings sharing its
-    /// projectName. The representative's id is the most-recent thread, but
-    /// the primary's project tag is the source of truth for the group key.
-    func testPrimaryCodexFoldsWithSiblings() {
+    func testPrimaryIdentityIsNotDuplicatedAndCannotAbsorbItsPeers() {
         var state = DashboardState()
         state.state = .processing
         state.bridgeConnected = true
@@ -1286,53 +1188,26 @@ final class TerrariumCloudFoldTests: XCTestCase {
         state.sessionId = "codex:primary"
         state.projectName = "AgentDeck"
         state.siblingSessions = [
-            session(id: "codex:primary", project: "AgentDeck", state: "processing", startedAt: "2026-04-30T00:00:00Z"),
-            session(id: "codex:s1", project: "AgentDeck", state: "idle", startedAt: "2026-04-30T00:00:30Z"),
-            session(id: "codex:s2", project: "AgentDeck", state: "idle", startedAt: "2026-04-30T00:01:00Z"),
+            session(id: "codex:primary", project: "AgentDeck", state: "processing"),
+            session(id: "codex:peer", project: "AgentDeck", state: "idle"),
         ]
-
-        let terrarium = state.toTerrariumState()
-        XCTAssertEqual(terrarium.cloudCreatures.count, 1)
-        XCTAssertEqual(terrarium.cloudCreatures[0].groupSize, 3)
-        XCTAssertEqual(terrarium.cloudCreatures[0].state, .pulsing)
+        let rows = state.toTerrariumState().cloudCreatures
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(rows.filter { $0.id == "codex:primary" }.count, 1)
+        XCTAssertNil(state.toTerrariumState().focusedSessionId)
     }
 
-    /// `sessionId` is hook/activity attribution, not user selection. The
-    /// terrarium halo must stay off until `focusedSessionId` is set by an
-    /// explicit focus action.
-    func testActivitySessionIdDoesNotCreateFocusHalo() {
+    func testExplicitFocusDoesNotMoveToAnIndependentWorkingPeer() {
         var state = DashboardState()
-        state.state = .processing
         state.bridgeConnected = true
-        state.agentType = "codex-cli"
-        state.sessionId = "codex:active"
-        state.projectName = "AgentDeck"
+        state.focusedSessionId = "codex:selected"
         state.siblingSessions = [
-            session(id: "codex:active", project: "AgentDeck", state: "processing")
+            session(id: "codex:selected", project: "AgentDeck", state: "idle"),
+            session(id: "codex:other", project: "AgentDeck", state: "processing"),
         ]
-
         let terrarium = state.toTerrariumState()
-
-        XCTAssertNil(terrarium.focusedSessionId)
-    }
-
-    /// When the user focuses one member of a folded Codex group, the halo
-    /// should resolve to the visible representative sprite instead of the
-    /// hidden thread id.
-    func testExplicitFocusedCodexThreadMapsToFoldedRepresentative() {
-        var state = DashboardState()
-        state.state = .idle
-        state.bridgeConnected = true
-        state.focusedSessionId = "codex:thread-1"
-        state.siblingSessions = [
-            session(id: "codex:thread-1", project: "AgentDeck", state: "idle", startedAt: "2026-04-30T00:00:01Z"),
-            session(id: "codex:thread-2", project: "AgentDeck", state: "processing", startedAt: "2026-04-30T00:00:02Z"),
-        ]
-
-        let terrarium = state.toTerrariumState()
-
-        XCTAssertEqual(terrarium.cloudCreatures.first?.id, "codex:thread-2")
-        XCTAssertEqual(terrarium.focusedSessionId, "codex:thread-2")
+        XCTAssertEqual(terrarium.cloudCreatures.count, 2)
+        XCTAssertEqual(terrarium.focusedSessionId, "codex:selected")
     }
 
     /// Resurrection predicate trade-off: `codex_session_start` and

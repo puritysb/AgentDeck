@@ -437,7 +437,7 @@ connMgr.on('sessions_list', (ev: import('@agentdeck/shared').SessionsListEvent) 
   if (isInDetailView()) {
     const focused = getFocusedSession();
     const snapshot = focusedDetailState.snapshot;
-    // A Codex fold can replace the selected thread id. Observed sessions have
+    // Legacy folded rows can replace a selected thread id. Observed sessions have
     // no focused bridge relay, so their sessions_list row is always canonical.
     if (focused && (snapshot?.sessionId !== focused.id || focused.controlMode === 'observed')) {
       primeDetailViewFromSession(focused);

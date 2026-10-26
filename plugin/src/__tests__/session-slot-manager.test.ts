@@ -65,7 +65,7 @@ describe('SessionSlotManager same-project labels (#544)', () => {
 });
 
 describe('SessionSlotManager detail layout', () => {
-  it('re-points detail focus onto the codex fold representative when the focused thread is absorbed', () => {
+  it('keeps detail focus on its session when an independent same-project thread appears', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([
       makeSession({ id: 'codex:old', agentType: 'codex-cli', state: State.IDLE, startedAt: '2026-04-11T10:00:00Z' }),
@@ -79,8 +79,9 @@ describe('SessionSlotManager detail layout', () => {
     ]);
 
     expect(manager.view).toBe('detail');
-    expect(manager.focusedSessionId).toBe('codex:new');
-    expect(manager.getFocusedSession()?.foldedSessionIds).toContain('codex:old');
+    expect(manager.focusedSessionId).toBe('codex:old');
+    expect(manager.getFocusedSession()?.id).toBe('codex:old');
+    expect(manager.sessions).toHaveLength(2);
   });
 
   it('exits detail view when the focused session is gone with no fold successor', () => {
@@ -96,7 +97,7 @@ describe('SessionSlotManager detail layout', () => {
     expect(manager.focusedSessionId).toBeNull();
   });
 
-  it('folds codex companion threads by project before slot assignment', () => {
+  it('assigns separate slots to independent same-project Codex threads', () => {
     const manager = new SessionSlotManager();
     manager.updateSessions([
       makeSession({
@@ -120,10 +121,8 @@ describe('SessionSlotManager detail layout', () => {
       }),
     ]);
 
-    expect(manager.sessions.map(s => s.id)).toEqual(['claude:1', 'codex:new']);
-    expect(manager.sessions[1]).toMatchObject({
-      groupSize: 2,
-      foldedSessionIds: ['codex:old', 'codex:new'],
+    expect(manager.sessions.map(s => s.id)).toEqual(['claude:1', 'codex:old', 'codex:new']);
+    expect(manager.sessions[2]).toMatchObject({
       currentTool: 'exec',
       state: State.PROCESSING,
     });

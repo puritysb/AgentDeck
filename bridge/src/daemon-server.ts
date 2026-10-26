@@ -5870,10 +5870,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     const coordinationCensus = coordination.summaries();
     const enrichedSessions = [...sessions, ...observed, ...remote, ...relayed].map((s) => {
       // Daemon-persisted sort pin (#273): observed rows without their own
-      // weight pick up the stored pin here, one pass before fold+sort, so a
-      // pinned observed session lands in its slot on every surface and two
-      // same-project Codex pins never fold together (the fold key carries the
-      // weight band). Managed/remote rows keep their launch-time --weight.
+      // weight inherit their stored slot; managed/remote rows retain --weight.
       const withOrder = sessionOrder.applyTo(s);
       // On-demand review badge (REVIEW tile verdict / REVIEWING state) —
       // applies to every session type, managed included.

@@ -90,13 +90,13 @@ describe('tide marks', () => {
     expect(marks).toEqual([]);
   });
 
-  it('ignores dead sessions and folds a project’s codex rows', () => {
+  it('ignores dead sessions and keeps independent same-project Codex rows', () => {
     const { marks } = resolveTideMarks(null, [
       session('dead', 'claude-code', 'processing', { alive: false }),
       session('c1', 'codex-cli', 'idle', { projectName: 'p' }),
       session('c2', 'codex-cli', 'idle', { projectName: 'p' }),
     ]);
-    expect(marks.map(m => m.glyph)).toEqual(['codex']);
+    expect(marks.map(m => m.glyph)).toEqual(['codex', 'codex']);
   });
 
   it('stands the state event in for one session only while sessions were never received', () => {

@@ -90,8 +90,7 @@ export function resolveTideMarks(
 ): { marks: TideMark[]; overflow: number } {
   const all: TideMark[] = [];
   if (sessions) {
-    // Codex rows fold by project first, exactly like the aquarium: one workspace
-    // must not light up several cloud marks at once.
+    // Each independent top-level identity owns its mark and state.
     for (const s of foldCodexSessionsForDisplay(sessions.filter(x => x.alive))) {
       if (!s.agentType || !isCreatureAgent(s.agentType)) continue;
       all.push({

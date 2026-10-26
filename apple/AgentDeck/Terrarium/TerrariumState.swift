@@ -42,11 +42,8 @@ struct CloudCreatureState: Identifiable {
     let homeX: Float
     let homeY: Float
     let scale: Float
-    /// Number of underlying Codex threads folded into this sprite. Each
-    /// Claude Code rescue/stop-gate spawn creates a fresh codex thread, so
-    /// without folding the same workspace looks like 4-5 simultaneously
-    /// "acting" creatures. Render layers may surface this with a small
-    /// "×N" badge or simply ignore it (default 1 = unfolded).
+    /// Repeated observations of this exact identity, never same-project peers.
+    /// Actual child-agent counts use subagentActivity instead.
     var groupSize: Int = 1
     var exitedWaiting = false
     var subagentActivity: SubagentVisualActivity = .none
@@ -136,9 +133,7 @@ struct TerrariumState {
     var popBurstPositions: [(x: Float, y: Float)] = []
 
     /// Visual id of the creature corresponding to the focused session.
-    /// Resolved through codex-cli folding so a focused thread id maps to the
-    /// representative cloud sprite. Renderer draws a focus halo behind the
-    /// matching creature.
+    /// Renderer draws a focus halo behind this identity's matching creature.
     var focusedSessionId: String? = nil
 }
 
@@ -259,21 +254,8 @@ extension DashboardState {
 
         result.creatures = creatures
 
-        // Cloud (Codex CLI sessions) — folded by projectName.
-        //
-        // Storage keeps one entry per Codex thread (APME, timeline, focus
-        // relay all key off sessionId), but the user's mental model is "one
-        // Codex working in this project" — Claude Code's rescue/stop-gate
-        // spawns a fresh thread on every turn, which without folding shows
-        // up as 4-5 simultaneous Codex creatures for what looks like a
-        // single ongoing task. Group by projectName so the terrarium
-        // collapses companion-task bursts into a single sprite per
-        // workspace; pick the most-recent thread as the representative
-        // (its sessionId is what focus-relay/state-update target).
-        struct CloudFolded {
-            let representative: SessionInfo
-            var states: [String?]
-        }
+        // One cloud per independent Codex identity, as in the shared roster.
+        // Proven children are reduced upstream; project membership proves no relation.
         struct CloudPrimary {
             let id: String
             let projectName: String?
@@ -300,17 +282,7 @@ extension DashboardState {
             .filter { isCodexCloudAgent($0.agentType) }
             .filter { !(primaryIsCloud && $0.id == sessionId) }
 
-        // Group key: projectName when present, else a single shared key so
-        // every empty-project Codex thread folds into one cloud sprite.
-        // The user's mental model is "one Codex working in this dashboard"
-        // — when Companion Tasks arrive without a project tag (low-quality
-        // hook payload, OTel span without `cwd` attr) they should still
-        // collapse instead of stacking up as separate phantoms. Distinct
-        // projects continue to render as distinct sprites.
-        func cloudGroupKey(projectName: String?) -> String {
-            if let p = projectName, !p.isEmpty { return p }
-            return "__codex_no_project__"
-        }
+        // Only repeated observations of the exact same id may share a sprite.
         func cloudStatePriority(_ s: CloudVisualState) -> Int {
             switch s {
             case .pulsing: return 3      // processing — most active
@@ -327,12 +299,12 @@ extension DashboardState {
 
         if let p = cloudPrimary {
             let type = agentType ?? "codex-cli"
-            let key = result.ciWaits[p.id] != nil ? "ci:\(p.id)" : "\(type):\(cloudGroupKey(projectName: p.projectName))"
+            let key = "\(type):\(p.id)"
             cloudGroupOrder.append(key)
             cloudGroups[key, default: []].append((id: p.id, projectName: p.projectName, modelName: p.modelName, cloudState: p.cloudState, startedAt: p.startedAt))
         }
         for sibling in cloudSiblingsRaw {
-            let key = sibling.waitingOn != nil ? "ci:\(sibling.id)" : "\(sibling.agentType ?? "codex-cli"):\(cloudGroupKey(projectName: sibling.projectName))"
+            let key = "\(sibling.agentType ?? "codex-cli"):\(sibling.id)"
             if cloudGroups[key] == nil { cloudGroupOrder.append(key) }
             cloudGroups[key, default: []].append((
                 id: sibling.id,
@@ -345,9 +317,7 @@ extension DashboardState {
 
         let cloudSlots = CreatureLayout.layoutCloudCreatures(count: cloudGroupOrder.count)
         var cloudCreatures: [CloudCreatureState] = []
-        // Resolve a focused codex thread id to its representative so the
-        // halo lights up the visible cloud sprite even when the focus relay
-        // points at a folded thread id.
+        // Repeated observations share only their exact identity and focus.
         var resolvedFocusId: String? = focusedSessionId
         for (slotIdx, key) in cloudGroupOrder.enumerated() {
             guard let members = cloudGroups[key], !members.isEmpty else { continue }

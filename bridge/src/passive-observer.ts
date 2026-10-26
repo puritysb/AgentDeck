@@ -1713,7 +1713,7 @@ function encodeClaudeCwd(cwd: string): string {
 // observed passively gets the SAME label as one launched via `agentdeck
 // <agent>` in the same directory — bare basename made e.g. a Claude app
 // session in <repo>/bridge show "bridge" while its PTY twin showed the repo
-// name, breaking #N dedup and Codex display folding across launch paths.
+// name, breaking consistent same-project labels across launch paths.
 function projectNameFromCwd(cwd: string): string {
   return resolveProjectNameFromCwdCached(cwd);
 }

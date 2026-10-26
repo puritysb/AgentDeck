@@ -491,9 +491,8 @@ Managed remote attach keeps working unchanged alongside it.
   session-setting pickers. Pin order on the **worker** (`agentdeck order set`
   there): the pin rides the row's `weight` and wins on the hub. Hub-side pins
   for relayed rows are not supported yet (the hub's prefix resolver and TTL
-  refresh see only its own rows). A relayed Codex row folds with a hub-local
-  Codex row of the same project name and weight; pin one of them to keep both
-  visible.
+  refresh see only its own rows). Independent relayed and hub-local Codex
+  identities remain separately visible even with the same project and weight.
 - **Validated** with two real daemons on one host's loopback
   (`tests/e2e/daemon-relay.e2e.test.ts`); not yet on two machines.
 
@@ -504,10 +503,10 @@ to carry `--weight`, so their ordering is daemon-persisted instead: the Node
 daemon owns `~/.agentdeck/session-order.json` — a bounded map of weight pins
 keyed on the bare session id (`rawSessionId` of the `sessions_list` id, so
 `observed:claude:<uuid>` and the bare `<uuid>` address the same pin). The
-daemon overlays pins onto observed rows in the sessions enricher, before
-fold+sort, so the value rides the existing `SessionInfo.weight` wire field to
-every surface — no protocol change, and the Codex display fold (whose key
-carries the weight band) never collapses two differently-pinned tabs.
+daemon overlays pins onto observed rows in the sessions enricher before sorting,
+so the value rides the existing `SessionInfo.weight` wire field to every surface.
+Independent Codex identities remain separate at every weight; pins only change
+their order.
 
 - **Surface**: `GET /sessions/order` lists pins; `POST /sessions/order` with
   `{ sessionId, weight }` sets one and `{ sessionId, clear: true }` (or weight

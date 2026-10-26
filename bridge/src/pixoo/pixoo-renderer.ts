@@ -269,10 +269,7 @@ function syncCreatures(
 ): void {
   const hudCount = getUsageProviderCount(usageEvent);
   // Determine which sessions are alive creature agents (octopus or jellyfish).
-  // Codex rows fold by project first: each Claude Code rescue/stop-gate spawns a
-  // fresh codex thread, so without folding one workspace lights up 4-5 cloud
-  // marks at once. Octopus / opencode are NOT folded — running several of those
-  // against one project is a deliberate user pattern.
+  // Keep every independent top-level identity; observation reduces proven children.
   const aliveCoding: { id: string; agentType: string; state: string }[] = [];
   if (sessions) {
     for (const s of foldCodexSessionsForDisplay(sessions.filter(s => s.alive))) {

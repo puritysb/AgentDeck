@@ -169,8 +169,8 @@ launched observed session (run `claude`/`codex`/`opencode` directly with the
 daemon installed) has no launch line to hang a flag on, so ordering it is
 daemon-first instead: `agentdeck order` pins the weight on the daemon, and the
 daemon applies it every time it builds `sessions_list` — same comparator, same
-surfaces, and the same fold behaviour (two same-project Codex tabs pinned to
-different weights never collapse into one row).
+surfaces, and independent session identities. Same-project Codex tabs remain
+separate at every weight; pins only change their order.
 
 ```bash
 agentdeck order set observed:claude:1a2b… 1   # pin (id, unique prefix, or bare uuid)
