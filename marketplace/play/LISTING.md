@@ -8,9 +8,43 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 1.10.2 GitHub public and Play submitted — 2026-10-26
+
+The signed [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)
+is public as **1.10.2 / versionCode 29**. Google Play production **29 (1.10.2)**
+is **in review**, for 100% rollout across the existing **178 countries/regions**.
+Managed publishing is off. The refreshed production release list at **22:59 KST** also
+confirmed that **28 (1.10.1) remains available on Google Play**; approval and
+public availability of 29 have not been observed.
+
+The single uploaded AAB uses frozen source
+`dc18028aa6e919cfaed4817760cb3381a8020d35`; its SHA-256 is
+`36a557afc67b734760fda0536aa1d4d9cece4c7f1edda3f5f9904f578186ae1b`.
+The [English, Korean and Japanese notes](1.10.2/release-notes.json) were saved and
+read back. Quick checks completed before submission, with no blocking errors or
+supported-device changes. The native-debug-symbol warning is non-blocking.
+The tag workflow's optional Play upload was disabled, avoiding a second upload
+of code 29.
+
+The published APK was downloaded and signature-verified against the existing
+certificate (`10603af8…b08923`); SHA-256:
+`f276f31a87c134141082c7c4f8609e3be353b93e13fd4bcb4acb20e0382957d2`.
+Pantone upgraded to that exact public artifact with data retained and showed
+live Swift-host sessions, completion history and usage without runtime errors.
+The accepted local and public APKs differ only inside the APK Signing Block.
+Crema retains the accepted local build; Lenovo's Play installation is unchanged.
+Physical-panel ghosting and response latency were not measured.
+
+This supersedes the preparation-only and no-unpublished-change observations
+below. Those remain dated pre-upload checkpoints. See the
+[delivery receipt](../../RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
+Portal and device screenshots remain private, gitignored diagnostics and are
+not part of this public listing record.
+
 ## 1.10.2 release preparation — 2026-10-26
 
-The next Android patch is **1.10.2 / versionCode 29**, following the
+At the pre-upload checkpoint, the next Android patch was **1.10.2 / versionCode
+29**, following the
 [recorded version decision](../../RELEASING.md#2026-10-26-non-dot-stability-release-decision). The October 26
 Play Console readback found **28** as the highest uploaded version code across
 15 App Bundles, with no unpublished changes or production/internal draft.
@@ -26,7 +60,9 @@ Play Console confirms **28 (1.10.1)** is **available on Google Play**, with
 **100% rollout across 178 countries/regions**. The production release list shows
 publication on October 13 at **21:21 KST**; internal testing remains available
 as **28 (1.10.1)**, published October 13 at **11:42 KST**. There are no unpublished
-changes. This supersedes the review-pending observation below.
+changes at that pre-upload checkpoint. The later 1.10.2 submission above
+supersedes that empty-queue observation; the public 1.10.1 confirmation supersedes
+the review-pending observation below.
 
 The existing build has non-blocking recommendations for edge-to-edge display,
 deprecated edge-to-edge APIs and R8 optimization. These recommendations are not

@@ -100,7 +100,9 @@ observed portal/artifact state; do not present a candidate as public.
 The maintainer authorized verification and release on October 26. These are
 **candidates until each delivery receipt is recorded**. The isolated release
 branch starts at `582856785cbba5b8efc0d16bdb4f4d7650ba40a8`; the separate Dot
-investigation checkout is excluded.
+investigation checkout is excluded. The table and portal observations below
+are the pre-upload checkpoint; the [delivery receipt](#2026-10-26-non-dot-delivery-checkpoint)
+records subsequent outcomes without rewriting that version decision.
 
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
 | --- | --- | --- | --- | --- | --- |
@@ -126,6 +128,172 @@ iOS, Stream Deck, Ulanzi and ESP32 are unchanged in this release batch. Their
 remaining changes require separate channel-specific artifact and hardware gates.
 Root `VERSION` stays 1.0.2. No API key, hosted relay or Dot integration is advertised
 as a released capability.
+
+### 2026-10-26 non-Dot delivery checkpoint
+
+**npm 1.9.3 and Android 1.10.2's GitHub APK are public. Google Play 1.10.2 is
+in review; macOS 1.9.3 / 9501 is Waiting for Review.** The last verified public
+Store versions remain Android 1.10.1 / 28 and macOS 1.9.2 / 9401; iOS remains
+1.9.1. Store submission is not approval or public delivery.
+
+Android and Apple use frozen source
+`dc18028aa6e919cfaed4817760cb3381a8020d35`, merged in
+[PR #611](https://github.com/puritysb/AgentDeck/pull/611). Its source parent
+`7006ed2e33ff974c8cb80f491a65825476f371d9` passed all 25 automatic gates in the
+[clean full verification](verification/receipts/2026-10-26-7006ed2.json); the final
+commit adds only that receipt. The final source passed 14 CI checks, including
+Windows native runtime on Node 22/24/26; the CI TTGO compile was skipped, while
+its local full-verification gate passed.
+
+The [separate manual receipt](verification/receipts/2026-10-26-dc18028.json)
+records **two attested gates**, `device-deploy` and `swift-codex-live`, scoped to
+Android 1.10.2 and Apple 9501. It does not rerun or replace the 25 automatic gates
+and does not approve the old-source npm candidate. Its manual-only command
+recorded both gates as passed; the subsequent Build Health image generation
+failed because that invocation had no test results to render. This is a report
+image failure, not a failed manual gate or a new full-suite pass.
+
+**Apple 9501 runtime acceptance passed.** A sandboxed, Development-signed
+equivalent copy of the exported macOS candidate completed two independently
+launched real Codex CLI turns: 19 observed frames showed both working
+simultaneously, then both returned to idle. Reviewed Mac and Crema framebuffer
+captures showed distinct working rows. The separate synthetic Swift replay
+passed 15 assertions across 44 WebSocket frames; all seven browser-boundary
+checks passed. A no-tool start/prompt followed by silence settled to idle within
+the **52.353-second observed upper bound**, without a terminal hook or
+intermediate refresh. That synthetic case is not a real provider-429 test.
+
+Swift-to-CLI takeover had a **28.025-second response gap** and completed its
+command in **32.32 seconds**. CLI-to-Swift recovery took **142.121 seconds** with
+no manual repair or overlapping listeners. After Node disappeared, promotion
+hit `NWListener` `EADDRINUSE` at 13:26:04 UTC and selected port 9121. The existing
+120-second failed-bind memory deliberately deferred reclaim; the log recorded
+reclaim at 13:28:06 and listening on 9120 at 13:28:10. This explains the measured
+delay rather than a settings error or permanent failure; the 142-second
+canonical-endpoint interruption remains a measured limitation. The lower-level
+cause of the transient bind refusal was not independently established.
+
+Shortcuts List returned two fixture sessions and Open selected the intended
+second session in the actual 1.9.3 / 9501 app. The Store installation was not
+launched and fixtures executed no commands. Pairing-token and settings hashes
+were retained. The exact nonempty 200-event timeline files stayed byte-identical
+across CLI stop/reclaim, and earlier history remained visible. A later UI-fixture
+interval retained only 174 of 199 unique baseline identities; it is **not**
+counted as whole-dataset preservation. Its changes are not diagnosed by this
+receipt.
+
+The final cleanup confirmed empty test rosters, exited owned model processes,
+removed test launchd jobs and a cleared UI filter. Earlier claims based on a
+missing Node `/status.sessions` field and a timeline helper using nonexistent
+identity fields are invalidated. Actual WebSocket evidence instead exposed the
+old Node runtime's missing-terminal 429 latch. Initial harness ancestry folding,
+a KeepAlive rerun and expired first Shortcuts fixtures are excluded from product
+acceptance; the independent-process and fresh-fixture reruns provide the results
+above.
+
+**npm has a separate source and gate.**
+[PR #612](https://github.com/puritysb/AgentDeck/pull/612), source
+`bd0c78d2e565b82eb0c79cba85f2cc04930c1e8b`, corrects the Node hook-fallback terminal
+handling found by the real 429 run. The installed-package synthetic terminal
+check passed all seven assertions with the default disk resolver: explicit
+429 completion reached idle in **9.001 seconds** without a Stop hook, a late
+tool-end did not reopen it, and a new prompt rejected the previous terminal.
+The temporary daemon and port were cleaned up normally. This was a synthetic
+rollout replay with no provider/model call. Separately, the globally installed
+candidate completed two real Codex turns with nine simultaneous working frames,
+then both returned to idle; the reviewed Crema capture showed both working.
+Exact package acceptance also passed 12 checks, including a 60-second health
+soak with 60 responses and a worst measured response of 3 ms.
+
+The final candidate's Swift-to-CLI and CLI-to-Swift gaps were **27.465 seconds**
+and **146.185 seconds**, respectively, with no overlapping listeners, duplicate
+roster rows or manual repair. Swift 9501 recovered port 9120 automatically and
+showed both real-turn completion markers in its wire data and dashboard. The
+same 120-second failed-bind protection explains the slow return; the earlier
+142.121-second measurement remains a separate run. Pairing token, settings and
+Codex configuration were retained. Timeline comparisons used validated nonempty
+schemas and interval-specific hashes/subsets, without claiming that all 200
+identities survived every bounded-history merge.
+
+The [clean npm-source full verification](verification/receipts/2026-10-26-bd0c78d.json)
+passed 25 automatic gates in **36m 11.959s**. Windows execution is delegated to
+CI; the ESP32 physical gate is explicitly skipped because no firmware ships in
+this batch. Its two manual gates remain unattested in that automatic receipt. The
+[separate final manual receipt](verification/receipts/2026-10-26-4b09b06.json)
+attests them at receipt-only head `4b09b066`, explicitly binding the npm runtime
+to source `bd0c78d2` and the unchanged Apple runtime to source `dc18028` / build
+9501. It supplements the automatic results and preserves the earlier R-only
+manual receipt; it is not another full-suite run. The final PR #612 head passed
+seven CI checks, with the TTGO CI compile skipped after its local gate passed.
+
+**npm 1.9.3 is public.** The
+[release workflow](https://github.com/puritysb/AgentDeck/actions/runs/40338813813)
+published the non-draft, non-prerelease
+[`npm-v1.9.3` release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.3)
+at **23:29:50 KST on October 26** from `bd0c78d2`. It verified all four public
+registry versions: `@agentdeck/shared`, `@agentdeck/hooks`, `@agentdeck/bridge`
+and `@agentdeck/setup` at 1.9.3. The later receipt-only commit is preserved in
+PR #612; it does not change the published product payload. The post-merge check
+of the actual global CLI target, build and healthy owner is a separate local
+deployment follow-up, pending at this checkpoint. The earlier `dc18028` npm
+candidate was superseded by the terminal-fix source.
+
+**macOS 1.9.3 / 9501 was submitted for review; it is not public.** The
+[submission workflow](https://github.com/puritysb/AgentDeck/actions/runs/40334183738)
+succeeded at **23:01:51 KST on October 26**, retaining frozen source `dc18028`,
+`AFTER_APPROVAL` and the prepared metadata digest. It submitted review
+`7dd4ca01-37ff-4a13-97fd-51dbefe57795`, version
+`149df956-fb57-45de-8f2f-87a57dfb7162`, build
+`a442d2df-6460-4624-820a-084dce8a0ccf`. The successful
+[read-only follow-up](https://github.com/puritysb/AgentDeck/actions/runs/40336419441)
+confirmed **`WAITING_FOR_REVIEW` for both the version and submission**, with
+`submittedDate` **2026-10-26T14:01:40.681Z** and `AFTER_APPROVAL`. It also
+confirmed 1.9.2 remains `READY_FOR_SALE`; the last verified public macOS release
+is 1.9.2 / 9401.
+
+Detailed runtime evidence remains private under
+`diagnostics/non-dot-release-oct26-soak/final-runtime-9501/` and
+`diagnostics/non-dot-release-oct26-soak/final-runtime-bd0c78d2/`, with separate
+`apple-9501-runtime-acceptance.json`, `packaged-terminal-bd0c78d2.json` and
+`asc-submit-receipt.json` receipts. Raw logs, private captures and account data
+are excluded from this public record.
+
+**Android GitHub APK is public.** The
+[release workflow](https://github.com/puritysb/AgentDeck/actions/runs/40324175587)
+published [1.10.2 / code 29](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)
+at **21:44:42 KST on October 26** from that frozen source. The downloaded APK's
+signature is valid and its certificate matches the prior public 1.10.1 APK.
+Public APK SHA-256:
+`f276f31a87c134141082c7c4f8609e3be353b93e13fd4bcb4acb20e0382957d2`.
+Its only byte differences from the accepted local APK are within the APK Signing
+Block; all executable and resource bytes are identical. A data-preserving
+Pantone upgrade installed that exact public hash and passed cold launch and a
+live Swift-host dashboard check, including two independent Codex sessions,
+completion history and usage. No AndroidRuntime/EinkAnim error appeared for the
+new process. Crema retains the accepted local artifact; Lenovo's Play install
+was unchanged. These framebuffer checks do not measure physical-panel ghosting
+or latency.
+
+**Google Play 1.10.2 / code 29 is submitted and in review; it is not yet public.**
+The refreshed production release list at **22:59 KST** showed 29 in review and
+28 (1.10.1) available on Google Play. The submitted scope is 100% of the existing
+178 countries, with managed publishing off, so approval releases it automatically.
+English, Korean and Japanese notes were saved and read back; Google's quick
+checks completed before submission. There were no blocking errors or
+supported-device changes; the missing native-debug-symbol warning remains
+non-blocking. Uploaded AAB SHA-256:
+`36a557afc67b734760fda0536aa1d4d9cece4c7f1edda3f5f9904f578186ae1b`.
+The repository variable `ANDROID_PLAY_ENABLED` was absent and the tag workflow's
+optional Play upload steps were skipped, so code 29 was uploaded once through
+the production portal. See [Play delivery details](marketplace/play/LISTING.md#1102-github-public-and-play-submitted-2026-10-26).
+
+This supersedes the October 26 pre-upload Android observation above and the
+preparation-only Play entry. It does not change the historical observations at
+their stated times. Sanitized receipts are retained locally as
+`diagnostics/android-1.10.2-play-submitted.json` and
+`diagnostics/android-1.10.2-public-artifact-validation.json`. Portal screenshots
+and device captures remain private, gitignored evidence; do not commit or upload
+them with this public delivery record.
 
 ### 2026-10-24 macOS 1.9.2 / 9401 public release
 
@@ -1947,27 +2115,36 @@ CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_nu
 
 #### Guarded macOS review delivery
 
-The `asc-certificates.yml` maintenance workflow also supports the authorized
-macOS 1.9.2 replacement through Apple's official review-submission API. The
-credential remains in GitHub Actions. These actions are deliberately restricted
-to app `6784822497`, platform `MAC_OS`, version `1.9.2`, and an explicit processed
-replacement build greater than `9201`; changing that scope requires a reviewed
-script change.
+The `asc-certificates.yml` maintenance workflow supports authorized macOS review
+delivery through Apple's official API. Credentials remain in GitHub Actions.
+The app (`6784822497`) and platform (`MAC_OS`) are fixed; the caller supplies an
+exact supported product version, processed build greater than `9201`, and
+successful upload run. The workflow verifies that the upload run, CI-derived
+build number and retained artifact all belong to the same reviewed source
+commit. A prepared repository copy section for that exact version is required.
+The legacy 1.9.2/build-9201 replacement exception does not authorize replacing
+another candidate or modifying an active unrelated submission.
 
-1. Complete the source and exported-artifact checks, upload the macOS candidate,
-   and read its actual CI build number and ASC processing state. An upload alone
-   does not submit it for review.
-2. Dispatch `asc-certificates.yml` on the reviewed source with
-   `action=release-prepare`, `release_version=1.9.2`, and
-   `release_build=<actual build number>`. Preparation reads the English, Korean
-   and Japanese macOS What's New text from `docs/appstore-metadata-draft.md` and
-   the macOS notes from `apple/APP_REVIEW_NOTES.md`, associates that exact valid
-   build, and sets automatic release after approval. It refuses to replace an
-   unexpected build association and reads the result back.
-3. After successful preparation, dispatch the same source and target with
-   `action=release-submit`. It rechecks the copy, build and release setting,
-   accepts only a draft containing exactly that version, then submits it and
-   reads back the state. Existing other submissions are not cancelled or edited.
+1. Complete the source, exported-artifact and runtime checks, upload the macOS
+   candidate, and read its actual CI build number and ASC processing state.
+   An upload alone does not submit it for review.
+2. Dispatch `asc-certificates.yml` on the same reviewed source with
+   `action=release-prepare`, `release_version=<exact version>`,
+   `release_build=<actual build number>`, and `release_run=<successful upload run ID>`.
+   Preparation reads the exact version's English, Korean and Japanese What's New
+   fields from `docs/appstore-metadata-draft.md` and the marked macOS Notes field
+   from `apple/APP_REVIEW_NOTES.md`. For a new version, it carries required text
+   and review-contact metadata from the latest released macOS version, only when
+   no other macOS version or submission is in flight. It verifies inherited
+   screenshots/previews are complete and retain the released coverage, associates
+   the exact valid build and selects automatic release after approval. Missing
+   media must be restored before continuing; text initialization is not media
+   upload. It refuses an unexpected build association and reads the result back.
+3. After successful preparation, dispatch the same source and all three target
+   inputs with `action=release-submit`. It rechecks provenance, copy, build, media
+   and release setting, accepts only a draft containing exactly that version,
+   then submits and reads back the state. Other submissions are never cancelled
+   or edited. Re-reading an already submitted matching target does not resubmit it.
 4. Record the workflow, source, version, build, submission identity and measured
    review state. `WAITING_FOR_REVIEW` or `IN_REVIEW` is submitted, not public;
    confirm `READY_FOR_SALE` separately before reporting a live release.

@@ -26,8 +26,11 @@ They include the dashboard Keychain and Settings rendering corrections.
 The [submission run](https://github.com/puritysb/AgentDeck/actions/runs/39969655330)
 confirmed the exact build, repository copy and `AFTER_APPROVAL` setting. The
 [final readback](https://github.com/puritysb/AgentDeck/actions/runs/39969780932)
-confirmed **Waiting for Review**. Artifact checks and scoped local runtime checks passed; this is not a public
-release. See the [delivery record](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement).
+confirmed **Waiting for Review** at that checkpoint. The
+[October 24 public-release receipt](../RELEASING.md#2026-10-24-macos-192-9401-public-release)
+supersedes that review status: macOS 1.9.2 / 9401 is public. The historical
+[submission record](../RELEASING.md#2026-10-23-macos-settings-responsiveness-replacement)
+retains its original artifact and scoped runtime evidence.
 
 Standalone Swift receives Claude status-line
 observations for diagnostics only; it does not promote them into current
@@ -68,8 +71,8 @@ from `6d1b3238` succeeded and [ASC readback](https://github.com/puritysb/AgentDe
 confirmed build 9201 Valid. The English, Korean and Japanese What's New and the
 macOS Review Notes then in use were saved and matched exactly after reload.
 Automatic release after approval and immediate availability to all users were
-selected; existing ratings were retained. **1.9.2 is not yet publicly released.** iOS is
-unchanged and npm 1.9.3 remains unpublished. Build, upload, submission
+selected; existing ratings were retained. **1.9.2 was not yet publicly released at that checkpoint.** iOS is
+unchanged and npm 1.9.3 was unpublished at that checkpoint. Build, upload, submission
 and withdrawal evidence is recorded separately in the [delivery record](../RELEASING.md#macos-192-delivery-2026-10-23).
 
 _Paste the relevant platform's sections into App Store Connect's "Notes" field when submitting its verified candidate._

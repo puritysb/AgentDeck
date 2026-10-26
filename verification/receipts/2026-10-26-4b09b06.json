@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-26T14:19:15.670Z",
+  "finished_at": "2026-10-26T14:19:15.672Z",
+  "duration_ms": 2,
+  "commit": "4b09b0660be5728912efceca3b2e50bfe9da86ed",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "pass",
+      "attested": true,
+      "note": "exact-bd0c78d2-npm-package-12checks-terminal-7checks-real-Codex-pair-handover27.465s-and146.185s-Android-public-artifact-smoke"
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "pass",
+      "attested": true,
+      "note": "Apple9501-R-source-live15assertions44frames-plus-real-model-and-Shortcuts-unchanged-by-Node-only-fix"
+    }
+  ]
+}
