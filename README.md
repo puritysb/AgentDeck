@@ -316,19 +316,18 @@ together. See the [version decision policy](RELEASING.md#choosing-a-version).
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
-| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.0` |
+| Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.1` |
 | CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.2` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**Android delivery, 2026-10-13:** the signed 1.10.0 APK is public on GitHub.
-Google Play 1.10.0 (27) is public in production. The 1.10.1 (28) patch is
-available on internal Play and installed from Play on Lenovo; promotion awaits
-physical 3D creature-tap acceptance. Crema runs the signed 1.10.1 candidate,
-and Pantone retains 1.10.0. Native 3D background companions now share geometry and use
-adaptive frame pacing, while e-ink emphasizes static counts and status. See
-the [Android delivery receipt](RELEASING.md#android-1100-delivery-readback-2026-10-13).
+**Android delivery, checked 2026-10-26:** 1.10.1 (28) is public on Google
+Play in production at 100% across 178 countries, and its signed APK is public
+on GitHub. Internal Play also contains 1.10.1 (28), with no unpublished change
+or newer uploaded bundle at this readback. The 1.10.2 e-ink update remains a
+candidate until its delivery is recorded. See the
+[current release decision](RELEASING.md#2026-10-26-non-dot-stability-release-decision).
 
 **Apple delivery, 2026-10-24:** macOS **1.9.2 / 9401 is public** in the
 [Mac App Store](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac),

@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Certificates, store status, or guarded macOS 1.9.2 release"
+        description: "Certificates, store status, or guarded macOS release"
         required: true
         default: list
         type: choice
@@ -27,17 +27,22 @@ on:
         required: false
         type: string
       release_version:
-        description: "Exact macOS version (release actions only; 1.9.2)"
+        description: "Exact macOS version with prepared repository copy (release actions only)"
         required: false
-        default: "1.9.2"
         type: string
       release_build:
-        description: "Exact valid replacement build greater than 9201 (release actions only)"
+        description: "Exact uploaded macOS build (release actions only)"
+        required: false
+        type: string
+
+      release_run:
+        description: "Successful Apple upload CI run ID from this exact source commit"
         required: false
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 # A lost response must be read back, never handled by overlapping dispatches.
 concurrency:
@@ -64,13 +69,15 @@ jobs:
           ASC_CERTIFICATE_IDS: ${{ inputs.certificate_ids }}
           ASC_RELEASE_VERSION: ${{ inputs.release_version }}
           ASC_RELEASE_BUILD: ${{ inputs.release_build }}
+          ASC_RELEASE_RUN: ${{ inputs.release_run }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           case "$ASC_ACTION" in
             revoke)
               node scripts/asc-certificates.mjs revoke "$ASC_CERTIFICATE_IDS"
               ;;
             release-prepare|release-submit)
-              node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD"
+              node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN"
               ;;
             list|store-status)
               node scripts/asc-certificates.mjs "$ASC_ACTION"

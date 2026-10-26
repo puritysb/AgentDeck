@@ -95,6 +95,38 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-26 non-Dot stability release decision
+
+The maintainer authorized verification and release on October 26. These are
+**candidates until each delivery receipt is recorded**. The isolated release
+branch starts at `582856785cbba5b8efc0d16bdb4f4d7650ba40a8`; the separate Dot
+investigation checkout is excluded.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.2 (registry checked October 26) | 1.9.3 exists only as unpublished candidate artifacts | 1.9.3 / final source SHA and four tarball hashes | Patch: daemon lifecycle, pairing/security and reliable agent observation | Existing 1.9 scope; no new milestone |
+| macOS / App Store | 1.9.2 / 9401 | No 1.9.3 reservation or pending review observed | 1.9.3 / CI `run_number * 100 + run_attempt` | Patch: show genuine human attention, preserve independent Codex sessions and correct quota renewal | Existing 1.9 scope; Dot excluded from Store build |
+| Android / GitHub APK + Google Play | 1.10.1 / 28, production 100% in 178 countries | Maximum uploaded code 28; no draft or unpublished change | 1.10.2 / 29 | Patch: improve existing e-ink board readability and session presentation | Existing Android 1.10 scope; no new milestone |
+
+Apple state was read from [ASC run 40313393200](https://github.com/puritysb/AgentDeck/actions/runs/40313393200)
+at 20:13 KST: macOS 1.9.2 and iOS 1.9.1 are `READY_FOR_SALE`, recent
+macOS 9401 and iOS 8501 builds are `VALID`, and no active submission was observed.
+Google Play's production, internal-test and all-bundles pages were read directly;
+both tracks contain 1.10.1 / 28 and the previous "in review" record is stale.
+Recheck consumed build floors before uploading.
+
+Acceptance requires the full recorded verification tier, exact package and
+Release archive checks, and real installation/runtime evidence. The coordinated
+npm/macOS candidate must complete Swift-only, CLI-only and coexistence/handover
+soaks with the new Apple candidate and the four exact npm tarballs before the npm
+tag. Android requires signed APK/AAB validation and connected-device checks.
+Store submission, approval and public delivery are separate states.
+
+iOS, Stream Deck, Ulanzi and ESP32 are unchanged in this release batch. Their
+remaining changes require separate channel-specific artifact and hardware gates.
+Root `VERSION` stays 1.0.2. No API key, hosted relay or Dot integration is advertised
+as a released capability.
+
 ### 2026-10-24 macOS 1.9.2 / 9401 public release
 
 **macOS 1.9.2 / 9401 is released.** The

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// App Store Connect certificate maintenance and fixed-scope macOS release.
+// App Store Connect certificate maintenance and guarded macOS release.
 //
 //   node scripts/asc-certificates.mjs list
 //   node scripts/asc-certificates.mjs revoke <id>[,<id>...]
-//   node scripts/asc-certificates.mjs release-prepare 1.9.2 <build-greater-than-9201>
-//   node scripts/asc-certificates.mjs release-submit 1.9.2 <same-build>
+//   node scripts/asc-certificates.mjs release-prepare <version> <build> <uploaded-ci-run>
+//   node scripts/asc-certificates.mjs release-submit <version> <same-build> <same-uploaded-ci-run>
 //
 // Cloud signing (`xcodebuild -allowProvisioningUpdates`) creates a signing
 // certificate on demand, and Apple caps how many an account may hold. When the
@@ -26,7 +26,8 @@ import { resolve } from 'node:path';
 const ORIGIN = 'https://api.appstoreconnect.apple.com';
 const APP_ID = '6784822497';
 const PLATFORM = 'MAC_OS';
-const RELEASE_VERSION = '1.9.2';
+const REPOSITORY = 'puritysb/AgentDeck';
+const RELEASE_WORKFLOW = '.github/workflows/apple-release.yml';
 const LOCALES = ['en-US', 'ko', 'ja'];
 const EDITABLE = new Set(['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED']);
 const SUBMITTED = new Set(['WAITING_FOR_REVIEW', 'IN_REVIEW']);
@@ -71,7 +72,14 @@ export function createASCClient(env = process.env, transport = fetch) {
       throw Object.assign(new Error(`ASC ${method} outcome unknown; read back before retrying`), { outcomeUnknown: true });
     }
     // Do not log response bodies: they can echo review contacts or metadata.
-    if (!res.ok) throw new Error(`ASC ${method} failed (HTTP ${res.status})`);
+    if (!res.ok) {
+      let codes = [];
+      try {
+        const body = await res.json();
+        codes = (body.errors ?? []).map(error => error.code).filter(code => typeof code === 'string' && /^[A-Z0-9_.-]{1,100}$/.test(code)).slice(0,5);
+      } catch { /* The HTTP status remains sufficient when the error is unreadable. */ }
+      throw new Error(`ASC ${method} failed (HTTP ${res.status})${codes.length ? ` [${codes.join(', ')}]` : ''} at ${path.split('?')[0]}`);
+    }
     if (method === 'DELETE' && res.status !== 204) throw new Error('ASC DELETE was not confirmed (expected HTTP 204)');
     if (res.status === 204) return null;
     try { return await res.json(); }
@@ -145,15 +153,71 @@ function exactlyOne(rows, name) {
   return rows[0];
 }
 
+function compareVersions(a, b) {
+  const left = a.split('.').map(Number), right = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (left[i] !== right[i]) return left[i] - right[i];
+  return 0;
+}
+
+function validateVersion(version) {
+  requireThat(typeof version === 'string' && /^[1-9]\d*\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version)
+    && version.length <= 18 && compareVersions(version, '1.9.2') >= 0, 'Expected an explicit supported macOS release version');
+}
+
 export function validateReleaseTarget(version, build) {
-  requireThat(version === RELEASE_VERSION, `Release scope is macOS ${RELEASE_VERSION} only`);
+  validateVersion(version);
   requireThat(typeof build === 'string' && /^[1-9]\d{3,8}$/.test(build) && Number(build) > 9201,
-    'Expected an exact replacement build number greater than 9201');
+    'Expected an exact release build number greater than 9201');
+}
+
+/** The upload run, source and retained artifact must all identify this candidate.
+ * GitHub credentials stay on the runner; no logs or private artifact content are read. */
+export async function verifyReleaseProvenance({ version, build, runId, sourceSha, request }) {
+  validateReleaseTarget(version, build);
+  requireThat(/^[1-9]\d+$/.test(runId ?? '') && /^[a-f0-9]{40}$/.test(sourceSha ?? ''),
+    'An explicit uploaded CI run and full source commit are required');
+  const path = `/repos/${REPOSITORY}/actions/runs/${runId}`;
+  const run = await request(path);
+  requireThat(String(run.id) === runId && run.repository?.full_name === REPOSITORY
+    && run.path === RELEASE_WORKFLOW && run.head_sha === sourceSha
+    && run.status === 'completed' && run.conclusion === 'success'
+    && ['workflow_dispatch', 'push'].includes(run.event), 'Upload run identity, source or success does not match');
+  requireThat(Number.isSafeInteger(run.run_number) && Number.isSafeInteger(run.run_attempt)
+    && run.run_number > 0 && run.run_attempt > 0 && run.run_attempt < 100
+    && String(run.run_number * 100 + run.run_attempt) === build, 'Upload run build number does not match');
+  const jobs = await request(`${path}/attempts/${run.run_attempt}/jobs?per_page=100`);
+  requireThat(Array.isArray(jobs.jobs) && jobs.total_count === jobs.jobs.length, 'Upload job list is incomplete');
+  const mac = exactlyOne(jobs.jobs.filter(job => job.steps?.some(step => step.name === 'Upload macOS to App Store Connect')), 'macOS upload job');
+  for (const name of ['Verify App Store invariants (exported pkg)', 'Retain verified macOS candidate', 'Upload macOS to App Store Connect']) {
+    const step = exactlyOne(mac.steps.filter(s => s.name === name), name);
+    requireThat(step.status === 'completed' && step.conclusion === 'success', `${name} did not succeed`);
+  }
+  requireThat(mac.status === 'completed' && mac.conclusion === 'success', 'macOS upload job did not succeed');
+  const artifacts = await request(`${path}/artifacts?per_page=100`);
+  requireThat(Array.isArray(artifacts.artifacts) && artifacts.total_count === artifacts.artifacts.length, 'Artifact list is incomplete');
+  const artifact = exactlyOne(artifacts.artifacts.filter(a => a.name === `apple-macos-${version}-${run.run_number}-${run.run_attempt}`), 'matching macOS artifact');
+  requireThat(artifact.expired === false && artifact.size_in_bytes > 0 && /^sha256:[a-f0-9]{64}$/.test(artifact.digest ?? '')
+    && artifact.workflow_run?.id === run.id && artifact.workflow_run?.head_sha === sourceSha, 'Uploaded artifact provenance is incomplete');
+  return { sourceSha, runId, artifactId: artifact.id, artifactDigest: artifact.digest };
+}
+
+function githubClient(env = process.env, transport = fetch) {
+  requireThat(env.GITHUB_REPOSITORY === REPOSITORY && env.GITHUB_TOKEN, 'Release provenance requires this repository CI token');
+  return async path => {
+    requireThat(path.startsWith(`/repos/${REPOSITORY}/actions/runs/`), 'Invalid GitHub provenance resource');
+    const response = await transport(`https://api.github.com${path}`, {
+      redirect: 'error', signal: AbortSignal.timeout(30000),
+      headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    requireThat(response.ok, `GitHub provenance read failed (HTTP ${response.status})`);
+    try { return await response.json(); }
+    catch { throw new Error('GitHub provenance response unreadable'); }
+  };
 }
 
 /** Copy is taken only from the marked repository fields, never workflow input. */
 export function extractReleaseCopy(metadata, reviewNotes, version) {
-  requireThat(version === RELEASE_VERSION, 'Unsupported release copy version');
+  validateVersion(version);
   const heading = `## Prepared macOS ${version} update text`;
   const parts = metadata.split(heading);
   requireThat(parts.length === 2, 'Missing or duplicate prepared macOS copy section');
@@ -198,11 +262,7 @@ async function collection(request, path) {
   return { data, included };
 }
 
-async function releaseSnapshot(request, version, build) {
-  const versions = await collection(request,
-    `/v1/apps/${APP_ID}/appStoreVersions?filter[platform]=${PLATFORM}&filter[versionString]=${version}&limit=200`);
-  const target = exactlyOne(versions.data.filter(v => v.attributes?.platform === PLATFORM && v.attributes?.versionString === version), 'target app version');
-  const versionId = resourceId(target, 'appStoreVersions');
+async function releaseBuild(request, version, build) {
   const builds = await collection(request,
     `/v1/builds?filter[app]=${APP_ID}&filter[version]=${build}&include=preReleaseVersion&limit=200`);
   const candidates = builds.data.filter(b => {
@@ -213,7 +273,142 @@ async function releaseSnapshot(request, version, build) {
   const binary = exactlyOne(candidates, 'matching macOS build');
   const buildId = resourceId(binary, 'builds');
   requireThat(binary.attributes.processingState === 'VALID' && binary.attributes.expired === false,
-    'Replacement build must be VALID and not expired');
+    'Release build must be VALID and not expired');
+  return { binary, buildId };
+}
+
+const LOCALIZED_FIELDS = ['description', 'keywords', 'marketingUrl', 'promotionalText', 'supportUrl'];
+const REVIEW_CONTACT_FIELDS = ['contactEmail', 'contactFirstName', 'contactLastName', 'contactPhone'];
+const REVIEW_FIELDS = ['contactEmail', 'contactFirstName', 'contactLastName', 'contactPhone', 'demoAccountRequired', 'demoAccountName', 'demoAccountPassword'];
+const missingFields = (current, baseline, fields) => Object.fromEntries(fields.filter(key => (current?.[key] == null || current[key] === '') && baseline[key] != null).map(key => [key, baseline[key]]));
+const pick = (attributes, fields) => Object.fromEntries(fields.filter(key => attributes?.[key] != null).map(key => [key, attributes[key]]));
+
+async function macVersions(request) {
+  const rows = (await collection(request, `/v1/apps/${APP_ID}/appStoreVersions?filter[platform]=${PLATFORM}&limit=200`)).data;
+  for (const row of rows) {
+    resourceId(row, 'appStoreVersions');
+    requireThat(row.attributes?.platform === PLATFORM, 'Version platform mismatch');
+  }
+  return rows;
+}
+
+/** A missing relationship is explicit null, never an HTTP error or omitted data. */
+async function versionRelationship(request, versionId, name, type) {
+  const root = `/v1/appStoreVersions/${versionId}`;
+  const linkage = await request(`${root}/relationships/${name}`);
+  requireThat(linkage && Object.hasOwn(linkage, 'data'), `${name} relationship is unreadable`);
+  if (linkage.data === null) return null;
+  const expected = resourceId(linkage.data, type);
+  const value = (await request(`${root}/${name}`)).data;
+  requireThat(resourceId(value, type) === expected, `${name} relationship changed during readback`);
+  return value;
+}
+
+function canAttach(version, current, buildId) {
+  return current?.id === buildId || current == null || (version === '1.9.2' && current.attributes?.version === '9201');
+}
+
+/** POSTs have natural identities (app/platform/version or version/locale).
+ * After a lost response, stop; the next invocation reads those identities first.
+ * Never retry a creation within the same invocation. */
+async function ensureReleaseVersion(request, version, build, copy) {
+  const { buildId } = await releaseBuild(request, version, build);
+  let versions = await macVersions(request);
+  let matches = versions.filter(v => v.attributes.versionString === version);
+  requireThat(matches.length <= 1, 'Duplicate target app versions');
+  if (matches.length && !EDITABLE.has(matches[0].attributes.appStoreState)) return;
+  const target = matches[0];
+  const active = await activeSubmissions(request);
+  requireThat(!active, 'Do not initialize metadata while a macOS review submission is active');
+  const terminal = new Set(['READY_FOR_SALE', 'REPLACED_WITH_NEW_VERSION', 'DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE']);
+  requireThat(versions.every(v => v.id === target?.id || terminal.has(v.attributes.appStoreState)),
+    'Another macOS version is in flight');
+  if (target) {
+    const current = await versionRelationship(request, target.id, 'build', 'builds');
+    requireThat(canAttach(version, current, buildId), 'Prepare cannot replace an unrelated candidate');
+    const locales = (await collection(request, `/v1/appStoreVersions/${target.id}/appStoreVersionLocalizations?limit=200`)).data;
+    const review = await versionRelationship(request, target.id, 'appStoreReviewDetail', 'appStoreReviewDetails');
+    // Existing complete versions keep their metadata, including the legacy replacement path.
+    const complete = LOCALES.every(l => locales.filter(row => row.attributes?.locale === l).length === 1) && review;
+    if (complete && (version === '1.9.2' || (locales.filter(row => LOCALES.includes(row.attributes?.locale))
+      .every(row => row.attributes.description?.trim() && row.attributes.supportUrl?.trim())
+      && REVIEW_CONTACT_FIELDS.every(key => review.attributes?.[key]?.trim())
+      && typeof review.attributes?.demoAccountRequired === 'boolean'
+      && (!review.attributes.demoAccountRequired || (review.attributes.demoAccountName && review.attributes.demoAccountPassword))))) return;
+    requireThat(target.attributes.appStoreState === 'PREPARE_FOR_SUBMISSION', 'Only a new draft may initialize missing metadata');
+  }
+  const prior = versions.filter(v => v.attributes.appStoreState === 'READY_FOR_SALE'
+    && /^\d+\.\d+\.\d+$/.test(v.attributes.versionString));
+  prior.sort((a, b) => compareVersions(b.attributes.versionString, a.attributes.versionString));
+  requireThat(prior.length > 0 && compareVersions(version, prior[0].attributes.versionString) > 0,
+    'A new version must follow the latest released macOS version');
+  const baseline = prior[0];
+  const baselineLocales = (await collection(request, `/v1/appStoreVersions/${baseline.id}/appStoreVersionLocalizations?limit=200`)).data;
+  const baselineReview = await versionRelationship(request, baseline.id, 'appStoreReviewDetail', 'appStoreReviewDetails');
+  resourceId(baselineReview, 'appStoreReviewDetails');
+  const inherited = {};
+  for (const locale of LOCALES) {
+    const row = exactlyOne(baselineLocales.filter(l => l.attributes?.locale === locale), `released ${locale} localization`);
+    inherited[locale] = pick(row.attributes, LOCALIZED_FIELDS);
+    requireThat(inherited[locale].description?.trim() && inherited[locale].supportUrl?.trim(), 'Released localization lacks required metadata');
+  }
+  const reviewAttributes = pick(baselineReview.attributes, REVIEW_FIELDS);
+  requireThat(REVIEW_CONTACT_FIELDS.every(key => reviewAttributes[key]?.trim())
+    && typeof reviewAttributes.demoAccountRequired === 'boolean', 'Released review contact information is incomplete');
+  requireThat(!reviewAttributes.demoAccountRequired || (reviewAttributes.demoAccountName && reviewAttributes.demoAccountPassword), 'Released review demo account is incomplete');
+  requireThat(baseline.attributes.copyright?.trim(), 'Released copyright is missing');
+  if (!target) {
+    await request('/v1/appStoreVersions', 'POST', { data: {
+      type: 'appStoreVersions',
+      attributes: { platform: PLATFORM, versionString: version, releaseType: 'AFTER_APPROVAL', copyright: baseline.attributes.copyright },
+      relationships: { app: { data: { type: 'apps', id: APP_ID } } },
+    } });
+  }
+  versions = await macVersions(request);
+  const created = exactlyOne(versions.filter(v => v.attributes.versionString === version), 'new target app version');
+  requireThat(created.attributes.appStoreState === 'PREPARE_FOR_SUBMISSION', 'New version is no longer editable');
+  requireThat(canAttach(version, await versionRelationship(request, created.id, 'build', 'builds'), buildId), 'New version acquired another build');
+  const locales = (await collection(request, `/v1/appStoreVersions/${created.id}/appStoreVersionLocalizations?limit=200`)).data;
+  for (const locale of LOCALES) {
+    const existing = locales.filter(l => l.attributes?.locale === locale);
+    requireThat(existing.length <= 1, `Duplicate ${locale} localization`);
+    if (existing.length) {
+      const row = existing[0];
+      resourceId(row, 'appStoreVersionLocalizations');
+      const attributes = missingFields(row.attributes, inherited[locale], ['description', 'supportUrl']);
+      if (Object.keys(attributes).length) await request(`/v1/appStoreVersionLocalizations/${row.id}`, 'PATCH', {
+        data: { type: 'appStoreVersionLocalizations', id: row.id, attributes },
+      });
+      continue; // Preserve existing values and media; fill only missing required text.
+    }
+    await request('/v1/appStoreVersionLocalizations', 'POST', { data: {
+      type: 'appStoreVersionLocalizations', attributes: { locale, ...inherited[locale], whatsNew: copy.whatsNew[locale] },
+      relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: created.id } } },
+    } });
+  }
+  const review = await versionRelationship(request, created.id, 'appStoreReviewDetail', 'appStoreReviewDetails');
+  if (!review) await request('/v1/appStoreReviewDetails', 'POST', { data: {
+    type: 'appStoreReviewDetails', attributes: { ...reviewAttributes, notes: copy.notes },
+    relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: created.id } } },
+  } });
+  else {
+    resourceId(review, 'appStoreReviewDetails');
+    const attributes = missingFields(review.attributes, reviewAttributes, [...REVIEW_CONTACT_FIELDS, 'demoAccountRequired']);
+    if ((attributes.demoAccountRequired ?? review.attributes?.demoAccountRequired) === true) {
+      Object.assign(attributes, missingFields(review.attributes, reviewAttributes, ['demoAccountName', 'demoAccountPassword']));
+    }
+    if (Object.keys(attributes).length) await request(`/v1/appStoreReviewDetails/${review.id}`, 'PATCH', {
+      data: { type: 'appStoreReviewDetails', id: review.id, attributes },
+    });
+  }
+}
+
+async function releaseSnapshot(request, version, build) {
+  const versions = await collection(request,
+    `/v1/apps/${APP_ID}/appStoreVersions?filter[platform]=${PLATFORM}&filter[versionString]=${version}&limit=200`);
+  const target = exactlyOne(versions.data.filter(v => v.attributes?.platform === PLATFORM && v.attributes?.versionString === version), 'target app version');
+  const versionId = resourceId(target, 'appStoreVersions');
+  const { buildId } = await releaseBuild(request, version, build);
   const locales = await collection(request, `/v1/appStoreVersions/${versionId}/appStoreVersionLocalizations?limit=200`);
   const localizations = {};
   for (const locale of LOCALES) {
@@ -221,11 +416,65 @@ async function releaseSnapshot(request, version, build) {
     resourceId(row, 'appStoreVersionLocalizations');
     localizations[locale] = row;
   }
-  const review = (await request(`/v1/appStoreVersions/${versionId}/appStoreReviewDetail`)).data;
+  const review = await versionRelationship(request, versionId, 'appStoreReviewDetail', 'appStoreReviewDetails');
   resourceId(review, 'appStoreReviewDetails');
-  const attached = (await request(`/v1/appStoreVersions/${versionId}/build`)).data;
+  if (version !== '1.9.2') {
+    requireThat(LOCALES.every(locale => localizations[locale].attributes.description?.trim() && localizations[locale].attributes.supportUrl?.trim()),
+      'New version localization metadata is incomplete');
+    requireThat(REVIEW_CONTACT_FIELDS.every(key => review.attributes?.[key]?.trim())
+      && typeof review.attributes?.demoAccountRequired === 'boolean', 'New version review contact information is incomplete');
+    requireThat(!review.attributes.demoAccountRequired || (review.attributes.demoAccountName && review.attributes.demoAccountPassword),
+      'New version review demo account is incomplete');
+  }
+  const attached = await versionRelationship(request, versionId, 'build', 'builds');
   if (attached) resourceId(attached, 'builds');
   return { target, versionId, buildId, localizations, review, attachedId: attached?.id ?? null, attachedBuild: attached?.attributes?.version };
+}
+
+/** ASC normally carries version media forward. Text-only initialization must
+ * never turn missing screenshots/previews into a submission-ready result. */
+async function assertReleaseMedia(request, version, snapshot) {
+  if (version === '1.9.2') return; // Preserve the bounded legacy replacement operation.
+  const previous = (await macVersions(request)).filter(v => v.attributes.appStoreState === 'READY_FOR_SALE'
+    && /^\d+\.\d+\.\d+$/.test(v.attributes.versionString) && compareVersions(v.attributes.versionString, version) < 0);
+  previous.sort((a, b) => compareVersions(b.attributes.versionString, a.attributes.versionString));
+  requireThat(previous.length > 0, 'Released macOS media baseline is unavailable');
+  const locales = (await collection(request, `/v1/appStoreVersions/${previous[0].id}/appStoreVersionLocalizations?limit=200`)).data;
+  async function mediaCounts(localizationId, setType, assetType, displayField) {
+    const response = await collection(request, `/v1/appStoreVersionLocalizations/${localizationId}/${setType}?include=${assetType}&limit=200`);
+    const counts = new Map();
+    for (const set of response.data) {
+      resourceId(set, setType);
+      const display = set.attributes?.[displayField];
+      requireThat(typeof display === 'string', 'Media display type is unavailable');
+      const related = set.relationships?.[assetType]?.data;
+      requireThat(Array.isArray(related), 'Media relationships are incomplete');
+      for (const relationship of related) {
+        resourceId(relationship, assetType);
+        const asset = exactlyOne(response.included.filter(a => a.type === assetType && a.id === relationship.id), 'version media asset');
+        requireThat(asset.attributes?.assetDeliveryState?.state === 'COMPLETE', 'Version media asset is not ready');
+      }
+      counts.set(display, (counts.get(display) ?? 0) + related.length);
+    }
+    return counts;
+  }
+  let screenshots = 0;
+  for (const locale of LOCALES) {
+    const baseline = exactlyOne(locales.filter(l => l.attributes?.locale === locale), `released ${locale} media localization`);
+    resourceId(baseline, 'appStoreVersionLocalizations');
+    for (const [setType, assetType, displayField] of [
+      ['appScreenshotSets', 'appScreenshots', 'screenshotDisplayType'],
+      ['appPreviewSets', 'appPreviews', 'previewType'],
+    ]) {
+      const oldCounts = await mediaCounts(baseline.id, setType, assetType, displayField);
+      const newCounts = await mediaCounts(snapshot.localizations[locale].id, setType, assetType, displayField);
+      for (const [display, count] of oldCounts) {
+        if (setType === 'appScreenshotSets') screenshots += count;
+        requireThat((newCounts.get(display) ?? 0) >= count, `${locale} ${setType} were not inherited; restore media before release`);
+      }
+    }
+  }
+  requireThat(screenshots > 0, 'Released macOS screenshot baseline is empty');
 }
 
 function assertPrepared(snapshot, copy) {
@@ -268,12 +517,15 @@ function assertTargetItem(active, versionId) {
   return item;
 }
 
-/** Fixed release operation; callers cannot supply endpoints, methods or bodies. */
-export async function runRelease({ action, version, build, copy, request, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
+/** Fixed app/platform operation; callers cannot supply endpoints, methods or bodies. */
+export async function runRelease({ action, version, build, copy, request, provenance, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
   validateReleaseTarget(version, build);
   requireThat(['release-prepare', 'release-submit'].includes(action), 'Unknown release operation');
   requireThat(copy?.notes && LOCALES.every(l => typeof copy.whatsNew?.[l] === 'string' && copy.whatsNew[l].length > 0), 'Incomplete repository copy');
+  requireThat(provenance?.sourceSha && provenance?.runId && provenance?.artifactDigest, 'Verified upload provenance is required');
+  if (action === 'release-prepare') await ensureReleaseVersion(request, version, build, copy);
   let snapshot = await releaseSnapshot(request, version, build);
+  await assertReleaseMedia(request, version, snapshot);
   let active = await activeSubmissions(request);
   if (active) {
     assertTargetItem(active, snapshot.versionId);
@@ -281,7 +533,7 @@ export async function runRelease({ action, version, build, copy, request, pause 
       'Active submission is not in a supported editable/submitted state');
   }
   const receipt = status => ({ appId: APP_ID, platform: PLATFORM, version, build, status,
-    versionId: snapshot.versionId, buildId: snapshot.buildId,
+    versionId: snapshot.versionId, buildId: snapshot.buildId, ...provenance,
     ...(active ? { submissionId: active.submission.id } : {}),
     metadataSha256: crypto.createHash('sha256').update(JSON.stringify(copy)).digest('hex') });
   if (active && SUBMITTED.has(active.submission.attributes.state)) {
@@ -291,8 +543,8 @@ export async function runRelease({ action, version, build, copy, request, pause 
   }
   if (action === 'release-prepare') {
     requireThat(EDITABLE.has(snapshot.target.attributes.appStoreState), 'App version is not editable for this release');
-    requireThat(snapshot.attachedId === snapshot.buildId || snapshot.attachedBuild === '9201',
-      'Prepare may replace only the withdrawn 9201 build or the exact requested build');
+    requireThat(canAttach(version, snapshot.attachedId ? { id: snapshot.attachedId, attributes: { version: snapshot.attachedBuild } } : null, snapshot.buildId),
+      'Prepare may attach only an empty draft, the exact build, or legacy 1.9.2 build 9201');
     // Each PATCH is idempotent, but an unknown outcome stops the run. The next
     // invocation reads everything first and writes only remaining differences.
     const updates = [];
@@ -318,8 +570,8 @@ export async function runRelease({ action, version, build, copy, request, pause 
     try {
       for (const [path, body] of updates) {
         if (path.endsWith('/relationships/build')) {
-          const current = (await request(`/v1/appStoreVersions/${snapshot.versionId}/build`)).data;
-          requireThat(current?.id === snapshot.buildId || current?.attributes?.version === '9201',
+          const current = await versionRelationship(request, snapshot.versionId, 'build', 'builds');
+          requireThat(canAttach(version, current, snapshot.buildId),
             'Build association changed during preparation; refusing to replace another candidate');
         }
         await request(path, 'PATCH', body);
@@ -376,6 +628,7 @@ export async function runRelease({ action, version, build, copy, request, pause 
     'Submission and its exact version item must both be READY_FOR_REVIEW');
   snapshot = await releaseSnapshot(request, version, build);
   assertPrepared(snapshot, copy);
+  await assertReleaseMedia(request, version, snapshot);
   // Adding the appStoreVersion item transitions the version itself to READY.
   requireThat(snapshot.target.attributes.appStoreState === 'READY_FOR_REVIEW', 'Version is not READY_FOR_REVIEW before submission');
   const submissionId = active.submission.id;
@@ -404,7 +657,7 @@ export async function runRelease({ action, version, build, copy, request, pause 
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const [cmd, arg, build] = args;
+  const [cmd, arg, build, runId] = args;
   if (['release-prepare', 'release-submit'].includes(cmd)) validateReleaseTarget(arg, build);
   else requireThat(['list', 'revoke', 'store-status'].includes(cmd),
     'usage: asc-certificates.mjs (list | store-status | revoke <ids> | release-prepare <version> <build> | release-submit <version> <build>)');
@@ -418,11 +671,12 @@ export async function main(args = process.argv.slice(2)) {
     console.log('\nRemaining:\n');
     await list();
   } else {
+    const provenance = await verifyReleaseProvenance({ version: arg, build, runId, sourceSha: process.env.GITHUB_SHA, request: githubClient() });
     const root = fileURLToPath(new URL('..', import.meta.url));
     const copy = extractReleaseCopy(
       fs.readFileSync(resolve(root, 'docs/appstore-metadata-draft.md'), 'utf8'),
       fs.readFileSync(resolve(root, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), arg);
-    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api })));
+    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api, provenance })));
   }
 }
 

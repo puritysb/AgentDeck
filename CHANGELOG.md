@@ -67,7 +67,36 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
 
-## 2026-10-22 — npm 1.9.3, Apple 1.9.2
+## 2026-10-26 — npm 1.9.3
+
+- Protect daemon data and controls from unrelated browser pages on the same computer. Same-machine trust now validates the host and origin; paired devices and native local clients retain their supported paths. Previously exposed pairing tokens are not automatically revoked: Node users can rotate the token and re-pair devices, but complete revocation across Node/Swift handover remains separate.
+- Show Attention only for a real human response: automatic Codex reviews, Claude processing and quoted prompt text no longer create false waiting states. Keep independently started Codex sessions separate, even in the same project, and estimate stale renewal dates by calendar month.
+- Preserve conversation history during tool-heavy turns, close interrupted turns correctly and deliver session history to USB/Wi-Fi boards under the identifier they requested. Pixoo subagent activity no longer disappears behind tool events.
+- Record Claude replies against the correct APME turn, omit request-free background notices from grading, capture OpenCode models and expose coverage diagnostics. Reference-judge comparisons remain explicit, with project selection and a reviewed dry run before sending task material.
+- Improve Claude permission signals and Windows responses; add opt-in Codex approval controls with bounded fallback to the agent's own prompt. Preserve an existing Claude status line, with reversible installation and relay behavior.
+- Route Wi-Fi setup through the owning daemon, validate credentials and report supported board acknowledgements. Avoid redundant provisioning when compatible firmware reports a matching credential ID; older firmware remains compatible.
+- Keep absent BLE panels in one retrying worker, repair session-targeted cmux delivery, and support an experimental opt-in observed-session relay. Two-computer and Windows-worker relay acceptance remains separate.
+- Make setup fall back to a user-owned npm prefix when global installation is denied, retain useful errors and give host-specific next steps.
+
+## 2026-10-26 — Apple 1.9.3
+
+This delivery targets macOS. iPhone and iPad remain on their existing release.
+
+- Show Attention for requests that need a person, without promoting automatic Codex reviews, Claude processing or quoted prompt text into false alerts.
+- Detect real OpenClaw approval requests consistently in the standalone Mac daemon.
+- Preserve separately started Codex sessions instead of merging sessions that share a project.
+- Estimate stale Codex quota renewal dates by calendar month.
+
+Dot remains excluded from the App Store build.
+
+## 2026-10-26 — Android 1.10.2
+
+- Keep work and usage visible together on six-inch e-ink screens, with readable portrait and landscape layouts, independent scrolling and persistent scroll indicators.
+- Expand provider scopes inline, retain readable quiet sessions and show recent finished work without hiding the active roster.
+- Improve Frame inhabitants with distinct working, waiting and resting behavior, articulated canonical creatures, stable placement and clear crowded-scene counts.
+- Preserve reading positions, session-specific history and layouts during rotation and larger system text.
+
+## 2026-10-22 — Apple 1.9.2
 
 **macOS 1.9.2 / 9401 was publicly released on October 24 at 07:07:56 KST.**
 The [read-only ASC run](https://github.com/puritysb/AgentDeck/actions/runs/40044777874)
