@@ -133,7 +133,7 @@ timeouts. The existing activity that prevents App Nap was acquired only at the
 end of startup; sustained health responses resumed immediately afterward. This
 correlation motivates an earlier activity lifetime with balanced failure,
 cancellation and shutdown cleanup; it does not by itself prove the scheduler
-cause. The correction needs a fresh controlled runtime comparison.
+cause. The correction required a fresh controlled runtime comparison.
 
 Build 9601 is uploaded and VALID, but is not accepted or submitted for review.
 The first Swift live-fixture attempt timed out before creating any fixtures;
@@ -142,6 +142,25 @@ Swift real-turn and visible-screen acceptance remain incomplete. The existing
 this checkpoint. Screen recording permission was granted, but the locked login
 session reported no attached display to the capture API. Keep that observation
 separate from daemon responsiveness and do not waive either acceptance gate.
+
+A local signed Release comparison (1.9.3 / build 5, source-equivalent to
+`e0813649`) then passed in the locked session. Last Node response to first Swift
+response was **38.027 seconds**; listener-ready to all services wired decreased
+from 385 to **3 seconds** (one-second log resolution). Swift returned **106/106**
+health responses over **210.174 seconds**, with no unknown observations. The
+unchanged five-second Swift live-fixture gate passed **15/15** checks with **40**
+WebSocket frames. Return to Node took **32.667 seconds** between the last Swift
+and first Node responses, followed by **64/64** successful health and single-owner
+observations. These are one local comparison's measurements under differing
+observed loads, not a universal startup deadline or proof of a final CI artifact.
+
+No actual Swift model turn or Mac pixels were captured in that comparison.
+Final CI artifact acceptance still requires those checks, physical downstream
+evidence and persistence of new real-turn events through return to Node. A later
+readback confirmed the same eight fixture events in both Node and Swift caches
+and timelines after documented timestamp and display-time normalization. This
+bounded sample does not establish full-history transfer.
+No upload, review replacement or publication is implied by these local results.
 
 ### 2026-10-26 non-Dot stability release decision
 

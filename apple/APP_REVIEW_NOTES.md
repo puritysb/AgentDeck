@@ -591,7 +591,7 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.3 — MACOS ONLY
-This stability patch keeps Attention tied to actual human responses: automatic approval reviews, ongoing processing and quoted prompts do not create false waiting states. Genuine OpenClaw approval requests remain visible. Independent Codex sessions remain separate even when they share a project or sorting priority. Estimated Codex renewal dates use calendar months when an expired-authentication subscription snapshot is retained. These are estimates, not live account readings. Local server startup handles temporary address reservations with bounded retries and retains its safe fallback. Dot is excluded; iOS is unchanged.
+Attention reflects human responses: automatic reviews, ongoing processing and quoted prompts do not create false waits. Genuine OpenClaw approvals remain visible. Independent Codex sessions stay separate. Codex renewal estimates use calendar months for retained subscription snapshots after authentication expires; they are not live account readings. Local server startup uses bounded retries for temporary address reservations and keeps its fallback. The existing process activity now spans startup with balanced failure, cancellation and shutdown cleanup; normal system sleep remains allowed. Dot is excluded; iOS is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

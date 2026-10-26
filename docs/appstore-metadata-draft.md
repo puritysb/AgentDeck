@@ -28,6 +28,7 @@ Dot remains excluded from the submitted binary.
 • Keep independent Codex sessions separate, even when they share a project or sorting priority.
 • Correct estimated Codex renewal dates across calendar months when a saved subscription snapshot is available after authentication expires.
 • Improve local server recovery when a connection address remains temporarily reserved during reconnection.
+• Improve local server startup responsiveness while the app is in the background.
 ```
 
 ### Korean — macOS 새로운 기능
@@ -38,6 +39,7 @@ Dot remains excluded from the submitted binary.
 • 같은 프로젝트나 정렬 우선순위를 사용해도 독립적인 Codex 세션이 각각 표시되도록 수정했습니다.
 • 인증이 만료된 뒤 저장된 구독 정보를 사용하는 경우, 달력상의 월 길이에 맞게 Codex 갱신 예상일을 계산하도록 수정했습니다.
 • 재연결 중 연결 주소의 임시 점유가 남아 있을 때 로컬 서버가 더 빠르게 복구되도록 개선했습니다.
+• 앱이 백그라운드에 있을 때 로컬 서버의 시작 응답성을 개선했습니다.
 ```
 
 ### Japanese — macOS このバージョンの新機能
@@ -48,6 +50,7 @@ Dot remains excluded from the submitted binary.
 • 同じプロジェクトや並び順の優先度を使っていても、独立したCodexセッションを個別に表示するよう修正しました。
 • 認証の有効期限が切れた後に保存済みの契約情報を使う場合、暦上の月の日数に合わせてCodexの更新予定日を推定するよう修正しました。
 • 再接続中に接続アドレスの一時的な予約が残っている場合、ローカルサーバーがより早く復旧するよう改善しました。
+• アプリがバックグラウンドにあるときのローカルサーバー起動時の応答性を改善しました。
 ```
 
 ## Historical macOS 1.9.2 update text
