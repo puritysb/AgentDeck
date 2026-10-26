@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { canonicalLicense, verifyTarballLicense } from './package-license.mjs';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -37,6 +38,7 @@ assert(
 const reportPath = resolve(option('--report', join(root, 'diagnostics/release-acceptance/packaged-daemon.json')));
 const work = await mkdtemp(join(tmpdir(), 'agentdeck-package-acceptance-'));
 const packagesDir = join(work, 'packages');
+const npmPackagesDir = join(work, 'npm-packages');
 const prefix = join(work, 'installed');
 const home = join(work, 'home');
 const data = join(home, '.agentdeck');
@@ -52,6 +54,7 @@ const report = {
   arch: process.arch,
   startedAt: new Date().toISOString(),
   packages: [],
+  npmDirectoryPackages: [],
   checks: [],
   limits: [
     'gh API responses are local fixtures; no live GitHub run is claimed',
@@ -272,7 +275,7 @@ async function ciInvocation(toolId, runId, phase) {
 }
 
 try {
-  for (const dir of [packagesDir, prefix, home, data, fixtures]) await mkdir(dir, { recursive: true });
+  for (const dir of [packagesDir, npmPackagesDir, prefix, home, data, fixtures]) await mkdir(dir, { recursive: true });
   report.sourceCommit = (await execute('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim();
   report.sourceDirty = Boolean(
     (await execute('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: root })).stdout.trim(),
@@ -287,6 +290,7 @@ try {
   for (const tool of ['gh', 'security', 'claude', 'codex']) await chmod(join(fixtures, tool), 0o755);
   await check('pack coordinated candidate tarballs and install outside the workspace', async () => {
     const versions = [];
+    const rootLicense = canonicalLicense(root);
     for (const name of ['shared', 'hooks', 'bridge', 'setup']) {
       const packageJson = JSON.parse(await readFile(join(root, name, 'package.json'), 'utf8'));
       versions.push(packageJson.version);
@@ -294,6 +298,17 @@ try {
         cwd: join(root, name),
         timeout: 60_000,
         maxBuffer: 2 * 1024 * 1024,
+      });
+      // npm directory publish and pnpm candidate pack differ in parent-file
+      // inheritance. Exercise both real packers before installing the candidate.
+      await execute('npm', ['pack', '--json', '--pack-destination', npmPackagesDir], {
+        cwd: join(root, name), timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
+      });
+      const npmTarball = join(npmPackagesDir, `agentdeck-${name}-${packageJson.version}.tgz`);
+      report.npmDirectoryPackages.push({
+        name: packageJson.name, version: packageJson.version,
+        licenseSha256: verifyTarballLicense(npmTarball, rootLicense),
+        sha256: createHash('sha256').update(await readFile(npmTarball)).digest('hex'),
       });
     }
     assert.equal(new Set(versions).size, 1, 'Candidate package versions must be coordinated');
@@ -306,6 +321,7 @@ try {
       assert(entries.includes('package/README.md'), 'Every package must ship its README');
       report.packages.push({
         tarball: tarball.split('/').at(-1),
+        licenseSha256: verifyTarballLicense(tarball, rootLicense),
         sha256: createHash('sha256')
           .update(await readFile(tarball))
           .digest('hex'),

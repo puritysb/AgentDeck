@@ -138,3 +138,9 @@ assets/terrarium/references/turnaround/head-study/*.png
 
 # Local devlog reading view (pnpm devlog:build); entries are the tracked source
 docs/devlog/view/
+
+# Generated from the root LICENSE by the public npm packages' prepack lifecycle.
+/shared/LICENSE
+/hooks/LICENSE
+/bridge/LICENSE
+/setup/LICENSE

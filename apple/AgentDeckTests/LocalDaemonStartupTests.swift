@@ -1,5 +1,6 @@
 #if os(macOS)
 import XCTest
+import Network
 @testable import AgentDeck
 
 /// Exercise DaemonService itself with operations that deliberately ignore task
@@ -281,6 +282,80 @@ final class LocalDaemonStartupTests: XCTestCase {
     }
 
     @MainActor
+    func testStopDuringListenerBackoffJoinsCleanupAndCannotRestart() async {
+        let retry = await PausedListenerRecovery()
+        let daemon = await StartupRuntime(name: "retry", port: 49_150, listenerRecovery: retry)
+        let fixture = LocalStartupFixture(daemons: [daemon])
+        let service = fixture.makeService()
+        service.start()
+        await fulfillment(of: [retry.pauseEntered], timeout: 2)
+        let stopped = expectation(description: "stop joins cancelled listener retry")
+        Task { @MainActor in await service.stop(); stopped.fulfill() }
+        await settleCallbacks()
+        assertStopped(service)
+        await retry.resumePause()
+        await fulfillment(of: [stopped], timeout: 2)
+        let attempts = await retry.attempts
+        let counts = await daemon.counts
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(counts.shutdowns, 1)
+        XCTAssertEqual(fixture.readyURLs, [])
+        XCTAssertEqual(fixture.requests.count, 1)
+        XCTAssertEqual(fixture.externalProbes, 0)
+        await fixture.cleanUp(service)
+    }
+
+    @MainActor
+    func testNewPortIntentCancelsOldListenerBackoffBeforeReplacement() async {
+        let retry = await PausedListenerRecovery()
+        let old = await StartupRuntime(name: "retry", port: 49_150, listenerRecovery: retry)
+        let latest = await StartupRuntime(name: "new", port: 49_151)
+        let fixture = LocalStartupFixture(daemons: [old, latest])
+        let service = fixture.makeService()
+        service.start()
+        await fulfillment(of: [retry.pauseEntered], timeout: 2)
+        fixture.configuredPort = 49_151
+        let restarted = expectation(description: "new intent waits for retired listener retry")
+        Task { @MainActor in await service.restart(); restarted.fulfill() }
+        await settleCallbacks()
+        XCTAssertEqual(fixture.requests.count, 1)
+        await retry.resumePause()
+        await fulfillment(of: [restarted, fixture.ready], timeout: 2)
+        let attempts = await retry.attempts
+        let oldCounts = await old.counts
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(oldCounts.shutdowns, 1)
+        assertOwned(service, port: latest.port)
+        XCTAssertEqual(fixture.readyURLs, ["ws://127.0.0.1:49151"])
+        XCTAssertEqual(fixture.externalProbes, 0)
+        await fixture.cleanUp(service)
+    }
+
+    @MainActor
+    func testPeerArrivingDuringListenerBackoffAttachesWithoutAnotherBind() async {
+        let retry = await PausedListenerRecovery(peerArrives: true)
+        let daemon = await StartupRuntime(name: "retry", port: 49_150, listenerRecovery: retry)
+        let fixture = LocalStartupFixture(daemons: [daemon])
+        fixture.externalHealth = ["mode": "daemon", "isSwift": false]
+        let service = fixture.makeService()
+        service.start()
+        await fulfillment(of: [retry.pauseEntered], timeout: 2)
+        await retry.resumePause()
+        await fulfillment(of: [fixture.ready], timeout: 2)
+        let attempts = await retry.attempts
+        let counts = await daemon.counts
+        XCTAssertEqual(attempts, 1)
+        XCTAssertEqual(counts.shutdowns, 1, "failed startup must clean up before peer attachment")
+        XCTAssertEqual(fixture.requests.count, 1)
+        XCTAssertTrue(service.isUsingExternalDaemon)
+        XCTAssertFalse(service.isRunning)
+        XCTAssertEqual(service.port, 49_150)
+        XCTAssertEqual(fixture.readyURLs, ["ws://127.0.0.1:49150"])
+        XCTAssertEqual(fixture.externalProbes, 2, "failure routing and attach both recheck peer health")
+        await fixture.cleanUp(service)
+    }
+
+    @MainActor
     private func assertStopped(_ service: DaemonService, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertEqual(service.ownership, .none, file: file, line: line)
         XCTAssertFalse(service.isRunning, file: file, line: line)
@@ -335,6 +410,7 @@ private final class LocalStartupFixture {
     var configuredPort = 49_150
     var posture = DaemonPosture.open
     var teardownTimeout: TimeInterval = 8
+    var externalHealth: [String: Any]?
     let factoryEntered: [XCTestExpectation]
     let factoryReturned: [XCTestExpectation]
     let ready = XCTestExpectation(description: "current daemon publishes dashboard readiness")
@@ -355,12 +431,13 @@ private final class LocalStartupFixture {
 
     func makeService() -> DaemonService {
         let service = DaemonService(automaticallyStart: false, externalAttach: .init(
-            probeHealth: { [self] _ in externalProbes += 1; return nil },
+            probeHealth: { [self] _ in externalProbes += 1; return externalHealth },
             portStatus: { [self] _ in externalProbes += 1; return .unknown },
             retryDelay: { throw CancellationError() }
         ), localStartup: .init(teardownTimeout: teardownTimeout, configuration: { [self] in
             .init(port: configuredPort, posture: posture)
-        }, makeDaemon: { [self] port, posture in
+        }, makeDaemon: { [self] port, posture, preferredPort in
+            XCTAssertEqual(preferredPort, configuredPort)
             let index = requests.count
             requests.append(.init(port: port, posture: posture))
             guard daemons.indices.contains(index) else {
@@ -422,6 +499,7 @@ private final class StartupRuntime: InProcessDaemonRuntime {
     var counts: Counts { .init(starts: startCount, shutdowns: shutdownCount) }
     private let name: String
     private let journal: StartupJournal?
+    private let listenerRecovery: PausedListenerRecovery?
     private var suspendStart: Bool
     private var suspendShutdown: Bool
     private var startCount = 0
@@ -434,12 +512,13 @@ private final class StartupRuntime: InProcessDaemonRuntime {
     private var retiredListenerFailureHandler: (@Sendable (Error) -> Void)?
 
     init(name: String, port: UInt16, suspendStart: Bool = false, suspendShutdown: Bool = false,
-         journal: StartupJournal? = nil) {
+         journal: StartupJournal? = nil, listenerRecovery: PausedListenerRecovery? = nil) {
         self.name = name
         self.port = port
         self.suspendStart = suspendStart
         self.suspendShutdown = suspendShutdown
         self.journal = journal
+        self.listenerRecovery = listenerRecovery
     }
 
     func setShutdownHandler(_ handler: (@Sendable () -> Void)?) {
@@ -467,6 +546,7 @@ private final class StartupRuntime: InProcessDaemonRuntime {
         } else {
             startEntered.fulfill()
         }
+        try await listenerRecovery?.run()
         await onDashboardReady?()
     }
 
@@ -507,6 +587,41 @@ private final class StartupRuntime: InProcessDaemonRuntime {
     func refreshZaiUsage(configurationChanged: Bool) async -> Bool { false }
     func deviceStatusSnapshots() async -> DaemonServer.DeviceStatusSnapshots {
         .init(d200h: nil, pixoo: nil, serial: nil, adb: nil)
+    }
+}
+
+/// Suspension deliberately ignores cancellation to exercise the service's
+/// generation guard after a late callback. No sockets or device state exist.
+@DaemonActor
+private final class PausedListenerRecovery {
+    nonisolated let pauseEntered = XCTestExpectation(description: "listener retry backoff entered")
+    private var pause: CheckedContinuation<Void, Never>?
+    private let peerArrives: Bool
+    private var portChecks = 0
+    private(set) var attempts = 0
+
+    init(peerArrives: Bool = false) { self.peerArrives = peerArrives }
+
+    func run() async throws {
+        try await ListenerStartupRecovery.start(port: 49_150, preferredPort: 49_150,
+            dependencies: .init(now: { 0 }, pause: { _ in
+                await withCheckedContinuation {
+                    self.pause = $0
+                    self.pauseEntered.fulfill()
+                }
+            }, portStatus: { _, _ in
+                self.portChecks += 1
+                return self.peerArrives && self.portChecks > 1 ? .listening : .notListening
+            }), validate: {}, bind: { _ in
+                self.attempts += 1
+                if self.attempts == 1 { throw NWError.posix(.EADDRINUSE) }
+            })
+    }
+
+    func resumePause() {
+        let pending = pause
+        pause = nil
+        pending?.resume()
     }
 }
 #endif

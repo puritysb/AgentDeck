@@ -286,7 +286,7 @@
       "name": "Clean npm candidate package acceptance",
       "gate": "npm-candidate-acceptance",
       "tiers": ["full"],
-      "run": "pnpm test:packaged --soak-seconds 60",
+      "run": "pnpm test:packaged --soak-seconds 60 --keep-artifacts",
       "needs": ["build"],
       "requires": { "platform": "posix" }
     },
@@ -399,9 +399,10 @@
       "trigger": "Before npm candidate delivery, after pnpm build",
       "blocking": false,
       "command": "pnpm test:packaged --soak-seconds 60 --keep-artifacts",
-      "evidence": ["scripts/verify-packaged-daemon.mjs", "setup/package.json"],
+      "evidence": ["scripts/verify-packaged-daemon.mjs", "scripts/package-license.mjs", "scripts/__tests__/npm-package-license.test.ts", "setup/package.json"],
       "proves": [
         "all four coordinated npm tarballs install in an empty prefix without workspace links or compiled test payloads",
+        "real npm directory-pack and pnpm candidate-pack tarballs for all four packages contain the root LICENSE byte-for-byte",
         "the installed daemon boots under the exact native-binding executable on an isolated port and temporary data directory",
         "installed Claude shell hooks discover that daemon through its registry and deliver a turn",
         "a locally fixtured GitHub API process drives failed CI, explicit re-invocation clear, a repair tool and passed rerun over real HTTP/WebSocket interfaces",
@@ -616,9 +617,10 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift"],
+      "evidence": ["apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "preferred-port listener startup retries address-in-use failures only within a bounded budget and after explicit TCP refusal; peer arrival, unknown probes, cancellation and superseded startup stop retries, failed listeners are released and a ready listener survives its startup deadline",
         "attention navigation distinguishes fresh empty rosters from unavailable data, scopes session identity to a credential-free endpoint, bounds startup waits and preserves hardware focus during local inspection",
         "the Swift daemon's cross-origin /setup-status answers exactly the secret-free key set of shared/setup-status-contract.json, with a session count and a Claude hook flag that never claims missing from inside the sandbox",
         "the Swift daemon maps Claude PermissionRequest to the same display-only prompt as the permission Notification, counts the two once, never replaces a held gate or a question, and its HTTP listener releases a held gate undecided when the hook's connection closes",
@@ -750,7 +752,7 @@
       "trigger": "Tag npm-v*",
       "blocking": true,
       "command": "build, pnpm test, publish, verify packages visible on the registry",
-      "proves": ["the published packages were built from a green test run and are visible on npm"],
+      "proves": ["the published packages were built from a green test run and are visible on npm", "each directory publication first validates the root LICENSE bytes in a real npm tarball"],
       "does_not_prove": ["a fresh npx @agentdeck/setup install on a clean machine"]
     },
     {
@@ -1158,6 +1160,7 @@
         "scripts/__tests__/asc-certificates.test.ts",
         "scripts/__tests__/node-runtime-support.test.ts",
         "scripts/__tests__/npm-registry-visibility.test.ts",
+        "scripts/__tests__/npm-package-license.test.ts",
         "scripts/__tests__/native-palette.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
         "scripts/__tests__/apple-dot-build.test.ts",

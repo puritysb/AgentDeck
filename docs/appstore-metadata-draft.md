@@ -15,7 +15,8 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 ## Prepared macOS 1.9.3 update text
 
 Prepared for the macOS-only stability update authorized on October 26. This
-section is candidate copy, not an upload, submission or public-release receipt.
+section includes the October 27 handover follow-up and is candidate copy, not
+an upload, submission or public-release receipt.
 The baseline is the public macOS 1.9.2 / 9401 release. iOS copy is unchanged.
 Dot remains excluded from the submitted binary.
 
@@ -26,6 +27,7 @@ Dot remains excluded from the submitted binary.
 • Restore the display of genuine OpenClaw approval requests so waiting sessions remain visible.
 • Keep independent Codex sessions separate, even when they share a project or sorting priority.
 • Correct estimated Codex renewal dates across calendar months when a saved subscription snapshot is available after authentication expires.
+• Improve local server recovery when a connection address remains temporarily reserved during reconnection.
 ```
 
 ### Korean — macOS 새로운 기능
@@ -35,6 +37,7 @@ Dot remains excluded from the submitted binary.
 • 실제 OpenClaw 승인 요청을 다시 표시해 응답을 기다리는 세션을 확인할 수 있도록 했습니다.
 • 같은 프로젝트나 정렬 우선순위를 사용해도 독립적인 Codex 세션이 각각 표시되도록 수정했습니다.
 • 인증이 만료된 뒤 저장된 구독 정보를 사용하는 경우, 달력상의 월 길이에 맞게 Codex 갱신 예상일을 계산하도록 수정했습니다.
+• 재연결 중 연결 주소의 임시 점유가 남아 있을 때 로컬 서버가 더 빠르게 복구되도록 개선했습니다.
 ```
 
 ### Japanese — macOS このバージョンの新機能
@@ -44,6 +47,7 @@ Dot remains excluded from the submitted binary.
 • 実際のOpenClaw承認要求を再び表示し、応答待ちのセッションを確認できるようにしました。
 • 同じプロジェクトや並び順の優先度を使っていても、独立したCodexセッションを個別に表示するよう修正しました。
 • 認証の有効期限が切れた後に保存済みの契約情報を使う場合、暦上の月の日数に合わせてCodexの更新予定日を推定するよう修正しました。
+• 再接続中に接続アドレスの一時的な予約が残っている場合、ローカルサーバーがより早く復旧するよう改善しました。
 ```
 
 ## Historical macOS 1.9.2 update text

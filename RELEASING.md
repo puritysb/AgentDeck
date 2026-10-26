@@ -95,6 +95,34 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-27 handover and package follow-up decision
+
+The maintainer requested completion and delivery of the two remaining improvements.
+This is a correction within the existing 1.9 contract; no new product milestone.
+The October 27 KST [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/40353160014)
+confirmed macOS 1.9.3 / 9501 still `WAITING_FOR_REVIEW`, with automatic release
+after approval. npm 1.9.4 and its tag were not present at the version checkpoint.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.3 | None at 1.9.4 | 1.9.4 / verified source and tarball hashes | Patch: include the repository LICENSE in every installed package and enforce it before publication | Existing 1.9 packaging contract |
+| macOS / App Store | 1.9.2 / 9401 | 1.9.3 / 9501, Waiting for Review | 1.9.3 / next CI-derived build above 9501 | Patch rebuild: shorten recovery from a transient canonical-port reservation after CLI shutdown while preserving bounded fallback | Existing 1.9 daemon ownership contract; standard Store build excludes Dot |
+
+Keep submission `7dd4ca01-37ff-4a13-97fd-51dbefe57795` intact until the replacement
+artifact passes source, Release archive and actual handover checks. Re-read the
+Store state before replacement. If 1.9.3 has become public, record a new patch
+decision before changing the Apple product version or uploading another build.
+Replacing the pending build requires removing that exact submission from review;
+resubmission restarts Apple's review queue. No other submission is in scope.
+Android, iOS, Stream Deck, Ulanzi, firmware and root `VERSION` are unchanged.
+
+Acceptance requires exact LICENSE bytes in all four npm and pnpm tarballs,
+installed-package acceptance, the full verification tier, bounded listener retry
+and cancellation tests, and a measured real CLI/Swift handover with one owner,
+preserved settings/credentials and downstream state. The previous 146.185-second
+CLI-to-Swift observation is a baseline, not a guaranteed improvement target.
+Delivery and measured results will be recorded after those checks.
+
 ### 2026-10-26 non-Dot stability release decision
 
 The maintainer authorized verification and release on October 26. These are
@@ -1984,6 +2012,13 @@ when editing a published body.
 
 **The tarballs are machine-independent — keep them that way.** Publishing from an arm64 Mac, an Intel Mac, or CI Linux must produce byte-equivalent package contents. The one thing that used to violate this was the Foundation Models voice/judge helper: a `prepack` hook baked `assets/fm-helper/agentdeck-fm-helper` (a gitignored, arch-specific, ad-hoc-signed Mach-O) into whatever the publishing machine could build — so 1.0.13 shipped arm64-only from a dev Mac, and a CI publish would have silently shipped nothing. Since 1.0.14 the tarball carries only the helper's Swift source plus `scripts/build-fm-helper.mjs`, and the daemon compiles it on demand into `~/.agentdeck/fm-helper/` (macOS 26+, needs Xcode CLT; `bridge/src/foundation-models-helper.ts` also arch-checks any present binary so an Intel Mac never spawns an arm64 leftover). Never reintroduce a `prepack` that emits machine-built artifacts — `bridge/src/__tests__/fm-helper-arch.test.ts` gates this.
 
+The only public-package `prepack` is the platform-independent LICENSE copier.
+It refreshes ignored package copies from root `LICENSE`; both npm and pnpm
+archives must contain the exact source bytes. Pack from the release source
+checkout, where `../scripts/package-license.mjs` exists. Ordinary npm installation
+does not run this hook. Candidate verification checks both packers; publication
+checks the actual npm tarball before upload.
+
 1. Verify all four public npm manifests match each other and that the target version is unused on npm.
 2. Run `pnpm build` and tests.
 3. Pack all four packages from the exact release commit, install that candidate through
@@ -2148,6 +2183,22 @@ another candidate or modifying an active unrelated submission.
 4. Record the workflow, source, version, build, submission identity and measured
    review state. `WAITING_FOR_REVIEW` or `IN_REVIEW` is submitted, not public;
    confirm `READY_FOR_SALE` separately before reporting a live release.
+
+For a maintainer-authorized replacement of a pending build, use
+`action=release-replace-prepare` instead of step 2, with the same new-build inputs
+plus `previous_build=<exact old build>` and
+`previous_submission=<exact old submission UUID>`. Finish the new artifact's
+acceptance before dispatch. The operation verifies its upload provenance,
+processed build, required metadata and media before touching the old submission.
+It requires the old submission to contain only the same macOS version and still
+reference the specified older build. It cancels only that submission through
+[Apple's review-submission API](https://developer.apple.com/documentation/appstoreconnectapi/patch-v1-reviewsubmissions-_id_),
+waits for `COMPLETE` and `DEVELOPER_REJECTED`, rechecks the association, and attaches
+the new build before preparing the current copy. Resubmit using step 3; this
+restarts the review queue. Other active submissions, changed associations,
+public versions and uncertain cancellation outcomes stop the operation. Re-run
+only after reading back the same target; an already attached new build does not
+cancel a new submission.
 
 A missing response is an unknown outcome: read back the state before retrying.
 Do not overlap dispatches or create a second submission to work around an

@@ -1053,6 +1053,7 @@ final class DaemonServer {
     }
 
     nonisolated let port: UInt16
+    private let preferredStartupPort: UInt16
     /// Network posture (Settings → Local server). Resolved once at init so the
     /// bind address, the Bonjour advertisement, the module set, and the
     /// startup log cannot disagree — Node parity: `resolveDaemonPosture()`.
@@ -1854,13 +1855,14 @@ final class DaemonServer {
 
     // MARK: - Init
 
-    init(port: Int?, debug: Bool, posture: DaemonPosture = .open) async throws {
+    init(port: Int?, debug: Bool, posture: DaemonPosture = .open, preferredStartupPort: Int? = nil) async throws {
         try Task.checkCancellation()
         self.posture = posture
         self.timelineRelay = TimelineRelay(selfPort: port ?? SessionRegistry.defaultPort)
         self.focusRelay = SessionFocusRelay()
 
         let requestedPort = port ?? SessionRegistry.defaultPort
+        self.preferredStartupPort = UInt16(preferredStartupPort ?? requestedPort)
         var resolvedPort = UInt16(requestedPort)
 
         // Singleton guard — only when using default port
@@ -2168,7 +2170,13 @@ final class DaemonServer {
 
         // Await listener `.ready` — throws on bind failure (EADDRINUSE etc).
         // Registry writes must NOT happen before this succeeds.
-        try await wsServer.start(port: port, loopbackOnly: posture.loopbackOnly)
+        try await ListenerStartupRecovery.start(
+            port: Int(port), preferredPort: Int(preferredStartupPort),
+            validate: { try self.checkStartupActive() }
+        ) { timeout in
+            try await self.wsServer.start(port: self.port, loopbackOnly: self.posture.loopbackOnly,
+                                          startupTimeout: timeout)
+        }
         try checkStartupActive()
         DaemonLogger.shared.info(posture.describe(port: port))
 

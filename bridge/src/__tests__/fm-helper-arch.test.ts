@@ -83,8 +83,8 @@ describe('npm tarball determinism', () => {
     expect(manifest.files).not.toContain('assets/fm-helper');
   });
 
-  it('has no prepack hook baking machine-dependent artifacts', () => {
-    expect(manifest.scripts?.prepack).toBeUndefined();
+  it('allows only canonical license preparation, never machine-dependent builds, before pack', () => {
+    expect(manifest.scripts?.prepack).toBe('node ../scripts/package-license.mjs');
   });
 
   it('ships the helper source and build script for on-demand compilation', () => {

@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/bridge",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "engines": {
     "node": "22.x || 24.x || 26.x"
   },
@@ -35,7 +35,8 @@
     "python",
     "src/idotmatrix/*.py",
     "src/timebox/*.py",
-    "src/pysync/*.py"
+    "src/pysync/*.py",
+    "LICENSE"
   ],
   "main": "./dist/index.js",
   "bin": {
@@ -47,7 +48,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "start": "node dist/cli.js claude"
+    "start": "node dist/cli.js claude",
+    "prepack": "node ../scripts/package-license.mjs"
   },
   "dependencies": {
     "@agentdeck/hooks": "workspace:*",

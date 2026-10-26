@@ -115,7 +115,7 @@ actor WebSocketServer {
     /// - Parameter loopbackOnly: bind `127.0.0.1` instead of all interfaces
     ///   (enterprise posture — see `DaemonPosture`). The caller is responsible
     ///   for not attaching a Bonjour service to a loopback-bound listener.
-    func start(port: UInt16, loopbackOnly: Bool = false) async throws {
+    func start(port: UInt16, loopbackOnly: Bool = false, startupTimeout: TimeInterval = 10) async throws {
         try Task.checkCancellation()
         let params = NWParameters.tcp  // Raw TCP — no WebSocket protocol layer
         params.allowLocalEndpointReuse = true  // SO_REUSEADDR — allows rebind after TIME_WAIT/crash
@@ -158,6 +158,15 @@ actor WebSocketServer {
             try await withTaskCancellationHandler {
                 try Task.checkCancellation()
                 try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    // Network.framework can remain in .waiting indefinitely.
+                    // A deadline must release the failed listener too, so the
+                    // caller can finish its bounded startup/fallback decision.
+                    let deadline = DispatchWorkItem {
+                        guard gate.tryResume() else { return }
+                        listener.stateUpdateHandler = nil
+                        listener.cancel()
+                        cont.resume(throwing: WebSocketServerError.listenerTimedOut)
+                    }
                     listener.stateUpdateHandler = { state in
                         switch state {
                         case .ready:
@@ -186,6 +195,8 @@ actor WebSocketServer {
                         Task { await self?.handleNewConnection(nwConn) }
                     }
 
+                    gate.armDeadline(deadline)
+                    Self.ioQueue.asyncAfter(deadline: .now() + max(0, startupTimeout), execute: deadline)
                     listener.start(queue: Self.ioQueue)
                 }
                 // Cancellation can race with `.ready`; do not report that bind as a
@@ -836,6 +847,7 @@ final class WebSocketFrameParser: @unchecked Sendable {
 
 enum WebSocketServerError: Error {
     case listenerCancelled
+    case listenerTimedOut
 }
 
 /// Single-use gate used from the listener's stateUpdateHandler to ensure the
@@ -843,9 +855,15 @@ enum WebSocketServerError: Error {
 /// by the @Sendable state closure without triggering capture-of-mutable-var errors.
 final class ResumeGate: @unchecked Sendable {
     private var done = false
+    private var deadline: DispatchWorkItem?
+    /// Armed before the listener starts; all subsequent accesses, including
+    /// timeout completion, occur on WebSocketServer.ioQueue.
+    func armDeadline(_ deadline: DispatchWorkItem) { self.deadline = deadline }
     func tryResume() -> Bool {
         if done { return false }
         done = true
+        deadline?.cancel()
+        deadline = nil
         return true
     }
 }

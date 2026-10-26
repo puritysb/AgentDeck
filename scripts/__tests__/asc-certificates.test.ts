@@ -82,7 +82,7 @@ function fixture(prepared = false, fresh = false) {
         state.attached = build;
       } else if (p === '/v1/reviewSubmissions/submission-new') {
         expect(body).toEqual({ data: { type: 'reviewSubmissions', id: 'submission-new', attributes: { submitted: true } } });
-        state.submissions[0]!.attributes.state = 'WAITING_FOR_REVIEW';
+        state.submissions.find(row => row.id === 'submission-new')!.attributes.state = 'WAITING_FOR_REVIEW';
         version.attributes.appStoreState = 'WAITING_FOR_REVIEW';
       } else throw new Error(`Unexpected PATCH ${p}`);
       result = { data: { ...body.data } };
@@ -351,6 +351,112 @@ describe('bounded macOS ASC release', () => {
     expect(run).not.toContain('${{ inputs.');
     expect(run).toContain('"$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD"');
     expect(workflow).toContain('cancel-in-progress: false');
+  });
+});
+
+const previousSubmission = '11111111-2222-4333-8444-555555555555';
+async function replacementFixture() {
+  const f = fixture(false, true);
+  await f.run('release-prepare');
+  f.state.attached = clone(f.build);
+  f.build.id = 'build-9601';
+  f.build.attributes.version = '9601';
+  f.version.attributes.appStoreState = 'WAITING_FOR_REVIEW';
+  const old: Resource = { type: 'reviewSubmissions', id: previousSubmission, attributes: { platform: 'MAC_OS', state: 'WAITING_FOR_REVIEW' } };
+  f.state.submissions.push(old);
+  f.state.items.push({ type: 'reviewSubmissionItems', id: 'item-old', attributes: { state: 'WAITING_FOR_REVIEW' }, relationships: {
+    reviewSubmission: { data: { type: 'reviewSubmissions', id: previousSubmission } },
+    appStoreVersion: { data: { type: 'appStoreVersions', id: 'version-mac' } },
+  } });
+  f.state.calls.length = 0;
+  const flags = { lostCancel: false, pending: false, drift: false, noEffect: false };
+  const request = async (path: string, method = 'GET', body?: any) => {
+    if (method === 'PATCH' && path === `/v1/reviewSubmissions/${previousSubmission}`) {
+      f.state.calls.push({ path, method, body: clone(body) });
+      expect(body).toEqual({ data: { type: 'reviewSubmissions', id: previousSubmission, attributes: { canceled: true } } });
+      if (!flags.noEffect) {
+        old.attributes.state = flags.pending ? 'CANCELING' : 'COMPLETE';
+        if (!flags.pending) f.version.attributes.appStoreState = 'DEVELOPER_REJECTED';
+      }
+      if (flags.drift) f.state.attached = { type: 'builds', id: 'foreign-build', attributes: { version: '9701' } };
+      if (flags.lostCancel) throw unknownOutcome();
+      return { data: clone(old) };
+    }
+    return f.request(path, method, body);
+  };
+  return { f, old, flags, run: (overrides: Record<string, any> = {}) => runRelease({
+    action: 'release-replace-prepare', version: '1.9.3', build: '9601', previousBuild: '9501', previousSubmission,
+    copy, provenance, request, pause: async () => {}, ...overrides,
+  }) };
+}
+
+describe('explicit pending macOS build replacement', () => {
+  it('cancels only the named review, confirms removal, attaches the verified build and prepares idempotently', async () => {
+    const { f, run } = await replacementFixture();
+    expect(await run()).toMatchObject({ status: 'prepared', build: '9601', previousBuild: '9501', previousSubmission });
+    expect(f.writes().map(c => c.path)).toEqual([
+      `/v1/reviewSubmissions/${previousSubmission}`, '/v1/appStoreVersions/version-mac/relationships/build',
+    ]);
+    const writes = f.writes().length;
+    await run();
+    expect(f.writes()).toHaveLength(writes);
+    expect(await run({ action: 'release-submit' })).toMatchObject({ status: 'submitted', build: '9601' });
+    const submitted = f.writes().length;
+    expect(await run()).toMatchObject({ status: 'already-submitted' });
+    expect(f.writes()).toHaveLength(submitted);
+  });
+
+  it.each(['previous-build', 'submission-id', 'build-processing', 'build-expired', 'media', 'foreign-item', 'extra-item', 'foreign-active', 'released', 'association'])
+  ('refuses unsafe %s before canceling the old review', async reason => {
+    const { f, run } = await replacementFixture();
+    const overrides: Record<string, any> = {};
+    if (reason === 'previous-build') overrides.previousBuild = '9601';
+    if (reason === 'submission-id') overrides.previousSubmission = 'wrong';
+    if (reason === 'build-processing') f.build.attributes.processingState = 'PROCESSING';
+    if (reason === 'build-expired') f.build.attributes.expired = true;
+    if (reason === 'media') f.state.mediaMissing = true;
+    if (reason === 'foreign-item') f.state.items[0]!.relationships!.appStoreVersion.data.id = 'other-version';
+    if (reason === 'extra-item') f.state.items.push({ ...clone(f.state.items[0]!), id: 'extra-item' });
+    if (reason === 'foreign-active') f.state.submissions.push({ type: 'reviewSubmissions', id: 'other', attributes: { platform: 'MAC_OS', state: 'READY_FOR_REVIEW' } });
+    if (reason === 'released') f.version.attributes.appStoreState = 'READY_FOR_SALE';
+    if (reason === 'association') f.state.attached!.attributes.version = '9401';
+    await expect(run(overrides)).rejects.toThrow();
+    expect(f.writes()).toHaveLength(0);
+  });
+
+  it.each(['cancel', 'attach'])('reconciles a lost %s response without repeating its mutation', async where => {
+    const { f, flags, run } = await replacementFixture();
+    if (where === 'cancel') flags.lostCancel = true;
+    else f.state.loseResponse = 'PATCH /v1/appStoreVersions/version-mac/relationships/build';
+    expect(await run()).toMatchObject({ status: 'prepared' });
+    expect(f.writes()).toHaveLength(2);
+  });
+
+  it('bounds pending cancellation and resumes from a confirmed complete old submission', async () => {
+    const { f, old, flags, run } = await replacementFixture();
+    flags.pending = true;
+    await expect(run()).rejects.toThrow(/Cancellation outcome not confirmed/);
+    expect(f.writes()).toHaveLength(1);
+    await expect(run()).rejects.toThrow(/Cancellation outcome not confirmed/);
+    expect(f.writes()).toHaveLength(1);
+    old.attributes.state = 'COMPLETE';
+    f.version.attributes.appStoreState = 'DEVELOPER_REJECTED';
+    expect(await run()).toMatchObject({ status: 'prepared' });
+    expect(f.writes()).toHaveLength(2);
+  });
+
+  it('does not repeat cancellation when its lost response has no confirmed effect', async () => {
+    const { f, flags, run } = await replacementFixture();
+    flags.noEffect = true; flags.lostCancel = true;
+    await expect(run()).rejects.toThrow(/Cancellation outcome not confirmed/);
+    expect(f.writes()).toHaveLength(1);
+  });
+
+  it('refuses a different build attached during cancellation', async () => {
+    const { f, flags, run } = await replacementFixture();
+    flags.drift = true;
+    await expect(run()).rejects.toThrow(/association changed/);
+    expect(f.writes()).toHaveLength(1);
   });
 });
 

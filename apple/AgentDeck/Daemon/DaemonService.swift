@@ -101,8 +101,8 @@ final class DaemonService: ObservableObject {
                 loopbackOnly: AppPreferences.shared.daemonLoopbackOnly,
                 noDeviceModules: AppPreferences.shared.daemonNoDeviceModules))
         }
-        var makeDaemon: @MainActor (Int?, DaemonPosture) async throws -> any InProcessDaemonRuntime = {
-            try await DaemonServer(port: $0, debug: false, posture: $1)
+        var makeDaemon: @MainActor (Int?, DaemonPosture, Int) async throws -> any InProcessDaemonRuntime = {
+            try await DaemonServer(port: $0, debug: false, posture: $1, preferredStartupPort: $2)
         }
     }
     private let localStartup: LocalStartupDependencies
@@ -301,7 +301,7 @@ final class DaemonService: ObservableObject {
             guard localStartupIsCurrent(generation),
                   await waitForLocalTeardown(teardown), localStartupIsCurrent(generation) else { return }
             do {
-                let daemon = try await localStartup.makeDaemon(portArg, configuration.posture)
+                let daemon = try await localStartup.makeDaemon(portArg, configuration.posture, configuration.port)
                 // An unstarted instance has no services to tear down. In
                 // particular, do not let its shutdown touch shared registry data.
                 guard localStartupIsCurrent(generation) else { return }
@@ -834,7 +834,7 @@ final class DaemonService: ObservableObject {
         let registry = SessionRegistry.shared
         let probePort = attemptedPort > 0 ? attemptedPort : AppPreferences.shared.daemonPort
         if attemptedPort > 0 { failedBindPortsAt[attemptedPort] = Date() }
-        let health = await registry.probeDaemonHealth(port: probePort)
+        let health = await externalAttach.probeHealth(probePort)
         guard localStartupIsCurrent(generation) else { return }
         if health?["mode"] as? String == "daemon" {
             DaemonLogger.shared.info("Port \(probePort) held by healthy external daemon — switching to client mode")

@@ -21,7 +21,7 @@ on:
         required: true
         default: list
         type: choice
-        options: [list, revoke, store-status, release-prepare, release-submit]
+        options: [list, revoke, store-status, release-prepare, release-submit, release-replace-prepare]
       certificate_ids:
         description: "Comma-separated certificate ids (revoke only)"
         required: false
@@ -37,6 +37,15 @@ on:
 
       release_run:
         description: "Successful Apple upload CI run ID from this exact source commit"
+        required: false
+        type: string
+
+      previous_build:
+        description: "Exact pending build to replace (release-replace-prepare only)"
+        required: false
+        type: string
+      previous_submission:
+        description: "Exact pending submission UUID to cancel (release-replace-prepare only)"
         required: false
         type: string
 
@@ -70,11 +79,16 @@ jobs:
           ASC_RELEASE_VERSION: ${{ inputs.release_version }}
           ASC_RELEASE_BUILD: ${{ inputs.release_build }}
           ASC_RELEASE_RUN: ${{ inputs.release_run }}
+          ASC_PREVIOUS_BUILD: ${{ inputs.previous_build }}
+          ASC_PREVIOUS_SUBMISSION: ${{ inputs.previous_submission }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           case "$ASC_ACTION" in
             revoke)
               node scripts/asc-certificates.mjs revoke "$ASC_CERTIFICATE_IDS"
+              ;;
+            release-replace-prepare)
+              node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN" "$ASC_PREVIOUS_BUILD" "$ASC_PREVIOUS_SUBMISSION"
               ;;
             release-prepare|release-submit)
               node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN"
