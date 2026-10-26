@@ -123,6 +123,26 @@ preserved settings/credentials and downstream state. The previous 146.185-second
 CLI-to-Swift observation is a baseline, not a guaranteed improvement target.
 Delivery and measured results will be recorded after those checks.
 
+The first follow-up candidate (`cf235e35`, macOS 1.9.3 / 9601) exposed another
+startup gap during the locked, off-console Mac test. The last Node response to
+first Swift response took **38.060 seconds**, compared with the earlier
+146.185-second observation. That first response did not establish readiness:
+from listener-ready at 19:19:25 UTC to all services wired at 19:25:50 UTC on
+October 26, initialization took **385 seconds**, with repeated five-second health
+timeouts. The existing activity that prevents App Nap was acquired only at the
+end of startup; sustained health responses resumed immediately afterward. This
+correlation motivates an earlier activity lifetime with balanced failure,
+cancellation and shutdown cleanup; it does not by itself prove the scheduler
+cause. The correction needs a fresh controlled runtime comparison.
+
+Build 9601 is uploaded and VALID, but is not accepted or submitted for review.
+The first Swift live-fixture attempt timed out before creating any fixtures;
+Swift real-turn and visible-screen acceptance remain incomplete. The existing
+9501 review submission is preserved, and npm 1.9.4 is not tagged or published at
+this checkpoint. Screen recording permission was granted, but the locked login
+session reported no attached display to the capture API. Keep that observation
+separate from daemon responsiveness and do not waive either acceptance gate.
+
 ### 2026-10-26 non-Dot stability release decision
 
 The maintainer authorized verification and release on October 26. These are

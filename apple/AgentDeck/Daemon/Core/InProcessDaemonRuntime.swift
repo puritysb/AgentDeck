@@ -19,6 +19,54 @@ protocol InProcessDaemonRuntime: AnyObject, Sendable {
 
 extension DaemonServer: InProcessDaemonRuntime {}
 
+/// One server's App Nap protection, held across startup and normal service.
+/// Startup may suspend before its listener or device modules are ready. Taking
+/// the activity only after that work finishes leaves the handover itself
+/// eligible for App Nap when the dashboard is hidden or the screen is locked.
+@DaemonActor
+final class DaemonProcessActivity {
+    struct Dependencies {
+        var begin: () -> NSObjectProtocol = {
+            ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "Serving local dashboard devices (HTTP/WS)")
+        }
+        var end: (NSObjectProtocol) -> Void = { ProcessInfo.processInfo.endActivity($0) }
+    }
+
+    private let dependencies: Dependencies
+    private var activity: NSObjectProtocol?
+    private var hasStarted = false
+
+    init(dependencies: Dependencies = .init()) {
+        self.dependencies = dependencies
+    }
+
+    func start(_ operation: @DaemonActor () async throws -> Void) async throws {
+        try Task.checkCancellation()
+        // A DaemonServer is started once. A retired server must not acquire a
+        // new activity if shutdown ran before startup or during an await.
+        guard !hasStarted else { throw CancellationError() }
+        hasStarted = true
+        activity = dependencies.begin()
+        do {
+            try await operation()
+            try Task.checkCancellation()
+            guard activity != nil else { throw CancellationError() }
+        } catch {
+            stop()
+            throw error
+        }
+    }
+
+    func stop() {
+        hasStarted = true
+        guard let activity else { return }
+        self.activity = nil
+        dependencies.end(activity)
+    }
+}
+
 /// Retry the real preferred-port listener before creating a fallback hub. A
 /// refused TCP connection cannot prove NWListener can bind (NECP may retain a
 /// reservation), but it licenses a bounded attempt while no working listener

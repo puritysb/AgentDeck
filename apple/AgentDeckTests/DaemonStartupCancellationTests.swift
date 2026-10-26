@@ -88,6 +88,185 @@ final class DaemonStartupCancellationTests: XCTestCase {
     }
 }
 
+/// The real startup activity owner with fake process activities. No app,
+/// listener, preference or OS power assertion is created by these tests.
+final class DaemonProcessActivityTests: XCTestCase {
+    @DaemonActor
+    func testActivityIsHeldDuringSuspendedStartupAndUntilShutdown() async throws {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        let entered = expectation(description: "startup suspended")
+        let startup = Task { @DaemonActor in
+            try await activity.start {
+                XCTAssertEqual(fixture.activeCount, 1, "the first startup operation must already be protected")
+                await fixture.suspend(entered)
+            }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertEqual(fixture.beginCount, 1)
+        XCTAssertEqual(fixture.endCount, 0)
+
+        fixture.resume()
+        try await startup.value
+        XCTAssertEqual(fixture.activeCount, 1, "successful startup retains protection while serving")
+        activity.stop()
+        activity.stop()
+        XCTAssertEqual(fixture.activeCount, 0)
+        XCTAssertEqual(fixture.endCount, 1)
+    }
+
+    @DaemonActor
+    func testStartupFailureReleasesActivityWithoutOuterCleanup() async {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        do {
+            try await activity.start { throw NWError.posix(.EADDRINUSE) }
+            XCTFail("failed startup must propagate its error")
+        } catch {
+            XCTAssertEqual(error as? NWError, .posix(.EADDRINUSE))
+        }
+        XCTAssertEqual(fixture.activeCount, 0)
+        XCTAssertEqual(fixture.endCount, 1)
+        activity.stop()
+        XCTAssertEqual(fixture.endCount, 1, "later service cleanup must not end the activity twice")
+    }
+
+    @DaemonActor
+    func testCancellationAfterAnIgnoringStartupOperationReleasesActivity() async {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        let entered = expectation(description: "startup suspended")
+        let startup = Task { @DaemonActor in
+            do {
+                try await activity.start { await fixture.suspend(entered) }
+                return false
+            } catch is CancellationError { return true }
+            catch { return false }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        startup.cancel()
+        fixture.resume() // Deliberately completes without checking cancellation.
+        let cancelled = await startup.value
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(fixture.activeCount, 0)
+        XCTAssertEqual(fixture.endCount, 1)
+    }
+
+    @DaemonActor
+    func testShutdownDuringSuspendedStartupRejectsLateSuccess() async {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        let entered = expectation(description: "startup suspended")
+        let startup = Task { @DaemonActor in
+            do {
+                try await activity.start { await fixture.suspend(entered) }
+                return false
+            } catch is CancellationError { return true }
+            catch { return false }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        activity.stop()
+        fixture.resume()
+        let cancelled = await startup.value
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(fixture.beginCount, 1)
+        XCTAssertEqual(fixture.endCount, 1)
+    }
+
+    @DaemonActor
+    func testAlreadyCancelledStartupNeverAcquiresActivity() async {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        let cancelled = await Task { @DaemonActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                try await activity.start { XCTFail("cancelled startup must not run") }
+                return false
+            } catch is CancellationError { return true }
+            catch { return false }
+        }.value
+        XCTAssertTrue(cancelled)
+        XCTAssertEqual(fixture.beginCount, 0)
+        XCTAssertEqual(fixture.endCount, 0)
+    }
+
+    @DaemonActor
+    func testShutdownBeforeStartupPreventsLaterAcquisition() async {
+        let fixture = ProcessActivityFixture()
+        let activity = fixture.makeActivity()
+        activity.stop()
+        do {
+            try await activity.start { XCTFail("retired startup must not run") }
+            XCTFail("retired startup must throw")
+        } catch is CancellationError {}
+        catch { XCTFail("unexpected error: \(error)") }
+        XCTAssertEqual(fixture.beginCount, 0)
+    }
+
+    @DaemonActor
+    func testLateFailureCannotEndTheReplacementServersActivity() async throws {
+        let fixture = ProcessActivityFixture()
+        let old = fixture.makeActivity()
+        let replacement = fixture.makeActivity()
+        let entered = expectation(description: "old startup suspended")
+        let startup = Task { @DaemonActor in
+            do {
+                try await old.start {
+                    await fixture.suspend(entered)
+                    throw NWError.posix(.EADDRINUSE)
+                }
+                return false
+            } catch { return true }
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        old.stop()
+        try await replacement.start {}
+        fixture.resume()
+        let failed = await startup.value
+        XCTAssertTrue(failed)
+        XCTAssertEqual(fixture.beginCount, 2)
+        XCTAssertEqual(fixture.endCount, 1)
+        XCTAssertEqual(fixture.activeCount, 1)
+        replacement.stop()
+        XCTAssertEqual(fixture.endCount, 2)
+        XCTAssertEqual(fixture.activeCount, 0)
+    }
+}
+
+@DaemonActor
+private final class ProcessActivityFixture {
+    private var active: Set<ObjectIdentifier> = []
+    private var continuation: CheckedContinuation<Void, Never>?
+    private(set) var beginCount = 0
+    private(set) var endCount = 0
+    var activeCount: Int { active.count }
+
+    func makeActivity() -> DaemonProcessActivity {
+        DaemonProcessActivity(dependencies: .init(begin: {
+            let token = NSObject()
+            self.active.insert(ObjectIdentifier(token))
+            self.beginCount += 1
+            return token
+        }, end: { token in
+            XCTAssertNotNil(self.active.remove(ObjectIdentifier(token)))
+            self.endCount += 1
+        }))
+    }
+
+    func suspend(_ entered: XCTestExpectation) async {
+        await withCheckedContinuation {
+            continuation = $0
+            entered.fulfill()
+        }
+    }
+
+    func resume() {
+        let pending = continuation
+        continuation = nil
+        pending?.resume()
+    }
+}
+
 /// The production retry loop with a monotonic fake clock and bounded probes.
 /// Every bind is the attempted real operation; there is no successful bind
 /// probe that would be cancelled before the actual listener takes ownership.
