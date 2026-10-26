@@ -42,8 +42,15 @@ export function preparePackageLicense(packageDir, root = sourceRoot) {
 }
 
 /** The POSIX release/candidate gates inspect real archives, not dry-run lists.
- * Repeated LICENSE members concatenate and fail the byte comparison as well. */
+ * Count members before extracting: tar may encode a repeated path as a hardlink
+ * whose zero-byte payload does not duplicate the extracted LICENSE bytes. */
 export function verifyTarballLicense(tarball, expected = canonicalLicense()) {
+  const listing = execFileSync('tar', ['-tzf', tarball, 'package/LICENSE'], {
+    timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+  });
+  const licenseMembers = listing.split(/\r?\n/).filter(name => name === 'package/LICENSE');
+  assert.equal(licenseMembers.length, 1, `${basename(tarball)} must contain exactly one package/LICENSE member`);
   const actual = execFileSync('tar', ['-xOzf', tarball, 'package/LICENSE'], {
     timeout: 10_000, maxBuffer: 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
