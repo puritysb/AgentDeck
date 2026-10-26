@@ -104,6 +104,8 @@ export interface CodexRolloutSummary extends TranscriptSummary {
    *  workspace-write / danger-full-access). */
   permissionMode?: string;
   hasPendingCalls?: boolean;
+  /** Explicit end of the latest sampled turn, never inferred from idle/mtime. */
+  terminalEvent?: { type: 'task_complete' | 'turn_aborted'; at: number };
   /** Internal companion rollouts never become top-level dashboard sessions. */
   isSubagent: boolean;
   /** `codex-tui` for CLI, `Codex Desktop` for the desktop client. */
@@ -660,6 +662,10 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
   // the next tool call, and flipping to idle there makes an actively-working
   // Codex render as motionless on the dashboard.
   let turnActive = false;
+  let activeTurnId: string | undefined;
+  let awaitingUserMessage = false;
+  let openedAt: number | undefined;
+  let terminalEvent: CodexRolloutSummary['terminalEvent'];
   const pendingCalls = new Map<string, string>();
 
   for (const parsed of parseJsonl(raw)) {
@@ -680,10 +686,21 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
       switch (stringAt(payload, 'type')) {
         case 'task_started':
           turnActive = true;
+          activeTurnId = stringAt(payload, 'turn_id');
+          awaitingUserMessage = true;
+          openedAt = timestampMs(stringAt(value, 'timestamp'));
+          terminalEvent = undefined;
           contextWindow = numberAt(payload, 'model_context_window') || contextWindow;
           break;
         case 'user_message':
           turnActive = true;
+          // Codex normally emits task_started before its user_message. Keep
+          // that turn's id, but never inherit a previous turn's id when the
+          // new task_started fell outside the sampled window.
+          activeTurnId = stringAt(payload, 'turn_id') ?? (awaitingUserMessage ? activeTurnId : undefined);
+          awaitingUserMessage = false;
+          openedAt = timestampMs(stringAt(value, 'timestamp')) ?? openedAt;
+          terminalEvent = undefined;
           // Turn boundary: calls left dangling by the head/tail sampling gap
           // must not leak into the new turn's state.
           pendingCalls.clear();
@@ -697,14 +714,25 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
           // turn_aborted ends the turn.
           break;
         case 'task_complete':
-        case 'turn_aborted':
+        case 'turn_aborted': {
+          const endTurnId = stringAt(payload, 'turn_id');
+          // Delayed completion of an earlier turn cannot close a newer one.
+          if (activeTurnId && endTurnId && activeTurnId !== endTurnId) break;
+          const at = timestampMs(stringAt(value, 'timestamp'));
+          if (at !== undefined && openedAt !== undefined && at < openedAt) break;
+          terminalEvent = at !== undefined
+            ? { type: stringAt(payload, 'type') as 'task_complete' | 'turn_aborted', at }
+            : undefined;
           turnActive = false;
+          awaitingUserMessage = false;
+          currentTask = undefined;
           // The turn is over — any unmatched function_call is a sampling
           // artifact (its output fell in the gap between the head and tail
           // windows), not an in-flight tool. Without this, a long rollout
           // whose file ends in task_complete reads as 'processing' forever.
           pendingCalls.clear();
           break;
+        }
         case 'token_count': {
           const info = objectAt(payload, 'info');
           if (!info) break;
@@ -753,6 +781,7 @@ export function parseCodexRollout(raw: string): CodexRolloutSummary {
   const state = turnActive || pendingCalls.size > 0 ? 'processing' : 'idle';
   return {
     hasPendingCalls: pendingCalls.size > 0,
+    terminalEvent,
     isSubagent,
     originator,
     sessionId,

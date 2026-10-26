@@ -20,12 +20,13 @@
 //     the moment the scan recovered.
 
 import {
-  codexRolloutSummaryForSession,
+  CodexRolloutCache,
   type LocatedCodexRolloutSummary,
   type ObservedSession,
 } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 import { isCodexBackgroundCwd } from './codex-ambient-hooks.js';
+import { locateCodexRolloutAsync } from './codex-rollout-response.js';
 
 /** Reaped this long after the turn-ending hook — Swift's `codexPostTerminalTTL`. */
 const POST_TERMINAL_TTL_MS = 60_000;
@@ -35,6 +36,15 @@ const POST_TERMINAL_TTL_MS = 60_000;
  * this its creature would sit "processing" forever.
  */
 const SILENT_TTL_MS = 30 * 60_000;
+/** A broadcast never walks or rereads a rollout on every frame. Includes misses. */
+const ROLLOUT_RECHECK_MS = 5_000;
+type RolloutResolver = (sessionId: string) => LocatedCodexRolloutSummary | null
+  | Promise<LocatedCodexRolloutSummary | null>;
+interface RolloutRead {
+  checkedAt: number;
+  value: LocatedCodexRolloutSummary | null;
+  pending: boolean;
+}
 
 /** Hook events that may create a row. */
 const OPENING_EVENTS = new Set(['codex_session_start', 'codex_user_prompt_submit']);
@@ -58,6 +68,8 @@ export interface HookCodexSession {
   currentTool?: string;
   startedAt: number;
   lastHookAt: number;
+  /** Latest opening/tool-start evidence; a delayed tool-end is not new work. */
+  workEvidenceAt: number;
   terminalAt?: number;
 }
 
@@ -76,14 +88,60 @@ export class HookCodexSessions {
   /** Fired when a hook changed something worth broadcasting. */
   onChanged: (() => void) | undefined;
 
-  private readonly resolveRollout: (sessionId: string) => LocatedCodexRolloutSummary | null;
+  private readonly resolveRollout: RolloutResolver;
+  private readonly rolloutCache = new CodexRolloutCache();
+  private readonly rolloutPaths = new Map<string, string>();
+  private readonly rolloutReads = new Map<string, RolloutRead>();
 
-  constructor(resolveRollout?: (sessionId: string) => LocatedCodexRolloutSummary | null) {
-    // macOS/Linux already get richer rows from pid→open-fd observation. The
-    // id-keyed fallback is specifically the Windows bridge over that missing
-    // primitive; keeping it platform-scoped also avoids duplicate disk scans.
-    this.resolveRollout = resolveRollout
-      ?? (process.platform === 'win32' ? codexRolloutSummaryForSession : () => null);
+  constructor(resolveRollout?: RolloutResolver) {
+    // Hooks can outlive process/fd observation on every OS, including a CLI
+    // failure with no Stop hook. Async exact-id lookup and the observer's
+    // mtime/size summary cache keep reconciliation off the broadcast executor.
+    this.resolveRollout = resolveRollout ?? (async (sessionId) => {
+      const session = this.sessions.get(sessionId);
+      if (!session) return null;
+      const path = this.rolloutPaths.get(sessionId) ?? await locateCodexRolloutAsync(sessionId);
+      if (!path || this.sessions.get(sessionId) !== session) return null;
+      this.rolloutPaths.set(sessionId, path);
+      const entry = await this.rolloutCache.get(path);
+      if (this.sessions.get(sessionId) !== session) {
+        this.pruneRolloutCache();
+        return null;
+      }
+      if (!entry || entry.summary.sessionId !== sessionId) {
+        this.rolloutPaths.delete(sessionId);
+        return null;
+      }
+      return { path, mtimeMs: entry.mtimeMs, summary: entry.summary };
+    });
+  }
+
+  private rolloutFor(session: HookCodexSession, now: number): LocatedCodexRolloutSummary | null {
+    const previous = this.rolloutReads.get(session.sessionId);
+    if (previous && (previous.pending || now - previous.checkedAt < ROLLOUT_RECHECK_MS)) return previous.value;
+    // Keep known metadata while refreshing; opening/forget already invalidates it.
+    const read: RolloutRead = { checkedAt: now, value: previous?.value ?? null, pending: false };
+    this.rolloutReads.set(session.sessionId, read);
+    const accept = (value: LocatedCodexRolloutSummary | null): void => {
+      // A new prompt invalidates this read, even within the same millisecond.
+      // A forgotten/recreated identity must not inherit an old async result.
+      if (this.sessions.get(session.sessionId) !== session || this.rolloutReads.get(session.sessionId) !== read) return;
+      read.value = value?.summary.sessionId === session.sessionId ? value : null;
+      read.pending = false;
+    };
+    try {
+      const result = this.resolveRollout(session.sessionId);
+      if (result instanceof Promise) {
+        read.pending = true;
+        void result.then(value => {
+          accept(value);
+          if (read.value) this.onChanged?.();
+        }, () => accept(null));
+      } else {
+        accept(result);
+      }
+    } catch { accept(null); }
+    return read.value;
   }
 
   /**
@@ -94,7 +152,13 @@ export class HookCodexSessions {
     const sessionId = payload.sessionId?.trim();
     if (!sessionId || !event.startsWith('codex_')) return false;
 
-    if (OPENING_EVENTS.has(event)) this.terminated.delete(sessionId);
+    if (OPENING_EVENTS.has(event)) {
+      this.terminated.delete(sessionId);
+      this.rolloutReads.delete(sessionId);
+    } else if (this.terminated.has(sessionId) && !TERMINAL_EVENTS.has(event)) {
+      // A trailing callback cannot reopen a turn, even before its row is reaped.
+      return false;
+    }
 
     const existing = this.sessions.get(sessionId);
     if (!existing) {
@@ -114,9 +178,12 @@ export class HookCodexSessions {
       state: 'idle',
       startedAt: now,
       lastHookAt: now,
+      workEvidenceAt: now,
     };
     const before = JSON.stringify(session);
     session.lastHookAt = now;
+    if (event === 'codex_user_prompt_submit' || event === 'codex_tool_start'
+      || event === 'codex_permission_request') session.workEvidenceAt = now;
 
     // cwd/project upgrade once, empty→set: later hooks on the same session can
     // carry a subcommand's directory, and overwriting would relabel the row.
@@ -160,6 +227,9 @@ export class HookCodexSessions {
 
   /** Drop a session immediately (explicit end, not a timeout). */
   forget(sessionId: string): void {
+    this.rolloutReads.delete(sessionId);
+    this.rolloutPaths.delete(sessionId);
+    this.pruneRolloutCache();
     if (this.sessions.delete(sessionId)) this.onChanged?.();
   }
 
@@ -173,9 +243,23 @@ export class HookCodexSessions {
         && now - session.terminalAt > POST_TERMINAL_TTL_MS;
       if (finished || now - session.lastHookAt > SILENT_TTL_MS) this.sessions.delete(sessionId);
     }
+    for (const sessionId of this.rolloutReads.keys()) {
+      if (!this.sessions.has(sessionId)) {
+        this.rolloutReads.delete(sessionId);
+        this.rolloutPaths.delete(sessionId);
+      }
+    }
+    this.pruneRolloutCache();
     for (const [sessionId, at] of this.terminated) {
       if (now - at > TOMBSTONE_TTL_MS) this.terminated.delete(sessionId);
     }
+  }
+
+  private pruneRolloutCache(): void {
+    for (const sessionId of this.rolloutPaths.keys()) {
+      if (!this.sessions.has(sessionId)) this.rolloutPaths.delete(sessionId);
+    }
+    this.rolloutCache.retain(new Set(this.rolloutPaths.values()));
   }
 
   /**
@@ -198,9 +282,28 @@ export class HookCodexSessions {
     const extra: ObservedSession[] = [];
     for (const session of this.sessions.values()) {
       if (seen.has(session.sessionId)) continue;
-      const located = this.resolveRollout(session.sessionId);
+      const located = this.rolloutFor(session, now);
       if (located?.summary.isSubagent) continue;
       const rollout = located?.summary;
+      const terminal = rollout?.terminalEvent;
+      // Idle/default state, file mtime and pid=0 prove no terminal boundary.
+      // Require a dated, current-turn end newer than actual work openings.
+      // A delayed tool-end callback may arrive after the producer terminal.
+      if (session.state === 'processing' && rollout?.state === 'idle' && terminal
+        && Number.isFinite(terminal.at) && terminal.at >= session.workEvidenceAt && terminal.at <= now) {
+        session.state = 'idle';
+        session.currentTool = undefined;
+        session.terminalAt = terminal.at;
+        this.terminated.set(session.sessionId, terminal.at);
+      }
+      // A terminal discovered late must not buy another minute on every poll.
+      if (session.terminalAt !== undefined && now - session.terminalAt > POST_TERMINAL_TTL_MS) {
+        this.sessions.delete(session.sessionId);
+        this.rolloutReads.delete(session.sessionId);
+        this.rolloutPaths.delete(session.sessionId);
+        this.pruneRolloutCache();
+        continue;
+      }
       const desktop = rollout?.originator?.toLowerCase().includes('desktop') === true;
       const cwd = rollout?.cwd ?? session.cwd;
       // Belt and braces for the daemon-level gate: Codex's memory agent never becomes a row.

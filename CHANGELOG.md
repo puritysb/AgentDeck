@@ -69,6 +69,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## 2026-10-26 — npm 1.9.3
 
+- Recover failed Codex jobs left in WORKING when their terminal hook is missing, using explicit current-turn completion or interruption records; unreadable or uncertain observations never imply completion.
 - Protect daemon data and controls from unrelated browser pages on the same computer. Same-machine trust now validates the host and origin; paired devices and native local clients retain their supported paths. Previously exposed pairing tokens are not automatically revoked: Node users can rotate the token and re-pair devices, but complete revocation across Node/Swift handover remains separate.
 - Show Attention only for a real human response: automatic Codex reviews, Claude processing and quoted prompt text no longer create false waiting states. Keep independently started Codex sessions separate, even in the same project, and estimate stale renewal dates by calendar month.
 - Preserve conversation history during tool-heavy turns, close interrupted turns correctly and deliver session history to USB/Wi-Fi boards under the identifier they requested. Pixoo subagent activity no longer disappears behind tool events.

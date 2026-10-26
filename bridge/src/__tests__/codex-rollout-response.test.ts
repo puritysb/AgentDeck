@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
-import { codexApprovalReviewerForHook, locateCodexRollout, codexRolloutIsSubagent, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
+import { codexApprovalReviewerForHook, locateCodexRollout, locateCodexRolloutAsync, codexRolloutIsSubagent, lastAgentMessageFromCodexRollout, codexTurnOutcomeFromRollout, codexTurnCompletionSince, codexTurnOutcomeFromRolloutPath } from '../codex-rollout-response.js';
 
 /**
  * Observed Codex response capture: codex_stop's payload rarely carries the
@@ -70,6 +70,17 @@ describe('codex rollout response reader', () => {
     const path = writeRollout([{ type: 'session_meta', payload: { id: SID } }]);
     expect(locateCodexRollout(SID, root)).toBe(path);
     expect(locateCodexRollout('deadbeef-0000-0000-0000-000000000000', root)).toBeNull();
+  });
+
+  it('locates asynchronously by exact id with bounded days and unreadable/missing results', async () => {
+    const path = writeRollout([{ type: 'session_meta', payload: { id: SID } }]);
+    expect(await locateCodexRolloutAsync(SID, root)).toBe(path);
+    expect(await locateCodexRolloutAsync(SID.slice(0, -1), root)).toBeNull();
+    expect(await locateCodexRolloutAsync('../escape', root)).toBeNull();
+    expect(await locateCodexRolloutAsync(SID, join(root, 'missing'))).toBeNull();
+    // Only the newest 30 day directories are searched, as in the sync reader.
+    for (let day = 1; day <= 31; day++) mkdirSync(join(root, '2027', '01', String(day)), { recursive: true });
+    expect(await locateCodexRolloutAsync(SID, root)).toBeNull();
   });
 
   it('prefers task_complete.last_agent_message (authoritative turn close)', () => {

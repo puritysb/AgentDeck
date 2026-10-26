@@ -68,6 +68,26 @@ export function locateCodexRollout(sessionId: string, sessionsRoot?: string): st
   return null;
 }
 
+/** Async counterpart for recurring hook-only reconciliation. Exact session-id
+ * filenames and the same recent-day bound keep this off the broadcast executor. */
+export async function locateCodexRolloutAsync(sessionId: string, sessionsRoot?: string): Promise<string | null> {
+  if (!sessionId || !/^[0-9a-f-]{8,}$/i.test(sessionId)) return null;
+  const root = sessionsRoot ?? join(homedir(), '.codex', 'sessions');
+  const list = async (path: string): Promise<string[]> => readdirAsync(path).catch(() => []);
+  let checked = 0;
+  for (const year of numericDesc(await list(root))) {
+    for (const month of numericDesc(await list(join(root, year)))) {
+      for (const day of numericDesc(await list(join(root, year, month)))) {
+        if (++checked > MAX_DAY_DIRS) return null;
+        const dir = join(root, year, month, day);
+        const name = (await list(dir)).find(name => name.startsWith('rollout-') && name.endsWith(`-${sessionId}.jsonl`));
+        if (name) return join(dir, name);
+      }
+    }
+  }
+  return null;
+}
+
 /** OTel must not walk/read the rollout on the span dispatch executor. Read
  * only the immutable first line asynchronously; undefined means unreadable. */
 export async function codexRolloutIsSubagent(sessionId: string, sessionsRoot?: string): Promise<boolean | undefined> {
