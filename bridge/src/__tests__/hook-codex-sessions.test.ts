@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { parseCodexRollout, type LocatedCodexRolloutSummary } from '../passive-observer.js';
 import { HookCodexSessions, buildCodexPermissionQuestion } from '../hook-codex-sessions.js';
 import type { ObservedSession } from '../passive-observer.js';
 
@@ -210,4 +211,150 @@ it('a resumed idle session is not reaped by its previous terminal timestamp', ()
   hooks.note('codex_stop', { sessionId: 'resume' }, 2000);
   hooks.note('codex_session_start', { sessionId: 'resume' }, 3000);
   expect(hooks.applyTo([], 180000)).toMatchObject([{ state: 'idle' }]);
+});
+
+
+describe('hook-only Codex terminal reconciliation', () => {
+  function rollout(events: Array<{ type: string; at?: number; turnId?: string }>, sessionId = SID): LocatedCodexRolloutSummary {
+    const raw = [
+      { type: 'session_meta', payload: { id: sessionId, originator: 'codex_exec' } },
+      ...events.map(event => ({
+        timestamp: event.at === undefined ? undefined : new Date(event.at).toISOString(),
+        type: 'event_msg',
+        payload: { type: event.type, turn_id: event.turnId, ...(event.type === 'task_complete' ? { last_agent_message: null } : {}) },
+      })),
+    ].map(row => JSON.stringify(row)).join('\n');
+    return { path: `C:\\Users\\dev\\.codex\\sessions\\rollout-${sessionId}.jsonl`, mtimeMs: 2_000, summary: parseCodexRollout(raw) };
+  }
+
+  it.each(['task_complete', 'turn_aborted'])('settles explicit %s without a Stop hook on every platform', type => {
+    // A provider 429 ends with task_complete/last_agent_message:null; text is
+    // not completion evidence. No process observation or PID is required.
+    const located = rollout([{ type: 'task_started', at: 1_000, turnId: 'turn-1' }, { type: 'error', at: 1_400 }, { type, at: 1_500, turnId: 'turn-1' }]);
+    const hooks = new HookCodexSessions(() => located);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_100);
+    expect(hooks.applyTo([], 2_000)[0]).toMatchObject({ state: 'idle', currentTask: undefined });
+    expect(hooks.snapshot()[0].terminalAt).toBe(1_500);
+    hooks.note('codex_tool_end', { sessionId: SID }, 3_000);
+    expect(hooks.applyTo([], 7_000)[0].state).toBe('idle');
+    expect(hooks.snapshot()[0].terminalAt).toBe(1_500);
+    expect(hooks.applyTo([], 61_501)).toEqual([]);
+    hooks.note('codex_tool_start', { sessionId: SID }, 62_000);
+    expect(hooks.applyTo([], 62_001)).toEqual([]);
+  });
+
+  it.each([
+    ['head only', []],
+    ['undated terminal', [{ type: 'task_complete' }]],
+    ['old terminal', [{ type: 'task_complete', at: 900 }]],
+    ['future terminal', [{ type: 'task_complete', at: 20_000 }]],
+    ['new task_started', [{ type: 'task_complete', at: 1_500 }, { type: 'task_started', at: 1_600 }]],
+    ['new user_message', [{ type: 'task_complete', at: 1_500 }, { type: 'user_message', at: 1_600 }]],
+  ])('keeps work for %s', (_, events) => {
+    const hooks = new HookCodexSessions(() => rollout(events));
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    expect(hooks.applyTo([], 2_000)[0].state).toBe('processing');
+  });
+
+  it('rejects mismatched identity, failed reads and malformed/default idle summaries', () => {
+    for (const resolve of [
+      () => rollout([{ type: 'task_complete', at: 1_500 }], 'other-id'),
+      () => null,
+      () => { throw new Error('unreadable'); },
+      () => ({ path: '/missing', mtimeMs: 2_000, summary: parseCodexRollout('{broken') }),
+    ]) {
+      const hooks = new HookCodexSessions(resolve);
+      hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+      expect(hooks.applyTo([], 2_000)[0]).toMatchObject({ state: 'processing', lastActivityAt: 1_000 });
+    }
+  });
+
+  it('preserves observer priority without starting disk lookup', () => {
+    const resolve = vi.fn(() => rollout([{ type: 'task_complete', at: 1_500 }]));
+    const hooks = new HookCodexSessions(resolve);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    const observed = observedCodex();
+    expect(hooks.applyTo([observed], 2_000)).toEqual([observed]);
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('accepts terminal evidence after a delayed tool-end but not after new tool-start work', () => {
+    for (const event of ['codex_tool_end', 'codex_tool_start']) {
+      const hooks = new HookCodexSessions(() => rollout([{ type: 'task_complete', at: 1_500 }]));
+      hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+      hooks.note(event, { sessionId: SID }, 1_700);
+      expect(hooks.applyTo([], 2_000)[0].state).toBe(event === 'codex_tool_end' ? 'idle' : 'processing');
+    }
+  });
+
+  it('does not close a new prompt from a cached previous terminal', () => {
+    const hooks = new HookCodexSessions(() => rollout([{ type: 'task_complete', at: 1_500 }]));
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    expect(hooks.applyTo([], 2_000)[0].state).toBe('idle');
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 3_000);
+    expect(hooks.applyTo([], 3_001)[0].state).toBe('processing');
+  });
+
+  it('bounds positive/negative reads and discards an async answer superseded by a same-ms prompt', async () => {
+    let finish!: (value: LocatedCodexRolloutSummary | null) => void;
+    const resolve = vi.fn(() => new Promise<LocatedCodexRolloutSummary | null>(done => { finish = done; }));
+    const hooks = new HookCodexSessions(resolve);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    hooks.applyTo([], 2_000);
+    hooks.applyTo([], 9_000);
+    expect(resolve).toHaveBeenCalledTimes(1); // in-flight, even past cadence
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    finish(rollout([{ type: 'task_complete', at: 1_500 }]));
+    await Promise.resolve();
+    expect(hooks.applyTo([], 9_001)[0].state).toBe('processing');
+    finish(null);
+    await Promise.resolve();
+    hooks.applyTo([], 9_002);
+    expect(resolve).toHaveBeenCalledTimes(2);
+    hooks.applyTo([], 14_002);
+    expect(resolve).toHaveBeenCalledTimes(3);
+  });
+
+  it('caches successful reads across repeated broadcasts without extending the terminal TTL', () => {
+    const resolve = vi.fn(() => rollout([{ type: 'task_complete', at: 1_500 }]));
+    const hooks = new HookCodexSessions(resolve);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    hooks.applyTo([], 2_000);
+    hooks.applyTo([], 6_999);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    hooks.applyTo([], 7_000);
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(hooks.snapshot()[0].terminalAt).toBe(1_500);
+  });
+
+  it('keeps Windows metadata stable while refreshing but invalidates it for a new prompt', async () => {
+    let finish!: (value: LocatedCodexRolloutSummary | null) => void;
+    const hooks = new HookCodexSessions(() => new Promise(done => { finish = done; }));
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    hooks.applyTo([], 2_000);
+    const located = rollout([{ type: 'task_started', at: 1_000 }]);
+    located.summary.modelName = 'test-model';
+    finish(located);
+    await Promise.resolve();
+    expect(hooks.applyTo([], 2_001)[0].modelName).toBe('test-model');
+    expect(hooks.applyTo([], 7_001)[0].modelName).toBe('test-model');
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 7_002);
+    expect(hooks.applyTo([], 7_003)[0].modelName).toBeUndefined();
+  });
+
+  it('discards async evidence after forget and accepts a fresh successful read', async () => {
+    let finish!: (value: LocatedCodexRolloutSummary | null) => void;
+    const hooks = new HookCodexSessions(() => new Promise(done => { finish = done; }));
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    hooks.applyTo([], 2_000);
+    const stale = finish;
+    hooks.forget(SID);
+    hooks.note('codex_user_prompt_submit', { sessionId: SID }, 1_000);
+    stale(rollout([{ type: 'task_complete', at: 1_500 }]));
+    await Promise.resolve();
+    expect(hooks.applyTo([], 2_001)[0].state).toBe('processing');
+    finish(rollout([{ type: 'task_complete', at: 1_500 }]));
+    await Promise.resolve();
+    expect(hooks.applyTo([], 2_002)[0].state).toBe('idle');
+  });
 });

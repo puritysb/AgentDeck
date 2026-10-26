@@ -1330,3 +1330,33 @@ describe('Claude identity read continuity', () => {
     expect(await f.scan()).toEqual([]);
   });
 });
+
+
+describe('Codex explicit terminal evidence', () => {
+  const event = (type: string, at?: number, turnId?: string) => ({
+    type: 'event_msg', timestamp: at === undefined ? undefined : new Date(at).toISOString(), payload: { type, turn_id: turnId },
+  });
+  it('rejects an old turn id or time after a newer start', () => {
+    for (const end of [event('task_complete', 3_000, 'old'), event('task_complete', 1_000, 'new')]) {
+      const summary = parseCodexRollout(jsonl([event('task_started', 2_000, 'new'), end]));
+      expect(summary.state).toBe('processing');
+      expect(summary.terminalEvent).toBeUndefined();
+    }
+  });
+  it('keeps the current task_started id through its id-less user message', () => {
+    const summary = parseCodexRollout(jsonl([
+      event('task_started', 2_000, 'new'), event('user_message', 2_100),
+      event('task_complete', 3_000, 'old'),
+    ]));
+    expect(summary.state).toBe('processing');
+    expect(summary.terminalEvent).toBeUndefined();
+  });
+  it('does not carry a prior turn id across a sampled user-message boundary', () => {
+    const summary = parseCodexRollout(jsonl([
+      event('task_started', 1_000, 'old'), event('task_complete', 2_000, 'old'),
+      event('user_message', 3_000), event('task_complete', 4_000, 'new'),
+    ]));
+    expect(summary.state).toBe('idle');
+    expect(summary.terminalEvent).toEqual({ type: 'task_complete', at: 4_000 });
+  });
+});
