@@ -162,6 +162,41 @@ and timelines after documented timestamp and display-time normalization. This
 bounded sample does not establish full-history transfer.
 No upload, review replacement or publication is implied by these local results.
 
+The final CI candidate (`9034c5f9`, macOS 1.9.3 / 9701) passed its first
+CLI→Swift→CLI cycle, but a second CLI→Swift cycle exposed an incomplete automatic
+transition after slow cleanup. In the first reverse transition, stand-down began
+at 21:15:07 UTC; the local startup/shutdown wait exceeded its eight-second budget
+at 21:15:16, and shutdown completed at 21:15:17. The timeout returned before
+`connectToExternalDaemon` and its health monitor were installed. The service had
+already cleared its port to zero, so its remaining health loop could not recover.
+The dashboard's separate WebSocket client did reconnect; that transport evidence
+did not prove that ownership monitoring had resumed.
+
+After the Mac was unlocked and the actual 9701 Dashboard was visible, the second
+CLI stop produced **224.224 seconds** of observation with **113** unknown canonical
+health samples and no Swift response. The candidate was not restarted to disguise
+that failure. A supported CLI start explicitly restored availability; this was
+recovery after a failed test, not a successful automatic handover. The same app
+process was kept for diagnosis. First-cycle measurements and the original raw
+receipts remain valid only for their recorded scope.
+
+**9701 is uploaded and VALID, but is blocked for release and must not replace the
+9501 submission.** The follow-up remains macOS 1.9.3 while that version is
+unreleased, with a new CI-derived build above 9701. Resume an automatic ownership
+transition after its actual teardown completes only when its generation and
+connection intent are still current. Explicit stop and a timed-out Settings
+restart must retain their existing behavior. The same timeout can discard automatic
+recovery after a listener startup failure or a later listener failure; those paths
+must retain their failure reason and attempted port until cleanup finishes.
+These two additional cases were found in source review, not observed on the
+installed candidate. Acceptance now includes fake regressions with delayed
+teardown crossing its injected caller budget, two successive actual automatic
+ownership cycles, and Mac WORKING pixels and signed Shortcuts navigation.
+No npm tag or public package publication has occurred at this checkpoint.
+The October 26 22:10 UTC store read (run `40410273766`) found the existing 9501
+submission **IN_REVIEW**, with macOS 1.9.2 still public. Re-read before the next
+upload: if 1.9.3 becomes public, record a new patch-version decision first.
+
 ### 2026-10-26 non-Dot stability release decision
 
 The maintainer authorized verification and release on October 26. These are

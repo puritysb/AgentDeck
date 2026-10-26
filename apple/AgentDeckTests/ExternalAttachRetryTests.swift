@@ -8,7 +8,7 @@ final class ExternalAttachRetryTests: XCTestCase {
     @MainActor
     func testStopRejectsAnAlreadyRunningRetryHealthResponse() async {
         let probe = DelayedExternalHealth()
-        let service = DaemonService(automaticallyStart: false, externalAttach: probe.dependencies)
+        let service = probe.makeService()
         let unexpectedReady = expectation(description: "stopped service must not become ready")
         unexpectedReady.isInverted = true
         service.onReady = { _ in unexpectedReady.fulfill() }
@@ -27,7 +27,7 @@ final class ExternalAttachRetryTests: XCTestCase {
     @MainActor
     func testStoppedRetryCannotProbeOrScheduleAgainAfterDelayedFailure() async {
         let probe = DelayedExternalHealth()
-        let service = DaemonService(automaticallyStart: false, externalAttach: probe.dependencies)
+        let service = probe.makeService()
         await service.connectToExternalDaemon(port: probe.oldPort)
         await fulfillment(of: [probe.retryHealthStarted], timeout: 2)
         let portProbes = probe.portProbes
@@ -47,7 +47,7 @@ final class ExternalAttachRetryTests: XCTestCase {
     @MainActor
     func testNewPortIntentSurvivesADelayedOldPortRetry() async {
         let probe = DelayedExternalHealth()
-        let service = DaemonService(automaticallyStart: false, externalAttach: probe.dependencies)
+        let service = probe.makeService()
         var ready: [String] = []
         service.onReady = { ready.append($0) }
         await service.connectToExternalDaemon(port: probe.oldPort)
@@ -76,8 +76,13 @@ private final class DelayedExternalHealth {
     private(set) var portProbes = 0
     static var healthy: [String: Any] { ["mode": "daemon", "isSwift": false] }
 
+    func makeService() -> DaemonService {
+        DaemonService(automaticallyStart: false, externalAttach: dependencies,
+            healthMonitor: .init(probeHealth: { _, _ in nil }, portStatus: { _ in .unknown }))
+    }
+
     var dependencies: DaemonService.ExternalAttachDependencies {
-        .init(probeHealth: { [self] port in
+        .init(registeredPort: { nil }, probeHealth: { [self] port in
             guard port == oldPort else { return Self.healthy }
             guard retryDelays > 0 else { return nil }
             let succeeded = await withCheckedContinuation {

@@ -92,7 +92,7 @@ This delivery targets macOS. iPhone and iPad remain on their existing release.
 - Preserve separately started Codex sessions instead of merging sessions that share a project.
 - Estimate stale Codex quota renewal dates by calendar month.
 - Recover from temporary local address reservations during server startup with bounded retries, retaining the existing fallback when the port is occupied or its state cannot be confirmed.
-- Improve local server responsiveness when the Mac dashboard starts in the background.
+- Improve local server responsiveness when the Mac dashboard starts in the background, and resume automatic recovery after delayed shutdown.
 
 Dot remains excluded from the App Store build.
 
