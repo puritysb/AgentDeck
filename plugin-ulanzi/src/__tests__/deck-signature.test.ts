@@ -26,7 +26,8 @@ describe('D200H deckSignature — every render-affecting change must be visible'
   };
 
   it('invalidates NOW and readout changes even without a state transition', () => {
-    for (const patch of [{ activity: 'Reading' }, { goal: 'Ship fix' }, { contextPercent: 42 }, { subagents: { active: 2 } }, { effortLevel: 'high' }, { permissionMode: 'plan' }]) {
+    for (const patch of [{ activity: 'Reading' }, { goal: 'Ship fix' }, { contextPercent: 42 }, { subagents: { active: 2 } }, { effortLevel: 'high' }, { permissionMode: 'plan' },
+      { backgroundTaskCount: 1 }, { backgroundStandbyCount: 1 }]) {
       expect(differsFrom(patch)).toBe(true);
     }
   });

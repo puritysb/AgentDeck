@@ -2696,8 +2696,13 @@ struct ADSessionInfo: Codable, Equatable {
     /// unsafe index space. These are present only while a multi-group prompt is pending, and let
     /// a surface render "Q 2/3". Absent ⇒ a single-question prompt.
     var askGroupIndex: Double?
-    /// Claude background_tasks snapshot count, separate from the child-agent census. Explicit
-    /// zero clears prior work; absent means the producer has no snapshot.
+    /// Background work that is still there but no longer counted as active: a long-running
+    /// process (dev server, monitor, idle teammate) past
+    /// `BACKGROUND_WORK_POLICY.standbyAfterMs`. Same emission rule as `backgroundTaskCount`; an
+    /// idle row with standby work stays idle.
+    var backgroundStandbyCount: Double?
+    /// Active background work (shared/src/background-work.ts), separate from the child-agent
+    /// census. Explicit zero clears prior work; absent means the producer has no snapshot.
     var backgroundTaskCount: Double?
     var contextPercent: Double?
     var controlMode: ADControlMode?
@@ -2788,6 +2793,7 @@ struct ADSessionInfo: Codable, Equatable {
         case alive = "alive"
         case askGroupCount = "askGroupCount"
         case askGroupIndex = "askGroupIndex"
+        case backgroundStandbyCount = "backgroundStandbyCount"
         case backgroundTaskCount = "backgroundTaskCount"
         case contextPercent = "contextPercent"
         case controlMode = "controlMode"
@@ -2851,6 +2857,7 @@ extension ADSessionInfo {
         alive: Bool? = nil,
         askGroupCount: Double?? = nil,
         askGroupIndex: Double?? = nil,
+        backgroundStandbyCount: Double?? = nil,
         backgroundTaskCount: Double?? = nil,
         contextPercent: Double?? = nil,
         controlMode: ADControlMode?? = nil,
@@ -2894,6 +2901,7 @@ extension ADSessionInfo {
             alive: alive ?? self.alive,
             askGroupCount: askGroupCount ?? self.askGroupCount,
             askGroupIndex: askGroupIndex ?? self.askGroupIndex,
+            backgroundStandbyCount: backgroundStandbyCount ?? self.backgroundStandbyCount,
             backgroundTaskCount: backgroundTaskCount ?? self.backgroundTaskCount,
             contextPercent: contextPercent ?? self.contextPercent,
             controlMode: controlMode ?? self.controlMode,

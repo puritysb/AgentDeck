@@ -30,7 +30,7 @@ export function deckSignature(ev: Record<string, unknown>): string {
   //    deck keeps offering the first — whose indices now mean something else.
   const sessions = ((ev.allSessions as Array<Record<string, unknown>>) ?? [])
     .map((s) => `${s.id}:${s.state ?? ''}:${s.currentTool ?? ''}:${s.modelName ?? ''}`
-      + `:${JSON.stringify([s.effortLevel, s.permissionMode, s.activity, s.goal, s.contextPercent, s.subagents, s.backgroundTaskCount])}`
+      + `:${JSON.stringify([s.effortLevel, s.permissionMode, s.activity, s.goal, s.contextPercent, s.subagents, s.backgroundTaskCount, s.backgroundStandbyCount])}`
       + `:${s.reviewStatus ?? ''}:${s.reviewRisk ?? ''}:${s.reviewFindings ?? ''}`
       + `:${s.liveAnswerable ?? ''}:${s.question ?? ''}:${s.promptType ?? ''}`
       + `:${s.askGroupIndex ?? ''}`

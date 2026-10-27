@@ -650,9 +650,15 @@ export interface SessionInfo {
    *  when the last child exits would pin `8 running` on the row forever — the
    *  same one-way latch that `usageStale` hit twice. */
   subagents?: SubagentSummary;
-  /** Claude background_tasks snapshot count, separate from the child-agent census.
-   * Explicit zero clears prior work; absent means the producer has no snapshot. */
+  /** Active background work (shared/src/background-work.ts), separate from the
+   * child-agent census. Explicit zero clears prior work; absent means the
+   * producer has no snapshot. */
   backgroundTaskCount?: number;
+  /** Background work that is still there but no longer counted as active: a
+   * long-running process (dev server, monitor, idle teammate) past
+   * `BACKGROUND_WORK_POLICY.standbyAfterMs`. Same emission rule as
+   * `backgroundTaskCount`; an idle row with standby work stays idle. */
+  backgroundStandbyCount?: number;
   /** Cross-session coordination census — see CoordinationSummary. Same
    *  emission rule as `subagents`: present with zeros once observed, absent
    *  only when this session has never had a relation. */

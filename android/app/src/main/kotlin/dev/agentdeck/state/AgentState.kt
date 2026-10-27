@@ -329,7 +329,9 @@ class AgentStateHolder private constructor() {
                     val previous = old.siblingSessions.associateBy { it.id }
                     old.copy(siblingSessions = event.sessions.map { row ->
                         row.copy(backgroundTaskCount = dev.agentdeck.terrarium.BackgroundWorkPolicy.count(row.backgroundTaskCount)
-                            ?: previous[row.id]?.backgroundTaskCount)
+                            ?: previous[row.id]?.backgroundTaskCount,
+                            backgroundStandbyCount = dev.agentdeck.terrarium.BackgroundWorkPolicy.count(row.backgroundStandbyCount)
+                            ?: previous[row.id]?.backgroundStandbyCount)
                     }, dot = event.dot)
                 }
             }

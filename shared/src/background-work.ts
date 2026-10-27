@@ -9,11 +9,19 @@
  *   finish    one item ended (a finish for an unknown session claims nothing)
  *   reset     the session boundary: back to "unknown" (no count on the wire)
  *
- * The wire contract is `SessionInfo.backgroundTaskCount`: a number is the
- * current count, an explicit 0 means "finished", absent means "no information"
- * and clients retain. `project()` keeps an idle parent visibly working while
- * its count is above zero; it never reopens a turn and never covers an
- * approval, question or offline state.
+ * The wire contract is `SessionInfo.backgroundTaskCount` (active work) beside
+ * `SessionInfo.backgroundStandbyCount` (work that is merely still there): a
+ * number is the current count, an explicit 0 means "none", absent means "no
+ * information" and clients retain. `project()` keeps an idle parent visibly
+ * working while its active count is above zero; it never reopens a turn and
+ * never covers an approval, question or offline state.
+ *
+ * Every item has a kind. A `job` finishes on its own (a subagent, a workflow),
+ * so it is active until it ends. A `process` may run indefinitely — a dev
+ * server, a log monitor, a teammate idling between messages — and no agent
+ * reports whether it is still doing anything, so it is active for
+ * `standbyAfterMs` from when it was first seen and on standby after that: the
+ * parent's turn stays idle and surfaces show the standing work quietly.
  *
  * A lost finish must not latch a creature "working" forever, so a session fed
  * by start/finish events carries a stale bound (`staleMs`): an item not
@@ -37,7 +45,11 @@ export const BACKGROUND_WORK_POLICY = {
     terminal: ['background terminal', 'background terminals'],
     process: ['background process', 'background processes'],
   },
+  /** A `process` item seen this long ago stops holding its parent working. */
+  standbyAfterMs: 10 * 60 * 1000,
 } as const;
+
+export type BackgroundWorkKind = 'job' | 'process';
 
 export type BackgroundWorkNoun = keyof typeof BACKGROUND_WORK_POLICY.nouns;
 
@@ -54,6 +66,7 @@ export type BackgroundWorkNoun = keyof typeof BACKGROUND_WORK_POLICY.nouns;
 export const BACKGROUND_WORK_HOOKS = {
   opencode: {
     noun: 'task',
+    kind: 'job',
     staleMs: 6 * 60 * 60 * 1000,
     resets: ['opencode_session_start', 'opencode_session_end'],
     childStop: 'opencode_subagent_stop',
@@ -61,6 +74,7 @@ export const BACKGROUND_WORK_HOOKS = {
   },
   hermes: {
     noun: 'process',
+    kind: 'process',
     staleMs: null,
     resets: ['hermes_session_start', 'hermes_session_end'],
     childStop: null,
@@ -68,13 +82,13 @@ export const BACKGROUND_WORK_HOOKS = {
     events: ['snapshot'],
   },
 } as const satisfies Record<string, {
-  noun: BackgroundWorkNoun; staleMs: number | null; resets: readonly string[]; childStop: string | null;
+  noun: BackgroundWorkNoun; kind: BackgroundWorkKind; staleMs: number | null; resets: readonly string[]; childStop: string | null;
   events: readonly ('start' | 'finish' | 'snapshot')[];
 }>;
 
 export type BackgroundWorkHookOp =
-  | { kind: 'start' | 'finish'; sessionId: string; item: string; noun: BackgroundWorkNoun; staleMs: number | null }
-  | { kind: 'snapshot'; sessionId: string; items: string[]; noun: BackgroundWorkNoun; staleMs: number | null }
+  | { kind: 'start' | 'finish'; sessionId: string; item: string; noun: BackgroundWorkNoun; itemKind: BackgroundWorkKind; staleMs: number | null }
+  | { kind: 'snapshot'; sessionId: string; items: string[]; noun: BackgroundWorkNoun; itemKind: BackgroundWorkKind; staleMs: number | null }
   | { kind: 'reset'; sessionId: string };
 
 const MAX_ITEM_ID = 256;
@@ -95,7 +109,7 @@ export function backgroundWorkHookOp(event: string, payload: Record<string, unkn
   if (typeof sessionId !== 'string' || !sessionId.trim()) return null;
   for (const [agent, rule] of Object.entries(BACKGROUND_WORK_HOOKS)) {
     if ((rule.resets as readonly string[]).includes(event)) return { kind: 'reset', sessionId };
-    const base = { sessionId, noun: rule.noun as BackgroundWorkNoun, staleMs: rule.staleMs as number | null };
+    const base = { sessionId, noun: rule.noun as BackgroundWorkNoun, itemKind: rule.kind as BackgroundWorkKind, staleMs: rule.staleMs as number | null };
     if (rule.childStop !== null && event === rule.childStop) {
       const item = itemId(payload.agent_id);
       return item ? { kind: 'finish', item, ...base } : null;
@@ -127,8 +141,8 @@ export function applyBackgroundWorkHookOp(work: BackgroundWorkTracker, op: Backg
   switch (op.kind) {
     case 'reset': return work.reset(op.sessionId);
     case 'finish': return work.finish(op.sessionId, op.item);
-    case 'start': return work.start(op.sessionId, op.item, now, { noun: op.noun, staleMs: op.staleMs });
-    case 'snapshot': return work.snapshot(op.sessionId, op.items, now, { noun: op.noun, staleMs: op.staleMs });
+    case 'start': return work.start(op.sessionId, op.item, now, { noun: op.noun, kind: op.itemKind, staleMs: op.staleMs });
+    case 'snapshot': return work.snapshot(op.sessionId, op.items, now, { noun: op.noun, kind: op.itemKind, staleMs: op.staleMs });
   }
 }
 
@@ -136,10 +150,21 @@ export interface BackgroundWorkOptions {
   noun?: BackgroundWorkNoun;
   /** Drop an item not re-asserted within this many ms; null = never. */
   staleMs?: number | null;
+  /** Kind of every item in this call (default `job`); `kinds` overrides per item. */
+  kind?: BackgroundWorkKind;
+  kinds?: Readonly<Record<string, BackgroundWorkKind>>;
+}
+
+interface WorkItem {
+  /** Last re-assertion; the stale bound counts from here. */
+  seen: number;
+  /** First sighting; a `process` goes on standby counted from here. */
+  since: number;
+  kind: BackgroundWorkKind;
 }
 
 interface SessionWork {
-  items: Map<string, number>;
+  items: Map<string, WorkItem>;
   noun: BackgroundWorkNoun;
   staleMs: number | null;
 }
@@ -153,20 +178,33 @@ export interface BackgroundWorkRow {
 
 export class BackgroundWorkTracker {
   private readonly sessions = new Map<string, SessionWork>();
+  private lastReap = -Infinity;
 
   count(sid: string): number | undefined {
     return this.sessions.get(sid)?.items.size;
   }
 
-  /** Replace the session's set. Returns whether the count changed. */
+  /** Items still holding the parent working, and items on standby, at `now`. */
+  split(sid: string, now: number): { active: number; standby: number } | undefined {
+    const work = this.sessions.get(sid);
+    if (!work) return undefined;
+    let standby = 0;
+    for (const item of work.items.values()) if (onStandby(item, now)) standby++;
+    return { active: work.items.size - standby, standby };
+  }
+
+  /** Replace the session's set. Returns whether the projected split changed
+   *  (an old server swapped for a new build keeps the count but not the split). */
   snapshot(sid: string, items: readonly string[], now: number, options: BackgroundWorkOptions = {}): boolean {
     if (!sid || items.length > BACKGROUND_WORK_POLICY.maxItems) return false;
-    const before = this.count(sid);
+    const before = this.split(sid, now);
     const work = this.touch(sid, options);
+    const prior = new Map(work.items);
     work.items.clear();
-    for (const item of items) if (item) work.items.set(item, now);
+    for (const item of items) if (item) work.items.set(item, record(prior.get(item), item, now, options));
     this.evict();
-    return before !== work.items.size;
+    const after = this.split(sid, now)!;
+    return before?.active !== after.active || before.standby !== after.standby;
   }
 
   start(sid: string, item: string, now: number, options: BackgroundWorkOptions = {}): boolean {
@@ -174,7 +212,7 @@ export class BackgroundWorkTracker {
     const before = this.count(sid);
     const work = this.touch(sid, options);
     if (!work.items.has(item) && work.items.size >= BACKGROUND_WORK_POLICY.maxItems) return false;
-    work.items.set(item, now);
+    work.items.set(item, record(work.items.get(item), item, now, options));
     this.evict();
     return before !== work.items.size;
   }
@@ -188,25 +226,30 @@ export class BackgroundWorkTracker {
     return this.sessions.delete(sid);
   }
 
-  /** Drop items past their session's stale bound. Returns the sessions whose count changed. */
+  /** Drop items past their session's stale bound. Returns the sessions whose
+   *  projection changed: an item dropped, or a process gone on standby since
+   *  the previous reap. */
   reap(now: number): string[] {
     const changed: string[] = [];
+    const since = this.lastReap;
+    this.lastReap = now;
     for (const [sid, work] of this.sessions) {
-      if (work.staleMs === null) continue;
-      let removed = false;
-      for (const [item, seen] of work.items) {
-        if (now - seen > work.staleMs) { work.items.delete(item); removed = true; }
+      let moved = false;
+      for (const [id, item] of work.items) {
+        if (work.staleMs !== null && now - item.seen > work.staleMs) { work.items.delete(id); moved = true; }
+        else if (item.kind === 'process' && onStandby(item, now) && !onStandby(item, since)) moved = true;
       }
-      if (removed) changed.push(sid);
+      if (moved) changed.push(sid);
     }
     return changed;
   }
 
-  project<T extends BackgroundWorkRow>(sid: string, session: T): T & { backgroundTaskCount?: number } {
+  project<T extends BackgroundWorkRow>(sid: string, session: T, now: number): T & { backgroundTaskCount?: number; backgroundStandbyCount?: number } {
     const work = this.sessions.get(sid);
-    if (!work) return session;
-    const count = work.items.size;
-    const result = { ...session, backgroundTaskCount: count };
+    const split = this.split(sid, now);
+    if (!work || !split) return session;
+    const count = split.active;
+    const result = { ...session, backgroundTaskCount: count, backgroundStandbyCount: split.standby };
     if (session.state !== 'idle' || count === 0) return result;
     const activity = `Waiting for ${count} ${BACKGROUND_WORK_POLICY.nouns[work.noun][count === 1 ? 0 : 1]}`;
     return { ...result, state: 'processing', currentTool: BACKGROUND_WORK_POLICY.tool, currentTask: activity, activity };
@@ -228,4 +271,12 @@ export class BackgroundWorkTracker {
       this.sessions.delete(this.sessions.keys().next().value!);
     }
   }
+}
+
+function record(prior: WorkItem | undefined, id: string, now: number, options: BackgroundWorkOptions): WorkItem {
+  return { seen: now, since: prior?.since ?? now, kind: options.kinds?.[id] ?? options.kind ?? prior?.kind ?? 'job' };
+}
+
+function onStandby(item: WorkItem, now: number): boolean {
+  return item.kind === 'process' && now - item.since >= BACKGROUND_WORK_POLICY.standbyAfterMs;
 }

@@ -5886,7 +5886,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       const waitingOn = s.controlMode === 'managed' || remote.some(r => r.id === s.id) || relayedIds.has(s.id)
         ? s.waitingOn : ciWaits.snapshot(rawSessionId(s.id), now);
       const ciLabel = !s.state?.startsWith('awaiting') ? ciWaitLabel(waitingOn) : null;
-      const withBackground = backgroundWork.project(rawSessionId(s.id), withSubagents);
+      const withBackground = backgroundWork.project(rawSessionId(s.id), withSubagents, now);
       const withCensus = { ...withBackground, ...(coord ? { coordination: coord } : {}),
         ...(waitingOn !== undefined ? { waitingOn } : {}), ...(ciLabel ? { activity: ciLabel } : {}) };
       if (withCensus.elapsedSec != null || !withCensus.startedAt) return withCensus;

@@ -18,7 +18,9 @@ enum BackgroundDevicePolicy {
               n.doubleValue >= 0, n.doubleValue <= Double(maxCount) else { return nil }
         return n.intValue
     }
-    static func compact(_ value: Int?) -> String? {
+    static func compact(_ value: Int?, standby: Int? = nil) -> String? {
+        let waiting = count(standby) ?? 0
+        if (count(value) ?? 0) == 0, waiting > 0 { return "STBY \(waiting)" }
         guard let value = count(value) else { return nil }
         return value == 0 ? "BG DONE" : "BG \(value)"
     }

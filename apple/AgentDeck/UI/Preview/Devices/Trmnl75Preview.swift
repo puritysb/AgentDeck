@@ -294,7 +294,7 @@ struct Trmnl75Preview: View {
         let awaiting = state == .awaitingPrompt
         let cardInk = awaiting ? paper : ink
         let background = !awaiting && session.ciWait == nil
-            ? BackgroundDevicePolicy.compact(session.backgroundTaskCount) : nil
+            ? BackgroundDevicePolicy.compact(session.backgroundTaskCount, standby: session.backgroundStandbyCount) : nil
         let detail = background.map { $0 + " / " } ?? ""
         return HStack(spacing: 8) {
             PreviewCreatureGlyph(

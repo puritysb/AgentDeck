@@ -128,7 +128,7 @@ const RELAY_STRING_FIELDS = [
 ] as const;
 const RELAY_NUMBER_FIELDS = [
   'groupSize', 'contextPercent', 'totalTokens', 'queuedDirectives', 'reviewFindings',
-  'askGroupIndex', 'askGroupCount', 'backgroundTaskCount',
+  'askGroupIndex', 'askGroupCount', 'backgroundTaskCount', 'backgroundStandbyCount',
 ] as const;
 const RELAY_BOOLEAN_FIELDS = ['stopRequested', 'liveAnswerable'] as const;
 const RELAY_OBJECT_FIELDS = ['subagents', 'coordination'] as const;

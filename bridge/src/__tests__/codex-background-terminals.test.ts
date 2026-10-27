@@ -57,7 +57,7 @@ function runNode(): Record<string, unknown>[] {
     alive = step.alive ?? undefined;
     if (step.kind === 'note') tracker.note(step.event!, { session_id: 'thread', ...step.payload });
     else tracker.refresh('thread');
-    for (const state of STATES) out.push(tracker.project('thread', { state }));
+    for (const state of STATES) out.push(tracker.project('thread', { state }, 0));
   }
   return out;
 }
@@ -74,18 +74,18 @@ describe('Codex background terminals', () => {
     const at = (step: number, state: string) => out[step * STATES.length + STATES.indexOf(state)];
     expect(at(0, 'idle')).toEqual({ state: 'idle' });
     expect(at(1, 'idle')).toEqual({
-      state: 'processing', backgroundTaskCount: 1, currentTool: BACKGROUND_WORK_POLICY.tool,
+      state: 'processing', backgroundTaskCount: 1, backgroundStandbyCount: 0, currentTool: BACKGROUND_WORK_POLICY.tool,
       currentTask: 'Waiting for 1 background terminal', activity: 'Waiting for 1 background terminal',
     });
-    expect(at(1, 'awaiting_permission')).toEqual({ state: 'awaiting_permission', backgroundTaskCount: 1 });
+    expect(at(1, 'awaiting_permission')).toEqual({ state: 'awaiting_permission', backgroundTaskCount: 1, backgroundStandbyCount: 0 });
     expect(at(2, 'idle')).toMatchObject({ backgroundTaskCount: 1 });
     expect(at(3, 'idle')).toMatchObject({ backgroundTaskCount: 1 });
-    expect(at(4, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+    expect(at(4, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 0 });
     expect(at(5, 'idle')).toMatchObject({ backgroundTaskCount: 1 });
-    expect(at(6, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+    expect(at(6, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 0 });
     // A new pid is a resumed Codex: the old process's running record is not
     // trusted until the new process writes a boundary record.
-    expect(at(7, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+    expect(at(7, 'idle')).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 0 });
     expect(at(8, 'idle')).toEqual({ state: 'idle' });
     expect(at(9, 'idle')).toEqual({ state: 'idle' });
   });
@@ -107,7 +107,7 @@ describe('Codex background terminals', () => {
     timers[0]();
     expect(changes).toBe(1);
     expect(timers).toHaveLength(0);
-    expect(tracker.project('t', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+    expect(tracker.project('t', { state: 'idle' }, 0)).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 0 });
   });
 
   it('stops watching when liveness cannot be seen and nothing is appended, and lets the count expire', () => {
@@ -125,7 +125,7 @@ describe('Codex background terminals', () => {
     for (let i = 0; i < CODEX_BACKGROUND_POLICY.giveUpReads && timers.length; i++) { clock += 3_000; timers[0](); }
     expect(timers).toHaveLength(0);
     expect(work.reap(CODEX_BACKGROUND_POLICY.staleMs + 1)).toEqual(['t']);
-    expect(work.project('t', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0 });
+    expect(work.project('t', { state: 'idle' }, clock)).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 0 });
   });
 
   it.runIf(process.platform === 'darwin')('replays the same windows and lifecycle through the Swift mirror', () => {
@@ -161,7 +161,7 @@ for step in input["steps"] as! [[String: Any]] {
     } else {
         tracker.refresh("thread", io: io, work: &work, now: 0)
     }
-    for state in ${JSON.stringify(STATES)} { emit(work.project("thread", session: ["state": state])) }
+    for state in ${JSON.stringify(STATES)} { emit(work.project("thread", session: ["state": state], now: 0)) }
 }
 `);
       const actual = execFileSync('swift', [join(dir, 'main.swift'), join(dir, 'input.json')], { encoding: 'utf8', timeout: 60_000 })

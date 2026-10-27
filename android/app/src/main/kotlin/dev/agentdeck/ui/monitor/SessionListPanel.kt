@@ -78,6 +78,7 @@ fun SessionListPanel(
          *  working, and this row said "IDLE" through the whole fan-out. */
         val subagents: SubagentSummary? = null,
         val backgroundTaskCount: Int? = null,
+        val backgroundStandbyCount: Int? = null,
     )
 
     fun compareEntries(left: SessionEntry, right: SessionEntry): Int {
@@ -138,6 +139,7 @@ fun SessionListPanel(
             activity = primaryAnchorSibling?.activity,
             subagents = primaryAnchorSibling?.subagents,
             backgroundTaskCount = primaryAnchorSibling?.backgroundTaskCount,
+            backgroundStandbyCount = primaryAnchorSibling?.backgroundStandbyCount,
         )
     }
 
@@ -167,6 +169,7 @@ fun SessionListPanel(
                 activity = session.activity,
                 subagents = session.subagents,
                 backgroundTaskCount = session.backgroundTaskCount,
+                backgroundStandbyCount = session.backgroundStandbyCount,
             )
         }
     val displayEntries = entries.sortedWith(::compareEntries)
@@ -283,7 +286,7 @@ fun SessionListPanel(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                dev.agentdeck.terrarium.BackgroundWorkPolicy.label(entry.backgroundTaskCount)?.let { label ->
+                dev.agentdeck.terrarium.BackgroundWorkPolicy.label(entry.backgroundTaskCount, entry.backgroundStandbyCount)?.let { label ->
                     Text(text = label, color = TerrariumColors.HUDSubtext, fontSize = scale.fontSub,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

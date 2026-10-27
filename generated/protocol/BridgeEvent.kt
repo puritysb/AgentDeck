@@ -1341,8 +1341,16 @@ data class SessionInfo (
     val askGroupIndex: Double? = null,
 
     /**
-     * Claude background_tasks snapshot count, separate from the child-agent census. Explicit
-     * zero clears prior work; absent means the producer has no snapshot.
+     * Background work that is still there but no longer counted as active: a long-running
+     * process (dev server, monitor, idle teammate) past
+     * `BACKGROUND_WORK_POLICY.standbyAfterMs`. Same emission rule as `backgroundTaskCount`; an
+     * idle row with standby work stays idle.
+     */
+    val backgroundStandbyCount: Double? = null,
+
+    /**
+     * Active background work (shared/src/background-work.ts), separate from the child-agent
+     * census. Explicit zero clears prior work; absent means the producer has no snapshot.
      */
     val backgroundTaskCount: Double? = null,
 

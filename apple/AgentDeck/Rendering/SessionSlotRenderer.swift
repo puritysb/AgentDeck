@@ -39,7 +39,9 @@
 // Pin moved 2026-10-19 with NO port (Ulanzi QA): `renderBackButton` takes the
 // open session's name as its subtitle. This mirror has no BACK tile; the D200H
 // Device Preview draws BACK itself and carries the label (D200HLayoutModel).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts ee8a897a1ca080b9e19053a5dc0948076145f974
+// Ported 2026-10-28: the state and tool labels pass `backgroundStandbyCount`
+// to the background compact label (STBY n for standby-only work).
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts de918461207e1cac1588bb37db9597021474a521
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)
@@ -156,7 +158,7 @@ struct SessionSlotView: View {
     private var stateLabelText: String {
         if mode != .asking, session.state == "error" { return "ERROR" }
         if mode != .asking, let wait = session.waitingOn { return "CI " + (wait.phase == "unknown" ? "WAIT" : wait.phase.uppercased()) }
-        if mode != .asking, let text = BackgroundDevicePolicy.compact(session.backgroundTaskCount) { return text }
+        if mode != .asking, let text = BackgroundDevicePolicy.compact(session.backgroundTaskCount, standby: session.backgroundStandbyCount) { return text }
         switch mode {
         case .working: return "RUNNING"
         case .asking:  return "PERMIT?"
@@ -184,7 +186,7 @@ struct SessionSlotView: View {
         if mode != .asking, let wait = session.waitingOn {
             return "CI " + (wait.phase == "unknown" ? "wait" : wait.phase) + (wait.pr.map { " #\($0)" } ?? "") + (wait.checks.map { " · \($0.passed)/\($0.total)" } ?? "")
         }
-        if mode != .asking, let text = BackgroundDevicePolicy.compact(session.backgroundTaskCount) { return text }
+        if mode != .asking, let text = BackgroundDevicePolicy.compact(session.backgroundTaskCount, standby: session.backgroundStandbyCount) { return text }
         return mode == .working ? "Running task" : modelText
     }
 

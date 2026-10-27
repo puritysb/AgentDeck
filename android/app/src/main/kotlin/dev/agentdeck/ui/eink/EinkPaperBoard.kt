@@ -104,7 +104,7 @@ internal fun buildPaperBoard(state: DashboardState): PaperBoard {
     if (!isAggregate && state.agentType != null) {
         val sibling = state.siblingSessions.firstOrNull { it.id == state.sessionId }
         raw += Raw(BoardSession(state.sessionId, state.projectName ?: "Agent", state.agentType, state.modelName,
-            state.agentState, dev.agentdeck.terrarium.BackgroundWorkPolicy.label(sibling?.backgroundTaskCount)?.takeUnless { sibling?.state == "error" || state.agentState.isAwaiting() } ?: sibling?.activity, sibling?.question, sibling?.waitingOn?.takeUnless { state.agentState.isAwaiting() }), null, null)
+            state.agentState, dev.agentdeck.terrarium.BackgroundWorkPolicy.label(sibling?.backgroundTaskCount, sibling?.backgroundStandbyCount)?.takeUnless { sibling?.state == "error" || state.agentState.isAwaiting() } ?: sibling?.activity, sibling?.question, sibling?.waitingOn?.takeUnless { state.agentState.isAwaiting() }), null, null)
     }
     val primaryId = if (!isAggregate) state.sessionId else null
     state.siblingSessions
@@ -112,7 +112,7 @@ internal fun buildPaperBoard(state: DashboardState): PaperBoard {
         .sortedWith(::compareSessionsForDisplay)
         .forEach {
             raw += Raw(BoardSession(it.id, it.projectName ?: "Agent", it.agentType, it.modelName,
-                einkBoardState(state,it), dev.agentdeck.terrarium.BackgroundWorkPolicy.label(it.backgroundTaskCount)?.takeUnless { _ -> it.state == "error" || einkBoardState(state, it).isAwaiting() } ?: it.activity, it.question, it.waitingOn?.takeUnless { _ -> einkBoardState(state,it).isAwaiting() }), it.weight, it.startedAt)
+                einkBoardState(state,it), dev.agentdeck.terrarium.BackgroundWorkPolicy.label(it.backgroundTaskCount, it.backgroundStandbyCount)?.takeUnless { _ -> it.state == "error" || einkBoardState(state, it).isAwaiting() } ?: it.activity, it.question, it.waitingOn?.takeUnless { _ -> einkBoardState(state,it).isAwaiting() }), it.weight, it.startedAt)
         }
     // Same project and agent twice: number them so a row names one session.
     val counts = raw.groupingBy { it.s.name to it.s.agentType }.eachCount()
