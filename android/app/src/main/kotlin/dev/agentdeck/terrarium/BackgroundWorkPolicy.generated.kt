@@ -7,6 +7,14 @@ object BackgroundWorkPolicy {
     const val ORBIT_MS = 4800L
     const val FINISH_MS = 1500L
     fun count(value: Int?): Int? = value?.takeIf { it in 0..MAX_COUNT }
-    fun label(value: Int?): String? = count(value)?.let { if (it == 0) "Background complete" else "$it background" }
-    fun compact(value: Int?): String? = count(value)?.let { if (it == 0) "BG DONE" else "BG $it" }
+    fun label(value: Int?, standby: Int? = null): String? {
+        val active = count(value); val waiting = count(standby) ?: 0
+        if ((active == null || active == 0) && waiting > 0) return "$waiting on standby"
+        return active?.let { if (it == 0) "Background complete" else "$it background" }
+    }
+    fun compact(value: Int?, standby: Int? = null): String? {
+        val active = count(value); val waiting = count(standby) ?: 0
+        if ((active == null || active == 0) && waiting > 0) return "STBY $waiting"
+        return active?.let { if (it == 0) "BG DONE" else "BG $it" }
+    }
 }

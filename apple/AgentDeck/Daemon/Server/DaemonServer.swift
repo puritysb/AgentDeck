@@ -12319,7 +12319,7 @@ final class DaemonServer {
             if let risk = badge.risk { d["reviewRisk"] = risk }
             if let findings = badge.findings { d["reviewFindings"] = findings }
         }
-        return backgroundWork.project(Self.backgroundWorkKey(s.id), session: d)
+        return backgroundWork.project(Self.backgroundWorkKey(s.id), session: d, now: Self.backgroundNowMs())
     }
 
     /// The bare session id every background adapter keys on, whatever row form

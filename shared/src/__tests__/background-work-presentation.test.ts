@@ -12,6 +12,16 @@ describe('background work device projection', () => {
     expect(backgroundCompact(4096)).toBe('BG 4096');
     expect(BACKGROUND_PRESENTATION.maxCount).toBe(BACKGROUND_WORK_POLICY.maxItems);
   });
+  it('shows standby work quietly and never above active work', () => {
+    expect(backgroundCompact(0, 2)).toBe('STBY 2');
+    expect(backgroundCompact(undefined, 1)).toBe('STBY 1');
+    expect(backgroundLabel(0, 1)).toBe('1 on standby');
+    expect(backgroundCompact(1, 3)).toBe('BG 1');
+    expect(backgroundLabel(2, 3)).toBe('2 background');
+    expect(backgroundCompact(0, 0)).toBe('BG DONE');
+    expect(backgroundCompact(0, 'x')).toBe('BG DONE');
+    expect(backgroundCompact(undefined, 0)).toBeNull();
+  });
   it('retains by session id across reordering and clears only on an explicit zero or disconnect', () => {
     const engine=new MatrixExpression();
     const row=(id:string,count?:number) => ({id,alive:true,state:'processing',backgroundTaskCount:count});

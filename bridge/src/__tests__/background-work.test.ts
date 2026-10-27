@@ -31,7 +31,8 @@ function replayNode(): unknown[] {
       changed = op ? applyBackgroundWorkHookOp(work, op, step.now!) : false;
       consumed = isBackgroundWorkHookEvent(step.event!);
     }
-    return [consumed, changed, ...vectors.sessions.map(sid => work.project(sid, { state: 'idle' }))];
+    const at = step.now ?? step.reap!;
+    return [consumed, changed, ...vectors.sessions.map(sid => work.project(sid, { state: 'idle' }, at))];
   });
 }
 
@@ -57,10 +58,37 @@ describe('background work tracker', () => {
     const work = new BackgroundWorkTracker();
     work.snapshot('s', ['a'], 0, { noun: 'process' });
     for (const state of ['processing', 'awaiting_permission', 'awaiting_option', 'disconnected', undefined]) {
-      expect(work.project('s', { state, activity: 'Existing' })).toEqual({ state, activity: 'Existing', backgroundTaskCount: 1 });
+      expect(work.project('s', { state, activity: 'Existing' }, 0)).toEqual({ state, activity: 'Existing', backgroundTaskCount: 1, backgroundStandbyCount: 0 });
     }
     expect(work.finish('unknown', 'a')).toBe(false);
-    expect(work.project('unknown', { state: 'idle' })).toEqual({ state: 'idle' });
+    expect(work.project('unknown', { state: 'idle' }, 0)).toEqual({ state: 'idle' });
+  });
+
+  it('puts a long-running process on standby without ever aging a job', () => {
+    const after = BACKGROUND_WORK_POLICY.standbyAfterMs;
+    const work = new BackgroundWorkTracker();
+    work.snapshot('s', ['server', 'agent'], 0, { kinds: { server: 'process' } });
+    expect(work.split('s', after - 1)).toEqual({ active: 2, standby: 0 });
+    // Re-asserting the set keeps the first sighting: a 3 s poll must not
+    // restart the clock, or a dev server would never go on standby.
+    work.snapshot('s', ['server', 'agent'], after - 1, { kinds: { server: 'process' } });
+    expect(work.split('s', after)).toEqual({ active: 1, standby: 1 });
+    expect(work.project('s', { state: 'idle' }, 10 * after)).toMatchObject({ state: 'processing', backgroundTaskCount: 1, backgroundStandbyCount: 1 });
+    expect(work.snapshot('s', ['server'], 10 * after)).toBe(true);
+    expect(work.project('s', { state: 'idle' }, 10 * after)).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 1 });
+    // Same count, different split: the old server left and a new build began.
+    expect(work.snapshot('s', ['build'], 10 * after, { kind: 'process' })).toBe(true);
+    expect(work.split('s', 10 * after)).toEqual({ active: 1, standby: 0 });
+    expect(work.snapshot('s', ['build'], 10 * after + 1, { kind: 'process' })).toBe(false);
+  });
+
+  it('reports a standby crossing from reap exactly once', () => {
+    const after = BACKGROUND_WORK_POLICY.standbyAfterMs;
+    const work = new BackgroundWorkTracker();
+    work.start('s', 'server', 0, { kind: 'process' });
+    expect(work.reap(after - 1)).toEqual([]);
+    expect(work.reap(after)).toEqual(['s']);
+    expect(work.reap(after + 5_000)).toEqual([]);
   });
 
   it('bounds sessions and items', () => {
@@ -94,7 +122,8 @@ for step in input["steps"] as! [[String: Any]] {
         }
         row = [BackgroundWorkHooks.isEvent(event), changed]
     }
-    for sid in sessions { row.append(work.project(sid, session: ["state": "idle"])) }
+    let at = (step["now"] as? Double) ?? (step["reap"] as! Double)
+    for sid in sessions { row.append(work.project(sid, session: ["state": "idle"], now: at)) }
     print(String(data: try JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]), encoding: .utf8)!)
 }
 `);

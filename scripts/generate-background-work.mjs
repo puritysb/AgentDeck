@@ -26,17 +26,19 @@ export function emitBackgroundWorkSwift(policy, sourceText, hooks) {
   const nouns = Object.entries(policy.nouns)
     .map(([kind, [one, many]]) => `        case ${JSON.stringify(kind)}: return count == 1 ? ${JSON.stringify(one)} : ${JSON.stringify(many)}`).join('\n');
   const rules = Object.entries(hooks).map(([agent, r]) =>
-    `        Rule(agent: ${JSON.stringify(agent)}, noun: ${JSON.stringify(r.noun)}, staleMs: ${r.staleMs === null ? 'nil' : r.staleMs}, `
+    `        Rule(agent: ${JSON.stringify(agent)}, noun: ${JSON.stringify(r.noun)}, kind: ${JSON.stringify(r.kind)}, staleMs: ${r.staleMs === null ? 'nil' : r.staleMs}, `
     + `resets: [${r.resets.map(x => JSON.stringify(x)).join(', ')}], childStop: ${r.childStop === null ? 'nil' : JSON.stringify(r.childStop)}, `
     + `events: [${r.events.map(x => JSON.stringify(x)).join(', ')}]),`).join('\n');
   return `// BEGIN GENERATED BACKGROUND WORK — scripts/generate-background-work.mjs
 // Source SHA256: ${crypto.createHash('sha256').update(sourceText).digest('hex')}
 // Agent-agnostic background work per session; adapters translate each agent's
 // signal into snapshot/start/finish/reset. Absent = unknown, explicit 0 = done.
+// A "process" item stops holding its parent working after standbyAfterMs.
 struct BackgroundWorkTracker {
     static let maxSessions = ${policy.maxSessions}
     static let maxItems = ${policy.maxItems}
     static let tool = ${JSON.stringify(policy.tool)}
+    static let standbyAfterMs: Double = ${policy.standbyAfterMs}
 
     static func noun(_ kind: String, count: Int) -> String {
         switch kind {
@@ -45,36 +47,58 @@ ${nouns}
         }
     }
 
+    private struct Item {
+        var seen: Double
+        var since: Double
+        var kind: String
+        func onStandby(_ now: Double) -> Bool { kind == "process" && now - since >= BackgroundWorkTracker.standbyAfterMs }
+    }
     private struct Work {
-        var items: [String: Double] = [:]
+        var items: [String: Item] = [:]
         var noun = "task"
         var staleMs: Double?
     }
     private var sessions: [String: Work] = [:]
     private var order: [String] = []
+    private var lastReap = -Double.infinity
 
     func count(_ sid: String) -> Int? { sessions[sid]?.items.count }
 
+    func split(_ sid: String, now: Double) -> (active: Int, standby: Int)? {
+        guard let work = sessions[sid] else { return nil }
+        let standby = work.items.values.filter { $0.onStandby(now) }.count
+        return (work.items.count - standby, standby)
+    }
+
+    private static func record(_ prior: Item?, id: String, now: Double, kind: String?, kinds: [String: String]) -> Item {
+        Item(seen: now, since: prior?.since ?? now, kind: kinds[id] ?? kind ?? prior?.kind ?? "job")
+    }
+
     /// noun/staleMs: nil leaves the session's current value; staleMs .some(nil) clears the bound.
+    /// kind applies to every item in the call (default "job"); kinds overrides per item.
     @discardableResult
-    mutating func snapshot(_ sid: String, items: [String], now: Double, noun: String? = nil, staleMs: Double?? = nil) -> Bool {
+    mutating func snapshot(_ sid: String, items: [String], now: Double, noun: String? = nil, staleMs: Double?? = nil,
+                           kind: String? = nil, kinds: [String: String] = [:]) -> Bool {
         guard !sid.isEmpty, items.count <= Self.maxItems else { return false }
-        let before = count(sid)
+        let before = split(sid, now: now)
         var work = touch(sid, noun: noun, staleMs: staleMs)
+        let prior = work.items
         work.items = [:]
-        for item in items where !item.isEmpty { work.items[item] = now }
+        for item in items where !item.isEmpty { work.items[item] = Self.record(prior[item], id: item, now: now, kind: kind, kinds: kinds) }
         sessions[sid] = work
         evict()
-        return before != work.items.count
+        guard let after = split(sid, now: now) else { return before != nil }
+        return before?.active != after.active || before?.standby != after.standby
     }
 
     @discardableResult
-    mutating func start(_ sid: String, item: String, now: Double, noun: String? = nil, staleMs: Double?? = nil) -> Bool {
+    mutating func start(_ sid: String, item: String, now: Double, noun: String? = nil, staleMs: Double?? = nil,
+                        kind: String? = nil) -> Bool {
         guard !sid.isEmpty, !item.isEmpty else { return false }
         let before = count(sid)
         var work = touch(sid, noun: noun, staleMs: staleMs)
         if work.items[item] == nil, work.items.count >= Self.maxItems { sessions[sid] = work; return false }
-        work.items[item] = now
+        work.items[item] = Self.record(work.items[item], id: item, now: now, kind: kind, kinds: [:])
         sessions[sid] = work
         evict()
         return before != work.items.count
@@ -93,23 +117,29 @@ ${nouns}
         return sessions.removeValue(forKey: sid) != nil
     }
 
-    /// Sessions whose count changed because an item outlived its stale bound.
+    /// Sessions whose projection changed: an item outlived its stale bound, or a
+    /// process went on standby since the previous reap.
     mutating func reap(now: Double) -> [String] {
         var changed: [String] = []
+        let previous = lastReap
+        lastReap = now
         for sid in order {
-            guard var work = sessions[sid], let stale = work.staleMs else { continue }
+            guard var work = sessions[sid] else { continue }
             let before = work.items.count
-            work.items = work.items.filter { now - $0.value <= stale }
-            if work.items.count != before { sessions[sid] = work; changed.append(sid) }
+            if let stale = work.staleMs { work.items = work.items.filter { now - $0.value.seen <= stale } }
+            let crossed = work.items.values.contains { $0.onStandby(now) && !$0.onStandby(previous) }
+            if work.items.count != before { sessions[sid] = work }
+            if work.items.count != before || crossed { changed.append(sid) }
         }
         return changed
     }
 
-    func project(_ sid: String, session: [String: Any]) -> [String: Any] {
-        guard let work = sessions[sid] else { return session }
-        let count = work.items.count
+    func project(_ sid: String, session: [String: Any], now: Double) -> [String: Any] {
+        guard let work = sessions[sid], let split = split(sid, now: now) else { return session }
+        let count = split.active
         var result = session
         result["backgroundTaskCount"] = count
+        result["backgroundStandbyCount"] = split.standby
         guard session["state"] as? String == "idle", count > 0 else { return result }
         let activity = "Waiting for \\(count) \\(Self.noun(work.noun, count: count))"
         result["state"] = "processing"
@@ -135,16 +165,16 @@ ${nouns}
 
 /// The generic \`<agent>_background_start|finish|snapshot\` hook vocabulary.
 enum BackgroundWorkHooks {
-    struct Rule { let agent: String; let noun: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
+    struct Rule { let agent: String; let noun: String; let kind: String; let staleMs: Double?; let resets: [String]; let childStop: String?; let events: [String] }
     static let rules: [Rule] = [
 ${rules}
     ]
     static let maxItemId = 256
 
     enum Op: Equatable {
-        case start(sessionId: String, item: String, noun: String, staleMs: Double?)
+        case start(sessionId: String, item: String, noun: String, kind: String, staleMs: Double?)
         case finish(sessionId: String, item: String)
-        case snapshot(sessionId: String, items: [String], noun: String, staleMs: Double?)
+        case snapshot(sessionId: String, items: [String], noun: String, kind: String, staleMs: Double?)
         case reset(sessionId: String)
     }
 
@@ -174,7 +204,7 @@ ${rules}
                 || (event == rule.agent + "_background_finish" && rule.events.contains("finish")) {
                 guard let item = itemId(payload["item_id"]) else { return nil }
                 return event.hasSuffix("_start")
-                    ? .start(sessionId: sid, item: item, noun: rule.noun, staleMs: rule.staleMs)
+                    ? .start(sessionId: sid, item: item, noun: rule.noun, kind: rule.kind, staleMs: rule.staleMs)
                     : .finish(sessionId: sid, item: item)
             }
             if event == rule.agent + "_background_snapshot" && rule.events.contains("snapshot") {
@@ -184,7 +214,7 @@ ${rules}
                     guard let item = itemId(value) else { return nil }
                     if !items.contains(item) { items.append(item) }
                 }
-                return .snapshot(sessionId: sid, items: items, noun: rule.noun, staleMs: rule.staleMs)
+                return .snapshot(sessionId: sid, items: items, noun: rule.noun, kind: rule.kind, staleMs: rule.staleMs)
             }
         }
         return nil
@@ -195,10 +225,10 @@ ${rules}
         switch op {
         case .reset(let sid): return work.reset(sid)
         case .finish(let sid, let item): return work.finish(sid, item: item)
-        case .start(let sid, let item, let noun, let staleMs):
-            return work.start(sid, item: item, now: now, noun: noun, staleMs: .some(staleMs))
-        case .snapshot(let sid, let items, let noun, let staleMs):
-            return work.snapshot(sid, items: items, now: now, noun: noun, staleMs: .some(staleMs))
+        case .start(let sid, let item, let noun, let kind, let staleMs):
+            return work.start(sid, item: item, now: now, noun: noun, staleMs: .some(staleMs), kind: kind)
+        case .snapshot(let sid, let items, let noun, let kind, let staleMs):
+            return work.snapshot(sid, items: items, now: now, noun: noun, staleMs: .some(staleMs), kind: kind)
         }
     }
 }

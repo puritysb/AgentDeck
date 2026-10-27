@@ -11,18 +11,25 @@ const body = `// BEGIN GENERATED CLAUDE BACKGROUND — bridge/generate-claude-ba
 // Source SHA256: ${crypto.createHash('sha256').update(source).digest('hex')}
 // Parent turns remain idle; only the session-work projection stays working.
 enum ClaudeBackgroundTasks {
-    static func taskIds(_ payload: [String: Any], excluding: String? = nil) -> [String]? {
+    /// Running tasks in order with their tracker kind; nil when absent or malformed.
+    static func tasks(_ payload: [String: Any], excluding: String? = nil) -> [(id: String, kind: String)]? {
         guard let tasks = payload["background_tasks"] as? [Any], tasks.count <= ${policy.maxTasks} else { return nil }
         let finished: Set<String> = [${literals(policy.finished)}]
-        var ids: [String] = []
+        let processTypes: Set<String> = [${literals(policy.processTypes)}]
+        var found: [(id: String, kind: String)] = []
         for value in tasks {
             guard let task = value as? [String: Any], let id = task["id"] as? String, !id.isEmpty,
                   let status = task["status"] as? String else { return nil }
             if id == excluding || finished.contains(status) { continue }
             guard status == "running" else { return nil }
-            if !ids.contains(id) { ids.append(id) }
+            let kind = (task["type"] as? String).map { processTypes.contains($0) ? "process" : "job" } ?? "job"
+            if !found.contains(where: { $0.id == id }) { found.append((id, kind)) }
         }
-        return ids
+        return found
+    }
+
+    static func taskIds(_ payload: [String: Any], excluding: String? = nil) -> [String]? {
+        tasks(payload, excluding: excluding)?.map { $0.id }
     }
 
     static func taskCount(_ payload: [String: Any], excluding: String? = nil) -> Int? {
@@ -39,8 +46,9 @@ enum ClaudeBackgroundTasks {
         if event == "SessionStart" || event == "SessionEnd" { return work.reset(sid) }
         guard [${literals(policy.snapshots)}].contains(event) else { return false }
         if event == "Notification" && payload["notification_type"] as? String != "idle_prompt" { return false }
-        guard let ids = Self.taskIds(payload, excluding: event == "SubagentStop" ? payload["agent_id"] as? String : nil) else { return false }
-        return work.snapshot(sid, items: ids, now: now, noun: "task", staleMs: .some(nil))
+        guard let tasks = Self.tasks(payload, excluding: event == "SubagentStop" ? payload["agent_id"] as? String : nil) else { return false }
+        return work.snapshot(sid, items: tasks.map { $0.id }, now: now, noun: "task", staleMs: .some(nil),
+                             kinds: Dictionary(tasks.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first }))
     }
 }
 // END GENERATED CLAUDE BACKGROUND`;

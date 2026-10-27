@@ -133,7 +133,7 @@ fun EinkAgentPanel(
             sessionId = state.sessionId,
             activity = state.sessionId?.let { sid ->
                 state.siblingSessions.firstOrNull { it.id == sid }?.let { row ->
-                    row.waitingOn?.takeUnless { state.agentState.isAwaitingInput() }?.let(::ciCompanionLabel) ?: dev.agentdeck.terrarium.BackgroundWorkPolicy.label(row.backgroundTaskCount)?.takeUnless { row.state == "error" || state.agentState.isAwaitingInput() } ?: row.activity }
+                    row.waitingOn?.takeUnless { state.agentState.isAwaitingInput() }?.let(::ciCompanionLabel) ?: dev.agentdeck.terrarium.BackgroundWorkPolicy.label(row.backgroundTaskCount, row.backgroundStandbyCount)?.takeUnless { row.state == "error" || state.agentState.isAwaitingInput() } ?: row.activity }
             },
         )
     }
@@ -162,7 +162,7 @@ fun EinkAgentPanel(
                 startedAt = session.startedAt,
                 sessionId = session.id,
                 weight = session.weight,
-                activity = session.waitingOn?.takeUnless { einkBoardState(state,session).isAwaitingInput() }?.let(::ciCompanionLabel) ?: dev.agentdeck.terrarium.BackgroundWorkPolicy.label(session.backgroundTaskCount)?.takeUnless { session.state == "error" || einkBoardState(state, session).isAwaitingInput() } ?: session.activity,
+                activity = session.waitingOn?.takeUnless { einkBoardState(state,session).isAwaitingInput() }?.let(::ciCompanionLabel) ?: dev.agentdeck.terrarium.BackgroundWorkPolicy.label(session.backgroundTaskCount, session.backgroundStandbyCount)?.takeUnless { session.state == "error" || einkBoardState(state, session).isAwaitingInput() } ?: session.activity,
             )
         }
     val displayEntries = entries.sortedWith(::compareEntries)

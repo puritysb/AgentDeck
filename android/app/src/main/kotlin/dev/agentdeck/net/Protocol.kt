@@ -416,6 +416,9 @@ data class SessionInfo(
     /** Explicit zero completes work; null is unknown. Separate from subagents. */
     @Serializable(with = BackgroundCountSerializer::class)
     val backgroundTaskCount: Int? = null,
+    /** Long-running background work no longer counted as active; same rule. */
+    @Serializable(with = BackgroundCountSerializer::class)
+    val backgroundStandbyCount: Int? = null,
     /** Cross-session coordination census — see [CoordinationSummary]. Same
      *  emission rule as [subagents]: zeros once observed, absent only when the
      *  session has never had a relation. */

@@ -293,7 +293,7 @@ export class CodexBackgroundTerminals {
     // Only a live process or a new record re-asserts the items; an unknown
     // liveness with nothing new lets them age toward the stale bound.
     const changed = alive === true || learned
-      ? this.work.snapshot(sid, [...running], this.io.now(), { noun: 'terminal', staleMs: CODEX_BACKGROUND_POLICY.staleMs })
+      ? this.work.snapshot(sid, [...running], this.io.now(), { noun: 'terminal', kind: 'process', staleMs: CODEX_BACKGROUND_POLICY.staleMs })
       : false;
     this.arm();
     return changed;
@@ -307,8 +307,8 @@ export class CodexBackgroundTerminals {
   }
 
   /** Presentation only, the shared `BackgroundWorkTracker.project` rule. */
-  project<T extends { state?: string; currentTool?: string; currentTask?: string; activity?: string }>(sid: string, session: T): T & { backgroundTaskCount?: number } {
-    return this.work.project(sid, session);
+  project<T extends { state?: string; currentTool?: string; currentTask?: string; activity?: string }>(sid: string, session: T, now: number): T & { backgroundTaskCount?: number; backgroundStandbyCount?: number } {
+    return this.work.project(sid, session, now);
   }
 
   private readonly poll = (): void => {

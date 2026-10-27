@@ -152,6 +152,8 @@ struct PreviewDisplaySession: Identifiable {
     var state: PixooPreviewState
     /// Optional count, distinct from the child-agent census.
     var backgroundTaskCount: Int? = nil
+    /// Long-running background work no longer counted as active.
+    var backgroundStandbyCount: Int? = nil
     /// Active subagents under this session. The firmware draws them as
     /// decorative activity owned by the parent — a static miniature orbit on
     /// e-ink, perimeter satellite pixels on the LED matrix — never as another
@@ -233,7 +235,8 @@ extension DevicePreviewSelection {
                     // draws no satellites yet. Plumbing them through
                     // LivePreviewData is a separate change; leaving it at 0 is
                     // honest (nothing drawn) rather than invented.
-                    backgroundTaskCount: s.state == "error" ? nil : s.backgroundTaskCount, subagentCount: 0, ciWait: s.waitingOn, activity: (s.waitingOn != nil || s.state == "error" || (s.state ?? "").hasPrefix("awaiting")) ? s.activity : BackgroundDevicePolicy.compact(s.backgroundTaskCount) ?? s.activity
+                    backgroundTaskCount: s.state == "error" ? nil : s.backgroundTaskCount,
+                    backgroundStandbyCount: s.state == "error" ? nil : s.backgroundStandbyCount, subagentCount: 0, ciWait: s.waitingOn, activity: (s.waitingOn != nil || s.state == "error" || (s.state ?? "").hasPrefix("awaiting")) ? s.activity : BackgroundDevicePolicy.compact(s.backgroundTaskCount, standby: s.backgroundStandbyCount) ?? s.activity
                 )
             }
         }

@@ -622,9 +622,12 @@ struct SessionInfo: Codable, Sendable, Identifiable {
     /// because a field that vanishes when the last child exits latches its last
     /// count forever under retain-on-absent merging.
     var subagents: SubagentSummary?
-    /// Claude background task snapshot; explicit zero clears, nil is unknown.
+    /// Active background work; explicit zero clears, nil is unknown.
     /// Includes shell jobs and is not an additional child-agent count.
     var backgroundTaskCount: Int?
+    /// Background work still alive but no longer active (a long-running server,
+    /// monitor or idle teammate). Same emission rule; the row stays idle.
+    var backgroundStandbyCount: Int?
     /// Cross-session coordination census — see `CoordinationSummary`. Same
     /// emission rule as `subagents`: zeros once observed, absent only when the
     /// session has never had a relation.

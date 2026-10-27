@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { BACKGROUND_WORK_POLICY } from '@agentdeck/shared';
 import { ClaudeBackgroundTasks, claudeBackgroundTaskCount } from '../claude-background-tasks.js';
 import { HookClaudeSessions } from '../hook-claude-sessions.js';
 import { activityFor } from '../session-activity.js';
@@ -44,7 +45,7 @@ describe('Claude background work projection', () => {
     expect(parent.state).toBe('idle');
     expect(original[0].currentTool).toBe('Bash');
     background.note('Stop', { session_id: 'parent', background_tasks: [] });
-    expect(background.project('parent', parent)).toEqual({ ...parent, backgroundTaskCount: 0 });
+    expect(background.project('parent', parent)).toEqual({ ...parent, backgroundTaskCount: 0, backgroundStandbyCount: 0 });
   });
 
   it('retains unknown snapshots and converges on explicit completion across interleaved sessions', () => {
@@ -60,7 +61,7 @@ describe('Claude background work projection', () => {
     tracker.note('Stop', { session_id: 'parent', background_tasks: [task('render')] });
     for (const state of ['processing', 'awaiting_permission', 'awaiting_option', 'awaiting_diff', 'disconnected', undefined]) {
       const row = { state, currentTool: 'Read', activity: 'Existing activity' };
-      expect(tracker.project('parent', row)).toEqual({ ...row, backgroundTaskCount: 1 });
+      expect(tracker.project('parent', row)).toEqual({ ...row, backgroundTaskCount: 1, backgroundStandbyCount: 0 });
     }
   });
 
@@ -70,6 +71,30 @@ describe('Claude background work projection', () => {
     }
     expect(claudeBackgroundTaskCount({ background_tasks: [] })).toBe(0);
     expect(claudeBackgroundTaskCount({ background_tasks: [task('a'), task('a'), task('b', 'subagent'), task('c', 'shell', 'failed')] }, 'b')).toBe(1);
+  });
+
+  it('puts open-ended task types on standby: an idle teammate or a dev server stops holding the parent working', () => {
+    // Claude 2.1.311 lists a teammate idling between mailbox messages as
+    // `running` (no idle bit), so the parent read "Waiting for 3 background
+    // tasks" for a day. Open-ended types age; a subagent or an unknown type
+    // is a job and keeps the parent working until it ends.
+    let now = 0;
+    const tracker = new ClaudeBackgroundTasks(undefined, () => now);
+    const snapshot = [task('audit-a', 'teammate'), task('serve', 'shell'), task('watch', 'monitor'),
+      task('cloud', 'cloud session'), task('review', 'subagent'), task('next', 'future type')];
+    tracker.note('Stop', { session_id: 'parent', background_tasks: snapshot });
+    expect(tracker.project('parent', { state: 'idle' })).toMatchObject({ state: 'processing', backgroundTaskCount: 6, backgroundStandbyCount: 0 });
+    now = BACKGROUND_WORK_POLICY.standbyAfterMs;
+    tracker.note('Stop', { session_id: 'parent', background_tasks: snapshot });
+    expect(tracker.project('parent', { state: 'idle' })).toMatchObject({ state: 'processing', backgroundTaskCount: 2, backgroundStandbyCount: 4,
+      activity: 'Waiting for 2 background tasks' });
+    tracker.note('Stop', { session_id: 'parent', background_tasks: snapshot.slice(0, 4) });
+    expect(tracker.project('parent', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 4 });
+    // Raw discriminants (the fallback spelling) classify the same way.
+    tracker.note('SessionStart', { session_id: 'raw' });
+    tracker.note('Stop', { session_id: 'raw', background_tasks: [task('t', 'in_process_teammate'), task('b', 'local_bash')] });
+    now += BACKGROUND_WORK_POLICY.standbyAfterMs;
+    expect(tracker.project('raw', { state: 'idle' })).toEqual({ state: 'idle', backgroundTaskCount: 0, backgroundStandbyCount: 2 });
   });
 
   it('keeps the generated Swift reducer synchronized', () => {
@@ -92,13 +117,13 @@ var work = BackgroundWorkTracker()
 for event in events {
     ClaudeBackgroundTasks.note(event["event"] as! String, payload: event["payload"] as! [String: Any], into: &work, now: 0)
     for state in ["idle", "processing", "awaiting_permission", "awaiting_option", "disconnected"] {
-        let result = work.project("parent", session: ["state": state])
+        let result = work.project("parent", session: ["state": state], now: 0)
         print(String(data: try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]), encoding: .utf8)!)
     }
 }
 `);
       const actual = execFileSync('swift', [join(dir, 'main.swift'), join(dir, 'events.json')], { encoding: 'utf8', timeout: 30_000 }).trim().split('\n').map(line => JSON.parse(line));
-      const tracker = new ClaudeBackgroundTasks();
+      const tracker = new ClaudeBackgroundTasks(undefined, () => 0);
       const expected = input.flatMap(step => {
         tracker.note(step.event, step.payload);
         return ['idle', 'processing', 'awaiting_permission', 'awaiting_option', 'disconnected'].map(state => tracker.project('parent', { state }));

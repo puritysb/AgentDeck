@@ -1491,8 +1491,12 @@
           "description": "A single AskUserQuestion call may carry up to four question groups. The daemon presents them ONE AT A TIME (`question`/`options` above are the active group's projection) and advances as each is answered, so a device never has to flatten unrelated groups into one unsafe index space. These are present only while a multi-group prompt is pending, and let a surface render \"Q 2/3\". Absent ⇒ a single-question prompt.",
           "type": "number"
         },
+        "backgroundStandbyCount": {
+          "description": "Background work that is still there but no longer counted as active: a long-running process (dev server, monitor, idle teammate) past `BACKGROUND_WORK_POLICY.standbyAfterMs`. Same emission rule as `backgroundTaskCount`; an idle row with standby work stays idle.",
+          "type": "number"
+        },
         "backgroundTaskCount": {
-          "description": "Claude background_tasks snapshot count, separate from the child-agent census. Explicit zero clears prior work; absent means the producer has no snapshot.",
+          "description": "Active background work (shared/src/background-work.ts), separate from the child-agent census. Explicit zero clears prior work; absent means the producer has no snapshot.",
           "type": "number"
         },
         "contextPercent": {
