@@ -17,6 +17,7 @@ import { existsSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { debug, log } from '../logger.js';
 import type { ApmeStore } from './store.js';
+import { APME_EVIDENCE_STRATEGY, apmeTurnEvidenceIndices, apmeEvidenceIndices, isApmeValidationEvent, clipApmeEvidenceText, APME_PROMPT_TEXT_CAP, APME_RESPONSE_TEXT_CAP, APME_TOOL_OUTPUT_CAP, APME_TURN_EVIDENCE_CAP, APME_EVENT_EVIDENCE_CAP } from '@agentdeck/shared';
 import type { ApmeConfig, ApmeJudgeConfig, ApmeJudgeBackend } from './settings.js';
 import { loadApmeConfig, shouldJudge, judgeBackendSupported, DEFAULT_APME_CONFIG } from './settings.js';
 import { loadMlxSettings, mlxChatUrl, mlxBaseUrl, mlxModelPin, resolveSafeMlxModel, guardedMlxFetch } from '@agentdeck/shared';
@@ -358,14 +359,16 @@ export class ApmeRunner {
    *  (a failed attempt worth counting); `true` or `undefined` otherwise. */
   private async runTaskEval({ runId, taskId, category, boundarySignal }: { runId: string; taskId: string; category?: string; boundarySignal?: string }): Promise<boolean | undefined> {
     const cfg = this.configOverride ?? loadApmeConfig();
-    if (!cfg.enabled) return;
+    if (!this.store.getTask(taskId)) return;
+    if (!cfg.enabled) { this.store.noteTaskAttempt(taskId, 'blocked', 'disabled'); return; }
     if (this.judgeOverride == null && !judgeBackendSupported(cfg.judge)) {
+      this.store.noteTaskAttempt(taskId, 'blocked', 'unsupported_backend');
       debug('APME', `runTaskEval skip task=${taskId.slice(0, 8)} — backend ${cfg.judge.backend} unsupported on ${process.platform}`);
       return;
     }
 
     const input = buildTaskJudgeInput(this.store, { runId, taskId, category, boundarySignal });
-    if (input.kind === 'missing') return;
+    if (input.kind === 'missing') { this.store.noteTaskAttempt(taskId, 'blocked', 'missing_evidence_or_rubric'); return; }
     // A declined task is stamped with its reason so the row can say so.
     if (input.kind === 'declined') {
       debug('APME', `runTaskEval declined task=${taskId.slice(0, 8)} — ${input.reason}`);
@@ -373,8 +376,9 @@ export class ApmeRunner {
       catch { /* ignore */ }
       return;
     }
-    const { task, rubric, sample, prompt: judgePrompt } = input;
+    const { task, rubric, sample, evidence, prompt: judgePrompt } = input;
     category = input.category;
+    this.store.noteTaskAttempt(taskId, 'running');
 
     try {
       // callJudgeWithMeta carries the effective backend label across the
@@ -385,6 +389,7 @@ export class ApmeRunner {
         : await callJudgeWithMeta(judgePrompt, cfg.judge);
       const parsed = parseJudgeJson(judgeResult.text);
       if (!parsed) {
+        this.store.noteTaskAttempt(taskId, 'failed', 'invalid_verdict');
         this.lastTaskEvalFailure = `unparseable verdict from ${judgeResult.effectiveLabel}`;
         debug('APME', `runTaskEval parse failed task=${taskId.slice(0, 8)}`);
         return false;
@@ -402,6 +407,7 @@ export class ApmeRunner {
           raw: axis === 'overall'
             ? JSON.stringify({
                 summary: parsed.summary,
+                evidence,
                 reasoning: parsed.reasoning,
                 done: parsed.done,
                 missed: parsed.missed,
@@ -451,12 +457,14 @@ export class ApmeRunner {
         compositeScore,
         outcome: taskOutcome,
         notesJson: JSON.stringify({
+          evidence,
           reasoning: parsed.reasoning,
           done: parsed.done,
           missed: parsed.missed,
         }),
       });
 
+      this.store.noteTaskAttempt(taskId, 'succeeded');
       debug('APME', `task eval ${taskId.slice(0, 8)}: overall=${compositeScore} outcome=${taskOutcome} summary=${parsed.summary?.slice(0, 40) ?? '-'}`);
       for (const fn of this.listeners) {
         try { fn({ runId, taskId, layer1Ran: false, layer2Ran: true, overall: compositeScore ?? undefined }); }
@@ -488,6 +496,7 @@ export class ApmeRunner {
         }
       }
     } catch (err) {
+      this.store.noteTaskAttempt(taskId, 'failed', 'transport_or_backend');
       this.lastTaskEvalFailure = String(err).slice(0, 160);
       debug('APME', `task eval error taskId=${taskId.slice(0, 8)}: ${String(err)}`);
       return false;
@@ -871,6 +880,7 @@ export type TaskJudgeInput =
       rubric: ApmeRubricRow;
       sample: SessionSample | null;
       prompt: string;
+      evidence: { strategy: string; totalTurns: number; turnIndices: number[]; totalEvents: number; eventIndices: number[] };
     };
 
 /** Build the task judge's prompt from the store, reading and never writing.
@@ -916,13 +926,13 @@ export function buildTaskJudgeInput(
     ?? store.getCurrentRubric('general');
   if (!rubric) return { kind: 'missing' };
 
-  const TURN_CAP = 10;
-  const clipped = turns.slice(0, TURN_CAP);
+  const TURN_CAP = APME_TURN_EVIDENCE_CAP;
+  const clipped = apmeTurnEvidenceIndices(turns, TURN_CAP).map(i => turns[i]);
   const lines: string[] = [];
   for (const t of clipped) {
     const idx = t.turn_index as number;
-    const prompt = field((t.prompt as string | null) ?? '').slice(0, 1500);
-    const response = field((t.response as string | null) ?? '').slice(0, 2500);
+    const prompt = clipApmeEvidenceText(field((t.prompt as string | null) ?? ''), APME_PROMPT_TEXT_CAP);
+    const response = clipApmeEvidenceText(field((t.response as string | null) ?? ''), APME_RESPONSE_TEXT_CAP);
     lines.push(`[Turn ${idx}] User: ${prompt || '(empty)'}`);
     if (response) lines.push(`Agent: ${response}`);
   }
@@ -933,7 +943,7 @@ export function buildTaskJudgeInput(
   // The canonical SessionSample gives the judge the typed tool trajectory
   // (req #5/#6) and per-sample cost (req #7) — context the turn rows lack.
   const sample = store.getSample(taskId);
-  const trajectoryLines = sample ? buildTrajectoryLines(sample, 30, field) : [];
+  const trajectoryLines = sample ? buildTrajectoryLines(sample, APME_EVENT_EVIDENCE_CAP, field) : [];
   const costLine = sample
     ? `cost: ${sample.cost.inputTokens}in/${sample.cost.outputTokens}out tok, $${sample.cost.costUsd.toFixed(4)}, model ${sample.model.modelId}`
     : '';
@@ -954,16 +964,22 @@ export function buildTaskJudgeInput(
     'Respond with strict JSON only.',
   ].join('\n');
 
-  return { kind: 'ready', task, category, rubric, sample, prompt };
+  return { kind: 'ready', task, category, rubric, sample, prompt, evidence: {
+    strategy: APME_EVIDENCE_STRATEGY, totalTurns: turns.length,
+    turnIndices: apmeTurnEvidenceIndices(turns, APME_TURN_EVIDENCE_CAP),
+    totalEvents: sample?.events.length ?? 0,
+    eventIndices: sample ? apmeEvidenceIndices(sample.events.length, APME_EVENT_EVIDENCE_CAP,
+      sample.events.flatMap((e,i)=>isApmeValidationEvent(e as unknown as {kind:string;[key:string]:unknown})?[i]:[])) : [],
+  } };
 }
 
 /** Render a SessionSample's typed trajectory as compact judge-prompt lines.
  *  Gives the judge tool-call sequences + model usage the turn rows omit.
  *  `field` rewrites each piece of task text before it is clipped (see
  *  `buildTaskJudgeInput`). */
-export function buildTrajectoryLines(sample: SessionSample, cap = 30, field: (text: string) => string = (text) => text): string[] {
+export function buildTrajectoryLines(sample: SessionSample, cap = APME_EVENT_EVIDENCE_CAP, field: (text: string) => string = (text) => text): string[] {
   const lines: string[] = [];
-  const events: TrajectoryEvent[] = sample.events.slice(0, cap);
+  const events: TrajectoryEvent[] = apmeEvidenceIndices(sample.events.length, cap, sample.events.flatMap((e, i) => isApmeValidationEvent(e as unknown as { kind: string; [key: string]: unknown }) ? [i] : [])).map(i => sample.events[i]);
   for (const e of events) {
     switch (e.kind) {
       case 'tool': {
@@ -978,7 +994,9 @@ export function buildTrajectoryLines(sample: SessionSample, cap = 30, field: (te
         }
         let input = '';
         try { input = e.input == null ? '' : field(JSON.stringify(e.input)).slice(0, 120); } catch { input = ''; }
-        lines.push(`  tool ${e.name}(${input})${e.status ? ` → ${e.status}` : ''}${error}`);
+        let output = '';
+        try { output = e.output == null ? '' : Array.from(field(typeof e.output === 'string' ? e.output : JSON.stringify(e.output))).slice(-APME_TOOL_OUTPUT_CAP).join(''); } catch { /* no serializable output */ }
+        lines.push(`  tool ${e.name}(${input})${e.status ? ` → ${e.status}` : ''}${error}${output ? ` output tail: ${output}` : ''}`);
         break;
       }
       case 'model':

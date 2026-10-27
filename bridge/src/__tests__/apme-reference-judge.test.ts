@@ -135,7 +135,8 @@ describe('one prompt for both judges', () => {
     runner._setConfig(STUB_CONFIG);
     const sent: string[] = [];
     runner._setJudgeFn(async (p) => { sent.push(p); return JSON.stringify({ overall: 0.8, reasoning: 'r', summary: 'Deployed', done: [], missed: [] }); });
-    // A ~1,700-character key in a 1,500-character field: the clip cuts its END line.
+    // A ~1,700-character key in a 1,500-character field: bounded head/tail evidence retains both ends.
+    // The hosted reference must still redact the original complete field before selection/clipping.
     const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
     const keyLines = Array.from({ length: 25 }, (_, line) => Array.from({ length: 64 }, (_, i) => B64[((line * 64 + i) * 37 + 11) % 64]).join(''));
     const pem = `-----BEGIN RSA PRIVATE KEY-----\n${keyLines.join('\n')}\n-----END RSA PRIVATE KEY-----`;
@@ -154,7 +155,8 @@ describe('one prompt for both judges', () => {
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain(keyLines[20]);
-    expect(sent[0]).not.toContain('-----END RSA PRIVATE KEY-----');
+    expect(sent[0]).toContain('-----END RSA PRIVATE KEY-----');
+    expect(sent[0]).toContain('[middle omitted]');
 
     const input = buildReferenceInput(store, { runId, taskId });
     if (input.kind !== 'ready') throw new Error(`expected a ready input, got ${input.kind}`);

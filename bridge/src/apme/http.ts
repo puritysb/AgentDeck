@@ -14,6 +14,7 @@
  * `false` otherwise so the caller can continue its fallback routing.
  */
 
+import { APME_FEEDBACK_VERDICTS, APME_FEEDBACK_NOTE_BYTES } from '@agentdeck/shared';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { ApmeModule } from './index.js';
 import { loadApmeConfig } from './settings.js';
@@ -153,6 +154,21 @@ export async function handleApmeRequest(
       return true;
     }
 
+    if (method === 'POST' && path === '/apme/task-feedback') {
+      const body = await readJsonBody(req);
+      if (!body || typeof body.taskId !== 'string' || typeof body.verdict !== 'string'
+        || !(APME_FEEDBACK_VERDICTS as readonly string[]).includes(body.verdict)
+        || (body.note != null && typeof body.note !== 'string')
+        || Buffer.byteLength(typeof body.note === 'string' ? body.note : '', 'utf8') > APME_FEEDBACK_NOTE_BYTES) {
+        sendJson(res, 400, { error: 'expected taskId, completed|partial|incorrect|clear, optional note (up to 4096 UTF-8 bytes)' });
+        return true;
+      }
+      if (!apme.store.getTask(body.taskId)) { sendJson(res, 404, { error: 'task not found' }); return true; }
+      apme.store.recordTaskFeedback(body.taskId, body.verdict, typeof body.note === 'string' ? body.note : null);
+      sendJson(res, 200, { ok: true, feedback: apme.store.latestTaskFeedback(body.taskId) });
+      return true;
+    }
+
     if (method === 'GET' && path.startsWith('/apme/tasks/')) {
       const taskId = path.slice('/apme/tasks/'.length);
       const task = apme.store.getTask(taskId);
@@ -166,6 +182,8 @@ export async function handleApmeRequest(
       sendJson(res, 200, {
         schema: EVAL_SCHEMA_VERSION,
         task,
+        feedback: apme.store.latestTaskFeedback(taskId),
+        evaluation: { attempt: apme.store.taskAttempt(taskId), enabled: loadApmeConfig().enabled, backend: loadApmeConfig().judge.backend },
         // Run context: the task row alone names no agent, model or project, so
         // a task reached directly (not by drilling into a run) had no way to
         // say whose work it was.
@@ -175,7 +193,7 @@ export async function handleApmeRequest(
         // The canonical SessionSample — the typed trajectory the detail pane
         // replays. Without it a task page can show scores but not the work.
         sample: apme.store.getSample(taskId),
-        overallScore: aggregateOverall(taskEvals),
+        overallScore: taskEvals.filter(e => e.layer === 'task_judge' && e.metric === 'overall').at(-1)?.score ?? task.compositeScore ?? null,
       });
       return true;
     }

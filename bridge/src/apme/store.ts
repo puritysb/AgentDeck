@@ -1,4 +1,4 @@
-import { APME_SCORECARD_SQL } from '@agentdeck/shared';
+import { APME_REVIEW_SQL, APME_SCORECARD_SQL } from '@agentdeck/shared';
 /**
  * APME SQLite store — wraps better-sqlite3 with a tiny DAO.
  *
@@ -273,6 +273,7 @@ CREATE INDEX IF NOT EXISTS idx_sevents_kind_ts ON sample_events(kind, ts);
 -- 257 ms. (This comment sits inside a JS template literal: no backticks.)
 CREATE INDEX IF NOT EXISTS idx_sevents_task_kind ON sample_events(task_id, kind);
 
+${APME_REVIEW_SQL}
 ${SCORECARD_DDL}
 `;
 
@@ -1373,6 +1374,24 @@ export class ApmeStore {
     if (sets.length === 0) return;
     vals.push(id);
     this.db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+  }
+
+  recordTaskFeedback(taskId: string, verdict: string, note: string | null): void {
+    this.db?.prepare('INSERT INTO task_feedback(task_id,verdict,note,created_at) VALUES (?,?,?,?)')
+      .run(taskId, verdict, note, Date.now());
+  }
+
+  latestTaskFeedback(taskId: string): Record<string, unknown> | null {
+    return (this.db?.prepare('SELECT verdict,note,created_at AS createdAt FROM task_feedback WHERE task_id=? ORDER BY id DESC LIMIT 1').get(taskId) as Record<string, unknown>) ?? null;
+  }
+
+  noteTaskAttempt(taskId: string, status: string, reason: string | null = null): void {
+    this.db?.prepare('INSERT INTO task_judge_attempts(task_id,status,reason,updated_at) VALUES (?,?,?,?) ON CONFLICT(task_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at')
+      .run(taskId, status, reason, Date.now());
+  }
+
+  taskAttempt(taskId: string): Record<string, unknown> | null {
+    return (this.db?.prepare('SELECT status,reason,updated_at AS updatedAt FROM task_judge_attempts WHERE task_id=?').get(taskId) as Record<string, unknown>) ?? null;
   }
 
   getTask(id: string): ApmeTaskRow | null {

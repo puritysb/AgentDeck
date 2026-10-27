@@ -425,6 +425,10 @@ struct ControlTowerPanel: View {
     }
 
     private func activityTaskRow(_ row: ApmeActivityHistory.Row) -> some View {
+        Button {
+            ApmeDashboardNavigation.shared.select(sessionId: row.sessionId, taskIndex: row.taskIndex, startedAt: row.startedAt)
+            showApmeDashboard()
+        } label: {
         HStack(alignment: .top, spacing: 7) {
             SessionCreatureIcon(
                 agentType: row.agentType,
@@ -447,6 +451,10 @@ struct ControlTowerPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .disabled(daemonService.port == 0)
+        .help("Review this task's evidence and assessment")
     }
 
     private func activityEmptyState(icon: String, title: String, detail: String) -> some View {
@@ -1724,6 +1732,11 @@ struct ControlTowerPanel: View {
     /// axes breakdown — no more digging through sqlite, no browser
     /// roundtrip, no token in address bar history.
     private func openApmeDashboard() {
+        ApmeDashboardNavigation.shared.select()
+        showApmeDashboard()
+    }
+
+    private func showApmeDashboard() {
         guard daemonService.port > 0 else { return }
         DockVisibilityController.shared.prepareToShowWindow()
         openWindow(id: "apme-dashboard")

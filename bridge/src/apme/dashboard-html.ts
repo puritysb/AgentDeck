@@ -47,7 +47,13 @@ header .status{margin-left:auto;font-size:11px;color:var(--dim)}
 /* ── Split layout ── */
 .split{display:flex;height:calc(100vh - 49px)}
 .left{width:55%;min-width:400px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.right{flex:1;overflow-y:auto;padding:20px;background:var(--bg)}
+.right{flex:1;min-width:0;overflow-y:auto;padding:20px;background:var(--bg);overflow-wrap:anywhere}
+@media(max-width:800px){
+  .split{flex-direction:column}
+  .left{width:100%;min-width:0;flex:0 0 40%;border-right:0;border-bottom:1px solid var(--border)}
+  .right{min-height:0;padding:16px}
+  .tabs{overflow-x:auto}
+}
 
 /* ── Tabs ── */
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0}
@@ -115,6 +121,8 @@ tr.selected td{background:color-mix(in srgb,var(--accent) 15%,transparent);borde
 .vibe-btn:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,0.3)}
 .vibe-approve{background:color-mix(in srgb,var(--green) 22%,var(--bg));color:var(--green)}
 .vibe-reject{background:color-mix(in srgb,var(--red) 22%,var(--bg));color:var(--red)}
+.task-feedback-actions{flex-wrap:wrap}
+.task-feedback-actions button{background:var(--surface);color:var(--text);border:1px solid var(--border)}
 .vibe-current{font-size:11px;color:var(--dim);display:flex;align-items:center;margin-left:8px}
 
 .panel{display:none}.panel.visible{display:block;height:100%}
@@ -273,7 +281,7 @@ function showTab(n){
 function fs(s){if(s==null)return'<span class="score score-na">—</span>';const p=Math.round(s*100),c=p>=70?'high':p>=40?'mid':'low';return'<span class="score score-'+c+'">'+p+'%</span>'}
 function fo(o){if(!o)return'';return'<span class="badge badge-'+o+'">'+o+'</span>'}
 function fd(ms){if(ms==null)return'—';const s=Math.max(0,Math.round(ms/1000));return s>=3600?Math.floor(s/3600)+'h'+Math.floor((s%3600)/60)+'m':s>=60?Math.floor(s/60)+'m'+s%60+'s':s+'s'}
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function barColor(pct){return pct>=70?'var(--green)':pct>=40?'var(--yellow)':'var(--red)'}
 
 async function loadActivity(){
@@ -437,7 +445,7 @@ async function selectRun(id){
       h+='<div class="section"><div class="section-head"><span>Composite Score</span><span class="section-score" style="color:'+barColor(pct)+'">'+pct+'%</span></div>';
       h+='<div class="composite-bar"><div class="composite-fill" style="width:'+pct+'%;background:'+barColor(pct)+'"></div></div>';
       const je=evals.find(e=>e.metric==='overall'&&e.layer==='llm_judge');
-      h+='<div class="weight-line">outcome('+esc(outcome||'—')+')×0.4 + judge('+(je?Math.round(je.score*100)+'%':'—')+')×0.3 + efficiency×0.2 + vibe('+esc(vibe?.verdict||'—')+')×0.1</div>';
+      h+='<div class="weight-line">Recorded estimate — inspect task reviews for judge provenance, evidence and your own assessment.</div>';
       h+='</div>';
     }
 
@@ -672,7 +680,7 @@ function taskSearchDebounced(){clearTimeout(taskSearchTimer);taskSearchTimer=set
    ordering is attention-first, then recency. The lifecycle sub-tabs map to
    the endpoint's \`view\` buckets; badge counts ride the same response so a
    tab can never disagree with its rows. */
-let workOffset=0,workTotal=0,workView='',workSearchTimer=null,workCounts=null,workSession='',workSessionMeta=null;const WORK_PAGE=50;
+let workOffset=0,workTotal=0,workView='',workSearchTimer=null,workCounts=null,workSession='',workSessionMeta=null;const WORK_PAGE=50;let workTargetTaskIndex=null,workTargetStartedAt=null;
 const WORK_VIEWS=[['','All'],['attention','Attention'],['judged','Judged'],['reported','Reported'],['inprogress','In progress'],['orphaned','Orphaned']];
 const SIG_LABEL={todo_complete:'TODO done',clear:'/clear',session_end:'Session end',manual:'Manual',idle_gap:'Idle gap',orphaned:'Orphaned',open:'open'};
 /* Boundary provenance: explicit (user/agent said so) > inferred (idle gap) >
@@ -753,6 +761,12 @@ async function loadWork(offset){
     if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();
     const tasks=d.tasks||[];workTotal=d.total||0;workCounts=d.viewCounts||null;
+    if(workTargetTaskIndex!=null){
+      const target=tasks.find(t=>matchesNativeTaskTarget(t,workTargetTaskIndex,workTargetStartedAt));
+      if(target){workTargetTaskIndex=null;selectTask(target.id)}
+      else if(offset+tasks.length<workTotal&&tasks.length){loadWork(offset+WORK_PAGE);return}
+      else{workTargetTaskIndex=null;document.getElementById('detail-panel').innerHTML='<div class="detail-empty">This task is not in the active daemon history. The activity may belong to another local store.</div>'}
+    }
     if(workSession&&tasks[0])workSessionMeta={project:tasks[0].projectName||'',agent:tasks[0].agentType||''};
     renderWorkTabs();
     renderWorkScope();
@@ -779,7 +793,7 @@ async function loadWork(offset){
         ?'<span title="'+(t.turnCount-t.answeredTurns)+' turn(s) archived without a reply" style="color:var(--yellow)">◍</span>':'';
       const open=!t.endedAt;
       const NG={no_reply:'no reply captured',aborted_only:'ended by the client',trivial:'trivial exchange',notification_only:'background-task notice, no request'};
-      const score=t.overallScore!=null?fs(t.overallScore)
+      const score=t.overallScore!=null?'<span title="AI estimate; open the task to review its evidence">AI '+fs(t.overallScore)+'</span>'
         :open?'<span class="badge badge-pending">open</span>'
         :t.notGradeable?'<span class="chip" title="the judge declined this task: '+esc(NG[t.notGradeable]||t.notGradeable)+'" style="color:var(--dim)">not graded · '+esc(NG[t.notGradeable]||t.notGradeable)+'</span>'
         :'<span style="font-size:10px;color:var(--dim)">unjudged</span>';
@@ -823,12 +837,83 @@ async function loadWork(offset){
 }
 function workSearchDebounced(){clearTimeout(workSearchTimer);workSearchTimer=setTimeout(()=>loadWork(0),250)}
 
+function jsonObject(value){try{const parsed=typeof value==='string'?JSON.parse(value):value;return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{}}catch{return {}}}
+function taskReviewState(d){
+  const t=d.task||{},e=d.evaluation||{},a=e.attempt||{};
+  const notes=jsonObject(t.notesJson??t.notes_json),score=d.overallScore??t.compositeScore??t.composite_score;
+  if(score!=null&&a.status==='failed')return {label:'AI estimate available; latest evaluation failed',detail:'The retained estimate is from an earlier judgement. Inspect its source and time below.'};
+  if(score!=null)return {label:'AI estimate available',detail:'An AI judgement is an estimate, not a verified success rate.'};
+  if(!(t.endedAt??t.ended_at))return {label:'Task in progress',detail:'The task has not closed. A task-level judgement is not due yet.'};
+  if(notes.notGradeable){
+    const reasons={no_reply:'No assistant reply was captured. Check the session capture settings.',aborted_only:'Only an interrupted or aborted response was recorded.',trivial:'The exchange is too small to evaluate meaningfully.',notification_only:'Background notification, with no user request to judge.'};
+    return {label:notes.notGradeable==='no_reply'?'Insufficient evidence':'Excluded from evaluation',detail:reasons[notes.notGradeable]||('Excluded: '+notes.notGradeable)};
+  }
+  if(e.enabled===false||a.reason==='disabled')return {label:'Evaluation disabled',detail:'Enable evaluation in Agent evaluation settings for future attempts.'};
+  if(a.status==='failed')return {label:'Evaluation failed',detail:a.reason==='invalid_verdict'?'The judge returned no usable verdict. Check the selected judge and its capacity.':'The judge request failed or produced no response. Check the selected backend and its availability. Eligible tasks can be retried by the background evaluator.'};
+  if(a.status==='blocked')return {label:'Evaluation blocked',detail:'Evaluation could not start: '+(a.reason||'required evidence or rubric unavailable')+'. Check evaluation settings and captured evidence.'};
+  if(a.status==='running')return {label:'Evaluation requested',detail:'A judge attempt started. Live progress is unavailable; if no result appears, check the backend. The request may have been interrupted.'};
+  return {label:'Evaluation pending / unknown',detail:'No successful judgement or recorded attempt is available. It may be awaiting scheduling or backend readiness; older history has no attempt record.'};
+}
+function taskReviewHtml(d){
+  const t=d.task||{},evals=d.evals||[],state=taskReviewState(d);
+  const judge=evals.filter(e=>e.layer==='task_judge'&&e.metric==='overall').reverse().sort((a,b)=>(b.createdAt??b.created_at??0)-(a.createdAt??a.created_at??0))[0];
+  const meta=jsonObject(judge?.raw||t.notesJson||t.notes_json),feedback=d.feedback;
+  let h='<div class="section"><div class="section-head"><span>Evaluation status</span></div><strong>'+esc(state.label)+'</strong> <button data-task="'+esc(t.id)+'" onclick="selectTask(this.dataset.task)">Refresh status</button><p>'+esc(state.detail)+'</p>';
+  const attempt=d.evaluation?.attempt;
+  if(attempt?.updatedAt)h+='<div class="meta-row">Last attempt: '+esc(new Date(attempt.updatedAt).toLocaleString())+'</div>';
+  if(judge){
+    h+='<div class="meta-row">Judge: '+esc(judge.judgeModel??judge.judge_model??'not recorded')+' · rubric '+esc(judge.rubricVer??judge.rubric_ver??'not recorded')+' · '+esc(new Date(judge.createdAt??judge.created_at).toLocaleString())+'</div>';
+  }
+  if(meta.evidence)h+='<div class="meta-row">Prepared judge evidence ('+esc(meta.evidence.strategy)+'): '+(meta.evidence.turnIndices||[]).length+'/'+esc(meta.evidence.totalTurns)+' turns · '+(meta.evidence.eventIndices||[]).length+'/'+esc(meta.evidence.totalEvents)+' events. Backend context limits and character clipping still apply.</div>';
+  h+='</div><div class="section"><div class="section-head"><span>AI judgement</span></div>';
+  h+='<div style="white-space:pre-wrap">'+esc(meta.reasoning||'No recorded reasoning. Missing evidence is not proof of failure.')+'</div>';
+  for(const [key,label] of [['done','Reported complete'],['missed','Reported missing']]){
+    const items=Array.isArray(meta[key])?meta[key].filter(x=>typeof x==='string'):[];
+    h+='<h4>'+label+'</h4>'+(items.length?'<ul>'+items.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<div class="meta-row">No items recorded</div>');
+  }
+  h+='</div><div class="section"><div class="section-head"><span>Your assessment</span></div><p>Stored for this task separately from the AI estimate. This does not rewrite scores or train the judge.</p>';
+  if(feedback&&feedback.verdict!=='clear')h+='<div>Your assessment: <strong>'+esc(feedback.verdict)+'</strong> · '+esc(new Date(feedback.createdAt).toLocaleString())+'</div><div style="white-space:pre-wrap">'+esc(feedback.note||'')+'</div>';
+  h+='<label for="task-feedback-note">Correction note (optional)</label><textarea id="task-feedback-note" style="width:100%;box-sizing:border-box;background:var(--surface);color:var(--text);border:1px solid var(--border)" rows="2"></textarea><div class="vibe-bar task-feedback-actions">';
+  for(const [value,label] of [['completed','Completed'],['partial','Needs more work'],['incorrect','AI verdict incorrect'],['clear','Clear assessment']])h+='<button class="vibe-btn" data-task="'+esc(t.id)+'" data-verdict="'+value+'" onclick="submitTaskFeedback(this)">'+label+'</button>';
+  h+='</div><div id="task-feedback-status" role="status"></div></div>';
+  return h;
+}
+async function submitTaskFeedback(button){
+  const taskId=button.dataset.task,verdict=button.dataset.verdict,status=document.getElementById('task-feedback-status');
+  const note=document.getElementById('task-feedback-note').value;
+  const buttons=button.parentElement?.querySelectorAll('button')||[button];buttons.forEach(b=>b.disabled=true);status.textContent='Saving…';
+  try{
+    const r=await fetch(api('/apme/task-feedback'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskId,verdict,note}),signal:AbortSignal.timeout(10000)});
+    if(!r.ok)throw new Error('Correction was not saved (HTTP '+r.status+')');
+    if(selTaskId===taskId)await selectTask(taskId);
+  }catch(e){status.textContent=e.message;buttons.forEach(b=>b.disabled=false)}
+}
+function taskEvidenceHtml(d){
+  const turns=d.turns||[],events=d.sample?.events||[],t=d.task||{};
+  let h='<div class="section"><div class="section-head"><span>Recorded evidence</span></div>';
+  h+='<div class="meta-row">Replies captured: '+turns.filter(t=>t.response).length+'/'+turns.length+' · Model: '+esc(t.modelId??t.model_id??'unknown')+' · Cost: '+((t.costKnown??t.cost_known)?'known':'unpriced')+'</div>';
+  h+='<p>Only archived evidence is shown. Tool output is a recorded claim, not an independently verified test result. Judge inputs are bounded and preserve the first request, latest result and validation events; older evaluations may have used a different selection.</p>';
+  if(turns.length){
+    const first=turns[0],last=[...turns].reverse().find(t=>t.response);
+    h+='<h4>Original request</h4><pre style="white-space:pre-wrap">'+esc((first.prompt||'').slice(0,6000))+'</pre>';
+    if((first.prompt||'').length>6000)h+='<div>Request display clipped at 6000 characters.</div>';
+    h+='<h4>Latest archived response</h4><pre style="white-space:pre-wrap">'+esc((last?.response||'No reply captured').slice(0,6000))+'</pre>';
+    if((last?.response||'').length>6000)h+='<div>Response display clipped at 6000 characters.</div>';
+  }
+  const tools=events.filter(e=>e.kind==='tool');
+  h+='<h4>Recent recorded tool evidence</h4>';
+  if(!tools.length)h+='<div>No tool evidence captured.</div>';
+  for(const e of tools.slice(-10))h+='<details><summary>'+esc(e.name||'tool')+' · '+esc(e.status||'status unknown')+'</summary><pre style="white-space:pre-wrap">'+esc(JSON.stringify({input:e.input,output:e.output,error:e.error,pruned:e.pruned},null,2).slice(0,6000))+'</pre></details>';
+  if(tools.length>10)h+='<div>Showing latest 10 of '+tools.length+' tool events. Individual payload displays are limited to 6000 characters.</div>';
+  return h+'</div>';
+}
+
 async function selectTask(id){
   selTaskId=id;
   const el=document.getElementById('detail-panel');
   el.innerHTML='<div class="detail-empty">Loading...</div>';
   try{
-    const r=await fetch(api('/apme/tasks/'+id));const d=await r.json();
+    const r=await fetch(api('/apme/tasks/'+encodeURIComponent(id)),{signal:AbortSignal.timeout(10000)});if(!r.ok)throw new Error('Task detail unavailable (HTTP '+r.status+')');const d=await r.json();if(selTaskId!==id)return;
     const t=d.task||{},run=d.run||{},turns=d.turns||[],evals=d.evals||[],sample=d.sample;
     // Normalize both casings like selectRun does — an older Swift daemon
     // build serves this detail with snake_case keys.
@@ -842,7 +927,7 @@ async function selectTask(id){
     const taskProject=run.projectName||run.project_name||'';
     let h='';
     h+='<div class="detail-header"><h2>'+esc(t.summary||('Task '+((taskIndex??0)+1)))+'</h2>';
-    h+='<div class="meta-row"><span>'+esc(run.agentType||run.agent_type||'')+'</span><span>'+esc(run.modelId||run.model_id||'—')+'</span>'+
+    h+='<div class="meta-row"><span>'+esc(run.agentType||run.agent_type||'')+'</span><span>'+esc(t.modelId??t.model_id??sample?.model?.modelId??'unknown')+'</span>'+
        '<span>'+esc(run.projectName||run.project_name||'—')+'</span>'+
        '<span>'+(startedAt?new Date(startedAt).toLocaleString():'—')+'</span>'+
        '<span>'+(endedAt?fd(endedAt-startedAt):'<span style="color:var(--yellow)">open</span>')+'</span>'+
@@ -850,11 +935,12 @@ async function selectTask(id){
        (taskSessionId?'<button class="session-link" data-session="'+esc(taskSessionId)+'" data-project="'+esc(taskProject)+'" data-agent="'+esc(taskAgent)+'" onclick="openWorkSessionFrom(this,event)" title="Open every task collected from this native session">View session work</button>':'')+
        '</div></div>';
     h+='<div class="section"><div class="metric-grid">'+
-       '<div class="metric-card"><div class="lbl">Score</div><div class="val">'+fs(d.overallScore??t.compositeScore??t.composite_score)+'</div></div>'+
+       '<div class="metric-card"><div class="lbl">AI estimate</div><div class="val">'+fs(d.overallScore??t.compositeScore??t.composite_score)+'</div></div>'+
        '<div class="metric-card"><div class="lbl">Turns</div><div class="val">'+turns.length+'</div></div>'+
        '<div class="metric-card"><div class="lbl">Events</div><div class="val">'+((sample&&sample.events?sample.events.length:0))+'</div></div>'+
-       '<div class="metric-card"><div class="lbl">Cost</div><div class="val">'+(costUsd!=null?'$'+costUsd.toFixed(4):'—')+'</div></div>'+
+       '<div class="metric-card"><div class="lbl">Cost</div><div class="val">'+(costUsd!=null&&(t.costKnown??t.cost_known)?'$'+costUsd.toFixed(4):'unpriced')+'</div></div>'+
        '</div></div>';
+    h+=taskReviewHtml(d)+taskEvidenceHtml(d);
     if(evals.length){
       h+='<div class="section"><div class="section-head"><span>Evals</span></div><table><tbody>';
       for(const e of evals)h+='<tr><td>'+esc(e.layer)+'</td><td>'+esc(e.metric)+'</td><td>'+fs(e.score)+'</td></tr>';
@@ -868,15 +954,15 @@ async function selectTask(id){
       const prompt=tu.prompt||'',resp=tu.response;
       h+='<div style="margin-bottom:12px">'+
         '<div style="font-size:11px;color:var(--dim);margin-bottom:3px">turn '+tu.turn_index+'</div>'+
-        '<div style="white-space:pre-wrap;font-size:12px;color:var(--muted);border-left:2px solid var(--accent);padding-left:8px">'+esc(prompt.slice(0,1200))+'</div>';
+        '<div style="white-space:pre-wrap;font-size:12px;color:var(--muted);border-left:2px solid var(--accent);padding-left:8px">'+esc(prompt.slice(0,1200))+(prompt.length>1200?'… [display clipped]':'')+'</div>';
       h+= resp
-        ? '<div style="white-space:pre-wrap;font-size:12px;color:var(--dim);border-left:2px solid var(--border);padding-left:8px;margin-top:6px">'+esc(resp.slice(0,2000))+'</div>'
+        ? '<div style="white-space:pre-wrap;font-size:12px;color:var(--dim);border-left:2px solid var(--border);padding-left:8px;margin-top:6px">'+esc(resp.slice(0,2000))+(resp.length>2000?'… [display clipped]':'')+'</div>'
         : '<div style="font-size:11px;color:var(--yellow);padding-left:10px;margin-top:6px">reply not archived</div>';
       h+='</div>';
     }
     h+='</div>';
     el.innerHTML=h;
-  }catch(e){el.innerHTML='<div class="detail-empty">Error: '+esc(e.message)+'</div>'}
+  }catch(e){if(selTaskId!==id)return;el.innerHTML='<div class="detail-empty">Error: '+esc(e.message)+'</div>'}
   // Move the selection highlight in place — a full list refetch just to move
   // a CSS class was the dashboard's most expensive click.
   if(document.getElementById('panel-work').classList.contains('visible')){
@@ -1081,6 +1167,11 @@ function showTabById(n){
   if(btn)btn.click();
 }
 
+function matchesNativeTaskTarget(task,index,startedAt){return task.taskIndex===index&&task.startedAt===startedAt}
+const nativeTarget=new URLSearchParams(location.search);
+if(nativeTarget.get('session')&&/^[0-9]+$/.test(nativeTarget.get('taskIndex')||'')&&/^[0-9]+$/.test(nativeTarget.get('startedAt')||'')){
+  workSession=nativeTarget.get('session');workTargetTaskIndex=Number(nativeTarget.get('taskIndex'));workTargetStartedAt=Number(nativeTarget.get('startedAt'));
+}
 loadWork(0);loadActivity();loadRuns();loadRecommend();loadScorecard();loadCategories();
 setInterval(loadRuns,15000);setInterval(loadRecommend,30000);setInterval(loadScorecard,30000);setInterval(loadCategories,30000);
 // Tasks/Work refresh only while their tab is up — the query is server-paged and

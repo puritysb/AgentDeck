@@ -184,6 +184,7 @@
   "APME evaluation": "APME 평가",
   "Are turns and tasks segmented, judged and scored correctly, and does the recommender rank models honestly?": "턴과 작업을 정확히 분할·판정·채점하고 추천기가 모델 순위를 근거에 맞게 계산하는가?",
   "Are turns and tasks segmented, judged and scored correctly, are metadata reads bounded by index plans, and does the recommender rank models honestly?": "턴과 작업을 정확히 분할·판정·채점하고, 메타데이터 조회를 인덱스 계획으로 제한하며, 추천기가 모델 순위를 근거에 맞게 계산하는가?",
+  "Are turns and tasks segmented, judged and scored correctly, do read-only history workers keep slow queries off real-time health and hooks, are metadata reads bounded by index plans, does the recommender rank models honestly, and can users inspect judgement evidence, distinguish attempt failures and save task-level corrections without changing AI scores?": "턴과 작업을 정확히 분할·판정·채점하고, 읽기 전용 기록 워커가 실시간 health·hook 처리를 보호하며, 메타데이터 조회를 인덱스로 제한하고, 추천 근거·판정 증거·실패 원인을 확인하며 AI 점수와 별도로 작업 정정을 저장할 수 있는가?",
   "Are turns and tasks segmented, judged and scored correctly, do read-only history workers keep slow queries off real-time health and hooks, are metadata reads bounded by index plans, and does the recommender rank models honestly?": "턴과 작업을 정확히 분할·판정·채점하고, 읽기 전용 기록 워커가 느린 조회를 실시간 health·hook 처리에서 격리하며, 메타데이터 조회를 인덱스 계획으로 제한하고 추천기가 모델 순위를 근거에 맞게 계산하는가?",
   "OpenClaw Gateway": "OpenClaw 게이트웨이",
   "Does the Gateway proxy stay subscribed, attribute runs and approvals, and report its health truthfully?": "Gateway 프록시가 구독을 유지하고 실행과 승인을 올바르게 연결하며 상태를 정확히 보고하는가?",

@@ -47,6 +47,82 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         return ""
     }
 
+    func testP1ReviewStoragePreservesCorrectionAndFailureAcrossReopen() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        tmp.store.insertRun(ApmeRun(id: "p1-run", sessionId: "p1-session", agentType: "claude-code", startedAt: 1))
+        tmp.store.insertTask(ApmeTask(id: "p1-task", runId: "p1-run", taskIndex: 0, boundarySignal: "session_end", startedAt: 1))
+        tmp.store.updateTask(id: "p1-task", fields: ["compositeScore": 0.2])
+        XCTAssertTrue(tmp.store.recordTaskFeedback(taskId: "p1-task", verdict: "incorrect", note: "Final tests passed"))
+        tmp.store.noteTaskAttempt("p1-task", status: "failed", reason: "invalid_verdict")
+        tmp.store.close()
+        XCTAssertTrue(tmp.store.open())
+        XCTAssertEqual(tmp.store.latestTaskFeedback("p1-task")?["verdict"] as? String, "incorrect")
+        XCTAssertEqual(tmp.store.taskAttempt("p1-task")?["status"] as? String, "failed")
+        XCTAssertEqual(tmp.store.getTask(id: "p1-task")?.compositeScore, 0.2)
+        XCTAssertTrue(tmp.store.recordTaskFeedback(taskId: "p1-task", verdict: "clear", note: nil))
+        XCTAssertEqual(tmp.store.latestTaskFeedback("p1-task")?["verdict"] as? String, "clear")
+        XCTAssertEqual(tmp.store.getTask(id: "p1-task")?.compositeScore, 0.2)
+    }
+
+    func testP1TaskFeedbackRouteRequiresTokenValidatesAndReturnsSavedAssessment() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        tmp.store.insertRun(ApmeRun(id: "p1-api-run", sessionId: "p1-api-session", agentType: "claude-code", startedAt: 1))
+        tmp.store.insertTask(ApmeTask(id: "p1-api-task", runId: "p1-api-run", taskIndex: 0, boundarySignal: "session_end", startedAt: 1))
+        tmp.store.updateTask(id: "p1-api-task", fields: ["compositeScore": 0.2])
+        tmp.store.insertEvalForTask(ApmeEval(runId: "p1-api-run", layer: "task_judge", metric: "overall", score: 0.1, createdAt: 1), taskId: "p1-api-task")
+        tmp.store.insertEvalForTask(ApmeEval(runId: "p1-api-run", layer: "task_judge", metric: "overall", score: 0.2, createdAt: 2), taskId: "p1-api-task")
+        let http = HTTPServer()
+        await ApmeHttpRoutes.register(on: http, store: tmp.store)
+        func request(_ body: [String: Any], token: String) throws -> HTTPServer.HTTPRequest {
+            HTTPServer.HTTPRequest(method: "POST", path: "/apme/task-feedback", headers: [:],
+                                   body: try JSONSerialization.data(withJSONObject: body), queryParams: ["token": token], remoteIP: "127.0.0.1")
+        }
+        let unauthorized = await http.route(try request(["taskId": "p1-api-task", "verdict": "completed"], token: ""))
+        XCTAssertEqual(unauthorized.status, 401)
+        let token = AuthManager.shared.token
+        let response = await http.route(try request(["taskId": "p1-api-task", "verdict": "incorrect", "note": "I checked the final result"], token: token))
+        XCTAssertEqual(response.status, 200)
+        XCTAssertEqual(tmp.store.latestTaskFeedback("p1-api-task")?["verdict"] as? String, "incorrect")
+        XCTAssertEqual(tmp.store.getTask(id: "p1-api-task")?.compositeScore, 0.2)
+        let invalid = await http.route(try request(["taskId": "p1-api-task", "verdict": "completed", "note": String(repeating: "가", count: 1500)], token: token))
+        XCTAssertEqual(invalid.status, 400)
+        let missing = await http.route(try request(["taskId": "missing", "verdict": "completed"], token: token))
+        XCTAssertEqual(missing.status, 404)
+        let detail = await http.route(HTTPServer.HTTPRequest(method: "GET", path: "/apme/tasks/p1-api-task", headers: [:], body: nil, queryParams: ["token": token], remoteIP: "127.0.0.1"))
+        XCTAssertEqual(detail.status, 200)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(detail.body)) as? [String: Any])
+        XCTAssertNotNil(json["evaluation"])
+        XCTAssertEqual(json["overallScore"] as? Double, 0.2)
+        XCTAssertEqual((json["feedback"] as? [String: Any])?["verdict"] as? String, "incorrect")
+    }
+
+    func testP1EvidenceVectorsAndLongTaskFinalValidation() async throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-evidence-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        for v in vectors {
+            XCTAssertEqual(ApmeReviewRules.evidenceIndices(v["count"] as! Int, cap: v["cap"] as! Int, preferred: v["preferred"] as! [Int]), v["expected"] as! [Int])
+        }
+        let turns: [[String: Any]] = (0..<50).map { ["turn_index": $0, "prompt": "request \($0)", "response": "result \($0)"] }
+        let events: [[String: Any]] = (0..<60).map { ["kind": "tool", "name": "Read", "input": "file \($0)"] }
+        var trajectory = events
+        trajectory[20] = ["kind": "tool", "name": "Bash", "input": ["command": "pnpm test"], "output": "FINAL_VALIDATION_PASSED"]
+        let prompt = ApmeRunner.buildTaskJudgePrompt(rubricPrompt: "Judge", category: "coding", boundarySignal: "session_end", turns: turns, sample: ["events": trajectory])
+        XCTAssertTrue(prompt.contains("request 0"))
+        XCTAssertTrue(prompt.contains("result 49"))
+        XCTAssertTrue(prompt.contains("FINAL_VALIDATION_PASSED"))
+        XCTAssertTrue(prompt.contains("40 more turns omitted"))
+        let trailingEmpty: [[String: Any]] = (0..<50).map { ["response": $0 == 10 ? "final result" : ""] }
+        XCTAssertTrue(ApmeReviewRules.turnIndices(trailingEmpty).contains(10))
+        XCTAssertEqual(ApmeReviewRules.turnIndices(trailingEmpty).count, 10)
+        let clipped = ApmeReviewRules.clipText("FIRST😀" + String(repeating: "가", count: 100) + "FINAL😀", cap: 50)
+        XCTAssertEqual(clipped.unicodeScalars.count, 50)
+        XCTAssertTrue(clipped.contains("FIRST😀")); XCTAssertTrue(clipped.contains("FINAL😀"))
+    }
+
     // MARK: - allTodosCompleted (helper unit)
 
     func testCostProvenanceIsBackfilledOnlyForLegacyTables() async throws {

@@ -1,0 +1,8 @@
+[
+ {"count":0,"cap":10,"preferred":[],"expected":[]},
+ {"count":5,"cap":10,"preferred":[],"expected":[0,1,2,3,4]},
+ {"count":20,"cap":5,"preferred":[],"expected":[0,16,17,18,19]},
+ {"count":20,"cap":5,"preferred":[3,5],"expected":[0,3,5,18,19]},
+ {"count":20,"cap":3,"preferred":[2,3,5,5,999,-1],"expected":[0,5,19]},
+ {"count":20,"cap":0,"preferred":[5],"expected":[]}
+]

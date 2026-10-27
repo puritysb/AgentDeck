@@ -405,6 +405,57 @@ ${rules.scorecardSql.trim().split('\n').map((line) => line ? `    ${line}` : '')
 `;
 }
 
+export function emitReviewSwift(rules) {
+  return `${header('shared/src/apme-review.ts')}
+import Foundation
+
+enum ApmeReviewRules {
+    static let strategy = ${JSON.stringify(rules.review.strategy)}
+    static let turnCap = ${rules.review.turnCap}
+    static let eventCap = ${rules.review.eventCap}
+    static let promptCap = ${rules.review.promptCap}
+    static let responseCap = ${rules.review.responseCap}
+    static let outputCap = ${rules.review.outputCap}
+    static let clipMarker = ${JSON.stringify(rules.review.clipMarker)}
+    static let noteBytes = ${rules.review.noteBytes}
+    static let verdicts = ${JSON.stringify(rules.review.verdicts)}
+    static let validationPattern = ${JSON.stringify(rules.review.pattern)}
+    static let ddl = #"""
+${rules.review.sql}
+"""#
+    static func evidenceIndices(_ count: Int, cap: Int, preferred: [Int] = []) -> [Int] {
+        guard cap > 0, count > 0 else { return [] }
+        var picked = Set<Int>()
+        func add(_ i: Int) { if picked.count < cap && i >= 0 && i < count { picked.insert(i) } }
+        add(0); add(count - 1)
+        for i in preferred.reversed() { add(i) }
+        if count > 2 { for i in stride(from: count - 2, through: 1, by: -1) { add(i) } }
+        return picked.sorted()
+    }
+    static func turnIndices(_ turns: [[String: Any]], cap: Int = turnCap) -> [Int] {
+        let last = turns.lastIndex { ($0["response"] as? String)?.isEmpty == false }
+        return evidenceIndices(turns.count, cap: cap, preferred: last.map { [$0] } ?? [])
+    }
+    static func clipText(_ text: String, cap: Int) -> String {
+        let points = text.unicodeScalars.map(String.init)
+        let marker = clipMarker.unicodeScalars.count
+        if points.count <= cap { return text }
+        if cap <= marker { return points.prefix(max(0, cap)).joined() }
+        let head = (cap - marker) / 2, tail = cap - marker - head
+        return points.prefix(head).joined() + clipMarker + points.suffix(tail).joined()
+    }
+    static func validationEvent(_ event: [String: Any]) -> Bool {
+        guard event["kind"] as? String == "tool" else { return false }
+        if event["status"] as? String == "error" || ((event["error"] as? String)?.isEmpty == false) { return true }
+        guard JSONSerialization.isValidJSONObject(event),
+              let data = try? JSONSerialization.data(withJSONObject: event),
+              let text = String(data: data, encoding: .utf8) else { return false }
+        return text.range(of: validationPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+}
+`;
+}
+
 export const OUTPUTS = [
   ['apple/AgentDeck/Daemon/Apme/TaskTitleRules.generated.swift', emitTaskTitleSwift],
   ['apple/AgentDeck/Daemon/Apme/ActionFoldRules.generated.swift', emitActionFoldSwift],
@@ -413,7 +464,9 @@ export const OUTPUTS = [
   ['apple/AgentDeck/Daemon/Apme/ApmeScorecardSQL.generated.swift', emitScorecardSwift],
 ];
 
-export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod, comparisonMod, scorecardMod) {
+OUTPUTS.push(['apple/AgentDeck/Daemon/Apme/ApmeReviewRules.generated.swift', emitReviewSwift]);
+
+export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod, comparisonMod, scorecardMod, reviewMod) {
   return {
     taskTitleMaxChars: taskTitleMod.TASK_TITLE_MAX_CHARS,
     taskTitleMinChars: taskTitleMod.TASK_TITLE_MIN_CHARS,
@@ -430,6 +483,9 @@ export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod, comp
     nonModelIds: [...comparisonMod.APME_NON_MODEL_IDS],
     nonComparisonCategories: [...comparisonMod.APME_NON_COMPARISON_CATEGORIES],
     scorecardSql: scorecardMod.APME_SCORECARD_SQL,
+    review: { clipMarker: reviewMod.APME_EVIDENCE_CLIP_MARKER, strategy: reviewMod.APME_EVIDENCE_STRATEGY, promptCap: reviewMod.APME_PROMPT_TEXT_CAP, responseCap: reviewMod.APME_RESPONSE_TEXT_CAP, outputCap: reviewMod.APME_TOOL_OUTPUT_CAP, turnCap: reviewMod.APME_TURN_EVIDENCE_CAP, eventCap: reviewMod.APME_EVENT_EVIDENCE_CAP,
+      noteBytes: reviewMod.APME_FEEDBACK_NOTE_BYTES, verdicts: reviewMod.APME_FEEDBACK_VERDICTS,
+      pattern: reviewMod.APME_VALIDATION_PATTERN, sql: reviewMod.APME_REVIEW_SQL },
   };
 }
 
@@ -439,17 +495,19 @@ async function main() {
   let taskGradeability;
   let comparison;
   let scorecard;
+  let review;
   try {
     taskTitle = await import('../shared/dist/task-title.js');
     actionFold = await import('../shared/dist/action-fold.js');
     taskGradeability = await import('../bridge/dist/apme/task-gradeability.js');
     comparison = await import('../shared/dist/apme-comparison.js');
     scorecard = await import('../shared/dist/apme-scorecard-sql.js');
+    review = await import('../shared/dist/apme-review.js');
   } catch {
     console.error('generated-rule inputs not found — build shared and bridge first');
     process.exit(1);
   }
-  const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard);
+  const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard, review);
   const check = process.argv.includes('--check');
   let drifted = false;
   for (const [rel, emit] of OUTPUTS) {

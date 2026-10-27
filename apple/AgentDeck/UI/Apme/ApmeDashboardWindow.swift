@@ -22,7 +22,19 @@
 import SwiftUI
 import WebKit
 
+@MainActor
+final class ApmeDashboardNavigation: ObservableObject {
+    static let shared = ApmeDashboardNavigation()
+    @Published var sessionId: String?
+    @Published var taskIndex: Int?
+    @Published var startedAt: Int?
+    func select(sessionId: String? = nil, taskIndex: Int? = nil, startedAt: Int? = nil) {
+        self.sessionId = sessionId; self.taskIndex = taskIndex; self.startedAt = startedAt
+    }
+}
+
 struct ApmeDashboardWindow: View {
+    @ObservedObject private var navigation = ApmeDashboardNavigation.shared
     @EnvironmentObject var daemonService: DaemonService
 
     var body: some View {
@@ -43,8 +55,14 @@ struct ApmeDashboardWindow: View {
         let port = daemonService.port
         guard port > 0 else { return nil }
         let token = AuthManager.shared.token
-        let encoded = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? token
-        return URL(string: "http://127.0.0.1:\(port)/apme?token=\(encoded)")
+        var components = URLComponents(string: "http://127.0.0.1:\(port)/apme")
+        var items = [URLQueryItem(name: "token", value: token)]
+        if let session = navigation.sessionId, let index = navigation.taskIndex {
+            items += [URLQueryItem(name: "session", value: session), URLQueryItem(name: "taskIndex", value: String(index))]
+            if let startedAt = navigation.startedAt { items.append(URLQueryItem(name: "startedAt", value: String(startedAt))) }
+        }
+        components?.queryItems = items
+        return components?.url
     }
 
     private var unavailableView: some View {

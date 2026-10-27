@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ApmeStore } from '../apme/store.js';
 import { ApmeCollector } from '../apme/collector.js';
-import { ApmeRunner, TASK_EVAL_PARK_MS } from '../apme/runner.js';
+import { ApmeRunner, TASK_EVAL_PARK_MS, buildTaskJudgeInput } from '../apme/runner.js';
 
 // Task-unit evaluation: tasks segment on EXPLICIT boundaries (`/task close` /
 // device button → 'manual', `/clear`) or session_end. TodoWrite all-completed
@@ -390,6 +390,7 @@ describe('ApmeRunner task eval', () => {
     expect(tasks.length).toBe(1);
     expect(tasks[0].summary).toBe('Added task boundary detection.');
     expect(tasks[0].compositeScore).toBeCloseTo(0.85, 2);
+    expect(store.taskAttempt(tasks[0].id)).toMatchObject({status:'succeeded'});
 
     expect(capturedPrompt).toContain('--- TURNS ---');
     expect(capturedPrompt).toContain('Sure — here is the plan.');
@@ -461,10 +462,31 @@ describe('ApmeRunner task judge parking', () => {
     const settle = () => new Promise((r) => setTimeout(r, 5));
     for (let i = 0; i < 4; i++) { runner.enqueueTask({ runId, taskId }); await settle(); }
     expect(calls).toBe(2); // two attempts, then parked
+    expect(store.taskAttempt(taskId)).toMatchObject({status:'failed',reason:'transport_or_backend'});
     expect(runner.inFlightTaskEvals).toBe(0);
 
     vi.setSystemTime(Date.now() + TASK_EVAL_PARK_MS + 1);
     runner.enqueueTask({ runId, taskId }); await settle();
     expect(calls).toBe(3); // the park expired: a fresh attempt
+  });
+});
+
+
+describe('P1 long task judge evidence', () => {
+  it('includes initial request, final response and older validation output in a bounded prompt', () => {
+    const turns=Array.from({length:50},(_,i)=>({turn_index:i,prompt:'request '+i,response:'response '+i,tool_calls:2}));
+    turns[49].response='FIRST RESULT '+ 'x'.repeat(4000)+' FINAL_RESULT_RETAINED';
+    const events=Array.from({length:60},(_,i)=>({kind:'tool',name:'Read',input:{path:'file-'+i},status:'success',output:''}));
+    events[20]={kind:'tool',name:'Bash',input:{path:'pnpm test'},status:'success',output:'SECRET '+ 'x'.repeat(1000)+' FINAL_TESTS_PASSED'};
+    const store={getTask:()=>({id:'task',runId:'run',taskCategory:'coding'}),listTurnsForTask:()=>turns,
+      getRun:()=>({taskCategory:'coding'}),getCurrentRubric:()=>({version:1,prompt:'Judge task evidence'}),
+      getSample:()=>({events,cost:{inputTokens:0,outputTokens:0,costUsd:0},model:{modelId:'model'}})} as unknown as ApmeStore;
+    const input=buildTaskJudgeInput(store,{runId:'run',taskId:'task'},{field:t=>t.replaceAll('SECRET','[REDACTED]')});
+    expect(input.kind).toBe('ready');if(input.kind!=='ready')return;
+    expect(input.prompt).toContain('request 0');expect(input.prompt).toContain('FINAL_RESULT_RETAINED');
+    expect(input.prompt).toContain('FINAL_TESTS_PASSED');expect(input.prompt).not.toContain('SECRET');
+    expect(input.prompt).toContain('40 more turns omitted');
+    expect(input.evidence.turnIndices).toHaveLength(10);expect(input.evidence.turnIndices).toContain(49);
+    expect(input.evidence.eventIndices).toHaveLength(30);expect(input.evidence.eventIndices).toContain(20);
   });
 });

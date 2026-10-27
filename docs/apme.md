@@ -31,6 +31,39 @@ APME 는 데몬 안에서만 도는 모듈이 아니라 **볼 수 있는 표면*
   <img src="media/apme-work.png" width="880" alt="APME Work board — tasks with verdict, score, agent, project and turn count, filtered by attention, judged, reported, in-progress and orphaned">
 </p>
 
+## Task review and evaluation evidence
+
+The Work board opens a task's review directly. It separates the AI estimate,
+judge model/rubric/time, recorded reasoning and done/missed items from the
+user's own assessment. `POST /apme/task-feedback` accepts `taskId`, a verdict
+(`completed`, `partial`, `incorrect`, or `clear`), and an optional note up to
+4096 UTF-8 bytes. The append-only `task_feedback` history survives reopening;
+clearing records a new entry. It never rewrites AI scores or silently trains a
+judge. Feedback errors remain visible and preserve the unsaved note.
+
+`task_judge_attempts` records the latest attempt separately: `running`,
+`failed`, `blocked`, or `succeeded`, with a safe reason code and time. A started
+attempt is labelled as requested, not a claim of current liveness after a
+restart. Old tasks without an attempt record remain pending/unknown. Missing
+replies, intentional exclusions, disabled evaluation and actual recorded
+failures are explained separately in task detail, with an explicit refresh.
+
+Task-judge inputs preserve the first request and latest result within ten turns,
+then favour recorded validation/error tool events within thirty events. Long
+turn text keeps both ends within the character budget; tool output includes its
+last 600 characters. Prepared selection indices are stored with each new task
+judgement. These are bounded inputs, not a claim that all evidence or independent
+verification was available. Historical judgements retain their original source.
+Node and Swift replay the same evidence-selection vectors and use generated
+storage/selection rules from `shared/src/apme-review.ts`.
+
+macOS's recent activity rows open the corresponding task by native session id
+and task index plus start time in the embedded report. Reused task indices from
+another run never resolve to a different task. A task absent from the active daemon's
+private history is labelled unavailable, rather than opening a different task.
+The full-report entry resets this scope. Copied report URLs continue to strip
+all query, fragment and userinfo values.
+
 ### 기본 judge 백엔드는 왜 MLX → Foundation Models 순서인가
 
 2026-08-22 실측(`OpenClaw/model-eval`, `judging` 분류 6 시나리오 × 3 반복, 결과는 <https://eval.foundby.kr>):

@@ -21,6 +21,12 @@ This matrix defines which capabilities belong to the standalone App Store produc
 
 ## Product contract
 
+APME task review is available in both tiers: task-level human corrections are
+stored separately from AI estimates, with judge provenance, recorded evidence,
+and explicit evaluation-attempt status. The macOS activity panel can open the
+corresponding task directly in the embedded local report. No subprocess or
+external service is required for review or correction.
+
 | Tier | Contract |
 |---|---|
 | Tier 1 — App Store | Complete sandboxed dashboard. No PTY, subprocess, bundled interpreter, helper executable, or install prompt. |

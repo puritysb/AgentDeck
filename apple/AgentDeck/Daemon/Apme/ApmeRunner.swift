@@ -309,7 +309,7 @@ actor ApmeRunner {
 
     private func runTaskEval(runId: String, taskId: String, category: String?, boundarySignal: String?) async {
         let config = configOverride ?? ApmeSettings.load()
-        guard config.enabled else { return }
+        guard config.enabled else { store.noteTaskAttempt(taskId, status: "blocked", reason: "disabled"); return }
         guard let task = store.getTask(id: taskId) else { return }
         let turns = store.listTurnsForTask(taskId)
         if turns.isEmpty { return }
@@ -333,21 +333,26 @@ actor ApmeRunner {
             ?? store.getCurrentRubric(purpose: "general")
         guard let rubric = rubric,
               let rubricPrompt = rubric["prompt"] as? String
-        else { return }
+        else { store.noteTaskAttempt(taskId, status: "blocked", reason: "missing_evidence_or_rubric"); return }
 
+        store.noteTaskAttempt(taskId, status: "running")
+        let sample = store.getSampleDict(taskId)
+        let evidence = Self.taskEvidenceSelection(turns: turns, sample: sample)
         let judgePrompt = Self.buildTaskJudgePrompt(
             rubricPrompt: rubricPrompt,
             category: category ?? task.taskCategory ?? "unknown",
             boundarySignal: boundarySignal ?? task.boundarySignal,
             turns: turns,
-            sample: store.getSampleDict(taskId)
+            sample: sample
         )
 
         guard let judgeOutput = await callJudge(prompt: judgePrompt, config: config.judge) else {
+            store.noteTaskAttempt(taskId, status: "failed", reason: "transport_or_backend")
             DaemonLogger.shared.debug("APME", "task judge returned nil task=\(taskId.prefix(8))")
             return
         }
         guard let parsed = Self.parseJudgeJson(judgeOutput.text) else {
+            store.noteTaskAttempt(taskId, status: "failed", reason: "invalid_verdict")
             DaemonLogger.shared.debug("APME", "task judge unparseable task=\(taskId.prefix(8))")
             return
         }
@@ -361,6 +366,7 @@ actor ApmeRunner {
             if axis == "overall" {
                 let meta: [String: Any] = [
                     "summary": parsed.summary ?? NSNull(),
+                    "evidence": evidence,
                     "reasoning": parsed.reasoning,
                     "done": parsed.done ?? [],
                     "missed": parsed.missed ?? [],
@@ -384,6 +390,7 @@ actor ApmeRunner {
             store.insertEvalForTask(eval, taskId: taskId)
         }
 
+        store.noteTaskAttempt(taskId, status: "succeeded")
         // Pure sample-trajectory scorers (tool churn, error rate). Stored under
         // layer="trajectory" so they don't collide with task_judge axes.
         // Mirrors bridge/src/apme/runner.ts runSampleScorers.
@@ -416,6 +423,7 @@ actor ApmeRunner {
         taskFields["compositeScore"] = overall as Any?
         taskFields["outcome"] = taskOutcome as Any?
         let notes: [String: Any] = [
+            "evidence": evidence,
             "reasoning": parsed.reasoning,
             "done": parsed.done ?? [],
             "missed": parsed.missed ?? [],
@@ -648,6 +656,15 @@ actor ApmeRunner {
     /// (user prompt + agent response each) and the boundary signal so the
     /// rubric can weigh completion signals. Mirrors bridge/src/apme/runner.ts
     /// runTaskEval prompt composition.
+    static func taskEvidenceSelection(turns: [[String: Any]], sample: [String: Any]?) -> [String: Any] {
+        let events = sample?["events"] as? [[String: Any]] ?? []
+        return ["strategy": ApmeReviewRules.strategy, "totalTurns": turns.count,
+                "turnIndices": ApmeReviewRules.turnIndices(turns),
+                "totalEvents": events.count,
+                "eventIndices": ApmeReviewRules.evidenceIndices(events.count, cap: ApmeReviewRules.eventCap,
+                    preferred: events.indices.filter { ApmeReviewRules.validationEvent(events[$0]) })]
+    }
+
     static func buildTaskJudgePrompt(
         rubricPrompt: String,
         category: String,
@@ -655,13 +672,13 @@ actor ApmeRunner {
         turns: [[String: Any]],
         sample: [String: Any]? = nil
     ) -> String {
-        let cap = 10
-        let clipped = Array(turns.prefix(cap))
+        let cap = ApmeReviewRules.turnCap
+        let clipped = ApmeReviewRules.turnIndices(turns, cap: cap).map { turns[$0] }
         var lines: [String] = []
         for t in clipped {
             let idx = t["turn_index"] as? Int ?? 0
-            let prompt = String(((t["prompt"] as? String) ?? "").prefix(1500))
-            let response = String(((t["response"] as? String) ?? "").prefix(2500))
+            let prompt = ApmeReviewRules.clipText((t["prompt"] as? String) ?? "", cap: ApmeReviewRules.promptCap)
+            let response = ApmeReviewRules.clipText((t["response"] as? String) ?? "", cap: ApmeReviewRules.responseCap)
             lines.append("[Turn \(idx)] User: \(prompt.isEmpty ? "(empty)" : prompt)")
             if !response.isEmpty { lines.append("Agent: \(response)") }
         }
@@ -705,10 +722,11 @@ actor ApmeRunner {
     /// Compact typed SessionSample evidence for the task judge. In particular,
     /// child-agent lifecycle rows make delegated work visible even though child
     /// hooks never enter the parent's ordinary state machine.
-    static func buildTrajectoryLines(sample: [String: Any], cap: Int = 30) -> [String] {
+    static func buildTrajectoryLines(sample: [String: Any], cap: Int = ApmeReviewRules.eventCap) -> [String] {
         guard let allEvents = sample["events"] as? [[String: Any]] else { return [] }
         var lines: [String] = []
-        for event in allEvents.prefix(cap) {
+        for index in ApmeReviewRules.evidenceIndices(allEvents.count, cap: cap, preferred: allEvents.indices.filter { ApmeReviewRules.validationEvent(allEvents[$0]) }) {
+            let event = allEvents[index]
             switch event["kind"] as? String {
             case "tool":
                 let name = event["name"] as? String ?? "tool"
@@ -729,7 +747,12 @@ actor ApmeRunner {
                    let string = String(data: data, encoding: .utf8) {
                     input = String(string.prefix(120))
                 }
-                lines.append("  tool \(name)(\(input))\(status)\(error)")
+                var output = ""
+                if let text = event["output"] as? String { output = text.unicodeScalars.suffix(ApmeReviewRules.outputCap).map(String.init).joined() }
+                else if let value = event["output"],
+                        let data = try? JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]),
+                        let text = String(data: data, encoding: .utf8) { output = text.unicodeScalars.suffix(ApmeReviewRules.outputCap).map(String.init).joined() }
+                lines.append("  tool \(name)(\(input))\(status)\(error)" + (output.isEmpty ? "" : " output tail: \(output)"))
             case "model":
                 let model = event["model"] as? String ?? "unknown"
                 let input = event["inputTokens"] as? Int ?? 0

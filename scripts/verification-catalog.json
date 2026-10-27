@@ -1037,7 +1037,7 @@
     {
       "id": "apme",
       "name": "APME evaluation",
-      "question": "Are turns and tasks segmented, judged and scored correctly, do read-only history workers keep slow queries off real-time health and hooks, are metadata reads bounded by index plans, and does the recommender rank models honestly?",
+      "question": "Are turns and tasks segmented, judged and scored correctly, do read-only history workers keep slow queries off real-time health and hooks, are metadata reads bounded by index plans, does the recommender rank models honestly, and can users inspect judgement evidence, distinguish attempt failures and save task-level corrections without changing AI scores?",
       "icon": "◇",
       "match": [
         "bridge/src/__tests__/apme-*.test.ts",

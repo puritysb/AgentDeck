@@ -121,3 +121,64 @@ describe('bundled Swift-daemon dashboard copy', () => {
     ).toBe(`${HTML.length} bytes sha256:${sha(HTML)}`);
   });
 });
+
+
+describe('APME P1 task review actions', () => {
+  it('accepts numeric native task links in the rendered JavaScript', () => {
+    const start=HTML.indexOf('const nativeTarget=');
+    const bootstrap=HTML.slice(start,HTML.indexOf('loadWork(0);loadActivity()',start));
+    for(const [taskIndex,expected] of [['0',0],['12',12],['-1',null],['d',null]]){
+      const context=createContext({URLSearchParams,location:{search:'?session=native-session&startedAt=123&taskIndex='+taskIndex},workSession:'',workTargetTaskIndex:null,workTargetStartedAt:null});
+      runInContext(bootstrap,context);
+      expect(context.workTargetTaskIndex).toBe(expected);
+      expect(context.workSession).toBe(expected===null?'':'native-session');
+      expect(context.workTargetStartedAt).toBe(expected===null?null:123);
+    }
+  });
+  it('does not open a reused task index from a different run after daemon handover', () => {
+    const {context}=dashboardContext();
+    expect(runInContext('matchesNativeTaskTarget({taskIndex:0,startedAt:124},0,123)',context)).toBe(false);
+    expect(runInContext('matchesNativeTaskTarget({taskIndex:0,startedAt:123},0,123)',context)).toBe(true);
+  });
+  it('shows reasoning, done/missed, provenance, evidence limits and independent corrections, escaping stored text', () => {
+    const {context}=dashboardContext();
+    context.reviewFixture={task:{id:'task',endedAt:10,compositeScore:0.2},feedback:{verdict:'incorrect',note:'<script>unsafe</script>',createdAt:20},
+      evals:[{layer:'task_judge',metric:'overall',score:0.2,judgeModel:'local-judge',rubricVer:3,createdAt:10,
+        raw:JSON.stringify({reasoning:'Missing final check',done:['Feature implemented'],missed:['Verification'],evidence:{strategy:'first-latest-validation-v1',totalTurns:50,turnIndices:[0,49],totalEvents:100,eventIndices:[0,99]}})}]};
+    const html=runInContext('taskReviewHtml(reviewFixture)',context) as string;
+    expect(html).toContain('Missing final check');expect(html).toContain('Feature implemented');expect(html).toContain('Verification');
+    expect(html).toContain('local-judge');expect(html).toContain('rubric 3');expect(html).toContain('2/50 turns');
+    expect(html).toContain('Your assessment:');expect(html).toContain('&lt;script&gt;');expect(html).not.toContain('<script>');
+    context.reviewFixture.evals.unshift({...context.reviewFixture.evals[0],raw:JSON.stringify({reasoning:'Outdated reasoning'})});
+    const latest=runInContext('taskReviewHtml(reviewFixture)',context) as string;
+    expect(latest).toContain('Missing final check');expect(latest).not.toContain('Outdated reasoning');
+  });
+  it('distinguishes open, pending/unknown, missing evidence, exclusion, disabled and actual failures', () => {
+    const {context}=dashboardContext();
+    const state=(task:unknown,evaluation:unknown={})=>{context.stateFixture={task,evaluation};return runInContext('taskReviewState(stateFixture).label',context)};
+    expect(state({})).toBe('Task in progress');
+    expect(state({endedAt:1})).toBe('Evaluation pending / unknown');
+    expect(state({endedAt:1,notesJson:'{"notGradeable":"no_reply"}'})).toBe('Insufficient evidence');
+    expect(state({endedAt:1,notesJson:'{"notGradeable":"notification_only"}'})).toBe('Excluded from evaluation');
+    expect(state({endedAt:1},{enabled:false})).toBe('Evaluation disabled');
+    expect(state({endedAt:1},{attempt:{status:'failed'}})).toBe('Evaluation failed');
+    expect(state({endedAt:1,compositeScore:0})).toBe('AI estimate available');
+    expect(state({endedAt:1,notesJson:'null'})).toBe('Evaluation pending / unknown');
+  });
+  it('does not claim success when a correction POST fails and preserves the note', async () => {
+    const {context,elements}=dashboardContext(vi.fn(async()=>({ok:false,status:503})));
+    runInContext("document.getElementById('task-feedback-note').value='keep this note'",context);
+    context.reviewButton={dataset:{task:'t',verdict:'incorrect'},disabled:false};
+    await runInContext('submitTaskFeedback(reviewButton)',context);
+    expect(elements.get('task-feedback-status')).toMatchObject({textContent:'Correction was not saved (HTTP 503)'});
+    expect(context.reviewButton.disabled).toBe(false);
+    expect(elements.get('task-feedback-note')).toMatchObject({value:'keep this note'});
+  });
+  it('submits a task assessment through the actual UI handler without changing selection or the AI estimate', async () => {
+    const fetch=vi.fn(async()=>({ok:true,json:async()=>({ok:true})}));const {context}=dashboardContext(fetch);
+    runInContext("document.getElementById('task-feedback-note').value='Reviewed final result'",context);
+    context.reviewButton={dataset:{task:'t',verdict:'completed'},disabled:false};
+    await runInContext('submitTaskFeedback(reviewButton)',context);
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/apme/task-feedback'),expect.objectContaining({method:'POST',body:'{"taskId":"t","verdict":"completed","note":"Reviewed final result"}'}));
+  });
+});

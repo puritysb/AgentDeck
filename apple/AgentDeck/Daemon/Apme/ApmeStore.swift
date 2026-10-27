@@ -58,6 +58,7 @@ final class ApmeStore: @unchecked Sendable {
         // errors when writes overlap. Matches bridge/src/apme/store.ts contract.
         exec("PRAGMA busy_timeout = 5000")
         exec(Self.ddl)
+        exec(ApmeReviewRules.ddl)
         migrateSchema()
         seedDefaultRubric()
         isOpen = true
@@ -573,6 +574,39 @@ final class ApmeStore: @unchecked Sendable {
             return
         }
         DaemonLogger.shared.debug("APME", "updateTask: \(sets.count) fields for id=\(id.prefix(8))")
+    }
+
+    @discardableResult
+    func recordTaskFeedback(taskId: String, verdict: String, note: String?) -> Bool {
+        reviewWrite("INSERT INTO task_feedback(task_id,verdict,note,created_at) VALUES (?,?,?,?)",
+                    [taskId, verdict, note ?? NSNull(), Int(Date().timeIntervalSince1970 * 1000)])
+    }
+
+    func latestTaskFeedback(_ taskId: String) -> [String: Any]? {
+        queryWithArgs("SELECT verdict,note,created_at AS createdAt FROM task_feedback WHERE task_id=? ORDER BY id DESC LIMIT 1", [taskId]).first
+    }
+
+    func noteTaskAttempt(_ taskId: String, status: String, reason: String? = nil) {
+        _ = reviewWrite("INSERT INTO task_judge_attempts(task_id,status,reason,updated_at) VALUES (?,?,?,?) ON CONFLICT(task_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,updated_at=excluded.updated_at",
+                        [taskId, status, reason ?? NSNull(), Int(Date().timeIntervalSince1970 * 1000)])
+    }
+
+    func taskAttempt(_ taskId: String) -> [String: Any]? {
+        queryWithArgs("SELECT status,reason,updated_at AS updatedAt FROM task_judge_attempts WHERE task_id=?", [taskId]).first
+    }
+
+    private func reviewWrite(_ sql: String, _ args: [Any]) -> Bool {
+        guard let db else { return false }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        for (i, arg) in args.enumerated() {
+            let index = Int32(i + 1)
+            if let text = arg as? String { bindText(stmt, index, text) }
+            else if let n = arg as? Int { sqlite3_bind_int64(stmt, index, Int64(n)) }
+            else { sqlite3_bind_null(stmt, index) }
+        }
+        return sqlite3_step(stmt) == SQLITE_DONE
     }
 
     func getTask(id: String) -> ApmeTask? {

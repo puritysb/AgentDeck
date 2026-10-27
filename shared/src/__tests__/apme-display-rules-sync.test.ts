@@ -19,11 +19,12 @@ import * as taskTitle from '../task-title.js';
 import * as actionFold from '../action-fold.js';
 import * as comparison from '../apme-comparison.js';
 import * as scorecard from '../apme-scorecard-sql.js';
+import * as review from '../apme-review.js';
 import * as taskGradeability from '../../../bridge/src/apme/task-gradeability.js';
 import { OUTPUTS, rulesFrom } from '../../../scripts/generate-apme-display-rules.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
-const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard);
+const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard, review);
 
 describe('APME comparison eligibility', () => {
   const vectors = JSON.parse(readFileSync(`${repoRoot}shared/apme-comparison-vectors.json`, 'utf8'));
@@ -98,5 +99,30 @@ describe('Swift daemon still mirrors the hand-pinned APME constants', () => {
     expect(swift).toContain(`static let taskAttentionRedScore = ${TASK_ATTENTION_RED_SCORE}`);
     // The `_empty` bookkeeping-shell filter must exist on both sides too.
     expect(swift).toContain(`!= '_empty'`);
+  });
+});
+
+describe('APME bounded evidence selection', () => {
+  const vectors = JSON.parse(readFileSync(`${repoRoot}shared/apme-evidence-vectors.json`, 'utf8'));
+  for (const v of vectors) {
+    it(`preserves intent, final result and validation ${JSON.stringify(v)}`, () => {
+      expect(review.apmeEvidenceIndices(v.count,v.cap,v.preferred)).toEqual(v.expected);
+    });
+  }
+  it('keeps both ends of long Unicode evidence within the same code-point cap', () => {
+    const clipped=review.clipApmeEvidenceText('FIRST😀'+'가'.repeat(100)+'FINAL😀',50);
+    expect(clipped).toContain('FIRST😀');expect(clipped).toContain('FINAL😀');
+    expect(Array.from(clipped)).toHaveLength(50);
+    expect(review.isApmeValidationEvent({kind:'tool',name:'Bash',input:{command:'pnpm test'},output:'Tests passed'})).toBe(true);
+    expect(review.isApmeValidationEvent({kind:'user_message',text:'please test'})).toBe(false);
+  });
+});
+
+
+describe('APME final archived response selection', () => {
+  it('retains the last real reply even with more than the turn budget of empty tail turns', () => {
+    const turns=Array.from({length:50},(_,i)=>({response:i===10?'Final result':''}));
+    const indices=review.apmeTurnEvidenceIndices(turns);
+    expect(indices).toHaveLength(10);expect(indices).toContain(0);expect(indices).toContain(10);expect(indices).toContain(49);
   });
 });

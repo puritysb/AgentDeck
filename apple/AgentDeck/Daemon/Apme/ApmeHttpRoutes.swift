@@ -199,6 +199,24 @@ enum ApmeHttpRoutes {
             return .json(body)
         }
 
+        await httpServer.post("/apme/task-feedback") { request in
+            if let denied = Self.requireToken(request) { return denied }
+            guard let body = request.body,
+                  let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+                  let taskId = json["taskId"] as? String,
+                  let verdict = json["verdict"] as? String,
+                  ApmeReviewRules.verdicts.contains(verdict),
+                  json["note"] == nil || json["note"] is NSNull || json["note"] is String,
+                  (json["note"] as? String ?? "").utf8.count <= ApmeReviewRules.noteBytes else {
+                return .json(["error": "expected taskId, completed|partial|incorrect|clear, optional note (up to 4096 UTF-8 bytes)"], status: 400)
+            }
+            guard store.getTask(id: taskId) != nil else { return .json(["error": "task not found"], status: 404) }
+            guard store.recordTaskFeedback(taskId: taskId, verdict: verdict, note: json["note"] as? String) else {
+                return .json(["error": "correction could not be saved"], status: 500)
+            }
+            return .json(["ok": true, "feedback": store.latestTaskFeedback(taskId) as Any? ?? NSNull()])
+        }
+
         // Single task detail — mirrors Node bridge `GET /apme/tasks/:id`.
         // Returns the task row, its evals, and the turns belonging to it.
         await httpServer.get("/apme/tasks/*") { request in
@@ -395,9 +413,12 @@ enum ApmeHttpRoutes {
         var body: [String: Any] = [
             "schema": schemaVersion,
             "task": taskDict(task),
+            "feedback": store.latestTaskFeedback(id) as Any? ?? NSNull(),
+            "evaluation": ["attempt": store.taskAttempt(id) as Any? ?? NSNull(),
+                           "enabled": ApmeSettings.load().enabled, "backend": ApmeSettings.load().judge.backend.rawValue],
             "evals": evals.map { evalDict($0, includeRaw: true) },
             "turns": turns,
-            "overallScore": evals.first(where: { $0.layer == "task_judge" && $0.metric == "overall" })?.score
+            "overallScore": evals.last(where: { $0.layer == "task_judge" && $0.metric == "overall" })?.score
                 ?? task.compositeScore
                 ?? NSNull(),
         ]

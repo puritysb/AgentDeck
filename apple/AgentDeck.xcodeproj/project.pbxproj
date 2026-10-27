@@ -542,6 +542,7 @@
 		A7C525ED25F56061A0DF9ADE /* HermesObserverGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0903C3EBD6675CB1D28C1FE /* HermesObserverGate.swift */; };
 		A7E6158A1A9242B77356F1E8 /* MiniTomlTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B1754EEF69FF454C638CF1C /* MiniTomlTests.swift */; };
 		A8293F557BD8D3FB91BF4CF4 /* StateTimelineGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */; };
+		A838A0B13A4BF19CEAE5E2B7 /* ApmeReviewRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F978C941F45D81842501E6 /* ApmeReviewRules.generated.swift */; };
 		A84E1C4B3E34A982B09710A9 /* OpenClawSessionKeyRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9185FF90065381D67996F78 /* OpenClawSessionKeyRulesTests.swift */; };
 		A869C24476DAE485D0B950EC /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
 		A8815F32726A3355322BA31E /* DotSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21629400210C88B7A9F0E3C /* DotSurfaceView.swift */; };
@@ -751,6 +752,7 @@
 		E55A5C32BF87487D0B93BAC6 /* DotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88024D2867223901DB810204 /* DotPresentation.swift */; };
 		E59E0351EAA083B954985854 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */; };
 		E5B1774D921E5B4C508D73A0 /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
+		E5B1CE6FDB07217035F952B0 /* ApmeReviewRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F978C941F45D81842501E6 /* ApmeReviewRules.generated.swift */; };
 		E5DE7C344E43E9802FAAC406 /* CommunicationGraphModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148E9F88D28912838E6DF334 /* CommunicationGraphModel.swift */; };
 		E5FA176508C6DEADEE1DC30B /* ApmeScorecardSQL.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */; };
 		E6298CFEC018553BFE64DED6 /* CommunicationGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228A0A4D8F537A1C69CF4DE2 /* CommunicationGraphView.swift */; };
@@ -1048,6 +1050,7 @@
 		731118DC3B388D7BE3F1CDB7 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
 		73BB88D8C2921CB4B93EC8B9 /* SessionPushRegisterMergeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionPushRegisterMergeTests.swift; sourceTree = "<group>"; };
 		74B987710CFB6B547DB06A21 /* CollaborationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollaborationModel.swift; sourceTree = "<group>"; };
+		74F978C941F45D81842501E6 /* ApmeReviewRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeReviewRules.generated.swift; sourceTree = "<group>"; };
 		758AAD78310D811B993ADA21 /* ApmeScorers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeScorers.swift; sourceTree = "<group>"; };
 		766909A21820E709DA63C7C2 /* apme-dashboard.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = "apme-dashboard.html"; sourceTree = "<group>"; };
 		767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAskUserQuestionTests.swift; sourceTree = "<group>"; };
@@ -1687,6 +1690,7 @@
 				86C2853DD31CC81F421A2A1F /* ApmePricing.swift */,
 				25F9FDF17CAE4968078B9841 /* ApmeReadIndexes.generated.swift */,
 				C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */,
+				74F978C941F45D81842501E6 /* ApmeReviewRules.generated.swift */,
 				53D4EF93231AAC8CD23FB819 /* ApmeRunner.swift */,
 				147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */,
 				758AAD78310D811B993ADA21 /* ApmeScorers.swift */,
@@ -2478,6 +2482,7 @@
 				270A86EE461D911332A98A39 /* ApmePricing.swift in Sources */,
 				A3DBC8520FF03E2696C3875E /* ApmeReadIndexes.generated.swift in Sources */,
 				67BC9141429FBD039D306858 /* ApmeRecommender.swift in Sources */,
+				E5B1CE6FDB07217035F952B0 /* ApmeReviewRules.generated.swift in Sources */,
 				E510E70B26F457C5035A70BF /* ApmeRunner.swift in Sources */,
 				E5FA176508C6DEADEE1DC30B /* ApmeScorecardSQL.generated.swift in Sources */,
 				89B569F2096B99D8C6ED3044 /* ApmeScorers.swift in Sources */,
@@ -2768,6 +2773,7 @@
 				584C4C85DE3E5789C8B8DBF9 /* ApmePricing.swift in Sources */,
 				EE83F0F9F55D68644A722D50 /* ApmeReadIndexes.generated.swift in Sources */,
 				4A0D8F7C56E1BEB0167E62CB /* ApmeRecommender.swift in Sources */,
+				A838A0B13A4BF19CEAE5E2B7 /* ApmeReviewRules.generated.swift in Sources */,
 				BBEB24AC6D843E71B5C8D517 /* ApmeRunner.swift in Sources */,
 				359EF5E7219272E1ECFABFED /* ApmeScorecardSQL.generated.swift in Sources */,
 				5DCD91335EFB1B6500CA830E /* ApmeScorers.swift in Sources */,

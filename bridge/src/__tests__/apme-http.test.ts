@@ -295,6 +295,29 @@ describe('APME HTTP routes', () => {
     expect(missing.status).toBe(404);
   });
 
+  it('persists task corrections separately from AI scores across reopen, validates UTF-8 notes and reports attempts', async () => {
+    const runId=apme!.collector.openRun({sessionId:'review-task',agentType:'claude-code'});
+    apme!.collector.ingestHook('review-task','UserPromptSubmit',{message:{content:'Implement the requested feature'}});
+    const task=apme!.store.listTasksForRun(runId)[0];
+    apme!.store.updateTask(task.id,{compositeScore:0.2});
+    for(const [score,createdAt] of [[0.1,1],[0.2,2]])apme!.store.insertEvalForTask({runId,taskId:task.id,layer:'task_judge',metric:'overall',score,createdAt});
+    apme!.store.noteTaskAttempt(task.id,'failed','invalid_verdict');
+    const post=(body:unknown)=>fetch(base+'/apme/task-feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    expect((await post({taskId:task.id,verdict:'incorrect',note:'The final tests passed.'})).status).toBe(200);
+    apme!.store.close();expect(await apme!.store.init()).toBe(true);
+    const d=await (await fetch(base+'/apme/tasks/'+task.id)).json();
+    expect(d.feedback).toMatchObject({verdict:'incorrect',note:'The final tests passed.'});
+    expect(d.task.compositeScore).toBe(0.2);
+    expect(d.overallScore).toBe(0.2);
+    expect(d.evaluation.attempt).toMatchObject({status:'failed',reason:'invalid_verdict'});
+    expect((await post({taskId:task.id,verdict:'invalid'})).status).toBe(400);
+    expect((await post({taskId:task.id,verdict:'completed',note:'가'.repeat(1500)})).status).toBe(400);
+    expect((await post({taskId:'missing',verdict:'completed'})).status).toBe(404);
+    expect((await post({taskId:task.id,verdict:'clear'})).status).toBe(200);
+    expect(apme!.store.latestTaskFeedback(task.id)?.verdict).toBe('clear');
+    expect(apme!.store.getTask(task.id)?.compositeScore).toBe(0.2);
+  });
+
   it('closeTaskExternal with manual signal records outcome + boundary_signal=manual', async () => {
     apme!.collector.openRun({ sessionId: 's-manual', agentType: 'openclaw', projectName: 'p' });
     apme!.collector.ingestHook('s-manual', 'UserPromptSubmit', { message: { content: 'hello' } });
