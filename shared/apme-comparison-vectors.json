@@ -1,0 +1,20 @@
+[
+  {"model":"real-model","category":"coding","samples":3,"eligible":true},
+  {"model":"real-model","category":"coding","samples":1,"eligible":false},
+  {"model":"real-model","category":"coding","samples":2,"eligible":false},
+  {"model":"unknown","category":"planning","samples":20,"eligible":false},
+  {"model":" UNKNOWN ","category":"planning","samples":20,"eligible":false},
+  {"model":"mixed","category":"coding","samples":20,"eligible":false},
+  {"model":"<synthetic>","category":"review","samples":20,"eligible":false},
+  {"model":"<synthetic:smoke>","category":"review","samples":20,"eligible":false},
+  {"model":"agentdeck-fixture","category":"coding","samples":20,"eligible":false},
+  {"model":"delivery-mirror","category":"coding","samples":20,"eligible":false},
+  {"model":"gateway-injected","category":"coding","samples":20,"eligible":false},
+  {"model":"default","category":"coding","samples":20,"eligible":false},
+  {"model":"","category":"coding","samples":20,"eligible":false},
+  {"model":"\ufeffunknown\ufeff","category":"coding","samples":20,"eligible":false},
+  {"model":"real-model","category":null,"samples":20,"eligible":false},
+  {"model":"real-model","category":"_empty","samples":20,"eligible":false},
+  {"model":"real-model","category":"unknown","samples":20,"eligible":false},
+  {"model":"real-model","category":"","samples":20,"eligible":false}
+]

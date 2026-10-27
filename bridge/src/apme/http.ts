@@ -18,7 +18,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { ApmeModule } from './index.js';
 import { loadApmeConfig } from './settings.js';
 import { apmeDashboardHtml } from './dashboard-html.js';
-import { EVAL_SCHEMA_VERSION } from '@agentdeck/shared';
+import { APME_COMPARISON_MIN_SAMPLES, EVAL_SCHEMA_VERSION } from '@agentdeck/shared';
 import { historyProjection, type HistoryKind } from './history-projection.js';
 import { activitySnapshotForStore } from './activity-history.js';
 
@@ -260,14 +260,20 @@ export async function handleApmeRequest(
       const body = await readJsonBody(req);
       const input = body && typeof body === 'object' ? body : {};
       const cfg = loadApmeConfig();
+      const requestedModels = Array.isArray(input.availableModels)
+        && input.availableModels.every((model: unknown) => typeof model === 'string')
+        ? input.availableModels as string[] : undefined;
+      const availableModels = cfg.availableModels.length > 0
+        ? cfg.availableModels.filter((model) => !requestedModels || requestedModels.includes(model))
+        : requestedModels;
       const candidates = apme.recommender.recommend({
         taskKind: typeof input.taskKind === 'string' ? input.taskKind : undefined,
         budgetUsd: typeof input.budgetUsd === 'number' ? input.budgetUsd : undefined,
         latencyBudgetMs: typeof input.latencyBudgetMs === 'number' ? input.latencyBudgetMs : undefined,
         preferLocal: typeof input.preferLocal === 'boolean' ? input.preferLocal : undefined,
-        availableModels: cfg.availableModels.length > 0 ? cfg.availableModels : undefined,
+        availableModels,
       });
-      sendJson(res, 200, { candidates });
+      sendJson(res, 200, { candidates, minSamples: APME_COMPARISON_MIN_SAMPLES });
       return true;
     }
 

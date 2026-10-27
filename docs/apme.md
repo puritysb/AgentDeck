@@ -1217,10 +1217,22 @@ Node/Swift 가 `shared/task-gradeability-vectors.json` 을 같이 리플레이�
 후속 hook 은 기존 model_config 를 병합해 그 값을 지우지 않는다. task judge rollup 은 자식의
 start/completion·duration·summary 를 읽고, 양 데몬의 `/apme/graph` 는 한 subagent 노드와
 `delegated` 엣지로 투영한다. 활성 부모 task 가 없으면 가장 최근 세션을 추측하지 않고 기록을
-거부한다. P6 evidence tier 는 여전히 미착수다. `/apme/pareto`·`/apme/recommend` 는 대시보드 Recommend 탭이
-쓰지 않아 "죽은" 라우트로 보이지만 Daemon HTTP API 표에 문서화되고 `apme-http.test.ts` 가
-고정하는 외부 표면이므로 유지 — 대시보드가 scorecard 로 자체 계산하는 것과 라우트가 같은
-`pareto.ts` 를 공유하는지는 다음에 라우트를 만질 때 확인한다.
+거부한다. P6 evidence tier 는 여전히 미착수다.
+
+**관측 결과 비교(2026-10-27).** 대시보드 Compare 탭은 카테고리별 `POST /apme/recommend` 결과를
+표시한다. 두 데몬은 최소 3개 평가 task 를 요구하고, unknown/mixed/합성 모델과 미분류 카테고리는
+제외한다(`shared/src/apme-comparison.ts` → 생성 Swift 규칙). 3개는 표시 최소 조건이며 통계적
+신뢰도를 뜻하지 않는다. 표본이 부족하면 다른 카테고리나 legacy run 점수로 대체하지 않는다.
+가용 모델·예산·지연 제약은 Pareto 계산 전에 적용한다. 미확인 비용끼리도 비용 우열을 가정하지 않는다.
+비용 미확인은 무료가 아니며, 미측정 또는
+0인 지연시간은 지연 예산을 충족한 증거가 아니다. UI 는 최적/기본 모델을 단정하지 않고 전체 이력의
+AI 추정치·작업 수·작업당 추정 비용을 보여준다. 프로젝트·시기·판정 조건에 따른 비교 통제는 아직 없다.
+
+scorecard SQL 은 `shared/src/apme-scorecard-sql.ts` 한 곳에서 정의하고 Swift 로 생성한다.
+`cost_per_quality` 는 **평가 단위당 평균 비용 / 평균 점수**이며 누적 비용을 평균 점수로 나누지 않는다.
+동일 관측을 반복해도 효율 값은 변하지 않고 미확인 비용은 NULL 로 남는다. Swift 자동 평가기는
+각 turn/task/run 평가 시작 시 저장된 설정을 읽고, 진행 중인 평가는 시작 때의 설정을 유지한다.
+보고서 복사 URL 에서는 query·fragment·사용자 인증정보를 제거한다.
 
 ## Settings
 

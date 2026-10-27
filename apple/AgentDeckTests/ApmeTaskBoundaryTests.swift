@@ -1804,5 +1804,123 @@ final class ApmeTaskBoundaryTests: XCTestCase {
         let quiet = store.listTurnsForTask("t-quiet").first
         XCTAssertEqual(quiet?["end_source"] as? String, "stop", "a closed turn is left as it was")
     }
+    // MARK: - P0 comparison and settings regressions
+
+    func testComparisonEligibilityMatchesSharedVectors() async throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/apme-comparison-vectors.json")
+        let vectors = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [[String: Any]])
+        for vector in vectors {
+            XCTAssertEqual(ApmeComparisonRules.eligible(modelId: vector["model"] as? String ?? "",
+                                                       category: vector["category"] as? String,
+                                                       samples: vector["samples"] as? Int ?? 0),
+                           vector["eligible"] as? Bool, "\(vector)")
+        }
+    }
+
+    func testComparisonCostIsPerTaskAndUnknownCostSurvivesReopen() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        func seed(_ index: Int, known: Bool = true) {
+            let id = "comparison-\(index)"
+            tmp.store.insertRun(ApmeRun(id: id, sessionId: id, agentType: "claude-code", modelId: "real-model", startedAt: 1, endedAt: 2))
+            tmp.store.insertTask(ApmeTask(id: id, runId: id, taskIndex: 0, boundarySignal: "session_end", startedAt: 1))
+            tmp.store.updateTask(id: id, fields: ["endedAt": 2, "modelId": "real-model", "taskCategory": "coding",
+                                                "compositeScore": 0.8, "costUsd": 0.1, "costKnown": known])
+        }
+        for i in 0..<3 { seed(i) }
+        let first = try XCTUnwrap(tmp.store.sampleScorecard().first?["cost_per_quality"] as? Double)
+        XCTAssertEqual(first, 0.125, accuracy: 0.000001)
+        for i in 3..<6 { seed(i) }
+        XCTAssertEqual(try XCTUnwrap(tmp.store.sampleScorecard().first?["cost_per_quality"] as? Double), first, accuracy: 0.000001)
+        tmp.store.close()
+        XCTAssertTrue(tmp.store.open())
+        XCTAssertEqual(try XCTUnwrap(tmp.store.sampleScorecard().first?["cost_per_quality"] as? Double), first, accuracy: 0.000001)
+        seed(6, known: false)
+        XCTAssertNil(tmp.store.sampleScorecard().first?["cost_per_quality"] as? Double)
+        XCTAssertNil(ApmeRecommender.recommend(store: tmp.store).first?.expectedCostUsd)
+        XCTAssertTrue(ApmeRecommender.recommend(store: tmp.store, input: ApmeRecommendInput(taskKind: "research")).isEmpty)
+    }
+
+    func testComparisonFiltersConstraintsBeforeDominance() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        for (model, quality, cost) in [("unavailable", 1.0, 0.01), ("available", 0.8, 0.1), ("unknown", 1.0, 0.0)] {
+            for i in 0..<3 {
+                let id = "\(model)-\(i)"
+                tmp.store.insertRun(ApmeRun(id: id, sessionId: id, agentType: "claude-code", modelId: model, startedAt: 1, endedAt: 2))
+                tmp.store.insertTask(ApmeTask(id: id, runId: id, taskIndex: 0, boundarySignal: "session_end", startedAt: 1))
+                tmp.store.updateTask(id: id, fields: ["endedAt": 2, "modelId": model, "taskCategory": "coding",
+                                                    "compositeScore": quality, "costUsd": cost, "costKnown": true])
+            }
+        }
+        let input = ApmeRecommendInput(taskKind: "coding", availableModels: ["available"])
+        XCTAssertEqual(ApmeRecommender.recommend(store: tmp.store, input: input).map(\.modelId), ["available"])
+        for model in ["available", "unavailable"] {
+            for i in 0..<3 { tmp.store.updateTask(id: "\(model)-\(i)", fields: ["costKnown": false]) }
+        }
+        XCTAssertEqual(ApmeRecommender.pareto(rows: tmp.store.sampleScorecard()).frontier.count, 2,
+                       "Unknown prices cannot establish equal cost or dominance")
+        XCTAssertTrue(ApmeRecommender.recommend(store: tmp.store, input: ApmeRecommendInput(availableModels: [])).isEmpty)
+        XCTAssertFalse(ApmeRecommender.recommend(store: tmp.store).contains { $0.modelId == "unknown" })
+    }
+
+    func testRunnerReadsSavedSettingsForEachTurnTaskAndRunEvaluation() async throws {
+        let tmp = try makeTempStore()
+        defer { cleanup(tmp) }
+        let settingsURL = tmp.dir.appendingPathComponent("settings.json")
+        @Sendable func save(_ config: [String: Any]) throws {
+            try JSONSerialization.data(withJSONObject: ["apme": config]).write(to: settingsURL, options: .atomic)
+        }
+        try save(["enabled": false, "judge": ["backend": "mlx"]])
+        let runner = ApmeRunner(store: tmp.store)
+        let turnDone = expectation(description: "turn uses new backend")
+        let taskDone = expectation(description: "task uses new endpoint/model/key")
+        let runDone = expectation(description: "run uses newest settings")
+        await runner.onResult { result in
+            switch result.runId {
+            case "live-turn": turnDone.fulfill()
+            case "live-task": taskDone.fulfill()
+            case "live-run": runDone.fulfill()
+            default: break
+            }
+        }
+        for id in ["live-turn", "live-task", "live-run"] {
+            tmp.store.insertRun(ApmeRun(id: id, sessionId: id, agentType: "claude-code", modelId: "agent-model", taskPrompt: "Implement the requested feature and verify the resulting behavior", startedAt: 1, endedAt: 2))
+            tmp.store.insertTask(ApmeTask(id: id, runId: id, taskIndex: 0, boundarySignal: "session_end", startedAt: 1))
+            tmp.store.insertTurn(id: id, runId: id, turnIndex: 0, prompt: "Implement the requested feature and verify the resulting behavior", startedAt: 1, taskId: id)
+            tmp.store.updateTurn(id: id, fields: ["response": "Implemented the requested feature and verified the resulting behavior with passing tests.", "toolCalls": 2])
+        }
+        let recorder = ApmeP0RequestRecorder()
+        let body = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": "{\"overall\":0.8,\"summary\":\"Implemented and verified the feature.\"}"], "finish_reason": "stop"]]])
+        try await ApmeJudgeOpenAI.withTransportForTests({ request in
+            let json = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
+            let model = json?["model"] as? String ?? "missing"
+            await recorder.record("\(request.url!.absoluteString)|\(model)|\(request.value(forHTTPHeaderField: "Authorization") ?? "")")
+            return (body, 200)
+        }) { @Sendable in
+            for (index, id) in ["live-turn", "live-task", "live-run"].enumerated() {
+                try save(["enabled": true, "judge": ["backend": "openai", "endpoint": "http://127.0.0.1:\(19001 + index)/v1", "model": "judge-\(index)", "apiKey": "test-key-\(index)"]])
+                switch index {
+                case 0: runner.enqueueTurn(runId: id, turnId: id, category: "coding")
+                case 1: runner.enqueueTask(runId: id, taskId: id, category: "coding")
+                default: runner.enqueue(runId: id)
+                }
+                let result = await XCTWaiter.fulfillment(of: [[turnDone, taskDone, runDone][index]], timeout: 5)
+                XCTAssertEqual(result, .completed)
+                let overall = tmp.store.listEvalsForRun(id).first { $0.metric == "overall" }
+                XCTAssertEqual(overall?.judgeModel, "openai:judge-\(index)")
+            }
+        }
+        let calls = await recorder.snapshot()
+        XCTAssertEqual(calls, (0..<3).map { "http://127.0.0.1:\(19001 + $0)/v1/chat/completions|judge-\($0)|Bearer test-key-\($0)" })
+    }
+
+}
+private actor ApmeP0RequestRecorder {
+    private var calls: [String] = []
+    func record(_ call: String) { calls.append(call) }
+    func snapshot() -> [String] { calls }
 }
 #endif

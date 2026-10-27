@@ -361,13 +361,59 @@ enum TaskGradeabilityRules {
 `;
 }
 
+export function emitComparisonSwift(rules) {
+  return `${header('shared/src/apme-comparison.ts')}
+
+import Foundation
+
+enum ApmeComparisonRules {
+    static let minSamples = ${rules.comparisonMinSamples}
+    private static let nonModelIds: Set<String> = [${rules.nonModelIds.map(JSON.stringify).join(', ')}]
+    private static let nonCategories: Set<String> = [${rules.nonComparisonCategories.map(JSON.stringify).join(', ')}]
+
+    static func eligible(modelId: String, category: String?, samples: Int) -> Bool {
+        let model = trimmed(modelId).lowercased()
+        guard samples >= minSamples, !nonModelIds.contains(model), !model.hasPrefix("<"),
+              let category else { return false }
+        return !nonCategories.contains(trimmed(category).lowercased())
+    }
+
+    private static func trimmed(_ value: String) -> String {
+        var scalars = value.unicodeScalars.drop(while: isJSWhitespace)
+        while let last = scalars.last, isJSWhitespace(last) { scalars = scalars.dropLast() }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    private static func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case ${swiftScalarPatterns(rules.jsWhitespaceRanges)}: return true
+        default: return false
+        }
+    }
+}
+`;
+}
+
+export function emitScorecardSwift(rules) {
+  return `${header('shared/src/apme-scorecard-sql.ts')}
+
+enum ApmeScorecardSQL {
+    static let ddl = """
+${rules.scorecardSql.trim().split('\n').map((line) => line ? `    ${line}` : '').join('\n')}
+    """
+}
+`;
+}
+
 export const OUTPUTS = [
   ['apple/AgentDeck/Daemon/Apme/TaskTitleRules.generated.swift', emitTaskTitleSwift],
   ['apple/AgentDeck/Daemon/Apme/ActionFoldRules.generated.swift', emitActionFoldSwift],
   ['apple/AgentDeck/Daemon/Apme/TaskGradeabilityRules.generated.swift', emitTaskGradeabilitySwift],
+  ['apple/AgentDeck/Daemon/Apme/ApmeComparisonRules.generated.swift', emitComparisonSwift],
+  ['apple/AgentDeck/Daemon/Apme/ApmeScorecardSQL.generated.swift', emitScorecardSwift],
 ];
 
-export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod) {
+export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod, comparisonMod, scorecardMod) {
   return {
     taskTitleMaxChars: taskTitleMod.TASK_TITLE_MAX_CHARS,
     taskTitleMinChars: taskTitleMod.TASK_TITLE_MIN_CHARS,
@@ -380,6 +426,10 @@ export function rulesFrom(taskTitleMod, actionFoldMod, taskGradeabilityMod) {
     trivialReplyMaxChars: taskGradeabilityMod.TRIVIAL_REPLY_MAX_CHARS,
     notificationEnvelopeTag: taskGradeabilityMod.NOTIFICATION_ENVELOPE_TAG,
     jsWhitespaceRanges: jsWhitespaceRanges(),
+    comparisonMinSamples: comparisonMod.APME_COMPARISON_MIN_SAMPLES,
+    nonModelIds: [...comparisonMod.APME_NON_MODEL_IDS],
+    nonComparisonCategories: [...comparisonMod.APME_NON_COMPARISON_CATEGORIES],
+    scorecardSql: scorecardMod.APME_SCORECARD_SQL,
   };
 }
 
@@ -387,15 +437,19 @@ async function main() {
   let taskTitle;
   let actionFold;
   let taskGradeability;
+  let comparison;
+  let scorecard;
   try {
     taskTitle = await import('../shared/dist/task-title.js');
     actionFold = await import('../shared/dist/action-fold.js');
     taskGradeability = await import('../bridge/dist/apme/task-gradeability.js');
+    comparison = await import('../shared/dist/apme-comparison.js');
+    scorecard = await import('../shared/dist/apme-scorecard-sql.js');
   } catch {
     console.error('generated-rule inputs not found — build shared and bridge first');
     process.exit(1);
   }
-  const rules = rulesFrom(taskTitle, actionFold, taskGradeability);
+  const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard);
   const check = process.argv.includes('--check');
   let drifted = false;
   for (const [rel, emit] of OUTPUTS) {

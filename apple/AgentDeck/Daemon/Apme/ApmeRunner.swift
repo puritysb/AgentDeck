@@ -97,7 +97,9 @@ struct ApmeParsedJudge {
 
 actor ApmeRunner {
     private let store: ApmeStore
-    private var config: ApmeConfig
+    // Explicit configs are overrides for callers/tests. Production reads the
+    // persisted settings once per evaluation, matching the Node runner.
+    private var configOverride: ApmeConfig?
     /// Listeners notified after each successful eval. DaemonServer registers
     /// one to broadcast `apmeEval` WebSocket events and append `eval_result`
     /// timeline entries.
@@ -153,13 +155,13 @@ actor ApmeRunner {
         return "not_implemented"
     }
 
-    init(store: ApmeStore, config: ApmeConfig = ApmeSettings.load()) {
+    init(store: ApmeStore, config: ApmeConfig? = nil) {
         self.store = store
-        self.config = config
+        self.configOverride = config
     }
 
     /// Update config (e.g. after settings UI change in Phase 2).
-    func setConfig(_ cfg: ApmeConfig) { self.config = cfg }
+    func setConfig(_ cfg: ApmeConfig) { self.configOverride = cfg }
 
     /// Register a result listener. The closure must be `@Sendable` because
     /// listeners are invoked from within the actor and dispatched across
@@ -194,6 +196,7 @@ actor ApmeRunner {
     }
 
     private func runTurnEval(runId: String, turnId: String, category: String) async {
+        let config = configOverride ?? ApmeSettings.load()
         guard config.enabled else { return }
 
         guard let turn = store.getTurn(id: turnId) else { return }
@@ -225,7 +228,7 @@ actor ApmeRunner {
             agentResponse: response
         )
 
-        guard let judgeOutput = await callJudge(prompt: judgePrompt) else {
+        guard let judgeOutput = await callJudge(prompt: judgePrompt, config: config.judge) else {
             DaemonLogger.shared.debug("APME", "turn judge returned nil for turn=\(turnId.prefix(8)) category=\(category)")
             return
         }
@@ -305,6 +308,7 @@ actor ApmeRunner {
     }
 
     private func runTaskEval(runId: String, taskId: String, category: String?, boundarySignal: String?) async {
+        let config = configOverride ?? ApmeSettings.load()
         guard config.enabled else { return }
         guard let task = store.getTask(id: taskId) else { return }
         let turns = store.listTurnsForTask(taskId)
@@ -339,7 +343,7 @@ actor ApmeRunner {
             sample: store.getSampleDict(taskId)
         )
 
-        guard let judgeOutput = await callJudge(prompt: judgePrompt) else {
+        guard let judgeOutput = await callJudge(prompt: judgePrompt, config: config.judge) else {
             DaemonLogger.shared.debug("APME", "task judge returned nil task=\(taskId.prefix(8))")
             return
         }
@@ -479,6 +483,7 @@ actor ApmeRunner {
     }
 
     private func runOne(runId: String) async {
+        let config = configOverride ?? ApmeSettings.load()
         guard config.enabled else { return }
         guard let run = store.getRun(id: runId) else { return }
         if !store.listEvalsForRun(runId).isEmpty {
@@ -509,7 +514,7 @@ actor ApmeRunner {
             store: store
         )
 
-        guard let judgeOutput = await callJudge(prompt: judgePrompt) else { return }
+        guard let judgeOutput = await callJudge(prompt: judgePrompt, config: config.judge) else { return }
         guard let parsed = Self.parseJudgeJson(judgeOutput.text) else { return }
 
         let now = Int(Date().timeIntervalSince1970 * 1000)
@@ -576,20 +581,20 @@ actor ApmeRunner {
         let label: String
     }
 
-    private func callJudge(prompt: String) async -> JudgeOutput? {
-        switch config.judge.backend {
+    private func callJudge(prompt: String, config: ApmeJudgeConfig) async -> JudgeOutput? {
+        switch config.backend {
         case .foundationModels:
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         case .mlx:
-            if let text = await ApmeJudgeMlx.judge(prompt: prompt, config: config.judge) {
+            if let text = await ApmeJudgeMlx.judge(prompt: prompt, config: config) {
                 return JudgeOutput(text: text, label: ApmeJudgeMlx.judgeModelLabel)
             }
             // Default chain only: an explicitly named `mlx` keeps the
             // cost-sensitive-defaults rule that an offline backend produces a
             // visible skip rather than a silent downgrade. The loader clears
             // this flag whenever the user named the backend.
-            guard config.judge.fallbackToFoundationModels else { return nil }
+            guard config.fallbackToFoundationModels else { return nil }
             // `info`, not `debug`: this is the switch to a measurably weaker
             // judge (0.580 against 0.86–1.00 on the judge-fidelity rubric), and
             // the MLX repetition-penalty default is calibrated against how
@@ -602,10 +607,10 @@ actor ApmeRunner {
             return await ApmeJudgeFoundationModels.judge(prompt: prompt)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeFoundationModels.judgeModelLabel) }
         case .openai:
-            return await ApmeJudgeOpenAI.judge(prompt: prompt, config: config.judge)
+            return await ApmeJudgeOpenAI.judge(prompt: prompt, config: config)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeOpenAI.judgeModelLabel) }
         case .api:
-            return await ApmeJudgeApi.judge(prompt: prompt, config: config.judge)
+            return await ApmeJudgeApi.judge(prompt: prompt, config: config)
                 .map { JudgeOutput(text: $0, label: ApmeJudgeApi.judgeModelLabel) }
         case .openclaw:
             DaemonLogger.shared.info("APME judge: openclaw backend not wired — degrading to foundationModels")
