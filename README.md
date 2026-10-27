@@ -312,12 +312,14 @@ use the same meaning across stores: minor versions identify a shared feature
 milestone, while target-specific patches fix or complete existing behavior.
 Targets can ship at different times; you do not need to update every device
 together. See the [version decision policy](RELEASING.md#choosing-a-version).
+Release tags identify source versions; check the [delivery records](RELEASING.md)
+for verified publication and Store review status.
 
 | Product | Install / update | Release tag |
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.3` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.4` |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
@@ -330,16 +332,18 @@ remains 1.10.1 (28). The public APK passed a data-preserving Pantone upgrade and
 live dashboard check. See the
 [delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
 
-**npm delivery, 2026-10-26:** all four public packages are **1.9.3**. The
-release includes the verified correction for Codex sessions that stayed working
-after a terminal error without a Stop hook. Install or update with
-`npx @agentdeck/setup`.
+**npm 1.9.4:** all four packages include the repository's root LICENSE, with
+its exact bytes checked before publication. This version retains the correction
+for Codex sessions that stayed working after a terminal error without a Stop
+hook. Install or update with `npx @agentdeck/setup`.
 
-**Apple submission, 2026-10-26:** macOS 1.9.3 / 9501 passed scoped runtime
-acceptance and is **Waiting for Review**; it is not yet public. The current
-public macOS version remains 1.9.2 / 9401. The
-[delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint) separates
-sources, acceptance and submission states.
+**Apple checkpoint, 2026-10-26:** macOS 1.9.3 / 9501 passed scoped runtime
+acceptance and was submitted for review. The verified public macOS version at
+that checkpoint was 1.9.2 / 9401; see the
+[dated receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
+The [October 27 follow-up decision](RELEASING.md#2026-10-27-handover-and-package-follow-up-decision)
+covers a replacement build for CLI-to-Swift recovery, with artifact and runtime
+acceptance required before replacing the pending submission.
 
 **Apple delivery, 2026-10-24:** macOS **1.9.2 / 9401 is public** in the
 [Mac App Store](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac),

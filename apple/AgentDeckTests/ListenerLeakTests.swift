@@ -84,6 +84,36 @@ final class ListenerLeakTests: XCTestCase {
         XCTAssertTrue(stopped, "stop() must release the current listener")
     }
 
+    func testStartupDeadlineCancelsItsListenerAndCannotCancelAReplacement() async throws {
+        let (first, second) = try freePorts()
+        let server = WebSocketServer()
+        do {
+            try await server.start(port: first, startupTimeout: 0)
+            XCTFail("zero startup budget must time out")
+        } catch WebSocketServerError.listenerTimedOut {
+            // The deadline is queued before the listener can report ready.
+        }
+        let timedOutPortReleased = await waitUntilNotListening(first)
+        XCTAssertTrue(timedOutPortReleased)
+        try await server.start(port: second)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(isListening(second), "old timeout/cancellation must not retire the replacement")
+        await server.stop()
+        let stopped = await waitUntilNotListening(second)
+        XCTAssertTrue(stopped)
+    }
+
+    func testReadyListenerOutlivesItsStartupDeadline() async throws {
+        let (port, _) = try freePorts()
+        let server = WebSocketServer()
+        try await server.start(port: port, startupTimeout: 1)
+        try await Task.sleep(for: .milliseconds(1_100))
+        XCTAssertTrue(isListening(port), "startup timeout must be cancelled once ready")
+        await server.stop()
+        let stopped = await waitUntilNotListening(port)
+        XCTAssertTrue(stopped)
+    }
+
     func testAFailedStartLeavesNothingBoundAndNothingAssigned() async throws {
         let (port, _) = try freePorts()
         let holder = WebSocketServer()

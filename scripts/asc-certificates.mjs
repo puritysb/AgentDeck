@@ -517,12 +517,89 @@ function assertTargetItem(active, versionId) {
   return item;
 }
 
+/** Replace only an explicitly named pending submission after the uploaded
+ * replacement, metadata and inherited media have already been verified. Apple
+ * documents `canceled: true`; cancellation restarts the review queue on resubmit.
+ * No cancellation or attachment is retried after an unknown response. */
+async function replacePendingBuild({ request, version, build, previousBuild, submissionId, pause }) {
+  requireThat(/^\d+$/.test(previousBuild ?? '') && Number(previousBuild) < Number(build),
+    'Replacement requires an explicit older build number');
+  requireThat(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(submissionId ?? ''),
+    'Replacement requires the exact previous submission UUID');
+  let snapshot = await releaseSnapshot(request, version, build);
+  await assertReleaseMedia(request, version, snapshot);
+  // Repeating preparation after a successful attachment must never cancel the
+  // new submission. The normal prepare path validates its exact state and copy.
+  if (snapshot.attachedId === snapshot.buildId) return;
+  const inspect = async () => {
+    const all = await collection(request, `/v1/apps/${APP_ID}/reviewSubmissions?filter[platform]=${PLATFORM}&limit=200`);
+    const old = exactlyOne(all.data.filter(row => row.id === submissionId), 'explicit previous submission');
+    resourceId(old, 'reviewSubmissions');
+    requireThat(old.attributes?.platform === PLATFORM, 'Previous submission platform mismatch');
+    const items = (await collection(request, `/v1/reviewSubmissions/${submissionId}/items?include=appStoreVersion&limit=200`)).data;
+    assertTargetItem({ submission: old, items }, snapshot.versionId);
+    const active = await activeSubmissions(request);
+    requireThat(!active || active.submission.id === submissionId, 'Another submission became active; refusing replacement');
+    snapshot = await releaseSnapshot(request, version, build);
+    requireThat(snapshot.attachedBuild === previousBuild && snapshot.attachedId !== snapshot.buildId,
+      'Previous build association changed; refusing replacement');
+    return { old, active };
+  };
+  let { old, active } = await inspect();
+  if (SUBMITTED.has(old.attributes.state)) {
+    requireThat(active?.submission.id === submissionId && SUBMITTED.has(snapshot.target.attributes.appStoreState),
+      'Previous version and submission must both still be in review');
+    try {
+      await request(`/v1/reviewSubmissions/${submissionId}`, 'PATCH', {
+        data: { type: 'reviewSubmissions', id: submissionId, attributes: { canceled: true } },
+      });
+    } catch (error) {
+      if (!error.outcomeUnknown) throw error;
+      // Reconcile this same submission; never repeat cancellation in this run.
+    }
+  } else requireThat(['CANCELING', 'COMPLETE'].includes(old.attributes.state),
+    'Previous submission is not submitted or canceling/complete');
+  let ready = false;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    ({ old, active } = await inspect());
+    if (old.attributes.state === 'COMPLETE' && !active
+      && snapshot.target.attributes.appStoreState === 'DEVELOPER_REJECTED') {
+      ready = true;
+      break;
+    }
+    requireThat(['WAITING_FOR_REVIEW', 'IN_REVIEW', 'CANCELING', 'COMPLETE'].includes(old.attributes.state),
+      'Cancellation entered an unexpected state; inspect ASC');
+    if (attempt < 5) await pause(2000);
+  }
+  requireThat(ready, 'Cancellation outcome not confirmed; read back before retrying the same replacement');
+  await assertReleaseMedia(request, version, snapshot);
+  ({ old, active } = await inspect());
+  requireThat(old.attributes.state === 'COMPLETE' && !active
+    && snapshot.target.attributes.appStoreState === 'DEVELOPER_REJECTED',
+  'Replacement state changed before build attachment');
+  try {
+    await request(`/v1/appStoreVersions/${snapshot.versionId}/relationships/build`, 'PATCH', {
+      data: { type: 'builds', id: snapshot.buildId },
+    });
+  } catch (error) {
+    if (!error.outcomeUnknown) throw error;
+  }
+  snapshot = await releaseSnapshot(request, version, build);
+  requireThat(snapshot.attachedId === snapshot.buildId && EDITABLE.has(snapshot.target.attributes.appStoreState),
+    'Replacement build attachment is not confirmed; inspect ASC before retrying');
+}
+
 /** Fixed app/platform operation; callers cannot supply endpoints, methods or bodies. */
-export async function runRelease({ action, version, build, copy, request, provenance, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function runRelease({ action, version, build, copy, request, provenance, previousBuild, previousSubmission, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
   validateReleaseTarget(version, build);
-  requireThat(['release-prepare', 'release-submit'].includes(action), 'Unknown release operation');
+  requireThat(['release-prepare', 'release-submit', 'release-replace-prepare'].includes(action), 'Unknown release operation');
   requireThat(copy?.notes && LOCALES.every(l => typeof copy.whatsNew?.[l] === 'string' && copy.whatsNew[l].length > 0), 'Incomplete repository copy');
   requireThat(provenance?.sourceSha && provenance?.runId && provenance?.artifactDigest, 'Verified upload provenance is required');
+  const replacement = action === 'release-replace-prepare';
+  if (replacement) {
+    await replacePendingBuild({ request, version, build, previousBuild, submissionId: previousSubmission, pause });
+    action = 'release-prepare';
+  }
   if (action === 'release-prepare') await ensureReleaseVersion(request, version, build, copy);
   let snapshot = await releaseSnapshot(request, version, build);
   await assertReleaseMedia(request, version, snapshot);
@@ -534,6 +611,7 @@ export async function runRelease({ action, version, build, copy, request, proven
   }
   const receipt = status => ({ appId: APP_ID, platform: PLATFORM, version, build, status,
     versionId: snapshot.versionId, buildId: snapshot.buildId, ...provenance,
+    ...(replacement ? { previousBuild, previousSubmission } : {}),
     ...(active ? { submissionId: active.submission.id } : {}),
     metadataSha256: crypto.createHash('sha256').update(JSON.stringify(copy)).digest('hex') });
   if (active && SUBMITTED.has(active.submission.attributes.state)) {
@@ -657,10 +735,10 @@ export async function runRelease({ action, version, build, copy, request, proven
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const [cmd, arg, build, runId] = args;
-  if (['release-prepare', 'release-submit'].includes(cmd)) validateReleaseTarget(arg, build);
+  const [cmd, arg, build, runId, previousBuild, previousSubmission] = args;
+  if (['release-prepare', 'release-submit', 'release-replace-prepare'].includes(cmd)) validateReleaseTarget(arg, build);
   else requireThat(['list', 'revoke', 'store-status'].includes(cmd),
-    'usage: asc-certificates.mjs (list | store-status | revoke <ids> | release-prepare <version> <build> | release-submit <version> <build>)');
+    'usage: asc-certificates.mjs (list | store-status | revoke <ids> | release-prepare <version> <build> | release-submit <version> <build> | release-replace-prepare <version> <build> <run> <previous-build> <previous-submission>)');
   api = createASCClient();
   if (cmd === 'store-status') await storeStatus();
   else if (cmd === 'list') await list();
@@ -676,7 +754,7 @@ export async function main(args = process.argv.slice(2)) {
     const copy = extractReleaseCopy(
       fs.readFileSync(resolve(root, 'docs/appstore-metadata-draft.md'), 'utf8'),
       fs.readFileSync(resolve(root, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), arg);
-    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api, provenance })));
+    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api, provenance, previousBuild, previousSubmission })));
   }
 }
 

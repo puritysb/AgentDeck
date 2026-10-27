@@ -82,6 +82,9 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     private var backgroundEnteredAt: Date?
     private var isTerminating = false
+    /// Only the app-owned state in a hosted test is inert. Test fixtures still
+    /// use the normal initializer and exercise the real connection state machine.
+    let isInertHost: Bool
     #if os(macOS)
     private var staleDataMonitor: Timer?
     private static let staleDataThresholdSec: TimeInterval = 20
@@ -192,8 +195,20 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     /// - Parameter foregroundSearchDeadlineSec: ceiling on the visible search
     ///   indicator. Injectable so tests can assert the bound in milliseconds
     ///   instead of waiting out the production value.
-    init(foregroundSearchDeadlineSec: TimeInterval = 12) {
+    init(foregroundSearchDeadlineSec: TimeInterval = 12, inertHost: Bool = false) {
         self.foregroundSearchDeadlineSec = foregroundSearchDeadlineSec
+        self.isInertHost = inertHost
+        timelineGenerator = StateTimelineGenerator(store: timelineStore)
+        if inertHost {
+            // Do not migrate credentials, subscribe to discovery, install wake
+            // listeners, or arm timers in the XCTest host's root dashboard.
+            // Permanently retire the transports too, so direct UI access cannot
+            // bypass the state holder's existing termination guards.
+            isTerminating = true
+            discovery.prepareForTermination()
+            connection.prepareForTermination()
+            return
+        }
         credentials = credentials // Migrate the legacy single URL before any host switch.
         #if DEBUG
         // App Store/launch capture only: pin a Debug app directly to the
@@ -252,7 +267,6 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             }
             .store(in: &cancellables)
 
-        timelineGenerator = StateTimelineGenerator(store: timelineStore)
         connection.onEvent = { [weak self] event in
             guard let self, !self.isTerminating else { return }
             self.handleEvent(event)

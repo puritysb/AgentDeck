@@ -9,14 +9,33 @@ import UserNotifications
 
 @main
 struct AgentDeckApp: App {
-    @StateObject private var stateHolder = AgentStateHolder()
+    @StateObject private var stateHolder = AgentDeckApp.makeStateHolder()
     @StateObject private var preferences = AppPreferences.shared
+
+    /// Restrict host isolation to XCTest's explicit launch markers. Individual
+    /// AgentStateHolder fixtures keep their production behavior under XCTest.
+    nonisolated static func isHostedTest(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+    }
+
+    nonisolated static func makeStateHolder(environment: [String: String] = ProcessInfo.processInfo.environment) -> AgentStateHolder {
+        AgentStateHolder(inertHost: isHostedTest(environment: environment))
+    }
+
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var daemonService: DaemonService
     @Environment(\.openWindow) private var openWindow
 
     init() {
+        // A hosted test must neither start a hub nor install exit handlers that
+        // can remove the live app's registry. Its fixtures opt into their own work.
+        if Self.isHostedTest() {
+            _daemonService = StateObject(wrappedValue: DaemonService(automaticallyStart: false))
+            return
+        }
         // Enforce single-instance: activate existing instance and exit if one is running.
         // Install cleanup handlers to remove daemon.json on any exit path (crash, signal).
         _ = SingletonGuard.enforce()
@@ -44,7 +63,7 @@ struct AgentDeckApp: App {
                 .sheet(isPresented: Binding(
                     get: {
                         !preferences.hasSeenOnboarding
-                            && ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil
+                            && !stateHolder.isInertHost
                     },
                     set: { newValue in
                         if !newValue {
@@ -165,6 +184,7 @@ struct AgentDeckApp: App {
                 style: preferences.menuBarIconStyle
             )
             .onAppear {
+                guard !stateHolder.isInertHost else { return }
                 DockVisibilityController.shared.openDashboard = { openWindow(id: "dashboard") }
                 configureDaemonConnection()
             }
@@ -181,7 +201,7 @@ struct AgentDeckApp: App {
     @MainActor private static var didConfigureDaemonConnection = false
 
     private func configureDaemonConnection() {
-        guard !Self.didConfigureDaemonConnection else { return }
+        guard !stateHolder.isInertHost, !Self.didConfigureDaemonConnection else { return }
         Self.didConfigureDaemonConnection = true
 
         // Wire AppDelegate to daemon service for clean shutdown
@@ -255,6 +275,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     weak var stateHolder: AgentStateHolder?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard !AgentDeckApp.isHostedTest() else { return }
         // Foreground-banner presentation for attention notifications
         // (see UNUserNotificationCenterDelegate extension below).
         UNUserNotificationCenter.current().delegate = self
@@ -289,6 +310,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// when it's done. The 3 s fallback is preserved as a force-exit
     /// safety net for pathological cases (e.g. USB endpoint hang).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !AgentDeckApp.isHostedTest() else { return .terminateNow }
         // Visually dismiss the app right now — user sees Cmd+Q → instant close.
         for window in sender.windows {
             window.orderOut(nil)

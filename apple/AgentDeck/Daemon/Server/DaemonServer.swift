@@ -1053,6 +1053,7 @@ final class DaemonServer {
     }
 
     nonisolated let port: UInt16
+    private let preferredStartupPort: UInt16
     /// Network posture (Settings → Local server). Resolved once at init so the
     /// bind address, the Bonjour advertisement, the module set, and the
     /// startup log cannot disagree — Node parity: `resolveDaemonPosture()`.
@@ -1835,7 +1836,7 @@ final class DaemonServer {
     // Holding a userInitiatedAllowingIdleSystemSleep activity keeps the listener
     // responsive while the Mac is awake; the trailing …AllowingIdleSystemSleep
     // still lets the Mac sleep normally (no laptop-drain).
-    private var backgroundActivity: NSObjectProtocol?
+    private let backgroundActivity = DaemonProcessActivity()
 
     // Polling tasks
     private var sessionPollTask: Task<Void, Never>?
@@ -1854,13 +1855,14 @@ final class DaemonServer {
 
     // MARK: - Init
 
-    init(port: Int?, debug: Bool, posture: DaemonPosture = .open) async throws {
+    init(port: Int?, debug: Bool, posture: DaemonPosture = .open, preferredStartupPort: Int? = nil) async throws {
         try Task.checkCancellation()
         self.posture = posture
         self.timelineRelay = TimelineRelay(selfPort: port ?? SessionRegistry.defaultPort)
         self.focusRelay = SessionFocusRelay()
 
         let requestedPort = port ?? SessionRegistry.defaultPort
+        self.preferredStartupPort = UInt16(preferredStartupPort ?? requestedPort)
         var resolvedPort = UInt16(requestedPort)
 
         // Singleton guard — only when using default port
@@ -1999,6 +2001,12 @@ final class DaemonServer {
 
     func startServices(onDashboardReady: (@Sendable () async -> Void)? = nil) async throws {
         try checkStartupActive()
+        try await backgroundActivity.start {
+            try await self.startServicesHoldingActivity(onDashboardReady: onDashboardReady)
+        }
+    }
+
+    private func startServicesHoldingActivity(onDashboardReady: (@Sendable () async -> Void)?) async throws {
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.owned(by: dotOwnership)
         do { try DotHost.shared.resumeIfEnabled() } catch { DaemonLogger.shared.error("Dot configuration could not be loaded") }
@@ -2168,7 +2176,13 @@ final class DaemonServer {
 
         // Await listener `.ready` — throws on bind failure (EADDRINUSE etc).
         // Registry writes must NOT happen before this succeeds.
-        try await wsServer.start(port: port, loopbackOnly: posture.loopbackOnly)
+        try await ListenerStartupRecovery.start(
+            port: Int(port), preferredPort: Int(preferredStartupPort),
+            validate: { try self.checkStartupActive() }
+        ) { timeout in
+            try await self.wsServer.start(port: self.port, loopbackOnly: self.posture.loopbackOnly,
+                                          startupTimeout: timeout)
+        }
         try checkStartupActive()
         DaemonLogger.shared.info(posture.describe(port: port))
 
@@ -2520,13 +2534,6 @@ final class DaemonServer {
             }
         }
         monitor.start(queue: DispatchQueue(label: "dev.agentdeck.networkmonitor"))
-
-        // 15. Hold a process activity so App Nap can't suspend the listener while the
-        // app is backgrounded + the display is asleep (dashboard clients and device
-        // modules keep talking to the listener; a napped daemon drops them).
-        backgroundActivity = ProcessInfo.processInfo.beginActivity(
-            options: .userInitiatedAllowingIdleSystemSleep,
-            reason: "Serving local dashboard devices (HTTP/WS)")
 
         DaemonLogger.shared.info("Daemon running on port \(port) — all modules wired")
     }
@@ -12050,8 +12057,7 @@ final class DaemonServer {
         #endif
         codexOtelSubagentFilter.close()
         DaemonLogger.shared.info("Daemon shutting down...")
-        if let backgroundActivity { ProcessInfo.processInfo.endActivity(backgroundActivity) }
-        backgroundActivity = nil
+        backgroundActivity.stop()
         networkMonitor?.cancel()
         networkMonitor = nil
         networkDebounceTask?.cancel()

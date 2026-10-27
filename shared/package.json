@@ -1,6 +1,6 @@
 {
   "name": "@agentdeck/shared",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "engines": {
     "node": "22.x || 24.x || 26.x"
   },
@@ -17,7 +17,8 @@
   },
   "files": [
     "dist",
-    "!dist/__tests__"
+    "!dist/__tests__",
+    "LICENSE"
   ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -43,7 +44,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "node ../scripts/package-license.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

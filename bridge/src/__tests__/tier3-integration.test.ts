@@ -176,37 +176,50 @@ describe('Display sleep/wake broadcast', () => {
     await hookServer.listen(0);
     const addr = hookServer.getServer().address();
     const port = typeof addr === 'object' && addr ? addr.port : 0;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
 
+    let ssePromise: Promise<void> | undefined;
     try {
       const sseEvents: string[] = [];
-      const controller = new AbortController();
-
-      const ssePromise = fetch(`http://127.0.0.1:${port}/sse`, { signal: controller.signal })
+      ssePromise = fetch(`http://127.0.0.1:${port}/sse`, { signal })
         .then(async (res) => {
+          expect(res.status).toBe(200);
           const reader = res.body!.getReader();
           const decoder = new TextDecoder();
+          let text = '';
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              const text = decoder.decode(value);
+              text += decoder.decode(value, { stream: true });
               if (text.includes('event: display_state')) {
                 sseEvents.push('display_state');
-                controller.abort();
+                return;
               }
             }
-          } catch { /* AbortError */ }
-        })
-        .catch(() => {});
-
-      await new Promise((r) => setTimeout(r, 50));
+          } finally {
+            await reader.cancel();
+          }
+        });
+      // Observe early connection failures while readiness is being checked;
+      // the awaited promise below still propagates the original failure.
+      void ssePromise.catch(() => {});
+      // Observe the subscription instead of assuming fetch connects in 50 ms.
+      // SSE headers may not flush until the first event, so awaiting fetch alone
+      // cannot establish readiness for this otherwise empty stream.
+      await vi.waitFor(async () => {
+        const response = await fetch(`http://127.0.0.1:${port}/health`, { signal });
+        expect(response.status).toBe(200);
+        expect((await response.json()).sseClients).toBe(1);
+      }, { timeout: 2000, interval: 20 });
 
       hookServer.broadcastSse({ type: 'display_state', displayOn: false } as BridgeEvent);
-
-      await Promise.race([ssePromise, new Promise((r) => setTimeout(r, 2000))]);
-
+      await ssePromise;
       expect(sseEvents).toContain('display_state');
     } finally {
+      controller.abort();
+      await ssePromise?.catch(() => {});
       await hookServer.close();
     }
   });

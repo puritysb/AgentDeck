@@ -17,17 +17,19 @@
  * enforces that).
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { waitForRegistryVersion } from './npm-registry-visibility.mjs';
+import { PUBLIC_NPM_PACKAGES, preparePackageLicense, verifyTarballLicense } from './package-license.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 // bridge depends on hooks + shared, so those two must exist on the registry
 // before bridge's exact-version pins can resolve; setup is last, matching the
 // order users install in.
-const ORDER = ['shared', 'hooks', 'bridge', 'setup'];
+const ORDER = PUBLIC_NPM_PACKAGES;
 
 function publishedVersion(name, version) {
   try {
@@ -79,7 +81,22 @@ for (const pkg of ORDER) {
       // continue past packages whose immutable version already reached npm.
       console.log(`[publish-npm] ==> ${manifest.name}@${manifest.version} already published; skipping`);
     } else {
-      console.log(`[publish-npm] ==> ${manifest.name}`);
+      // Prepare explicitly as well as via prepack: an environment that skips
+      // lifecycle scripts must not remove the license. Inspect a real npm
+      // archive, from the same directory/manifests the publisher will use.
+      preparePackageLicense(join(root, pkg), root);
+      const validationDir = mkdtempSync(join(tmpdir(), 'agentdeck-npm-license-'));
+      try {
+        execFileSync('npm', ['pack', '--json', '--pack-destination', validationDir], {
+          cwd: join(root, pkg), timeout: 60_000, maxBuffer: 4 * 1024 * 1024,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        const filename = `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`;
+        verifyTarballLicense(join(validationDir, filename));
+      } finally {
+        rmSync(validationDir, { recursive: true, force: true });
+      }
+      console.log(`[publish-npm] ==> ${manifest.name} (archive LICENSE verified)`);
       execFileSync('npm', ['publish', '--access', 'public'], {
         cwd: join(root, pkg),
         stdio: 'inherit',

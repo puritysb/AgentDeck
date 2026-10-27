@@ -95,6 +95,108 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-27 handover and package follow-up decision
+
+The maintainer requested completion and delivery of the two remaining improvements.
+This is a correction within the existing 1.9 contract; no new product milestone.
+The October 27 KST [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/40353160014)
+confirmed macOS 1.9.3 / 9501 still `WAITING_FOR_REVIEW`, with automatic release
+after approval. npm 1.9.4 and its tag were not present at the version checkpoint.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.3 | None at 1.9.4 | 1.9.4 / verified source and tarball hashes | Patch: include the repository LICENSE in every installed package and enforce it before publication | Existing 1.9 packaging contract |
+| macOS / App Store | 1.9.2 / 9401 | 1.9.3 / 9501, Waiting for Review | 1.9.3 / next CI-derived build above 9501 | Patch rebuild: shorten recovery from a transient canonical-port reservation after CLI shutdown while preserving bounded fallback | Existing 1.9 daemon ownership contract; standard Store build excludes Dot |
+
+Keep submission `7dd4ca01-37ff-4a13-97fd-51dbefe57795` intact until the replacement
+artifact passes source, Release archive and actual handover checks. Re-read the
+Store state before replacement. If 1.9.3 has become public, record a new patch
+decision before changing the Apple product version or uploading another build.
+Replacing the pending build requires removing that exact submission from review;
+resubmission restarts Apple's review queue. No other submission is in scope.
+Android, iOS, Stream Deck, Ulanzi, firmware and root `VERSION` are unchanged.
+
+Acceptance requires exact LICENSE bytes in all four npm and pnpm tarballs,
+installed-package acceptance, the full verification tier, bounded listener retry
+and cancellation tests, and a measured real CLI/Swift handover with one owner,
+preserved settings/credentials and downstream state. The previous 146.185-second
+CLI-to-Swift observation is a baseline, not a guaranteed improvement target.
+Delivery and measured results will be recorded after those checks.
+
+The first follow-up candidate (`cf235e35`, macOS 1.9.3 / 9601) exposed another
+startup gap during the locked, off-console Mac test. The last Node response to
+first Swift response took **38.060 seconds**, compared with the earlier
+146.185-second observation. That first response did not establish readiness:
+from listener-ready at 19:19:25 UTC to all services wired at 19:25:50 UTC on
+October 26, initialization took **385 seconds**, with repeated five-second health
+timeouts. The existing activity that prevents App Nap was acquired only at the
+end of startup; sustained health responses resumed immediately afterward. This
+correlation motivates an earlier activity lifetime with balanced failure,
+cancellation and shutdown cleanup; it does not by itself prove the scheduler
+cause. The correction required a fresh controlled runtime comparison.
+
+Build 9601 is uploaded and VALID, but is not accepted or submitted for review.
+The first Swift live-fixture attempt timed out before creating any fixtures;
+Swift real-turn and visible-screen acceptance remain incomplete. The existing
+9501 review submission is preserved, and npm 1.9.4 is not tagged or published at
+this checkpoint. Screen recording permission was granted, but the locked login
+session reported no attached display to the capture API. Keep that observation
+separate from daemon responsiveness and do not waive either acceptance gate.
+
+A local signed Release comparison (1.9.3 / build 5, source-equivalent to
+`e0813649`) then passed in the locked session. Last Node response to first Swift
+response was **38.027 seconds**; listener-ready to all services wired decreased
+from 385 to **3 seconds** (one-second log resolution). Swift returned **106/106**
+health responses over **210.174 seconds**, with no unknown observations. The
+unchanged five-second Swift live-fixture gate passed **15/15** checks with **40**
+WebSocket frames. Return to Node took **32.667 seconds** between the last Swift
+and first Node responses, followed by **64/64** successful health and single-owner
+observations. These are one local comparison's measurements under differing
+observed loads, not a universal startup deadline or proof of a final CI artifact.
+
+No actual Swift model turn or Mac pixels were captured in that comparison.
+Final CI artifact acceptance still requires those checks, physical downstream
+evidence and persistence of new real-turn events through return to Node. A later
+readback confirmed the same eight fixture events in both Node and Swift caches
+and timelines after documented timestamp and display-time normalization. This
+bounded sample does not establish full-history transfer.
+No upload, review replacement or publication is implied by these local results.
+
+The final CI candidate (`9034c5f9`, macOS 1.9.3 / 9701) passed its first
+CLI→Swift→CLI cycle, but a second CLI→Swift cycle exposed an incomplete automatic
+transition after slow cleanup. In the first reverse transition, stand-down began
+at 21:15:07 UTC; the local startup/shutdown wait exceeded its eight-second budget
+at 21:15:16, and shutdown completed at 21:15:17. The timeout returned before
+`connectToExternalDaemon` and its health monitor were installed. The service had
+already cleared its port to zero, so its remaining health loop could not recover.
+The dashboard's separate WebSocket client did reconnect; that transport evidence
+did not prove that ownership monitoring had resumed.
+
+After the Mac was unlocked and the actual 9701 Dashboard was visible, the second
+CLI stop produced **224.224 seconds** of observation with **113** unknown canonical
+health samples and no Swift response. The candidate was not restarted to disguise
+that failure. A supported CLI start explicitly restored availability; this was
+recovery after a failed test, not a successful automatic handover. The same app
+process was kept for diagnosis. First-cycle measurements and the original raw
+receipts remain valid only for their recorded scope.
+
+**9701 is uploaded and VALID, but is blocked for release and must not replace the
+9501 submission.** The follow-up remains macOS 1.9.3 while that version is
+unreleased, with a new CI-derived build above 9701. Resume an automatic ownership
+transition after its actual teardown completes only when its generation and
+connection intent are still current. Explicit stop and a timed-out Settings
+restart must retain their existing behavior. The same timeout can discard automatic
+recovery after a listener startup failure or a later listener failure; those paths
+must retain their failure reason and attempted port until cleanup finishes.
+These two additional cases were found in source review, not observed on the
+installed candidate. Acceptance now includes fake regressions with delayed
+teardown crossing its injected caller budget, two successive actual automatic
+ownership cycles, and Mac WORKING pixels and signed Shortcuts navigation.
+No npm tag or public package publication has occurred at this checkpoint.
+The October 26 22:10 UTC store read (run `40410273766`) found the existing 9501
+submission **IN_REVIEW**, with macOS 1.9.2 still public. Re-read before the next
+upload: if 1.9.3 becomes public, record a new patch-version decision first.
+
 ### 2026-10-26 non-Dot stability release decision
 
 The maintainer authorized verification and release on October 26. These are
@@ -1984,6 +2086,13 @@ when editing a published body.
 
 **The tarballs are machine-independent — keep them that way.** Publishing from an arm64 Mac, an Intel Mac, or CI Linux must produce byte-equivalent package contents. The one thing that used to violate this was the Foundation Models voice/judge helper: a `prepack` hook baked `assets/fm-helper/agentdeck-fm-helper` (a gitignored, arch-specific, ad-hoc-signed Mach-O) into whatever the publishing machine could build — so 1.0.13 shipped arm64-only from a dev Mac, and a CI publish would have silently shipped nothing. Since 1.0.14 the tarball carries only the helper's Swift source plus `scripts/build-fm-helper.mjs`, and the daemon compiles it on demand into `~/.agentdeck/fm-helper/` (macOS 26+, needs Xcode CLT; `bridge/src/foundation-models-helper.ts` also arch-checks any present binary so an Intel Mac never spawns an arm64 leftover). Never reintroduce a `prepack` that emits machine-built artifacts — `bridge/src/__tests__/fm-helper-arch.test.ts` gates this.
 
+The only public-package `prepack` is the platform-independent LICENSE copier.
+It refreshes ignored package copies from root `LICENSE`; both npm and pnpm
+archives must contain the exact source bytes. Pack from the release source
+checkout, where `../scripts/package-license.mjs` exists. Ordinary npm installation
+does not run this hook. Candidate verification checks both packers; publication
+checks the actual npm tarball before upload.
+
 1. Verify all four public npm manifests match each other and that the target version is unused on npm.
 2. Run `pnpm build` and tests.
 3. Pack all four packages from the exact release commit, install that candidate through
@@ -2148,6 +2257,22 @@ another candidate or modifying an active unrelated submission.
 4. Record the workflow, source, version, build, submission identity and measured
    review state. `WAITING_FOR_REVIEW` or `IN_REVIEW` is submitted, not public;
    confirm `READY_FOR_SALE` separately before reporting a live release.
+
+For a maintainer-authorized replacement of a pending build, use
+`action=release-replace-prepare` instead of step 2, with the same new-build inputs
+plus `previous_build=<exact old build>` and
+`previous_submission=<exact old submission UUID>`. Finish the new artifact's
+acceptance before dispatch. The operation verifies its upload provenance,
+processed build, required metadata and media before touching the old submission.
+It requires the old submission to contain only the same macOS version and still
+reference the specified older build. It cancels only that submission through
+[Apple's review-submission API](https://developer.apple.com/documentation/appstoreconnectapi/patch-v1-reviewsubmissions-_id_),
+waits for `COMPLETE` and `DEVELOPER_REJECTED`, rechecks the association, and attaches
+the new build before preparing the current copy. Resubmit using step 3; this
+restarts the review queue. Other active submissions, changed associations,
+public versions and uncertain cancellation outcomes stop the operation. Re-run
+only after reading back the same target; an already attached new build does not
+cancel a new submission.
 
 A missing response is an unknown outcome: read back the state before retrying.
 Do not overlap dispatches or create a second submission to work around an

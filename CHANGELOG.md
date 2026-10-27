@@ -67,6 +67,10 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
 
+## 2026-10-27 — npm 1.9.4
+
+- Include the full project license in all four npm packages. Verify the packed license against the repository source before publication.
+
 ## 2026-10-26 — npm 1.9.3
 
 - Recover failed Codex jobs left in WORKING when their terminal hook is missing, using explicit current-turn completion or interruption records; unreadable or uncertain observations never imply completion.
@@ -87,6 +91,8 @@ This delivery targets macOS. iPhone and iPad remain on their existing release.
 - Detect real OpenClaw approval requests consistently in the standalone Mac daemon.
 - Preserve separately started Codex sessions instead of merging sessions that share a project.
 - Estimate stale Codex quota renewal dates by calendar month.
+- Recover from temporary local address reservations during server startup with bounded retries, retaining the existing fallback when the port is occupied or its state cannot be confirmed.
+- Improve local server responsiveness when the Mac dashboard starts in the background, and resume automatic recovery after delayed shutdown.
 
 Dot remains excluded from the App Store build.
 
