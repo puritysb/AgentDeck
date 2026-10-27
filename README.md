@@ -319,7 +319,7 @@ for verified publication and Store review status.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.4` |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.3` public; `npm-v1.9.4` candidate |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
@@ -332,10 +332,11 @@ remains 1.10.1 (28). The public APK passed a data-preserving Pantone upgrade and
 live dashboard check. See the
 [delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
 
-**npm 1.9.4:** all four packages include the repository's root LICENSE, with
-its exact bytes checked before publication. This version retains the correction
-for Codex sessions that stayed working after a terminal error without a Stop
-hook. Install or update with `npx @agentdeck/setup`.
+**npm follow-up, 2026-10-27:** 1.9.4 is prepared but not published; the last
+verified public version is 1.9.3. The candidate includes the root LICENSE in all
+four packages and retains the Codex terminal-error correction. Final artifact
+and three-mode runtime acceptance passed; publication readback is pending. See the
+[verification checkpoint](RELEASING.md#2026-10-27-follow-up-verification-checkpoint).
 
 **Apple checkpoint, 2026-10-26:** macOS 1.9.3 / 9501 passed scoped runtime
 acceptance and was submitted for review. The verified public macOS version at
