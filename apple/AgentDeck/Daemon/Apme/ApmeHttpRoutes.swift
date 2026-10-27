@@ -456,6 +456,11 @@ enum ApmeHttpRoutes {
     }
 
     private static func recommendResponse(store: ApmeStore, input: ApmeRecommendInput) -> HTTPServer.HTTPResponse {
+        var input = input
+        let configured = ApmeSettings.load().availableModels
+        if !configured.isEmpty {
+            input.availableModels = input.availableModels.map { requested in configured.filter { requested.contains($0) } } ?? configured
+        }
         let candidates = ApmeRecommender.recommend(store: store, input: input)
         let json = candidates.map { c -> [String: Any] in
             [
@@ -465,49 +470,24 @@ enum ApmeHttpRoutes {
                 "expectedScore": c.expectedScore,
                 "expectedCostUsd": c.expectedCostUsd ?? NSNull(),
                 "confidence": c.confidence,
+                "samples": c.samples,
+                "taskCategory": c.taskCategory ?? NSNull(),
                 "rationale": c.rationale,
             ]
         }
-        return .json(["schema": schemaVersion, "candidates": json])
+        return .json(["schema": schemaVersion, "candidates": json, "minSamples": ApmeComparisonRules.minSamples])
     }
 
     /// Pareto frontier (quality vs cost). Partitions the sample scorecard into
     /// the non-dominated frontier and the dominated set. Mirrors
     /// bridge/src/apme/pareto.ts.
     private static func paretoResponse(store: ApmeStore, category: String?) -> HTTPServer.HTTPResponse {
-        let rows = store.sampleScorecard()
-        let scoped = category != nil ? rows.filter { ($0["task_category"] as? String) == category } : rows
-        struct P { let row: [String: Any]; let quality: Double; let cost: Double }
-        let points: [P] = scoped.compactMap { r in
-            let samples = (r["samples"] as? Int) ?? 0
-            let quality = (r["avg_quality"] as? Double) ?? 0
-            guard samples >= 3, quality > 0 else { return nil }
-            let total = (r["total_cost"] as? Double) ?? 0
-            var out = r
-            let costPerSample = samples > 0 ? total / Double(samples) : 0
-            out["costPerSample"] = costPerSample
-            return P(row: out, quality: quality, cost: costPerSample)
-        }
-        func dominates(_ b: P, _ a: P) -> Bool {
-            let ge = b.quality >= a.quality && b.cost <= a.cost
-            let gt = b.quality > a.quality || b.cost < a.cost
-            return ge && gt
-        }
-        var frontier: [[String: Any]] = []
-        var dominated: [[String: Any]] = []
-        for a in points {
-            if points.contains(where: { $0.row["model_id"] as? String != a.row["model_id"] as? String && dominates($0, a) }) {
-                dominated.append(a.row)
-            } else {
-                frontier.append(a.row)
-            }
-        }
-        frontier.sort { (($0["costPerSample"] as? Double) ?? 0) < (($1["costPerSample"] as? Double) ?? 0) }
+        let result = ApmeRecommender.pareto(rows: store.sampleScorecard(), category: category)
         return .json([
             "schema": schemaVersion,
             "category": category.map { $0 as Any } ?? NSNull(),
-            "frontier": frontier,
-            "dominated": dominated,
+            "frontier": result.frontier.map(\.dictionary),
+            "dominated": result.dominated.map(\.dictionary),
         ])
     }
 

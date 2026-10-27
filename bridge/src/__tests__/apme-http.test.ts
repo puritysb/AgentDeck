@@ -369,7 +369,7 @@ describe('APME HTTP routes', () => {
   });
 
   it('POST /apme/recommend returns candidate list', async () => {
-    // Seed enough runs for the recommender's min-runs threshold.
+    // Only evaluated task samples are eligible for comparison.
     for (let i = 0; i < 4; i++) {
       const id = apme.collector.openRun({ sessionId: `s${i}`, agentType: 'claude-code', projectName: 'p' });
       apme.collector.updateModel(`s${i}`, 'claude-opus-4-6');
@@ -380,6 +380,9 @@ describe('APME HTTP routes', () => {
       });
       apme.collector.closeRun(`s${i}`);
       apme.store.insertEval({ runId: id, layer: 'llm_judge', metric: 'overall', score: 0.8, createdAt: Date.now() });
+      const taskId = `comparison-${i}`;
+      apme.store.insertTask({ id: taskId, runId: id, taskIndex: 0, boundarySignal: 'session_end', startedAt: 1 });
+      apme.store.updateTask(taskId, { endedAt: 2, taskCategory: 'coding', modelId: 'claude-opus-4-6', compositeScore: 0.8, costUsd: 0.1, costKnown: true });
     }
 
     const resp = await fetch(`${base}/apme/recommend`, {
@@ -392,6 +395,11 @@ describe('APME HTTP routes', () => {
     expect(body.candidates.length).toBeGreaterThan(0);
     expect(body.candidates[0].modelId).toBe('claude-opus-4-6');
     expect(body.candidates[0].expectedScore).toBeCloseTo(0.8);
+    const unavailable = await fetch(`${base}/apme/recommend`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskKind: 'coding', availableModels: [] }),
+    });
+    expect((await unavailable.json() as { candidates: unknown[] }).candidates).toEqual([]);
   });
 
   it('unknown /apme/* path returns 404', async () => {

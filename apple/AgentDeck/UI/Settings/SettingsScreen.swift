@@ -1104,7 +1104,7 @@ struct SettingsScreen: View {
             Text("Judge Backend")
                 .font(.system(size: 13, weight: .semibold))
 
-            Text("Which model scores your agent turns. Changes apply immediately and the next eval uses the new backend.")
+            Text("Which model scores your agent turns. Saved changes apply to the next evaluation; evaluations already running keep their original settings.")
                 .font(.system(size: 11))
                 .foregroundStyle(TerrariumHUD.subtext)
 

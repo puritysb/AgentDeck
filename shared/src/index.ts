@@ -82,3 +82,6 @@ export * from './dot-appearance.js';
 export * from './dot-pixels.js';
 
 export * from './background-work-presentation.js';
+
+export * from './apme-comparison.js';
+export * from './apme-scorecard-sql.js';

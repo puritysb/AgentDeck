@@ -158,7 +158,7 @@ tr.selected td{background:color-mix(in srgb,var(--accent) 15%,transparent);borde
       <button class="tab" onclick="showTab('runs')">Runs</button>
       <button class="tab" onclick="showTab('tasks')">Tasks</button>
       <button class="tab" onclick="showTab('graph')">Graph</button>
-      <button class="tab" onclick="showTab('recommend')">Recommend</button>
+      <button class="tab" onclick="showTab('recommend')">Compare</button>
       <button class="tab" onclick="showTab('scorecard')">Scorecard</button>
       <button class="tab" onclick="showTab('categories')">Categories</button>
     </div>
@@ -577,12 +577,19 @@ async function selectRun(id){
   }catch(e){el.innerHTML='<div class="detail-empty">Error: '+esc(e.message)+'</div>'}
 }
 
+function reportUrl(){
+  const url=new URL(location.href);
+  // Reports leave the authenticated WebView. Query/fragment/userinfo are
+  // navigation state, never part of an exportable report link.
+  url.search='';url.hash='';url.username='';url.password='';
+  return url.href;
+}
 function copyRunReport(rid){
   const el=document.getElementById('detail-panel');
   if(!el)return;
   // Build text report from the detail panel content
   const text=el.innerText.replace(/👍 Approve|👎 Reject|📋 Copy Report/g,'').trim();
-  const header='Run: '+rid+'\nURL: '+location.href;
+  const header='Run: '+rid+'\nURL: '+reportUrl();
   navigator.clipboard.writeText(header+'\n\n'+text).then(()=>{
     const btn=el.querySelector('[onclick*="copyRunReport"]');
     if(btn){const orig=btn.textContent;btn.textContent='Copied!';setTimeout(()=>btn.textContent=orig,1500)}
@@ -872,7 +879,7 @@ async function selectTask(id){
 async function loadScorecard(){
   try{const r=await fetch(api('/apme/scorecard'));const d=await r.json();const c=d.scorecards||[];
   if(!c.length){document.getElementById('scorecard-content').innerHTML='<div class="empty">No scorecard data yet</div>';return}
-  let h='<table><thead><tr><th>Model</th><th>Agent</th><th>Runs</th><th>Score</th><th>Tests</th><th>Cost</th><th>$/Quality</th></tr></thead><tbody>';
+  let h='<table><thead><tr><th>Model</th><th>Agent</th><th>Runs</th><th>Score</th><th>Tests</th><th>Cost</th><th>Avg $/quality</th></tr></thead><tbody>';
   for(const s of c)h+='<tr><td>'+esc(s.modelId)+'</td><td>'+esc(s.agentType)+'</td><td>'+s.runs+'</td><td>'+fs(s.avgOverall)+'</td><td>'+fs(s.avgTestsPass)+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td><td>'+(s.costPerQuality!=null?'$'+s.costPerQuality.toFixed(2):'—')+'</td></tr>';
   h+='</tbody></table>';document.getElementById('scorecard-content').innerHTML=h;
   }catch(e){document.getElementById('scorecard-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
@@ -887,39 +894,36 @@ async function loadCategories(){
   }catch(e){document.getElementById('categories-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
 }
 
-/**
- * Recommend tab — surfaces the recommender payoff: for each task category,
- * which agent/model performs best. Ranks the (agent, model, category)
- * sample-granularity scorecard (v_sample_scorecard) by quality, tie-broken by
- * cost-per-quality. The top row per category is the recommended default — this
- * is the "which agent/model is good at what" answer APME exists to produce.
- */
+/** Task comparisons use the daemon's eligibility, availability and cost policy. */
+const COMPARISON_REQUEST_TIMEOUT_MS=10000;
 async function loadRecommend(){
+  const el=document.getElementById('recommend-content');
   try{
-    const r=await fetch(api('/apme/samples'));const d=await r.json();
-    const rows=(d.scorecards||[]).filter(s=>s.taskCategory&&s.taskCategory!=='_empty'&&s.avgQuality!=null);
-    const el=document.getElementById('recommend-content');
-    if(!rows.length){el.innerHTML='<div class="empty">Not enough evaluated tasks yet — recommendations appear once tasks have composite scores.</div>';return}
-    const byCat={};
-    for(const s of rows){(byCat[s.taskCategory]=byCat[s.taskCategory]||[]).push(s)}
+    const r=await fetch(api('/apme/samples'),{signal:AbortSignal.timeout(COMPARISON_REQUEST_TIMEOUT_MS)});
+    if(!r.ok)throw new Error('Comparison data unavailable');
+    const d=await r.json();
+    const categories=[...new Set((d.scorecards||[]).map(s=>s.taskCategory).filter(Boolean))].sort();
+    const groups=await Promise.all(categories.map(async category=>{
+      const response=await fetch(api('/apme/recommend'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskKind:category}),signal:AbortSignal.timeout(COMPARISON_REQUEST_TIMEOUT_MS)});
+      if(!response.ok)throw new Error('Comparison policy unavailable');
+      const result=await response.json();
+      if(!Number.isFinite(result.minSamples))throw new Error('Update AgentDeck to enable task comparisons');
+      return {category,...result};
+    }));
+    const eligible=groups.filter(g=>(g.candidates||[]).length);
+    if(!eligible.length){el.innerHTML='<div class="empty">Not enough evaluated tasks yet for a comparable model. Unknown, mixed and test models are excluded; each candidate needs enough evaluated tasks in the same category.</div>';return}
     let h='<div style="padding:12px 14px">';
-    h+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">Best agent/model per task category — ranked by quality, tie-broken by cost-per-quality. ★ marks the recommended default for that kind of task.</div>';
-    for(const cat of Object.keys(byCat).sort()){
-      const list=byCat[cat].sort((a,b)=>(b.avgQuality-a.avgQuality)||((a.costPerQuality==null?1e9:a.costPerQuality)-(b.costPerQuality==null?1e9:b.costPerQuality)));
-      const best=list[0];
-      h+='<div style="margin-bottom:18px">';
-      h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap"><span class="badge-cat">'+esc(cat)+'</span>';
-      h+='<span style="font-size:12px;color:var(--muted)">Best: <b style="color:var(--text)">'+esc(best.agentType||'?')+' / '+esc(best.modelId||'?')+'</b> · '+fs(best.avgQuality)+' · '+(best.costPerQuality!=null?'$'+best.costPerQuality.toFixed(3)+'/q':'—')+' · '+best.samples+' samples</span></div>';
-      h+='<table style="margin-top:4px"><thead><tr><th>Agent</th><th>Model</th><th>Quality</th><th>$/Quality</th><th>Cost</th><th>Samples</th></tr></thead><tbody>';
-      for(const s of list){
-        const isBest=s===best;
-        h+='<tr'+(isBest?' style="background:color-mix(in srgb,var(--green) 8%,transparent)"':'')+'><td>'+(isBest?'★ ':'')+esc(s.agentType||'—')+'</td><td>'+esc((s.modelId||'—').slice(0,22))+'</td><td>'+fs(s.avgQuality)+'</td><td>'+(s.costPerQuality!=null?'$'+s.costPerQuality.toFixed(3):'—')+'</td><td>'+(s.totalCost!=null?'$'+s.totalCost.toFixed(2):'—')+'</td><td>'+s.samples+'</td></tr>';
+    h+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5">Observed task comparisons across all recorded history. AI estimates are not verified success rates. Candidates have at least '+groups[0].minSamples+' evaluated tasks in the same category; task difficulty and judge conditions may differ. Missing cost is unpriced. No default model is selected.</div>';
+    for(const group of eligible){
+      h+='<div style="margin-bottom:18px"><span class="badge-cat">'+esc(group.category)+'</span>';
+      h+='<table style="margin-top:4px"><thead><tr><th>Agent</th><th>Model</th><th>AI estimate</th><th>Est. $/task</th><th>Tasks</th></tr></thead><tbody>';
+      for(const candidate of group.candidates){
+        h+='<tr><td>'+esc(candidate.agentType||'—')+'</td><td>'+esc(candidate.modelId||'—')+'</td><td>'+fs(candidate.expectedScore)+'</td><td>'+(candidate.expectedCostUsd!=null?'$'+candidate.expectedCostUsd.toFixed(4):'unpriced')+'</td><td>'+candidate.samples+'</td></tr>';
       }
       h+='</tbody></table></div>';
     }
-    h+='</div>';
-    el.innerHTML=h;
-  }catch(e){document.getElementById('recommend-content').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
+    h+='</div>';el.innerHTML=h;
+  }catch(e){el.innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>'}
 }
 
 /* ── Graph tab ──────────────────────────────────────────────────────────────

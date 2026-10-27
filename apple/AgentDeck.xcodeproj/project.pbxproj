@@ -15,6 +15,7 @@
 		015A03710C2A81307EDC2159 /* CodexTelemetryModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81ECEA1581963132423FB0C8 /* CodexTelemetryModule.swift */; };
 		015E006D6E9D932E1DDEED68 /* ApmeClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5857149AEB13F8BEC5CDE41B /* ApmeClassifier.swift */; };
 		0190133B8ADCA735206316EF /* PixooSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47FFD673C1AD8EAF690B9E82 /* PixooSheet.swift */; };
+		019ED063E0FDD97E7A319878 /* ApmeComparisonRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8772F952BC1C7F43A8FAF2A6 /* ApmeComparisonRules.generated.swift */; };
 		0264C182D89757B656DFE108 /* AquariumSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE102D050319B6A78A505B3 /* AquariumSurface.swift */; };
 		0330736E0FF888DCC943EC4C /* UsageRelayFreshnessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004AFFB1B0E061D54CDCDED0 /* UsageRelayFreshnessTests.swift */; };
 		0347DAE5A86DD416D1666E23 /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FF390BEA92326B1152B55A9 /* HTTPServer.swift */; };
@@ -168,6 +169,7 @@
 		33E64126B91B640A48A9D034 /* Trmnl75Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */; };
 		34444319598506828DE09006 /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
 		35437B04ADEC279D861893EF /* GatewayLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14A41EA31C51D5B49399A788 /* GatewayLiveActivityTests.swift */; };
+		359EF5E7219272E1ECFABFED /* ApmeScorecardSQL.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */; };
 		35E8586B1FEB7DE05853797A /* HermesMermaidSprite.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */; };
 		36121C5F8A2BF0D337CA2ED1 /* GatewayLiveActivity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D77F4FA4E17866309859930F /* GatewayLiveActivity.generated.swift */; };
 		36177FF16DB44FF20C64B33D /* OpenClawApprovalRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */; };
@@ -651,6 +653,7 @@
 		C5F162AA9AB80292E55F6046 /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
 		C60311E11652C03785B9F449 /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
 		C68C5F90DA83B7DFE263289D /* ESP32ProvisionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6229A084E6CE2AB75D86F83 /* ESP32ProvisionSheet.swift */; };
+		C697AF423F0583DCAC8CC524 /* ApmeComparisonRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8772F952BC1C7F43A8FAF2A6 /* ApmeComparisonRules.generated.swift */; };
 		C71587998379ED779ADFF54F /* ESP32Serial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C62F7ABA6BDEE39F39DBDFA /* ESP32Serial.swift */; };
 		C7742232A809DA7724FCDF11 /* DotRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D12DF5535F73FD12022173 /* DotRules.generated.swift */; };
 		C7BD32F014792DEBF43E9818 /* DotInteraction.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A487394776C9CC60C19C87 /* DotInteraction.generated.swift */; };
@@ -749,6 +752,7 @@
 		E59E0351EAA083B954985854 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */; };
 		E5B1774D921E5B4C508D73A0 /* AgentStateHolder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92F84E0AB4261F8308A45186 /* AgentStateHolder.swift */; };
 		E5DE7C344E43E9802FAAC406 /* CommunicationGraphModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 148E9F88D28912838E6DF334 /* CommunicationGraphModel.swift */; };
+		E5FA176508C6DEADEE1DC30B /* ApmeScorecardSQL.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */; };
 		E6298CFEC018553BFE64DED6 /* CommunicationGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 228A0A4D8F537A1C69CF4DE2 /* CommunicationGraphView.swift */; };
 		E6F363EAEBEE8D6CCBE47BDD /* LocalPortProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B7842EE85B6D8BD64D95EF /* LocalPortProbeTests.swift */; };
 		E739E51365F230ED44B8C80B /* DotHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = C50AD86E0F9030974265A7C9 /* DotHost.swift */; };
@@ -881,6 +885,7 @@
 		125A43BCFF7E55A34B4C5FC1 /* AgentDeckLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckLogo.swift; sourceTree = "<group>"; };
 		126F2DE93055C4D847017AF3 /* ESP32WifiProvisionRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32WifiProvisionRulesTests.swift; sourceTree = "<group>"; };
 		12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentRules.generated.swift; sourceTree = "<group>"; };
+		147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeScorecardSQL.generated.swift; sourceTree = "<group>"; };
 		148E9F88D28912838E6DF334 /* CommunicationGraphModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunicationGraphModel.swift; sourceTree = "<group>"; };
 		14A41EA31C51D5B49399A788 /* GatewayLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayLiveActivityTests.swift; sourceTree = "<group>"; };
 		14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMermaidSprite.generated.swift; sourceTree = "<group>"; };
@@ -1073,6 +1078,7 @@
 		8655DDFFAFB655DEABF213F5 /* TimeboxModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeboxModule.swift; sourceTree = "<group>"; };
 		86C2853DD31CC81F421A2A1F /* ApmePricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmePricing.swift; sourceTree = "<group>"; };
 		86E42A4F5681EFB215B43645 /* AppPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreferences.swift; sourceTree = "<group>"; };
+		8772F952BC1C7F43A8FAF2A6 /* ApmeComparisonRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeComparisonRules.generated.swift; sourceTree = "<group>"; };
 		87B953D8E77FC4425B70B384 /* ClaudeStatuslineRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeStatuslineRulesTests.swift; sourceTree = "<group>"; };
 		88024D2867223901DB810204 /* DotPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotPresentation.swift; sourceTree = "<group>"; };
 		8884FD5EE02A0EDAF5D6C448 /* TimelineRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRelay.swift; sourceTree = "<group>"; };
@@ -1669,6 +1675,7 @@
 				5857149AEB13F8BEC5CDE41B /* ApmeClassifier.swift */,
 				5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */,
 				8EF540FF89BA54744CF94CC4 /* ApmeCollector.swift */,
+				8772F952BC1C7F43A8FAF2A6 /* ApmeComparisonRules.generated.swift */,
 				A18E2C549E4BD4B7BB55436A /* ApmeGraphProjection.swift */,
 				4A2D26F6BDF08F6E4F2F8439 /* ApmeHttpRoutes.swift */,
 				46988130529D53105344C47F /* ApmeJudgeApi.swift */,
@@ -1681,6 +1688,7 @@
 				25F9FDF17CAE4968078B9841 /* ApmeReadIndexes.generated.swift */,
 				C0A8B27A341D1DAE1FCF1D01 /* ApmeRecommender.swift */,
 				53D4EF93231AAC8CD23FB819 /* ApmeRunner.swift */,
+				147A554846EF7F1085012E99 /* ApmeScorecardSQL.generated.swift */,
 				758AAD78310D811B993ADA21 /* ApmeScorers.swift */,
 				CBBE1258602AB5ABC83560EE /* ApmeSettings.swift */,
 				F8E176199605E14D2EAF35A1 /* ApmeStore.swift */,
@@ -2457,6 +2465,7 @@
 				015E006D6E9D932E1DDEED68 /* ApmeClassifier.swift in Sources */,
 				3B811EEE60C3BC211B2A5373 /* ApmeClassifierRules.generated.swift in Sources */,
 				830C151322C62CF4B3ADA406 /* ApmeCollector.swift in Sources */,
+				019ED063E0FDD97E7A319878 /* ApmeComparisonRules.generated.swift in Sources */,
 				2B8F7E0477776522FD3417A9 /* ApmeDashboardWindow.swift in Sources */,
 				32F4DC41FD43837549F3145B /* ApmeGraphProjection.swift in Sources */,
 				57A43302B1180444CF962588 /* ApmeHttpRoutes.swift in Sources */,
@@ -2470,6 +2479,7 @@
 				A3DBC8520FF03E2696C3875E /* ApmeReadIndexes.generated.swift in Sources */,
 				67BC9141429FBD039D306858 /* ApmeRecommender.swift in Sources */,
 				E510E70B26F457C5035A70BF /* ApmeRunner.swift in Sources */,
+				E5FA176508C6DEADEE1DC30B /* ApmeScorecardSQL.generated.swift in Sources */,
 				89B569F2096B99D8C6ED3044 /* ApmeScorers.swift in Sources */,
 				FA0A73634F02279804DDF386 /* ApmeSettings.swift in Sources */,
 				091A43AE8CEB292071866D39 /* ApmeStore.swift in Sources */,
@@ -2745,6 +2755,7 @@
 				C811739586EAB613B7881490 /* ApmeClassifier.swift in Sources */,
 				0EB23ACEA6CBC43957822C9F /* ApmeClassifierRules.generated.swift in Sources */,
 				FBB919EF89AE0DBEE2DC0082 /* ApmeCollector.swift in Sources */,
+				C697AF423F0583DCAC8CC524 /* ApmeComparisonRules.generated.swift in Sources */,
 				0702C9FEAA7C1E2A2E6CAA36 /* ApmeDashboardWindow.swift in Sources */,
 				CC90582E2EF8BCBAC71025CA /* ApmeGraphProjection.swift in Sources */,
 				2FA1EFC88159FD511847AFEA /* ApmeHttpRoutes.swift in Sources */,
@@ -2758,6 +2769,7 @@
 				EE83F0F9F55D68644A722D50 /* ApmeReadIndexes.generated.swift in Sources */,
 				4A0D8F7C56E1BEB0167E62CB /* ApmeRecommender.swift in Sources */,
 				BBEB24AC6D843E71B5C8D517 /* ApmeRunner.swift in Sources */,
+				359EF5E7219272E1ECFABFED /* ApmeScorecardSQL.generated.swift in Sources */,
 				5DCD91335EFB1B6500CA830E /* ApmeScorers.swift in Sources */,
 				C329FA364A949AB61F0A8AD9 /* ApmeSettings.swift in Sources */,
 				581FB47554F19C7FB58A531F /* ApmeStore.swift in Sources */,

@@ -17,11 +17,22 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as taskTitle from '../task-title.js';
 import * as actionFold from '../action-fold.js';
+import * as comparison from '../apme-comparison.js';
+import * as scorecard from '../apme-scorecard-sql.js';
 import * as taskGradeability from '../../../bridge/src/apme/task-gradeability.js';
 import { OUTPUTS, rulesFrom } from '../../../scripts/generate-apme-display-rules.mjs';
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url));
-const rules = rulesFrom(taskTitle, actionFold, taskGradeability);
+const rules = rulesFrom(taskTitle, actionFold, taskGradeability, comparison, scorecard);
+
+describe('APME comparison eligibility', () => {
+  const vectors = JSON.parse(readFileSync(`${repoRoot}shared/apme-comparison-vectors.json`, 'utf8'));
+  for (const v of vectors) {
+    it(`keeps ${JSON.stringify(v)} consistent`, () => {
+      expect(comparison.isApmeComparisonEligible(v.model, v.category, v.samples)).toBe(v.eligible);
+    });
+  }
+});
 
 describe('generated APME display-rule mirrors in sync', () => {
   for (const [rel, emit] of OUTPUTS) {

@@ -13,7 +13,7 @@
  * scorecard; output partitions candidates into frontier vs dominated.
  */
 
-import type { ApmeSampleScorecardRow } from '@agentdeck/shared';
+import { APME_COMPARISON_MIN_SAMPLES, isApmeComparisonEligible, type ApmeSampleScorecardRow } from '@agentdeck/shared';
 
 export interface ParetoPoint {
   agentType: string;
@@ -51,8 +51,11 @@ function toPoint(r: ApmeSampleScorecardRow): ParetoPoint {
 /** True when `b` dominates `a`: at least as good on both axes and strictly
  *  better on at least one (higher quality, lower cost). */
 function dominates(b: ParetoPoint, a: ParetoPoint): boolean {
-  const bCost = b.costPerSample ?? Infinity;
-  const aCost = a.costPerSample ?? Infinity;
+  if (b.taskCategory !== a.taskCategory) return false;
+  // An unknown price cannot establish a cost advantage in either direction.
+  if (b.costPerSample == null || a.costPerSample == null) return false;
+  const bCost = b.costPerSample;
+  const aCost = a.costPerSample;
   const betterOrEqual = b.quality >= a.quality && bCost <= aCost;
   const strictlyBetter = b.quality > a.quality || bCost < aCost;
   return betterOrEqual && strictlyBetter;
@@ -65,10 +68,11 @@ function dominates(b: ParetoPoint, a: ParetoPoint): boolean {
  */
 export function computePareto(
   rows: ApmeSampleScorecardRow[],
-  minSamples = 3,
+  minSamples = APME_COMPARISON_MIN_SAMPLES,
 ): ParetoResult {
   const points = rows
-    .filter((r) => r.samples >= minSamples && (r.avgQuality ?? 0) > 0)
+    .filter((r) => r.samples >= minSamples && isApmeComparisonEligible(r.modelId, r.taskCategory, r.samples)
+      && r.avgQuality != null && Number.isFinite(r.avgQuality) && r.avgQuality > 0 && r.avgQuality <= 1)
     .map(toPoint);
 
   const frontier: ParetoPoint[] = [];
@@ -91,8 +95,8 @@ export function computePareto(
 export function paretoForCategory(
   rows: ApmeSampleScorecardRow[],
   category: string | null | undefined,
-  minSamples = 3,
+  minSamples = APME_COMPARISON_MIN_SAMPLES,
 ): ParetoResult {
-  const scoped = category ? rows.filter((r) => r.taskCategory === category) : rows;
+  const scoped = category != null ? rows.filter((r) => r.taskCategory === category) : rows;
   return computePareto(scoped, minSamples);
 }

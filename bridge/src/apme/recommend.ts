@@ -26,7 +26,10 @@ export interface RecommendCandidate {
   provider: string | null;
   expectedScore: number;
   expectedCostUsd: number | null;
+  /** Legacy sample-support heuristic, not a probability of correctness. */
   confidence: number;
+  samples: number;
+  taskCategory: string | null;
   rationale: string;
 }
 
@@ -70,30 +73,18 @@ export class ApmeRecommender {
   recommend(input: RecommendInput): RecommendCandidate[] {
     if (!this.store.enabled) return [];
 
-    // Work at sample granularity (the canonical eval unit) and restrict to the
-    // Pareto frontier — dominated models (strictly worse on quality AND cost)
-    // are never worth recommending. This is the model-orchestration payoff:
-    // the menu is the quality/cost tradeoff curve, not a flat ranking.
-    const scorecard = this.store.sampleScorecard();
-    let { frontier } = paretoForCategory(scorecard, input.taskKind);
-
-    // Fall back to the whole frontier if the category has too little data.
-    if (frontier.length === 0) frontier = paretoForCategory(scorecard, undefined).frontier;
-
-    // Fall back to the run-level scorecard when no sample-granularity data has
-    // accumulated yet (legacy runs, or before the first task judge resolves).
-    if (frontier.length === 0) return this.recommendFromRuns(input);
-
-    let candidates = frontier;
-    if (input.availableModels) {
-      candidates = candidates.filter((p) => input.availableModels!.includes(p.modelId));
-    }
-    if (input.budgetUsd !== undefined) {
-      candidates = candidates.filter((p) => p.costPerSample != null && p.costPerSample <= input.budgetUsd!);
-    }
-    if (input.latencyBudgetMs !== undefined) {
-      candidates = candidates.filter((p) => p.avgLatencyMs == null || p.avgLatencyMs <= input.latencyBudgetMs!);
-    }
+    // Filter constraints BEFORE dominance: an unavailable/too-slow model
+    // cannot remove a usable alternative. Never silently switch categories or
+    // fall back to legacy run scores when task evidence is insufficient.
+    const scorecard = this.store.sampleScorecard().filter((r) => {
+      if (input.availableModels && !input.availableModels.includes(r.modelId)) return false;
+      const cost = r.costKnown && r.totalCost != null && r.samples > 0 ? r.totalCost / r.samples : null;
+      if (input.budgetUsd !== undefined && (cost == null || cost > input.budgetUsd)) return false;
+      if (input.latencyBudgetMs !== undefined
+        && (r.avgLatencyMs == null || r.avgLatencyMs <= 0 || r.avgLatencyMs > input.latencyBudgetMs)) return false;
+      return true;
+    });
+    let { frontier: candidates } = paretoForCategory(scorecard, input.taskKind);
 
     candidates = [...candidates].sort((a, b) => {
       // Budget-conscious or local-preferring → cheapest first; else best quality.
@@ -110,41 +101,12 @@ export class ApmeRecommender {
       expectedScore: p.quality,
       expectedCostUsd: p.costPerSample,
       confidence: Math.min(1, p.samples / 20),
+      samples: p.samples,
+      taskCategory: p.taskCategory,
       rationale: `${p.samples} samples, avg ${(p.quality * 100).toFixed(0)}%, ${p.costPerSample == null ? 'cost unpriced' : `$${p.costPerSample.toFixed(4)}/sample`}${
         p.avgLatencyMs != null ? `, ${Math.round(p.avgLatencyMs)}ms` : ''
-      } — on the cost/quality frontier`,
+      } — observed AI estimates; not a success probability`,
     }));
   }
 
-  /** Legacy run-level recommendation (v_model_scorecard). Used when no
-   *  sample-granularity composite scores exist yet. */
-  private recommendFromRuns(input: RecommendInput): RecommendCandidate[] {
-    const rows = this.store.scorecard();
-    let filtered = input.availableModels
-      ? rows.filter((r) => input.availableModels!.includes(r.modelId))
-      : rows;
-    if (input.budgetUsd !== undefined) filtered = filtered.filter((r) => r.costKnown);
-    return filtered
-      .filter((r) => r.runs >= 3 && (r.avgOverall ?? 0) > 0)
-      .sort((a, b) => {
-        if (input.budgetUsd !== undefined && input.budgetUsd < 5) {
-          return byCostPerQuality(a.costPerQuality, b.costPerQuality);
-        }
-        return (b.avgOverall ?? 0) - (a.avgOverall ?? 0);
-      })
-      .slice(0, 3)
-      .map((r) => ({
-        modelId: r.modelId,
-        agentType: r.agentType as AgentType,
-        provider: r.provider,
-        expectedScore: r.avgOverall ?? 0,
-        expectedCostUsd: r.costKnown && r.totalCost != null
-          ? r.totalCost / Math.max(r.runs, 1)
-          : null,
-        confidence: Math.min(1, r.runs / 20),
-        rationale: `${r.runs} runs, avg ${((r.avgOverall ?? 0) * 100).toFixed(0)}%${
-          r.avgTestsPass != null ? `, tests ${((r.avgTestsPass) * 100).toFixed(0)}%` : ''
-        }`,
-      }));
-  }
 }
