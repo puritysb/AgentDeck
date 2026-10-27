@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-27T00:09:47.586Z",
+  "finished_at": "2026-10-27T00:09:47.588Z",
+  "duration_ms": 2,
+  "commit": "775b8768cf7da7db884c45bf7c685582f59e2b5f",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "pass",
+      "attested": true,
+      "note": "Scoped macOS1.9.3/9801 CI-equivalent Development artifact and installed npm1.9.4 aa8ce35819ff; real Node/Swift turns and Crema delivery, Mac WORKING pixels, signed Shortcuts, and two automatic same-PID handover cycles passed. Slowest CLI transition119.229s; eight protected files unchanged, only Dashboard window geometry changed. Runtime proof SHA256 df5f2458c7f07693c17a841c0842b077888d2d71a7567f563bd8e4791fa9c29a. No new Android/ESP32 delivery attested."
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "pass",
+      "attested": true,
+      "note": "Exact9801 sandboxed derivative on S4 passed official15checks43frames, real Swift Codex completion and Mac/Crema pixels, signed List/Open navigation, HTTP/WS boundary checks and five new history events across Node handover. Final Node67773 and9801 client3247 restored; owned fixtures/jobs removed. Private proof SHA256 df5f2458c7f07693c17a841c0842b077888d2d71a7567f563bd8e4791fa9c29a."
+    }
+  ]
+}

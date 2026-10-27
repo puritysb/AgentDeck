@@ -99,6 +99,8 @@ observed portal/artifact state; do not present a candidate as public.
 
 The maintainer requested completion and delivery of the two remaining improvements.
 This is a correction within the existing 1.9 contract; no new product milestone.
+This historical decision precedes the
+[completed delivery checkpoint](#2026-10-27-follow-up-delivery-checkpoint) below.
 The October 27 KST [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/40353160014)
 confirmed macOS 1.9.3 / 9501 still `WAITING_FOR_REVIEW`, with automatic release
 after approval. npm 1.9.4 and its tag were not present at the version checkpoint.
@@ -197,6 +199,179 @@ The October 26 22:10 UTC store read (run `40410273766`) found the existing 9501
 submission **IN_REVIEW**, with macOS 1.9.2 still public. Re-read before the next
 upload: if 1.9.3 becomes public, record a new patch-version decision first.
 
+### 2026-10-27 follow-up verification checkpoint
+
+The artifact source is fixed at `775b8768cf7da7db884c45bf7c685582f59e2b5f`
+(S4). The [clean full receipt](verification/receipts/2026-10-26-775b876.json)
+finished at **2026-10-26 23:08:39 UTC** with **25 automatic gates passed**.
+Windows runtime was skipped on this Mac. The source-matched hosted CI passed
+on Node 22, 24 and 26; Apple Tests, ESP32 Sim Compile and Design System also
+passed. Those results are separate from the local receipt.
+The three lab gates are unattested in that receipt. Preserve it byte-for-byte;
+a later manual-only receipt records its selected gates separately and is not
+another complete full-suite run. Evidence and delivery documentation belong in
+a separate commit; the artifact source and publication refs stay at S4.
+
+A Development-signed local Release **1.9.3 / build 5** matches the captured
+source patch and has a separate clean-source equivalence record for S4. Its
+whole non-signature Mach-O payloads and 21 resources matched the preserved local
+original after the narrowly checked signing changes. It is a local diagnostic,
+not the final CI/Store artifact.
+
+The same app PID **97558** completed two automatic CLI→Swift→CLI cycles, including
+two actual external-client attachments and a second automatic Swift promotion.
+No app restart or manual repair occurred between cycles. The intervals below are
+last recognized old-owner HTTP response to first recognized new-owner response;
+they are observations, not startup deadlines.
+
+| Transition | Interval | Unknown canonical samples | Subsequent healthy single-owner samples |
+| --- | --- | --- | --- |
+| Cycle 1, CLI→Swift | 36.040 s | 17 | 22 |
+| Cycle 1, Swift→CLI | 80.288 s | 39 | 33 |
+| Cycle 2, CLI→Swift | 38.033 s | 18 | 31 |
+| Cycle 2, Swift→CLI | 34.008 s | 16 | 44 |
+
+The steady windows had no unknown health samples or duplicate owners. The first
+reverse CLI command took **83.908 seconds** and reported fallback intent before
+the final owner bound 9120; this delay remains part of the result. Both app
+shutdowns reached their bounded stopped event in approximately four seconds,
+but the module/relay teardown stage exceeded its four-second wait budget.
+Those events do not prove every module finished cleanup. Neither runtime cycle
+crossed the outer eight-second wait; delayed continuation is covered by the
+59 focused tests using an injected 0.05-second wait budget.
+
+Nine settings, credential, hook and preference files remained byte-identical.
+Each new owner's WebSocket served a nonempty 100-event history sample. Within
+the bounded persisted histories, Node retained 200/200 baseline identities and
+Swift retained 162/200; this is not a full-history preservation claim. Store
+9401 and the previous 9701 app backups were preserved. The owned observer exited
+normally; no model jobs or synthetic sessions were created for this comparison.
+Private captures, raw logs, credentials and account data stay outside Git.
+
+The final artifact **macOS 1.9.3 / 9801** was built and uploaded by
+[run 40417745611](https://github.com/puritysb/AgentDeck/actions/runs/40417745611)
+from S4. Retained artifact `12697705903` passed source/digest, strict package and
+code signatures, Store archive and Dot-exclusion checks. The separate
+Development-signed derivative matched both architectures' complete non-signature
+Mach-O payloads and 21 resources, with the canonical entitlements preserved.
+
+**Final artifact runtime acceptance passed on October 27.** The
+[manual receipt](verification/receipts/2026-10-27-775b876-manual.json) records only
+`device-deploy` and `swift-codex-live` against clean S4; it supplements the
+25-gate automatic receipt above and is not another full-suite run. Its scope is
+macOS 9801, the installed npm 1.9.4 candidate and the existing Crema client;
+no new Android or ESP32 delivery is attested.
+
+- Both Swift-only and CLI-only modes completed one actual Codex turn, reached
+  idle and displayed the owned working session on Crema. The Swift turn also
+  appeared in the actual Mac window. The official sandboxed Swift live gate
+  passed 15 checks over 43 frames; HTTP/WebSocket boundaries passed 14 checks
+  across the two daemon modes.
+- Signed Shortcuts returned the two owned attention sessions and opened the
+  selected B session in the exact 9801 app, including its sidebar, attention card
+  and timeline filter. Before/after process checks pinned the candidate binary.
+  The first operator navigation attempt timed out and remains separate evidence;
+  the successful second attempt does not erase it.
+- The same 9801 process (PID 26066) completed two automatic CLI→Swift→CLI cycles
+  without app restart or manual repair. Both true internal client attachments
+  resumed. A later normal quit was required for CLI-only testing; the final
+  acceptance baseline was Node 67773 and the relaunched 9801 client 3247.
+
+| Final CI transition | Recognized-response interval | Unknown canonical samples | Healthy steady samples |
+| --- | --- | --- | --- |
+| Cycle 1, CLI→Swift | 38.006 s | 18 | 403/403 |
+| Cycle 1, Swift→CLI | 32.454 s | 15 | 65/65 |
+| Cycle 2, CLI→Swift | 33.767 s | 16 | 33/33 |
+| Cycle 2, Swift→CLI | 116.063 s | 57 | 54/54 |
+
+No foreign or multiple canonical owner was observed. The second reverse CLI
+command took **119.229 seconds**, including a fallback notice. These measurements
+were made under substantial host load and do not establish a fast-handover SLA
+or the cause of the delay. Both reverse shutdowns logged the four-second
+module/relay-stage limit; neither exercised the outer eight-second timeout.
+The warnings do not prove that every device module completed cleanup.
+
+Eight settings, credential and hook files remained byte-identical. The macOS
+preference difference was solely `NSWindow Frame dashboard`, changed by the
+actual window-navigation test; product preferences were unchanged. Five new
+real Swift-turn events matched across both owners' served/global histories and
+all four persistence/cache files. The existing 200-entry windows retained
+154 Node and 158 Swift baseline identities; no whole-history preservation claim
+is made. Other worktrees' XCTest hosts appeared intermittently; none was observed
+owning the canonical port, and none was stopped. Final client restoration waited for their
+natural exit. Both owned model jobs, three observers and the attention keeper
+were removed or finished normally. Store 9401 and prior candidate backups remain
+preserved. Raw captures and account data stay private. The final runtime evidence
+digest is `df5f2458c7f07693c17a841c0842b077888d2d71a7567f563bd8e4791fa9c29a`.
+
+At the **October 26 23:57:38 UTC** readback, macOS 1.9.3 / 9501 remained
+**IN_REVIEW**, public macOS remained 1.9.2, and 9801 was `VALID`. Build 9701 remains
+blocked. npm 1.9.4 and its tag were unused at 23:55:43 UTC. Acceptance is complete;
+publication and guarded review replacement were the next actions at that
+checkpoint. Their later readbacks are recorded separately below.
+
+### 2026-10-27 follow-up delivery checkpoint
+
+**npm 1.9.4 is public; macOS 1.9.3 / 9801 is submitted and Waiting for Review.**
+Public macOS remains 1.9.2 / 9401 and iOS remains 1.9.1. Store approval and public
+availability are not claimed. Dot remains excluded from standard Apple builds;
+this follow-up does not change the other distribution channels.
+
+[PR #614](https://github.com/puritysb/AgentDeck/pull/614) merged the accepted S4
+source as `0a4257fbf960a5945e11c434cd285e249b37f92e`. The artifact branch and
+annotated `npm-v1.9.4` tag remain at the verified source
+`775b8768cf7da7db884c45bf7c685582f59e2b5f`; evidence-only commits do not alter that
+identity or rebuild the accepted artifact.
+
+**npm publication and public installation passed.**
+[Release run 40425429062](https://github.com/puritysb/AgentDeck/actions/runs/40425429062)
+published `@agentdeck/shared`, `hooks`, `bridge` and `setup` 1.9.4. At
+**00:27:27 UTC**, the registry readback confirmed all four versions and `latest`
+tags at 1.9.4, the exact S4 `gitHead`, registry integrity and exact root LICENSE
+bytes. The 1,373 downloaded dist files matched the accepted candidate. npm and
+pnpm archives have documented prepack-manifest and declared-bin mode differences;
+the archives themselves are not claimed byte-identical.
+
+A fresh isolated prefix installed the four public tarballs, adding 191 packages
+in total.
+Both CLI entry points had executable mode 0755; `node-pty`, `sharp`,
+`@serialport/bindings-cpp` and `better-sqlite3` loaded from that prefix. Native
+diagnostics reported SQLite ready on arm64 Node 26.5.0 / ABI 147, with bridge
+build identity `aa8ce35819ff`. This installation did not run setup automatically
+or change the global installation, daemon or app. The
+[public GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
+was published at **00:24:38 UTC**; its title and complete body matched the
+CHANGELOG-rendered notes. Private public-delivery proof SHA-256:
+`ceb9baf64fc9fd6688f6d7c3d28ae4ea2aae95d5b83f289e187c25cfcc5bdc22`.
+
+**Apple review replacement and submission passed.**
+[Preparation run 40425543091](https://github.com/puritysb/AgentDeck/actions/runs/40425543091)
+replaced only the expected 9501 submission after the source, retained artifact,
+Store state, metadata and media guards passed. At **00:21:30 UTC**,
+[submission run 40425810430](https://github.com/puritysb/AgentDeck/actions/runs/40425810430)
+confirmed build 9801 (`408bef18-995e-42e5-a040-fab50212b11a`) under new submission
+`ab8d4712-8913-4e7e-a54f-1883698298f2`. The independent
+[00:27:21 UTC readback](https://github.com/puritysb/AgentDeck/actions/runs/40426471966)
+confirmed both macOS 1.9.3 and that exact submission as `WAITING_FOR_REVIEW`,
+with release type `AFTER_APPROVAL`. Public macOS remained 1.9.2 and iOS 1.9.1.
+Builds 9601 and 9701 were not selected for review.
+
+**Local main deployment passed.**
+[Run 40425267456](https://github.com/puritysb/AgentDeck/actions/runs/40425267456)
+deployed the merged source and completed at **00:20:08 UTC**. Readback confirmed
+the main-checkout CLI, a single Node owner on port 9120 with build identity
+`aa8ce35819ff`, and the installed/running Stream Deck plugin identity
+`02c5316e459c`. The separate Development 9801 client reattached after the restart;
+the installed App Store 1.9.2 / 9401 app was preserved. Eight protected settings,
+credential and hook files remained unchanged. This is local deployment evidence,
+not an Elgato Marketplace release. Private deployment proof SHA-256:
+`078ba833a60f9a819270d79386e5db0e66321c2d0c1788ab1ee48600b3e37c9a`.
+
+The [automatic and manual verification checkpoint](#2026-10-27-follow-up-verification-checkpoint)
+above retains the actual scope and limitations, including the 119.229-second
+reverse CLI command observed under host load. Successful automatic recovery does
+not establish a fast-handover SLA.
+
 ### 2026-10-26 non-Dot stability release decision
 
 The maintainer authorized verification and release on October 26. These are
@@ -233,8 +408,10 @@ as a released capability.
 
 ### 2026-10-26 non-Dot delivery checkpoint
 
-**npm 1.9.3 and Android 1.10.2's GitHub APK are public. Google Play 1.10.2 is
-in review; macOS 1.9.3 / 9501 is Waiting for Review.** The last verified public
+At this October 26 checkpoint, **npm 1.9.3 and Android 1.10.2's GitHub APK were
+public. Google Play 1.10.2 was in review; macOS 1.9.3 / 9501 was Waiting for
+Review.** Later npm/macOS delivery is recorded in the
+[October 27 checkpoint](#2026-10-27-follow-up-delivery-checkpoint). The last verified public
 Store versions remain Android 1.10.1 / 28 and macOS 1.9.2 / 9401; iOS remains
 1.9.1. Store submission is not approval or public delivery.
 
