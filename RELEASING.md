@@ -99,6 +99,8 @@ observed portal/artifact state; do not present a candidate as public.
 
 The maintainer requested completion and delivery of the two remaining improvements.
 This is a correction within the existing 1.9 contract; no new product milestone.
+This historical decision precedes the
+[completed delivery checkpoint](#2026-10-27-follow-up-delivery-checkpoint) below.
 The October 27 KST [ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/40353160014)
 confirmed macOS 1.9.3 / 9501 still `WAITING_FOR_REVIEW`, with automatic release
 after approval. npm 1.9.4 and its tag were not present at the version checkpoint.
@@ -305,8 +307,70 @@ digest is `df5f2458c7f07693c17a841c0842b077888d2d71a7567f563bd8e4791fa9c29a`.
 At the **October 26 23:57:38 UTC** readback, macOS 1.9.3 / 9501 remained
 **IN_REVIEW**, public macOS remained 1.9.2, and 9801 was `VALID`. Build 9701 remains
 blocked. npm 1.9.4 and its tag were unused at 23:55:43 UTC. Acceptance is complete;
-publication and guarded review replacement are the next delivery actions and
-must be read back separately before being described as delivered.
+publication and guarded review replacement were the next actions at that
+checkpoint. Their later readbacks are recorded separately below.
+
+### 2026-10-27 follow-up delivery checkpoint
+
+**npm 1.9.4 is public; macOS 1.9.3 / 9801 is submitted and Waiting for Review.**
+Public macOS remains 1.9.2 / 9401 and iOS remains 1.9.1. Store approval and public
+availability are not claimed. Dot remains excluded from standard Apple builds;
+this follow-up does not change the other distribution channels.
+
+[PR #614](https://github.com/puritysb/AgentDeck/pull/614) merged the accepted S4
+source as `0a4257fbf960a5945e11c434cd285e249b37f92e`. The artifact branch and
+annotated `npm-v1.9.4` tag remain at the verified source
+`775b8768cf7da7db884c45bf7c685582f59e2b5f`; evidence-only commits do not alter that
+identity or rebuild the accepted artifact.
+
+**npm publication and public installation passed.**
+[Release run 40425429062](https://github.com/puritysb/AgentDeck/actions/runs/40425429062)
+published `@agentdeck/shared`, `hooks`, `bridge` and `setup` 1.9.4. At
+**00:27:27 UTC**, the registry readback confirmed all four versions and `latest`
+tags at 1.9.4, the exact S4 `gitHead`, registry integrity and exact root LICENSE
+bytes. The 1,373 downloaded dist files matched the accepted candidate. npm and
+pnpm archives have documented prepack-manifest and declared-bin mode differences;
+the archives themselves are not claimed byte-identical.
+
+A fresh isolated prefix installed the four public tarballs, adding 191 packages
+in total.
+Both CLI entry points had executable mode 0755; `node-pty`, `sharp`,
+`@serialport/bindings-cpp` and `better-sqlite3` loaded from that prefix. Native
+diagnostics reported SQLite ready on arm64 Node 26.5.0 / ABI 147, with bridge
+build identity `aa8ce35819ff`. This installation did not run setup automatically
+or change the global installation, daemon or app. The
+[public GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
+was published at **00:24:38 UTC**; its title and complete body matched the
+CHANGELOG-rendered notes. Private public-delivery proof SHA-256:
+`ceb9baf64fc9fd6688f6d7c3d28ae4ea2aae95d5b83f289e187c25cfcc5bdc22`.
+
+**Apple review replacement and submission passed.**
+[Preparation run 40425543091](https://github.com/puritysb/AgentDeck/actions/runs/40425543091)
+replaced only the expected 9501 submission after the source, retained artifact,
+Store state, metadata and media guards passed. At **00:21:30 UTC**,
+[submission run 40425810430](https://github.com/puritysb/AgentDeck/actions/runs/40425810430)
+confirmed build 9801 (`408bef18-995e-42e5-a040-fab50212b11a`) under new submission
+`ab8d4712-8913-4e7e-a54f-1883698298f2`. The independent
+[00:27:21 UTC readback](https://github.com/puritysb/AgentDeck/actions/runs/40426471966)
+confirmed both macOS 1.9.3 and that exact submission as `WAITING_FOR_REVIEW`,
+with release type `AFTER_APPROVAL`. Public macOS remained 1.9.2 and iOS 1.9.1.
+Builds 9601 and 9701 were not selected for review.
+
+**Local main deployment passed.**
+[Run 40425267456](https://github.com/puritysb/AgentDeck/actions/runs/40425267456)
+deployed the merged source and completed at **00:20:08 UTC**. Readback confirmed
+the main-checkout CLI, a single Node owner on port 9120 with build identity
+`aa8ce35819ff`, and the installed/running Stream Deck plugin identity
+`02c5316e459c`. The separate Development 9801 client reattached after the restart;
+the installed App Store 1.9.2 / 9401 app was preserved. Eight protected settings,
+credential and hook files remained unchanged. This is local deployment evidence,
+not an Elgato Marketplace release. Private deployment proof SHA-256:
+`078ba833a60f9a819270d79386e5db0e66321c2d0c1788ab1ee48600b3e37c9a`.
+
+The [automatic and manual verification checkpoint](#2026-10-27-follow-up-verification-checkpoint)
+above retains the actual scope and limitations, including the 119.229-second
+reverse CLI command observed under host load. Successful automatic recovery does
+not establish a fast-handover SLA.
 
 ### 2026-10-26 non-Dot stability release decision
 
@@ -344,8 +408,10 @@ as a released capability.
 
 ### 2026-10-26 non-Dot delivery checkpoint
 
-**npm 1.9.3 and Android 1.10.2's GitHub APK are public. Google Play 1.10.2 is
-in review; macOS 1.9.3 / 9501 is Waiting for Review.** The last verified public
+At this October 26 checkpoint, **npm 1.9.3 and Android 1.10.2's GitHub APK were
+public. Google Play 1.10.2 was in review; macOS 1.9.3 / 9501 was Waiting for
+Review.** Later npm/macOS delivery is recorded in the
+[October 27 checkpoint](#2026-10-27-follow-up-delivery-checkpoint). The last verified public
 Store versions remain Android 1.10.1 / 28 and macOS 1.9.2 / 9401; iOS remains
 1.9.1. Store submission is not approval or public delivery.
 

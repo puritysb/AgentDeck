@@ -319,7 +319,7 @@ for verified publication and Store review status.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | `npm-v1.9.3` public; `npm-v1.9.4` candidate |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.4`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1141); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
@@ -332,19 +332,18 @@ remains 1.10.1 (28). The public APK passed a data-preserving Pantone upgrade and
 live dashboard check. See the
 [delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
 
-**npm follow-up, 2026-10-27:** 1.9.4 is prepared but not published; the last
-verified public version is 1.9.3. The candidate includes the root LICENSE in all
-four packages and retains the Codex terminal-error correction. Final artifact
-and three-mode runtime acceptance passed; publication readback is pending. See the
-[verification checkpoint](RELEASING.md#2026-10-27-follow-up-verification-checkpoint).
+**npm delivery, 2026-10-27:** [1.9.4 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
+for all four packages. Their downloaded payloads match the accepted source,
+include the root LICENSE and pass an isolated installation with native dependencies.
+The Codex terminal-error correction is retained. See the
+[delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint).
 
-**Apple checkpoint, 2026-10-26:** macOS 1.9.3 / 9501 passed scoped runtime
-acceptance and was submitted for review. The verified public macOS version at
-that checkpoint was 1.9.2 / 9401; see the
-[dated receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
-The [October 27 follow-up decision](RELEASING.md#2026-10-27-handover-and-package-follow-up-decision)
-covers a replacement build for CLI-to-Swift recovery, with artifact and runtime
-acceptance required before replacing the pending submission.
+**Apple checkpoint, 2026-10-27:** macOS **1.9.3 / 9801** passed final artifact
+and three-mode runtime acceptance, replaced the previous 9501 submission and is
+**Waiting for Review**, with automatic release after approval. The verified public
+macOS version remains **1.9.2 / 9401**; this is submission, not public availability.
+See the [delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint)
+and its measured recovery limits. Dot remains excluded from standard Store builds.
 
 **Apple delivery, 2026-10-24:** macOS **1.9.2 / 9401 is public** in the
 [Mac App Store](https://apps.apple.com/kr/app/agentdeck/id6784822497?platform=mac),
