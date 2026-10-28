@@ -23,7 +23,7 @@ struct DotSettingsView: View {
     @State private var verifiedConsent: Set<String> = []
 
     var body: some View {
-        GroupBox("Dot — direct connection") {
+        GroupBox("Dot connection") {
             VStack(alignment: .leading, spacing: 12) {
                 Text(snapshot.status).font(.callout)
                 if snapshot.hosting && !snapshot.grants.contains(where: { $0.scopes.contains("agentdeck:report") }) {
@@ -44,14 +44,19 @@ struct DotSettingsView: View {
                 Text("AgentDeck receives requests directly on this Mac. Hosting stops when AgentDeck stops or the Mac sleeps.")
                     .font(.caption).foregroundStyle(.secondary)
                 if snapshot.available {
-                    Button("Set up local connection") {
+                    Button(snapshot.origin.hasPrefix("http://") ? "Reset local connection…" : "Set up local connection") {
                         replacingWithLocal = true
                         if snapshot.grants.isEmpty { configureLocal() } else { replacing = true }
                     }.disabled(busy)
-                    Text("Local MCP stays on this Mac. Connect a compatible local plugin and approve its code below. Dot interoperability is still being validated.")
+                    Text("Start a connection from your approved ChatGPT client, then compare its code with the request below. This preview has not verified ordinary-user installation or automatic Dot tool access.")
                         .font(.caption).foregroundStyle(.secondary)
                     if !snapshot.origin.isEmpty {
-                        Text("MCP address: \(snapshot.origin)/mcp").textSelection(.enabled).font(.caption)
+                        HStack {
+                            Text("MCP address: \(snapshot.origin)/mcp").textSelection(.enabled).font(.caption)
+                            Button("Copy connection address") {
+                                copy(snapshot.origin + "/mcp", message: "Connection address copied.")
+                            }
+                        }
                         Toggle("Resume host when AgentDeck starts", isOn: Binding(
                             get: { snapshot.resumeOnLaunch }, set: { enabled in perform { try await DotHost.shared.setResumeOnLaunch(enabled) } })).disabled(busy)
                     }
@@ -91,7 +96,7 @@ struct DotSettingsView: View {
                             Text(consentClientLabel(consent)).font(.caption).textSelection(.enabled)
                             Text(consent.redirectURI).font(.caption).textSelection(.enabled)
                             Text(consent.scopes.joined(separator: ", ")).font(.caption)
-                            Toggle("The code matches the page I opened from ChatGPT", isOn: Binding(
+                            Toggle("The code matches the connection request I started", isOn: Binding(
                                 get: { verifiedConsent.contains(consent.id) }, set: { if $0 { verifiedConsent.insert(consent.id) } else { verifiedConsent.remove(consent.id) } }))
                             HStack {
                                 Button("Allow this connection") { perform { try await DotHost.shared.approve(consent.id, allowed: true) } }
@@ -101,20 +106,24 @@ struct DotSettingsView: View {
                         }
                     }
                     if !snapshot.grants.isEmpty {
-                        Picker("Connected account", selection: $grantID) {
+                        Picker("Approved connection", selection: $grantID) {
                             ForEach(snapshot.grants) { grant in Text(String(grant.id.prefix(8))).tag(grant.id) }
                         }
                         TextField("Integration profile", text: $profile)
-                        Text("Share only the context you want Dot to receive. Context expires after 30 minutes; results are kept for seven days while AgentDeck runs.").font(.caption)
+                        Text("Share only the context you want Dot to receive. OpenAI processes the shared context and results; the local connection does not use an AgentDeck publisher relay.").font(.caption)
+                        Text("Context expires after 30 minutes. Results remain for up to seven days unless this connection is revoked; expired records are cleaned up while AgentDeck runs.")
+                            .font(.caption).foregroundStyle(.secondary)
                         TextEditor(text: $context).frame(minHeight: 70, maxHeight: 130)
                         HStack {
                             Button(snapshot.origin.hasPrefix("http://") ? "Prepare shared request" : "Ask Dot for a briefing") {
                                 let key = UUID().uuidString, shared = context, profile = profile, grant = grantID
                                 perform { try await DotHost.shared.request(grant: grant, profile: profile, context: shared, key: key) }
                             }.disabled(busy || context.isEmpty || context.unicodeScalars.count > DotLimits.contextCharacters || grantID.isEmpty)
-                            Button("Disconnect", role: .destructive) { let grant = grantID; perform { try await DotHost.shared.revoke(grant) } }.disabled(busy || grantID.isEmpty)
+                            Button("Revoke connection", role: .destructive) { let grant = grantID; perform { try await DotHost.shared.revoke(grant) } }.disabled(busy || grantID.isEmpty)
                         }
-                        Text(snapshot.origin.hasPrefix("http://") ? "Copy the request ID below and ask a connected local agent to read, claim and report it. Preparing a request does not wake Dot." : "In Dot, subscribe to agentdeck.briefing.requested for this profile and ask it to read, claim and report each request. Delivery is separate from completion.")
+                        Text("Revoking blocks future access and removes this connection’s saved requests and results from AgentDeck. It does not stop a running Dot task, revoke Dot’s separate Mac access or delete data already shared with OpenAI.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(snapshot.origin.hasPrefix("http://") ? "Copy a request reference below and paste it in Dot with access to this Mac. Preparing a request does not wake Dot; an approved connection alone does not verify the first result." : "In Dot, subscribe to agentdeck.briefing.requested for this profile and ask it to read, claim and report each request. Delivery is separate from completion.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 } else {
@@ -126,13 +135,20 @@ struct DotSettingsView: View {
                     Text("Briefing results").font(.headline)
                     ForEach(Array(snapshot.reports.prefix(20))) { request in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Request ID: \(request.id)").textSelection(.enabled).font(.caption)
+                            HStack {
+                                Text("Request ID: \(request.id)").textSelection(.enabled).font(.caption)
+                                if snapshot.origin.hasPrefix("http://") {
+                                    Button("Copy request for Dot") {
+                                        copy("Read AgentDeck request \(request.id) and its explicitly shared context, then claim it and report progress and completion for this request only.", message: "Request reference copied. Paste it in Dot with access to this Mac.")
+                                    }.disabled(request.expiresAt <= Int(Date().timeIntervalSince1970 * 1000))
+                                }
+                            }
                             Text("\(request.profile) · Delivery: \(request.delivery)").font(.caption)
                             if let events = request.interactions, !events.isEmpty {
                                 DotInteractionView(events: events, now: Int(Date().timeIntervalSince1970 * 1000))
                             }
                             if let report = request.report {
-                                Text("Last report: \(report.state) · \(Date(timeIntervalSince1970: Double(report.receivedAt) / 1000).formatted())").font(.caption).foregroundStyle(.secondary)
+                                Text("Last report: \(Self.reportLabel(request, now: Int(Date().timeIntervalSince1970 * 1000))) · \(Date(timeIntervalSince1970: Double(report.receivedAt) / 1000).formatted())").font(.caption).foregroundStyle(.secondary)
                                 Text(verbatim: Self.displayText(report.summary)).textSelection(.enabled)
                             } else { Text("No report received").font(.caption).foregroundStyle(.secondary) }
                             if request.expiresAt <= Int(Date().timeIntervalSince1970 * 1000) { Text("Request expired; this does not stop Dot.").font(.caption).foregroundStyle(.secondary) }
@@ -173,7 +189,21 @@ struct DotSettingsView: View {
         }
     }
     private func configureLocal() {
-        perform { try await DotHost.shared.configureLocal() }
+        perform {
+            try await DotHost.shared.configureLocal()
+            try await DotHost.shared.start()
+        }
+    }
+    private func copy(_ value: String, message: String) {
+        NSPasteboard.general.clearContents()
+        if NSPasteboard.general.setString(value, forType: .string) { self.message = message }
+        else { self.message = "Could not copy. Select and copy the reference text instead." }
+    }
+    /// Report freshness uses the same generated rules as the companion surfaces.
+    nonisolated static func reportLabel(_ request: DotBriefing, now: Int) -> String {
+        let report = DotSurfaceSnapshot(configured: true, hosting: true, authorized: true,
+            reportState: request.report?.state, reportedAt: request.report?.receivedAt, expiresAt: request.expiresAt)
+        return DotAppearanceRules.labels[report.phase(at: now)].capitalized
     }
     /// A registered client named itself; only a metadata document's host vouches for the name.
     private func consentClientLabel(_ consent: DotConsent) -> String {

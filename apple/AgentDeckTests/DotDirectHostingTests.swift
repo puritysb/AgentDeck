@@ -264,6 +264,25 @@ final class DotDirectHostingTests: XCTestCase {
         }.value
     }
     @MainActor
+    func testSettingsReportLabelExpiresWorkingButRetainsTerminalEvidence() {
+        let now = DotLimits.requestMs + DotLimits.reportFreshMs
+        var row = DotBriefing(id: "preview", owner: "owner", profile: "desk", key: "key", fingerprint: "hash", context: "", capturedAt: now, createdAt: now, expiresAt: now + DotLimits.requestMs, eventId: "event", subscriptionId: "", delivery: "local", attempts: 0, nextAttemptAt: now)
+        row.report = DotReport(sequence: 1, state: "working", summary: "", receivedAt: now - DotLimits.reportFreshMs + 1)
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Working")
+        row.report?.receivedAt = now - DotLimits.reportFreshMs
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Old Report")
+        row.report?.receivedAt = now
+        row.expiresAt = now
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Old Report")
+        row.report?.state = "completed"
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Completed")
+        row.report?.state = "failed"
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Failed")
+        row.report?.receivedAt = now + 1
+        XCTAssertEqual(DotSettingsView.reportLabel(row, now: now), "Unknown")
+    }
+
+    @MainActor
     func testCompanionPreviewRendersReportedStates() throws {
         let now = Int(Date().timeIntervalSince1970 * 1000)
         func snapshot(_ status: String, age: Int = 0) -> DotHostSnapshot {

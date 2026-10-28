@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agentdeck-native-preview",
+  "version": "0.1.1",
+  "description": "Experimental macOS desktop plugin for reporting explicitly shared AgentDeck requests through a local Swift client.",
+  "license": "MIT",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "AgentDeck Native Preview",
+        "shortDescription": "Report shared local requests",
+        "category": "Productivity"
+      }
+    }
+  }
+}

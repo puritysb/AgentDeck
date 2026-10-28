@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgentDeck × Dot · 로컬 연결 사용 흐름</title>
+<link rel="stylesheet" href="../../design/tokens.css"><link rel="stylesheet" href="style.css">
+<script src="journey.js" defer></script>
+</head>
+<body>
+<header class="masthead"><a class="brand" href="#"><img src="../../design/brand/agentdeck-icon.png" alt="AgentDeck"><span>AgentDeck <span class="dim">/ Dot</span></span></a><span class="edition">PRODUCT REVIEW · 2026.10.26</span></header>
+<main>
+<section class="intro"><div><p class="eyebrow">로컬 연결 · 사용 흐름 제안</p><h1>공유한 요청만,<br>내 책상에서 확인해요</h1><p class="lede">Dot에 맡긴 일의 진행과 결과를 AgentDeck에서 확인하는 흐름이에요.</p></div><aside class="disclosure"><strong>출시 전 인터랙티브 모형</strong><p>모든 화면과 동작은 합성 시나리오예요. 실제 앱·계정·권한·네트워크를 변경하지 않아요. 설치와 GUI 연결은 제안이며, 실제 Dot의 네이티브 요청 왕복은 별도로 검증했어요.</p><a href="#evidence">확인된 범위 보기 ↓</a></aside></section>
+<section class="walkthrough" aria-label="연결 사용 흐름 모형">
+<div class="toolbar"><label for="scenario">시험할 상황</label><select id="scenario"><option value="happy">처음 연결하고 요청 완료</option><option value="denied">연결 승인을 거절함</option><option value="offline">처리 중 Mac 연결이 끊김</option><option value="stale">연결은 있지만 새 보고가 없음</option><option value="expired">연결 권한이 만료됨</option><option value="revoke">완료 후 연결을 철회함</option></select><button id="play" class="quiet">1분 소개 재생</button><button id="reset" class="quiet">처음부터</button></div>
+<div class="workspace"><nav class="steps" aria-label="사용 단계"><ol id="step-list"></ol><p>샘플 자료만 사용<br>실제 연결은 실행하지 않아요</p></nav><div class="screen"><div class="window-bar"><span>AgentDeck · Dot 연결</span><span class="mock-label">화면 제안</span></div><article id="panel" aria-live="polite" aria-atomic="true"></article></div></div>
+<div class="reviewline"><span id="position"></span><p id="lesson"></p><button id="back" class="quiet">이전 단계</button></div>
+</section>
+<section id="evidence" class="evidence"><p class="eyebrow">증거와 제안을 구분해요</p><h2>기술 경로는 확인했고,<br>설치 경험은 다음 검증이에요</h2><div class="evidence-columns"><div><h3>실제로 확인한 내용</h3><p>실제 Dot이 연결된 Mac에서 Swift 클라이언트를 실행하고, 격리된 Swift 호스트의 요청을 읽고 완료를 보고했어요. 6회 호출이 모두 성공했고 합성 문맥의 합 122가 일치했어요.</p><p>연결 거절·승인, 재시작 후 복원, 초기 토큰 수명 이후 조회, 철회 후 접근 거절을 확인했어요.</p></div><div><h3>아직 출시 조건인 내용</h3><p>설치된 로컬 MCP 플러그인의 자동 도구 노출, 일반 사용자의 GUI 연결, 실제 AgentDeck 앱과 장비 화면, Store 서명 및 신규 사용자 검증이 남아 있어요.</p><p>검증에서는 클라이언트를 명시적으로 실행했어요. 이 모형의 버튼이 제품에 구현됐다는 뜻은 아니에요.</p></div></div></section>
+<section class="privacy"><h2>데이터가 가는 곳</h2><p class="route">Dot · OpenAI <span>↔</span> 연결한 Mac <span>↔</span> AgentDeck</p><p>이 로컬 경로에 AgentDeck 개발자의 중계 서버는 필요하지 않아요. 공유한 문맥과 결과는 OpenAI에서 처리해요. 인터넷 없는 서비스는 아니에요.</p><p>AgentDeck 연결을 철회해도 Dot의 컴퓨터 접근 권한은 별도로 남아요. 이미 OpenAI에 전달된 자료가 소급 삭제되거나 진행 중인 Dot 작업이 취소되는 것도 아니에요.</p></section>
+<footer><p>내부 제품 검토 · 사용자 테스트 결과가 아닌 시나리오 평가</p><a href="https://developers.openai.com/plugins/deploy/desktop-only">공식 로컬 플러그인 배포 조건</a><a href="https://learn.chatgpt.com/docs/dots/computers-and-apps">Dot 컴퓨터 연결 조건</a></footer>
+</main>
+</body></html>

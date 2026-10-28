@@ -201,6 +201,48 @@
       "paths": ["android/**"]
     },
     {
+      "id": "dot-native-host-compile",
+      "name": "Isolated Dot native host harness compile",
+      "gate": "dot-native-host",
+      "tiers": ["changed", "full"],
+      "run": "bash experiments/dot-native-local-host/build.sh --compile-only",
+      "requires": { "platform": "darwin", "commands": ["swiftc", "python3"] },
+      "paths": ["experiments/dot-native-local-host/**", "apple/AgentDeck/Daemon/Dot/**", "apple/AgentDeck/Resources/dot-mcp-contract.json"]
+    },
+    {
+      "id": "dot-native-client",
+      "name": "Native Dot local client policy and transport tests",
+      "gate": "dot-native-local",
+      "tiers": ["changed", "full"],
+      "run": "swift test --package-path integrations/chatgpt-local/native",
+      "requires": { "platform": "darwin", "commands": ["swift"] },
+      "paths": ["integrations/chatgpt-local/native/**", "apple/AgentDeck/Daemon/Dot/DotRules.generated.swift", "apple/AgentDeck/Resources/dot-mcp-contract.json", "services/dot-relay/src/server.ts"]
+    },
+    {
+      "id": "dot-native-package",
+      "name": "Native Dot plugin packaging tests",
+      "gate": "dot-native-package",
+      "tiers": [
+        "changed",
+        "full"
+      ],
+      "run": "python3 -m unittest discover -s integrations/chatgpt-local/native -p 'test_*.py' -v",
+      "requires": {
+        "commands": [
+          "python3"
+        ]
+      },
+      "paths": [
+        "integrations/chatgpt-local/native/package_plugin.py",
+        "integrations/chatgpt-local/native/test_package_plugin.py",
+        "integrations/chatgpt-local/native/verify_plugin_runtime.py",
+        "integrations/chatgpt-local/native/test_verify_plugin_runtime.py",
+        "integrations/chatgpt-local/native/ConnectApp/**",
+        "integrations/chatgpt-local/native/package/**",
+        "integrations/chatgpt-local/skills/**"
+      ]
+    },
+    {
       "id": "apple-macos",
       "name": "macOS app build + XCTest",
       "gate": "apple-unit",
@@ -323,6 +365,58 @@
     }
   ],
   "gates": [
+    {
+      "id": "dot-native-host",
+      "name": "Isolated Dot native host harness",
+      "level": ["compile"],
+      "where": "Local macOS Swift toolchain",
+      "workflow": null,
+      "trigger": "Changed harness or canonical Dot host sources; full verification",
+      "blocking": false,
+      "command": "bash experiments/dot-native-local-host/build.sh --compile-only",
+      "evidence": ["experiments/dot-native-local-host/build.sh", "experiments/dot-native-local-host/verify.py"],
+      "proves": ["Canonical Dot host sources compile in an isolated development app without starting the shared AgentDeck daemon"],
+      "does_not_prove": ["Signing, sandbox runtime, Keychain access or end-to-end Dot execution; the unsigned compile artifact refuses runtime startup", "Product app UI, ownership handover, App Store acceptance or public plugin distribution"]
+    },
+    {
+      "id": "dot-native-local",
+      "name": "Native Dot local client prototype",
+      "level": ["unit", "contract"],
+      "where": "Local macOS Swift toolchain",
+      "workflow": null,
+      "trigger": "Changed native client or its canonical Dot contract; full verification",
+      "blocking": false,
+      "command": "swift test --package-path integrations/chatgpt-local/native",
+      "evidence": ["integrations/chatgpt-local/native/Package.swift"],
+      "proves": ["Native client compiles and executes its policy and transport regression tests against the shared Dot contract"],
+      "does_not_prove": ["Signed Keychain access, real Dot tool discovery, native app runtime, ordinary-user onboarding or public plugin distribution"]
+    },
+    {
+      "id": "dot-native-package",
+      "name": "Native Dot plugin packaging",
+      "level": [
+        "unit",
+        "contract"
+      ],
+      "where": "Local Python toolchain",
+      "workflow": null,
+      "trigger": "Changed native package builder, templates or bundled skill; full verification",
+      "blocking": false,
+      "command": "python3 -m unittest discover -s integrations/chatgpt-local/native -p 'test_*.py' -v",
+      "evidence": [
+        "integrations/chatgpt-local/native/package_plugin.py",
+        "integrations/chatgpt-local/native/test_package_plugin.py",
+        "integrations/chatgpt-local/native/verify_plugin_runtime.py",
+        "integrations/chatgpt-local/native/test_verify_plugin_runtime.py"
+      ],
+      "proves": [
+        "Package manifests, isolated fixture routing, archive contents and input rejection follow the packaging contract"
+      ],
+      "does_not_prove": [
+        "Developer ID signature or GUI credential access; these require a signed runtime acceptance",
+        "Official plugin installation, automatic Dot tool exposure, independent-user onboarding or public distribution"
+      ]
+    },
     {
       "id": "vitest",
       "name": "TypeScript suite (Vitest) + coverage floor",

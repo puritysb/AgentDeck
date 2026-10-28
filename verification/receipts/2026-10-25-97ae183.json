@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-25T19:23:28.488Z",
+  "finished_at": "2026-10-25T19:55:11.450Z",
+  "duration_ms": 1902962,
+  "commit": "97ae18318ad6feb87f5668898710de2ce70ed154",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "fail",
+  "steps": [
+    {
+      "id": "version",
+      "gate": "typecheck",
+      "name": "Version sync",
+      "status": "pass",
+      "duration_ms": 510
+    },
+    {
+      "id": "build",
+      "gate": "typecheck",
+      "name": "Build every workspace package",
+      "status": "pass",
+      "duration_ms": 10517
+    },
+    {
+      "id": "typecheck",
+      "gate": "typecheck",
+      "name": "Strict type check",
+      "status": "pass",
+      "duration_ms": 5604
+    },
+    {
+      "id": "eslint",
+      "gate": "eslint",
+      "name": "ESLint error ratchet",
+      "status": "pass",
+      "duration_ms": 9934
+    },
+    {
+      "id": "vitest-coverage",
+      "gate": "vitest",
+      "name": "Vitest, whole suite + coverage floor",
+      "status": "fail",
+      "reason": "exit 1",
+      "duration_ms": 46792
+    },
+    {
+      "id": "e2e",
+      "gate": "daemon-e2e",
+      "name": "Daemon hub end-to-end",
+      "status": "skip",
+      "reason": "opt-in on this platform: on macOS the daemon's usage poller reads the login Keychain; pass --allow-keychain to run it"
+    },
+    {
+      "id": "protocol-drift",
+      "gate": "typecheck",
+      "name": "Generated protocol types match protocol.ts",
+      "status": "pass",
+      "duration_ms": 8467
+    },
+    {
+      "id": "preview-mirror",
+      "gate": "typecheck",
+      "name": "Preview mirror SYNC-HASH pins",
+      "status": "pass",
+      "duration_ms": 280
+    },
+    {
+      "id": "tokens",
+      "gate": "design-docs",
+      "name": "Design token mirrors",
+      "status": "pass",
+      "duration_ms": 1307
+    },
+    {
+      "id": "design-lint",
+      "gate": "design-docs",
+      "name": "Design-lint ratchet",
+      "status": "pass",
+      "duration_ms": 1494
+    },
+    {
+      "id": "docs",
+      "gate": "design-docs",
+      "name": "Markdown links, anchors and the AGENTS.md budget",
+      "status": "pass",
+      "duration_ms": 605
+    },
+    {
+      "id": "design-catalog",
+      "gate": "design-docs",
+      "name": "Design-system catalog and translations",
+      "status": "pass",
+      "duration_ms": 603
+    },
+    {
+      "id": "devlog",
+      "gate": "design-docs",
+      "name": "Development-log entries",
+      "status": "pass",
+      "duration_ms": 587
+    },
+    {
+      "id": "pages-parity",
+      "gate": "design-docs",
+      "name": "Board table, GNB, spec-card and surface-count parity",
+      "status": "pass",
+      "duration_ms": 236
+    },
+    {
+      "id": "android",
+      "gate": "android-unit",
+      "name": "Android compile + JUnit + Robolectric",
+      "status": "pass",
+      "duration_ms": 134568
+    },
+    {
+      "id": "dot-native-host-compile",
+      "gate": "dot-native-host",
+      "name": "Isolated Dot native host harness compile",
+      "status": "pass",
+      "duration_ms": 21570
+    },
+    {
+      "id": "dot-native-client",
+      "gate": "dot-native-local",
+      "name": "Native Dot local client policy and transport tests",
+      "status": "pass",
+      "duration_ms": 5873
+    },
+    {
+      "id": "dot-native-package",
+      "gate": "dot-native-package",
+      "name": "Native Dot plugin packaging tests",
+      "status": "pass",
+      "duration_ms": 191
+    },
+    {
+      "id": "apple-macos",
+      "gate": "apple-unit",
+      "name": "macOS app build + XCTest",
+      "status": "pass",
+      "duration_ms": 275441
+    },
+    {
+      "id": "apple-macos-release",
+      "gate": "apple-unit",
+      "name": "macOS Store Release build + Dot exclusion",
+      "status": "pass",
+      "duration_ms": 284052
+    },
+    {
+      "id": "apple-ios",
+      "gate": "apple-unit",
+      "name": "iOS app build (simulator, unsigned)",
+      "status": "pass",
+      "duration_ms": 77177
+    },
+    {
+      "id": "apple-dot-macos",
+      "gate": "apple-unit",
+      "name": "macOS DotPreview optimized build + XCTest + artifact boundary",
+      "status": "pass",
+      "duration_ms": 506339
+    },
+    {
+      "id": "apple-dot-ios",
+      "gate": "apple-unit",
+      "name": "iOS DotPreview optimized build + artifact boundary",
+      "status": "pass",
+      "duration_ms": 149838
+    },
+    {
+      "id": "apple-submission",
+      "gate": "apple-unit",
+      "name": "App Store submission bundle limits",
+      "status": "pass",
+      "duration_ms": 5988
+    },
+    {
+      "id": "esp32-host",
+      "gate": "esp32-host-policy",
+      "name": "ESP32 host policy assertions",
+      "status": "pass",
+      "duration_ms": 6166
+    },
+    {
+      "id": "esp32-sim",
+      "gate": "esp32-sim",
+      "name": "ESP32 firmware simulator compile",
+      "status": "pass",
+      "duration_ms": 162377
+    },
+    {
+      "id": "esp32-ttgo",
+      "gate": "esp32-ttgo",
+      "name": "ESP32 TTGO target build",
+      "status": "pass",
+      "duration_ms": 61037
+    },
+    {
+      "id": "npm-packaged",
+      "gate": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "status": "pass",
+      "duration_ms": 125019
+    },
+    {
+      "id": "windows-runtime",
+      "gate": "windows-runtime",
+      "name": "Windows native runtime",
+      "status": "skip",
+      "reason": "needs Windows (ci.yml › windows-native-runtime runs this on Node 22, 24 and 26 for every pull request)"
+    },
+    {
+      "id": "esp32-robot",
+      "gate": "esp32-robot",
+      "name": "ESP32 boards: flash, boot, serial protocol, performance",
+      "status": "manual",
+      "attested": false,
+      "reason": "lab gate, not attested"
+    },
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "manual",
+      "attested": false,
+      "reason": "lab gate, not attested"
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "manual",
+      "attested": false,
+      "reason": "lab gate, not attested"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ struct DotConnectionSetupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Dot can share reports and describe interactions with your agents. It appears on your displays after its connection is configured.")
+            Text("Dot can read context you choose to share and report progress for that request. A configured connection is separate from a verified first result.")
                 .fixedSize(horizontal: false, vertical: true)
             if daemonService.isUsingExternalDaemon {
                 GroupBox("Dot connection") {
@@ -32,7 +32,7 @@ struct DotConnectionSetupView: View {
             } else {
                 DotSettingsView()
             }
-            Text("Status describes reports received through this connection. Opening or closing ChatGPT does not establish Dot’s cloud activity.")
+            Text("Status describes reports received for shared requests, not all Dot activity. Dot needs this Mac online with ChatGPT open to use the local connection; closing a window is different from quitting an app.")
                 .font(.caption).foregroundStyle(.secondary)
         }.accessibilityIdentifier("dot-connection-setup")
     }

@@ -1,0 +1,14 @@
+apple/AgentDeck/Daemon/Core/DaemonActor.swift
+apple/AgentDeck/Daemon/Core/Logger.swift
+apple/AgentDeck/App/AgentDeckPaths.swift
+apple/AgentDeck/App/AppMetadata.swift
+apple/AgentDeck/Daemon/Dot/DotHost.swift
+apple/AgentDeck/Daemon/Dot/DotHTTPSListener.swift
+apple/AgentDeck/Daemon/Dot/DotOAuth.swift
+apple/AgentDeck/Daemon/Dot/DotSecurity.swift
+apple/AgentDeck/Daemon/Dot/DotMCPStore.swift
+apple/AgentDeck/Daemon/Dot/DotWebhook.swift
+apple/AgentDeck/Daemon/Dot/DotAppearanceStore.swift
+apple/AgentDeck/Daemon/Dot/DotRules.generated.swift
+apple/AgentDeck/Daemon/Dot/DotInteraction.generated.swift
+apple/AgentDeck/Model/DotSurface.generated.swift
