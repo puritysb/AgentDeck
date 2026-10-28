@@ -127,6 +127,56 @@ describe('write behaviour', () => {
   });
 });
 
+// #625: an update to a row that already reached disk must reach disk too. The
+// APME task_end re-emit lands 5–30 s after the first one, long after the 500 ms
+// debounce fired, and a clean shutdown with no newer row used to drop it.
+describe('late updates to an already-written row', () => {
+  function writtenStore(first: TimelineEntry): BridgeTimelineStore {
+    const store = new BridgeTimelineStore();
+    store.enablePersistence(file);
+    store.addEntry(first);
+    vi.advanceTimersByTime(1000);
+    return store;
+  }
+
+  it('persists a ts-matched upsert (late LLM summary on chat_end)', () => {
+    const store = writtenStore(entry({ type: 'chat_end', raw: 'before', sessionId: 's1' }));
+    store.upsertEntry(entry({ type: 'chat_end', raw: 'after', sessionId: 's1', detail: 'late summary', summaryKind: 'llm' }));
+    store.stopPersistence();
+
+    const rows = read() as TimelineEntry[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ raw: 'after', detail: 'late summary', summaryKind: 'llm' });
+  });
+
+  it('persists a task_end merged by taskId (late evaluation result)', () => {
+    const store = writtenStore(entry({ type: 'task_end', raw: 'before', taskId: 't1' }));
+    store.upsertEntry(entry({ ts: 1_700_000_020_000, type: 'task_end', raw: 'after', taskId: 't1', taskScore: 88, taskSummary: 'done' }));
+    store.stopPersistence();
+
+    const rows = read() as TimelineEntry[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ raw: 'after', taskScore: 88, taskSummary: 'done' });
+  });
+
+  it('persists an approval status change', () => {
+    const store = writtenStore(entry({ type: 'permission_request', raw: 'allow?', approvalId: 'a1' }));
+    store.updateEntryStatus('a1', 'approved');
+    store.stopPersistence();
+
+    expect((read() as TimelineEntry[])[0]).toMatchObject({ approvalId: 'a1', status: 'approved' });
+  });
+
+  it('reaches disk on the debounce timer alone, without a shutdown flush', () => {
+    const store = writtenStore(entry({ type: 'chat_end', raw: 'before', sessionId: 's1' }));
+    store.upsertEntry(entry({ type: 'chat_end', raw: 'after', sessionId: 's1' }));
+    vi.advanceTimersByTime(1000);
+
+    expect((read() as TimelineEntry[])[0]).toMatchObject({ raw: 'after' });
+    store.stopPersistence();
+  });
+});
+
 describe('round-trip', () => {
   it('a written file reloads into an equivalent buffer', () => {
     const a = new BridgeTimelineStore();

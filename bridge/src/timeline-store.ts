@@ -504,6 +504,7 @@ export class BridgeTimelineStore {
     for (let i = this.entries.length - 1; i >= 0; i--) {
       if (this.entries[i].approvalId === approvalId) {
         this.entries[i] = { ...this.entries[i], status };
+        this.schedulePersist();
         return;
       }
     }
@@ -576,6 +577,7 @@ export class BridgeTimelineStore {
           ...(normalized.taskCategory ? { taskCategory: normalized.taskCategory } : {}),
           ...(normalized.taskSummary ? { taskSummary: normalized.taskSummary } : {}),
         };
+        this.schedulePersist();
         for (const cb of this.listeners) cb(this.entries[i], true);
         return;
       }
@@ -630,6 +632,7 @@ export class BridgeTimelineStore {
       ...(entry.taskCategory ? { taskCategory: entry.taskCategory } : {}),
       ...(entry.taskSummary ? { taskSummary: entry.taskSummary } : {}),
     };
+    this.schedulePersist();
     for (const cb of this.listeners) cb(this.entries[idx], true);
     return true;
   }
