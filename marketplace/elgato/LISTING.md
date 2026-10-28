@@ -9,6 +9,21 @@
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
+## 1.8.2 — pending review (2026-10-28)
+
+Uploaded the official
+[1.8.2 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.2)
+(source `122b4c9c`) through Versions → Create version. Its SHA-256 is
+`c8a0c3e71ceff02566dd89283a836e2f689777255d5082d5667036397254aca7`.
+
+Maker Console parsed it as package 1.8.2.0, SDK 3, DRM Yes, Stream Deck+ dials
+Yes and default profiles Yes. "Automatically publish after being approved" is
+**off**. After a reload, Versions shows **1.8.2 Pending review**, with 1.8.1
+still Published.
+
+After approval, check the encoders on the DRM-processed package before the
+manual publish.
+
 ## 1.8.0 — public on the Marketplace (2026-10-08)
 
 The official [1.8.0 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.0)

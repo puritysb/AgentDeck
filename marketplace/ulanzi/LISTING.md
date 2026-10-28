@@ -16,6 +16,36 @@ Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category A
 Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
 point to the new id; dated records below keep the id they observed.
 
+## 1.8.2 — submitted as a new review version (2026-10-28)
+
+Created from the published 1.8.1 work with **Create review version**, using the
+CI package from `ulanzi-v1.8.2` (source `122b4c9c`). Its ZIP SHA-256 is
+`6afd42fa38ca829e6c6b62d074e853781c95599b5ebdd572920378c193631760`.
+
+**The first submit saved the old main file.** The portal API
+(`/api/api/myList?status=0`) still pointed at the previous ZIP. The fix was:
+Edit review work → remove the main file → upload again → restore the locales →
+Save review changes → Confirm.
+
+The API then read back main file
+`/cdn/uploadPath/upload/2026/10/28/038ebe389a32cf097d45216a46a258e2.zip`. The
+downloaded bytes match the hash above, and devices read `D200,D200H,D200X`.
+
+**The upload resets two things again.** It replaces every locale with the
+manifest description, and it re-selects Dial and AU05. All seven locale pairs
+were restored from the published copy, and Dial and AU05 were deselected again.
+A success toast is not a server write; only the API readback counts.
+
+Acceptance before submission was a D200H in Ulanzi Studio 3.4.4 on macOS. It
+covered:
+
+- keys on a new page;
+- filling a row, adding to the next row, replacing a key and switching pages,
+  with no blank or duplicate keys;
+- plugin details showing 1.8.2.
+
+Windows Studio remains unverified. Approval and publication are pending.
+
 ## 1.8.0 — submitted for review (2026-10-06)
 
 Updated the existing 1.7.0 review record using **Edit review work**. Reopened it

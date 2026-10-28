@@ -319,10 +319,17 @@ for verified publication and Store review status.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.4`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4) public |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.5`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
+
+**npm and deck plugins, 2026-10-28:** [npm 1.9.5 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5)
+for all four packages. Long-running background work now goes on standby instead
+of holding a session at "working". Stream Deck 1.8.2 is pending Elgato review,
+and Ulanzi 1.8.2 is in Ulanzi's review queue. Both marketplaces still serve
+1.8.1. See the
+[delivery checkpoint](RELEASING.md#2026-10-28-npm-stream-deck-and-ulanzi-delivery-checkpoint).
 
 **Android delivery, checked 2026-10-26:** the signed
 [1.10.2 (29) APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)

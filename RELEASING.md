@@ -115,6 +115,87 @@ is required before each marketplace submission: Stream Deck+ encoders on the
 DRM-processed Maker Console build, and D200H keys in Ulanzi Studio. Windows
 Ulanzi Studio is not available on this desk and remains unverified.
 
+### 2026-10-28 npm, Stream Deck and Ulanzi delivery checkpoint
+
+**npm 1.9.5 is public. Stream Deck 1.8.2 is pending Elgato review, with
+automatic publication off. Ulanzi 1.8.2 is submitted as a new review version.**
+Public Stream Deck and Ulanzi remain 1.8.1. Apple, Android and ESP32 were not
+touched; macOS 1.9.3 / 9801 is still in review.
+
+[PR #621](https://github.com/puritysb/AgentDeck/pull/621) merged as
+`122b4c9c342656dfb48b2d05801205024c7a189a`, with the same tree as the full-tier
+receipt `verification/receipts/2026-10-28-cabc69c.json`. All three tags point
+at that merge.
+
+**Pre-tag three-mode daemon soak.** The four candidate tarballs were installed
+globally (`agentdeck --version` 1.9.5, build `2ba300efb57d`). Each row was
+checked against a live Claude session and the D200H:
+
+- **CLI only:** the Node daemon owned 9120 under launchd. The session was
+  observed as processing, and the D200H showed its running key.
+- **Swift only:** App Store 1.9.2 / 9401 owned 9120 (`isSwift: true`). The
+  session, the app dashboard and the D200H key all agreed.
+- **Both:** at takeover, the last Swift response was 12:33:01Z and Node answered
+  by about 12:33:29Z, with one listener throughout. The app stayed attached as a
+  client.
+  - The CLI stopped at 12:34:21Z.
+  - Swift fell back to 9121, then reclaimed 9120 at 12:36:44Z, 2 min 23 s later,
+    without two owners at any point.
+  - The roster and D200H recovered.
+
+**One crash during the soak, explained, not in the npm artifact.** In the first
+Swift-only attempt, the 9401 app fell back to 9121 because 9120 was still held.
+It reclaimed the port at 11:59:34Z and aborted at 11:59:35.7Z.
+
+- **Cause:** step 11 of `DaemonServer.startServices` wrote `@Published
+  AppPreferences.hooksInstalled` from `@DaemonActor`. That drove the
+  `MenuBarExtra` update off the main thread, and AppKit aborts on that.
+- **It is a race:** the same process survived the row 3 reclaim.
+- **Affected builds:** 9401, 9801 and master carry it. The npm packages do not
+  contain Swift code.
+- **Fix:** [PR #622](https://github.com/puritysb/AgentDeck/pull/622).
+  It adds a devlog entry with the crash evidence.
+
+The tag went ahead on that explanation.
+
+**npm.** [Release run 40691972402](https://github.com/puritysb/AgentDeck/actions/runs/40691972402)
+published `@agentdeck/shared`, `hooks`, `bridge` and `setup` 1.9.5. At
+13:11:42 UTC the registry read back all four at 1.9.5, with `latest` at 1.9.5
+and `gitHead` `122b4c9c`. The
+[GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5)
+was published at 13:02:58 UTC.
+
+**Stream Deck.** [Run 40691971970](https://github.com/puritysb/AgentDeck/actions/runs/40691971970)
+built the
+[1.8.2 package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.2)
+(published 12:57:18 UTC). The downloaded package SHA-256 is
+`c8a0c3e71ceff02566dd89283a836e2f689777255d5082d5667036397254aca7`.
+
+In Maker Console it was uploaded as a new version. The parsed details showed
+1.8.2.0, SDK 3, DRM on, Stream Deck+ dials and default profiles. Release notes
+were entered and "Automatically publish after being approved" was turned off.
+After a reload, Versions showed **1.8.2 Pending review**, with 1.8.1 still
+Published.
+
+After approval, two steps remain separate: checking the encoders on the
+DRM-processed package, and the manual publish.
+
+**Ulanzi.** The
+[1.8.2 package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v1.8.2)
+(ZIP SHA-256
+`6afd42fa38ca829e6c6b62d074e853781c95599b5ebdd572920378c193631760`) was
+accepted beforehand on a D200H in Ulanzi Studio 3.4.4 on macOS. The details are
+in the CHANGELOG. It was submitted as a new review version from the published
+work. The portal API (`myList`) reads back main file
+`2026/10/28/038ebe389a32cf097d45216a46a258e2.zip`, whose downloaded bytes match
+that hash. Devices read back as D200/D200H/D200X. The
+[marketplace record](marketplace/ulanzi/LISTING.md) covers the re-upload this
+needed. Windows Ulanzi Studio remains unverified.
+
+**Local state after delivery.** The global `agentdeck` is the public npm 1.9.5
+installation, not the repository link. The Node daemon owns 9120 and the
+Development app is attached as a client.
+
 ### 2026-10-27 handover and package follow-up decision
 
 The maintainer requested completion and delivery of the two remaining improvements.
