@@ -77,7 +77,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - Stream Deck: with the opt-in Codex approval hold installed, a deck's Allow and Deny keys answer the held Codex approval. Separately started Codex sessions in the same project keep their own keys instead of being merged, and a stale Codex quota estimates its renewal by calendar month.
 
-- Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
+- Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. Checked in Ulanzi Studio 3.4.4 on macOS with a D200H attached: keys render on a new page, filling a row, adding to the next row, replacing a key and switching pages leave no blank or duplicate keys, and the plugin details show its icon and version. Key presses on the hardware and Windows Ulanzi Studio were not exercised.
 
 - Stream Deck and Ulanzi: a weekly-only Claude usage snapshot clears an older 5-hour reading instead of retaining a stale tile.
 
