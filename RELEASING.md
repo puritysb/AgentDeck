@@ -95,6 +95,34 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-29 macOS 1.9.4 preparation decision
+
+On October 28 the maintainer chose to keep the 1.9.3 / 9801 review running and
+to **prepare** the next macOS patch without submitting it. The 14:13 UTC
+[ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/40703436712)
+showed 1.9.3 and submission `ab8d4712` as `IN_REVIEW`. Replacing it would cancel
+an active review and restart the queue for a fix to a crash that public 9401
+also carries.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| macOS / App Store | 1.9.2 / 9401 | 1.9.3 / 9801, `IN_REVIEW` | 1.9.4 / next CI-derived build above 9801 | Patch: no quit after the built-in daemon reclaims 9120 (#622); background-work standby (#616); OpenCode device commands survive a dropped long-poll, and an approval that cannot be queued keeps its prompt (#617, #618); APME task review and corrected comparisons | Existing 1.9 scope; standard Store build excludes Dot |
+
+Scope: archive and upload a macOS-only build, then read it back as `VALID`.
+Do not prepare an App Store version or submit it while 1.9.3 is in review.
+Before submitting:
+
+- If 1.9.3 is approved, submit 1.9.4 as the next version.
+- If 1.9.3 is rejected, decide whether 1.9.4 replaces it.
+
+Acceptance before submission:
+
+- the Release archive check;
+- the CLI-only, Swift-only and both-daemons runtime soak on the actual artifact,
+  including at least one Swift reclaim from 9121 to 9120 with no abort.
+
+iOS, Android, ESP32, npm and the deck plugins are unchanged.
+
 ### 2026-10-28 npm, Stream Deck and Ulanzi release decision
 
 The maintainer authorized this round on October 28 after a channel audit. These
@@ -2430,6 +2458,12 @@ either fixed or explicitly waived in the release issue.
 `scripts/publish-npm.mjs` is retry-safe across a partial four-package delivery: an exact immutable version already visible on npm is skipped, the missing packages continue in dependency order, and every package is verified again at the end. This does not make the registry optional — a tag is complete only when all four exact versions are readable there. The same skip path is what makes a rerun after a registry-propagation timeout safe (1.3.1, 2026-09-12); the visibility window lives in `scripts/npm-registry-visibility.mjs` and is deliberately short so a genuine auth or trust failure still turns red quickly — widen it only if the propagation timeout recurs or a rerun also misses the window.
 
 ### Apple (TestFlight / App Store)
+
+**Current state** is in the dated checkpoints at the top of this file, not here.
+At the October 28 readback, public macOS was 1.9.2 / 9401, macOS 1.9.3 / 9801 was
+in review, and iOS/iPadOS was 1.9.1. See the
+[2026-10-29 decision](#2026-10-29-macos-194-preparation-decision). The table
+below is the historical 1.0.x platform split from August 2026.
 
 macOS has been publicly available since 2026-07-21 at [AgentDeck Dashboard on the Mac App Store](https://apps.apple.com/app/id6784822497), first as `1.0.0` and — since the 2026-07-24 approval of build 3901 — as `1.0.2`. The iPhone/iPad companion's first release (also `1.0.2`, build 3901) was **rejected on 2026-08-04 under Guideline 2.1(a)**.
 

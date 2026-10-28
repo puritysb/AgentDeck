@@ -12,11 +12,45 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
-## Prepared macOS 1.9.3 update text
+## Prepared macOS 1.9.4 update text
 
-Prepared for the macOS-only stability update authorized on October 26. This
-section includes the October 27 handover follow-up and is candidate copy, not
-an upload, submission or public-release receipt.
+Prepared on October 29 for the macOS-only patch after 1.9.3. This section is
+candidate copy, not an upload, submission or public-release receipt. Submission
+waits until the 1.9.3 / 9801 review finishes. iOS copy is unchanged. Dot remains
+excluded from the submitted binary.
+
+### English — macOS What's New
+
+```text
+• Fix an unexpected quit shortly after the built-in server resumed on its usual port, for example after the AgentDeck command-line server stopped.
+• Long-running background work, such as an idle teammate or a development server, now goes on standby instead of keeping a session shown as working.
+• OpenCode: a stop, prompt or approval sent from a device right after OpenCode reconnects is no longer lost, and an approval that cannot be queued keeps its Allow/Deny prompt.
+• Agent evaluation: open a task's review from the Work board or recent activity, and record your own verdict and note beside the AI estimate. Comparisons, judge settings and report exports are corrected.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• 기본 포트에서 내장 서버가 다시 시작된 직후(예: AgentDeck 명령줄 서버가 종료된 뒤) 앱이 예기치 않게 종료되던 문제를 수정했습니다.
+• 대기 중인 팀원이나 개발 서버처럼 오래 실행되는 백그라운드 작업은 이제 세션을 작업 중으로 붙잡아 두지 않고 대기 상태로 표시합니다.
+• OpenCode: OpenCode가 다시 연결된 직후 기기에서 보낸 중지·프롬프트·승인이 사라지지 않으며, 대기열에 넣을 수 없는 승인도 허용/거부 프롬프트가 유지됩니다.
+• 에이전트 평가: Work 보드나 최근 활동에서 작업 리뷰를 바로 열고, AI 추정 옆에 사용자 판정과 메모를 기록할 수 있습니다. 비교, 판정 모델 설정, 보고서 내보내기를 바로잡았습니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• 内蔵サーバーが通常のポートで再開した直後(たとえばAgentDeckのコマンドラインサーバーが停止した後)に、アプリが予期せず終了する問題を修正しました。
+• 待機中のチームメイトや開発サーバーなど長時間動くバックグラウンド作業は、セッションを作業中のままにせず、待機状態として表示するようになりました。
+• OpenCode:OpenCodeの再接続直後にデバイスから送った停止・プロンプト・承認が失われなくなり、キューに入れられない承認でも許可/拒否のプロンプトが残ります。
+• エージェント評価:Workボードや最近のアクティビティからタスクのレビューを直接開き、AIの推定の横に自分の判定とメモを記録できます。比較、判定モデルの設定、レポートの書き出しを修正しました。
+```
+
+## Submitted macOS 1.9.3 update text
+
+Submitted with **1.9.3 / 9801** on October 27; `IN_REVIEW` at the October 28
+14:13 UTC readback. Prepared for the macOS-only stability update authorized on
+October 26. This section includes the October 27 handover follow-up.
 The baseline is the public macOS 1.9.2 / 9401 release. iOS copy is unchanged.
 Dot remains excluded from the submitted binary.
 

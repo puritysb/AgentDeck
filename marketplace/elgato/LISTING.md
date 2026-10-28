@@ -2,8 +2,9 @@
 
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
-> and the independently verified public version is **1.8** (released
-> 2026-10-08 per the public product page, read 2026-10-11), following `1.6`
+> and the public version is **1.8.1** (Maker Console Versions, read
+> 2026-10-28); 1.8.2 is pending review with auto-publish off. Earlier: `1.8`
+> (released 2026-10-08 per the public product page, read 2026-10-11), `1.6`
 > (2026-10-03, 758.41 KB), `1.3`, `1.2` and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
@@ -181,6 +182,10 @@ Plugin package: `dist/bound.serendipity.agentdeck.streamDeckPlugin` — rebuild 
 `pnpm package`, which runs Elgato's `streamdeck validate` before packing.
 
 ## Version
+
+Current: `1.8.1.0` published; `1.8.2.0` pending review (2026-10-28). The
+paragraph below is the historical 1.0.4 record, and the Release notes section
+below it is 1.0.4 copy.
 
 `1.0.4.0` (product version `1.0.4`) — **published 2026-08-05**. It adds
 Stream Deck XL and Stream Deck + XL as their own device models, brings the

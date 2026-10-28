@@ -1,6 +1,6 @@
 # App Store Connect submission checklist
 
-> **Release status (2026-09-05):** 1.2.0 (5801) is live on both platforms. iOS was
+> **Historical release status (2026-09-05; current state is in [RELEASING.md](../../RELEASING.md)):** 1.2.0 (5801) is live on both platforms. iOS was
 > approved and released 2026-09-02T07:12Z (lookup API); macOS was approved and
 > released on 2026-09-04 (public Mac page `Version 1.2.0 · 5h ago` at
 > 2026-09-05T01:41Z). Path to the macOS release: macOS 1.2.0 (5801)
