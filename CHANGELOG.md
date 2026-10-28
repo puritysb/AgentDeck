@@ -45,6 +45,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Sessions: an idle Claude session no longer reads "Waiting for N background tasks" for a day because a teammate is idling between messages or a dev server is still running. Background work now has a kind: a job (subagent, workflow, unknown type) stays active until it ends; a long-running process (shell, monitor, teammate, cloud session, Codex terminal, Hermes process) is active for 10 minutes from its first sighting and on standby after that. Standby work never holds the session working and shows as `STBY n` beneath any active `BG n` on Stream Deck and Ulanzi keys, the macOS dashboard, Android and e-ink labels. Both daemons share the rule (#616). Other ESP32 displays, the terrarium and Pixoo do not show standby yet.
+
+- APME: the Work board opens a task's review directly, separating the AI estimate, judge model, rubric, recorded reasoning and done/missed items from your own verdict (completed, partial, incorrect or clear) and an optional note. Your feedback is kept as an append-only history; it never rewrites AI scores or trains a judge. Task detail now explains a missing reply, an intentional exclusion, disabled evaluation and a recorded judge failure separately, and the latest judge attempt is recorded with its outcome. Judge inputs keep the first request, the latest result and recorded validation/error tool events within a fixed budget. On macOS, recent activity rows open the matching task. The macOS part awaits the next Apple delivery after 1.9.3.
+
+- APME: model comparisons are withheld when there is not enough task evidence, and unknown pricing stays unknown instead of reading as free. The Mac app reloads judge settings for each evaluation, and copied report links drop query, fragment and embedded credentials.
+
 - Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
 
 - Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
