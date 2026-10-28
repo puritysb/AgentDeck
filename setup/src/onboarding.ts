@@ -494,7 +494,7 @@ export function surfacePlan(probe: SurfaceProbe, platform: Platform): SurfacePla
   return 'unknown';
 }
 
-export const ULANZI_MARKETPLACE_URL = 'https://ugc.ulanzistudio.com/contentView/1141';
+export const ULANZI_MARKETPLACE_URL = 'https://ugc.ulanzistudio.com/contentView/1239890184745660416';
 export const ULANZI_DOWNLOAD_URL = 'https://www.ulanzi.com/pages/downloads';
 export const ELGATO_MARKETPLACE_URL =
   'https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464';

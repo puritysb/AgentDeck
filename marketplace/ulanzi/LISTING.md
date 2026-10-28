@@ -10,6 +10,12 @@ content-record mismatch reported in the original support thread with the
 reproduction URL and AgentDeck UUID/category. **Resolved:** the published record
 is `/contentView/1141` and resolves to AgentDeck.
 
+**2026-10-28:** `/contentView/1141` now returns *Resource not found*. The public
+listing moved to `/contentView/1239890184745660416` (found by searching the
+Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category AI.
+Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
+point to the new id; dated records below keep the id they observed.
+
 ## 1.8.0 — submitted for review (2026-10-06)
 
 Updated the existing 1.7.0 review record using **Edit review work**. Reopened it
@@ -41,7 +47,7 @@ listing remains last verified at 1.6.0; review submission is not publication.
 ## 1.6.0 public — listing verification (2026-10-03)
 
 The signed-in published-work record and the normal public listing at
-<https://ugc.ulanzistudio.com/contentView/1141> both show **Version 1.6.0**,
+<https://ugc.ulanzistudio.com/contentView/1239890184745660416> both show **Version 1.6.0**,
 category **AI**, Windows/Mac and **D200, D200H, D200X**; Dial is not listed.
 This confirms delivery of the [1.6.0 submission](../../docs/devlog/entries/2026-09-28-store-submissions-160.md).
 No new upload or review replacement was needed. The exact approval time was not
@@ -204,7 +210,7 @@ Still a thin client: no bundled daemon, no USB HID access, no analytics. It need
 
 ## Published — 1.0.3 is live (measured 2026-08-24)
 
-The listing is public at **<https://ugc.ulanzistudio.com/contentView/1141>** and
+The listing is public at **<https://ugc.ulanzistudio.com/contentView/1239890184745660416>** and
 carried in the Plugins category browse page. Personal Center reads
 `Works under review: 0` / `Published works: 1`. Submitted 2026-08-07, so review
 ran 17 days; the reviewer's 2026-08-14 "live next week" held.

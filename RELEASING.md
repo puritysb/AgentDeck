@@ -95,6 +95,26 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-28 npm, Stream Deck and Ulanzi release decision
+
+The maintainer authorized this round on October 28 after a channel audit. These
+are **candidates until each delivery receipt is recorded**. Store review of
+macOS 1.9.3 / 9801 is in progress (`IN_REVIEW`, ASC read 00:43 UTC) and is not
+touched; iOS, Android and ESP32 are unchanged in this round.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.4 (registry read October 28) | None | 1.9.5 / release SHA and four tarball hashes | Patch: long-running background work goes on standby instead of holding sessions "working" (#616); APME task review and corrected comparisons; OpenCode device commands survive a dropped long-poll (#617); corrected Ulanzi Marketplace link in setup | Existing 1.9 scope; no new milestone |
+| Stream Deck / Elgato Marketplace | 1.8.1 (published 2026-10-14, product payload read October 28) | None above 1.8.1 | 1.8.2.0 | Patch: selected profile survives plugin restart; same-project sessions get a short id tag (#544); Allow/Deny keys answer the opt-in Codex approval hold; standby display; clearer usage action names (IDs unchanged) | Existing 1.8 plugin scope |
+| Ulanzi / Ulanzi Studio Marketplace | 1.8.1 (public listing read October 28; listing id moved) | None observed | 1.8.2 | Patch: Ulanzi QA's 1.8.1 findings — blank/duplicate keys on replace and page switch, stable session order, setup panel session count and per-platform guidance (#593–#595); #544 tags; standby display | Existing 1.8 plugin scope; D200X encoders still unsupported |
+
+APME task review is classified as completing the existing APME review surface,
+not a new product milestone. The Ulanzi Studio QA reply (their 10-14 list and
+10-19 reminder) is answered with the submitted 1.8.2 build. Physical acceptance
+is required before each marketplace submission: Stream Deck+ encoders on the
+DRM-processed Maker Console build, and D200H keys in Ulanzi Studio. Windows
+Ulanzi Studio is not available on this desk and remains unverified.
+
 ### 2026-10-27 handover and package follow-up decision
 
 The maintainer requested completion and delivery of the two remaining improvements.
