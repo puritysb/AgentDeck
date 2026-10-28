@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- macOS app: the app could quit unexpectedly a moment after its built-in daemon took port 9120 back — after the AgentDeck CLI daemon stopped, or after launching while the port was briefly still held. Re-checking the installed Claude Code hooks during that restart updated the menu bar from a background thread, which macOS stops the app for. The check now runs on the main thread. Observed on the App Store build 1.9.2 (9401); fixed in the next macOS delivery.
+
 - macOS app: the same OpenCode long-poll correction (#617), and a device approval that cannot be queued no longer clears the Allow/Deny prompt, so the request stays answerable (#618). Awaits the next Apple delivery after 1.9.3.
 
 - macOS, Android and ESP32 e-ink: the background-work standby state (`STBY n`, #616) and, on macOS, the APME task review, recent-activity task links and per-evaluation judge settings shipped in npm 1.9.5 and await each target's own delivery.
