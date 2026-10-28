@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Node daemon: a change to a timeline row that is already on disk is now saved as well (#625). An LLM summary or an evaluation score that arrives after the first write, or an approval's allowed/denied result, used to stay in memory only, so a clean restart with no newer row brought back the old values. The macOS app's daemon already saved these.
+
 - Android and ESP32 e-ink: the background-work standby state (`STBY n`, #616) shipped in npm 1.9.5 and in the macOS app 1.9.4, and awaits each target's own delivery.
 
 - ESP32 WiFi provisioning: a board parked on USB serial is no longer sent the WiFi credentials it already holds on every serial reopen, lease resume and daemon restart. Each of those provisions woke a radio the board then had to park again. A provision now carries a credential id: an HMAC keyed by the pairing token, never a bare hash of the password. The board stores the id beside the credentials and reports it as `device_info.wifiCredId`, over USB only, and both daemons skip a board whose id matches. Boards that persist a provision (IPS10, T-Display-S3-Pro, NM-EPD-420, EPD47) now also receive changed credentials, which they never did. Older firmware and older daemons keep the old behaviour, and rotating the pairing token re-provisions each board once. Neither daemon writes WiFi credentials to a serial port before a board has identified itself on that connection. On most boards a provision now also reaches flash when it follows a failed captive-portal save; it used to be held in RAM only and lost at the next reboot.
