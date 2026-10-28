@@ -31,6 +31,7 @@ const RELEASE_WORKFLOW = '.github/workflows/apple-release.yml';
 const LOCALES = ['en-US', 'ko', 'ja'];
 const EDITABLE = new Set(['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED']);
 const SUBMITTED = new Set(['WAITING_FOR_REVIEW', 'IN_REVIEW']);
+const TERMINAL = new Set(['READY_FOR_SALE', 'REPLACED_WITH_NEW_VERSION', 'DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE']);
 
 const b64url = (buf) =>
   Buffer.from(buf).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -320,8 +321,7 @@ async function ensureReleaseVersion(request, version, build, copy) {
   const target = matches[0];
   const active = await activeSubmissions(request);
   requireThat(!active, 'Do not initialize metadata while a macOS review submission is active');
-  const terminal = new Set(['READY_FOR_SALE', 'REPLACED_WITH_NEW_VERSION', 'DEVELOPER_REMOVED_FROM_SALE', 'REMOVED_FROM_SALE']);
-  requireThat(versions.every(v => v.id === target?.id || terminal.has(v.attributes.appStoreState)),
+  requireThat(versions.every(v => v.id === target?.id || TERMINAL.has(v.attributes.appStoreState)),
     'Another macOS version is in flight');
   if (target) {
     const current = await versionRelationship(request, target.id, 'build', 'builds');
@@ -589,15 +589,97 @@ async function replacePendingBuild({ request, version, build, previousBuild, sub
     'Replacement build attachment is not confirmed; inspect ASC before retrying');
 }
 
+/** Supersede a pending review with a newer version number. ASC keeps one
+ * unreleased macOS version per platform, so the canceled version record itself
+ * is renumbered and given the new build in one PATCH; the normal prepare path
+ * then writes the new copy. Resumable after either step; nothing is retried
+ * after an unknown response. */
+async function supersedePendingVersion({ request, version, build, previousVersion, previousBuild, submissionId, pause }) {
+  validateVersion(previousVersion);
+  requireThat(compareVersions(version, previousVersion) > 0, 'Superseding requires a newer version than the pending one');
+  requireThat(/^\d+$/.test(previousBuild ?? '') && Number(previousBuild) < Number(build),
+    'Superseding requires an explicit older build number');
+  requireThat(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(submissionId ?? ''),
+    'Superseding requires the exact previous submission UUID');
+  const { buildId } = await releaseBuild(request, version, build);
+  const inspect = async () => {
+    const inFlight = (await macVersions(request)).filter(v => !TERMINAL.has(v.attributes.appStoreState));
+    const row = exactlyOne(inFlight, 'unreleased macOS version');
+    requireThat([previousVersion, version].includes(row.attributes.versionString),
+      'The unreleased version is neither the pending nor the target version');
+    const all = await collection(request, `/v1/apps/${APP_ID}/reviewSubmissions?filter[platform]=${PLATFORM}&limit=200`);
+    const old = exactlyOne(all.data.filter(r => r.id === submissionId), 'explicit previous submission');
+    resourceId(old, 'reviewSubmissions');
+    requireThat(old.attributes?.platform === PLATFORM, 'Previous submission platform mismatch');
+    const items = (await collection(request, `/v1/reviewSubmissions/${submissionId}/items?include=appStoreVersion&limit=200`)).data;
+    assertTargetItem({ submission: old, items }, row.id);
+    const active = await activeSubmissions(request);
+    requireThat(!active || active.submission.id === submissionId, 'Another submission became active; refusing to supersede');
+    const attached = await versionRelationship(request, row.id, 'build', 'builds');
+    return { row, old, active, attached };
+  };
+  let { row, old, active, attached } = await inspect();
+  if (row.attributes.versionString === version) {
+    // Resumed after the renumbering: only the outcome is checked here.
+    requireThat(old.attributes.state === 'COMPLETE' && !active && EDITABLE.has(row.attributes.appStoreState),
+      'Renumbered version is not in the expected canceled, editable state');
+    requireThat(attached?.id === buildId, 'Renumbered version does not carry the target build');
+    return;
+  }
+  requireThat(attached?.attributes?.version === previousBuild, 'Previous build association changed; refusing to supersede');
+  if (SUBMITTED.has(old.attributes.state)) {
+    requireThat(active?.submission.id === submissionId && SUBMITTED.has(row.attributes.appStoreState),
+      'Previous version and submission must both still be in review');
+    try {
+      await request(`/v1/reviewSubmissions/${submissionId}`, 'PATCH', {
+        data: { type: 'reviewSubmissions', id: submissionId, attributes: { canceled: true } },
+      });
+    } catch (error) {
+      if (!error.outcomeUnknown) throw error;
+    }
+  } else requireThat(['CANCELING', 'COMPLETE'].includes(old.attributes.state),
+    'Previous submission is not submitted or canceling/complete');
+  let ready = false;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    ({ row, old, active, attached } = await inspect());
+    if (old.attributes.state === 'COMPLETE' && !active && row.attributes.appStoreState === 'DEVELOPER_REJECTED') {
+      ready = true;
+      break;
+    }
+    requireThat(['WAITING_FOR_REVIEW', 'IN_REVIEW', 'CANCELING', 'COMPLETE'].includes(old.attributes.state),
+      'Cancellation entered an unexpected state; inspect ASC');
+    if (attempt < 5) await pause(2000);
+  }
+  requireThat(ready, 'Cancellation outcome not confirmed; read back before retrying the same supersede');
+  requireThat(row.attributes.versionString === previousVersion && attached?.attributes?.version === previousBuild,
+    'Pending version changed during cancellation; refusing to renumber');
+  try {
+    await request(`/v1/appStoreVersions/${row.id}`, 'PATCH', { data: {
+      type: 'appStoreVersions', id: row.id, attributes: { versionString: version },
+      relationships: { build: { data: { type: 'builds', id: buildId } } },
+    } });
+  } catch (error) {
+    if (!error.outcomeUnknown) throw error;
+  }
+  ({ row, old, active, attached } = await inspect());
+  requireThat(row.attributes.versionString === version && EDITABLE.has(row.attributes.appStoreState) && attached?.id === buildId,
+    'Renumbering is not confirmed; inspect ASC before retrying');
+}
+
 /** Fixed app/platform operation; callers cannot supply endpoints, methods or bodies. */
-export async function runRelease({ action, version, build, copy, request, provenance, previousBuild, previousSubmission, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
+export async function runRelease({ action, version, build, copy, request, provenance, previousBuild, previousSubmission, previousVersion, pause = ms => new Promise(r => setTimeout(r, ms)) }) {
   validateReleaseTarget(version, build);
-  requireThat(['release-prepare', 'release-submit', 'release-replace-prepare'].includes(action), 'Unknown release operation');
+  requireThat(['release-prepare', 'release-submit', 'release-replace-prepare', 'release-supersede-prepare'].includes(action), 'Unknown release operation');
   requireThat(copy?.notes && LOCALES.every(l => typeof copy.whatsNew?.[l] === 'string' && copy.whatsNew[l].length > 0), 'Incomplete repository copy');
   requireThat(provenance?.sourceSha && provenance?.runId && provenance?.artifactDigest, 'Verified upload provenance is required');
   const replacement = action === 'release-replace-prepare';
+  const supersede = action === 'release-supersede-prepare';
   if (replacement) {
     await replacePendingBuild({ request, version, build, previousBuild, submissionId: previousSubmission, pause });
+    action = 'release-prepare';
+  }
+  if (supersede) {
+    await supersedePendingVersion({ request, version, build, previousVersion, previousBuild, submissionId: previousSubmission, pause });
     action = 'release-prepare';
   }
   if (action === 'release-prepare') await ensureReleaseVersion(request, version, build, copy);
@@ -612,6 +694,7 @@ export async function runRelease({ action, version, build, copy, request, proven
   const receipt = status => ({ appId: APP_ID, platform: PLATFORM, version, build, status,
     versionId: snapshot.versionId, buildId: snapshot.buildId, ...provenance,
     ...(replacement ? { previousBuild, previousSubmission } : {}),
+    ...(supersede ? { previousVersion, previousBuild, previousSubmission } : {}),
     ...(active ? { submissionId: active.submission.id } : {}),
     metadataSha256: crypto.createHash('sha256').update(JSON.stringify(copy)).digest('hex') });
   if (active && SUBMITTED.has(active.submission.attributes.state)) {
@@ -735,10 +818,10 @@ export async function runRelease({ action, version, build, copy, request, proven
 }
 
 export async function main(args = process.argv.slice(2)) {
-  const [cmd, arg, build, runId, previousBuild, previousSubmission] = args;
-  if (['release-prepare', 'release-submit', 'release-replace-prepare'].includes(cmd)) validateReleaseTarget(arg, build);
+  const [cmd, arg, build, runId, previousBuild, previousSubmission, previousVersion] = args;
+  if (['release-prepare', 'release-submit', 'release-replace-prepare', 'release-supersede-prepare'].includes(cmd)) validateReleaseTarget(arg, build);
   else requireThat(['list', 'revoke', 'store-status'].includes(cmd),
-    'usage: asc-certificates.mjs (list | store-status | revoke <ids> | release-prepare <version> <build> | release-submit <version> <build> | release-replace-prepare <version> <build> <run> <previous-build> <previous-submission>)');
+    'usage: asc-certificates.mjs (list | store-status | revoke <ids> | release-prepare <version> <build> | release-submit <version> <build> | release-replace-prepare <version> <build> <run> <previous-build> <previous-submission> | release-supersede-prepare <version> <build> <run> <previous-build> <previous-submission> <previous-version>)');
   api = createASCClient();
   if (cmd === 'store-status') await storeStatus();
   else if (cmd === 'list') await list();
@@ -754,7 +837,7 @@ export async function main(args = process.argv.slice(2)) {
     const copy = extractReleaseCopy(
       fs.readFileSync(resolve(root, 'docs/appstore-metadata-draft.md'), 'utf8'),
       fs.readFileSync(resolve(root, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), arg);
-    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api, provenance, previousBuild, previousSubmission })));
+    console.log(JSON.stringify(await runRelease({ action: cmd, version: arg, build, copy, request: api, provenance, previousBuild, previousSubmission, previousVersion })));
   }
 }
 

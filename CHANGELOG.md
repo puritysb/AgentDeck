@@ -67,6 +67,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 This delivery targets macOS. iPhone and iPad remain on their existing release.
 
+1.9.3 was withdrawn from App Review before it was released, so this version replaces it and also carries every change listed under Apple 1.9.3 below.
+
 - Fix an unexpected quit a moment after the built-in daemon took port 9120 back: after the AgentDeck CLI daemon stopped, or after launching while the port was briefly still held. Re-checking the installed Claude Code hooks during that restart updated the menu bar from a background thread. The check now runs on the main thread. Observed on 1.9.2 (9401).
 - Put long-running background work (an idle teammate, a dev server left running) on standby instead of keeping the session "working". A long-running process counts as active for 10 minutes from its first sighting and as standby after that; a job such as a subagent stays active until it ends (#616).
 - OpenCode: a STOP, prompt or approval sent from a device right after OpenCode reconnected is no longer handed to the dropped connection and lost (#617). An approval that cannot be queued no longer clears the Allow/Deny prompt, so the request stays answerable (#618).

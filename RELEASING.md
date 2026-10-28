@@ -123,6 +123,16 @@ Acceptance before submission:
 
 iOS, Android, ESP32, npm and the deck plugins are unchanged.
 
+**Superseded on October 29.** The maintainer chose to stop waiting: 1.9.3 / 9801
+had been `IN_REVIEW` since October 28 (the 23:36 UTC
+[readback](https://github.com/puritysb/AgentDeck/actions/runs/40788454601)
+still showed it). The decision was to cancel submission `ab8d4712`, renumber that
+version to 1.9.4, and submit a new 1.9.4 build uploaded from the commit that
+adds `release-supersede-prepare`; build 9901 cannot be used, because its
+upload commit predates the action. The maintainer waived the runtime soak listed
+above to get the submission out. The Release archive check still runs in the
+upload job. 1.9.4 contains everything 1.9.3 did, so nothing from 1.9.3 is lost.
+
 ### 2026-10-28 npm, Stream Deck and Ulanzi release decision
 
 The maintainer authorized this round on October 28 after a channel audit. These
@@ -2585,6 +2595,16 @@ restarts the review queue. Other active submissions, changed associations,
 public versions and uncertain cancellation outcomes stop the operation. Re-run
 only after reading back the same target; an already attached new build does not
 cancel a new submission.
+
+To replace a pending version with a **newer version number**, use
+`action=release-supersede-prepare` with the same inputs plus
+`previous_version=<exact pending version>`. App Store Connect keeps one
+unreleased macOS version per platform. Therefore, after the same checks and the
+same bounded cancellation, the canceled version record is renumbered and given the
+new build in one PATCH. The operation then prepares the new version's copy. It
+refuses when the only unreleased version is neither the pending version nor the
+target version, and when the old build association has changed. A re-run after
+the renumbering checks only the result. Resubmit using step 3.
 
 A missing response is an unknown outcome: read back the state before retrying.
 Do not overlap dispatches or create a second submission to work around an

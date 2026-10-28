@@ -460,6 +460,99 @@ describe('explicit pending macOS build replacement', () => {
   });
 });
 
+async function supersedeFixture() {
+  const f = await replacementFixture().then(r => r.f);
+  // replacementFixture leaves 1.9.3 in review with build 9501 attached; the
+  // superseding build 9601 belongs to 1.9.4 instead.
+  f.pre.attributes.version = '1.9.4';
+  const old = f.state.submissions.find(row => row.id === previousSubmission)!;
+  old.attributes.state = 'IN_REVIEW';
+  f.version.attributes.appStoreState = 'IN_REVIEW';
+  const flags = { lostCancel: false, pending: false, lostRenumber: false, rejectRenumber: false };
+  const request = async (path: string, method = 'GET', body?: any) => {
+    if (method === 'PATCH' && path === `/v1/reviewSubmissions/${previousSubmission}`) {
+      f.state.calls.push({ path, method, body: clone(body) });
+      expect(body).toEqual({ data: { type: 'reviewSubmissions', id: previousSubmission, attributes: { canceled: true } } });
+      old.attributes.state = flags.pending ? 'CANCELING' : 'COMPLETE';
+      if (!flags.pending) f.version.attributes.appStoreState = 'DEVELOPER_REJECTED';
+      if (flags.lostCancel) throw unknownOutcome();
+      return { data: clone(old) };
+    }
+    if (method === 'PATCH' && path === '/v1/appStoreVersions/version-mac' && body?.data?.relationships) {
+      f.state.calls.push({ path, method, body: clone(body) });
+      if (flags.rejectRenumber) throw new Error('ASC request failed (HTTP 409)');
+      expect(body).toEqual({ data: { type: 'appStoreVersions', id: 'version-mac', attributes: { versionString: '1.9.4' },
+        relationships: { build: { data: { type: 'builds', id: 'build-9601' } } } } });
+      f.version.attributes.versionString = '1.9.4';
+      f.state.attached = clone(f.build);
+      if (flags.lostRenumber) throw unknownOutcome();
+      return { data: clone(f.version) };
+    }
+    return f.request(path, method, body);
+  };
+  return { f, old, flags, run: (overrides: Record<string, any> = {}) => runRelease({
+    action: 'release-supersede-prepare', version: '1.9.4', build: '9601', previousVersion: '1.9.3', previousBuild: '9501', previousSubmission,
+    copy, provenance, request, pause: async () => {}, ...overrides,
+  }) };
+}
+
+describe('superseding a pending macOS version with a newer one', () => {
+  it('cancels the named review, renumbers that version onto the new build and prepares idempotently', async () => {
+    const { f, run } = await supersedeFixture();
+    expect(await run()).toMatchObject({ status: 'prepared', version: '1.9.4', build: '9601', previousVersion: '1.9.3', previousBuild: '9501', previousSubmission });
+    expect(f.writes().map(c => c.path)).toEqual([`/v1/reviewSubmissions/${previousSubmission}`, '/v1/appStoreVersions/version-mac']);
+    const writes = f.writes().length;
+    await run();
+    expect(f.writes()).toHaveLength(writes);
+    expect(await run({ action: 'release-submit' })).toMatchObject({ status: 'submitted', version: '1.9.4', build: '9601' });
+  });
+
+  it.each(['older-target', 'same-version', 'wrong-previous', 'previous-build', 'submission-id', 'build-processing', 'foreign-item', 'foreign-active', 'second-draft', 'association'])
+  ('refuses unsafe %s before canceling the old review', async reason => {
+    const { f, run } = await supersedeFixture();
+    const overrides: Record<string, any> = {};
+    if (reason === 'older-target') overrides.previousVersion = '1.9.5';
+    if (reason === 'same-version') overrides.previousVersion = '1.9.4';
+    if (reason === 'wrong-previous') overrides.previousVersion = '1.9.2';
+    if (reason === 'previous-build') overrides.previousBuild = '9401';
+    if (reason === 'submission-id') overrides.previousSubmission = 'wrong';
+    if (reason === 'build-processing') f.build.attributes.processingState = 'PROCESSING';
+    if (reason === 'foreign-item') f.state.items[0]!.relationships!.appStoreVersion.data.id = 'other-version';
+    if (reason === 'foreign-active') f.state.submissions.push({ type: 'reviewSubmissions', id: 'other', attributes: { platform: 'MAC_OS', state: 'READY_FOR_REVIEW' } });
+    if (reason === 'second-draft') f.state.versions.push({ type: 'appStoreVersions', id: 'version-other', attributes: { platform: 'MAC_OS', versionString: '1.9.4', appStoreState: 'PREPARE_FOR_SUBMISSION' } });
+    if (reason === 'association') f.state.attached!.attributes.version = '9401';
+    await expect(run(overrides)).rejects.toThrow();
+    expect(f.writes()).toHaveLength(0);
+  });
+
+  it.each(['cancel', 'renumber'])('reconciles a lost %s response without repeating its mutation', async where => {
+    const { f, flags, run } = await supersedeFixture();
+    if (where === 'cancel') flags.lostCancel = true;
+    else flags.lostRenumber = true;
+    expect(await run()).toMatchObject({ status: 'prepared', version: '1.9.4' });
+    expect(f.writes()).toHaveLength(2);
+  });
+
+  it('bounds pending cancellation and resumes once the old review is complete', async () => {
+    const { f, old, flags, run } = await supersedeFixture();
+    flags.pending = true;
+    await expect(run()).rejects.toThrow(/Cancellation outcome not confirmed/);
+    expect(f.writes()).toHaveLength(1);
+    old.attributes.state = 'COMPLETE';
+    f.version.attributes.appStoreState = 'DEVELOPER_REJECTED';
+    expect(await run()).toMatchObject({ status: 'prepared' });
+    expect(f.writes()).toHaveLength(2);
+  });
+
+  it('stops after a refused renumbering and leaves the canceled version untouched', async () => {
+    const { f, flags, run } = await supersedeFixture();
+    flags.rejectRenumber = true;
+    await expect(run()).rejects.toThrow(/HTTP 409/);
+    expect(f.version.attributes).toMatchObject({ versionString: '1.9.3', appStoreState: 'DEVELOPER_REJECTED' });
+    expect(f.writes()).toHaveLength(2);
+  });
+});
+
 function uploadFixture() {
   const run = { id: 40313393201, repository: { full_name: 'puritysb/AgentDeck' }, path: '.github/workflows/apple-release.yml',
     head_sha: provenance.sourceSha, status: 'completed', conclusion: 'success', event: 'workflow_dispatch', run_number: 95, run_attempt: 1 };
