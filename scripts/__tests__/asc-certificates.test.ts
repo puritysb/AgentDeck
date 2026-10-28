@@ -133,9 +133,9 @@ function fixture(prepared = false, fresh = false) {
 describe('bounded macOS ASC release', () => {
   it('extracts only current macOS EN/KO/JA and the marked macOS reviewer field', () => {
     const extracted = extractReleaseCopy(readFileSync(resolve(ROOT, 'docs/appstore-metadata-draft.md'), 'utf8'),
-      readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), '1.9.3');
+      readFileSync(resolve(ROOT, 'apple/APP_REVIEW_NOTES.md'), 'utf8'), '1.9.4');
     expect(Object.keys(extracted.whatsNew)).toEqual(['en-US', 'ko', 'ja']);
-    expect(extracted.notes).toContain('NEW IN 1.9.3 — MACOS ONLY');
+    expect(extracted.notes).toContain('NEW IN 1.9.4 — MACOS ONLY');
     expect(extracted.notes).not.toContain('<!--');
     for (const text of [...Object.values(extracted.whatsNew), extracted.notes] as string[]) expect(text.length).toBeLessThanOrEqual(4000);
     expect(() => extractReleaseCopy('## Prepared macOS 1.9.2 update text', '', '1.9.2')).toThrow();

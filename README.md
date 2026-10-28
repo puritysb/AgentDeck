@@ -339,15 +339,16 @@ remains 1.10.1 (28). The public APK passed a data-preserving Pantone upgrade and
 live dashboard check. See the
 [delivery receipt](RELEASING.md#2026-10-26-non-dot-delivery-checkpoint).
 
-**npm delivery, 2026-10-27:** [1.9.4 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
+**Previous npm delivery, 2026-10-27:** [1.9.4 was public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.4)
 for all four packages. Their downloaded payloads match the accepted source,
 include the root LICENSE and pass an isolated installation with native dependencies.
 The Codex terminal-error correction is retained. See the
 [delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint).
+The October 28 entry above supersedes it.
 
 **Apple checkpoint, 2026-10-27:** macOS **1.9.3 / 9801** passed final artifact
-and three-mode runtime acceptance, replaced the previous 9501 submission and is
-**Waiting for Review**, with automatic release after approval. The verified public
+and three-mode runtime acceptance, replaced the previous 9501 submission and was
+**in review** at the October 28 readback, with automatic release after approval. The verified public
 macOS version remains **1.9.2 / 9401**; this is submission, not public availability.
 See the [delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint)
 and its measured recovery limits. Dot remains excluded from standard Store builds.
@@ -382,7 +383,7 @@ At that October 12 readback, Apple 1.9.0 / 7901 was Waiting for Review; the
 October 23 Apple check above supersedes that status. Elgato
 1.8 is public (Marketplace read October 11). Ulanzi 1.8.0 remains submitted,
 with 1.6.0 the last verified public version. Neither deck plugin was republished
-in this round. See the [additional-channel delivery readback](RELEASING.md#additional-190-delivery-readback-2026-10-12)
+in this round. The October 28 entry above supersedes both deck-plugin statuses. See the [additional-channel delivery readback](RELEASING.md#additional-190-delivery-readback-2026-10-12)
 for verification and remaining hardware limitations.
 
 Mobile apps and hardware are companion surfaces: keep a daemon running on your
