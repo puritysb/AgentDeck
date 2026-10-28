@@ -296,4 +296,78 @@ private final class SnapshotProtocol: URLProtocol, @unchecked Sendable {
     }
     override func stopLoading() {}
 }
+/// Observer-plugin steering queue (`OpenCodeCommandQueue`, mirror of
+/// bridge/src/opencode-steering.ts) and the OpenCode permission answer.
+final class OpenCodeCommandQueueTests: XCTestCase {
+    private let settle: UInt64 = 50_000_000
+
+    // #617: a plugin restart leaves its old poll parked. With the peer gone the
+    // waiter must be withdrawn, or it consumes the next command and the poll
+    // that replaced it waits out its window empty-handed.
+    func testClosedPollIsWithdrawnSoTheLivePollerReceivesTheCommand() async throws {
+        let queue = OpenCodeCommandQueue()
+        let closed = HTTPPeerCloseSignal()
+        let stale = Task { await queue.poll(sessionId: "s", waitSeconds: 25, peerClose: closed) }
+        try await Task.sleep(nanoseconds: settle)
+        closed.fire()
+        try await Task.sleep(nanoseconds: settle)
+        let live = Task { await queue.poll(sessionId: "s", waitSeconds: 25) }
+        try await Task.sleep(nanoseconds: settle)
+        let queued = await queue.enqueue(sessionId: "s", command: .init(type: "interrupt", text: nil))
+        XCTAssertTrue(queued)
+        let delivered = await live.value
+        XCTAssertEqual(delivered.map(\.type), ["interrupt"])
+        let leftover = await stale.value
+        XCTAssertTrue(leftover.isEmpty)
+    }
+
+    func testRequeuedCommandsGoAheadOfNewerOnesAndWakeAParkedPoller() async throws {
+        let queue = OpenCodeCommandQueue()
+        await queue.enqueue(sessionId: "s", command: .init(type: "send_prompt", text: "newer"))
+        await queue.requeue(sessionId: "s", commands: [.init(type: "interrupt", text: nil)])
+        let drained = await queue.poll(sessionId: "s", waitSeconds: 25)
+        XCTAssertEqual(drained.map(\.type), ["interrupt", "send_prompt"])
+
+        let parked = Task { await queue.poll(sessionId: "s", waitSeconds: 25) }
+        try await Task.sleep(nanoseconds: settle)
+        await queue.requeue(sessionId: "s", commands: [
+            .init(type: "permission_respond", text: nil, permissionId: "p", response: "deny"),
+        ])
+        let woken = await parked.value
+        XCTAssertEqual(woken.first?.permissionId, "p")
+    }
+
+    // #618: a full queue refuses the answer, so the row must keep its prompt;
+    // the clear is applied only after a successful enqueue, and only to the
+    // request it answered.
+    func testFullQueueRefusesAnotherCommand() async {
+        let queue = OpenCodeCommandQueue()
+        for _ in 0..<8 {
+            let ok = await queue.enqueue(sessionId: "s", command: .init(type: "interrupt", text: nil))
+            XCTAssertTrue(ok)
+        }
+        let refused = await queue.enqueue(
+            sessionId: "s",
+            command: .init(type: "permission_respond", text: nil, permissionId: "p", response: "allow"))
+        XCTAssertFalse(refused)
+    }
+
+    func testQueuedPermissionClearsOnlyTheRequestItAnswered() {
+        var entry = DaemonSessionEntry(
+            id: "opencode:s", port: 0, pid: 0, projectName: "P",
+            agentType: "opencode", tmuxSession: nil, tty: nil, parentTty: nil,
+            startedAt: "2026-10-28T00:00:00Z", weight: nil)
+        entry.state = "awaiting_permission"
+        entry.question = "Allow bash?"
+        entry.requestId = "ocperm:s:p1"
+
+        let cleared = DaemonServer.openCodeRowAfterQueuedPermission(entry, requestId: "ocperm:s:p1")
+        XCTAssertNil(cleared?.requestId)
+        XCTAssertEqual(cleared?.state, "processing")
+        XCTAssertNil(cleared?.question)
+
+        XCTAssertNil(DaemonServer.openCodeRowAfterQueuedPermission(entry, requestId: "ocperm:s:p0"))
+        XCTAssertNil(DaemonServer.openCodeRowAfterQueuedPermission(nil, requestId: "ocperm:s:p1"))
+    }
+}
 #endif

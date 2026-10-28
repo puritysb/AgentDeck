@@ -505,6 +505,13 @@ final class HTTPPeerCloseSignal: @unchecked Sendable {
         }
     }
 
+    /// True once the peer closed before the response was ready.
+    var isClosed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return phase == .closed
+    }
+
     func fire() {
         lock.lock()
         guard phase == .open else { lock.unlock(); return }

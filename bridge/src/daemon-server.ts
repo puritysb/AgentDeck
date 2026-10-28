@@ -106,7 +106,7 @@ import {
   synthesizeWavWithHelper,
   recordWithHelper, stopHelperRecording, speakWithHelper,
 } from './foundation-models-helper.js';
-import { enqueueOpenCodeCommand, pollOpenCodeCommands } from './opencode-steering.js';
+import { enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
 
 /** Device approval holds, including the opt-in human Codex handler. Claude's
@@ -4480,11 +4480,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         return;
       }
       const waitMs = Math.round(Number(parsedUrl.searchParams.get('wait') ?? '25') * 1000);
-      pollOpenCodeCommands(sid, waitMs).then((commands) => {
+      // A plugin that restarts or drops its connection leaves this poll
+      // behind; withdraw it so a later STOP / prompt / approval reaches the
+      // poller that replaced it (#617).
+      const pollClosed = new AbortController();
+      res.on('close', () => { if (!res.writableEnded) pollClosed.abort(); });
+      pollOpenCodeCommands(sid, waitMs, pollClosed.signal).then((commands) => {
+        if (res.destroyed || res.writableEnded) {
+          requeueOpenCodeCommands(sid, commands);
+          return;
+        }
         try {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ commands }));
-        } catch { /* client disconnected */ }
+        } catch {
+          requeueOpenCodeCommands(sid, commands);
+        }
       });
       return;
     }
@@ -6808,10 +6819,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (requestId.startsWith('ocperm:')) {
         const rest = requestId.slice('ocperm:'.length);
         const sep = rest.indexOf(':');
-        if (sep > 0) {
-          enqueueOpenCodeCommand(rest.slice(0, sep), {
-            type: 'permission_respond', permissionId: rest.slice(sep + 1), response: decision,
-          });
+        // The row keeps its prompt until OpenCode reports permission.replied,
+        // so a full queue leaves the request answerable rather than lost.
+        if (sep > 0 && !enqueueOpenCodeCommand(rest.slice(0, sep), {
+          type: 'permission_respond', permissionId: rest.slice(sep + 1), response: decision,
+        })) {
+          debug('daemon', `opencode permission ${requestId} not queued: command queue full`);
+          core.broadcastSessionsList().catch(() => {});
         }
         return;
       }
