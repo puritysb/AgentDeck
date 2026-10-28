@@ -14,7 +14,7 @@ Install the computer hub and optional companions from their official channels:
 [Mac, iPhone, and iPad](https://apps.apple.com/app/id6784822497),
 [Android](https://play.google.com/store/apps/details?id=dev.agentdeck),
 [Stream Deck](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464),
-and [Ulanzi Studio](https://ugc.ulanzistudio.com/contentView/1141).
+and [Ulanzi Studio](https://ugc.ulanzistudio.com/contentView/1239890184745660416).
 The [README delivery table](../README.md#compatibility-and-delivery-channels)
 also links the CLI, signed Android APK, and ESP32 firmware.
 

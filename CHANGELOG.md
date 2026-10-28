@@ -45,19 +45,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
-- Sessions: an idle Claude session no longer reads "Waiting for N background tasks" for a day because a teammate is idling between messages or a dev server is still running. Background work now has a kind: a job (subagent, workflow, unknown type) stays active until it ends; a long-running process (shell, monitor, teammate, cloud session, Codex terminal, Hermes process) is active for 10 minutes from its first sighting and on standby after that. Standby work never holds the session working and shows as `STBY n` beneath any active `BG n` on Stream Deck and Ulanzi keys, the macOS dashboard, Android and e-ink labels. Both daemons share the rule (#616). Other ESP32 displays, the terrarium and Pixoo do not show standby yet.
-
-- APME: the Work board opens a task's review directly, separating the AI estimate, judge model, rubric, recorded reasoning and done/missed items from your own verdict (completed, partial, incorrect or clear) and an optional note. Your feedback is kept as an append-only history; it never rewrites AI scores or trains a judge. Task detail now explains a missing reply, an intentional exclusion, disabled evaluation and a recorded judge failure separately, and the latest judge attempt is recorded with its outcome. Judge inputs keep the first request, the latest result and recorded validation/error tool events within a fixed budget. On macOS, recent activity rows open the matching task. The macOS part awaits the next Apple delivery after 1.9.3.
-
-- APME: model comparisons are withheld when there is not enough task evidence, and unknown pricing stays unknown instead of reading as free. The Mac app reloads judge settings for each evaluation, and copied report links drop query, fragment and embedded credentials.
-
-- Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
-
-- Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
-
-- Stream Deck and Ulanzi: a weekly-only Claude usage snapshot clears an older 5-hour reading instead of retaining a stale tile.
-
-- Stream Deck and Ulanzi decks: two sessions of the same agent in the same project no longer draw identical keys. Each gets a short session-id tag (`chezmoi #5f8f`), the start of the id shown by Claude Code's `/status`, and the detail INFO tile names the tagged session, so the session a voice prompt will reach is identifiable. A lone session looks as before (#544).
+- macOS, Android and ESP32 e-ink: the background-work standby state (`STBY n`, #616) and, on macOS, the APME task review, recent-activity task links and per-evaluation judge settings shipped in npm 1.9.5 and await each target's own delivery.
 
 - ESP32 WiFi provisioning: a board parked on USB serial is no longer sent the WiFi credentials it already holds on every serial reopen, lease resume and daemon restart. Each of those provisions woke a radio the board then had to park again. A provision now carries a credential id: an HMAC keyed by the pairing token, never a bare hash of the password. The board stores the id beside the credentials and reports it as `device_info.wifiCredId`, over USB only, and both daemons skip a board whose id matches. Boards that persist a provision (IPS10, T-Display-S3-Pro, NM-EPD-420, EPD47) now also receive changed credentials, which they never did. Older firmware and older daemons keep the old behaviour, and rotating the pairing token re-provisions each board once. Neither daemon writes WiFi credentials to a serial port before a board has identified itself on that connection. On most boards a provision now also reaches flash when it follows a failed captive-portal save; it used to be held in RAM only and lost at the next reboot.
 
@@ -72,6 +60,24 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - ESP32 firmware: stop mDNS before parking the Wi-Fi radio, fixing a crash on rejoining after USB reprovisioning. The responder starts again after the board has an address.
 
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
+
+## 2026-10-28 — npm 1.9.5, Stream Deck 1.8.2, Ulanzi 1.8.2
+
+- Sessions: an idle Claude session no longer reads "Waiting for N background tasks" for a day because a teammate is idling between messages or a dev server is still running. Background work now has a kind: a job (subagent, workflow, unknown type) stays active until it ends; a long-running process (shell, monitor, teammate, cloud session, Codex terminal, Hermes process) is active for 10 minutes from its first sighting and on standby after that. Standby work never holds the session working and shows as `STBY n` beneath any active `BG n` on Stream Deck and Ulanzi keys (#616). The macOS app, Android and ESP32 e-ink show it once their own updates ship; other ESP32 displays, the terrarium and Pixoo do not show standby yet.
+
+- APME: the Work board opens a task's review directly, separating the AI estimate, judge model, rubric, recorded reasoning and done/missed items from your own verdict (completed, partial, incorrect or clear) and an optional note. Your feedback is kept as an append-only history; it never rewrites AI scores or trains a judge. Task detail now explains a missing reply, an intentional exclusion, disabled evaluation and a recorded judge failure separately, and the latest judge attempt is recorded with its outcome. Judge inputs keep the first request, the latest result and recorded validation/error tool events within a fixed budget. This ships in the npm daemon's report; the macOS app gains it, and opens the matching task from its recent activity rows, in its next delivery after 1.9.3.
+
+- APME: model comparisons are withheld when there is not enough task evidence, and unknown pricing stays unknown instead of reading as free. Copied report links drop query, fragment and embedded credentials. The Mac app's per-evaluation judge settings arrive with its next delivery.
+
+- Stream Deck: restarting the plugin preserves the profile the user selected. Bundled profiles still activate on first installation. Usage actions are now named Model Limit, Usage Dial and Usage Dial 2 to describe their function; existing action IDs and placements are preserved.
+
+- Stream Deck: with the opt-in Codex approval hold installed, a deck's Allow and Deny keys answer the held Codex approval. Separately started Codex sessions in the same project keep their own keys instead of being merged, and a stale Codex quota estimates its renewal by calendar month.
+
+- Ulanzi: replacing keys or switching pages no longer leaves blank keys or duplicates a key position. Session order stays stable as new sessions arrive, duplicate rows are removed, and the detail BACK key names its session. The setup panel shows the daemon's session count, opens its guide in the browser and gives separate Windows/macOS setup instructions. These changes still need acceptance in Ulanzi Studio on physical D200H/D200X hardware.
+
+- Stream Deck and Ulanzi: a weekly-only Claude usage snapshot clears an older 5-hour reading instead of retaining a stale tile.
+
+- Stream Deck and Ulanzi decks: two sessions of the same agent in the same project no longer draw identical keys. Each gets a short session-id tag (`chezmoi #5f8f`), the start of the id shown by Claude Code's `/status`, and the detail INFO tile names the tagged session, so the session a voice prompt will reach is identifiable. A lone session looks as before (#544).
 
 ## 2026-10-27 — npm 1.9.4
 

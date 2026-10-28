@@ -477,7 +477,7 @@ describe('next steps text', () => {
     expect(t).toContain("1. Run 'agentdeck daemon install'");
     expect(t).toContain('macOS LaunchAgent) — until it runs, AgentDeck keys show OFFLINE');
     expect(t).toContain('Ulanzi Studio Marketplace');
-    expect(t).toContain('https://ugc.ulanzistudio.com/contentView/1141');
+    expect(t).toContain('https://ugc.ulanzistudio.com/contentView/1239890184745660416');
     expect(t).toContain('D200H / D200X');
     expect(t).not.toContain('Stream Deck');
   });
