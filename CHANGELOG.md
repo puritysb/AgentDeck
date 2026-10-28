@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- macOS app: the same OpenCode long-poll correction (#617), and a device approval that cannot be queued no longer clears the Allow/Deny prompt, so the request stays answerable (#618). Awaits the next Apple delivery after 1.9.3.
+
 - macOS, Android and ESP32 e-ink: the background-work standby state (`STBY n`, #616) and, on macOS, the APME task review, recent-activity task links and per-evaluation judge settings shipped in npm 1.9.5 and await each target's own delivery.
 
 - ESP32 WiFi provisioning: a board parked on USB serial is no longer sent the WiFi credentials it already holds on every serial reopen, lease resume and daemon restart. Each of those provisions woke a radio the board then had to park again. A provision now carries a credential id: an HMAC keyed by the pairing token, never a bare hash of the password. The board stores the id beside the credentials and reports it as `device_info.wifiCredId`, over USB only, and both daemons skip a board whose id matches. Boards that persist a provision (IPS10, T-Display-S3-Pro, NM-EPD-420, EPD47) now also receive changed credentials, which they never did. Older firmware and older daemons keep the old behaviour, and rotating the pairing token re-provisions each board once. Neither daemon writes WiFi credentials to a serial port before a board has identified itself on that connection. On most boards a provision now also reaches flash when it follows a failed captive-portal save; it used to be held in RAM only and lost at the next reboot.
@@ -62,6 +64,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
 
 ## 2026-10-28 — npm 1.9.5, Stream Deck 1.8.2, Ulanzi 1.8.2
+
+- OpenCode: a STOP, prompt or approval sent from a device right after OpenCode restarted or briefly lost its connection to the daemon could be handed to the dropped connection and silently lost. The npm daemon now withdraws a long-poll whose connection closed and returns any undelivered commands to the queue for the live poller (#617). A device approval the daemon cannot queue is logged and the prompt stays answerable.
 
 - Sessions: an idle Claude session no longer reads "Waiting for N background tasks" for a day because a teammate is idling between messages or a dev server is still running. Background work now has a kind: a job (subagent, workflow, unknown type) stays active until it ends; a long-running process (shell, monitor, teammate, cloud session, Codex terminal, Hermes process) is active for 10 minutes from its first sighting and on standby after that. Standby work never holds the session working and shows as `STBY n` beneath any active `BG n` on Stream Deck and Ulanzi keys (#616). The macOS app, Android and ESP32 e-ink show it once their own updates ship; other ESP32 displays, the terrarium and Pixoo do not show standby yet.
 

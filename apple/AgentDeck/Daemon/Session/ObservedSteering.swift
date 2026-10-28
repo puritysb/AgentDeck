@@ -537,19 +537,35 @@ actor OpenCodeCommandQueue {
         var q = queues[sessionId] ?? []
         guard q.count < queueCap else { return false }
         q.append(command)
-        if var w = waiters[sessionId], !w.isEmpty {
-            let waiter = w.removeFirst()
-            waiters[sessionId] = w
-            queues[sessionId] = []
-            waiter.continuation.resume(returning: q)
-            return true
-        }
         queues[sessionId] = q
+        wakeWaiter(sessionId: sessionId)
         return true
     }
 
+    /// Put commands a poll took but could not deliver (its peer was already
+    /// gone) back at the head of the queue and hand them to a live poller.
+    /// They were accepted once, so the cap does not refuse them.
+    func requeue(sessionId: String, commands: [Command]) {
+        guard !commands.isEmpty else { return }
+        queues[sessionId] = commands + (queues[sessionId] ?? [])
+        wakeWaiter(sessionId: sessionId)
+    }
+
+    private func wakeWaiter(sessionId: String) {
+        guard var w = waiters[sessionId], !w.isEmpty,
+              let q = queues[sessionId], !q.isEmpty else { return }
+        let waiter = w.removeFirst()
+        waiters[sessionId] = w
+        queues[sessionId] = []
+        waiter.continuation.resume(returning: q)
+    }
+
     /// Long-poll: immediate when commands are queued, else hold up to waitSeconds.
-    func poll(sessionId: String, waitSeconds: Double) async -> [Command] {
+    /// A closed `peerClose` withdraws the waiter, so a command enqueued after
+    /// the plugin dropped this poll reaches its replacement (#617).
+    func poll(sessionId: String, waitSeconds: Double,
+              peerClose: HTTPPeerCloseSignal? = nil) async -> [Command] {
+        if peerClose?.isClosed == true { return [] }
         if let q = queues[sessionId], !q.isEmpty {
             queues[sessionId] = []
             return q
@@ -561,6 +577,9 @@ actor OpenCodeCommandQueue {
             Task { [weak self] in
                 try? await Task.sleep(nanoseconds: UInt64(bounded * 1_000_000_000))
                 await self?.expireWaiter(sessionId: sessionId, token: token)
+            }
+            peerClose?.onClose { [weak self] in
+                Task { await self?.expireWaiter(sessionId: sessionId, token: token) }
             }
         }
     }

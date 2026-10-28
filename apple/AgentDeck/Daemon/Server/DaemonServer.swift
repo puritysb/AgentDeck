@@ -4106,7 +4106,13 @@ final class DaemonServer {
                 return .json(["error": "sid required"], status: 400)
             }
             let wait = Double(request.queryParams["wait"] ?? "25") ?? 25
-            let commands = await OpenCodeCommandQueue.shared.poll(sessionId: sid, waitSeconds: wait)
+            let peerClose = HTTPRequestContext.peerClose
+            let commands = await OpenCodeCommandQueue.shared.poll(
+                sessionId: sid, waitSeconds: wait, peerClose: peerClose)
+            if peerClose?.isClosed == true {
+                await OpenCodeCommandQueue.shared.requeue(sessionId: sid, commands: commands)
+                return .json(["commands": [[String: Any]]()])
+            }
             let payload: [[String: Any]] = commands.map { c in
                 var d: [String: Any] = ["type": c.type]
                 if let t = c.text { d["text"] = t }
@@ -5205,8 +5211,10 @@ final class DaemonServer {
                   let decision = cmd["decision"] as? String,
                   decision == "allow" || decision == "deny" else { return }
             // OpenCode permission ("ocperm:<rawSid>:<permissionID>"): route
-            // through the observer-plugin queue; clear the row optimistically
-            // so devices drop the gate without waiting for permission.replied.
+            // through the observer-plugin queue. Once it is queued, clear the
+            // row optimistically so devices drop the gate without waiting for
+            // permission.replied. A full queue dropped the answer, so the row
+            // keeps its prompt and devices are re-armed to answer again (#618).
             if requestId.hasPrefix("ocperm:") {
                 let rest = requestId.dropFirst("ocperm:".count)
                 if let sep = rest.firstIndex(of: ":") {
@@ -5214,21 +5222,23 @@ final class DaemonServer {
                     let permId = String(rest[rest.index(after: sep)...])
                     guard !rawSid.isEmpty, !permId.isEmpty else { return }
                     Task {
-                        await OpenCodeCommandQueue.shared.enqueue(
+                        let queued = await OpenCodeCommandQueue.shared.enqueue(
                             sessionId: rawSid,
                             command: .init(type: "permission_respond", text: nil,
                                            permissionId: permId, response: decision))
-                    }
-                    let rowId = Self.openCodeSessionPrefix + rawSid
-                    if var entry = pushedSessionsById[rowId], entry.requestId == requestId {
-                        entry.requestId = nil
-                        if entry.state == "awaiting_permission" {
-                            entry.state = "processing"
-                            entry.question = nil
+                        let rowId = Self.openCodeSessionPrefix + rawSid
+                        guard queued else {
+                            DaemonLogger.shared.info(
+                                "[OpenCode] permission \(requestId) not queued: command queue full")
+                            broadcastSessionsList()
+                            return
                         }
-                        pushedSessionsById[rowId] = entry
-                        upsertIntoCachedSessions(entry)
-                        broadcastSessionsList()
+                        if let entry = Self.openCodeRowAfterQueuedPermission(
+                            pushedSessionsById[rowId], requestId: requestId) {
+                            pushedSessionsById[rowId] = entry
+                            upsertIntoCachedSessions(entry)
+                            broadcastSessionsList()
+                        }
                     }
                 }
                 return
@@ -8394,6 +8404,22 @@ final class DaemonServer {
             // untouched (its prompt then surfaces via the Notification overlay).
             return .text("")
         }
+    }
+
+    /// The OpenCode row after its permission answer reached the plugin queue:
+    /// the prompt is cleared only while the row still shows that same request,
+    /// since the queue hop is asynchronous and a newer prompt may have replaced
+    /// it. nil = leave the row as it is.
+    nonisolated static func openCodeRowAfterQueuedPermission(
+        _ entry: DaemonSessionEntry?, requestId: String
+    ) -> DaemonSessionEntry? {
+        guard var entry, entry.requestId == requestId else { return nil }
+        entry.requestId = nil
+        if entry.state == "awaiting_permission" {
+            entry.state = "processing"
+            entry.question = nil
+        }
+        return entry
     }
 
     /// Release a held hook gate as undecided (`pass`) when the hook's HTTP

@@ -53,33 +53,62 @@ export function enqueueOpenCodeCommand(sid: string, cmd: OpenCodeCommand): boole
   const e = entry(sid);
   if (e.commands.length >= QUEUE_CAP) return false;
   e.commands.push(cmd);
+  wakeWaiter(e);
+  return true;
+}
+
+function wakeWaiter(e: QueueEntry): void {
   const waiter = e.waiters.shift();
   if (waiter) {
     clearTimeout(waiter.timer);
     const cmds = e.commands.splice(0, e.commands.length);
     waiter.resolve(cmds);
   }
-  return true;
+}
+
+/** Put commands a poll took but could not deliver (its client was already
+ *  gone) back at the head of the queue, ahead of anything newer, and hand them
+ *  to a live poller if one is parked. They were accepted once, so the cap does
+ *  not refuse them. */
+export function requeueOpenCodeCommands(sid: string, cmds: OpenCodeCommand[]): void {
+  if (cmds.length === 0) return;
+  const e = entry(sid);
+  e.commands.unshift(...cmds);
+  wakeWaiter(e);
 }
 
 /** Long-poll: resolve immediately when commands are queued, otherwise hold up
- *  to waitMs and resolve with an empty batch. */
-export function pollOpenCodeCommands(sid: string, waitMs: number): Promise<OpenCodeCommand[]> {
+ *  to waitMs and resolve with an empty batch. Aborting `signal` (the client
+ *  closed its connection) withdraws the waiter, so a command enqueued after
+ *  that reaches the next live poller instead of a response nobody reads. */
+export function pollOpenCodeCommands(
+  sid: string, waitMs: number, signal?: AbortSignal,
+): Promise<OpenCodeCommand[]> {
   const e = entry(sid);
   e.lastPollAt = Date.now();
+  if (signal?.aborted) return Promise.resolve([]);
   if (e.commands.length > 0) {
     return Promise.resolve(e.commands.splice(0, e.commands.length));
   }
   return new Promise((resolve) => {
+    const withdraw = () => {
+      clearTimeout(waiter.timer);
+      const idx = e.waiters.indexOf(waiter);
+      if (idx >= 0) e.waiters.splice(idx, 1);
+      resolve([]);
+    };
     const waiter: Waiter = {
-      resolve,
+      resolve: (cmds) => {
+        signal?.removeEventListener('abort', withdraw);
+        resolve(cmds);
+      },
       timer: setTimeout(() => {
-        const idx = e.waiters.indexOf(waiter);
-        if (idx >= 0) e.waiters.splice(idx, 1);
-        resolve([]);
+        signal?.removeEventListener('abort', withdraw);
+        withdraw();
       }, Math.max(1_000, Math.min(50_000, waitMs))),
     };
     e.waiters.push(waiter);
+    signal?.addEventListener('abort', withdraw, { once: true });
   });
 }
 
