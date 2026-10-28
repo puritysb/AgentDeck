@@ -15,7 +15,7 @@ one-command path in [README → Start here](../README.md#start-here) instead.
 | **Python 3** | Yes | `brew install python` (display sleep detection) |
 | **Elgato Stream Deck app** >= 6.9 | For Stream Deck only | [Elgato Downloads](https://www.elgato.com/downloads). The daemon runs headless — Ulanzi D200H/D200X, the macOS app, `agentdeck dashboard`, and ESP32 boards need none of it. |
 | **Elgato Stream Deck hardware** | For Stream Deck only | Stream Deck, Mini, XL, Plus, or + XL |
-| **Ulanzi Studio** | For D200H/D200X only | [Ulanzi Download Center](https://www.ulanzi.com/pages/downloads). Install AgentDeck from the separate [Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1141). |
+| **Ulanzi Studio** | For D200H/D200X only | [Ulanzi Download Center](https://www.ulanzi.com/pages/downloads). Install AgentDeck from the separate [Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416). |
 | **iTerm2** | For PTY session management | Terminal management, voice paste, session switching |
 | **Supported coding agent** | For live sessions | Claude Code, Codex, OpenCode, Kiro CLI/IDE, OpenClaw, or Antigravity; observation depth differs by agent. |
 
@@ -123,7 +123,7 @@ Creates a symlink in `~/Library/Application Support/com.elgato.StreamDeck/Plugin
 
 ## 3. Install the Ulanzi Studio Plugin
 
-Install [AgentDeck from the Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1141). The plugin supports D200H keys and D200X LCD keys. D200X encoders are not supported. Ulanzi Studio is a separate host from Elgato Stream Deck, so Stream Deck plugins cannot be installed onto a D200H or D200X.
+Install [AgentDeck from the Ulanzi Studio Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416). The plugin supports D200H keys and D200X LCD keys. D200X encoders are not supported. Ulanzi Studio is a separate host from Elgato Stream Deck, so Stream Deck plugins cannot be installed onto a D200H or D200X.
 
 For a development checkout or manual package verification, follow
 [plugin-ulanzi/VERIFY.md](../plugin-ulanzi/VERIFY.md) instead of hand-building the
