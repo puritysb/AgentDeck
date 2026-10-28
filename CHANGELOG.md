@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- macOS app: the app could quit unexpectedly a moment after its built-in daemon took port 9120 back — after the AgentDeck CLI daemon stopped, or after launching while the port was briefly still held. Re-checking the installed Claude Code hooks during that restart updated the menu bar from a background thread, which macOS stops the app for. The check now runs on the main thread. Observed on the App Store build 1.9.2 (9401); fixed in the next macOS delivery.
+
 - OpenCode: a STOP, prompt or approval sent from a device right after OpenCode restarted or briefly lost its connection to the daemon could be handed to the dropped connection and silently lost. Both daemons now withdraw a long-poll whose connection closed and return any undelivered commands to the queue for the live poller (#617). On macOS, a device approval that cannot be queued no longer clears the Allow/Deny prompt; the request stays answerable (#618).
 
 - Sessions: an idle Claude session no longer reads "Waiting for N background tasks" for a day because a teammate is idling between messages or a dev server is still running. Background work now has a kind: a job (subagent, workflow, unknown type) stays active until it ends; a long-running process (shell, monitor, teammate, cloud session, Codex terminal, Hermes process) is active for 10 minutes from its first sighting and on standby after that. Standby work never holds the session working and shows as `STBY n` beneath any active `BG n` on Stream Deck and Ulanzi keys, the macOS dashboard, Android and e-ink labels. Both daemons share the rule (#616). Other ESP32 displays, the terrarium and Pixoo do not show standby yet.

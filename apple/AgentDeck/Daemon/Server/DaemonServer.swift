@@ -2378,7 +2378,15 @@ final class DaemonServer {
         // 11. Claude Code hooks — HookInstaller now requires explicit user
         // consent (App Store guideline 2.5.2). This call is a no-op unless
         // the user opted in via Settings → "Enable Claude Code Hooks…".
-        HookInstaller.installIfNeeded()
+        // On the main actor, like 11b: the installer writes @Published
+        // AppPreferences fields, and a write from this actor drives the
+        // App scene's MenuBarExtra update off the main thread, which AppKit
+        // aborts on (NSStatusItem setVisible:, 9401 on a 9121→9120 reclaim).
+        try await MainActor.run {
+            try Task.checkCancellation()
+            HookInstaller.installIfNeeded()
+        }
+        try checkStartupActive()
         if AppPreferences.shared.hookInstallConsent != .accepted {
             DaemonLogger.shared.info("startServices: step11 HookInstaller skipped (no consent)")
         } else {

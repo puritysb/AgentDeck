@@ -32,6 +32,7 @@ enum HookInstaller {
     /// Install AgentDeck hooks into Claude Code settings only if the user has
     /// explicitly granted consent + a valid security-scoped bookmark. Safe to
     /// call on every launch — when preconditions aren't met it's a no-op.
+    @MainActor
     static func installIfNeeded() {
         switch AppPreferences.shared.hookInstallConsent {
         case .unknown:
@@ -106,6 +107,7 @@ enum HookInstaller {
     /// Remove AgentDeck hooks from Claude Code settings. Requires an existing
     /// bookmark (we need to write back). Leaves consent state untouched;
     /// `uninstallAndRevoke()` is the full teardown.
+    @MainActor
     static func uninstall() {
         guard let resolved = AppPreferences.shared.resolveClaudeSettingsURL() else {
             DaemonLogger.shared.info("Hooks uninstall skipped: no authorized settings.json bookmark")
@@ -133,6 +135,7 @@ enum HookInstaller {
 
     /// Full teardown — remove hooks from the JSON, drop the bookmark, flip
     /// consent to `.declined` so subsequent launches stay quiet.
+    @MainActor
     static func uninstallAndRevoke() {
         uninstall()
         AppPreferences.shared.clearClaudeSettingsAccess()
