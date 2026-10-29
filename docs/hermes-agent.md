@@ -733,7 +733,8 @@ and the app atomically changed the observer's connection file. Without a CLI
 `--port` update or observer reinstall, a third actual CLI turn reached Swift on
 the new port and completed normally. Each CLI invocation exited 0. These were
 three distinct CLI invocations; continuous delivery from one long-lived Hermes
-process across the change was not separately exercised in this acceptance run.
+process across the change was not exercised in that run; the follow-up below
+closes that gap.
 
 The production Node daemon was kept running; the test app used a separate
 loopback port/data directory with device modules disabled. All scoped preferences
@@ -742,3 +743,39 @@ were backed up and restored, and the original development GUI was reopened on
 per-case wire captures, CLI logs, signature/entitlement receipt and results JSON.
 Signed executable SHA-256:
 `cae33b4b67afa5eff2580b6a6a0d15bc5a7937af20be966977bcebe600297c83`.
+
+### Long-lived Hermes process acceptance 2026-10-29
+
+A real interactive Hermes classic CLI stayed alive as PID **15115** (start
+20:15:00 KST) for **23m 37s**, ending normally through `/exit`. Its upstream
+session was `20261029_201522_a8dec4`; all observed turns used
+`observed:hermes:hermes-a9c640f86ee8c67381756af5f9bf2fca`. No observer reinstall,
+Hermes restart or CLI receiver override occurred between turns. Replies came
+from the same deterministic local model fixture; no tools were called.
+
+A concurrent development session launched another app with the production
+bundle ID during the initial restart attempt. The singleton guard correctly
+terminated the test app. To avoid interrupting that session, the test copy was
+re-signed with bundle ID `bound.serendipity.agent.deck.hermes-continuity` and a
+separate preferences/container namespace, retaining App Sandbox. Its first-run
+onboarding was dismissed before measuring actual quit/relaunch. The source
+executable was unchanged; this identity isolation is a local-test limitation.
+
+With that isolated signed app, one completed turn established the baseline.
+The app then quit fully and relaunched: receiver PID **24821 → 74755**, with
+Hermes PID/start time unchanged. No second folder selection was needed. The
+next turn reached Swift at **60489** and completed `processing → idle`.
+Settings → Local server → Apply & Restart then changed the listener to
+**60490**, while GUI PID **74755** and Hermes PID **15115** stayed fixed. The
+connection file updated automatically, and the next turn in the same Hermes
+conversation reached **60490**, again completing `processing → idle`.
+
+An early turn sent while the first receiver was absent was not counted as a
+successful recovery; this still provides no downtime replay guarantee. The
+successful measurements explicitly checked receiver readiness before sending.
+The original app preferences matched all eight backed-up keys after restoration.
+The production Node daemon was not restarted. Local evidence is under
+`diagnostics/hermes-continuity-20261029/` (gitignored): `stages.json` records
+Hermes PID/start time, Swift PID and actual port; `wire.json` records received
+frames; `results.json` asserts both post-transition turns completed under the
+same observed identity.
