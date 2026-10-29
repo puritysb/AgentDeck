@@ -15,8 +15,12 @@
 #include <math.h>
 
 static volatile bool s_playing = false;
-// Half the previous 6000 peak PCM amplitude; leave speech/codec volume alone.
+// Attention-only PCM peaks; leave speech/codec volume alone.
+#if defined(BOARD_NM_EPD_420)
+static constexpr uint16_t ATTENTION_AMPLITUDE = 1500;
+#else
 static constexpr uint16_t ATTENTION_AMPLITUDE = 3000;
+#endif
 
 static void feedTone(float freqHz, uint32_t ms, uint16_t amplitude) {
     constexpr uint32_t RATE = 16000;
@@ -53,7 +57,7 @@ static void chimeTask(void* param) {
     if (!Audio::playbackActive()) {
         Audio::playbackBegin(16000);
         if (Audio::playbackActive()) {
-            // Two-note rising chime (peak amplitude ≈ 9% full scale).
+            // Two-note rising chime at the board's attention-only level.
             feedTone(880.0f, 110, ATTENTION_AMPLITUDE);
             feedTone(1318.5f, 140, ATTENTION_AMPLITUDE);
             Audio::playbackEnd();
