@@ -98,6 +98,30 @@ final class CodexApprovalHoldTests: XCTestCase {
         }
     }
 
+    func testOnlyConfirmedHumanReviewCreatesAttentionOrAHold() throws {
+        let rows = try XCTUnwrap(try vectors()["reviewerDecisions"] as? [[String: Any]])
+        for row in rows {
+            XCTAssertEqual(CodexApprovalHoldRules.needsHuman(row["reviewer"] as? String),
+                           row["needsHuman"] as? Bool, String(describing: row["reviewer"]))
+        }
+    }
+
+    func testReviewerOutsideTheProbeWindowDoesNotBecomeAHumanWait() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let context = "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"mcp-turn\",\"approvals_reviewer\":\"auto_review\"}}\n"
+        try (context + String(repeating: "x", count: CodexApprovalHoldRules.contextBytes + 1)).write(
+            to: file, atomically: true, encoding: .utf8)
+        let reviewer = CodexRolloutResponseReader.approvalReviewer(
+            sessionId: "mcp-session", transcriptPath: file.path, turnId: "mcp-turn")
+        XCTAssertNil(reviewer)
+        XCTAssertFalse(CodexApprovalHoldRules.needsHuman(reviewer))
+        let user = context.replacingOccurrences(of: "auto_review", with: "user")
+        try user.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertTrue(CodexApprovalHoldRules.needsHuman(CodexRolloutResponseReader.approvalReviewer(
+            sessionId: "mcp-session", transcriptPath: file.path, turnId: "mcp-turn")))
+    }
+
     func testHeaderAndDecisionBodies() throws {
         let v = try vectors()
         XCTAssertEqual(CodexApprovalHoldRules.header, v["header"] as? String)

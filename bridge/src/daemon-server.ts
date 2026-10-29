@@ -78,7 +78,7 @@ import {
   sweepStalePending, drainAllPending, isPendingRequest, passPending,
 } from './permission-resolver.js';
 import {
-  CODEX_APPROVAL_HOLD_HEADER, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
+  CODEX_APPROVAL_HOLD_HEADER, codexApprovalNeedsHuman, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
 } from '@agentdeck/shared';
 import { CodexApprovalHolds } from './codex-approval-hold.js';
 import {
@@ -3727,8 +3727,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
           });
           // Codex PermissionRequest precedes reviewer routing: an explicit
-          // auto_review setting means no human is waiting. Other requests
-          // retain the display-only approval prompt, answered in the
+          // user setting is required to claim a human wait. Automatic or
+          // unknown reviewers get no prompt; confirmed human prompts use the
           // terminal. Any later lifecycle hook on the session ends the wait:
           // an approval runs the tool (tool_start/tool_end), a denial or
           // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
@@ -3744,7 +3744,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               passPending(heldRequestId);
             }
           } else if (codexSid) {
-            if (eventName === 'codex_permission_request' && codexApprovalReviewerForHook(json) !== 'auto_review') {
+            if (eventName === 'codex_permission_request' && codexApprovalNeedsHuman(codexApprovalReviewerForHook(json))) {
               // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
               // a Codex rollout may be appended while the approval waits, and
               // the explicit hook clears below already end this wait.
@@ -5655,9 +5655,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    *  leaves the prompt as display-only, since Codex is drawing it now. */
   function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): void {
     const sid = typeof json.session_id === 'string' ? json.session_id : '';
-    // An automatic reviewer owns this decision. Printing nothing leaves its
-    // policy untouched; neither a device prompt nor a device hold belongs here.
-    if (codexApprovalReviewerForHook(json) === 'auto_review') {
+    // Only confirmed human review belongs on a device. Unknown evidence
+    // (including settings beyond the bounded rollout tail) must pass too.
+    if (!codexApprovalNeedsHuman(codexApprovalReviewerForHook(json))) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('');
       return;

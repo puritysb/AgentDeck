@@ -140,11 +140,19 @@ export function codexHoldDecision(e: CodexHoldEligibility): { hold: boolean; rea
  * Turn settings can be far behind a long tool transcript. */
 export const CODEX_APPROVAL_CONTEXT_BYTES = 8 * 1024 * 1024;
 
+/** A pre-routing hook is not proof of a human wait. Missing, unreadable or
+ * out-of-window settings stay unknown; they must not create Attention or
+ * intercept automatic review with a device hold. */
+export const CODEX_APPROVAL_HUMAN_REVIEWER = 'user';
+export function codexApprovalNeedsHuman(reviewer: string | undefined): boolean {
+  return reviewer === CODEX_APPROVAL_HUMAN_REVIEWER;
+}
+
 /** Latest authoritative reviewer setting, never a quoted tool/message body.
  * A newer settings record without a reviewer is unknown: do not reuse an old
  * auto-review setting after a resume/turn change. Legacy/unreadable rollouts
- * retain the existing PermissionRequest behavior; only explicit auto_review
- * evidence suppresses Attention and the opt-in hold. */
+ * remain unknown. Only explicit user reviewer evidence permits Attention
+ * and the opt-in hold (codexApprovalNeedsHuman). */
 export function codexApprovalReviewerFromRollout(text: string, turnId?: string): string | undefined {
   const lines = text.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {

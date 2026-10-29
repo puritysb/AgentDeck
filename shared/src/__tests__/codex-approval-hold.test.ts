@@ -5,6 +5,7 @@ import {
   CODEX_APPROVAL_HOLD_HEADER,
   codexApprovalDecisionBody,
   codexApprovalReviewerFromRollout,
+  codexApprovalNeedsHuman,
   codexApprovalHoldMs,
   codexHoldDecision,
   codexHoldPressDecision,
@@ -17,6 +18,7 @@ import {
 const VECTORS = JSON.parse(readFileSync(
   fileURLToPath(new URL('../../codex-approval-hold-vectors.json', import.meta.url)), 'utf8')) as {
   header: string;
+  reviewerDecisions: Array<{ reviewer: string | null; needsHuman: boolean }>;
   reviewerRecords: Array<{ name: string; records: unknown[]; turnId?: string; reviewer: string | null }>;
   decisions: Array<{ decision: CodexApprovalOutcome; body: unknown }>;
   budgets: Array<{ name: string; header: string; defaultMs: number; holdMs: number | null }>;
@@ -32,6 +34,12 @@ describe('Codex approval hold rules (shared vectors)', () => {
     it(`reviewer: ${v.name}`, () => {
       const text = ['torn line', ...v.records.map((r) => JSON.stringify(r)), '{incomplete'].join('\n');
       expect(codexApprovalReviewerFromRollout(text, v.turnId)).toBe(v.reviewer ?? undefined);
+    });
+  }
+
+  for (const v of VECTORS.reviewerDecisions) {
+    it(`human wait requires confirmed reviewer: ${v.reviewer}`, () => {
+      expect(codexApprovalNeedsHuman(v.reviewer ?? undefined)).toBe(v.needsHuman);
     });
   }
 

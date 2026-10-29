@@ -32,6 +32,11 @@ enum CodexApprovalHoldRules {
     /// Bounded reviewer probe; a long turn can put its settings far behind tools.
     static let contextBytes = 8388608
 
+    /// Only confirmed human review may create Attention or a device hold.
+    static func needsHuman(_ reviewer: String?) -> Bool {
+        reviewer == "user"
+    }
+
     /// PermissionRequest precedes reviewer routing. Read actual rollout records,
     /// never a quoted command or tool result containing settings text.
     static func reviewer(inRollout text: String, turnId: String? = nil) -> String? {
