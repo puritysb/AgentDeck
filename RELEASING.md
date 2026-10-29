@@ -128,7 +128,28 @@ below).
    showed 1.9.4 and submission `06372a4f` `IN_REVIEW`. Public macOS remains
    1.9.2 / 9401.
 
-The maintainer waived the runtime soak on the 1.9.4 artifact.
+The submission went in without the runtime soak; it ran afterwards on the
+submitted artifact. Build 10001 was added to the internal TestFlight group
+"App Review QA" and installed over App Store 1.9.2 (`/Applications/AgentDeck.app`
+1.9.4 / 10001, TestFlight receipt). The development app shares the bundle ID and
+was not running, so 10001 was the only Swift candidate. The npm 1.9.6 CLI (build
+`96a98a532508`) and this Claude Code session were live throughout.
+
+- **CLI only (10:24Z):** Node PID 1709 owned 9120 (`isSwift: false`), session
+  `processing`, D200H through `ulanzi-plugin`, 11 serial and 2 Wi-Fi ESP32
+  boards, Pixoo64, Timebox, iDotMatrix and 3 ADB devices.
+- **Swift only:** after `agentdeck daemon stop` at 10:25Z, the app (PID 74756)
+  bound fallback 9121, then reclaimed 9120 at 10:28:06Z with no abort. It turned
+  `processing` from this session's hooks and saw the same D200H, ESP32, Pixoo,
+  Timebox and iDotMatrix set.
+- **Both:** `agentdeck daemon start` at 10:29:10Z asked the app to stand down;
+  it yielded at 10:29:42Z and Node PID 90321 was the only listener by 10:29:47Z,
+  with the app attached as a client. `agentdeck daemon stop` at 10:30:16Z;
+  Swift reclaimed 9120 by 10:30:52Z and was alive at 10:32:29Z with the
+  six-session roster, timeline and devices recovered.
+
+No AgentDeck crash report was written. The 9401 reclaim abort (#622) did not
+recur on either reclaim. The CLI was then restored as the 9120 owner.
 
 **npm.** [PR #628](https://github.com/puritysb/AgentDeck/pull/628) merged as
 `38136cd5438851d6ba090f69ab237a66437ba6ae`. It has the same tree as the
@@ -222,8 +243,9 @@ had been `IN_REVIEW` since October 28 (the 23:36 UTC
 still showed it). The decision was to cancel submission `ab8d4712`, renumber that
 version to 1.9.4, and submit a new 1.9.4 build uploaded from the commit that
 adds `release-supersede-prepare`; build 9901 cannot be used, because its
-upload commit predates the action. The maintainer waived the runtime soak listed
-above to get the submission out. The Release archive check still runs in the
+upload commit predates the action. The runtime soak listed above was deferred to
+get the submission out and ran on build 10001 afterwards (see the delivery
+record above). The Release archive check still runs in the
 upload job. 1.9.4 contains everything 1.9.3 did, so nothing from 1.9.3 is lost.
 
 ### 2026-10-28 npm, Stream Deck and Ulanzi release decision
