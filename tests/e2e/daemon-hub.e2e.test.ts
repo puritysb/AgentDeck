@@ -858,6 +858,64 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
       }
     });
 
+  it('does not resurrect a human wait after a newer stop overtakes a long reviewer read', async () => {
+    const transcript = join(home, 'overtaken-review.jsonl');
+    const thread = 'e2e-overtaken-review';
+    writeFileSync(transcript, JSON.stringify({ type: 'turn_context', payload: {
+      turn_id: 't1', approvals_reviewer: 'user',
+    } }) + '\n' + JSON.stringify({ type: 'response_item', payload: { output: 'x'.repeat(33 * 1024 * 1024) } }) + '\n');
+    const base = { session_id: thread, turn_id: 't1', transcript_path: transcript,
+      cwd: '/tmp/overtaken-review', tool_name: 'mcp__playwright__browser_tabs' };
+    const client = await connect(daemon.port);
+    const row = () => (client.frames.filter(f => f.type === 'sessions_list').at(-1)?.sessions as
+      Array<Record<string, unknown>> | undefined)?.find(r => r.id === `observed:codex:${thread}`);
+    try {
+      await postHook(daemon.port, 'codex_user_prompt_submit', { ...base, prompt: 'review race' });
+      const pending = postHook(daemon.port, 'codex_permission_request', base);
+      await postHook(daemon.port, 'codex_stop', base);
+      await pending;
+      await waitFor('stopped session remains idle', () => row()?.state === 'idle' ? true : undefined);
+    } finally { await postHook(daemon.port, 'codex_session_end', base); client.close(); }
+  });
+
+  it.each(['user', 'auto_review'])('preserves %s approval semantics beyond multiple rollout windows', async reviewer => {
+    const transcript = join(home, `long-review-${reviewer}.jsonl`);
+    const thread = `e2e-long-review-${reviewer}`;
+    const turn = 'long-review-turn';
+    writeFileSync(transcript, JSON.stringify({ type: 'turn_context', payload: {
+      turn_id: turn, approvals_reviewer: reviewer,
+    } }) + '\n' + JSON.stringify({ type: 'response_item', payload: {
+      output: 'x'.repeat(17 * 1024 * 1024),
+    } }) + '\n');
+    const base = { session_id: thread, turn_id: turn, transcript_path: transcript,
+      cwd: '/tmp/long-review', permission_mode: 'default', tool_name: 'mcp__playwright__browser_tabs' };
+    const client = await connect(daemon.port);
+    const row = () => (client.frames.filter(f => f.type === 'sessions_list').at(-1)?.sessions as
+      Array<Record<string, unknown>> | undefined)?.find(r => r.id === `observed:codex:${thread}`);
+    try {
+      await postHook(daemon.port, 'codex_user_prompt_submit', { ...base, prompt: 'long approval review' });
+      await postHook(daemon.port, 'codex_permission_request', base);
+      await waitFor('long rollout approval state', () => row()?.state ===
+        (reviewer === 'user' ? 'awaiting_permission' : 'processing') ? true : undefined);
+      const held = fetch(`http://127.0.0.1:${daemon.port}/hooks/codex_permission_request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Hold': '55' },
+        body: JSON.stringify(base), signal: AbortSignal.timeout(10_000),
+      });
+      if (reviewer === 'user') {
+        await postHook(daemon.port, 'codex_tool_start', { ...base, tool_name: 'Bash', tool_use_id: 'parallel-progress' });
+        await waitFor('held human approval beyond old tail limit', () => typeof row()?.requestId === 'string' ? true : undefined);
+        client.send({ type: 'permission_decision', requestId: row()!.requestId, decision: 'allow' });
+        const response = JSON.parse(await (await held).text()) as { hookSpecificOutput: { decision: { behavior: string } } };
+        expect(response.hookSpecificOutput.decision.behavior).toBe('allow');
+      } else {
+        expect(await (await held).text()).toBe('');
+        expect(row()?.requestId).toBeFalsy();
+        expect(client.frames.filter(f => f.type === 'sessions_list').flatMap(f => f.sessions as Array<Record<string, unknown>>)
+          .filter(r => r.id === `observed:codex:${thread}`).every(r => r.state !== 'awaiting_permission')).toBe(true);
+      }
+    } finally { await postHook(daemon.port, 'codex_session_end', base); client.close(); }
+  });
+
   it('keeps automatic Codex review working without Attention or a device hold, and preserves human approval', async () => {
     const transcript = join(home, 'auto-review-rollout.jsonl');
     const thread = '01a16f08-8632-7b03-8f6f-00000000e301';

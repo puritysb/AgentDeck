@@ -102,6 +102,20 @@
       "header": "99999",
       "defaultMs": 25000,
       "holdMs": null
+    },
+    {
+      "name": "reviewer I/O consumes the hook budget",
+      "header": "55",
+      "defaultMs": 50000,
+      "elapsedMs": 4000,
+      "holdMs": 48000
+    },
+    {
+      "name": "too little budget remains after reviewer I/O",
+      "header": "20",
+      "defaultMs": 25000,
+      "elapsedMs": 12001,
+      "holdMs": null
     }
   ],
   "eligibility": [
@@ -528,6 +542,24 @@
     {
       "reviewer": null,
       "needsHuman": false
+    }
+  ],
+  "reviewerPrefixes": [
+    {
+      "text": "{\"timestamp\":\"2026-10-29T00:00:00Z\",\"type\":\"turn_context\",\"payload\":{",
+      "settings": true
+    },
+    {
+      "text": "{\"type\":\"event_msg\",\"payload\":{\"type\":\"thread_settings_applied\",",
+      "settings": true
+    },
+    {
+      "text": "{\"type\":\"response_item\",\"payload\":{\"type\":\"turn_context\"",
+      "settings": false
+    },
+    {
+      "text": "{\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",",
+      "settings": false
     }
   ]
 }

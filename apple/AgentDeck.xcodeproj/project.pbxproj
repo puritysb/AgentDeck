@@ -73,6 +73,7 @@
 		149FCBCC393ED40C0C0EBAD9 /* DaemonPosture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FC16ECE363684E997BE01E /* DaemonPosture.swift */; };
 		151F41C1C4B7DF78558D546D /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
 		16516CAB1B2FDAFC27C2261C /* ObservedAgentSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412BA6DCF8B496FBEEE65F00 /* ObservedAgentSettingsTests.swift */; };
+		170B9E57BD984D8F8C660F7A /* CodexApprovalFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62504228F97D4B7636E43576 /* CodexApprovalFileReader.swift */; };
 		1755CE50FB5EBB217B02AED7 /* TimeboxDivoomPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE667561A919A52759C5225E /* TimeboxDivoomPacket.swift */; };
 		1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F99A265E8C83A287F7DB71 /* DaemonOfflineAffordance.swift */; };
 		189B8DE0AF541394BFDFA664 /* DaemonVoiceAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */; };
@@ -284,6 +285,7 @@
 		547881B213D488EBEC3ED00C /* ReviewRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A8384A78E6B40497C01168 /* ReviewRunner.swift */; };
 		5491FC2BC5D3F327EC48BE68 /* DotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88024D2867223901DB810204 /* DotPresentation.swift */; };
 		54A5C71CB7264DAFC6FF694D /* KelpField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0815111538C63CAF8766B367 /* KelpField.swift */; };
+		54B2769852F28BCF65A259A1 /* CodexApprovalFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62504228F97D4B7636E43576 /* CodexApprovalFileReader.swift */; };
 		55474B20182CADBE77F8796E /* IDotMatrixModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3815BC9679F080521D52D2 /* IDotMatrixModule.swift */; };
 		555F794C0467FB252D1B882E /* BridgeEventParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C930EA1785B14EE276FC29A /* BridgeEventParser.swift */; };
 		558895208982E64845466982 /* IDotMatrixSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C496748B5F5315E3551E69 /* IDotMatrixSheet.swift */; };
@@ -1021,6 +1023,7 @@
 		61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionAggregator.swift; sourceTree = "<group>"; };
 		61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusIcon.swift; sourceTree = "<group>"; };
 		6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixIdentity.generated.swift; sourceTree = "<group>"; };
+		62504228F97D4B7636E43576 /* CodexApprovalFileReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexApprovalFileReader.swift; sourceTree = "<group>"; };
 		6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsagePresentation.generated.swift; sourceTree = "<group>"; };
 		640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IDotMatrixProtocolTests.swift; sourceTree = "<group>"; };
 		64EB18086FC44B69D1CBE171 /* ApmeJudgeMlx.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeMlx.swift; sourceTree = "<group>"; };
@@ -1779,6 +1782,7 @@
 				AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */,
 				43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */,
 				408F05BE863985A2E157A5AD /* ClaudePermissionRules.generated.swift */,
+				62504228F97D4B7636E43576 /* CodexApprovalFileReader.swift */,
 				C514FCF38B4B37A7AAABC36D /* CodexApprovalHoldRules.generated.swift */,
 				0C97EE2C9DA1A4FA137619AF /* CodexExecChildren.swift */,
 				11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */,
@@ -2515,6 +2519,7 @@
 				BD603C0DA671877FFFF496E1 /* ClaudePermissionRules.generated.swift in Sources */,
 				8F90FB5485D7B6614F6F09A6 /* ClaudeStatuslineRules.generated.swift in Sources */,
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
+				54B2769852F28BCF65A259A1 /* CodexApprovalFileReader.swift in Sources */,
 				9A0453468790BAF7FAE98D36 /* CodexApprovalHoldRules.generated.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
 				42E93611F3FAC453A20CC7D0 /* CodexExecChildren.swift in Sources */,
@@ -2806,6 +2811,7 @@
 				52F319B3F0699BDB206D714E /* ClaudePermissionRules.generated.swift in Sources */,
 				9D936EAA57266140F1A0CE67 /* ClaudeStatuslineRules.generated.swift in Sources */,
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
+				170B9E57BD984D8F8C660F7A /* CodexApprovalFileReader.swift in Sources */,
 				C1288C445471587590AFCBFD /* CodexApprovalHoldRules.generated.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,
 				9AE973D827E60195679B39ED /* CodexExecChildren.swift in Sources */,

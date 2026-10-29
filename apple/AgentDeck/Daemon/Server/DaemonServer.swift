@@ -431,8 +431,8 @@ enum CodexRolloutResponseReader {
         let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
             ?? locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot)
         guard let file else { return nil }
-        return CodexApprovalHoldRules.reviewer(
-            inRollout: readTail(file, maxBytes: CodexApprovalHoldRules.contextBytes), turnId: turnId)
+        return CodexApprovalFileReader.reviewer(file: file, turnId: turnId,
+            deadline: ContinuousClock().now.advanced(by: .milliseconds(CodexApprovalHoldRules.readTimeoutMs)))
     }
 
     static func lastAgentMessage(sessionId: String, sessionsRoot: URL? = nil) -> String? {
@@ -1256,6 +1256,24 @@ final class DaemonServer {
     /// answer (CodexApprovalHoldRules). A held session is also in
     /// `heldGateSessionIds` until its hold is released.
     private var codexHoldRequestBySession: [String: String] = [:]
+    private struct PendingCodexApprovalProbe {
+        let held: Bool
+        let peer: HTTPPeerCloseSignal?
+        var liveHold: Bool { held && peer?.isClosed != true }
+    }
+    private var codexApprovalProbes: [String: [UUID: PendingCodexApprovalProbe]] = [:]
+
+    private func beginCodexApprovalProbe(_ sid: String, held: Bool = false) -> UUID {
+        let token = UUID()
+        codexApprovalProbes[sid, default: [:]][token] = .init(held: held, peer: held ? HTTPRequestContext.peerClose : nil)
+        return token
+    }
+
+    private func finishCodexApprovalProbe(_ sid: String, _ token: UUID) {
+        codexApprovalProbes[sid]?.removeValue(forKey: token)
+        if codexApprovalProbes[sid]?.isEmpty == true { codexApprovalProbes.removeValue(forKey: sid) }
+    }
+
     /// A structured direct-Claude AskUserQuestion wait.
     ///
     /// One call may carry up to four question groups while SessionInfo has room
@@ -6201,6 +6219,16 @@ final class DaemonServer {
         // durable thread ids become `codex:<id>` session rows.
         let isCodexEvent = event.hasPrefix("codex_")
         let sessionId = Self.hookSessionId(event: event, json: json)
+        var approvalProbe: UUID?
+        if isCodexEvent, let sessionId {
+            if event == "codex_permission_request" { approvalProbe = beginCodexApprovalProbe(sessionId) }
+            else if CodexApprovalHoldRules.releasingEvents.contains(event) || event == "codex_session_start"
+                || codexApprovalProbes[sessionId]?.values.contains(where: { $0.liveHold }) != true {
+                codexApprovalProbes.removeValue(forKey: sessionId)
+            }
+        }
+        defer { if let sessionId, let approvalProbe { finishCodexApprovalProbe(sessionId, approvalProbe) } }
+
 
         if isOpenCodeEvent, let sessionId {
             // Hooks own control and state once seen. SSE cannot refresh or
@@ -6650,6 +6678,9 @@ final class DaemonServer {
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_permission_request":
+            let reviewer = await codexApprovalReviewer(json: json)
+            guard let sessionId, let approvalProbe,
+                  codexApprovalProbes[sessionId]?[approvalProbe] != nil else { break }
             // PermissionRequest runs before reviewer routing. Only confirmed
             // user review proves a human wait; automatic and unknown evidence
             // must not create Attention or intercept the approval flow.
@@ -6659,11 +6690,11 @@ final class DaemonServer {
             // updateSessionHookState and overwrite the state. A held device
             // approval owns the prompt and its button until it is released, so
             // a parallel call's notification must not swap the question.
-            if let sessionId, codexHoldRequestBySession[sessionId] == nil,
-               CodexApprovalHoldRules.needsHuman(codexApprovalReviewer(json: json)) {
+            if codexHoldRequestBySession[sessionId] == nil,
+               CodexApprovalHoldRules.needsHuman(reviewer) {
                 showCodexApprovalPrompt(
                     sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
-            } else if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+            } else if codexHoldRequestBySession[sessionId] == nil,
                       pushedSessionsById[sessionId]?.state == "awaiting_permission" {
                 updateSessionHookState(sessionId: sessionId, state: "processing")
             }
@@ -8249,16 +8280,26 @@ final class DaemonServer {
         scheduleSessionsListBroadcast()
     }
 
-    private func codexApprovalReviewer(json: [String: Any]) -> String? {
+    private func codexApprovalReviewer(json: [String: Any]) async -> String? {
         if let reviewer = json["approvals_reviewer"] as? String { return reviewer }
-        let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
-        let read: (URL?) -> String? = { dir in
-            CodexRolloutResponseReader.approvalReviewer(
-                sessionId: Self.codexBareId(sid), transcriptPath: json["transcript_path"] as? String,
-                turnId: json["turn_id"] as? String,
-                sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+        let sid = Self.codexBareId(Self.hookSessionId(event: "codex_permission_request", json: json) ?? "")
+        let transcriptPath = json["transcript_path"] as? String
+        let turnId = json["turn_id"] as? String
+        return await CodexApprovalReadWorker.read { deadline in
+            let read: @Sendable (URL?) -> String? = { dir in
+                let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+                    ?? CodexRolloutResponseReader.locateRollout(sessionId: sid,
+                        sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+                guard let file else { return nil }
+                return CodexApprovalFileReader.reviewer(file: file, turnId: turnId, deadline: deadline)
+            }
+            // The security scope belongs to the actual I/O worker, including
+            // when its bounded waiter has already abandoned a slow read.
+            if let scoped = AppPreferences.shared.withCodexDirectoryAccess({ dir in
+                CodexApprovalHoldRules.ReviewerRecord(reviewer: read(dir))
+            }) { return scoped.reviewer }
+            return read(nil)
         }
-        return AppPreferences.shared.withCodexDirectoryAccess { read($0) } ?? read(nil)
     }
 
     private func codexRolloutTurnContext(sessionId: String) -> [String: Any]? {
@@ -8586,11 +8627,18 @@ final class DaemonServer {
         guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
             return .text("")
         }
-        guard CodexApprovalHoldRules.needsHuman(codexApprovalReviewer(json: json)) else { return .text("") }
         let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
+        let probe = beginCodexApprovalProbe(sid, held: true)
+        let readStarted = ContinuousClock().now
+        defer { finishCodexApprovalProbe(sid, probe) }
+        let reviewer = await codexApprovalReviewer(json: json)
+        guard codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true,
+              CodexApprovalHoldRules.needsHuman(reviewer) else { return .text("") }
         let question = Self.codexPermissionQuestion(json)
+        let elapsed = readStarted.duration(to: ContinuousClock().now).components
+        let elapsedMs = Int(elapsed.seconds * 1000 + (elapsed.attoseconds + 999_999_999_999_999) / 1_000_000_000_000_000)
         let holdMs = CodexApprovalHoldRules.holdMilliseconds(
-            header: budgetHeader, defaultMs: Int(ObservedSteering.holdTimeoutSeconds * 1000))
+            header: budgetHeader, defaultMs: Int(ObservedSteering.holdTimeoutSeconds * 1000), elapsedMs: elapsedMs)
         let background = !sid.isEmpty && (codexAmbientThreads.isAmbient(sid)
             || CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]))
         let execChild = !sid.isEmpty && codexExecChildren.knows(sid)
@@ -8611,10 +8659,15 @@ final class DaemonServer {
             DaemonLogger.shared.debug("Steering", "Codex approval not held: \(verdict.hold ? "gate busy" : verdict.reason) (\(sid.prefix(14)))")
             // The display-only prompt still belongs on the row when Codex ran
             // only this handler (the notification one untrusted or removed).
-            if !sid.isEmpty, !background, !execChild, codexHoldRequestBySession[sid] == nil,
+            if codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true,
+               !sid.isEmpty, !background, !execChild, codexHoldRequestBySession[sid] == nil,
                let entry = pushedSessionsById[sid], entry.state != "awaiting_permission" {
                 showCodexApprovalPrompt(sessionId: sid, question: question, requestId: nil)
             }
+            return .text("")
+        }
+        guard codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true else {
+            await ObservedSteering.shared.endGate(requestId: requestId)
             return .text("")
         }
         codexHoldRequestBySession[sid] = requestId

@@ -25,6 +25,9 @@ export function rulesFrom(mod) {
   return {
     header: mod.CODEX_APPROVAL_HOLD_HEADER,
     contextBytes: mod.CODEX_APPROVAL_CONTEXT_BYTES,
+    windowBytes: mod.CODEX_APPROVAL_SCAN_WINDOW_BYTES,
+    readTimeoutMs: mod.CODEX_APPROVAL_READ_TIMEOUT_MS,
+    settingsPayloadPrefix: mod.CODEX_APPROVAL_SETTINGS_PAYLOAD_PREFIX,
     humanReviewer: mod.CODEX_APPROVAL_HUMAN_REVIEWER,
     denyMessage: mod.CODEX_APPROVAL_DENY_MESSAGE,
     marginMs: mod.CODEX_APPROVAL_HOLD_MARGIN_MS,
@@ -67,33 +70,55 @@ enum CodexApprovalHoldRules {
 ${events}
     ]
 
-    /// Bounded reviewer probe; a long turn can put its settings far behind tools.
+    /// Block size, not a limit on the distance to the latest settings.
     static let contextBytes = ${rules.contextBytes}
+    static let windowBytes = ${rules.windowBytes}
 
     /// Only confirmed human review may create Attention or a device hold.
     static func needsHuman(_ reviewer: String?) -> Bool {
         reviewer == ${str(rules.humanReviewer)}
     }
 
+    static let readTimeoutMs = ${rules.readTimeoutMs}
+    struct ReviewerRecord: Sendable { let reviewer: String? }
+
+    static func isSettingsPrefix(_ line: String) -> Bool {
+        guard let range = line.range(of: #""payload""#) else { return false }
+        var header = String(line[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if header.last == "," { header.removeLast() }
+        guard let data = (header + "}").data(using: .utf8),
+              let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        if record["type"] as? String == "turn_context" { return true }
+        return record["type"] as? String == "event_msg"
+            && String(line[range.upperBound...]).range(of: ${str(rules.settingsPayloadPrefix)}, options: .regularExpression) != nil
+    }
+
     /// PermissionRequest precedes reviewer routing. Read actual rollout records,
     /// never a quoted command or tool result containing settings text.
-    static func reviewer(inRollout text: String, turnId: String? = nil) -> String? {
+    static func latestReviewerRecord(inRollout text: String, turnId: String? = nil) -> ReviewerRecord? {
         for line in text.split(separator: "\\n").reversed() {
             guard line.contains("\\\"turn_context\\\"") || line.contains("\\\"thread_settings_applied\\\""),
                   let data = String(line).data(using: .utf8),
                   let record = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let payload = record["payload"] as? [String: Any] else { continue }
+                  let payload = record["payload"] as? [String: Any] else {
+                if isSettingsPrefix(String(line)) { return ReviewerRecord(reviewer: nil) }
+                continue
+            }
             let settings: [String: Any]?
             if record["type"] as? String == "turn_context" {
-                if let turnId, !turnId.isEmpty, payload["turn_id"] as? String != turnId { return nil }
+                if let turnId, !turnId.isEmpty, payload["turn_id"] as? String != turnId { return ReviewerRecord(reviewer: nil) }
                 settings = payload
             } else if record["type"] as? String == "event_msg",
                       payload["type"] as? String == "thread_settings_applied" {
                 settings = payload["thread_settings"] as? [String: Any]
             } else { continue }
-            return settings?["approvals_reviewer"] as? String
+            return ReviewerRecord(reviewer: settings?["approvals_reviewer"] as? String)
         }
         return nil
+    }
+
+    static func reviewer(inRollout text: String, turnId: String? = nil) -> String? {
+        latestReviewerRecord(inRollout: text, turnId: turnId)?.reviewer
     }
 
     /// What the hold handler prints for an outcome. Empty prints nothing,
@@ -119,13 +144,13 @@ ${events}
     /// How long to hold a request whose command waits \`header\` seconds, given
     /// the daemon's configured hold. nil = do not hold: a header this daemon
     /// cannot read is not a budget it may spend.
-    static func holdMilliseconds(header: String?, defaultMs: Int) -> Int? {
+    static func holdMilliseconds(header: String?, defaultMs: Int, elapsedMs: Int = 0) -> Int? {
         guard let header else { return nil }
         let value = header.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (1...4).contains(value.utf8.count),
               value.utf8.allSatisfy({ $0 >= UInt8(ascii: "0") && $0 <= UInt8(ascii: "9") }),
               let seconds = Int(value) else { return nil }
-        let holdMs = min(defaultMs, seconds * 1000 - holdMarginMs)
+        let holdMs = min(defaultMs, seconds * 1000 - holdMarginMs - max(0, elapsedMs))
         return holdMs >= holdMinMs ? holdMs : nil
     }
 

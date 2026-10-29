@@ -6,6 +6,7 @@ import {
   codexApprovalDecisionBody,
   codexApprovalReviewerFromRollout,
   codexApprovalNeedsHuman,
+  codexApprovalSettingsPrefix,
   codexApprovalHoldMs,
   codexHoldDecision,
   codexHoldPressDecision,
@@ -18,10 +19,11 @@ import {
 const VECTORS = JSON.parse(readFileSync(
   fileURLToPath(new URL('../../codex-approval-hold-vectors.json', import.meta.url)), 'utf8')) as {
   header: string;
+  reviewerPrefixes: Array<{text: string; settings: boolean}>;
   reviewerDecisions: Array<{ reviewer: string | null; needsHuman: boolean }>;
   reviewerRecords: Array<{ name: string; records: unknown[]; turnId?: string; reviewer: string | null }>;
   decisions: Array<{ decision: CodexApprovalOutcome; body: unknown }>;
-  budgets: Array<{ name: string; header: string; defaultMs: number; holdMs: number | null }>;
+  budgets: Array<{ name: string; header: string; defaultMs: number; elapsedMs?: number; holdMs: number | null }>;
   eligibility: Array<{ name: string; input: Partial<CodexHoldEligibility>; hold: boolean; reason: string }>;
   eligibilityDefaults: CodexHoldEligibility;
   presses: Array<{ name: string; press: CodexHoldPress; decision: 'allow' | 'deny' | null }>;
@@ -43,6 +45,12 @@ describe('Codex approval hold rules (shared vectors)', () => {
     });
   }
 
+  for (const v of VECTORS.reviewerPrefixes) {
+    it(`classifies a canonical record prefix: ${v.text}`, () => {
+      expect(codexApprovalSettingsPrefix(v.text)).toBe(v.settings);
+    });
+  }
+
   it('names the header both daemons read', () => {
     expect(CODEX_APPROVAL_HOLD_HEADER).toBe(VECTORS.header);
   });
@@ -57,7 +65,7 @@ describe('Codex approval hold rules (shared vectors)', () => {
 
   for (const v of VECTORS.budgets) {
     it(`budget: ${v.name}`, () => {
-      expect(codexApprovalHoldMs(v.header, v.defaultMs)).toBe(v.holdMs);
+      expect(codexApprovalHoldMs(v.header, v.defaultMs, v.elapsedMs)).toBe(v.holdMs);
     });
   }
 
