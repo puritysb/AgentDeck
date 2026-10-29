@@ -218,6 +218,10 @@ struct AgentDeckApp: App {
         // The one-shot launch guard keeps this independent of roster updates.
         AttentionSessionShortcuts.updateAppShortcutParameters()
 
+        daemonService.onLocalReceiverChanged = { port in
+            HermesReceiverSettings.shared.localReceiverChanged(port: port)
+        }
+
         daemonService.onReady = { [stateHolder, weak daemonService] wsUrl in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 guard daemonService?.isCurrentReadyURL(wsUrl) == true else { return }

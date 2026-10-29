@@ -362,11 +362,18 @@ AgentDeck observes Codex and OpenCode only through the opt-in Swift paths descri
 
 Hermes sessions render as a mermaid in the aquarium and previews. They are
 read-only: no approval, prompt injection, voice target or installer is exposed.
-The Swift receiver understands the observer hooks, but the observer's automatic
-endpoint discovery uses the CLI data directory outside the App Sandbox. The
-App Store app therefore receives live Hermes sessions only through an already
-configured external relay. Standalone review does not require this integration;
-the built-in previews work without it.
+The Swift receiver accepts observer hooks directly over loopback; it does not
+require a Node daemon. Settings → Integrations → Hermes optionally lets the
+user select an **existing** observer folder through NSOpenPanel. AgentDeck
+stores a security-scoped bookmark and writes only its `connection.json` data
+file when this Mac's receiver is ready, including after a port change or local
+daemon handover. It checks the existing ownership marker and plugin files but
+never installs, enables, loads or executes Python. No companion-install prompt,
+new entitlement or home-relative-path exception is added. File access is scoped
+to the user-selected folder. “Stop syncing” revokes that access; the last saved
+port remains in place. Saved settings do not claim live activity: the row only
+reports received activity when a live Hermes session is present. Standalone
+review does not require Hermes; built-in previews work without it.
 
 ## APME evaluation module
 

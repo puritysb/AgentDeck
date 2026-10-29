@@ -425,10 +425,40 @@ agentdeck hermes-observer --home /path/to/hermes-profile --check
 This stores only a loopback port in the observer's `connection.json`, preserves
 Hermes configuration and does not start or replace any daemon. Ordinary observer
 updates preserve that selection. Use `--registry` instead of `--port` to remove
-it and restore registry discovery. Reconfigure it if the intended daemon moves.
+it and restore registry discovery. Without the macOS sync described below,
+reconfigure it if the intended daemon moves.
 An invalid explicit selection never falls back to another receiver. Installation
 prints the readiness report so copied plugin files cannot be mistaken for a
 completed connection. `--check` cannot be combined with selection changes.
+
+#### Keep the macOS receiver selected across port changes
+
+In macOS **Settings → Integrations → Hermes → Choose observer folder…**, select
+`<your Hermes profile>/plugins/agentdeck-observer`. This is an opt-in grant for
+an existing observer, not an installer or plugin enablement step. The app retains
+a security-scoped bookmark and writes only `connection.json`, preserving other
+JSON keys. A malformed file, symlink, missing marker or lost folder permission
+is reported without overwriting it; repair the file or reselect the folder and
+use **Retry**. Select the profile the running Hermes process actually uses.
+
+While AgentDeck is open, the selection follows the **ready local receiver**:
+Swift's actual bound port (including a fallback), or the local daemon the app
+has attached to after handover. It never writes a preferred port before binding,
+a remote dashboard endpoint, or removes the selection during teardown. The
+observer rereads this file for each delivery, so a running Hermes process uses
+the new port on its next event without a restart. Events sent during receiver
+downtime are still best-effort; this does not add replay or recover a session
+start lost during a restart.
+
+The saved-port message confirms a file write, not observer enablement or event
+receipt. **Stop syncing** removes the bookmark and stops further writes while
+leaving the last explicit port intact; it does not disable Hermes or silently
+switch it back to Node registry discovery. While sync is enabled the app owns
+receiver selection, so stop syncing before using CLI `--port` / `--registry` to
+choose a different receiver. Relaunching AgentDeck restores the grant and syncs
+once its local receiver is ready. This source change still needs signed-release
+picker/bookmark acceptance; the earlier Store 9401 receipt below covers direct
+hook delivery and explicit CLI selection only.
 
 The observer exports bounded prompt/final-response text (8,192 characters each),
 model, platform, CLI working directory, tool name and its own process id to the

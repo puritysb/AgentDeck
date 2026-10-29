@@ -2066,6 +2066,12 @@ struct SettingsScreen: View {
             openCodeMonitoringSlot
         case "kiro":
             kiroDirectorySlot
+        case "hermes":
+            #if os(macOS)
+            HermesReceiverSettingsView()
+            #else
+            EmptyView()
+            #endif
         default:
             EmptyView()
         }

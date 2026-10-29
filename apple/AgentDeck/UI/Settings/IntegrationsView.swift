@@ -158,6 +158,17 @@ enum IntegrationCatalog {
         connectInstructions: "Pick your ~/.kiro folder once so the sandboxed app can read Kiro's own session files."
     )
 
+    static let hermes = IntegrationDescriptor(
+        id: "hermes",
+        displayName: "Hermes",
+        kind: .accountLinked,
+        iconSystemName: "water.waves",
+        iconAgentType: "hermes",
+        iconTint: SessionBrand.color(for: "hermes"),
+        oneLineHelp: "Follow Hermes session activity through its existing observer.",
+        connectInstructions: "Choose the existing observer folder below to keep its receiver setting up to date."
+    )
+
     static let anthropicAdmin = IntegrationDescriptor(
         id: "anthropic-admin",
         displayName: "Anthropic Admin API",
@@ -181,7 +192,7 @@ enum IntegrationCatalog {
     )
 
     static let all: [IntegrationDescriptor] = [
-        claudeCode, codex, openClaw, antigravity, openCode, kiro, anthropicAdmin, zaiCodingPlan,
+        claudeCode, codex, openClaw, antigravity, openCode, kiro, hermes, anthropicAdmin, zaiCodingPlan,
     ]
 }
 
@@ -297,6 +308,10 @@ enum IntegrationStatusEvaluator {
             return openCodeStatus(preferences: preferences, state: state)
         case "kiro":
             return kiroStatus(preferences: preferences)
+        case "hermes":
+            return state.siblingSessions.contains { $0.alive && $0.agentType == "hermes" }
+                ? .connected(detail: "Hermes session activity received.")
+                : .awaitingData(detail: "No live Hermes session activity received yet.")
         case "anthropic-admin":
             return anthropicStatus(state: state, hasKey: anthropicKeySaved)
         case "zai":
