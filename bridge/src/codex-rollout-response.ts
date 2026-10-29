@@ -24,8 +24,8 @@ import { readdirSync, readFileSync, openSync, readSync, closeSync, fstatSync } f
 import { homedir } from 'os';
 import { join } from 'path';
 import { debug } from './logger.js';
-import { open as openAsync, readdir as readdirAsync } from 'fs/promises';
-import { CODEX_APPROVAL_CONTEXT_BYTES, codexApprovalReviewerFromRollout, CODEX_OTEL_METADATA_RULES, codexSessionMetaSubagentVerdict } from '@agentdeck/shared';
+import { open as openAsync, readdir as readdirAsync, stat as statAsync } from 'fs/promises';
+import { CODEX_APPROVAL_CONTEXT_BYTES, CODEX_APPROVAL_SCAN_WINDOW_BYTES, CODEX_APPROVAL_READ_TIMEOUT_MS, codexApprovalLatestReviewerRecord, codexApprovalSettingsPrefix, codexApprovalReviewerRecord, CODEX_OTEL_METADATA_RULES, codexSessionMetaSubagentVerdict } from '@agentdeck/shared';
 
 /** Max day directories to inspect, newest first. */
 const MAX_DAY_DIRS = 30;
@@ -335,12 +335,107 @@ export function lastAgentMessageFromCodexRollout(sessionId: string, sessionsRoot
 /** PermissionRequest fires before Codex chooses automatic vs human review.
  * Read the hook's own rollout, with the existing locator as a legacy fallback.
  * Never infer the reviewer from a command name, global config or tool timing. */
-export function codexApprovalReviewerForHook(json: Record<string, unknown>): string | undefined {
+export async function codexApprovalReviewerForHook(json: Record<string, unknown>): Promise<string | undefined> {
   if (typeof json.approvals_reviewer === 'string') return json.approvals_reviewer;
   const sid = typeof json.session_id === 'string' ? json.session_id : '';
-  const path = typeof json.transcript_path === 'string' && json.transcript_path
-    ? json.transcript_path : sid ? locateCodexRollout(sid) : null;
-  if (!path) return undefined;
-  return codexApprovalReviewerFromRollout(readTail(path, CODEX_APPROVAL_CONTEXT_BYTES, false),
-    typeof json.turn_id === 'string' ? json.turn_id : undefined);
+  const deadline = performance.now() + CODEX_APPROVAL_READ_TIMEOUT_MS;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const path = typeof json.transcript_path === 'string' && json.transcript_path
+      ? json.transcript_path : sid ? await Promise.race([
+        locateCodexRolloutAsync(sid),
+        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), CODEX_APPROVAL_READ_TIMEOUT_MS); }),
+      ]) : null;
+    if (!path || performance.now() >= deadline) return undefined;
+    return await readCodexApprovalReviewer(path, typeof json.turn_id === 'string' ? json.turn_id : undefined, deadline);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+/** Read complete JSONL records backwards, with overlapping bounded windows.
+ * There is no total-byte ceiling: a quiet, long turn still has a reviewer.
+ * Async filesystem reads yield between windows. Never cache across writes. */
+export async function readCodexApprovalReviewer(
+  path: string, turnId?: string, deadline = performance.now() + CODEX_APPROVAL_READ_TIMEOUT_MS,
+): Promise<string | undefined> {
+  let abandoned = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const work = async (): Promise<string | undefined> => {
+    while (!abandoned && performance.now() < deadline) {
+      const pathBefore = await statAsync(path, { bigint: true });
+      if (!pathBefore.isFile()) return undefined;
+      const fd = await openAsync(path, 'r');
+      try {
+        const before = await fd.stat({ bigint: true });
+        const signature = (s: typeof before) => `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`;
+        if (signature(before) !== signature(pathBefore)) continue;
+        const size = Number(before.size);
+        if (!Number.isSafeInteger(size)) return undefined;
+        const readRange = async (start: number, length: number): Promise<Buffer> => {
+          const data = Buffer.alloc(length);
+          let offset = 0;
+          while (offset < length) {
+            if (abandoned || performance.now() >= deadline) throw new Error('reviewer read deadline');
+            const { bytesRead } = await fd.read(data, offset, length - offset, start + offset);
+            if (bytesRead === 0) throw new Error('short reviewer read');
+            offset += bytesRead;
+          }
+          return data;
+        };
+        const readSettingsLine = async (start: number) => {
+          const pieces: Buffer[] = [];
+          while (start < size) {
+            const data = await readRange(start, Math.min(CODEX_APPROVAL_CONTEXT_BYTES, size - start));
+            const newline = data.indexOf(10);
+            pieces.push(newline < 0 ? data : data.subarray(0, newline));
+            if (newline >= 0) break;
+            start += data.length;
+          }
+          return codexApprovalReviewerRecord(Buffer.concat(pieces).toString('utf8'), turnId) ?? {};
+        };
+        let end = size;
+        let result: ReturnType<typeof codexApprovalLatestReviewerRecord>;
+        while (end > 0 && !abandoned && performance.now() < deadline) {
+          const start = Math.max(0, end - CODEX_APPROVAL_SCAN_WINDOW_BYTES);
+          const data = await readRange(start, end - start);
+          let first = 0, last = data.length;
+          if (start > 0) {
+            const newline = data.indexOf(10);
+            first = newline < 0 ? last : newline + 1;
+          }
+          if (end < size) {
+            const trailingStart = data.lastIndexOf(10) + 1;
+            if (trailingStart >= first && trailingStart < data.length && codexApprovalSettingsPrefix(data.subarray(trailingStart).toString('utf8'))) {
+              result = await readSettingsLine(start + trailingStart);
+              break;
+            }
+            last = Math.max(first, trailingStart);
+          }
+          result = codexApprovalLatestReviewerRecord(data.subarray(first, last).toString('utf8'), turnId);
+          if (result || start === 0) break;
+          end -= CODEX_APPROVAL_CONTEXT_BYTES;
+        }
+        if (abandoned || performance.now() >= deadline) return undefined;
+        const after = await fd.stat({ bigint: true });
+        const pathAfter = await statAsync(path, { bigint: true });
+        // A rewrite, replacement, truncation or concurrent append is not the
+        // snapshot we read. Retry current bytes; never reuse an earlier user.
+        if (signature(before) !== signature(after) || signature(before) !== signature(pathAfter)) continue;
+        return result?.reviewer;
+      } catch {
+        const current = await statAsync(path, { bigint: true }).catch(() => undefined);
+        if (current && (current.ino !== pathBefore.ino || current.size !== pathBefore.size
+          || current.mtimeNs !== pathBefore.mtimeNs || current.ctimeNs !== pathBefore.ctimeNs)) continue;
+        return undefined;
+      } finally { await fd.close(); }
+    }
+    return undefined;
+  };
+  try {
+    return await Promise.race([
+      work().catch(() => undefined),
+      new Promise<undefined>(resolve => {
+        timer = setTimeout(() => { abandoned = true; resolve(undefined); }, Math.max(0, deadline - performance.now()));
+      }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
 }

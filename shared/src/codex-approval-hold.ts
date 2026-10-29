@@ -63,11 +63,11 @@ export function codexApprovalDecisionBody(outcome: CodexApprovalOutcome): string
 /** How long to hold a request whose command waits `header` seconds, given the
  *  daemon's configured hold. `null` = do not hold: a header this daemon cannot
  *  read is not a budget it may spend. */
-export function codexApprovalHoldMs(header: string | undefined, defaultMs: number): number | null {
+export function codexApprovalHoldMs(header: string | undefined, defaultMs: number, elapsedMs = 0): number | null {
   if (header === undefined) return null;
   const value = header.trim();
   if (!/^[0-9]{1,4}$/.test(value)) return null;
-  const holdMs = Math.min(defaultMs, Number(value) * 1000 - CODEX_APPROVAL_HOLD_MARGIN_MS);
+  const holdMs = Math.min(defaultMs, Number(value) * 1000 - CODEX_APPROVAL_HOLD_MARGIN_MS - Math.max(0, Math.ceil(elapsedMs)));
   return holdMs >= CODEX_APPROVAL_HOLD_MIN_MS ? holdMs : null;
 }
 
@@ -136,33 +136,67 @@ export function codexHoldDecision(e: CodexHoldEligibility): { hold: boolean; rea
   return { hold: true, reason: 'device-approval' };
 }
 
-/** Bounded rollout probe used only on permission requests, in both daemons.
- * Turn settings can be far behind a long tool transcript. */
+/** Scan block size, not a total rollout limit. Adjacent reads overlap by one
+ * block so settings records crossing a block boundary remain whole. */
 export const CODEX_APPROVAL_CONTEXT_BYTES = 8 * 1024 * 1024;
+export const CODEX_APPROVAL_READ_TIMEOUT_MS = 5_000;
+export const CODEX_APPROVAL_SCAN_WINDOW_BYTES = 2 * CODEX_APPROVAL_CONTEXT_BYTES;
+
+/** A pre-routing hook is not proof of a human wait. Missing, unreadable or
+ * invalid settings stay unknown; they must not create Attention or
+ * intercept automatic review with a device hold. */
+export const CODEX_APPROVAL_HUMAN_REVIEWER = 'user';
+export function codexApprovalNeedsHuman(reviewer: string | undefined): boolean {
+  return reviewer === CODEX_APPROVAL_HUMAN_REVIEWER;
+}
+
+/** Canonical JSONL header check, used only to extend a settings record that
+ * crosses an I/O window. A quoted tool result is never a record header. */
+export const CODEX_APPROVAL_SETTINGS_PAYLOAD_PREFIX = '^\\s*:\\s*\\{\\s*"type"\\s*:\\s*"thread_settings_applied"';
+export function codexApprovalSettingsPrefix(line: string): boolean {
+  const payloadAt = line.indexOf('"payload"');
+  if (payloadAt < 0) return false;
+  try {
+    const header = JSON.parse(line.slice(0, payloadAt).trimEnd().replace(/,$/, '') + '}') as Record<string, unknown>;
+    return header.type === 'turn_context' || (header.type === 'event_msg'
+      && new RegExp(CODEX_APPROVAL_SETTINGS_PAYLOAD_PREFIX).test(line.slice(payloadAt + '"payload"'.length)));
+  } catch { return false; }
+}
+
+export interface CodexApprovalReviewerRecord { reviewer?: string }
+
+/** undefined means no authoritative record; { reviewer: undefined } is a
+ * latest settings/turn barrier and must stop a backwards file scan. */
+export function codexApprovalReviewerRecord(line: string, turnId?: string): CodexApprovalReviewerRecord | undefined {
+  if (!line.includes('"turn_context"') && !line.includes('"thread_settings_applied"')) return undefined;
+  let record: Record<string, unknown>;
+  try { record = JSON.parse(line) as Record<string, unknown>; } catch { return codexApprovalSettingsPrefix(line) ? {} : undefined; }
+  if (!record || typeof record !== 'object') return undefined;
+  const payload = record.payload as Record<string, unknown> | undefined;
+  if (!payload || typeof payload !== 'object') return record.type === 'turn_context' ? {} : undefined;
+  let settings: Record<string, unknown> | undefined;
+  if (record.type === 'turn_context') {
+    if (turnId && payload.turn_id !== turnId) return {};
+    settings = payload;
+  } else if (record.type === 'event_msg' && payload.type === 'thread_settings_applied') {
+    settings = payload.thread_settings as Record<string, unknown> | undefined;
+  } else return undefined;
+  return { reviewer: typeof settings?.approvals_reviewer === 'string' ? settings.approvals_reviewer : undefined };
+}
+
+export function codexApprovalReviewerFromRollout(text: string, turnId?: string): string | undefined {
+  return codexApprovalLatestReviewerRecord(text, turnId)?.reviewer;
+}
 
 /** Latest authoritative reviewer setting, never a quoted tool/message body.
  * A newer settings record without a reviewer is unknown: do not reuse an old
  * auto-review setting after a resume/turn change. Legacy/unreadable rollouts
- * retain the existing PermissionRequest behavior; only explicit auto_review
- * evidence suppresses Attention and the opt-in hold. */
-export function codexApprovalReviewerFromRollout(text: string, turnId?: string): string | undefined {
-  const lines = text.split('\n');
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (!line.includes('"turn_context"') && !line.includes('"thread_settings_applied"')) continue;
-    let record: Record<string, unknown>;
-    try { record = JSON.parse(line) as Record<string, unknown>; } catch { continue; }
-    if (!record || typeof record !== 'object') continue;
-    const payload = record.payload as Record<string, unknown> | undefined;
-    if (!payload || typeof payload !== 'object') continue;
-    let settings: Record<string, unknown> | undefined;
-    if (record.type === 'turn_context') {
-      if (turnId && payload.turn_id !== turnId) return undefined;
-      settings = payload;
-    } else if (record.type === 'event_msg' && payload.type === 'thread_settings_applied') {
-      settings = payload.thread_settings as Record<string, unknown> | undefined;
-    } else continue;
-    return typeof settings?.approvals_reviewer === 'string' ? settings.approvals_reviewer : undefined;
+ * remain unknown. Only explicit user reviewer evidence permits Attention
+ * and the opt-in hold (codexApprovalNeedsHuman). */
+export function codexApprovalLatestReviewerRecord(text: string, turnId?: string): CodexApprovalReviewerRecord | undefined {
+  for (const line of text.split('\n').reverse()) {
+    const record = codexApprovalReviewerRecord(line, turnId);
+    if (record) return record;
   }
   return undefined;
 }

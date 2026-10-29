@@ -78,9 +78,10 @@ import {
   sweepStalePending, drainAllPending, isPendingRequest, passPending,
 } from './permission-resolver.js';
 import {
-  CODEX_APPROVAL_HOLD_HEADER, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
+  CODEX_APPROVAL_HOLD_HEADER, codexApprovalNeedsHuman, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
 } from '@agentdeck/shared';
 import { CodexApprovalHolds } from './codex-approval-hold.js';
+import { CodexApprovalProbes } from './codex-approval-probe.js';
 import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion, buildAskAnswerReason,
   consumeStop, requestStop, clearStop, STOP_DENY_REASON,
@@ -1847,6 +1848,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const codexHookReplay = new CodexHookReplayGuard();
   // Open Codex device-approval holds — shared/src/codex-approval-hold.ts.
   const codexApprovalHolds = new CodexApprovalHolds();
+  const codexApprovalProbes = new CodexApprovalProbes();
   const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
@@ -3541,6 +3543,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
       req.on('end', async () => {
+        let approvalProbe: ReturnType<CodexApprovalProbes['begin']> | undefined;
+        try {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
         // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
@@ -3558,7 +3562,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // could pair, so ingesting it would record every approval twice.
         const holdHeader = req.headers[CODEX_APPROVAL_HOLD_HEADER];
         if (eventName === 'codex_permission_request' && holdHeader !== undefined) {
-          holdCodexApproval(json, Array.isArray(holdHeader) ? holdHeader[0] : holdHeader, res);
+          await holdCodexApproval(json, Array.isArray(holdHeader) ? holdHeader[0] : holdHeader, res);
           return;
         }
         // Harness identity comes from the payload, not the endpoint (#490): a
@@ -3583,6 +3587,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           (res as unknown as { end: () => typeof res }).end = () => endEmpty('');
         }
         eventName = harness.eventName;
+        if (eventName.startsWith('codex_') && typeof json.session_id === 'string') {
+          if (eventName === 'codex_permission_request') approvalProbe = codexApprovalProbes.begin(json.session_id);
+          else codexApprovalProbes.invalidate(json.session_id, codexHoldReleasedBy(eventName) || eventName === 'codex_session_start');
+        }
         // Generic `<agent>_background_*` hooks (and each agent's session-reset
         // and child-stop events) feed the shared background-work tracker. The
         // three background events mean nothing else, so they stop here.
@@ -3727,14 +3735,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
           });
           // Codex PermissionRequest precedes reviewer routing: an explicit
-          // auto_review setting means no human is waiting. Other requests
-          // retain the display-only approval prompt, answered in the
+          // user setting is required to claim a human wait. Automatic or
+          // unknown reviewers get no prompt; confirmed human prompts use the
           // terminal. Any later lifecycle hook on the session ends the wait:
           // an approval runs the tool (tool_start/tool_end), a denial or
           // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
           const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
+          const reviewer = eventName === 'codex_permission_request' ? await codexApprovalReviewerForHook(json) : undefined;
           const heldRequestId = codexSid ? codexApprovalHolds.requestIdFor(codexSid) : undefined;
-          if (codexSid && heldRequestId) {
+          if (eventName === 'codex_permission_request' && !approvalProbe?.current()) {
+            // A later lifecycle hook overtook the read. Never resurrect its wait.
+          } else if (codexSid && heldRequestId) {
             // A held device approval owns the prompt until it is released: a
             // parallel call's notification or tool hooks must not swap the
             // question under its button. Only the end of the turn it waits
@@ -3744,7 +3755,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               passPending(heldRequestId);
             }
           } else if (codexSid) {
-            if (eventName === 'codex_permission_request' && codexApprovalReviewerForHook(json) !== 'auto_review') {
+            if (eventName === 'codex_permission_request' && codexApprovalNeedsHuman(reviewer)) {
               // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
               // a Codex rollout may be appended while the approval waits, and
               // the explicit hook clears below already end this wait.
@@ -4432,6 +4443,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ received: true }));
         }
+        } finally { approvalProbe?.dispose(); }
       });
       return;
     }
@@ -5653,17 +5665,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    *  device's Allow/Deny, or answer at once with nothing so Codex draws its own
    *  prompt. A held request shows the prompt with its button; a released one
    *  leaves the prompt as display-only, since Codex is drawing it now. */
-  function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): void {
+  async function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): Promise<void> {
     const sid = typeof json.session_id === 'string' ? json.session_id : '';
-    // An automatic reviewer owns this decision. Printing nothing leaves its
-    // policy untouched; neither a device prompt nor a device hold belongs here.
-    if (codexApprovalReviewerForHook(json) === 'auto_review') {
+    // Only confirmed human review belongs on a device. Unreadable evidence
+    // passes without intercepting the agent's own approval flow.
+    const probe = codexApprovalProbes.begin(sid, () => !res.destroyed);
+    const readStarted = performance.now();
+    const reviewer = await codexApprovalReviewerForHook(json);
+    const current = probe.current();
+    probe.dispose();
+    if (!current || res.destroyed || !codexApprovalNeedsHuman(reviewer)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('');
       return;
     }
     const question = buildCodexPermissionQuestion(json);
-    const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS);
+    const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS, performance.now() - readStarted);
     const background = sid !== '' && (codexAmbientSessions.isAmbient(sid) || isCodexBackgroundCwd(json.cwd));
     const execChild = sid !== '' && codexExecChildren.knows(sid);
     const verdict = holdMs === null

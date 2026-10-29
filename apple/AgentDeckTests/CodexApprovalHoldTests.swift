@@ -98,6 +98,82 @@ final class CodexApprovalHoldTests: XCTestCase {
         }
     }
 
+    func testOnlyConfirmedHumanReviewCreatesAttentionOrAHold() throws {
+        let rows = try XCTUnwrap(try vectors()["reviewerDecisions"] as? [[String: Any]])
+        for row in rows {
+            XCTAssertEqual(CodexApprovalHoldRules.needsHuman(row["reviewer"] as? String),
+                           row["needsHuman"] as? Bool, String(describing: row["reviewer"]))
+        }
+    }
+
+    func testLongRolloutRetainsTheActualReviewer() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let context = "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"mcp-turn\",\"approvals_reviewer\":\"auto_review\"}}\n"
+        try (context + String(repeating: "x", count: 2 * CodexApprovalHoldRules.contextBytes + 1)).write(
+            to: file, atomically: true, encoding: .utf8)
+        let reviewer = CodexRolloutResponseReader.approvalReviewer(
+            sessionId: "mcp-session", transcriptPath: file.path, turnId: "mcp-turn")
+        XCTAssertEqual(reviewer, "auto_review")
+        XCTAssertFalse(CodexApprovalHoldRules.needsHuman(reviewer))
+        let user = context.replacingOccurrences(of: "auto_review", with: "user")
+        try (user + String(repeating: "x", count: 2 * CodexApprovalHoldRules.contextBytes + 1)).write(
+            to: file, atomically: true, encoding: .utf8)
+        XCTAssertTrue(CodexApprovalHoldRules.needsHuman(CodexRolloutResponseReader.approvalReviewer(
+            sessionId: "mcp-session", transcriptPath: file.path, turnId: "mcp-turn")))
+    }
+
+    func testSettingsRecordLargerThanTheReadWindowIsNotDiscarded() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let record: [String: Any] = ["type": "turn_context", "payload": ["turn_id": "large-turn",
+            "approvals_reviewer": "user", "developer_instructions": String(repeating: "x", count: 2 * CodexApprovalHoldRules.contextBytes + 4096)]]
+        // JSONSerialization may reorder fields: write the canonical JSONL
+        // header explicitly, as Codex does, to exercise the extension path.
+        let payload = try JSONSerialization.data(withJSONObject: record["payload"]!)
+        var data = Data("{\"type\":\"turn_context\",\"payload\":".utf8)
+        data.append(payload); data.append(Data("}\n".utf8))
+        try data.write(to: file)
+        XCTAssertEqual(CodexRolloutResponseReader.approvalReviewer(
+            sessionId: "large", transcriptPath: file.path, turnId: "large-turn"), "user")
+    }
+
+    func testLatestUnknownAndRewrittenSettingsDoNotReuseAnOlderUser() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let user = "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"t1\",\"approvals_reviewer\":\"user\"}}\n"
+        let unknown = "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"t1\"}}\n"
+        let gap = String(repeating: "x", count: CodexApprovalHoldRules.contextBytes + 4096)
+        func read() -> String? { CodexRolloutResponseReader.approvalReviewer(sessionId: "s", transcriptPath: file.path, turnId: "t1") }
+        try (user + gap).write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(read(), "user")
+        try (user + unknown + gap).write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertNil(read())
+        try user.replacingOccurrences(of: "user", with: "auto_review").write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(read(), "auto_review")
+        try "".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertNil(read())
+    }
+
+    func testFileWorkDoesNotBlockTheDaemonExecutor() async {
+        let pending = Task { await CodexApprovalReadWorker.read { _ in
+            Thread.sleep(forTimeInterval: 0.1)
+            return "user"
+        } }
+        // This must run while the read worker is occupied.
+        let marker = await DaemonActor.run { "daemon-responsive" }
+        XCTAssertEqual(marker, "daemon-responsive")
+        let reviewer = await pending.value
+        XCTAssertEqual(reviewer, "user")
+    }
+
+    func testCanonicalSettingsPrefixes() throws {
+        for row in try XCTUnwrap(try vectors()["reviewerPrefixes"] as? [[String: Any]]) {
+            XCTAssertEqual(CodexApprovalHoldRules.isSettingsPrefix(try XCTUnwrap(row["text"] as? String)),
+                           row["settings"] as? Bool)
+        }
+    }
+
     func testHeaderAndDecisionBodies() throws {
         let v = try vectors()
         XCTAssertEqual(CodexApprovalHoldRules.header, v["header"] as? String)
@@ -126,7 +202,7 @@ final class CodexApprovalHoldTests: XCTestCase {
             let header = try XCTUnwrap(row["header"] as? String, name)
             let defaultMs = try XCTUnwrap(row["defaultMs"] as? Int, name)
             XCTAssertEqual(
-                CodexApprovalHoldRules.holdMilliseconds(header: header, defaultMs: defaultMs),
+                CodexApprovalHoldRules.holdMilliseconds(header: header, defaultMs: defaultMs, elapsedMs: row["elapsedMs"] as? Int ?? 0),
                 row["holdMs"] as? Int, name)
         }
         XCTAssertNil(CodexApprovalHoldRules.holdMilliseconds(header: nil, defaultMs: 25_000))
