@@ -368,12 +368,54 @@ ran separately on loopback **63800**. SSE monitoring stayed off throughout.
 
 The first finite `opencode run` trial received prompt activity but exited before
 its final Stop was captured. It is not counted as a successful completed-turn
-receipt. The positive completion evidence uses a persistent OpenCode server;
-finite-process shutdown delivery remains best-effort. No production OpenCode
-configuration or installed AgentDeck app was replaced. Test-only servers and the
-signed app were stopped after acceptance.
+receipt; the 2026-10-29 completion evidence uses a persistent OpenCode server.
+The finite-run correction and its separate acceptance are recorded below.
+No production OpenCode configuration or installed AgentDeck app was replaced.
+Test-only servers and the signed app were stopped after acceptance.
 
 Evidence is local and gitignored: `diagnostics/opencode-swift-setup-20261029/`,
 including wire captures, CLI logs, file hashes, edit-refusal/coexistence receipts,
 signature metadata and `results.json`. This proves local development behavior;
 it is not a Store upload or final distribution-artifact acceptance.
+
+### Finite OpenCode shutdown acceptance 2026-10-30
+
+OpenCode 1.18.35 invokes plugin `event` callbacks without awaiting their promises,
+but awaits plugin `dispose` during instance cleanup
+([upstream implementation](https://github.com/anomalyco/opencode/blob/v1.18.35/packages/opencode/src/plugin/index.ts)).
+Tracing confirmed that `session.idle` reached the old observer and started
+`opencode_stop`, while its receiver lookup/health probe was still pending at
+shutdown. With a 100 ms health response delay (inside the existing 300 ms limit),
+the old observer delivered start/prompt but lost Stop; the updated observer
+delivered all three under the same conditions. This is an exit race, not a
+missing OpenCode idle event or a Swift state timeout.
+
+Observer v7 keeps event handling and HTTP delivery nonblocking during a turn.
+Its `dispose` hook closes event admission, cancels pending prompt timers, waits
+for admitted handlers and then their POSTs, with a 3 s total deadline. Existing
+filesystem/HTTP deadlines remain. Both the CLI template and Swift's generated
+bundle use the same correction. Tests cover delayed parent lookup, health and
+Stop response, late event admission, and a peer that never settles.
+
+The Development-signed Sandbox app installed the exact generated observer through
+Settings, with SSE monitoring off and its Swift receiver on port **63787**.
+Three independent, unattached `opencode run --format json --model fixture/fixture`
+processes each exited **0**, returned `OPENCODE_SWIFT_OBSERVER_OK`, and produced
+`idle → processing → idle` plus one matching `chat_response` in Swift's actual
+WebSocket stream. The Dashboard showed IDLE and successful response entries;
+Integrations showed Connected. These were finite processes, with no persistent
+OpenCode server. The sibling JSONC file and unrelated plugin stayed byte-identical.
+
+The isolated CLI harness also sets `PWD` to its subprocess working directory:
+OpenCode resolves request directories from `PWD`, while its initial instance
+uses `process.cwd()`. Leaving the inherited repository `PWD` created a second
+instance whose observer was not the one being disposed; that probe was excluded
+from the corrected before/after comparison. No upstream lifecycle change is
+claimed for that separate condition.
+
+Local evidence remains in the same gitignored diagnostics directory:
+`exit-baseline-delayed-cli.log`, `exit-fixed-delayed-cli.log`,
+`exit-swift-final-{1,2,3}-{cli.log,wire.json}` and `exit-results.json`. This validates
+normal cleanup on OpenCode 1.18.35, not delivery after forced process termination
+or to an unavailable receiver. It remains local Development-signature evidence,
+not Store distribution acceptance.

@@ -37,6 +37,115 @@ describe('native OpenCode observer', () => {
     expect(data).toEqual({ ...OPENCODE_NATIVE_SETUP, source: opencodePluginSource({ nativeObserver: true }),
       cliSHA256: createHash('sha256').update(opencodePluginSource()).digest('hex') });
   });
+
+  it.each([false, true])('dispose drains an unawaited idle handler and its final POST (native=%s)', async nativeObserver => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-dispose-'));
+    const old = process.env.AGENTDECK_PORT;
+    delete process.env.AGENTDECK_PORT;
+    let parent!: (value: unknown) => void;
+    let health!: (value: unknown) => void;
+    let stop!: (value: unknown) => void;
+    const parentResult = new Promise(resolve => { parent = resolve; });
+    const healthResult = new Promise(resolve => { health = resolve; });
+    const stopResult = new Promise(resolve => { stop = resolve; });
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      if (String(url).endsWith('/health')) return healthResult;
+      posts.push(String(url));
+      return String(url).endsWith('/opencode_stop') ? stopResult : { ok: true };
+    });
+    try {
+      const file = join(dir, 'agentdeck.mjs');
+      writeFileSync(file, opencodePluginSource({ nativeObserver }).replace(
+        'import { readFile } from "node:fs/promises";',
+        'const readFile = async () => JSON.stringify({ port: 49150 });',
+      ));
+      const mod = await import(pathToFileURL(file).href);
+      const plugin = await mod.AgentDeckObserver({ directory: '/tmp/work', client: { session: { get: () => parentResult } } });
+      // Match OpenCode: invoke event without awaiting it, immediately dispose.
+      void plugin.event({ event: { type: 'session.idle', properties: { sessionID: 'ses_exit' } } });
+      let disposed = false;
+      const disposal = plugin.dispose().then(() => { disposed = true; });
+      await flush();
+      expect(disposed).toBe(false);
+      parent({ data: { id: 'ses_exit' } });
+      await flush();
+      expect(disposed).toBe(false);
+      health({ ok: true, json: async () => ({ mode: 'daemon' }) });
+      await flush();
+      expect(posts.some(url => url.endsWith('/opencode_stop'))).toBe(true);
+      expect(disposed).toBe(false);
+      stop({ ok: true });
+      await disposal;
+      expect(disposed).toBe(true);
+      const count = posts.length;
+      await plugin.event({ event: { type: 'session.idle', properties: { sessionID: 'late' } } });
+      expect(posts).toHaveLength(count);
+    } finally {
+      vi.unstubAllGlobals(); rmSync(dir, { recursive: true, force: true });
+      if (old === undefined) delete process.env.AGENTDECK_PORT; else process.env.AGENTDECK_PORT = old;
+    }
+  });
+
+  it('dispose has an overall deadline even when a peer never settles', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-dispose-deadline-'));
+    const old = process.env.AGENTDECK_PORT;
+    delete process.env.AGENTDECK_PORT;
+    vi.stubGlobal('fetch', () => new Promise(() => {}));
+    try {
+      const file = join(dir, 'agentdeck.mjs');
+      writeFileSync(file, opencodePluginSource({ nativeObserver: true }).replace(
+        'import { readFile } from "node:fs/promises";',
+        'const readFile = async () => JSON.stringify({ port: 49150 });',
+      ));
+      const mod = await import(pathToFileURL(file).href);
+      const plugin = await mod.AgentDeckObserver({ directory: '/tmp/work', client: null });
+      await plugin.event({ event: { type: 'session.idle', properties: { sessionID: 'ses_silent' } } });
+      vi.useFakeTimers();
+      const disposal = plugin.dispose();
+      await vi.advanceTimersByTimeAsync(3000);
+      await disposal;
+    } finally {
+      vi.useRealTimers(); vi.unstubAllGlobals(); rmSync(dir, { recursive: true, force: true });
+      if (old === undefined) delete process.env.AGENTDECK_PORT; else process.env.AGENTDECK_PORT = old;
+    }
+  });
+
+  it('cancels prompt timers created by a handler that resumes during disposal', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-dispose-timer-'));
+    const old = process.env.AGENTDECK_PORT;
+    delete process.env.AGENTDECK_PORT;
+    let parent!: (value: unknown) => void;
+    const parentResult = new Promise(resolve => { parent = resolve; });
+    const posts: string[] = [];
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      if (String(url).includes('/hooks/')) posts.push(String(url));
+      return { ok: true, json: async () => ({ mode: 'daemon' }) };
+    });
+    try {
+      const file = join(dir, 'agentdeck.mjs');
+      writeFileSync(file, opencodePluginSource({ nativeObserver: true }).replace(
+        'import { readFile } from "node:fs/promises";',
+        'const readFile = async () => JSON.stringify({ port: 49150 });',
+      ));
+      const mod = await import(pathToFileURL(file).href);
+      const plugin = await mod.AgentDeckObserver({ directory: '/tmp/work', client: { session: { get: () => parentResult } } });
+      vi.useFakeTimers();
+      void plugin.event({ event: { type: 'message.updated', properties: { info: {
+        id: 'msg_pending', sessionID: 'ses_pending', role: 'user',
+      } } } });
+      const disposal = plugin.dispose();
+      parent({ data: { id: 'ses_pending' } });
+      await disposal;
+      const count = posts.length;
+      await vi.advanceTimersByTimeAsync(800);
+      expect(posts).toHaveLength(count);
+      expect(posts.some(url => url.endsWith('/opencode_user_prompt_submit'))).toBe(false);
+    } finally {
+      vi.useRealTimers(); vi.unstubAllGlobals(); rmSync(dir, { recursive: true, force: true });
+      if (old === undefined) delete process.env.AGENTDECK_PORT; else process.env.AGENTDECK_PORT = old;
+    }
+  });
   it('a loaded plugin follows explicit receiver edits, refuses invalid selection and never polls commands', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'oc-native-'));
     const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];

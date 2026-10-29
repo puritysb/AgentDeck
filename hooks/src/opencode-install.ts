@@ -59,7 +59,7 @@ function envOptOut(): boolean {
 
 export const OPENCODE_NATIVE_SETUP = { pluginFilename: OPENCODE_PLUGIN_FILENAME, receiverFilename: 'agentdeck-connection.json', owner: 'agentdeck-swift-opencode' } as const;
 
-const PLUGIN_VERSION = 6;
+const PLUGIN_VERSION = 7;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -73,7 +73,7 @@ export function opencodePluginSource(options: { nativeObserver?: boolean } = {})
 // opencode_* hooks — the same observed-session pipeline Claude Code and
 // Codex use — so standalone \`opencode\` sessions appear on the AgentDeck
 // timeline with the same prompt → response turn shape. Every POST is
-// fire-and-forget with a hard timeout; OpenCode never blocks on AgentDeck.
+// nonblocking during a turn, with bounded delivery drained on disposal.
 
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -141,8 +141,8 @@ async function resolvePort() {
   return null;
 }
 
-function post(event, body) {
-  resolvePort().then((port) => {
+function deliver(event, body) {
+  return resolvePort().then((port) => {
     if (!port) return;
     return fetch("http://127.0.0.1:" + port + "/hooks/" + event, {
       method: "POST",
@@ -426,8 +426,21 @@ export const AgentDeckObserver = async ({ directory, client }) => {
     post("opencode_user_prompt_submit", { session_id: sessionID, prompt: prompt || "", cwd });
   }
 
-  return {
-    event: async ({ event }) => {
+  // OpenCode invokes event hooks without awaiting them, but awaits dispose.
+  // A finite run disposes immediately after idle: keep both parent lookups
+  // and the subsequent port-read/POST alive until delivery settles. Merely
+  // awaiting post inside the event hook does not keep that CLI alive.
+  const pendingEvents = new Set();
+  const pendingPosts = new Set();
+  let closing = false;
+  function post(event, body) {
+    const pending = deliver(event, body);
+    pendingPosts.add(pending);
+    pending.then(() => pendingPosts.delete(pending));
+    return pending;
+  }
+
+  const handleEvent = async ({ event }) => {
       try {
         const type = event.type;
         const props = event.properties || {};
@@ -563,6 +576,33 @@ export const AgentDeckObserver = async ({ directory, client }) => {
           // where they are added, not here.
         }
       } catch { /* never throw into OpenCode's event loop */ }
+  };
+  return {
+    event(input) {
+      if (closing) return Promise.resolve();
+      const pending = handleEvent(input);
+      pendingEvents.add(pending);
+      pending.then(() => pendingEvents.delete(pending));
+      return pending;
+    },
+    async dispose() {
+      closing = true;
+      for (const timer of promptTimers.values()) clearTimeout(timer);
+      promptTimers.clear();
+      let deadline;
+      try {
+        await Promise.race([
+          (async () => {
+            await Promise.allSettled([...pendingEvents]);
+            // An admitted handler can create a prompt timer after the first
+            // cancellation above while its parent lookup is still pending.
+            for (const timer of promptTimers.values()) clearTimeout(timer);
+            promptTimers.clear();
+            await Promise.allSettled([...pendingPosts]);
+          })(),
+          new Promise(resolve => { deadline = setTimeout(resolve, 3000); }),
+        ]);
+      } finally { clearTimeout(deadline); }
     },
   };
 };
