@@ -6650,9 +6650,9 @@ final class DaemonServer {
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_permission_request":
-            // PermissionRequest runs before reviewer routing. Explicit automatic
-            // review is working activity, not a human approval prompt. Other
-            // requests remain display-only (respond in the terminal).
+            // PermissionRequest runs before reviewer routing. Only confirmed
+            // user review proves a human wait; automatic and unknown evidence
+            // must not create Attention or intercept the approval flow.
             // The next lifecycle hook on the session ends the wait:
             // an approval runs the tool, a denial or Ctrl+C ends the turn, a
             // new prompt supersedes it — all of which pass through
@@ -6660,7 +6660,7 @@ final class DaemonServer {
             // approval owns the prompt and its button until it is released, so
             // a parallel call's notification must not swap the question.
             if let sessionId, codexHoldRequestBySession[sessionId] == nil,
-               codexApprovalReviewer(json: json) != "auto_review" {
+               CodexApprovalHoldRules.needsHuman(codexApprovalReviewer(json: json)) {
                 showCodexApprovalPrompt(
                     sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
             } else if let sessionId, codexHoldRequestBySession[sessionId] == nil,
@@ -8586,7 +8586,7 @@ final class DaemonServer {
         guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
             return .text("")
         }
-        guard codexApprovalReviewer(json: json) != "auto_review" else { return .text("") }
+        guard CodexApprovalHoldRules.needsHuman(codexApprovalReviewer(json: json)) else { return .text("") }
         let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
         let question = Self.codexPermissionQuestion(json)
         let holdMs = CodexApprovalHoldRules.holdMilliseconds(

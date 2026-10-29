@@ -25,6 +25,7 @@ export function rulesFrom(mod) {
   return {
     header: mod.CODEX_APPROVAL_HOLD_HEADER,
     contextBytes: mod.CODEX_APPROVAL_CONTEXT_BYTES,
+    humanReviewer: mod.CODEX_APPROVAL_HUMAN_REVIEWER,
     denyMessage: mod.CODEX_APPROVAL_DENY_MESSAGE,
     marginMs: mod.CODEX_APPROVAL_HOLD_MARGIN_MS,
     minMs: mod.CODEX_APPROVAL_HOLD_MIN_MS,
@@ -68,6 +69,11 @@ ${events}
 
     /// Bounded reviewer probe; a long turn can put its settings far behind tools.
     static let contextBytes = ${rules.contextBytes}
+
+    /// Only confirmed human review may create Attention or a device hold.
+    static func needsHuman(_ reviewer: String?) -> Bool {
+        reviewer == ${str(rules.humanReviewer)}
+    }
 
     /// PermissionRequest precedes reviewer routing. Read actual rollout records,
     /// never a quoted command or tool result containing settings text.

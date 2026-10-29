@@ -503,5 +503,31 @@
       ],
       "reviewer": "future_reviewer"
     }
+  ],
+  "reviewerDecisions": [
+    {
+      "reviewer": "user",
+      "needsHuman": true
+    },
+    {
+      "reviewer": "auto_review",
+      "needsHuman": false
+    },
+    {
+      "reviewer": "guardian_subagent",
+      "needsHuman": false
+    },
+    {
+      "reviewer": "future_reviewer",
+      "needsHuman": false
+    },
+    {
+      "reviewer": "",
+      "needsHuman": false
+    },
+    {
+      "reviewer": null,
+      "needsHuman": false
+    }
   ]
 }
