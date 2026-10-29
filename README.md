@@ -319,10 +319,18 @@ for verified publication and Store review status.
 |---|---|---|
 | Mac · iPhone · iPad | [App Store](https://apps.apple.com/app/id6784822497?pt=128040795&ct=github-readme-202610&mt=8) | `apple-v*` |
 | Android tablets and e-ink | [Google Play](https://play.google.com/store/apps/details?id=dev.agentdeck) · [signed GitHub APK](https://github.com/puritysb/AgentDeck/releases?q=android-v&expanded=true) | `android-v1.10.2` |
-| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.5`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5) public |
+| CLI + daemon | [`npx @agentdeck/setup`](https://www.npmjs.com/package/@agentdeck/setup) | [`npm-v1.9.6`](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6) public |
 | Stream Deck / Mini / XL / Plus / + XL | [Elgato Marketplace](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) | `streamdeck-v*` |
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
+
+**Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
+A late update to a timeline row (summary, evaluation score, approval result) now
+survives a restart. macOS **1.9.4 / 10001** is **in review**. It replaces the
+withdrawn 1.9.3 submission and carries its changes. Public macOS remains 1.9.2.
+Android 1.10.2 (29) is live on Google Play. Stream Deck 1.8.2 and Ulanzi 1.8.2
+are still in marketplace review. See the
+[delivery checkpoint](RELEASING.md#2026-10-29-delivery-checkpoint).
 
 **npm and deck plugins, 2026-10-28:** [npm 1.9.5 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.5)
 for all four packages. Long-running background work now goes on standby instead
@@ -331,7 +339,8 @@ and Ulanzi 1.8.2 is in Ulanzi's review queue. Both marketplaces still serve
 1.8.1. See the
 [delivery checkpoint](RELEASING.md#2026-10-28-npm-stream-deck-and-ulanzi-delivery-checkpoint).
 
-**Android delivery, checked 2026-10-26:** the signed
+**Android delivery, checked 2026-10-26 (superseded: live on Google Play
+on October 29):** the signed
 [1.10.2 (29) APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)
 is public on GitHub. Google Play 1.10.2 (29) is **in review** for a 100% rollout
 across the existing 178 countries after approval; its current public version
@@ -346,7 +355,8 @@ The Codex terminal-error correction is retained. See the
 [delivery checkpoint](RELEASING.md#2026-10-27-follow-up-delivery-checkpoint).
 The October 28 entry above supersedes it.
 
-**Apple checkpoint, 2026-10-27:** macOS **1.9.3 / 9801** passed final artifact
+**Apple checkpoint, 2026-10-27 (superseded: withdrawn October 29 for
+1.9.4):** macOS **1.9.3 / 9801** passed final artifact
 and three-mode runtime acceptance, replaced the previous 9501 submission and was
 **in review** at the October 28 readback, with automatic release after approval. The verified public
 macOS version remains **1.9.2 / 9401**; this is submission, not public availability.

@@ -95,6 +95,85 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-29 delivery checkpoint
+
+**npm 1.9.6 is public. macOS 1.9.4 / 10001 is submitted and `IN_REVIEW`,
+replacing the withdrawn 1.9.3 / 9801. Android 1.10.2 (29) is live on Google
+Play.** Stream Deck 1.8.2 and Ulanzi 1.8.2 are still in marketplace review;
+both public listings remain 1.8.1.
+
+**macOS.** The maintainer chose to stop waiting on 1.9.3 / 9801 (decision
+below).
+
+1. [PR #627](https://github.com/puritysb/AgentDeck/pull/627) added
+   `release-supersede-prepare` and merged as `2ee0cdef`.
+2. [Upload run 40793010842](https://github.com/puritysb/AgentDeck/actions/runs/40793010842)
+   built and uploaded 1.9.4 / 10001 from that commit. The Release archive check
+   ran in the upload job. Artifact digest:
+   `sha256:3145df80b2f0284817f8766ea2daaf6a75c1105c8cbf354ff3769825b124cff1`.
+   The [readback](https://github.com/puritysb/AgentDeck/actions/runs/40795663008)
+   showed 10001 `VALID` at 00:41 UTC.
+3. [Supersede run 40795744869](https://github.com/puritysb/AgentDeck/actions/runs/40795744869)
+   canceled submission `ab8d4712`. It renumbered version record `149df956` from
+   1.9.3 to 1.9.4, attached build 10001 and wrote the 1.9.4 copy. Result:
+   `prepared`.
+4. The first [submit run](https://github.com/puritysb/AgentDeck/actions/runs/40795875032)
+   stopped at "Version is not READY_FOR_REVIEW". It had created draft
+   `06372a4f` holding exactly 1.9.4, and the version turned `READY_FOR_REVIEW`
+   a moment later. [PR #629](https://github.com/puritysb/AgentDeck/pull/629)
+   makes the submit step wait for that transition.
+5. The [re-run](https://github.com/puritysb/AgentDeck/actions/runs/40796075807)
+   submitted the draft at 00:45:45 UTC.
+6. At 04:11 UTC the [readback](https://github.com/puritysb/AgentDeck/actions/runs/40816317068)
+   showed 1.9.4 and submission `06372a4f` `IN_REVIEW`. Public macOS remains
+   1.9.2 / 9401.
+
+The maintainer waived the runtime soak on the 1.9.4 artifact.
+
+**npm.** [PR #628](https://github.com/puritysb/AgentDeck/pull/628) merged as
+`38136cd5438851d6ba090f69ab237a66437ba6ae`. It has the same tree as the
+full-tier receipt `verification/receipts/2026-10-29-da2a483.json` (32 min 42 s;
+e2e and Windows runtime skipped locally; Windows runs in PR CI).
+
+The pre-tag three-mode daemon soak used four tarballs packed from that commit,
+installed globally (`agentdeck --version` 1.9.6, build `96a98a532508`), with
+this Claude Code session as the live agent. App Store 1.9.2 / 9401 was the
+installed app.
+
+- **CLI only:** the launchd unit owned 9120 (`isSwift: false`). The session was
+  `processing`, the D200H was connected through `ulanzi-plugin`, the Pixoo64 was
+  receiving pushes, and 3 ADB devices were attached.
+- **Swift only:** the app owned 9120 (`isSwift: true`). The same session was
+  `processing`, with the D200H, 11 serial ESP32 boards and 3 Wi-Fi boards
+  connected.
+- **Both:** the CLI started at 01:38:07Z and held the only listener by
+  01:39:09Z. The app stayed attached as a client, and there was one AgentDeck
+  session row. The CLI stopped at 01:39:28Z. Swift reclaimed 9120 at
+  01:40:02Z, and the app was still alive 30 s later with the roster and D200H
+  recovered.
+
+The 9401 reclaim abort fixed in 1.9.4 did not recur in this run.
+
+The tag `npm-v1.9.6` was pushed to that merge.
+[Release run 40801942701](https://github.com/puritysb/AgentDeck/actions/runs/40801942701)
+published all four packages. The registry reads back `shared`, `hooks`,
+`bridge` and `setup` at 1.9.6, with `latest` at 1.9.6, `gitHead` `38136cd5` and
+a non-empty `setup` readme. The
+[GitHub Release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6)
+was published at 01:53:33 UTC.
+
+**Android.** Play Console's production track shows release **29 (1.10.2)**
+active in 178 countries, read on October 29. This supersedes the "in review"
+state of October 26.
+
+**Marketplaces.** Maker Console lists the product as Published, with
+"Pending review ∙ 1.8.2". The public Ulanzi listing shows Version 1.8.1. The
+Ulanzi portal session had expired, so the review queue itself was not read.
+
+**Local state after delivery.** The global `agentdeck` is the public npm 1.9.6
+installation (build `96a98a532508`). The Node daemon owns 9120 under launchd,
+and App Store 1.9.2 is attached as a client.
+
 ### 2026-10-29 npm 1.9.6 release decision
 
 On October 29 the maintainer authorized every pending delivery that does not
