@@ -15,6 +15,8 @@
 #include <math.h>
 
 static volatile bool s_playing = false;
+// Half the previous 6000 peak PCM amplitude; leave speech/codec volume alone.
+static constexpr uint16_t ATTENTION_AMPLITUDE = 3000;
 
 static void feedTone(float freqHz, uint32_t ms, uint16_t amplitude) {
     constexpr uint32_t RATE = 16000;
@@ -51,9 +53,9 @@ static void chimeTask(void* param) {
     if (!Audio::playbackActive()) {
         Audio::playbackBegin(16000);
         if (Audio::playbackActive()) {
-            // Two-note rising chime, quiet enough for a desk (amp ≈ 18% FS).
-            feedTone(880.0f, 110, 6000);
-            feedTone(1318.5f, 140, 6000);
+            // Two-note rising chime (peak amplitude ≈ 9% full scale).
+            feedTone(880.0f, 110, ATTENTION_AMPLITUDE);
+            feedTone(1318.5f, 140, ATTENTION_AMPLITUDE);
             Audio::playbackEnd();
         }
     }
