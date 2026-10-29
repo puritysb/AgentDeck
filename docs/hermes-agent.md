@@ -456,9 +456,9 @@ leaving the last explicit port intact; it does not disable Hermes or silently
 switch it back to Node registry discovery. While sync is enabled the app owns
 receiver selection, so stop syncing before using CLI `--port` / `--registry` to
 choose a different receiver. Relaunching AgentDeck restores the grant and syncs
-once its local receiver is ready. This source change still needs signed-release
-picker/bookmark acceptance; the earlier Store 9401 receipt below covers direct
-hook delivery and explicit CLI selection only.
+once its local receiver is ready. The local signed Release acceptance below covers picker/bookmark restoration
+and automatic port changes. The earlier Store 9401 receipt covers direct hook
+delivery and explicit CLI selection only.
 
 The observer exports bounded prompt/final-response text (8,192 characters each),
 model, platform, CLI working directory, tool name and its own process id to the
@@ -711,3 +711,34 @@ about what to pursue. It does not claim that the gates were met.
 
 Hermes stays observation-only. A new receipt for any gap above can reopen the
 matching issue.
+
+### Signed local Release setup acceptance 2026-10-29
+
+Source `fd9ed18f` was verified in a local Apple Development-signed Release
+1.9.4 / build 5 with App Sandbox enabled. The Release output was copied to a
+separate test app, then signed using the available development identity;
+WeatherKit was the sole entitlement omitted for that local signature. This is
+local signed-app acceptance, not acceptance of a final Store distribution artifact.
+
+The real NSOpenPanel selected a temporary profile's existing observer directory
+once. The app saved receiver port **49764**. A real installed Hermes CLI turn,
+using a deterministic loopback model fixture, reached Swift and moved through
+idle → processing → idle with a successful response. After a complete app quit
+and relaunch, the stored security-scoped bookmark restored access without a
+second folder selection, and another real CLI turn reached the same receiver.
+
+In Settings → Local server, **Apply & Restart** changed the port to **51702**.
+The GUI process remained running, the Hermes settings row showed the new port,
+and the app atomically changed the observer's connection file. Without a CLI
+`--port` update or observer reinstall, a third actual CLI turn reached Swift on
+the new port and completed normally. Each CLI invocation exited 0. These were
+three distinct CLI invocations; continuous delivery from one long-lived Hermes
+process across the change was not separately exercised in this acceptance run.
+
+The production Node daemon was kept running; the test app used a separate
+loopback port/data directory with device modules disabled. All scoped preferences
+were backed up and restored, and the original development GUI was reopened on
+9120. Local evidence: `diagnostics/hermes-signed-ui-20261029/` (gitignored), with
+per-case wire captures, CLI logs, signature/entitlement receipt and results JSON.
+Signed executable SHA-256:
+`cae33b4b67afa5eff2580b6a6a0d15bc5a7937af20be966977bcebe600297c83`.

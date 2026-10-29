@@ -243,7 +243,7 @@ external process inside the app.
 
 | Priority | Candidate | Why native is plausible | Completion evidence / remaining dependency |
 |---|---|---|---|
-| P1, setup implemented; release acceptance pending | Hermes direct-receiver setup continuity | Native folder consent, persistent bookmark, ready local port synchronization, retry and stop-sync controls; observer enablement stays user-owned | [Setup and limits](hermes-agent.md#keep-the-macos-receiver-selected-across-port-changes). Native regression tests cover ready-port changes and revocation. Signed-release picker/bookmark acceptance remains; the [9401 receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29) proves direct delivery only |
+| P1, local signed acceptance passed | Hermes direct-receiver setup continuity | Native folder consent, persistent bookmark, ready local port synchronization, retry and stop-sync controls; observer enablement stays user-owned | [Setup and limits](hermes-agent.md#keep-the-macos-receiver-selected-across-port-changes). Native regression tests cover ready-port changes and revocation. [Local signed Release acceptance](hermes-agent.md#signed-local-release-setup-acceptance-2026-10-29) passed folder selection, relaunch restoration and automatic port change; a final Store artifact remains a separate release gate. The [9401 receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29) proves direct delivery only |
 | P1 | OpenCode observer setup through explicit file consent | The app already consumes hooks/SSE; a scoped file installer can follow the existing Claude/Codex consent pattern | Preserve user configuration, verify install/update/removal and real hook delivery. OpenCode executes its plugin; the app must not start OpenCode. Review packaging and Store disclosure before implementation |
 | P2 | Kiro v2 SQLite observation | Swift already supports granted Kiro JSONL stores; native SQLite can replace Node's reader | First establish remaining v2 usage. Read-only bookmark access including WAL, schema fixtures, session/turn identity and unknown-state parity; no fabricated PERM |
 | P2 | Daemon relay hub/worker | Existing authenticated HTTP/WS and native session state provide the transport building blocks | Port the [relay contract](../bridge/src/daemon-relay.ts), bounded teardown, reconnect/dedup and per-session authorization. Advertise only steering the Swift worker can execute; remote terminal injection still needs an external worker |
@@ -276,8 +276,8 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Suggested delivery order: complete signed-release acceptance of Hermes setup
-continuity, implement consented OpenCode setup, then prioritize Kiro legacy
+Suggested delivery order: carry the accepted Hermes setup into the release
+artifact, implement consented OpenCode setup, then prioritize Kiro legacy
 support or Pocket content using actual user/device demand. Relay follows a dedicated transport/control design.
 Investigate the Claude source in parallel with this roadmap; do not promise a
 native quota release before that evidence exists. Dot remains a separate
