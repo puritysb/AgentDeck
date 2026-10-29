@@ -88,3 +88,5 @@ export * from './apme-scorecard-sql.js';
 export * from './apme-review.js';
 
 export * from './pocket-policy.js';
+
+export { GLANCE_POLICY } from './glance-frame-policy.js';

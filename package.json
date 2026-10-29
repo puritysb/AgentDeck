@@ -89,6 +89,7 @@
     "generate-ci-wait": "node scripts/generate-ci-wait.mjs",
     "generate-session-settings-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-session-settings-rules.mjs",
     "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs",
+    "generate-glance-policy": "node scripts/generate-glance-policy.mjs",
     "generate-pocket-policy": "pnpm --filter @agentdeck/shared build && node scripts/generate-pocket-policy.mjs",
     "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs"
   },

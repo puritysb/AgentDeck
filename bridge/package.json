@@ -62,12 +62,12 @@
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
     "strip-ansi": "^7.2.0",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "@resvg/resvg-js": "2.6.2"
   },
   "optionalDependencies": {
     "@picovoice/porcupine-node": "^4.0.2",
     "@picovoice/pvrecorder-node": "^1.2.8",
-    "@resvg/resvg-js": "^2.6.2",
     "better-sqlite3": "12.11.1",
     "node-pty": "^1.1.0",
     "serialport": "^13.0.0"

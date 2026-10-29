@@ -6,6 +6,9 @@ on:
     paths:
       - 'apple/**'
       - 'shared/**'
+      - 'bridge/assets/fonts/**'
+      - 'bridge/src/glance-frame.ts'
+      - 'scripts/generate-glance-policy.mjs'
       - 'generated/protocol/**'
       - 'docs/appstore-metadata-draft.md'
       - '.github/workflows/apple-test.yml'
@@ -14,6 +17,9 @@ on:
     paths:
       - 'apple/**'
       - 'shared/**'
+      - 'bridge/assets/fonts/**'
+      - 'bridge/src/glance-frame.ts'
+      - 'scripts/generate-glance-policy.mjs'
       - 'generated/protocol/**'
       - 'docs/appstore-metadata-draft.md'
       - '.github/workflows/apple-test.yml'
@@ -62,6 +68,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.90.0
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Select Xcode
         run: |

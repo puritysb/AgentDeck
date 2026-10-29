@@ -144,3 +144,6 @@ docs/devlog/view/
 /hooks/LICENSE
 /bridge/LICENSE
 /setup/LICENSE
+
+# Native Glance static library build cache
+/shared/glance-raster/target/

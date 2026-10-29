@@ -160,8 +160,8 @@ Pull Sync; server: `bridge/src/card-feed.ts` + the daemon routes. Both Node and 
 Swift in-process daemon implement the portable transport runtime: full identity,
 conditional Feed, Outbox replay, telemetry, product-scoped persistent pull OTA,
 bounded resume, negotiated 206, licensed offline learning-pack delivery, and install acknowledgement. Swift authors a bounded
-THREAD digest plus MET Norway weather; Node additionally owns adaptive personal card
-modules and Glance Frame pixels. Neither daemon grants Inbox.
+THREAD digest plus MET Norway weather, adaptive Pocket cards and Glance Frame
+pixels, all natively. Node retains separate ICS calendar ingestion. Neither daemon grants Inbox.
 Always-powered clients keep using WS; a dual-mode client uses WS while docked
 and pull while on battery.
 
@@ -326,11 +326,17 @@ Card Feed implementation.
   for clients that display rather than lay out (rich typography, vector
   weather icons, dithered fills; ordered dithering keeps the bytes — and the
   sig — deterministic). `?sig=` echo → `304` with no body; `?format=png` →
-  the SAME dithered pixels as a PNG, so a browser preview is byte-for-byte
-  what the panel will hold. Presets: `xteink_x3` 528×792 portrait,
+  the SAME dithered pixels as a PNG; its decoded preview matches the packed
+  panel pixels. Presets: `xteink_x3` 528×792 portrait,
   `xteink_x4`/`trmnl_75` 800×480 landscape; `?w=&h=` overrides. The
   device-side glance renderer stays as the offline fallback. Renderer:
-  `bridge/src/glance-frame.ts` (Node daemon only).
+  [Node renderer](../bridge/src/glance-frame.ts) and
+  [Swift renderer](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift), with a
+  common pinned resvg engine and bundled fonts. Identical input produces
+  identical packed bytes; renderer/font/policy/rotation identity participates
+  in the content signature. The clock stamp alone does not invalidate it. X3
+  response geometry is physical 792×528 after rotation. X4 physical acceptance
+  is deferred to future companion-app integration.
 - **Auth**: same as `/apme` — local connections free, LAN needs the pairing
   token as `?token=`. Devices must already hold it from explicit provisioning;
   unauthenticated `/health`, mDNS, and UDP discovery never expose it.

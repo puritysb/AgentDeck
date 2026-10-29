@@ -84,8 +84,9 @@ All surfaces follow the same rule:
 | Timeline completion summary | Yes | Yes | Foundation Models → optional MLX HTTP → heuristic; ordinary tool activity and the final response stay under the originating prompt, with expandable bounded tool evidence |
 | Native App Store rating request and review link | Yes | — | StoreKit system prompt is attempted only after every live session is idle on three distinct days, with a 180-day local cooldown; processing and awaiting states never qualify. Settings keeps a user-initiated review link. Engagement dates and the last attempt stay in `UserDefaults` and are never uploaded. |
 | Weather context and offline forecast cues | Yes | Yes | Tier 1 uses native WeatherKit only for the local Dashboard (in-memory refresh cache, Apple mark + legal link). Tier 1's public portable feed and Tier 2 both use keyless MET Norway, persist that provider cache, preserve attribution, and emit up to seven days plus absolute-time display/notification cues for intermittently connected readers. Location is explicit user configuration (or one-time OS location consent), never IP-derived. No subprocess or companion executable is involved. |
-| Surface Protocol portable Feed negotiation | Yes | Yes | Both tiers validate the eight-field identity and implement conditional Feed, Outbox replay, pull telemetry, product-scoped persistent OTA staging, bounded resume/206, and install acknowledgement. Tier 1 stores staged bytes inside its App Container and enforces negotiated WS event/command boundaries natively. Adaptive Pocket content is native in both daemons; Glance Frame pixels remain Tier 2-only. Neither grants Inbox. No subprocess or companion-install prompt is involved. |
-| Pocket adaptive PULSE / NUDGE / QUEST content | Yes, macOS; companion-device integration separate | Yes | Native selection and aggregate learning reuse Feed/Outbox. Shared policy and cross-daemon vectors cover selection, opaque fingerprints, first-answer-wins feedback, ignored exposures and persistence; no personal card copy is persisted. Signed-app HTTP/relaunch acceptance passed; X4 physical round-trip was explicitly deferred to future companion-app integration after its firmware direction changed. Glance pixels and Node ICS calendar ingestion stay separate. See [acceptance](#native-pocket-content-acceptance-2026-10-30). |
+| Surface Protocol portable Feed negotiation | Yes | Yes | Both tiers validate the eight-field identity and implement conditional Feed, Outbox replay, pull telemetry, product-scoped persistent OTA staging, bounded resume/206, and install acknowledgement. Tier 1 stores staged bytes inside its App Container and enforces negotiated WS event/command boundaries natively. Adaptive Pocket content and Glance Frame pixels are native in both daemons. Neither grants Inbox. No subprocess or companion-install prompt is involved. |
+| Pocket adaptive PULSE / NUDGE / QUEST content | Yes, macOS; companion-device integration separate | Yes | Native selection and aggregate learning reuse Feed/Outbox. Shared policy and cross-daemon vectors cover selection, opaque fingerprints, first-answer-wins feedback, ignored exposures and persistence; no personal card copy is persisted. Signed-app HTTP/relaunch acceptance passed; X4 physical round-trip was explicitly deferred to future companion-app integration after its firmware direction changed. Glance rendering has its own acceptance below; Node ICS calendar ingestion stays separate. See [acceptance](#native-pocket-content-acceptance-2026-10-30). |
+| Glance Frame pixel rendering | Yes, macOS; physical-device integration separate | Yes | Exact 1bpp parity uses a common, pinned resvg engine and bundled fonts. Signed Release-app HTTP acceptance covers binary/PNG, conditional responses, Surface identity, authentication and content changes. X4 physical verification is deferred to companion-app integration. See [acceptance](#native-glance-frame-acceptance-2026-10-30). |
 | Surface Protocol licensed learning-pack delivery | Yes | Yes | Both daemons advertise a bundled, integrity-checked offline learning pack in full and unchanged portable Feed responses and serve it through authenticated `GET /learning/pack`. Delivery is gated by `learning.pack.read` / `learning.pack.update`, the registered Pocket Daily product identity, exact pack id/version, and the pack's SPDX licence metadata. The App Store path reads a signed bundle resource only; it launches no process and accesses no external path. |
 | Surface Protocol automatic font-pack delivery | Yes | Yes | Both daemons advertise the bundled OFL PocketSansWorld pack in full and unchanged portable Feed responses and serve it through authenticated `GET /fonts/pack`. Delivery is gated by `font.pack.read` / `font.pack.update`, exact Pocket Daily identity and id/version, plus size, MD5, SHA-256, cpfont-format, source-ledger, and licence validation. The App Store path reads signed bundle resources only. |
 | App Store Connect engagement reports | Yes | — | Maintainer tooling creates ONGOING reports plus an optional ONE_TIME_SNAPSHOT for existing history, then downloads Apple's opt-in, privacy-thresholded aggregate analytics through the App Store Connect API. Creating requests requires Admin access; existing reports can be downloaded with Admin, Finance, or Sales and Reports access. No analytics SDK, device identifier, event upload, or AgentDeck-operated analytics backend is added to the app. |
@@ -253,8 +254,8 @@ research below remains open.
 
 ### P2 implementation status and order
 
-Pocket selection is now implemented natively; the remaining increments are
-currently Node-only. Existing native transport/observation is called out
+Pocket selection and Glance rendering are now implemented natively; the remaining
+increments are currently Node-only. Existing native transport/observation is called out
 separately; it does not imply full parity. Proposed native implementations add
 no subprocess. The remaining order favors existing native transport and owned
 data before new credentials, control protocols or unproven legacy demand.
@@ -262,7 +263,7 @@ data before new credentials, control protocols or unproven legacy demand.
 | Order | Candidate and current gap | First bounded Swift increment | Completion gate / dependency |
 |---|---|---|---|
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
-| 2 | Glance Frame pixels; Swift already supplies structured glance/weather data | Port [frame layout/rendering](../bridge/src/glance-frame.ts) to native graphics. Share board geometry, rotation, dithering and packing rules before adding a Swift renderer. | Fixture parity for fonts/layout, physical orientation, 1bpp stride/polarity, signatures and conditional responses; native preview must match the delivered frame. Physical reader acceptance remains required. Node's `sharp` dependency is an implementation choice, not a requirement for the feature. |
+| 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
 | 3 | CI provider status enrichment; hook-derived wait intent already works in Swift | Define explicit GitHub credential consent/custody and repository/run identity, then replace [the current `gh api` probe](../bridge/src/ci-wait-probe.ts) with bounded native HTTPS. | Keychain custody, least required access, account switching/revocation, bounded polling and stale/unknown fixtures. No reading another tool's credential store or treating hook intent as proven CI success. Credential/source design precedes implementation; if it cannot be established, keep this blocked and advance another ready item. |
 | 4 | Daemon relay hub/worker; Swift currently implements neither role | Specify a mixed Node/Swift [relay contract](../bridge/src/daemon-relay.ts), then port hub ingestion/projection before worker publication and supported command routing. | Authenticated same-socket routing, local-session precedence, per-session authorization, reconnect/dedup, stale-row expiry and bounded teardown. Advertise capability only when its contract is met. Swift workers must reject unsupported terminal injection; full external-worker control is not implied by receiving relay rows. |
 
@@ -301,9 +302,8 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Pocket adaptive selection now reuses the native Feed/Outbox path. The next
-remaining implementation is **native Glance pixels**, with its own device
-acceptance; the future Pocket companion-app integration is a separate track. CI enrichment waits for a credential/source contract; relay follows its
+Pocket adaptive selection and Glance pixels now run in-process in Swift.
+Physical X4 acceptance for both belongs to future companion-app integration. CI enrichment waits for a credential/source contract; relay follows its
 transport/control design. Promote Kiro v2 only when legacy demand is established.
 Prepare the completed Hermes/OpenCode work for release as a separate activity;
 local acceptance is not Store distribution acceptance. Investigate the Claude
@@ -470,7 +470,7 @@ Content input parity means the **same supplied snapshot** produces the same
 cards, outcomes and aggregate state. The app uses already available Swift
 session/weather context. This work does not implement Node's ICS calendar
 provider or a new quota source; absent context is not fabricated. Glance Frame
-pixels remain a separate P2 item. Existing THREAD cards, protocol identity and
+rendering has separate acceptance and retains the same supplied-snapshot boundary. Existing THREAD cards, protocol identity and
 capability negotiation, weather/pack adverts, authentication and OTA envelopes
 are retained. New adaptive cards add at most the configured selection bound.
 
@@ -503,3 +503,74 @@ macOS Debug and DotPreview XCTest suites completed with zero failures (1,397
 cases including 3 skipped; 1,415 including 8 skipped), and macOS Release plus
 both iOS Release configurations built successfully. This is local
 Development-signature evidence, not Store distribution acceptance.
+
+
+## Native Glance Frame acceptance 2026-10-30
+
+The Swift macOS daemon now serves authenticated `GET /glance-frame` in-process.
+Node's SVG rasterization also moves from sharp/librsvg to pinned resvg-js 2.6.2;
+Swift statically links that package's resvg fork at `3495d870`, with a locked
+font-layout dependency graph. Both use the exact bundled IBM Plex Sans/KR/JP and
+JetBrains Mono files, with system-font discovery disabled. This establishes a
+new shared pixel baseline; it does not promise the previous librsvg glyph edges.
+No Node runtime, renderer executable, interpreter or runtime download is added
+to the app. Rust is a build prerequisite only. Notices/source locations are
+included in the app bundle.
+
+[Shared policy](../shared/glance-frame-policy.json) generates board geometry,
+layout units, WMO icon rules, icon paths, fonts and Bayer thresholds. The
+[Swift renderer](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) mirrors the
+canonical Node SVG layout. A macOS gate executes both implementations against
+29 vectors: empty and rich context on all five presets, weather icons,
+Korean/Japanese, Unicode truncation/escaping, odd-width rows and clock changes.
+SVG, every packed 1bpp byte, physical geometry and content signatures match;
+PNG previews decode to the same packed pixels. Four supplied-snapshot vectors
+also match provider gauges, stable attention ordering, overflow, UTF-8 limits
+and ECMAScript whitespace (including BOM and non-whitespace U+0085).
+
+The FNV content signature hashes the SVG with the clock blanked. Renderer,
+font, policy and rotation identities participate, preventing stale conditional
+frames when the rasterizer or policy changes. The clock alone does not change
+the signature. X3 is rotated before Bayer packing; unused row-tail bits stay zero.
+PNG container encodings may differ, but the decoded pixels do not.
+
+A locally Apple-Development-signed **Release** app ran on isolated port 9138,
+with its own bundle id/data directory and device modules disabled. Its real
+HTTP replies matched Node for these frame sizes:
+
+| Board | Physical response | Packed bytes |
+|---|---|---:|
+| X3 | 792×528 | 52,272 |
+| X4 | 800×480 | 48,000 |
+| TRMNL 7.5 | 800×480 | 48,000 |
+| NM-EPD-420 | 400×300 | 15,000 |
+| LilyGo ePaper 4.7 | 960×540 | 64,800 |
+
+That app passed PNG/payload equality, unchanged `304`, odd custom stride,
+radix/decimal dimension parsing, invalid-size fallback, legacy board alias,
+identity `200`/`409`, missing capability `403`, incomplete identity `400`,
+DNS-rebinding Host and unsafe cross-origin request `401`, and unchanged Pocket
+learning state during Glance requests. A synthetic hook then changed the real
+session context: echoing the old signature returned `200` and the new packed
+frame again matched Node. The app exited normally; the temporary app was
+removed, test preferences restored, and shared daemon PID 56289 on 9120 remained
+unchanged. Local evidence: `diagnostics/glance-swift-20261030/results.json`.
+
+The Release payload has no extra executable, forbidden subprocess path or Dot
+payload. The distribution archive verifier correctly rejects its local Apple
+Development identity; this is not a Store archive or release receipt. iOS
+normal/DotPreview builds remain valid and do not link the macOS-only library.
+Intel and arm64 static libraries build; runtime pixel acceptance was on arm64.
+
+Final source checks passed: `pnpm verify:quick` (7,020 tests passed, 17 skipped),
+macOS Debug XCTest (1,398 cases including 3 skipped), macOS DotPreview optimized
+XCTest (1,416 cases including 8 skipped), universal macOS Release, normal and
+DotPreview iOS simulator builds, generated-mirror/catalog checks and the changed
+documentation gates. The final signed-app probe used the completed Release
+artifact after the Unicode compatibility correction.
+
+Actual X4 firmware/display acceptance is **deferred to future companion-app
+integration** at the user's direction. No physical-device result is inferred
+from the HTTP/PNG checks. Native Glance reuses available Swift session, quota
+and weather context; it does not add Node's ICS provider or a new quota source.
+Existing Feed/Outbox behavior is preserved.

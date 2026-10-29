@@ -207,8 +207,8 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS Debug",
       "report_suite": "apple",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-macos-release",
@@ -216,8 +216,8 @@
       "gate": "apple-unit",
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS Release",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-ios",
@@ -226,7 +226,7 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh iOS Release",
       "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-dot-macos",
@@ -234,8 +234,8 @@
       "gate": "apple-unit",
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS DotPreviewRelease",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-dot-ios",
@@ -244,7 +244,7 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh iOS DotPreviewRelease",
       "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-submission",
@@ -540,6 +540,7 @@
         "shared/src/__tests__/daemon-parity.test.ts",
         "shared/src/__tests__/ci-wait-sync.test.ts",
         "bridge/src/__tests__/pocket-autonomy-parity.test.ts",
+        "bridge/src/__tests__/glance-frame-parity.test.ts",
         "bridge/src/__tests__/ips10-roster.test.ts",
         "bridge/src/__tests__/claude-background-tasks.test.ts",
         "bridge/src/__tests__/codex-background-terminals.test.ts",
@@ -553,7 +554,8 @@
       ],
       "proves": [
         "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions (including iDotMatrix creature ownership, attention preemption, background lower bounds and CI/child separation) and the native TUI samples",
-        "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain"
+        "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain",
+        "native Glance uses the pinned common rasterizer and bundled fonts to match Node SVG, every packed 1bpp byte, content signatures, physical orientation and decoded PNG pixels; Swift routes preserve conditional responses, Surface identity and listener authentication"
       ],
       "does_not_prove": [
         "how the Swift app uses those mirrors (that is apple-test.yml)",
@@ -1095,7 +1097,7 @@
         "bridge/src/__tests__/peripheral-mapping.test.ts",
         "bridge/src/__tests__/display-*.test.ts",
         "bridge/src/__tests__/ips10-*.test.ts",
-        "bridge/src/__tests__/glance-frame.test.ts",
+        "bridge/src/__tests__/glance-frame*.test.ts",
         "bridge/src/__tests__/card-*.test.ts",
         "bridge/src/__tests__/pocket-autonomy*.test.ts",
         "bridge/src/__tests__/learning-pack.test.ts",

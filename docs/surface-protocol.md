@@ -127,7 +127,7 @@ are not required to do so. Successful clients cache the redirected GET origin
 as their next preferred route.
 This subnet-aware redirect is currently a Node reliability optimization rather
 than a portable-profile capability. The Swift daemon serves the accepted local
-interface directly; Feed, Outbox, and OTA semantics remain identical once the
+interface directly; Feed, Outbox, Glance and OTA semantics remain identical once the
 client has reached that interface.
 
 The in-process Swift daemon implements the same `portable-reader/v1` transport
@@ -140,8 +140,12 @@ also negotiates the four public WebSocket profiles and enforces both outbound ev
 and inbound command capability boundaries. Swift does not grant Inbox, and neither
 daemon implements it. Adaptive PULSE/NUDGE/QUEST selection and aggregate feedback
 now also run natively over Swift Feed/Outbox; shared policy and Node/Swift vectors
-verify the content engine. Glance Frame pixels remain Node-only and are not a
-capability required by the portable profile. See [native content acceptance](appstore-feature-matrix.md#native-pocket-content-acceptance-2026-10-30).
+verify the content engine. Glance Frame pixels now also render in-process in
+Swift using the same pinned resvg engine and bundled fonts as Node. Both retain the optional `glance.read`
+contract, packed-frame headers, clock-independent content signatures and 304
+responses. The PNG preview decodes to the delivered 1bpp pixels. See
+[Pocket acceptance](appstore-feature-matrix.md#native-pocket-content-acceptance-2026-10-30)
+and [Glance acceptance](appstore-feature-matrix.md#native-glance-frame-acceptance-2026-10-30).
 Actual X4 firmware integration was deferred to the future companion-app path after
 the firmware direction changed; software parity does not prove that device path.
 Pocket Daily remains

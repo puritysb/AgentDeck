@@ -1,7 +1,9 @@
 # Bundled fonts
 
-These TTFs are rasterized by resvg-js in the D200H image renderer
-(`bridge/src/d200h/image-renderer.ts`). They are loaded explicitly via
+These TTFs are rasterized by resvg-js in the image renderers, including
+`bridge/src/glance-frame.ts`. The native Glance renderer bundles these exact
+files and uses the same pinned resvg engine. KR/JP are byte-checked copies of
+the canonical CJK companions in `design/fonts/`. They are loaded explicitly via
 `fontFiles` (not system-font scanning) so device tile rendering is fast and
 deterministic across macOS/Linux.
 
@@ -20,3 +22,6 @@ faces (see `DESIGN.md` §3). `IBM Plex Sans` is the `defaultFontFamily` passed t
 resvg so any unresolved family in the shared SVG renderers (e.g. `Inter`,
 `Arial`, `monospace`) falls back to a design-system face instead of dropping
 text entirely.
+
+Glance redistribution notices, including OFL texts, are in
+[Glance-ThirdPartyNotices.txt](../../../apple/AgentDeck/Resources/Glance-ThirdPartyNotices.txt).

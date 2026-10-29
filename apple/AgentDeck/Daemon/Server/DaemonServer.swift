@@ -3034,6 +3034,34 @@ final class DaemonServer {
                                   place: weather["place"] as? String, timeZone: zone)
     }
 
+    private var glanceFontData: Data?
+
+    private func glanceFrameResponse(identity: SurfaceRuntimeIdentity?, query: [String: String], now: Date = Date()) async -> HTTPServer.HTTPResponse {
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
+        let weather: [String: Any]?
+        if let config = weatherConfig() { weather = await portableWeather.get(config, now: now) }
+        else { weather = nil }
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
+        let glance = GlanceSnapshot.build(
+            sessions: buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? [],
+            usage: buildUsageEvent(), weather: weather)
+        do {
+            if glanceFontData == nil { glanceFontData = try GlanceFrame.fontData() }
+            let geometry = GlanceFrame.geometry(board: identity?.board ?? query["board"] ?? "xteink_x3",
+                width: query["w"], height: query["h"])
+            let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "HH:mm"
+            let frame = try GlanceFrame.render(glance: glance, serverHm: f.string(from: now), geometry: geometry, fonts: glanceFontData!)
+            var headers = ["X-Frame-Width": String(frame.width), "X-Frame-Height": String(frame.height),
+                           "X-Frame-Sig": frame.sig, "Cache-Control": "no-store"]
+            if query["sig"] == frame.sig { return .init(status: 304, headers: headers, body: Data()) }
+            let png = query["format"] == "png"
+            headers["Content-Type"] = png ? "image/png" : "application/octet-stream"
+            return .init(status: 200, headers: headers, body: try png ? frame.png() : frame.packed)
+        } catch {
+            return .json(["error": "Glance frame rendering failed"], status: 500)
+        }
+    }
+
     private func portableWeatherFeedResponse(
         identity: SurfaceRuntimeIdentity?, echoSig: String?, now: Date = Date()
     ) async -> HTTPServer.HTTPResponse {
@@ -3591,6 +3619,16 @@ final class DaemonServer {
         // Surface Card Feed. Swift authors its own bounded THREAD digest and
         // MET Norway glance, while sharing the same conditional/OTA envelope
         // as the Node daemon.
+        await httpServer.get("/glance-frame") { [weak self] request in
+            guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+            switch Self.parseSurfaceHTTPIdentity(headers: request.headers, query: request.queryParams, requiredCapability: "glance.read") {
+            case .failure(let error):
+                return .json(["error": error.code, "message": error.message], status: error.status)
+            case .success(let identity):
+                return await self.glanceFrameResponse(identity: identity, query: request.queryParams)
+            }
+        }
+
         await httpServer.get("/feed") { [weak self] request in
             guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
             let identity: SurfaceRuntimeIdentity?
