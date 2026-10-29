@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-10-29
-revision: 2026-10-29
+reviewed: 2026-10-30
+revision: 2026-10-30
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -95,8 +95,9 @@ All surfaces follow the same rule:
 |---|---|---|
 | Claude Code local | CLI daemon setup, or app file consent | Hook lifecycle; permission and held-decision paths remain distinct. |
 | Codex CLI / local Desktop | CLI setup, or app config/folder consent; Codex hook trust remains user-owned | New SessionStart is idle; prompt/tool events prove work. Written TOML alone does not prove trust or event delivery. Existing hooks=false is preserved. Later Codex settings inside the managed fence are retained; an extended features table becomes user-owned, including its hooks flag. |
-| OpenCode ordinary TUI | CLI setup installs observer plugin | Current permission IDs and question IDs are tracked separately; questions are answered in OpenCode. No special launch command after setup. |
-| OpenCode standalone app path | Enable monitoring and provide a reachable server | Discovery uses the configured URL, default port or a readable explicit `--port N` argument. SSE is read-only. A bare TUI's random port is not automatically discoverable. Pending requests are seeded per directory after SSE attaches; connection loss is not completion. Reconnect prioritizes remembered event directories, then the latest 200 global session records, with a cap of 32 directories plus the server default and four concurrent directory reads. Older/unavailable global inventory falls back to remembered locations and the default. |
+| OpenCode ordinary TUI / finite run | App folder consent + Install / Update, or CLI observer setup | Native setup preserves existing configuration and unrelated plugins. Hooks work without a persistent OpenCode server or Node daemon; native installation is observation-only. OpenCode 1.18.35 finite-run completion was verified through Swift to idle and response history. Permission and question IDs remain separate; questions are answered in OpenCode. See [setup acceptance](#opencode-observer-setup-acceptance-2026-10-29) and [finite shutdown acceptance](#finite-opencode-shutdown-acceptance-2026-10-30). |
+| Hermes ordinary CLI | Already-installed/enabled Hermes observer + app folder consent | App retains the receiver folder and follows the ready local port. One long-lived Hermes process delivered completed turns after app relaunch and listener-port change, without Hermes restart or manual receiver updates. No downtime replay; observer installation/enablement remains external. See [continuity acceptance](hermes-agent.md#long-lived-hermes-process-acceptance-2026-10-29). |
+| OpenCode optional SSE server monitor | Enable monitoring and provide a reachable server | Discovery uses the configured URL, default port or a readable explicit `--port N` argument. SSE is read-only. A bare TUI's random port is not automatically discoverable. Pending requests are seeded per directory after SSE attaches; connection loss is not completion. Reconnect prioritizes remembered event directories, then the latest 200 global session records, with a cap of 32 directories plus the server default and four concurrent directory reads. Older/unavailable global inventory falls back to remembered locations and the default. |
 | Kiro CLI | Node store access, or explicit app folder consent | Passive polling; Swift supports flat and nested JSONL, Node additionally supports v2 SQLite. No permission signal. |
 | Antigravity | Node passive observer | App-only session observation remains unavailable; usage display is a separate capability. |
 | OpenClaw | Existing experimental Gateway pairing | Gateway lifecycle and approvals; pairing is required. |
@@ -147,13 +148,13 @@ candidate; an older artifact's successful upload does not validate this policy.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
-| OpenCode observer file setup | Yes, macOS; explicit folder consent | Yes | Native picker grants an existing OpenCode plugins directory. The app installs/updates/removes only its owned observer and receiver sidecar, preserves other files and refuses modified/symlinked files. Bundled source is generated from the canonical hooks template; OpenCode executes it, the app never does. Native installation is observation-only, uses the ready local receiver port, and adds no subprocess, interpreter or companion-install prompt. Settings distinguish a saved installation from received events. |
-| Hermes receiver settings | Yes, macOS | Explicit `--port` | Opt-in folder picker for an already-installed observer, security-scoped bookmark, local ready-port synchronization across restart/handover, and retry/stop-sync controls. Writes only `connection.json`; preserves other JSON fields and refuses invalid/unowned folders. No observer installation, enablement, execution, or port scanning. Saved configuration is not evidence of event receipt. Stop syncing revokes folder access and leaves the last explicit receiver selection intact. |
+| OpenCode observer file setup | Yes, macOS; explicit folder consent | Yes | Native picker grants an existing OpenCode plugins directory. The app installs/updates/removes only its owned observer and receiver sidecar, preserves other files and refuses modified/symlinked files. Bundled source is generated from the canonical hooks template; OpenCode executes it, the app never does. Native installation is observation-only, uses the ready local receiver port, and adds no subprocess, interpreter or companion-install prompt. Settings distinguish a saved installation from received events. Local signed-app acceptance passed install/update/remove, user-file preservation and real event receipt; observer v7 also drained finite CLI shutdown to Swift idle/response in three real runs. See [acceptance](#opencode-observer-setup-acceptance-2026-10-29) and [shutdown correction](#finite-opencode-shutdown-acceptance-2026-10-30). |
+| Hermes receiver settings | Yes, macOS | Explicit `--port` | Opt-in folder picker for an already-installed observer, security-scoped bookmark, local ready-port synchronization across restart/handover, and retry/stop-sync controls. Writes only `connection.json`; preserves other JSON fields and refuses invalid/unowned folders. No observer installation, enablement, execution, or port scanning. Saved configuration is not evidence of event receipt. Folder selection, bookmark restoration on relaunch and automatic receiver updates were validated in a signed app; the same long-lived Hermes process completed turns after both relaunch and port change. See [continuity acceptance](hermes-agent.md#long-lived-hermes-process-acceptance-2026-10-29). Stop syncing revokes folder access and leaves the last explicit receiver selection intact. |
 | Hermes observer monitoring (preview) | Yes, with explicit receiver selection | Yes | Both daemons ingest `hermes_*` hooks and advertise `hermesObserver: 1`. The externally installed observer uses its profile-local `connection.json` loopback port when selected with `agentdeck hermes-observer --port`; this supports the sandboxed Swift receiver without reading its container or keeping a Node daemon running. Otherwise discovery uses the Node registry, which the App Store daemon does not write. macOS Settings can retain a user-selected existing observer folder and atomically update its connection file when the local receiver becomes ready on a new port. Only the bound/attached local port is written, never a preferred port before startup; invalid explicit selection never falls back. Installation and Hermes enablement remain outside the app. Rows are observation-only, with no approvals, prompt injection or voice target. Direct delivery, opt-out, invalid selection and port reconfiguration were exercised against signed Store 1.9.2 / 9401 on 2026-10-29; this is not current-source release acceptance. See [the receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29). |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | Broad process/TTY discovery remains CLI-owned. Swift already uses native `sysctl` process evidence and user-granted transcript readers for specific integrations; native process enumeration itself is not Node-only |
-| Display-only permission attention | Yes | Yes | Real signals only, per agent: Claude `PermissionRequest` (immediate, display-only) with `Notification` (`permission_prompt`, about six seconds later) as the fallback, Codex `PermissionRequest` (fires only when Codex is about to ask; `Interrupt` closes the turn; answerable only with the opt-in hold below), OpenCode `permission.asked` (answerable requestId in both tiers), OpenClaw `exec.approval.requested`. Kiro/Antigravity have no permission source and never show PERM. No fabricated options |
+| Display-only permission attention | Yes | Yes | Real signals only, per agent: Claude `PermissionRequest` (immediate, display-only) with `Notification` (`permission_prompt`, about six seconds later) as the fallback, Codex `PermissionRequest` (fires only when Codex is about to ask; `Interrupt` closes the turn; answerable only with the opt-in hold below), OpenCode `permission.asked` (native file-installed observer is display-only; actionable IDs require an answer-capable integration), OpenClaw `exec.approval.requested`. Kiro/Antigravity have no permission source and never show PERM. No fabricated options |
 | Observed Claude PreToolUse hold (device Allow/Deny) | Yes, when `~/.claude` is readable | Yes | The one predicted PERM: held only when the generated `ClaudePermissionRules` predictor (shared SSOT, vector-pinned) says Claude would genuinely prompt — mode gate, allow/deny/ask rules in the documented wildcard grammar, built-in read-only set, `acceptEdits` filesystem commands. Sandboxed builds that cannot list `~/.claude` hold nothing |
 | Codex device approvals (opt-in `PermissionRequest` hold) | Yes | Yes | Off by default. Turned on from the Codex block under Settings → Integrations, or `agentdeck daemon install --codex-approvals`; both installers add one second handler to AgentDeck's own `PermissionRequest` group, and Codex shows its hook review once. Nothing is predicted — the hook fires only when Codex is about to ask — so Tier 1 needs no folder access beyond the existing config grant. Held only with a connected device, a visible session and no other hold on it, for at most the observed-approval hold (25 s); the end of the turn releases it. While held, the terminal shows "Running hook" instead of the prompt; an undecided release prints nothing and Codex's own prompt appears. Pure HTTP hold, no subprocess. A decision taking effect in real Codex awaits a user-trusted handler run |
 | Session order pinning (`--weight` sort override) | Yes | Yes | Observed sessions are pinned daemon-first: BOTH daemons persist weight pins (`session-order.json`, `agentdeck order`, `POST /sessions/order`) and overlay them on observed rows before fold+sort, riding the existing `SessionInfo.weight` wire field. Cross-daemon single-sourced TTL/cap (`pnpm generate-session-weight-rules`). The managed launcher's launch-time `--weight` remains the compatibility path; the real-user tab-to-deck scenario was validated on 2026-09-19 (#273) |
@@ -166,7 +167,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 | Managed terminal UI steering | No | Yes (compatibility) | The legacy compatibility observer reads only real mode/diff/option UI and injects keys; lifecycle state, timeline, and APME remain hook/event-owned. Direct-launch steering uses ask-gates/injection and is not fully equivalent. Tracked in #273 |
 | Observed AskUserQuestion — device answer (ask-gate) | Yes | Yes | The daemon holds the question's PreToolUse hook open and resolves it with the option the user picked, stated as the decision reason. Pure HTTP hold, no subprocess, so it works sandboxed. Engaged only when injection is unavailable (always so in Tier 1); an unanswered hold releases empty, and Claude's own picker appears in the terminal as usual. Multi-question calls are answered one question at a time |
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, cmux by the surface the agent process was started in (read from its environment), GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/cmux/osascript subprocesses — all CLI-only; sandbox has none of them. Preferred over the ask-gate when available: it answers the live picker with no added latency for whoever is at that terminal |
-| OpenCode monitoring | Opt-in read-only | Yes | Tier 1 discovers a configured URL, the fixed default port, or an explicit `opencode --port N` visible through native process arguments; no port scan. A bare TUI's random port remains undiscoverable. Both tiers build per-session rows from an already installed observer plugin's `opencode_*` hooks (turn state, running tool, permission, display-only questions); Tier 1 does not install this plugin. Hooks take ownership over optional SSE, so SSE disconnect/keepalive cannot erase or prolong their approvals; the CLI's process scan adds PID rows only for sessions no hook has claimed |
+| OpenCode monitoring | Yes; native observer setup, optional read-only SSE | Yes | The app installs the observation-only observer through explicit plugins-folder consent; hooks supply session/turn/tool/attention evidence without server discovery. Native hooks do not expose actionable permission request IDs or a command poller. Observer v7 drains pending handlers and POSTs through bounded disposal, including finite runs. Optional SSE still discovers configured/default endpoints or readable explicit `--port N`, never a random-port scan. Hooks own their state over SSE; disconnect is not completion. The CLI adds process rows only for sessions no hook has claimed. |
 | Antigravity session monitoring | No | Yes | Tier 1 may display user-approved usage data only |
 | Kiro CLI / IDE session monitoring | Yes, after granting `~/.kiro` | Yes | Both tiers read Kiro's own store, because Kiro reports nothing on its own: its standalone lifecycle hooks load but CLI chat fires none of them (measured 2026-08-17, kiro-cli 2.18.1 — each hook instrumented with a marker, a live turn produced zero markers while a hand-POSTed hook produced a row normally). The App Store build reaches `~/.kiro` only through a **user-granted security-scoped bookmark** (Settings → Integrations → Kiro CLI), the same shape as `~/.codex`; with no grant it observes nothing rather than guessing. Both flat legacy JSONL and nested v3 `session.json` + `messages.jsonl` stores supply chat rows. Explicit v3 turn boundaries supply processing/idle; Swift legacy records without those boundaries remain idle. Node also retains its v2 SQLite observer, which Swift does not implement. Process discovery stays CLI-only; the App Store path keys on the transcript instead |
 | Subagent activity summaries + parent-linked orbit visuals | Yes | Yes | Read-only lifecycle hooks collapse each child to concise start/completion rows using existing Timeline types. Terrarium surfaces may derive non-interactive wire/ring/satellite accents around the owning parent; they never become selectable sessions. No subagent commands, approvals, team configuration, or process discovery |
@@ -208,12 +209,14 @@ decisions follow from that:
    accessibility trees are opaque, use the focus-free key path and keep the
    button path for hosts that do expose controls.
 
-## Swift parity priorities — source assessment 2026-10-29
+## Swift parity priorities — source assessment 2026-10-30
 
-This assessment compares the source at `ab8a8ada`, not the installed app or a
-Store release. Priorities below are proposed implementation order, not release
-approval. The capability rows above describe what exists today; the candidates
-below do not change a No into a Yes.
+The initial comparison used `ab8a8ada`; this update includes Hermes continuity
+acceptance through `6ecae58b`, OpenCode native setup in `fa0427fd`, and finite
+OpenCode shutdown delivery in `c41db84d`. Completion below means source plus
+recorded local signed-app acceptance, not a newly shipped Store version. P2 order
+is an implementation proposal, not release approval. Candidates leave the current
+capability rows unchanged until their own acceptance gates pass.
 
 **Node is the current external runtime, not a language requirement.** A bounded
 HTTP/WebSocket client, SQLite reader, renderer or state machine can often be
@@ -236,23 +239,43 @@ establish credential authorization, trustworthy source data or sandbox access.
   and default endpoints. Broad TTY discovery and random-port scanning are not
   implied by this support.
 
-### Native candidates, ordered by expected value and scope
+### Completed P1: Hermes and OpenCode
 
-P1 is the next bounded parity work; P2 requires broader protocol or evidence
-work; P3 is low-return or currently not planned. None requires starting an
-external process inside the app.
+| Completed scope | Verified evidence | Boundary still retained |
+|---|---|---|
+| Hermes direct receiver and settings continuity | [Signed setup](hermes-agent.md#signed-local-release-setup-acceptance-2026-10-29): folder selection, bookmark restoration after app relaunch, preserved connection fields, automatic ready-port update. [Same-process acceptance](hermes-agent.md#long-lived-hermes-process-acceptance-2026-10-29): one real Hermes process retained its identity and completed turns after app relaunch and port change, without observer reinstall or manual receiver override. | Existing observer installation/enablement remains external. Observation-only; no terminal steering, approval answering or downtime replay. Final Store artifact acceptance is a release task. |
+| OpenCode native observer setup and finite-run completion | [Setup acceptance](#opencode-observer-setup-acceptance-2026-10-29): install, owned-version update, refusal of edits/symlinks, removal, reinstallation and user-file preservation. [Shutdown acceptance](#finite-opencode-shutdown-acceptance-2026-10-30): canonical v7 installed by the signed Sandbox app; three real, unattached OpenCode 1.18.35 runs exited 0 and reached Swift idle plus response history, with SSE monitoring off. | OpenCode executes the plugin; the app only writes verified owned files through scoped access. Native observer has no command polling or actionable permission IDs. Forced exit/unavailable receiver is not guaranteed delivery. Final Store artifact acceptance is a release task. |
 
-| Priority | Candidate | Why native is plausible | Completion evidence / remaining dependency |
+These two P1 implementation/acceptance items are closed. Packaging them into a
+release is separate from the remaining native-port backlog; Claude quota source
+research below remains open.
+
+### Remaining P2: implementation order
+
+The stated increments below are **currently Node-only**. Existing native
+transport/observation is called out separately; it does not imply full parity.
+Their proposed native implementations add no subprocess. The order favors an
+existing native transport and owned data before new credentials, control
+protocols or unproven legacy demand.
+
+| Order | Candidate and current gap | First bounded Swift increment | Completion gate / dependency |
 |---|---|---|---|
-| P1, local signed acceptance passed | Hermes direct-receiver setup continuity | Native folder consent, persistent bookmark, ready local port synchronization, retry and stop-sync controls; observer enablement stays user-owned | [Setup and limits](hermes-agent.md#keep-the-macos-receiver-selected-across-port-changes). Native regression tests cover ready-port changes and revocation. [Local signed Release acceptance](hermes-agent.md#signed-local-release-setup-acceptance-2026-10-29) passed folder selection, relaunch restoration and automatic port change; a final Store artifact remains a separate release gate. The [9401 receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29) proves direct delivery only |
-| P1, implemented and locally validated | OpenCode observer setup through explicit file consent | Scoped native installer with canonical bundled source; OpenCode executes the plugin | [Local acceptance](#opencode-observer-setup-acceptance-2026-10-29) passed install, seeded prior-version update, edited-file refusal, removal, reinstallation and real OpenCode turn receipt. A final Store artifact remains a release gate |
-| P2 | Kiro v2 SQLite observation | Swift already supports granted Kiro JSONL stores; native SQLite can replace Node's reader | First establish remaining v2 usage. Read-only bookmark access including WAL, schema fixtures, session/turn identity and unknown-state parity; no fabricated PERM |
-| P2 | Daemon relay hub/worker | Existing authenticated HTTP/WS and native session state provide the transport building blocks | Port the [relay contract](../bridge/src/daemon-relay.ts), bounded teardown, reconnect/dedup and per-session authorization. Advertise only steering the Swift worker can execute; remote terminal injection still needs an external worker |
-| P2 | Pocket adaptive content and Glance Frame rendering | [Adaptive selection](../bridge/src/pocket-autonomy.ts) is state/data logic; [frame generation](../bridge/src/glance-frame.ts) can use native rendering | Move shared decisions into an SSOT with cross-language vectors; preserve aggregate-only persistence, feed/outbox behavior and geometry. Verify reader output on hardware. Basic portable transport already exists in Swift |
-| P2 | CI provider status enrichment | Native authenticated HTTPS can replace the CLI's optional GitHub status query | Define explicit credential custody and repository/run identity; bounded polling, stale/unknown semantics and provider fixtures. Hook intent alone remains unknown CI status |
-| P2 research | Antigravity session evidence | A user-granted native transcript reader may replace part of the [passive observer](../bridge/src/passive-observer.ts) | First prove readable source format, account/session identity and trustworthy turn boundaries in the signed sandbox. Process presence or plan data alone is insufficient; full parity is not yet established |
-| P3 | TC001 native acceptance | Existing serial/WS path; the current gap is hardware verification | Named firmware/app build, physical display and reconnect/wake checks. This is validation work, not proof of a Node requirement |
-| P3, not planned | ESP32 USB ROM flashing | A native ROM loader could use existing serial entitlement | Full chip/image/offset safety and hardware recovery coverage would be required. Keep CLI/browser flasher as the current path; Wi-Fi OTA already works natively |
+| 1 — next | Pocket adaptive content selection; basic Feed/Outbox transport already works in Swift | Extract [selection policy](../bridge/src/pocket-autonomy.ts) and its module inputs into an SSOT with cross-language vectors; implement native card selection and aggregate learning state. Keep pixel rendering a separate increment. | Equivalent cards for deterministic input/time/randomness; bounded exploration, feedback dedup/replay, restart persistence and offline Outbox behavior. Persist only aggregate counters and opaque fingerprints, never card copy/session names. Real Pocket feed/feedback round trip before acceptance; no new account credential required. |
+| 2 | Glance Frame pixels; Swift already supplies structured glance/weather data | Port [frame layout/rendering](../bridge/src/glance-frame.ts) to native graphics. Share board geometry, rotation, dithering and packing rules before adding a Swift renderer. | Fixture parity for fonts/layout, physical orientation, 1bpp stride/polarity, signatures and conditional responses; native preview must match the delivered frame. Physical reader acceptance remains required. Node's `sharp` dependency is an implementation choice, not a requirement for the feature. |
+| 3 | CI provider status enrichment; hook-derived wait intent already works in Swift | Define explicit GitHub credential consent/custody and repository/run identity, then replace [the current `gh api` probe](../bridge/src/ci-wait-probe.ts) with bounded native HTTPS. | Keychain custody, least required access, account switching/revocation, bounded polling and stale/unknown fixtures. No reading another tool's credential store or treating hook intent as proven CI success. Credential/source design precedes implementation; if it cannot be established, keep this blocked and advance another ready item. |
+| 4 | Daemon relay hub/worker; Swift currently implements neither role | Specify a mixed Node/Swift [relay contract](../bridge/src/daemon-relay.ts), then port hub ingestion/projection before worker publication and supported command routing. | Authenticated same-socket routing, local-session precedence, per-session authorization, reconnect/dedup, stale-row expiry and bounded teardown. Advertise capability only when its contract is met. Swift workers must reject unsupported terminal injection; full external-worker control is not implied by receiving relay rows. |
+
+**Conditional P2 / research**, not the next default implementation:
+
+| Candidate | Promotion condition | Acceptance boundary |
+|---|---|---|
+| Kiro v2 SQLite reader | Confirm actual v2 usage or obtain a representative active store; modern flat/nested JSONL observation is already native. | Read-only user-granted folder access including live WAL/SHM, schema fixtures, stable session/turn identity, consistent snapshots and unknown-state parity. No fabricated PERM. If active v2 demand is demonstrated, this bounded reader can move ahead of CI/relay. |
+| Antigravity session evidence | Prove a readable, user-granted source format and reliable account/session/turn identity in a signed sandbox. | Process presence or usage/plan data alone is insufficient. Establish evidence before promising observation parity or a migration implementation. |
+
+P3 stays separate: TC001 needs physical native acceptance rather than a new
+observer/transport implementation; ESP32 USB ROM flashing is technically
+implementable with native serial but remains unplanned because of chip/image
+safety and recovery scope. CLI/browser flashing stays the supported path.
 
 ### Retain an external execution environment
 
@@ -277,12 +300,15 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Suggested delivery order: carry the accepted Hermes setup into the release
-artifact together with the accepted OpenCode observer setup, then prioritize Kiro legacy
-support or Pocket content using actual user/device demand. Relay follows a dedicated transport/control design.
-Investigate the Claude source in parallel with this roadmap; do not promise a
-native quota release before that evidence exists. Dot remains a separate
-DotPreview/distribution track, not a Node-to-Store parity commitment.
+Next implementation: **Pocket adaptive content selection**, reusing the existing
+native Feed/Outbox path; native Glance pixels follow as a separately verified
+step. CI enrichment waits for a credential/source contract; relay follows its
+transport/control design. Promote Kiro v2 only when legacy demand is established.
+Prepare the completed Hermes/OpenCode work for release as a separate activity;
+local acceptance is not Store distribution acceptance. Investigate the Claude
+source in parallel without promising a quota release before the evidence exists.
+Dot remains a separate DotPreview/distribution track, not a Node-to-Store parity
+commitment.
 
 ## Required change order
 
