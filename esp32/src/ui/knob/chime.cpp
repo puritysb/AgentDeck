@@ -17,7 +17,7 @@
 static volatile bool s_playing = false;
 // Attention-only PCM peaks; leave speech/codec volume alone.
 #if defined(BOARD_NM_EPD_420)
-static constexpr uint16_t ATTENTION_AMPLITUDE = 1500;
+static constexpr uint16_t ATTENTION_AMPLITUDE = 375;
 #else
 static constexpr uint16_t ATTENTION_AMPLITUDE = 3000;
 #endif
