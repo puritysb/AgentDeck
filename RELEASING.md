@@ -95,6 +95,20 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-29 npm 1.9.6 release decision
+
+On October 29 the maintainer authorized every pending delivery that does not
+wait on a store review. These are candidates until the delivery receipt is
+recorded.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.5 (registry read October 28) | None | 1.9.6 / release SHA and four tarball hashes | Patch: a late update to a timeline row already on disk (LLM summary, evaluation score, approval result) is saved too, so a restart no longer reverts it (#625) | Existing 1.9 scope; no new milestone |
+
+The pre-tag three-mode daemon soak runs against the installed App Store app,
+as for 1.9.5. Stream Deck, Ulanzi, Android, ESP32 and iOS are unchanged; macOS is
+the separate 1.9.4 supersede below.
+
 ### 2026-10-29 macOS 1.9.4 preparation decision
 
 On October 28 the maintainer chose to keep the 1.9.3 / 9801 review running and
