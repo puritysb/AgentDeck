@@ -16,12 +16,14 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 # AgentDeck Dashboard — App Review Notes
 
 **Current candidate — macOS 1.9.4, October 29:** the marked macOS Notes field
-below is prepared for the patch after 1.9.3. It is not an upload, submission or
-public-release receipt; submission waits until the 1.9.3 / 9801 review finishes.
-The baseline is public macOS 1.9.2 / 9401. iOS notes are unchanged.
+below is prepared for the patch after 1.9.3. 1.9.4 replaces 1.9.3, which was
+withdrawn from review, and its notes also cover the 1.9.3 changes. It is not an
+upload, submission or public-release receipt. The baseline is public macOS
+1.9.2 / 9401. iOS notes are unchanged.
 
 **Historical 9801 submission, October 27:** macOS 1.9.3 / 9801 was submitted
-with the 1.9.3 notes and was `IN_REVIEW` at the October 28 readback.
+with the 1.9.3 notes and was `IN_REVIEW` at the October 28 readback; the
+maintainer withdrew it on October 29 in favour of 1.9.4.
 
 **Historical 9401 submission, October 23:** these macOS notes were submitted with
 **1.9.2 / 9401** at **23:26:58 KST**, replacing the withdrawn 9301 submission.
@@ -594,7 +596,7 @@ Contact: admin@foundby.kr
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
 NEW IN 1.9.4 — MACOS ONLY
-The Claude hook check after the built-in server resumes runs on the main thread; it had updated the menu bar from a background thread and could quit the app. Long-running background processes go on standby after 10 minutes instead of holding a session as working. OpenCode device commands are no longer handed to a closed connection, and an approval that cannot be queued keeps its prompt. The evaluation Work board opens a task review where the user records a verdict beside the AI estimate; comparisons and exports are corrected. Dot is excluded; iOS is unchanged.
+Replaces 1.9.3, withdrawn from review, and includes its changes: Attention marks only sessions awaiting the user, OpenClaw approvals show again, Codex sessions stay separate, and server recovery is faster. New: the Claude hook check runs on the main thread (a background menu-bar update could quit the app); long-running background processes go on standby after 10 minutes; OpenCode device commands survive a reconnect and an unqueued approval keeps its prompt; the Work board opens a task review for the user's verdict beside the AI estimate. Dot is excluded; iOS is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

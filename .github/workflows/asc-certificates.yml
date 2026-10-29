@@ -21,7 +21,7 @@ on:
         required: true
         default: list
         type: choice
-        options: [list, revoke, store-status, release-prepare, release-submit, release-replace-prepare]
+        options: [list, revoke, store-status, release-prepare, release-submit, release-replace-prepare, release-supersede-prepare]
       certificate_ids:
         description: "Comma-separated certificate ids (revoke only)"
         required: false
@@ -41,11 +41,15 @@ on:
         type: string
 
       previous_build:
-        description: "Exact pending build to replace (release-replace-prepare only)"
+        description: "Exact pending build to replace (release-replace-prepare / release-supersede-prepare)"
         required: false
         type: string
       previous_submission:
-        description: "Exact pending submission UUID to cancel (release-replace-prepare only)"
+        description: "Exact pending submission UUID to cancel (release-replace-prepare / release-supersede-prepare)"
+        required: false
+        type: string
+      previous_version:
+        description: "Exact pending version to renumber (release-supersede-prepare only)"
         required: false
         type: string
 
@@ -81,6 +85,7 @@ jobs:
           ASC_RELEASE_RUN: ${{ inputs.release_run }}
           ASC_PREVIOUS_BUILD: ${{ inputs.previous_build }}
           ASC_PREVIOUS_SUBMISSION: ${{ inputs.previous_submission }}
+          ASC_PREVIOUS_VERSION: ${{ inputs.previous_version }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           case "$ASC_ACTION" in
@@ -89,6 +94,9 @@ jobs:
               ;;
             release-replace-prepare)
               node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN" "$ASC_PREVIOUS_BUILD" "$ASC_PREVIOUS_SUBMISSION"
+              ;;
+            release-supersede-prepare)
+              node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN" "$ASC_PREVIOUS_BUILD" "$ASC_PREVIOUS_SUBMISSION" "$ASC_PREVIOUS_VERSION"
               ;;
             release-prepare|release-submit)
               node scripts/asc-certificates.mjs "$ASC_ACTION" "$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD" "$ASC_RELEASE_RUN"
