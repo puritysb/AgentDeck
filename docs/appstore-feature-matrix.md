@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-10-11
-revision: 2026-10-11
+reviewed: 2026-10-29
+revision: 2026-10-29
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -58,7 +58,7 @@ All surfaces follow the same rule:
 |---|:---:|:---:|---|
 | CI wait observation (#433) | Hook evidence | Hook evidence; optional GitHub status | Both daemons track explicitly identified CI watch tools independently of agent turn state, clear matching foreground tools and session boundaries, and emit explicit null on close. Background watches survive Stop. Hook intent has unknown CI phase until provider evidence arrives; it never proves success or failure. The App Store app must not spawn `gh`. No credentials or raw command reach the wire. |
 | Guided first use | Yes | — | Choose an available 2D/3D appearance, explicitly enable Claude/Codex observation through the existing consent flow, and enter with observed/ready/not-set-up status. Hardware discovery is optional, with an existing Stream Deck path and offline Device Preview. iOS offers appearance then bounded Mac discovery/QR pairing. Setup can be reopened; notifications are requested only on an explicit action. |
-| Hermes mermaid aquarium resident | Yes | Yes | Bundled Blender-authored Nous girl-inspired mermaid; observed Hermes sessions drive working/waiting poses. A fixed shell seat for idle rest, bounded lift-off for active work, skinned body/tail/fin and arm joints, independently controlled gaze/lids/brows/mouth, and cosmetic neighbour greetings; no inferred delegation or new controls. Observation currently comes from the Hermes-capable Node receiver. Reduced Motion freezes movement. |
+| Hermes mermaid aquarium resident | Yes | Yes | Bundled Blender-authored Nous girl-inspired mermaid; observed Hermes sessions drive working/waiting poses. A fixed shell seat for idle rest, bounded lift-off for active work, skinned body/tail/fin and arm joints, independently controlled gaze/lids/brows/mouth, and cosmetic neighbour greetings; no inferred delegation or new controls. Both daemons ingest Hermes observer events. Explicit receiver selection supports direct Swift delivery; observer installation and enablement remain external setup (see Agent sessions). Reduced Motion freezes movement. |
 | Optional native 3D aquarium | Yes | Yes | Device-local dashboard type; bundled Blender-authored habitat and canonical extruded agent meshes. RealityKit live session reconciliation, status labels and existing focus commands; standard dashboard retained. No runtime Blender or external model download. |
 | Multi-daemon companion pairing (#493) | Yes | Compatible host | Explicit host selection, endpoint-scoped credential retention, and host-specific approval recovery. Discovery carries no credentials; approval remains operator-controlled. |
 | macOS dashboard and in-process daemon | Yes | — | Standalone Tier 1 product |
@@ -74,7 +74,7 @@ All surfaces follow the same rule:
 | Deck voice key (Stream Deck hold-to-talk / D200H tap-toggle) | Yes | Yes | Deck key = trigger only; host mic/STT/TTS do the work. Tier 1: native AVFoundation+Speech (`DaemonPttVoice`), observed-Claude delivery is the queued-directive ladder (live typing needs the CLI daemon). Tier 2: bundled helper `record`, observed delivery via terminal injection |
 | Device Preview catalog | Yes | Yes | macOS exposes the full catalog window; iOS/iPadOS exposes the same synthetic previews from the no-Mac connection state so the app remains inspectable without a paired host. CLI-only targets appear only with external daemon |
 | APME Layer 2 LLM evaluation | Yes | Yes | Apple Intelligence default; opt-in HTTP alternatives. Both daemons apply the generated task-gradeability contract before judging: no captured agent work, client-abort-only tasks, and trivial exchanges are retained as explicitly not graded rather than scored against silence |
-| Explicit OpenAI-compatible judge reasoning effort | No | Yes | Optional `apme.judge.reasoningEffort` in the Node daemon; `none` disables Ollama thinking for bounded JSON verdicts. Omission preserves provider defaults. This setting is not yet consumed by the standalone Swift judge. |
+| Explicit OpenAI-compatible judge reasoning effort | Yes | Yes | Both daemons consume optional `apme.judge.reasoningEffort` and send `reasoning_effort` to the configured OpenAI-compatible endpoint. Swift validates the setting in `ApmeSettings` and emits it in `ApmeJudgeOpenAI`; omission preserves provider defaults. Whether a value is honored depends on the endpoint. |
 | Reject incomplete judge responses (`finish_reason=length`) | Yes | Yes | MLX and OpenAI-compatible adapters reject output-limit responses before parsing or storing a verdict; shared response vectors cover both daemons. |
 | APME Layer 1 deterministic evaluation | No | Yes | Requires `git` / package-manager subprocesses |
 | APME Work board session drill-down | Yes | Yes | The generated dashboard and both daemon task-list routes support an exact native-session filter. A task-row session chip or a run detail opens all work from that session in one view; this is a read-only projection over the same local APME store and adds no subprocess or companion dependency |
@@ -96,7 +96,7 @@ All surfaces follow the same rule:
 | Claude Code local | CLI daemon setup, or app file consent | Hook lifecycle; permission and held-decision paths remain distinct. |
 | Codex CLI / local Desktop | CLI setup, or app config/folder consent; Codex hook trust remains user-owned | New SessionStart is idle; prompt/tool events prove work. Written TOML alone does not prove trust or event delivery. Existing hooks=false is preserved. Later Codex settings inside the managed fence are retained; an extended features table becomes user-owned, including its hooks flag. |
 | OpenCode ordinary TUI | CLI setup installs observer plugin | Current permission IDs and question IDs are tracked separately; questions are answered in OpenCode. No special launch command after setup. |
-| OpenCode standalone app path | Enable monitoring and provide a reachable server | SSE is read-only. A bare TUI's random port is not automatically discoverable. Pending requests are seeded per directory after SSE attaches; connection loss is not completion. Reconnect prioritizes remembered event directories, then the latest 200 global session records, with a cap of 32 directories plus the server default and four concurrent directory reads. Older/unavailable global inventory falls back to remembered locations and the default. |
+| OpenCode standalone app path | Enable monitoring and provide a reachable server | Discovery uses the configured URL, default port or a readable explicit `--port N` argument. SSE is read-only. A bare TUI's random port is not automatically discoverable. Pending requests are seeded per directory after SSE attaches; connection loss is not completion. Reconnect prioritizes remembered event directories, then the latest 200 global session records, with a cap of 32 directories plus the server default and four concurrent directory reads. Older/unavailable global inventory falls back to remembered locations and the default. |
 | Kiro CLI | Node store access, or explicit app folder consent | Passive polling; Swift supports flat and nested JSONL, Node additionally supports v2 SQLite. No permission signal. |
 | Antigravity | Node passive observer | App-only session observation remains unavailable; usage display is a separate capability. |
 | OpenClaw | Existing experimental Gateway pairing | Gateway lifecycle and approvals; pairing is required. |
@@ -147,10 +147,10 @@ candidate; an older artifact's successful upload does not validate this policy.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
-| Hermes observer monitoring (preview) | Relay only | Yes | Opt-in Python observer runs inside Hermes and posts `hermes_*` hooks to a receiver advertising `hermesObserver: 1`. Both daemons ingest them (Node `HermesSessions`; Swift `HermesObserverGate` + `handleHermesHook`, with the same admission rules and process-exit close). The observer finds its receiver through `~/.agentdeck/daemon.json`, which the sandboxed App Store daemon does not write, so an App Store install receives Hermes only through a relaying Node daemon; unsigned/dev builds receive it directly. Rows are read-only (`controlMode: observed`): no device approvals, prompt injection or voice target. No App Store subprocess or installer. |
+| Hermes observer monitoring (preview) | Yes, with explicit receiver selection | Yes | Both daemons ingest `hermes_*` hooks and advertise `hermesObserver: 1`. The externally installed observer uses its profile-local `connection.json` loopback port when selected with `agentdeck hermes-observer --port`; this supports the sandboxed Swift receiver without reading its container or keeping a Node daemon running. Otherwise discovery uses the Node registry, which the App Store daemon does not write. Reconfigure the selection if the port moves; invalid explicit selection never falls back. Installation and Hermes enablement remain outside the app. Rows are observation-only, with no approvals, prompt injection or voice target. Direct signed-sandbox live acceptance is not established by this source audit; earlier QA/Node-relay receipts remain scoped as recorded in [Hermes integration](hermes-agent.md#check-setup-when-hermes-activity-is-missing). |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
-| Existing terminal-session discovery | Limited | Yes | General `ps` / `lsof` / transcript discovery is CLI-only |
+| Existing terminal-session discovery | Limited | Yes | Broad process/TTY discovery remains CLI-owned. Swift already uses native `sysctl` process evidence and user-granted transcript readers for specific integrations; native process enumeration itself is not Node-only |
 | Display-only permission attention | Yes | Yes | Real signals only, per agent: Claude `PermissionRequest` (immediate, display-only) with `Notification` (`permission_prompt`, about six seconds later) as the fallback, Codex `PermissionRequest` (fires only when Codex is about to ask; `Interrupt` closes the turn; answerable only with the opt-in hold below), OpenCode `permission.asked` (answerable requestId in both tiers), OpenClaw `exec.approval.requested`. Kiro/Antigravity have no permission source and never show PERM. No fabricated options |
 | Observed Claude PreToolUse hold (device Allow/Deny) | Yes, when `~/.claude` is readable | Yes | The one predicted PERM: held only when the generated `ClaudePermissionRules` predictor (shared SSOT, vector-pinned) says Claude would genuinely prompt — mode gate, allow/deny/ask rules in the documented wildcard grammar, built-in read-only set, `acceptEdits` filesystem commands. Sandboxed builds that cannot list `~/.claude` hold nothing |
 | Codex device approvals (opt-in `PermissionRequest` hold) | Yes | Yes | Off by default. Turned on from the Codex block under Settings → Integrations, or `agentdeck daemon install --codex-approvals`; both installers add one second handler to AgentDeck's own `PermissionRequest` group, and Codex shows its hook review once. Nothing is predicted — the hook fires only when Codex is about to ask — so Tier 1 needs no folder access beyond the existing config grant. Held only with a connected device, a visible session and no other hold on it, for at most the observed-approval hold (25 s); the end of the turn releases it. While held, the terminal shows "Running hook" instead of the prompt; an undecided release prints nothing and Codex's own prompt appears. Pure HTTP hold, no subprocess. A decision taking effect in real Codex awaits a user-trusted handler run |
@@ -164,7 +164,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 | Managed terminal UI steering | No | Yes (compatibility) | The legacy compatibility observer reads only real mode/diff/option UI and injects keys; lifecycle state, timeline, and APME remain hook/event-owned. Direct-launch steering uses ask-gates/injection and is not fully equivalent. Tracked in #273 |
 | Observed AskUserQuestion — device answer (ask-gate) | Yes | Yes | The daemon holds the question's PreToolUse hook open and resolves it with the option the user picked, stated as the decision reason. Pure HTTP hold, no subprocess, so it works sandboxed. Engaged only when injection is unavailable (always so in Tier 1); an unanswered hold releases empty, and Claude's own picker appears in the terminal as usual. Multi-question calls are answered one question at a time |
 | Observed-session answer injection (device tap → host UI) | No | Yes | tmux / iTerm2 / Terminal.app by tty, cmux by the surface the agent process was started in (read from its environment), GUI apps by AX button or key events. Needs `ps` tty discovery + tmux/cmux/osascript subprocesses — all CLI-only; sandbox has none of them. Preferred over the ask-gate when available: it answers the live picker with no added latency for whoever is at that terminal |
-| OpenCode monitoring | Opt-in read-only | Yes | Tier 1 connects only to a configured/fixed local server; no port scan. Both tiers build per-session rows from an already installed observer plugin's `opencode_*` hooks (turn state, running tool, permission, display-only questions); Tier 1 does not install this plugin. Hooks take ownership over optional SSE, so SSE disconnect/keepalive cannot erase or prolong their approvals; the CLI's process scan adds PID rows only for sessions no hook has claimed |
+| OpenCode monitoring | Opt-in read-only | Yes | Tier 1 discovers a configured URL, the fixed default port, or an explicit `opencode --port N` visible through native process arguments; no port scan. A bare TUI's random port remains undiscoverable. Both tiers build per-session rows from an already installed observer plugin's `opencode_*` hooks (turn state, running tool, permission, display-only questions); Tier 1 does not install this plugin. Hooks take ownership over optional SSE, so SSE disconnect/keepalive cannot erase or prolong their approvals; the CLI's process scan adds PID rows only for sessions no hook has claimed |
 | Antigravity session monitoring | No | Yes | Tier 1 may display user-approved usage data only |
 | Kiro CLI / IDE session monitoring | Yes, after granting `~/.kiro` | Yes | Both tiers read Kiro's own store, because Kiro reports nothing on its own: its standalone lifecycle hooks load but CLI chat fires none of them (measured 2026-08-17, kiro-cli 2.18.1 — each hook instrumented with a marker, a live turn produced zero markers while a hand-POSTed hook produced a row normally). The App Store build reaches `~/.kiro` only through a **user-granted security-scoped bookmark** (Settings → Integrations → Kiro CLI), the same shape as `~/.codex`; with no grant it observes nothing rather than guessing. Both flat legacy JSONL and nested v3 `session.json` + `messages.jsonl` stores supply chat rows. Explicit v3 turn boundaries supply processing/idle; Swift legacy records without those boundaries remain idle. Node also retains its v2 SQLite observer, which Swift does not implement. Process discovery stays CLI-only; the App Store path keys on the transcript instead |
 | Subagent activity summaries + parent-linked orbit visuals | Yes | Yes | Read-only lifecycle hooks collapse each child to concise start/completion rows using existing Timeline types. Terrarium surfaces may derive non-interactive wire/ring/satellite accents around the owning parent; they never become selectable sessions. No subagent commands, approvals, team configuration, or process discovery |
@@ -205,6 +205,82 @@ decisions follow from that:
    ChatGPT.app sessions are first-class targets for steering; where their
    accessibility trees are opaque, use the focus-free key path and keep the
    button path for hosts that do expose controls.
+
+## Swift parity priorities — source assessment 2026-10-29
+
+This assessment compares the source at `ab8a8ada`, not the installed app or a
+Store release. Priorities below are proposed implementation order, not release
+approval. The capability rows above describe what exists today; the candidates
+below do not change a No into a Yes.
+
+**Node is the current external runtime, not a language requirement.** A bounded
+HTTP/WebSocket client, SQLite reader, renderer or state machine can often be
+implemented natively. Launching an agent, running project commands or driving
+external terminal tools still requires an execution environment outside the
+current self-contained App Store contract. An HTTP rewrite does not by itself
+establish credential authorization, trustworthy source data or sandbox access.
+
+### Already implemented; documentation corrected
+
+- OpenAI-compatible judge effort is parsed by [ApmeSettings](../apple/AgentDeck/Daemon/Apme/ApmeSettings.swift)
+  and sent by [ApmeJudgeOpenAI](../apple/AgentDeck/Daemon/Apme/ApmeJudgeOpenAI.swift).
+- Hermes can deliver directly to Swift with an explicit receiver port. The
+  [observer](../hooks/hermes-agentdeck/__init__.py) implements selection precedence;
+  [setup instructions](hermes-agent.md#check-setup-when-hermes-activity-is-missing)
+  distinguish installation, enablement and receipt. This removes a continuous
+  Node-daemon dependency, not external observer setup or acceptance testing.
+- [OpenCodeObserver](../apple/AgentDeck/Daemon/Session/OpenCodeObserver.swift)
+  already discovers readable explicit port arguments in addition to configured
+  and default endpoints. Broad TTY discovery and random-port scanning are not
+  implied by this support.
+
+### Native candidates, ordered by expected value and scope
+
+P1 is the next bounded parity work; P2 requires broader protocol or evidence
+work; P3 is low-return or currently not planned. None requires starting an
+external process inside the app.
+
+| Priority | Candidate | Why native is plausible | Completion evidence / remaining dependency |
+|---|---|---|---|
+| P1 | Hermes direct-receiver setup and acceptance | Hook ingestion and explicit selection already exist; the gap is setup continuity and signed-sandbox evidence, not a new receiver | Real Hermes turn into a signed sandbox app with no Node daemon; prove selected-port changes, invalid selection, opt-out and clean session close. Keep observer enablement user-owned; no companion-install prompt in the app |
+| P1 | OpenCode observer setup through explicit file consent | The app already consumes hooks/SSE; a scoped file installer can follow the existing Claude/Codex consent pattern | Preserve user configuration, verify install/update/removal and real hook delivery. OpenCode executes its plugin; the app must not start OpenCode. Review packaging and Store disclosure before implementation |
+| P2 | Kiro v2 SQLite observation | Swift already supports granted Kiro JSONL stores; native SQLite can replace Node's reader | First establish remaining v2 usage. Read-only bookmark access including WAL, schema fixtures, session/turn identity and unknown-state parity; no fabricated PERM |
+| P2 | Daemon relay hub/worker | Existing authenticated HTTP/WS and native session state provide the transport building blocks | Port the [relay contract](../bridge/src/daemon-relay.ts), bounded teardown, reconnect/dedup and per-session authorization. Advertise only steering the Swift worker can execute; remote terminal injection still needs an external worker |
+| P2 | Pocket adaptive content and Glance Frame rendering | [Adaptive selection](../bridge/src/pocket-autonomy.ts) is state/data logic; [frame generation](../bridge/src/glance-frame.ts) can use native rendering | Move shared decisions into an SSOT with cross-language vectors; preserve aggregate-only persistence, feed/outbox behavior and geometry. Verify reader output on hardware. Basic portable transport already exists in Swift |
+| P2 | CI provider status enrichment | Native authenticated HTTPS can replace the CLI's optional GitHub status query | Define explicit credential custody and repository/run identity; bounded polling, stale/unknown semantics and provider fixtures. Hook intent alone remains unknown CI status |
+| P2 research | Antigravity session evidence | A user-granted native transcript reader may replace part of the [passive observer](../bridge/src/passive-observer.ts) | First prove readable source format, account/session identity and trustworthy turn boundaries in the signed sandbox. Process presence or plan data alone is insufficient; full parity is not yet established |
+| P3 | TC001 native acceptance | Existing serial/WS path; the current gap is hardware verification | Named firmware/app build, physical display and reconnect/wake checks. This is validation work, not proof of a Node requirement |
+| P3, not planned | ESP32 USB ROM flashing | A native ROM loader could use existing serial entitlement | Full chip/image/offset safety and hardware recovery coverage would be required. Keep CLI/browser flasher as the current path; Wi-Fi OTA already works natively |
+
+### Retain an external execution environment
+
+| Capability | Structural boundary under the current Store contract | Swift role |
+|---|---|---|
+| Managed PTY launcher and agent lifecycle | Runs Claude/Codex/OpenCode and owns subprocesses/PTYs | Observe ordinary sessions and consume external results |
+| Terminal/UI answer injection | Current implementation needs TTY discovery and tmux/cmux/osascript or host automation; those paths are outside the sandbox contract | Retain native held-hook approvals, AskUserQuestion answers and supported queued delivery; these are not full terminal control |
+| APME Layer 1 lint/build/test execution | Runs arbitrary repository/package-manager commands | Keep native LLM evaluation and task review. Reading an existing result bundle would be a separate partial capability, not execution parity |
+| Claude credential recovery | Asks the user's Claude CLI to perform a bounded renewal turn | Consume explicit external status; never rotate Claude refresh tokens or spawn the CLI |
+| ADB executable integration | Current USB reverse/discovery/control path invokes `adb`; [Swift module](../apple/AgentDeck/Daemon/Modules/AdbModule.swift) is intentionally disabled | Support same-LAN Android clients. A native ADB implementation would require a separate feasibility/security/product decision, not merely a port of the module |
+| OpenClaw CLI pairing | Executes the external OpenClaw command | Use the existing native Gateway WebSocket pairing path |
+
+### Claude quota: source-contract dependency, not a routine native port
+
+Treat a trustworthy supported Claude quota source as **P1 research**, blocked on
+the source contract rather than on Swift networking. Direct Swift OAuth remains
+disabled; Node's undocumented OAuth path is not an approved migration recipe.
+The current status-line payload cannot establish account identity or quota
+observation time. A future account gauge needs those guarantees plus restart,
+resume, account-switch, expiry and retirement tests and a source-to-display
+comparison. A session-scoped last-reported value with explicitly unknown age is
+a different product/wire contract and must be reviewed as such. See the
+[accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
+
+Suggested delivery order: validate Hermes direct delivery, implement consented
+OpenCode setup, then prioritize Kiro legacy support or Pocket content using
+actual user/device demand. Relay follows a dedicated transport/control design.
+Investigate the Claude source in parallel with this roadmap; do not promise a
+native quota release before that evidence exists. Dot remains a separate
+DotPreview/distribution track, not a Node-to-Store parity commitment.
 
 ## Required change order
 
