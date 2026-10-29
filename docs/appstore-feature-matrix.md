@@ -84,7 +84,8 @@ All surfaces follow the same rule:
 | Timeline completion summary | Yes | Yes | Foundation Models → optional MLX HTTP → heuristic; ordinary tool activity and the final response stay under the originating prompt, with expandable bounded tool evidence |
 | Native App Store rating request and review link | Yes | — | StoreKit system prompt is attempted only after every live session is idle on three distinct days, with a 180-day local cooldown; processing and awaiting states never qualify. Settings keeps a user-initiated review link. Engagement dates and the last attempt stay in `UserDefaults` and are never uploaded. |
 | Weather context and offline forecast cues | Yes | Yes | Tier 1 uses native WeatherKit only for the local Dashboard (in-memory refresh cache, Apple mark + legal link). Tier 1's public portable feed and Tier 2 both use keyless MET Norway, persist that provider cache, preserve attribution, and emit up to seven days plus absolute-time display/notification cues for intermittently connected readers. Location is explicit user configuration (or one-time OS location consent), never IP-derived. No subprocess or companion executable is involved. |
-| Surface Protocol portable Feed negotiation | Yes | Yes | Both tiers validate the eight-field identity and implement conditional Feed, Outbox replay, pull telemetry, product-scoped persistent OTA staging, bounded resume/206, and install acknowledgement. Tier 1 stores staged bytes inside its App Container and enforces negotiated WS event/command boundaries natively. Tier 2 additionally owns adaptive Pocket content and Glance Frame pixels. Neither grants Inbox. No subprocess or companion-install prompt is involved. |
+| Surface Protocol portable Feed negotiation | Yes | Yes | Both tiers validate the eight-field identity and implement conditional Feed, Outbox replay, pull telemetry, product-scoped persistent OTA staging, bounded resume/206, and install acknowledgement. Tier 1 stores staged bytes inside its App Container and enforces negotiated WS event/command boundaries natively. Adaptive Pocket content is native in both daemons; Glance Frame pixels remain Tier 2-only. Neither grants Inbox. No subprocess or companion-install prompt is involved. |
+| Pocket adaptive PULSE / NUDGE / QUEST content | Yes, macOS; companion-device integration separate | Yes | Native selection and aggregate learning reuse Feed/Outbox. Shared policy and cross-daemon vectors cover selection, opaque fingerprints, first-answer-wins feedback, ignored exposures and persistence; no personal card copy is persisted. Signed-app HTTP/relaunch acceptance passed; X4 physical round-trip was explicitly deferred to future companion-app integration after its firmware direction changed. Glance pixels and Node ICS calendar ingestion stay separate. See [acceptance](#native-pocket-content-acceptance-2026-10-30). |
 | Surface Protocol licensed learning-pack delivery | Yes | Yes | Both daemons advertise a bundled, integrity-checked offline learning pack in full and unchanged portable Feed responses and serve it through authenticated `GET /learning/pack`. Delivery is gated by `learning.pack.read` / `learning.pack.update`, the registered Pocket Daily product identity, exact pack id/version, and the pack's SPDX licence metadata. The App Store path reads a signed bundle resource only; it launches no process and accesses no external path. |
 | Surface Protocol automatic font-pack delivery | Yes | Yes | Both daemons advertise the bundled OFL PocketSansWorld pack in full and unchanged portable Feed responses and serve it through authenticated `GET /fonts/pack`. Delivery is gated by `font.pack.read` / `font.pack.update`, exact Pocket Daily identity and id/version, plus size, MD5, SHA-256, cpfont-format, source-ledger, and licence validation. The App Store path reads signed bundle resources only. |
 | App Store Connect engagement reports | Yes | — | Maintainer tooling creates ONGOING reports plus an optional ONE_TIME_SNAPSHOT for existing history, then downloads Apple's opt-in, privacy-thresholded aggregate analytics through the App Store Connect API. Creating requests requires Admin access; existing reports can be downloaded with Admin, Finance, or Sales and Reports access. No analytics SDK, device identifier, event upload, or AgentDeck-operated analytics backend is added to the app. |
@@ -250,17 +251,17 @@ These two P1 implementation/acceptance items are closed. Packaging them into a
 release is separate from the remaining native-port backlog; Claude quota source
 research below remains open.
 
-### Remaining P2: implementation order
+### P2 implementation status and order
 
-The stated increments below are **currently Node-only**. Existing native
-transport/observation is called out separately; it does not imply full parity.
-Their proposed native implementations add no subprocess. The order favors an
-existing native transport and owned data before new credentials, control
-protocols or unproven legacy demand.
+Pocket selection is now implemented natively; the remaining increments are
+currently Node-only. Existing native transport/observation is called out
+separately; it does not imply full parity. Proposed native implementations add
+no subprocess. The remaining order favors existing native transport and owned
+data before new credentials, control protocols or unproven legacy demand.
 
 | Order | Candidate and current gap | First bounded Swift increment | Completion gate / dependency |
 |---|---|---|---|
-| 1 — next | Pocket adaptive content selection; basic Feed/Outbox transport already works in Swift | Extract [selection policy](../bridge/src/pocket-autonomy.ts) and its module inputs into an SSOT with cross-language vectors; implement native card selection and aggregate learning state. Keep pixel rendering a separate increment. | Equivalent cards for deterministic input/time/randomness; bounded exploration, feedback dedup/replay, restart persistence and offline Outbox behavior. Persist only aggregate counters and opaque fingerprints, never card copy/session names. Real Pocket feed/feedback round trip before acceptance; no new account credential required. |
+| 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 | Glance Frame pixels; Swift already supplies structured glance/weather data | Port [frame layout/rendering](../bridge/src/glance-frame.ts) to native graphics. Share board geometry, rotation, dithering and packing rules before adding a Swift renderer. | Fixture parity for fonts/layout, physical orientation, 1bpp stride/polarity, signatures and conditional responses; native preview must match the delivered frame. Physical reader acceptance remains required. Node's `sharp` dependency is an implementation choice, not a requirement for the feature. |
 | 3 | CI provider status enrichment; hook-derived wait intent already works in Swift | Define explicit GitHub credential consent/custody and repository/run identity, then replace [the current `gh api` probe](../bridge/src/ci-wait-probe.ts) with bounded native HTTPS. | Keychain custody, least required access, account switching/revocation, bounded polling and stale/unknown fixtures. No reading another tool's credential store or treating hook intent as proven CI success. Credential/source design precedes implementation; if it cannot be established, keep this blocked and advance another ready item. |
 | 4 | Daemon relay hub/worker; Swift currently implements neither role | Specify a mixed Node/Swift [relay contract](../bridge/src/daemon-relay.ts), then port hub ingestion/projection before worker publication and supported command routing. | Authenticated same-socket routing, local-session precedence, per-session authorization, reconnect/dedup, stale-row expiry and bounded teardown. Advertise capability only when its contract is met. Swift workers must reject unsupported terminal injection; full external-worker control is not implied by receiving relay rows. |
@@ -300,9 +301,9 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Next implementation: **Pocket adaptive content selection**, reusing the existing
-native Feed/Outbox path; native Glance pixels follow as a separately verified
-step. CI enrichment waits for a credential/source contract; relay follows its
+Pocket adaptive selection now reuses the native Feed/Outbox path. The next
+remaining implementation is **native Glance pixels**, with its own device
+acceptance; the future Pocket companion-app integration is a separate track. CI enrichment waits for a credential/source contract; relay follows its
 transport/control design. Promote Kiro v2 only when legacy demand is established.
 Prepare the completed Hermes/OpenCode work for release as a separate activity;
 local acceptance is not Store distribution acceptance. Investigate the Claude
@@ -445,3 +446,60 @@ Local evidence remains in the same gitignored diagnostics directory:
 normal cleanup on OpenCode 1.18.35, not delivery after forced process termination
 or to an unavailable receiver. It remains local Development-signature evidence,
 not Store distribution acceptance.
+
+
+## Native Pocket content acceptance 2026-10-30
+
+The native `PocketAutonomy` engine implements the existing Node PULSE/NUDGE/QUEST
+selection and feedback behavior over the existing Swift Feed/Outbox routes.
+`shared/src/pocket-policy.ts` owns numeric policy, byte budgets and the opaque
+card-ID grammar; `pnpm generate-pocket-policy` emits native constants.
+`pnpm generate-pocket-vectors` rebuilds the reference goldens from the real Node
+engine. Both Node and native XCTest replay the shared vectors; a macOS Vitest
+case also compiles and executes the actual Swift engine directly.
+
+The 16 vectors (92 operations) cover cold start, all candidate kinds, score/config bounds,
+UTF-16 hashing and UTF-8 truncation, local calendar/day/hour buckets including a
+DST crossing, positive/negative/neutral choices, ignored and expired exposures,
+first-answer-wins retries, persistence/reload and mixed malformed state fields.
+Rain with unknown probability remains unknown, without an invented percentage.
+Invalid/nonopaque identifiers and unknown choice text are discarded at the
+persistence boundary in both engines. Existing valid v1 state remains readable.
+
+Content input parity means the **same supplied snapshot** produces the same
+cards, outcomes and aggregate state. The app uses already available Swift
+session/weather context. This work does not implement Node's ICS calendar
+provider or a new quota source; absent context is not fabricated. Glance Frame
+pixels remain a separate P2 item. Existing THREAD cards, protocol identity and
+capability negotiation, weather/pack adverts, authentication and OTA envelopes
+are retained. New adaptive cards add at most the configured selection bound.
+
+Actual native route tests cover Feed → conditional unchanged → Outbox → new
+Feed, retry identity despite changed `ageSec`, persistent first-answer-wins after
+server recreation, and the real HTTP listener's cross-origin rejection. An
+OTA-first response and an unchanged response never count as new exposures.
+Shutdown flushes learning before teardown awaits; late Feed/Outbox calls return
+503 without mutating the saved learning state or acknowledging queued choices.
+Learning state stores only category counters, hour affinity, bounded pending
+metadata, opaque card fingerprints and answer identifiers. It never stores card
+copy, project names, prompt text, event titles or weather locations.
+
+A Development-signed Sandbox app on isolated port **9138** served PULSE/QUEST
+alongside the existing THREAD. An actual HTTP fixture verified unchanged pulls
+without additional exposure, aged Outbox choices, retries, conflicting second
+answers and neutral Later. The final-source app quit/relaunch (**PID 79775 → 86084**)
+verified that aggregate learning and first-answer-wins were restored from its container file;
+answered cards stayed suppressed. The test receiver was stopped and its previous
+preferences restored. This task did not restart the shared Swift daemon on 9120.
+
+**Physical device verification was deferred by the user:** X4 firmware direction
+has changed, so the old direct-firmware Feed/Outbox path is not the acceptance
+target. Feed/feedback on actual X4 hardware will be tested through the future
+companion-app integration. No physical-device pass or current-firmware
+compatibility claim is made by these software and signed-app protocol checks.
+Local evidence: `diagnostics/pocket-swift-20261030/` (gitignored), including
+`final-guard/results.json`, synthetic-protocol receipts and verification logs. Native
+macOS Debug and DotPreview XCTest suites completed with zero failures (1,397
+cases including 3 skipped; 1,415 including 8 skipped), and macOS Release plus
+both iOS Release configurations built successfully. This is local
+Development-signature evidence, not Store distribution acceptance.

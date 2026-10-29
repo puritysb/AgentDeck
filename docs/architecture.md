@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Bridge maintainers
 reviewed: 2026-08-19
-revision: 2026-10-06
+revision: 2026-10-30
 source_of_truth: docs/architecture.md
 validators: [pnpm build, pnpm test]
 ---
@@ -81,6 +81,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 
 | Canonical source | Generator | Gate / note |
 |---|---|---|
+| `shared/src/pocket-policy.ts` (adaptive selection weights, retention, card byte budgets and opaque ID grammar) + `bridge/src/pocket-autonomy.ts` (reference behavior) | `pnpm generate-pocket-policy` → Swift `PocketPolicy.generated.swift`; native `PocketAutonomy` mirrors state and selection | `pocket-autonomy-parity.test.ts` replays shared `pocket-autonomy-vectors.json` against the real Node and compiled Swift engines, including Unicode fingerprints, feedback, expiry and actual file reloads; `PocketAutonomyTests` replays the same golden vectors and actual Feed/Outbox handlers. Runtime state stores only aggregates and opaque IDs. |
 | `hooks/src/opencode-install.ts` (native observer template, filenames, ownership and observation-only hook flag) | `pnpm generate-opencode-observer` → `apple/AgentDeck/Resources/OpenCodeObserver.json` | `opencode-native.test.ts` checks exact source/contract drift and live module receiver changes without command polling. Swift and Node suppress actionable permission IDs for `observer_only` hooks; native file tests verify ownership, preservation, update/removal and scoped access. |
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |

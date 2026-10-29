@@ -88,7 +88,9 @@
     "generate-dot-contract": "pnpm --filter @agentdeck/shared build && pnpm --filter @agentdeck/dot-relay build && node services/dot-relay/generate-native.mjs",
     "generate-ci-wait": "node scripts/generate-ci-wait.mjs",
     "generate-session-settings-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-session-settings-rules.mjs",
-    "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs"
+    "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs",
+    "generate-pocket-policy": "pnpm --filter @agentdeck/shared build && node scripts/generate-pocket-policy.mjs",
+    "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

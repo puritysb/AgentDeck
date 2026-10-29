@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Firmware maintainers
 reviewed: 2026-08-30
-revision: 2026-08-30
+revision: 2026-10-30
 source_of_truth: docs/esp32-client-contract.md
 validators: [bash scripts/sync-xteink-eink-dashboard.sh --check]
 ---
@@ -379,14 +379,20 @@ carries its own body in `FeedCard.module` (`ModuleCard`) instead of
   `nudge` and `quest` are `day` — answerable offline and queued in the device
   outbox. XTeink owns slot 1 as *Later*; slots 2–4 map to stable choice IDs.
 
-### Autonomous Pocket (Node daemon)
+<a id="autonomous-pocket-node-daemon"></a>
 
-`AutonomousPocketEngine` is the initial authoring and learning loop. It runs in
-the Node daemon only. The Swift in-process daemon's Card Feed route authors a
-deterministic THREAD digest and weather glance, but does not claim to author
-adaptive Pocket cards.
-The engine is injected into the Node feed builder rather than added to the pure
-default module list.
+### Autonomous Pocket (Node and Swift daemons)
+
+Node's `AutonomousPocketEngine` and the native Swift `PocketAutonomy` implement
+the same adaptive authoring and aggregate learning loop over Feed/Outbox.
+Shared policy and cross-daemon vectors gate selection, fingerprints, feedback
+and persistence. The Node engine is injected into the feed builder rather than
+added to the pure default module list; Swift appends adaptive cards alongside
+its existing THREAD digest. Parity assumes the same supplied context: this
+increment does not port Node's ICS calendar provider or add a new quota source.
+See [native software acceptance](appstore-feature-matrix.md#native-pocket-content-acceptance-2026-10-30).
+Current X4 hardware verification remains deferred to future companion-app
+integration; these software checks do not establish current firmware compatibility.
 
 - **Inputs are already-resolved context.** It considers the live session roster
   plus the same `CardFeedGlance` snapshot used by the sleep screen: agenda,
@@ -409,13 +415,15 @@ default module list.
 - **Configuration.** `settings.json` accepts
   `pocketAutonomy: { enabled, maxCards, exploration }`; defaults are enabled,
   two autonomous cards, and exploration `0.65`. `maxCards` is clamped to 1–3
-  by the daemon; the XTeink hand-port deliberately consumes at most two in
+  by the daemon; the legacy XTeink hand-port deliberately consumes at most two in
   addition to `THREAD` for its fixed-memory budget.
 - **Storage and observability.** Node stores the bounded learning state at
   `$AGENTDECK_DATA_DIR/pocket-autonomy.json` or
-  `~/.agentdeck/pocket-autonomy.json`. `/diag` reports aggregate engine status,
-  not authored card copy. A feed exposure is recorded only after a full card
-  response; conditional `unchanged` pulls do not inflate it.
+  `~/.agentdeck/pocket-autonomy.json`. Swift uses `AgentDeckPaths` inside its
+  app container. Node `/diag` and Swift `/devices`'s `card-feed.pocketAutonomy`
+  report aggregate engine status, not authored card copy. A feed exposure is
+  recorded only after a full card response; conditional `unchanged` pulls and
+  OTA-first envelopes do not inflate it.
 
 ## Peripheral primitives (optional, 2026-07-25)
 

@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Surface protocol maintainers
 reviewed: 2026-08-24
-revision: 2026-08-24
+revision: 2026-10-30
 source_of_truth: docs/surface-protocol.md
 validators: [pnpm docs:check, pnpm test]
 ---
@@ -138,9 +138,13 @@ and installed-version acknowledgement. Its app-container firmware store copies
 inline bytes rather than retaining a CLI path the App Sandbox cannot reopen. It
 also negotiates the four public WebSocket profiles and enforces both outbound event
 and inbound command capability boundaries. Swift does not grant Inbox, and neither
-daemon implements it. Glance Frame pixels and Node's adaptive PULSE/NUDGE/QUEST
-content engine remain Node-only features; they are not capabilities required by
-the portable profile. Pocket Daily remains
+daemon implements it. Adaptive PULSE/NUDGE/QUEST selection and aggregate feedback
+now also run natively over Swift Feed/Outbox; shared policy and Node/Swift vectors
+verify the content engine. Glance Frame pixels remain Node-only and are not a
+capability required by the portable profile. See [native content acceptance](appstore-feature-matrix.md#native-pocket-content-acceptance-2026-10-30).
+Actual X4 firmware integration was deferred to the future companion-app path after
+the firmware direction changed; software parity does not prove that device path.
+Pocket Daily remains
 Community / untested until a named release is exercised against the live conformance
 suite; implementation does not itself promote the integration.
 

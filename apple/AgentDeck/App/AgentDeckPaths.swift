@@ -74,6 +74,7 @@ enum AgentDeckPaths {
     static var pairingApproved: URL { baseDirectory.appendingPathComponent("pairing-approved.json") }
     static var sessionsJson: URL { baseDirectory.appendingPathComponent("sessions.json") }
     static var settingsJson: URL { baseDirectory.appendingPathComponent("settings.json") }
+    static var pocketAutonomyJson: URL { baseDirectory.appendingPathComponent("pocket-autonomy.json") }
     static var timelineJson: URL { baseDirectory.appendingPathComponent("timeline.json") }
     static var apmeSqlite: URL { baseDirectory.appendingPathComponent("apme.sqlite") }
     static var compatibilityJson: URL { baseDirectory.appendingPathComponent("compatibility.json") }

@@ -252,6 +252,15 @@ feed uses separately attributed MET Norway open data, not Apple Weather. AgentDe
 does not infer location from an IP address or retain location history. No analytics,
 AgentDeck cloud backend, or subprocess is involved.
 
+Portable Feed responses can also include locally selected adaptive Pocket cards
+(PULSE, NUDGE and QUEST). Their selection uses already available session/weather
+context; no remote model or executable is downloaded or launched. Device choices
+return through the existing authenticated Outbox. Learning persistence contains
+only category counters, hour buckets, bounded exposure/answer metadata and opaque
+content fingerprints, never session names, card copy or weather locations.
+Conditional and OTA-first responses do not count as new card exposure. The app
+adds no analytics upload or account credential requirement for this feature.
+
 The one-time Core Location result is immediately rounded to two decimal places
 (roughly 1 km), stored only in the app container, and declared as unlinked coarse
 location for app functionality in `PrivacyInfo.xcprivacy`.

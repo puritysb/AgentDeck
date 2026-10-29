@@ -27,15 +27,8 @@ import type {
   ModuleCardDraft,
 } from './card-modules.js';
 
-export type PocketContentKind =
-  | 'agenda'
-  | 'weather'
-  | 'usage'
-  | 'attention'
-  | 'progress'
-  | 'resume'
-  | 'overview'
-  | 'preference';
+import { POCKET_POLICY as P, POCKET_KINDS, pocketKindForCardId, type PocketContentKind } from '@agentdeck/shared';
+export type { PocketContentKind } from '@agentdeck/shared';
 
 export interface PocketAutonomyConfig {
   enabled: boolean;
@@ -47,18 +40,18 @@ export interface PocketAutonomyConfig {
 
 export const DEFAULT_POCKET_AUTONOMY_CONFIG: PocketAutonomyConfig = {
   enabled: true,
-  maxCards: 2,
-  exploration: 0.65,
+  maxCards: P.defaultMaxCards,
+  exploration: P.defaultExploration,
 };
 
 export function parsePocketAutonomyConfig(settings: Record<string, unknown>): PocketAutonomyConfig {
   const raw = settings.pocketAutonomy;
   const obj = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const maxCards = typeof obj.maxCards === 'number' && Number.isFinite(obj.maxCards)
-    ? Math.max(1, Math.min(3, Math.round(obj.maxCards)))
+    ? Math.max(P.minCards, Math.min(P.maxCards, Math.round(obj.maxCards)))
     : DEFAULT_POCKET_AUTONOMY_CONFIG.maxCards;
   const exploration = typeof obj.exploration === 'number' && Number.isFinite(obj.exploration)
-    ? Math.max(0, Math.min(2, obj.exploration))
+    ? Math.max(0, Math.min(P.maxExploration, obj.exploration))
     : DEFAULT_POCKET_AUTONOMY_CONFIG.exploration;
   return {
     enabled: obj.enabled !== false,
@@ -119,13 +112,13 @@ export interface PocketAutonomyOptions {
   onError?: (message: string) => void;
 }
 
-const STATE_REV = 1;
-const HOUR_BUCKETS = 6; // four-hour local buckets
-const NO_RESPONSE_AFTER_MS = 24 * 60 * 60 * 1000;
-const KEEP_SEEN_MS = 14 * 24 * 60 * 60 * 1000;
-const KEEP_PENDING_MS = 7 * 24 * 60 * 60 * 1000;
-const SURVEY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
-const SURVEY_FEEDBACK_INTERVAL = 12;
+const STATE_REV = P.stateRev;
+const HOUR_BUCKETS = P.hourBuckets; // four-hour local buckets
+const NO_RESPONSE_AFTER_MS = P.noResponseMs;
+const KEEP_SEEN_MS = P.keepSeenMs;
+const KEEP_PENDING_MS = P.keepPendingMs;
+const SURVEY_INTERVAL_MS = P.surveyIntervalMs;
+const SURVEY_FEEDBACK_INTERVAL = P.surveyFeedbackInterval;
 
 const emptyState = (): PocketAutonomyState => ({
   rev: STATE_REV,
@@ -145,9 +138,7 @@ const newArm = (): ArmState => ({
 });
 
 const isKind = (value: unknown): value is PocketContentKind =>
-  value === 'agenda' || value === 'weather' || value === 'usage'
-  || value === 'attention' || value === 'progress' || value === 'resume'
-  || value === 'overview' || value === 'preference';
+  typeof value === 'string' && (POCKET_KINDS as readonly string[]).includes(value);
 
 function normalizeArm(raw: unknown): ArmState {
   const obj = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
@@ -188,28 +179,28 @@ function normalizeState(raw: unknown): PocketAutonomyState {
     out.pending = obj.pending.flatMap((item): PendingExposure[] => {
       if (!item || typeof item !== 'object') return [];
       const p = item as Record<string, unknown>;
-      if (typeof p.cardId !== 'string' || !isKind(p.kind)
+      if (typeof p.cardId !== 'string' || pocketKindForCardId(p.cardId) !== p.kind || !isKind(p.kind)
         || typeof p.shownAt !== 'number' || !Number.isFinite(p.shownAt)) return [];
       return [{
         cardId: p.cardId,
         kind: p.kind,
         shownAt: p.shownAt,
-        hourBucket: typeof p.hourBucket === 'number'
+        hourBucket: typeof p.hourBucket === 'number' && Number.isFinite(p.hourBucket)
           ? Math.max(0, Math.min(HOUR_BUCKETS - 1, Math.floor(p.hourBucket))) : 0,
         ...(typeof p.board === 'string' && p.board ? { board: p.board } : {}),
       }];
-    }).slice(-64);
+    }).slice(-P.pendingLimit);
   }
   if (obj.seen && typeof obj.seen === 'object') {
     for (const [cardId, at] of Object.entries(obj.seen as Record<string, unknown>)) {
-      if (cardId.startsWith('module:') && typeof at === 'number' && Number.isFinite(at)) out.seen[cardId] = at;
+      if (pocketKindForCardId(cardId) && typeof at === 'number' && Number.isFinite(at)) out.seen[cardId] = at;
     }
   }
   if (obj.answered && typeof obj.answered === 'object') {
     for (const [cardId, rawAnswer] of Object.entries(obj.answered as Record<string, unknown>)) {
-      if (!cardId.startsWith('module:') || !rawAnswer || typeof rawAnswer !== 'object') continue;
+      if (!pocketKindForCardId(cardId) || !rawAnswer || typeof rawAnswer !== 'object') continue;
       const answer = rawAnswer as Record<string, unknown>;
-      if (typeof answer.choice === 'string' && typeof answer.at === 'number' && Number.isFinite(answer.at)) {
+      if (typeof answer.choice === 'string' && ['useful', 'more', 'less', 'work', 'day', 'surprise', 'later'].includes(answer.choice) && typeof answer.at === 'number' && Number.isFinite(answer.at)) {
         out.answered[cardId] = { choice: answer.choice, at: answer.at };
       }
     }
@@ -231,15 +222,10 @@ const dayKey = (now: number): string => {
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const hourBucket = (now: number): number => Math.floor(new Date(now).getHours() / 4);
+const hourBucket = (now: number): number => Math.floor(new Date(now).getHours() / P.bucketHours);
 
 function candidateKey(kind: PocketContentKind, now: number, contentIdentity: unknown): string {
   return `auto:${kind}:${dayKey(now)}:${fnv1a(JSON.stringify(contentIdentity))}`;
-}
-
-function kindFromKey(key: string): PocketContentKind | undefined {
-  const parts = key.split(':');
-  return parts[0] === 'auto' && isKind(parts[1]) ? parts[1] : undefined;
 }
 
 const feedbackChoices = [
@@ -332,8 +318,8 @@ export class AutonomousPocketEngine {
     for (const card of cards) {
       if (!card.module || (card.module.module !== 'pulse' && card.module.module !== 'nudge'
         && card.module.module !== 'quest')) continue;
-      const key = card.cardId.slice(`module:${card.module.module}:`.length);
-      const kind = kindFromKey(key);
+      if (!card.cardId.startsWith(`module:${card.module.module}:`)) continue;
+      const kind = pocketKindForCardId(card.cardId);
       if (!kind || this.state.seen[card.cardId] !== undefined) continue;
       const arm = this.arm(kind);
       arm.shown += 1;
@@ -342,7 +328,7 @@ export class AutonomousPocketEngine {
       this.state.pending.push({ cardId: card.cardId, kind, shownAt: now, hourBucket: hourBucket(now), ...(board ? { board } : {}) });
       changed = true;
     }
-    if (this.state.pending.length > 64) this.state.pending.splice(0, this.state.pending.length - 64);
+    if (this.state.pending.length > P.pendingLimit) this.state.pending.splice(0, this.state.pending.length - P.pendingLimit);
     for (const [cardId, at] of Object.entries(this.state.seen)) {
       if (now - at > KEEP_SEEN_MS) delete this.state.seen[cardId];
     }
@@ -383,7 +369,7 @@ export class AutonomousPocketEngine {
     this.persistTimer = setTimeout(() => {
       this.persistTimer = undefined;
       this.flush();
-    }, 50);
+    }, P.persistDelayMs);
     this.persistTimer.unref?.();
   }
 
@@ -411,7 +397,7 @@ export class AutonomousPocketEngine {
   }
 
   private shouldSurvey(now: number): boolean {
-    if (this.state.feedbackCount < 2) return true;
+    if (this.state.feedbackCount < P.initialSurveyFeedback) return true;
     if (this.state.feedbackCount % SURVEY_FEEDBACK_INTERVAL !== 0) return false;
     return !this.state.lastSurveyAt || now - this.state.lastSurveyAt >= SURVEY_INTERVAL_MS;
   }
@@ -446,13 +432,13 @@ export class AutonomousPocketEngine {
 
   private score(candidate: PocketCandidate, now: number, totalShown: number): number {
     const arm = this.arm(candidate.kind);
-    const effectiveNegative = arm.negative + arm.ignored * 0.15;
-    const mean = (arm.positive + 1) / (arm.positive + effectiveNegative + 2);
-    const explore = this.config.exploration * Math.sqrt(Math.log(totalShown + 2) / (arm.shown + 1));
+    const effectiveNegative = arm.negative + arm.ignored * P.ignoredWeight;
+    const mean = (arm.positive + P.positivePrior) / (arm.positive + effectiveNegative + P.totalPrior);
+    const explore = this.config.exploration * Math.sqrt(Math.log(totalShown + P.explorationTotalPrior) / (arm.shown + P.explorationShownPrior));
     const bucketAffinity = arm.positive > 0 ? (arm.hourPositive[hourBucket(now)] ?? 0) / arm.positive : 0;
-    const cooldown = arm.lastShownAt && now - arm.lastShownAt < 6 * 60 * 60 * 1000 ? 0.45 : 0;
-    const unseen = arm.shown === 0 ? 0.35 : 0;
-    return candidate.priority + mean + explore + bucketAffinity * 0.25 + unseen - cooldown;
+    const cooldown = arm.lastShownAt && now - arm.lastShownAt < P.cooldownMs ? P.cooldownPenalty : 0;
+    const unseen = arm.shown === 0 ? P.unseenBonus : 0;
+    return candidate.priority + mean + explore + bucketAffinity * P.affinityWeight + unseen - cooldown;
   }
 
   private candidates(ctx: CardModuleContext): PocketCandidate[] {
@@ -463,7 +449,7 @@ export class AutonomousPocketEngine {
     const event = glance?.events?.[0];
     if (event) {
       const time = event.startHm ? `${event.startHm}${event.endHm ? `-${event.endHm}` : ''}` : 'All day';
-      out.push(this.nudge('agenda', now, [event.startHm, event.endHm, event.title], 0.9,
+      out.push(this.nudge('agenda', now, [event.startHm, event.endHm, event.title], P.agendaPriority,
         'NEXT', event.title, [time, 'From today\'s cached schedule']));
     }
 
@@ -471,8 +457,9 @@ export class AutonomousPocketEngine {
     if (rain) {
       const where = glance?.weather?.place || 'Today';
       const window = `${rain.startHm}${rain.endHm ? `-${rain.endHm}` : ' onward'}`;
-      out.push(this.nudge('weather', now, [where, window, rain.probability], 1.0,
-        'RAIN', `${rain.probability}% rain from ${rain.startHm}`, [where, `Window ${window}`]));
+      out.push(this.nudge('weather', now, [where, window, rain.probability], P.weatherPriority,
+        'RAIN', rain.probability === undefined ? `Rain from ${rain.startHm}` : `${rain.probability}% rain from ${rain.startHm}`,
+        [where, `Window ${window}`]));
     }
 
     const usage = [...(glance?.usage ?? [])]
@@ -484,22 +471,22 @@ export class AutonomousPocketEngine {
       const context = [usage.stale ? 'Last known value' : 'Current provider budget'];
       if (usage.primaryResetHm) context.push(`Resets ${usage.primaryResetHm}`);
       out.push(this.nudge('usage', now, [usage.provider, percent, usage.primaryResetHm, usage.stale],
-        percent >= 80 ? 0.85 : 0.45, 'BUDGET', `${usage.label} usage is ${percent}%`, context));
+        percent >= P.usageThreshold ? P.usagePriority : P.lowUsagePriority, 'BUDGET', `${usage.label} usage is ${percent}%`, context));
     }
 
     const alive = ctx.sessions.filter((session) => session.alive !== false);
     const waiting = alive.filter(waitingSession);
     if (waiting.length > 0) {
-      out.push(this.nudge('attention', now, waiting.map((session) => session.id), 0.95,
+      out.push(this.nudge('attention', now, waiting.map((session) => session.id), P.attentionPriority,
         'NEEDS YOU', `${waiting.length} session${waiting.length === 1 ? '' : 's'} waiting`,
-        waiting.slice(0, 3).map(sessionLabel)));
+        waiting.slice(0, P.attentionLines).map(sessionLabel)));
     }
 
     const working = alive.filter((session) => session.state === 'processing');
     if (working.length > 0) {
-      out.push(this.nudge('progress', now, working.map((session) => [session.id, session.currentTool, session.currentTask]), 0.7,
+      out.push(this.nudge('progress', now, working.map((session) => [session.id, session.currentTool, session.currentTask]), P.progressPriority,
         'IN MOTION', `${working.length} agent${working.length === 1 ? ' is' : 's are'} still working`,
-        working.slice(0, 3).map((session) => `${sessionLabel(session)}${session.currentTool ? ` - ${session.currentTool}` : ''}`)));
+        working.slice(0, P.attentionLines).map((session) => `${sessionLabel(session)}${session.currentTool ? ` - ${session.currentTool}` : ''}`)));
     }
 
     const resumable = alive
@@ -507,7 +494,7 @@ export class AutonomousPocketEngine {
       .sort((a, b) => (b.elapsedSec ?? 0) - (a.elapsedSec ?? 0))[0];
     if (resumable) {
       const checkpoint = resumable.currentTask || resumable.activity || 'Last checkpoint';
-      out.push(this.nudge('resume', now, [resumable.id, checkpoint], 0.55,
+      out.push(this.nudge('resume', now, [resumable.id, checkpoint], P.resumePriority,
         'PICK UP', `Return to ${sessionLabel(resumable)}?`, [checkpoint]));
     }
 
@@ -516,13 +503,13 @@ export class AutonomousPocketEngine {
       out.push({
         module: 'pulse',
         kind: 'overview',
-        priority: 0.35,
+        priority: P.overviewPriority,
         draft: {
           key: candidateKey('overview', now, alive.map((session) => [session.id, session.state, session.currentTask])),
           actionClass: 'info',
           title: 'PULSE',
           question: `${projects.length} project${projects.length === 1 ? '' : 's'} across ${alive.length} open thread${alive.length === 1 ? '' : 's'}`,
-          context: projects.slice(0, 4),
+          context: projects.slice(0, P.overviewLines),
         },
       });
     }
@@ -530,7 +517,7 @@ export class AutonomousPocketEngine {
     out.push({
       module: 'quest',
       kind: 'preference',
-      priority: 2,
+      priority: P.preferencePriority,
       draft: {
         key: candidateKey('preference', now, ['preference-v1']),
         actionClass: 'day',
@@ -577,7 +564,7 @@ export class AutonomousPocketEngine {
     key: string,
     now: number,
   ): CardChoiceOutcome {
-    const kind = kindFromKey(key);
+    const kind = pocketKindForCardId(`module:${module}:${key}`);
     if (!kind) return { status: 'unknown_card', reason: 'unknown Pocket card key' };
     const choice = decision.choiceId;
     const cardId = `module:${module}:${key}`;
@@ -601,25 +588,25 @@ export class AutonomousPocketEngine {
         return { status: 'rejected', reason: 'unknown Pocket preference' };
       }
       if (choice === 'work') {
-        for (const k of ['attention', 'progress', 'resume', 'overview'] as PocketContentKind[]) this.arm(k).positive += 2;
+        for (const k of ['attention', 'progress', 'resume', 'overview'] as PocketContentKind[]) this.arm(k).positive += P.preferenceReward;
       } else if (choice === 'day') {
-        for (const k of ['agenda', 'weather', 'usage'] as PocketContentKind[]) this.arm(k).positive += 2;
+        for (const k of ['agenda', 'weather', 'usage'] as PocketContentKind[]) this.arm(k).positive += P.preferenceReward;
       } else {
         // Surprise keeps every arm close enough to the exploration frontier to
         // continue testing unfamiliar content instead of locking a category.
         for (const k of ['agenda', 'weather', 'usage', 'attention', 'progress', 'resume', 'overview'] as PocketContentKind[]) {
-          this.arm(k).positive += 1;
+          this.arm(k).positive += P.surpriseReward;
         }
       }
       this.state.lastSurveyAt = now;
     } else {
       const arm = this.arm(kind);
-      if (choice === 'useful') arm.positive += 1;
-      else if (choice === 'more') arm.positive += 2;
-      else if (choice === 'less') arm.negative += 2;
+      if (choice === 'useful') arm.positive += P.usefulReward;
+      else if (choice === 'more') arm.positive += P.moreReward;
+      else if (choice === 'less') arm.negative += P.lessPenalty;
       else return { status: 'rejected', reason: 'unknown Pocket feedback' };
       const pending = this.state.pending.find((item) => item.cardId === `module:${module}:${key}`);
-      if (pending && choice !== 'less') arm.hourPositive[pending.hourBucket] += choice === 'more' ? 2 : 1;
+      if (pending && choice !== 'less') arm.hourPositive[pending.hourBucket] += choice === 'more' ? P.moreReward : P.usefulReward;
     }
     this.state.feedbackCount += 1;
     this.state.answered[cardId] = { choice: choice ?? '', at: now };

@@ -1073,6 +1073,8 @@ final class DaemonServer {
     private var registeredDaemonInfo: DaemonInfo?
     private let auth = AuthManager.shared
     private let portableWeather = SwiftPortableMetWeatherProvider()
+    private lazy var pocketAutonomy = PocketAutonomy(stateURL: AgentDeckPaths.pocketAutonomyJson,
+        onError: { DaemonLogger.shared.error($0) })
     private let surfaceFirmware = SwiftSurfaceFirmwareStore(baseDirectory: AgentDeckPaths.baseDirectory)
     // A failed load must be distinguishable from "no pack bundled": a bare
     // `try?` here made a corrupt bundle / digest mismatch silently serve 503
@@ -3035,10 +3037,12 @@ final class DaemonServer {
     private func portableWeatherFeedResponse(
         identity: SurfaceRuntimeIdentity?, echoSig: String?, now: Date = Date()
     ) async -> HTTPServer.HTTPResponse {
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
         let config = weatherConfig()
         let snapshot: [String: Any]?
         if let config { snapshot = await portableWeather.get(config, now: now) }
         else { snapshot = nil }
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
         var glance: [String: Any] = [:]
         if var snapshot {
             if identity != nil {
@@ -3098,6 +3102,11 @@ final class DaemonServer {
         #if AGENTDECK_DOT_PREVIEW
         cards.append(contentsOf: DotHost.shared.resultCards(now: Int(now.timeIntervalSince1970 * 1000)))
         #endif
+        let settings = (try? Data(contentsOf: AgentDeckPaths.settingsJson))
+            .flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } ?? [:]
+        pocketAutonomy.configure(settings["pocketAutonomy"] as? [String: Any] ?? [:])
+        cards.append(contentsOf: pocketAutonomy.cards(
+            sessions: sessions, glance: glance, now: now.timeIntervalSince1970 * 1000))
         let signed: [String: Any] = ["cards": cards, "glance": glance]
         let signedData = (try? JSONSerialization.data(withJSONObject: signed, options: [.sortedKeys])) ?? Data()
         let sig = SHA256.hash(data: signedData).prefix(8).map { String(format: "%02x", $0) }.joined()
@@ -3151,6 +3160,12 @@ final class DaemonServer {
                 "md5": pack.advert.md5, "licenseSpdx": pack.advert.licenseSpdx,
             ] as [String: Any]
         }
+        // Conditional pulls and OTA-first envelopes do not expose any new card.
+        // Count only cards in a full response, just as the Node producer does.
+        if feed["unchanged"] as? Bool != true {
+            pocketAutonomy.observeDelivery(feed["cards"] as? [[String: Any]] ?? [],
+                now: now.timeIntervalSince1970 * 1000, board: identity?.board)
+        }
         return .json(feed)
     }
 
@@ -3192,7 +3207,14 @@ final class DaemonServer {
         if action == "dismiss" {
             outcome = result("applied")
         } else if action == "card_choice" {
-            outcome = result("rejected", "Swift-authored cards currently take no choices")
+            if cardId.hasPrefix("module:thread:") {
+                outcome = result("rejected", "module 'thread' takes no choices")
+            } else if cardId.hasPrefix("module:") {
+                let answer = pocketAutonomy.apply(decision, now: Date().timeIntervalSince1970 * 1000)
+                outcome = result(answer["status"] as? String ?? "error", answer["reason"] as? String)
+            } else {
+                outcome = result("rejected", "not a module card id")
+            }
         } else if action == "permission_decision" {
             guard let requestId = decision["requestId"] as? String, !requestId.isEmpty,
                   let value = decision["decision"] as? String, value == "allow" || value == "deny" else {
@@ -3710,9 +3732,11 @@ final class DaemonServer {
                 return .json(["ok": false, "error": "decisions array is required"], status: 400)
             }
             let decisionBoxes = decisions.map(SendableDict.init)
-            let resultBoxes = await DaemonActor.run {
-                decisionBoxes.map { SendableDict(self.applySurfaceOutboxDecision($0.value)) }
+            let resultBoxes: [SendableDict]? = await DaemonActor.run {
+                guard !self.startupStopped else { return nil }
+                return decisionBoxes.map { SendableDict(self.applySurfaceOutboxDecision($0.value)) }
             }
+            guard let resultBoxes else { return .json(["error": "daemon stopping"], status: 503) }
             let results = resultBoxes.map(\.value)
             return .json(["ok": true, "results": results] as [String: Any])
         }
@@ -4576,6 +4600,7 @@ final class DaemonServer {
             "type": "card-feed",
             "clients": surfaceFeedClientPayloads(),
             "recent": Array(recentSurfaceFeedPulls.suffix(8).reversed()),
+            "pocketAutonomy": pocketAutonomy.diagnostics(),
         ])
 
         if !cachedTuiDashboards.isEmpty {
@@ -12086,6 +12111,7 @@ final class DaemonServer {
 
     func shutdown() async {
         startupStopped = true
+        pocketAutonomy.flush()
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.release(dotOwnership)
         #endif
