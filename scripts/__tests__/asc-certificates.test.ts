@@ -43,7 +43,7 @@ function fixture(prepared = false, fresh = false) {
     attached: fresh ? null : prepared ? build : { type: 'builds', id: 'build-9201', attributes: { version: '9201' } } as Resource,
     submissions: [] as Resource[], items: [] as Resource[],
     calls: [] as Array<{ path: string; method: string; body?: any }>,
-    loseResponse: '' as string, reject: '' as string, driftAfterLocale: false, driftAfterItem: false, mediaMissing: false, mediaIncomplete: false, dropMediaAfterItem: false,
+    loseResponse: '' as string, reject: '' as string, readyLag: 0, driftAfterLocale: false, driftAfterItem: false, mediaMissing: false, mediaIncomplete: false, dropMediaAfterItem: false,
   };
   async function request(path: string, method = 'GET', body?: any) {
     state.calls.push({ path, method, body: clone(body) });
@@ -52,6 +52,7 @@ function fixture(prepared = false, fresh = false) {
     const p = url.pathname;
     let result: any;
     if (method === 'GET') {
+      if (p === '/v1/apps/6784822497/appStoreVersions' && state.readyLag > 0 && --state.readyLag === 0) version.attributes.appStoreState = 'READY_FOR_REVIEW';
       if (p === '/v1/apps/6784822497/appStoreVersions') result = { data: state.versions.filter(v => !url.searchParams.get('filter[versionString]') || v.attributes.versionString === url.searchParams.get('filter[versionString]')) };
       else if (p === '/v1/builds') result = { data: [build], included: [pre] };
       else if (p === '/v1/appStoreVersions/version-mac/appStoreVersionLocalizations') result = { data: localizations };
@@ -115,7 +116,7 @@ function fixture(prepared = false, fresh = false) {
       } } });
       const item = { ...body.data, id: 'item-new', attributes: { state: 'READY_FOR_REVIEW' } };
       state.items.push(item);
-      version.attributes.appStoreState = 'READY_FOR_REVIEW';
+      if (!state.readyLag) version.attributes.appStoreState = 'READY_FOR_REVIEW';
       if (state.driftAfterItem) review.attributes.notes = 'changed by another session';
       if (state.dropMediaAfterItem) state.mediaMissing = true;
       result = { data: item };
@@ -389,6 +390,25 @@ async function replacementFixture() {
     copy, provenance, request, pause: async () => {}, ...overrides,
   }) };
 }
+
+describe('version state lag after the review item is added', () => {
+  it('waits a bounded time for READY_FOR_REVIEW, then submits', async () => {
+    const f = fixture(true);
+    f.state.readyLag = 3;
+    expect(await f.run()).toMatchObject({ status: 'submitted' });
+  });
+
+  it('resumes from a draft whose version has not turned READY yet', async () => {
+    const f = fixture(true);
+    f.state.readyLag = 1000;
+    await expect(f.run()).rejects.toThrow(/not READY_FOR_REVIEW/);
+    const writes = f.writes().length;
+    f.state.readyLag = 2;
+    expect(await f.run()).toMatchObject({ status: 'submitted' });
+    expect(f.writes().filter(c => c.method === 'POST')).toHaveLength(2);
+    expect(f.writes()).toHaveLength(writes + 1);
+  });
+});
 
 describe('explicit pending macOS build replacement', () => {
   it('cancels only the named review, confirms removal, attaches the verified build and prepares idempotently', async () => {

@@ -750,8 +750,11 @@ export async function runRelease({ action, version, build, copy, request, proven
   }
 
   assertPrepared(snapshot, copy);
-  requireThat(active ? snapshot.target.attributes.appStoreState === 'READY_FOR_REVIEW' : EDITABLE.has(snapshot.target.attributes.appStoreState),
-    'App version does not match the expected new or ready submission state');
+  // With a draft already holding this version, the version itself may still
+  // read as editable: ASC moves it to READY_FOR_REVIEW a few seconds later.
+  requireThat(active ? snapshot.target.attributes.appStoreState === 'READY_FOR_REVIEW' || EDITABLE.has(snapshot.target.attributes.appStoreState)
+    : EDITABLE.has(snapshot.target.attributes.appStoreState),
+  'App version does not match the expected new or ready submission state');
   if (!active) {
     let created;
     try {
@@ -787,11 +790,17 @@ export async function runRelease({ action, version, build, copy, request, proven
   const item = assertTargetItem(active, snapshot.versionId);
   requireThat(active.submission.attributes.state === 'READY_FOR_REVIEW' && item.attributes?.state === 'READY_FOR_REVIEW',
     'Submission and its exact version item must both be READY_FOR_REVIEW');
-  snapshot = await releaseSnapshot(request, version, build);
-  assertPrepared(snapshot, copy);
+  // Adding the appStoreVersion item transitions the version itself to READY,
+  // but not atomically: on 2026-10-29 the first readback still showed
+  // DEVELOPER_REJECTED and a later one READY_FOR_REVIEW.
+  for (let attempt = 0; ; attempt++) {
+    snapshot = await releaseSnapshot(request, version, build);
+    assertPrepared(snapshot, copy);
+    if (snapshot.target.attributes.appStoreState === 'READY_FOR_REVIEW') break;
+    requireThat(EDITABLE.has(snapshot.target.attributes.appStoreState) && attempt < 5, 'Version is not READY_FOR_REVIEW before submission');
+    await pause(2000);
+  }
   await assertReleaseMedia(request, version, snapshot);
-  // Adding the appStoreVersion item transitions the version itself to READY.
-  requireThat(snapshot.target.attributes.appStoreState === 'READY_FOR_REVIEW', 'Version is not READY_FOR_REVIEW before submission');
   const submissionId = active.submission.id;
   try {
     await request(`/v1/reviewSubmissions/${submissionId}`, 'PATCH', {
