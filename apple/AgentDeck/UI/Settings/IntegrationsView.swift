@@ -137,10 +137,10 @@ enum IntegrationCatalog {
         iconSystemName: "circle.circle",
         iconAgentType: "opencode",
         iconTint: SessionBrand.color(for: "opencode"),
-        oneLineHelp: "Read-only session monitoring of an OpenCode server already running on this Mac.",
+        oneLineHelp: "Follow OpenCode session activity through its observer or a local server.",
         // Configuration-factual copy only — describes connecting to the
         // user's own server, never an install step (App Review 4.2.3).
-        connectInstructions: "Turn on monitoring to connect to a running OpenCode server (`opencode serve`)."
+        connectInstructions: "Configure the observer below, or enable monitoring for an existing OpenCode server."
     )
 
     static let kiro = IntegrationDescriptor(
@@ -401,13 +401,13 @@ enum IntegrationStatusEvaluator {
     }
 
     private static func openCodeStatus(preferences: AppPreferences, state: DashboardState) -> IntegrationStatus {
+        if state.siblingSessions.contains(where: { $0.alive && $0.agentType == "opencode" }) {
+            return .connected(detail: "OpenCode session activity is visible.")
+        }
         guard preferences.openCodeMonitoringEnabled else {
             // Neutral copy — the feature is optional and default-off; no nag,
             // no companion-install phrasing.
-            return .notConfigured(detail: "Optional. Monitors an OpenCode server running on this Mac when enabled.")
-        }
-        if state.siblingSessions.contains(where: { $0.alive && $0.agentType == "opencode" }) {
-            return .connected(detail: "OpenCode session activity is visible.")
+            return .notConfigured(detail: "Optional. Observer file setup and local-server monitoring are available below.")
         }
         return .awaitingData(detail: "Monitoring is enabled. Waiting for an OpenCode session at \(preferences.openCodeServerURL) or an explicit --port.")
     }

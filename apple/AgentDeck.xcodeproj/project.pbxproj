@@ -38,6 +38,7 @@
 		0B04CA71C040BE9955B8C032 /* AdbModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83589BA4C41B89C8EF1A46FD /* AdbModule.swift */; };
 		0B0D2D3CF0D97D237B671C5B /* DaemonPosture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FC16ECE363684E997BE01E /* DaemonPosture.swift */; };
 		0B12EC87653840EF7BA4555C /* SessionAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61E3177DE60C73B3A102F9FB /* SessionAggregator.swift */; };
+		0B4045C8CEE025BE8FC97AF0 /* OpenCodeObserverSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC55497AFDD76F8D775045B /* OpenCodeObserverSetup.swift */; };
 		0B5C74B616EFAC3B3D82CFB2 /* SwiftSurfaceProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C734B04F5E770B8B5FE2B70 /* SwiftSurfaceProtocolTests.swift */; };
 		0C1C2B2A6F3ED44152244E55 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		0C1F83A74830BA41D99566C9 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
@@ -318,11 +319,13 @@
 		5DDA6F733312F1A880DE38C9 /* CodexFreshnessRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC487120E810897B3BF0FC4 /* CodexFreshnessRules.generated.swift */; };
 		5E39A0DA9E8B9E175292E84D /* GatewayParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234CFF4B2832E6B1CA98AF10 /* GatewayParityTests.swift */; };
 		5E3FCF09BE50281AE6749762 /* ESP32WifiForwardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C671E2324E45E6745813C681 /* ESP32WifiForwardTests.swift */; };
+		5E6053632284AF6ECD799213 /* OpenCodeObserverSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0DFA9570E8B962381364E8 /* OpenCodeObserverSetupView.swift */; };
 		5E7AA48D5FE57966246B4502 /* SessionSettingsRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5EE710FE14F48C58E23B52 /* SessionSettingsRules.generated.swift */; };
 		5F19E683A6D43850D953E8A3 /* OpenClawSessionKeyRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */; };
 		5F62235C4D677989E2B7972D /* MiniToml.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70F61897614FBE52B61AB8B4 /* MiniToml.swift */; };
 		5FBCFE8F4EBDCB7937FECA50 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */; };
 		604472724296A989DD86DEDE /* ApmeActivityHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD17B846036A2F78B153024 /* ApmeActivityHistory.swift */; };
+		606563C36636154AD13C6520 /* OpenCodeObserverSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC55497AFDD76F8D775045B /* OpenCodeObserverSetup.swift */; };
 		60C2C9FBF69B82F90039B8DC /* AttentionSessionIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE6A31F884A464A4E5C2D1D /* AttentionSessionIntents.swift */; };
 		61877CEE64B70BAFA11AA7A1 /* LocalDaemonStartupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0762DED22ED7FB70E2072A33 /* LocalDaemonStartupTests.swift */; };
 		61B7229DFE7E8267CCFC5A8A /* ResidentLabelLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA30C4FE1630E93CEEAF4B1D /* ResidentLabelLayoutTests.swift */; };
@@ -389,6 +392,7 @@
 		767D2CD18071AF5CC34686CE /* ModelProviderRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F831DDF30D6993F5F3B1334 /* ModelProviderRules.generated.swift */; };
 		76A9E5A970D9D7CE317E46FD /* OpenCodeSSEClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E03521107C667F3ED4EA7A /* OpenCodeSSEClient.swift */; };
 		770F763A9008582AEEFCCE4C /* DotPixels.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE31A449F67FA1B0D153221 /* DotPixels.generated.swift */; };
+		772EE9B1A5EBC19C3501F18E /* OpenCodeObserverSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F14950D2693B8A53977980DA /* OpenCodeObserverSetupTests.swift */; };
 		774B82B71B727D336DA72CAB /* AttentionSessionAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F319423D12FE16538847B2A6 /* AttentionSessionAccessTests.swift */; };
 		776EB14F789C4BA480732350 /* MicroGlyphs.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */; };
 		793D39D31CAE8D3B6E3281A4 /* MlxInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6E58B1BF67A986A9E6C50D3 /* MlxInference.swift */; };
@@ -514,6 +518,7 @@
 		9C8BB830B922EBBD3A815FC5 /* SessionBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6E252A5DCAC5E298C21473 /* SessionBrand.swift */; };
 		9D70A91FFE3582A3BCFDA72B /* DotInteractionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2C2FC450290089CE89830A /* DotInteractionView.swift */; };
 		9D936EAA57266140F1A0CE67 /* ClaudeStatuslineRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6753543CCFF62AAD2B11A94 /* ClaudeStatuslineRules.generated.swift */; };
+		9D9F41B0B84EA23A6F75B887 /* OpenCodeObserverSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F14950D2693B8A53977980DA /* OpenCodeObserverSetupTests.swift */; };
 		9DD3CE6B504077BF2996607B /* HubSessionIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */; };
 		9DD7DC6186B148652373154F /* AppMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 006CBD6A3ADAE5DCD1EBBDB3 /* AppMetadata.swift */; };
 		9E30D4D0BEE3CB402E8741D8 /* Timeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28DFE82D8F7AC7C7566940F3 /* Timeline.swift */; };
@@ -572,6 +577,7 @@
 		AE36799884B97124014BB0A2 /* GatewayHealthRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A636D8963EF63909EB64131D /* GatewayHealthRulesTests.swift */; };
 		AE466B7FFE37EC259356ACB2 /* CoordinationTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2695212E35C7579728C6F1ED /* CoordinationTracker.swift */; };
 		AECF975059EA0A725DB1A3E7 /* ESP32WifiForwardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C671E2324E45E6745813C681 /* ESP32WifiForwardTests.swift */; };
+		AED2E53C1A5AD2FC332C982A /* OpenCodeObserver.json in Resources */ = {isa = PBXBuildFile; fileRef = 7044517747162B038B5DC27C /* OpenCodeObserver.json */; };
 		AFF6EF70E6B6A6BC16048A65 /* WaterSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F134F38758589B5D47652C8 /* WaterSurface.swift */; };
 		AFF81F64527A02F26615AB61 /* TopologyRailHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D05CE505E1EC5729C69752E /* TopologyRailHelpersTests.swift */; };
 		B13C4855773086AA7115A5D4 /* UsageAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBBD731AC01994F5C7C1A78A /* UsageAPIClient.swift */; };
@@ -791,6 +797,7 @@
 		F1AA123E5D16742D2C7B003C /* apme-dashboard.html in Resources */ = {isa = PBXBuildFile; fileRef = 766909A21820E709DA63C7C2 /* apme-dashboard.html */; };
 		F1C357A840E59D7A188C808B /* OnboardingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9965CED8937C8C1F27DFCC68 /* OnboardingScreen.swift */; };
 		F20373DB53552C2F36204EDF /* TerrariumConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403CDDF7DDFCF5D8702491EA /* TerrariumConfig.swift */; };
+		F2CC340FA1DBD8EEAEBC5BE9 /* OpenCodeObserverSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A0DFA9570E8B962381364E8 /* OpenCodeObserverSetupView.swift */; };
 		F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */; };
 		F3272430808C8067A5B15F7F /* AgentDeckPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D55999BEAD84484D03EEB51 /* AgentDeckPathsTests.swift */; };
 		F352145007826B5BE9683A3D /* WearableTabletPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 573B908900BFBC530F17EAB6 /* WearableTabletPreviews.swift */; };
@@ -1020,6 +1027,7 @@
 		5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeClassifierRules.generated.swift; sourceTree = "<group>"; };
 		5CAC7DB1B1460CCEF53951DD /* HermesSwim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSwim.swift; sourceTree = "<group>"; };
 		5D8D7D1387331B547042853D /* AgentDeck.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AgentDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5EC55497AFDD76F8D775045B /* OpenCodeObserverSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeObserverSetup.swift; sourceTree = "<group>"; };
 		5F7897FE76F480951CD34749 /* ProjectNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectNameResolver.swift; sourceTree = "<group>"; };
 		603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroTimelineFeed.swift; sourceTree = "<group>"; };
 		6165A6BFF174139F6AF07CED /* PortFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortFormatting.swift; sourceTree = "<group>"; };
@@ -1050,6 +1058,7 @@
 		6E98D7DD3B95496DC3353CF1 /* SessionOrderStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionOrderStoreTests.swift; sourceTree = "<group>"; };
 		6F0A3614C2DF6495CAB410B1 /* AppReviewPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppReviewPromptTests.swift; sourceTree = "<group>"; };
 		6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
+		7044517747162B038B5DC27C /* OpenCodeObserver.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = OpenCodeObserver.json; sourceTree = "<group>"; };
 		707E6E55048B70C6A50DB105 /* TuiCanonicalCells.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TuiCanonicalCells.generated.swift; sourceTree = "<group>"; };
 		70F61897614FBE52B61AB8B4 /* MiniToml.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniToml.swift; sourceTree = "<group>"; };
 		7125DC99DC7237BBAA4CEF6B /* HermesReceiverSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesReceiverSettings.swift; sourceTree = "<group>"; };
@@ -1069,6 +1078,7 @@
 		788166EF7E8CB65CDE3D3D67 /* SessionFocusRelay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionFocusRelay.swift; sourceTree = "<group>"; };
 		79398BB5E612A59F14C13245 /* jp-n3-ko.manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "jp-n3-ko.manifest.json"; sourceTree = "<group>"; };
 		797940FBA5A10EC295F401FE /* MenuBarDensityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarDensityPolicy.swift; sourceTree = "<group>"; };
+		7A0DFA9570E8B962381364E8 /* OpenCodeObserverSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeObserverSetupView.swift; sourceTree = "<group>"; };
 		7AC67585E8BFBBB8B0250FF2 /* WebSocketServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketServer.swift; sourceTree = "<group>"; };
 		7BCC68BE56702DFD637FFE02 /* GatewayProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayProbe.swift; sourceTree = "<group>"; };
 		7C8F5561D888F6DD8DF46A2B /* HubSessionIsolationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HubSessionIsolationTests.swift; sourceTree = "<group>"; };
@@ -1260,6 +1270,7 @@
 		F03AB0EE3D1D587EFC3604FC /* ci-companion.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "ci-companion.png"; sourceTree = "<group>"; };
 		F070B3A171B0BC3B4905885D /* AttentionSessionRosterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionSessionRosterTests.swift; sourceTree = "<group>"; };
 		F09E1BD51B5102E89060963B /* CollaborationProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollaborationProjectionTests.swift; sourceTree = "<group>"; };
+		F14950D2693B8A53977980DA /* OpenCodeObserverSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeObserverSetupTests.swift; sourceTree = "<group>"; };
 		F15F55435772A15B8F0E92C1 /* AgentState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentState.swift; sourceTree = "<group>"; };
 		F191BB05A8E86E61E7A12CCE /* ObservedAgentSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAgentSettings.swift; sourceTree = "<group>"; };
 		F2A5E894C58B03EE5C8EF791 /* TaskGradeabilityRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskGradeabilityRules.generated.swift; sourceTree = "<group>"; };
@@ -1435,6 +1446,7 @@
 				9AF98CA1BB582FB56637BB59 /* OpenClawSessionSettingsTests.swift */,
 				DAF69E65D3118C105A193227 /* OpenClawTokenExtractTests.swift */,
 				52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */,
+				F14950D2693B8A53977980DA /* OpenCodeObserverSetupTests.swift */,
 				21073CA63BB9403D46212547 /* OpenCodeObserverTests.swift */,
 				FD0E0570EC405C2542D130A1 /* PairingCredentialTests.swift */,
 				C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */,
@@ -1576,6 +1588,7 @@
 				E172EB2550A849243FE6F341 /* HermesReceiverSettingsView.swift */,
 				E0C496748B5F5315E3551E69 /* IDotMatrixSheet.swift */,
 				01B7BAB1080F7958F74A1B74 /* IntegrationsView.swift */,
+				7A0DFA9570E8B962381364E8 /* OpenCodeObserverSetupView.swift */,
 				47FFD673C1AD8EAF690B9E82 /* PixooSheet.swift */,
 				DA58B8921954E616F8ECCC53 /* SettingsScreen.swift */,
 				362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */,
@@ -1677,6 +1690,7 @@
 				2D66C7EEA9726686205AF8EC /* DockVisibilityController.swift */,
 				7125DC99DC7237BBAA4CEF6B /* HermesReceiverSettings.swift */,
 				DC62763B9E0E57235CFDACED /* NotificationPermission.swift */,
+				5EC55497AFDD76F8D775045B /* OpenCodeObserverSetup.swift */,
 				2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */,
 			);
 			path = App;
@@ -1743,6 +1757,7 @@
 				766909A21820E709DA63C7C2 /* apme-dashboard.html */,
 				2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */,
 				8521590B433F1C0B3F3FB330 /* dot-mcp-contract.json */,
+				7044517747162B038B5DC27C /* OpenCodeObserver.json */,
 				3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */,
 				51F8835274D527676D10FDB5 /* Aquarium */,
 				CC407CA12D6D19FA60BEC1A1 /* Fonts */,
@@ -2184,6 +2199,7 @@
 				37FD74EABBC8FCA4D91E7653 /* NOTICE-PocketSansWorld.md in Resources */,
 				587F1862A0D492B2996A4ABD /* NOTICE.md in Resources */,
 				C1487E9009E1FAA9C78518B9 /* OFL-PocketSansWorld.txt in Resources */,
+				AED2E53C1A5AD2FC332C982A /* OpenCodeObserver.json in Resources */,
 				2EE4D025FDE45D64FD147DB4 /* PocketSansWorld_12.cpfont in Resources */,
 				26569551DB80E2C8457E1958 /* PrivacyInfo.xcprivacy in Resources */,
 				FBBDE4862E8788F5007ACBC3 /* apme-dashboard.html in Resources */,
@@ -2312,6 +2328,7 @@
 				D4596068D1B0207EFD0BB829 /* OpenClawSessionSettingsTests.swift in Sources */,
 				7B0F7E18D01881EF81E3F08E /* OpenClawTokenExtractTests.swift in Sources */,
 				2CA69943196E37F61A932DEF /* OpenClawToolNoiseTests.swift in Sources */,
+				9D9F41B0B84EA23A6F75B887 /* OpenCodeObserverSetupTests.swift in Sources */,
 				7F7AC94714D1AA6767605207 /* OpenCodeObserverTests.swift in Sources */,
 				2EEDFE019406138F64268122 /* PairingCredentialTests.swift in Sources */,
 				B1DA074241F457CA53E71966 /* PairingWindowStoreTests.swift in Sources */,
@@ -2432,6 +2449,7 @@
 				9ABF9EC3B767F9589CAC5902 /* OpenClawSessionSettingsTests.swift in Sources */,
 				9A5DC975FE1C36D4AB0B13A4 /* OpenClawTokenExtractTests.swift in Sources */,
 				45C2A8320BF4C10E8106CF6B /* OpenClawToolNoiseTests.swift in Sources */,
+				772EE9B1A5EBC19C3501F18E /* OpenCodeObserverSetupTests.swift in Sources */,
 				8693E499DE95572584CC9DA9 /* OpenCodeObserverTests.swift in Sources */,
 				7FD70D74C3300CE4E4818E1A /* PairingCredentialTests.swift in Sources */,
 				8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */,
@@ -2669,6 +2687,8 @@
 				7AA10F90E922138D683C318D /* OpenClawTokenImporter.swift in Sources */,
 				46086D1358BD25389E304052 /* OpenCodeCreature.swift in Sources */,
 				F9EEBCC88FC55225E6D60AEE /* OpenCodeObserver.swift in Sources */,
+				0B4045C8CEE025BE8FC97AF0 /* OpenCodeObserverSetup.swift in Sources */,
+				5E6053632284AF6ECD799213 /* OpenCodeObserverSetupView.swift in Sources */,
 				2C10018050B390B0B4EA76DD /* OpenCodeSSEClient.swift in Sources */,
 				9EC638F130D8419C32A2C027 /* PairingCodeController.swift in Sources */,
 				89A363F94C2724369D586398 /* PairingCodeRules.generated.swift in Sources */,
@@ -2963,6 +2983,8 @@
 				D53FC33DD05A32D719809874 /* OpenClawTokenImporter.swift in Sources */,
 				996C92E310F9A7E69C40C803 /* OpenCodeCreature.swift in Sources */,
 				FA2AA2B226EBD69F45238A1F /* OpenCodeObserver.swift in Sources */,
+				606563C36636154AD13C6520 /* OpenCodeObserverSetup.swift in Sources */,
+				F2CC340FA1DBD8EEAEBC5BE9 /* OpenCodeObserverSetupView.swift in Sources */,
 				76A9E5A970D9D7CE317E46FD /* OpenCodeSSEClient.swift in Sources */,
 				0DB57F4D3BAAD25B7622574A /* PairingCodeController.swift in Sources */,
 				B9625008665F0FFF8CB98581 /* PairingCodeRules.generated.swift in Sources */,

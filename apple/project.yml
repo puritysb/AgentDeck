@@ -45,6 +45,7 @@ targets:
         excludes:
           - Resources/Info.plist
           - Resources/Info-macOS.plist
+          - Resources/OpenCodeObserver.json
       - path: ../generated/protocol/AgentCommand.swift
         group: AgentDeck/Generated
     settings:

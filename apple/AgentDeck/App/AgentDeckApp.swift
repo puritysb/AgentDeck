@@ -220,6 +220,7 @@ struct AgentDeckApp: App {
 
         daemonService.onLocalReceiverChanged = { port in
             HermesReceiverSettings.shared.localReceiverChanged(port: port)
+            OpenCodeObserverSetup.shared.localReceiverChanged(port: port)
         }
 
         daemonService.onReady = { [stateHolder, weak daemonService] wsUrl in

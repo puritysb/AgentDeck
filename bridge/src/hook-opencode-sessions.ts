@@ -53,6 +53,7 @@ export interface HookOpenCodePayload {
   permissionId?: string;
   questionId?: string;
   title?: string;
+  observerOnly?: boolean;
 }
 
 const OPENING_EVENTS = new Set([
@@ -65,7 +66,7 @@ export function openCodePermissionRequestId(sessionId: string, permissionId: str
 }
 
 export class HookOpenCodeSessions {
-  private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string }>>();
+  private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string; answerable: boolean }>>();
   private readonly sessions = new Map<string, HookOpenCodeSession>();
 
   /** Fired when a hook changed something worth broadcasting. */
@@ -130,7 +131,7 @@ export class HookOpenCodeSessions {
         const waits = this.waits.get(sessionId) ?? new Map();
         const key = `${kind}:${id}`;
         if (waits.size < OPENCODE_PENDING_REQUEST_LIMIT || waits.has(key)) {
-          waits.set(key, { kind, id, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
+          waits.set(key, { kind, id, answerable: payload.observerOnly !== true, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
         }
         this.waits.set(sessionId, waits);
         break;
@@ -154,7 +155,7 @@ export class HookOpenCodeSessions {
     if (pending) {
       session.state = pending.kind === 'permission' ? 'awaiting_permission' : 'awaiting_option';
       session.question = pending.title;
-      session.requestId = pending.kind === 'permission' ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
+      session.requestId = pending.kind === 'permission' && pending.answerable ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
     }
     this.sessions.set(sessionId, session);
     this.reap(now);

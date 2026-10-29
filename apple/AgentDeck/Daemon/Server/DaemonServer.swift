@@ -6766,7 +6766,7 @@ final class DaemonServer {
         if isOpenCodeEvent, let sessionId {
             applyOpenCodeWait(sessionId: sessionId, event: event,
                 id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
-                title: json["title"] as? String, answerable: true)
+                title: json["title"] as? String, answerable: json["observer_only"] as? Bool != true)
         }
 
 

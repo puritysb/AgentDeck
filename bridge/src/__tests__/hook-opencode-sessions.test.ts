@@ -26,6 +26,15 @@ function pidRow(pid: number, cwd?: string): ObservedSession {
 }
 
 describe('HookOpenCodeSessions', () => {
+  it('native observation-only permissions carry attention without an answerable request', () => {
+    const hooks = new HookOpenCodeSessions();
+    hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p1', title: 'Read file', observerOnly: true }, 1000);
+    const [row] = hooks.applyTo([], 1100);
+    expect(row.state).toBe('awaiting_permission');
+    expect(row.question).toBe('Read file');
+    expect(row.requestId).toBeUndefined();
+  });
+
   it('surfaces a session from its hooks with the turn state the process scan cannot see', () => {
     const hooks = new HookOpenCodeSessions();
     hooks.note('opencode_session_start', { sessionId: SID, cwd: CWD }, 1_000);

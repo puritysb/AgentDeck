@@ -147,6 +147,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
+| OpenCode observer file setup | Yes, macOS; explicit folder consent | Yes | Native picker grants an existing OpenCode plugins directory. The app installs/updates/removes only its owned observer and receiver sidecar, preserves other files and refuses modified/symlinked files. Bundled source is generated from the canonical hooks template; OpenCode executes it, the app never does. Native installation is observation-only, uses the ready local receiver port, and adds no subprocess, interpreter or companion-install prompt. Settings distinguish a saved installation from received events. |
 | Hermes receiver settings | Yes, macOS | Explicit `--port` | Opt-in folder picker for an already-installed observer, security-scoped bookmark, local ready-port synchronization across restart/handover, and retry/stop-sync controls. Writes only `connection.json`; preserves other JSON fields and refuses invalid/unowned folders. No observer installation, enablement, execution, or port scanning. Saved configuration is not evidence of event receipt. Stop syncing revokes folder access and leaves the last explicit receiver selection intact. |
 | Hermes observer monitoring (preview) | Yes, with explicit receiver selection | Yes | Both daemons ingest `hermes_*` hooks and advertise `hermesObserver: 1`. The externally installed observer uses its profile-local `connection.json` loopback port when selected with `agentdeck hermes-observer --port`; this supports the sandboxed Swift receiver without reading its container or keeping a Node daemon running. Otherwise discovery uses the Node registry, which the App Store daemon does not write. macOS Settings can retain a user-selected existing observer folder and atomically update its connection file when the local receiver becomes ready on a new port. Only the bound/attached local port is written, never a preferred port before startup; invalid explicit selection never falls back. Installation and Hermes enablement remain outside the app. Rows are observation-only, with no approvals, prompt injection or voice target. Direct delivery, opt-out, invalid selection and port reconfiguration were exercised against signed Store 1.9.2 / 9401 on 2026-10-29; this is not current-source release acceptance. See [the receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29). |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
@@ -244,7 +245,7 @@ external process inside the app.
 | Priority | Candidate | Why native is plausible | Completion evidence / remaining dependency |
 |---|---|---|---|
 | P1, local signed acceptance passed | Hermes direct-receiver setup continuity | Native folder consent, persistent bookmark, ready local port synchronization, retry and stop-sync controls; observer enablement stays user-owned | [Setup and limits](hermes-agent.md#keep-the-macos-receiver-selected-across-port-changes). Native regression tests cover ready-port changes and revocation. [Local signed Release acceptance](hermes-agent.md#signed-local-release-setup-acceptance-2026-10-29) passed folder selection, relaunch restoration and automatic port change; a final Store artifact remains a separate release gate. The [9401 receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29) proves direct delivery only |
-| P1 | OpenCode observer setup through explicit file consent | The app already consumes hooks/SSE; a scoped file installer can follow the existing Claude/Codex consent pattern | Preserve user configuration, verify install/update/removal and real hook delivery. OpenCode executes its plugin; the app must not start OpenCode. Review packaging and Store disclosure before implementation |
+| P1, implemented and locally validated | OpenCode observer setup through explicit file consent | Scoped native installer with canonical bundled source; OpenCode executes the plugin | [Local acceptance](#opencode-observer-setup-acceptance-2026-10-29) passed install, seeded prior-version update, edited-file refusal, removal, reinstallation and real OpenCode turn receipt. A final Store artifact remains a release gate |
 | P2 | Kiro v2 SQLite observation | Swift already supports granted Kiro JSONL stores; native SQLite can replace Node's reader | First establish remaining v2 usage. Read-only bookmark access including WAL, schema fixtures, session/turn identity and unknown-state parity; no fabricated PERM |
 | P2 | Daemon relay hub/worker | Existing authenticated HTTP/WS and native session state provide the transport building blocks | Port the [relay contract](../bridge/src/daemon-relay.ts), bounded teardown, reconnect/dedup and per-session authorization. Advertise only steering the Swift worker can execute; remote terminal injection still needs an external worker |
 | P2 | Pocket adaptive content and Glance Frame rendering | [Adaptive selection](../bridge/src/pocket-autonomy.ts) is state/data logic; [frame generation](../bridge/src/glance-frame.ts) can use native rendering | Move shared decisions into an SSOT with cross-language vectors; preserve aggregate-only persistence, feed/outbox behavior and geometry. Verify reader output on hardware. Basic portable transport already exists in Swift |
@@ -277,7 +278,7 @@ a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
 Suggested delivery order: carry the accepted Hermes setup into the release
-artifact, implement consented OpenCode setup, then prioritize Kiro legacy
+artifact together with the accepted OpenCode observer setup, then prioritize Kiro legacy
 support or Pocket content using actual user/device demand. Relay follows a dedicated transport/control design.
 Investigate the Claude source in parallel with this roadmap; do not promise a
 native quota release before that evidence exists. Dot remains a separate
@@ -313,3 +314,66 @@ The standard macOS and iOS Debug/Release builds exclude all Dot support at build
 | Manual Dot character image | User-selected static PNG/WebP/JPEG, bounded ImageIO conversion and container persistence | Explicit local CLI import/reset, bounded sharp conversion | No OpenAI avatar API or automatic synchronization; no image URL fetching or executable model import |
 | Portable Dot companion | Authenticated normal/compact snapshots with independent status, appearance and latest report relation | Same additive snapshot; portraits stripped from compact transport | Separate from sessions/counts, no execution or approval authority |
 | Remote Apple/Android display | Read-only decoded companion; user image becomes a billboard in the Apple 3D scene | Host-authored snapshot | A 2D image does not become a volumetric character; report labels remain visible |
+
+## OpenCode observer setup acceptance 2026-10-29
+
+In macOS Settings → Integrations → OpenCode, choose the existing `plugins`
+directory for the OpenCode configuration you use, then choose **Install / Update**.
+This works for a global or project plugins directory. OpenCode loads these local
+files on startup ([official plugin documentation](https://opencode.ai/docs/plugins/)).
+The app writes only `agentdeck.js` and `agentdeck-connection.json`; it never
+rewrites `opencode.json`, JSONC comments, package manifests or unrelated plugins.
+The system picker grants access to that directory, retained by a security-scoped
+bookmark. Source, ownership and filenames come from the canonical hooks template
+through `pnpm generate-opencode-observer`; byte drift is tested.
+
+Updates and removal require an exact recognized source or a digest matching the
+record of a previous native installation. The exact current CLI template can be
+migrated by explicit Install / Update. Other older or modified files require user
+review and are refused, including symlinks. CLI setup recognizes native ownership
+and preserves it; CLI removal likewise refuses edited native files. **Remove
+observer** deletes the verified owned files and revokes access. **Remove folder
+access** only revokes access and leaves installed files in place. Loaded native
+plugins reread the receiver file on delivery, so removal stops delivery without
+silently switching to the Node registry. No downtime replay is added.
+
+The native variant is observation-only: no device command polling, prompt
+injection or permission answering. Both daemon consumers suppress actionable
+request IDs for its `observer_only` hooks. Activity can be received independently
+of the separate, opt-in read-only SSE server monitor. Saved-file messages never
+claim the plugin is loaded or events have arrived.
+
+Local acceptance used a Development-signed Sandbox Debug app, a dedicated bundle
+ID `bound.serendipity.agent.deck.opencode-setup-audit`, a temporary XDG OpenCode
+configuration and a deterministic loopback model. WeatherKit was omitted from
+the local signing entitlements. The app's receiver was **63787**; OpenCode 1.18.35
+ran separately on loopback **63800**. SSE monitoring stayed off throughout.
+
+- The real system picker selected a plugins folder containing an unrelated user
+  plugin; its sibling JSONC configuration contained comments and custom settings.
+  Both remained byte-identical through all installer operations.
+- Install wrote the canonical observer and its owned receiver. An actual OpenCode
+  turn completed with `OPENCODE_SWIFT_OBSERVER_OK`, observed by Swift as
+  `idle → processing → idle`.
+- A seeded previous-owned-version fixture was updated to exact bundled bytes;
+  unknown receiver keys were retained. Adding a user edit then caused both update
+  and removal to refuse, retaining the edit and all other files.
+- Removing the verified installation deleted only its two owned files. A new
+  turn on the still-running OpenCode server completed normally but produced no
+  new Swift session/event. Reinstallation restored actual turn delivery, and the
+  final UI reported Connected from received activity while SSE remained off.
+- CLI setup against that native installation returned managed-by-macOS without
+  changing the plugin hash. A separate synthetic permission hook through Swift's
+  real HTTP route retained attention without an answerable request ID.
+
+The first finite `opencode run` trial received prompt activity but exited before
+its final Stop was captured. It is not counted as a successful completed-turn
+receipt. The positive completion evidence uses a persistent OpenCode server;
+finite-process shutdown delivery remains best-effort. No production OpenCode
+configuration or installed AgentDeck app was replaced. Test-only servers and the
+signed app were stopped after acceptance.
+
+Evidence is local and gitignored: `diagnostics/opencode-swift-setup-20261029/`,
+including wire captures, CLI logs, file hashes, edit-refusal/coexistence receipts,
+signature metadata and `results.json`. This proves local development behavior;
+it is not a Store upload or final distribution-artifact acceptance.

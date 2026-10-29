@@ -3765,6 +3765,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
             permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
+            observerOnly: json.observer_only === true,
             questionId: typeof json.question_id === 'string' ? json.question_id : undefined,
             title: typeof json.title === 'string' ? json.title : undefined,
           });

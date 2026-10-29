@@ -11,6 +11,7 @@
     "clean": "pnpm -r clean",
     "flash:build": "vite build tools/web-flasher --base=/AgentDeck/flash/ --outDir ../../dist/flash --emptyOutDir && node scripts/generate-flash-third-party.mjs dist/flash",
     "typecheck": "pnpm -r typecheck",
+    "generate-opencode-observer": "pnpm --filter @agentdeck/hooks build && node scripts/generate-opencode-observer.mjs",
     "generate-connection-labels": "node scripts/generate-connection-labels.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
     "generate-brand-features": "node scripts/generate-brand-features.mjs",

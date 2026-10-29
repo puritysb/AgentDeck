@@ -2084,6 +2084,7 @@ struct SettingsScreen: View {
     private var openCodeMonitoringSlot: some View {
         #if os(macOS)
         VStack(alignment: .leading, spacing: 6) {
+            OpenCodeObserverSetupView()
             Toggle("Monitor OpenCode server", isOn: $preferences.openCodeMonitoringEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)

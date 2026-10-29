@@ -320,14 +320,34 @@ Unlike the other advanced integrations, OpenClaw **is** first-class in the App S
   2. Tap "Import token" in the OpenClaw troubleshoot row. AgentDeck presents an `NSOpenPanel`. The panel's title and message text mention `~/.openclaw/openclaw.json` as the *typical* OpenClaw config location — this is human-readable hint text only. `directoryURL` is set to `~/.openclaw/` when that folder exists (so the non-hidden `openclaw.json` is immediately visible), otherwise to the user's real home directory (resolved via `getpwuid(getuid()).pw_dir`, since `NSHomeDirectory()` inside the sandbox returns the app's container path which is not where OpenClaw lives). The only programmatic file-system call before the user selects anything is a single `FileManager.fileExists` check to choose that starting folder — no directory enumeration. The panel itself runs in Powerbox outside the sandbox and is allowed to present that path as a navigation starting point; the hint grants no read permission by itself — only what the user explicitly selects in the panel is readable. The panel does **not** preselect any specific file, the user is free to navigate elsewhere or cancel, and AgentDeck never opens, traverses, or enumerates any path under the user's real home outside the file the user picks here. The selected file's bytes are read into memory (`Data(contentsOf:)`) and parsed via `JSONSerialization`; from the resulting object **only the gateway token string is used** — it is written to the macOS Keychain via `OpenClawGatewayTokenStore`, and every other parsed value goes out of scope and is freed when the import method returns. The read is performed inside a `startAccessingSecurityScopedResource()` / `defer stop` pair under the existing `com.apple.security.files.user-selected.read-write` entitlement. AgentDeck additionally stores an app-scoped security-scoped bookmark to **the single file the user picked** (under `com.apple.security.files.bookmarks.app-scope`, the same mechanism used for the Claude/Codex/Antigravity file integrations) so that a later rotated token can be re-read from that same file on reconnect — never any other path. The bookmark is revoked when the user taps "Clear" on the token.
 - Reviewers without OpenClaw installed will see "Not configured" and can skip this integration entirely. The "Import token" button is also fully optional — reviewers can validate the panel without selecting any file.
 
-### OpenCode (opt-in local server monitoring)
+### OpenCode (opt-in monitoring and observer file setup)
+
+Settings → Integrations → OpenCode also offers optional **observer file setup**.
+The user picks an existing OpenCode plugins directory through NSOpenPanel,
+then explicitly chooses Install / Update. An app-scoped security bookmark retains
+access to that folder. The app writes only `agentdeck.js` and its owned
+`agentdeck-connection.json` receiver data; it never edits OpenCode JSON/JSONC,
+package manifests, credentials or other plugins. The bundled template is
+canonical AgentDeck source packaged as JSON data, never executed by this app.
+OpenCode independently loads the installed plugin. No interpreter, subprocess,
+companion-install prompt or new entitlement is added.
+
+This native installation is observation-only: it sends activity to the ready
+local receiver, including after port changes, and never polls device commands.
+Permission/question attention remains display-only. Installation receipts do
+not claim event delivery. Modified or unrecognized files and symlinks are
+refused; only verified owned files can be updated or removed. Removing folder
+access leaves installed files in place. Removal deletes the verified plugin and
+receiver file, and revokes the bookmark. An already-running OpenCode process
+retains loaded code until it exits. The existing server-monitoring option below
+remains separate and off by default.
 
 OpenCode session monitoring in the App Store build is an **opt-in, read-only local network client** to a server the user runs themselves — the same posture as the OpenClaw Gateway integration:
 
 - The feature is **off by default**. While off, AgentDeck makes zero OpenCode-related network probes. The user enables it from Settings → Integrations → OpenCode ("Monitor OpenCode server").
-- When enabled, AgentDeck connects (plain `URLSession`, `com.apple.security.network.client`) to an OpenCode HTTP server that the user started independently in their own terminal (`opencode serve`). Discovery is limited to exactly three inputs: (1) the URL the user typed into Settings (default `http://127.0.0.1:4096`), (2) a health check of OpenCode's fixed default port 4096 (the same shape as the OpenClaw fixed-port probe on 18789), and (3) macOS process metadata (`sysctl KERN_PROC_ALL` / `KERN_PROCARGS2` — the same first-party API already used for Codex Desktop detection) to notice an `opencode` process the user launched with an explicit `--port N` argument. AgentDeck does **not** port-scan, does not install OpenCode plugins, and never spawns `opencode`.
+- When enabled, AgentDeck connects (plain `URLSession`, `com.apple.security.network.client`) to an OpenCode HTTP server that the user started independently in their own terminal (`opencode serve`). Discovery is limited to exactly three inputs: (1) the URL the user typed into Settings (default `http://127.0.0.1:4096`), (2) a health check of OpenCode's fixed default port 4096 (the same shape as the OpenClaw fixed-port probe on 18789), and (3) macOS process metadata (`sysctl KERN_PROC_ALL` / `KERN_PROCARGS2` — the same first-party API already used for Codex Desktop detection) to notice an `opencode` process the user launched with an explicit `--port N` argument. AgentDeck does **not** port-scan and never spawns `opencode`.
 - The connection consumes OpenCode's own read-only event stream (`GET /global/event`, Server-Sent Events) and renders session rows (project, working/idle, current tool). When OpenCode reports a permission request, AgentDeck shows a display-only "needs attention" state — the user responds in their own OpenCode terminal; AgentDeck sends no commands to the server.
-- Reviewers without OpenCode installed see "Not configured" with the toggle off; the integration is fully inert. No OpenCode-related copy in the App Store app prompts the user to install or launch anything.
+- Reviewers without OpenCode installed see "Not configured" with the toggle off; the integration is fully inert. No OpenCode-related copy prompts the user to install or launch OpenCode or a companion executable. Observer file installation is the separate, explicit consent action described above.
 
 ### Antigravity (usage only in the App Store build)
 
