@@ -147,7 +147,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
-| Hermes observer monitoring (preview) | Yes, with explicit receiver selection | Yes | Both daemons ingest `hermes_*` hooks and advertise `hermesObserver: 1`. The externally installed observer uses its profile-local `connection.json` loopback port when selected with `agentdeck hermes-observer --port`; this supports the sandboxed Swift receiver without reading its container or keeping a Node daemon running. Otherwise discovery uses the Node registry, which the App Store daemon does not write. Reconfigure the selection if the port moves; invalid explicit selection never falls back. Installation and Hermes enablement remain outside the app. Rows are observation-only, with no approvals, prompt injection or voice target. Direct signed-sandbox live acceptance is not established by this source audit; earlier QA/Node-relay receipts remain scoped as recorded in [Hermes integration](hermes-agent.md#check-setup-when-hermes-activity-is-missing). |
+| Hermes observer monitoring (preview) | Yes, with explicit receiver selection | Yes | Both daemons ingest `hermes_*` hooks and advertise `hermesObserver: 1`. The externally installed observer uses its profile-local `connection.json` loopback port when selected with `agentdeck hermes-observer --port`; this supports the sandboxed Swift receiver without reading its container or keeping a Node daemon running. Otherwise discovery uses the Node registry, which the App Store daemon does not write. Reconfigure the selection if the port moves; invalid explicit selection never falls back. Installation and Hermes enablement remain outside the app. Rows are observation-only, with no approvals, prompt injection or voice target. Direct delivery, opt-out, invalid selection and port reconfiguration were exercised against signed Store 1.9.2 / 9401 on 2026-10-29; this is not current-source release acceptance. See [the receipt](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29). |
 | Claude Code hook monitoring | Yes | Yes | Local HTTP hook ingestion |
 | Codex lifecycle/notify/OTel monitoring | Yes | Yes | Opt-in managed config |
 | Existing terminal-session discovery | Limited | Yes | Broad process/TTY discovery remains CLI-owned. Swift already uses native `sysctl` process evidence and user-granted transcript readers for specific integrations; native process enumeration itself is not Node-only |
@@ -242,7 +242,7 @@ external process inside the app.
 
 | Priority | Candidate | Why native is plausible | Completion evidence / remaining dependency |
 |---|---|---|---|
-| P1 | Hermes direct-receiver setup and acceptance | Hook ingestion and explicit selection already exist; the gap is setup continuity and signed-sandbox evidence, not a new receiver | Real Hermes turn into a signed sandbox app with no Node daemon; prove selected-port changes, invalid selection, opt-out and clean session close. Keep observer enablement user-owned; no companion-install prompt in the app |
+| P1, runtime gate met on 9401 | Hermes direct-receiver setup continuity | Direct signed-sandbox delivery, explicit port reconfiguration, opt-out and clean session close were verified on 2026-10-29; external observer setup still needs an explicit selection | [Receipt and limits](hermes-agent.md#direct-store-swift-receiver-acceptance-2026-10-29). Remaining work is setup UX/continuity and acceptance on any future release build. Keep observer enablement user-owned; no companion-install prompt in the app |
 | P1 | OpenCode observer setup through explicit file consent | The app already consumes hooks/SSE; a scoped file installer can follow the existing Claude/Codex consent pattern | Preserve user configuration, verify install/update/removal and real hook delivery. OpenCode executes its plugin; the app must not start OpenCode. Review packaging and Store disclosure before implementation |
 | P2 | Kiro v2 SQLite observation | Swift already supports granted Kiro JSONL stores; native SQLite can replace Node's reader | First establish remaining v2 usage. Read-only bookmark access including WAL, schema fixtures, session/turn identity and unknown-state parity; no fabricated PERM |
 | P2 | Daemon relay hub/worker | Existing authenticated HTTP/WS and native session state provide the transport building blocks | Port the [relay contract](../bridge/src/daemon-relay.ts), bounded teardown, reconnect/dedup and per-session authorization. Advertise only steering the Swift worker can execute; remote terminal injection still needs an external worker |
@@ -275,9 +275,9 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Suggested delivery order: validate Hermes direct delivery, implement consented
-OpenCode setup, then prioritize Kiro legacy support or Pocket content using
-actual user/device demand. Relay follows a dedicated transport/control design.
+Suggested delivery order: build on the measured Hermes direct-delivery path for
+setup continuity, implement consented OpenCode setup, then prioritize Kiro legacy
+support or Pocket content using actual user/device demand. Relay follows a dedicated transport/control design.
 Investigate the Claude source in parallel with this roadmap; do not promise a
 native quota release before that evidence exists. Dot remains a separate
 DotPreview/distribution track, not a Node-to-Store parity commitment.

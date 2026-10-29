@@ -616,6 +616,41 @@ No production daemon restart, user Hermes profile edit or paid model call was
 needed for these isolated runtime checks. The Android visual turn used the
 existing production receiver and only synthetic fixture content.
 
+### Direct Store Swift receiver acceptance 2026-10-29
+
+The installed Store app **1.9.2 / 9401** passed strict code-signature verification
+with `com.apple.security.app-sandbox=true`. Its executable SHA-256 was
+`b730880f02ae9a1397beaef267ccfdd7922a2119bd457ba74d8f10584cbdcac5`.
+An isolated container subdirectory, explicit loopback port and disabled device
+modules separated the receiver from the shared production Node daemon. Health
+confirmed `isSwift: true` and `hermesObserver: 1`. The Node daemon stayed running
+for other sessions; it was not the receiver or an intermediary for these turns.
+This proves direct delivery without a Node dependency on that path, not a
+machine-wide test with every Node process stopped.
+
+The real Hermes classic CLI at `0a374d167424cdc730ce9761368b62255b551e58`
+loaded the observer from a temporary profile. A local OpenAI-compatible SSE
+fixture supplied one fixed answer; no paid provider or tool execution was used.
+Installed dependency activation preceded temporary-profile selection because
+the upstream launcher rejects dependency environments outside a new profile.
+Lazy installs were disabled; its dependency-sync warning was retained in logs.
+
+| Case | Observed result |
+|---|---|
+| Explicit receiver port, real CLI turn | CLI exit 0; Swift WS roster idle → processing → idle → removed; one closed Hermes APME run and one turn with `end_source=stop` and the exact fixture response |
+| `AGENTDECK_NO_HERMES_HOOKS=1` | CLI still completed; no Hermes roster entry or new timeline event on the Swift receiver |
+| Invalid explicit selection (`port: false`) | CLI still completed; no Hermes roster entry or new timeline event. Existing Python tests separately prove no registry/network fallback |
+| Swift restart on a new port, observer reconfigured | Repeated direct delivery and clean session retirement; explicit selection must be updated when the receiver moves |
+
+Raw local receipts are retained under
+`diagnostics/hermes-swift-direct-20261029/` (gitignored). Observer tests passed
+25 cases and installer/diagnostic tests passed 27 cases. These do not prove
+Gateway messaging-platform behavior, automatic port discovery, physical-device
+appearance, a current-source Store release, or full delivery under congestion.
+The test app's temporary preference changes were restored and the original
+development GUI reopened after verification; the production Node daemon was
+not restarted.
+
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
 
