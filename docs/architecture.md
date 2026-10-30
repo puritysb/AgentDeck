@@ -274,6 +274,12 @@ Neither observer reads OAuth credentials or changes the source files.
 - The latest indexed step's `RUNNING`/`DONE` supplies processing/idle evidence.
   DONE describes that step; it does **not** assert a completed task/turn or produce
   APME Stop records. No permission request, answer options or controls are inferred.
+- Live CLI acceptance on 2026-10-31 found that the installed `agy` emitted
+  ACTIVE on its print stream while persisting only DONE steps. Both file readers
+  can therefore show idle during streaming; identity and post-exit idle acceptance
+  do not establish live WORKING accuracy. A separate explicit activity source is
+  needed; process presence or mtime must not manufacture that signal. See the
+  [live acceptance](appstore-feature-matrix.md#antigravity-live-cli-acceptance-2026-10-31).
 - Both original record time and file modification time must be fresh: RUNNING
   expires after ten minutes, other roster evidence after one hour. Unknown status,
   malformed final records, missing identity/time, unsafe paths or unreadable files
