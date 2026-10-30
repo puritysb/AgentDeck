@@ -265,7 +265,7 @@ data before new credentials, control protocols or unproven legacy demand.
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
 | 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
-| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real Node/Swift sockets both ways, token/origin refusal, reconnect/dedup, silent hello timeout, stale/fallback and supported-control guards. All five native build/test configurations pass; two-machine and signed Settings acceptance remain unverified. Full terminal control is not implied. |
+| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real sockets, token/origin refusal, reconnect/dedup, timeout, stale/fallback and control guards; all five native configurations pass. [Two-Mac signed-app acceptance](#signed-daemon-relay-two-mac-acceptance-2026-10-31) adds real Keychain save/relaunch/disable and Node↔Swift control round trips while preserving the shared daemon/devices. Full terminal control and Store distribution are not implied. |
 
 **Conditional P2 / research**, not the next default implementation:
 
@@ -727,8 +727,9 @@ failed deletion remaining disabled, unsupported/terminal/global controls, live
 held-request checks, actual native socket reconnect and stop. The relay-specific
 suites plus verification-catalog checks pass 49 Vitest cases.
 
-These are local process/socket and storage-fixture checks. A physical two-machine
-link, signed relay Settings/Keychain flow and Store distribution are not claimed.
+These source suites are local process/socket and storage-fixture checks. Physical
+two-machine and signed Settings acceptance are recorded separately below; Store
+distribution is not claimed.
 The existing app-owned Keychain adapter is reused; no Node file or foreign
 credential store is read. Session metadata still travels over v1 `ws://` to the
 explicitly trusted endpoint; the existing [network boundary](daemon.md#daemon-relay-worker-daemon-to-hub)
@@ -750,5 +751,48 @@ seven focused cases after recovery. No unrelated process was signalled and no
 global system limit or repository build setting was changed. Native verification used
 per-invocation single-job/single-batch scheduling with parallel WMO disabled;
 optimization and Store/Dot feature boundaries remained enabled. The new test
-catalog entries are included in CI. Local build/test acceptance does not imply
-installed-app, signed relay Settings or Store distribution acceptance.
+catalog entries are included in CI. Local build/test acceptance does not itself
+imply signed-app or Store distribution acceptance.
+
+## Signed daemon relay two-Mac acceptance 2026-10-31
+
+Validation ran across the owner's Mac Studio and MacBook Pro, spanning October
+30–31. The existing Release artifact was development-signed with the app's
+matching provisioning profile and real sandbox/network entitlements. The full
+app ran on port 19436 with every device module disabled. A signed Settings host
+using unchanged production Settings, Keychain and uplink sources supplied a
+separate storage check; it was not substituted for full-app acceptance.
+
+- The full app's Settings → Integrations → Daemon relay saved a synthetic hub
+  credential to the app-owned Data Protection Keychain. After normal quit and
+  relaunch, its host/port and authenticated connection returned without token
+  re-entry; the secure field stayed empty. Disable removed the worker remotely,
+  and another relaunch stayed at **Relay off**. The component host independently
+  confirmed the Keychain record was present after save and absent after disable.
+- The full Swift worker connected to a Node hub on the MacBook's private LAN
+  address. A synthetic Claude hook session entered the full app's real HTTP
+  receiver and appeared once at the remote hub. A hub-issued `interrupt` returned
+  through that worker socket and produced the actual next `PreToolUse` soft-stop
+  `deny` response. Injected unsupported `voice` commands were explicitly refused.
+- A Node worker on the MacBook published to the full Swift hub through an
+  explicit SSH loopback forward and received `interrupt` back on the same
+  socket. An additional production-component Swift hub/Node worker pair also
+  passed direct LAN publication and control. These are transport/control tests
+  with synthetic sessions, not execution in a real remote coding-agent terminal.
+- Dropping worker sockets restored one copy of the full app's synthetic row,
+  with one registration per distinct worker. The signed component host also
+  recovered after the remote Node hub process was restarted.
+
+The shared Node daemon on 9120 retained PID, build and network posture throughout.
+Its serial ports, Wi-Fi board identities, Stream Deck, D200H, Pixoo and Android
+connections remained present. Only the GUI was temporarily quit; its original
+installation and settings were restored afterward. Temporary listeners, SSH
+forwards, synthetic Keychain data and signed test apps were removed. No release,
+upload or Store installation was performed.
+
+There is a measured endpoint limitation: the signed component host rejected the
+Tailscale CGNAT numeric address with `NSURLErrorDomain -1022` under the production
+App Transport Security policy. Private LAN IPv4 and the explicit SSH forward
+passed. Do not generalize this result to arbitrary overlay/public-IP endpoints;
+no transport-security exception was added. See the
+[isolation notes](devlog/entries/2026-10-31-signed-relay-two-mac.md).

@@ -449,7 +449,7 @@ Managed remote attach keeps working unchanged alongside it.
   daemon reports (`/health.relay`), including why it is not connected (missing
   capability, rejected token, refusal). For an `ssh -L` forward, name the local
   end (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
-- **Enable (Swift worker)**: macOS Settings → Services → Daemon relay asks for
+- **Enable (Swift worker)**: macOS Settings → Integrations → Daemon relay asks for
   the hub host, port, optional pairing token for loopback and explicit consent
   to publish observed session metadata/accept supported controls. The target and
   token stay in the app’s own device-local Data Protection Keychain; only the
@@ -458,6 +458,11 @@ Managed remote attach keeps working unchanged alongside it.
   failed deletion cannot restore consent after relaunch. No Node `relay.json`,
   environment credential or another tool’s Keychain is imported. The Settings
   card configures only the native owner and is hidden in external-daemon mode.
+  [Signed two-Mac acceptance](appstore-feature-matrix.md#signed-daemon-relay-two-mac-acceptance-2026-10-31)
+  covers real Keychain save/relaunch/disable and mixed Node/Swift control. Private
+  LAN IPv4 and explicit SSH loopback forwarding passed; a numeric Tailscale
+  CGNAT endpoint was rejected by the production App Transport Security policy
+  (`-1022`). Overlay/public-IP connectivity is not covered by that acceptance.
 - **Same boundary as remote attach**: opt-in per worker, never discovered;
   outbound only — the worker dials, commands come back down that socket, and the
   hub never dials a worker; a non-loopback hub needs its pairing token, which
