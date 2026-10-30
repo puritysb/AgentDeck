@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Apple product maintainers
-reviewed: 2026-10-30
-revision: 2026-10-30
+reviewed: 2026-10-31
+revision: 2026-10-31
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -64,7 +64,7 @@ All surfaces follow the same rule:
 | macOS dashboard and in-process daemon | Yes | — | Standalone Tier 1 product |
 | macOS attention shortcuts and notification navigation | Yes | Compatible host | Native Shortcuts list live sessions awaiting a response and open a specific session in the Dashboard. Notification clicks use the same endpoint-scoped, local inspection route. Roster freshness is tracked separately from usage and timeline traffic; unavailable state is never reported as an empty queue. Opening a session does not answer a prompt, launch a session, or change hardware control focus. Cold-start waits are bounded. No new entitlement, helper or extension is required. |
 | Experimental macOS collaboration lens | Yes | Yes | Opt-in Dashboard right rail with an expandable graph of all roster sessions and observed message links. Habitat shows these relationships as quiet cyan currents between visible creatures in both 2D and 3D; recent messages carry directional bubbles, reduced motion keeps them still. Selection filters currents to that creature. Both daemons expose bounded, authenticated relation-only history, without tool payloads or subprocesses. Only an explicit reply request in the complete observed message starts a timer; notifications, replies and unknown/legacy intent never start one. Notifications cannot settle an outstanding request. An explicitly worded reply can settle a single outstanding request; multiple requests or crossed messages remain unconfirmed because Claude supplies no reply correlation. Both directions retain their own waits independently of the latest message arrow. Unknown peers, absent sessions, stale reads and truncated history remain explicit. Graph selection uses dashboard inspection without changing agent control. Selected-session task history, subagent census and existing controls remain available. |
-| Cross-session coordination evidence (`RelationEvent` + `SessionInfo.coordination`) | Partial | Yes | Work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a background Bash (`spawned`, process ancestry), peer messages over SendMessage (`messaged`, the sender's tool input and the receiver's `<cross-session-message>` envelope), and background jobs a session is waiting on (`waiting_on`, argv names its scratchpad). Both tiers produce all three plus the live `coordination` census on `sessions_list` (`bridge/src/coordination-evidence.ts`; Swift `CoordinationTracker` is a transliteration, both replay `shared/coordination-evidence-vectors.json`). The session→process link is the hook header `X-AgentDeck-Pid: $PPID` on both tiers; Tier 2 additionally reads `~/.claude/sessions/<pid>.json`. The process table is `sysctl` on Tier 1 (`ProcessEnumerator.processTable`, no entitlement, no subprocess) and `ps` on Tier 2. IPS10 cards receive `coordination {backgroundJobs, spawnedActive}` and a bounded rotating roster (`stableCardRoster`, up to three attention sessions pinned, remaining sessions rotate every 60 seconds, id order within each page, `total` and `rosterRotating` metadata) from either daemon. Observed only — never inferred from shared project membership. A `TaskCompleted` checklist item is an `info` annotation on both tiers, never a child agent. |
+| Cross-session coordination evidence (`RelationEvent` + `SessionInfo.coordination`) | Yes, evidence-bounded | Yes | Work divided WITHOUT a SubagentStart: `claude -p` workers spawned from a background Bash (`spawned`, process ancestry), peer messages over SendMessage (`messaged`, the sender's tool input and the receiver's `<cross-session-message>` envelope), and background jobs a session is waiting on (`waiting_on`, argv names its scratchpad). Both tiers produce all three plus the live `coordination` census on `sessions_list` (`bridge/src/coordination-evidence.ts`; Swift `CoordinationTracker` is a transliteration, both replay `shared/coordination-evidence-vectors.json`). The session→process link is the hook header `X-AgentDeck-Pid: $PPID` on both tiers; Tier 2 additionally reads `~/.claude/sessions/<pid>.json`. The process table is `sysctl` on Tier 1 (`ProcessEnumerator.processTable`, no entitlement, no subprocess) and `ps` on Tier 2. IPS10 cards receive `coordination {backgroundJobs, spawnedActive}` and a bounded rotating roster (`stableCardRoster`, up to three attention sessions pinned, remaining sessions rotate every 60 seconds, id order within each page, `total` and `rosterRotating` metadata) from either daemon. Observed only — never inferred from shared project membership. A `TaskCompleted` checklist item is an `info` annotation on both tiers, never a child agent. |
 | Enterprise network posture (loopback-only / no device modules) | Yes | Yes | Same two axes both tiers. Tier 2: `daemon start --loopback/--local`, baked into autostart via `daemon install --enterprise`. Tier 1: Settings → Local server toggles (`AppPreferences.daemonLoopbackOnly` / `daemonNoDeviceModules` → `DaemonPosture`), applied by daemon restart; the sandboxed app cannot read env vars meaningfully, so a preference is the switch |
 | iOS / iPadOS companion | Yes | Yes | Bonjour + same-LAN WS |
 | Stream Deck family | Yes | Yes | Requires Elgato Stream Deck host software |
@@ -135,7 +135,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 |---|:---:|:---:|---|
 | Ulanzi D200H | Yes | Yes | Ulanzi Studio plugin is the only driver; no direct HID |
 | Ulanzi D200X LCD keys | Partial | Partial | Same 14-key Ulanzi Studio action as D200H; SDK/simulator contract is covered, but real-hardware verification is pending and the three encoders are not supported |
-| Pixoo64 | Yes | Yes | Native LAN HTTP |
+| Pixoo64 | Yes, single-frame and Tide | Yes, also baked aquarium loop | Native LAN HTTP and multi-frame Tide upload already exist; `animation: "loop"` still falls back to single-frame in Swift. Baked aquarium frame generation remains a native-port candidate. |
 | Timebox Mini | Yes | Yes | Expressive robot face with gaze, listening nods, speaking mouth shapes, greeting winks and token-based eye highlights / warm cheeks; shared Node/Swift state rules and generated animation frames; native CoreBluetooth / CLI BLE helper |
 | iDotMatrix | Yes | Yes | Permanent creature with live WORK/JOBS/WAIT counts, separate CI/child-agent states, bounded 6 s conversation/arrival scenes and explicit partial totals; shared Node/Swift frames; one BLE display connection at a time |
 | ESP32 state display and Wi-Fi provisioning | Yes | Yes | Native serial and network frameworks. Wi-Fi credentials go to whichever daemon holds the port through loopback `POST /esp32/wifi` (pairing token required), and that daemon saves them and writes them to its serial boards; the macOS sheet never opens a serial port. `agentdeck wifi-setup` uses the same route |
@@ -143,7 +143,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 | ESP32 Wi-Fi OTA push | Yes | Yes | Firmware bytes pushed over existing WS; firmware build remains CLI-only |
 | Ulanzi TC001 | Pending | Yes | Swift `led8x32` hardware verification gap, not sandbox restriction |
 | TRMNL 7.5" | Experimental | Experimental | Registration exists; physical render/refresh release validation incomplete |
-| XTeink X3 / X4 | Yes | Yes | Independent Pocket Daily Reader firmware; registers with both daemons over Wi-Fi and retains its own product identity/releases (SD-card flash distribution) |
+| XTeink X3 / X4 | Feed/Outbox and Glance software support; device integration deferred | Feed/Outbox and Glance software support; device integration deferred | The current X4 firmware direction changed. Physical feed/feedback and pixel acceptance belong to future companion-app integration; previous independent Pocket firmware transport is not evidence of current-device compatibility. |
 | Android e-ink / tablet presence | Partial | Yes | Same-LAN self-registration is safe; ADB preview/tunnel requires CLI |
 
 ## Agent sessions
@@ -211,14 +211,15 @@ decisions follow from that:
    accessibility trees are opaque, use the focus-free key path and keep the
    button path for hosts that do expose controls.
 
-## Swift parity priorities — source assessment 2026-10-30
+## Swift parity priorities — source assessment 2026-10-31
 
-The initial comparison used `ab8a8ada`; this update includes Hermes continuity
-acceptance through `6ecae58b`, OpenCode native setup in `fa0427fd`, and finite
-OpenCode shutdown delivery in `c41db84d`. Completion below means source plus
-recorded local signed-app acceptance, not a newly shipped Store version. P2 order
-is an implementation proposal, not release approval. Candidates leave the current
-capability rows unchanged until their own acceptance gates pass.
+This source audit uses `d81b77bf`, including the native P2 implementations,
+ATS correction in `099da989`, and recorded acceptance of the installed signed
+Release app. The four original P2 ports are implemented. Their remaining
+provider/device acceptance is listed separately from new implementation work.
+Local development signing and installation do not establish Store distribution
+acceptance. The order below is a proposal, not release approval; capability
+rows change only when the corresponding implementation and gates pass.
 
 **Node is the current external runtime, not a language requirement.** A bounded
 HTTP/WebSocket client, SQLite reader, renderer or state machine can often be
@@ -252,43 +253,74 @@ These two P1 implementation/acceptance items are closed. Packaging them into a
 release is separate from the remaining native-port backlog; Claude quota source
 research below remains open.
 
-### P2 implementation status and order
+### Completed original P2 implementations
 
-Pocket selection and Glance rendering are now implemented natively; the remaining
-increments are currently Node-only. Existing native transport/observation is called out
-separately; it does not imply full parity. Proposed native implementations add
-no subprocess. The remaining order favors existing native transport and owned
-data before new credentials, control protocols or unproven legacy demand.
+All four originally prioritized increments now run natively without a Node
+daemon. This closes their implementation backlog, while preserving the specific
+acceptance limitations in each row.
 
 | Order | Candidate and current gap | First bounded Swift increment | Completion gate / dependency |
 |---|---|---|---|
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
 | 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
-| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real sockets, token/origin refusal, reconnect/dedup, timeout, stale/fallback and control guards; all five native configurations pass. [Two-Mac signed-app acceptance](#signed-daemon-relay-two-mac-acceptance-2026-10-31) adds real Keychain save/relaunch/disable and Node↔Swift control round trips while preserving the shared daemon/devices. Full terminal control and Store distribution are not implied. |
+| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real sockets, token/origin refusal, reconnect/dedup, timeout, stale/fallback and control guards; all five native configurations pass. [Two-Mac signed-app acceptance](#signed-daemon-relay-two-mac-acceptance-2026-10-31) adds real Keychain save/relaunch/disable and Node↔Swift control round trips while preserving the shared daemon/devices. [Installed Release acceptance](#installed-signed-release-relay-acceptance-2026-10-31) additionally verifies numeric Tailscale address connection, relaunch restoration and disconnect in the actual installation after the ATS correction. Full terminal control and Store distribution are not implied. |
 
-**Conditional P2 / research**, not the next default implementation:
+### Remaining native increments — proposed next order
 
-| Candidate | Promotion condition | Acceptance boundary |
+These are source-confirmed gaps, not evidence that Swift cannot implement them.
+The ranking favors app-owned data and observation before new control contracts.
+No production database is pruned, credential imported or device changed by this
+assessment.
+
+| Priority | Current Node-only increment and source evidence | First bounded Swift increment | Completion gate / dependency |
+|---|---|---|---|
+| P2.1 — next default | APME retention and storage management: Node [payload policy](../bridge/src/apme/payload-prune.ts) and [store preview/apply/vacuum](../bridge/src/apme/store.ts). Native [store](../apple/AgentDeck/Daemon/Apme/ApmeStore.swift) reads prune markers but has no equivalent retention operation. | App-owned database size/status and retention preview first, then an explicit manual apply. Use `AgentDeckPaths`; never modify a sibling Node store. Generate/mirror the shared policy before implementing native SQL. | Node/Swift fixtures must preserve every row and all runs/tasks/turns/evals; replace only eligible old `steps.payload` and tool-kind `sample_events.payload` with the canonical marker. Preserve other event kinds, exclude unknown timestamps and already-pruned payloads, bound batches and apply atomically. Test WAL/busy/interruption and preview/apply consistency. VACUUM is separate, explicitly requested, with free-space/unknown handling; payload reduction alone does not promise a smaller file. |
+| P2.2 — evidence milestone first | Antigravity session observation: Node [collector](../bridge/src/passive-observer.ts) and [JSONL parser](../bridge/src/apme/antigravity-transcript.ts) already provide a concrete source shape. Native usage/account support is not a session observer. | User-selected transcript folder, scoped bookmark restoration and read-only conversation parsing in a signed sandbox. Prove stable conversation/turn identity before promoting to full observation implementation. | Fixtures plus live signed-app access: latest-step RUNNING/DONE, incomplete tails, rotation, disappearance, relaunch and stale/unknown. Historical RUNNING records and process presence must not create a permanent WORKING state; usage data must not fabricate PERM. No control or APME import is implied. |
+| P2.3 | ICS calendar ingestion for Glance: Node [CalendarProvider](../bridge/src/calendar.ts) feeds schedule events; native Pocket calendar context currently means local date/time, not external ICS ingestion. | Explicit calendar-source consent, secret URL custody in Keychain, bounded fetch/cache and native event expansion. Preserve aggregate-only Pocket learning; never persist event copy as learned content or expose secret URLs in wire/logs. | Shared parser/policy vectors for Node's supported ICS subset, recurrence exceptions, timezone/DST, all-day events, cache/stale and fetch limits. Any correction to Node's timezone assumptions must be a shared contract change. Software Feed/Glance verification can precede the deferred X4 companion integration. |
+| P2.4 | Pixoo baked aquarium `animation: "loop"`: Node [bridge](../bridge/src/pixoo/pixoo-bridge.ts) supports it; native [module](../apple/AgentDeck/Daemon/Modules/PixooModule.swift) supports single-frame and Tide but falls back for this mode. | Port baked aquarium frame generation using canonical artwork/layout and existing native multi-frame upload. This is a rendering increment, not a missing Pixoo transport. | Frame/layout parity, bounded cache/upload work, loop seam, frame IDs, rate/backoff, dim/wake and physical Pixoo acceptance. Existing native Tide reduces urgency. |
+| P2.5 — separate control proposal | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`; native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) deliberately implements the read-only subset. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
+
+The next default implementation is **P2.1 APME retention**, beginning with the
+read-only preview and preservation fixtures. Antigravity starts with access and
+identity evidence rather than a promise of immediate observation parity.
+
+### Conditional research and acceptance, outside the default port queue
+
+| Item | Promotion condition / remaining work | Classification |
 |---|---|---|
-| Kiro v2 SQLite reader | Confirm actual v2 usage or obtain a representative active store; modern flat/nested JSONL observation is already native. | Read-only user-granted folder access including live WAL/SHM, schema fixtures, stable session/turn identity, consistent snapshots and unknown-state parity. No fabricated PERM. If active v2 demand is demonstrated, this bounded reader can move ahead of CI/relay. |
-| Antigravity session evidence | Prove a readable, user-granted source format and reliable account/session/turn identity in a signed sandbox. | Process presence or usage/plan data alone is insufficient. Establish evidence before promising observation parity or a migration implementation. |
-
-P3 stays separate: TC001 needs physical native acceptance rather than a new
-observer/transport implementation; ESP32 USB ROM flashing is technically
-implementable with native serial but remains unplanned because of chip/image
-safety and recovery scope. CLI/browser flashing stays the supported path.
+| Kiro v2 SQLite reader | Demonstrate active v2 use or a representative fixture. Node [reader](../bridge/src/kiro-session.ts) supports `conversations_v2`; native flat/nested JSONL observation already exists. Require user-granted read-only access including WAL/SHM, schema/snapshot tests, stable identity and unknown-state parity; never fabricate PERM. | Portable reader, demand-gated. Can move ahead of the new default queue if active legacy usage is established. |
+| Claude account quota | Establish a trustworthy source with account identity and observation time; see research contract below. | Source-contract research, not a routine HTTP port. |
+| X4 Pocket/Glance | Physical feed/feedback and pixel acceptance at future companion-app integration, as explicitly deferred by the user. | Deferred device integration, not an incomplete native selector/renderer port. |
+| GitHub private repository | Live authenticated reads using a user-configured connection; public reads, Keychain and software failure handling already verified. | Provider acceptance, not a missing native GitHub client. |
+| TC001 / TRMNL / D200X | Complete the respective native physical/rendering or release checks. D200X keypad support does not imply shipped encoder support. | Hardware acceptance; do not label an existing transport Node-only. |
+| Dot | Continue its own DotPreview/distribution decision and acceptance. | Separate product/distribution track, not default Store parity work. |
 
 ### Retain an external execution environment
 
+This table describes the current product/runtime contract, not an assertion that
+these algorithms require JavaScript. The CLI remains a supported compatibility
+path; the native app does not replace every host platform or vendor plugin.
+
 | Capability | Structural boundary under the current Store contract | Swift role |
 |---|---|---|
-| Managed PTY launcher and agent lifecycle | Runs Claude/Codex/OpenCode and owns subprocesses/PTYs | Observe ordinary sessions and consume external results |
-| Terminal/UI answer injection | Current implementation needs TTY discovery and tmux/cmux/osascript or host automation; those paths are outside the sandbox contract | Retain native held-hook approvals, AskUserQuestion answers and supported queued delivery; these are not full terminal control |
-| APME Layer 1 lint/build/test execution | Runs arbitrary repository/package-manager commands | Keep native LLM evaluation and task review. Reading an existing result bundle would be a separate partial capability, not execution parity |
-| Claude credential recovery | Asks the user's Claude CLI to perform a bounded renewal turn | Consume explicit external status; never rotate Claude refresh tokens or spawn the CLI |
-| ADB executable integration | Current USB reverse/discovery/control path invokes `adb`; [Swift module](../apple/AgentDeck/Daemon/Modules/AdbModule.swift) is intentionally disabled | Support same-LAN Android clients. A native ADB implementation would require a separate feasibility/security/product decision, not merely a port of the module |
-| OpenClaw CLI pairing | Executes the external OpenClaw command | Use the existing native Gateway WebSocket pairing path |
+| Managed PTY launcher, agent lifecycle and managed remote attach | Runs Claude/Codex/OpenCode and owns subprocesses/PTYs. The managed `sameSocketControl` channel is distinct from the now-native daemon relay v1. | Observe ordinary sessions and consume external results; keep long-term managed CLI compatibility. Do not add native process launching. |
+| Terminal/UI answer injection | Current implementation needs TTY discovery and tmux/cmux/osascript or host automation; those paths are outside the sandbox contract. | Retain native held-hook approvals, AskUserQuestion answers and supported queued delivery. Explicit server HTTP controls can be reviewed separately; these are not full terminal control. |
+| APME Layer 1 lint/build/test execution | Runs arbitrary repository/package-manager commands. | Keep native LLM evaluation and task review. Reading an existing result bundle would be a separate partial capability, not execution parity. |
+| APME CLI reference judge | [Current implementation](../bridge/src/apme/reference-judge.ts) explicitly invokes `codex exec` using the user's CLI login, only on request. | Existing native judges remain available. A direct hosted-model reference judge would need a new credential, content-sharing and calibration contract; it is not reuse of CLI login. |
+| Claude credential recovery | Asks the user's Claude CLI to perform a bounded renewal turn. | Consume explicit external status; never rotate Claude refresh tokens or spawn the CLI. |
+| ADB executable integration | Current USB reverse/discovery/control path invokes `adb`; [Swift module](../apple/AgentDeck/Daemon/Modules/AdbModule.swift) is intentionally disabled. | Support same-LAN Android clients. A native ADB implementation would require a separate feasibility/security/product decision, not merely a port of the module. |
+| OpenClaw CLI pairing | Executes the external OpenClaw command. | Use the existing native Gateway WebSocket pairing/model-selection path. |
+| Firmware build and current USB ROM flashing tools | Builds require external toolchains; current flashing relies on external CLI/browser tooling. Native serial ROM flashing is technically possible but unplanned because chip/image validation and recovery require a separate project. | Retain native supported OTA delivery. CLI/browser flashing remains supported; do not conflate OTA with ROM flashing or firmware compilation. |
+| Windows/Linux service, PTY and host-control backends | These are external host runtimes; the macOS App Store app is not their platform replacement. | Preserve cross-platform Node support; a separate native host implementation is outside this migration queue. |
+| Elgato/Ulanzi plugin hosts | Vendor SDK plugin execution remains in the vendor application/runtime. | Both already connect to the Swift daemon. A JavaScript plugin runtime does not imply a Node daemon dependency. |
+
+Cross-session coordination is also **not** a remaining Node-only feature: native
+`startCoordinationTick` uses `ProcessEnumerator.processTable()` and
+`CoordinationTracker`. An older Node-only process-evidence comment in
+[DaemonServer](../apple/AgentDeck/Daemon/Server/DaemonServer.swift) is stale; the
+executable native path and shared evidence vectors establish the boundary.
+Broad terminal discovery/steering remains separate.
 
 ### Claude quota: source-contract dependency, not a routine native port
 
@@ -302,18 +334,14 @@ comparison. A session-scoped last-reported value with explicitly unknown age is
 a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
-Pocket adaptive selection and Glance pixels now run in-process in Swift.
-Physical X4 acceptance for both belongs to future companion-app integration.
-Native GitHub CI enrichment now follows an explicit consent/Keychain/identity
-contract. Daemon relay now implements its mixed transport/control contract.
-The default P2 migration list is implemented; remaining physical/private-provider
-acceptance and conditional research stay separate. Promote Kiro v2 only when
-legacy demand is established.
-Prepare the completed Hermes/OpenCode work for release as a separate activity;
-local acceptance is not Store distribution acceptance. Investigate the Claude
-source in parallel without promising a quota release before the evidence exists.
-Dot remains a separate DotPreview/distribution track, not a Node-to-Store parity
-commitment.
+Pocket selection, Glance pixels, GitHub CI enrichment and daemon relay have
+completed their original native implementation queue. The next proposed native
+increment is APME retention/storage management, followed by evidence-gated
+Antigravity observation, ICS ingestion, Pixoo baked loops and a separately
+consented OpenCode control proposal. Physical/private-provider acceptance remains
+separate. The installed signed Release relay acceptance is recorded; future Store
+artifact and distribution acceptance remain release work. Investigate the Claude
+quota source in parallel without promising a quota release before evidence exists.
 
 ## Required change order
 
