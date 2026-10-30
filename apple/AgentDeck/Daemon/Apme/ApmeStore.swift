@@ -11,6 +11,7 @@ import SQLite3
 
 final class ApmeStore: @unchecked Sendable {
     private var db: OpaquePointer?
+    private let maintenanceLock = NSLock()
     let dbPath: String
     private(set) var isOpen = false
     private static let openQueue = DispatchQueue(label: "dev.agentdeck.apme.open", qos: .utility)
@@ -19,6 +20,9 @@ final class ApmeStore: @unchecked Sendable {
         dbPath = AuthManager.agentDeckDir
             .appendingPathComponent("apme.sqlite").path
     }
+
+    /// Explicit disposable-store injection for verification. Production uses init().
+    init(databaseURL: URL) { dbPath = databaseURL.path }
 
     deinit {
         close()
@@ -69,6 +73,36 @@ final class ApmeStore: @unchecked Sendable {
     func close() {
         if let db { sqlite3_close_v2(db) }
         db = nil; isOpen = false
+    }
+
+    // Maintenance opens an existing store on a separate connection, off actor.
+    // WAL readers and collector statements cannot enter its transaction.
+    func storageStatus() throws -> ApmeStorageStatus {
+        try withMaintenance { try $0.status() }
+    }
+
+    func previewPrune(cutoffMs: Int64) throws -> ApmePrunePreview {
+        try withMaintenance { try $0.preview(cutoffMs: cutoffMs) }
+    }
+
+    func applyPrune(cutoffMs: Int64, expectedFingerprint: String, prunedAt: Int64) throws -> ApmePrunePreview {
+        try withMaintenance { try $0.apply(cutoffMs: cutoffMs, expectedFingerprint: expectedFingerprint, prunedAt: prunedAt) }
+    }
+
+    func compactStorage() throws -> ApmeStorageStatus {
+        try withMaintenance { try $0.vacuum() }
+    }
+
+    private func withMaintenance<T>(_ body: (ApmeRetention) throws -> T) throws -> T {
+        guard maintenanceLock.try() else { throw ApmeStorageError.sqlite(SQLITE_BUSY) }
+        defer { maintenanceLock.unlock() }
+        guard isOpen else { throw ApmeStorageError.unavailable }
+        var connection: OpaquePointer?
+        let result = sqlite3_open_v2(dbPath, &connection, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, nil)
+        defer { if let connection { sqlite3_close_v2(connection) } }
+        guard result == SQLITE_OK, let connection else { throw ApmeStorageError.unavailable }
+        sqlite3_busy_timeout(connection, 250)
+        return try body(ApmeRetention(db: connection, path: dbPath))
     }
 
     // MARK: - Runs
@@ -1287,9 +1321,8 @@ final class ApmeStore: @unchecked Sendable {
             out["latencyMs"] = r["latency_ms"] as? Int ?? 0
         case "tool":
             out["name"] = r["tool_name"] as? String ?? "tool"
-            // A row pruned by `agentdeck apme prune` (#302, retention >30
-            // days — Node-only writer, this daemon only reads the shared
-            // file) already parses to `{pruned, prunedAt, bytes}`, so
+            // A row pruned by the CLI or native manual retention already
+            // parses to `{pruned, prunedAt, bytes}`, so
             // `input`/`output` are naturally absent — mirrors
             // `sampleEventRowToTrajectory` in bridge/src/apme/store.ts.
             // The explicit flag lets ApmeScorers/ApmeRunner tell "no input

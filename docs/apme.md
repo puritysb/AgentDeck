@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: APME maintainers
-reviewed: 2026-09-10
-revision: 2026-09-10
+reviewed: 2026-10-31
+revision: 2026-10-31
 source_of_truth: docs/apme.md
 validators: [pnpm test]
 ---
@@ -610,6 +610,71 @@ tool_name, payload (JSON)
 파일이 디스크에서 줄어들지 않기 때문. **자동/백그라운드 실행은 없다** — 이
 커맨드는 사람이 직접(또는 본인의 cron/launchd 에서) 돌려야 한다. 전체 CLI
 계약은 [cli.md § Evaluation (APME)](cli.md#evaluation-apme) 참고.
+
+### Swift 보존·용량 관리 (2026-10-31)
+
+macOS 앱이 자체 Swift 데몬을 실행할 때 **Full report → Storage**에서 조회한다.
+Node 연결 모드에서는 이 로컬 저장소 작업을 제공하지 않는다. 설치된 앱 업데이트나
+실제 사용자 DB 정리는 이번 구현 검증에 포함하지 않는다.
+
+- **조회**: DB 파일, WAL, SHM, SQLite 전체 페이지·재사용 가능 페이지 및 디스크
+  여유 공간을 구분한다. 읽을 수 없는 크기는 `Unknown`이며 0으로 만들지 않는다.
+- **미리보기**: 기본 30일, 선택한 보존 기간보다 엄격히 오래된 payload만 조회한다.
+  `ts <= 0`, NULL payload, 기존 compact prune 마커는 제외한다. `steps`는 모든
+  종류, `sample_events`는 `kind='tool'`만 대상이다. 조회는 행을 변경하지 않는다.
+- **수동 적용**: 미리보기 후 별도 확인을 거친다. 대상 ID·payload·cutoff의 지문이
+  달라지면 409로 거부하고 새 미리보기를 요구한다. 두 테이블은 하나의 트랜잭션에서
+  마커로 교체하며 행, run/task/turn/eval, 사용자 교정·판정 시도 기록은 보존한다.
+  payload 내용 제거는 되돌릴 수 있으리라고 약속하지 않는다. 자동 정리는 없다.
+- **별도 압축**: 추가 확인 후 VACUUM을 실행한다. Node와 같은 파일 크기 1.1배
+  여유 공간 조건을 사용하고 조회 불가는 거부한다. checkpoint가 WAL 독자 때문에
+  완료되지 않아도 실제 파일 크기를 다시 보여주며, 예상 회수량을 성공으로 보고하지 않는다.
+
+정책 SSOT는 [apme-retention-policy.json](../shared/apme-retention-policy.json),
+생성 명령은 `pnpm generate-apme-retention`이다. Node의 기존 의미를 유지한다:
+미리보기 `bytesBefore`는 SQLite `LENGTH`(코드 포인트, NUL에서 종료), 실제 적용의
+`bytesBefore`와 마커 `bytes`는 JS 문자열 길이(UTF-16 단위)다. 이 이름은 **물리적
+바이트 수가 아니며** 이모지에서 두 값이 다를 수 있다. UI는 이를 payload 문자 수로
+표시하고 디스크 크기와 혼동하지 않는다. 작은 payload는 마커로 바꿔 더 커질 수도 있다.
+
+Swift는 기존 DB에 별도 연결을 열어 utility 작업에서 처리한다. UI/DaemonActor에서
+정리 SQL을 실행하거나 스키마를 변경하지 않는다. 중복 유지보수는 거부하고, 잠금 대기는
+250ms, 조회·해시는 SQL progress 및 행 처리 검사로 30초 제한한다. 적용도 먼저
+읽기 snapshot에서 해시를 계산하고, 그 사이 다른 쓰기가 커밋되면 SQLite의 snapshot
+upgrade 거부를 따른다. 실제 정리·압축의 쓰기 구간은 2초로 제한해 기존 수집기의
+5초 busy timeout보다 먼저 롤백한다. 큰 저장소는 제한 안에 끝나지 않으면 503으로
+거부될 수 있으며 일부만 정리하지 않는다. 느린 정리 중 새 기록의 저장도 임시 DB로
+검증한다. 쓰기 잠금 동안 저장은 잠시 지연될 수 있다. UI 요청 제한은 40초이며
+끝난 정리를 재시도하라고 오인시키지 않도록 크기 갱신 실패와 정리 성공을 구분한다.
+
+API는 기존 daemon 인증 정책에 더해 token과 loopback 주소를 모두 요구한다.
+크기·미리보기는 GET, 변경은 확인된 POST만 허용하며, 외부 DB 경로를 받지 않는다.
+
+| 경로 | 계약 |
+|---|---|
+| `GET /apme/storage` | 실제 파일 크기·페이지·여유 공간 조회 |
+| `GET /apme/storage/preview?days=30` | 고정 cutoff·후보 지문·테이블별 길이/행 수; `bytesAfter: null` |
+| `POST /apme/storage/prune` | `{cutoffMs, fingerprint, confirm:true}`; 후보 변경은 409, 잘못된 요청은 400 |
+| `POST /apme/storage/compact` | `{confirm:true}`; 공간 부족·조회 불가·DB 이용 불가는 503 |
+
+[공통 벡터](../shared/apme-retention-vectors.json)로 실제 Node store와 Swift SQLite
+worker를 실행해 결과 및 전체 행을 비교한다. 한글·이모지·결합 문자·NUL·빈 문자열,
+경계 시각, 나이 불명, NULL, 기존 마커와 보존할 비도구 이벤트를 포함한다.
+`ApmeRetentionTests`는 Swift store/HTTP 경로, 미리보기 불변성, 사용자 교정 보존,
+재개방·멱등성, 원자적 롤백, 여러 배치, WAL snapshot, 잠금, deadline 및 임시 DB의
+실제 VACUUM을 검증한다. `ApmeStorageModelTests`는 미리보기만으로 적용하지 않는 것,
+기간 변경·stale 응답·timeout과 정리 후 크기 조회 실패를 검증한다.
+모든 정리·압축 대상은 새 임시 DB이며 실제 사용자 데이터는 사용하지 않는다.
+
+2026-10-31 소프트웨어 검증: 최종 `VITEST_MAX_WORKERS=2 pnpm verify:quick`는
+7,031건 통과·17건 skip으로 완료했다. 변경 영역 검증은 네이티브와 나머지 단계를
+분리해 모두 통과했다. macOS Debug XCTest 1,429건(기존 skip 4건), 최적화된
+DotPreview XCTest 1,447건(기존 skip 9건)에 실패가 없었고, 표준 macOS Release와
+일반/DotPreview iOS 시뮬레이터 빌드 및 Dot 아티팩트 경계 검증도 통과했다.
+새 저장소/API 테스트 7건과 UI 모델 테스트 2건이 두 macOS 구성에서 모두 통과했다.
+macOS login-Keychain daemon E2E는 기존 opt-in 정책에 따라 실행하지 않았다.
+서명된 설치본의 GUI 수동 조작·배포 검증은 포함하지 않으며 설치본과 공유 데몬은
+변경하지 않았다. 이 결과는 실제 사용자 DB를 정리해 얻은 회수 용량 측정이 아니다.
 
 ### evals — 평가 결과 (결정론 + judge + turn-level + vibe)
 

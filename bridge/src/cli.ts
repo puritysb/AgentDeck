@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { registerDotCommands } from './dot-cli.js';
+import { APME_RETENTION } from './apme/retention-policy.generated.js';
 import { acceptsDaemonRuntime } from '@agentdeck/shared';
 
 import { Command, InvalidArgumentError } from 'commander';
@@ -5284,7 +5285,7 @@ apme
     'pass --apply to actually prune. There is no automatic or background ' +
     'pruning — this command must be run by hand (or from your own cron/launchd).',
   )
-  .option('--older-than <days>', 'Age cutoff in days', '30')
+  .option('--older-than <days>', 'Age cutoff in days', String(APME_RETENTION.defaultDays))
   .option('--apply', 'Actually prune (default is dry-run)')
   .option('--vacuum', 'Run VACUUM after --apply, only if free disk space is >= 1.1x the file size')
   .action(async (opts) => {
@@ -5298,7 +5299,7 @@ apme
       log(`Invalid --older-than value: ${opts.olderThan} (must be a positive number of days)`);
       process.exit(1);
     }
-    const cutoffMs = Date.now() - days * 86_400_000;
+    const cutoffMs = Date.now() - days * APME_RETENTION.dayMs;
     const fileSizeOf = (p: string): number => { try { return statSync(p).size; } catch { return 0; } };
     const sizeBefore = fileSizeOf(apme.store.dbPath);
 

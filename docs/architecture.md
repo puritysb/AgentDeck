@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Bridge maintainers
 reviewed: 2026-08-19
-revision: 2026-10-30
+revision: 2026-10-31
 source_of_truth: docs/architecture.md
 validators: [pnpm build, pnpm test]
 ---
@@ -89,6 +89,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
+| `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
 | `shared/src/connection-status.ts` (native recovery labels) | `node scripts/generate-connection-labels.mjs` → existing Swift/Kotlin lexicons | `connection-status.test.ts` checks generated label drift; native connection tests cover selection, approval and recovery. |
 | `shared/src/dot-appearance.ts` + `shared/src/dot-pixels.ts` | `pnpm generate-dot-contract` → portable Swift/Kotlin models, report-only habitat presence allow-list, firmware budgets/default glyph, native pixel overlay | Avatar conversion/budget/clearing tests, native quadrant-orientation and remote snapshot tests, generated-byte drift and matrix parity. |

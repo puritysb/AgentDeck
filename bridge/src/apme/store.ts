@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import { createRequire } from 'module';
 import { debug } from '../logger.js';
 import { APME_HOT_READ_INDEXES } from './read-indexes.generated.js';
+import { APME_RETENTION } from './retention-policy.generated.js';
 
 // better-sqlite3 is an optional native dep. Resolving via createRequire from
 // this file's URL lets Node walk `bridge/node_modules/*` via the pnpm
@@ -522,11 +523,11 @@ function prunePayloadColumn(
   extraWhere: string,
   cutoffMs: number,
   prunedAt: number,
-  batchSize = 2000,
+  batchSize = APME_RETENTION.batchSize,
 ): PruneEstimate {
   const select = db.prepare(
     `SELECT id, payload FROM ${table}
-     WHERE ts > 0 AND ts < ? ${extraWhere} AND payload IS NOT NULL AND payload NOT LIKE ?
+     WHERE ${extraWhere}${APME_RETENTION.predicate}
      LIMIT ?`,
   );
   const update = db.prepare(`UPDATE ${table} SET payload = ? WHERE id = ?`);
@@ -1709,11 +1710,11 @@ export class ApmeStore {
     if (!this.db) return { steps: emptyPruneEstimate(), sampleEvents: emptyPruneEstimate() };
     const steps = this.db.prepare(
       `SELECT COUNT(*) AS rows, COALESCE(SUM(LENGTH(payload)),0) AS bytes
-       FROM steps WHERE ts > 0 AND ts < ? AND payload IS NOT NULL AND payload NOT LIKE ?`,
+       FROM steps WHERE ${APME_RETENTION.predicate}`,
     ).get(cutoffMs, PRUNED_PAYLOAD_LIKE) as { rows: number; bytes: number };
     const sampleEvents = this.db.prepare(
       `SELECT COUNT(*) AS rows, COALESCE(SUM(LENGTH(payload)),0) AS bytes
-       FROM sample_events WHERE kind = 'tool' AND ts > 0 AND ts < ? AND payload IS NOT NULL AND payload NOT LIKE ?`,
+       FROM sample_events WHERE ${APME_RETENTION.samplePredicate}${APME_RETENTION.predicate}`,
     ).get(cutoffMs, PRUNED_PAYLOAD_LIKE) as { rows: number; bytes: number };
     return {
       steps: { rows: steps.rows, bytesBefore: steps.bytes, bytesAfter: null },
@@ -1733,7 +1734,7 @@ export class ApmeStore {
     let sampleEvents = emptyPruneEstimate();
     const run = db.transaction(() => {
       steps = prunePayloadColumn(db, 'steps', '', cutoffMs, prunedAt);
-      sampleEvents = prunePayloadColumn(db, 'sample_events', "AND kind = 'tool'", cutoffMs, prunedAt);
+      sampleEvents = prunePayloadColumn(db, 'sample_events', APME_RETENTION.samplePredicate, cutoffMs, prunedAt);
     });
     run();
     return { steps, sampleEvents };
