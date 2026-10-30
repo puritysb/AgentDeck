@@ -1228,7 +1228,19 @@ final class DaemonServer {
     private var gatewayPendingApproval: [String: Any]? = nil
 
     // State caches
-    private var cachedSessions: [DaemonSessionEntry] = []
+    private var antigravitySnapshot = AntigravityScan(reason: "not_configured")
+    private var antigravityNativeIDs: Set<String> = []
+    private var cachedSessionStorage: [DaemonSessionEntry] = []
+    private var cachedSessions: [DaemonSessionEntry] {
+        get {
+            guard !antigravityNativeIDs.isEmpty else { return cachedSessionStorage }
+            let authorized = AntigravitySessionSettings.accessGate.accepts(antigravitySnapshot.grantRevision)
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let visible = authorized ? Set(antigravitySnapshot.known.filter { $0.isAdmissible(nowMs: now) }.map { "observed:antigravity:" + $0.conversationId }) : []
+            return cachedSessionStorage.filter { !antigravityNativeIDs.contains($0.id) || visible.contains($0.id) || pushedSessionsById[$0.id] != nil }
+        }
+        set { cachedSessionStorage = newValue }
+    }
     private let serialEventSnapshot = SerialEventSnapshot()
 
     /// Sessions advertised over WS via `session_push_register` from CLI
@@ -3608,6 +3620,13 @@ final class DaemonServer {
             let serial = await self.serialModule?.serial
             serial?.requestDeviceTelemetry(board: board)
             return .json(["queued": true], status: 202)
+        }
+
+        await httpServer.get("/antigravity/observation") { [weak self] request in
+            let bearer = request.headers["authorization"].flatMap { $0.hasPrefix("Bearer ") ? String($0.dropFirst(7)) : nil }
+            guard AuthManager.shared.validateToken(bearer ?? request.queryParams["token"] ?? "") else { return .json(["error": "Unauthorized"], status: 401) }
+            guard let self else { return .json(["error": "unavailable"], status: 503) }
+            return await self.antigravityObservationResponse()
         }
 
         await httpServer.get("/status") { [weak self] _ in
@@ -10309,6 +10328,25 @@ final class DaemonServer {
 
     // MARK: - Sessions
 
+    private func antigravityObservationResponse() -> HTTPServer.HTTPResponse {
+        var snapshot = antigravitySnapshot
+        if !AntigravitySessionSettings.accessGate.accepts(snapshot.grantRevision) { snapshot = AntigravityScan(reason: "not_configured") }
+        // Do not expose transcript copy or filesystem paths through diagnostics.
+        snapshot.projects = [:]
+        for index in snapshot.observations.indices {
+            let observation = snapshot.observations[index]
+            if observation.status == "known", !observation.isAdmissible(nowMs: Int64(Date().timeIntervalSince1970 * 1000)) {
+                snapshot.observations[index].status = "stale"
+                snapshot.observations[index].reason = observation.state == "processing" ? "unconfirmed_work" : "history"
+                snapshot.observations[index].state = nil
+            }
+            snapshot.observations[index].goal = nil; snapshot.observations[index].model = nil
+            snapshot.observations[index].currentTask = nil
+        }
+        return HTTPServer.HTTPResponse(status: 200, headers: ["Content-Type": "application/json", "Cache-Control": "no-store"],
+                                       body: try? JSONEncoder().encode(snapshot))
+    }
+
     private func refreshSessions() async {
         settleStaleCodexProcessingSessions(broadcast: false)
 
@@ -10344,6 +10382,21 @@ final class DaemonServer {
            pushedSessionsById[Self.codexAnonymousOtelSessionId] != nil {
             purgeCodexSessionState(Self.codexAnonymousOtelSessionId)
             merged.removeAll { $0.id == Self.codexAnonymousOtelSessionId }
+        }
+
+        let antigravity = await AntigravitySessionSettings.shared.read()
+        guard !startupStopped else { return }
+        var nextAntigravityIDs: Set<String> = []
+        if AntigravitySessionSettings.accessGate.accepts(antigravity.grantRevision) {
+            let pushed = Set((merged + Array(pushedSessionsById.values)).filter { $0.agentType == "antigravity" }.map { ObservedAgentRules.rawSessionId($0.id) })
+            for observed in antigravity.known where !pushed.contains(observed.conversationId) {
+                guard let started = observed.startedAtISO, let state = observed.state else { continue }
+                var row = DaemonSessionEntry(id: "observed:antigravity:\(observed.conversationId)", port: 0, pid: 0,
+                    projectName: antigravity.projects[observed.conversationId] ?? "Antigravity", agentType: "antigravity",
+                    startedAt: started)
+                row.state = state; row.modelName = observed.model; row.currentTool = observed.currentTask; row.controlMode = "observed"
+                merged.append(row); nextAntigravityIDs.insert(row.id)
+            }
         }
 
         // Kiro is observed the same way, and for a stronger reason: it emits no
@@ -10413,6 +10466,8 @@ final class DaemonServer {
         }
         if !reconciled.prune.isEmpty { settleHubIfRosterEmpty() }
 
+        antigravitySnapshot = antigravity
+        antigravityNativeIDs = nextAntigravityIDs
         cachedSessions = DashboardDataRules.sortSessions(reconciled.sessions)
         broadcastSessionsList()
     }
@@ -12432,6 +12487,12 @@ final class DaemonServer {
     private func sessionToDict(_ s: DaemonSessionEntry) -> [String: Any] {
         var d: [String: Any] = ["id": s.id, "port": s.port, "alive": true, "projectName": s.projectName]
         if let a = s.agentType { d["agentType"] = a }
+        if antigravityNativeIDs.contains(s.id), pushedSessionsById[s.id] == nil,
+           AntigravitySessionSettings.accessGate.accepts(antigravitySnapshot.grantRevision),
+           let observed = antigravitySnapshot.known.first(where: { "observed:antigravity:" + $0.conversationId == s.id }) {
+            if let goal = observed.goal { d["goal"] = goal }
+            if let task = observed.currentTask { d["currentTask"] = task }
+        }
         if let st = s.state { d["state"] = st }
         if let mn = s.modelName { d["modelName"] = mn }
         if let ef = s.effortLevel { d["effortLevel"] = ef }

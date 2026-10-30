@@ -931,7 +931,7 @@ describe('passive-observer scan resilience', () => {
     let inconclusive = true;
     const observer = new PassiveSessionObserver(async () => processes,
       pids => confirmMissingProcesses(pids, pid => pid === 43 && inconclusive ? undefined : false,
-        async () => []));
+        async () => []), undefined, async () => []);
     const refreshed = vi.fn();
     observer.onRefreshed = refreshed;
     try {
@@ -975,7 +975,7 @@ describe('passive-observer scan resilience', () => {
     let command = 'claude';
     const observer = new PassiveSessionObserver(async () => processes, async pids => ({
       processes: unknown ? [] : pids.map(() => ({ ...claude, command })), exited: 0, unknownPids: unknown ? pids : [],
-    }));
+    }), undefined, async () => []);
     observer.collect([]); await settle();
     const seed = [{ id: 'observed:claude:abc', agentType: 'claude-code', pid: 42 }];
     (observer as unknown as { cached: unknown[] }).cached = seed;
@@ -1015,7 +1015,7 @@ describe('passive-observer scan resilience', () => {
       async () => ({ processes: [], exited: 0, unknownPids: [] }), async () => {
         if (mode === 'unknown') throw new Error('lsof deadline');
         return mode === 'known' ? new Map([[42, [path]]]) : new Map();
-      });
+      }, async () => []);
     try {
       vi.useFakeTimers({ now: Date.now() });
       const first = new Promise<void>(resolve => { observer.onRefreshed = resolve; });
@@ -1050,7 +1050,7 @@ describe('passive-observer scan resilience', () => {
       async pids => ({ processes: [], exited: pids.length, unknownPids: [] }), async () => {
         if (exit) throw new Error('lsof unavailable');
         return new Map([[42, [paths[0]]], [43, [paths[1]]]]);
-      });
+      }, async () => []);
     try {
       vi.useFakeTimers({ now: Date.now() });
       const first = new Promise<void>(resolve => { observer.onRefreshed = resolve; });
@@ -1081,7 +1081,7 @@ describe('passive-observer scan resilience', () => {
     async pids => {
       if (step === 2) throw new Error('lsof unavailable after owner recovery');
       return new Map(pids.map(pid => [pid, [paths[pid - 42]]]));
-    });
+    }, async () => []);
     try {
       vi.useFakeTimers({ now: Date.now() });
       observer.collect([]); await vi.waitFor(() => expect(observer.collect([])).toHaveLength(2));
@@ -1105,7 +1105,7 @@ describe('passive-observer scan resilience', () => {
 
   it('retains the process table when a scan comes back empty', async () => {
     let processes = table;
-    const observer = new PassiveSessionObserver(async () => processes);
+    const observer = new PassiveSessionObserver(async () => processes, undefined, undefined, async () => []);
 
     observer.collect([]);
     await settle();
@@ -1128,7 +1128,7 @@ describe('passive-observer scan resilience', () => {
     const observer = new PassiveSessionObserver(async () => {
       if (fail) throw new Error('ps: cannot read process table');
       return table;
-    });
+    }, undefined, undefined, async () => []);
     // Seed the cache directly: building a real observed session needs a
     // transcript on disk, and the behaviour under test is the failure path.
     (observer as unknown as { cached: unknown[] }).cached = seeded;
@@ -1162,7 +1162,7 @@ describe('passive-observer scan resilience', () => {
     const reader = vi.fn(() => new Promise<never[]>((resolve, reject) => {
       setTimeout(() => rejects ? reject(new Error('scan unavailable')) : resolve([]), duration);
     }));
-    const observer = new PassiveSessionObserver(reader);
+    const observer = new PassiveSessionObserver(reader, undefined, undefined, async () => []);
     observer.collect([]);
     observer.collect([]);
     expect(reader).toHaveBeenCalledTimes(1); // no overlapping scan
@@ -1294,7 +1294,7 @@ describe('Claude identity read continuity', () => {
     // This fixture owns a synthetic process table, including its exit signal;
     // never consult an unrelated real machine PID that happens to be 43210.
     const observer = new PassiveSessionObserver(async () => processes,
-      async pids => ({ processes: [], exited: pids.length, unknownPids: [] }));
+      async pids => ({ processes: [], exited: pids.length, unknownPids: [] }), undefined, async () => []);
     observer.collect([]); await settle();
     expect(observer.collect([]).map(s => s.id)).toEqual(['observed:claude:continuity-session']);
     const scan = async () => { vi.useFakeTimers({ now: Date.now() + 60_000 }); observer.collect([]); await settle(); return observer.collect([]); };

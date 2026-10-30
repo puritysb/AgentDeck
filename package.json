@@ -27,6 +27,7 @@
     "generate-idotmatrix-identity": "node scripts/generate-idotmatrix-identity.mjs",
     "generate-pairing-code-rules": "node scripts/generate-pairing-code-rules.mjs",
     "generate-apme-display-rules": "node scripts/generate-apme-display-rules.mjs",
+    "generate-antigravity-observation": "node scripts/generate-antigravity-observation.mjs",
     "generate-apme-retention": "node scripts/generate-apme-retention.mjs",
     "generate-apme-read-indexes": "node scripts/generate-apme-read-indexes.mjs",
     "generate-apme-dashboard": "node scripts/generate-apme-dashboard.mjs",

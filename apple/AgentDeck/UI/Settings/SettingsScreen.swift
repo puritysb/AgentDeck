@@ -2062,6 +2062,10 @@ struct SettingsScreen: View {
             EmptyView()
             #endif
         case "antigravity":
+            #if os(macOS)
+            AntigravitySessionSettingsView()
+            Divider()
+            #endif
             antigravityDatabaseSlot
         case "codex":
             codexUsageDirectorySlot

@@ -34,13 +34,8 @@ import { stripUnsafeText, rawSessionId, codexSessionMetaIsSubagent } from '@agen
 // The interrupt marker rule is shared with the turn watchdog / APME collector —
 // see claude-interrupt-marker.ts for why it must not be spelled twice.
 import { isClaudeInterruptMessage } from './claude-interrupt-marker.js';
-import {
-  parseAntigravityTranscript,
-  antigravityDefaultModel,
-  antigravityConversationId,
-  antigravityTranscriptPath,
-  type AntigravityTranscriptSummary,
-} from './apme/antigravity-transcript.js';
+import { scanAntigravityRoot, antigravityProjectNames, antigravityWorkspaceConversations } from './antigravity-observation.js';
+import { ANTIGRAVITY_POLICY } from './antigravity-policy.generated.js';
 import {
   KiroSessionCache,
   readKiroNativeSessionSnapshots,
@@ -347,6 +342,7 @@ export class PassiveSessionObserver {
     private readonly collectProcesses: () => Promise<ProcInfo[]> = collectProcessInfo,
     private readonly confirmMissing: (pids: number[]) => Promise<ProcessContinuity> = confirmMissingProcesses,
     private readonly readCodexRollouts: (pids: number[]) => Promise<Map<number, string[]>> = mapCodexPidsToRollouts,
+    private readonly readAntigravity: () => Promise<ObservedSession[]> = collectAntigravitySessions,
   ) {}
 
   /**
@@ -380,17 +376,27 @@ export class PassiveSessionObserver {
           this.scanInFlight = false;
         });
     }
-    return this.cached;
+    // Do not renew file-source leases when the process scan is unknown or stalled.
+    return this.cached.filter(row => row.agentType !== 'antigravity' ||
+      (typeof row.lastActivityAt === 'number' && row.lastActivityAt <= Date.now() + ANTIGRAVITY_POLICY.futureSkewMs &&
+       Date.now() - row.lastActivityAt <= (row.state === 'processing' ? ANTIGRAVITY_POLICY.activeWindowMs : ANTIGRAVITY_POLICY.rosterWindowMs)));
   }
 
   private async scan(managedSessions: EnrichedSession[]): Promise<void> {
-    const processes = [...await this.collectProcesses()];
+    const [scannedProcesses, antigravity] = await Promise.all([this.collectProcesses().catch(() => []), this.readAntigravity()]);
+    const processes = [...scannedProcesses];
     // collectProcessInfo() reports a timeout, a spawn failure or unparseable
     // output as [] rather than throwing, so the .catch() above never sees it —
     // and no running machine truly has zero processes. Treat an empty table as
     // the third answer ("could not look") and retain the previous roster; the
     // alternative is concluding that every observed session ended at once.
-    if (processes.length === 0) return;
+    if (processes.length === 0) {
+      const next = [...this.cached.filter(row => row.agentType !== 'antigravity'), ...dedupeObservedSessions(antigravity, managedSessions, [])];
+      const changed = JSON.stringify(next) !== JSON.stringify(this.cached);
+      this.cached = next;
+      if (changed) this.onRefreshed?.();
+      return;
+    }
     const present = new Set(processes.map(row => row.pid));
     const missing = [...new Set(this.cached.map(row => row.pid))]
       .filter(pid => Number.isInteger(pid) && pid > 0 && !present.has(pid));
@@ -438,10 +444,26 @@ export class PassiveSessionObserver {
       ...claude.sessions,
       ...codex,
       ...(await collectOpenCodeSessions(processes)),
-      ...(await collectAntigravitySessions(processes)),
+      ...antigravity,
       ...(await collectKiroSessions(processes, this.kiroSessionCache)),
-      ...retained,
+      ...retained.filter(row => row.agentType !== 'antigravity'),
     ];
+    // Keep the existing managed-PTY suppression when an exact, unambiguous
+    // cwd-cache association supplies a live owner. No PID is invented on a
+    // file-only observation; two owners in one workspace stay unbound.
+    const agyProcesses = processes.filter(row => isAntigravityProcessCommand(row.command));
+    if (antigravity.length && agyProcesses.length) {
+      const cwd = await cwdForPids(agyProcesses.map(row => row.pid));
+      const owners: Array<{ conversationId: string; pid: number }> = [];
+      for (const name of ['antigravity-cli', 'antigravity']) {
+        const cache = antigravityWorkspaceConversations(join(homedir(), '.gemini', name));
+        for (const process of agyProcesses) {
+          const workspace = cwd.get(process.pid);
+          if (workspace && cache[workspace]) owners.push({ conversationId: cache[workspace], pid: process.pid });
+        }
+      }
+      bindAntigravityOwners(antigravity, owners);
+    }
     const { roster, execChildren } = foldHeadlessCodexSessions(observed, this.lastProcesses);
     const next = dedupeObservedSessions(roster, managedSessions, this.lastProcesses);
     // Only notify on real change — an unconditional callback would emit a
@@ -1153,44 +1175,40 @@ async function collectOpenCodeSessions(processes: ProcInfo[]): Promise<ObservedS
 }
 
 /**
- * Surface standalone Antigravity processes for the CLI daemon. Antigravity hooks
- * can provide structured events when explicitly configured, but passive
- * discovery still gives hardware/UI a stable creature anchor for users running
- * the IDE outside AgentDeck-managed launch paths.
+ * Bind file-observed Antigravity identities to a process only when exact
+ * workspace metadata identifies one owner. File evidence still owns freshness.
  */
-async function collectAntigravitySessions(processes: ProcInfo[]): Promise<ObservedSession[]> {
-  const procs = processes.filter((p) => isAntigravityProcessCommand(p.command));
-  if (procs.length === 0) return [];
-  const cwdByPid = await cwdForPids(procs.map((p) => p.pid));
-  const defaultModel = antigravityDefaultModel();
-  return procs.map((proc) => {
-    const cwd = cwdByPid.get(proc.pid);
-    const realCwd = cwd && cwd !== '/' ? cwd : undefined;
-    // Resolve the active conversation for this workspace and parse its
-    // transcript for model / goal / state. Falls back to a pid-keyed id and the
-    // global default model when no conversation can be located.
-    const convId = antigravityConversationId(realCwd);
-    let summary: AntigravityTranscriptSummary | null = null;
-    if (convId) {
-      const sample = readFileHeadAndTail(antigravityTranscriptPath(convId), 64 * 1024, MAX_SAMPLE_BYTES);
-      if (sample) summary = parseAntigravityTranscript(sample);
+export function bindAntigravityOwners(rows: ObservedSession[], owners: Array<{ conversationId: string; pid: number }>): void {
+  for (const row of rows) {
+    const ids = new Set(owners.filter(owner => owner.conversationId === rawSessionId(row.id) && Number.isInteger(owner.pid) && owner.pid > 0).map(owner => owner.pid));
+    row.pid = ids.size === 1 ? [...ids][0] : 0;
+  }
+}
+
+export async function collectAntigravitySessions(
+  roots = ['antigravity-cli', 'antigravity'].map(name => join(homedir(), '.gemini', name)), nowMs = Date.now(),
+): Promise<ObservedSession[]> {
+  // Recent explicit transcript evidence, not process presence, owns identity
+  // and state. Missing/unsupported records do not invent idle PID sessions.
+  const byId = new Map<string, ObservedSession>();
+  for (const root of roots) {
+    const snapshot = scanAntigravityRoot(root, nowMs);
+    if (snapshot.status !== 'known') continue;
+    const projects = antigravityProjectNames(root);
+    for (const observation of snapshot.observations) {
+      if (observation.status !== 'known' || !observation.state || !observation.startedAtMs) continue;
+      const id = `observed:antigravity:${observation.conversationId}`;
+      if (byId.has(id)) continue;
+      byId.set(id, {
+        id, port: 0, pid: 0, projectName: projects[observation.conversationId] ?? 'Antigravity',
+        agentType: 'antigravity', alive: true, state: observation.state,
+        modelName: observation.model, goal: observation.goal, currentTask: observation.currentTask,
+        lastActivityAt: Math.min(observation.updatedAtMs!, observation.modifiedAtMs!),
+        startedAt: new Date(observation.startedAtMs).toISOString(), controlMode: 'observed',
+      });
     }
-    return {
-      id: convId ? `observed:antigravity:${convId}` : `observed:antigravity:${proc.pid}`,
-      port: 0,
-      pid: proc.pid,
-      projectName: realCwd ? projectNameFromCwd(realCwd) : 'Antigravity',
-      agentType: 'antigravity' as const,
-      alive: true,
-      state: summary?.state ?? 'idle',
-      modelName: summary?.model ?? defaultModel,
-      goal: summary?.goal,
-      currentTask: summary?.currentTask,
-      startedAt: new Date().toISOString(),
-      controlMode: 'observed' as const,
-      cwd: realCwd,
-    };
-  });
+  }
+  return [...byId.values()];
 }
 
 /**

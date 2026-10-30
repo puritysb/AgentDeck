@@ -89,6 +89,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
+| `shared/antigravity-observation-policy.json` (bounded transcript evidence, identities, label and freshness limits) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
 | `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
 | `shared/src/connection-status.ts` (native recovery labels) | `node scripts/generate-connection-labels.mjs` → existing Swift/Kotlin lexicons | `connection-status.test.ts` checks generated label drift; native connection tests cover selection, approval and recovery. |
@@ -222,7 +223,7 @@ preference.
    AgentDeck-installed lifecycle hooks POST to the daemon. This is the default
    and covers the great majority of real traffic.
 3. **Transcript-observed** — the agent has no usable hook surface, so the daemon
-   correlates its process with the agent's own on-disk store and polls it.
+   polls the agent's own on-disk store, using process correlation only where its source contract needs it.
 
 **Kiro is tier 3 on both of its versions**, and that is a measurement, not a
 default. Kiro CLI 2.13+ accepts global `~/.kiro/hooks/*.json` and AgentDeck can
@@ -254,6 +255,41 @@ Swift uses for processing/idle. Legacy Swift transcripts remain idle when no
 explicit boundary exists. Node retains its existing store-specific inference.
 File recency never proves a completed turn. Swift shares one bounded snapshot
 between session rows and timeline while the granted-folder scope is open.
+
+### Antigravity transcript observation
+
+Node and Swift share the generated [observation policy](../shared/antigravity-observation-policy.json)
+and [contract vectors](../shared/antigravity-observation-vectors.json). The supported
+read-only source is `brain/<conversation-id>/.system_generated/logs/transcript.jsonl`
+inside an Antigravity root. Node checks its CLI and IDE roots; Swift reads only the
+root selected in Settings → Integrations → Antigravity → Session Observation.
+The read-only security-scoped bookmark is separate from the existing account/plan
+`state.vscdb` grant, survives relaunch and can be removed with Stop observing.
+Neither observer reads OAuth credentials or changes the source files.
+
+- Session identity is `observed:antigravity:<conversation-id>`. Turn identity is
+  `<conversation-id>:step:<USER_INPUT step_index>:<created_at epoch-ms>` from an
+  explicit `USER_EXPLICIT` record. Repeated updates to one step keep its identity;
+  a rotated transcript that reuses an index with a new timestamp starts a new turn.
+- The latest indexed step's `RUNNING`/`DONE` supplies processing/idle evidence.
+  DONE describes that step; it does **not** assert a completed task/turn or produce
+  APME Stop records. No permission request, answer options or controls are inferred.
+- Both original record time and file modification time must be fresh: RUNNING
+  expires after ten minutes, other roster evidence after one hour. Unknown status,
+  malformed final records, missing identity/time, unsafe paths or unreadable files
+  withdraw source rows rather than converting them to idle. Historical files are
+  skipped by metadata; touching an ancient record does not renew its evidence.
+- A scan visits at most 256 conversation directories, returns 32 observations and
+  has a two-second budget. Reads use 64 KiB head + 512 KiB tail; a gap requires an
+  explicit USER_INPUT in the tail before its turn can be identified. Optional
+  model/project metadata is bounded and workspace paths are never followed.
+- Node now uses this same file-evidence lease, replacing the old PID-keyed idle
+  fallback. Recent evidence can appear without a process; it is not proof of OS
+  process liveness. An exact, unambiguous cwd/cache owner can still suppress a
+  duplicate managed PTY. Swift has no process probe.
+- Swift's authenticated `GET /antigravity/observation` reports status, reasons and
+  identity/timestamps without transcript copy, model/tool labels or source paths.
+  Revocation invalidates cached rows synchronously and rejects late reads.
 
 **Rendering rule for any agent a surface predates.** Every surface's agent
 handling is an allow-list, never a deny-list. A bucket spelled as "not these
