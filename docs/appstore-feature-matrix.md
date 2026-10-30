@@ -862,3 +862,43 @@ the optimized lifetime case. This was not an ATS assertion failure.
 The full quick gate passes (7,029 Vitest tests passed, 17 skipped), including
 protocol drift, type/lint and documentation gates. The separate login-Keychain
 daemon E2E remains opt-in and was not run by that quick invocation.
+
+## Installed signed Release relay acceptance 2026-10-31
+
+The owner explicitly requested updating the actual development installation after
+the scoped ATS correction. The installed app is now the universal standard
+Release configuration from source commit `099da989`, version 1.9.4/build 5, signed
+with the same development identity and app identifier as the previous install.
+Its actual executable path, SHA-256 and strict code signature were checked; it
+contains the single Release executable, with no Debug dylib or injected XCTest
+bundle. The previous installation is retained as a local rollback backup.
+
+Acceptance ran from the installed path, not a temporary Settings host or copied
+app. Typed own-app preferences selected port 19456, loopback-only and no device
+modules; actual health and a temporary container registry confirmed that
+isolation. Settings connected to the MacBook's numeric Tailscale IPv4 hub with
+an explicit consent and synthetic pairing token. The remote hub received one
+authenticated worker and one synthetic observed hook session. Normal quit and
+relaunch restored the endpoint and connection without token re-entry. Disable
+removed the remote worker/rows, and another relaunch remained Relay off.
+
+After acceptance, the original endpoint/posture preferences were restored and
+the updated installed Release app was relaunched normally against shared 9120.
+The shared Node daemon retained PID 6505, build and posture; all 11 serial
+transports remained open, and Wi-Fi board, Stream Deck, D200H, Pixoo and Android
+identities matched the baseline. Temporary app copies, helper, data and remote
+hub were removed. The updated installation remains in place.
+
+This is a local development-signed Release installation. The Store archive
+verifier reported only its expected development-certificate refusal; no other
+archive boundary violation was reported. The same signing team was preserved
+for Keychain custody rather than changing identity to obtain a Store signature.
+No public version, Store submission or upload was performed.
+
+The deployment full check completed on source commit `099da989` with no failed
+automated steps. The [recorded receipt](../verification/receipts/2026-10-30-099da98.json)
+uses its UTC completion date. Coverage, Android, all five Apple configurations,
+submission-material checks, ESP32 host/simulator/TTGO builds and isolated npm
+package acceptance passed. Windows, the separate login-Keychain E2E and broad
+lab attestations were not run; the installed macOS acceptance above has its own
+local runtime receipt.
