@@ -664,6 +664,14 @@ provided through chat or committed diagnostics.
 
 ## Mixed Node/Swift daemon relay contract
 
+The macOS transport policy permits explicit relay targets in the RFC 6598
+`100.64.0.0/10` shared-address range through a CIDR-scoped ATS HTTP exception,
+in addition to existing local-network access. This supports numeric Tailscale
+IPv4 endpoints without enabling arbitrary loads or public DNS exceptions.
+The range is not proof of Tailscale identity: explicit consent, pairing-token
+authentication and the trusted-network/tunnel boundary still apply. The iOS
+transport policy is unchanged.
+
 Implemented locally. Both hubs speak the existing v1 `relay_hello` →
 `relay_ack` → `relay_sessions` protocol. `relay_command_down` travels only back
 down the authenticated worker socket; the hub never dials a worker. The public
@@ -793,6 +801,64 @@ upload or Store installation was performed.
 There is a measured endpoint limitation: the signed component host rejected the
 Tailscale CGNAT numeric address with `NSURLErrorDomain -1022` under the production
 App Transport Security policy. Private LAN IPv4 and the explicit SSH forward
-passed. Do not generalize this result to arbitrary overlay/public-IP endpoints;
-no transport-security exception was added. See the
+passed. This describes the original test before the scoped exception below;
+no transport-security exception was added during that original run. See the
 [isolation notes](devlog/entries/2026-10-31-signed-relay-two-mac.md).
+
+## Numeric Tailscale ATS correction 2026-10-31
+
+The old policy's `NSAllowsLocalNetworking` did not permit the tested RFC 6598
+CGNAT address. The signed before/after probe used the same URLSession code,
+signing identity and MacBook endpoint: the existing policy returned `-1022`, while
+adding only `100.64.0.0/10` to `NSExceptionDomains` with
+`NSExceptionAllowsInsecureHTTPLoads` returned HTTP 200. Boundary probes just
+outside that CIDR still returned `-1022`. An HTTPS peer in the allowed range
+with an untrusted self-signed certificate still returned `-1202`; no custom
+trust handling was added.
+
+[Apple documents IP/CIDR ATS exceptions](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity/nsexceptiondomains)
+on supported macOS versions; [Tailscale documents its default shared-address
+range](https://tailscale.com/docs/reference/reserved-ip-addresses). The change
+is macOS-only and app-wide for this CIDR, rather than a per-relay authorization
+or proof of VPN encryption. Existing local-network access stays intact; iOS,
+global arbitrary-load flags, TLS minimums and server-trust callbacks are unchanged.
+The App Review notes explain why the existing user-selected HTTP/WS protocol
+needs this bounded exception. Custom Tailscale IP pools outside the CIDR are
+not enabled by it.
+
+The native regression test inspects the built app host's processed Info.plist
+and requires exactly the local-network key and this one HTTP exception. It
+rejects extra exception domains, arbitrary-load flags and TLS-policy additions.
+
+Two-Mac acceptance used the current built Debug app, signed with the matching
+development profile and production sandbox/network entitlements. The XCTest
+injection bundle was removed only from the temporary signed copy. Its native
+daemon used an actual verified temporary data directory, port 19446 and no
+device modules; the original development installation was not replaced.
+The full app connected to the MacBook's numeric Tailscale IPv4 hub, first
+refused a wrong token, then authenticated with the synthetic token. The reverse
+Node worker connected directly to the full Swift hub's numeric Tailscale IPv4,
+without SSH forwarding. A wrong-token native upgrade returned 401.
+
+Synthetic observed sessions and same-socket `interrupt` completed both ways;
+Node-to-Swift control produced the actual next `PreToolUse` soft-stop `deny`.
+The full worker refused `voice` and did not republish the received remote row.
+Normal quit/relaunch restored the numeric target and authenticated connection
+without token re-entry; Disable removed the remote worker, and a subsequent
+relaunch remained off. The original GUI and its selected endpoint/posture were
+restored, all test listeners/apps/data and the synthetic TLS certificate were
+removed, and shared 9120 retained its PID/build/posture and hardware identities
+(including all 11 serial ports). These are development-signed transport/control
+results with synthetic hook events, not Store distribution or a real remote
+agent terminal execution.
+
+All five native configurations pass: macOS Debug XCTest (1,420 cases including
+4 skipped), optimized DotPreview macOS XCTest (1,438 including 9 skipped),
+universal standard Release, and normal/DotPreview iOS simulator builds. App Store
+submission-material validation also passes. The first Debug run's test host
+exited during the existing 125-second socket-lifetime case; a full Debug rerun
+after temporary signed-app activity ended passed with no source changes, as did
+the optimized lifetime case. This was not an ATS assertion failure.
+The full quick gate passes (7,029 Vitest tests passed, 17 skipped), including
+protocol drift, type/lint and documentation gates. The separate login-Keychain
+daemon E2E remains opt-in and was not run by that quick invocation.

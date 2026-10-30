@@ -23,6 +23,18 @@ private final class RelayFixture {
     func send(_ cmd: [String:Any]) { if let data = DaemonRelayRules.data(cmd) { peer?.send(data) } }
 }
 final class DaemonRelayTests: XCTestCase {
+    func testBuiltAppTransportPolicyLimitsRelayExceptionToSharedIPv4Space() throws {
+        // Inspect the built host Info.plist, not a source-file copy: this also
+        // catches project generation or packaging dropping the exception.
+        let policy = try XCTUnwrap(Bundle.main.object(forInfoDictionaryKey: "NSAppTransportSecurity") as? [String: Any])
+        XCTAssertEqual(Set(policy.keys), ["NSAllowsLocalNetworking", "NSExceptionDomains"])
+        XCTAssertEqual(policy["NSAllowsLocalNetworking"] as? Bool, true)
+        let exceptions = try XCTUnwrap(policy["NSExceptionDomains"] as? [String: [String: Any]])
+        XCTAssertEqual(Set(exceptions.keys), ["100.64.0.0/10"])
+        let sharedSpace = try XCTUnwrap(exceptions["100.64.0.0/10"])
+        XCTAssertEqual(Set(sharedSpace.keys), ["NSExceptionAllowsInsecureHTTPLoads"])
+        XCTAssertEqual(sharedSpace["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true)
+    }
     private let row: [String:Any] = ["id":"observed:claude:one","agentType":"claude-code","controlMode":"observed","requestId":"gate-one","state":"awaiting_permission","port":9123]
     func testTypedRowsRetainExplicitFalseNullAndRejectManagedUnknownFields() {
         let rows = DaemonRelayRules.sanitize([["id":"a","alive":false,"state":3,"stopRequested":false,"waitingOn":NSNull(),"weight":1e30,"secret":"hidden"], ["id":"a"],["id":"m","controlMode":"managed"],["id":"openclaw-gateway"]])

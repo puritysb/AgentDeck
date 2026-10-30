@@ -642,7 +642,7 @@
         "selected-host discovery recovery survives network retry exhaustion while explicit stops and authentication refusals remain stopped",
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
         "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
-        "native relay hub preserves local ownership, supersedes old sockets, removes stale rows and rejects unsupported or stale worker controls; explicit Keychain-backed target consent survives restart and failed removal stays disabled",
+        "native relay hub preserves local ownership, supersedes old sockets, removes stale rows and rejects unsupported or stale worker controls; explicit Keychain-backed target consent survives restart and failed removal stays disabled; built macOS ATS policy permits HTTP only for the RFC 6598 shared IPv4 CIDR in addition to existing local-network access, with no arbitrary-load or TLS-version exception",
         "native GitHub CI uses explicit repository/run identity and consent, app-owned Keychain custody, bounded read-only HTTPS, complete evidence and stale/unknown handling; account changes and closed waits reject late replies",
         "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
         "the iOS app builds unsigned in Store and DotPreview configurations",

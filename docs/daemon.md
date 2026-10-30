@@ -459,10 +459,13 @@ Managed remote attach keeps working unchanged alongside it.
   environment credential or another tool’s Keychain is imported. The Settings
   card configures only the native owner and is hidden in external-daemon mode.
   [Signed two-Mac acceptance](appstore-feature-matrix.md#signed-daemon-relay-two-mac-acceptance-2026-10-31)
-  covers real Keychain save/relaunch/disable and mixed Node/Swift control. Private
-  LAN IPv4 and explicit SSH loopback forwarding passed; a numeric Tailscale
-  CGNAT endpoint was rejected by the production App Transport Security policy
-  (`-1022`). Overlay/public-IP connectivity is not covered by that acceptance.
+  covers real Keychain save/relaunch/disable and mixed Node/Swift control.
+  macOS permits HTTP/WebSocket to explicit RFC 6598 `100.64.0.0/10` targets
+  through a CIDR-scoped ATS exception, fixing the earlier numeric Tailscale
+  `-1022` failure. It does not enable arbitrary loads, public DNS exceptions,
+  lower TLS versions or custom certificate trust. This shared-address range
+  alone proves neither Tailscale membership nor hub identity; endpoint consent,
+  pairing authentication and the trusted-network/tunnel guidance still apply.
 - **Same boundary as remote attach**: opt-in per worker, never discovered;
   outbound only — the worker dials, commands come back down that socket, and the
   hub never dials a worker; a non-loopback hub needs its pairing token, which
