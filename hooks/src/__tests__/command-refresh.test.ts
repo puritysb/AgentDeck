@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, rmSync, openSync, closeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -93,8 +93,16 @@ describe.skipIf(process.platform === 'win32')('Generated integration command ref
           writeFileSync(curl, '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$CAPTURE_FILE"\nexit 1\n');
           chmodSync(curl, 0o755);
           const input = '{"prompt":"private-fixture"}';
-          const stdout = execFileSync('/bin/sh', argv, { cwd: root, input, encoding: 'utf8', timeout: 5000,
-            env: { HOME: home, PATH: `${bin}:/usr/bin:/bin`, CAPTURE_FILE: capture } });
+          const inputPath = join(root, 'stdin.json');
+          writeFileSync(inputPath, input);
+          // An intentional early exit need not consume stdin. A regular file
+          // keeps that success from racing Node's pipe writer with EPIPE.
+          const stdin = openSync(inputPath, 'r');
+          let stdout: string;
+          try {
+            stdout = execFileSync('/bin/sh', argv, { cwd: root, stdio: [stdin, 'pipe', 'pipe'], encoding: 'utf8', timeout: 5000,
+              env: { HOME: home, PATH: `${bin}:/usr/bin:/bin`, CAPTURE_FILE: capture } });
+          } finally { closeSync(stdin); }
           const requests = existsSync(capture) ? readFileSync(capture, 'utf8') : '';
           expect(requests).not.toContain('-X POST');
           expect(requests).not.toContain(':9120/');
