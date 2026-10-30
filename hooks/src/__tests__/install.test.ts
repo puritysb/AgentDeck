@@ -68,14 +68,14 @@ describe('Hook Installer', () => {
   });
 
   describe('buildHookCommand (POSIX)', () => {
-    it('reads PORT from AGENTDECK_PORT env var first, then daemon.json, then 9120', () => {
+    it('uses an explicit port or a healthy registry receiver, otherwise skips', () => {
       const cmd = buildHookCommand('SessionStart');
-      // Priority chain: AGENTDECK_PORT → ~/.agentdeck/daemon.json → App Store sandbox daemon.json → legacy group daemon.json → 9120
+      // Explicit managed port takes priority; discovered registry ports need a health probe.
       expect(cmd).toContain('PORT="${AGENTDECK_PORT:-}"');
       expect(cmd).toContain('.agentdeck/daemon.json');
       expect(cmd).toContain('Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json');
       expect(cmd).toContain('group.bound.serendipity.agent.deck/daemon.json');
-      expect(cmd).toContain('${PORT:-9120}');
+      expect(cmd).toContain('[ -n "$PORT" ] || exit 0');
       expect(cmd).toContain('-X POST "http://127.0.0.1:$PORT/hooks/SessionStart"');
     });
 
@@ -127,9 +127,7 @@ describe('Hook Installer', () => {
           input: '{}',
         });
 
-        const urls = readFileSync(capture, 'utf-8');
-        expect(urls).toContain('http://127.0.0.1:9120/hooks/SessionStart');
-        expect(urls).not.toContain('evil.example');
+        expect(existsSync(capture)).toBe(false);
         rmSync(home, { recursive: true, force: true });
       }
     });
@@ -164,7 +162,7 @@ describe('Hook Installer', () => {
 
     it.skipIf(process.platform === 'win32')('bounds a blocked daemon-file read before the hook can stall', () => {
       const cmd = buildHookCommand('SessionStart');
-      const python = cmd.match(/python3 -c "([^"]+)"/)?.[1];
+      const python = cmd.match(/python3 -I -c "([^"]+)"/)?.[1];
       expect(python).toBeTruthy();
       const home = mkdtempSync(join(tmpdir(), 'agentdeck-blocked-read-'));
       const fifo = join(home, 'blocked.json');
@@ -172,7 +170,7 @@ describe('Hook Installer', () => {
         execFileSync('mkfifo', [fifo]);
         // No writer: open() really blocks. Exercise the emitted Python itself,
         // not a mock timeout or an assertion about the command's spelling.
-        const result = execFileSync('python3', ['-c', python!, fifo], {timeout: 2000, encoding: 'utf8'});
+        const result = execFileSync('python3', ['-I', '-c', python!, fifo], {timeout: 2000, encoding: 'utf8'});
         expect(result).toBe('');
       } finally { rmSync(home, {recursive: true, force: true}); }
       for (const file of ['setup/src/setup.ts', 'hooks/src/codex-install.ts',

@@ -8,13 +8,34 @@ import XCTest
 final class HookInstallerStatuslineTests: XCTestCase {
     private let user = "bun x ccusage statusline --visual-burn-rate emoji && echo 'done'"
 
+    func testHookRefreshPreservesOtherHandlersInSharedMatcherGroups() throws {
+        let own: [String: Any] = ["type": "command", "command": "AGENTDECK_PORT=9120"]
+        let user: [String: Any] = ["type": "command", "command": "printf user-hook", "timeout": 7]
+        let settings: [String: Any] = ["hooks": ["SessionStart": [
+            ["matcher": "custom", "timeout": 9, "hooks": [own, user]],
+        ]]]
+        let fixed = HookInstaller.applyHooks(settings)
+        let hooks = try XCTUnwrap(fixed["hooks"] as? [String: Any])
+        let groups = try XCTUnwrap(hooks["SessionStart"] as? [[String: Any]])
+        XCTAssertEqual(groups.count, 2)
+        XCTAssertEqual(groups[0]["matcher"] as? String, "custom")
+        XCTAssertEqual(groups[0]["timeout"] as? Int, 9)
+        let handlers = try XCTUnwrap(groups[0]["hooks"] as? [[String: Any]])
+        XCTAssertEqual(handlers.count, 1)
+        XCTAssertEqual(handlers[0] as NSDictionary, user as NSDictionary)
+        XCTAssertEqual(HookInstaller.applyHooks(fixed) as NSDictionary, fixed as NSDictionary)
+    }
+
     func testRelayAloneIsBoundedFireAndForgetWithNoWrappedCommand() {
         let cmd = HookInstaller.buildStatuslineRelayCommand(original: nil)
         XCTAssertTrue(cmd.contains("/claude/statusline"))
         XCTAssertFalse(cmd.contains("AGENTDECK_PORT"))
         XCTAssertTrue(cmd.contains(#"--connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/claude/statusline""#))
         XCTAssertTrue(cmd.contains(#"X-AgentDeck-Pid: $PPID"#))
-        XCTAssertTrue(cmd.hasSuffix("|| true"))
+        XCTAssertTrue(cmd.hasSuffix("fi"))
+        XCTAssertTrue(cmd.contains(#"if [ -n "$PORT" ]; then"#))
+        XCTAssertFalse(cmd.contains("PORT:-9120"))
+        XCTAssertTrue(cmd.contains("python3 -I -c"))
         XCTAssertTrue(HookInstaller.isAgentDeckStatuslineCommand(cmd))
         XCTAssertEqual(HookInstaller.unwrapStatuslineCommand(cmd), "")
     }

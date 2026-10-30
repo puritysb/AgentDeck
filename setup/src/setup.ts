@@ -576,11 +576,11 @@ function buildHookCommand(eventName: string): string {
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `    P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `  done`,
     `fi`,
-    `PORT="\${PORT:-9120}"`,
+    `[ -n "$PORT" ] || exit 0`,
   ];
   // PreToolUse long-poll (device approval) — see canonical commentary in hooks/src/install.ts.
   if (eventName === 'PreToolUse') {
@@ -786,11 +786,12 @@ function buildStatuslineRelayCommand(original?: string | null): string {
     `PORT=""`,
     `for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `  [ -f "$F" ] || continue`,
-    `  P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `  P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `  [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `done`,
-    `PORT="\${PORT:-9120}"`,
+    `if [ -n "$PORT" ]; then`,
     `printf '%s' "$I" | curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/claude/statusline" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
+    `fi`,
   ];
   const own = original?.trim();
   if (own) lines.push(STATUSLINE_WRAP_OPEN, own, `}`);
@@ -1048,8 +1049,13 @@ function installHooks(opts: SetupOptions, claude: ClaudeProbe) {
       settings.hooks[event] = [];
     }
 
-    // Remove existing AgentDeck hooks (old flat + new matcher format)
-    settings.hooks[event] = settings.hooks[event].filter((h: any) => !isAgentDeckHookEntry(h));
+    // Refresh only our handlers; a matcher group can also hold user commands.
+    settings.hooks[event] = settings.hooks[event].flatMap((h: any) => {
+      if (!isAgentDeckHookEntry(h)) return [h];
+      if (!Array.isArray(h.hooks)) return [];
+      const kept = h.hooks.filter((handler: any) => !isAgentDeckHookEntry(handler));
+      return kept.length ? [{ ...h, hooks: kept }] : [];
+    });
 
     settings.hooks[event].push(buildHookEntry(event));
   }

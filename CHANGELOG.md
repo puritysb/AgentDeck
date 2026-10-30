@@ -61,6 +61,16 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
 
+## 2026-10-30 — npm 1.9.7 / Apple 1.9.5
+
+Apple delivery targets macOS only. iPhone and iPad remain on their existing release.
+
+- Harden generated agent integration commands and receiver selection. POSIX observer commands skip transmission when no configured receiver is available, while an existing user status line continues normally.
+- Refresh older integration commands and preserve custom handlers sharing a matcher group with AgentDeck handlers.
+- After updating the native app and CLI together, refresh your enabled integrations and review changed Codex hook trust entries when prompted. Existing custom commands and trust records are retained; trust is never granted automatically.
+
+macOS 1.9.5 also carries the still-unreleased 1.9.4 and withdrawn 1.9.3 corrections listed below. Dot remains excluded from the App Store build.
+
 ## 2026-10-29 — npm 1.9.6
 
 - A change to a timeline row that is already on disk is now saved as well (#625). An LLM summary or an evaluation score that arrives after the first write, or an approval's allowed/denied result, used to stay in memory only, so a clean restart with no newer row brought back the old values. The macOS app's daemon already saved these.

@@ -398,11 +398,11 @@ enum CodexConfigInstaller {
         #"if [ -z "$PORT" ]; then"#,
         #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
         #"    [ -f "$F" ] || continue"#,
-        #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
+        #"    P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
         #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
         #"  done"#,
         #"fi"#,
-        #"PORT="${PORT:-9120}""#,
+        #"[ -n "$PORT" ] || exit 0"#,
     ]
 
     private static func buildLifecycleHookTables(includeApprovalHold: Bool = false) -> [String] {

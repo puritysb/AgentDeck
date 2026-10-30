@@ -22,7 +22,7 @@ const program = new Command();
 program
   .name('agentdeck')
   .description('AgentDeck daemon (legacy entry point — use `agentdeck daemon` instead)')
-  .version('1.9.6');
+  .version('1.9.7');
 
 program
   .command('start', { isDefault: true })

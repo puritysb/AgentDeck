@@ -12,6 +12,61 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 1.9.5 update text
+
+Prepared for the coordinated integration correction authorized October 30.
+The October 30 readback still shows 1.9.4 / 10001 in review and 1.9.2 public,
+so this candidate retains the unreleased 1.9.4 changes below. No new review is
+submitted by preparing this copy. iOS copy is unchanged.
+
+### English — macOS What's New
+
+```text
+• Improve agent integration command handling and keep custom hooks when integrations refresh. After the native app and CLI update, review changed Codex hook trust entries when prompted.
+• Fix an unexpected quit shortly after the built-in server resumed on its usual port, for example after the AgentDeck command-line server stopped.
+• Long-running background work, such as an idle teammate or a development server, now goes on standby instead of keeping a session shown as working.
+• OpenCode: a stop, prompt or approval sent from a device right after OpenCode reconnects is no longer lost, and an approval that cannot be queued keeps its Allow/Deny prompt.
+• Agent evaluation: open a task's review from the Work board or recent activity, and record your own verdict and note beside the AI estimate. Comparisons, judge settings and report exports are corrected.
+• Keep Attention focused on sessions that are actually waiting for your response. Automatic approval reviews, ongoing processing and quoted prompts no longer create misleading attention states.
+• Restore the display of genuine OpenClaw approval requests so waiting sessions remain visible.
+• Keep independent Codex sessions separate, even when they share a project or sorting priority.
+• Correct estimated Codex renewal dates across calendar months when a saved subscription snapshot is available after authentication expires.
+• Improve local server recovery when a connection address remains temporarily reserved during reconnection.
+• Improve background server startup and automatic recovery after a delayed shutdown.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• 에이전트 연동 명령 처리를 강화하고 연동 갱신 시 사용자 지정 hooks를 유지하도록 개선했습니다. 앱과 CLI를 업데이트한 뒤 Codex가 요청하면 변경된 hook 명령의 신뢰 설정을 검토해 주세요.
+• 기본 포트에서 내장 서버가 다시 시작된 직후(예: AgentDeck 명령줄 서버가 종료된 뒤) 앱이 예기치 않게 종료되던 문제를 수정했습니다.
+• 대기 중인 팀원이나 개발 서버처럼 오래 실행되는 백그라운드 작업은 이제 세션을 작업 중으로 붙잡아 두지 않고 대기 상태로 표시합니다.
+• OpenCode: OpenCode가 다시 연결된 직후 기기에서 보낸 중지·프롬프트·승인이 사라지지 않으며, 대기열에 넣을 수 없는 승인도 허용/거부 프롬프트가 유지됩니다.
+• 에이전트 평가: Work 보드나 최근 활동에서 작업 리뷰를 바로 열고, AI 추정 옆에 사용자 판정과 메모를 기록할 수 있습니다. 비교, 판정 모델 설정, 보고서 내보내기를 바로잡았습니다.
+• 실제로 사용자의 응답을 기다리는 세션에만 주의가 필요하다고 표시하도록 개선했습니다. 자동 승인 심사, 진행 중인 처리, 인용된 질문으로 인해 잘못된 응답 대기 상태가 표시되는 문제를 수정했습니다.
+• 실제 OpenClaw 승인 요청을 다시 표시해 응답을 기다리는 세션을 확인할 수 있도록 했습니다.
+• 같은 프로젝트나 정렬 우선순위를 사용해도 독립적인 Codex 세션이 각각 표시되도록 수정했습니다.
+• 인증이 만료된 뒤 저장된 구독 정보를 사용하는 경우, 달력상의 월 길이에 맞게 Codex 갱신 예상일을 계산하도록 수정했습니다.
+• 재연결 중 연결 주소의 임시 점유가 남아 있을 때 로컬 서버가 더 빠르게 복구되도록 개선했습니다.
+• 백그라운드 서버의 시작 응답성을 개선하고, 종료가 늦어져도 자동 복구가 이어지도록 수정했습니다.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• エージェント連携コマンドの処理を強化し、連携更新時もカスタムhooksを保持するよう改善しました。アプリとCLIの更新後、Codexから求められた場合は変更されたhookコマンドの信頼設定を確認してください。
+• 内蔵サーバーが通常のポートで再開した直後(たとえばAgentDeckのコマンドラインサーバーが停止した後)に、アプリが予期せず終了する問題を修正しました。
+• 待機中のチームメイトや開発サーバーなど長時間動くバックグラウンド作業は、セッションを作業中のままにせず、待機状態として表示するようになりました。
+• OpenCode:OpenCodeの再接続直後にデバイスから送った停止・プロンプト・承認が失われなくなり、キューに入れられない承認でも許可/拒否のプロンプトが残ります。
+• エージェント評価:Workボードや最近のアクティビティからタスクのレビューを直接開き、AIの推定の横に自分の判定とメモを記録できます。比較、判定モデルの設定、レポートの書き出しを修正しました。
+• 実際にユーザーの応答を待っているセッションにのみ注意を促すよう改善しました。自動承認の審査、処理の継続中、引用された質問による誤った応答待ち表示を修正しました。
+• 実際のOpenClaw承認要求を再び表示し、応答待ちのセッションを確認できるようにしました。
+• 同じプロジェクトや並び順の優先度を使っていても、独立したCodexセッションを個別に表示するよう修正しました。
+• 認証の有効期限が切れた後に保存済みの契約情報を使う場合、暦上の月の日数に合わせてCodexの更新予定日を推定するよう修正しました。
+• 再接続中に接続アドレスの一時的な予約が残っている場合、ローカルサーバーがより早く復旧するよう改善しました。
+• バックグラウンドでのサーバー起動時の応答性を改善し、終了処理が遅れても自動復旧を続けるよう修正しました。
+```
+
 ## Prepared macOS 1.9.4 update text
 
 Prepared on October 29 for the macOS-only patch after 1.9.3. On the same day the

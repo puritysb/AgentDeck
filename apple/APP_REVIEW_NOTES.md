@@ -15,11 +15,10 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Current candidate — macOS 1.9.4, October 29:** the marked macOS Notes field
-below is prepared for the patch after 1.9.3. 1.9.4 replaces 1.9.3, which was
-withdrawn from review, and its notes also cover the 1.9.3 changes. It is not an
-upload, submission or public-release receipt. The baseline is public macOS
-1.9.2 / 9401. iOS notes are unchanged.
+**Current candidate — macOS 1.9.5, October 30:** the marked macOS Notes field
+below prepares the integration correction and retains the unreleased 1.9.4
+changes. The October 30 readback still shows 1.9.4 / 10001 in review and macOS
+1.9.2 public. This preparation does not cancel or submit a review. iOS is unchanged.
 
 **Historical 9801 submission, October 27:** macOS 1.9.3 / 9801 was submitted
 with the 1.9.3 notes and was `IN_REVIEW` at the October 28 readback; the
@@ -595,8 +594,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 1.9.4 — MACOS ONLY
-Replaces 1.9.3, withdrawn from review, and includes its changes: Attention marks only sessions awaiting the user, OpenClaw approvals show again, Codex sessions stay separate, and server recovery is faster. New: the Claude hook check runs on the main thread (a background menu-bar update could quit the app); long-running background processes go on standby after 10 minutes; OpenCode device commands survive a reconnect and an unqueued approval keeps its prompt; the Work board opens a task review for the user's verdict beside the AI estimate. Dot is excluded; iOS is unchanged.
+NEW IN 1.9.5 — MACOS ONLY
+Hardens generated integration commands and retains custom hook handlers. Codex users review changed command trust when prompted; trust is never automatic. Includes the pending 1.9.4 and withdrawn 1.9.3 corrections: main-thread hook checks, background-process standby, reliable OpenCode commands and approvals, task reviews, accurate Attention/OpenClaw approvals, separate Codex sessions and faster server recovery. Dot is excluded; iOS is unchanged.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

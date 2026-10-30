@@ -95,6 +95,36 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-30 integration hardening preparation decision
+
+The maintainer authorized the focused correction, public source integration and
+npm/macOS release preparation on October 30. Publication remains subject to the
+existing verification and runtime acceptance gates.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.6 (registry read October 30) | None | 1.9.7 / release SHA and four tarball hashes | Patch: harden generated observer commands and receiver selection, refresh existing commands, preserve custom handlers in shared matcher groups | Existing 1.9 scope; no new milestone |
+| macOS / App Store | 1.9.2 / 9401 | 1.9.4 / 10001, IN_REVIEW | 1.9.5 / next CI-derived build above 10001 | Patch: apply the same integration correction in the native installer and retain the unreleased 1.9.4 corrections | Existing 1.9 scope; macOS only, Dot excluded |
+
+The [October 30 ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41099528119)
+confirmed that 1.9.4 / 10001 is still in review and macOS 1.9.2 is public.
+The proposed macOS version supersedes that pending candidate only after its own
+artifact acceptance; preparation alone does not cancel or submit a review.
+The four npm versions were read back as 1.9.6. iOS, Android, ESP32 and the deck
+plugin releases are unchanged.
+
+Keep the native app and CLI installers current together: an older consenting
+app can rewrite the same integration file. After the coordinated update, refresh
+user-enabled integrations and review the changed Codex command trust entries.
+Existing custom commands and trust records are retained; trust is never granted
+automatically. Do not roll either installer back to a superseded command set.
+
+Required evidence still includes hosted Windows runtime and Apple CI, the
+pre-release receipt, signed-archive verification and the three-mode daemon soak.
+The maintainer excluded local installation changes from this task, so the real
+installed-path soak and the master-triggered local deployment require a separate
+scope decision before execution. Neither is silently waived by this preparation.
+
 ### 2026-10-29 delivery checkpoint
 
 **npm 1.9.6 is public. macOS 1.9.4 / 10001 is submitted and `IN_REVIEW`,
