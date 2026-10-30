@@ -1329,6 +1329,8 @@ final class DaemonServer {
     private var codexBackgroundTerminals = CodexBackgroundTerminals()
     private var codexBackgroundPollTask: Task<Void, Never>?
     private let ciWaits = CiWaitTracker()
+    private let githubCI = GitHubCIProvider()
+    private var githubCIPollTask: Task<Void, Never>?
     private var coordinationTickTask: Task<Void, Never>?
     private var subagentBurstSeq = 0
     /// Children starting within this window fold into ONE dispatch row. Per
@@ -9958,6 +9960,21 @@ final class DaemonServer {
     // MARK: - Polling
 
     private func startAllPolling() {
+        githubCIPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, !self.startupStopped else { return }
+                await self.githubCI.syncConfiguration()
+                guard !Task.isCancelled, !self.startupStopped else { return }
+                let now = Date().timeIntervalSince1970
+                let waits = self.ciWaits.entries(now: Self.wireEpochMs(now * 1000)).compactMap { sid, wait in
+                    self.ciWaits.tokenFor(sid).map { (sid, $0, wait) }
+                }
+                let closed = self.githubCI.poll(waits, now: now) { [weak self] in self?.broadcastSessionsList() }
+                for (sid, opened) in closed { self.ciWaits.closeHead(sid, openedAt: opened) }
+                if !waits.isEmpty { self.broadcastSessionsList() }
+                try? await Task.sleep(for: .seconds(GitHubCIPolicy.tickSeconds))
+            }
+        }
         // Stale hook-session eviction — 30s. See `lastHookAtByPushedSession`
         // and `pushedSessionStaleTTL` for rationale. Also doubles as the
         // cadence for expiring stale client_register cache entries
@@ -12149,6 +12166,8 @@ final class DaemonServer {
 
     func shutdown() async {
         startupStopped = true
+        githubCIPollTask?.cancel(); githubCIPollTask = nil
+        githubCI.stop()
         pocketAutonomy.flush()
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.release(dotOwnership)
@@ -12373,7 +12392,11 @@ final class DaemonServer {
             d["elapsedSec"] = elapsed
         }
         if let activity = sessionActivitySummary(s) { d["activity"] = activity }
-        let ciWait = ciWaits.snapshot(ObservedAgentRules.rawSessionId(s.id), now: Self.wireEpochMs(Date().timeIntervalSince1970 * 1000))
+        let rawCIID = ObservedAgentRules.rawSessionId(s.id)
+        let ciNow = Date().timeIntervalSince1970
+        let ciWait = ciWaits.snapshot(rawCIID, now: Self.wireEpochMs(ciNow * 1000)).map {
+            githubCI.projection($0, sid: rawCIID, token: ciWaits.tokenFor(rawCIID), now: ciNow)
+        }
         if let ciWait { d["waitingOn"] = ciWait } else { d["waitingOn"] = NSNull() }
         if let ciWait, !(s.state ?? "").hasPrefix("awaiting") {
             d["activity"] = "CI wait" + ((ciWait["pr"] as? Int).map { " #\($0)" } ?? "")

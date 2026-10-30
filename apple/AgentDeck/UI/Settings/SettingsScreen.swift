@@ -1984,6 +1984,9 @@ struct SettingsScreen: View {
     /// branches every time we add an integration.
     private var servicesContent: some View {
         VStack(alignment: .leading, spacing: 14) {
+            #if os(macOS)
+            if !daemonService.isUsingExternalDaemon { GitHubCISettings() }
+            #endif
             IntegrationsView(
                 anthropicKeySaved: anthropicAdminApiKeySaved,
                 zaiKeySaved: zaiApiKeySaved,

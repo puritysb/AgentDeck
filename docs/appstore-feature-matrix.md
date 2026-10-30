@@ -56,7 +56,7 @@ All surfaces follow the same rule:
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
-| CI wait observation (#433) | Hook evidence | Hook evidence; optional GitHub status | Both daemons track explicitly identified CI watch tools independently of agent turn state, clear matching foreground tools and session boundaries, and emit explicit null on close. Background watches survive Stop. Hook intent has unknown CI phase until provider evidence arrives; it never proves success or failure. The App Store app must not spawn `gh`. No credentials or raw command reach the wire. |
+| CI wait observation (#433) | Hook evidence; optional native GitHub HTTPS status | Hook evidence; optional GitHub status | Both daemons track explicitly identified CI watch tools independently of agent turn state, clear matching foreground tools and session boundaries, and emit explicit null on close. Background watches survive Stop. Hook intent has unknown CI phase until provider evidence arrives; it never proves success or failure. Native access requires explicit consent and a repository allow-list; its optional fine-grained PAT stays in app-owned Keychain. Stale/unavailable evidence clears the verdict. The App Store app never spawns `gh`. No credentials or raw command reach the wire. |
 | Guided first use | Yes | — | Choose an available 2D/3D appearance, explicitly enable Claude/Codex observation through the existing consent flow, and enter with observed/ready/not-set-up status. Hardware discovery is optional, with an existing Stream Deck path and offline Device Preview. iOS offers appearance then bounded Mac discovery/QR pairing. Setup can be reopened; notifications are requested only on an explicit action. |
 | Hermes mermaid aquarium resident | Yes | Yes | Bundled Blender-authored Nous girl-inspired mermaid; observed Hermes sessions drive working/waiting poses. A fixed shell seat for idle rest, bounded lift-off for active work, skinned body/tail/fin and arm joints, independently controlled gaze/lids/brows/mouth, and cosmetic neighbour greetings; no inferred delegation or new controls. Both daemons ingest Hermes observer events. Explicit receiver selection supports direct Swift delivery; observer installation and enablement remain external setup (see Agent sessions). Reduced Motion freezes movement. |
 | Optional native 3D aquarium | Yes | Yes | Device-local dashboard type; bundled Blender-authored habitat and canonical extruded agent meshes. RealityKit live session reconciliation, status labels and existing focus commands; standard dashboard retained. No runtime Blender or external model download. |
@@ -264,7 +264,7 @@ data before new credentials, control protocols or unproven legacy demand.
 |---|---|---|---|
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
-| 3 | CI provider status enrichment; hook-derived wait intent already works in Swift | Define explicit GitHub credential consent/custody and repository/run identity, then replace [the current `gh api` probe](../bridge/src/ci-wait-probe.ts) with bounded native HTTPS. | Keychain custody, least required access, account switching/revocation, bounded polling and stale/unknown fixtures. No reading another tool's credential store or treating hook intent as proven CI success. Credential/source design precedes implementation; if it cannot be established, keep this blocked and advance another ready item. |
+| 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
 | 4 | Daemon relay hub/worker; Swift currently implements neither role | Specify a mixed Node/Swift [relay contract](../bridge/src/daemon-relay.ts), then port hub ingestion/projection before worker publication and supported command routing. | Authenticated same-socket routing, local-session precedence, per-session authorization, reconnect/dedup, stale-row expiry and bounded teardown. Advertise capability only when its contract is met. Swift workers must reject unsupported terminal injection; full external-worker control is not implied by receiving relay rows. |
 
 **Conditional P2 / research**, not the next default implementation:
@@ -303,7 +303,9 @@ a different product/wire contract and must be reviewed as such. See the
 [accuracy reassessment](../RELEASING.md#macos-192-claude-accuracy-reassessment-2026-10-23).
 
 Pocket adaptive selection and Glance pixels now run in-process in Swift.
-Physical X4 acceptance for both belongs to future companion-app integration. CI enrichment waits for a credential/source contract; relay follows its
+Physical X4 acceptance for both belongs to future companion-app integration.
+Native GitHub CI enrichment now follows an explicit consent/Keychain/identity
+contract. Relay is the next implementation candidate, following its
 transport/control design. Promote Kiro v2 only when legacy demand is established.
 Prepare the completed Hermes/OpenCode work for release as a separate activity;
 local acceptance is not Store distribution acceptance. Investigate the Claude
@@ -574,3 +576,85 @@ integration** at the user's direction. No physical-device result is inferred
 from the HTTP/PNG checks. Native Glance reuses available Swift session, quota
 and weather context; it does not add Node's ICS provider or a new quota source.
 Existing Feed/Outbox behavior is preserved.
+
+
+## Native GitHub CI provider contract
+
+Implemented in macOS Settings. Connection is disabled by default. Settings explicitly
+asks permission to send the listed `owner/repo` and watch/run identities to
+`api.github.com`. Public repository reads may be anonymous; private reads use a
+user-pasted fine-grained PAT scoped to selected repositories. No `gh` credential,
+Keychain item belonging to another tool, environment token or CLI is consulted.
+
+Only read access is needed: Actions for a run; Pull requests for PR head
+resolution; Contents for branch/commit resolution; Checks and Commit statuses
+for a head's complete CI verdict. A verified `/user` id/login binds an entered
+PAT to its account. A public connection makes no authenticated-account claim.
+The token, account identity and repository allow-list are stored atomically in
+an app-owned, non-synchronizing, device-local Keychain item. Only an opt-in bit
+is stored in preferences. Disconnect disables that bit before deleting the item,
+so a Keychain removal error cannot silently re-enable polling after relaunch.
+
+A probe requires an explicit repository plus run id, PR number or ref from the
+existing hook classifier; cwd and shared project names never infer identity.
+GitHub.com is the only host. Run id/repository/head SHA/attempt must match the
+request. PR/ref reads bind to a resolved SHA and recheck the head after reading
+all check/status pages; changed heads, duplicate/incomplete pagination, empty
+or malformed evidence and cancelled/skipped/neutral conclusions stay unknown.
+Links are constructed from validated identity, never followed from response data.
+
+HTTPS GETs use ephemeral sessions, no cookies/cache, denied redirects, bounded
+request/body/page/probe limits and provider-directed rate-limit backoff. Tokens
+never appear in logs, URLs, wire state, diagnostics or application data files.
+Account replacement, disconnect, session closure, daemon stop and changed wait
+identity discard late replies. Reads are scoped to the current credential
+revision and wait token. Failure/expiry clears cached verdicts and counts rather
+than retaining green/red; hook intent remains a separate unknown CI wait.
+No GitHub write, rerun, approval or workflow control is added.
+
+Sources: [workflow runs](https://docs.github.com/en/rest/actions/workflow-runs),
+[check runs](https://docs.github.com/en/rest/checks/runs),
+[commit statuses](https://docs.github.com/en/rest/commits/statuses),
+[authenticated user](https://docs.github.com/en/rest/users/users#get-the-authenticated-user).
+
+## Native GitHub CI provider acceptance 2026-10-30
+
+The Swift client reads GitHub directly without Node, `gh`, subprocesses or another
+tool's credentials. Generated policy fixes 30-second polling, 90-second freshness,
+four concurrent probes, an 8-second request/20-second probe budget, a 256-KiB
+response limit and at most ten 100-item pages. Provider backoff applies across
+all waits. Credential revisions and wait tokens reject late responses; expired,
+revoked, malformed or unavailable evidence projects unknown with old counts and
+links removed. Completed passed/failed waits retain the existing 30-second result
+display interval before closing.
+
+Software checks compare Swift with Node on 63 individual phase and six aggregate
+vectors. Twelve native tests exercise run/repository/SHA/attempt identity, PR/ref
+head changes, pagination, partial/empty evidence, auth/permission/rate limits,
+bounded transport, consent persistence, disconnect/account replacement races,
+stale projection, terminal closure and concurrency. Unsigned XCTest cannot access
+the Data Protection Keychain and skips that one real-storage test; a correctly
+Development-signed helper separately passed actual save/load/delete with a
+synthetic credential in a temporary app-owned service.
+
+A Development-signed Settings host compiled the actual Settings, connection,
+provider and client source. Explicit consent connected the public repository
+`actions/checkout`; Swift directly read [run 40929612276](https://github.com/actions/checkout/actions/runs/40929612276)
+as passed. Quitting and reopening restored the repository and connection from
+the real Data Protection Keychain and obtained passed again. Disconnect cleared
+the verdict to unknown, and a second relaunch stayed disconnected. This is signed
+component/runtime acceptance, not deployment or end-to-end acceptance of a newly
+installed full app. The shared daemon and device settings were preserved; the
+temporary hosts, synthetic Keychain records and test consent were removed.
+
+Final source verification passed: `pnpm verify:quick` (7,022 tests passed,
+17 skipped), macOS Debug XCTest (1,410 cases including 4 skipped), macOS
+DotPreview optimized XCTest (1,428 cases including 9 skipped), universal macOS
+Release, normal/DotPreview iOS simulator builds and changed-documentation gates.
+The Keychain test described above accounts for one skip in each macOS suite.
+
+Authenticated `/user`, permission failures, token replacement and private-repo
+responses use controlled transport fixtures. **No real personal token or private
+repository was used in live acceptance**; that final check belongs to a user
+connecting their own selected-repository token in Settings. No token should be
+provided through chat or committed diagnostics.

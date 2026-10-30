@@ -279,6 +279,14 @@ final class CiWaitTracker {
         _ = snapshot(sid, now: now)
         return (sessions[sid] ?? []).map { ($0.token, $0.background, $0.status["openedAt"] as? Int ?? now) }
     }
+    func entries(now: Int) -> [(String, [String: Any])] {
+        Array(sessions.keys).compactMap { sid in snapshot(sid, now: now).map { (sid, $0) } }
+    }
+    func closeHead(_ sid: String, openedAt: Int) {
+        guard var waits = sessions[sid], waits.first?.status["openedAt"] as? Int == openedAt else { return }
+        waits.removeFirst()
+        if waits.isEmpty { sessions.removeValue(forKey: sid) } else { sessions[sid] = waits }
+    }
     func tokenFor(_ sid: String) -> Int? { sessions[sid]?.first?.token }
     func isForeground(_ sid: String) -> Bool { sessions[sid]?.first?.background == false }
     func snapshot(_ sid: String, now: Int) -> [String: Any]? {
