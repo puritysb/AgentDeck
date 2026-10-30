@@ -265,7 +265,7 @@ data before new credentials, control protocols or unproven legacy demand.
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
 | 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
-| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real Node/Swift sockets both ways, token/origin refusal, reconnect/dedup, silent hello timeout, stale/fallback and supported-control guards. Final native build recheck is resource-blocked as recorded below; two-machine and signed Settings acceptance remain unverified. Full terminal control is not implied. |
+| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real Node/Swift sockets both ways, token/origin refusal, reconnect/dedup, silent hello timeout, stale/fallback and supported-control guards. All five native build/test configurations pass; two-machine and signed Settings acceptance remain unverified. Full terminal control is not implied. |
 
 **Conditional P2 / research**, not the next default implementation:
 
@@ -734,21 +734,21 @@ credential store is read. Session metadata still travels over v1 `ws://` to the
 explicitly trusted endpoint; the existing [network boundary](daemon.md#daemon-relay-worker-daemon-to-hub)
 and its trusted-network/tunnel guidance apply.
 
-Final verification state: the completed relay components and catalog pass **49
-Vitest cases**, including actual native publication refusing untagged legacy
-managed rows and received relay rows. Expanded routing parity passes for every
-canonical Node relay command type. A full macOS Debug run passed **1,419 cases
-including 4 skipped** before the final publication filter was added; that filter
-is covered by the completed real-socket component tests. Standard Release and
-normal iOS also built during the local run.
+Final source verification passes all five required native configurations:
+macOS Debug XCTest (**1,419 cases including 4 skipped**), macOS DotPreview
+optimized XCTest (**1,437 cases including 9 skipped**), universal macOS Release,
+and normal/DotPreview iOS simulator builds. The full `pnpm verify:quick` gate
+passes with **7,029 tests passed and 17 skipped**. The completed relay components
+and catalog pass **49 Vitest cases**, including actual native publication refusing
+untagged legacy managed rows and received relay rows. Expanded routing parity
+covers every canonical Node relay command type.
 
-The required final five-configuration native recheck remains **blocked by host
-file-descriptor exhaustion**, not accepted as passed. Xcode 27.2 reports
-`Too many open files in system` and then cannot discover compiler information;
-serial builds and per-invocation single-job/single-batch scheduling reproduce it.
-No global system limit or other task was changed. Whole-suite quick checks also
-reproduce the unchanged ESP32 listener probe's 5-second `lsof` timeout; its source
-blob is identical to HEAD. The new test-domain catalog omission was corrected
-and all 16 catalog checks pass. Final native/release acceptance must be rerun
-after the shared host resource condition is resolved. No installed-app or Store
-acceptance is claimed.
+The earlier host file-descriptor blocker cleared after an unrelated long-running
+read-only search had exited and handle pressure fell. The unchanged ESP32 listener
+probe also timed out after five seconds during that pressure, then passed all
+seven focused cases after recovery. No unrelated process was signalled and no
+global system limit or repository build setting was changed. Native verification used
+per-invocation single-job/single-batch scheduling with parallel WMO disabled;
+optimization and Store/Dot feature boundaries remained enabled. The new test
+catalog entries are included in CI. Local build/test acceptance does not imply
+installed-app, signed relay Settings or Store distribution acceptance.
