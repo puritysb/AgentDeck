@@ -160,7 +160,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 | Observed Claude PreToolUse hold (device Allow/Deny) | Yes, when `~/.claude` is readable | Yes | The one predicted PERM: held only when the generated `ClaudePermissionRules` predictor (shared SSOT, vector-pinned) says Claude would genuinely prompt — mode gate, allow/deny/ask rules in the documented wildcard grammar, built-in read-only set, `acceptEdits` filesystem commands. Sandboxed builds that cannot list `~/.claude` hold nothing |
 | Codex device approvals (opt-in `PermissionRequest` hold) | Yes | Yes | Off by default. Turned on from the Codex block under Settings → Integrations, or `agentdeck daemon install --codex-approvals`; both installers add one second handler to AgentDeck's own `PermissionRequest` group, and Codex shows its hook review once. Nothing is predicted — the hook fires only when Codex is about to ask — so Tier 1 needs no folder access beyond the existing config grant. Held only with a connected device, a visible session and no other hold on it, for at most the observed-approval hold (25 s); the end of the turn releases it. While held, the terminal shows "Running hook" instead of the prompt; an undecided release prints nothing and Codex's own prompt appears. Pure HTTP hold, no subprocess. A decision taking effect in real Codex awaits a user-trusted handler run |
 | Session order pinning (`--weight` sort override) | Yes | Yes | Observed sessions are pinned daemon-first: BOTH daemons persist weight pins (`session-order.json`, `agentdeck order`, `POST /sessions/order`) and overlay them on observed rows before fold+sort, riding the existing `SessionInfo.weight` wire field. Cross-daemon single-sourced TTL/cap (`pnpm generate-session-weight-rules`). The managed launcher's launch-time `--weight` remains the compatibility path; the real-user tab-to-deck scenario was validated on 2026-09-19 (#273) |
-| Daemon relay (worker daemon publishes observed sessions to a hub daemon) | No | Yes (experimental) | Daemon-first counterpart of managed `--remote-daemon` attach (#273, Discussion #278), additive to it. Opt-in per worker via `agentdeck relay set <host[:port]>` (`relay.json`, 0600, read at daemon start). The worker dials out; the hub steers back down the same socket and never dials a worker. Only observed rows are relayed, and the worker accepts only observed steering (approve/deny, AskUserQuestion answer, turn-end prompt, soft stop, platform terminal injection) for sessions it is relaying. The hub must be a Node CLI daemon advertising `daemonRelay`; the Swift daemon neither hosts nor publishes a relay, so nothing here is reachable in the App Store build. |
+| Daemon relay (worker daemon publishes observed sessions to a hub daemon) | Native hub and opt-in worker (experimental) | Yes (experimental) | [Mixed v1 contract](#mixed-nodeswift-daemon-relay-contract): authenticated same-socket control, local ownership precedence, bounded reconnect/dedup and stale expiry. Native Settings stores explicit target consent/token in app-owned Keychain; Node retains `relay.json`. Swift workers publish only explicitly observed rows, support Claude hook controls/native held Codex approvals and refuse terminal-only or stale/unsupported commands. Neither hub dials a worker, and received rows are never republished. |
 | Adaptive high-volume menu bar overview | Yes | Yes | The popup keeps a bounded height at every session/device count: actionable sessions stay visible, idle sessions and repeated surface families collapse into counted summaries, and Activity shows completed work from a named recent window instead of unbounded duration totals. The Dashboard retains the complete roster, topology, and report. This is presentation-only and uses the same daemon state in both tiers |
 | Dashboard inspection selection | Yes | Yes | Creature and session-list inspection is local to each dashboard. It filters that screen’s timeline and highlights its creature without changing daemon control focus or another device. Explicit hardware/control commands retain their target. Folded Codex rows include only their declared member session IDs. |
 | Adaptive high-volume Dashboard session panel | Yes | Yes | The left HUD reserves the Timeline region, widens within a fixed landscape cap, switches to compact rows for larger rosters, and scrolls the complete session collection inside its own bounded card instead of painting over Timeline. Adjacent setup guidance shifts beside the roster rather than covering it. Presentation-only; focus and session data remain identical in both tiers |
@@ -265,7 +265,7 @@ data before new credentials, control protocols or unproven legacy demand.
 | 1 — implemented | Pocket adaptive content selection | [Shared policy](../shared/src/pocket-policy.ts) generates native constants; [Swift engine](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift) implements selection, aggregate learning and existing Feed/Outbox routing. | [Software acceptance](#native-pocket-content-acceptance-2026-10-30) covers Node/Swift vectors and signed-app HTTP/relaunch. The user deferred physical X4 verification to future companion-app integration; no legacy firmware acceptance is claimed. |
 | 2 — implemented | Glance Frame pixels | [Swift layout/rendering](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift) uses a statically linked, pinned resvg engine with the same bundled fonts as [Node](../bridge/src/glance-frame.ts). Shared policy generates geometry, layout units, icons and Bayer thresholds. | [Software acceptance](#native-glance-frame-acceptance-2026-10-30) covers exact SVG/1bpp/PNG vectors, native routes and the signed Release app. X4 physical verification is deferred to future companion-app integration. Node also moves from sharp SVG rendering to the common resvg baseline; sharp remains the Node PNG encoder. |
 | 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
-| 4 | Daemon relay hub/worker; Swift currently implements neither role | Specify a mixed Node/Swift [relay contract](../bridge/src/daemon-relay.ts), then port hub ingestion/projection before worker publication and supported command routing. | Authenticated same-socket routing, local-session precedence, per-session authorization, reconnect/dedup, stale-row expiry and bounded teardown. Advertise capability only when its contract is met. Swift workers must reject unsupported terminal injection; full external-worker control is not implied by receiving relay rows. |
+| 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real Node/Swift sockets both ways, token/origin refusal, reconnect/dedup, silent hello timeout, stale/fallback and supported-control guards. Final native build recheck is resource-blocked as recorded below; two-machine and signed Settings acceptance remain unverified. Full terminal control is not implied. |
 
 **Conditional P2 / research**, not the next default implementation:
 
@@ -305,8 +305,10 @@ a different product/wire contract and must be reviewed as such. See the
 Pocket adaptive selection and Glance pixels now run in-process in Swift.
 Physical X4 acceptance for both belongs to future companion-app integration.
 Native GitHub CI enrichment now follows an explicit consent/Keychain/identity
-contract. Relay is the next implementation candidate, following its
-transport/control design. Promote Kiro v2 only when legacy demand is established.
+contract. Daemon relay now implements its mixed transport/control contract.
+The default P2 migration list is implemented; remaining physical/private-provider
+acceptance and conditional research stay separate. Promote Kiro v2 only when
+legacy demand is established.
 Prepare the completed Hermes/OpenCode work for release as a separate activity;
 local acceptance is not Store distribution acceptance. Investigate the Claude
 source in parallel without promising a quota release before the evidence exists.
@@ -658,3 +660,95 @@ responses use controlled transport fixtures. **No real personal token or private
 repository was used in live acceptance**; that final check belongs to a user
 connecting their own selected-repository token in Settings. No token should be
 provided through chat or committed diagnostics.
+
+
+## Mixed Node/Swift daemon relay contract
+
+Implemented locally. Both hubs speak the existing v1 `relay_hello` →
+`relay_ack` → `relay_sessions` protocol. `relay_command_down` travels only back
+down the authenticated worker socket; the hub never dials a worker. The public
+minimal health payload advertises only `daemonRelay`, never pairing credentials
+or inventory. Existing HTTP/WS pairing and browser-origin gates remain in force.
+Non-loopback workers require the hub token. No ambient discovery or CLI
+credential/configuration import enables a Swift worker. Native Settings requires
+explicit endpoint/data-sharing consent and keeps its target/token in app-owned,
+device-local Keychain; disabling consent precedes deletion and drops the uplink.
+
+Observed rows only leave the worker: exclude managed, Gateway and all received
+relay rows. The hub applies the canonical typed field allow-list, bounds and
+forced observed/port-zero identity. Local sessions and request ids take
+precedence. One worker instance supersedes its older socket; duplicates collapse
+by row id. Identical snapshots refresh liveness without repeated broadcasts.
+Unchanged snapshots heartbeat every 15 seconds, rows expire after 45 seconds,
+and disconnect removes them immediately. Expiry is checked on reads as well as
+a sweep; old sockets cannot remove their replacements.
+
+Native networking bounds health, hello acknowledgement, sends and pong waits.
+Reconnect uses capped exponential delay, slower after authentication/capability
+refusal. Configuration/connection generations discard late callbacks and stop
+cancels pending work. Relay publication strips volatile elapsed time, retains
+explicit null/false and never republishes received rows.
+
+Workers authorize every command against both the latest published ids and their
+current local rows/held requests. Node retains its supported observed controls.
+Swift supports Claude hook soft stop, queued directives and held-gate answers,
+plus native Codex approvals while the actual hold remains current;
+it refuses terminal injection, unsupported agents, stale request ids, global
+settings/voice/launch commands and commands targeting another session. A Swift
+worker sends additive `relay_command_refused` feedback; older v1 peers can ignore
+it. Receipt of a command never implies delivery to an external terminal. No new
+managed-session dependency or subprocess is added.
+
+
+## Native daemon relay acceptance 2026-10-30
+
+`daemon-relay-sync.test.ts` compiles the production Swift rules/hub and compares
+malformed/duplicate/bounded rows, Unicode, null/false, weight, publication
+exclusion and all canonical Node relay command-routing types. Shared policy
+generation is drift-gated; native display rows reconstruct elapsed seconds from
+plain/fractional ISO timestamps without making heartbeat snapshots change.
+
+`daemon-relay-native.test.ts` compiles production native relay, WebSocket, HTTP
+and authentication components into a test-only executable with isolated data
+directories and synthetic credentials. A real Swift worker publishes to a Node
+hub, receives supported control, explicitly refuses unsupported control and
+reconnects without duplicate workers/rows. A real Node worker publishes to the
+native hub and receives same-socket control. Native upgrade requests carrying a
+browser Origin get 401 with missing/wrong tokens and succeed with the fixture
+token. Wrong-version ACK is refused; a hub that never acknowledges hello is
+closed within its 10-second budget. No shared daemon, app installation or hardware
+is used by these fixtures.
+
+Nine native tests cover typed row bounds, observed-only publication (including
+legacy managed rows with no `controlMode`), superseded sockets, on-read/swept
+stale expiry, local session/request precedence, elapsed projection and stale
+remote focus. They also cover explicit endpoint consent, target/token persistence,
+failed deletion remaining disabled, unsupported/terminal/global controls, live
+held-request checks, actual native socket reconnect and stop. The relay-specific
+suites plus verification-catalog checks pass 49 Vitest cases.
+
+These are local process/socket and storage-fixture checks. A physical two-machine
+link, signed relay Settings/Keychain flow and Store distribution are not claimed.
+The existing app-owned Keychain adapter is reused; no Node file or foreign
+credential store is read. Session metadata still travels over v1 `ws://` to the
+explicitly trusted endpoint; the existing [network boundary](daemon.md#daemon-relay-worker-daemon-to-hub)
+and its trusted-network/tunnel guidance apply.
+
+Final verification state: the completed relay components and catalog pass **49
+Vitest cases**, including actual native publication refusing untagged legacy
+managed rows and received relay rows. Expanded routing parity passes for every
+canonical Node relay command type. A full macOS Debug run passed **1,419 cases
+including 4 skipped** before the final publication filter was added; that filter
+is covered by the completed real-socket component tests. Standard Release and
+normal iOS also built during the local run.
+
+The required final five-configuration native recheck remains **blocked by host
+file-descriptor exhaustion**, not accepted as passed. Xcode 27.2 reports
+`Too many open files in system` and then cannot discover compiler information;
+serial builds and per-invocation single-job/single-batch scheduling reproduce it.
+No global system limit or other task was changed. Whole-suite quick checks also
+reproduce the unchanged ESP32 listener probe's 5-second `lsof` timeout; its source
+blob is identical to HEAD. The new test-domain catalog omission was corrected
+and all 16 catalog checks pass. Final native/release acceptance must be rerun
+after the shared host resource condition is resolved. No installed-app or Store
+acceptance is claimed.

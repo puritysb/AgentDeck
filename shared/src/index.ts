@@ -90,3 +90,5 @@ export * from './apme-review.js';
 export * from './pocket-policy.js';
 
 export { GLANCE_POLICY } from './glance-frame-policy.js';
+
+export * from './daemon-relay-policy.js';

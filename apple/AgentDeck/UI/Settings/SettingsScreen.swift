@@ -1985,7 +1985,7 @@ struct SettingsScreen: View {
     private var servicesContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             #if os(macOS)
-            if !daemonService.isUsingExternalDaemon { GitHubCISettings() }
+            if !daemonService.isUsingExternalDaemon { GitHubCISettings(); DaemonRelaySettings() }
             #endif
             IntegrationsView(
                 anthropicKeySaved: anthropicAdminApiKeySaved,

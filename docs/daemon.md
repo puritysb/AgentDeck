@@ -441,7 +441,7 @@ daemon** publishes the sessions it observes — Claude, Codex, OpenCode and the
 rest, launched normally — to a hub daemon, and the hub's decks steer them.
 Managed remote attach keeps working unchanged alongside it.
 
-- **Enable (worker)**: `agentdeck relay set <host[:port]> --token <hub token>`
+- **Enable (Node worker)**: `agentdeck relay set <host[:port]> --token <hub token>`
   writes `relay.json` (0600, this daemon's data dir); `agentdeck daemon restart`
   starts publishing. It is read once at daemon start, so an autostart unit
   picks it up with no credential in its argv. `agentdeck relay clear` removes
@@ -449,11 +449,20 @@ Managed remote attach keeps working unchanged alongside it.
   daemon reports (`/health.relay`), including why it is not connected (missing
   capability, rejected token, refusal). For an `ssh -L` forward, name the local
   end (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
+- **Enable (Swift worker)**: macOS Settings → Services → Daemon relay asks for
+  the hub host, port, optional pairing token for loopback and explicit consent
+  to publish observed session metadata/accept supported controls. The target and
+  token stay in the app’s own device-local Data Protection Keychain; only the
+  consent bit goes into preferences. Changes apply without a daemon restart.
+  **Disable relay** invalidates the live generation before deleting storage;
+  failed deletion cannot restore consent after relaunch. No Node `relay.json`,
+  environment credential or another tool’s Keychain is imported. The Settings
+  card configures only the native owner and is hidden in external-daemon mode.
 - **Same boundary as remote attach**: opt-in per worker, never discovered;
   outbound only — the worker dials, commands come back down that socket, and the
   hub never dials a worker; a non-loopback hub needs its pairing token, which
   is never logged; the worker refuses a hub whose `/health` lacks
-  `daemonRelay: true` (the Swift daemon advertises neither side) and a hub
+  `daemonRelay: true` (both Node and Swift hubs advertise it) and a hub
   refuses a relay from its own process. As with remote attach, the link is
   plain `ws://` and the token rides its query string, and the hub is not
   authenticated to the worker — anyone able to impersonate the hub's address
@@ -471,7 +480,11 @@ Managed remote attach keeps working unchanged alongside it.
   rebroadcasts (debounced) only when rows changed and stops serving a worker's
   rows 45 s after its last frame. The worker pings the hub; a hub that does not
   answer the hello within 10 s or stops answering pings for 45 s is torn down
-  and redialed with backoff.
+  and redialed with backoff. Both sides bound relay frames to 2 MiB and accept
+  at most 64 workers/64 rows per worker. A reconnect replaces its old instance
+  socket; stale old callbacks cannot delete the replacement. Native hub focus
+  retains bounded retired ids so a stale remote press never becomes local
+  focused-session control.
 - **What the hub can do to a worker**: route a device command for a relayed
   session down the socket — `session_command`
   (`interrupt`/`escape`/`send_prompt`/`respond`/`select_option`), a
@@ -482,7 +495,15 @@ Managed remote attach keeps working unchanged alongside it.
   Claude rows only, since for any other agent the daemon's handler would fall
   through to whatever session the worker's own deck has focused. The hub cannot
   reach any other worker command (settings, voice, focus, agent switch).
-- **Controls are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
+- **Native worker control boundary**: Claude hook soft stop, queued directives,
+  held permission decisions and held AskUserQuestion answers; native Codex
+  held approvals also qualify while their actual hold remains current. A stale
+  publication/request, terminal-only input, unsupported agent or global
+  settings/voice/launch command is refused. Additive `relay_command_refused`
+  frames report refusal without echoing command text. Native ask answers still
+  require their current question and use the existing hook gate, never guessed
+  terminal input. Snapshot receipt is not execution acknowledgement.
+- **Controls on Node workers are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
   answer, a prompt queued for the end of the turn, a stop at the next tool call,
   and terminal injection where the worker's platform has a rung (macOS
   terminals, tmux). Managed PTY controls (immediate Ctrl-C, Shift+Tab mode

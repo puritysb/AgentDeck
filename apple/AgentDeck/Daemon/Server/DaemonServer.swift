@@ -1328,6 +1328,13 @@ final class DaemonServer {
     /// polled while any remain (Codex's hooks carry no task list).
     private var codexBackgroundTerminals = CodexBackgroundTerminals()
     private var codexBackgroundPollTask: Task<Void, Never>?
+    private lazy var relayHub: DaemonRelayHub = {
+        let hub = DaemonRelayHub(instanceId: sessionId)
+        hub.onChange = { [weak self] in self?.scheduleSessionsListBroadcast() }
+        return hub
+    }()
+    private var relayUplink: DaemonRelayUplink?
+    private var relayPollTask: Task<Void, Never>?
     private let ciWaits = CiWaitTracker()
     private let githubCI = GitHubCIProvider()
     private var githubCIPollTask: Task<Void, Never>?
@@ -2911,7 +2918,7 @@ final class DaemonServer {
         if method == "GET", path == "/health" {
             return .json([
                 "status": "ok", "mode": "daemon", "port": Int(daemonPort),
-                "authRequired": true, "isSwift": true,
+                "authRequired": true, "isSwift": true, "daemonRelay": true,
             ])
         }
         // The one path by which an unauthenticated LAN peer can obtain the
@@ -3516,7 +3523,7 @@ final class DaemonServer {
                 "state": state,
                 "pairingToken": AuthManager.shared.token,
                 "modules": health["modules"] as Any,
-                "isSwift": true,
+                "isSwift": true, "daemonRelay": true,
                 // Node parity: `agentdeck qr`/`pair` read this to warn instead
                 // of printing a dead LAN URL against a loopback-only daemon.
                 // Full-health payload only — the unauthenticated LAN /health
@@ -4695,6 +4702,13 @@ final class DaemonServer {
             handleClientRegister(cmd, from: conn)
             return
         }
+        // Relay frames only arrive after the existing WS authentication gate.
+        // A negotiated Surface cannot upgrade itself into a relay worker.
+        if surfaceNegotiations[conn.id] == nil,
+           relayHub.handle(cmd, socket: conn.id, send: { [weak conn] frame in
+               if let data = DaemonRelayRules.data(frame) { conn?.send(data) }
+           }) { return }
+        if relayHub.contains(conn.id) { return }
         if let surface = surfaceNegotiations[conn.id] {
             let type = cmd["type"] as? String ?? ""
             let permitted: Bool
@@ -4890,6 +4904,7 @@ final class DaemonServer {
     /// stays as the safety net for kill -9 / OS crash cases where the
     /// close frame never arrives.
     private func handleClientDisconnect(_ conn: WebSocketConnection) {
+        relayHub.drop(conn.id)
         activeWSConnectionIds.remove(conn.id)
         surfaceNegotiations.removeValue(forKey: conn.id)
         if let sd = cachedStreamDeck, sd.connectionId == conn.id {
@@ -5199,6 +5214,7 @@ final class DaemonServer {
         var known = Set<String>(["openclaw-gateway"])
         known.formUnion(pushedSessionsById.keys)
         known.formUnion(cachedSessions.map { $0.id })
+        known.formUnion(relayHub.allKnownIds)
         if known.contains(raw) { return raw }
         let matches = known.filter { $0.hasPrefix(raw) }
         return matches.count == 1 ? matches[matches.startIndex] : raw
@@ -5253,6 +5269,12 @@ final class DaemonServer {
         if let rawSid = cmd["sessionId"] as? String, !rawSid.isEmpty {
             cmd["sessionId"] = resolveDeviceSessionId(rawSid)
         }
+
+        // Resolve relay ownership before any local/gateway fallback. A stale
+        // remote focus is consumed rather than steering a local focused agent.
+        if relayHub.route(cmd, focused: userFocusedSessionId, local: cachedSessions.map { sessionToDict($0) }) { return }
+        let localControlIds = Set(cachedSessions.map { $0.id }).union(pushedSessionsById.keys)
+        if DaemonRelayRules.rejectsLocalFallback(cmd, focused: userFocusedSessionId, local: localControlIds) { return }
 
         // Host push-to-talk is the daemon's own capability (host mic +
         // speakers) — claim it before any adapter/gateway routing, mirroring
@@ -5620,6 +5642,12 @@ final class DaemonServer {
     }
 
     private func focusSession(_ sessionId: String) {
+        if !cachedSessions.contains(where: { $0.id == sessionId }), relayHub.allKnownIds.contains(sessionId) {
+            userFocusedSessionId = sessionId
+            Task { await focusRelay.unfocus() }
+            broadcastStateUpdate()
+            return
+        }
         if sessionId == "openclaw-gateway", cachedGatewayConnected || cachedGatewayHasError {
             userFocusedSessionId = sessionId
             Task { await focusRelay.unfocus() }
@@ -9959,7 +9987,43 @@ final class DaemonServer {
 
     // MARK: - Polling
 
+    private func relayLocalRows() -> [[String: Any]] {
+        pushedSessionsById.values.map { entry in
+            var row = sessionToDict(entry)
+            if let rid = codexHoldRequestBySession[entry.id], rid == entry.requestId { row["_relayHeldCodex"] = true }
+            if let rid = pendingAskBySession[entry.id]?.gateRequestId {
+                row["requestId"] = rid; row["_relayHeldAsk"] = true
+            }
+            return row
+        }
+    }
+
     private func startAllPolling() {
+        let uplink = DaemonRelayUplink(instanceId: sessionId,
+            snapshot: { [weak self] in
+                guard let self else { return [] }
+                let local = Dictionary(self.relayLocalRows().compactMap { row in (row["id"] as? String).map { ($0,row) } }, uniquingKeysWith: { first, _ in first })
+                return (self.buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? []).map { row in
+                    guard let sid = row["id"] as? String, let rid = local[sid]?["requestId"] as? String else { return row }
+                    var row = row; row["requestId"] = rid; return row
+                }
+            },
+            current: { [weak self] in
+                guard let self else { return [] }
+                return self.relayLocalRows()
+            },
+            exclude: { [weak self] in Set(self?.relayHub.rows().compactMap { $0["id"] as? String } ?? []) },
+            execute: { [weak self] cmd in self?.handleCommand(cmd) })
+        relayUplink = uplink
+        relayPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, !self.startupStopped else { return }
+                await uplink.configure()
+                guard !Task.isCancelled, !self.startupStopped else { return }
+                self.relayHub.sweep()
+                try? await Task.sleep(for: .milliseconds(DaemonRelayPolicy.RELAY_POLL_MS))
+            }
+        }
         githubCIPollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self, !self.startupStopped else { return }
@@ -10570,6 +10634,10 @@ final class DaemonServer {
                 }
                 sessions.append(gatewaySession)
             }
+        }
+        let localIds = Set(sessions.compactMap { $0["id"] as? String })
+        sessions += relayHub.rows().filter { row in
+            guard let id = row["id"] as? String else { return false }; return !localIds.contains(id)
         }
         sessions = DashboardDataRules.foldCodexSessionPayloadsForDisplay(sessions)
         sessions = DashboardDataRules.sortSessionPayloads(sessions)
@@ -12166,6 +12234,8 @@ final class DaemonServer {
 
     func shutdown() async {
         startupStopped = true
+        relayPollTask?.cancel(); relayPollTask = nil
+        relayUplink?.stop(); relayUplink = nil; relayHub.stop()
         githubCIPollTask?.cancel(); githubCIPollTask = nil
         githubCI.stop()
         pocketAutonomy.flush()

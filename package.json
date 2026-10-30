@@ -86,6 +86,7 @@
     "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts",
     "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs",
     "generate-dot-contract": "pnpm --filter @agentdeck/shared build && pnpm --filter @agentdeck/dot-relay build && node services/dot-relay/generate-native.mjs",
+    "generate-daemon-relay": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-relay.mjs",
     "generate-ci-provider": "node scripts/generate-ci-provider.mjs",
     "generate-ci-wait": "node scripts/generate-ci-wait.mjs",
     "generate-session-settings-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-session-settings-rules.mjs",
