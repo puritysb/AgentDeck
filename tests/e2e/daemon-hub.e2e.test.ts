@@ -983,14 +983,18 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     };
     const settle = () => new Promise((r) => setTimeout(r, 400));
     // Node Claude rows come from the process scan, never from hooks: stand
-    // up a process named `claude` (a symlink to sleep — macOS kills a copied
-    // platform binary, and ps reports the symlink path as argv[0]) and the
-    // session file Claude Code writes for it, in this suite's temp HOME.
+    // up a process named `claude` and the session file Claude Code writes
+    // for it, in this suite's temp HOME. Use this runner's Node with a timer:
+    // a renamed host sleep utility exited before observation on Linux CI.
+    // Symlinking avoids copying signed binaries on macOS, and ps retains
+    // the symlink path as argv[0]. No real agent or model request is involved.
     const fakeBin = join(home, 'fake-claude-bin');
     mkdirSync(fakeBin, { recursive: true });
     const fakeClaude = join(fakeBin, 'claude');
-    symlinkSync('/bin/sleep', fakeClaude);
-    const proc = spawn(fakeClaude, ['600'], { stdio: 'ignore' });
+    symlinkSync(process.execPath, fakeClaude);
+    const proc = spawn(fakeClaude, ['-e', 'setTimeout(() => {}, 600_000)'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let fixtureStderr = '';
+    proc.stderr?.on('data', (chunk: Buffer) => { fixtureStderr = (fixtureStderr + chunk.toString()).slice(-2000); });
     mkdirSync(join(home, '.claude', 'sessions'), { recursive: true });
     writeFileSync(join(home, '.claude', 'sessions', `${proc.pid}.json`),
       JSON.stringify({ pid: proc.pid, sessionId: sid, cwd: base.cwd, startedAt: Date.now() }));
@@ -998,13 +1002,19 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     await postHook(daemon.port, 'UserPromptSubmit', { ...base, hook_event_name: 'UserPromptSubmit', prompt: 'permission request e2e' });
     const client = await connect(daemon.port);
     try {
-      await waitFor('Claude row', () => row(client.frames), 30_000).catch(async (error: unknown) => {
+      await waitFor('Claude row', () => {
+        if (proc.exitCode !== null || proc.signalCode !== null) {
+          throw new Error(`fixture exited before observation: ${proc.exitCode ?? proc.signalCode}`);
+        }
+        return row(client.frames);
+      }, 30_000).catch(async (error: unknown) => {
         // Report only this fixture's process and observer counters, never a
         // machine-wide process table or transcript contents.
         const own = (await collectProcessInfo()).find(entry => entry.pid === proc.pid);
         const diagnostic = await fetch(`http://127.0.0.1:${daemon.port}/diag`,
           { signal: AbortSignal.timeout(2000) }).then(response => response.json()).catch(() => null);
         throw new Error(`${String(error)}\n${JSON.stringify({ fixturePid: proc.pid, fixtureExit: proc.exitCode,
+          fixtureSignal: proc.signalCode, fixtureStderr,
           fixtureCommand: own?.command ?? null, recognized: own ? isClaudeSessionProcessCommand(own.command) : false,
           passiveObserver: diagnostic?.passiveObserver ?? null })}`);
       });
