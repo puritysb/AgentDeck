@@ -48,6 +48,14 @@ UI는 CLI 전용 섹션을 숨기고 companion executable 설치를 유도하지
 
 **외부 CLI daemon 이 이미 실행 중인 경우**: `DaemonService.alreadyRunning` → `connectToExternalDaemon`. Swift 앱은 죽지 않고 CLI daemon 의 WS 클라이언트가 된다 (`isUsingExternalDaemon = true`). 이 모드는 사용자가 터미널에서 별도 daemon 을 이미 운영하는 고급 경로이며, App Store 앱 자체는 외부 실행 파일 설치/기동을 요구하지 않는다. 하드웨어 상태는 CLI daemon 이 `state_update.moduleHealth` 로 브로드캐스트한 범위만 UI 에 표시한다.
 
+개발용 격리 그룹에서는 **두 런타임 모두** `AGENTDECK_PORT_WINDOW=19450-19459`로
+탐색·할당 범위를 바꿀 수 있다. 선호 포트도 그 범위 안으로 별도 지정하고 각자의
+데이터 디렉터리를 분리해야 한다. 기본값과 잘못된 환경 변수의 폴백은 기존과 같은
+9120–9139이며, 환경 변수만으로 선호 포트·앱 컨테이너·기기 모듈이 바뀌지는 않는다.
+Swift도 Node와 같은 파서 벡터 및 생성된 규칙을 사용한다.
+실제 두 프로세스 수명주기 검증 방법과 범위는
+[격리 통합 검증](testing.md#signed-swiftnode-lifecycle-acceptance)에 정리되어 있다.
+
 **iDotMatrix BLE 구동 주체**: CLI(Node) 데몬이 포트를 소유하면 데몬이 부팅 시 `startIDotMatrixSync(port)`로 npm 패키지에 포함된 `bridge/src/idotmatrix/sync.py`(bleak)를 **자식 프로세스로 자동 spawn**한다(라이프사이클 관리: 크래시 시 backoff 재spawn, 데몬 종료 시 kill). Python 의존성은 npm 설치 중 받지 않고, 첫 BLE 명령 또는 `agentdeck ble setup` 때 `~/.agentdeck/python-ble`에 준비한다. 데몬 시작 자체는 네트워크 설치를 하지 않으며 런타임이 준비되지 않았으면 명시적인 setup 안내를 로그에 남긴다. 이로써 **CLI 데몬만 떠 있어도**(Swift 앱·수동 `idotmatrix sync` 불필요) 준비된 기기가 구동된다. sync.py 는 `/pixoo/frame?size=32`를 폴링해 BLE push. 패널에 연결되지 않은 동안에는 데몬이 30 s 마다 설정의 첫 기기를 다시 읽어, 주소나 밝기가 바뀌면 새 설정으로 다시 띄우고 기기가 제거되면 멈춘다(설정 파일을 읽지 못하면 그대로 둔다). — 단독 Swift 앱(CLI 데몬 없음)일 때만 Swift 가 hub 모듈로 직접 구동하고, **CLI 데몬이 있으면 Swift client-mode 는 stand down**(`DaemonService.syncClientModeDevices`가 client 모드 BLE 구동을 띄우지 않음) → BLE 단일연결 충돌 방지. Pixoo/D200H/ESP32 도 CLI 가 소유.
 
 **Timebox Mini Light 구동 주체**: CLI(Node) 데몬이 `timeboxDevices` 설정을 발견하면 `startTimeboxSync(port)`로 npm 패키지에 포함된 `bridge/src/timebox/sync_ble.py`(bleak)를 **자식 프로세스로 자동 spawn**한다(iDotMatrix 와 동일 라이프사이클·`~/.agentdeck/python-ble` 런타임). 사용자는 `agentdeck timebox scan` 으로 런타임 준비와 검색을 한 번에 수행하고 `TimeBox-mini-light` BLE 주소를 `agentdeck timebox add <address>`로 등록한다. sync_ble.py 는 `/pixoo/frame?size=11&layout=micro`를 폴링해 ISSC transparent-UART(`49535343-…`)로 GATT write. 패널이 꺼져 있거나 범위 밖이면 같은 프로세스 안에서 재시도하고(3 s 부터 두 배씩, 최대 30 s), 데몬이 30 s 동안 응답하지 않을 때만 스스로 종료한다(iDotMatrix `sync.py` 도 같다). 단독 Swift 앱일 때는 CoreBluetooth 로 네이티브 구동, CLI 데몬이 있으면 Swift client-mode stand down (BLE 단일연결). 구 Bluetooth Classic SPP 변종(`sync.py`)은 호환성·App Store 제약으로 제거됨.

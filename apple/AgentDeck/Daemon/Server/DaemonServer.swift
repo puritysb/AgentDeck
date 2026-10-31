@@ -13954,10 +13954,7 @@ final class DaemonServer {
     /// infinity, and a daemon that crashes on a malformed stamp is worse than one
     /// that emits a wrong-but-finite number.
     nonisolated static func wireEpochMs(_ value: Double) -> Int {
-        guard value.isFinite else { return 0 }
-        let rounded = value.rounded()
-        guard rounded >= Double(Int.min), rounded <= Double(Int.max) else { return 0 }
-        return Int(rounded)
+        DaemonTimelineEntry.wireEpochMs(value)
     }
 
     private nonisolated static func daemonTimelineEntryDict(_ e: DaemonTimelineEntry) -> [String: Any] {

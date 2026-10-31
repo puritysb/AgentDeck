@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Quality maintainers
-reviewed: 2026-10-07
-revision: 2026-10-07
+reviewed: 2026-10-31
+revision: 2026-10-31
 source_of_truth: docs/testing.md
 validators: [pnpm test, pnpm verify:quick]
 ---
@@ -88,6 +88,59 @@ from the receipt. A failed cleanup fails the run.
 This is live sandboxed transport evidence using synthetic events. It does not
 prove actual CLI emission, first-run trust, Kiro folder consent/revocation,
 OpenCode SSE reconnect, App Store distribution, or physical display rendering.
+
+## Signed Swift/Node lifecycle acceptance
+
+[`verify-daemon-lifecycle.mjs`](../scripts/verify-daemon-lifecycle.mjs) is an
+opt-in real-process lab gate. It never targets the installed app or ports
+9120–9139. Build the current macOS app using the
+[Apple workflow](../.agents/workflows/apple-xcode-debug.md), then prepare:
+
+1. Copy the complete app to `/private/tmp/agentdeck-lifecycle-acceptance/AgentDeck Lifecycle Audit.app`.
+   Give this copy bundle ID `bound.serendipity.agent.deck.lifecycle-audit` and a
+   distinct display name. Keep all frameworks, resources and, for Debug builds,
+   `AgentDeck.debug.dylib`: the Debug executable alone is only a trampoline.
+2. Sign that copy with the local Developer ID identity and App Sandbox/network
+   entitlements from the production app. An alternate identifier may require
+   removing its copied provisioning profile and WeatherKit entitlement; this is
+   a **local signed derivative**, not an installed Release or Store acceptance.
+   Verify it with `codesign --verify --deep --strict`.
+3. Compile [`lifecycle-preferences.swift`](../bridge/src/__tests__/fixtures/lifecycle-preferences.swift)
+   as the executable of a temporary Foundation-only helper bundle with that same
+   alternate identifier and sandbox signature. Run the helper with argument
+   `19450` before launching the app. It sets typed own-app preferences for
+   loopback-only/no-device mode and prints its private container `dataDirectory`.
+   Launch-argument strings are not a replacement for typed port preferences.
+   It writes only synthetic APME/provider settings inside that test container.
+4. Keep 19450–19459 free. Run the command below with the printed directory. Do
+   not launch the copy manually: the runner supplies the private data/window,
+   Gateway opt-out and UI discovery-disable settings on **every** launch.
+
+```bash
+node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures \
+  --app '/private/tmp/agentdeck-lifecycle-acceptance/AgentDeck Lifecycle Audit.app' \
+  --swift-data 'TEST_CONTAINER_DATA_DIRECTORY' \
+  --out diagnostics/lifecycle-integration/run
+```
+
+The runner checks the sandbox signature and alternate identity before launching;
+uses isolated Node HOME/data and a Keychain-denying shim; starts the CLI with
+`--local --loopback --no-build`; and exercises both solo modes, both startup
+orders, concurrent startup, client app termination/relaunch, Node CLI restart,
+owner crash and incoming-owner crash after Swift has yielded. It verifies real
+HTTP/WS history, token continuity without recording token values, one prompt
+receipt per marker, no client TCP listener and no shared-window sockets. Cleanup
+signals only processes whose executable and private data scope were verified.
+`results.json` records scenario timings; on failure `failure.json` identifies the
+step. Logs and synthetic histories remain in private diagnostic/test stores.
+
+Allow several minutes: failed incoming takeover deliberately waits out the
+production yield lease, rather than shortening it for acceptance. The
+2026-10-31 signed derivative run is recorded in the
+[feature boundary table](appstore-feature-matrix.md#startup-shutdown-restart-and-handover-evidence).
+This does not certify installed delivery, source/credential grants, real provider
+freshness, physical device writers, wake/network loss or in-flight approval,
+Pocket/OTA/configuration transfer. Those remain separate acceptance work.
 
 ## macOS device runs: preflight before you deploy
 

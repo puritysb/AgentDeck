@@ -320,6 +320,13 @@
       "gate": "swift-codex-live",
       "tiers": ["full"],
       "manual": "With the signed sandboxed app running, run node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app --allow-visible-fixtures, then pass --attest swift-codex-live=pass."
+    },
+    {
+      "id": "daemon-lifecycle-live",
+      "name": "Signed Swift and Node lifecycle acceptance",
+      "gate": "daemon-lifecycle-live",
+      "tiers": ["full"],
+      "manual": "Prepare the isolated alternate signed app and preferences described in docs/testing.md; run node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures --app APP --swift-data DATA --out OUTPUT, then pass --attest daemon-lifecycle-live=pass."
     }
   ],
   "gates": [
@@ -415,6 +422,32 @@
         "physical device rendering, hardware transport or optical acceptance",
         "Swift/Node ownership handover, store signing or publication",
         "a long-term production soak (duration is selected by the operator)"
+      ]
+    },
+    {
+      "id": "daemon-lifecycle-live",
+      "name": "Signed Swift and Node lifecycle acceptance",
+      "level": ["e2e", "integration"],
+      "where": "Maintainer Mac, alternate sandboxed signed app and private data/ports",
+      "workflow": null,
+      "trigger": "Opt-in after building and signing the isolated test app",
+      "blocking": false,
+      "command": "node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures --app APP --swift-data DATA --out OUTPUT",
+      "evidence": [
+        "scripts/verify-daemon-lifecycle.mjs",
+        "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
+        "bridge/src/__tests__/fixtures/lifecycle-preferences.swift",
+        "apple/AgentDeckTests/DaemonStartupCancellationTests.swift",
+        "shared/src/__tests__/daemon-parity.test.ts"
+      ],
+      "proves": [
+        "Actual signed Swift and Node processes converge on one private listener in both startup orders and concurrent startup",
+        "Isolated stop/restart, client-app crash and owner failure recover with token and synthetic timeline continuity",
+        "An incoming Node crash after Swift yields recovers without restarting the app or contacting the shared daemon"
+      ],
+      "does_not_prove": [
+        "Installed App Store or Release delivery, real providers, source grants, hardware writers, sleep/wake or network loss",
+        "In-flight approval, Feed receipt, OTA, pin or configuration transfer; a timeline receipt is narrower evidence"
       ]
     },
     {

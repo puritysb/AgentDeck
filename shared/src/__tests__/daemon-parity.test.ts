@@ -21,6 +21,9 @@ describe('Node/Swift daemon policies', () => {
       expect(state).toBe(vector.expected);
     });
   }
+  it('keeps discovery and fallback inside the selected process window', () => {
+    for (const v of vectors.portWindows) expect(rules.parseDaemonPortWindow(v.raw ?? undefined)).toEqual(v.expected);
+  });
   it('shares legacy tool-turn and runtime acceptance decisions', () => {
     for (const vector of vectors.legacy) {
       expect(rules.kiroLegacyTurnState('idle', vector.event, vector.hasToolUse)).toBe(vector.expected);
@@ -43,6 +46,10 @@ for vector in vectors["legacy"] as! [[String: Any]] {
 for vector in vectors["runtimes"] as! [[String: Any]] {
     precondition(DaemonParityRules.acceptsDaemonRuntime(isSwift: vector["isSwift"] as? Bool,
         expectingNode: vector["expectingNode"] as! Bool) == vector["expected"] as! Bool)
+}
+for v in vectors["portWindows"] as! [[String: Any]] {
+    let window = DaemonParityRules.daemonPortWindow(v["raw"] as? String)
+    precondition([window.lowerBound, window.upperBound] == v["expected"] as! [Int])
 }
 precondition(DaemonParityRules.takeoverYieldMs == vectors["takeoverYieldMs"] as! Int)
 for vector in vectors["turns"] as! [[String: Any]] {

@@ -23,6 +23,30 @@ import XCTest
 @testable import AgentDeck
 
 final class TimelineCrossDaemonFormatTests: XCTestCase {
+    func testFractionalSwiftHistoryAndReturningWireSnapshotAreOneEvent() async throws {
+        let ownFile = dir.appendingPathComponent("timeline.json")
+        let peerFile = dir.appendingPathComponent("timeline-handover.json")
+        // Captured precision/shape from the signed 2026-10-31 lifecycle failure.
+        // The peer is Swift's serialized wire row carried back by Node, not a
+        // second prompt. Both rounding directions occurred in the real receipt.
+        let own = #"[{"ts":1793435659018.261,"type":"chat_start","raw":"synthetic prompt","startedAt":1793435659018.261},{"ts":1793435659452.843,"type":"chat_end","raw":"synthetic completion","endedAt":1793435659452.843}]"#
+        let peer = #"[{"ts":1793435659018,"type":"chat_start","raw":"synthetic prompt","startedAt":1793435659018},{"ts":1793435659453,"type":"chat_end","raw":"synthetic completion","endedAt":1793435659453}]"#
+        try Data(own.utf8).write(to: ownFile)
+        DaemonTimelineStore.stageHandoverSnapshot(Data(peer.utf8), to: peerFile)
+        let store = DaemonTimelineStore(persistFile: ownFile, handoverFile: peerFile)
+        await store.start()
+        let rows = await store.getAll()
+        XCTAssertEqual(rows.count, 2, "Returning history must not duplicate pre-yield rows")
+        XCTAssertEqual(rows.map(\.ts), [1793435659018, 1793435659453])
+        XCTAssertEqual(rows.first?.startedAt, 1793435659018)
+        XCTAssertEqual(rows.last?.endedAt, 1793435659453)
+        let live = DaemonTimelineStore(persistFile: dir.appendingPathComponent("live.json"))
+        await live.start()
+        await live.add(DaemonTimelineEntry(ts: 1793435659018.261, type: "chat_start", raw: "fresh prompt"))
+        let liveRows = await live.getAll()
+        XCTAssertEqual(liveRows.first?.ts, 1793435659018, "New local rows use the same precision as their wire snapshot")
+    }
+
     func testStagedNodeHistorySurvivesSwiftPromotionWithoutReplacingOwnHistory() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

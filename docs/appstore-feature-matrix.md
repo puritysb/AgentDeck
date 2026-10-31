@@ -311,7 +311,7 @@ close them; define the authorized owner/configuration and minimized state contra
 | Credential/source safeguard | Independent source grants, private APME stores, Claude account-quota accuracy/authorization policy. | Never export credentials or fabricate quota for parity. Claude quota remains source-contract research, not a completed native feature or proof of structural Node necessity. Independent storage does not waive the user-visible continuity gaps above. |
 | Explicit user deferral | Current X4 feed/feedback/pixel hardware acceptance, until companion-app integration. | The implementations remain required and implemented; the physical scenario alone is deferred. |
 | Conditional demand | Kiro v2 SQLite schema/reader acceptance. | Confirm active use or a representative fixture. Conditional status does not establish an agreed permanent functional exception. |
-| Unfinished acceptance, not exceptions | Private GitHub reads, trusted Codex hold decisions, TC001/TRMNL/D200X hardware/release checks, installed Pixoo and three-mode lifecycle below. | Keep open with artifact/device-specific evidence. D200X encoders are unshipped scope, not implied by keypad support. |
+| Unfinished acceptance, not exceptions | Private GitHub reads, trusted Codex hold decisions, TC001/TRMNL/D200X hardware/release checks, installed Pixoo and the remaining cross-feature/device lifecycle checks below. | Keep open with artifact/device-specific evidence. D200X encoders are unshipped scope, not implied by keypad support. |
 | Actual implementation gaps, not exceptions | OpenCode native HTTP primitives and shared control integration, active-owner settings routing, signed cross-store pin continuity and the missing state/configuration-transfer contracts. | Prioritize as parity work; existing observation-only consent does not authorize new control or credential sharing. |
 
 ### Startup, shutdown, restart and handover evidence
@@ -322,39 +322,84 @@ adopts the same-user token before asking Swift to stand down.
 [Timeline handover](daemon.md#timeline-handover) and APME activity capture are
 explicit transport paths, not shared-directory assumptions.
 
-| Scenario | Existing evidence | Current acceptance gap / required outcome |
+| Scenario | Current real-process acceptance | Remaining acceptance scope |
 |---|---|---|
-| Swift cold start; quit; relaunch with Node absent | Native startup/cancellation tests and dated feature-specific signed relaunch receipts. | Current full signed app: ready endpoint, restored consent/state, one module writer; deliberate quit releases holds, ports and devices and leaves honest offline state. |
-| Node cold start; stop; restart with app absent | [Node real-process E2E](../tests/e2e/daemon-hub.e2e.test.ts) uses isolated HOME/data, private port window and all devices off. Historical supervisor stop/start measured in [daemon lifecycle](daemon.md). | Current supported Node/supervisor plus configured providers and real hardware. Device-off E2E cannot certify those. |
-| Node first, then app; quit/relaunch client app | Ownership sequence, external-attach and late-reply tests; installed relay acceptance includes an app reconnect to shared Node. | Full roster/control/settings coverage and no Node/module restart or second writer when the client app quits/restarts. |
-| Swift first, then Node; later stop Node while app stays | [2026-10-04 signed live takeover/recovery](devlog/entries/2026-10-04-daemon-parity-policy.md) is real evidence. Current injected takeover/monitor and Node negotiation tests also exist. | Repeat at current matched artifacts with newly ported features and hardware; retain pairing, state, receiver selection and exactly one owner within shared timing budgets. Old core takeover success does not certify current P2 features. |
-| Node restarts during concurrent use | TCP unknown/refusal rules, miss thresholds, yield lease and sequence tests. | A brief restart must not create a rival fallback hub, purge valid relayed data or duplicate device writes; genuinely absent Node must permit bounded Swift recovery. |
-| Both start together; incoming Node never binds; stale teardown completes late | Injected startup/backoff/cancellation/epoch tests in [LocalDaemonStartupTests](../apple/AgentDeckTests/LocalDaemonStartupTests.swift), [ExternalAttachRetryTests](../apple/AgentDeckTests/ExternalAttachRetryTests.swift) and [startup cancellation](../apple/AgentDeckTests/DaemonStartupCancellationTests.swift). | Real separate processes and signed app: one ready owner, no orphan listener, no callbacks mutating the replacement, no indefinite yield. |
-| Ownership changes during agent turn, approval, Feed feedback or OTA | Feature-specific stale-ID, stop-cancellation, Outbox replay and persistence fixtures. | Integrated both directions: preserve identity/history, reject old holds, first-answer-wins within the defined receipt contract, no duplicate learning or install ACK; make unavailable state explicit. |
-| Port change, sleep/wake, LAN/Tailscale loss while both are open | Signed Hermes port continuity, Pixoo component dim/wake and installed relay ATS scenarios are narrow live evidence. | Cross-feature reconnection, current receiver port, single serial/BLE producer, provider freshness, approved host identity and restored dim/brightness policy. Cross-machine relay reconnect is not same-Mac owner recovery. |
+| Swift cold start; quit; relaunch with Node absent | Signed alternate app, own sandbox data, private ready endpoint; token and synthetic prompt/completion history retained. | Actual source grants, all feature stores and hardware shutdown. |
+| Node cold start; stop; restart with app absent | Actual CLI foreground process, scoped stop/start and CLI restart; token and synthetic history retained. | Installed supervisor, configured providers and real hardware. |
+| Node first, then app; quit/relaunch client app | App attaches without a TCP listener; quitting/relaunching it leaves the same Node owner running. | Full roster/control/settings coverage and physical module writers. |
+| Swift first, then Node; later stop Node while app stays | Same app PID yields, Node takes over, and Swift recovers after scoped Node stop; token/history survive both directions. | Newly ported feature state, receiver selection and real device continuity. |
+| Node restarts or crashes during concurrent use | Real CLI restart returns the app to client mode; SIGKILL of the owner permits bounded Swift recovery. | Live relayed providers, network loss and device write deduplication. |
+| Both start together; client app crashes | Converges on Node ownership; client app SIGKILL/relaunch leaves the owner intact and does not create a second listener. | More scheduling/platform variants and hardware contention. |
+| Incoming Node dies after Swift stands down | Real negotiating Node killed in the no-listener interval; same Swift app recovers after the shared yield lease, without an indefinite wait. | Real resource-hang conditions; late callbacks remain covered by injected epoch/cancellation tests. |
+| Ownership changes during agent turn, approval, Feed feedback or OTA | Feature-specific stale-ID, cancellation, Outbox and persistence fixtures remain evidence; the new live markers are completed synthetic Hermes turns. | Integrated in-flight transitions both ways: identity, history, old holds, first-answer receipt, no duplicate learning/install ACK. |
+| Port change, sleep/wake, LAN/Tailscale loss while both are open | Existing narrow Hermes, Pixoo dim/wake and relay ATS acceptance remains valid. | Cross-feature reconnect, current receiver port, single serial/BLE writer, provider freshness, approved host identity and brightness restoration. |
 
-[DaemonTopologyTests](../apple/AgentDeckTests/DaemonTopologyTests.swift) replays
-ownership enum sequences; it does not launch two processes. Local startup tests
-drive the real service with injected runtimes/probes, not the installed device
-modules. The Node takeover tests inject dependencies; the timeline capture tests
-use a disposable socket peer. Existing native full-suite results certify those
-tests at their recorded source, not the missing live scenarios. No new failing
-lifecycle test or runtime regression is claimed by this documentation audit.
+The opt-in [real-process runner](../scripts/verify-daemon-lifecycle.mjs) and
+[preparation procedure](testing.md#signed-swiftnode-lifecycle-acceptance) use
+19450–19459, separate Swift-container and Node HOME/data stores, loopback-only,
+no-device posture and Gateway opt-out. The complete current app is copied to an
+alternate bundle identifier and Developer-ID signed with App Sandbox; the copied
+provisioning profile/WeatherKit entitlement is excluded for that local identity.
+This is not a replacement of the installed app or Store approval. Normal app quit
+uses the AppKit termination path; deliberate crashes use SIGKILL. The runner
+rejects an installed app path and verifies PID/executable/data scope before
+signalling, inspects client listeners and shared-window sockets, and fails if its
+private ports cannot be cleaned up. Pairing token values are never in receipts.
 
-For follow-up acceptance, use dedicated data directories, disjoint ports outside
-the shared range, synthetic accounts/calendars and disposable histories. Exercise
-both startup orders and all transitions before selected physical-device runs;
-measure owner PID/build/runtime/ready endpoint, event IDs, token continuity without
-logging token values, duplicate writes, durable-state outcomes and bounded
-recovery. A separate test Mac/fleet is required where device exclusivity prevents
-safe isolation. Do not repurpose shared 9120 or reset permissions to complete this
-matrix. Store-distribution approval remains a separate release gate.
+**2026-10-31 signed Release receipt:** all six runner scenarios passed with Node
+v26.5.0/build `8ce6a06f7af9` and the branch's macOS Release 1.9.4/build 5 derivative
+(executable SHA-256 prefix `907b7d0ebcee`). Swift-only quit/relaunch: 2.362s;
+Node-only stop/start/restart: 2.412s; Node-first/restart/crash recovery: 44.497s;
+Swift-first/takeover/return: 40.982s; concurrent start/client crash: 2.827s;
+failed incoming takeover: 182.082s. These are **whole-scenario durations**, not
+individual failover latency guarantees. The last case retains the production
+147s yield lease plus normal monitoring/recovery; it is bounded, not instant.
+The signed derivative also passed the App Store bundle invariant checker, without
+claiming Store delivery. Local raw evidence is under
+`diagnostics/lifecycle-integration/run-release-4/` (`artifact.json`, `owners.json`,
+`results.json`); successful exit includes private-port cleanup. The runner keeps
+one WS client per owner to respect the existing reconnect-flap policy. It checks
+the existing Hermes completion shapes (Node response / Swift turn-end summary)
+without rewriting their types during handover. Failure injection observes both
+owned processes with no TCP listener; HTTP silence alone is not treated as
+stand-down. The Quick suite passed 7,138 tests; the normally opted-out macOS Node
+E2E was separately run with the Keychain-denying shim (30 tests passed).
+All five changed-area Apple configurations passed: macOS Debug (1,458 tests,
+5 skipped), macOS Release, iOS simulator Release, macOS DotPreviewRelease
+(1,476 tests, 10 skipped), and iOS simulator DotPreviewRelease. The normal Debug
+suite was rerun after the final timeline fix; both macOS suites pass its captured
+precision regression. Skipped capability-dependent cases remain skipped evidence.
+The shared daemon retained PID 71702/build `8fe2909f2930`; all eight reported
+module connection sets, including 11 serial ports, were preserved. This verifies
+non-interference, not physical-device handover. The temporary signed apps and
+synthetic test stores were removed after process/port cleanup; diagnostic
+receipts and filtered synthetic histories remain. The installed app, production
+stores, permissions and Rust toolchain were retained.
+
+**Defect exposed by the live repetition:** a returning Node wire snapshot could
+duplicate Swift's own prompt/completion rows. Swift persisted fractional
+milliseconds but its wire encoder rounded them; the `(ts,type,raw)` rehydrate key
+then treated the returning integer timestamp as another event. Swift storage now
+uses the existing wire timestamp normalization before insertion and merging,
+including legacy fractional rows. A captured-precision
+[regression](../apple/AgentDeckTests/TimelineCrossDaemonFormatTests.swift) covers
+both rounding directions; the live runner requires exactly one prompt and one
+completion through handover. Isolation fixes also give Swift the same generated
+port-window policy as Node and honor the Gateway opt-out without one final probe
+after cancelled sleep. Normal default discovery remains 9120–9139.
+
+[DaemonTopologyTests](../apple/AgentDeckTests/DaemonTopologyTests.swift) and the
+injected startup/attach/cancellation suites still cover sequences and epoch
+edges that a real-process run cannot force deterministically. A separate test
+fleet is required for exclusive-device and in-flight scenarios; do not repurpose
+shared 9120 or reset permissions to complete them. Timeline/token continuity
+alone does not close session pins, Pocket receipts, consent or settings transfer.
 
 ### Revised parity priorities
 
 | Priority | Kind | Next bounded result / completion gate |
 |---|---|---|
-| P1.1 | Lifecycle acceptance and any exposed fixes | An isolated current signed Swift/Node three-configuration run covering both startup orders, stop/restart, takeover/failure/recovery, pending work and wake. Use one owner and configured shared timing; identify actual failures separately from unrun scenarios. |
+| P1.1 | Process baseline verified; cross-feature/device lifecycle remains | The isolated signed-app/Node startup, quit/restart, takeover and failure-recovery baseline above is exercised. Next acceptance: in-flight turn/approval/Feed/OTA, wake/network loss and exclusive physical writers on a separate fleet. Preserve shared timing and distinguish unrun scenarios from failures. |
 | P1.2 | Confirmed continuity/configuration gaps | Define and implement owner-aware settings plus minimized handover state, starting with signed-container session pins and Pixoo configuration. Cover Pocket aggregate/receipt continuity, calendar/provider/relay consent and configuration scope without silent secret copying. Verify both transfer directions and repeated switches. |
 | P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
 | P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |

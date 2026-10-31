@@ -121,8 +121,12 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
 final class SessionRegistry: Sendable {
     static let shared = SessionRegistry()
     static let defaultPort = 9120
-    static let basePort = 9120
-    static let maxPort = 9139
+    /// Same opt-in isolation window as the CLI; fallback must not escape it.
+    static var portWindow: ClosedRange<Int> {
+        DaemonParityRules.daemonPortWindow(ProcessInfo.processInfo.environment["AGENTDECK_PORT_WINDOW"])
+    }
+    static var basePort: Int { portWindow.lowerBound }
+    static var maxPort: Int { portWindow.upperBound }
     // QoS .userInteractive, not .utility/.userInitiated: callers include
     // DaemonServer.startServices/startAllPolling running on the main actor
     // (User-interactive QoS) — they sync-wait via DispatchSemaphore, so any
@@ -338,7 +342,7 @@ final class SessionRegistry: Sendable {
     func findAvailablePort(excluding: Set<Int> = []) async -> Int? {
         let sessions = listActive()
         let usedPorts = Set(sessions.map(\.port)).union(excluding)
-        for port in Self.basePort...Self.maxPort {
+        for port in Self.portWindow {
             if !usedPorts.contains(port), await isPortFree(port) {
                 return port
             }
@@ -381,7 +385,7 @@ final class SessionRegistry: Sendable {
     /// process squats a port.
     func scanForDaemonPort(excluding: Set<Int> = []) async -> Int? {
         await withTaskGroup(of: Int?.self) { group in
-            for port in Self.basePort...Self.maxPort where !excluding.contains(port) {
+            for port in Self.portWindow where !excluding.contains(port) {
                 group.addTask { [self] in
                     let health = await self.probeDaemonHealth(port: port)
                     guard (health?["mode"] as? String) == "daemon" else { return nil }

@@ -8,6 +8,14 @@ import Network
 actor GatewayProbe {
     static let gatewayPort: UInt16 = 18789
     private var pollTask: Task<Void, Never>?
+    private let enabled: Bool
+    private let pollInterval: Duration
+    private let probeOverride: (@Sendable () async -> Bool)?
+
+    init(enabled: Bool = ProcessInfo.processInfo.environment["AGENTDECK_DAEMON_NO_GATEWAY"] != "1",
+         pollInterval: Duration = .seconds(5), probe: (@Sendable () async -> Bool)? = nil) {
+        self.enabled = enabled; self.pollInterval = pollInterval; self.probeOverride = probe
+    }
     private(set) var isAvailable = false
     private(set) var hasError = false
     var onStateChanged: ((Bool, Bool) -> Void)? // (available, hasError)
@@ -15,20 +23,25 @@ actor GatewayProbe {
     func hasErrorSnapshot() -> Bool { hasError }
 
     func start() {
+        guard enabled, pollTask == nil else { return }
+        let interval = pollInterval
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
-                await self?.probe()
+                do { try await Task.sleep(for: interval) } catch { break }
+                guard !Task.isCancelled, let self else { break }
+                await self.probe()
             }
         }
     }
 
     func stop() {
-        pollTask?.cancel()
+        pollTask?.cancel(); pollTask = nil
     }
 
     private func probe() async {
-        let available = await tcpProbe(port: Self.gatewayPort)
+        let available: Bool
+        if let probeOverride { available = await probeOverride() }
+        else { available = await tcpProbe(port: Self.gatewayPort) }
         let changed = available != isAvailable
         isAvailable = available
 

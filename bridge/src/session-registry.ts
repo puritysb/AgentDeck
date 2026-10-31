@@ -1,3 +1,5 @@
+import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow } from '@agentdeck/shared';
+export { DEFAULT_DAEMON_PORT_WINDOW } from '@agentdeck/shared';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { createServer } from 'net';
@@ -66,7 +68,7 @@ export function getOwnTimelineFile(): string { return join(getDataDir(), 'timeli
 function getDaemonFile(): string { return join(getDataDir(), 'daemon.json'); }
 export const DAEMON_DEFAULT_PORT = 9120;
 /** Documented daemon port window (docs/daemon.md). */
-export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139];
+// The discovery window is canonical in shared/src/daemon-parity.ts.
 
 /**
  * Resolve the port window this process works in.
@@ -92,15 +94,7 @@ export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139
 export function resolveDaemonPortWindow(
   raw: string | undefined = process.env.AGENTDECK_PORT_WINDOW,
 ): readonly [number, number] {
-  const text = raw?.trim();
-  if (!text) return DEFAULT_DAEMON_PORT_WINDOW;
-  const match = /^(\d{4,5})\s*-\s*(\d{4,5})$/.exec(text);
-  if (!match) return DEFAULT_DAEMON_PORT_WINDOW;
-  const lo = Number(match[1]);
-  const hi = Number(match[2]);
-  if (!Number.isInteger(lo) || !Number.isInteger(hi)) return DEFAULT_DAEMON_PORT_WINDOW;
-  if (lo < 1024 || hi > 65535 || hi < lo) return DEFAULT_DAEMON_PORT_WINDOW;
-  return [lo, hi];
+  return parseDaemonPortWindow(raw);
 }
 
 /** True when this process is working in the documented window. */

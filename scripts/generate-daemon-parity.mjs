@@ -15,6 +15,19 @@ import Foundation
 enum DaemonParityRules {
     static let takeoverYieldMs = ${rules.DAEMON_TAKEOVER_YIELD_MS}
     static let kiroObservationWindowMs = ${rules.KIRO_OBSERVATION_WINDOW_MS}
+    static let defaultPortWindow = ${rules.DEFAULT_DAEMON_PORT_WINDOW[0]}...${rules.DEFAULT_DAEMON_PORT_WINDOW[1]}
+    static func daemonPortWindow(_ raw: String?) -> ClosedRange<Int> {
+        let whitespace = CharacterSet(charactersIn: String(String.UnicodeScalarView(
+            ${JSON.stringify(rules.DAEMON_PORT_WINDOW_WHITESPACE)}.compactMap { UnicodeScalar($0) })))
+        let text = (raw ?? "").trimmingCharacters(in: whitespace)
+        let pieces = text.components(separatedBy: "-")
+        guard pieces.count == 2 else { return defaultPortWindow }
+        let values = pieces.map { $0.trimmingCharacters(in: whitespace) }
+        guard values.allSatisfy({ (4...5).contains($0.utf8.count) && $0.utf8.allSatisfy({ $0 >= 48 && $0 <= 57 }) }),
+              let lo = Int(values[0]), let hi = Int(values[1]),
+              lo >= ${rules.DAEMON_PORT_WINDOW_LIMITS.min}, hi <= ${rules.DAEMON_PORT_WINDOW_LIMITS.max}, lo <= hi else { return defaultPortWindow }
+        return lo...hi
+    }
     static func kiroLegacyTurnState(_ state: String, event: String, hasToolUse: Bool) -> String {
         if event == "AssistantMessage" { return hasToolUse ? "processing" : "idle" }
         switch event {
