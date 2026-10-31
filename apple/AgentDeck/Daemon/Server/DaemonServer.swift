@@ -5467,7 +5467,8 @@ final class DaemonServer {
                     await self.focusRelay.focus(sessionId: sessionId)
                 }
                 try? await Task.sleep(for: .milliseconds(100))
-                _ = await self.focusRelay.routeCommand(cmdBox.value)
+                // To this session only — the focus may have moved meanwhile (#632).
+                _ = await self.focusRelay.routeCommand(cmdBox.value, to: sessionId)
             }
             return
         case "respond", "interrupt", "escape", "select_option", "send_prompt", "navigate_option", "switch_mode":
@@ -5507,7 +5508,7 @@ final class DaemonServer {
                         await self.focusRelay.focus(sessionId: sessionId)
                     }
                     try? await Task.sleep(for: .milliseconds(100))
-                    _ = await self.focusRelay.routeCommand(inner.value)
+                    _ = await self.focusRelay.routeCommand(inner.value, to: sessionId)
                 }
                 return
             }

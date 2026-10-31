@@ -117,6 +117,20 @@ actor SessionFocusRelay {
         return true
     }
 
+    /// Route a command that names its session, and only to that session (#632).
+    /// `routeCommand` reads the focus at send time, so a session-addressed
+    /// command deferred past a focus change went to the newly focused session.
+    /// Refuse instead when the focus has moved off `sessionId`.
+    func routeCommand(_ cmd: [String: Any], to sessionId: String) -> Bool {
+        guard focusedSessionId == sessionId else {
+            DaemonLogger.shared.debug(
+                "FocusRelay",
+                "Not routing \(cmd["type"] as? String ?? "?") → \(sessionId): focus moved to \(focusedSessionId ?? "none")")
+            return false
+        }
+        return routeCommand(cmd)
+    }
+
     /// Stop relay entirely.
     func stop() {
         unfocus()
@@ -205,6 +219,10 @@ actor SessionFocusRelay {
     }
 
     func routeCommand(_ cmd: [String: Any]) -> Bool {
+        false
+    }
+
+    func routeCommand(_ cmd: [String: Any], to sessionId: String) -> Bool {
         false
     }
 

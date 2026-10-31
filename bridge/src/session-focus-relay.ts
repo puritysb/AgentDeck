@@ -215,6 +215,28 @@ export class SessionFocusRelay {
     return true;
   }
 
+  /**
+   * Route a command that names its session, and only to that session (#632).
+   * `routeCommand` reads the focus at send time, so a session-addressed command
+   * deferred past a focus change was written to the newly focused session —
+   * stamped with that session's id, so the worker's foreign-id guard could not
+   * refuse it either. This refuses instead: a remote target is driven down its
+   * own push socket whatever is focused (the worker accepts a down-frame that
+   * names it); a local target needs the focus relay to still be on it.
+   */
+  routeCommandTo(sessionId: string, cmd: PluginCommand): boolean {
+    if (!ROUTED_COMMANDS.has(cmd.type)) return false;
+    const sender = this.sameSocketResolver?.(sessionId) ?? null;
+    if (sender) {
+      if (sender.readyState !== WebSocket.OPEN) return false;
+      debug(TAG, `Routing(same-socket) ${cmd.type} → session ${sessionId}`);
+      sender.send(JSON.stringify({ type: 'session_command_down', sessionId, command: cmd }));
+      return true;
+    }
+    if (this.focusedSessionId !== sessionId || this.focusedSender) return false;
+    return this.routeCommand(cmd);
+  }
+
   /** Stop relay entirely. */
   stop(): void {
     this.closed = true;
