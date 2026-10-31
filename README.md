@@ -328,8 +328,10 @@ for verified publication and Store review status.
 
 **Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
 A late update to a timeline row (summary, evaluation score, approval result) now
-survives a restart. macOS **1.9.4 / 10001** is **in review**. It replaces the
-withdrawn 1.9.3 submission and carries its changes. Public macOS remains 1.9.2.
+survives a restart. macOS **1.9.4 / 10001** reached **READY_FOR_SALE** with
+automatic release after approval in the [October 30 19:47 UTC ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41118096845).
+It replaces the withdrawn 1.9.3 submission and carries its changes. The proposed
+1.9.5 correction is a subsequent candidate, not a replacement of a pending review.
 Android 1.10.2 (29) is live on Google Play. Stream Deck 1.8.2 and Ulanzi 1.8.2
 are still in marketplace review. See the
 [delivery checkpoint](RELEASING.md#2026-10-29-delivery-checkpoint).

@@ -256,7 +256,9 @@ describe('Windows relay (PowerShell file)', () => {
 
   it('the script is bounded, UTF-8 in and out, validates its one parameter, and never fails the status line', () => {
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain("'/claude/statusline'");
-    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('-TimeoutSec 1');
+    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('$probe.Timeout = 300; $probe.ReadWriteTimeout = 300');
+    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('if ($port -gt 0) {');
+    expect(WINDOWS_STATUSLINE_SCRIPT).not.toContain('$port = 9120');
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain('-TimeoutSec 2');
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain("ValidatePattern('^[A-Za-z0-9+/=]*$')");
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain('[System.Text.Encoding]::UTF8');

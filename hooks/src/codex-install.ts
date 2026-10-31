@@ -444,6 +444,7 @@ function windowsPortPreamble(): string[] {
     // process query and POST inside Codex Interrupt's three-second ceiling.
     `        try {`,
     `          $agentDeckProbe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + $candidate + '/health')`,
+    `          $agentDeckProbe.Proxy = $null`,
     `          $agentDeckProbe.Timeout = 300; $agentDeckProbe.ReadWriteTimeout = 300`,
     `          $agentDeckResponse = $agentDeckProbe.GetResponse(); $agentDeckResponse.Close(); $port = $candidate`,
     `        } catch {}`,
@@ -451,7 +452,7 @@ function windowsPortPreamble(): string[] {
     `    } catch {}`,
     `  }`,
     `}`,
-    `if ($port -eq 0) { $port = 9120 }`,
+    `if ($port -eq 0) { exit 0 }`,
   ];
 }
 

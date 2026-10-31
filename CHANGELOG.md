@@ -65,11 +65,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 Apple delivery targets macOS only. iPhone and iPad remain on their existing release.
 
-- Harden generated agent integration commands and receiver selection. POSIX observer commands skip transmission when no configured receiver is available, while an existing user status line continues normally.
+- Harden generated agent integration commands and receiver selection. POSIX and Windows observer commands skip transmission when no configured receiver is available, while an existing user status line continues normally.
 - Refresh older integration commands and preserve custom handlers sharing a matcher group with AgentDeck handlers.
 - After updating the native app and CLI together, refresh your enabled integrations and review changed Codex hook trust entries when prompted. Existing custom commands and trust records are retained; trust is never granted automatically.
 
-macOS 1.9.5 also carries the still-unreleased 1.9.4 and withdrawn 1.9.3 corrections listed below. Dot remains excluded from the App Store build.
+macOS 1.9.5 builds on released 1.9.4, which included the withdrawn 1.9.3 corrections listed below. Dot remains excluded from the App Store build.
 
 ## 2026-10-29 — npm 1.9.6
 

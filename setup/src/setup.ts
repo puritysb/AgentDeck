@@ -641,10 +641,8 @@ param([Parameter(Mandatory = \$true)][ValidatePattern('^[A-Za-z_]+\$')][string]\
 if (\$HookEvent -ceq 'PreToolUse') { \$timeoutMs = 60000; \$respond = \$true }
 elseif (\$HookEvent -ceq 'Stop') { \$timeoutMs = 10000; \$respond = \$true }
 
-# Ports in the order tried. \$env:AGENTDECK_PORT alone when it is valid;
-# otherwise the daemon.json port, then 9120. No /health probe first: the next
-# port is tried only when a connection is refused, which proves nothing
-# received the payload, so it is never delivered twice.
+# A valid explicit port is trusted as on POSIX. Otherwise discover one healthy
+# registry candidate; no candidate means no observation request.
 \$ports = @()
 \$candidate = 0
 if ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
@@ -656,11 +654,17 @@ if ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate) -and \$candi
       \$d = Get-Content -Raw \$f | ConvertFrom-Json
       \$raw = if (\$d.httpPort) { \$d.httpPort } else { \$d.port }
       \$candidate = 0
-      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) { \$ports += \$candidate }
+      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
+        \$probe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + \$candidate + '/health')
+        \$probe.Proxy = \$null
+        \$probe.Timeout = 300; \$probe.ReadWriteTimeout = 300
+        \$response = \$probe.GetResponse(); \$response.Close()
+        \$ports = @(\$candidate)
+      }
     } catch {}
   }
-  if (\$ports -notcontains 9120) { \$ports += 9120 }
 }
+if (\$ports.Count -eq 0) { exit 0 }
 
 # Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
 # codepage (e.g. CP949), garbling non-ASCII payload text.
@@ -701,16 +705,8 @@ foreach (\$port in \$ports) {
     \$resp.Close()
     break
   } catch {
-    # Only a refused connection moves on to the next port. A timeout, an HTTP
-    # error or anything else ends the hook: the daemon may have the payload.
-    \$e = \$_.Exception
-    \$refused = \$false
-    while (\$e) {
-      if (\$e -is [System.Net.WebException] -and \$e.Status -eq [System.Net.WebExceptionStatus]::ConnectFailure) { \$refused = \$true }
-      if (\$e -is [System.Net.Sockets.SocketException] -and \$e.SocketErrorCode -eq [System.Net.Sockets.SocketError]::ConnectionRefused) { \$refused = \$true }
-      \$e = \$e.InnerException
-    }
-    if (-not \$refused) { break }
+    # Never retry a payload against another receiver.
+    break
   }
 }
 
@@ -824,19 +820,22 @@ if (Test-Path \$f) {
     \$candidate = 0
     if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
       try {
-        Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$candidate + '/health') -TimeoutSec 1 -ErrorAction Stop | Out-Null
+        \$probe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + \$candidate + '/health')
+        \$probe.Proxy = \$null
+        \$probe.Timeout = 300; \$probe.ReadWriteTimeout = 300
+        \$response = \$probe.GetResponse(); \$response.Close()
         \$port = \$candidate
       } catch {}
     }
   } catch {}
 }
-if (-not \$port) { \$port = 9120 }
-
 # Post UTF-8 bytes; the daemon keeps only rate_limits (shared/src/claude-statusline.ts).
 \$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]\$body)
-try {
-  Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/claude/statusline') -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
-} catch {}
+if (\$port -gt 0) {
+  try {
+    Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/claude/statusline') -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
+  } catch {}
+}
 
 # Your own status line, when one was wrapped: the same document on its stdin,
 # its output is what Claude Code shows. Match Claude Code's Windows shell choice:

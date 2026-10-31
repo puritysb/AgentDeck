@@ -104,12 +104,13 @@ existing verification and runtime acceptance gates.
 | Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
 | --- | --- | --- | --- | --- | --- |
 | npm / four public packages | 1.9.6 (registry read October 30) | None | 1.9.7 / release SHA and four tarball hashes | Patch: harden generated observer commands and receiver selection, refresh existing commands, preserve custom handlers in shared matcher groups | Existing 1.9 scope; no new milestone |
-| macOS / App Store | 1.9.2 / 9401 | 1.9.4 / 10001, IN_REVIEW | 1.9.5 / next CI-derived build above 10001 | Patch: apply the same integration correction in the native installer and retain the unreleased 1.9.4 corrections | Existing 1.9 scope; macOS only, Dot excluded |
+| macOS / App Store | 1.9.4 / 10001, READY_FOR_SALE (October 30 19:47 UTC) | No 1.9.5 version or build in that ASC readback | 1.9.5 / next accepted CI-derived build above 10001 | Patch: apply the same integration correction in the native installer, building on released 1.9.4 | Existing 1.9 scope; macOS only, Dot excluded |
 
-The [October 30 ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41099528119)
-confirmed that 1.9.4 / 10001 is still in review and macOS 1.9.2 is public.
-The proposed macOS version supersedes that pending candidate only after its own
-artifact acceptance; preparation alone does not cancel or submit a review.
+The [October 30 19:47 UTC ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41118096845)
+confirmed 1.9.4 READY_FOR_SALE with AFTER_APPROVAL and its review submission
+COMPLETE. The earlier 17:31 readback is historical. Version 1.9.5 is a normal
+subsequent delivery: do not cancel the completed submission or renumber released
+1.9.4. Preparation alone does not upload, submit or release 1.9.5.
 The four npm versions were read back as 1.9.6. iOS, Android, ESP32 and the deck
 plugin releases are unchanged.
 
@@ -121,9 +122,13 @@ automatically. Do not roll either installer back to a superseded command set.
 
 Required evidence still includes hosted Windows runtime and Apple CI, the
 pre-release receipt, signed-archive verification and the three-mode daemon soak.
-The maintainer excluded local installation changes from this task, so the real
-installed-path soak and the master-triggered local deployment require a separate
-scope decision before execution. Neither is silently waived by this preparation.
+Local installation and restart were subsequently authorized; acceptance remains
+incomplete. A Store export's valid code signature does not establish local
+execution eligibility. Use a supported delivery/provisioning path for the native
+candidate, preserving the original Store artifact. Development signing still
+requires its specific approval. A master push also builds, signs, installs and
+launches a development app and restarts the CLI; that deployment must be ready
+and authorized before merging. No release or runtime gate is waived.
 
 ### 2026-10-29 delivery checkpoint
 

@@ -278,7 +278,8 @@ describe('Hook Installer', () => {
     it('keeps the port discovery, validation and UTF-8 handling of the old one-liner', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('$env:AGENTDECK_PORT');
       expect(WINDOWS_HOOK_SCRIPT).toContain(".agentdeck\\daemon.json");
-      expect(WINDOWS_HOOK_SCRIPT).toContain('$ports += 9120');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('$ports += 9120');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('if ($ports.Count -eq 0) { exit 0 }');
       // Strict 1..65535 parsing: an unvalidated value containing '@' can make a
       // URL parser read 127.0.0.1:<value> as userinfo and post elsewhere.
       expect(WINDOWS_HOOK_SCRIPT).toContain('[int]::TryParse');
@@ -316,14 +317,15 @@ describe('Hook Installer', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('[Console]::OpenStandardOutput()');
     });
 
-    it('posts without a per-hook /health probe or proxy detection, falling back only on a refused connection', () => {
-      expect(WINDOWS_HOOK_SCRIPT).not.toContain("'/health'");
+    it('bounds registry health discovery and posts to only its selected receiver without proxy detection', () => {
+      expect(WINDOWS_HOOK_SCRIPT).toContain("'/health'");
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$probe.Timeout = 300; $probe.ReadWriteTimeout = 300');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$probe.Proxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).not.toContain('Invoke-RestMethod');
       expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebRequest]::DefaultWebProxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).toContain('$req.Proxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).toContain('Expect100Continue = $false');
-      expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebExceptionStatus]::ConnectFailure');
-      expect(WINDOWS_HOOK_SCRIPT).toContain('if (-not $refused) { break }');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('$ports += 9120');
       // A valid AGENTDECK_PORT is the only target, as on POSIX.
       expect(WINDOWS_HOOK_SCRIPT).toContain('$ports = @($candidate)');
     });
