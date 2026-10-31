@@ -6879,8 +6879,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       userFocusedSessionId = sessionId;
       broadcastFocusedState();
       focusRelay.focus(sessionId);
-      // Small delay to let focus take effect, then route
-      setTimeout(() => focusRelay.routeCommand(command), 100);
+      // Small delay to let focus take effect, then route — to this session
+      // only: the focus may have moved to another session meanwhile (#632).
+      setTimeout(() => {
+        if (!focusRelay.routeCommandTo(sessionId, command)) {
+          debug('daemon', `session_command ${command?.type ?? '?'} → ${sessionId} not delivered (target connection not ready or focus moved)`);
+        }
+      }, 100);
       return;
     }
     // Session-scoped option select from a multi-up panel (IPS10 D1 mosaic):
@@ -6902,7 +6907,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         userFocusedSessionId = sessionId;
         broadcastFocusedState();
         focusRelay.focus(sessionId);
-        setTimeout(() => focusRelay.routeCommand({ type: 'select_option', index: (cmd as any).index }), 100);
+        setTimeout(() => {
+          if (!focusRelay.routeCommandTo(sessionId, { type: 'select_option', index: (cmd as any).index })) {
+            debug('daemon', `select_option → ${sessionId} not delivered (target connection not ready or focus moved)`);
+          }
+        }, 100);
         return;
       }
     }

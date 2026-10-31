@@ -144,3 +144,66 @@ describe('SessionFocusRelay — same-socket reverse control (primary)', () => {
     expect(relay.routeCommand({ type: 'interrupt' } as PluginCommand)).toBe(false);
   });
 });
+
+// #632: a session-addressed command deferred past a focus change must reach the
+// session it named, or nothing — never the session focused at send time.
+describe('SessionFocusRelay.routeCommandTo — explicit target survives a focus change (#632)', () => {
+  const A = 'sess-a';
+  const B = 'sess-b';
+  const forA = { type: 'send_prompt', text: 'for A' } as unknown as PluginCommand;
+
+  it('same-socket: delivers down the named session\'s socket after focus moved to another', () => {
+    const a = fakeSender();
+    const b = fakeSender();
+    const relay = new SessionFocusRelay();
+    relay.setSameSocketResolver((id) => (id === A ? a : id === B ? b : null));
+
+    relay.focus(A);
+    relay.focus(B); // arrives before A's deferred route
+    a.send.mockClear();
+    b.send.mockClear();
+
+    expect(relay.routeCommandTo(A, forA)).toBe(true);
+
+    const toB = b.send.mock.calls.map((c: any[]) => JSON.parse(c[0]));
+    expect(toB.filter((f: any) => f.type === 'session_command_down')).toEqual([]);
+    expect(lastFrame(a)).toEqual({ type: 'session_command_down', sessionId: A, command: forA });
+    expect(relay.getFocusedSessionId()).toBe(B); // delivery does not steal focus
+  });
+
+  it('same-socket: refuses when the named session\'s socket is not open', () => {
+    const a = { readyState: 3, send: vi.fn() } as any; // CLOSED
+    const b = fakeSender();
+    const relay = new SessionFocusRelay();
+    relay.setSameSocketResolver((id) => (id === A ? a : id === B ? b : null));
+    relay.focus(B);
+    b.send.mockClear();
+
+    expect(relay.routeCommandTo(A, forA)).toBe(false);
+    expect(a.send).not.toHaveBeenCalled();
+    expect(b.send).not.toHaveBeenCalled();
+  });
+
+  it('local: refuses rather than writing to the newly focused session\'s bridge', () => {
+    const relay = new SessionFocusRelay();
+    const bridgeB = { readyState: 1, send: vi.fn() };
+    // Focus already moved to local session B (loopback relay socket open).
+    (relay as any).focusedSessionId = B;
+    (relay as any).ws = bridgeB;
+
+    expect(relay.routeCommandTo(A, forA)).toBe(false);
+    expect(bridgeB.send).not.toHaveBeenCalled();
+    // The focus-following route still works for B itself.
+    expect(relay.routeCommandTo(B, forA)).toBe(true);
+    expect(JSON.parse(bridgeB.send.mock.calls[0][0])).toEqual(forA);
+  });
+
+  it('ignores commands outside the routed set', () => {
+    const a = fakeSender();
+    const relay = new SessionFocusRelay();
+    relay.setSameSocketResolver(() => a);
+    a.send.mockClear();
+    expect(relay.routeCommandTo(A, { type: 'query_usage' } as PluginCommand)).toBe(false);
+    expect(a.send).not.toHaveBeenCalled();
+  });
+});
