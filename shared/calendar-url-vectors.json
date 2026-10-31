@@ -1,0 +1,78 @@
+[
+  {
+    "value": "https://example.com/private.ics?secret=abc",
+    "valid": true
+  },
+  {
+    "value": "http://localhost:1234/private.ics",
+    "valid": true
+  },
+  {
+    "value": "http://127.0.0.1:1234/a",
+    "valid": true
+  },
+  {
+    "value": "http://[::1]:1234/a",
+    "valid": true
+  },
+  {
+    "value": "https://example.com/a%2Fb",
+    "valid": true
+  },
+  {
+    "value": "https://example.com",
+    "valid": true
+  },
+  {
+    "value": "http://example.com/private",
+    "valid": false
+  },
+  {
+    "value": "http://127.1/private",
+    "valid": false
+  },
+  {
+    "value": "https://user:password@example.com/a",
+    "valid": false
+  },
+  {
+    "value": "https://@example.com/a",
+    "valid": false
+  },
+  {
+    "value": "https://example.com/a#secret",
+    "valid": false
+  },
+  {
+    "value": "https://example.com/a#",
+    "valid": false
+  },
+  {
+    "value": "file:///tmp/calendar.ics",
+    "valid": false
+  },
+  {
+    "value": "https://example.com/a%ZZ",
+    "valid": false
+  },
+  {
+    "value": "HTTPS://example.com/a",
+    "valid": false
+  },
+  {
+    "value": "https://example.com/a\\b",
+    "valid": false
+  },
+  {
+    "value": "https://example.com/a\n",
+    "valid": false
+  },
+  {
+    "value": "https://",
+    "valid": false
+  },
+  {
+    "value": "//example.com/a",
+    "valid": false
+  }
+]

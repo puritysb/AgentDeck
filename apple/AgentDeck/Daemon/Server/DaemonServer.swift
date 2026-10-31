@@ -3056,6 +3056,8 @@ final class DaemonServer {
                                   place: weather["place"] as? String, timeZone: zone)
     }
 
+    private let calendarContext = CalendarProvider.shared
+    private let calendarOwner = UUID()
     private var glanceFontData: Data?
 
     private func glanceFrameResponse(identity: SurfaceRuntimeIdentity?, query: [String: String], now: Date = Date()) async -> HTTPServer.HTTPResponse {
@@ -3064,15 +3066,18 @@ final class DaemonServer {
         if let config = weatherConfig() { weather = await portableWeather.get(config, now: now) }
         else { weather = nil }
         guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
+        let schedule = await calendarContext.snapshot(nowMs: now.timeIntervalSince1970 * 1000, owner: calendarOwner)
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
         let glance = GlanceSnapshot.build(
             sessions: buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? [],
-            usage: buildUsageEvent(), weather: weather)
+            usage: buildUsageEvent(), weather: weather, events: calendarContext.events(schedule)?.map(\.wire))
         do {
             if glanceFontData == nil { glanceFontData = try GlanceFrame.fontData() }
             let geometry = GlanceFrame.geometry(board: identity?.board ?? query["board"] ?? "xteink_x3",
                 width: query["w"], height: query["h"])
             let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "HH:mm"
             let frame = try GlanceFrame.render(glance: glance, serverHm: f.string(from: now), geometry: geometry, fonts: glanceFontData!)
+            guard calendarContext.accepts(schedule) else { return .json(["error": "calendar configuration changed"], status: 503) }
             var headers = ["X-Frame-Width": String(frame.width), "X-Frame-Height": String(frame.height),
                            "X-Frame-Sig": frame.sig, "Cache-Control": "no-store"]
             if query["sig"] == frame.sig { return .init(status: 304, headers: headers, body: Data()) }
@@ -3125,6 +3130,9 @@ final class DaemonServer {
             glance["weather"] = snapshot
         }
 
+        let schedule = await calendarContext.snapshot(nowMs: now.timeIntervalSince1970 * 1000, owner: calendarOwner)
+        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
+        if let events = calendarContext.events(schedule), !events.isEmpty { glance["events"] = events.map(\.wire) }
         let sessions = buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? []
         var cards: [[String: Any]] = []
         if identity != nil, !sessions.isEmpty {
@@ -3210,6 +3218,7 @@ final class DaemonServer {
                 "md5": pack.advert.md5, "licenseSpdx": pack.advert.licenseSpdx,
             ] as [String: Any]
         }
+        guard !startupStopped, calendarContext.accepts(schedule) else { return .json(["error": "calendar configuration changed"], status: 503) }
         // Conditional pulls and OTA-first envelopes do not expose any new card.
         // Count only cards in a full response, just as the Node producer does.
         if feed["unchanged"] as? Bool != true {
@@ -12321,6 +12330,7 @@ final class DaemonServer {
         githubCIPollTask?.cancel(); githubCIPollTask = nil
         antigravitySessionPollTask?.cancel(); antigravitySessionPollTask = nil
         githubCI.stop()
+        calendarContext.stop(owner: calendarOwner)
         pocketAutonomy.flush()
         #if AGENTDECK_DOT_PREVIEW
         DotHost.shared.release(dotOwnership)

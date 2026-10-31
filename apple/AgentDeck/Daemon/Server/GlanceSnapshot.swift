@@ -1,11 +1,11 @@
 #if os(macOS)
 import Foundation
 
-/// Projection of already available daemon state. Calendar ingestion remains a
-/// separate feature; absent usage/weather is never synthesized.
+/// Projection of consented daemon contexts. Missing context is never synthesized.
 enum GlanceSnapshot {
-    static func build(sessions: [[String: Any]], usage: [String: Any]?, weather: [String: Any]?) -> [String: Any] {
+    static func build(sessions: [[String: Any]], usage: [String: Any]?, weather: [String: Any]?, events: [[String: Any]]? = nil) -> [String: Any] {
         var result: [String: Any] = [:]
+        if let events, !events.isEmpty { result["events"] = events }
         if let weather { result["weather"] = weather }
         let rows = usageRows(usage ?? [:])
         if !rows.isEmpty { result["usage"] = rows }

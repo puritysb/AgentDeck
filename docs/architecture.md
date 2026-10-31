@@ -89,6 +89,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
+| `shared/calendar-policy.json` plus Glance event bounds in `shared/src/protocol.ts` (ICS subset, recurrence/fetch/cache limits) | `node scripts/generate-calendar-policy.mjs` → Node/Swift calendar policy | `calendar.test.ts` executes actual Node/Swift parser, URL and cache vectors; `CalendarTests` covers consent, Keychain, revocation and aggregate-only Pocket storage. |
 | `shared/antigravity-observation-policy.json` (JSONL identity, read-only SQLite activity queries, status enums, metadata and freshness bounds) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
 | `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
@@ -347,3 +348,53 @@ not the membership, so adding a real agent needs no test edit.
 ## node-pty optional
 
 `optionalDependencies` + dynamic `await import('node-pty')` in PtyManager. Daemon/monitor modes never load the native module. Setup forces source build (`npm_config_build_from_source=true`) to avoid prebuilt ABI mismatch across Node versions. PtyManager catches `posix_spawnp` errors with rebuild guidance.
+
+## ICS calendar context
+
+Calendar access is explicit. Native Settings → Integrations → Calendar schedule
+requires source/share consent and stores private URLs in a device-only,
+non-synchronizing Data Protection Keychain item. UserDefaults stores only the
+consent bit. No Node plaintext URLs are automatically imported. Configured means
+saved, not a successful network probe. Disconnect disables access before deleting
+the Keychain item, cancels owned work and invalidates all cached/late projections.
+
+`calendar-ics.ts` and `CalendarICS.swift` implement the bounded shared subset in
+[calendar-policy](../shared/calendar-policy.json). A calendar retains source wall
+time and its UTC/IANA/floating form until occurrence expansion. The display zone is
+the daemon's local zone. DAILY, Monday-based WEEKLY (plain BYDAY), MONTHLY
+(BYMONTHDAY including negative/list values or ordinal/plain BYDAY), and simple
+YEARLY rules support INTERVAL and COUNT or inclusive UNTIL. EXDATE and moved or
+cancelled RECURRENCE-ID entries match UID plus the full recurrence instant, scoped
+per source. Date-only DTEND is exclusive. Timed events are retained while ongoing;
+multiday events use the existing all-day Glance presentation. Explicit gap starts
+use the pre-gap offset, repeated gap instances are skipped without consuming COUNT,
+and overlap picks the first instant, following [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html).
+Custom VTIMEZONE definitions, RDATE/DURATION, RANGE and other unsupported rule
+modifiers are omitted rather than misinterpreted. Malformed calendar envelopes, invalid UTF-8 and expansion-limit failures cannot
+replace a good cached parse. Expansion is bounded, not a full iCalendar engine.
+
+This also corrects Node's former literal-TZID, ordinal-BYDAY, date-only end and
+date-only exception matching behavior. Both implementations use the same vectors
+for source zones differing from the display zone, DST gaps/overlaps, leap dates,
+recurrence exceptions, UTF-8 bounds and invalid input. No platform keeps the old
+timezone guess as its compatibility contract.
+
+Fetches accept HTTPS (HTTP only for explicit localhost/loopback testing), reject
+URL credentials/fragments and redirects, omit ambient cookies/credentials, limit
+each body to 1 MiB and the whole batch to eight seconds. At most four sources are
+fetched. Parsed events remain only in memory: fresh for 30 minutes, last-good data
+served stale after failures for less than six hours, then unknown/omitted. Failure
+retries have a one-minute backoff and never renew fetchedAt. Every cache hit is
+filtered against the current clock, including midnight/timezone changes. A source
+change cannot reuse a different source's cache or in-flight response; invalid or
+revoked consent never becomes an empty successful schedule. Logs carry only a
+generic fetch failure, never the URL or its underlying error text. A daemon-instance
+ownership token prevents retired teardown or late reads from clearing or publishing
+over a replacement instance's calendar context.
+
+Authorized Feed/Glance responses may include event titles/times and Pocket agenda
+cards. The existing Feed signature, conditional response and Outbox feedback
+contracts remain in place. Pocket persists only its existing aggregate counters,
+opaque content hashes and feedback receipts: no feed, URL, UID, title or event
+copy enters its learning file. Software acceptance does not claim X4 hardware
+acceptance; that stays deferred to companion integration.

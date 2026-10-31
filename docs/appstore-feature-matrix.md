@@ -86,10 +86,11 @@ All surfaces follow the same rule:
 | Weather context and offline forecast cues | Yes | Yes | Tier 1 uses native WeatherKit only for the local Dashboard (in-memory refresh cache, Apple mark + legal link). Tier 1's public portable feed and Tier 2 both use keyless MET Norway, persist that provider cache, preserve attribution, and emit up to seven days plus absolute-time display/notification cues for intermittently connected readers. Location is explicit user configuration (or one-time OS location consent), never IP-derived. No subprocess or companion executable is involved. |
 | Surface Protocol portable Feed negotiation | Yes | Yes | Both tiers validate the eight-field identity and implement conditional Feed, Outbox replay, pull telemetry, product-scoped persistent OTA staging, bounded resume/206, and install acknowledgement. Tier 1 stores staged bytes inside its App Container and enforces negotiated WS event/command boundaries natively. Adaptive Pocket content and Glance Frame pixels are native in both daemons. Neither grants Inbox. No subprocess or companion-install prompt is involved. |
 | APME storage and retention | Yes, macOS in-process daemon | Yes, CLI | Native Full report → Storage provides file/page capacity, preview, explicitly confirmed payload-only pruning and separate space-gated compaction. Shared policy and actual Node/Swift SQLite vectors preserve rows/history and non-tool sample content. Validation uses disposable stores only; no actual user data is pruned. See [contract and verification](apme.md#swift-보존용량-관리-2026-10-31). |
-| Pocket adaptive PULSE / NUDGE / QUEST content | Yes, macOS; companion-device integration separate | Yes | Native selection and aggregate learning reuse Feed/Outbox. Shared policy and cross-daemon vectors cover selection, opaque fingerprints, first-answer-wins feedback, ignored exposures and persistence; no personal card copy is persisted. Signed-app HTTP/relaunch acceptance passed; X4 physical round-trip was explicitly deferred to future companion-app integration after its firmware direction changed. Glance rendering has its own acceptance below; Node ICS calendar ingestion stays separate. See [acceptance](#native-pocket-content-acceptance-2026-10-30). |
+| Pocket adaptive PULSE / NUDGE / QUEST content | Yes, macOS; companion-device integration separate | Yes | Native selection and aggregate learning reuse Feed/Outbox. Shared policy and cross-daemon vectors cover selection, opaque fingerprints, first-answer-wins feedback, ignored exposures and persistence; no personal card copy is persisted. Signed-app HTTP/relaunch acceptance passed; X4 physical round-trip was explicitly deferred to future companion-app integration after its firmware direction changed. Glance rendering has its own acceptance below; ICS source consent stays separate; the native provider now supplies schedule context. See [acceptance](#native-pocket-content-acceptance-2026-10-30). |
 | Glance Frame pixel rendering | Yes, macOS; physical-device integration separate | Yes | Exact 1bpp parity uses a common, pinned resvg engine and bundled fonts. Signed Release-app HTTP acceptance covers binary/PNG, conditional responses, Surface identity, authentication and content changes. X4 physical verification is deferred to companion-app integration. See [acceptance](#native-glance-frame-acceptance-2026-10-30). |
 | Surface Protocol licensed learning-pack delivery | Yes | Yes | Both daemons advertise a bundled, integrity-checked offline learning pack in full and unchanged portable Feed responses and serve it through authenticated `GET /learning/pack`. Delivery is gated by `learning.pack.read` / `learning.pack.update`, the registered Pocket Daily product identity, exact pack id/version, and the pack's SPDX licence metadata. The App Store path reads a signed bundle resource only; it launches no process and accesses no external path. |
 | Surface Protocol automatic font-pack delivery | Yes | Yes | Both daemons advertise the bundled OFL PocketSansWorld pack in full and unchanged portable Feed responses and serve it through authenticated `GET /fonts/pack`. Delivery is gated by `font.pack.read` / `font.pack.update`, exact Pocket Daily identity and id/version, plus size, MD5, SHA-256, cpfont-format, source-ledger, and licence validation. The App Store path reads signed bundle resources only. |
+| ICS calendar schedule | Yes, macOS; explicit source/share consent | Yes; same parser/cache contract | Private source URLs stay in app-owned Keychain. Read-only HTTPS fetch and memory-only recurrence expansion feed Glance and Pocket agenda cards. Shared timezone/DST and cache vectors execute both implementations; no event copy enters Pocket learning. See [acceptance](#native-ics-calendar-acceptance-2026-10-31). |
 | App Store Connect engagement reports | Yes | — | Maintainer tooling creates ONGOING reports plus an optional ONE_TIME_SNAPSHOT for existing history, then downloads Apple's opt-in, privacy-thresholded aggregate analytics through the App Store Connect API. Creating requests requires Admin access; existing reports can be downloaded with Admin, Finance, or Sales and Reports access. No analytics SDK, device identifier, event upload, or AgentDeck-operated analytics backend is added to the app. |
 
 ## Ordinary-session setup and evidence
@@ -269,16 +270,16 @@ acceptance limitations in each row.
 
 ### Remaining native increments — proposed next order
 
-P2.1 is retained below as completed work; the remaining rows are source-confirmed
+Completed P2.1–P2.3 rows are retained below; the remaining rows are source-confirmed
 gaps. The ranking favors app-owned data and observation before new control contracts.
 No production database is pruned, credential imported or device changed by this
 assessment.
 
-| Priority | Current Node-only increment and source evidence | First bounded Swift increment | Completion gate / dependency |
+| Priority | Capability and source evidence | Native increment | Completion gate / dependency |
 |---|---|---|---|
 | P2.1 — implemented | APME retention and storage management: [shared policy](../shared/apme-retention-policy.json) generates [Node](../bridge/src/apme/retention-policy.generated.ts) and [Swift](../apple/AgentDeck/Daemon/Apme/ApmeRetentionPolicy.generated.swift) constants and SQL predicates. | Native Full report → Storage implements file/page capacity, read-only preview, confirmed payload-only cleanup and separate compaction against the app-owned database. | Actual Node/Swift SQLite fixtures match preview values, UTF-16 marker bytes and all final rows. Native store/API/UI tests cover retained history/corrections, stale preview refusal, explicit local-only confirmation, both-table rollback, multiple batches, WAL, busy/deadline behavior and compaction. A forced slow cleanup rolls back while an incoming record survives. Only disposable stores are pruned; large operations may be refused by the native time budget. |
 | P2.2 — implemented | Antigravity JSONL observation now uses a [shared policy](../shared/antigravity-observation-policy.json), [Node reader](../bridge/src/antigravity-observation.ts) and [Swift reader](../apple/AgentDeck/Daemon/Session/AntigravitySourceReader.swift). | Native Session Observation selects a read-only transcript root, restores its scoped bookmark after relaunch, and identifies conversations and explicit USER_INPUT steps. The account/plan database grant is preserved separately. | Actual Swift/Node parser and filesystem parity, native consent/renewal/revocation tests and a development-signed sandbox app with an external disposable transcript folder. Live WebSocket evidence covers RUNNING/DONE, new turns, rotation, malformed tail, disappearance, stale and relaunch/removal. Live CLI verification exposed DONE-only JSONL; direct read-only SQLite activity now supplies explicit WORKING/IDLE, with shared schema/identity/freshness guards. See the signed live acceptance below. No PERM, control, Stop/APME import or process-liveness claim. |
-| P2.3 | ICS calendar ingestion for Glance: Node [CalendarProvider](../bridge/src/calendar.ts) feeds schedule events; native Pocket calendar context currently means local date/time, not external ICS ingestion. | Explicit calendar-source consent, secret URL custody in Keychain, bounded fetch/cache and native event expansion. Preserve aggregate-only Pocket learning; never persist event copy as learned content or expose secret URLs in wire/logs. | Shared parser/policy vectors for Node's supported ICS subset, recurrence exceptions, timezone/DST, all-day events, cache/stale and fetch limits. Any correction to Node's timezone assumptions must be a shared contract change. Software Feed/Glance verification can precede the deferred X4 companion integration. |
+| P2.3 — implemented | ICS calendar ingestion now uses [shared policy](../shared/calendar-policy.json), [Node provider](../bridge/src/calendar.ts) and [native provider](../apple/AgentDeck/Daemon/Server/CalendarProvider.swift). | Native source/share consent, non-synchronizing device-only Keychain URLs, bounded HTTPS and in-memory recurrence expansion supply Feed/Glance and agenda cards. | Actual Node/Swift parser, URL and cache vectors match, including timezone/DST and exceptions. A signed sandbox fixture verifies real Keychain save/new-process restore/delete and real HTTP/cache/failure parity. Pocket remains aggregate-only. X4 physical acceptance stays deferred. |
 | P2.4 | Pixoo baked aquarium `animation: "loop"`: Node [bridge](../bridge/src/pixoo/pixoo-bridge.ts) supports it; native [module](../apple/AgentDeck/Daemon/Modules/PixooModule.swift) supports single-frame and Tide but falls back for this mode. | Port baked aquarium frame generation using canonical artwork/layout and existing native multi-frame upload. This is a rendering increment, not a missing Pixoo transport. | Frame/layout parity, bounded cache/upload work, loop seam, frame IDs, rate/backoff, dim/wake and physical Pixoo acceptance. Existing native Tide reduces urgency. |
 | P2.5 — separate control proposal | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`; native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) deliberately implements the read-only subset. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
 
@@ -286,7 +287,7 @@ P2.1 APME retention is implemented; [its contract and disposable-store verificat
 cover size/status, read-only preview, manual prune and separate compaction. Actual
 user databases were not pruned. P2.2 Antigravity now has native read-only observation;
 [the source contract](architecture.md#antigravity-transcript-observation) defines its
-evidence limits. The next proposed increment is **P2.3 ICS calendar ingestion**.
+evidence limits. P2.3 ICS ingestion is also implemented; the next proposed increment is **P2.4 Pixoo baked loops**.
 
 ### Antigravity signed-app acceptance (2026-10-31)
 
@@ -405,6 +406,64 @@ and actual user records were preserved. The shared Node daemon kept PID 74712 an
 build `9135833a2ad5`; its ADB, serial, Android, Stream Deck, ESP32 Wi-Fi, BLE and
 D200H connections were retained.
 
+### Native ICS calendar acceptance (2026-10-31)
+
+[The source contract](architecture.md#ics-calendar-context) owns the supported
+recurrence subset, consent, URL custody and freshness rules. Native Settings now
+requires explicit source/share consent and keeps private URLs only in a
+non-synchronizing, device-only Data Protection Keychain record. Nothing is imported
+from Node plaintext settings. Disconnect revokes access before Keychain deletion,
+invalidates cached/late projections and stays disabled when deletion fails. A queued
+save intent cannot undo a newer revocation. An instance-ownership regression test
+also checks that retired daemon teardown and projections cannot invalidate a
+replacement instance's calendar context.
+
+Software parity executes both actual parsers/providers on 42 recurrence/timezone
+vectors, 19 URL cases and four cache sequences. Cases cover IANA/UTC/floating forms,
+DST gaps/overlaps, weekly intervals, month-day/ordinal rules, leap dates, inclusive
+UNTIL, exact EXDATE/RECURRENCE-ID, moved/cancelled instances, all-day exclusive ends,
+UTF-8 and unsupported/malformed input. Cache vectors compare request counts as well
+as events, status and original fetchedAt: current-clock filtering, 30-minute refresh,
+one-minute failure backoff, last-good stale data for less than six hours, clock
+rollback, source changes and disablement. Node's former literal-TZID and date-only
+exception behavior was corrected in the shared contract.
+
+A separate signed sandbox executable linked the production Calendar connection,
+transport, parser and provider classes. It used the existing registered development
+profile and only UUID-owned test Keychain/consent keys; it did not replace, launch or
+reconfigure the installed app. A loopback server supplied synthetic events only.
+
+| Actual signed/native and Node check | Result |
+|---|---|
+| Consent and custody | Before consent the native provider was disabled and made no request. After consent the URL was saved to real Data Protection Keychain, with no plaintext URL in UserDefaults. |
+| New-process restore | A second signed process restored the URL from Keychain and fetched the same event. Each process fetched once; a second call used its memory cache. Node returned the identical event projection. No feed copy was persisted across processes. |
+| Revoke and remove | Disconnect withdrew the saved projection, disabled access and deleted the test Keychain item. All test consent keys were removed. |
+| Redirect | Both actual clients refused the redirect; the destination received zero requests. |
+| Size and silence | Both rejected a body over 1 MiB. The silent source returned unknown after about 8.006 s in Swift and 8.003 s in Node; these are measurements, not latency guarantees. |
+| Ambient credentials | The source received no Cookie or Authorization header. Error reporting contains no source URL or underlying secret-bearing error text. |
+| Pocket | Native calendar-derived agenda cards entered the existing producer and delivery path; their learning file contained neither event title, UID, URL nor raw feed. Existing Feed/Outbox and conditional/OTA-first tests remain in place. |
+
+The unsigned XCTest host cannot use the Data Protection Keychain and explicitly
+skips that OS-custody test on `errSecMissingEntitlement`; the signed acceptance above
+covers it. The UI and native integration are built/tested, but this is not an
+interactive Settings acceptance or a product deployment. No new profile, App Group,
+ATS arbitrary-load exception or external helper was added to the app. Custom
+VTIMEZONE rules and unsupported recurrence modifiers are omitted; this is a bounded
+subset, not a full iCalendar engine. X4 physical acceptance remains deferred to its
+companion-app integration. Local evidence: `diagnostics/ics-calendar/` (gitignored).
+
+The complete Node suite passed with bounded concurrency: 7,091 tests passed and
+17 were skipped. The preceding default-concurrency Quick run had three unrelated
+failures in serial-probe timing, APME history-worker deadlines and an OpenCode
+observer assertion; all three files passed in isolation and the subsequent complete
+suite passed. The other Quick gates and the final document gates passed. All five Apple gates
+also passed: macOS Debug/XCTest, standard macOS Release with Dot exclusion, iOS
+Release, macOS DotPreviewRelease/XCTest and iOS DotPreviewRelease with their artifact
+boundaries. The shared port-9120 daemon retained PID 13956 and build `12fa71c8e515`; all 11 serial ports,
+ADB/dashboard/Stream Deck/Wi-Fi device lists and connected modules were unchanged.
+The synthetic-source server and temporary signed probe bundle were removed.
+
+
 ### Conditional research and acceptance, outside the default port queue
 
 | Item | Promotion condition / remaining work | Classification |
@@ -459,8 +518,8 @@ completed their original native implementation queue. APME retention/storage man
 now also has a native implementation and disposable-store verification. Antigravity
 read-only observation includes direct SQLite activity alongside JSONL identity;
 the original DONE-only JSONL limitation is resolved without subprocesses.
-The next proposed increment is ICS ingestion, followed by Pixoo baked loops and a
-separately consented OpenCode control proposal. Physical/private-provider acceptance remains
+ICS ingestion is now native too. The next proposed increment is Pixoo baked loops,
+followed by a separately consented OpenCode control proposal. Physical/private-provider acceptance remains
 separate. The installed signed Release relay acceptance is recorded; future Store
 artifact and distribution acceptance remain release work. Investigate the Claude
 quota source in parallel without promising a quota release before evidence exists.
@@ -622,7 +681,7 @@ persistence boundary in both engines. Existing valid v1 state remains readable.
 
 Content input parity means the **same supplied snapshot** produces the same
 cards, outcomes and aggregate state. The app uses already available Swift
-session/weather context. This work does not implement Node's ICS calendar
+session/weather context. At this checkpoint, the Pocket port did not implement Node's ICS calendar
 provider or a new quota source; absent context is not fabricated. Glance Frame
 rendering has separate acceptance and retains the same supplied-snapshot boundary. Existing THREAD cards, protocol identity and
 capability negotiation, weather/pack adverts, authentication and OTA envelopes
@@ -726,7 +785,8 @@ artifact after the Unicode compatibility correction.
 Actual X4 firmware/display acceptance is **deferred to future companion-app
 integration** at the user's direction. No physical-device result is inferred
 from the HTTP/PNG checks. Native Glance reuses available Swift session, quota
-and weather context; it does not add Node's ICS provider or a new quota source.
+and weather context. At that checkpoint it did not add ICS or a new quota source;
+[ICS was added subsequently](#native-ics-calendar-acceptance-2026-10-31).
 Existing Feed/Outbox behavior is preserved.
 
 
