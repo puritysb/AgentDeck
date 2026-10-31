@@ -396,6 +396,19 @@ export function pixooDeviceCount(): number {
   return devices.length;
 }
 
+/** Same live projection for the daemon health API and Settings consumers. */
+export function getPixooModuleHealth() {
+  const details = getPixooDeviceDetails();
+  return {
+    configuredDeviceCount: devices.length,
+    deviceIps: details.map(d => d.ip),
+    hasFrame: true, // previews are generated on demand; do not render in a health probe
+    displayDimmed,
+    devices: details.map(d => ({ ip: d.ip, name: d.name, online: !d.backedOff,
+      failures: d.failures, backedOff: d.backedOff })),
+  };
+}
+
 export function getPixooDeviceDetails(): Array<{
   ip: string;
   name: string;

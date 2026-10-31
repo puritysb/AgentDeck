@@ -290,7 +290,7 @@ import { applyWifiSetup, parseWifiSetupBody, readWifiSetupBody, wifiSetupAuthori
 import { clampLeaseSeconds, clearLease, readLease, writeLease } from './esp32-flash-lease.js';
 import { loadWifiConfig, saveWifiConfig } from './wifi-config.js';
 import { getAdbDeviceCountCached, getCachedAdbDevices } from './adb-reverse.js';
-import { getPixooDeviceDetails, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
+import { getPixooDeviceDetails, getPixooModuleHealth, pixooDeviceCount } from './pixoo/pixoo-bridge.js';
 import { loadTimeboxDevices } from './timebox/timebox-settings.js';
 import { getLanIp, stripUnsafeText, cleanRawText, prepareMarkdownDetail, normalizeCommandPrompt, formatDurationSec, type TimelineEntry, PluginCommand } from '@agentdeck/shared';
 import { injectOpenClawSession, OPENCLAW_SESSION_ID } from './openclaw-session.js';
@@ -1470,20 +1470,7 @@ function buildNodeModuleHealth(startedModules: DeviceModule[]): Record<string, u
   }
 
   if (started.has('pixoo') || pixooDeviceCount() > 0) {
-    const details = getPixooDeviceDetails();
-    modules.pixoo = {
-      configuredDeviceCount: pixooDeviceCount(),
-      deviceIps: details.map((d) => d.ip),
-      hasFrame: true,
-      displayDimmed: false,
-      devices: details.map((d) => ({
-        ip: d.ip,
-        name: d.name,
-        online: !d.backedOff,
-        failures: d.failures,
-        backedOff: d.backedOff,
-      })),
-    };
+    modules.pixoo = getPixooModuleHealth();
   }
 
   const timebox = startedModules.find((m) => m.name === 'timebox') as DeviceModule & {
