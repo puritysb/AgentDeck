@@ -29,6 +29,7 @@ final class DaemonCheckpointStore {
     private let directory: URL
     private let pocket: PocketAutonomy
     private let configuration: DaemonConfigurationStore?
+    private let recovery: DaemonRecoverySession?
     private var current: DaemonCheckpointPayload
     private var content = Data()
     private static var latestAdmission: [String: Int] = [:]
@@ -74,7 +75,7 @@ final class DaemonCheckpointStore {
         guard let value = parse(text) else { throw Failure.invalid }
         return value
     }
-    private static func encoded(_ value: DaemonCheckpointPayload) throws -> Data {
+    static func encoded(_ value: DaemonCheckpointPayload) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(value)
         guard data.count <= P.checkpointMaxBytes else { throw CocoaError(.fileWriteOutOfSpace) }
@@ -105,12 +106,13 @@ final class DaemonCheckpointStore {
         try write(incoming, to: file); return incoming.id
     }
 
-    init(directory: URL, pocket: PocketAutonomy, configuration: DaemonConfigurationStore? = nil) throws {
-        self.directory = directory; self.pocket = pocket; self.configuration = configuration
+    init(directory: URL, pocket: PocketAutonomy, configuration: DaemonConfigurationStore? = nil, recovery: DaemonRecoverySession? = nil) throws {
+        self.directory = directory; self.pocket = pocket; self.configuration = configuration; self.recovery = recovery
+        let recovered = try recovery?.prepare(configuration: configuration?.snapshot()) ?? false
         let own = try Self.read(directory.appendingPathComponent("daemon-checkpoint.json"))
         let peerFile = directory.appendingPathComponent("daemon-checkpoint-peer.json")
         let peer = try Self.read(peerFile)
-        let adoptingPeer = peer.map { incoming in own.map { Self.newer(incoming, than: $0) } ?? true } ?? false
+        let adoptingPeer = peer.map { incoming in recovered || (own.map { Self.newer(incoming, than: $0) } ?? true) } ?? false
         let source = adoptingPeer ? peer : own
         guard (source?.generation ?? 0) < P.checkpointMaxCounter else { throw Failure.counterExhausted }
         if let source, source.lineage != own?.lineage || (source.generation == own?.generation && source.writer != own?.writer) {
@@ -148,7 +150,9 @@ final class DaemonCheckpointStore {
             try Self.write(next, to: directory.appendingPathComponent("daemon-checkpoint.json"))
             current = next; content = signature
         }
-        return String(decoding: try Self.encoded(current), as: UTF8.self)
+        let payload = String(decoding: try Self.encoded(current), as: UTF8.self)
+        try recovery?.publish(payload)
+        return payload
     }
 }
 #endif

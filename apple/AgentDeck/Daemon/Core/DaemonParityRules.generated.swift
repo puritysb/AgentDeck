@@ -3,6 +3,14 @@
 import Foundation
 
 enum DaemonParityRules {
+    static let recoveryVersion = 1
+    static let recoveryFile = "agentdeck-recovery.sqlite"
+    static let recoveryFolderName = "AgentDeck Recovery"
+    static let recoveryConsentFile = "recovery-consent.json"
+    static let recoveryCursorFile = "daemon-recovery-cursor.json"
+    static let recoveryBusyTimeoutMs = 250
+    static let recoveryMaxRevision = 9007199254740991
+    static let recoverySchema = "CREATE TABLE IF NOT EXISTS recovery_head (singleton INTEGER PRIMARY KEY CHECK(singleton=1), store_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);"
     static let configurationHandoverHeader = "x-agentdeck-configuration"
     static let configurationMaxBodyBytes = 16384
     static let configurationMaxCounter = 9007199254740991

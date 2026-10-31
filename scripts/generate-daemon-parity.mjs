@@ -13,6 +13,14 @@ export function emitSwift(rules) {
 import Foundation
 
 enum DaemonParityRules {
+    static let recoveryVersion = ${rules.DAEMON_RECOVERY_POLICY.version}
+    static let recoveryFile = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.file)}
+    static let recoveryFolderName = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.folderName)}
+    static let recoveryConsentFile = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.consentFile)}
+    static let recoveryCursorFile = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.cursorFile)}
+    static let recoveryBusyTimeoutMs = ${rules.DAEMON_RECOVERY_POLICY.busyTimeoutMs}
+    static let recoveryMaxRevision = ${rules.DAEMON_RECOVERY_POLICY.maxRevision}
+    static let recoverySchema = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.schema)}
     static let configurationHandoverHeader = ${JSON.stringify(rules.DAEMON_CONFIGURATION_POLICY.handoverHeader.toLowerCase())}
     static let configurationMaxBodyBytes = ${rules.DAEMON_CONFIGURATION_POLICY.maxBodyBytes}
     static let configurationMaxCounter = ${rules.DAEMON_CONFIGURATION_POLICY.maxCounter}

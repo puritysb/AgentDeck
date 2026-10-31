@@ -1985,6 +1985,9 @@ struct SettingsScreen: View {
     private var servicesContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             #if os(macOS)
+            RecoveryFolderView(connectionURL: { stateHolder.connection.url }, restartLocal: {
+                Task { await daemonService.restart() }
+            })
             if !daemonService.isUsingExternalDaemon { GitHubCISettings(); CalendarSettings(); DaemonRelaySettings() }
             #endif
             IntegrationsView(

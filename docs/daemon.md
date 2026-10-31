@@ -776,3 +776,53 @@ labels and unchanged list/VOICE targets. Physical D200X session-key/INFO/VOICE r
 the friendly-name change remains pending; the reporter's earlier #548 ID-tag
 receipt does not certify this change. Shared daemon/devices are not redeployed
 by the isolated source checks.
+
+## Explicit local cold recovery
+
+The optional recovery folder closes the interval when the other runtime was not
+running to receive a live checkpoint. On macOS the app asks the user to select
+`~/Library/Application Support` or its existing `AgentDeck Recovery` folder,
+creates only that dedicated child, and retains an app-scoped read/write bookmark
+for the child. The known location lets a later Node-only launch discover the
+explicit consent marker even if Node was absent during setup. No application
+container, home-directory entitlement or cloud service is used as a shortcut.
+Existing selected-file/bookmark entitlements suffice. Apple's
+[Sandbox file-access contract](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
+requires the explicit user selection and balanced security-scoped access.
+
+The folder holds `agentdeck-recovery.sqlite` and a versioned consent marker.
+`shared/src/daemon-recovery.ts` owns the SQLite schema, filename and lock budget;
+`generate-daemon-parity` emits the same native constants. SQLite's immediate
+transaction and full synchronous commit serialize updates from both implementations.
+Each replacement compares the prior store ID, revision and payload; a losing or
+unknown writer refuses the update instead of replacing the latest commit. File
+modification times and independent daemon generations do not establish authority.
+The checkpoint is normalized through the existing strict parser: supported pins,
+Pixoo fields, Pocket aggregates and opaque receipts only. Account tokens, source
+grants, original records, prompt/card text and queued commands are excluded.
+
+A private cursor remembers the selected store, committed revision and last local
+checkpoint digest. A newer shared revision is restored before device modules
+start. A persisted client inbox cannot outrank that commit after the receiver was
+absent; an older inbox is archived locally before replacement. When there is no
+intervening commit, the local profile and offline edits remain authoritative.
+The native app resolves its folder grant only after acquiring listener ownership;
+an unavailable native grant must not prevent attaching to a healthy Node owner.
+Authenticated HTTP requests return 503 until native restoration finishes.
+Both participants must implement the opted-in recovery store; older live-only
+versions do not participate in cold continuity. Existing inactive profiles are
+archived using the live-handover machinery;
+explicit empty sets still remove pins/devices. A local edit with no intervening
+shared commit remains authoritative. Divergent offline edits, a changed store,
+unsupported schema, permission failure, busy database or corrupt content refuse
+recovery/writes and preserve the original files. They never become an empty
+successful restore. A crash between the shared commit and local cursor write can
+recognize the same normalized payload and resume without adding histories.
+
+`POST /configuration/recovery` is a normal authenticated operator route. The app
+may configure a local Node owner; a native owner accepts an enabled path only
+when its own matching user-selected bookmark supplies access. An incoming string
+never grants native file permission. The selection is bound to its private data
+profile; explicit test data directories do not discover the real user's default
+folder. Disconnect retains shared data and the private cursor. Configuration and
+bookmark revocation are distinct from deleting backup data.

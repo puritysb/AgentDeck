@@ -81,10 +81,12 @@ export class DaemonCheckpointStore {
   private content = '';
   constructor(private readonly directory: string, private readonly pocket: AutonomousPocketEngine,
     private readonly ledger: OutboxIdempotencyLedger,
-    private readonly configuration?: {snapshot(): DaemonConfiguration; adopt(value: DaemonConfiguration): void}) {
+    private readonly configuration?: {snapshot(): DaemonConfiguration; adopt(value: DaemonConfiguration): void},
+    private readonly recovery?: {prepare(configuration?: DaemonConfiguration): boolean; publish(payload: string): void}) {
+    const recovered = recovery?.prepare(configuration?.snapshot()) ?? false;
     const own = read(join(directory, 'daemon-checkpoint.json'));
     const peer = read(join(directory, 'daemon-checkpoint-peer.json'));
-    const source = peer && (!own || checkpointIsNewer(peer, own)) ? peer : own;
+    const source = peer && (recovered || !own || checkpointIsNewer(peer, own)) ? peer : own;
     if (source && source.generation >= P.maxCounter) throw new Error('daemon_checkpoint_generation_exhausted');
     if (source && (source.lineage !== own?.lineage
       || (source.generation === own?.generation && source.writer !== own.writer))) {
@@ -118,7 +120,9 @@ export class DaemonCheckpointStore {
       atomic(this.directory, 'daemon-checkpoint.json', this.current);
       this.content = content;
     }
-    return JSON.stringify(this.current);
+    const payload = JSON.stringify(this.current);
+    this.recovery?.publish(payload);
+    return payload;
   }
 
   get id(): string { return checkpointId(this.current); }

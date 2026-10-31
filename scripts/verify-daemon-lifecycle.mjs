@@ -483,6 +483,58 @@ async function configurationScenarios() {
   });
 }
 
+async function coldRecoveryScenarios() {
+  const shared=join(swiftData,'RecoveryFixture');mkdirSync(shared,{recursive:true});
+  const id='hermes-'+hash(runID+'cold').slice(0,32);
+  const config=n=>({devices:[{ip:'127.0.0.2',brightness:n,animation:'tide'}],autoDiscover:false});
+  const edit=async (value,weight)=>{
+    const before=await request(port,'/configuration/pixoo');
+    const result=await raw('/configuration/pixoo',{revision:before.revision,configuration:value});assert.equal(result.status,200);
+    assert.equal((await raw('/sessions/order',{sessionId:id,weight})).status,200);
+  };
+  const verify=async(value,weight)=>{
+    assert.deepEqual((await request(port,'/configuration/pixoo')).configuration,value);
+    assert.equal((await request(port,'/sessions/order')).pins.find(p=>p.id===id)?.weight,weight);
+  };
+  let receipt;
+  await scenario('Cold Node to absent Swift restores settings and receipt',async start=>{
+    startNode();await owner(false,150_000);
+    await startApp();await appClient();
+    await until('initial native checkpoint inbox',()=>existsSync(join(swiftData,'daemon-checkpoint-peer.json')));
+    await until('recovery setup confirmed by current replica',async()=>{
+      const response=await raw('/configuration/recovery',{enabled:true,path:shared});if(response.status===503)return false;
+      assert.equal(response.status,200);return true;
+    });
+    assert.equal(JSON.parse(readFileSync(join(swiftData,'daemon-checkpoint-peer.json'),'utf8')).writer,
+      JSON.parse(readFileSync(join(nodeData,'daemon-checkpoint.json'),'utf8')).writer,'Configuration setup acknowledged the old checkpoint writer');
+    await stopApp();
+    await edit(config(27),-7);receipt=await selectPreference();
+    await stopNode();assert(!appPID());
+    await startApp();await owner(true);await verify(config(27),-7);await retryFeedback(receipt);
+    record('Cold Node to absent Swift restores settings and receipt',start);await stopApp();
+  });
+  await scenario('Cold Swift to absent Node and back retains removals',async start=>{
+    await startApp();await owner(true);
+    assert.equal((await raw('/configuration/recovery',{enabled:true,path:shared})).status,200);
+    await edit(config(31),-9);await stopApp();
+    startNode();await owner(false,150_000);await verify(config(31),-9);await retryFeedback(receipt);
+    await edit({devices:[],autoDiscover:false},0);await stopNode();
+    await startApp();await owner(true);await verify({devices:[],autoDiscover:false},undefined);await retryFeedback(receipt);
+    record('Cold Swift to absent Node and back retains removals',start);await stopApp();
+  });
+  await scenario('Cold recovery disconnect retains backup and native grant is required',async start=>{
+    await startApp();await owner(true);
+    assert.equal((await raw('/configuration/recovery',{enabled:true,path:'/private/tmp/ungranted-recovery'})).status,403);
+    const backup=readFileSync(join(shared,'agentdeck-recovery.sqlite'));
+    assert.equal((await raw('/configuration/recovery',{enabled:false})).status,200);
+    assert(readFileSync(join(shared,'agentdeck-recovery.sqlite')).equals(backup));
+    await stopApp();startNode();await owner(false,150_000);
+    await edit(config(41),11);await stopNode();
+    assert(readFileSync(join(shared,'agentdeck-recovery.sqlite')).equals(backup),'Disconnected runtime wrote recovery data');
+    record('Cold recovery disconnect retains backup and native grant is required',start);
+  });
+}
+
 async function inflightScenarios() {
   await scenario('Prepared handover lease expires without stopping Swift',async start=>{
     await startApp();const first=await owner(true);
@@ -529,10 +581,13 @@ try {
   if(args.includes('--fresh')) {
     // Explicit fixture reset, after proving every private listener vacant.
     for(const dir of [nodeData,swiftData])for(const name of readdirSync(dir)) {
-      if(name!=='settings.json')rmSync(join(dir,name),{recursive:true,force:true});
+      if(args.includes('--cold-recovery') && dir===swiftData && name==='RecoveryFixture') {
+        for(const child of readdirSync(join(dir,name)))rmSync(join(dir,name,child),{recursive:true,force:true});
+      }
+      if(name!=='settings.json' && !(args.includes('--cold-recovery') && dir===swiftData && name==='RecoveryFixture'))rmSync(join(dir,name),{recursive:true,force:true});
     }
   }
-  if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes("--configuration")) { await configurationScenarios(); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
+  if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes('--cold-recovery')) { await coldRecoveryScenarios(); } else if(args.includes("--configuration")) { await configurationScenarios(); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
   await scenario('Swift-only quit and relaunch',async start=>{
     await startApp();const first=await owner(true);noSharedSockets(first.pid);const prompt=await mark('swift-only');const token=hash(first.pairingToken);
     await stopApp();await startApp();const next=await owner(true);assert.equal(hash(next.pairingToken),token);await retains(prompt);

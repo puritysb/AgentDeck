@@ -145,6 +145,14 @@ refusal, explicit removals and real CLI editing against the Swift owner. All
 addresses are synthetic loopback devices and hardware modules remain disabled;
 this does not certify physical output or cold recovery without a receiving peer.
 
+For opt-in cold recovery, bootstrap the alternate signed fixture's preferences
+helper with its `--recovery` argument, then run the same isolated runner with
+`--cold-recovery --fresh`. Its bookmark targets only `RecoveryFixture` in the
+disposable container. The scenarios stop one runtime before starting the other,
+check settings/removals/opaque receipt replay and disconnect, and reject an
+ungranted native path. This proves process/storage integration; external-folder
+Powerbox selection and real post-relaunch bookmark access remain separate UI gates.
+
 Add `--inflight --fresh` for the synthetic approval, adaptive Feed, checkpoint
 replica, paused-owner and OTA push/pull scenarios. `--fresh` resets only the
 explicit isolated synthetic stores after the private window is proven vacant.

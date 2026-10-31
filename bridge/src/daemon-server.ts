@@ -1,4 +1,5 @@
 import { DaemonConfigurationStore, readPixooConfiguration, writePixooConfiguration, pixooRevision } from './daemon-configuration.js';
+import { configuredRecovery, selectRecovery, disconnectRecovery, recoveryConsent } from './daemon-recovery.js';
 import { parsePixooConfiguration, parseDaemonConfiguration, rawSessionId as configurationRawId, DAEMON_CONFIGURATION_POLICY } from '@agentdeck/shared';
 import { loadHandoverTimeline } from './daemon-timeline-handover.js';
 import { DaemonCheckpointStore } from './daemon-checkpoint.js';
@@ -1788,7 +1789,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   log(`[agentdeck] Starting daemon on port ${port}...`);
   const sessionOrder = new SessionOrderStore().load();
   const configurationStore = new DaemonConfigurationStore(getDataDir(), sessionOrder);
-  const checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency, configurationStore);
+  let recovery = configuredRecovery(getDataDir());
+  let checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency, configurationStore, recovery);
   let ownerStopping = false;
   const checkpointPeers = new Map<WebSocket, number>();
   const configurationPeers = new Set<WebSocket>();
@@ -2569,6 +2571,35 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // truncated echo, or the bare uuid; a prefix must match exactly one live
     // observed session. After a mutation the sessions list is rebroadcast so
     // every surface re-sorts within one frame.
+    if (pathname === '/configuration/recovery' && req.method === 'POST') {
+      if (!isLocalConnection(req.socket.remoteAddress ?? '') || localTrustOf(req) !== 'trusted') {
+        res.writeHead(403); res.end(); return;
+      }
+      void (async () => {
+        try {
+          assertConfigurationWritable();
+          const body = await readJsonBody(req, 4096);
+          assertConfigurationWritable();
+          if (typeof body.enabled !== 'boolean' || (body.enabled && typeof body.path !== 'string')) {
+            res.writeHead(400); res.end(); return;
+          }
+          if (body.enabled) {
+            const path = body.path as string;
+            const next = selectRecovery(getDataDir(), path);
+            const store = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency, configurationStore, next);
+            recovery = next; checkpointStore = store;
+            recoveryConsent(path, true);
+          } else {
+            if (recovery) recoveryConsent(recovery.store.directory, false);
+            disconnectRecovery(getDataDir()); recovery = undefined;
+            checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency, configurationStore);
+          }
+          for (const peer of checkpointPeers.keys()) checkpointPeers.set(peer, -1);
+          await publishCheckpoint(); await reloadPixooConfiguration(); core.maybeBroadcastSessionsList();
+          res.writeHead(200, {'Content-Type':'application/json'}); res.end(JSON.stringify({enabled:!!recovery}));
+        } catch { res.writeHead(503, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'recovery_unavailable'})); }
+      })(); return;
+    }
     if (pathname === '/configuration/pixoo' && (req.method === 'GET' || req.method === 'POST')) {
       void (async () => {
         try {

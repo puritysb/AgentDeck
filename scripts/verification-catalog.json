@@ -452,7 +452,9 @@
         "apple/AgentDeckTests/DaemonConfigurationTests.swift",
         "shared/daemon-checkpoint-vectors.json",
         "bridge/src/__tests__/esp32-wifi-ota-reconnect.test.ts",
-        "apple/AgentDeckTests/PocketAutonomyTests.swift"
+        "apple/AgentDeckTests/PocketAutonomyTests.swift",
+        "bridge/src/__tests__/daemon-recovery.test.ts",
+        "apple/AgentDeckTests/DaemonRecoveryTests.swift"
       ],
       "proves": [
         "Actual signed Swift and Node processes converge on one private listener in both startup orders and concurrent startup",
@@ -588,6 +590,7 @@
       "blocking": true,
       "command": "vitest run <the files below>",
       "files": [
+        "bridge/src/__tests__/daemon-recovery.test.ts",
         "shared/src/__tests__/daemon-parity.test.ts",
         "shared/src/__tests__/ci-wait-sync.test.ts",
         "shared/src/__tests__/daemon-relay-sync.test.ts",

@@ -24,6 +24,7 @@
 //                       SICK crayfish + error row in topology.
 
 import Foundation
+import CoreFoundation
 import CryptoKit
 import IOKit
 import IOKit.ps
@@ -1110,13 +1111,20 @@ final class DaemonServer {
     private var surfaceOutboxOrder: [String] = []
     private var configurationStore: DaemonConfigurationStore { DaemonConfigurationStore(directory: AgentDeckPaths.baseDirectory, order: sessionOrderStore) }
     private var checkpointStore: DaemonCheckpointStore?
+    private var recoveryDirectory: URL?
+    private var recoverySession: DaemonRecoverySession?
+    private var recoveryInitializing = false
     private var checkpointLease: (id: String, until: Date)?
     private var handoverPreparing: Bool { checkpointLease.map { Date() < $0.until } ?? false }
     private var rejectsMutations: Bool { startupStopped || handoverPreparing }
 
     private func ensureCheckpoint() throws {
         guard checkpointStore == nil else { return }
-        let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy, configuration: configurationStore)
+        if recoverySession == nil, let recoveryDirectory {
+            recoverySession = try DaemonRecoverySession(shared: recoveryDirectory, directory: AgentDeckPaths.baseDirectory)
+        }
+        let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy, configuration: configurationStore, recovery: recoverySession)
+        surfaceOutboxLedger.removeAll(); surfaceOutboxOrder.removeAll()
         for receipt in store.restoredReceipts {
             surfaceOutboxLedger[receipt.key] = ["status": receipt.status]
             surfaceOutboxOrder.append(receipt.key)
@@ -1904,8 +1912,9 @@ final class DaemonServer {
 
     // MARK: - Init
 
-    init(port: Int?, debug: Bool, posture: DaemonPosture = .open, preferredStartupPort: Int? = nil) async throws {
+    init(port: Int?, debug: Bool, posture: DaemonPosture = .open, preferredStartupPort: Int? = nil, recoveryDirectory: URL? = nil) async throws {
         try Task.checkCancellation()
+        self.recoveryDirectory = recoveryDirectory
         self.posture = posture
         self.timelineRelay = TimelineRelay(selfPort: port ?? SessionRegistry.defaultPort)
         self.focusRelay = SessionFocusRelay()
@@ -2225,6 +2234,7 @@ final class DaemonServer {
 
         // Await listener `.ready` — throws on bind failure (EADDRINUSE etc).
         // Registry writes must NOT happen before this succeeds.
+        recoveryInitializing = true
         try await ListenerStartupRecovery.start(
             port: Int(port), preferredPort: Int(preferredStartupPort),
             validate: { try self.checkStartupActive() }
@@ -2234,6 +2244,14 @@ final class DaemonServer {
         }
         try checkStartupActive()
         DaemonLogger.shared.info(posture.describe(port: port))
+        // Recover before device modules start. Only the bound owner may publish.
+        if recoveryDirectory == nil {
+            let selected = try await MainActor.run { try RecoveryFolderSettings.shared.directory() }
+            try checkStartupActive()
+            recoveryDirectory = selected
+        }
+        if recoveryDirectory != nil { _ = try checkpointPayload() }
+        recoveryInitializing = false
 
         // 2. Register session (only after listener is actually bound)
         let entry = DaemonSessionEntry(
@@ -3441,6 +3459,7 @@ final class DaemonServer {
         await httpServer.setAccessPolicy { [weak self] request in
             let pairingOpen = await PairingWindowStore.shared.isOpen()
             if let denied = Self.accessPolicyResponse(for: request, daemonPort: daemonPort, pairingWindowOpen: pairingOpen) { return denied }
+            if let self, await self.recoveryInitializing { return .json(["error": "recovery_initializing"], status: 503) }
             if request.method == "POST", !["/shutdown", "/stand-down", "/stand-down/commit"].contains(request.path) {
                 guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
                 let stopping = await self.rejectsMutations
@@ -4151,6 +4170,12 @@ final class DaemonServer {
         await httpServer.get("/configuration/pixoo") { [weak self] _ in
             guard let self else { return .json(["error": "configuration unavailable"], status: 503) }
             return await self.pixooConfigurationResponse()
+        }
+        await httpServer.post("/configuration/recovery") { [weak self] request in
+            guard let self else { return .json(["error": "unavailable"], status: 503) }
+            guard AuthManager.shared.isLocalConnection(request.remoteIP),
+                  LocalTrust.verdict(for: request, port: Int(daemonPort)) == .trusted else { return .json(["error": "local_operator_required"], status: 403) }
+            return await self.configureRecovery(request.body)
         }
         await httpServer.post("/configuration/pixoo") { [weak self] request in
             guard let self else { return .json(["error": "configuration unavailable"], status: 503) }
@@ -5127,6 +5152,38 @@ final class DaemonServer {
     }
 
     // MARK: - Session order pins (#273)
+
+    private func configureRecovery(_ data: Data?) async -> HTTPServer.HTTPResponse {
+        guard !rejectsMutations else { return .json(["error": "recovery_unavailable"], status: 503) }
+        do {
+            guard let data, data.count <= 4096,
+                  let body = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let enabled = body["enabled"] as? NSNumber, CFGetTypeID(enabled) == CFBooleanGetTypeID() else {
+                return .json(["error": "invalid_recovery_configuration"], status: 400)
+            }
+            if enabled.boolValue {
+                guard let grant = try await MainActor.run(body: { try RecoveryFolderSettings.shared.directory(requireConsent: false) }),
+                      body["path"] as? String == grant.path, !rejectsMutations else { return .json(["error": "folder_consent_required"], status: 403) }
+                let next = try DaemonRecoverySession(shared: grant, directory: AgentDeckPaths.baseDirectory)
+                let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy, configuration: configurationStore, recovery: next)
+                recoveryDirectory = grant; recoverySession = next; checkpointStore = store
+                surfaceOutboxLedger.removeAll(); surfaceOutboxOrder.removeAll()
+                for receipt in store.restoredReceipts { surfaceOutboxLedger[receipt.key] = ["status": receipt.status]; surfaceOutboxOrder.append(receipt.key) }
+                try writeRecoveryConsent(grant, enabled: true)
+            } else {
+                if let recoveryDirectory { try writeRecoveryConsent(recoveryDirectory, enabled: false) }
+                recoveryDirectory = nil; recoverySession = nil; checkpointStore = nil
+            }
+            _ = try checkpointPayload()
+            await pixooModule?.reloadFromSettingsExternal(); broadcastSessionsList()
+            return .json(["enabled": recoverySession != nil])
+        } catch { return .json(["error": "recovery_unavailable"], status: 503) }
+    }
+    private func writeRecoveryConsent(_ directory: URL, enabled: Bool) throws {
+        guard let head = try DaemonRecoveryStore(directory: directory).load() else { throw DaemonRecoveryStore.Failure.invalid }
+        try JSONSerialization.data(withJSONObject: ["version": DaemonParityRules.recoveryVersion, "enabled": enabled, "store": head.store])
+            .write(to: directory.appendingPathComponent(DaemonParityRules.recoveryConsentFile), options: .atomic)
+    }
 
     private func pixooConfigurationResponse() -> HTTPServer.HTTPResponse {
         do {
