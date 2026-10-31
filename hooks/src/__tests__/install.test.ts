@@ -1047,7 +1047,7 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         received.push({ method: req.method ?? '', path: req.url ?? '', body });
-        const answer = reply(req.url ?? '');
+        const answer = req.url === '/health' ? { body: '{"status":"ok"}' } : reply(req.url ?? '');
         setTimeout(() => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(answer.body);
@@ -1080,11 +1080,11 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
     }
   }
 
-  it('posts a fire-and-forget event straight to the daemon.json port, with no /health probe, and prints nothing', async () => {
+  it('checks the daemon.json receiver before a fire-and-forget event and prints nothing', async () => {
     const r = await run('PermissionRequest', () => ({ body: '{"received":true}' }));
     expect(r.code).toBe(0);
-    expect(r.received.map((x) => `${x.method} ${x.path}`)).toEqual(['POST /hooks/PermissionRequest']);
-    expect(r.received[0].body).toBe(r.payload);
+    expect(r.received.map((x) => `${x.method} ${x.path}`)).toEqual(['GET /health', 'POST /hooks/PermissionRequest']);
+    expect(r.received[1].body).toBe(r.payload);
     expect(r.stdout.length).toBe(0);
   }, 40_000);
 
@@ -1092,7 +1092,7 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
     const decision = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: '덱에서 중지됨' } });
     const r = await run('PreToolUse', () => ({ delayMs: 3_000, body: decision }));
     expect(r.code).toBe(0);
-    expect(r.received.map((x) => x.path)).toEqual(['/hooks/PreToolUse']);
+    expect(r.received.map((x) => x.path)).toEqual(['/health', '/hooks/PreToolUse']);
     expect(r.stdout.toString('utf8')).toBe(decision);
     expect(r.elapsedMs).toBeGreaterThanOrEqual(3_000);
   }, 40_000);
