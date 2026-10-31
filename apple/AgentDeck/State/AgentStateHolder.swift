@@ -842,7 +842,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             state.hostDisplayOn = e.displayOn
             displaySync.handleDisplayState(displayOn: e.displayOn, dim: e.dim)
         case .sessionsList(let e):
-            state.siblingSessions = e.sessions
+            let previousNames = Dictionary(state.siblingSessions.map { ($0.id, $0.displayName) }, uniquingKeysWith: { _, new in new })
+            state.siblingSessions = e.sessions.map { row in
+                var row = row
+                if row.displayName == nil { row.displayName = previousNames[row.id] ?? nil }
+                return row
+            }
             #if AGENTDECK_DOT_PREVIEW
             state.dot = e.dot
             #endif

@@ -249,3 +249,12 @@ it('clears Dot integration on legacy snapshots and reconnect instead of retainin
   store.setConnected(false); store.setConnected(true);
   expect(store.toLayoutInput().dot).toBeNull();
 });
+
+it('retains missing names and clears them explicitly without changing identity (#544)', () => {
+  const store = connectedStore();
+  store.apply({type:'sessions_list',sessions:[{...claude,displayName:'Friendly'}]});
+  store.apply({type:'sessions_list',sessions:[claude]});
+  expect(store.roster()[0]).toMatchObject({id:claude.id,displayName:'Friendly'});
+  store.apply({type:'sessions_list',sessions:[{...claude,displayName:''}]});
+  expect(store.roster()[0]).toMatchObject({id:claude.id,displayName:''});
+});

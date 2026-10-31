@@ -13,6 +13,7 @@ export interface EnrichedSession {
   port: number;
   pid?: number;
   projectName: string;
+  displayName?: string;
   agentType?: AgentType;
   alive: boolean;
   state?: string;

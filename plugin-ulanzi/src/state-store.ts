@@ -1,3 +1,4 @@
+import { retainSessionDisplayNames } from '@agentdeck/shared';
 /**
  * Caches the latest daemon broadcasts and produces the merged `stateEvt` the
  * shared layout engine (`buildSessionDeck`) consumes. Focused-session selection
@@ -109,7 +110,7 @@ export class StateStore {
     switch (ev.type) {
       case 'sessions_list':
         this.dot = ev.dot ?? null;
-        this.sessions = dedupeSessionsById((e.sessions as SessionInfo[]) ?? []);
+        this.sessions = retainSessionDisplayNames(dedupeSessionsById((e.sessions as SessionInfo[]) ?? []), this.sessions);
         for (const id of this.sessionStates.keys()) {
           if (!this.sessions.some((session) => session.id === id)) this.sessionStates.delete(id);
         }

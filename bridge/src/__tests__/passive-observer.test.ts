@@ -1313,6 +1313,22 @@ describe('Claude identity read continuity', () => {
     expect(f.observer.diagnostics().claudeIdentityReads.retained).toBe(0);
   });
 
+  it('refreshes user names, clears them, survives unreadable scans and fresh observer reconstruction', async () => {
+    const f = await fixture();
+    writeFileSync(f.path, JSON.stringify({...f.file,name:'First',nameSource:'user'}));
+    expect((await f.scan())[0].displayName).toBe('First');
+    writeFileSync(f.path, '{');
+    expect((await f.scan())[0].displayName).toBe('First');
+    writeFileSync(f.path, JSON.stringify({...f.file,name:'Renamed',nameSource:'user'}));
+    expect((await f.scan())[0].displayName).toBe('Renamed');
+    const fresh = new PassiveSessionObserver(async () => [{pid:43210,ppid:1,rssKb:1024,command:'claude'}],
+      undefined, undefined, async () => []);
+    fresh.collect([]); await settle();
+    expect(fresh.collect([])[0].displayName).toBe('Renamed');
+    writeFileSync(f.path, JSON.stringify({...f.file,name:'',nameSource:'user'}));
+    expect((await f.scan())[0].displayName).toBe('');
+  });
+
   it('still removes an ended process and never invents an identity for an unreadable new process', async () => {
     const f = await fixture(); rmSync(f.path);
     f.setProcesses([{ pid: 1, ppid: 0, rssKb: 1024, command: '/sbin/launchd' },

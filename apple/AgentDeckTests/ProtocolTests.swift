@@ -1017,6 +1017,27 @@ final class ProtocolTests: XCTestCase {
         XCTAssertNil(CodexUsageFreshness.footnote(window: live, capturedAt: nil, now: freshnessNow))
     }
 
+    func testFriendlyDisplayNameVectorsAndIdentity() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("shared/session-display-name-vectors.json")
+        let vectors = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [[String: Any]]
+        for v in vectors {
+            XCTAssertEqual(D200HLayoutModel.normalizedDisplayName(v["raw"] as? String), v["expected"] as? String)
+        }
+        let rows = [
+            D200HSession(id: "5f8faaaa", agentType: "claude-code", state: "idle", projectName: "proj", displayName: "Release"),
+            D200HSession(id: "b80cbbbb", agentType: "claude-code", state: "idle", projectName: "proj", displayName: "Release"),
+        ]
+        let labels = D200HLayoutModel.sessionDeckLabels(rows)
+        XCTAssertEqual(D200HLayoutModel.deckLabel(labels["5f8faaaa"], projectName: "proj", max: 10), "Rel… #5f8f")
+        XCTAssertEqual(D200HLayoutModel.sessionDeckLabels([rows[0]])["5f8faaaa"]?.name, "proj")
+        let decoded = try JSONDecoder().decode(SessionInfo.self, from: Data(
+            #"{"id":"5f8faaaa","port":0,"alive":true,"projectName":"proj","displayName":"Renamed"}"#.utf8))
+        XCTAssertEqual(decoded.id, "5f8faaaa")
+        XCTAssertEqual(decoded.displayName, "Renamed")
+    }
+
     func testD200HPreviewMirrorTagsSameProjectSessions() {
         // Mirror of shared/src/__tests__/session-labels.test.ts (#544): two
         // sessions of one agent in one project get their id prefix, a lone

@@ -177,6 +177,7 @@ func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
             agentType: s.agentType ?? "claude-code",
             state: s.state ?? "idle",
             projectName: s.projectName ?? "",
+            displayName: s.displayName,
             modelName: s.modelName,
             currentTool: s.currentTool,
             startedAt: s.startedAt,

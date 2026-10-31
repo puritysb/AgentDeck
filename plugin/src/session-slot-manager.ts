@@ -1,3 +1,4 @@
+import { retainSessionDisplayNames } from '@agentdeck/shared';
 import { dotDeckReservedKeys, type DotDeckSnapshot } from '@agentdeck/shared';
 import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 import { selectedLunaReserve, selectedCodexCredits } from '@agentdeck/shared';
@@ -435,7 +436,7 @@ export class SessionSlotManager {
     // unapproved or token-mismatched Gateway.
 
     // Canonical stable sort: agentType rank → projectName → startedAt → id
-    this._sessions = sortSessions(alive).slice(0, MAX_SESSIONS);
+    this._sessions = retainSessionDisplayNames(sortSessions(alive).slice(0, MAX_SESSIONS), this._sessions);
 
     // Preserve focus by identity; explicit legacy folded rows can still supply
     // a successor when an older producer removes a selected member.

@@ -667,3 +667,59 @@ available. A changed host address is a new endpoint and is not silently trusted.
 Regression coverage uses real loopback refusal handshakes on both native clients,
 plus host-selection and credential-retention tests. Tracking:
 [#493](https://github.com/puritysb/AgentDeck/issues/493).
+
+
+## Same-project display names
+
+`SessionInfo.displayName` is a presentation hint, never a session ID, routing
+argument, sort key or folding key. The active owner produces the roster; a Swift
+app attached to Node consumes its hints without rescanning private Claude files.
+On promotion, Swift explicitly emits `displayName: ""` for local rows without a
+source, retiring previously relayed Node names. No new folder grant, subprocess,
+account access or background name migration is introduced.
+
+- Node's passive Claude observer refreshes names on its existing scan (normally
+  five seconds; adaptive backoff applies). Priority: registry `nameSource=user`
+  name → matching-session JSONL `custom-title` → other registry name → Git branch
+  read from `.git/HEAD` (including worktree `.git` pointers). Detached HEAD has no
+  invented branch. Only the bounded transcript head/tail already read for state
+  is inspected; a custom title outside that window requires the registry source.
+  Managed sessions and other agents keep their existing ID fallback unless
+  their own producer supplies a hint; this change adds no terminal-title census.
+- Claude **2.1.316** was measured in an isolated temporary config/project, with
+  hooks disabled and no model prompt: `--name AgentDeckNameProbe` wrote
+  `nameSource=user`; `/rename AgentDeckRenameProbe` kept `user`, changed
+  `nameSince`, and appended the matching `custom-title`. `derived` is an automatic
+  hint, not evidence of a user choice. Unknown source values are not classified
+  as user names. `agent-name` is ignored; its session-title meaning is unproven.
+- A valid explicit empty registry/title value clears older fallback hints.
+  Unreadable registry identity retains the existing observed row, including its
+  name; a fresh observer rebuilds from the source rather than a name cache.
+  On the wire, absent means unknown/retain for the same ID; `""` explicitly clears.
+  Removed rows are removed, and a new ID never inherits another row's hint.
+- `shared/src/session-labels.ts` owns consumer normalization: NFC, ANSI CSI and
+  control/bidi removal, whitespace collapse and a 64-code-point cap. The Swift
+  D200H preview mirrors it behind shared vectors and the origin hash pin.
+  Only same-project/same-agent collision groups replace project text with the
+  hint; unique-project sessions keep their existing project label. Missing and
+  duplicate hints keep the ID tag. Even distinct hints keep the tag so 10/13/18
+  character tiles shorten the name first and preserve recipient disambiguation.
+- Stream Deck and Ulanzi list keys, detail INFO and VOICE share the same row ID.
+  The old `assignDisplayNames(project #N)` is a TUI-only helper; it does not
+  produce this wire field. Serial compact projection also uses `displayName`
+  for its complete board label; that transport projection is not a name source.
+
+The Swift standalone fallback is intentional: there is no security-scoped grant
+for Claude's registry/transcripts. No cmux executable was available on PATH or
+at its standard app location;
+existing `CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH` delivery correlation supplies IDs,
+not verified live titles. cmux workspace/tab title production remains open until
+its current title API and rename behavior can be measured. Never guess a title
+from a UUID or use a startup workspace ID as a current destination.
+
+Automated acceptance covers same-agent/project pairs, duplicate/missing/renamed
+hints, fresh-observer reconstruction/reconnect and explicit clear, narrow INFO
+labels and unchanged list/VOICE targets. Physical D200X session-key/INFO/VOICE recipient acceptance of
+the friendly-name change remains pending; the reporter's earlier #548 ID-tag
+receipt does not certify this change. Shared daemon/devices are not redeployed
+by the isolated source checks.

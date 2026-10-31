@@ -557,6 +557,8 @@ struct DeckSlotConfig: Codable, Sendable {
 // MARK: - Session Info
 
 struct SessionInfo: Codable, Sendable, Identifiable {
+    /// Presentation only. Nil retains a prior hint; empty explicitly clears it.
+    var displayName: String? = nil
     let id: String
     let port: Int
     let projectName: String?

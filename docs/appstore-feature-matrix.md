@@ -271,7 +271,7 @@ configuration drift must not masquerade as a completed port or an agreed excepti
 |---|---|---|---|
 | Ordinary Claude/Codex/Hermes/OpenCode observation and native Kiro JSONL | Implemented within scoped access; signed Hermes/OpenCode and finite-run evidence recorded below. | Implemented through hooks/observers and CLI setup. | Active owner receives hooks. Receiver ready-port synchronization exists; both startup orders and owner switches during a long-lived agent turn still need current integrated acceptance. |
 | Antigravity JSONL/SQLite activity | Implemented; signed real CLI WORKING→IDLE acceptance recorded. | Same parser/activity contract implemented. | Port handover must not duplicate a turn or retain an old verdict. Existing standalone/component parity is not that test. |
-| Held Claude/Codex decisions and queued delivery | Supported hook paths only; Codex real trusted-handler decision acceptance is still pending as recorded in its row. | Supported hooks plus external terminal paths. | Retire old holds and reject stale request IDs across ownership changes; no terminal fallback in Swift. In-flight integrated acceptance remains open. |
+| Held Claude/Codex decisions and queued delivery | Supported hook paths only; Codex real trusted-handler decision acceptance is still pending as recorded in its row. | Supported hooks plus external terminal paths. | Retire old holds and reject stale request IDs across ownership changes; no terminal fallback in Swift. Signed in-flight approval retirement/stale-ID acceptance is recorded below; arbitrary queued control delivery remains P1.3. |
 | OpenCode server permission/question replies and messages | **Native primitives and integration missing** from the read-only SSE path. | Client-library methods exist; production answer/message wiring was not found. The adapter uses health, discovery, SSE and abort. | **Shared integration gap**, formerly P2.5. Method presence does not establish Node-only or concurrent end-to-end HTTP control. Node managed/terminal control is a distinct external path; keep the installed observer observation-only. |
 | Codex/z.ai/Admin usage and CI status | Native clients exist; native GitHub signed public reads/Keychain acceptance recorded. Claude account quota has a separate boundary below. | Existing provider clients use their own authorized configuration. | z.ai already has an active-owner configuration route. Other account/repository selections and credential revisions need owner-change acceptance; private GitHub live authentication is unverified. |
 | Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Current-owner aggregate learning and opaque receipt state now have a local checkpoint path, with inactive profiles preserved. Calendar consent/configuration and absent-receiver recovery remain separate P1.2 work; see the in-flight acceptance below. |
@@ -463,6 +463,34 @@ network partitions and provider/configuration continuity retain separate gates.
 
 
 
+### Same-project deck names (#544)
+
+`SessionInfo.displayName` is a presentation hint, never an identity, folding or
+command target. Node reads Claude registry names (explicit user name, then a
+matching transcript custom title, then other registry names), then a file-only
+Git branch fallback. Swift standalone has no Claude-folder grant and emits an
+explicit empty hint; its existing short-ID label remains valid. When attached
+to Node, the app consumes Node's hint unchanged. No subprocess or new home access
+is added to the Store app. Both deck engines show hints only for same-project,
+same-agent collisions and retain the short ID even for unique friendly names,
+so narrow or duplicate titles cannot hide the recipient's identity. This is a
+source-access difference, not a structural Node dependency; a future explicit
+read-only folder grant could supply the same field without a wire change.
+
+The contract, measured sources and acceptance are recorded in
+[the daemon contract](daemon.md#same-project-display-names).
+
+Verification: Quick passed 7,159 tests (17 skipped). The default macOS suite
+completed 1,468 tests (5 skipped, zero failures); optimized Dot macOS completed
+1,486 (10 skipped, zero failures). Unsigned macOS Release, iOS Release and Dot
+iOS builds and the native artifact boundaries passed. Shared renderer inspection
+also fixed the INFO corner pill covering a tagged title. These are source/build
+and synthetic-render receipts, not installed-app or physical D200X acceptance.
+The shared daemon retained PID 71702/build 8fe2909f2930, eight module sets,
+eleven USB serial connections and the D200H link. Isolated Claude probe files
+were removed; the existing Rust toolchain and installed app were retained.
+
+
 ### Revised parity priorities
 
 | Priority | Kind | Next bounded result / completion gate |
@@ -470,7 +498,7 @@ network partitions and provider/configuration continuity retain separate gates.
 | P1.1 | Baseline and in-flight software acceptance passed; deferrals explicit | Signed isolated approval/Feed/OTA handover, initial-replica failure, prepare expiry, paused-owner recovery and approval/Feed SIGKILL recovery are verified. Actual machine wake is deferred by user request; network partitions and exclusive physical writers still need a separate fleet. Do not block P1.2 on a deferred gate or label it passed. |
 | P1.2 | Remaining consent/configuration and absent-receiver continuity | Live local-peer Pocket aggregate/receipt continuity now has an explicit checkpoint path. Define cold recovery when the receiving runtime was absent, inactive-profile reconciliation, signed-container session pins, Pixoo configuration, calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
 | P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
-| P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
+| P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain #544 friendly-name D200X key/INFO/VOICE recipient acceptance, private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
 | Conditional / deferred | Source or device dependency | Claude quota source-contract research; Kiro v2 when demanded; X4 only at companion-app integration; Dot remains its own distribution track. |
 
 The original P1/P2 implementation receipts below remain valid within their stated

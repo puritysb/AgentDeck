@@ -41,7 +41,10 @@
 // Device Preview draws BACK itself and carries the label (D200HLayoutModel).
 // Ported 2026-10-28: the state and tool labels pass `backgroundStandbyCount`
 // to the background compact label (STBY n for standby-only work).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts de918461207e1cac1588bb37db9597021474a521
+// Pin moved 2026-10-31 with NO port (#544): tagged detail INFO titles reserve
+// their full row without the corner pill. renderDetailInfo is outside this
+// primary-slot mirror; renderSessionSlot itself is unchanged.
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts e183feb676d03489e56ebac170b2204299cb8dcc
 //
 // Scope for this first pass:
 //   - renderSessionSlot (primary session button)

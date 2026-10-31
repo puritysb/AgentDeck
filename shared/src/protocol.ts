@@ -562,7 +562,10 @@ export interface CiWaitStatus {
 export interface SessionInfo {
   /** CI is a separate axis from agent state. Explicit null clears a prior wait. */
   waitingOn?: CiWaitStatus | null;
-  /** Optional compact device label; never a session identity or folding key. */
+  /** Optional presentation hint; never identity, folding or command routing.
+   * Absent retains the prior hint; explicit empty clears. Decks use it only
+   * for same-project/agent collisions, preserving a short ID tag. Serial compact
+   * projections may supply a complete device label instead (not a source hint). */
   displayName?: string;
   id: string;
   port: number;

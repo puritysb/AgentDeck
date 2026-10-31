@@ -41,6 +41,7 @@ import {
   readKiroNativeSessionSnapshots,
   type KiroSessionSnapshot,
 } from './kiro-session.js';
+import { claudeDisplayName } from './session-display-name.js';
 import { locateCodexRollout } from './codex-rollout-response.js';
 
 export type ObservedState = 'idle' | 'processing';
@@ -80,6 +81,7 @@ function processLiveness(pid: number): boolean | undefined {
 }
 
 export interface TranscriptSummary {
+  customTitle?: string;
   modelName?: string;
   state: ObservedState;
   currentTask?: string;
@@ -158,6 +160,8 @@ export interface ClaudeSessionFile {
   /** A pre-warmed, unclaimed background process: it has a session id and a
    *  cwd but no conversation. Claude clears the flag when the spare is claimed. */
   spare?: boolean;
+  name?: string;
+  nameSource?: string;
 }
 
 export interface ObservedSession extends EnrichedSession {
@@ -548,7 +552,8 @@ export function parseProcessTable(output: string): ProcInfo[] {
   return rows.filter((p) => p.pid > 0 && p.command.length > 0);
 }
 
-export function parseClaudeTranscript(raw: string): TranscriptSummary {
+export function parseClaudeTranscript(raw: string, sessionId?: string): TranscriptSummary {
+  let customTitle: string | undefined;
   let modelName: string | undefined;
   let currentTask: string | undefined;
   let goal: string | undefined;
@@ -567,6 +572,9 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
       // Timestamp absence is normal for summary records; ignore them.
     }
 
+    if (type === 'custom-title' && sessionId && value.sessionId === sessionId && typeof value.customTitle === 'string') {
+      customTitle = value.customTitle;
+    }
     if (type === 'assistant') {
       realUserOpen = false;
       latestAssistantHadTool = false;
@@ -623,6 +631,7 @@ export function parseClaudeTranscript(raw: string): TranscriptSummary {
 
   contextWindow = contextWindowForModel(modelName);
   return {
+    customTitle,
     modelName,
     state: realUserOpen || latestAssistantHadTool ? 'processing' : 'idle',
     currentTask,
@@ -1009,8 +1018,8 @@ function collectClaudeSessions(processes: ProcInfo[], previous: ObservedSession[
     // Head+tail so the FIRST user prompt (the session goal, at the file start) is
     // parsed alongside recent activity (at the tail).
     const summary = transcript
-      ? parseClaudeTranscript(readFileHeadAndTail(transcript, 64 * 1024, MAX_TAIL_BYTES))
-      : { state: 'idle' as const };
+      ? parseClaudeTranscript(readFileHeadAndTail(transcript, 64 * 1024, MAX_TAIL_BYTES), sessionFile.sessionId)
+      : { state: 'idle' as const, customTitle: undefined };
     const lastActivityAt = transcript ? fileMtimeMs(transcript) : undefined;
     const state = observedStateAfterSilence(summary.state, lastActivityAt);
     sessions.push({
@@ -1018,6 +1027,7 @@ function collectClaudeSessions(processes: ProcInfo[], previous: ObservedSession[
       port: 0,
       pid: proc.pid,
       projectName: projectNameFromCwd(sessionFile.cwd),
+      displayName: claudeDisplayName(sessionFile, summary.customTitle),
       agentType: 'claude-code',
       alive: true,
       state,
@@ -1521,6 +1531,8 @@ function findClaudeSessionFile(configDirs: string[], pid: number): ClaudeSession
         jobId: shortId('jobId'),
         parkedJobId: shortId('parkedJobId'),
         spare: raw.spare === true,
+        name: typeof raw.name === 'string' ? raw.name.slice(0, 4096) : undefined,
+        nameSource: shortId('nameSource'),
       };
     } catch {
       continue;

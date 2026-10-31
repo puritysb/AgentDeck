@@ -10795,8 +10795,11 @@ final class DaemonServer {
         // depending on their tiny reboot-empty on-device timeline ring.
         // Dashboards have the full timeline and simply ignore these.
         sessions = sessions.map { s in
-            guard let sid = s["id"] as? String, let m = latestMilestoneBySession[sid] else { return s }
             var s = s
+            // No Claude home-directory grant. Explicitly retire a previous
+            // Node hint after promotion; preserve any relayed producer hint.
+            if s["displayName"] == nil { s["displayName"] = "" }
+            guard let sid = s["id"] as? String, let m = latestMilestoneBySession[sid] else { return s }
             s["lastEventText"] = m["text"]
             if let task = m["task"] { s["lastEventTask"] = task }
             if let hm = m["hm"] { s["lastEventHm"] = hm }
