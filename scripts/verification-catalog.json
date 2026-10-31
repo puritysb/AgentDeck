@@ -664,6 +664,7 @@
       "proves": [
         "the Android app compiles",
         "protocol parsing, timeline store and state logic behave as specified on the JVM",
+        "MOAAN frontlight mode transitions preserve original presets and absent keys across dim levels, process recreation, durable-save failure and refused settings writes",
         "multi-host refusal recovery retains endpoint-specific errors and distinguishes approval from network failure",
         "e-ink work and usage regions remain visible together with independent scrolling and inline provider limits across roster growth, rotation and large fonts; separate Frame mode preserves continuous travel, state-dependent work and rest behavior, bounded resident separation and quiet Hermes stillness on the JVM",
         "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host"
