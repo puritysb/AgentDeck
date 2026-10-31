@@ -557,11 +557,14 @@ their order.
   near-transliteration (`apple/AgentDeck/Daemon/Session/SessionOrderStore.swift`)
   — it reads/writes the same `session-order.json` and serves the same
   `GET/POST /sessions/order` with byte-compatible response shapes, so
-  `agentdeck order` works against whichever daemon owns the port and pins
-  survive a handover in either direction. Unsandboxed dev builds share the
-  exact `~/.agentdeck` file with Node; the sandboxed App Store build writes a
-  container-local copy Node cannot read (the same asymmetry its
-  `daemon.json`/`timeline.json` already carry). The TTL and pin cap are a
+  `agentdeck order` works against whichever daemon owns the port. Pins survive
+  a restart within the same store. Unsandboxed dev builds share the exact
+  `~/.agentdeck` file with Node; the sandboxed App Store build writes a
+  container-local copy Node cannot read. Matching formats do not transfer pins
+  between those stores: signed Swift↔Node pin continuity is an open gap in the
+  [three-configuration parity audit](appstore-feature-matrix.md#three-configuration-parity-audit-2026-10-31).
+  Timeline has a separate explicit transport cache; it does not carry pins.
+  The TTL and pin cap are a
   cross-daemon file contract single-sourced in `shared/src/session-utils.ts`
   and emitted to both platforms by `pnpm generate-session-weight-rules`.
 

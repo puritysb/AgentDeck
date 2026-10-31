@@ -1,7 +1,7 @@
 ---
 id: policy.product-tiers
 title: App Store and CLI Product Tiers
-description: Canonical capability boundary between the standalone App Store app and the external CLI daemon.
+description: Capability, evidence and lifecycle boundaries for Swift-only, Node-only and concurrent operation.
 category: Engineering
 locale: en
 canonical: true
@@ -17,7 +17,7 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 **Distribution status:** both platforms are live at [AgentDeck Dashboard](https://apps.apple.com/app/id6784822497) — macOS since 2026-07-21, the iPhone/iPad companion since 2026-08-07 (its first attempt was rejected on 2026-08-04 under Guideline 2.1(a) — an unbounded discovery spinner; the rule that came out of it is "a progress indicator binds to bounded work" in [.claude/rules/swift-daemon.md](../.claude/rules/swift-daemon.md)). **Live version numbers are deliberately not repeated here** — this document owns the tier boundary, not release tracking, and the two drifted apart before. [RELEASING.md](../RELEASING.md) carries the current per-platform version, build and state in its dated checkpoints; its § Apple keeps the login-free checks for each platform. The repository's source version advances independently of any channel release.
 
-This matrix defines which capabilities belong to the standalone App Store product and which require the external `agentdeck` CLI. Add or move a row here **before** implementing a capability.
+This matrix defines the supported Swift-only, Node-only and concurrent configurations, their retained product boundaries, and their implementation and acceptance gaps. Add or move a row here **before** implementing a capability. The App Store/CLI columns below describe implementation availability; a Yes does not certify all three configurations or their ownership transitions.
 
 ## Product contract
 
@@ -161,7 +161,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 | Display-only permission attention | Yes | Yes | Real signals only, per agent: Claude `PermissionRequest` (immediate, display-only) with `Notification` (`permission_prompt`, about six seconds later) as the fallback, Codex `PermissionRequest` (fires only when Codex is about to ask; `Interrupt` closes the turn; answerable only with the opt-in hold below), OpenCode `permission.asked` (native file-installed observer is display-only; actionable IDs require an answer-capable integration), OpenClaw `exec.approval.requested`. Kiro/Antigravity have no permission source and never show PERM. No fabricated options |
 | Observed Claude PreToolUse hold (device Allow/Deny) | Yes, when `~/.claude` is readable | Yes | The one predicted PERM: held only when the generated `ClaudePermissionRules` predictor (shared SSOT, vector-pinned) says Claude would genuinely prompt — mode gate, allow/deny/ask rules in the documented wildcard grammar, built-in read-only set, `acceptEdits` filesystem commands. Sandboxed builds that cannot list `~/.claude` hold nothing |
 | Codex device approvals (opt-in `PermissionRequest` hold) | Yes | Yes | Off by default. Turned on from the Codex block under Settings → Integrations, or `agentdeck daemon install --codex-approvals`; both installers add one second handler to AgentDeck's own `PermissionRequest` group, and Codex shows its hook review once. Nothing is predicted — the hook fires only when Codex is about to ask — so Tier 1 needs no folder access beyond the existing config grant. Held only with a connected device, a visible session and no other hold on it, for at most the observed-approval hold (25 s); the end of the turn releases it. While held, the terminal shows "Running hook" instead of the prompt; an undecided release prints nothing and Codex's own prompt appears. Pure HTTP hold, no subprocess. A decision taking effect in real Codex awaits a user-trusted handler run |
-| Session order pinning (`--weight` sort override) | Yes | Yes | Observed sessions are pinned daemon-first: BOTH daemons persist weight pins (`session-order.json`, `agentdeck order`, `POST /sessions/order`) and overlay them on observed rows before fold+sort, riding the existing `SessionInfo.weight` wire field. Cross-daemon single-sourced TTL/cap (`pnpm generate-session-weight-rules`). The managed launcher's launch-time `--weight` remains the compatibility path; the real-user tab-to-deck scenario was validated on 2026-09-19 (#273) |
+| Session order pinning (`--weight` sort override) | Yes, owner-local persistence | Yes, owner-local persistence | Both daemons implement `session-order.json`, `agentdeck order`, `POST /sessions/order` and the shared TTL/cap. The active owner overlays pins before fold/sort. Unsandboxed builds may share a file; a signed sandbox app and Node have separate stores with no pin-transfer path identified in this audit. Same-owner restart persistence does not prove signed cross-owner continuity; that is an actual gap below. The managed launcher's `--weight` remains compatible; the 2026-09-19 tab-to-deck acceptance does not close this transfer gap. |
 | Daemon relay (worker daemon publishes observed sessions to a hub daemon) | Native hub and opt-in worker (experimental) | Yes (experimental) | [Mixed v1 contract](#mixed-nodeswift-daemon-relay-contract): authenticated same-socket control, local ownership precedence, bounded reconnect/dedup and stale expiry. Native Settings stores explicit target consent/token in app-owned Keychain; Node retains `relay.json`. Swift workers publish only explicitly observed rows, support Claude hook controls/native held Codex approvals and refuse terminal-only or stale/unsupported commands. Neither hub dials a worker, and received rows are never republished. |
 | Adaptive high-volume menu bar overview | Yes | Yes | The popup keeps a bounded height at every session/device count: actionable sessions stay visible, idle sessions and repeated surface families collapse into counted summaries, and Activity shows completed work from a named recent window instead of unbounded duration totals. The Dashboard retains the complete roster, topology, and report. This is presentation-only and uses the same daemon state in both tiers |
 | Dashboard inspection selection | Yes | Yes | Creature and session-list inspection is local to each dashboard. It filters that screen’s timeline and highlights its creature without changing daemon control focus or another device. Explicit hardware/control commands retain their target. Folded Codex rows include only their declared member session IDs. |
@@ -213,15 +213,167 @@ decisions follow from that:
    accessibility trees are opaque, use the focus-free key path and keep the
    button path for hosts that do expose controls.
 
+## Three-configuration parity audit (2026-10-31)
+
+**Standing objective:** Swift-only, Node-only and concurrent operation must each
+provide the fullest equivalent experience within the retained boundaries below.
+A completed port closes an implementation item; it does not close configuration,
+state-continuity, installed-artifact or lifecycle acceptance. Concurrent operation
+uses one serving owner per local endpoint/fleet. With a healthy same-user Node
+owner, the app attaches as a client and retires its local server/modules. Starting
+Node after Swift negotiates stand-down; Node disappearance can promote Swift.
+Two independent device writers are not the concurrent-mode contract.
+
+| Configuration | Required behavior | Audited state |
+|---|---|---|
+| Swift only | The signed app owns HTTP/WS, observation, supported controls and devices; restores its granted access and owner-local state after relaunch. | Most portable implementations exist. OpenCode server controls and the continuity issues below remain open. Signed component acceptance is feature-specific. |
+| Node only | The CLI owner serves the same wire and supported device behavior without a running Swift app; vendor plugin hosts and ordinary agent tools retain their own runtimes. | Existing daemon implementation plus isolated real-process startup/restart E2E. macOS/iOS UI, StoreKit and native appearance choices belong to their client surfaces, not a missing CLI GUI. |
+| Both running | Node owns the shared local endpoint when healthy; the app follows the actual ready endpoint. One set of collectors/device writers, converged pairing credentials, honest stale state and safe recovery. | Ownership, bounded teardown, token adoption and retry paths exist. Full current signed-app/Node feature-and-hardware acceptance across both startup orders and owner changes is incomplete. |
+
+### Evidence scope and observed runtime
+
+Source inspection in this checkout is pinned to `3a5c9394`, including the native
+P1/P2 ports. It covers the referenced implementations and tests, not every change
+in the separately running installation. At audit start, read-only `/health`
+identified Node PID `71702`, build `8fe2909f2930`, port `9120`. The installed
+`/Applications/AgentDeck.app` metadata was 1.9.5/build 5 and did not contain this
+port's required `pixoo-baked.generated.js` resource. That establishes a delivery
+mismatch for this common-core artifact; no installed Pixoo behavior was exercised.
+These observations supersede neither earlier dated receipts nor release records.
+They do not certify this source revision as installed or running. Start/end
+health observations retained the same Node PID/build/port and all baseline device
+identities; no lifecycle or hardware command was issued.
+
+Evidence terms used below:
+
+- **Implementation:** executable source is present, with its consent/access requirements.
+- **Software:** shared vectors, mocked transports, native component tests or isolated sockets.
+- **Signed / installed / hardware:** only the specific dated scenario and artifact in the linked receipt.
+- **Gap:** either an identified absent implementation or an unperformed acceptance scenario, explicitly distinguished.
+
+This audit inspects source and recorded evidence and observes the existing owner
+read-only. It does not stop either runtime, change a credential or setting, start
+an additional hub, reconnect hardware or claim a new three-mode live acceptance.
+The earlier quick/native suite results remain dated evidence. This documentation
+pass passed the workspace build, 60 related service/document-contract tests and
+changed-document/mirror/catalog gates. It did not rerun native acceptance or the
+macOS login-Keychain E2E.
+
+### Capability status in all three configurations
+
+The following rows supplement the detailed capability tables rather than treating
+all of their Yes cells as an end-to-end acceptance claim. Equivalent behavior
+assumes the same explicitly authorized sources, identities and supported controls;
+configuration drift must not masquerade as a completed port or an agreed exception.
+
+| Capability | Swift only | Node only | Both running / remaining gap |
+|---|---|---|---|
+| Ordinary Claude/Codex/Hermes/OpenCode observation and native Kiro JSONL | Implemented within scoped access; signed Hermes/OpenCode and finite-run evidence recorded below. | Implemented through hooks/observers and CLI setup. | Active owner receives hooks. Receiver ready-port synchronization exists; both startup orders and owner switches during a long-lived agent turn still need current integrated acceptance. |
+| Antigravity JSONL/SQLite activity | Implemented; signed real CLI WORKING→IDLE acceptance recorded. | Same parser/activity contract implemented. | Port handover must not duplicate a turn or retain an old verdict. Existing standalone/component parity is not that test. |
+| Held Claude/Codex decisions and queued delivery | Supported hook paths only; Codex real trusted-handler decision acceptance is still pending as recorded in its row. | Supported hooks plus external terminal paths. | Retire old holds and reject stale request IDs across ownership changes; no terminal fallback in Swift. In-flight integrated acceptance remains open. |
+| OpenCode server permission/question replies and messages | **Native primitives and integration missing** from the read-only SSE path. | Client-library methods exist; production answer/message wiring was not found. The adapter uses health, discovery, SSE and abort. | **Shared integration gap**, formerly P2.5. Method presence does not establish Node-only or concurrent end-to-end HTTP control. Node managed/terminal control is a distinct external path; keep the installed observer observation-only. |
+| Codex/z.ai/Admin usage and CI status | Native clients exist; native GitHub signed public reads/Keychain acceptance recorded. Claude account quota has a separate boundary below. | Existing provider clients use their own authorized configuration. | z.ai already has an active-owner configuration route. Other account/repository selections and credential revisions need owner-change acceptance; private GitHub live authentication is unverified. |
+| Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Same algorithms do not transfer calendar consent, aggregate learning or receipt state between stores. Cross-owner feedback replay and schedule continuity remain unverified; no general transfer mechanism was identified. |
+| Settings for hardware, GitHub, ICS and relay | App-owned device settings; native Keychain and scoped consent. | Owner's `settings.json`, `relay.json` and provider setup. | **Configuration routing gap:** GitHub/ICS/relay editors are hidden while external; Pixoo sheet still writes the app's local settings and has no active-Node update route. Consistent owner-aware configuration and explicit consent must be implemented/verified. |
+| Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | **State-transfer gap:** matching JSON does not move pins between the signed container and Node. No automatic pin handover found. |
+| Timeline and APME activity continuity | Timeline handover cache and rebuildable activity projection exist. | Authenticated peer snapshot capture before Swift stand-down exists. | Verify both transfer directions at current revision, including failed/empty capture and strong-identity dedup. Activity projection is not full APME database/correction migration. |
+| APME review, native judges and storage management | Implemented; disposable-store parity and rollback tests. | Corresponding review/storage/judges; external execution has retained exceptions. | Private source DBs stay separate. No equivalence claim for editing another owner's original rows; provenance and report navigation across the merged projection require integrated acceptance. |
+| Relay hub/worker | Native sockets, explicit Keychain target and supported-control refusal. | Node hub/worker. | Two-Mac Node↔Swift relay and installed ATS acceptance exist. This is a cross-machine transport test, not a test of same-Mac daemon ownership transfer or automatic relay-target migration. |
+| Serial/Wi-Fi ESP32, Stream Deck/Ulanzi hosts and same-LAN Android | Supported native transports; device-specific gaps below. | Existing modules and the same vendor plugin clients. | Owner must release serial/BLE and stop sending before its successor starts. Current full-fleet takeover, bounded reconnect, dedup and wake acceptance are incomplete. ADB is separately external. |
+| Pixoo single/Tide/baked and Timebox/iDotMatrix | Native implementations; baked RGB parity and Debug-module physical loop/dim/wake/Tide restoration accepted. | Corresponding render/upload paths; common baked core. | Current signed installed Pixoo port is not accepted/delivered by this audit. Cross-owner settings, upload cancellation and exclusive BLE/HTTP production remain open. |
+| Surface Feed/Outbox, OTA and bundled packs | Native routes and owner-local staging/persistence. | Corresponding Surface routes. | Pairing-token continuity is implemented; cross-owner retries, negotiated identity, duplicate acknowledgements and staged/resumed delivery need integrated acceptance. No byte-for-byte migration of private stores is implied. |
+
+Source anchors for the identified gaps: [app-owned paths](../apple/AgentDeck/App/AgentDeckPaths.swift),
+[Settings owner gates](../apple/AgentDeck/UI/Settings/SettingsScreen.swift),
+[Pixoo local save](../apple/AgentDeck/UI/Settings/PixooSheet.swift),
+[native pin store](../apple/AgentDeck/Daemon/Session/SessionOrderStore.swift),
+[Node pin store](../bridge/src/session-order-store.ts),
+[native Pocket persistence](../apple/AgentDeck/Daemon/Server/PocketAutonomy.swift),
+[Node Pocket persistence](../bridge/src/pocket-autonomy.ts),
+[native calendar credentials](../apple/AgentDeck/Daemon/Server/CalendarConnection.swift),
+[Node calendar configuration](../bridge/src/calendar.ts),
+[Node OpenCode controls](../bridge/src/opencode-client.ts) and
+[native read-only OpenCode client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift).
+The [Node adapter](../bridge/src/adapters/opencode-adapter.ts) uses the client for
+observation and abort; the answer/message methods were found in the library/tests
+but not a production caller in this revision. Do not promote those methods to a
+completed Node control feature without route-level evidence.
+These are absent transfer/routing paths in the inspected source, not newly
+reproduced data-loss incidents. Do not copy secrets or read another container to
+close them; define the authorized owner/configuration and minimized state contract.
+
+### Retained boundaries, explicit deferrals and unfinished work
+
+| Classification | Scope | Effect on parity work |
+|---|---|---|
+| Existing self-contained product boundary | Managed PTY/session launch, arbitrary lint/build/test execution, CLI reference judge and terminal injection; current ADB, OpenClaw CLI and firmware toolchain integration. | Keep the external execution paths described below. HTTP control, native process evidence and native OTA are separate portable capabilities; do not mark those external merely because the current implementation is Node. |
+| Vendor/platform boundary | Elgato/Ulanzi hosts; macOS/iOS UI versus Windows/Linux host services; development-only Dot distribution. | Preserve the applicable hosts and distribution gates. Vendor JavaScript does not require a Node daemon. |
+| Credential/source safeguard | Independent source grants, private APME stores, Claude account-quota accuracy/authorization policy. | Never export credentials or fabricate quota for parity. Claude quota remains source-contract research, not a completed native feature or proof of structural Node necessity. Independent storage does not waive the user-visible continuity gaps above. |
+| Explicit user deferral | Current X4 feed/feedback/pixel hardware acceptance, until companion-app integration. | The implementations remain required and implemented; the physical scenario alone is deferred. |
+| Conditional demand | Kiro v2 SQLite schema/reader acceptance. | Confirm active use or a representative fixture. Conditional status does not establish an agreed permanent functional exception. |
+| Unfinished acceptance, not exceptions | Private GitHub reads, trusted Codex hold decisions, TC001/TRMNL/D200X hardware/release checks, installed Pixoo and three-mode lifecycle below. | Keep open with artifact/device-specific evidence. D200X encoders are unshipped scope, not implied by keypad support. |
+| Actual implementation gaps, not exceptions | OpenCode native HTTP primitives and shared control integration, active-owner settings routing, signed cross-store pin continuity and the missing state/configuration-transfer contracts. | Prioritize as parity work; existing observation-only consent does not authorize new control or credential sharing. |
+
+### Startup, shutdown, restart and handover evidence
+
+[DaemonService](../apple/AgentDeck/Daemon/DaemonService.swift) implements attach,
+yield, bounded teardown and promotion; [Node takeover](../bridge/src/daemon-takeover.ts)
+adopts the same-user token before asking Swift to stand down.
+[Timeline handover](daemon.md#timeline-handover) and APME activity capture are
+explicit transport paths, not shared-directory assumptions.
+
+| Scenario | Existing evidence | Current acceptance gap / required outcome |
+|---|---|---|
+| Swift cold start; quit; relaunch with Node absent | Native startup/cancellation tests and dated feature-specific signed relaunch receipts. | Current full signed app: ready endpoint, restored consent/state, one module writer; deliberate quit releases holds, ports and devices and leaves honest offline state. |
+| Node cold start; stop; restart with app absent | [Node real-process E2E](../tests/e2e/daemon-hub.e2e.test.ts) uses isolated HOME/data, private port window and all devices off. Historical supervisor stop/start measured in [daemon lifecycle](daemon.md). | Current supported Node/supervisor plus configured providers and real hardware. Device-off E2E cannot certify those. |
+| Node first, then app; quit/relaunch client app | Ownership sequence, external-attach and late-reply tests; installed relay acceptance includes an app reconnect to shared Node. | Full roster/control/settings coverage and no Node/module restart or second writer when the client app quits/restarts. |
+| Swift first, then Node; later stop Node while app stays | [2026-10-04 signed live takeover/recovery](devlog/entries/2026-10-04-daemon-parity-policy.md) is real evidence. Current injected takeover/monitor and Node negotiation tests also exist. | Repeat at current matched artifacts with newly ported features and hardware; retain pairing, state, receiver selection and exactly one owner within shared timing budgets. Old core takeover success does not certify current P2 features. |
+| Node restarts during concurrent use | TCP unknown/refusal rules, miss thresholds, yield lease and sequence tests. | A brief restart must not create a rival fallback hub, purge valid relayed data or duplicate device writes; genuinely absent Node must permit bounded Swift recovery. |
+| Both start together; incoming Node never binds; stale teardown completes late | Injected startup/backoff/cancellation/epoch tests in [LocalDaemonStartupTests](../apple/AgentDeckTests/LocalDaemonStartupTests.swift), [ExternalAttachRetryTests](../apple/AgentDeckTests/ExternalAttachRetryTests.swift) and [startup cancellation](../apple/AgentDeckTests/DaemonStartupCancellationTests.swift). | Real separate processes and signed app: one ready owner, no orphan listener, no callbacks mutating the replacement, no indefinite yield. |
+| Ownership changes during agent turn, approval, Feed feedback or OTA | Feature-specific stale-ID, stop-cancellation, Outbox replay and persistence fixtures. | Integrated both directions: preserve identity/history, reject old holds, first-answer-wins within the defined receipt contract, no duplicate learning or install ACK; make unavailable state explicit. |
+| Port change, sleep/wake, LAN/Tailscale loss while both are open | Signed Hermes port continuity, Pixoo component dim/wake and installed relay ATS scenarios are narrow live evidence. | Cross-feature reconnection, current receiver port, single serial/BLE producer, provider freshness, approved host identity and restored dim/brightness policy. Cross-machine relay reconnect is not same-Mac owner recovery. |
+
+[DaemonTopologyTests](../apple/AgentDeckTests/DaemonTopologyTests.swift) replays
+ownership enum sequences; it does not launch two processes. Local startup tests
+drive the real service with injected runtimes/probes, not the installed device
+modules. The Node takeover tests inject dependencies; the timeline capture tests
+use a disposable socket peer. Existing native full-suite results certify those
+tests at their recorded source, not the missing live scenarios. No new failing
+lifecycle test or runtime regression is claimed by this documentation audit.
+
+For follow-up acceptance, use dedicated data directories, disjoint ports outside
+the shared range, synthetic accounts/calendars and disposable histories. Exercise
+both startup orders and all transitions before selected physical-device runs;
+measure owner PID/build/runtime/ready endpoint, event IDs, token continuity without
+logging token values, duplicate writes, durable-state outcomes and bounded
+recovery. A separate test Mac/fleet is required where device exclusivity prevents
+safe isolation. Do not repurpose shared 9120 or reset permissions to complete this
+matrix. Store-distribution approval remains a separate release gate.
+
+### Revised parity priorities
+
+| Priority | Kind | Next bounded result / completion gate |
+|---|---|---|
+| P1.1 | Lifecycle acceptance and any exposed fixes | An isolated current signed Swift/Node three-configuration run covering both startup orders, stop/restart, takeover/failure/recovery, pending work and wake. Use one owner and configured shared timing; identify actual failures separately from unrun scenarios. |
+| P1.2 | Confirmed continuity/configuration gaps | Define and implement owner-aware settings plus minimized handover state, starting with signed-container session pins and Pixoo configuration. Cover Pocket aggregate/receipt continuity, calendar/provider/relay consent and configuration scope without silent secret copying. Verify both transfer directions and repeated switches. |
+| P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
+| P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
+| Conditional / deferred | Source or device dependency | Claude quota source-contract research; Kiro v2 when demanded; X4 only at companion-app integration; Dot remains its own distribution track. |
+
+The original P1/P2 implementation receipts below remain valid within their stated
+scope. This ranking supersedes the earlier suggestion to start a new optional
+OpenCode control proposal immediately after Pixoo; it does not reopen successful
+component checks or authorize disruptive verification on the shared fleet.
+
 ## Swift parity priorities — source assessment 2026-10-31
 
-This source audit uses `d81b77bf`, including the native P2 implementations,
-ATS correction in `099da989`, and recorded acceptance of the installed signed
-Release app. The four original P2 ports are implemented. Their remaining
-provider/device acceptance is listed separately from new implementation work.
-Local development signing and installation do not establish Store distribution
-acceptance. The order below is a proposal, not release approval; capability
-rows change only when the corresponding implementation and gates pass.
+The current source/evidence audit is pinned to `3a5c9394`; the
+[three-configuration audit and revised priorities](#three-configuration-parity-audit-2026-10-31)
+above supersede the earlier `d81b77bf` assessment. The original P2 implementations,
+ATS correction in `099da989` and dated installed relay acceptance remain recorded
+below. Completed implementation, software parity, signed components, installed
+artifacts and full lifecycle acceptance are separate states. No Yes or implemented
+label below closes the new continuity/configuration or live-acceptance gaps.
 
 **Node is the current external runtime, not a language requirement.** A bounded
 HTTP/WebSocket client, SQLite reader, renderer or state machine can often be
@@ -268,12 +420,12 @@ acceptance limitations in each row.
 | 3 — implemented | CI provider status enrichment | [Native GitHub client](../apple/AgentDeck/Daemon/Session/GitHubCIClient.swift) and Settings connection implement the [credential/identity contract](#native-github-ci-provider-contract) with bounded HTTPS, independent of Node's `gh api` probe. | [Software acceptance](#native-github-ci-provider-acceptance-2026-10-30) covers phase parity, account replacement/revocation, stale/unknown and real public GitHub reads with signed Settings/Keychain relaunch. Authenticated private-repository live acceptance remains pending a user-configured connection. |
 | 4 — implemented | Daemon relay hub/worker | Native [hub/rules](../apple/AgentDeck/Daemon/Relay/DaemonRelay.swift), [outbound worker](../apple/AgentDeck/Daemon/Relay/DaemonRelayUplink.swift) and explicit Settings connection follow the [mixed v1 contract](#mixed-nodeswift-daemon-relay-contract). | [Local acceptance](#native-daemon-relay-acceptance-2026-10-30) covers real sockets, token/origin refusal, reconnect/dedup, timeout, stale/fallback and control guards; all five native configurations pass. [Two-Mac signed-app acceptance](#signed-daemon-relay-two-mac-acceptance-2026-10-31) adds real Keychain save/relaunch/disable and Node↔Swift control round trips while preserving the shared daemon/devices. [Installed Release acceptance](#installed-signed-release-relay-acceptance-2026-10-31) additionally verifies numeric Tailscale address connection, relaunch restoration and disconnect in the actual installation after the ATS correction. Full terminal control and Store distribution are not implied. |
 
-### Remaining native increments — proposed next order
+### Original P2 increments — implementation receipts
 
-Completed P2.1–P2.3 rows are retained below; the remaining rows are source-confirmed
-gaps. The ranking favors app-owned data and observation before new control contracts.
-No production database is pruned, credential imported or device changed by this
-assessment.
+These historical identifiers retain the scope of each completed implementation.
+The [revised priorities](#revised-parity-priorities) now distinguish missing
+implementation and continuity from unperformed three-configuration acceptance.
+No production database, credential, daemon or device is changed by this assessment.
 
 | Priority | Capability and source evidence | Native increment | Completion gate / dependency |
 |---|---|---|---|
@@ -281,13 +433,13 @@ assessment.
 | P2.2 — implemented | Antigravity JSONL observation now uses a [shared policy](../shared/antigravity-observation-policy.json), [Node reader](../bridge/src/antigravity-observation.ts) and [Swift reader](../apple/AgentDeck/Daemon/Session/AntigravitySourceReader.swift). | Native Session Observation selects a read-only transcript root, restores its scoped bookmark after relaunch, and identifies conversations and explicit USER_INPUT steps. The account/plan database grant is preserved separately. | Actual Swift/Node parser and filesystem parity, native consent/renewal/revocation tests and a development-signed sandbox app with an external disposable transcript folder. Live WebSocket evidence covers RUNNING/DONE, new turns, rotation, malformed tail, disappearance, stale and relaunch/removal. Live CLI verification exposed DONE-only JSONL; direct read-only SQLite activity now supplies explicit WORKING/IDLE, with shared schema/identity/freshness guards. See the signed live acceptance below. No PERM, control, Stop/APME import or process-liveness claim. |
 | P2.3 — implemented | ICS calendar ingestion now uses [shared policy](../shared/calendar-policy.json), [Node provider](../bridge/src/calendar.ts) and [native provider](../apple/AgentDeck/Daemon/Server/CalendarProvider.swift). | Native source/share consent, non-synchronizing device-only Keychain URLs, bounded HTTPS and in-memory recurrence expansion supply Feed/Glance and agenda cards. | Actual Node/Swift parser, URL and cache vectors match, including timezone/DST and exceptions. A signed sandbox fixture verifies real Keychain and HTTP/cache/failure parity; [signed Release Settings acceptance](#signed-ics-settings-acceptance-2026-10-31) also verifies consent, save, relaunch restore and disconnect through the UI. Pocket remains aggregate-only. X4 physical acceptance stays deferred. |
 | P2.4 — implemented | Pixoo baked aquarium `animation: "loop"` uses [shared bounds](../shared/pixoo-loop-policy.json), the canonical art/layout renderer and generated fixed code in Node and system JavaScriptCore. | Native scheduling, one-pack cache, frame-by-frame LAN upload, failed-loop cooldown and dim/wake handling. The animation picker preserves other device settings. | Actual Swift/Node RGB parity and module/HTTP regressions cover layout, palindrome playback, packing, cadence, cancellation and unknown/error refusal. The owner confirmed real Pixoo motion and dim/wake restoration. See [acceptance](#native-pixoo-baked-loop-acceptance-2026-10-31). |
-| P2.5 — separate control proposal | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`; native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) deliberately implements the read-only subset. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
+| P2.5 — open; reprioritized P1.3 | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`, but this audit found no production answer/message caller. Native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) implements the read-only subset. End-to-end HTTP controls remain an integration gap, not proven Node behavior. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
 
 P2.1 APME retention is implemented; [its contract and disposable-store verification](apme.md#swift-보존용량-관리-2026-10-31)
 cover size/status, read-only preview, manual prune and separate compaction. Actual
 user databases were not pruned. P2.2 Antigravity now has native read-only observation;
 [the source contract](architecture.md#antigravity-transcript-observation) defines its
-evidence limits. P2.3 ICS ingestion and P2.4 Pixoo baked loops are also implemented; the next proposed increment is the separately consented **P2.5 OpenCode control proposal**.
+evidence limits. P2.3 ICS ingestion and P2.4 Pixoo baked loops are also implemented; OpenCode controls remain an implementation gap, now **P1.3** behind the lifecycle and continuity work above. Explicit control consent is still required.
 
 ### Antigravity signed-app acceptance (2026-10-31)
 
@@ -624,8 +776,8 @@ completed their original native implementation queue. APME retention/storage man
 now also has a native implementation and disposable-store verification. Antigravity
 read-only observation includes direct SQLite activity alongside JSONL identity;
 the original DONE-only JSONL limitation is resolved without subprocesses.
-ICS ingestion and Pixoo baked loops are now native too. The next proposed increment
-is the separately consented OpenCode control proposal. Physical/private-provider acceptance remains
+ICS ingestion and Pixoo baked loops are now native too. Follow-up work uses the
+revised lifecycle/configuration/control priorities above. Physical/private-provider acceptance remains
 separate. The installed signed Release relay acceptance is recorded; future Store
 artifact and distribution acceptance remain release work. Investigate the Claude
 quota source in parallel without promising a quota release before evidence exists.
