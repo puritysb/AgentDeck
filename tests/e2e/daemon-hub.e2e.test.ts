@@ -37,6 +37,7 @@ import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildHookCommand } from '../../hooks/src/install.js';
 import { buildCodexApprovalHoldCommand } from '../../hooks/src/codex-install.js';
+import { collectProcessInfo, isClaudeSessionProcessCommand } from '../../bridge/src/passive-observer.js';
 
 const ROOT = resolve(__dirname, '../..');
 const CLI = join(ROOT, 'bridge/dist/cli.js');
@@ -997,7 +998,16 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     await postHook(daemon.port, 'UserPromptSubmit', { ...base, hook_event_name: 'UserPromptSubmit', prompt: 'permission request e2e' });
     const client = await connect(daemon.port);
     try {
-      await waitFor('Claude row', () => row(client.frames), 30_000);
+      await waitFor('Claude row', () => row(client.frames), 30_000).catch(async (error: unknown) => {
+        // Report only this fixture's process and observer counters, never a
+        // machine-wide process table or transcript contents.
+        const own = (await collectProcessInfo()).find(entry => entry.pid === proc.pid);
+        const diagnostic = await fetch(`http://127.0.0.1:${daemon.port}/diag`,
+          { signal: AbortSignal.timeout(2000) }).then(response => response.json()).catch(() => null);
+        throw new Error(`${String(error)}\n${JSON.stringify({ fixturePid: proc.pid, fixtureExit: proc.exitCode,
+          fixtureCommand: own?.command ?? null, recognized: own ? isClaudeSessionProcessCommand(own.command) : false,
+          passiveObserver: diagnostic?.passiveObserver ?? null })}`);
+      });
       // 1. The installed PermissionRequest command, run as Claude runs it:
       //    nothing on stdout (no decision), and no speculative Attention.
       const hook = spawnSync('sh', ['-c', buildHookCommand('PermissionRequest')], {
