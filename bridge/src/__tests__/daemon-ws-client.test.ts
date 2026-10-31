@@ -202,3 +202,40 @@ describe('DaemonWsClient shutdown', () => {
     }
   });
 });
+
+// #633: a peer that accepts TCP and never answers the Upgrade must not park the
+// client in CONNECTING forever — the handshake deadline closes the socket and
+// the normal backoff re-resolves the target and redials.
+describe('DaemonWsClient silent handshake', () => {
+  it('times out an unanswered upgrade, re-resolves the target and redials', async () => {
+    let upgrades = 0;
+    const http = createServer(() => {
+      // Read the Upgrade request, answer nothing, keep the TCP socket open.
+      upgrades++;
+    });
+    await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve));
+    const port = (http.address() as { port: number }).port;
+    const provider = vi.fn(async (): Promise<DaemonTarget> => ({ host: '127.0.0.1', port }));
+    const client = new DaemonWsClient('sess-silent', 4325, 'claude-code', 'demo',
+      undefined, provider, undefined, false, /* reconnectBaseMs */ 10, /* handshakeTimeoutMs */ 50);
+    try {
+      client.connect({ host: '127.0.0.1', port });
+      await vi.waitFor(() => {
+        expect(upgrades).toBeGreaterThanOrEqual(2);
+        // Each redial went back through the target provider.
+        expect(provider.mock.calls.length).toBeGreaterThanOrEqual(2);
+      }, { timeout: 3000 });
+      expect(client.isConnected).toBe(false);
+
+      // close() ends the loop: no further dials after it.
+      client.close();
+      const atClose = upgrades;
+      await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      expect(upgrades).toBe(atClose);
+    } finally {
+      client.close();
+      http.closeAllConnections?.();
+      http.close();
+    }
+  });
+});
