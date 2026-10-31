@@ -85,6 +85,7 @@
 		149FCBCC393ED40C0C0EBAD9 /* DaemonPosture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21FC16ECE363684E997BE01E /* DaemonPosture.swift */; };
 		151F41C1C4B7DF78558D546D /* SessionRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */; };
 		16516CAB1B2FDAFC27C2261C /* ObservedAgentSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 412BA6DCF8B496FBEEE65F00 /* ObservedAgentSettingsTests.swift */; };
+		168E612BB3346A2A460B41F3 /* pixoo-baked.generated.js in Resources */ = {isa = PBXBuildFile; fileRef = EE4226436C403D3DDC49343C /* pixoo-baked.generated.js */; };
 		17321E6D108847FA943AF08E /* ApmeRetentionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F43A5035793AA36351270B54 /* ApmeRetentionTests.swift */; };
 		1755CE50FB5EBB217B02AED7 /* TimeboxDivoomPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE667561A919A52759C5225E /* TimeboxDivoomPacket.swift */; };
 		17BEA2DE377A1E70F63D776B /* HermesReceiverSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79E56A6093DC727D06B736A /* HermesReceiverSettingsTests.swift */; };
@@ -111,6 +112,7 @@
 		1DD64D5ABE5A6DB9B73B2589 /* Trmnl75Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */; };
 		1E522268DE9B6DC2D8AFCDEC /* DevicePairingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918C108FEF53B66BF6D944B7 /* DevicePairingWindow.swift */; };
 		1F0258876EC170B4F821C251 /* DotAquariumResident.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FE6C565483EBB693A8920C /* DotAquariumResident.swift */; };
+		1F386A7D34FBFD09D20678DA /* PixooBakedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */; };
 		1FC326F6A3ECA2926AC2D684 /* SessionBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6E252A5DCAC5E298C21473 /* SessionBrand.swift */; };
 		20B7F193A4B33732519FB7F8 /* AgentStatusIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61F4A4AE7D86132501CA1096 /* AgentStatusIcon.swift */; };
 		20BC342C63610F58CFF51A74 /* TerrariumRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 481253E76BD28E883C65121F /* TerrariumRenderer.swift */; };
@@ -228,6 +230,7 @@
 		3B811EEE60C3BC211B2A5373 /* ApmeClassifierRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */; };
 		3C1F74B5C8002F65FFDA282F /* ProcessEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CE020EB705544FFD580DD9 /* ProcessEnumerator.swift */; };
 		3C2668742A6920AB392BA3EA /* CrayfishCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD30721AD4CBA74DD049A1F /* CrayfishCreature.swift */; };
+		3C3C4DACF09E04DF0E638860 /* PixooBakedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */; };
 		3C4A80E7845EA117E1C44631 /* GitHubCIConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93BD940DFD8DBDE64431BDEF /* GitHubCIConnection.swift */; };
 		3C58A78598B065AC2EDD44B8 /* BridgeDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F34DE9E44936BAC6D96F19 /* BridgeDiscovery.swift */; };
 		3C6B8278B3C44E131BD74639 /* HermesCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49875783E44D33C86D04A038 /* HermesCreature.swift */; };
@@ -298,6 +301,7 @@
 		4D7595686B60FDBDE4A5210D /* AdbModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83589BA4C41B89C8EF1A46FD /* AdbModule.swift */; };
 		4DECBDD1F9507DFD18D30CFE /* DaemonRelayPolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EBC749A2E1104CBC5226892 /* DaemonRelayPolicy.generated.swift */; };
 		4E3E8F33089962383FF83309 /* DockVisibilityPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41DA855405F8F1F5BA174D0 /* DockVisibilityPolicyTests.swift */; };
+		4E6C6D9C002802DDC67512A8 /* PixooLoopPolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C5AAACD5432D93420AF85D /* PixooLoopPolicy.generated.swift */; };
 		4E7E45770216EA4F310DA2E8 /* ESP32WifiProvisionRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 126F2DE93055C4D847017AF3 /* ESP32WifiProvisionRulesTests.swift */; };
 		4E9390CA4B03B3C97B679F59 /* ESP32WifiSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66C1FA1216E865783FAF1164 /* ESP32WifiSetupTests.swift */; };
 		4EC0E953449451FC7C10AEBC /* AppPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86E42A4F5681EFB215B43645 /* AppPreferences.swift */; };
@@ -704,6 +708,7 @@
 		BF04781B41A8B17B3FF6EE07 /* DaemonRelayUplink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78474B96708E5F23B3AD3D21 /* DaemonRelayUplink.swift */; };
 		BF6E216F74A8205677B8B82B /* OnboardingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9965CED8937C8C1F27DFCC68 /* OnboardingScreen.swift */; };
 		BFC6B5087B124490396C8DE7 /* IBMPlexSansJP-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 2F1FCEAF79DEEBC94C23C9FB /* IBMPlexSansJP-Bold.ttf */; };
+		C09802CF2E72CBC7A9B65FFE /* PixooBakedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D7C05E2E6D6E567CC3B451 /* PixooBakedRenderer.swift */; };
 		C0A2645826ECB779014A3726 /* SessionJumpRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F26A93963C8E68242637581 /* SessionJumpRow.swift */; };
 		C1007A9CE1D6424E2449DE80 /* DaemonStartupCancellationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3CEDE728BE4588CDEE3CCE4 /* DaemonStartupCancellationTests.swift */; };
 		C10CD1596A8DC0CF050C6AED /* CodexCreditsPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FBD79359C74EFD3D692FB05 /* CodexCreditsPresentationTests.swift */; };
@@ -858,6 +863,8 @@
 		E98F3FC6D7134E8E65163D93 /* OnboardingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302810B07A9DC093700A7C31 /* OnboardingSheet.swift */; };
 		EA32929C78C6088451DDF476 /* TimelineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95824B0CF6571507DBAF27C5 /* TimelineStore.swift */; };
 		EB83962F2BDBC13AB130DD6B /* SessionListPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40755F64E4C39A49B99D88CA /* SessionListPanel.swift */; };
+		EBA8C98E5F92F73ABF72C241 /* pixoo-baked.generated.js in Resources */ = {isa = PBXBuildFile; fileRef = EE4226436C403D3DDC49343C /* pixoo-baked.generated.js */; };
+		EBD40E5D62B01F3E8D9F5B07 /* PixooBakedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14D7C05E2E6D6E567CC3B451 /* PixooBakedRenderer.swift */; };
 		EBF38B0F41450B16AA005EAA /* MdnsAdvertisementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AA98B9C59A1E5068133D134 /* MdnsAdvertisementTests.swift */; };
 		EC6CEEBE6309A8CEAE7195F2 /* GatewayFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E7E35423FAC15B8DB49BBB2 /* GatewayFrame.swift */; };
 		EC70AFC401C2E93BF21B56C1 /* ZaiConfigurationClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9559267F01F4A98575D3F074 /* ZaiConfigurationClient.swift */; };
@@ -871,6 +878,7 @@
 		EE83F0F9F55D68644A722D50 /* ApmeReadIndexes.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25F9FDF17CAE4968078B9841 /* ApmeReadIndexes.generated.swift */; };
 		EE91D7CCEFEA94B80A2A4FCD /* SetupNeededCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC179B8F91EF42F5EBDE911 /* SetupNeededCard.swift */; };
 		EF4BB803759C7972ED2EC386 /* AquariumWindowRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2839E33D03EEDBAB45C48C /* AquariumWindowRenderingTests.swift */; };
+		EF79FED2E00DF810D5310A5A /* PixooLoopPolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36C5AAACD5432D93420AF85D /* PixooLoopPolicy.generated.swift */; };
 		EFB490B9C3DFC1FC911A8E3C /* ExternalAttachRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */; };
 		EFBE61C82B30F30B17A4C3FD /* DaemonRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B1220E193A682623DDD2BC3 /* DaemonRelay.swift */; };
 		F04C9951C6E7B99B371B7A9D /* TaskGradeabilityRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A5E894C58B03EE5C8EF791 /* TaskGradeabilityRules.generated.swift */; };
@@ -992,6 +1000,7 @@
 		148E9F88D28912838E6DF334 /* CommunicationGraphModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunicationGraphModel.swift; sourceTree = "<group>"; };
 		14A41EA31C51D5B49399A788 /* GatewayLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayLiveActivityTests.swift; sourceTree = "<group>"; };
 		14AF460DF0B759372BA1F6C6 /* HermesMermaidSprite.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesMermaidSprite.generated.swift; sourceTree = "<group>"; };
+		14D7C05E2E6D6E567CC3B451 /* PixooBakedRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooBakedRenderer.swift; sourceTree = "<group>"; };
 		15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortDiagnostics.swift; sourceTree = "<group>"; };
 		15B0174D679C9D51A1F21AAF /* MlxSafetyRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MlxSafetyRules.generated.swift; sourceTree = "<group>"; };
 		1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicroGlyphs.generated.swift; sourceTree = "<group>"; };
@@ -1061,6 +1070,7 @@
 		355FC01D6BB8A879D56C0347 /* AntigravitySessionSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravitySessionSettingsView.swift; sourceTree = "<group>"; };
 		3607807E41599D2505463C5B /* DotWebhook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotWebhook.swift; sourceTree = "<group>"; };
 		362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeboxSheet.swift; sourceTree = "<group>"; };
+		36C5AAACD5432D93420AF85D /* PixooLoopPolicy.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooLoopPolicy.generated.swift; sourceTree = "<group>"; };
 		375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalAttachRetryTests.swift; sourceTree = "<group>"; };
 		38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateTimelineGenerator.swift; sourceTree = "<group>"; };
 		3A59CDD89266C18C80F6F324 /* 3d-residents.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "3d-residents.usdz"; sourceTree = "<group>"; };
@@ -1232,6 +1242,7 @@
 		93BD940DFD8DBDE64431BDEF /* GitHubCIConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubCIConnection.swift; sourceTree = "<group>"; };
 		94B060A15BF6B6EFD1848C81 /* ApmeClassifierBackendTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeClassifierBackendTests.swift; sourceTree = "<group>"; };
 		952A48256A53B55E304F7D67 /* MdnsIdentity.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MdnsIdentity.generated.swift; sourceTree = "<group>"; };
+		9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooBakedTests.swift; sourceTree = "<group>"; };
 		9559267F01F4A98575D3F074 /* ZaiConfigurationClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZaiConfigurationClient.swift; sourceTree = "<group>"; };
 		95824B0CF6571507DBAF27C5 /* TimelineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineStore.swift; sourceTree = "<group>"; };
 		95997D1E19933CBB5A3F400D /* DeviceApprovalGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceApprovalGateTests.swift; sourceTree = "<group>"; };
@@ -1392,6 +1403,7 @@
 		EC83A78EA479592D015AA2F6 /* UtilityProxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UtilityProxy.swift; sourceTree = "<group>"; };
 		ECF625C2B3057379F5CFA1B0 /* TaskTitleRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskTitleRules.generated.swift; sourceTree = "<group>"; };
 		ED10CEC4D0AD8F6A3502E027 /* DotSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotSettingsView.swift; sourceTree = "<group>"; };
+		EE4226436C403D3DDC49343C /* pixoo-baked.generated.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "pixoo-baked.generated.js"; sourceTree = "<group>"; };
 		EF126528728AEF6E07C3C7ED /* KiroCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroCreature.swift; sourceTree = "<group>"; };
 		EF60395052D2A0438569E98B /* MatrixFrames.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatrixFrames.generated.swift; sourceTree = "<group>"; };
 		F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Trmnl75Preview.swift; sourceTree = "<group>"; };
@@ -1613,6 +1625,7 @@
 				21073CA63BB9403D46212547 /* OpenCodeObserverTests.swift */,
 				FD0E0570EC405C2542D130A1 /* PairingCredentialTests.swift */,
 				C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */,
+				9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */,
 				096F7A3D4B10DE473C67521D /* PixooTideTests.swift */,
 				9E792DB225798EE23EAAB691 /* PocketAutonomyTests.swift */,
 				AA9EF1BA3F966E4C3B7F58A1 /* PocketVectorReplay.swift */,
@@ -1662,6 +1675,14 @@
 				ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */,
 			);
 			path = Voice;
+			sourceTree = "<group>";
+		};
+		3156C588F1D50489EA3A356A /* generated */ = {
+			isa = PBXGroup;
+			children = (
+				EE4226436C403D3DDC49343C /* pixoo-baked.generated.js */,
+			);
+			path = generated;
 			sourceTree = "<group>";
 		};
 		3361994BB10E3735D3DAC74F /* AgentDeck */ = {
@@ -1964,6 +1985,7 @@
 				3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */,
 				51F8835274D527676D10FDB5 /* Aquarium */,
 				CC407CA12D6D19FA60BEC1A1 /* Fonts */,
+				3156C588F1D50489EA3A356A /* generated */,
 				6F5EC3B07890CD9EE14B9217 /* Learning */,
 			);
 			path = Resources;
@@ -2146,6 +2168,8 @@
 				1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */,
 				FAF67F9EA0CB4FD3EE8C963A /* MicroGlyphs.swift */,
 				D1DDCB822B1DC56875875388 /* ModuleManager.swift */,
+				14D7C05E2E6D6E567CC3B451 /* PixooBakedRenderer.swift */,
+				36C5AAACD5432D93420AF85D /* PixooLoopPolicy.generated.swift */,
 				E9342D343A701D2BDC92C845 /* PixooModule.swift */,
 				730925E1194B8183122443CA /* PixooRenderer.swift */,
 				052A78840772DDFD792F07D7 /* PixooTide.swift */,
@@ -2408,6 +2432,7 @@
 				ED33FD094A4EF68734AC9886 /* jp-n3-ko.manifest.json in Resources */,
 				567713AB74E05824DBE77C48 /* jp-n3-ko.pdl in Resources */,
 				6923A8C834228B700B0DD433 /* living-aquarium.usdz in Resources */,
+				EBA8C98E5F92F73ABF72C241 /* pixoo-baked.generated.js in Resources */,
 				DF275B0CF0206CCA29020B6F /* pocket-sans-world.manifest.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2442,6 +2467,7 @@
 				FC69321DFB051CE20F9FC541 /* jp-n3-ko.manifest.json in Resources */,
 				6EBE9EE758C949CF2BC6A868 /* jp-n3-ko.pdl in Resources */,
 				4518FB4ABB74CDB32F082833 /* living-aquarium.usdz in Resources */,
+				168E612BB3346A2A460B41F3 /* pixoo-baked.generated.js in Resources */,
 				46F58F564C0AB175E60720FB /* pocket-sans-world.manifest.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2590,6 +2616,7 @@
 				7F7AC94714D1AA6767605207 /* OpenCodeObserverTests.swift in Sources */,
 				2EEDFE019406138F64268122 /* PairingCredentialTests.swift in Sources */,
 				B1DA074241F457CA53E71966 /* PairingWindowStoreTests.swift in Sources */,
+				3C3C4DACF09E04DF0E638860 /* PixooBakedTests.swift in Sources */,
 				6DFE7629526D3F58A8B4915C /* PixooTideTests.swift in Sources */,
 				D17C6EAB2DD6112E74248E08 /* PocketAutonomyTests.swift in Sources */,
 				74E593D4F0D95834541B5A42 /* PocketVectorReplay.swift in Sources */,
@@ -2720,6 +2747,7 @@
 				8693E499DE95572584CC9DA9 /* OpenCodeObserverTests.swift in Sources */,
 				7FD70D74C3300CE4E4818E1A /* PairingCredentialTests.swift in Sources */,
 				8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */,
+				1F386A7D34FBFD09D20678DA /* PixooBakedTests.swift in Sources */,
 				458766774694CB222DF7600A /* PixooTideTests.swift in Sources */,
 				4A742D02E19DE008F620FDAC /* PocketAutonomyTests.swift in Sources */,
 				C47AE9E5EAFC816164D29F1C /* PocketVectorReplay.swift in Sources */,
@@ -2991,6 +3019,8 @@
 				B9A16BFB5249C6389638BCD0 /* PairingCredential.swift in Sources */,
 				39DE6C000AD9F73337D71752 /* PairingKnockStore.swift in Sources */,
 				942417AA37DAD475B023BED1 /* PairingWindowStore.swift in Sources */,
+				EBD40E5D62B01F3E8D9F5B07 /* PixooBakedRenderer.swift in Sources */,
+				EF79FED2E00DF810D5310A5A /* PixooLoopPolicy.generated.swift in Sources */,
 				3053AF2926E3B907DAB9250F /* PixooModule.swift in Sources */,
 				378C03BA7C86CFABDD41FA06 /* PixooPreview.swift in Sources */,
 				83C7FC17B750D369087AF18E /* PixooRenderer.swift in Sources */,
@@ -3316,6 +3346,8 @@
 				BE4468940AAC6546E849E2BF /* PairingCredential.swift in Sources */,
 				B8A58BEA3BF15099FEA4DD0D /* PairingKnockStore.swift in Sources */,
 				C1D11334892B586DEBC70D4F /* PairingWindowStore.swift in Sources */,
+				C09802CF2E72CBC7A9B65FFE /* PixooBakedRenderer.swift in Sources */,
+				4E6C6D9C002802DDC67512A8 /* PixooLoopPolicy.generated.swift in Sources */,
 				43CA9C8F949377526F62C044 /* PixooModule.swift in Sources */,
 				83FE9645B23326BD78B52126 /* PixooPreview.swift in Sources */,
 				85EF0A636EBDCAA072478B2C /* PixooRenderer.swift in Sources */,

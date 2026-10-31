@@ -89,6 +89,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
+| `shared/pixoo-loop-policy.json` and canonical `bridge/src/pixoo/pixoo-renderer.ts` / shared art-layout rules | `node scripts/generate-pixoo-loop-policy.mjs` and `node scripts/generate-pixoo-baked.mjs` → Node/Swift bounds and fixed bundled Pixoo pixel code | `pixoo-baked.test.ts` checks both generators and compares every RGB byte against actual Swift/JavaScriptCore; `PixooBakedTests` drives real module scheduling/payloads with bounded fixtures. |
 | `shared/calendar-policy.json` plus Glance event bounds in `shared/src/protocol.ts` (ICS subset, recurrence/fetch/cache limits) | `node scripts/generate-calendar-policy.mjs` → Node/Swift calendar policy | `calendar.test.ts` executes actual Node/Swift parser, URL and cache vectors; `CalendarTests` covers consent, Keychain, revocation and aggregate-only Pocket storage. |
 | `shared/antigravity-observation-policy.json` (JSONL identity, read-only SQLite activity queries, status enums, metadata and freshness bounds) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
 | `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
@@ -398,3 +399,51 @@ contracts remain in place. Pocket persists only its existing aggregate counters,
 opaque content hashes and feedback receipts: no feed, URL, UID, title or event
 copy enters its learning file. Software acceptance does not claim X4 hardware
 acceptance; that stays deferred to companion integration.
+
+## Pixoo baked aquarium loops
+
+`animation: "loop"` is an explicit opt-in in both daemons. Default single-frame
+and the separate six-frame Tide scene retain their renderers. Baked aquarium
+pixels use the existing canonical TypeScript art/layout renderer, generated as
+fixed application code into both the Node package and the signed app resource.
+Swift owns the module, scheduling, configuration, cache and LAN HTTP; the OS
+[JavaScriptCore framework](https://developer.apple.com/documentation/javascriptcore)
+evaluates only that bundled fixed pixel code. No Node process, bundled interpreter,
+host callback, filesystem/network scripting API, remote code download or user-script
+entry point is added. Generator checks reject retained external modules and execution
+or I/O primitives. This is an implementation boundary, not a Store approval claim.
+
+An isolated seeded simulation belongs to each baked renderer, independent of preview
+calls. It continues across bakes, while simulation and camera are frozen inside each
+loop. Equal ordered inputs/times from the same seed produce equal RGB bytes. Eight
+unique frames at 200 ms form the closed 14-frame palindrome `0…7,6…1`; the final-to-first
+step is the reverse of the first-to-second step. Optional Dot painting stays a
+separate, development-only overlay; the generator strips it from the fixed core.
+
+The bounded input is at most 32 sessions and 128 KiB of JSON. Native timeline
+fallback keeps 96 non-tool rows and only the identity/time fields and a 256-Unicode-scalar
+raw prefix needed for subagent counts. Each driver retains one raw frame pack and
+one isolated rendering context, plus a small activity context in Swift. Cache keys
+include the input and a ten-second clock bucket; a consumer cannot mutate the stored
+pixels. Wake, source lifecycle and configuration changes invalidate the cache.
+
+Active opted-in devices upload a loop at most every ten seconds, or after at least
+three seconds when visible state changes. Both daemons use the same visible-state
+signature, including subagent activity, and coalesce changes per device. Idle or cooling-down devices use single
+frames. A failed loop aborts at its first failed frame and cools down to single frames
+for 15 minutes; failed attempts consume the cadence budget. Each POST carries one
+64×64 RGB frame, one shared PicID/PicNum and an increasing PicOffset, with 120 ms
+between requests. Existing bounds cap animations at 40 frames. The generated 256-entry gamma LUT
+keeps wire RGB/base64 identical; upload requests have a three-second deadline.
+Explicit nonzero or missing error acknowledgements fail, and an absent/invalid
+PicID stays unknown rather than becoming zero. HTTP awaits remain bounded, and no overlapping scheduled upload starts. Dim/stop/configuration epochs
+stop the remainder of an in-flight loop without interpreting cancellation as a
+network failure. A canceled reserved PicID is discarded and resynchronized before
+the next upload. Counters reset at 250 only after an explicit successful reset
+acknowledgement, with a two-second stabilization delay. A repeated unchanged display-on event does not cancel a loop.
+
+Dim pauses uploads and applies the configured off/min level. Wake restores each
+panel's own brightness (default 100), invalidates the baked cache and resumes the
+normal rate limits. Explicit device wake recovery also drops PicID/backoff state
+before resynchronizing. The Settings animation picker preserves brightness and
+unknown fields in existing device rows; no unrelated setting is replaced.

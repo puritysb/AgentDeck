@@ -36,6 +36,7 @@ struct PixooSheet: View {
         let id = UUID()
         let ip: String
         let name: String?
+        var animation: String = "single-frame"
     }
 
     var body: some View {
@@ -103,6 +104,17 @@ struct PixooSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Animation", selection: Binding(get: { device.animation }, set: { mode in
+                guard let index = devices.firstIndex(where: { $0.id == device.id }) else { return }
+                let previous = devices[index].animation
+                devices[index].animation = mode
+                if saveDevices() { NotificationCenter.default.post(name: .pixooSettingsChanged, object: nil) }
+                else { devices[index].animation = previous }
+            })) {
+                Text("Single frame").tag("single-frame")
+                Text("Aquarium loop").tag("loop")
+                Text("Tide").tag("tide")
+            }.labelsHidden().frame(width: 130)
             Button {
                 removeDevice(device)
             } label: {
@@ -279,7 +291,7 @@ struct PixooSheet: View {
         }
         devices = arr.compactMap { d in
             guard let ip = d["ip"] as? String else { return nil }
-            return PixooDeviceEntry(ip: ip, name: d["name"] as? String)
+            return PixooDeviceEntry(ip: ip, name: d["name"] as? String, animation: d["animation"] as? String ?? "single-frame")
         }
     }
 
@@ -328,11 +340,7 @@ struct PixooSheet: View {
            let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             root = parsed
         }
-        let arr: [[String: Any]] = devices.map { d in
-            var obj: [String: Any] = ["ip": d.ip]
-            if let name = d.name { obj["name"] = name }
-            return obj
-        }
+        let arr = Self.updatedDeviceRows(currentRows: root["pixooDevices"] as? [[String: Any]] ?? [], devices: devices)
         root["pixooDevices"] = arr
         do {
             let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
@@ -342,6 +350,14 @@ struct PixooSheet: View {
         } catch {
             savingError = "Couldn't save: \(error.localizedDescription)"
             return false
+        }
+    }
+
+    static func updatedDeviceRows(currentRows: [[String: Any]], devices: [PixooDeviceEntry]) -> [[String: Any]] {
+        devices.map { device in
+            var row = currentRows.first { $0["ip"] as? String == device.ip } ?? [:]
+            row["ip"] = device.ip; row["name"] = device.name; row["animation"] = device.animation
+            return row
         }
     }
 

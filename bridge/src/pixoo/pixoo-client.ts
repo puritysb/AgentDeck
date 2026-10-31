@@ -1,3 +1,4 @@
+import { PIXOO_LOOP_POLICY as LOOP_POLICY } from './pixoo-loop-policy.generated.js';
 /**
  * Pixoo64 HTTP Client — direct REST API for Divoom Pixoo64 LED matrix.
  *
@@ -20,7 +21,7 @@ const pixooAgent = new http.Agent({ keepAlive: false, maxSockets: 1 });
 
 const TAG = 'Pixoo';
 const REQUEST_TIMEOUT_MS = 2000;
-const PIC_ID_RESYNC_THRESHOLD = 250;  // Re-sync before ~300 overflow
+const PIC_ID_RESYNC_THRESHOLD = LOOP_POLICY.picIdResyncThreshold;  // Re-sync before ~300 overflow
 
 // Per-device static PicID — synced once and held forever (allows real-time streaming without loading screen)
 const devicePicId = new Map<string, number>();
@@ -32,9 +33,11 @@ export function clearStaticPicId(ip: string): void {
 }
 
 // Gamma correction LUT: pow(v/255, 0.7) * 255 — boosts dark values for LED display
-const gammaLUT = new Uint8Array(256);
-for (let i = 0; i < 256; i++) {
-  gammaLUT[i] = Math.round(Math.pow(i / 255, 0.7) * 255);
+const gammaLUT = new Uint8Array(LOOP_POLICY.gammaLUT);
+
+export function pixooReplySucceeded(reply: Record<string, unknown> | null): boolean {
+  const code = reply?.error_code ?? reply?.errorCode;
+  return typeof code === 'number' && code === 0;
 }
 
 // ===== Circuit Breaker (per-device exponential backoff + auto-probe) =====
@@ -166,7 +169,7 @@ async function postCommand(ip: string, command: Record<string, unknown>, timeout
 
   try {
     const result = await httpPost(ip, command, timeoutMs);
-    if (!result) {
+    if (!pixooReplySucceeded(result)) {
       recordFailure(ip);
       return false;
     }
@@ -217,9 +220,9 @@ function httpPost(ip: string, body: Record<string, unknown>, timeoutMs = REQUEST
 }
 
 /** Max frames in one device-side animation (Divoom documents PicNum < 60). */
-export const PIXOO_MAX_ANIMATION_FRAMES = 40;
+export const PIXOO_MAX_ANIMATION_FRAMES = LOOP_POLICY.maxAnimationFrames;
 /** Pause between the per-frame POSTs of one animation upload. */
-export const PIXOO_ANIMATION_FRAME_GAP_MS = 120;
+export const PIXOO_ANIMATION_FRAME_GAP_MS = LOOP_POLICY.frameGapMs;
 
 /**
  * Build the `Draw/SendHttpGif` requests for one animation, as the Divoom LAN
@@ -260,7 +263,13 @@ export function buildSendHttpGifCommands(
  * @param buffers - Raw RGB buffers, each 12,288 bytes (64 * 64 * 3)
  * @param speed - Playback speed in ms per frame
  */
-export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100): Promise<boolean> {
+export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100, canContinue: () => boolean = () => true): Promise<boolean> {
+  const permitted = () => {
+    if (canContinue()) return true;
+    devicePicId.delete(ip); // A reserved ID may not have reached the panel.
+    return false;
+  };
+  if (!permitted()) return false;
   if (buffers.length === 0 || buffers.length > PIXOO_MAX_ANIMATION_FRAMES) return false;
   for (const buffer of buffers) {
     if (buffer.length !== 64 * 64 * 3) {
@@ -282,23 +291,27 @@ export async function pushFrames(ip: string, buffers: Uint8Array[], speed = 100)
     debug(TAG, `Synced PicID for ${ip}: ${picId}`);
   }
 
+  if (!permitted()) return false;
   // One PicID per image/animation (device shows new content only on a new sequential ID)
   picId++;
 
   // Prevent counter overflow (~300 causes device lockup) — reset gracefully
   if (picId >= PIC_ID_RESYNC_THRESHOLD) {
     debug(TAG, `PicID ${picId} near overflow for ${ip}, resetting and sleeping 2s for stabilization`);
-    await resetPicId(ip);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!await resetPicId(ip)) { devicePicId.delete(ip); return false; }
+    await new Promise(resolve => setTimeout(resolve, LOOP_POLICY.picIdResetDelayMs));
     picId = 1;
   }
 
   devicePicId.set(ip, picId);
 
+  if (!permitted()) return false;
   const commands = buildSendHttpGifCommands(buffers, picId, speed);
   for (let i = 0; i < commands.length; i++) {
+    if (!permitted()) return false;
     if (i > 0) await new Promise(resolve => setTimeout(resolve, PIXOO_ANIMATION_FRAME_GAP_MS));
-    const ok = await postCommand(ip, commands[i], 5000);
+    if (!permitted()) return false;
+    const ok = await postCommand(ip, commands[i], LOOP_POLICY.uploadTimeoutMs);
     if (!ok) {
       if (commands.length > 1) {
         devicePicId.delete(ip);
@@ -364,8 +377,9 @@ export async function setBrightness(ip: string, value: number): Promise<boolean>
 export async function getHttpGifId(ip: string): Promise<number | null> {
   try {
     const data = await httpPost(ip, { Command: 'Draw/GetHttpGifId' });
-    if (!data) return null;
-    return (data as any)?.PicId ?? 0;
+    if (!pixooReplySucceeded(data)) return null;
+    const id = data?.PicId ?? data?.PicID;
+    return typeof id === 'number' && Number.isSafeInteger(id) && id >= 0 && id <= LOOP_POLICY.maxPicCounter ? id : null;
   } catch {
     return null;
   }
@@ -391,8 +405,8 @@ export async function checkDeviceContent(ip: string): Promise<DeviceContent> {
   try {
     const channel = await httpPost(ip, { Command: 'Channel/GetIndex' });
     const picId = await getHttpGifId(ip);
-    if (!channel || picId === null) return 'unknown';
-    return channel.SelectIndex === 3 && picId >= expected ? 'ours' : 'stale';
+    if (!pixooReplySucceeded(channel) || picId === null || typeof channel?.SelectIndex !== 'number') return 'unknown';
+    return channel!.SelectIndex === 3 && picId >= expected ? 'ours' : 'stale';
   } catch {
     return 'unknown';
   }

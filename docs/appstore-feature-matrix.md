@@ -137,7 +137,7 @@ candidate; an older artifact's successful upload does not validate this policy.
 |---|:---:|:---:|---|
 | Ulanzi D200H | Yes | Yes | Ulanzi Studio plugin is the only driver; no direct HID |
 | Ulanzi D200X LCD keys | Partial | Partial | Same 14-key Ulanzi Studio action as D200H; SDK/simulator contract is covered, but real-hardware verification is pending and the three encoders are not supported |
-| Pixoo64 | Yes, single-frame and Tide | Yes, also baked aquarium loop | Native LAN HTTP and multi-frame Tide upload already exist; `animation: "loop"` still falls back to single-frame in Swift. Baked aquarium frame generation remains a native-port candidate. |
+| Pixoo64 | Yes, single-frame, Tide and opt-in baked aquarium loop | Yes; same baked pixel core | Native LAN HTTP uploads the shared fixed aquarium frames. All RGB bytes, palindrome ordering, bounded cache and upload policy have software parity; actual Pixoo loop/dim/wake and Tide restoration are verified below. See [baked loop acceptance](#native-pixoo-baked-loop-acceptance-2026-10-31). |
 | Timebox Mini | Yes | Yes | Expressive robot face with gaze, listening nods, speaking mouth shapes, greeting winks and token-based eye highlights / warm cheeks; shared Node/Swift state rules and generated animation frames; native CoreBluetooth / CLI BLE helper |
 | iDotMatrix | Yes | Yes | Permanent creature with live WORK/JOBS/WAIT counts, separate CI/child-agent states, bounded 6 s conversation/arrival scenes and explicit partial totals; shared Node/Swift frames; one BLE display connection at a time |
 | ESP32 state display and Wi-Fi provisioning | Yes | Yes | Native serial and network frameworks. Wi-Fi credentials go to whichever daemon holds the port through loopback `POST /esp32/wifi` (pairing token required), and that daemon saves them and writes them to its serial boards; the macOS sheet never opens a serial port. `agentdeck wifi-setup` uses the same route |
@@ -280,14 +280,14 @@ assessment.
 | P2.1 — implemented | APME retention and storage management: [shared policy](../shared/apme-retention-policy.json) generates [Node](../bridge/src/apme/retention-policy.generated.ts) and [Swift](../apple/AgentDeck/Daemon/Apme/ApmeRetentionPolicy.generated.swift) constants and SQL predicates. | Native Full report → Storage implements file/page capacity, read-only preview, confirmed payload-only cleanup and separate compaction against the app-owned database. | Actual Node/Swift SQLite fixtures match preview values, UTF-16 marker bytes and all final rows. Native store/API/UI tests cover retained history/corrections, stale preview refusal, explicit local-only confirmation, both-table rollback, multiple batches, WAL, busy/deadline behavior and compaction. A forced slow cleanup rolls back while an incoming record survives. Only disposable stores are pruned; large operations may be refused by the native time budget. |
 | P2.2 — implemented | Antigravity JSONL observation now uses a [shared policy](../shared/antigravity-observation-policy.json), [Node reader](../bridge/src/antigravity-observation.ts) and [Swift reader](../apple/AgentDeck/Daemon/Session/AntigravitySourceReader.swift). | Native Session Observation selects a read-only transcript root, restores its scoped bookmark after relaunch, and identifies conversations and explicit USER_INPUT steps. The account/plan database grant is preserved separately. | Actual Swift/Node parser and filesystem parity, native consent/renewal/revocation tests and a development-signed sandbox app with an external disposable transcript folder. Live WebSocket evidence covers RUNNING/DONE, new turns, rotation, malformed tail, disappearance, stale and relaunch/removal. Live CLI verification exposed DONE-only JSONL; direct read-only SQLite activity now supplies explicit WORKING/IDLE, with shared schema/identity/freshness guards. See the signed live acceptance below. No PERM, control, Stop/APME import or process-liveness claim. |
 | P2.3 — implemented | ICS calendar ingestion now uses [shared policy](../shared/calendar-policy.json), [Node provider](../bridge/src/calendar.ts) and [native provider](../apple/AgentDeck/Daemon/Server/CalendarProvider.swift). | Native source/share consent, non-synchronizing device-only Keychain URLs, bounded HTTPS and in-memory recurrence expansion supply Feed/Glance and agenda cards. | Actual Node/Swift parser, URL and cache vectors match, including timezone/DST and exceptions. A signed sandbox fixture verifies real Keychain and HTTP/cache/failure parity; [signed Release Settings acceptance](#signed-ics-settings-acceptance-2026-10-31) also verifies consent, save, relaunch restore and disconnect through the UI. Pocket remains aggregate-only. X4 physical acceptance stays deferred. |
-| P2.4 | Pixoo baked aquarium `animation: "loop"`: Node [bridge](../bridge/src/pixoo/pixoo-bridge.ts) supports it; native [module](../apple/AgentDeck/Daemon/Modules/PixooModule.swift) supports single-frame and Tide but falls back for this mode. | Port baked aquarium frame generation using canonical artwork/layout and existing native multi-frame upload. This is a rendering increment, not a missing Pixoo transport. | Frame/layout parity, bounded cache/upload work, loop seam, frame IDs, rate/backoff, dim/wake and physical Pixoo acceptance. Existing native Tide reduces urgency. |
+| P2.4 — implemented | Pixoo baked aquarium `animation: "loop"` uses [shared bounds](../shared/pixoo-loop-policy.json), the canonical art/layout renderer and generated fixed code in Node and system JavaScriptCore. | Native scheduling, one-pack cache, frame-by-frame LAN upload, failed-loop cooldown and dim/wake handling. The animation picker preserves other device settings. | Actual Swift/Node RGB parity and module/HTTP regressions cover layout, palindrome playback, packing, cadence, cancellation and unknown/error refusal. The owner confirmed real Pixoo motion and dim/wake restoration. See [acceptance](#native-pixoo-baked-loop-acceptance-2026-10-31). |
 | P2.5 — separate control proposal | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`; native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) deliberately implements the read-only subset. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
 
 P2.1 APME retention is implemented; [its contract and disposable-store verification](apme.md#swift-보존용량-관리-2026-10-31)
 cover size/status, read-only preview, manual prune and separate compaction. Actual
 user databases were not pruned. P2.2 Antigravity now has native read-only observation;
 [the source contract](architecture.md#antigravity-transcript-observation) defines its
-evidence limits. P2.3 ICS ingestion is also implemented; the next proposed increment is **P2.4 Pixoo baked loops**.
+evidence limits. P2.3 ICS ingestion and P2.4 Pixoo baked loops are also implemented; the next proposed increment is the separately consented **P2.5 OpenCode control proposal**.
 
 ### Antigravity signed-app acceptance (2026-10-31)
 
@@ -508,6 +508,68 @@ quit; its own Sandbox preferences were then configured and its actual temporary
 port/posture verified before the calendar UI sequence. No shared runtime change
 was used to obtain a standalone Swift daemon.
 
+### Native Pixoo baked loop acceptance (2026-10-31)
+
+[The source contract](architecture.md#pixoo-baked-aquarium-loops) owns the rendering,
+cache and upload rules. Swift runs the app-bundled fixed pixel code through the
+system JavaScriptCore framework; no Node process, interpreter payload, remote script
+or native host bridge is added. The generated resource and Node source are drift
+gated against the canonical artwork/layout renderer and shared policy. Default
+single-frame and Tide remain separate; aquarium loops stay explicit opt-in.
+
+Software acceptance executes 36 scenarios with the actual Node and Swift runtimes,
+comparing every raw RGB byte (14 frames per loop, one for idle/fallback). Cases
+include all agent families, unknown types, busy/idle/attention states, multiple
+residents, usage rails, Unicode CI identities and background/subagent activity.
+The common core matches a freshly seeded original Node renderer and isolates its
+simulation from preview calls while preserving motion between uploads. Palindrome
+order and copied cache results protect the seam and cached pixels. Input/count/size
+bounds and generator drift are tested. Real module fixtures and a local HTTP server
+verify one frame per request, shared IDs/counts, sequential offsets, first-failure
+abort, ID resync, unknown-counter refusal, cancellation, cooldown, cadence and
+settings preservation. Upload failures and missing acknowledgements now fail in
+both daemons; a missing PicID no longer becomes zero. The gamma table is shared too.
+
+Local quick verification passed with 7,136 Vitest cases and 17 conditionally
+skipped cases. The macOS Debug suite passed 1,456 XCTest cases with five skipped,
+including ten new native Pixoo tests and the existing Tide suite. The optimized
+macOS Dot Preview suite passed 1,474 cases with ten skipped; the Store Release
+macOS and iOS simulator builds passed their Dot-exclusion checks. The iOS Dot
+Preview simulator build and its artifact boundary also passed. All five native
+verification gates completed successfully.
+
+The physical Pixoo at the previously configured LAN address was verified without
+starting another hub or any other device module. The existing Debug app objects
+were linked into a developer-only acceptance executable with the actual
+`PixooModule`, renderer and production URLSession transport. Its data directory was
+isolated. It exercised these steps:
+
+| Physical check | Result |
+|---|---|
+| Aquarium upload | The actual module sent the 14-frame loop successfully. The owner confirmed that creatures/water moved and repeated naturally. |
+| Dim | The panel reported brightness 7. After ten seconds with the dim guard active, its PicID remained unchanged, proving no intervening frame upload. |
+| Wake | The module restored the original brightness 100 and successfully uploaded a fresh loop. |
+| Restore | The driver stopped its synthetic scene and sent the original Tide mode using a read-only shared-daemon session/usage snapshot. The panel reported brightness 100, no module error and a successful Tide upload. The owner confirmed both the brightness change and the restored screen. |
+
+XCTest hosts on this Mac were denied local-network access before any device write;
+signing a host did not turn that into evidence of a broken Pixoo. A sandboxed XCTest
+host also could not communicate with the IDE. No system network/privacy reset,
+firewall relaxation or new Sandbox exception was applied. The independent developer
+executable linked the same built module objects and reached the panel normally.
+This physical result is distinct from signed Release-app UI or Store distribution
+acceptance. The protocol's failure/cooldown paths are exercised with disposable
+transports; malformed uploads were not intentionally sent to the physical panel.
+
+The final built-module rerun passed the same loop/dim/wake/restoration checks.
+The shared Node daemon retained PID `17785`, build `12fa71c8e515`, all 11 serial
+ports and all baseline ADB, Android, Stream Deck, Wi-Fi, BLE and D200H identities.
+An additional Crema dashboard was present in the final snapshot; no baseline
+connection was lost.
+No installed app, shared daemon settings, Pixoo device row, version, signing profile
+or distribution state is changed. Local byte/parity, transport and physical evidence
+is under `diagnostics/pixoo-loop/` (gitignored). X4 acceptance remains deferred to its
+companion-app integration.
+
 ### Conditional research and acceptance, outside the default port queue
 
 | Item | Promotion condition / remaining work | Classification |
@@ -562,8 +624,8 @@ completed their original native implementation queue. APME retention/storage man
 now also has a native implementation and disposable-store verification. Antigravity
 read-only observation includes direct SQLite activity alongside JSONL identity;
 the original DONE-only JSONL limitation is resolved without subprocesses.
-ICS ingestion is now native too. The next proposed increment is Pixoo baked loops,
-followed by a separately consented OpenCode control proposal. Physical/private-provider acceptance remains
+ICS ingestion and Pixoo baked loops are now native too. The next proposed increment
+is the separately consented OpenCode control proposal. Physical/private-provider acceptance remains
 separate. The installed signed Release relay acceptance is recorded; future Store
 artifact and distribution acceptance remain release work. Investigate the Claude
 quota source in parallel without promising a quota release before evidence exists.

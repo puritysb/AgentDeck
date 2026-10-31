@@ -1,3 +1,5 @@
+import { PixooBakedRenderer } from './pixoo-baked.js';
+import { PIXOO_LOOP_POLICY as LOOP_POLICY } from './pixoo-loop-policy.generated.js';
 import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 /**
  * Pixoo64 Bridge — safe adaptive HTTP animation driver.
@@ -12,8 +14,8 @@ import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agen
  * the 2026-06/07 multi-frame failures (HTTP and ICMP loss right after the
  * request) were measured with every frame concatenated into one oversized
  * `PicData`; the loop path now uses the documented one-frame-per-request
- * upload (pixoo-client `buildSendHttpGifCommands`), but it has not been
- * re-validated on hardware, so it stays off unless the owner enables it, and
+ * upload (pixoo-client `buildSendHttpGifCommands`). The bounded 14-frame path
+ * has local hardware acceptance; it stays off unless the owner enables it, and
  * a failed loop upload drops that device back to single frames for a
  * cooldown. State latency is controlled separately from the motion cadence.
  */
@@ -30,12 +32,13 @@ import {
   type TimelineEntry,
 } from '@agentdeck/shared';
 import { pushFrame, pushFrames, setBrightness, clearText, getDeviceBackoffStatus, switchToCustomChannel, onDeviceStatusChange, stopProbeTimer, checkDeviceContent } from './pixoo-client.js';
-import { renderFrame, renderDisconnectedFrame, formatResetDetailed, renderPixooLoop, PIXOO_LOOP } from './pixoo-renderer.js';
+import { renderFrame, renderDisconnectedFrame, formatResetDetailed, PIXOO_LOOP } from './pixoo-renderer.js';
 import { renderTideLoop, TIDE_LOOP, tideSignature, tideDecision, TIDE_POLICY, type TideUploadRecord } from './pixoo-tide.js';
 import { isToolEventRow } from '../board-timeline-entry.js';
 import { debug } from '../logger.js';
 
 const TAG = 'Pixoo';
+const bakedRenderer = new PixooBakedRenderer();
 
 // ===== Configuration =====
 
@@ -54,6 +57,7 @@ let streamTimer: ReturnType<typeof setInterval> | null = null;
 let lastPushTime = 0;
 let pushing = false; // guard against overlapping pushes
 let lastStateHash = '';
+const deviceLastBakedSignature = new Map<string,string>();
 const deviceLastPushTime = new Map<string, number>();
 const deviceLoopCooldownUntil = new Map<string, number>();
 const deviceTideUploaded = new Map<string, TideUploadRecord>();
@@ -69,6 +73,7 @@ let lastTimelineEntries: TimelineEntry[] = [];
 
 // Display sleep state — when Mac display is off, dim Pixoo and pause stream
 let displayDimmed = false;
+let displayEpoch = 0;
 let lastDisplayDimSignature = '';
 
 // Frame listeners for SSE streaming
@@ -78,15 +83,12 @@ let previewFps = 10; // Adjustable 1–10 FPS for /pixoo live preview
 
 const STATE_CHECK_INTERVAL_MS = 500;
 export const PIXOO_PUSH_POLICY = {
-  stateChangeFloorMs: 1_000,
-  idleRefreshMs: 10_000,
-  activeFrameRefreshMs: 2_500,
-  /** Loop mode: the device plays the loop between uploads, so re-bake rarely. */
-  loopRefreshMs: 10_000,
-  /** Loop mode: one upload is several requests — coalesce state bursts harder. */
-  loopStateChangeFloorMs: 3_000,
-  /** After a failed loop upload the device runs single frames for this long. */
-  loopFailureCooldownMs: 15 * 60_000,
+  stateChangeFloorMs: LOOP_POLICY.stateChangeFloorMs,
+  idleRefreshMs: LOOP_POLICY.idleRefreshMs,
+  activeFrameRefreshMs: LOOP_POLICY.activeFrameRefreshMs,
+  loopRefreshMs: LOOP_POLICY.loopRefreshMs,
+  loopStateChangeFloorMs: LOOP_POLICY.loopStateChangeFloorMs,
+  loopFailureCooldownMs: LOOP_POLICY.loopFailureCooldownMs,
 } as const;
 export type PixooPushMode = 'single-frame' | 'loop' | 'idle' | 'tide';
 
@@ -136,6 +138,7 @@ export function setPixooBroadcast(fn: (event: BridgeEvent) => void): void {
 }
 
 export function startPixooBridge(pixooDevices?: PixooDevice[]): void {
+  displayEpoch++; bakedRenderer.clear(); deviceLastBakedSignature.clear();
   if (!pixooDevices || pixooDevices.length === 0) {
     debug(TAG, 'No Pixoo devices configured, skipping');
     return;
@@ -214,8 +217,8 @@ export function broadcastPixoo(event: BridgeEvent): void {
         if (index >= 0) lastTimelineEntries[index] = entry;
         else lastTimelineEntries.push(entry);
         lastTimelineEntries.sort((a, b) => a.ts - b.ts);
-        if (lastTimelineEntries.length > 96) {
-          lastTimelineEntries.splice(0, lastTimelineEntries.length - 96);
+        if (lastTimelineEntries.length > LOOP_POLICY.maxTimelineEntries) {
+          lastTimelineEntries.splice(0, lastTimelineEntries.length - LOOP_POLICY.maxTimelineEntries);
         }
       }
       break;
@@ -223,10 +226,11 @@ export function broadcastPixoo(event: BridgeEvent): void {
     case 'timeline_history':
       lastTimelineEntries = ((event as { entries?: TimelineEntry[] }).entries ?? [])
         .filter((entry) => !isToolEventRow(entry))
-        .sort((a, b) => a.ts - b.ts).slice(-96);
+        .sort((a, b) => a.ts - b.ts).slice(-LOOP_POLICY.maxTimelineEntries);
       break;
     case 'connection':
       if ((event as any).status === 'disconnected') {
+        displayEpoch++; bakedRenderer.clear(); deviceLastBakedSignature.clear();
         lastStateEvent = null;
         lastSessions = null; lastDot = null;
         lastUsageEvent = null;
@@ -242,6 +246,8 @@ export function broadcastPixoo(event: BridgeEvent): void {
       const rawLevel = dim?.level;
       const dimLevel = Math.max(1, Math.min(100, Math.round(typeof rawLevel === 'number' ? rawLevel : 10)));
       const signature = `${dimEnabled}|${dimMode}|${dimLevel}`;
+      const willDim = !displayOn && dimEnabled;
+      if (willDim !== displayDimmed || (willDim && signature !== lastDisplayDimSignature)) { displayEpoch++; bakedRenderer.clear(); deviceLastBakedSignature.clear(); }
 
       if (!displayOn && !dimEnabled) {
         if (displayDimmed) {
@@ -299,6 +305,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
 }
 
 export async function stopPixooBridge(): Promise<void> {
+  displayEpoch++; bakedRenderer.clear(); deviceLastBakedSignature.clear();
   if (streamTimer) {
     clearInterval(streamTimer);
     streamTimer = null;
@@ -456,6 +463,8 @@ function doStateCheckAndPush(): void {
   const stateChanged = currentHash !== lastStateHash;
   const now = Date.now();
   const active = isAnimationActive();
+  const bakedSignature = devices.some(d => d.animation === 'loop')
+    ? bakedRenderer.signature({ state: lastStateEvent, usage: lastUsageEvent, sessions: lastSessions, nowMs: now, subagents: currentSubagentActivity(now) }) ?? 'invalid-baked-input' : '';
   const tideSig = devices.some(pixooTideEnabled)
     ? (() => { const signature = tideSignature(lastStateEvent, lastUsageEvent, lastSessions);
       return { ...signature, hud: signature.hud + "|" + (lastDot?.configured ? dotDeckPresentation(lastDot, now).label + "|" + (lastDot.appearance?.id ?? "") : "") }; })() : null;
@@ -470,7 +479,8 @@ function doStateCheckAndPush(): void {
     const cooldown = deviceLoopCooldownUntil.get(dev.ip);
     const mode = resolvePixooPushMode(active, pixooLoopEnabled(dev, now, cooldown), false);
     const elapsed = now - (deviceLastPushTime.get(dev.ip) ?? 0);
-    return elapsed >= pixooPushIntervalMs(stateChanged, mode) ? [{ dev, mode, decision: 'upload' as const }] : [];
+    const changed = dev.animation === 'loop' ? bakedSignature !== deviceLastBakedSignature.get(dev.ip) : stateChanged;
+    return elapsed >= pixooPushIntervalMs(changed, mode) ? [{ dev, mode, decision: 'upload' as const }] : [];
   });
   if (due.length === 0) return;
 
@@ -485,6 +495,7 @@ function doStateCheckAndPush(): void {
       // Rate-limit attempts as well as successes. This prevents a failed
       // endpoint from being retried on every 500 ms scheduler tick.
       deviceLastPushTime.set(dev.ip, Date.now());
+      if (dev.animation === 'loop') deviceLastBakedSignature.set(dev.ip, bakedSignature);
       try {
         if (mode === 'tide' && decision === 'verify') {
           // Nothing worth showing changed: do not re-upload (the panel shows a
@@ -496,8 +507,8 @@ function doStateCheckAndPush(): void {
         }
         const frames = mode === 'tide'
           ? renderTideLoop(lastStateEvent, lastUsageEvent, lastSessions, now)
-          : mode === 'loop'
-            ? renderPixooLoop(lastStateEvent, lastUsageEvent, lastSessions, now, currentSubagentActivity(now))
+          : dev.animation === 'loop'
+            ? bakedRenderer.render({ state: lastStateEvent, usage: lastUsageEvent, sessions: lastSessions, nowMs: now, subagents: currentSubagentActivity(now), loop: mode === 'loop' })
             : [renderFrame(
               lastStateEvent,
               lastUsageEvent,
@@ -510,7 +521,9 @@ function doStateCheckAndPush(): void {
         for (const frame of frames) paintDotPixels(frame, 64, lastDot, now);
         const count = frames.length;
         const speed = mode === 'tide' ? TIDE_LOOP.picSpeedMs : count > 1 ? PIXOO_LOOP.picSpeedMs : 1000;
-        const ok = await pushFrames(dev.ip, frames, speed);
+        const epoch = displayEpoch;
+        const ok = await pushFrames(dev.ip, frames, speed, () => epoch === displayEpoch && !displayDimmed);
+        if (epoch !== displayEpoch || displayDimmed) return;
         if (ok) {
           deviceLastPushTime.set(dev.ip, Date.now());
           lastPushTime = Date.now();
@@ -523,6 +536,7 @@ function doStateCheckAndPush(): void {
         }
         debug('Pixoo', `${ts}   → ${dev.ip}: ${ok ? 'OK' : 'FAIL'} (${mode}, ${count} frame)`);
       } catch (err: any) {
+        if (mode === 'loop' && !displayDimmed) deviceLoopCooldownUntil.set(dev.ip, Date.now() + PIXOO_PUSH_POLICY.loopFailureCooldownMs);
         debug('Pixoo', `${ts}   → ${dev.ip}: ERROR ${err?.message}`);
       }
     });
