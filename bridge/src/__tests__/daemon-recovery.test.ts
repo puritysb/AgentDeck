@@ -1,5 +1,6 @@
+import { createRequire } from 'node:module';
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DaemonRecoveryStore, DaemonRecoverySession, configuredRecovery, selectRecovery, recoveryConsent, disconnectRecovery } from '../daemon-recovery.js';
@@ -108,4 +109,43 @@ describe('explicit local cold recovery',()=>{
     recoveryConsent(shared,false);disconnectRecovery(a);expect(configuredRecovery(a)).toBeUndefined();expect(store.load()).not.toBeNull();
     expect(first.configuration.snapshot().pins).toEqual([]);
   });
+});
+
+it('preserves both conflict snapshots, refuses a stale preview, and applies each explicit choice once',()=>{
+  for(const choice of ['local','recovery'] as const) {
+    const shared=temp(),a=temp(),b=temp();const first=owner(a,shared);
+    first.order.set('same',1);first.checkpoint.capture(true);
+    const second=owner(b,shared);second.order.set('same',7);second.checkpoint.capture(true);
+    first.order.set('same',-9);
+    const original=readFileSync(join(a,'session-order.json'));
+    expect(()=>owner(a,shared)).toThrow('recovery_offline_conflict');
+    const sql=new DaemonRecoveryStore(shared),preview=sql.conflicts()[0];expect(preview.runtime).toBe('Node');
+    second.order.set('same',8);second.checkpoint.capture(true);
+    expect(()=>sql.resolve(preview,choice)).toThrow('recovery_preview_changed');
+    expect(readFileSync(join(a,'session-order.json'))).toEqual(original);
+    const current=sql.conflicts()[0];sql.resolve(current,choice);
+    expect(readFileSync(join(a,'session-order.json'))).toEqual(original);
+    const restored=owner(a,shared);expect(restored.order.weightFor('same')).toBe(choice==='local'?-9:8);
+    const backups=readdirSync(a).filter(n=>n.startsWith('daemon-recovery-resolution-'));
+    expect(backups).toHaveLength(1);
+    expect(readFileSync(join(a,backups[0],'session-order.json'))).toEqual(original);
+    expect(sql.conflicts()).toEqual([]);
+    const other=owner(b,shared);other.order.set('same',12);other.checkpoint.capture(true);
+    restored.order.set('same',-9);
+    expect(()=>owner(a,shared)).toThrow('recovery_offline_conflict');
+  }
+});
+
+it('migrates a v1 head without resetting its content or consent',()=>{
+  const shared=temp(),a=temp(),legacy=temp();owner(a,shared);
+  const head=new DaemonRecoveryStore(shared).load()!;
+  const SQLite=createRequire(import.meta.url)('better-sqlite3') as new(path:string)=>{exec(s:string):void;prepare(s:string):{run(...v:unknown[]):void;get():unknown};close():void};
+  const db=new SQLite(join(legacy,'agentdeck-recovery.sqlite'));
+  db.exec('CREATE TABLE recovery_head(singleton INTEGER PRIMARY KEY,store_id TEXT NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL); PRAGMA user_version=1;');
+  db.prepare('INSERT INTO recovery_head VALUES(1,?,?,?)').run(head.store,head.revision,head.payload);db.close();
+  writeFileSync(join(legacy,'recovery-consent.json'),JSON.stringify({version:1,enabled:true,store:head.store}));
+  const before=readFileSync(join(legacy,'recovery-consent.json'));
+  expect(new DaemonRecoveryStore(legacy).load()).toEqual(head);
+  expect(new DaemonRecoveryStore(legacy).conflicts()).toEqual([]);
+  expect(readFileSync(join(legacy,'recovery-consent.json'))).toEqual(before);
 });

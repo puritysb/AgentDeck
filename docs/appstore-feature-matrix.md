@@ -276,7 +276,7 @@ configuration drift must not masquerade as a completed port or an agreed excepti
 | Codex/z.ai/Admin usage and CI status | Native clients exist; native GitHub signed public reads/Keychain acceptance recorded. Claude account quota has a separate boundary below. | Existing provider clients use their own authorized configuration. | z.ai already has an active-owner configuration route. Other account/repository selections and credential revisions need owner-change acceptance; private GitHub live authentication is unverified. |
 | Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Current-owner aggregates/opaque receipts have a local checkpoint path and an opt-in cold-recovery store, with inactive profiles preserved. Calendar consent/configuration remains separate P1.2 work; see the in-flight and cold-recovery acceptance below. |
 | Settings for hardware, GitHub, ICS and relay | App-owned device settings; native Keychain and scoped consent. | Owner's `settings.json`, `relay.json` and provider setup. | **Configuration routing gap:** GitHub/ICS/relay editors are hidden while external; Pixoo edits now target the active local owner with revisions; the other editors retain the routing gap. Consistent owner-aware configuration and explicit consent must be implemented/verified. |
-| Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | Live local-peer transfer and opt-in committed cold recovery are implemented, including clear/removal and explicit managed/remote weight precedence. External-folder UI acceptance and divergent-profile resolution remain distinct gates. |
+| Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | Live local-peer transfer and opt-in committed cold recovery are implemented, including clear/removal and explicit managed/remote weight precedence. Signed external-folder selection/relaunch and explicit divergent-profile choices passed in the isolated acceptance below. |
 | Timeline and APME activity continuity | Timeline handover cache and rebuildable activity projection exist. | Authenticated peer snapshot capture before Swift stand-down exists. | Verify both transfer directions at current revision, including failed/empty capture and strong-identity dedup. Activity projection is not full APME database/correction migration. |
 | APME review, native judges and storage management | Implemented; disposable-store parity and rollback tests. | Corresponding review/storage/judges; external execution has retained exceptions. | Private source DBs stay separate. No equivalence claim for editing another owner's original rows; provenance and report navigation across the merged projection require integrated acceptance. |
 | Relay hub/worker | Native sockets, explicit Keychain target and supported-control refusal. | Node hub/worker. | Two-Mac Node↔Swift relay and installed ATS acceptance exist. This is a cross-machine transport test, not a test of same-Mac daemon ownership transfer or automatic relay-target migration. |
@@ -555,18 +555,33 @@ configurations also passed during implementation; the final startup-order fix
 was rechecked by the 62-case selection, Release and these signed scenarios.
 The installed app and shared daemon/devices were retained.
 
-External-folder Powerbox selection/relaunch permission and interactive resolution
-of divergent private edits remain acceptance/product gaps. The isolated signed
-fixture uses only a bookmark inside its own disposable container; it must not be
-described as verification of an external user folder. Refused recovery preserves
-the original files; it does not choose or merge divergent histories automatically.
+Follow-up signed Release acceptance on 2026-11-01 closes the external-folder and
+interactive conflict gates. The alternate Sandbox app used a genuine system-picker
+grant to a disposable local folder outside its container; no helper seeded that
+bookmark. Ordinary profiles retain known-folder discovery; explicit data profiles
+can select a custom local folder configured on both runtimes.
+
+| Scenario | Verified result |
+|---|---|
+| External selection, cancel and relaunch | Actual system picker creates only the dedicated child; the UI confirms authorization. Cancel preserves the selection. Relaunch without preference/bookmark injection restores access and a ready configuration API. The original external sentinel is unchanged. |
+| Node conflict and saved-profile choice | Real Node recovery/checkpoint producers publish a divergent synthetic profile. The signed UI displays it without private-directory access. An outdated preview is refused with no DB change. A refreshed **Use saved Node profile** choice shows pending until producer reconnection; the -9 pin is adopted and its original file backup is byte-exact. |
+| Swift conflict and recovery choice | A changed synthetic private pin refuses native recovery and appears in Settings. **Use recovery profile** restores weight 12 instead of -21, ACKs the choice and removes the conflict. The original -21 file is backed up byte-exact; both snapshots remain in history. |
+| Disconnect | Actual UI clears the grant and relaunch stays disconnected. SQLite stays byte-identical, with both completed decisions and external original file retained. |
+
+Schema v2 preserves the v1 head and consent during migration. Shared choices are
+transactional and producer content checks prevent stale approval replay; neither
+history is added to the other. Node/shared focused tests pass 18 cases; native
+recovery/configuration tests pass five. Final Quick passes 7,187 tests (17 skipped).
+All five native configurations pass, as does the final universal Release and its
+signed derivative's App Store artifact check. This is isolated signed-app
+acceptance; the installed app and shared daemon/devices were preserved.
 
 ### Revised parity priorities
 
 | Priority | Kind | Next bounded result / completion gate |
 |---|---|---|
 | P1.1 | Baseline and in-flight software acceptance passed; deferrals explicit | Signed isolated approval/Feed/OTA handover, initial-replica failure, prepare expiry, paused-owner recovery and approval/Feed SIGKILL recovery are verified. Actual machine wake is deferred by user request; network partitions and exclusive physical writers still need a separate fleet. Do not block P1.2 on a deferred gate or label it passed. |
-| P1.2 | Remaining consent/configuration and recovery acceptance | Live-peer Pocket aggregate/receipt, session-pin and Pixoo handover and opt-in committed cold recovery are implemented. Next: external-folder grant/UI acceptance, explicit reconciliation of divergent private profiles, remaining calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
+| P1.2 | Remaining consent/configuration and recovery acceptance | Live-peer Pocket aggregate/receipt, session-pin and Pixoo handover and opt-in committed cold recovery are implemented. Signed external-folder grant/relaunch and explicit divergent-profile reconciliation are now verified. Next: remaining calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
 | P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
 | P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain #544 friendly-name D200X key/INFO/VOICE recipient acceptance, private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
 | Conditional / deferred | Source or device dependency | Claude quota source-contract research; Kiro v2 when demanded; X4 only at companion-app integration; Dot remains its own distribution track. |

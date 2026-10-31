@@ -3,6 +3,9 @@
 import Foundation
 
 enum DaemonParityRules {
+    static let recoverySchemaVersion = 2
+    static let recoveryMaxConflicts = 64
+    static let recoveryPreservedFiles = ["daemon-checkpoint.json","daemon-checkpoint-peer.json","session-order.json","pocket-autonomy.json","daemon-recovery-cursor.json"]
     static let recoveryVersion = 1
     static let recoveryFile = "agentdeck-recovery.sqlite"
     static let recoveryFolderName = "AgentDeck Recovery"
@@ -10,7 +13,7 @@ enum DaemonParityRules {
     static let recoveryCursorFile = "daemon-recovery-cursor.json"
     static let recoveryBusyTimeoutMs = 250
     static let recoveryMaxRevision = 9007199254740991
-    static let recoverySchema = "CREATE TABLE IF NOT EXISTS recovery_head (singleton INTEGER PRIMARY KEY CHECK(singleton=1), store_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL);"
+    static let recoverySchema = "CREATE TABLE IF NOT EXISTS recovery_head (singleton INTEGER PRIMARY KEY CHECK(singleton=1), store_id TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS recovery_conflicts (profile TEXT PRIMARY KEY, runtime TEXT NOT NULL, local_digest TEXT NOT NULL, snapshot TEXT NOT NULL); CREATE TABLE IF NOT EXISTS recovery_resolutions (id TEXT PRIMARY KEY, store_id TEXT NOT NULL, profile TEXT NOT NULL, local_digest TEXT NOT NULL, revision INTEGER NOT NULL, choice TEXT NOT NULL, local_payload TEXT NOT NULL, prior_payload TEXT NOT NULL, applied INTEGER NOT NULL DEFAULT 0);"
     static let configurationHandoverHeader = "x-agentdeck-configuration"
     static let configurationMaxBodyBytes = 16384
     static let configurationMaxCounter = 9007199254740991

@@ -109,7 +109,8 @@ final class DaemonConfigurationStore {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try JSONSerialization.data(withJSONObject: root, options: [.sortedKeys, .withoutEscapingSlashes]).write(to: directory.appendingPathComponent("settings.json"), options: .atomic)
     }
-    func snapshot() throws -> DaemonConfiguration {
+    func snapshot(useDiskPins: Bool = false) throws -> DaemonConfiguration {
+        var diskPins: [[String: Any]] = []
         let file = directory.appendingPathComponent("session-order.json")
         if FileManager.default.fileExists(atPath: file.path) {
             guard let doc = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any],
@@ -118,9 +119,10 @@ final class DaemonConfigurationStore {
                 ["id": ObservedAgentRules.rawSessionId(id), "weight": pin["weight"] ?? NSNull(),
                  "updatedAt": pin["updatedAt"] ?? NSNull(), "lastSeenAt": pin["lastSeenAt"] ?? NSNull()]
             }
+            diskPins = records
             _ = try DaemonConfigurationRules.parse(["version": 1, "pins": records, "pixoo": ["devices": [], "autoDiscover": false]])
         }
-        return try DaemonConfigurationRules.parse(["version": 1, "pins": order.list(), "pixoo": try JSONSerialization.jsonObject(with: DaemonConfigurationRules.data(pixoo()))])
+        return try DaemonConfigurationRules.parse(["version": 1, "pins": useDiskPins ? diskPins : order.list(), "pixoo": try JSONSerialization.jsonObject(with: DaemonConfigurationRules.data(pixoo()))])
     }
     func adopt(_ value: DaemonConfiguration) throws {
         let prior = try snapshot()

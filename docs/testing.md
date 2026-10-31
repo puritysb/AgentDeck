@@ -153,6 +153,25 @@ check settings/removals/opaque receipt replay and disconnect, and reject an
 ungranted native path. This proves process/storage integration; external-folder
 Powerbox selection and real post-relaunch bookmark access remain separate UI gates.
 
+For that UI gate, clear only the alternate fixture's recovery preference keys with
+the signed helper's `--clear-recovery` option. Keep its isolated data root and
+19450–19459 window; select a disposable **external** local parent through the
+actual app's system folder picker. Do not seed a bookmark with the helper. Verify
+the child store can be written, quit and relaunch the exact signed fixture with
+the same environment, and verify access without reselecting. Include cancellation
+and disconnect while checking that pre-existing sentinel files and stored history
+remain unchanged. The Mac must be unlocked for native UI automation.
+
+Conflict regression tests exercise both explicit choices, rejected stale previews,
+private-file preservation, v1 migration and refusal to replay an acknowledged
+approval. UI acceptance additionally requires a published Node/Swift conflict,
+the corresponding **Review Conflicts** counts and an actual choice followed by
+producer adoption. Passing storage tests alone does not certify these UI steps.
+The 2026-11-01 signed Release run completed those external-picker/relaunch,
+Node saved-profile choice, Swift recovery-profile choice, stale-preview rejection
+and disconnect/relaunch steps; the acceptance table is in the
+[feature matrix](appstore-feature-matrix.md#opt-in-cold-recovery-p12).
+
 Add `--inflight --fresh` for the synthetic approval, adaptive Feed, checkpoint
 replica, paused-owner and OTA push/pull scenarios. `--fresh` resets only the
 explicit isolated synthetic stores after the private window is proven vacant.

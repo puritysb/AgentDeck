@@ -59,5 +59,40 @@ final class DaemonRecoveryTests: XCTestCase {
         XCTAssertThrowsError(try owner(a))
         XCTAssertEqual(try Data(contentsOf: a.appendingPathComponent("daemon-checkpoint.json")), before)
     }
+    @DaemonActor
+    func testConflictChoicesRetainBothVersionsAndRefuseStalePreview() async throws {
+        for choice in ["local", "recovery"] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let shared = root.appendingPathComponent("shared"), a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b")
+            for dir in [shared,a,b] { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+            defer { try? FileManager.default.removeItem(at: root) }
+            func owner(_ dir: URL) throws -> (SessionOrderStore, DaemonCheckpointStore) {
+                let pins = SessionOrderStore(fileURL: dir.appendingPathComponent("session-order.json")).load()
+                let config = DaemonConfigurationStore(directory: dir, order: pins)
+                return (pins, try DaemonCheckpointStore(directory: dir, pocket: PocketAutonomy(), configuration: config,
+                    recovery: DaemonRecoverySession(shared: shared, directory: dir)))
+            }
+            let first = try owner(a); first.0.set("same", weight: 1); _ = try first.1.capture(receipts: [])
+            let second = try owner(b); second.0.set("same", weight: 7); _ = try second.1.capture(receipts: [])
+            first.0.set("same", weight: -9)
+            let original = try Data(contentsOf: a.appendingPathComponent("session-order.json"))
+            XCTAssertThrowsError(try owner(a))
+            let sql = DaemonRecoveryStore(directory: shared), preview = try XCTUnwrap(sql.conflicts().first)
+            second.0.set("same", weight: 8); _ = try second.1.capture(receipts: [])
+            XCTAssertThrowsError(try sql.resolve(preview, choice: choice))
+            XCTAssertEqual(try Data(contentsOf: a.appendingPathComponent("session-order.json")), original)
+            let current = try XCTUnwrap(sql.conflicts().first)
+            try sql.resolve(current, choice: choice)
+            XCTAssertEqual(try Data(contentsOf: a.appendingPathComponent("session-order.json")), original)
+            let restored = try owner(a)
+            XCTAssertEqual(restored.0.weightFor("same"), choice == "local" ? -9 : 8)
+            XCTAssertTrue(try sql.conflicts().isEmpty)
+            let backup = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: a, includingPropertiesForKeys: nil).first { $0.lastPathComponent.hasPrefix("daemon-recovery-resolution-") })
+            XCTAssertEqual(try Data(contentsOf: backup.appendingPathComponent("session-order.json")), original)
+            let other = try owner(b); other.0.set("same", weight: 12); _ = try other.1.capture(receipts: [])
+            restored.0.set("same", weight: -9)
+            XCTAssertThrowsError(try owner(a))
+        }
+    }
 }
 #endif

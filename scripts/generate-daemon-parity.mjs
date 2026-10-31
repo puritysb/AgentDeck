@@ -13,6 +13,9 @@ export function emitSwift(rules) {
 import Foundation
 
 enum DaemonParityRules {
+    static let recoverySchemaVersion = ${rules.DAEMON_RECOVERY_POLICY.schemaVersion}
+    static let recoveryMaxConflicts = ${rules.DAEMON_RECOVERY_POLICY.maxConflicts}
+    static let recoveryPreservedFiles = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.preservedFiles)}
     static let recoveryVersion = ${rules.DAEMON_RECOVERY_POLICY.version}
     static let recoveryFile = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.file)}
     static let recoveryFolderName = ${JSON.stringify(rules.DAEMON_RECOVERY_POLICY.folderName)}

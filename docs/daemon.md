@@ -826,3 +826,31 @@ never grants native file permission. The selection is bound to its private data
 profile; explicit test data directories do not discover the real user's default
 folder. Disconnect retains shared data and the private cursor. Configuration and
 bookmark revocation are distinct from deleting backup data.
+
+Explicit `AGENTDECK_DATA_DIR` profiles may select a different local folder; they
+must configure that location explicitly on both runtimes. Ordinary profiles keep
+the known-folder discovery contract above. Network and cloud volumes are refused.
+
+### Resolving divergent recovery profiles
+
+Schema v2 adds a bounded pending-conflict table and a durable resolution history.
+Opening a valid v1 store migrates its schema in a transaction while retaining the
+head and v1 consent marker. Both runtimes must be updated: older implementations
+refuse schema v2 rather than silently dropping its history.
+
+A producer that refuses divergent offline edits publishes only its minimized
+checkpoint, an opaque profile hash and its content digest to the selected store.
+The app's **Review Conflicts** compares saved and recovery pin/display/aggregate
+counts. **Use saved Node/Swift profile** and **Use recovery profile** are explicit
+choices; neither implies merging histories. The app never reads the other
+runtime's private directory. A stopped Node producer can publish its conflict
+before startup fails, so it does not need to serve HTTP for the app to resolve it.
+
+Each choice compares the exact head and pending local digest, preserves both
+minimized snapshots and advances the shared revision in one immediate transaction.
+A changed preview is rejected. The producer rechecks its private content before
+adopting an approval, saves its existing supported files under a private
+`daemon-recovery-resolution-<UUID>` directory, then acknowledges only after its
+new cursor is durable. Later private edits require a fresh choice. Consumed or
+superseded decisions cannot replay. A pending choice remains visible until that
+profile reconnects. Disconnect leaves this history and all original files intact.
