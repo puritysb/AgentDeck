@@ -90,7 +90,7 @@ All surfaces follow the same rule:
 | Glance Frame pixel rendering | Yes, macOS; physical-device integration separate | Yes | Exact 1bpp parity uses a common, pinned resvg engine and bundled fonts. Signed Release-app HTTP acceptance covers binary/PNG, conditional responses, Surface identity, authentication and content changes. X4 physical verification is deferred to companion-app integration. See [acceptance](#native-glance-frame-acceptance-2026-10-30). |
 | Surface Protocol licensed learning-pack delivery | Yes | Yes | Both daemons advertise a bundled, integrity-checked offline learning pack in full and unchanged portable Feed responses and serve it through authenticated `GET /learning/pack`. Delivery is gated by `learning.pack.read` / `learning.pack.update`, the registered Pocket Daily product identity, exact pack id/version, and the pack's SPDX licence metadata. The App Store path reads a signed bundle resource only; it launches no process and accesses no external path. |
 | Surface Protocol automatic font-pack delivery | Yes | Yes | Both daemons advertise the bundled OFL PocketSansWorld pack in full and unchanged portable Feed responses and serve it through authenticated `GET /fonts/pack`. Delivery is gated by `font.pack.read` / `font.pack.update`, exact Pocket Daily identity and id/version, plus size, MD5, SHA-256, cpfont-format, source-ledger, and licence validation. The App Store path reads signed bundle resources only. |
-| ICS calendar schedule | Yes, macOS; explicit source/share consent | Yes; same parser/cache contract | Private source URLs stay in app-owned Keychain. Read-only HTTPS fetch and memory-only recurrence expansion feed Glance and Pocket agenda cards. Shared timezone/DST and cache vectors execute both implementations; no event copy enters Pocket learning. See [acceptance](#native-ics-calendar-acceptance-2026-10-31). |
+| ICS calendar schedule | Yes, macOS; explicit source/share consent | Yes; same parser/cache contract | Private source URLs stay in app-owned Keychain. Read-only HTTPS fetch and memory-only recurrence expansion feed Glance and Pocket agenda cards. Shared timezone/DST and cache vectors execute both implementations; no event copy enters Pocket learning. Signed Settings consent/save/relaunch/disconnect acceptance also passed. See [contract acceptance](#native-ics-calendar-acceptance-2026-10-31) and [signed UI acceptance](#signed-ics-settings-acceptance-2026-10-31). |
 | App Store Connect engagement reports | Yes | — | Maintainer tooling creates ONGOING reports plus an optional ONE_TIME_SNAPSHOT for existing history, then downloads Apple's opt-in, privacy-thresholded aggregate analytics through the App Store Connect API. Creating requests requires Admin access; existing reports can be downloaded with Admin, Finance, or Sales and Reports access. No analytics SDK, device identifier, event upload, or AgentDeck-operated analytics backend is added to the app. |
 
 ## Ordinary-session setup and evidence
@@ -279,7 +279,7 @@ assessment.
 |---|---|---|---|
 | P2.1 — implemented | APME retention and storage management: [shared policy](../shared/apme-retention-policy.json) generates [Node](../bridge/src/apme/retention-policy.generated.ts) and [Swift](../apple/AgentDeck/Daemon/Apme/ApmeRetentionPolicy.generated.swift) constants and SQL predicates. | Native Full report → Storage implements file/page capacity, read-only preview, confirmed payload-only cleanup and separate compaction against the app-owned database. | Actual Node/Swift SQLite fixtures match preview values, UTF-16 marker bytes and all final rows. Native store/API/UI tests cover retained history/corrections, stale preview refusal, explicit local-only confirmation, both-table rollback, multiple batches, WAL, busy/deadline behavior and compaction. A forced slow cleanup rolls back while an incoming record survives. Only disposable stores are pruned; large operations may be refused by the native time budget. |
 | P2.2 — implemented | Antigravity JSONL observation now uses a [shared policy](../shared/antigravity-observation-policy.json), [Node reader](../bridge/src/antigravity-observation.ts) and [Swift reader](../apple/AgentDeck/Daemon/Session/AntigravitySourceReader.swift). | Native Session Observation selects a read-only transcript root, restores its scoped bookmark after relaunch, and identifies conversations and explicit USER_INPUT steps. The account/plan database grant is preserved separately. | Actual Swift/Node parser and filesystem parity, native consent/renewal/revocation tests and a development-signed sandbox app with an external disposable transcript folder. Live WebSocket evidence covers RUNNING/DONE, new turns, rotation, malformed tail, disappearance, stale and relaunch/removal. Live CLI verification exposed DONE-only JSONL; direct read-only SQLite activity now supplies explicit WORKING/IDLE, with shared schema/identity/freshness guards. See the signed live acceptance below. No PERM, control, Stop/APME import or process-liveness claim. |
-| P2.3 — implemented | ICS calendar ingestion now uses [shared policy](../shared/calendar-policy.json), [Node provider](../bridge/src/calendar.ts) and [native provider](../apple/AgentDeck/Daemon/Server/CalendarProvider.swift). | Native source/share consent, non-synchronizing device-only Keychain URLs, bounded HTTPS and in-memory recurrence expansion supply Feed/Glance and agenda cards. | Actual Node/Swift parser, URL and cache vectors match, including timezone/DST and exceptions. A signed sandbox fixture verifies real Keychain save/new-process restore/delete and real HTTP/cache/failure parity. Pocket remains aggregate-only. X4 physical acceptance stays deferred. |
+| P2.3 — implemented | ICS calendar ingestion now uses [shared policy](../shared/calendar-policy.json), [Node provider](../bridge/src/calendar.ts) and [native provider](../apple/AgentDeck/Daemon/Server/CalendarProvider.swift). | Native source/share consent, non-synchronizing device-only Keychain URLs, bounded HTTPS and in-memory recurrence expansion supply Feed/Glance and agenda cards. | Actual Node/Swift parser, URL and cache vectors match, including timezone/DST and exceptions. A signed sandbox fixture verifies real Keychain and HTTP/cache/failure parity; [signed Release Settings acceptance](#signed-ics-settings-acceptance-2026-10-31) also verifies consent, save, relaunch restore and disconnect through the UI. Pocket remains aggregate-only. X4 physical acceptance stays deferred. |
 | P2.4 | Pixoo baked aquarium `animation: "loop"`: Node [bridge](../bridge/src/pixoo/pixoo-bridge.ts) supports it; native [module](../apple/AgentDeck/Daemon/Modules/PixooModule.swift) supports single-frame and Tide but falls back for this mode. | Port baked aquarium frame generation using canonical artwork/layout and existing native multi-frame upload. This is a rendering increment, not a missing Pixoo transport. | Frame/layout parity, bounded cache/upload work, loop seam, frame IDs, rate/backoff, dim/wake and physical Pixoo acceptance. Existing native Tide reduces urgency. |
 | P2.5 — separate control proposal | OpenCode server API answers/messages: Node [client](../bridge/src/opencode-client.ts) has `respondPermission`, `replyQuestion`, `rejectQuestion` and `sendMessage`; native [SSE client](../apple/AgentDeck/Daemon/Session/OpenCodeSSEClient.swift) deliberately implements the read-only subset. | First specify explicit user-run server selection, credential custody and opt-in control consent. Then bind directory/session and actionable permission/question IDs to bounded HTTP requests. HTTP makes this technically portable; observation alone is not authorization. | Actual server API contract and CLI version fixtures, pending/stale ID refusal, directory isolation, reconnect and delivery acknowledgement. Preserve the installed observer plugin's observation-only contract; no terminal-injection fallback. Relay v1 unsupported-control refusal stays intact unless deliberately versioned. |
 
@@ -445,8 +445,9 @@ reconfigure the installed app. A loopback server supplied synthetic events only.
 
 The unsigned XCTest host cannot use the Data Protection Keychain and explicitly
 skips that OS-custody test on `errSecMissingEntitlement`; the signed acceptance above
-covers it. The UI and native integration are built/tested, but this is not an
-interactive Settings acceptance or a product deployment. No new profile, App Group,
+covers it. This initial checkpoint built/tested the UI and native integration, but
+did not exercise Settings interactively or deploy the product. The subsequent
+[signed UI acceptance](#signed-ics-settings-acceptance-2026-10-31) closes the Settings gap. No new profile, App Group,
 ATS arbitrary-load exception or external helper was added to the app. Custom
 VTIMEZONE rules and unsupported recurrence modifiers are omitted; this is a bounded
 subset, not a full iCalendar engine. X4 physical acceptance remains deferred to its
@@ -463,6 +464,49 @@ boundaries. The shared port-9120 daemon retained PID 13956 and build `12fa71c8e5
 ADB/dashboard/Stream Deck/Wi-Fi device lists and connected modules were unchanged.
 The synthetic-source server and temporary signed probe bundle were removed.
 
+
+### Signed ICS Settings acceptance (2026-10-31)
+
+Source commit `ca6af8d1` was exercised as a complete universal **Release** app with
+Development signing and App Sandbox enabled. This used the actual Settings view,
+Calendar connection/provider and authenticated Feed route, not the earlier linked
+class fixture. The app was copied to a temporary path with a separate audit bundle
+identifier, preferences, data container and calendar Keychain service. The existing
+registered development profile/app identifier was retained for real Data Protection
+Keychain access; no profile, keychain access group or broader security permission
+was created. WeatherKit was omitted for local signing. This is local signed-app
+acceptance, not a Store distribution artifact or an installed-app update.
+
+The Swift daemon ran on a temporary loopback port with device modules disabled.
+Only a loopback synthetic ICS source was configured; no personal calendar was read.
+Native UI automation observed and operated the actual controls:
+
+| Step | Observed result |
+|---|---|
+| Consent off | Typing the source URL left **Save calendars** disabled. An authenticated Feed read had no events or agenda card and made zero requests to the source. |
+| Consent and save | Checking the source/share checkbox enabled Save. Clicking it displayed **Configured · 1 calendar sources** and cleared the secure input. The actual Keychain query found the item; the Sandbox preferences held the consent boolean and no plaintext URL. |
+| Live ingestion | The authenticated Feed contained the synthetic event and a Pocket agenda card; Settings updated to **fresh**. |
+| Quit and restore | The first app PID exited. A newly launched process displayed the configured source without retyping or rechecking consent. Its Feed fetched the event once; a second pull used the memory cache. The checkbox is consent for a new save, so its unchecked initial view does not revoke the saved connection. |
+| Disconnect | Clicking **Disconnect calendars** displayed **Not connected**. The consent boolean became false, Keychain returned `errSecItemNotFound`, and Feed events and agenda cards disappeared. |
+| Relaunch after disconnect | A third app process remained **Not connected** with no events or agenda card. Total source requests stayed at two: one after save and one after restored launch. |
+| Pocket privacy | The actual learning file contained no synthetic title, UID, source token or raw VEVENT. Only the existing aggregate learning format was used. |
+
+The shared Node daemon retained PID `17785`, build `12fa71c8e515`, all 11 serial
+ports, ADB/dashboard/Stream Deck/Wi-Fi device identities and connected modules.
+The existing installed dashboard remained connected to port 9120. Neither the
+installed app nor the shared daemon was replaced or restarted. The audit app,
+metadata-only Keychain probe, source server, test preferences and daemon data were
+removed after verification; the test calendar Keychain item was already deleted
+by the UI. Local results, executable hash and before/after responses are under
+`diagnostics/ics-ui/` (gitignored). X4 physical acceptance remains deferred to
+companion-app integration.
+
+Isolation detail: host `defaults` and Sandbox-container preferences are distinct.
+The initial audit launch attached as a client to the shared daemon because the
+host-only port preference was not visible inside Sandbox. Only the audit app was
+quit; its own Sandbox preferences were then configured and its actual temporary
+port/posture verified before the calendar UI sequence. No shared runtime change
+was used to obtain a standalone Swift daemon.
 
 ### Conditional research and acceptance, outside the default port queue
 
