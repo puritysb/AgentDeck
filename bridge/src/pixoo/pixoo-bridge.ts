@@ -73,6 +73,7 @@ let lastTimelineEntries: TimelineEntry[] = [];
 
 // Display sleep state — when Mac display is off, dim Pixoo and pause stream
 let displayDimmed = false;
+let displayDimmedBrightness = 0;
 let displayEpoch = 0;
 let lastDisplayDimSignature = '';
 
@@ -182,6 +183,23 @@ export function startPixooBridge(pixooDevices?: PixooDevice[]): void {
   debug(TAG, `Bridge started (2.5s active single-frame motion; ${loopDevices} device(s) opted into the baked loop, ${tideDevices} into tide)`);
 }
 
+/** Hot settings update: retain live subscriptions and never create a second timer. */
+export function reloadPixooDevices(next: PixooDevice[]): void {
+  const prior = devices;
+  if (!streamTimer && next.length && !displayDimmed) { startPixooBridge(next); return; }
+  displayEpoch++;
+  devices = next;
+  bakedRenderer.clear(); deviceLastBakedSignature.clear();
+  deviceTideUploaded.clear(); deviceTideRetryAt.clear(); deviceLoopCooldownUntil.clear();
+  for (const dev of next) {
+    const old = prior.find(p => p.ip === dev.ip);
+    if (!old) void switchToCustomChannel(dev.ip).catch(() => {});
+    if (!old || old.brightness !== dev.brightness) void setBrightness(dev.ip, displayDimmed ? displayDimmedBrightness : dev.brightness ?? DEFAULT_BRIGHTNESS).catch(() => {});
+  }
+  if (!next.length && streamTimer) { clearInterval(streamTimer); streamTimer = null; stopProbeTimer(); }
+  lastStateHash = '';
+}
+
 /** The daemon owns this subscription independently of the optional Pixoo LAN
  * module. BLE panels must work when there is no Pixoo64 or discovery is off. */
 export function broadcastMatrix(event: BridgeEvent): void {
@@ -265,6 +283,7 @@ export function broadcastPixoo(event: BridgeEvent): void {
       } else if (!displayOn && (!displayDimmed || signature !== lastDisplayDimSignature)) {
         // Mac display off → dim Pixoo and pause stream
         const target = dimMode === 'min' ? dimLevel : 0;
+        displayDimmedBrightness = target;
         displayDimmed = true;
         for (const dev of devices) {
           setBrightness(dev.ip, target).catch(() => {});

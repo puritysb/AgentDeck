@@ -138,6 +138,13 @@ Allow several minutes: failed incoming takeover deliberately waits out the
 production yield lease, rather than shortening it for acceptance. The
 2026-10-31 signed derivative run is recorded in the
 [feature boundary table](appstore-feature-matrix.md#startup-shutdown-restart-and-handover-evidence).
+Add `--configuration --fresh` for session-pin and Pixoo settings acceptance:
+Swift-only and Node-only edits/restart, both startup orders, native-client
+relaunch/promotion, repeated handover, stale-revision and unsupported-replica
+refusal, explicit removals and real CLI editing against the Swift owner. All
+addresses are synthetic loopback devices and hardware modules remain disabled;
+this does not certify physical output or cold recovery without a receiving peer.
+
 Add `--inflight --fresh` for the synthetic approval, adaptive Feed, checkpoint
 replica, paused-owner and OTA push/pull scenarios. `--fresh` resets only the
 explicit isolated synthetic stores after the private window is proven vacant.

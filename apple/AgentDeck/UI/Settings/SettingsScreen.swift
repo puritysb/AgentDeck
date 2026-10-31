@@ -1941,7 +1941,7 @@ struct SettingsScreen: View {
             ESP32ProvisionSheet(daemonPort: Int(daemonService.port))
         }
         .sheet(isPresented: $showPixooSheet) {
-            PixooSheet()
+            PixooSheet(connectionURL: { stateHolder.connection.url })
         }
         .sheet(isPresented: $showIDotMatrixSheet) {
             IDotMatrixSheet()

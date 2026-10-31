@@ -16,6 +16,7 @@ struct DaemonCheckpointPayload: Codable, Sendable {
     var sealed: Bool
     var pocket: PocketAutonomy.State
     var receipts: [DaemonReceipt]
+    var configuration: DaemonConfiguration? = nil
     var id: String { "\(writer):\(sequence)" }
 }
 
@@ -27,6 +28,7 @@ final class DaemonCheckpointStore {
     private typealias P = DaemonParityRules
     private let directory: URL
     private let pocket: PocketAutonomy
+    private let configuration: DaemonConfigurationStore?
     private var current: DaemonCheckpointPayload
     private var content = Data()
     private static var latestAdmission: [String: Int] = [:]
@@ -51,6 +53,10 @@ final class DaemonCheckpointStore {
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let rawPocket = raw["pocket"] as? [String: Any],
               let state = PocketAutonomy.validatedState(rawPocket) else { return nil }
+        if raw["configuration"] != nil {
+            guard let configuration = try? DaemonConfigurationRules.parse(raw["configuration"]) else { return nil }
+            value.configuration = configuration
+        }
         value.lineage = lineage.uuidString.lowercased(); value.writer = writer.uuidString.lowercased()
         value.pocket = state
         return value
@@ -99,8 +105,8 @@ final class DaemonCheckpointStore {
         try write(incoming, to: file); return incoming.id
     }
 
-    init(directory: URL, pocket: PocketAutonomy) throws {
-        self.directory = directory; self.pocket = pocket
+    init(directory: URL, pocket: PocketAutonomy, configuration: DaemonConfigurationStore? = nil) throws {
+        self.directory = directory; self.pocket = pocket; self.configuration = configuration
         let own = try Self.read(directory.appendingPathComponent("daemon-checkpoint.json"))
         let peerFile = directory.appendingPathComponent("daemon-checkpoint-peer.json")
         let peer = try Self.read(peerFile)
@@ -118,6 +124,7 @@ final class DaemonCheckpointStore {
                 try FileManager.default.moveItem(at: legacy, to: directory.appendingPathComponent("pocket-autonomy-profile-\(archive).json"))
             }
         }
+        if adoptingPeer, let value = source?.configuration { try configuration?.adopt(value) }
         if let source { pocket.adopt(source.pocket) }
         restoredReceipts = source?.receipts ?? []
         current = DaemonCheckpointPayload(version: P.checkpointVersion,
@@ -131,6 +138,7 @@ final class DaemonCheckpointStore {
 
     func capture(receipts: [DaemonReceipt], sealed: Bool = false) throws -> String {
         var next = current; next.pocket = pocket.state; next.receipts = receipts
+        next.configuration = try configuration?.snapshot()
         next.sealed = sealed
         next.sequence = 0
         let signature = try Self.encoded(next)

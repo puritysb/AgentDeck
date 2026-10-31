@@ -819,6 +819,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                ["127.0.0.1", "localhost", "::1", "[::1]"].contains(host) {
                 if token.claimCheckpointSubscription() {
                     sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.checkpointSubscriptionId))
+                    sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.configurationSubscriptionId))
                 }
                 checkpointAdmission += 1
                 let admission = checkpointAdmission, endpoint = connection.url

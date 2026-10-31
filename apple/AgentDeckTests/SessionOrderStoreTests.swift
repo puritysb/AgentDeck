@@ -186,10 +186,26 @@ final class SessionOrderStoreTests: XCTestCase {
 
     // ── Route helpers ──────────────────────────────────────────────────
 
+    func testCachedPinCanChangeAndClearWithoutOverridingExplicitWeights() {
+        let store = SessionOrderStore(fileURL: storePath)
+        let row = makeObserved("abc-1")
+        store.set("abc-1", weight: -5)
+        let cached = store.apply(to: row)
+        XCTAssertEqual(cached.weight, -5)
+        store.set("abc-1", weight: 7)
+        XCTAssertEqual(store.apply(to: cached).weight, 7)
+        store.clear("abc-1")
+        XCTAssertNil(store.apply(to: cached).weight)
+        var explicit = row; explicit.weight = 42
+        store.set("abc-1", weight: -5)
+        XCTAssertEqual(store.apply(to: explicit).weight, 42)
+    }
+
     func testParseWeightAcceptsDocumentedValuesOnly() {
         XCTAssertEqual(SessionOrderRules.parseWeight(3), 3)
         XCTAssertEqual(SessionOrderRules.parseWeight(-9999), -9999)
         XCTAssertEqual(SessionOrderRules.parseWeight("12"), 12)
+        XCTAssertNil(SessionOrderRules.parseWeight(true))
         XCTAssertNil(SessionOrderRules.parseWeight(nil))
         XCTAssertNil(SessionOrderRules.parseWeight(1.5))
         XCTAssertNil(SessionOrderRules.parseWeight(10000))

@@ -90,6 +90,7 @@
 		1755CE50FB5EBB217B02AED7 /* TimeboxDivoomPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE667561A919A52759C5225E /* TimeboxDivoomPacket.swift */; };
 		17BEA2DE377A1E70F63D776B /* HermesReceiverSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A79E56A6093DC727D06B736A /* HermesReceiverSettingsTests.swift */; };
 		1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F99A265E8C83A287F7DB71 /* DaemonOfflineAffordance.swift */; };
+		1854C13CB5DBF967C3BB3E04 /* DaemonConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C14BD2AD9F75BEC5CE7E72 /* DaemonConfigurationTests.swift */; };
 		189B33EE1E464B904F4CDFB7 /* AntigravitySessionSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 355FC01D6BB8A879D56C0347 /* AntigravitySessionSettingsView.swift */; };
 		189B8DE0AF541394BFDFA664 /* DaemonVoiceAssistant.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */; };
 		18B5EB50FB19AB4013D78F74 /* UnknownAgentForwardCompatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A472C32952DF18A4C77A969A /* UnknownAgentForwardCompatTests.swift */; };
@@ -172,6 +173,7 @@
 		2C4CD56C81A25E86FFAECA58 /* CalendarPolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30FC6165F0FEC9297EA15D00 /* CalendarPolicy.generated.swift */; };
 		2C54F431D539377057CE5200 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF8F7F2F14CF25310B5A9B5 /* OnboardingFlowTests.swift */; };
 		2CA69943196E37F61A932DEF /* OpenClawToolNoiseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */; };
+		2D6F93B34CE4B5208CDFA246 /* DaemonConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C14BD2AD9F75BEC5CE7E72 /* DaemonConfigurationTests.swift */; };
 		2DDD8DC9B5918E9D0001AE28 /* PlanktonSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A70843624A0EEB9E63435EC5 /* PlanktonSystem.swift */; };
 		2E4BB417A1CB93B5962D6D09 /* IDotMatrixBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68F068BCFDB979A23AEDA5C3 /* IDotMatrixBLE.swift */; };
 		2E7C2729C1B7011497854D53 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E532E5457B6DFDE324D8F11C /* Protocol.swift */; };
@@ -273,6 +275,7 @@
 		46184E81DD69399DC187E6B6 /* Creature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A9A073192C93C1277AE490 /* Creature.swift */; };
 		469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A135216D37932FE68501F4 /* CloudCreature.swift */; };
 		46F58F564C0AB175E60720FB /* pocket-sans-world.manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = C49283AA6D01816E589516E8 /* pocket-sans-world.manifest.json */; };
+		4706E439DBAB3C9003B8287D /* PixooConfigurationClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D8377F561E678C625C77EE /* PixooConfigurationClient.swift */; };
 		47D7A8AAFBDADBA4FC75EB34 /* ApmeJudgeOpenAI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26A4C8A53C312709350735F5 /* ApmeJudgeOpenAI.swift */; };
 		47DF5B56CB54AC70C7FAD723 /* AquariumPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8A8B97F270C72DDB67D85B5 /* AquariumPreview.swift */; };
 		47EB56417B8932E902731741 /* InProcessDaemonRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AFC45336194DC534315B79F /* InProcessDaemonRuntime.swift */; };
@@ -379,6 +382,7 @@
 		6251CC9D4270E9F29E867B59 /* CodexObservationOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */; };
 		62713ABC87653D9FE99C3830 /* DockVisibilityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D66C7EEA9726686205AF8EC /* DockVisibilityController.swift */; };
 		62D5FBB2899D2690B43FF0C5 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
+		62EBBD1035E10C3CA6808F8B /* DaemonConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57825C52F9BE195F50B24B62 /* DaemonConfiguration.swift */; };
 		62F20845F1953514EFB1C11B /* SingletonGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */; };
 		634EEC168E46C62A2DBD1ACA /* FormatUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2994478DEFAA4A1CC8EC54D /* FormatUtils.swift */; };
 		63934274932C59864347F6AB /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
@@ -560,6 +564,7 @@
 		9557B1E24F9A22C339934981 /* CodexObservationOwnership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 009D8008C77ADBF75BE67485 /* CodexObservationOwnership.swift */; };
 		955B482B990E5FB3C933144A /* UsagePresentation.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6326E2C31C37BF2D87D5F8C5 /* UsagePresentation.generated.swift */; };
 		97549061F4CF4DE01270245E /* CodexOtelRoutes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */; };
+		97859C81261D173415443443 /* PixooConfigurationClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D8377F561E678C625C77EE /* PixooConfigurationClient.swift */; };
 		97C6CBB45D3AFFF5520758CA /* BridgeConnectionDeliveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0BBA76A6749D66C8437BA2 /* BridgeConnectionDeliveryTests.swift */; };
 		97D74E9E2C1BE38754862B8F /* CalendarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24AD68C7B7B18917E54DDACF /* CalendarTests.swift */; };
 		981C289DD626CAD0B9900C39 /* SandDisturbance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F9B51FC480E3419A6334A20 /* SandDisturbance.swift */; };
@@ -793,6 +798,7 @@
 		D24272DFED9BBC39B427B0DD /* PromptDeliveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04DC1C0E219341A73A83352C /* PromptDeliveryTests.swift */; };
 		D285BA530EBC08FD2C5CCF32 /* SwiftSurfaceFirmwareStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDEFB32CAC64614A563E7C31 /* SwiftSurfaceFirmwareStore.swift */; };
 		D2DF5B9BE97C4CF489692E55 /* DaemonRelaySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C8535529DD4EBC30594A001 /* DaemonRelaySettings.swift */; };
+		D2EF0B5DAA4CB2697F1AB0D1 /* DaemonConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57825C52F9BE195F50B24B62 /* DaemonConfiguration.swift */; };
 		D35BA75727611B0FA50E5526 /* TuiCanonicalCells.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 707E6E55048B70C6A50DB105 /* TuiCanonicalCells.generated.swift */; };
 		D369DAE31A2E86FD08922453 /* GatewayParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 234CFF4B2832E6B1CA98AF10 /* GatewayParityTests.swift */; };
 		D38FF377AB2134058D342B5C /* ApmeJudgeFoundationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9413D054382510FF4664C89 /* ApmeJudgeFoundationModels.swift */; };
@@ -1137,6 +1143,7 @@
 		573B908900BFBC530F17EAB6 /* WearableTabletPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearableTabletPreviews.swift; sourceTree = "<group>"; };
 		576B35DBF88A4E7844E7A99A /* ScaledToFit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaledToFit.swift; sourceTree = "<group>"; };
 		57722317EDF1D567981112DE /* DataParticleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataParticleSystem.swift; sourceTree = "<group>"; };
+		57825C52F9BE195F50B24B62 /* DaemonConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonConfiguration.swift; sourceTree = "<group>"; };
 		5857149AEB13F8BEC5CDE41B /* ApmeClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeClassifier.swift; sourceTree = "<group>"; };
 		593C80232028E1DBC0227E17 /* TerrariumState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerrariumState.swift; sourceTree = "<group>"; };
 		599AA0232E126B4B238A4C50 /* SessionSlotRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSlotRenderer.swift; sourceTree = "<group>"; };
@@ -1360,6 +1367,7 @@
 		CDB6B378D92D82E58DA5E925 /* CodexOtelRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOtelRoutes.swift; sourceTree = "<group>"; };
 		CE9FB969CBCB0E2EC2506C46 /* OpenClawSessionKeyRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSessionKeyRules.generated.swift; sourceTree = "<group>"; };
 		CF788F02F06C01E401DC8EA6 /* SessionRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRegistry.swift; sourceTree = "<group>"; };
+		D0C14BD2AD9F75BEC5CE7E72 /* DaemonConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonConfigurationTests.swift; sourceTree = "<group>"; };
 		D1ABA30AEC4BE4C4232B144A /* IBMPlexSansKR-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "IBMPlexSansKR-Regular.ttf"; sourceTree = "<group>"; };
 		D1DDCB822B1DC56875875388 /* ModuleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModuleManager.swift; sourceTree = "<group>"; };
 		D277256BE00809ABB593F588 /* OnboardingFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlow.swift; sourceTree = "<group>"; };
@@ -1394,6 +1402,7 @@
 		E0DF2FF90EE46351B4FC2F59 /* MenuBarDensityPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarDensityPolicyTests.swift; sourceTree = "<group>"; };
 		E172EB2550A849243FE6F341 /* HermesReceiverSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesReceiverSettingsView.swift; sourceTree = "<group>"; };
 		E182322308CF38A3CF924E68 /* ESP32WifiSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32WifiSetup.swift; sourceTree = "<group>"; };
+		E1D8377F561E678C625C77EE /* PixooConfigurationClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PixooConfigurationClient.swift; sourceTree = "<group>"; };
 		E2A135216D37932FE68501F4 /* CloudCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudCreature.swift; sourceTree = "<group>"; };
 		E347E823B3145449A56F061C /* PocketAutonomy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketAutonomy.swift; sourceTree = "<group>"; };
 		E43AD34194F04709FE69AF13 /* CodexOtelSubagentFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexOtelSubagentFilter.swift; sourceTree = "<group>"; };
@@ -1475,6 +1484,7 @@
 				3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */,
 				69470A0782BDF6A29012E9F0 /* DaemonActor.swift */,
 				75BD924A681685C0A9D69CFF /* DaemonCheckpoint.swift */,
+				57825C52F9BE195F50B24B62 /* DaemonConfiguration.swift */,
 				99B649BF2ACE34B4E61EB10D /* DaemonOwnership.swift */,
 				19B15676E4DF3FA331DBEF87 /* DaemonParityRules.generated.swift */,
 				21FC16ECE363684E997BE01E /* DaemonPosture.swift */,
@@ -1580,6 +1590,7 @@
 				0B93CE0A5FD951A9FD021DB2 /* CreatureFloorSpacingTests.swift */,
 				E84D819AA86894944600240C /* DaemonActorIndependenceTests.swift */,
 				2BFE68D60B54010C7DA2DE08 /* DaemonCheckpointTests.swift */,
+				D0C14BD2AD9F75BEC5CE7E72 /* DaemonConfigurationTests.swift */,
 				1C2893742373685180839EAF /* DaemonLoggerRotationTests.swift */,
 				DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */,
 				6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */,
@@ -2156,6 +2167,7 @@
 				6890A429431F7A4FB1556B20 /* ESP32WifiSetupClient.swift */,
 				D2FD383032B3C47C9B547426 /* LocalSessionDiscovery.swift */,
 				3E868DDC13347FD992B9AF3D /* PairingCredential.swift */,
+				E1D8377F561E678C625C77EE /* PixooConfigurationClient.swift */,
 				9559267F01F4A98575D3F074 /* ZaiConfigurationClient.swift */,
 			);
 			path = Net;
@@ -2573,6 +2585,7 @@
 				05CB35584EE964BBABE943E1 /* CreatureFloorSpacingTests.swift in Sources */,
 				5110D91D663BA602A485005E /* DaemonActorIndependenceTests.swift in Sources */,
 				5C7E599CD21F115F09E33A4D /* DaemonCheckpointTests.swift in Sources */,
+				2D6F93B34CE4B5208CDFA246 /* DaemonConfigurationTests.swift in Sources */,
 				3FAA84734F99F8690B7B4E3C /* DaemonLoggerRotationTests.swift in Sources */,
 				F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */,
 				37AB2DCA4C89195958B01709 /* DaemonPostureTests.swift in Sources */,
@@ -2705,6 +2718,7 @@
 				F87C273B16BC9A957F1E2E6E /* CreatureFloorSpacingTests.swift in Sources */,
 				A7560FE516D5460EB526FA3A /* DaemonActorIndependenceTests.swift in Sources */,
 				3905770BD93C52D6929AFBA5 /* DaemonCheckpointTests.swift in Sources */,
+				1854C13CB5DBF967C3BB3E04 /* DaemonConfigurationTests.swift in Sources */,
 				B5BF4D57C319D13C56EA6DAF /* DaemonLoggerRotationTests.swift in Sources */,
 				D0FB0E0FFBBCE44786BA9B51 /* DaemonPortFallbackTests.swift in Sources */,
 				D130F3747ED283214E599734 /* DaemonPostureTests.swift in Sources */,
@@ -2898,6 +2912,7 @@
 				5B7A5FC7C0209AF3CF13C563 /* D200HLayoutModel.swift in Sources */,
 				45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */,
 				789AC6223E3D86220127F69D /* DaemonCheckpoint.swift in Sources */,
+				D2EF0B5DAA4CB2697F1AB0D1 /* DaemonConfiguration.swift in Sources */,
 				13C1C940711C51743C8B5C97 /* DaemonOfflineAffordance.swift in Sources */,
 				09121C3375386AAC089BD428 /* DaemonOwnership.swift in Sources */,
 				226C0560BFB5D0437C67D06A /* DaemonParityRules.generated.swift in Sources */,
@@ -3036,6 +3051,7 @@
 				39DE6C000AD9F73337D71752 /* PairingKnockStore.swift in Sources */,
 				942417AA37DAD475B023BED1 /* PairingWindowStore.swift in Sources */,
 				EBD40E5D62B01F3E8D9F5B07 /* PixooBakedRenderer.swift in Sources */,
+				4706E439DBAB3C9003B8287D /* PixooConfigurationClient.swift in Sources */,
 				EF79FED2E00DF810D5310A5A /* PixooLoopPolicy.generated.swift in Sources */,
 				3053AF2926E3B907DAB9250F /* PixooModule.swift in Sources */,
 				378C03BA7C86CFABDD41FA06 /* PixooPreview.swift in Sources */,
@@ -3226,6 +3242,7 @@
 				BB291B71C944FF384AFD634C /* D200HLayoutModel.swift in Sources */,
 				8A28584D14249A2DB2E94361 /* DaemonActor.swift in Sources */,
 				91871C0248A40CFB8799F1A0 /* DaemonCheckpoint.swift in Sources */,
+				62EBBD1035E10C3CA6808F8B /* DaemonConfiguration.swift in Sources */,
 				1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */,
 				D13B4726A425CEA84B3476F1 /* DaemonOwnership.swift in Sources */,
 				7943FC7B4C2C9493E5ED0603 /* DaemonParityRules.generated.swift in Sources */,
@@ -3365,6 +3382,7 @@
 				B8A58BEA3BF15099FEA4DD0D /* PairingKnockStore.swift in Sources */,
 				C1D11334892B586DEBC70D4F /* PairingWindowStore.swift in Sources */,
 				C09802CF2E72CBC7A9B65FFE /* PixooBakedRenderer.swift in Sources */,
+				97859C81261D173415443443 /* PixooConfigurationClient.swift in Sources */,
 				4E6C6D9C002802DDC67512A8 /* PixooLoopPolicy.generated.swift in Sources */,
 				43CA9C8F949377526F62C044 /* PixooModule.swift in Sources */,
 				83FE9645B23326BD78B52126 /* PixooPreview.swift in Sources */,

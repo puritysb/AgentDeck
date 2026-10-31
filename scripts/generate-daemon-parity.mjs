@@ -13,6 +13,15 @@ export function emitSwift(rules) {
 import Foundation
 
 enum DaemonParityRules {
+    static let configurationHandoverHeader = ${JSON.stringify(rules.DAEMON_CONFIGURATION_POLICY.handoverHeader.toLowerCase())}
+    static let configurationMaxBodyBytes = ${rules.DAEMON_CONFIGURATION_POLICY.maxBodyBytes}
+    static let configurationMaxCounter = ${rules.DAEMON_CONFIGURATION_POLICY.maxCounter}
+    static let configurationVersion = ${rules.DAEMON_CONFIGURATION_POLICY.version}
+    static let configurationSubscriptionId = ${JSON.stringify(rules.DAEMON_CONFIGURATION_POLICY.subscriptionId)}
+    static let configurationMaxDevices = ${rules.DAEMON_CONFIGURATION_POLICY.maxDevices}
+    static let configurationMaxNameChars = ${rules.DAEMON_CONFIGURATION_POLICY.maxNameChars}
+    static let configurationMaxIdBytes = ${rules.DAEMON_CONFIGURATION_POLICY.maxIdBytes}
+    static let configurationAnimations = ${JSON.stringify(rules.DAEMON_CONFIGURATION_POLICY.animations)}
     static let checkpointVersion = ${rules.DAEMON_CHECKPOINT_POLICY.version}
     static let checkpointSubscriptionId = ${JSON.stringify(rules.DAEMON_CHECKPOINT_POLICY.subscriptionId)}
     static let checkpointMaxBytes = ${rules.DAEMON_CHECKPOINT_POLICY.maxBytes}

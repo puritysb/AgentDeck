@@ -28,7 +28,7 @@ it('treats a refused/unknown owner as a refusal, never legacy endpoint absence',
 });
 it('commits a prepared lease only after its exact checkpoint is durably staged', async () => {
   const source = directory(), target = directory(); process.env.AGENTDECK_DATA_DIR = target;
-  const store = new DaemonCheckpointStore(source, new AutonomousPocketEngine({ persist: false }), new OutboxIdempotencyLedger());
+  const store = new DaemonCheckpointStore(source, new AutonomousPocketEngine({ persist: false }), new OutboxIdempotencyLedger(), {snapshot:()=>({version:1,pins:[],pixoo:{devices:[],autoDiscover:false}}),adopt:()=>{}});
   const payload = store.capture(true); let durableAtCommit = false, commitBody = '';
   await peer((req, res) => {
     if (req.url === '/stand-down') { res.end(JSON.stringify({ lease: 'fixture', continuity: payload })); return; }
@@ -41,10 +41,19 @@ it('commits a prepared lease only after its exact checkpoint is durably staged',
 it('leaves the current owner uncommitted when local checkpoint persistence is unavailable', async () => {
   const source = directory(), target = join(directory(), 'not-a-directory'); writeFileSync(target, 'preserve');
   process.env.AGENTDECK_DATA_DIR = target;
-  const store = new DaemonCheckpointStore(source, new AutonomousPocketEngine({ persist: false }), new OutboxIdempotencyLedger());
+  const store = new DaemonCheckpointStore(source, new AutonomousPocketEngine({ persist: false }), new OutboxIdempotencyLedger(), {snapshot:()=>({version:1,pins:[],pixoo:{devices:[],autoDiscover:false}}),adopt:()=>{}});
   const requests: string[] = [];
   await peer((req, res) => { requests.push(req.url!); res.end(JSON.stringify({ lease: 'fixture', continuity: store.capture(true) })); },
     async port => { await expect(requestDaemonStandDown(port)).rejects.toThrow(); });
   expect(requests).toEqual(['/stand-down']);
   expect(readFileSync(target, 'utf8')).toBe('preserve');
+});
+
+it('refuses a prepared peer without configuration support before commit', async () => {
+  const source = directory(), target = directory(); process.env.AGENTDECK_DATA_DIR = target;
+  const store = new DaemonCheckpointStore(source, new AutonomousPocketEngine({persist:false}), new OutboxIdempotencyLedger());
+  const requests: string[] = [];
+  await peer((req,res)=>{ requests.push(req.url!); res.end(JSON.stringify({lease:'old-peer',continuity:store.capture(true)})); },
+    async port=>{ await expect(requestDaemonStandDown(port)).rejects.toThrow('Configuration handover unsupported'); });
+  expect(requests).toEqual(['/stand-down']);
 });

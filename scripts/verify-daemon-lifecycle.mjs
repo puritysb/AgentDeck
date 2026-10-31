@@ -379,10 +379,114 @@ async function replicaScenario() {
   });
 }
 
+
+async function configurationRoster() {
+  return new Promise((resolve,reject) => {
+    const ws=new WebSocket(`ws://127.0.0.1:${port}`,{handshakeTimeout:3000});
+    const timer=setTimeout(()=>{ws.terminate();reject(new Error('Configuration roster timeout'));},4000);
+    ws.on('error',error=>{clearTimeout(timer);reject(error);});
+    ws.on('message',data=>{const e=JSON.parse(String(data));if(e.type==='sessions_list'){clearTimeout(timer);resolve(e.sessions??[]);ws.terminate();}});
+  });
+}
+async function configurationScenarios() {
+  const { rawSessionId }=await import('../shared/dist/index.js');
+  const configurationSessionId = label => `hermes-${hash(runID+label).slice(0,32)}`;
+  const pixoo = n => ({devices:[{ip:'127.0.0.2',name:`Synthetic ${n} / 작업`,brightness:n,animation:n%2?'tide':'loop'}],autoDiscover:false});
+  const seed = (dir,label) => {
+    const file=join(dir,'settings.json'),root=JSON.parse(readFileSync(file,'utf8'));
+    root.ownerOnly=label;root.pixooDevices=[{ip:'127.0.0.2',future:`local-${label}`}];root.pixooAutoDiscover=false;
+    writeFileSync(file,JSON.stringify(root));
+  };
+  seed(nodeData,'node');seed(swiftData,'swift');
+  const verifyLocal = (dir,label) => {
+    const root=JSON.parse(readFileSync(join(dir,'settings.json'),'utf8'));
+    assert.equal(root.ownerOnly,label,'Unrelated settings overwritten');
+    if(root.pixooDevices?.length)assert.equal(root.pixooDevices[0].future,`local-${label}`,'Local unknown device field overwritten');
+  };
+  const setPixoo = async value => until('durable Pixoo configuration',async()=>{
+    const before=await request(port,'/configuration/pixoo');
+    const r=await raw('/configuration/pixoo',{revision:before.revision,configuration:value});
+    if(r.status===503)return null;
+    assert.equal(r.status,200);const saved=await r.json();assert.deepEqual(saved.configuration,value);return saved;
+  },25_000);
+  const pin = async (id,weight) => until('durable pin configuration',async()=>{
+    const r=await raw('/sessions/order',{sessionId:id,weight});if(r.status===503)return null;
+    assert.equal(r.status,200);return r.json();
+  },25_000);
+  const verify = async (value,id,weight) => {
+    assert.deepEqual((await request(port,'/configuration/pixoo')).configuration,value);
+    const pins=(await request(port,'/sessions/order')).pins;
+    assert.equal(pins.find(p=>p.id===id)?.weight,weight);
+  };
+  const emit = async id => request(port,'/hooks/hermes_user_prompt_submit',{session_id:id,pid:process.pid,prompt:`Synthetic configuration ${id}`});
+  const verifyRoster = async (id,weight) => until('pin in real sessions_list',async()=>{
+    const row=(await configurationRoster()).find(r=>rawSessionId(r.id)===id);
+    return row && (weight===undefined ? row.weight===undefined : row.weight===weight);
+  });
+  const clearPins = async()=>{for(const p of (await request(port,'/sessions/order')).pins)await pin(p.id,0);};
+  await scenario('Configuration Swift-only change and relaunch',async start=>{
+    await startApp();await owner(true);await clearPins();
+    const id=configurationSessionId('swift');await emit(id);await pin(id,-5);await verifyRoster(id,-5);
+    await pin(id,7);await verifyRoster(id,7);await pin(id,0);await verifyRoster(id,undefined);await pin(id,-7);
+    const saved=await setPixoo(pixoo(27));verifyLocal(swiftData,'swift');
+    const beforeInactive=readFileSync(join(nodeData,'settings.json'),'utf8');
+    execFileSync(process.execPath,[cli,'pixoo','--port',String(port),'add','127.0.0.3','--no-test','--name','Synthetic CLI','--brightness','19'],{env:nodeEnv,cwd:root,timeout:20000,stdio:'pipe'});
+    assert((await request(port,'/configuration/pixoo')).configuration.devices.some(d=>d.ip==='127.0.0.3'),'CLI wrote the inactive profile instead of Swift');
+    assert.equal(readFileSync(join(nodeData,'settings.json'),'utf8'),beforeInactive);
+    execFileSync(process.execPath,[cli,'pixoo','--port',String(port),'remove','127.0.0.3'],{env:nodeEnv,cwd:root,timeout:20000,stdio:'pipe'});
+    assert.equal((await raw('/sessions/order',{sessionId:id,weight:true})).status,400);
+    await stopApp();await startApp();await owner(true);await verify(pixoo(27),id,-7);await emit(id);await verifyRoster(id,-7);
+    assert.equal((await raw('/configuration/pixoo',{revision:saved.revision,configuration:pixoo(28)})).status,200);
+    assert.equal((await raw('/configuration/pixoo',{revision:saved.revision,configuration:{devices:[],autoDiscover:false}})).status,409);
+    record('Configuration Swift-only change and relaunch',start);await stopApp();
+  });
+  await scenario('Configuration Node-only change and restart',async start=>{
+    startNode();await owner(false,150_000);await clearPins();const id=configurationSessionId('node');
+    await pin(id,-9);await setPixoo(pixoo(35));verifyLocal(nodeData,'node');
+    assert.equal((await raw('/configuration/pixoo',{revision:'invalid',configuration:{devices:[],autoDiscover:false}},{Origin:'https://untrusted.invalid'})).status,401);
+    await stopNode();startNode();await owner(false,150_000);await verify(pixoo(35),id,-9);
+    const legacy=new WebSocket(`ws://127.0.0.1:${port}`,{handshakeTimeout:3000});
+    await new Promise((resolve,reject)=>{legacy.once('open',resolve);legacy.once('error',reject);});
+    legacy.send(JSON.stringify({type:'daemon_checkpoint_ack',checkpointId:'subscribe'}));await delay(200);
+    assert.equal((await raw('/sessions/order',{sessionId:id,weight:1})).status,503,'Old replicas must not falsely promise configuration durability');
+    await verify(pixoo(35),id,-9);legacy.terminate();await delay(200);
+    record('Configuration Node-only change and restart',start);await stopNode();
+  });
+  await scenario('Configuration Node-first client edits and promotion',async start=>{
+    startNode();await owner(false,150_000);await clearPins();const id=configurationSessionId('node-first');
+    await pin(id,-11);await setPixoo(pixoo(41));
+    const inactive=JSON.parse(readFileSync(join(swiftData,'settings.json'),'utf8')).pixooDevices;
+    await startApp();await appClient();await setPixoo(pixoo(43));
+    await until('configuration replica staged',()=>{try{return JSON.parse(readFileSync(join(swiftData,'daemon-checkpoint-peer.json'),'utf8')).configuration.pixoo.devices[0].brightness===43;}catch{return false;}});
+    assert.deepEqual(JSON.parse(readFileSync(join(swiftData,'settings.json'),'utf8')).pixooDevices,inactive,'A client must not mutate its inactive settings');
+    await stopApp();await startApp();await appClient();await verify(pixoo(43),id,-11);
+    await stopNode();await owner(true,200_000);await verify(pixoo(43),id,-11);verifyLocal(swiftData,'swift');
+    await emit(id);await verifyRoster(id,-11);await pin(id,0);await verifyRoster(id,undefined);await setPixoo({devices:[],autoDiscover:false});
+    await stopApp();await startApp();await owner(true);await verify({devices:[],autoDiscover:false},id,undefined);
+    record('Configuration Node-first client edits and promotion',start);await stopApp();
+  });
+  await scenario('Configuration Swift-first repeated bidirectional handover',async start=>{
+    seed(swiftData,'swift');seed(nodeData,'node');
+    await startApp();await owner(true);await clearPins();const id=configurationSessionId('swift-first');
+    await pin(id,-13);const old=await setPixoo(pixoo(51));
+    const legacy=await raw('/stand-down',{}, {'X-AgentDeck-Checkpoint':'1'});assert.equal(legacy.status,412);await owner(true);
+    startNode();await owner(false,150_000);await appClient();await verify(pixoo(51),id,-13);verifyLocal(nodeData,'node');
+    await pin(id,17);await setPixoo(pixoo(52));
+    assert.equal((await raw('/configuration/pixoo',{revision:old.revision,configuration:{devices:[],autoDiscover:false}})).status,409);
+    await stopNode();await owner(true,200_000);await verify(pixoo(52),id,17);await setPixoo(pixoo(53));await pin(id,-19);
+    startNode();await owner(false,150_000);await appClient();await verify(pixoo(53),id,-19);
+    await stopApp();await stopNode();startNode();await owner(false,150_000);await verify(pixoo(53),id,-19);
+    verifyLocal(nodeData,'node');verifyLocal(swiftData,'swift');
+    const checkpoint=readFileSync(join(nodeData,'daemon-checkpoint.json'),'utf8');
+    assert(!checkpoint.includes('ownerOnly')&&!checkpoint.includes('local-node')&&!checkpoint.includes('local-swift'),'Unknown settings escaped into checkpoint');
+    record('Configuration Swift-first repeated bidirectional handover',start);await stopNode();
+  });
+}
+
 async function inflightScenarios() {
   await scenario('Prepared handover lease expires without stopping Swift',async start=>{
     await startApp();const first=await owner(true);
-    const prepared=await raw('/stand-down',{}, {'X-AgentDeck-Checkpoint':'1'});assert.equal(prepared.status,200);
+    const prepared=await raw('/stand-down',{}, {'X-AgentDeck-Checkpoint':'1','X-AgentDeck-Configuration':'1'});assert.equal(prepared.status,200);
     const lease=await prepared.json();assert(lease.lease&&lease.continuity);
     assert.equal((await raw('/outbox',{decisions:[]},portableHeaders)).status,503);
     assert.equal((await raw('/stand-down/commit',{lease:'wrong',checkpointId:'wrong'})).status,409);
@@ -428,7 +532,7 @@ try {
       if(name!=='settings.json')rmSync(join(dir,name),{recursive:true,force:true});
     }
   }
-  if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
+  if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes("--configuration")) { await configurationScenarios(); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
   await scenario('Swift-only quit and relaunch',async start=>{
     await startApp();const first=await owner(true);noSharedSockets(first.pid);const prompt=await mark('swift-only');const token=hash(first.pairingToken);
     await stopApp();await startApp();const next=await owner(true);assert.equal(hash(next.pairingToken),token);await retains(prompt);

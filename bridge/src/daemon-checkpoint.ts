@@ -4,11 +4,12 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { DAEMON_CHECKPOINT_POLICY as P } from '@agentdeck/shared';
+import { DAEMON_CHECKPOINT_POLICY as P, parseDaemonConfiguration, type DaemonConfiguration } from '@agentdeck/shared';
 import { AutonomousPocketEngine } from './pocket-autonomy.js';
 import { OutboxIdempotencyLedger } from './card-feed.js';
 
 export interface DaemonCheckpoint {
+  configuration?: DaemonConfiguration;
   version: number;
   lineage: string;
   generation: number;
@@ -35,9 +36,11 @@ export function parseDaemonCheckpoint(text: unknown): DaemonCheckpoint | null {
     if (canonical(raw.pocket) !== canonical(pocket.snapshot())) return null;
     if (raw.receipts.some((r: Record<string, unknown>) => !r || typeof r.key !== 'string'
       || !/^[a-f0-9]{64}$/.test(r.key) || !P.statuses.some(s => s === r.status))) return null;
+    const configuration = raw.configuration === undefined ? undefined : parseDaemonConfiguration(raw.configuration);
+    if (configuration === null) return null;
     const ledger = new OutboxIdempotencyLedger(); ledger.restore(raw.receipts);
     return { version: P.version, lineage: raw.lineage.toLowerCase(), writer: raw.writer.toLowerCase(),
-      generation: raw.generation, sequence: raw.sequence, sealed: raw.sealed, pocket: pocket.snapshot(), receipts: ledger.snapshot() };
+      generation: raw.generation, sequence: raw.sequence, sealed: raw.sealed, pocket: pocket.snapshot(), receipts: ledger.snapshot(), ...(configuration ? {configuration} : {}) };
   } catch { return null; }
 }
 
@@ -77,7 +80,8 @@ export class DaemonCheckpointStore {
   private current: DaemonCheckpoint;
   private content = '';
   constructor(private readonly directory: string, private readonly pocket: AutonomousPocketEngine,
-    private readonly ledger: OutboxIdempotencyLedger) {
+    private readonly ledger: OutboxIdempotencyLedger,
+    private readonly configuration?: {snapshot(): DaemonConfiguration; adopt(value: DaemonConfiguration): void}) {
     const own = read(join(directory, 'daemon-checkpoint.json'));
     const peer = read(join(directory, 'daemon-checkpoint-peer.json'));
     const source = peer && (!own || checkpointIsNewer(peer, own)) ? peer : own;
@@ -93,6 +97,7 @@ export class DaemonCheckpointStore {
       const legacy = join(directory, 'pocket-autonomy.json');
       if (existsSync(legacy)) renameSync(legacy, join(directory, `pocket-autonomy-profile-${archive}.json`));
     }
+    if (source === peer && source?.configuration) configuration?.adopt(source.configuration);
     if (source) { pocket.adopt(source.pocket); ledger.restore(source.receipts); }
     // Without a current peer this is a new authority branch. Another runtime
     // may have advanced the old lineage while this process was absent. Keep
@@ -105,10 +110,11 @@ export class DaemonCheckpointStore {
 
   capture(sealed = false): string {
     const pocket = this.pocket.snapshot(), receipts = this.ledger.snapshot();
-    const content = JSON.stringify({ pocket, receipts, sealed });
+    const configuration = this.configuration?.snapshot();
+    const content = JSON.stringify({ pocket, receipts, sealed, configuration });
     if (content !== this.content) {
       if (this.current.sequence >= P.maxCounter) throw new Error('daemon_checkpoint_sequence_exhausted');
-      this.current = { ...this.current, sequence: this.current.sequence + 1, sealed, pocket, receipts };
+      this.current = { ...this.current, sequence: this.current.sequence + 1, sealed, pocket, receipts, ...(configuration ? {configuration} : {}) };
       atomic(this.directory, 'daemon-checkpoint.json', this.current);
       this.content = content;
     }

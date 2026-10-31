@@ -275,8 +275,8 @@ configuration drift must not masquerade as a completed port or an agreed excepti
 | OpenCode server permission/question replies and messages | **Native primitives and integration missing** from the read-only SSE path. | Client-library methods exist; production answer/message wiring was not found. The adapter uses health, discovery, SSE and abort. | **Shared integration gap**, formerly P2.5. Method presence does not establish Node-only or concurrent end-to-end HTTP control. Node managed/terminal control is a distinct external path; keep the installed observer observation-only. |
 | Codex/z.ai/Admin usage and CI status | Native clients exist; native GitHub signed public reads/Keychain acceptance recorded. Claude account quota has a separate boundary below. | Existing provider clients use their own authorized configuration. | z.ai already has an active-owner configuration route. Other account/repository selections and credential revisions need owner-change acceptance; private GitHub live authentication is unverified. |
 | Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Current-owner aggregate learning and opaque receipt state now have a local checkpoint path, with inactive profiles preserved. Calendar consent/configuration and absent-receiver recovery remain separate P1.2 work; see the in-flight acceptance below. |
-| Settings for hardware, GitHub, ICS and relay | App-owned device settings; native Keychain and scoped consent. | Owner's `settings.json`, `relay.json` and provider setup. | **Configuration routing gap:** GitHub/ICS/relay editors are hidden while external; Pixoo sheet still writes the app's local settings and has no active-Node update route. Consistent owner-aware configuration and explicit consent must be implemented/verified. |
-| Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | **State-transfer gap:** matching JSON does not move pins between the signed container and Node. No automatic pin handover found. |
+| Settings for hardware, GitHub, ICS and relay | App-owned device settings; native Keychain and scoped consent. | Owner's `settings.json`, `relay.json` and provider setup. | **Configuration routing gap:** GitHub/ICS/relay editors are hidden while external; Pixoo edits now target the active local owner with revisions; the other editors retain the routing gap. Consistent owner-aware configuration and explicit consent must be implemented/verified. |
+| Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | Live local-peer checkpoint transfer is implemented, including clear/removal and explicit managed/remote weight precedence. Cold absent-receiver recovery remains P1.2. |
 | Timeline and APME activity continuity | Timeline handover cache and rebuildable activity projection exist. | Authenticated peer snapshot capture before Swift stand-down exists. | Verify both transfer directions at current revision, including failed/empty capture and strong-identity dedup. Activity projection is not full APME database/correction migration. |
 | APME review, native judges and storage management | Implemented; disposable-store parity and rollback tests. | Corresponding review/storage/judges; external execution has retained exceptions. | Private source DBs stay separate. No equivalence claim for editing another owner's original rows; provenance and report navigation across the merged projection require integrated acceptance. |
 | Relay hub/worker | Native sockets, explicit Keychain target and supported-control refusal. | Node hub/worker. | Two-Mac Node↔Swift relay and installed ATS acceptance exist. This is a cross-machine transport test, not a test of same-Mac daemon ownership transfer or automatic relay-target migration. |
@@ -491,12 +491,43 @@ eleven USB serial connections and the D200H link. Isolated Claude probe files
 were removed; the existing Rust toolchain and installed app were retained.
 
 
+### Session-pin and Pixoo ownership continuity (P1.2)
+
+The bounded implementation carries only normalized session-order pins and Pixoo
+IP/name/brightness/animation/explicit discovery preference through the admitted
+same-machine checkpoint. Settings editors target the active local daemon with
+revision checks; inactive files are not a second writer. Preserve unrelated
+settings and archive the inactive supported configuration before peer adoption.
+Credentials, source grants and unknown settings keys never enter the checkpoint.
+Cold cross-container recovery with no receiving peer, calendar/provider/relay
+consent and staged-image distribution remain separate P1.2 work.
+
+Signed Release sandbox acceptance (2026-11-01) uses a separate bundle ID,
+synthetic settings and loopback ports 19450–19459 with hardware modules disabled:
+
+| Configuration | Verified result |
+|---|---|
+| Swift only | Pin set/change/clear reaches the actual roster; Pixoo edits and pins survive app relaunch. Real CLI add/remove reaches Swift without changing the inactive Node file. |
+| Node only | Pins and Pixoo edits survive restart. Cross-origin writes and an older subscribed replica are refused without changing settings. |
+| Node first, then Swift client | Client relaunch retains the owner view; Node shutdown promotes Swift with the latest settings. Explicit device removal/unpin remains cleared after native relaunch. |
+| Swift first, then Node | Repeated Swift→Node→Swift→Node handover retains edits, followed by a Node-only restart. Missing handover capability and stale revisions are refused. |
+
+All four isolated scenarios pass. Local extra fields and unrelated root settings
+remain local; corrupt existing settings/pin records refuse export or overwrite.
+Shared validation/revision vectors and native editor HTTP round trips pass.
+Quick verification and all five native configurations pass; macOS XCTest reports
+1,472 cases (5 skipped), DotPreview 1,490 (10 skipped), with no failures. The
+signed fixture passes the App Store artifact verifier; this is local acceptance,
+not distribution approval. Actual settings-window clicks remain unverified after
+the computer-use service timed out. The installed app and shared daemon/devices
+remain in place; no physical Pixoo settings were changed by these fixtures.
+
 ### Revised parity priorities
 
 | Priority | Kind | Next bounded result / completion gate |
 |---|---|---|
 | P1.1 | Baseline and in-flight software acceptance passed; deferrals explicit | Signed isolated approval/Feed/OTA handover, initial-replica failure, prepare expiry, paused-owner recovery and approval/Feed SIGKILL recovery are verified. Actual machine wake is deferred by user request; network partitions and exclusive physical writers still need a separate fleet. Do not block P1.2 on a deferred gate or label it passed. |
-| P1.2 | Remaining consent/configuration and absent-receiver continuity | Live local-peer Pocket aggregate/receipt continuity now has an explicit checkpoint path. Define cold recovery when the receiving runtime was absent, inactive-profile reconciliation, signed-container session pins, Pixoo configuration, calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
+| P1.2 | Remaining consent/configuration and absent-receiver continuity | Live local-peer Pocket aggregate/receipt continuity now has an explicit checkpoint path. Live-peer session-pin and Pixoo configuration handover is implemented. Next: cold recovery when the receiving runtime was absent, inactive-profile reconciliation, remaining calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
 | P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
 | P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain #544 friendly-name D200X key/INFO/VOICE recipient acceptance, private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
 | Conditional / deferred | Source or device dependency | Claude quota source-contract research; Kiro v2 when demanded; X4 only at companion-app integration; Dot remains its own distribution track. |

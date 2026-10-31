@@ -1,3 +1,4 @@
+export { DAEMON_CONFIGURATION_POLICY } from './daemon-configuration.js';
 /** Pure policies shared by the Node and native Swift daemons. */
 export const DAEMON_CHECKPOINT_POLICY = {
   version: 1, subscriptionId: 'subscribe', maxBytes: 262_144, receiptLimit: 1024, ackTimeoutMs: 1500,

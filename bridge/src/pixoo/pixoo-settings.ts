@@ -1,27 +1,28 @@
 /**
- * Pixoo device settings CRUD — reads/writes pixooDevices[] in ~/.agentdeck/settings.json.
+ * Pixoo device settings CRUD — reads/writes pixooDevices[] in the process data directory.
  * Preserves all other settings in the file.
  */
 
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { getDataDir } from '../session-registry.js';
 import type { PixooDevice } from './pixoo-bridge.js';
 
-const SETTINGS_DIR = join(homedir(), '.agentdeck');
-const SETTINGS_PATH = join(SETTINGS_DIR, 'settings.json');
+const settingsPath = () => join(getDataDir(), 'settings.json');
 
 function readSettings(): Record<string, unknown> {
   try {
-    return JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    return JSON.parse(readFileSync(settingsPath(), 'utf-8'));
   } catch {
     return {};
   }
 }
 
 function writeSettings(settings: Record<string, unknown>): void {
-  mkdirSync(SETTINGS_DIR, { recursive: true });
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  mkdirSync(getDataDir(), { recursive: true });
+  const file = settingsPath(), tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(settings, null, 2) + '\n', {mode:0o600});
+  renameSync(tmp, file);
 }
 
 export function loadPixooDevices(): PixooDevice[] {

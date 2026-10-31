@@ -1,4 +1,4 @@
-import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow, DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
+import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow, DAEMON_CONFIGURATION_POLICY, DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
 export { DEFAULT_DAEMON_PORT_WINDOW } from '@agentdeck/shared';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
@@ -589,7 +589,7 @@ export async function requestDaemonStandDown(port: number): Promise<boolean> {
       port,
       path,
       method: 'POST',
-      headers: { 'X-AgentDeck-Checkpoint': '1', 'Content-Type': 'application/json' },
+      headers: { 'X-AgentDeck-Checkpoint': '1', [DAEMON_CONFIGURATION_POLICY.handoverHeader]: String(DAEMON_CONFIGURATION_POLICY.version), 'Content-Type': 'application/json' },
       timeout: 2000,
     }, (res) => {
       let payload = '';
@@ -613,6 +613,7 @@ export async function requestDaemonStandDown(port: number): Promise<boolean> {
   if (typeof parsed.continuity === 'string') {
     const { stagePeerCheckpoint, parseDaemonCheckpoint, checkpointId } = await import('./daemon-checkpoint.js');
     const checkpoint = parseDaemonCheckpoint(parsed.continuity);
+    if (typeof parsed.lease === 'string' && !checkpoint?.configuration) throw new Error('Configuration handover unsupported; current owner retained');
     if (!checkpoint || !stagePeerCheckpoint(getDataDir(), parsed.continuity)) throw new Error('Could not preserve daemon checkpoint');
     if (typeof parsed.lease === 'string') {
       const committed = await call('/stand-down/commit', { lease: parsed.lease, checkpointId: checkpointId(checkpoint) });

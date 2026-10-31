@@ -1108,6 +1108,7 @@ final class DaemonServer {
     private var surfaceNegotiations: [UUID: SurfaceRuntimeNegotiation] = [:]
     private var surfaceOutboxLedger: [String: [String: Any]] = [:]
     private var surfaceOutboxOrder: [String] = []
+    private var configurationStore: DaemonConfigurationStore { DaemonConfigurationStore(directory: AgentDeckPaths.baseDirectory, order: sessionOrderStore) }
     private var checkpointStore: DaemonCheckpointStore?
     private var checkpointLease: (id: String, until: Date)?
     private var handoverPreparing: Bool { checkpointLease.map { Date() < $0.until } ?? false }
@@ -1115,7 +1116,7 @@ final class DaemonServer {
 
     private func ensureCheckpoint() throws {
         guard checkpointStore == nil else { return }
-        let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy)
+        let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy, configuration: configurationStore)
         for receipt in store.restoredReceipts {
             surfaceOutboxLedger[receipt.key] = ["status": receipt.status]
             surfaceOutboxOrder.append(receipt.key)
@@ -3877,6 +3878,9 @@ final class DaemonServer {
         // stand-down runs async so the caller can proceed to bind.
         await httpServer.post("/stand-down") { [weak self] request in
             guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+            guard request.headers[DaemonParityRules.configurationHandoverHeader] == String(DaemonParityRules.configurationVersion) else {
+                return .json(["error": "configuration_handover_unsupported"], status: 412)
+            }
             return await self.prepareStandDown(transactional: request.headers["x-agentdeck-checkpoint"] == "1")
         }
         await httpServer.post("/stand-down/commit") { [weak self] request in
@@ -4144,6 +4148,14 @@ final class DaemonServer {
         // response shapes are byte-compatible with the Node route so the CLI
         // never branches on which daemon answered. Behind the normal LAN gate
         // like every route above (same-machine CLI needs no token).
+        await httpServer.get("/configuration/pixoo") { [weak self] _ in
+            guard let self else { return .json(["error": "configuration unavailable"], status: 503) }
+            return await self.pixooConfigurationResponse()
+        }
+        await httpServer.post("/configuration/pixoo") { [weak self] request in
+            guard let self else { return .json(["error": "configuration unavailable"], status: 503) }
+            return await self.updatePixooConfiguration(request.body)
+        }
         await httpServer.get("/sessions/order") { [weak self] _ in
             let payload = await self?.sessionOrderListPayload()
             return .json(payload?.value ?? ["pins": []])
@@ -5116,6 +5128,30 @@ final class DaemonServer {
 
     // MARK: - Session order pins (#273)
 
+    private func pixooConfigurationResponse() -> HTTPServer.HTTPResponse {
+        do {
+            try ensureCheckpoint()
+            let value = try configurationStore.pixoo()
+            let raw = try JSONSerialization.jsonObject(with: DaemonConfigurationRules.data(value))
+            return .json(["configuration": raw, "revision": value.revision])
+        } catch { return .json(["error": "configuration_unavailable"], status: 503) }
+    }
+    private func updatePixooConfiguration(_ data: Data?) async -> HTTPServer.HTTPResponse {
+        guard !rejectsMutations else { return .json(["error": "configuration_unavailable"], status: 503) }
+        do {
+            _ = try checkpointPayload()
+            guard let data, data.count <= DaemonParityRules.configurationMaxBodyBytes,
+                  let body = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .json(["error": "invalid_pixoo_configuration"], status: 400) }
+            let current = try configurationStore.pixoo()
+            guard body["revision"] as? String == current.revision else { return .json(["error": "configuration_changed"], status: 409) }
+            guard let value = try? DaemonConfigurationRules.pixoo(body["configuration"]) else { return .json(["error": "invalid_pixoo_configuration"], status: 400) }
+            try configurationStore.save(value)
+            _ = try checkpointPayload()
+            await pixooModule?.reloadFromSettingsExternal()
+            return pixooConfigurationResponse()
+        } catch { return .json(["error": "configuration_unavailable"], status: 503) }
+    }
+
     /// `GET /sessions/order` payload — identical shape to the Node daemon.
     /// Boxed in `SendableDict` to cross the actor boundary into the
     /// @concurrent route closure (Swift 6: `[String: Any]` is not Sendable).
@@ -5130,6 +5166,8 @@ final class DaemonServer {
     private func handleSessionOrderMutation(
         sessionId: String?, weight: Any?, clear: Bool
     ) -> (body: SendableDict, status: Int) {
+        guard !rejectsMutations else { return (SendableDict(["error": "configuration unavailable"]), 503) }
+        do { _ = try checkpointPayload() } catch { return (SendableDict(["error": "configuration unavailable"]), 503) }
         guard let rawId = sessionId?.trimmingCharacters(in: .whitespaces), !rawId.isEmpty else {
             return (SendableDict(["error": "sessionId required"]), 400)
         }
@@ -5155,14 +5193,17 @@ final class DaemonServer {
                 "matches": candidates,
             ]), 400)
         case .resolved(let id):
+            guard (try? DaemonConfigurationRules.parse(["version": 1, "pins": [["id": ObservedAgentRules.rawSessionId(id), "weight": 1, "updatedAt": 0, "lastSeenAt": 0]], "pixoo": ["devices": [], "autoDiscover": false]])) != nil else { return (SendableDict(["error": "sessionId invalid"]), 400) }
             if wantsClear {
                 let had = sessionOrderStore.clear(id)
+                do { try sessionOrderStore.persistNow(); _ = try checkpointPayload() } catch { return (SendableDict(["error": "configuration unavailable"]), 503) }
                 broadcastSessionsList()
                 return (SendableDict(["cleared": true, "hadPin": had, "sessionId": id]), 200)
             }
             // parsedWeight is non-nil here: the !wantsClear branch above
             // already rejected everything parseWeight could not handle.
             let applied = sessionOrderStore.set(id, weight: parsedWeight ?? 0)
+            do { try sessionOrderStore.persistNow(); _ = try checkpointPayload() } catch { return (SendableDict(["error": "configuration unavailable"]), 503) }
             broadcastSessionsList()
             return (SendableDict(["sessionId": id, "weight": applied ?? 0]), 200)
         }
@@ -10722,7 +10763,7 @@ final class DaemonServer {
     }
 
     private func buildSessionsListEvent() -> [String: Any] {
-        var sessions = cachedSessions.map { sessionToDict($0) }
+        var sessions = DashboardDataRules.sortSessions(cachedSessions.map { sessionOrderStore.apply(to: $0) }).map { sessionToDict($0) }
         // Inject virtual OpenClaw session iff Gateway is authenticated. SSOT:
         // DashboardDataRules.isOpenClawSessionActive (mirror of
         // shared/src/session-utils.ts). Identical predicate to the Node bridge.

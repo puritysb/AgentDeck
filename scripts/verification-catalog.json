@@ -445,8 +445,11 @@
         "apple/AgentDeckTests/DaemonStartupCancellationTests.swift",
         "shared/src/__tests__/daemon-parity.test.ts",
         "bridge/src/__tests__/daemon-checkpoint.test.ts",
+        "bridge/src/__tests__/daemon-configuration.test.ts",
+        "shared/daemon-configuration-vectors.json",
         "bridge/src/__tests__/daemon-checkpoint-handover.test.ts",
         "apple/AgentDeckTests/DaemonCheckpointTests.swift",
+        "apple/AgentDeckTests/DaemonConfigurationTests.swift",
         "shared/daemon-checkpoint-vectors.json",
         "bridge/src/__tests__/esp32-wifi-ota-reconnect.test.ts",
         "apple/AgentDeckTests/PocketAutonomyTests.swift"

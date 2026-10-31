@@ -1,3 +1,5 @@
+import { DaemonConfigurationStore, readPixooConfiguration, writePixooConfiguration, pixooRevision } from './daemon-configuration.js';
+import { parsePixooConfiguration, parseDaemonConfiguration, rawSessionId as configurationRawId, DAEMON_CONFIGURATION_POLICY } from '@agentdeck/shared';
 import { loadHandoverTimeline } from './daemon-timeline-handover.js';
 import { DaemonCheckpointStore } from './daemon-checkpoint.js';
 import { DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
@@ -1784,9 +1786,20 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   }
 
   log(`[agentdeck] Starting daemon on port ${port}...`);
-  const checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency);
+  const sessionOrder = new SessionOrderStore().load();
+  const configurationStore = new DaemonConfigurationStore(getDataDir(), sessionOrder);
+  const checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency, configurationStore);
   let ownerStopping = false;
   const checkpointPeers = new Map<WebSocket, number>();
+  const configurationPeers = new Set<WebSocket>();
+  const assertConfigurationWritable = () => {
+    if (ownerStopping || [...checkpointPeers.keys()].some(p => p.readyState === WebSocket.OPEN && !configurationPeers.has(p))) {
+      throw new Error('configuration_replica_unavailable');
+    }
+    configurationStore.snapshot();
+  };
+  let reloadPixooConfiguration = async (): Promise<void> => {};
+
   const checkpointWaiters = new Set<() => void>();
   let publishCheckpoint = async (sealed = false): Promise<void> => { checkpointStore.capture(sealed); };
 
@@ -1902,7 +1915,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // gate — the daemon-first replacement for launch-time `--weight`). Declared
   // before the HTTP server for the same TDZ reason as the observer: the
   // /sessions/order route and the sessions enricher both close over it.
-  const sessionOrder = new SessionOrderStore().load();
   /** Observed-session ids from the last enricher pass — the id set the deck
    *  actually rendered, kept so the /sessions/order route can resolve a
    *  user-supplied prefix/uuid against exactly what sessions_list shows. */
@@ -2557,6 +2569,29 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // truncated echo, or the bare uuid; a prefix must match exactly one live
     // observed session. After a mutation the sessions list is rebroadcast so
     // every surface re-sorts within one frame.
+    if (pathname === '/configuration/pixoo' && (req.method === 'GET' || req.method === 'POST')) {
+      void (async () => {
+        try {
+          if (req.method === 'POST') {
+            assertConfigurationWritable();
+            const body = await readJsonBody(req, DAEMON_CONFIGURATION_POLICY.maxBodyBytes);
+            assertConfigurationWritable();
+            const current = readPixooConfiguration(getDataDir());
+            if (body.revision !== pixooRevision(current)) {
+              res.writeHead(409, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'configuration_changed'})); return;
+            }
+            const value = parsePixooConfiguration(body.configuration);
+            if (!value) { res.writeHead(400, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'invalid_pixoo_configuration'})); return; }
+            writePixooConfiguration(getDataDir(), value);
+            await publishCheckpoint();
+            if (!ownerStopping) await reloadPixooConfiguration();
+          }
+          const configuration = readPixooConfiguration(getDataDir());
+          res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'});
+          res.end(JSON.stringify({configuration,revision:pixooRevision(configuration)}));
+        } catch { res.writeHead(503, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'configuration_unavailable'})); }
+      })(); return;
+    }
     if (pathname === '/sessions/order' && (req.method === 'GET' || req.method === 'POST')) {
       void (async () => {
         try {
@@ -2565,7 +2600,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             res.end(JSON.stringify({ pins: sessionOrder.list() }));
             return;
           }
+          assertConfigurationWritable();
           const body = await readJsonBody(req, 4096);
+          assertConfigurationWritable();
           const rawId = typeof body.sessionId === 'string' ? body.sessionId.trim() : '';
           if (!rawId) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -2597,20 +2634,28 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             }));
             return;
           }
+          if (!parseDaemonConfiguration({version:1,pins:[{id:configurationRawId(target.id),weight:1,updatedAt:0,lastSeenAt:0}],pixoo:{devices:[],autoDiscover:false}})) {
+            res.writeHead(400, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'sessionId invalid'})); return;
+          }
           if (wantsClear) {
             const had = sessionOrder.clear(target.id);
+            sessionOrder.persistNow();
+            await publishCheckpoint();
             core.maybeBroadcastSessionsList();
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ cleared: true, hadPin: had, sessionId: target.id }));
             return;
           }
           const applied = sessionOrder.set(target.id, weight ?? 0);
+          sessionOrder.persistNow();
+          await publishCheckpoint();
           core.maybeBroadcastSessionsList();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ sessionId: target.id, weight: applied }));
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `bad body: ${String(err)}` }));
+          const status = err instanceof SyntaxError ? 400 : 503;
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: status === 400 ? 'bad body' : 'configuration_unavailable' }));
         }
       })();
       return;
@@ -5192,6 +5237,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     },
   );
 
+  reloadPixooConfiguration = async () => {
+    if (ownerStopping || daemonModuleConfigs(posture, serialMode).pixoo === false) return;
+    const mod = deviceModules.find(m => m.name === 'pixoo');
+    if (!mod) return;
+    if (startedModules.includes(mod)) {
+      const { reloadPixooDevices } = await import('./pixoo/pixoo-bridge.js');
+      reloadPixooDevices(readPixooConfiguration(getDataDir()).devices);
+    } else if (await mod.shouldActivate('auto') && !ownerStopping) {
+      await mod.start({port,authToken:core.authToken,projectName:'AgentDeck',wsServer:core.wsServer,loopbackOnly:posture.loopbackOnly});
+      startedModules.push(mod);
+    }
+  };
+
   moduleHealthProvider = () => {
     const modules = buildNodeModuleHealth(startedModules);
     const einkDevices = collectEinkDevices();
@@ -6763,7 +6821,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const handleDeviceCommand = (cmd: PluginCommand, sender?: WebSocket): void => {
     if (cmd.type === 'daemon_checkpoint_ack') {
       if (!sender || typeof cmd.checkpointId !== 'string' || !core.wsServer.isLocalProgramClient(sender) || core.wsServer.isEsp32Client(sender) || surfaceNegotiations.has(sender)) return;
-      if (cmd.checkpointId === DAEMON_CHECKPOINT_POLICY.subscriptionId) {
+      if (cmd.checkpointId === DAEMON_CHECKPOINT_POLICY.subscriptionId || cmd.checkpointId === DAEMON_CONFIGURATION_POLICY.subscriptionId) {
+        if (cmd.checkpointId === DAEMON_CONFIGURATION_POLICY.subscriptionId) configurationPeers.add(sender);
         if (ownerStopping) return;
         if (!checkpointPeers.has(sender)) checkpointPeers.set(sender, -1);
         core.wsServer.sendTo(sender, { ...buildHubStateEvent(), daemonCheckpoint: checkpointStore.capture() } as BridgeEvent);
@@ -7956,7 +8015,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   core.wsServer.onClientDisconnect((ws) => {
     for (const check of [...checkpointWaiters]) check();
-    checkpointPeers.delete(ws);
+    checkpointPeers.delete(ws); configurationPeers.delete(ws);
     surfaceNegotiations.delete(ws);
     unregisterWifiEsp32Socket(ws);
   });

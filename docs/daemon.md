@@ -223,8 +223,9 @@ The active owner's profile continues across promotion. A different inactive
 profile and its original aggregate file are archived locally before adoption;
 unrelated totals are not added together. An absent receiving runtime has no
 replica: this does not promise cross-container recovery after simultaneous loss
-or transfer source permissions, settings, session pins or staged firmware.
-Those require their own consent/configuration contract. Portable control dispatch
+or transfer source permissions or staged firmware. Session pins and the bounded
+Pixoo settings subset have the contract below; remaining settings need their own
+consent/configuration contract. Portable control dispatch
 retains its existing accepted-for-delivery semantics; copying a receipt does not
 prove execution of an arbitrary queued prompt. Queue transfer and execution ACKs
 remain a separate portable-control completion item.
@@ -668,6 +669,58 @@ Regression coverage uses real loopback refusal handshakes on both native clients
 plus host-selection and credential-retention tests. Tracking:
 [#493](https://github.com/puritysb/AgentDeck/issues/493).
 
+
+## Session-pin and Pixoo configuration handover
+
+An optional `configuration` member of the local checkpoint carries version 1
+session pins (bare ID, weight, updated/last-seen epoch milliseconds) and Pixoo
+IPv4 address, optional name, brightness, animation and explicit discovery
+preference. `shared/src/daemon-configuration.ts` owns limits and validation;
+`generate-daemon-parity` emits native constants and both suites replay
+`shared/daemon-configuration-vectors.json`, including canonical revision hashes.
+Unknown wire fields, duplicate IDs/IPs, booleans in numeric fields and invalid
+addresses are rejected. This member contains no provider credentials, source
+grants, prompt/card content or unrelated settings. Pocket still stores aggregate
+learning only; the configuration member is a separate supported settings subset.
+
+The active owner is authoritative. Swift→Node requires an explicit configuration
+handover header before preparation; a prepared older payload without configuration
+is refused before commit. Node→Swift uses a separate configuration subscription
+capability: an older replica must not make a settings mutation look durably
+replicated. Once subscribed, Node waits for the same bounded durable checkpoint
+ACK before returning settings success. Unavailable replicas return 503 (unknown,
+local data retained), rather than a false save confirmation. Swift's preparation
+lease freezes settings mutations too. Pairing/HTTP trust policy is unchanged.
+
+Before applying an incoming profile, each runtime archives its supported inactive
+configuration and local per-device extra fields. Unrelated settings stay in the
+existing file; common IP rows retain local unknown keys. The extra-field archive
+never enters the peer checkpoint. Deletions and unpins transfer as explicit empty
+sets, rather than merging stale inactive pins or resurrecting removed devices.
+A peerless restart uses the local files, including offline edits, instead of
+replacing them with its older checkpoint. Adoption completes before module start;
+the durable inbox remains available if either compatibility-file write fails.
+
+`GET /configuration/pixoo` returns `{configuration, revision}`. POST accepts that
+revision and the replacement configuration; a concurrent edit returns 409.
+Swift's Pixoo editor and `agentdeck pixoo` scan/add/list/remove use the active
+local daemon, with bounded requests and no redirects. A connected editor never
+falls back to its inactive settings file. CLI `--port` selects a known endpoint;
+without a listener in either loopback family an offline CLI edit may update its
+own Node profile. Unknown liveness or an unsupported live endpoint refuses the
+write. `pixoo add --no-test` skips the optional device reachability probe.
+
+Pins retain the managed/remote explicit-weight precedence. A cached native pin
+has internal provenance so changing or clearing it updates the next roster,
+without overwriting an explicit launch weight. Pixoo hot reload keeps existing
+stream subscriptions and respects an already dimmed display's brightness.
+
+Acceptance is deliberately scoped to each solo runtime's restart and live-peer
+handover/previously subscribed native promotion. When both runtimes were absent,
+there is no shared entitled store from which to recover a later edit in the
+other private profile. That cold cross-container recovery, provider/calendar/relay
+grants, staged firmware and physical writer recovery remain separate P1.2/P1.1
+work. No private-container cross-read or silently copied credential is a substitute.
 
 ## Same-project display names
 

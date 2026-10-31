@@ -95,6 +95,8 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
     /// Explicit deck/tab sort override (default 0); lower sorts first. Set via
     /// `agentdeck <agent> --weight <n>`. Mirrors shared SessionEntry.weight.
     var weight: Int?
+    /// Cache-only provenance for an order-pin overlay; omitted from dashboard wire rows.
+    var sessionOrderPinWeight: Int?
     // Enriched fields (from /health probe, not persisted to sessions.json)
     var state: String?
     var modelName: String?

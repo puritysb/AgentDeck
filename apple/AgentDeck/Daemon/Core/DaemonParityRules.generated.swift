@@ -3,6 +3,15 @@
 import Foundation
 
 enum DaemonParityRules {
+    static let configurationHandoverHeader = "x-agentdeck-configuration"
+    static let configurationMaxBodyBytes = 16384
+    static let configurationMaxCounter = 9007199254740991
+    static let configurationVersion = 1
+    static let configurationSubscriptionId = "subscribe-configuration-v1"
+    static let configurationMaxDevices = 16
+    static let configurationMaxNameChars = 128
+    static let configurationMaxIdBytes = 256
+    static let configurationAnimations = ["single-frame","loop","tide"]
     static let checkpointVersion = 1
     static let checkpointSubscriptionId = "subscribe"
     static let checkpointMaxBytes = 262144

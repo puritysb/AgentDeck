@@ -35,9 +35,8 @@
  *   store never overrides an explicit value. Weight `0` is the default band,
  *   so setting 0 is a clear, not a pin.
  *
- * Swift parity: the in-process Swift daemon does not read this file. Pins
- * apply while the Node daemon owns the hub; `agentdeck order` against a Swift
- * daemon reports the gap instead of pretending (docs/daemon.md).
+ * Swift implements the same file/API contract; sandbox-local stores are
+ * synchronized through the admitted local checkpoint, never container access.
  */
 import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
@@ -310,7 +309,7 @@ export class SessionOrderStore {
   }
 
   /** Atomic tmp+rename write. Best-effort: disk failure never throws. */
-  private persist(): void {
+  private persist(strict = false): void {
     this.dirty = false;
     const doc: SessionOrderFile = {
       version: 1,
@@ -321,9 +320,19 @@ export class SessionOrderStore {
       mkdirSync(dirname(this.file), { recursive: true });
       writeFileSync(tmp, JSON.stringify(doc, null, 2), 'utf-8');
       renameSync(tmp, this.file);
-    } catch {
+    } catch (error) {
       try { unlinkSync(tmp); } catch { /* nothing to clean up */ }
+      if (strict) throw error;
     }
+  }
+
+  /** Settings mutations may acknowledge only a durable write. */
+  persistNow(): void { this.persist(true); }
+  replace(rows: Array<{id:string} & SessionOrderPin>): void {
+    const before = this.pins;
+    this.pins = new Map(rows.map(({id,...pin}) => [id,pin]));
+    try { this.persist(true); } catch (error) { this.pins = before; throw error; }
+    this.gc();
   }
 
   /** Flush a pending debounced write now (daemon shutdown path). */
