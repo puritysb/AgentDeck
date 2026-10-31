@@ -120,15 +120,48 @@ user-enabled integrations and review the changed Codex command trust entries.
 Existing custom commands and trust records are retained; trust is never granted
 automatically. Do not roll either installer back to a superseded command set.
 
-Required evidence still includes hosted Windows runtime and Apple CI, the
-pre-release receipt, signed-archive verification and the three-mode daemon soak.
-Local installation and restart were subsequently authorized; acceptance remains
-incomplete. A Store export's valid code signature does not establish local
-execution eligibility. Use a supported delivery/provisioning path for the native
-candidate, preserving the original Store artifact. Development signing still
-requires its specific approval. A master push also builds, signs, installs and
-launches a development app and restarts the CLI; that deployment must be ready
-and authorized before merging. No release or runtime gate is waived.
+### 2026-10-31 candidate acceptance checkpoint
+
+Candidate `cbe81a09` completed the [automatic pre-release receipt](verification/receipts/2026-10-31-cbe81a0.json):
+24 checks passed, with local macOS daemon E2E (Keychain opt-in) and Windows
+execution explicitly skipped. Hosted [main CI](https://github.com/puritysb/AgentDeck/actions/runs/41152745924)
+passed Linux E2E and the Windows Node 22/24/26 matrix; [Apple CI](https://github.com/puritysb/AgentDeck/actions/runs/41152745921)
+also passed. The original automatic receipt retains its three unattested lab
+rows; the separate [sanitized manual receipt](verification/receipts/2026-10-31-cbe81a0-manual.json)
+omits the device brand and subscription plan and records the subsequently
+completed scoped lab checks, without rerunning or replacing automatic results. The manual-only invocation saw the untracked
+automatic receipt and truthfully records a dirty worktree; product sources were
+unchanged.
+
+The four exact npm 1.9.7 candidate archives were installed and checked against
+all 1,424 packaged files. The signed macOS 1.9.5 / 10101 Development derivative
+was installed through normal authentication and launched on the registered Mac;
+its native product code matches the preserved Store artifact. An existing
+authenticated Claude login supplied real CLI-only and Swift-only turns, with
+the current reply seen on an existing physical downstream device. Takeover,
+reclaim, normal restart and retained explicit device consent passed. The official Swift Codex fixture gate passed
+all 15 checks; it is synthetic and does not attest real Codex CLI emission or
+interactive command trust. Firmware hardware tests are out of scope because no
+firmware is delivered. No other existing device was reconfigured.
+
+Current controlled CLI restoration and native restart/reclaim preserved bytes
+outside the managed Codex block; current TOML parses and installer regression
+checks pass. An earlier cross-session digest differs, and the original content
+was not retained, so its exact changed fields and writer cannot be established.
+This evidence limitation is retained rather than claiming historical semantic
+equality, restoring user settings or changing the baseline. It is not a new
+merge gate or a waiver of any catalogued check.
+
+Installation, restart and existing-certificate Development signing were
+explicitly authorized. A master push also builds, signs, installs and launches
+a development app and restarts the CLI; track that deployment and its receipt
+rather than equating a merge with deployment success. This checkpoint records
+local acceptance, not public npm publication, Apple upload, review submission
+or Store availability. Read back each delivery state after its own action.
+Public package publication, Apple uploads/submissions and release tags remain
+on hold for a coordinated release round. Source merge and the authorized local
+deployment are separate from that public delivery.
+No release or runtime gate is waived.
 
 ### 2026-10-29 delivery checkpoint
 

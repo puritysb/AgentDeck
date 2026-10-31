@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-31T02:52:02.975Z",
+  "finished_at": "2026-10-31T02:52:02.976Z",
+  "duration_ms": 1,
+  "commit": "cbe81a09c84ca4364eecb61174bfd8f753431233",
+  "branch": "fix/integration-command-hardening",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "esp32-robot",
+      "gate": "esp32-robot",
+      "name": "ESP32 boards: flash, boot, serial protocol, performance",
+      "status": "skip",
+      "attested": true,
+      "note": "No firmware changes or delivery in this release; no device flashed."
+    },
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "pass",
+      "attested": true,
+      "note": "Four exact npm 1.9.7 candidate archives installed and verified; signed sandboxed macOS 1.9.5/10101 Development derivative has identical native product code. Real existing authenticated Claude CLI-only and Swift-only turns, an existing physical downstream device reply display, takeover/reclaim, restart and persisted existing-device consent verified. Current controlled configuration bytes preserved; historical checksum provenance remains unproven. No new Android or firmware delivery."
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "pass",
+      "attested": true,
+      "note": "Official sandboxed Swift Codex acceptance script passed all 15 checks against the installed candidate. Visible synthetic fixtures were acknowledged and roster cleanup verified. This gate does not establish real Codex CLI emission or interactive command trust; separate real Claude turns verified actual session delivery."
+    }
+  ],
+  "publication": {
+    "kind": "sanitized copy of the original manual-only harness receipt",
+    "redactions": [
+      "device brand/model",
+      "subscription plan"
+    ],
+    "testOutcomesAndLimitationsUnchanged": true
+  }
+}
