@@ -23,6 +23,15 @@ import type { PluginCommand, BridgeEvent } from './types.js';
 const TAG = 'DaemonWsClient';
 const RECONNECT_BASE = 2000;
 const RECONNECT_MAX = 30000;
+/**
+ * Upgrade-response deadline (#633). `ws` sets none by default, so a peer that
+ * accepts TCP and never answers the Upgrade (wedged daemon, silent proxy or
+ * SSH forward) left the socket CONNECTING forever: no `open`, no `close`, and
+ * so no reconnect and no target re-resolution. On expiry `ws` aborts the
+ * request and emits `close`, which re-enters the normal backoff + provider path.
+ * Same bound as the daemon relay's hub dial.
+ */
+const HANDSHAKE_TIMEOUT_MS = 5000;
 
 export interface SessionPushState {
   type: 'session_push_state';
@@ -84,6 +93,7 @@ export class DaemonWsClient {
   private target: DaemonTarget | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly reconnectBase: number;
+  private readonly handshakeTimeout: number;
   private reconnectDelay: number;
   private closed = false;
   private registered = false;
@@ -124,8 +134,11 @@ export class DaemonWsClient {
     private readonly remoteEnabled?: boolean,
     /** Reconnect backoff base in ms — injectable so tests don't wait out real 2s+ backoffs. */
     reconnectBaseMs?: number,
+    /** Upgrade-response deadline in ms — injectable for the silent-peer test. */
+    handshakeTimeoutMs?: number,
   ) {
     this.reconnectBase = reconnectBaseMs ?? RECONNECT_BASE;
+    this.handshakeTimeout = handshakeTimeoutMs ?? HANDSHAKE_TIMEOUT_MS;
     this.reconnectDelay = this.reconnectBase;
   }
 
@@ -249,7 +262,7 @@ export class DaemonWsClient {
     // Never log the URL itself — it can carry the daemon's pairing token.
     debug(TAG, `Connecting to daemon at ws://${formatHostForUrl(host)}:${port} (token: ${token ? 'yes' : 'no'})`);
 
-    this.ws = new WebSocket(url);
+    this.ws = new WebSocket(url, { handshakeTimeout: this.handshakeTimeout });
 
     this.ws.on('open', () => {
       debug(TAG, `Connected to daemon ${host}:${port}`);
