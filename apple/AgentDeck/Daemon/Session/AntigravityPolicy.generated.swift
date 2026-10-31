@@ -16,5 +16,25 @@ enum AntigravityPolicy {
     static let whitespacePattern = #"[\u0009-\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]"#
     static let gapMarker = #"{"agentdeck_gap":true}"#
     static let labelCodePoints = 200
+    static let activityPollMs = 1000
+    static let activityBusyMs = 25
+    static let activityStepWindow = 4096
+    static let activityMetadataBytes = 16384
+    static let activityUserStepType = 14
+    static let activityWorkingStatuses = [2,8]
+    static let activityIdleStatuses = [3]
+    static let activityCreatedAtField = 1
+    static let activityProtoFields = 128
+    static let activityTimestampPrecisionMs = 1000
+    static let activityTablesSQL = #"SELECT name,type FROM sqlite_master WHERE name IN ('steps','trajectory_meta') LIMIT 3"#
+    static let activityColumnsSQL = #"SELECT name,type,pk FROM pragma_table_info('steps') LIMIT ?"#
+    static let activityTrajectorySQL = #"SELECT CASE WHEN typeof(cascade_id)='text' AND length(CAST(cascade_id AS BLOB))<=128 THEN cascade_id END AS cascade_id FROM trajectory_meta LIMIT 2"#
+    static let activityLatestSQL = #"SELECT idx,step_type,status,CASE WHEN typeof(metadata)='blob' AND length(metadata)<=? THEN metadata END AS metadata FROM steps ORDER BY idx DESC LIMIT 1"#
+    static let activityUserSQL = #"SELECT idx,step_type,CASE WHEN typeof(metadata)='blob' AND length(metadata)<=? THEN metadata END AS metadata FROM steps WHERE idx BETWEEN ? AND ? AND step_type=? ORDER BY idx DESC LIMIT 1"#
+    static let activityQueryBudgetMs = 100
+    static let activityProgressOps = 1000
+    static let activitySchemaColumns = 64
+    static let activityWalHeaderBytes = 32
+    static let activityColdMaxBytes = 67108864
 }
 #endif

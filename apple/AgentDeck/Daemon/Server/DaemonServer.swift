@@ -1230,6 +1230,7 @@ final class DaemonServer {
     // State caches
     private var antigravitySnapshot = AntigravityScan(reason: "not_configured")
     private var antigravityNativeIDs: Set<String> = []
+    private var antigravitySessionPollTask: Task<Void, Never>?
     private var cachedSessionStorage: [DaemonSessionEntry] = []
     private var cachedSessions: [DaemonSessionEntry] {
         get {
@@ -10091,6 +10092,23 @@ final class DaemonServer {
             }
         }
 
+        // Explicit activity needs a shorter cadence than process/registry I/O.
+        // Reads are coalesced off-actor under the user's read-only folder scope.
+        antigravitySessionPollTask?.cancel()
+        antigravitySessionPollTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, !self.startupStopped else { break }
+                let snapshot = await AntigravitySessionSettings.shared.read()
+                guard !Task.isCancelled, !self.startupStopped else { break }
+                if snapshot != self.antigravitySnapshot {
+                    self.antigravitySnapshot = snapshot
+                    self.rebuildAntigravityRows()
+                    self.broadcastSessionsList()
+                }
+                try? await Task.sleep(for: .milliseconds(AntigravityPolicy.activityPollMs))
+            }
+        }
+
         // Sessions — 10s (also self-heals daemon.json if deleted)
         sessionPollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -10347,6 +10365,28 @@ final class DaemonServer {
                                        body: try? JSONEncoder().encode(snapshot))
     }
 
+    /// Reapply the most recent independent activity snapshot after a slower
+    /// registry/provider refresh. That refresh never overwrites this source.
+    private func rebuildAntigravityRows() {
+        let base = cachedSessionStorage.filter { !antigravityNativeIDs.contains($0.id) || pushedSessionsById[$0.id] != nil }
+        let represented = Set(base.filter { $0.agentType == "antigravity" }.map { ObservedAgentRules.rawSessionId($0.id) })
+        let rows = AntigravitySessionSettings.accessGate.accepts(antigravitySnapshot.grantRevision)
+            ? Self.antigravityRows(antigravitySnapshot, excluding: represented, nowMs: Int64(Date().timeIntervalSince1970 * 1000)) : []
+        antigravityNativeIDs = Set(rows.map(\.id))
+        sessionOrderStore.noteSeen(ids: rows.map(\.id))
+        cachedSessions = DashboardDataRules.sortSessions(base + rows.map { sessionOrderStore.apply(to: $0) })
+    }
+
+    nonisolated static func antigravityRows(_ snapshot: AntigravityScan, excluding: Set<String>, nowMs: Int64) -> [DaemonSessionEntry] {
+        snapshot.known.filter { $0.isAdmissible(nowMs: nowMs) && !excluding.contains($0.conversationId) }.compactMap { observed in
+            guard let started = observed.startedAtISO, let state = observed.state else { return nil }
+            var row = DaemonSessionEntry(id: "observed:antigravity:\(observed.conversationId)", port: 0, pid: 0,
+                projectName: snapshot.projects[observed.conversationId] ?? "Antigravity", agentType: "antigravity", startedAt: started)
+            row.state = state; row.modelName = observed.model; row.currentTool = observed.currentTask; row.controlMode = "observed"
+            return row
+        }
+    }
+
     private func refreshSessions() async {
         settleStaleCodexProcessingSessions(broadcast: false)
 
@@ -10384,20 +10424,7 @@ final class DaemonServer {
             merged.removeAll { $0.id == Self.codexAnonymousOtelSessionId }
         }
 
-        let antigravity = await AntigravitySessionSettings.shared.read()
         guard !startupStopped else { return }
-        var nextAntigravityIDs: Set<String> = []
-        if AntigravitySessionSettings.accessGate.accepts(antigravity.grantRevision) {
-            let pushed = Set((merged + Array(pushedSessionsById.values)).filter { $0.agentType == "antigravity" }.map { ObservedAgentRules.rawSessionId($0.id) })
-            for observed in antigravity.known where !pushed.contains(observed.conversationId) {
-                guard let started = observed.startedAtISO, let state = observed.state else { continue }
-                var row = DaemonSessionEntry(id: "observed:antigravity:\(observed.conversationId)", port: 0, pid: 0,
-                    projectName: antigravity.projects[observed.conversationId] ?? "Antigravity", agentType: "antigravity",
-                    startedAt: started)
-                row.state = state; row.modelName = observed.model; row.currentTool = observed.currentTask; row.controlMode = "observed"
-                merged.append(row); nextAntigravityIDs.insert(row.id)
-            }
-        }
 
         // Kiro is observed the same way, and for a stronger reason: it emits no
         // hooks at all, so without this it is invisible to an App-Store-only
@@ -10437,6 +10464,7 @@ final class DaemonServer {
         }
 
         let enriched = await enrichSessionsWithState(merged)
+        guard !startupStopped else { return }
 
         // Order-pin overlay (#273), applied before fold+sort like the Node
         // enricher: observed rows without their own weight pick up the stored
@@ -10466,9 +10494,8 @@ final class DaemonServer {
         }
         if !reconciled.prune.isEmpty { settleHubIfRosterEmpty() }
 
-        antigravitySnapshot = antigravity
-        antigravityNativeIDs = nextAntigravityIDs
         cachedSessions = DashboardDataRules.sortSessions(reconciled.sessions)
+        rebuildAntigravityRows()
         broadcastSessionsList()
     }
 
@@ -12292,6 +12319,7 @@ final class DaemonServer {
         relayPollTask?.cancel(); relayPollTask = nil
         relayUplink?.stop(); relayUplink = nil; relayHub.stop()
         githubCIPollTask?.cancel(); githubCIPollTask = nil
+        antigravitySessionPollTask?.cancel(); antigravitySessionPollTask = nil
         githubCI.stop()
         pocketAutonomy.flush()
         #if AGENTDECK_DOT_PREVIEW

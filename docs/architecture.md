@@ -89,7 +89,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
-| `shared/antigravity-observation-policy.json` (bounded transcript evidence, identities, label and freshness limits) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
+| `shared/antigravity-observation-policy.json` (JSONL identity, read-only SQLite activity queries, status enums, metadata and freshness bounds) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
 | `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
 | `shared/src/connection-status.ts` (native recovery labels) | `node scripts/generate-connection-labels.mjs` → existing Swift/Kotlin lexicons | `connection-status.test.ts` checks generated label drift; native connection tests cover selection, approval and recovery. |
@@ -265,7 +265,7 @@ inside an Antigravity root. Node checks its CLI and IDE roots; Swift reads only 
 root selected in Settings → Integrations → Antigravity → Session Observation.
 The read-only security-scoped bookmark is separate from the existing account/plan
 `state.vscdb` grant, survives relaunch and can be removed with Stop observing.
-Neither observer reads OAuth credentials or changes the source files.
+Neither observer reads OAuth credentials or changes transcript/DB records.
 
 - Session identity is `observed:antigravity:<conversation-id>`. Turn identity is
   `<conversation-id>:step:<USER_INPUT step_index>:<created_at epoch-ms>` from an
@@ -274,12 +274,39 @@ Neither observer reads OAuth credentials or changes the source files.
 - The latest indexed step's `RUNNING`/`DONE` supplies processing/idle evidence.
   DONE describes that step; it does **not** assert a completed task/turn or produce
   APME Stop records. No permission request, answer options or controls are inferred.
-- Live CLI acceptance on 2026-10-31 found that the installed `agy` emitted
-  ACTIVE on its print stream while persisting only DONE steps. Both file readers
-  can therefore show idle during streaming; identity and post-exit idle acceptance
-  do not establish live WORKING accuracy. A separate explicit activity source is
-  needed; process presence or mtime must not manufacture that signal. See the
-  [live acceptance](appstore-feature-matrix.md#antigravity-live-cli-acceptance-2026-10-31).
+- The CLI persists DONE-only JSONL while streaming ACTIVE. The direct activity
+  reader therefore opens `conversations/<conversation-id>.db` read-only under the
+  same folder grant. Explicit Cortex `steps.status` values RUNNING(2) and
+  GENERATING(8) mean processing; DONE(3) means idle. Other values remain unknown,
+  never permission attention. These values and all read queries are generated
+  from the shared policy; they were checked against the installed CLI descriptor
+  and actual ACTIVE/DONE stream events.
+- The DB must identify the same `cascade_id`, current USER_INPUT index and user
+  creation timestamp as JSONL. Metadata field 1 contains a protobuf Timestamp;
+  comparison uses the precision JSONL actually preserves (seconds or milliseconds).
+  A bounded indexed search refuses a newer/missing user step rather than borrowing
+  a previous turn's state. Only scalar status/identity and bounded metadata columns are queried;
+  no `step_payload`, prompt/response columns, OAuth data or model credentials are
+  decoded or exposed.
+- Read-only snapshot transactions include live WAL. Existing DB/WAL/SHM/journal symlinks
+  are refused. A closed WAL-format main file with no WAL frames or rollback journal
+  uses a stable, bounded (64 MiB) snapshot without creating sidecars: Swift opens a
+  per-connection immutable read URI; Node deserializes a private RAM image with only
+  its WAL header normalized. Source fingerprints before/after reject concurrent
+  changes. Live WAL always uses normal SQLite snapshots; missing SHM is unknown
+  rather than permission to create it. Neither SHM nor an empty
+  WAL counts as activity; busy waits are capped at 25 ms,
+  and native queries have a 100 ms progress deadline with a file-scope C callback.
+  A present unreadable, unsupported or mismatched DB withdraws the source; it does
+  not fall back to an older DONE JSONL step. An absent DB retains file-only behavior.
+  Fresh explicit DB activity can revive a cold JSONL identity after revalidation;
+  touching old activity cannot renew its source timestamp.
+- Swift refreshes this consent-scoped source on a separate one-second loop. Slow
+  registry/provider refreshes reapply the current activity snapshot, so they cannot
+  overwrite WORKING with an older idle read. Revocation and shutdown reject late
+  results and stop the owned task. Node uses the same DB projection within its
+  existing passive scan cadence. This is direct state polling, not a CLI subprocess,
+  stdout relay or cloud Remote Control subscription.
 - Both original record time and file modification time must be fresh: RUNNING
   expires after ten minutes, other roster evidence after one hour. Unknown status,
   malformed final records, missing identity/time, unsafe paths or unreadable files

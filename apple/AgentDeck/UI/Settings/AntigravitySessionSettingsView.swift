@@ -18,7 +18,7 @@ struct AntigravitySessionSettingsView: View {
                     Button("Stop observing") { observer.stopObserving() }
                 }
             }.buttonStyle(.bordered).controlSize(.small)
-            Text("Read-only JSONL observation. Old or unreadable evidence never becomes a completed turn or a permission request. Account and plan access below stays separate.")
+            Text("Read-only JSONL identity and SQLite activity observation. Old or unreadable evidence never becomes a completed turn or a permission request. Account and plan access below stays separate.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.task { if observer.isEnabled { _ = await observer.read() } }
     }

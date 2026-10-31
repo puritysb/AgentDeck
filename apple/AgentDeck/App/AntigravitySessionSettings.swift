@@ -66,7 +66,7 @@ final class AntigravitySessionSettings: ObservableObject {
     func chooseFolder() {
         let panel = NSOpenPanel()
         panel.title = "Choose Antigravity transcript folder"
-        panel.message = "Choose antigravity-cli or antigravity inside your .gemini folder. AgentDeck reads supported JSONL conversations only. This does not grant account or plan access."
+        panel.message = "Choose antigravity-cli or antigravity inside your .gemini folder. AgentDeck reads supported JSONL identity and SQLite activity without changing them. This does not grant account or plan access."
         panel.prompt = "Observe Sessions"
         panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.canCreateDirectories = false; panel.allowsMultipleSelection = false; panel.showsHiddenFiles = true

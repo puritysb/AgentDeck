@@ -21,5 +21,30 @@ export const ANTIGRAVITY_POLICY = {
   ],
   "whitespacePattern": "[\\u0009-\\u000D\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000\\uFEFF]",
   "gapMarker": "{\"agentdeck_gap\":true}",
-  "labelCodePoints": 200
+  "labelCodePoints": 200,
+  "activityPollMs": 1000,
+  "activityBusyMs": 25,
+  "activityStepWindow": 4096,
+  "activityMetadataBytes": 16384,
+  "activityUserStepType": 14,
+  "activityWorkingStatuses": [
+    2,
+    8
+  ],
+  "activityIdleStatuses": [
+    3
+  ],
+  "activityCreatedAtField": 1,
+  "activityProtoFields": 128,
+  "activityTimestampPrecisionMs": 1000,
+  "activityTablesSQL": "SELECT name,type FROM sqlite_master WHERE name IN ('steps','trajectory_meta') LIMIT 3",
+  "activityColumnsSQL": "SELECT name,type,pk FROM pragma_table_info('steps') LIMIT ?",
+  "activityTrajectorySQL": "SELECT CASE WHEN typeof(cascade_id)='text' AND length(CAST(cascade_id AS BLOB))<=128 THEN cascade_id END AS cascade_id FROM trajectory_meta LIMIT 2",
+  "activityLatestSQL": "SELECT idx,step_type,status,CASE WHEN typeof(metadata)='blob' AND length(metadata)<=? THEN metadata END AS metadata FROM steps ORDER BY idx DESC LIMIT 1",
+  "activityUserSQL": "SELECT idx,step_type,CASE WHEN typeof(metadata)='blob' AND length(metadata)<=? THEN metadata END AS metadata FROM steps WHERE idx BETWEEN ? AND ? AND step_type=? ORDER BY idx DESC LIMIT 1",
+  "activityQueryBudgetMs": 100,
+  "activityProgressOps": 1000,
+  "activitySchemaColumns": 64,
+  "activityWalHeaderBytes": 32,
+  "activityColdMaxBytes": 67108864
 } as const;

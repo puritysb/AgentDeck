@@ -2,6 +2,7 @@ import { constants, closeSync, fstatSync, lstatSync, openSync, readSync, readdir
 import { join } from 'node:path';
 import { ANTIGRAVITY_POLICY as P } from './antigravity-policy.generated.js';
 import { parseAntigravityTranscript } from './apme/antigravity-transcript.js';
+import { antigravityActivityFreshness, observeAntigravityActivity } from './antigravity-activity.js';
 
 export interface AntigravityTurnIdentity { id: string; stepIndex: number; startedAtMs: number }
 export interface AntigravityObservation {
@@ -16,6 +17,7 @@ export interface AntigravityObservation {
   startedAtMs?: number;
   updatedAtMs?: number;
   modifiedAtMs?: number;
+  latestStepIndex?: number;
   turns: AntigravityTurnIdentity[];
 }
 export interface AntigravityScan {
@@ -70,7 +72,7 @@ export function observeAntigravityTranscript(conversationId: string, raw: string
   if (!lastUser || lastUser.source !== 'USER_EXPLICIT' || !time(lastUser.created_at)) return { ...base, reason: 'missing_turn_identity' };
   if (turns.at(-1)!.startedAtMs > updatedAtMs) return { ...base, reason: 'inconsistent_time' };
   if (gapAt >= 0 && !records.slice(gapAt).some(rec => rec.type === 'USER_INPUT' && rec.source === 'USER_EXPLICIT' && time(rec.created_at))) return { ...base, reason: 'missing_turn_identity' };
-  const details = { turns: turns.slice(-P.maxTurns), currentTurnId: turns.at(-1)!.id, startedAtMs: turns[0].startedAtMs, updatedAtMs };
+  const details = { turns: turns.slice(-P.maxTurns), currentTurnId: turns.at(-1)!.id, startedAtMs: turns[0].startedAtMs, updatedAtMs, latestStepIndex: ordered.at(-1)![0] };
   if (nowMs - modifiedAtMs > P.rosterWindowMs || nowMs - updatedAtMs > P.rosterWindowMs) return { ...base, ...details, status: 'stale', reason: 'history' };
   if (latest.status !== 'RUNNING' && latest.status !== 'DONE') return { ...base, ...details, reason: 'unknown_step_status' };
   if (latest.status === 'RUNNING' && (nowMs - updatedAtMs > P.activeWindowMs || nowMs - modifiedAtMs > P.activeWindowMs)) return { ...base, ...details, status: 'stale', reason: 'unconfirmed_work' };
@@ -139,14 +141,14 @@ export function scanAntigravityRoot(root: string, nowMs = Date.now()): Antigravi
       try {
         const path = inside(root, ['brain', id, '.system_generated', 'logs', 'transcript.jsonl'], false);
         const modified = Math.floor(lstatSync(path).mtimeMs);
-        if (nowMs - modified > P.rosterWindowMs) {
+        if (nowMs - modified > P.rosterWindowMs && antigravityActivityFreshness(root, id, nowMs) === 'historical') {
           observations.push({ conversationId: id, status: 'stale', reason: 'history', turns: [] });
           continue;
         }
         const sample = transcript(path);
         const observation = observeAntigravityTranscript(id, sample.raw, sample.modified, Math.floor(nowMs));
         if (observation.status === 'known' && !observation.model && fallbackModel !== undefined && !sample.raw.includes(P.gapMarker)) observation.model = fallbackModel;
-        observations.push(observation);
+        observations.push(observeAntigravityActivity(root, observation, Math.floor(nowMs), (parts, directory) => inside(root, parts, directory)));
       } catch {
         observations.push({ conversationId: id, status: 'unknown', reason: 'unreadable_source', turns: [] });
       }

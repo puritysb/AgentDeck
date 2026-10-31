@@ -96,13 +96,17 @@ enum AntigravitySourceReader {
                 do {
                     let file = try inside(root, components: ["brain", id, ".system_generated", "logs", "transcript.jsonl"], directory: false)
                     let modified = try file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
-                    if let modified, nowMs - Int64((modified.timeIntervalSince1970 * 1000).rounded(.down)) > AntigravityPolicy.rosterWindowMs {
+                    if let modified, nowMs - Int64((modified.timeIntervalSince1970 * 1000).rounded(.down)) > AntigravityPolicy.rosterWindowMs,
+                       AntigravityActivity.freshness(root: root, id: id, nowMs: nowMs) == "historical" {
                         out.observations.append(AntigravityObservation(conversationId: id, status: "stale", reason: "history"))
                         continue
                     }
                     let (raw, stamp) = try readTranscript(file)
                     var observation = AntigravityTranscript.observe(id: id, raw: raw, modifiedAtMs: stamp, nowMs: nowMs)
                     if observation.status == "known", observation.model == nil, let fallbackModel, !raw.contains(AntigravityPolicy.gapMarker) { observation.model = fallbackModel }
+                    observation = AntigravityActivity.observe(root: root, base: observation, nowMs: nowMs, safePath: { parts, directory in
+                        try inside(root, components: parts, directory: directory)
+                    })
                     out.observations.append(observation)
                 } catch { out.observations.append(AntigravityObservation(conversationId: id, reason: "unreadable_source")) }
             }

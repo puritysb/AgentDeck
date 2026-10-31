@@ -1,12 +1,12 @@
 #if os(macOS)
 import Foundation
 
-struct AntigravityTurnIdentity: Codable, Sendable {
+struct AntigravityTurnIdentity: Codable, Sendable, Equatable {
     let id: String
     let stepIndex: Int
     let startedAtMs: Int64
 }
-struct AntigravityObservation: Codable, Sendable {
+struct AntigravityObservation: Codable, Sendable, Equatable {
     let conversationId: String
     var status = "unknown"
     var reason = "unreadable_records"
@@ -18,6 +18,7 @@ struct AntigravityObservation: Codable, Sendable {
     var startedAtMs: Int64?
     var updatedAtMs: Int64?
     var modifiedAtMs: Int64?
+    var latestStepIndex: Int?
     var turns: [AntigravityTurnIdentity] = []
     var startedAtISO: String? {
         guard let startedAtMs else { return nil }
@@ -32,7 +33,7 @@ struct AntigravityObservation: Codable, Sendable {
         return stamp <= nowMs + Int64(AntigravityPolicy.futureSkewMs) && nowMs - stamp <= ttl
     }
 }
-struct AntigravityScan: Codable, Sendable {
+struct AntigravityScan: Codable, Sendable, Equatable {
     var status = "unknown"
     var reason = "unreadable_source"
     var observations: [AntigravityObservation] = []
@@ -119,7 +120,7 @@ enum AntigravityTranscript {
         if let gapAt, !records.dropFirst(gapAt).contains(where: { $0["type"] as? String == "USER_INPUT" && $0["source"] as? String == "USER_EXPLICIT" && timestamps.read($0["created_at"]) != nil }) {
             out.turns = []; out.reason = "missing_turn_identity"; return out
         }
-        out.currentTurnId = lastTurn.id; out.startedAtMs = firstTurn.startedAtMs; out.updatedAtMs = updated
+        out.currentTurnId = lastTurn.id; out.startedAtMs = firstTurn.startedAtMs; out.updatedAtMs = updated; out.latestStepIndex = lastIndex
         guard nowMs - modifiedAtMs <= AntigravityPolicy.rosterWindowMs, nowMs - updated <= AntigravityPolicy.rosterWindowMs else {
             out.status = "stale"; out.reason = "history"; return out
         }

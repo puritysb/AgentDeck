@@ -614,6 +614,7 @@
 		AA9CF98F3AF4D2F93B22C432 /* CreatureBrandFeatures.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8060690AEF4D199820356BBB /* CreatureBrandFeatures.generated.swift */; };
 		AAC502348F93D16B560749BA /* CodexOriginatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3F214BD333DDE19525E3836 /* CodexOriginatorTests.swift */; };
 		AB96439EFAFE10B03D547935 /* ObservedAgentRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12945AF4A45F5245F2FC6672 /* ObservedAgentRules.generated.swift */; };
+		ABDF2EABCC658A836F5FFDE9 /* AntigravityActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BB6F79F8415B9364D154E9 /* AntigravityActivity.swift */; };
 		ABE80C830C69CB0A2D03A767 /* LightRaySystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D53F4A08898B95CB592E133A /* LightRaySystem.swift */; };
 		ABEE4D6EFD64ECCBDBCD843B /* AntigravityCreature.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCB382D6E482410C30E597EC /* AntigravityCreature.swift */; };
 		AC658605D32EEDED79556598 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */; };
@@ -668,6 +669,7 @@
 		B9A16BFB5249C6389638BCD0 /* PairingCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E868DDC13347FD992B9AF3D /* PairingCredential.swift */; };
 		BA2CB0DAA113D75AF63951DD /* MicroGlyphs.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */; };
 		BA45B7FBDCFDD8971904714D /* ObservedAskUserQuestionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */; };
+		BADE069663B9DE8D412D9FC2 /* AntigravityActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84BB6F79F8415B9364D154E9 /* AntigravityActivity.swift */; };
 		BAF60F55BB39F43FE479652D /* UsageRelayFreshness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832BF47EA8F4F9DE55F6EA4F /* UsageRelayFreshness.swift */; };
 		BB291B71C944FF384AFD634C /* D200HLayoutModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 075254486BFFC613DB33B99D /* D200HLayoutModel.swift */; };
 		BB7776F8F9ECDCCCF8858308 /* BackgroundDevicePolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E590366149AE352F2B35F03 /* BackgroundDevicePolicy.generated.swift */; };
@@ -1182,6 +1184,7 @@
 		83589BA4C41B89C8EF1A46FD /* AdbModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdbModule.swift; sourceTree = "<group>"; };
 		83D5CE0F7637C0913938BA6B /* DeskPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeskPreviews.swift; sourceTree = "<group>"; };
 		83E77BCD933FB80831B3E6FD /* AgentDeck.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentDeck.entitlements; sourceTree = "<group>"; };
+		84BB6F79F8415B9364D154E9 /* AntigravityActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityActivity.swift; sourceTree = "<group>"; };
 		8521590B433F1C0B3F3FB330 /* dot-mcp-contract.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "dot-mcp-contract.json"; sourceTree = "<group>"; };
 		8655DDFFAFB655DEABF213F5 /* TimeboxModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeboxModule.swift; sourceTree = "<group>"; };
 		86C2853DD31CC81F421A2A1F /* ApmePricing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmePricing.swift; sourceTree = "<group>"; };
@@ -1983,6 +1986,7 @@
 		BC0F891F91474D201E8D5F53 /* Session */ = {
 			isa = PBXGroup;
 			children = (
+				84BB6F79F8415B9364D154E9 /* AntigravityActivity.swift */,
 				0C034917BB1E547D9AA2DE8C /* AntigravityObservation.swift */,
 				22B183D6DE09393C6B3B56CE /* AntigravityPolicy.generated.swift */,
 				A9121B09D2E5E6BB93FDB526 /* AntigravitySourceReader.swift */,
@@ -2735,6 +2739,7 @@
 				70568489EF1BE34061D43FEA /* AgentStateHolder.swift in Sources */,
 				20B7F193A4B33732519FB7F8 /* AgentStatusIcon.swift in Sources */,
 				F71B10ECA4191DF94517A653 /* AnthropicAdminApiClient.swift in Sources */,
+				ABDF2EABCC658A836F5FFDE9 /* AntigravityActivity.swift in Sources */,
 				ABEE4D6EFD64ECCBDBCD843B /* AntigravityCreature.swift in Sources */,
 				603D120B606611E30BD8BC03 /* AntigravityObservation.swift in Sources */,
 				510315AC0E29A5409F852BF4 /* AntigravityPolicy.generated.swift in Sources */,
@@ -3053,6 +3058,7 @@
 				E5B1774D921E5B4C508D73A0 /* AgentStateHolder.swift in Sources */,
 				4063C8A5D6C17B415AA11D2A /* AgentStatusIcon.swift in Sources */,
 				8E47C081C0CF3F45715D6E45 /* AnthropicAdminApiClient.swift in Sources */,
+				BADE069663B9DE8D412D9FC2 /* AntigravityActivity.swift in Sources */,
 				80865FE823C2E1E5D1179377 /* AntigravityCreature.swift in Sources */,
 				B045C8E573C85E6FD719268F /* AntigravityObservation.swift in Sources */,
 				39E119D1DC15ADF5348A7841 /* AntigravityPolicy.generated.swift in Sources */,
