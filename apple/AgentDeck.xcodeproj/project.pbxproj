@@ -111,6 +111,7 @@
 		1DA82A36B17B48756691D2CD /* DeviceApprovalGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95997D1E19933CBB5A3F400D /* DeviceApprovalGateTests.swift */; };
 		1DD64D5ABE5A6DB9B73B2589 /* Trmnl75Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */; };
 		1E522268DE9B6DC2D8AFCDEC /* DevicePairingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918C108FEF53B66BF6D944B7 /* DevicePairingWindow.swift */; };
+		1EE1F3F0F13519430A0615F7 /* DaemonPowerObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55832DECDC0F8E4CFC315CF8 /* DaemonPowerObservation.swift */; };
 		1F0258876EC170B4F821C251 /* DotAquariumResident.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53FE6C565483EBB693A8920C /* DotAquariumResident.swift */; };
 		1F386A7D34FBFD09D20678DA /* PixooBakedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9539A9FD12E7B5C93867DE46 /* PixooBakedTests.swift */; };
 		1FC326F6A3ECA2926AC2D684 /* SessionBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E6E252A5DCAC5E298C21473 /* SessionBrand.swift */; };
@@ -215,6 +216,7 @@
 		386CE3C798482BB19B94372A /* LICENSE-CC-BY-SA-4.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = F4FF80663C090E22A9DA63E8 /* LICENSE-CC-BY-SA-4.0.txt */; };
 		38B8B9D479D582EE034C05DB /* ApmeCategoryE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F083DDE39507B6693AED227 /* ApmeCategoryE2ETests.swift */; };
 		38E9C043A76BB267FCACB4B7 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA58B8921954E616F8ECCC53 /* SettingsScreen.swift */; };
+		3905770BD93C52D6929AFBA5 /* DaemonCheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BFE68D60B54010C7DA2DE08 /* DaemonCheckpointTests.swift */; };
 		3935F4C5BEE0F6FA479AB2A6 /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908DB05568DE4E828CD7FCE6 /* Logger.swift */; };
 		39A3748F8D3E402C81FFBC3D /* BackgroundDevicePolicy.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E590366149AE352F2B35F03 /* BackgroundDevicePolicy.generated.swift */; };
 		39DE6C000AD9F73337D71752 /* PairingKnockStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBAF5DDA8E8BC581088C6AAD /* PairingKnockStore.swift */; };
@@ -356,6 +358,7 @@
 		5BCD8A6D3633B4B1F6E9D497 /* BridgeDiscoveryLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C3ADC7DBDBDBAD81580DCE1 /* BridgeDiscoveryLogTests.swift */; };
 		5BFDAB0CCA8D688B1435F42D /* AppReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0B6AFDC194533BFA388DECA /* AppReviewPrompt.swift */; };
 		5C124CE89476651AE712EE47 /* TimeboxDivoomPacket.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE667561A919A52759C5225E /* TimeboxDivoomPacket.swift */; };
+		5C7E599CD21F115F09E33A4D /* DaemonCheckpointTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BFE68D60B54010C7DA2DE08 /* DaemonCheckpointTests.swift */; };
 		5D22CA1A7188F9A96A069A4A /* ESP32WifiProvisionRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B8EDAFEB2675A6E30B66A9A /* ESP32WifiProvisionRules.generated.swift */; };
 		5DCD91335EFB1B6500CA830E /* ApmeScorers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 758AAD78310D811B993ADA21 /* ApmeScorers.swift */; };
 		5DDA6F733312F1A880DE38C9 /* CodexFreshnessRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DC487120E810897B3BF0FC4 /* CodexFreshnessRules.generated.swift */; };
@@ -386,6 +389,7 @@
 		65A2A3F48CA716B2950481B9 /* ZaiQuotaRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1715E68E852E233131E1E1C3 /* ZaiQuotaRules.generated.swift */; };
 		65A8A69BC77EC2A72BAA51E6 /* MdnsAdvertisementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AA98B9C59A1E5068133D134 /* MdnsAdvertisementTests.swift */; };
 		65AA35DBAE5753D637A04865 /* HermesSwim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CAC7DB1B1460CCEF53951DD /* HermesSwim.swift */; };
+		6611A4EA4DE230858F33D530 /* DaemonPowerObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55832DECDC0F8E4CFC315CF8 /* DaemonPowerObservation.swift */; };
 		6678969903C6A061CFE809EA /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D17A24E0C5B16A097D62E9 /* AuthManager.swift */; };
 		673E8313FA2547997218DD1A /* CalendarICS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 172367E126E144EC3B69804B /* CalendarICS.swift */; };
 		6796DDEC3F63EB8C7CAAAD99 /* CalendarProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87B600287284173DC9579231 /* CalendarProvider.swift */; };
@@ -448,6 +452,7 @@
 		774B82B71B727D336DA72CAB /* AttentionSessionAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F319423D12FE16538847B2A6 /* AttentionSessionAccessTests.swift */; };
 		776EB14F789C4BA480732350 /* MicroGlyphs.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1603E1F58E35F85044D7913A /* MicroGlyphs.generated.swift */; };
 		785226C409C29A9D8750F8C5 /* DaemonRelayUplink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78474B96708E5F23B3AD3D21 /* DaemonRelayUplink.swift */; };
+		789AC6223E3D86220127F69D /* DaemonCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BD924A681685C0A9D69CFF /* DaemonCheckpoint.swift */; };
 		793D39D31CAE8D3B6E3281A4 /* MlxInference.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6E58B1BF67A986A9E6C50D3 /* MlxInference.swift */; };
 		7943FC7B4C2C9493E5ED0603 /* DaemonParityRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19B15676E4DF3FA331DBEF87 /* DaemonParityRules.generated.swift */; };
 		797EB64211FFF8F679AD9729 /* AuthTokenAdoptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC6DDE006B6FC16D2E76AFFE /* AuthTokenAdoptionTests.swift */; };
@@ -541,6 +546,7 @@
 		8FE3D8A54EF01D4165144E0E /* DockVisibilityPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B41DA855405F8F1F5BA174D0 /* DockVisibilityPolicyTests.swift */; };
 		910050480C05082FABE55EB3 /* AttentionSessionRosterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F070B3A171B0BC3B4905885D /* AttentionSessionRosterTests.swift */; };
 		91690383EAD320DBC7CDFC1B /* AppleBuildBoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */; };
+		91871C0248A40CFB8799F1A0 /* DaemonCheckpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75BD924A681685C0A9D69CFF /* DaemonCheckpoint.swift */; };
 		9197CE4EF7351E7C83BBE89F /* MatrixExpression.swift in Sources */ = {isa = PBXBuildFile; fileRef = B938F198829A3AF90F7BE842 /* MatrixExpression.swift */; };
 		91F77E60AB31AFE6773E58D0 /* IBMPlexSansKR-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9014EC66559D4B1C3A0E6ECA /* IBMPlexSansKR-Bold.ttf */; };
 		91FD7626FCF73226181BD900 /* ProjectNameResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F7897FE76F480951CD34749 /* ProjectNameResolver.swift */; };
@@ -1041,6 +1047,7 @@
 		2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SingletonGuard.swift; sourceTree = "<group>"; };
 		2B6B05AD3CC720BD76A681F9 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		2B8EDAFEB2675A6E30B66A9A /* ESP32WifiProvisionRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ESP32WifiProvisionRules.generated.swift; sourceTree = "<group>"; };
+		2BFE68D60B54010C7DA2DE08 /* DaemonCheckpointTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonCheckpointTests.swift; sourceTree = "<group>"; };
 		2C095A676EC89446C067731C /* AquariumShoal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AquariumShoal.swift; sourceTree = "<group>"; };
 		2C3ADC7DBDBDBAD81580DCE1 /* BridgeDiscoveryLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeDiscoveryLogTests.swift; sourceTree = "<group>"; };
 		2C734B04F5E770B8B5FE2B70 /* SwiftSurfaceProtocolTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftSurfaceProtocolTests.swift; sourceTree = "<group>"; };
@@ -1126,6 +1133,7 @@
 		53D4EF93231AAC8CD23FB819 /* ApmeRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeRunner.swift; sourceTree = "<group>"; };
 		53FE6C565483EBB693A8920C /* DotAquariumResident.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotAquariumResident.swift; sourceTree = "<group>"; };
 		54D5573609253B373A675DAC /* LocalTrustWiringTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTrustWiringTests.swift; sourceTree = "<group>"; };
+		55832DECDC0F8E4CFC315CF8 /* DaemonPowerObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonPowerObservation.swift; sourceTree = "<group>"; };
 		573B908900BFBC530F17EAB6 /* WearableTabletPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WearableTabletPreviews.swift; sourceTree = "<group>"; };
 		576B35DBF88A4E7844E7A99A /* ScaledToFit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScaledToFit.swift; sourceTree = "<group>"; };
 		57722317EDF1D567981112DE /* DataParticleSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataParticleSystem.swift; sourceTree = "<group>"; };
@@ -1181,6 +1189,7 @@
 		74B987710CFB6B547DB06A21 /* CollaborationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollaborationModel.swift; sourceTree = "<group>"; };
 		74F978C941F45D81842501E6 /* ApmeReviewRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeReviewRules.generated.swift; sourceTree = "<group>"; };
 		758AAD78310D811B993ADA21 /* ApmeScorers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeScorers.swift; sourceTree = "<group>"; };
+		75BD924A681685C0A9D69CFF /* DaemonCheckpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonCheckpoint.swift; sourceTree = "<group>"; };
 		766909A21820E709DA63C7C2 /* apme-dashboard.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = "apme-dashboard.html"; sourceTree = "<group>"; };
 		767EE1D15C8564C2A5AC5713 /* ObservedAskUserQuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedAskUserQuestionTests.swift; sourceTree = "<group>"; };
 		76D12DF5535F73FD12022173 /* DotRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotRules.generated.swift; sourceTree = "<group>"; };
@@ -1465,6 +1474,7 @@
 				D6753543CCFF62AAD2B11A94 /* ClaudeStatuslineRules.generated.swift */,
 				3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */,
 				69470A0782BDF6A29012E9F0 /* DaemonActor.swift */,
+				75BD924A681685C0A9D69CFF /* DaemonCheckpoint.swift */,
 				99B649BF2ACE34B4E61EB10D /* DaemonOwnership.swift */,
 				19B15676E4DF3FA331DBEF87 /* DaemonParityRules.generated.swift */,
 				21FC16ECE363684E997BE01E /* DaemonPosture.swift */,
@@ -1569,6 +1579,7 @@
 				66917928C455891D401F29E6 /* ConnectionOverlayTests.swift */,
 				0B93CE0A5FD951A9FD021DB2 /* CreatureFloorSpacingTests.swift */,
 				E84D819AA86894944600240C /* DaemonActorIndependenceTests.swift */,
+				2BFE68D60B54010C7DA2DE08 /* DaemonCheckpointTests.swift */,
 				1C2893742373685180839EAF /* DaemonLoggerRotationTests.swift */,
 				DA9A38D1BD38841DF83F3017 /* DaemonPortFallbackTests.swift */,
 				6675586368BA1D73919FA7E0 /* DaemonPostureTests.swift */,
@@ -2256,6 +2267,7 @@
 				172367E126E144EC3B69804B /* CalendarICS.swift */,
 				30FC6165F0FEC9297EA15D00 /* CalendarPolicy.generated.swift */,
 				87B600287284173DC9579231 /* CalendarProvider.swift */,
+				55832DECDC0F8E4CFC315CF8 /* DaemonPowerObservation.swift */,
 				B857A690693DD802AA05429D /* DaemonServer.swift */,
 				80F5AD0F31E7A87406FF94F4 /* DashboardProviders.swift */,
 				6176599CD3E03A96EA977362 /* ESP32WifiOta.swift */,
@@ -2560,6 +2572,7 @@
 				23A9123293932E0B49628B1F /* ConnectionOverlayTests.swift in Sources */,
 				05CB35584EE964BBABE943E1 /* CreatureFloorSpacingTests.swift in Sources */,
 				5110D91D663BA602A485005E /* DaemonActorIndependenceTests.swift in Sources */,
+				5C7E599CD21F115F09E33A4D /* DaemonCheckpointTests.swift in Sources */,
 				3FAA84734F99F8690B7B4E3C /* DaemonLoggerRotationTests.swift in Sources */,
 				F30F046B8C2F044E12263AE8 /* DaemonPortFallbackTests.swift in Sources */,
 				37AB2DCA4C89195958B01709 /* DaemonPostureTests.swift in Sources */,
@@ -2691,6 +2704,7 @@
 				0D27F8A8833CCEC21A91E867 /* ConnectionOverlayTests.swift in Sources */,
 				F87C273B16BC9A957F1E2E6E /* CreatureFloorSpacingTests.swift in Sources */,
 				A7560FE516D5460EB526FA3A /* DaemonActorIndependenceTests.swift in Sources */,
+				3905770BD93C52D6929AFBA5 /* DaemonCheckpointTests.swift in Sources */,
 				B5BF4D57C319D13C56EA6DAF /* DaemonLoggerRotationTests.swift in Sources */,
 				D0FB0E0FFBBCE44786BA9B51 /* DaemonPortFallbackTests.swift in Sources */,
 				D130F3747ED283214E599734 /* DaemonPostureTests.swift in Sources */,
@@ -2883,10 +2897,12 @@
 				C8DE7EFB8EAFBD9E0BAD7852 /* CreatureLayout.swift in Sources */,
 				5B7A5FC7C0209AF3CF13C563 /* D200HLayoutModel.swift in Sources */,
 				45F924FE8D817EB16CA71345 /* DaemonActor.swift in Sources */,
+				789AC6223E3D86220127F69D /* DaemonCheckpoint.swift in Sources */,
 				13C1C940711C51743C8B5C97 /* DaemonOfflineAffordance.swift in Sources */,
 				09121C3375386AAC089BD428 /* DaemonOwnership.swift in Sources */,
 				226C0560BFB5D0437C67D06A /* DaemonParityRules.generated.swift in Sources */,
 				0B0D2D3CF0D97D237B671C5B /* DaemonPosture.swift in Sources */,
+				1EE1F3F0F13519430A0615F7 /* DaemonPowerObservation.swift in Sources */,
 				9A804F6E4630630D21967869 /* DaemonPttVoice.swift in Sources */,
 				FC97A2C5D22CCD4ACB47C4C5 /* DaemonRelay.swift in Sources */,
 				7D7011055286E4DCAF2A1E89 /* DaemonRelayConnection.swift in Sources */,
@@ -3209,10 +3225,12 @@
 				70DE32174B7BEFF31C75CE87 /* CreatureLayout.swift in Sources */,
 				BB291B71C944FF384AFD634C /* D200HLayoutModel.swift in Sources */,
 				8A28584D14249A2DB2E94361 /* DaemonActor.swift in Sources */,
+				91871C0248A40CFB8799F1A0 /* DaemonCheckpoint.swift in Sources */,
 				1833E28AEE39E209E4AA45B6 /* DaemonOfflineAffordance.swift in Sources */,
 				D13B4726A425CEA84B3476F1 /* DaemonOwnership.swift in Sources */,
 				7943FC7B4C2C9493E5ED0603 /* DaemonParityRules.generated.swift in Sources */,
 				149FCBCC393ED40C0C0EBAD9 /* DaemonPosture.swift in Sources */,
+				6611A4EA4DE230858F33D530 /* DaemonPowerObservation.swift in Sources */,
 				F8C78DB678C94B49C23122AE /* DaemonPttVoice.swift in Sources */,
 				EFBE61C82B30F30B17A4C3FD /* DaemonRelay.swift in Sources */,
 				256C7253C63CDA8BAD62F8C8 /* DaemonRelayConnection.swift in Sources */,

@@ -1,4 +1,6 @@
 import { loadHandoverTimeline } from './daemon-timeline-handover.js';
+import { DaemonCheckpointStore } from './daemon-checkpoint.js';
+import { DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
 import { dotSurfaceSnapshot } from '@agentdeck/shared';
 import { readDotAppearance } from './dot-appearance.js';
 import { startConfiguredDotHost, dotResultModule, readDotConfiguration } from './dot-host.js';
@@ -427,6 +429,7 @@ const wsSelfCaps = new Map<WebSocket, string[]>();
 const surfaceNegotiations = new Map<WebSocket, SurfaceNegotiation>();
 
 interface OtaWaiter {
+  expiresAt: number;
   stage: string;
   seq?: number;
   resolve: (msg: Record<string, unknown>) => void;
@@ -435,6 +438,19 @@ interface OtaWaiter {
 }
 
 const otaWaiters = new Map<string, OtaWaiter>();
+let otaOwnerGeneration = 0;
+const otaAborts = new Map<string, () => void>();
+
+/** Owner loss cancels the protocol, not just the socket. Old ACKs are retired. */
+export function abortWifiEsp32Ota(): void {
+  otaOwnerGeneration++;
+  for (const abort of otaAborts.values()) { try { abort(); } catch { /* best effort */ } }
+  otaAborts.clear();
+  for (const waiter of otaWaiters.values()) {
+    clearTimeout(waiter.timer); waiter.reject(new Error('ota_owner_stopped'));
+  }
+  otaWaiters.clear();
+}
 
 function listWifiEsp32Devices(): Array<WifiEsp32Device & { stale: boolean; serialActive: boolean }> {
   const now = Date.now();
@@ -901,6 +917,10 @@ function handleEsp32OtaReply(msg: Record<string, unknown>): boolean {
   const otaId = typeof msg.otaId === 'string' ? msg.otaId : '';
   const waiter = otaId ? otaWaiters.get(otaId) : undefined;
   if (!waiter) return true;
+  if (Date.now() >= waiter.expiresAt) {
+    clearTimeout(waiter.timer); otaWaiters.delete(otaId);
+    waiter.reject(new Error(`OTA ${waiter.stage} timed out`)); return true;
+  }
 
   if (msg.type === 'esp32_ota_error') {
     clearTimeout(waiter.timer);
@@ -926,7 +946,7 @@ function waitForOtaAck(otaId: string, stage: string, seq: number | undefined, ti
       otaWaiters.delete(otaId);
       reject(new Error(`OTA ${stage}${seq != null ? ` #${seq}` : ''} timed out`));
     }, timeoutMs);
-    otaWaiters.set(otaId, { stage, seq, resolve, reject, timer });
+    otaWaiters.set(otaId, { stage, seq, resolve, reject, timer, expiresAt: Date.now() + timeoutMs });
   });
 }
 
@@ -1009,6 +1029,7 @@ export function __setOtaTimeoutsForTest(t: { begin?: number; chunk?: number; end
 }
 /** @internal */
 export function __resetWifiEsp32OtaState(): void {
+  abortWifiEsp32Ota();
   for (const [, w] of otaWaiters) clearTimeout(w.timer);
   otaWaiters.clear();
   wifiEsp32Devices.clear();
@@ -1056,7 +1077,7 @@ function hasLiveWifiOtaTarget(target: string): boolean {
 }
 
 /** Returns the held serial port when the target had to be woken off USB. */
-async function wakeSerialParkedOtaTarget(target: string): Promise<string | null> {
+async function wakeSerialParkedOtaTarget(target: string, generation = otaOwnerGeneration): Promise<string | null> {
   if (hasLiveWifiOtaTarget(target)) return null;
   const canonicalTarget = canonicalBoardId(target);
   const port = holdESP32SerialBoard(
@@ -1068,6 +1089,10 @@ async function wakeSerialParkedOtaTarget(target: string): Promise<string | null>
   log(`[ESP32 OTA] ${target} is on USB serial with its WiFi radio parked — released ${port}, waiting for it to join WiFi`);
   const deadline = Date.now() + OTA_SERIAL_WAKE_WAIT_MS;
   while (Date.now() < deadline) {
+    if (generation !== otaOwnerGeneration) {
+      releaseESP32SerialHold(port);
+      throw new Error('ota_owner_stopped');
+    }
     if (hasLiveWifiOtaTarget(target)) return port;
     await new Promise((r) => setTimeout(r, 500));
   }
@@ -1079,15 +1104,18 @@ async function wakeSerialParkedOtaTarget(target: string): Promise<string | null>
 }
 
 async function performWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string): Promise<Record<string, unknown>> {
-  const heldPort = await wakeSerialParkedOtaTarget(target);
+  const generation = otaOwnerGeneration;
+  const heldPort = await wakeSerialParkedOtaTarget(target, generation);
   try {
-    return await performLiveWifiEsp32Ota(core, target, firmwarePath);
+    if (generation !== otaOwnerGeneration) throw new Error('ota_owner_stopped');
+    return await performLiveWifiEsp32Ota(core, target, firmwarePath, generation);
   } finally {
     if (heldPort) releaseESP32SerialHold(heldPort);
   }
 }
 
-async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string): Promise<Record<string, unknown>> {
+async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwarePath: string, generation: number): Promise<Record<string, unknown>> {
+  const checkOwner = () => { if (generation !== otaOwnerGeneration) throw new Error('ota_owner_stopped'); };
   const { key, device } = findWifiOtaTarget(target);
   if (device.otaSupported !== true) {
     throw new Error(`Target ${key} does not report OTA support${device.otaReason ? ` (${device.otaReason})` : ''}`);
@@ -1112,12 +1140,17 @@ async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwar
     const deadline = Date.now() + ms;
     let s = liveSocket();
     while (!s && Date.now() < deadline) {
+      checkOwner();
       await new Promise((r) => setTimeout(r, 200));
       s = liveSocket();
     }
     return s;
   };
   const sendVia = (sock: WebSocket, evt: BridgeEvent) => core.wsServer.sendTo(sock, evt);
+  otaAborts.set(otaId, () => {
+    const socket = liveSocket();
+    if (socket) sendVia(socket, { type: 'esp32_ota_abort', otaId } as BridgeEvent);
+  });
 
   let reconnectResends = 0;
   // Send one OTA frame and wait for its ack, following the board to a fresh
@@ -1128,13 +1161,16 @@ async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwar
   // accepted; a genuinely-gone board still fails after OTA_RECONNECT_WAIT_MS.
   const sendAndAck = async (evt: BridgeEvent, stage: string, seq: number | undefined, timeoutMs: number): Promise<void> => {
     let sock = await awaitLiveSocket(OTA_RECONNECT_WAIT_MS);
+    checkOwner();
     if (!sock) throw new Error(`OTA ${stage}${seq != null ? ` #${seq}` : ''}: board ${key} offline (no live WS)`);
     sendVia(sock, evt);
     try {
       await waitForOtaAck(otaId, stage, seq, timeoutMs);
     } catch (ackErr) {
+      checkOwner();
       const fresh = await awaitLiveSocket(OTA_RECONNECT_WAIT_MS);
       if (fresh && fresh !== sock && reconnectResends < OTA_MAX_RECONNECT_RESENDS) {
+        checkOwner();
         reconnectResends++;
         debug('daemon', `OTA ${key}: ${stage}${seq != null ? ` #${seq}` : ''} ack lost on dropped socket — resending on reconnected WS (resend ${reconnectResends})`);
         sendVia(fresh, evt);
@@ -1164,6 +1200,7 @@ async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwar
       seq++;
     }
     await sendAndAck({ type: 'esp32_ota_end', otaId } as BridgeEvent, 'end', undefined, OTA_END_ACK_TIMEOUT_MS);
+    checkOwner();
     wifiEsp32Sockets.delete(key);
     wifiEsp32Devices.delete(key);
 
@@ -1178,8 +1215,10 @@ async function performLiveWifiEsp32Ota(core: BridgeCore, target: string, firmwar
     };
   } catch (err) {
     const sock = liveSocket();
-    if (sock) { try { sendVia(sock, { type: 'esp32_ota_abort', otaId } as BridgeEvent); } catch { /* best effort */ } }
+    if (sock && generation === otaOwnerGeneration) { try { sendVia(sock, { type: 'esp32_ota_abort', otaId } as BridgeEvent); } catch { /* best effort */ } }
     throw err;
+  } finally {
+    otaAborts.delete(otaId);
   }
 }
 
@@ -1745,6 +1784,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   }
 
   log(`[agentdeck] Starting daemon on port ${port}...`);
+  const checkpointStore = new DaemonCheckpointStore(getDataDir(), pocketAutonomy, outboxIdempotency);
+  let ownerStopping = false;
+  const checkpointPeers = new Map<WebSocket, number>();
+  const checkpointWaiters = new Set<() => void>();
+  let publishCheckpoint = async (sealed = false): Promise<void> => { checkpointStore.capture(sealed); };
 
   // ===== APME (lazy — may be null if better-sqlite3 isn't installed) =====
   let apme: ApmeModule | null = null;
@@ -2178,6 +2222,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         res.end(JSON.stringify({ error: 'Unauthorized — pairing token required for LAN access' }));
         return;
       }
+    }
+    if (ownerStopping && !['GET', 'HEAD', 'OPTIONS'].includes(req.method ?? 'GET')) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'daemon_stopping' })); return;
     }
     // APME routes: auth-gated (task prompts, project paths, hook payloads are sensitive).
     if ((req.url ?? '').startsWith('/apme')) {
@@ -2895,6 +2943,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     if (req.method === 'POST' && pathname === '/esp32/ota') {
       (async () => {
         const body = await readJsonBody(req);
+        if (ownerStopping) throw new SurfaceProtocolError(503, 'daemon_stopping', 'Daemon stopping');
         const target = typeof body.target === 'string' ? body.target : '';
         const firmwarePath = typeof body.firmwarePath === 'string' ? body.firmwarePath : '';
         if (!target || !firmwarePath) {
@@ -3352,7 +3401,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             // next ordinary pull receives the complete current deck.
             log(`[agentdeck] OTA-first Feed bootstrap: ${pullBoard ?? 'unknown'} (${ip})${telemetry.rssiDbm !== undefined ? ` rssi ${telemetry.rssiDbm}dBm` : ''}`);
           }
+          if (ownerStopping) throw new SurfaceProtocolError(503, 'daemon_stopping', 'Daemon stopping');
           if (!feed.unchanged) pocketAutonomy.observeDelivery(feed.cards, now, pullBoard ?? undefined);
+          await publishCheckpoint();
           // A sleeping client's whole visit is this one request: no body, no
           // board id, nothing pushed. Record it, because the gap between two
           // pulls is the only evidence that the timer wake fired at all.
@@ -3376,6 +3427,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         if (board !== 'unknown') feedPulls.noteBoard(ip, board);
         if (surfaceIdentity) feedPulls.noteIdentity(ip, surfaceIdentity);
         const sessions = await core.buildSessionsSnapshot();
+        if (ownerStopping) throw new SurfaceProtocolError(503, 'daemon_stopping', 'Daemon stopping');
         const result = applyOutboxDecisions(body as unknown as OutboxPushRequest, {
           sessions: sessions as unknown as SessionInfo[],
           isPendingRequest,
@@ -3383,6 +3435,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           modules: pocketCardModules,
           idempotency: outboxIdempotency,
         });
+        pocketAutonomy.flush();
+        await publishCheckpoint();
         const applied = result.results.filter((r) => r.status === 'applied').length;
         if (result.results.length > 0) {
           log(`[agentdeck] outbox push from ${board}: ${applied}/${result.results.length} applied`);
@@ -3541,6 +3595,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
       req.on('end', async () => {
+        if (ownerStopping) { res.writeHead(503); res.end(''); return; }
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
         // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
@@ -4776,7 +4831,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     surfaceHasCapability(surfaceNegotiations.get(client), CLAUDE_TOOL_EVENTS_CAPABILITY)
       ? entries
       : entries.filter((entry) => entry.toolEvent !== true));
-  core.wsServer.setEventTransformer((event, client) => {
+  core.wsServer.setEventTransformer((incoming, client) => {
+    const event = incoming.type === 'state_update' && incoming.daemonCheckpoint !== undefined
+      && (!core.wsServer.isLocalProgramClient(client) || surfaceNegotiations.has(client) || core.wsServer.isEsp32Client(client))
+      ? (() => { const clean = { ...incoming }; delete clean.daemonCheckpoint; return clean; })()
+      : incoming;
     const surface = surfaceNegotiations.get(client);
     const historyEntries = event.type === 'timeline_history'
       ? (event as { entries?: Array<{ toolEvent?: boolean }> }).entries ?? []
@@ -4960,6 +5019,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     const stateEvent = buildHubStateEvent();
     lastStateEvent = stateEvent;
     core.wsServer.broadcast(stateEvent);
+  };
+
+  publishCheckpoint = async (sealed = false): Promise<void> => {
+    const payload = checkpointStore.capture(sealed);
+    const sequence = checkpointStore.sequence;
+    const peers = [...checkpointPeers.keys()].filter(peer => peer.readyState === WebSocket.OPEN);
+    const event = { ...buildHubStateEvent(), daemonCheckpoint: payload } as BridgeEvent;
+    // This is process continuity, never a serial/matrix/device broadcast.
+    const send = () => core.wsServer.sendToLocalPrograms(event);
+    if (!peers.length) { send(); return; }
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer); checkpointWaiters.delete(check);
+        if (error) reject(error); else resolve();
+      };
+      const check = () => {
+        if (peers.some(peer => peer.readyState !== WebSocket.OPEN)) {
+          finish(new SurfaceProtocolError(503, 'checkpoint_replica_unavailable', 'Local checkpoint replica disconnected'));
+        } else if (peers.every(peer => (checkpointPeers.get(peer) ?? -1) >= sequence)) finish();
+      };
+      const timer = setTimeout(() => finish(new SurfaceProtocolError(503,
+        'checkpoint_replica_unavailable', 'Local checkpoint replica did not confirm persistence')), DAEMON_CHECKPOINT_POLICY.ackTimeoutMs);
+      checkpointWaiters.add(check); send(); check();
+    });
   };
 
   // System wake recovery — re-publish mDNS, reconnect devices, refresh usage
@@ -6678,6 +6761,21 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     handleSessionSettingsSocketRequest(cmd, sender, gatewayAdapter, core.wsServer);
 
   const handleDeviceCommand = (cmd: PluginCommand, sender?: WebSocket): void => {
+    if (cmd.type === 'daemon_checkpoint_ack') {
+      if (!sender || typeof cmd.checkpointId !== 'string' || !core.wsServer.isLocalProgramClient(sender) || core.wsServer.isEsp32Client(sender) || surfaceNegotiations.has(sender)) return;
+      if (cmd.checkpointId === DAEMON_CHECKPOINT_POLICY.subscriptionId) {
+        if (ownerStopping) return;
+        if (!checkpointPeers.has(sender)) checkpointPeers.set(sender, -1);
+        core.wsServer.sendTo(sender, { ...buildHubStateEvent(), daemonCheckpoint: checkpointStore.capture() } as BridgeEvent);
+        return;
+      }
+      const sequence = checkpointStore.acknowledgementSequence(cmd.checkpointId);
+      if (sequence === null) return;
+      checkpointPeers.set(sender, Math.max(sequence, checkpointPeers.get(sender) ?? -1));
+      for (const check of [...checkpointWaiters]) check();
+      return;
+    }
+    if (ownerStopping) return;
     debug('daemon', `cmd: ${cmd.type}`);
     // Host push-to-talk is the daemon's own capability (host mic + speakers),
     // so claim it ahead of the gateway-first-dibs routing below — it must not
@@ -7842,7 +7940,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         isAlive: true,
         // The first frame a client sees obeys the same driver rule as every
         // broadcast — otherwise a reconnecting deck re-learns the stale label.
-        stateEvent: buildHubStateEvent(),
+        stateEvent: core.wsServer.isLocalProgramClient(ws) && !surface
+          ? { ...buildHubStateEvent(), daemonCheckpoint: checkpointStore.capture() } as BridgeEvent
+          : buildHubStateEvent(),
       });
 
       // Fetch usage on connect if stale
@@ -7855,6 +7955,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
 
   core.wsServer.onClientDisconnect((ws) => {
+    for (const check of [...checkpointWaiters]) check();
+    checkpointPeers.delete(ws);
     surfaceNegotiations.delete(ws);
     unregisterWifiEsp32Socket(ws);
   });
@@ -8175,6 +8277,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   // ===== Shutdown =====
   core.onShutdown(async () => {
+    ownerStopping = true;
+    abortWifiEsp32Ota();
+    pocketAutonomy.flush();
+    drainAllPending();
+    try { await publishCheckpoint(true); }
+    catch { log('[agentdeck] Final checkpoint replica unconfirmed; durable local checkpoint retained.'); }
     apme?.historyReader?.close();
     await dotHost?.stop();
     ciPollingStopped = true;
@@ -8183,7 +8291,6 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     clearInterval(permissionSweepTimer);
     clearInterval(daemonInfoHealTimer);
     codexBackgroundTerminals.dispose();
-    drainAllPending();
     removeDaemonInfo();
     focusRelay.stop();
     timelineRelay.stop();

@@ -38,6 +38,9 @@ struct ADBridgeEvent: Codable, Equatable {
     var billingType: ADBillingType?
     var currentTool: String?
     var cursorIndex: Double?
+    /// Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON. Never contains
+    /// card copy, prompt text, source credentials or executable data.
+    var daemonCheckpoint: String?
     var effortLevel: String?
     /// Session explicitly focused by the user; visual selection should use this.
     ///
@@ -200,6 +203,7 @@ struct ADBridgeEvent: Codable, Equatable {
         case billingType = "billingType"
         case currentTool = "currentTool"
         case cursorIndex = "cursorIndex"
+        case daemonCheckpoint = "daemonCheckpoint"
         case effortLevel = "effortLevel"
         case focusedSessionId = "focusedSessionId"
         case gatewayAuthMessage = "gatewayAuthMessage"
@@ -334,6 +338,7 @@ extension ADBridgeEvent {
         billingType: ADBillingType?? = nil,
         currentTool: String?? = nil,
         cursorIndex: Double?? = nil,
+        daemonCheckpoint: String?? = nil,
         effortLevel: String?? = nil,
         focusedSessionId: String?? = nil,
         gatewayAuthMessage: String?? = nil,
@@ -448,6 +453,7 @@ extension ADBridgeEvent {
             billingType: billingType ?? self.billingType,
             currentTool: currentTool ?? self.currentTool,
             cursorIndex: cursorIndex ?? self.cursorIndex,
+            daemonCheckpoint: daemonCheckpoint ?? self.daemonCheckpoint,
             effortLevel: effortLevel ?? self.effortLevel,
             focusedSessionId: focusedSessionId ?? self.focusedSessionId,
             gatewayAuthMessage: gatewayAuthMessage ?? self.gatewayAuthMessage,

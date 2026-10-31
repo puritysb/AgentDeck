@@ -1,4 +1,11 @@
 /** Pure policies shared by the Node and native Swift daemons. */
+export const DAEMON_CHECKPOINT_POLICY = {
+  version: 1, subscriptionId: 'subscribe', maxBytes: 262_144, receiptLimit: 1024, ackTimeoutMs: 1500,
+  prepareLeaseMs: 10_000,
+  maxCounter: Number.MAX_SAFE_INTEGER - 1,
+  receiptFields: ['cardId', 'sessionId', 'requestId', 'action', 'choiceId', 'decision', 'index', 'value', 'text', 'question'],
+  statuses: ['applied', 'expired', 'unknown_card', 'rejected'],
+} as const;
 export const DAEMON_HANDOVER = {
   exitWaitMs: 12_000,
   bindableWaitMs: 30_000,

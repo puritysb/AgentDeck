@@ -13,6 +13,15 @@ export function emitSwift(rules) {
 import Foundation
 
 enum DaemonParityRules {
+    static let checkpointVersion = ${rules.DAEMON_CHECKPOINT_POLICY.version}
+    static let checkpointSubscriptionId = ${JSON.stringify(rules.DAEMON_CHECKPOINT_POLICY.subscriptionId)}
+    static let checkpointMaxBytes = ${rules.DAEMON_CHECKPOINT_POLICY.maxBytes}
+    static let receiptLimit = ${rules.DAEMON_CHECKPOINT_POLICY.receiptLimit}
+    static let checkpointAckMs = ${rules.DAEMON_CHECKPOINT_POLICY.ackTimeoutMs}
+    static let checkpointPrepareLeaseMs = ${rules.DAEMON_CHECKPOINT_POLICY.prepareLeaseMs}
+    static let checkpointMaxCounter = ${rules.DAEMON_CHECKPOINT_POLICY.maxCounter}
+    static let receiptFields = ${JSON.stringify(rules.DAEMON_CHECKPOINT_POLICY.receiptFields)}
+    static let receiptStatuses = ${JSON.stringify(rules.DAEMON_CHECKPOINT_POLICY.statuses)}
     static let takeoverYieldMs = ${rules.DAEMON_TAKEOVER_YIELD_MS}
     static let kiroObservationWindowMs = ${rules.KIRO_OBSERVATION_WINDOW_MS}
     static let defaultPortWindow = ${rules.DEFAULT_DAEMON_PORT_WINDOW[0]}...${rules.DEFAULT_DAEMON_PORT_WINDOW[1]}

@@ -7,19 +7,19 @@ import CoreFoundation
 @DaemonActor
 final class PocketAutonomy {
     private typealias P = PocketPolicy
-    struct Arm: Codable {
+    struct Arm: Codable, Sendable {
         var shown = 0.0, positive = 0.0, negative = 0.0, ignored = 0.0
         var lastShownAt: Double?
         var hourPositive = Array(repeating: 0.0, count: Int(P.hourBuckets))
     }
-    struct Exposure: Codable {
+    struct Exposure: Codable, Sendable {
         var cardId: String, kind: String
         var shownAt: Double
         var hourBucket: Int
         var board: String?
     }
-    struct Answer: Codable { var choice: String; var at: Double }
-    struct State: Codable {
+    struct Answer: Codable, Sendable { var choice: String; var at: Double }
+    struct State: Codable, Sendable {
         var rev = Int(P.stateRev)
         var feedbackCount = 0.0
         var lastSurveyAt: Double?
@@ -120,6 +120,19 @@ final class PocketAutonomy {
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return value
     }
+
+    static func validatedState(_ raw: [String: Any]) -> State? {
+        let normalized = normalize(raw)
+        guard JSONSerialization.isValidJSONObject(raw),
+              let encoded = try? JSONEncoder().encode(normalized),
+              let object = try? JSONSerialization.jsonObject(with: encoded),
+              let actual = try? JSONSerialization.data(withJSONObject: raw, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let expected = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
+              actual == expected else { return nil }
+        return normalized
+    }
+
+    func adopt(_ snapshot: State) { state = snapshot; flush() }
     func diagnostics() -> [String: Any] {
         ["enabled": enabled, "maxCards": maxCards, "exploration": exploration,
          "feedbackCount": state.feedbackCount, "pendingExposures": state.pending.count,

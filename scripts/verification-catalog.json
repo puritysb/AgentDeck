@@ -325,8 +325,10 @@
       "id": "daemon-lifecycle-live",
       "name": "Signed Swift and Node lifecycle acceptance",
       "gate": "daemon-lifecycle-live",
-      "tiers": ["full"],
-      "manual": "Prepare the isolated alternate signed app and preferences described in docs/testing.md; run node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures --app APP --swift-data DATA --out OUTPUT, then pass --attest daemon-lifecycle-live=pass."
+      "tiers": [
+        "full"
+      ],
+      "manual": "Prepare the alternate signed app and private data/ports in docs/testing.md; run the default lifecycle and --inflight modes. Run --sleep-mode swift/node/both only on a dedicated Mac with verified OS sleep/full-wake records. Attest daemon-lifecycle-live=pass only after all modes pass."
     }
   ],
   "gates": [
@@ -427,7 +429,10 @@
     {
       "id": "daemon-lifecycle-live",
       "name": "Signed Swift and Node lifecycle acceptance",
-      "level": ["e2e", "integration"],
+      "level": [
+        "e2e",
+        "integration"
+      ],
       "where": "Maintainer Mac, alternate sandboxed signed app and private data/ports",
       "workflow": null,
       "trigger": "Opt-in after building and signing the isolated test app",
@@ -438,16 +443,26 @@
         "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
         "bridge/src/__tests__/fixtures/lifecycle-preferences.swift",
         "apple/AgentDeckTests/DaemonStartupCancellationTests.swift",
-        "shared/src/__tests__/daemon-parity.test.ts"
+        "shared/src/__tests__/daemon-parity.test.ts",
+        "bridge/src/__tests__/daemon-checkpoint.test.ts",
+        "bridge/src/__tests__/daemon-checkpoint-handover.test.ts",
+        "apple/AgentDeckTests/DaemonCheckpointTests.swift",
+        "shared/daemon-checkpoint-vectors.json",
+        "bridge/src/__tests__/esp32-wifi-ota-reconnect.test.ts",
+        "apple/AgentDeckTests/PocketAutonomyTests.swift"
       ],
       "proves": [
         "Actual signed Swift and Node processes converge on one private listener in both startup orders and concurrent startup",
         "Isolated stop/restart, client-app crash and owner failure recover with token and synthetic timeline continuity",
-        "An incoming Node crash after Swift yields recovers without restarting the app or contacting the shared daemon"
+        "An incoming Node crash after Swift yields recovers without restarting the app or contacting the shared daemon",
+        "Opt-in in-flight replay checks undecided approvals, stale IDs, aggregate Feed receipts and unconfirmed replica failures across both owner directions",
+        "Synthetic OTA push retires old transfers and pull OTA reconstructs identical bytes explicitly pre-staged on both owners",
+        "Dedicated-Mac sleep modes require actual OS sleep and full-wake evidence before checking expired approvals, OTA and Feed restoration"
       ],
       "does_not_prove": [
-        "Installed App Store or Release delivery, real providers, source grants, hardware writers, sleep/wake or network loss",
-        "In-flight approval, Feed receipt, OTA, pin or configuration transfer; a timeline receipt is narrower evidence"
+        "Installed App Store or Release delivery, real providers, source grants, physical writers or remote network partitions",
+        "Absent-replica recovery, simultaneous durable-store loss, pins/settings/source-grant migration or staged-image distribution",
+        "Physical X4 acceptance is deferred to companion-app integration"
       ]
     },
     {

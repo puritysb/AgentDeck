@@ -157,6 +157,7 @@ actor ObservedSteering {
 
     private struct HeldGate {
         let sessionId: String
+        let openedAt = Date()
         let kind: GateKind
         let tool: String
         let signature: String
@@ -250,6 +251,15 @@ actor ObservedSteering {
         directives[sessionId] = nil
         suppressed[sessionId] = nil
         recentAskReleases[sessionId] = nil
+    }
+
+    /// A held hook belongs to this process/connection. Teardown must not turn
+    /// it into an approval, nor teach an undecided release as auto-approved.
+    func endAllGates() {
+        let gates = heldGates
+        heldGates.removeAll(); heldBySession.removeAll()
+        recentAskReleases.removeAll()
+        for gate in gates.values { gate.continuation?.resume(returning: "ended") }
     }
 
     // MARK: - Auto-approval learner
@@ -430,9 +440,14 @@ actor ObservedSteering {
     /// Device decision. Returns the affected sessionId, or nil when the
     /// requestId is unknown / already resolved. `answered` is the ask-gate's
     /// resolution: the caller supplies the chosen options as the deny reason.
-    func resolveGate(requestId: String, decision: String) -> String? {
+    func resolveGate(requestId: String, decision: String, now: Date = Date()) -> String? {
         guard decision == "allow" || decision == "deny" || decision == "answered" else { return nil }
-        guard let gate = heldGates.removeValue(forKey: requestId) else { return nil }
+        guard let gate = heldGates[requestId] else { return nil }
+        let timeout = gate.timeoutSeconds ?? (gate.kind == .ask ? Self.askHoldTimeoutSeconds : Self.holdTimeoutSeconds)
+        guard now.timeIntervalSince(gate.openedAt) < timeout else {
+            timeoutGate(requestId: requestId); return nil
+        }
+        heldGates.removeValue(forKey: requestId)
         heldBySession.remove(gate.sessionId)
         gate.continuation?.resume(returning: decision)
         return gate.sessionId

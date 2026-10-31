@@ -359,6 +359,28 @@ final class ESP32SerialOpenBackoffTests: XCTestCase {
 /// (Node parity: esp32-wifi-ota-serial-wake.test.ts).
 final class ESP32WifiOtaSerialWakeTests: XCTestCase {
     @DaemonActor
+    func testOwnerStopCancelsSerialWakeAndReleasesOnlyItsHold() async throws {
+        let ota = ESP32WifiOtaManager()
+        ota.serialWakeWait = 5
+        ota.resolveTarget = { throw ESP32WifiOtaManager.OtaError.noTarget($0) }
+        ota.liveConnection = { _ in nil }
+        var released: [String] = []
+        ota.holdSerialBoard = { _ in "/dev/cu.usbmodemTEST" }
+        ota.releaseSerialHold = { released.append($0) }
+        let transfer = Task { @DaemonActor in
+            try await ota.performOta(target: "trmnl_75", firmware: Data(count: 1024))
+        }
+        try await Task.sleep(for: .milliseconds(20))
+        ota.stop()
+        do { _ = try await transfer.value; XCTFail("retired owner completed OTA") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(released, ["/dev/cu.usbmodemTEST"])
+        XCTAssertFalse(ota.transferInFlight)
+        XCTAssertTrue(ota.handleReply(["type": "esp32_ota_ack", "otaId": "old", "stage": "end"]))
+        XCTAssertFalse(ota.transferInFlight)
+    }
+
+    @DaemonActor
     func testWakeTimeoutReleasesTheHeldPort() async {
         let ota = ESP32WifiOtaManager()
         ota.serialWakeWait = 0.3

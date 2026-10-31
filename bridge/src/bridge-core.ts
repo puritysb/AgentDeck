@@ -424,7 +424,8 @@ export class BridgeCore {
     // there the gap rule stays, documented as the weaker instrument it is.
     let lastWall = Date.now();
     let lastMono = monotonicNowMs();
-    setInterval(() => {
+    const wakeTimer = setInterval(() => {
+      if (this.shutdownInProgress) return;
       const wall = Date.now();
       const mono = monotonicNowMs();
       const verdict = classifyClockTick({ wallDeltaMs: wall - lastWall, monoDeltaMs: mono - lastMono, platform: process.platform });
@@ -437,6 +438,7 @@ export class BridgeCore {
       lastWall = wall;
       lastMono = mono;
     }, WAKE_TICK_MS);
+    this.addInterval(wakeTimer);
   }
 
   /** Register a callback for system wake recovery. */

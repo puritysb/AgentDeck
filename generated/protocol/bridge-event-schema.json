@@ -1838,6 +1838,10 @@
         "cursorIndex": {
           "type": "number"
         },
+        "daemonCheckpoint": {
+          "description": "Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON. Never contains card copy, prompt text, source credentials or executable data.",
+          "type": "string"
+        },
         "effortLevel": {
           "type": "string"
         },

@@ -679,7 +679,7 @@ struct StateUpdateEvent: Codable, Sendable {
 
     // CodingKeys excludes moduleHealth (parsed manually from raw JSON)
     private enum CodingKeys: String, CodingKey {
-        case type, state, permissionMode, agentType, sessionId, focusedSessionId, agentCapabilities
+        case type, state, permissionMode, agentType, sessionId, focusedSessionId, agentCapabilities, daemonCheckpoint
         case currentTool, toolInput, toolProgress, projectName, modelName, effortLevel
         case billingType, options, promptType, question, navigable, cursorIndex
         case suggestedPrompt, modelCatalog, sessionStatus, remoteUrl, pairingUrl
@@ -692,6 +692,8 @@ struct StateUpdateEvent: Codable, Sendable {
         case voiceAssistantState, voiceAssistantText, voiceAssistantResponseText
     }
     var permissionMode: String?
+    var daemonCheckpoint: String?
+    var deliveryToken: BridgeDeliveryToken?
     var agentType: String?
     /// Session ID associated with this state payload. In daemon mode this is
     /// the latest hook-attributed session, not necessarily the user's focus.
@@ -948,6 +950,7 @@ enum PluginCommand: Encodable, Sendable {
     case escape
     case voice(action: String)
     case queryUsage
+    case daemonCheckpointAck(checkpointId: String)
     case diag(action: String)
     case utility(action: String, value: Int?)
     case focusSession(sessionId: String)
@@ -980,6 +983,9 @@ enum PluginCommand: Encodable, Sendable {
             try container.encode(action, forKey: .init("action"))
         case .queryUsage:
             try container.encode("query_usage", forKey: .init("type"))
+        case .daemonCheckpointAck(let id):
+            try container.encode("daemon_checkpoint_ack", forKey: .init("type"))
+            try container.encode(id, forKey: .init("checkpointId"))
         case .diag(let action):
             try container.encode("diag", forKey: .init("type"))
             try container.encode(action, forKey: .init("action"))

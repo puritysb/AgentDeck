@@ -15,6 +15,7 @@ import type {
   EscapeCommand,
   VoiceCommand,
   QueryUsageCommand,
+  DaemonCheckpointAckCommand,
   QuerySessionTimelineCommand,
   DiagCommand,
   UtilityCommand,
@@ -60,6 +61,9 @@ export const agentCommand = {
   },
   queryUsage(): QueryUsageCommand {
     return { type: "query_usage" };
+  },
+  daemonCheckpointAck(checkpointId: string): DaemonCheckpointAckCommand {
+    return { type: "daemon_checkpoint_ack", checkpointId };
   },
   querySessionTimeline(sessionId: string): QuerySessionTimelineCommand {
     return { type: "query_session_timeline", sessionId };

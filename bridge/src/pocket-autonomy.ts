@@ -288,6 +288,15 @@ export class AutonomousPocketEngine {
     this.config = parsePocketAutonomyConfig({ pocketAutonomy: config });
   }
 
+  snapshot(): PocketAutonomyState {
+    return normalizeState(JSON.parse(JSON.stringify(this.state)));
+  }
+
+  adopt(snapshot: unknown): void {
+    this.state = normalizeState(snapshot);
+    this.flush();
+  }
+
   modules(): CardModule[] {
     return this.cardModules;
   }

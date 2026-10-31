@@ -303,6 +303,35 @@ final class CodexApprovalHoldTests: XCTestCase {
         XCTAssertNil(late, "a press after the turn ended answers nothing")
     }
 
+    func testOwnerTeardownEndsEveryHoldAndOldPressCannotAnswerReplacement() async throws {
+        let steering = ObservedSteering()
+        let oldID = await steering.beginCodexGate(sessionId: "handover", clientCount: 1, holdSeconds: 5)
+        let old = try XCTUnwrap(oldID)
+        let waiting = Task { await steering.awaitGate(requestId: old) }
+        try await Task.sleep(for: .milliseconds(20))
+        await steering.endAllGates()
+        let ended = await waiting.value
+        XCTAssertEqual(ended, "ended")
+        let replacementID = await steering.beginCodexGate(sessionId: "handover", clientCount: 1, holdSeconds: 5)
+        let replacement = try XCTUnwrap(replacementID)
+        XCTAssertNotEqual(old, replacement)
+        let stale = await steering.resolveGate(requestId: old, decision: "allow")
+        XCTAssertNil(stale)
+        let current = await steering.resolveGate(requestId: replacement, decision: "deny")
+        XCTAssertEqual(current, "handover")
+    }
+
+    func testSleepExpiredGateRefusesPressBeforeTimerDelivery() async throws {
+        let steering = ObservedSteering()
+        guard ObservedSteering.gateEnabled else { return }
+        let candidate = await steering.beginCodexGate(sessionId: "sleep-fixture", clientCount: 1, holdSeconds: 5)
+        let id = try XCTUnwrap(candidate)
+        let result = await steering.resolveGate(requestId: id, decision: "allow", now: Date().addingTimeInterval(6))
+        XCTAssertNil(result)
+        let outcome = await steering.awaitGate(requestId: id)
+        XCTAssertEqual(outcome, "pass")
+    }
+
     func testCodexGateTimesOutOnItsOwnBudget() async {
         let steering = ObservedSteering()
         guard ObservedSteering.gateEnabled else { return }

@@ -116,6 +116,7 @@ export class WsServer {
     }
     | null = null;
   private socketRemoteIp = new Map<WebSocket, string>();
+  private localProgramClients = new Set<WebSocket>();
   private eventTransformer: ((event: BridgeEvent, client: WebSocket) => BridgeEvent | null) | null = null;
   // Clients that registered as the Ulanzi Studio plugin. Their WebSocket
   // presence is the daemon's D200H connectivity signal.
@@ -282,6 +283,7 @@ export class WsServer {
       }
       const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
       this.socketRemoteIp.set(ws, remoteIp);
+      if (localTrust === 'trusted') this.localProgramClients.add(ws);
       if (url.searchParams.get('clientType') === 'esp32' || url.searchParams.get('esp32') === '1') {
         this.esp32Clients.add(ws);
         debug('WS', 'ESP32 WiFi client tagged from query');
@@ -376,6 +378,7 @@ export class WsServer {
         this.esp32Clients.delete(ws);
         this.flappingClients.delete(ws);
         this.socketRemoteIp.delete(ws);
+        this.localProgramClients.delete(ws);
         this.tuiClients.delete(ws);
         if (this.ulanziClients.delete(ws) && this.ulanziClients.size === 0) {
           debug('WS', 'Ulanzi plugin gone — D200H disconnected');
@@ -404,6 +407,16 @@ export class WsServer {
 
   isEsp32Client(ws: WebSocket): boolean {
     return this.esp32Clients.has(ws);
+  }
+
+  isLocalProgramClient(ws: WebSocket): boolean {
+    return this.localProgramClients.has(ws);
+  }
+
+  sendToLocalPrograms(event: BridgeEvent): void {
+    for (const client of this.localProgramClients) {
+      if (client.readyState === WebSocket.OPEN && !this.isEsp32Client(client)) this.sendTo(client, event);
+    }
   }
 
   /** True when this socket's remote IP has been reconnecting fast enough to

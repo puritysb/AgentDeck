@@ -213,6 +213,7 @@ decisions follow from that:
    accessibility trees are opaque, use the focus-free key path and keep the
    button path for hosts that do expose controls.
 
+
 ## Three-configuration parity audit (2026-10-31)
 
 **Standing objective:** Swift-only, Node-only and concurrent operation must each
@@ -273,7 +274,7 @@ configuration drift must not masquerade as a completed port or an agreed excepti
 | Held Claude/Codex decisions and queued delivery | Supported hook paths only; Codex real trusted-handler decision acceptance is still pending as recorded in its row. | Supported hooks plus external terminal paths. | Retire old holds and reject stale request IDs across ownership changes; no terminal fallback in Swift. In-flight integrated acceptance remains open. |
 | OpenCode server permission/question replies and messages | **Native primitives and integration missing** from the read-only SSE path. | Client-library methods exist; production answer/message wiring was not found. The adapter uses health, discovery, SSE and abort. | **Shared integration gap**, formerly P2.5. Method presence does not establish Node-only or concurrent end-to-end HTTP control. Node managed/terminal control is a distinct external path; keep the installed observer observation-only. |
 | Codex/z.ai/Admin usage and CI status | Native clients exist; native GitHub signed public reads/Keychain acceptance recorded. Claude account quota has a separate boundary below. | Existing provider clients use their own authorized configuration. | z.ai already has an active-owner configuration route. Other account/repository selections and credential revisions need owner-change acceptance; private GitHub live authentication is unverified. |
-| Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Same algorithms do not transfer calendar consent, aggregate learning or receipt state between stores. Cross-owner feedback replay and schedule continuity remain unverified; no general transfer mechanism was identified. |
+| Pocket selection, Glance pixels and ICS | Native implementations, exact renderer/parser/selection vectors and signed component/HTTP/Settings evidence. X4 acceptance deferred. | Corresponding Feed/Outbox, renderer and calendar implementations. | Current-owner aggregate learning and opaque receipt state now have a local checkpoint path, with inactive profiles preserved. Calendar consent/configuration and absent-receiver recovery remain separate P1.2 work; see the in-flight acceptance below. |
 | Settings for hardware, GitHub, ICS and relay | App-owned device settings; native Keychain and scoped consent. | Owner's `settings.json`, `relay.json` and provider setup. | **Configuration routing gap:** GitHub/ICS/relay editors are hidden while external; Pixoo sheet still writes the app's local settings and has no active-Node update route. Consistent owner-aware configuration and explicit consent must be implemented/verified. |
 | Session order pins | Persisted in `AgentDeckPaths` store. | Persisted in Node data dir. | **State-transfer gap:** matching JSON does not move pins between the signed container and Node. No automatic pin handover found. |
 | Timeline and APME activity continuity | Timeline handover cache and rebuildable activity projection exist. | Authenticated peer snapshot capture before Swift stand-down exists. | Verify both transfer directions at current revision, including failed/empty capture and strong-identity dedup. Activity projection is not full APME database/correction migration. |
@@ -281,7 +282,7 @@ configuration drift must not masquerade as a completed port or an agreed excepti
 | Relay hub/worker | Native sockets, explicit Keychain target and supported-control refusal. | Node hub/worker. | Two-Mac Node↔Swift relay and installed ATS acceptance exist. This is a cross-machine transport test, not a test of same-Mac daemon ownership transfer or automatic relay-target migration. |
 | Serial/Wi-Fi ESP32, Stream Deck/Ulanzi hosts and same-LAN Android | Supported native transports; device-specific gaps below. | Existing modules and the same vendor plugin clients. | Owner must release serial/BLE and stop sending before its successor starts. Current full-fleet takeover, bounded reconnect, dedup and wake acceptance are incomplete. ADB is separately external. |
 | Pixoo single/Tide/baked and Timebox/iDotMatrix | Native implementations; baked RGB parity and Debug-module physical loop/dim/wake/Tide restoration accepted. | Corresponding render/upload paths; common baked core. | Current signed installed Pixoo port is not accepted/delivered by this audit. Cross-owner settings, upload cancellation and exclusive BLE/HTTP production remain open. |
-| Surface Feed/Outbox, OTA and bundled packs | Native routes and owner-local staging/persistence. | Corresponding Surface routes. | Pairing-token continuity is implemented; cross-owner retries, negotiated identity, duplicate acknowledgements and staged/resumed delivery need integrated acceptance. No byte-for-byte migration of private stores is implied. |
+| Surface Feed/Outbox, OTA and bundled packs | Native routes and owner-local staging/persistence. | Corresponding Surface routes. | Pairing-token and local Feed receipt continuity are implemented. In-flight acceptance below covers synthetic push cancellation and identical pre-staged pull ranges; it does not distribute staged images, migrate source grants or certify X4 hardware. |
 
 Source anchors for the identified gaps: [app-owned paths](../apple/AgentDeck/App/AgentDeckPaths.swift),
 [Settings owner gates](../apple/AgentDeck/UI/Settings/SettingsScreen.swift),
@@ -316,6 +317,21 @@ close them; define the authorized owner/configuration and minimized state contra
 
 ### Startup, shutdown, restart and handover evidence
 
+The in-flight contract distinguishes transferable data from process-owned waits.
+Held approvals end undecided when their owner stops; an old request ID must never
+answer a replacement gate. Push OTA is aborted on owner loss and requires a new
+transfer ID, while pull OTA resumes only against the same product/channel and
+content digest already staged on the new owner. Staged-image distribution is a
+configuration-continuity concern, not permission to resume against different
+bytes. Feed continuity transfers only the active owner's aggregate Pocket state
+and opaque bounded receipt hashes, never card copy, queued prompt text or source
+credentials. A different existing local profile is preserved before adoption;
+unrelated historical aggregates are not blindly added together. Checkpoint
+generation/sequence and durable acknowledgement fence replay and late delivery.
+Actual machine sleep requires a dedicated second Mac. The user deferred full
+sleep/wake acceptance after the first sleep request; no actual wake/restoration
+pass is claimed. Suspending the shared host remains outside this verification.
+
 [DaemonService](../apple/AgentDeck/Daemon/DaemonService.swift) implements attach,
 yield, bounded teardown and promotion; [Node takeover](../bridge/src/daemon-takeover.ts)
 adopts the same-user token before asking Swift to stand down.
@@ -327,12 +343,12 @@ explicit transport paths, not shared-directory assumptions.
 | Swift cold start; quit; relaunch with Node absent | Signed alternate app, own sandbox data, private ready endpoint; token and synthetic prompt/completion history retained. | Actual source grants, all feature stores and hardware shutdown. |
 | Node cold start; stop; restart with app absent | Actual CLI foreground process, scoped stop/start and CLI restart; token and synthetic history retained. | Installed supervisor, configured providers and real hardware. |
 | Node first, then app; quit/relaunch client app | App attaches without a TCP listener; quitting/relaunching it leaves the same Node owner running. | Full roster/control/settings coverage and physical module writers. |
-| Swift first, then Node; later stop Node while app stays | Same app PID yields, Node takes over, and Swift recovers after scoped Node stop; token/history survive both directions. | Newly ported feature state, receiver selection and real device continuity. |
+| Swift first, then Node; later stop Node while app stays | Same app PID yields, Node takes over, and Swift recovers after scoped Node stop; token/history survive both directions. | Source/configuration continuity, receiver selection and real device writers remain separate; adaptive feedback and OTA handover now have the signed acceptance below. |
 | Node restarts or crashes during concurrent use | Real CLI restart returns the app to client mode; SIGKILL of the owner permits bounded Swift recovery. | Live relayed providers, network loss and device write deduplication. |
 | Both start together; client app crashes | Converges on Node ownership; client app SIGKILL/relaunch leaves the owner intact and does not create a second listener. | More scheduling/platform variants and hardware contention. |
 | Incoming Node dies after Swift stands down | Real negotiating Node killed in the no-listener interval; same Swift app recovers after the shared yield lease, without an indefinite wait. | Real resource-hang conditions; late callbacks remain covered by injected epoch/cancellation tests. |
-| Ownership changes during agent turn, approval, Feed feedback or OTA | Feature-specific stale-ID, cancellation, Outbox and persistence fixtures remain evidence; the new live markers are completed synthetic Hermes turns. | Integrated in-flight transitions both ways: identity, history, old holds, first-answer receipt, no duplicate learning/install ACK. |
-| Port change, sleep/wake, LAN/Tailscale loss while both are open | Existing narrow Hermes, Pixoo dim/wake and relay ATS acceptance remains valid. | Cross-feature reconnect, current receiver port, single serial/BLE writer, provider freshness, approved host identity and brightness restoration. |
+| Ownership changes during agent turn, approval, Feed feedback or OTA | Signed Release lab: approvals end undecided, old IDs and stale Outbox answers expire; aggregate feedback/receipts survive both directions and relaunch; push OTA retires IDs and pull bytes match when identically pre-staged. | Arbitrary queued control execution, provider/source context and physical install acknowledgement are not implied. See P1.2/P1.3 and deferred X4 acceptance. |
+| Port change, sleep/wake, LAN/Tailscale loss while both are open | 12-second SIGSTOP/SIGCONT keeps the occupied Node listener authoritative; retry converges after explicit unknown/503. Additional SIGKILL during a held approval restores Swift ownership and the confirmed Feed receipt. Existing Hermes/Pixoo/ATS receipts remain valid. | Actual full wake was deferred by the user; LAN/Tailscale partitions, receiver port changes across every feature, physical single-writer and brightness/provider recovery remain separate acceptance. |
 
 The opt-in [real-process runner](../scripts/verify-daemon-lifecycle.mjs) and
 [preparation procedure](testing.md#signed-swiftnode-lifecycle-acceptance) use
@@ -392,15 +408,67 @@ after cancelled sleep. Normal default discovery remains 9120–9139.
 injected startup/attach/cancellation suites still cover sequences and epoch
 edges that a real-process run cannot force deterministically. A separate test
 fleet is required for exclusive-device and in-flight scenarios; do not repurpose
-shared 9120 or reset permissions to complete them. Timeline/token continuity
-alone does not close session pins, Pocket receipts, consent or settings transfer.
+shared 9120 or reset permissions to complete them. Timeline/token continuity alone does not close session pins, consent or settings
+transfer. Pocket aggregates and receipts now have the narrower local checkpoint
+contract above; an absent receiver and inactive-history reconciliation remain
+explicit configuration/recovery work.
+
+### In-flight handover acceptance (2026-10-31)
+
+The opt-in `--inflight` lab uses a Developer-ID-signed, sandboxed Release
+derivative, private 19450–19459 listeners and synthetic sessions/firmware. It
+never flashes a board or substitutes the installed app. The native/Node
+checkpoint tests share receipt/authority vectors and preserve corrupt files
+instead of resetting them. See the [contract](daemon.md#aggregate-feed-and-in-flight-handover)
+and [repeatable lab procedure](testing.md#signed-swiftnode-lifecycle-acceptance).
+
+The integrated scenarios cover an unconfirmed replica (503, local durable state
+retained), response-loss retry without a second feedback increment, prepare-lease
+expiry, both approval/Feed owner directions, a silent but occupied Node listener,
+retired OTA push IDs and reconstruction of identical pre-staged pull bytes.
+Temporary 503 during reconnect is an explicit unknown, followed by bounded retry;
+it is not a successful receipt until the native replica confirms storage.
+These Feed receipts cover adaptive feedback and replay outcomes. Portable control
+dispatch still means accepted for delivery, not cross-owner exactly-once execution;
+queued command transfer and end-to-end execution acknowledgement remain P1.3.
+This acceptance must not be used as proof that arbitrary queued prompts survive.
+
+**Verification:** the final signed Release derivative passed six integrated
+scenarios; an additional selected replay SIGKILLed Node with an approval held and
+recovered the confirmed feedback/receipt in Swift. Stale Outbox approval replies
+returned `expired`. Quick passed 7,149 tests (17 skipped); the current default
+macOS suite completed 1,467 tests (5 skipped, zero failures); real Node CLI E2E
+also passed all 30 tests with a test-only Keychain substitute. macOS Release,
+iOS, optimized Dot
+macOS and Dot iOS artifact/build gates passed, as did the signed App Store
+artifact check. Checkpoint/aggregate files were separately inspected for forbidden
+raw fields. Raw receipts stay local under `diagnostics/lifecycle-inflight/`. The shared Node
+PID/build, eight module sets, eleven USB serial connections and D200H connection
+matched the baseline. Local temporary apps/build/data were removed (at least
+1.67 GiB); the existing Rust toolchain and installed app were retained.
+
+A cold restart without a current peer starts a new authority lineage, retaining
+its local data. This prevents a peer that advanced while it was absent from
+permanently refusing a legitimate new owner. It does not merge conflicting old
+profiles. The strict HTTP replay also exposed and fixed duplicate Content-Length
+and Connection headers in Swift's pull-OTA route.
+
+Actual sleep/full-wake restoration was **deferred by the user** after a software
+sleep request on SBMacBookPro. No full-wake or physical restoration pass is
+claimed. Its private runner releases its temporary process after the elapsed
+fixture deadline when that Mac next wakes; remote file cleanup is not confirmed
+while it remains unreachable. Power policy and the installed app were not changed.
+X4 remains deferred to companion-app integration; exclusive physical writers,
+network partitions and provider/configuration continuity retain separate gates.
+
+
 
 ### Revised parity priorities
 
 | Priority | Kind | Next bounded result / completion gate |
 |---|---|---|
-| P1.1 | Process baseline verified; cross-feature/device lifecycle remains | The isolated signed-app/Node startup, quit/restart, takeover and failure-recovery baseline above is exercised. Next acceptance: in-flight turn/approval/Feed/OTA, wake/network loss and exclusive physical writers on a separate fleet. Preserve shared timing and distinguish unrun scenarios from failures. |
-| P1.2 | Confirmed continuity/configuration gaps | Define and implement owner-aware settings plus minimized handover state, starting with signed-container session pins and Pixoo configuration. Cover Pocket aggregate/receipt continuity, calendar/provider/relay consent and configuration scope without silent secret copying. Verify both transfer directions and repeated switches. |
+| P1.1 | Baseline and in-flight software acceptance passed; deferrals explicit | Signed isolated approval/Feed/OTA handover, initial-replica failure, prepare expiry, paused-owner recovery and approval/Feed SIGKILL recovery are verified. Actual machine wake is deferred by user request; network partitions and exclusive physical writers still need a separate fleet. Do not block P1.2 on a deferred gate or label it passed. |
+| P1.2 | Remaining consent/configuration and absent-receiver continuity | Live local-peer Pocket aggregate/receipt continuity now has an explicit checkpoint path. Define cold recovery when the receiving runtime was absent, inactive-profile reconciliation, signed-container session pins, Pixoo configuration, calendar/provider/relay grants and staged-image distribution. Keep consent scope explicit; never silently copy secrets or add unrelated aggregate histories. |
 | P1.3 (formerly P2.5) | Portable control primitives and shared integration | First trace and specify the actual Node/Swift product control routes, server selection, explicit consent and credential custody. Complete permission/question replies and messages with session/directory identity, stale-ID refusal, timeout and delivery acknowledgement. Node client methods alone are not an integrated feature. Keep the observer plugin observation-only. |
 | P2 acceptance | Artifact/provider/hardware | Match the tested source to a signed installed Pixoo app and verify settings/relaunch/physical behavior. Retain private-GitHub, trusted Codex approvals and TC001/TRMNL/D200X gates; these are not closed by algorithm parity. |
 | Conditional / deferred | Source or device dependency | Claude quota source-contract research; Kiro v2 when demanded; X4 only at companion-app integration; Dot remains its own distribution track. |

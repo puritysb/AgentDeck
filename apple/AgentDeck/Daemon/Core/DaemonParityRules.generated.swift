@@ -3,6 +3,15 @@
 import Foundation
 
 enum DaemonParityRules {
+    static let checkpointVersion = 1
+    static let checkpointSubscriptionId = "subscribe"
+    static let checkpointMaxBytes = 262144
+    static let receiptLimit = 1024
+    static let checkpointAckMs = 1500
+    static let checkpointPrepareLeaseMs = 10000
+    static let checkpointMaxCounter = 9007199254740990
+    static let receiptFields = ["cardId","sessionId","requestId","action","choiceId","decision","index","value","text","question"]
+    static let receiptStatuses = ["applied","expired","unknown_card","rejected"]
     static let takeoverYieldMs = 147000
     static let kiroObservationWindowMs = 1800000
     static let defaultPortWindow = 9120...9139

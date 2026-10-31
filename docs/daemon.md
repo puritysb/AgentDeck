@@ -193,6 +193,49 @@ container's separate handover cache. Its daemon merges that cache on promotion;
 remote dashboard connections cannot populate it. The dashboard reconnects once
 the listener, handlers and history are ready, before device-module discovery.
 
+## Aggregate Feed and in-flight handover
+
+Each owner keeps `daemon-checkpoint.json`: normalized Pocket aggregates and a
+bounded ledger of SHA-256 Outbox receipt keys/statuses. It contains no card copy,
+queued command text, source URL, token or source grant. Receipt hashes use the
+same fixed field array in both runtimes and exclude retry-varying `ageSec`.
+Limits and field order come from `shared/src/daemon-parity.ts`; common vectors
+and both native/Node tests cover restart, stale generations and malformed state.
+
+Swift→Node uses a two-phase loopback stand-down. Swift seals its checkpoint and
+freezes Feed/Outbox mutations under an expiring preparation lease, while keeping
+the listener. Node durably stages that payload in its own directory before
+committing the exact lease/checkpoint identity. A failed incoming process leaves
+Swift serving after lease expiry; unknown/refused capture never becomes a
+shutdown fallback. Legacy endpoint absence remains the explicit fallback case.
+Node→Swift sends the checkpoint only on admitted local program sockets, with
+Surface, ESP32, serial/matrix and remote peers excluded. The native client
+subscribes before storage; once subscribed, Node waits for bounded durable ACKs
+before reporting Feed/Outbox success. A missing ACK produces 503 with the local
+checkpoint retained, so retry can use the receipt without applying feedback twice.
+A retired socket's token and generation/sequence guards fence late async writes.
+A restart without an admitted current peer keeps its local aggregates/receipts
+but starts a new authority lineage: another runtime may have advanced the old
+lineage while it was absent, and that must not permanently refuse a valid new
+owner's initial replica.
+
+The active owner's profile continues across promotion. A different inactive
+profile and its original aggregate file are archived locally before adoption;
+unrelated totals are not added together. An absent receiving runtime has no
+replica: this does not promise cross-container recovery after simultaneous loss
+or transfer source permissions, settings, session pins or staged firmware.
+Those require their own consent/configuration contract. Portable control dispatch
+retains its existing accepted-for-delivery semantics; copying a receipt does not
+prove execution of an arbitrary queued prompt. Queue transfer and execution ACKs
+remain a separate portable-control completion item.
+
+Held approvals belong to their HTTP connection and end undecided on owner loss.
+Old request IDs cannot answer new holds. Approval presses and OTA ACKs check wall
+clock expiry on read as well as timers, so sleep cannot extend their budget.
+Push OTA aborts on owner loss and a new transfer uses a fresh ID. Pull OTA can
+resume byte ranges against identical bytes already staged for the same
+product/board/channel on both owners; downloading is not an installation ACK.
+
 ## Session timeline relay
 
 `SessionTimelineRelay` (`session-timeline-relay.ts`) — daemon subscribes to sibling session bridges' WS to relay `timeline_event`/`timeline_history` events + `state_update.modelCatalog` (Claude Code OAuth catalog → daemon `cachedModelCatalog`, merged with Gateway catalog by name dedup). 10s sync interval detects new/removed sessions. Eliminates client-side `StateTimelineGenerator` duplication (Android/Apple) — daemon provides unified timeline stream for all agent types.

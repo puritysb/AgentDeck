@@ -31,6 +31,7 @@ interface PendingEntry {
   sessionId?: string;
   tool?: string;
   createdAt: number;
+  expiresAt: number;
   /** Fired exactly once when the entry resolves by any path (device decision,
    *  timeout, sweep, drain) so the caller can clear awaiting UI consistently. */
   onResolved?: (decision: PermissionDecision) => void;
@@ -107,6 +108,7 @@ export function registerPending(
     sessionId: opts.sessionId,
     tool: opts.tool,
     createdAt: Date.now(),
+    expiresAt: Date.now() + opts.timeoutMs,
     onResolved: opts.onResolved,
     buildBody: opts.buildBody,
   });
@@ -121,6 +123,7 @@ export function registerPending(
 export function resolvePending(requestId: string, decision: 'allow' | 'deny'): string | null {
   const entry = pending.get(requestId);
   if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) { endWith(requestId, entry, 'pass'); return null; }
   const sessionId = entry.sessionId ?? null;
   endWith(requestId, entry, decision);
   debug('permission', `resolved pending ${requestId} → ${decision}`);
@@ -144,6 +147,7 @@ export function resolvePendingWithReason(
 ): string | null {
   const entry = pending.get(requestId);
   if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) { endWith(requestId, entry, 'pass'); return null; }
   const sessionId = entry.sessionId ?? null;
   endWith(requestId, entry, decision, reason);
   debug('permission', `resolved pending ${requestId} → ${decision} (with reason)`);
@@ -194,7 +198,9 @@ export function drainAllPending(): void {
 /** Is this requestId still an open held gate? Used by the hook handler to
  *  avoid clearing a gate's awaiting overlay on unrelated parallel-tool hooks. */
 export function isPendingRequest(requestId: string): boolean {
-  return pending.has(requestId);
+  const entry = pending.get(requestId);
+  if (entry && Date.now() >= entry.expiresAt) { endWith(requestId, entry, 'pass'); return false; }
+  return entry !== undefined;
 }
 
 /** Test/diagnostic helper. */

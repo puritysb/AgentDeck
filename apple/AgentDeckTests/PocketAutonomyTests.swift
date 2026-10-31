@@ -116,6 +116,26 @@ final class PocketAutonomyTests: XCTestCase {
     }
 
     @DaemonActor
+    func testPullOTARangeHasOneFramingHeaderAndExactBinaryBody() async throws {
+        try await withRoutes { http, _, _ in
+            let image = Data(repeating: 0x41, count: 40 * 1024)
+            _ = try self.json(await http.route(self.request("POST", "/esp32/ota", body: [
+                "target": "xteink_x4", "stage": true, "productId": "io.pocketdaily.reader",
+                "board": "xteink_x4", "updateChannel": "stable", "firmwareB64": image.base64EncodedString(),
+            ])))
+            let response = await http.route(try self.request("GET", "/esp32/fw", query: ["from": "8192", "limit": "4096"]))
+            XCTAssertEqual(response.status, 200)
+            XCTAssertEqual(response.body, Data(image[8192..<image.count]))
+            let wire = HTTPServer.formatHTTPResponse(response)
+            let marker = try XCTUnwrap(wire.range(of: Data("\r\n\r\n".utf8)))
+            let headers = String(decoding: wire[..<marker.lowerBound], as: UTF8.self).lowercased().components(separatedBy: "\r\n")
+            XCTAssertEqual(headers.filter { $0.hasPrefix("content-length:") }.count, 1)
+            XCTAssertEqual(headers.filter { $0.hasPrefix("connection:") }.count, 1)
+            XCTAssertEqual(Data(wire[marker.upperBound...]), response.body)
+        }
+    }
+
+    @DaemonActor
     func testOTAFirstEnvelopeNeverRecordsAdaptiveExposure() async throws {
         try await withRoutes { http, _, _ in
             _ = try self.json(await http.route(self.request("POST", "/esp32/ota", body: [

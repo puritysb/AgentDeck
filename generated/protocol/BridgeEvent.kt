@@ -78,6 +78,13 @@ data class BridgeEvent (
     val billingType: BillingType? = null,
     val currentTool: String? = null,
     val cursorIndex: Double? = null,
+
+    /**
+     * Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON. Never contains
+     * card copy, prompt text, source credentials or executable data.
+     */
+    val daemonCheckpoint: String? = null,
+
     val effortLevel: String? = null,
 
     /**

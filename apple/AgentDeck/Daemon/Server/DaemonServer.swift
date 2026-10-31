@@ -29,7 +29,6 @@ import IOKit
 import IOKit.ps
 import Network
 
-private let kIOMessageSystemHasPoweredOn: UInt32 = 0xe0000300
 
 private struct SwiftWeatherConfig {
     let latitude: Double
@@ -1070,6 +1069,9 @@ final class DaemonServer {
     /// Shutdown can interleave with any startup await on the daemon actor.
     /// Once stopped, this instance must never bind or start another subsystem.
     private var startupStopped = false
+    private var powerObservation: DaemonPowerObservation?
+    private var wakeRecoveryTask: Task<Void, Never>?
+    private(set) var systemWakeRecoveries = 0
     private var registeredDaemonInfo: DaemonInfo?
     private let auth = AuthManager.shared
     private let portableWeather = SwiftPortableMetWeatherProvider()
@@ -1106,6 +1108,28 @@ final class DaemonServer {
     private var surfaceNegotiations: [UUID: SurfaceRuntimeNegotiation] = [:]
     private var surfaceOutboxLedger: [String: [String: Any]] = [:]
     private var surfaceOutboxOrder: [String] = []
+    private var checkpointStore: DaemonCheckpointStore?
+    private var checkpointLease: (id: String, until: Date)?
+    private var handoverPreparing: Bool { checkpointLease.map { Date() < $0.until } ?? false }
+    private var rejectsMutations: Bool { startupStopped || handoverPreparing }
+
+    private func ensureCheckpoint() throws {
+        guard checkpointStore == nil else { return }
+        let store = try DaemonCheckpointStore(directory: AgentDeckPaths.baseDirectory, pocket: pocketAutonomy)
+        for receipt in store.restoredReceipts {
+            surfaceOutboxLedger[receipt.key] = ["status": receipt.status]
+            surfaceOutboxOrder.append(receipt.key)
+        }
+        checkpointStore = store
+    }
+    private func checkpointPayload(sealed: Bool = false) throws -> String {
+        try ensureCheckpoint()
+        let receipts = surfaceOutboxOrder.compactMap { key -> DaemonReceipt? in
+            guard let status = surfaceOutboxLedger[key]?["status"] as? String else { return nil }
+            return DaemonReceipt(key: key, status: status)
+        }
+        return try checkpointStore!.capture(receipts: receipts, sealed: sealed)
+    }
     private struct SurfaceFeedClientState {
         var client: String
         var board: String?
@@ -2519,15 +2543,13 @@ final class DaemonServer {
 
         // 13. System sleep/wake handling — immediate cleanup on wake
         // Use Darwin notification (IOKit power assertion) — works without AppKit
-        let wakePort = IONotificationPortCreate(kIOMainPortDefault)
-        if let wakePort {
-            IONotificationPortSetDispatchQueue(wakePort, DispatchQueue.main)
-            var notifier: io_object_t = 0
-            let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
-            IOServiceAddInterestNotification(
-                wakePort, rootDomain, kIOGeneralInterest,
-                daemonWakeCallback, Unmanaged.passUnretained(self).toOpaque(), &notifier)
+        let observation = await MainActor.run { [weak self] in
+            DaemonPowerObservation { [weak self] in
+                Task { @DaemonActor [weak self] in self?.handleSystemWake() }
+            }
         }
+        guard !startupStopped else { await observation.stop(); return }
+        powerObservation = observation
 
         // 14. Network change detection — WiFi/VPN/IP changes trigger Bonjour re-publish + module recovery
         lastKnownIP = AuthManager.getLanIP()
@@ -3092,7 +3114,9 @@ final class DaemonServer {
     private func portableWeatherFeedResponse(
         identity: SurfaceRuntimeIdentity?, echoSig: String?, now: Date = Date()
     ) async -> HTTPServer.HTTPResponse {
-        guard !startupStopped else { return .json(["error": "daemon stopping"], status: 503) }
+        guard !startupStopped, !handoverPreparing else { return .json(["error": "daemon stopping"], status: 503) }
+        do { try ensureCheckpoint() }
+        catch { return .json(["error": "checkpoint persistence unavailable"], status: 503) }
         let config = weatherConfig()
         let snapshot: [String: Any]?
         if let config { snapshot = await portableWeather.get(config, now: now) }
@@ -3218,13 +3242,15 @@ final class DaemonServer {
                 "md5": pack.advert.md5, "licenseSpdx": pack.advert.licenseSpdx,
             ] as [String: Any]
         }
-        guard !startupStopped, calendarContext.accepts(schedule) else { return .json(["error": "calendar configuration changed"], status: 503) }
+        guard !startupStopped, !handoverPreparing, calendarContext.accepts(schedule) else { return .json(["error": "daemon or calendar configuration changed"], status: 503) }
         // Conditional pulls and OTA-first envelopes do not expose any new card.
         // Count only cards in a full response, just as the Node producer does.
         if feed["unchanged"] as? Bool != true {
             pocketAutonomy.observeDelivery(feed["cards"] as? [[String: Any]] ?? [],
                 now: now.timeIntervalSince1970 * 1000, board: identity?.board)
         }
+        do { _ = try checkpointPayload() }
+        catch { return .json(["error": "checkpoint persistence unavailable"], status: 503) }
         return .json(feed)
     }
 
@@ -3257,10 +3283,8 @@ final class DaemonServer {
 
         // ageSec changes on every retry, so it is deliberately excluded from
         // the daemon-lifetime idempotency key.
-        var stable = decision; stable.removeValue(forKey: "ageSec")
-        let keyData = (try? JSONSerialization.data(withJSONObject: stable, options: [.sortedKeys])) ?? Data()
-        let key = SHA256.hash(data: keyData).map { String(format: "%02x", $0) }.joined()
-        if let prior = surfaceOutboxLedger[key] { return prior }
+        guard let key = DaemonCheckpointStore.receiptKey(decision) else { return result("rejected", "malformed decision") }
+        if var prior = surfaceOutboxLedger[key] { prior["cardId"] = cardId; return prior }
 
         let outcome: [String: Any]
         if action == "dismiss" {
@@ -3299,7 +3323,9 @@ final class DaemonServer {
                     return rememberSurfaceOutbox(key: key, result: result("expired", "prompt changed since the decision was recorded"))
                 }
                 if action == "select_option" {
-                    guard let index = (decision["index"] as? NSNumber)?.intValue, index >= 0 else {
+                    guard let value = decision["index"] as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(),
+                          value.doubleValue.isFinite, value.doubleValue >= 0,
+                          let index = Int(exactly: value.doubleValue) else {
                         return rememberSurfaceOutbox(key: key, result: result("rejected", "index required"))
                     }
                     handleCommand(["type": "select_option", "index": index, "sessionId": sessionId,
@@ -3328,7 +3354,7 @@ final class DaemonServer {
     private func rememberSurfaceOutbox(key: String, result: [String: Any]) -> [String: Any] {
         if surfaceOutboxLedger[key] == nil { surfaceOutboxOrder.append(key) }
         surfaceOutboxLedger[key] = result
-        while surfaceOutboxOrder.count > 1024 {
+        while surfaceOutboxOrder.count > DaemonParityRules.receiptLimit {
             surfaceOutboxLedger.removeValue(forKey: surfaceOutboxOrder.removeFirst())
         }
         return result
@@ -3411,9 +3437,15 @@ final class DaemonServer {
         // exactly one route — a minimal GET /health with no pairingToken, no
         // module inventory, no session state. Everything else 401s before
         // route dispatch (stream routes included — see HTTPServer.handle).
-        await httpServer.setAccessPolicy { request in
+        await httpServer.setAccessPolicy { [weak self] request in
             let pairingOpen = await PairingWindowStore.shared.isOpen()
-            return Self.accessPolicyResponse(for: request, daemonPort: daemonPort, pairingWindowOpen: pairingOpen)
+            if let denied = Self.accessPolicyResponse(for: request, daemonPort: daemonPort, pairingWindowOpen: pairingOpen) { return denied }
+            if request.method == "POST", !["/shutdown", "/stand-down", "/stand-down/commit"].contains(request.path) {
+                guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+                let stopping = await self.rejectsMutations
+                if stopping { return .json(["error": "daemon stopping"], status: 503) }
+            }
+            return nil
         }
 
         // ── Pairing code ──────────────────────────────────────────────────
@@ -3809,8 +3841,14 @@ final class DaemonServer {
             }
             let decisionBoxes = decisions.map(SendableDict.init)
             let resultBoxes: [SendableDict]? = await DaemonActor.run {
-                guard !self.startupStopped else { return nil }
-                return decisionBoxes.map { SendableDict(self.applySurfaceOutboxDecision($0.value)) }
+                guard !self.startupStopped, !self.handoverPreparing else { return nil }
+                do {
+                    try self.ensureCheckpoint()
+                    let results = decisionBoxes.map { SendableDict(self.applySurfaceOutboxDecision($0.value)) }
+                    _ = try self.checkpointPayload()
+                    self.pocketAutonomy.flush()
+                    return results
+                } catch { return nil }
             }
             guard let resultBoxes else { return .json(["error": "daemon stopping"], status: 503) }
             let results = resultBoxes.map(\.value)
@@ -3837,9 +3875,14 @@ final class DaemonServer {
         // (full Tier-2 feature set) POSTs here first. We yield the port and
         // become a client of the incoming daemon. Ack immediately; the actual
         // stand-down runs async so the caller can proceed to bind.
-        await httpServer.post("/stand-down") { [weak self] _ in
-            Task { @DaemonActor in self?.onStandDownRequested?() }
-            return .json(["status": "standing_down"])
+        await httpServer.post("/stand-down") { [weak self] request in
+            guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+            return await self.prepareStandDown(transactional: request.headers["x-agentdeck-checkpoint"] == "1")
+        }
+        await httpServer.post("/stand-down/commit") { [weak self] request in
+            guard let self else { return .json(["error": "daemon unavailable"], status: 503) }
+            let body = Self.jsonBody(request.body)
+            return await self.commitStandDown(lease: body["lease"] as? String, id: body["checkpointId"] as? String)
         }
 
         // Serial suspend / resume (USB flashing) — Node parity with
@@ -4039,10 +4082,8 @@ final class DaemonServer {
                 let status = segment.from > 0 && negotiated206 ? 206 : 200
                 var headers = [
                     "Content-Type": "application/octet-stream",
-                    "Content-Length": String(segment.data.count),
                     "X-FW-MD5": segment.md5,
                     "Cache-Control": "no-store",
-                    "Connection": "close",
                 ]
                 if segment.from > 0 {
                     headers["Content-Range"] = segment.data.isEmpty
@@ -4727,6 +4768,7 @@ final class DaemonServer {
     /// falls through to the connection-agnostic `handleCommand`. Module
     /// callers (ADB, D200H) keep using `handleCommand` directly.
     private func handleWSCommand(_ cmd: [String: Any], from conn: WebSocketConnection) {
+        guard !startupStopped, !handoverPreparing else { return }
         if cmd["type"] as? String == "client_register" {
             handleClientRegister(cmd, from: conn)
             return
@@ -5289,6 +5331,7 @@ final class DaemonServer {
     }
 
     private func handleCommand(_ cmd: [String: Any]) {
+        guard !startupStopped, !handoverPreparing else { return }
         guard let type = cmd["type"] as? String else { return }
         DaemonLogger.shared.debug("Daemon", "cmd: \(type)")
         // Normalize a device-truncated sessionId ONCE at the entry point so
@@ -8487,6 +8530,10 @@ final class DaemonServer {
         ) else {
             return .text("")
         }
+        guard !startupStopped else {
+            _ = await ObservedSteering.shared.endGate(requestId: requestId)
+            return .text("")
+        }
         // A hook process Claude abandons (interrupt, its own timeout) closes
         // its socket; release the hold then instead of at the 25 s timer, so
         // the device stops offering a decision nobody is waiting for.
@@ -8641,6 +8688,10 @@ final class DaemonServer {
         ) else {
             return .text("")
         }
+        guard !startupStopped else {
+            _ = await ObservedSteering.shared.endGate(requestId: requestId)
+            return .text("")
+        }
         pendingAskBySession[sid]?.gateRequestId = requestId
         Self.releaseHoldOnPeerClose(requestId: requestId)
         // The gate owns this session's prompt until it resolves — parallel tool
@@ -8737,6 +8788,10 @@ final class DaemonServer {
                let entry = pushedSessionsById[sid], entry.state != "awaiting_permission" {
                 showCodexApprovalPrompt(sessionId: sid, question: question, requestId: nil)
             }
+            return .text("")
+        }
+        guard !startupStopped else {
+            _ = await ObservedSteering.shared.endGate(requestId: requestId)
             return .text("")
         }
         codexHoldRequestBySession[sid] = requestId
@@ -10397,10 +10452,12 @@ final class DaemonServer {
     }
 
     private func refreshSessions() async {
+        guard !startupStopped else { return }
         settleStaleCodexProcessingSessions(broadcast: false)
 
         // Pull filesystem-registered sessions (our own group container) first.
         let registryEntries = await registry.listActiveAndReachable().filter { $0.id != sessionId }
+        guard !startupStopped, !Task.isCancelled else { return }
 
         // Merge with push-registered sessions (CLI bridges over WS). Pushed
         // sessions are authoritative for App Store builds because Swift
@@ -10473,6 +10530,7 @@ final class DaemonServer {
         }
 
         let enriched = await enrichSessionsWithState(merged)
+        guard !startupStopped, !Task.isCancelled else { return }
         guard !startupStopped else { return }
 
         // Order-pin overlay (#273), applied before fold+sort like the Node
@@ -12323,8 +12381,40 @@ final class DaemonServer {
 
     // MARK: - Shutdown
 
+    private func prepareStandDown(transactional: Bool) -> HTTPServer.HTTPResponse {
+        guard !startupStopped, !handoverPreparing else { return .json(["error": "handover busy"], status: 409) }
+        do {
+            let payload = try checkpointPayload(sealed: true)
+            if transactional {
+                let lease = UUID().uuidString
+                checkpointLease = (lease, Date().addingTimeInterval(Double(DaemonParityRules.checkpointPrepareLeaseMs) / 1000))
+                return .json(["status": "prepared", "continuity": payload, "lease": lease])
+            }
+            startupStopped = true
+            Task { @DaemonActor in self.onStandDownRequested?() }
+            return .json(["status": "standing_down", "continuity": payload])
+        } catch { return .json(["error": "checkpoint persistence unavailable"], status: 503) }
+    }
+
+    private func commitStandDown(lease: String?, id: String?) -> HTTPServer.HTTPResponse {
+        guard !startupStopped, handoverPreparing, let current = checkpointLease, current.id == lease,
+              let id, let payload = try? checkpointPayload(sealed: true),
+              DaemonCheckpointStore.parse(payload)?.id == id else {
+            return .json(["error": "stale handover lease"], status: 409)
+        }
+        checkpointLease = nil; startupStopped = true
+        Task { @DaemonActor in self.onStandDownRequested?() }
+        return .json(["status": "standing_down"])
+    }
+
     func shutdown() async {
         startupStopped = true
+        wakeRecoveryTask?.cancel(); wakeRecoveryTask = nil
+        esp32Ota.stop()
+        let power = powerObservation; powerObservation = nil
+        // IOKit callbacks and their disposal share the main queue, but UI
+        // responsiveness must never gate release of the daemon listener.
+        Task { @MainActor in power?.stop() }
         relayPollTask?.cancel(); relayPollTask = nil
         relayUplink?.stop(); relayUplink = nil; relayHub.stop()
         githubCIPollTask?.cancel(); githubCIPollTask = nil
@@ -12369,6 +12459,7 @@ final class DaemonServer {
         // exist to send (D200H / Pixoo / iDotMatrix paint an OFFLINE scene) and
         // finite enough that the port always comes back.
         await withBudget(seconds: 4, "module + relay teardown") { @DaemonActor [self] in
+            await ObservedSteering.shared.endAllGates()
             await focusRelay.stop()
             await timelineRelay.stop()
             await logStream.stop()
@@ -12758,25 +12849,30 @@ final class DaemonServer {
 
     /// Recovery after the machine wakes. Called from the IOKit power callback,
     /// which runs off the daemon's executor — hence this hop.
-    fileprivate func handleSystemWake() {
+    func handleSystemWake() {
+        guard !startupStopped else { return }
+        systemWakeRecoveries += 1
         DaemonLogger.shared.info("System wake — recovering sessions and devices")
         // Atomic refresh-then-broadcast: pulls live registry + pushed sessions,
         // enriches state, then broadcasts the freshly-rebuilt cachedSessions.
         // Calling broadcastSessionsList() directly after a discard-only
         // registry.listActive() would publish the pre-sleep snapshot.
-        Task { await self.refreshSessions() }
-        // Re-sync timeline relay (drops dead subscriptions)
-        Task { await self.timelineRelay.sync() }
-        // Re-advertise Bonjour (mDNSResponder may have stale state)
-        Task { await self.wsServer.republishBonjour() }
-        // Wake all device modules (D200H re-scan, ESP32 reconnect, Pixoo re-sync)
-        Task { await self.moduleManager.wakeAll() }
-        // Broadcast full state so reconnected devices get fresh data
-        Task { self.broadcastStateUpdate() }
-        // Refresh usage after network stabilizes (clears stale "!" indicator)
-        Task {
-            try? await Task.sleep(for: .seconds(4))
+        wakeRecoveryTask?.cancel()
+        wakeRecoveryTask = Task { [weak self] in
+            guard let self, !self.startupStopped, !Task.isCancelled else { return }
+            await self.refreshSessions()
+            guard !self.startupStopped, !Task.isCancelled else { return }
+            await self.timelineRelay.sync()
+            guard !self.startupStopped, !Task.isCancelled else { return }
+            await self.wsServer.republishBonjour()
+            guard !self.startupStopped, !Task.isCancelled else { return }
+            await self.moduleManager.wakeAll()
+            guard !self.startupStopped, !Task.isCancelled else { return }
+            self.broadcastStateUpdate()
+            do { try await Task.sleep(for: .seconds(4)) } catch { return }
+            guard !self.startupStopped, !Task.isCancelled else { return }
             await self.fetchUsageRelayed()
+            guard !self.startupStopped, !Task.isCancelled else { return }
             self.broadcastUsage()
         }
     }
@@ -14471,23 +14567,6 @@ struct ChatTurnAnchorTracker: Equatable, Sendable {
 enum DaemonError: Error {
     case alreadyRunning(port: Int)
     case noPortAvailable
-}
-
-/// IOKit power-notification callback.
-///
-/// Declared at file scope on purpose. Written inline inside `startServices()`
-/// it would statically inherit that method's `@DaemonActor` isolation, and
-/// because a `@convention(c)` function pointer cannot carry isolation, Swift
-/// compiles an executor assertion into the closure's entry. IOKit calls it on
-/// the notification port's dispatch queue, so that assertion trips —
-/// "Incorrect actor executor assumption; expected 'AgentDeck.DaemonActor'" —
-/// and aborts the process. At file scope there is no isolation to inherit, and
-/// the hop onto the daemon is explicit.
-private let daemonWakeCallback: IOServiceInterestCallback = { refcon, _, messageType, _ in
-    guard messageType == UInt32(kIOMessageSystemHasPoweredOn) else { return }
-    guard let refcon else { return }
-    let server = Unmanaged<DaemonServer>.fromOpaque(refcon).takeUnretainedValue()
-    Task { @DaemonActor in server.handleSystemWake() }
 }
 
 struct SendableDict: @unchecked Sendable {

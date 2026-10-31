@@ -25,6 +25,14 @@ function parseDecision(body: string | undefined): string | undefined {
 }
 
 describe('permission-resolver', () => {
+  it('refuses a late press when wall time expired before the sleeping timer ran', () => {
+    const res = fakeRes();
+    registerPending('sleep', res as any, { sessionId: 'sid', timeoutMs: 1000 });
+    vi.setSystemTime(Date.now() + 1001);
+    expect(resolvePending('sleep', 'allow')).toBeNull();
+    expect(res.body).toBe('');
+    expect(_pendingCount()).toBe(0);
+  });
   beforeEach(() => {
     drainAllPending();
     vi.useFakeTimers();

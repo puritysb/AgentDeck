@@ -235,6 +235,18 @@ struct AgentDeckApp: App {
                   let data = try? JSONEncoder().encode(entries) else { return }
             DaemonTimelineStore.stageHandoverSnapshot(data)
         }
+        stateHolder.onLocalDaemonCheckpoint = { [weak daemonService] payload, admission, token in
+            guard daemonService?.isUsingExternalDaemon == true else { return nil }
+            do {
+                let id = try await DaemonCheckpointStore.stagePeer(payload,
+                    directory: AgentDeckPaths.baseDirectory, admission: admission, isCurrent: { token.isValid })
+                guard daemonService?.isUsingExternalDaemon == true else { return nil }
+                return id
+            } catch {
+                DaemonLogger.shared.error("Local daemon checkpoint could not be persisted")
+                return nil
+            }
+        }
 
         // On external→owner promotion, purge Node-relayed usage/subscription
         // cache so unsupported-in-self-daemon data doesn't linger as a stale

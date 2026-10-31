@@ -138,9 +138,29 @@ Allow several minutes: failed incoming takeover deliberately waits out the
 production yield lease, rather than shortening it for acceptance. The
 2026-10-31 signed derivative run is recorded in the
 [feature boundary table](appstore-feature-matrix.md#startup-shutdown-restart-and-handover-evidence).
-This does not certify installed delivery, source/credential grants, real provider
-freshness, physical device writers, wake/network loss or in-flight approval,
-Pocket/OTA/configuration transfer. Those remain separate acceptance work.
+Add `--inflight --fresh` for the synthetic approval, adaptive Feed, checkpoint
+replica, paused-owner and OTA push/pull scenarios. `--fresh` resets only the
+explicit isolated synthetic stores after the private window is proven vacant.
+The pull test explicitly stages identical images on both owners; it does not
+implement stage/configuration distribution. Source tests cover wall-clock expiry
+before sleeping timers run and retired IOKit registrations.
+
+Actual machine sleep uses a **dedicated Mac**, never the shared hardware host.
+Prepare the same signed derivative and private runtime there, then use
+`--sleep-mode swift`, `node` and `both` separately with fresh synthetic data scopes.
+`--sleep-now --dedicated-sleep-host` requires the shared daemon window to be
+provably free and invokes macOS sleep from this developer fixture immediately after
+approval and OTA waits are live. Arrange physical wake after at least 45 seconds;
+do not change power settings. The controller must verify actual OS sleep and
+full wake records before writing `wake-verified.json` in that run's output folder.
+Elapsed time, SIGSTOP or an unavailable SSH connection alone are not sleep proof.
+`--signal-cleanup` avoids Apple Events for cleanup on an SSH-only fixture host;
+it signals only the verified alternate app process. Keep baseline and partial
+attempts separate from completed acceptance receipts.
+
+This does not certify installed delivery, real provider/source grants, physical
+writers, remote network partitions, absent-replica recovery or configuration
+migration. X4 physical acceptance remains deferred to companion-app integration.
 
 ## macOS device runs: preflight before you deploy
 
