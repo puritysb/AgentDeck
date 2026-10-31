@@ -324,10 +324,14 @@ for verified publication and Store review status.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
+**Preparation, 2026-10-30:** npm **1.9.7** and macOS **1.9.5** are candidates for integration hardening and preservation of custom hook settings. They are not published. Update the native app and CLI together, then refresh enabled integrations and review Codex hook trust when prompted. See the [release decision](RELEASING.md#2026-10-30-integration-hardening-preparation-decision).
+
 **Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
 A late update to a timeline row (summary, evaluation score, approval result) now
-survives a restart. macOS **1.9.4 / 10001** is **in review**. It replaces the
-withdrawn 1.9.3 submission and carries its changes. Public macOS remains 1.9.2.
+survives a restart. macOS **1.9.4 / 10001** reached **READY_FOR_SALE** with
+automatic release after approval in the [October 30 19:47 UTC ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41118096845).
+It replaces the withdrawn 1.9.3 submission and carries its changes. The proposed
+1.9.5 correction is a subsequent candidate, not a replacement of a pending review.
 Android 1.10.2 (29) is live on Google Play. Stream Deck 1.8.2 and Ulanzi 1.8.2
 are still in marketplace review. See the
 [delivery checkpoint](RELEASING.md#2026-10-29-delivery-checkpoint).

@@ -12,6 +12,32 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 1.9.5 update text
+
+Prepared for the coordinated integration correction authorized October 30.
+The October 30 19:47 UTC ASC readback shows 1.9.4 / 10001 READY_FOR_SALE with
+AFTER_APPROVAL. This is a subsequent patch to that public version, not a pending
+review replacement. No new review is submitted by preparing this copy. iOS copy
+is unchanged.
+
+### English — macOS What's New
+
+```text
+• Improve agent integration command handling and keep custom hooks when integrations refresh. After the native app and CLI update, review changed Codex hook trust entries when prompted.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+• 에이전트 연동 명령 처리를 강화하고 연동 갱신 시 사용자 지정 hooks를 유지하도록 개선했습니다. 앱과 CLI를 업데이트한 뒤 Codex가 요청하면 변경된 hook 명령의 신뢰 설정을 검토해 주세요.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+• エージェント連携コマンドの処理を強化し、連携更新時もカスタムhooksを保持するよう改善しました。アプリとCLIの更新後、Codexから求められた場合は変更されたhookコマンドの信頼設定を確認してください。
+```
+
 ## Prepared macOS 1.9.4 update text
 
 Prepared on October 29 for the macOS-only patch after 1.9.3. On the same day the

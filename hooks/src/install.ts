@@ -58,7 +58,8 @@ export const HOOK_EVENTS = [
  *   2. `~/.agentdeck/daemon.json`                                  (CLI)
  *   3. App Store sandbox container `daemon.json`                   (Swift)
  *   4. Legacy App Store group container `daemon.json`              (Swift)
- *   5. `9120` fallback (legacy, never reached in practice)
+ * No implicit default port: without an explicit port or a healthy registry
+ * candidate, the hook exits without transmitting its payload.
  *
  * For (2)-(4) the snippet prefers the daemon's `httpPort` field when
  * present — Swift runs WS and HTTP on separate ports. Each candidate is
@@ -80,11 +81,11 @@ export function buildHookCommand(eventName: string): string {
     `if [ -z "$PORT" ]; then`,
     `  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `    [ -f "$F" ] || continue`,
-    `    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `    P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `  done`,
     `fi`,
-    `PORT="\${PORT:-9120}"`,
+    `[ -n "$PORT" ] || exit 0`,
   ];
   // PreToolUse is request-response: the daemon may hold the connection open and
   // return a permission decision (device approval) or a soft-STOP deny. Capture
@@ -139,11 +140,8 @@ export function buildHookCommand(eventName: string): string {
  * containers which do not exist on Windows:
  *   1. `$env:AGENTDECK_PORT`
  *   2. `%USERPROFILE%\.agentdeck\daemon.json`
- *   3. `9120` fallback
- * There is no `/health` probe per hook: the payload goes straight to the
- * daemon.json port and moves on to 9120 only when that connection is refused
- * (nothing received it, so it is never delivered twice). The probe was an
- * extra PowerShell round trip on every hook, before the hook did its work.
+ * Registry discovery requires a bounded health probe. Without an explicit
+ * valid port or a healthy registry candidate, skip observation.
  *
  * `PreToolUse` and `Stop` are request-response as on POSIX: the daemon's body
  * (device Allow/Deny, soft-STOP deny, queued directive) is written to stdout
@@ -175,10 +173,8 @@ param([Parameter(Mandatory = \$true)][ValidatePattern('^[A-Za-z_]+\$')][string]\
 if (\$HookEvent -ceq 'PreToolUse') { \$timeoutMs = 60000; \$respond = \$true }
 elseif (\$HookEvent -ceq 'Stop') { \$timeoutMs = 10000; \$respond = \$true }
 
-# Ports in the order tried. \$env:AGENTDECK_PORT alone when it is valid;
-# otherwise the daemon.json port, then 9120. No /health probe first: the next
-# port is tried only when a connection is refused, which proves nothing
-# received the payload, so it is never delivered twice.
+# A valid explicit port is trusted as on POSIX. Otherwise discover one healthy
+# registry candidate; no candidate means no observation request.
 \$ports = @()
 \$candidate = 0
 if ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
@@ -190,11 +186,17 @@ if ([int]::TryParse([string]\$env:AGENTDECK_PORT, [ref]\$candidate) -and \$candi
       \$d = Get-Content -Raw \$f | ConvertFrom-Json
       \$raw = if (\$d.httpPort) { \$d.httpPort } else { \$d.port }
       \$candidate = 0
-      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) { \$ports += \$candidate }
+      if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
+        \$probe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + \$candidate + '/health')
+        \$probe.Proxy = \$null
+        \$probe.Timeout = 300; \$probe.ReadWriteTimeout = 300
+        \$response = \$probe.GetResponse(); \$response.Close()
+        \$ports = @(\$candidate)
+      }
     } catch {}
   }
-  if (\$ports -notcontains 9120) { \$ports += 9120 }
 }
+if (\$ports.Count -eq 0) { exit 0 }
 
 # Read stdin as UTF-8: [Console]::In decodes piped stdin with the console OEM
 # codepage (e.g. CP949), garbling non-ASCII payload text.
@@ -235,16 +237,8 @@ foreach (\$port in \$ports) {
     \$resp.Close()
     break
   } catch {
-    # Only a refused connection moves on to the next port. A timeout, an HTTP
-    # error or anything else ends the hook: the daemon may have the payload.
-    \$e = \$_.Exception
-    \$refused = \$false
-    while (\$e) {
-      if (\$e -is [System.Net.WebException] -and \$e.Status -eq [System.Net.WebExceptionStatus]::ConnectFailure) { \$refused = \$true }
-      if (\$e -is [System.Net.Sockets.SocketException] -and \$e.SocketErrorCode -eq [System.Net.Sockets.SocketError]::ConnectionRefused) { \$refused = \$true }
-      \$e = \$e.InnerException
-    }
-    if (-not \$refused) { break }
+    # Never retry a payload against another receiver.
+    break
   }
 }
 
@@ -312,11 +306,12 @@ export function buildStatuslineRelayCommand(original?: string | null): string {
     `PORT=""`,
     `for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do`,
     `  [ -f "$F" ] || continue`,
-    `  P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
+    `  P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)`,
     `  [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }`,
     `done`,
-    `PORT="\${PORT:-9120}"`,
+    `if [ -n "$PORT" ]; then`,
     `printf '%s' "$I" | curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/claude/statusline" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
+    `fi`,
   ];
   const own = original?.trim();
   if (own) lines.push(STATUSLINE_WRAP_OPEN, own, `}`);
@@ -358,19 +353,22 @@ if (Test-Path \$f) {
     \$candidate = 0
     if ([int]::TryParse([string]\$raw, [ref]\$candidate) -and \$candidate -ge 1 -and \$candidate -le 65535) {
       try {
-        Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$candidate + '/health') -TimeoutSec 1 -ErrorAction Stop | Out-Null
+        \$probe = [System.Net.WebRequest]::Create('http://127.0.0.1:' + \$candidate + '/health')
+        \$probe.Proxy = \$null
+        \$probe.Timeout = 300; \$probe.ReadWriteTimeout = 300
+        \$response = \$probe.GetResponse(); \$response.Close()
         \$port = \$candidate
       } catch {}
     }
   } catch {}
 }
-if (-not \$port) { \$port = 9120 }
-
 # Post UTF-8 bytes; the daemon keeps only rate_limits (shared/src/claude-statusline.ts).
 \$bytes = [System.Text.Encoding]::UTF8.GetBytes([string]\$body)
-try {
-  Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/claude/statusline') -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
-} catch {}
+if (\$port -gt 0) {
+  try {
+    Invoke-RestMethod -Uri ('http://127.0.0.1:' + \$port + '/claude/statusline') -Method Post -Body \$bytes -ContentType 'application/json; charset=utf-8' -TimeoutSec 2 -ErrorAction Stop | Out-Null
+  } catch {}
+}
 
 # Your own status line, when one was wrapped: the same document on its stdin,
 # its output is what Claude Code shows. Match Claude Code's Windows shell choice:
@@ -699,8 +697,13 @@ export function applyHooks(settings: any, home: string = homedir()): any {
     if (!settings.hooks[event]) {
       settings.hooks[event] = [];
     }
-    // Remove both old flat format and new matcher format
-    settings.hooks[event] = settings.hooks[event].filter((h: any) => !isAgentDeckHookEntry(h));
+    // Refresh only our handlers; a matcher group can also hold user commands.
+    settings.hooks[event] = settings.hooks[event].flatMap((h: any) => {
+      if (!isAgentDeckHookEntry(h)) return [h];
+      if (!Array.isArray(h.hooks)) return [];
+      const kept = h.hooks.filter((handler: any) => !isAgentDeckHookEntry(handler));
+      return kept.length ? [{ ...h, hooks: kept }] : [];
+    });
     settings.hooks[event].push(buildHookEntry(event, home));
   }
   return settings;
@@ -942,7 +945,15 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
 
     const raw = readFileSync(settingsPath, 'utf-8');
     if (!raw.includes('AGENTDECK_PORT') && !raw.includes('localhost:9120')
-      && !raw.includes('agentdeck-hook.ps1')) return;
+      && !raw.includes('agentdeck-hook.ps1')) {
+      // A relay may remain after hooks were removed independently. Refresh
+      // that owned slot without silently reinstalling a hook set.
+      if (raw.includes(STATUSLINE_RELAY_MARKER)) {
+        const relayOnly = JSON.parse(raw);
+        if (refreshStatuslineRelay(relayOnly, process.platform, home)) writeSettings(settingsPath, relayOnly);
+      }
+      return;
+    }
 
     const settings = JSON.parse(raw);
     // Windows settings now contain a file path, not the inline validation
@@ -1039,6 +1050,21 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     // not presence: a user's own PermissionRequest hook must not hide ours.
     const permissionRequestGroups = settings.hooks?.PermissionRequest;
     if (!Array.isArray(permissionRequestGroups) || !permissionRequestGroups.some(isAgentDeckHookEntry)) {
+      applyHooks(settings, home);
+      migrated = true;
+    }
+
+    // Migration 14: isolate Python imports and refuse an undiscovered receiver.
+    // Refresh owned hooks even if an older installer overwrites a fixed snippet.
+    const unsafeResolver = Object.values(settings.hooks ?? {}).some((groups: any) =>
+      Array.isArray(groups) && groups.some((group: any) =>
+        isAgentDeckHookEntry(group) && [group, ...(Array.isArray(group.hooks) ? group.hooks : [])].some((handler: any) =>
+          typeof handler.command === 'string' && (handler.command.includes('python3 -c "import json,sys,signal;')
+            || handler.command.includes('PORT="${PORT:-9120}"')),
+        ),
+      ),
+    );
+    if (unsafeResolver) {
       applyHooks(settings, home);
       migrated = true;
     }

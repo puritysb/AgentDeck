@@ -371,7 +371,8 @@ describe('codex-install: managedBlockBody', () => {
     expect(script).toContain('$args[$args.Count - 1]');
     expect(script).toContain('/hooks/codex_turn_complete');
     expect(script).toContain('$env:AGENTDECK_PORT');
-    expect(script).toContain('$port = 9120');
+    expect(script).not.toContain('$port = 9120');
+    expect(script).toContain('if ($port -eq 0) { exit 0 }');
     expect(script).toContain('[int]::TryParse');
     expect(script).toContain('$candidate -gt 65535');
     expect(script).toContain('exit 0');

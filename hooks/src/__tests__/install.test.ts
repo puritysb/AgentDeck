@@ -68,14 +68,14 @@ describe('Hook Installer', () => {
   });
 
   describe('buildHookCommand (POSIX)', () => {
-    it('reads PORT from AGENTDECK_PORT env var first, then daemon.json, then 9120', () => {
+    it('uses an explicit port or a healthy registry receiver, otherwise skips', () => {
       const cmd = buildHookCommand('SessionStart');
-      // Priority chain: AGENTDECK_PORT → ~/.agentdeck/daemon.json → App Store sandbox daemon.json → legacy group daemon.json → 9120
+      // Explicit managed port takes priority; discovered registry ports need a health probe.
       expect(cmd).toContain('PORT="${AGENTDECK_PORT:-}"');
       expect(cmd).toContain('.agentdeck/daemon.json');
       expect(cmd).toContain('Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json');
       expect(cmd).toContain('group.bound.serendipity.agent.deck/daemon.json');
-      expect(cmd).toContain('${PORT:-9120}');
+      expect(cmd).toContain('[ -n "$PORT" ] || exit 0');
       expect(cmd).toContain('-X POST "http://127.0.0.1:$PORT/hooks/SessionStart"');
     });
 
@@ -127,9 +127,7 @@ describe('Hook Installer', () => {
           input: '{}',
         });
 
-        const urls = readFileSync(capture, 'utf-8');
-        expect(urls).toContain('http://127.0.0.1:9120/hooks/SessionStart');
-        expect(urls).not.toContain('evil.example');
+        expect(existsSync(capture)).toBe(false);
         rmSync(home, { recursive: true, force: true });
       }
     });
@@ -164,7 +162,7 @@ describe('Hook Installer', () => {
 
     it.skipIf(process.platform === 'win32')('bounds a blocked daemon-file read before the hook can stall', () => {
       const cmd = buildHookCommand('SessionStart');
-      const python = cmd.match(/python3 -c "([^"]+)"/)?.[1];
+      const python = cmd.match(/python3 -I -c "([^"]+)"/)?.[1];
       expect(python).toBeTruthy();
       const home = mkdtempSync(join(tmpdir(), 'agentdeck-blocked-read-'));
       const fifo = join(home, 'blocked.json');
@@ -172,7 +170,7 @@ describe('Hook Installer', () => {
         execFileSync('mkfifo', [fifo]);
         // No writer: open() really blocks. Exercise the emitted Python itself,
         // not a mock timeout or an assertion about the command's spelling.
-        const result = execFileSync('python3', ['-c', python!, fifo], {timeout: 2000, encoding: 'utf8'});
+        const result = execFileSync('python3', ['-I', '-c', python!, fifo], {timeout: 2000, encoding: 'utf8'});
         expect(result).toBe('');
       } finally { rmSync(home, {recursive: true, force: true}); }
       for (const file of ['setup/src/setup.ts', 'hooks/src/codex-install.ts',
@@ -280,7 +278,8 @@ describe('Hook Installer', () => {
     it('keeps the port discovery, validation and UTF-8 handling of the old one-liner', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('$env:AGENTDECK_PORT');
       expect(WINDOWS_HOOK_SCRIPT).toContain(".agentdeck\\daemon.json");
-      expect(WINDOWS_HOOK_SCRIPT).toContain('$ports += 9120');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('$ports += 9120');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('if ($ports.Count -eq 0) { exit 0 }');
       // Strict 1..65535 parsing: an unvalidated value containing '@' can make a
       // URL parser read 127.0.0.1:<value> as userinfo and post elsewhere.
       expect(WINDOWS_HOOK_SCRIPT).toContain('[int]::TryParse');
@@ -318,14 +317,15 @@ describe('Hook Installer', () => {
       expect(WINDOWS_HOOK_SCRIPT).toContain('[Console]::OpenStandardOutput()');
     });
 
-    it('posts without a per-hook /health probe or proxy detection, falling back only on a refused connection', () => {
-      expect(WINDOWS_HOOK_SCRIPT).not.toContain("'/health'");
+    it('bounds registry health discovery and posts to only its selected receiver without proxy detection', () => {
+      expect(WINDOWS_HOOK_SCRIPT).toContain("'/health'");
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$probe.Timeout = 300; $probe.ReadWriteTimeout = 300');
+      expect(WINDOWS_HOOK_SCRIPT).toContain('$probe.Proxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).not.toContain('Invoke-RestMethod');
       expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebRequest]::DefaultWebProxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).toContain('$req.Proxy = $null');
       expect(WINDOWS_HOOK_SCRIPT).toContain('Expect100Continue = $false');
-      expect(WINDOWS_HOOK_SCRIPT).toContain('[System.Net.WebExceptionStatus]::ConnectFailure');
-      expect(WINDOWS_HOOK_SCRIPT).toContain('if (-not $refused) { break }');
+      expect(WINDOWS_HOOK_SCRIPT).not.toContain('$ports += 9120');
       // A valid AGENTDECK_PORT is the only target, as on POSIX.
       expect(WINDOWS_HOOK_SCRIPT).toContain('$ports = @($candidate)');
     });
@@ -1047,7 +1047,7 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         received.push({ method: req.method ?? '', path: req.url ?? '', body });
-        const answer = reply(req.url ?? '');
+        const answer = req.url === '/health' ? { body: '{"status":"ok"}' } : reply(req.url ?? '');
         setTimeout(() => {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(answer.body);
@@ -1080,11 +1080,11 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
     }
   }
 
-  it('posts a fire-and-forget event straight to the daemon.json port, with no /health probe, and prints nothing', async () => {
+  it('checks the daemon.json receiver before a fire-and-forget event and prints nothing', async () => {
     const r = await run('PermissionRequest', () => ({ body: '{"received":true}' }));
     expect(r.code).toBe(0);
-    expect(r.received.map((x) => `${x.method} ${x.path}`)).toEqual(['POST /hooks/PermissionRequest']);
-    expect(r.received[0].body).toBe(r.payload);
+    expect(r.received.map((x) => `${x.method} ${x.path}`)).toEqual(['GET /health', 'POST /hooks/PermissionRequest']);
+    expect(r.received[1].body).toBe(r.payload);
     expect(r.stdout.length).toBe(0);
   }, 40_000);
 
@@ -1092,7 +1092,7 @@ describe.skipIf(process.platform !== 'win32')('the Windows hook script, executed
     const decision = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: '덱에서 중지됨' } });
     const r = await run('PreToolUse', () => ({ delayMs: 3_000, body: decision }));
     expect(r.code).toBe(0);
-    expect(r.received.map((x) => x.path)).toEqual(['/hooks/PreToolUse']);
+    expect(r.received.map((x) => x.path)).toEqual(['/health', '/hooks/PreToolUse']);
     expect(r.stdout.toString('utf8')).toBe(decision);
     expect(r.elapsedMs).toBeGreaterThanOrEqual(3_000);
   }, 40_000);

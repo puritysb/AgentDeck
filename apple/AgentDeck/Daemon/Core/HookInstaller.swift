@@ -228,26 +228,31 @@ enum HookInstaller {
 
     // MARK: - Pure Logic
 
-    private static func applyHooks(_ settings: [String: Any]) -> [String: Any] {
+    static func applyHooks(_ settings: [String: Any]) -> [String: Any] {
         var s = settings
         var hooks = s["hooks"] as? [String: Any] ?? [:]
 
         for event in hookEvents {
             var eventHooks = hooks[event] as? [[String: Any]] ?? []
 
-            // Remove existing AgentDeck hooks (both old flat and new matcher format)
-            eventHooks.removeAll { h in
+            // Refresh only our handlers; preserve other commands and group metadata.
+            eventHooks = eventHooks.compactMap { h in
                 if let cmd = h["command"] as? String,
                    (cmd.contains("AGENTDECK_PORT") || cmd.contains("localhost:9120")) {
-                    return true
+                    return nil
                 }
                 if let inner = h["hooks"] as? [[String: Any]] {
-                    return inner.contains { hh in
+                    let kept = inner.filter { hh in
                         let cmd = hh["command"] as? String ?? ""
-                        return cmd.contains("AGENTDECK_PORT") || cmd.contains("localhost:9120")
+                        return !cmd.contains("AGENTDECK_PORT") && !cmd.contains("localhost:9120")
                     }
+                    if kept.count == inner.count { return h }
+                    guard !kept.isEmpty else { return nil }
+                    var group = h
+                    group["hooks"] = kept
+                    return group
                 }
-                return false
+                return h
             }
 
             // Add new hook (v2.1 matcher-group format)
@@ -302,11 +307,11 @@ enum HookInstaller {
             #"if [ -z "$PORT" ]; then"#,
             #"  for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
             #"    [ -f "$F" ] || continue"#,
-            #"    P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
+            #"    P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
             #"    [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
             #"  done"#,
             #"fi"#,
-            #"PORT="${PORT:-9120}""#,
+            #"[ -n "$PORT" ] || exit 0"#,
         ]
         // PreToolUse long-poll (device approval) — capture the daemon's permission
         // decision and echo it to stdout. Empty output = Claude's normal flow.
@@ -377,11 +382,12 @@ enum HookInstaller {
             #"PORT="""#,
             #"for F in "$HOME/.agentdeck/daemon.json" "$HOME/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/daemon.json" "$HOME/Library/Group Containers/group.bound.serendipity.agent.deck/daemon.json"; do"#,
             #"  [ -f "$F" ] || continue"#,
-            #"  P=$(python3 -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
+            #"  P=$(python3 -I -c "import json,sys,signal;signal.signal(signal.SIGALRM,lambda *_:sys.exit(0));signal.setitimer(signal.ITIMER_REAL,0.2);d=json.load(open(sys.argv[1]));p=d.get('httpPort') or d.get('port');print(p if type(p) is int and 1 <= p <= 65535 else '')" "$F" 2>/dev/null)"#,
             #"  [ -n "$P" ] && curl -sf --connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health" >/dev/null 2>&1 && { PORT="$P"; break; }"#,
             #"done"#,
-            #"PORT="${PORT:-9120}""#,
+            #"if [ -n "$PORT" ]; then"#,
             #"printf '%s' "$I" | curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/claude/statusline" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true"#,
+            #"fi"#,
         ]
         let own = original?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !own.isEmpty { lines += [statuslineWrapOpen, own, "}"] }

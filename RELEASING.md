@@ -95,6 +95,74 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2026-10-30 integration hardening preparation decision
+
+The maintainer authorized the focused correction, public source integration and
+npm/macOS release preparation on October 30. Publication remains subject to the
+existing verification and runtime acceptance gates.
+
+| Target / routes | Last verified public version | Uploaded/reserved version + build | Proposed version + build | Class and user-visible reason | Product milestone / applicability |
+| --- | --- | --- | --- | --- | --- |
+| npm / four public packages | 1.9.6 (registry read October 30) | None | 1.9.7 / release SHA and four tarball hashes | Patch: harden generated observer commands and receiver selection, refresh existing commands, preserve custom handlers in shared matcher groups | Existing 1.9 scope; no new milestone |
+| macOS / App Store | 1.9.4 / 10001, READY_FOR_SALE (October 30 19:47 UTC) | No 1.9.5 version or build in that ASC readback | 1.9.5 / next accepted CI-derived build above 10001 | Patch: apply the same integration correction in the native installer, building on released 1.9.4 | Existing 1.9 scope; macOS only, Dot excluded |
+
+The [October 30 19:47 UTC ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41118096845)
+confirmed 1.9.4 READY_FOR_SALE with AFTER_APPROVAL and its review submission
+COMPLETE. The earlier 17:31 readback is historical. Version 1.9.5 is a normal
+subsequent delivery: do not cancel the completed submission or renumber released
+1.9.4. Preparation alone does not upload, submit or release 1.9.5.
+The four npm versions were read back as 1.9.6. iOS, Android, ESP32 and the deck
+plugin releases are unchanged.
+
+Keep the native app and CLI installers current together: an older consenting
+app can rewrite the same integration file. After the coordinated update, refresh
+user-enabled integrations and review the changed Codex command trust entries.
+Existing custom commands and trust records are retained; trust is never granted
+automatically. Do not roll either installer back to a superseded command set.
+
+### 2026-10-31 candidate acceptance checkpoint
+
+Candidate `cbe81a09` completed the [automatic pre-release receipt](verification/receipts/2026-10-31-cbe81a0.json):
+24 checks passed, with local macOS daemon E2E (Keychain opt-in) and Windows
+execution explicitly skipped. Hosted [main CI](https://github.com/puritysb/AgentDeck/actions/runs/41152745924)
+passed Linux E2E and the Windows Node 22/24/26 matrix; [Apple CI](https://github.com/puritysb/AgentDeck/actions/runs/41152745921)
+also passed. The original automatic receipt retains its three unattested lab
+rows; the separate [sanitized manual receipt](verification/receipts/2026-10-31-cbe81a0-manual.json)
+omits the device brand and subscription plan and records the subsequently
+completed scoped lab checks, without rerunning or replacing automatic results. The manual-only invocation saw the untracked
+automatic receipt and truthfully records a dirty worktree; product sources were
+unchanged.
+
+The four exact npm 1.9.7 candidate archives were installed and checked against
+all 1,424 packaged files. The signed macOS 1.9.5 / 10101 Development derivative
+was installed through normal authentication and launched on the registered Mac;
+its native product code matches the preserved Store artifact. An existing
+authenticated Claude login supplied real CLI-only and Swift-only turns, with
+the current reply seen on an existing physical downstream device. Takeover,
+reclaim, normal restart and retained explicit device consent passed. The official Swift Codex fixture gate passed
+all 15 checks; it is synthetic and does not attest real Codex CLI emission or
+interactive command trust. Firmware hardware tests are out of scope because no
+firmware is delivered. No other existing device was reconfigured.
+
+Current controlled CLI restoration and native restart/reclaim preserved bytes
+outside the managed Codex block; current TOML parses and installer regression
+checks pass. An earlier cross-session digest differs, and the original content
+was not retained, so its exact changed fields and writer cannot be established.
+This evidence limitation is retained rather than claiming historical semantic
+equality, restoring user settings or changing the baseline. It is not a new
+merge gate or a waiver of any catalogued check.
+
+Installation, restart and existing-certificate Development signing were
+explicitly authorized. A master push also builds, signs, installs and launches
+a development app and restarts the CLI; track that deployment and its receipt
+rather than equating a merge with deployment success. This checkpoint records
+local acceptance, not public npm publication, Apple upload, review submission
+or Store availability. Read back each delivery state after its own action.
+Public package publication, Apple uploads/submissions and release tags remain
+on hold for a coordinated release round. Source merge and the authorized local
+deployment are separate from that public delivery.
+No release or runtime gate is waived.
+
 ### 2026-10-29 delivery checkpoint
 
 **npm 1.9.6 is public. macOS 1.9.4 / 10001 is submitted and `IN_REVIEW`,

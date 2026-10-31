@@ -60,7 +60,7 @@ describe('Claude status-line relay snippet', () => {
     expect(cmd).not.toContain('AGENTDECK_PORT');
     expect(cmd).toContain(RELAY_POST);
     expect(cmd).toContain('--connect-timeout 0.2 --max-time 0.3 "http://127.0.0.1:$P/health"');
-    expect(cmd.trimEnd().endsWith('|| true')).toBe(true);
+    expect(cmd.trimEnd().endsWith('fi')).toBe(true);
     expect(isAgentDeckStatuslineCommand(cmd)).toBe(true);
     expect(unwrapStatuslineCommand(cmd)).toBe('');
   });
@@ -72,7 +72,7 @@ describe('Claude status-line relay snippet', () => {
     ['  npx -y ccstatusline@latest  \n'],
   ])('wraps the user command verbatim (trimmed) and unwraps it back: %s', (original) => {
     const cmd = buildStatuslineRelayCommand(original);
-    expect(cmd).toContain(`${RELAY_POST}\nprintf '%s' "$I" | {\n${original.trim()}\n}`);
+    expect(cmd).toContain(`${RELAY_POST}\nfi\nprintf '%s' "$I" | {\n${original.trim()}\n}`);
     expect(unwrapStatuslineCommand(cmd)).toBe(original.trim());
     expect(buildStatuslineRelayCommand(unwrapStatuslineCommand(cmd))).toBe(cmd);
   });
@@ -256,7 +256,9 @@ describe('Windows relay (PowerShell file)', () => {
 
   it('the script is bounded, UTF-8 in and out, validates its one parameter, and never fails the status line', () => {
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain("'/claude/statusline'");
-    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('-TimeoutSec 1');
+    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('$probe.Timeout = 300; $probe.ReadWriteTimeout = 300');
+    expect(WINDOWS_STATUSLINE_SCRIPT).toContain('if ($port -gt 0) {');
+    expect(WINDOWS_STATUSLINE_SCRIPT).not.toContain('$port = 9120');
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain('-TimeoutSec 2');
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain("ValidatePattern('^[A-Za-z0-9+/=]*$')");
     expect(WINDOWS_STATUSLINE_SCRIPT).toContain('[System.Text.Encoding]::UTF8');
