@@ -272,6 +272,7 @@ final class AquariumSceneState {
         residents.loadTemplates(loaded.residents)
         guard residents.templateCount == 6 else { throw CocoaError(.fileReadCorruptFile) }
         residents.loadHermesTemplate(loaded.hermes)
+        residents.loadHermesShell(loaded.hermesShell)
         guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
         residents.loadCiCompanion(loaded.ciCompanion)
         habitat = loaded.habitat
@@ -473,6 +474,7 @@ final class AquariumAssetLoader {
         let habitat: Entity
         let residents: Entity
         let hermes: Entity
+        let hermesShell: Entity
         let ciCompanion: Entity
     }
     private(set) var loaded: Assets?
@@ -499,9 +501,11 @@ final class AquariumAssetLoader {
             let residents = try await importEntity(url("3d-residents")); try checkCurrent()
             stage = "Hermes resident"
             let hermes = try await importEntity(url("hermes-mermaid")); try checkCurrent()
+            stage = "Hermes shell"
+            let hermesShell = try await importEntity(url("hermes-shell")); try checkCurrent()
             stage = "CI companion"
             let ciCompanion = try await importEntity(url("ci-companion")); try checkCurrent()
-            loaded = Assets(habitat: habitat, residents: residents, hermes: hermes, ciCompanion: ciCompanion)
+            loaded = Assets(habitat: habitat, residents: residents, hermes: hermes, hermesShell: hermesShell, ciCompanion: ciCompanion)
             aquariumAssetLogger.info("Loaded all aquarium assets")
         } catch is CancellationError {
             aquariumAssetLogger.debug("Cancelled aquarium asset load at \(stage, privacy: .public)")

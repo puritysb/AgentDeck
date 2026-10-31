@@ -176,7 +176,7 @@ struct MonitorScreen: View {
             .toolbar {
                 #if AGENTDECK_DOT_PREVIEW
                 if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, compact: true) }
+                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, style: .compact) }
                 }
                 if stateHolder.state.dot?.configured != true {
                     ToolbarItem(placement: .primaryAction) {
@@ -208,9 +208,10 @@ struct MonitorScreen: View {
                 terrariumLayer
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
-                #if os(iOS) && AGENTDECK_DOT_PREVIEW
-                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    DotSurfaceView(snapshot: dot, compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                #if AGENTDECK_DOT_PREVIEW
+                if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
+                   let dot = stateHolder.state.dot {
+                    DotHabitatView(snapshot: dot, labelsVisible: !hudHidden)
                 }
                 #endif
 

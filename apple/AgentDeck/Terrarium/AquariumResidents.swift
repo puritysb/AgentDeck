@@ -516,6 +516,9 @@ final class AquariumResidents {
         var fatigue: Float = 0
     }
     private var motions: [String: Motion] = [:]
+    private var hermesShellTemplate: Entity?
+    func loadHermesShell(_ template: Entity) { hermesShellTemplate = template }
+
     private var hermesSwims: [String: HermesSwim] = [:]
     private var hermesRigs: [String: HermesMermaid.Rig] = [:]
 
@@ -630,7 +633,7 @@ final class AquariumResidents {
                 let index = bottomIDs.firstIndex(of: item.id) ?? 0
                 let surface = bottomLayout.positions[index]
                 size = bottomLayout.size
-                targets[item.id] = surface + [0, (onShell ? ((footHeights["hermes"] ?? 0.7) + 0.10) * Self.hermesScale : (footHeights[item.kind] ?? 0.43)) * size, 0]
+                targets[item.id] = surface + [0, (onShell ? ((footHeights["hermes"] ?? 0.7) + 0.10) * Self.hermesScale : (footHeights[item.kind] ?? 0.43)) * size, onShell ? size * 0.35 : 0]
                 // A broad, flat-topped substrate rock is fixed in habitat space.
                 // It does not follow the resident's pacing or breathing.
                 if supports[item.id] == nil {
@@ -639,7 +642,10 @@ final class AquariumResidents {
                         let rock = makeSubstrate()
                         rock.name = "support-rock"
                         support.addChild(rock)
-                        support.addChild(HermesMermaid.makeShell())
+                        let shell = HermesMermaid.makeShell(template: hermesShellTemplate)
+                        shell.generateCollisionShapes(recursive: true)
+                        shell.components.set(InputTargetComponent())
+                        support.addChild(shell)
                     }
                     support.name = "substrate|" + item.id
                     root.addChild(support)
@@ -650,7 +656,7 @@ final class AquariumResidents {
                 rock?.scale = [max(0.65, size * 1.35), surface.y, max(0.55, size)]
                 if let shell = supports[item.id]?.findEntity(named: "hermes-shell") {
                     shell.position = [0, surface.y, 0]
-                    shell.scale = .init(repeating: size * Self.hermesScale)
+                    shell.scale = .init(repeating: size * Self.hermesShellScale)
                 }
             } else {
                 let index = waterIDs.firstIndex(of: item.id) ?? 0
@@ -697,6 +703,9 @@ final class AquariumResidents {
                 if item.kind == "hermes" {
                     hermesSwims[item.id] = HermesSwim(id: item.id, position: resident.position)
                     hermesRigs[item.id] = HermesMermaid.Rig(body)
+                    if let swim = hermesSwims[item.id] {
+                        HermesMermaid.poseHome(supports[item.id]?.findEntity(named: "hermes-shell"), body: body, swim: swim)
+                    }
                 }
             }
             guard let resident = residents[item.id] else { continue }
@@ -719,6 +728,8 @@ final class AquariumResidents {
                         neighbours: [], aspect: aspect)
                     hermesSwims[item.id] = swim
                     hermesRigs[item.id]?.pose(swim)
+                    HermesMermaid.poseHome(supports[item.id]?.findEntity(named: "hermes-shell"),
+                                           body: resident.findEntity(named: "body"), swim: swim)
                 }
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
@@ -817,7 +828,8 @@ final class AquariumResidents {
         var inputs: [ResidentLabelLayout.Input] = []
         for item in descriptors {
             guard let resident = residents[item.id], let body = resident.findEntity(named: "body") else { continue }
-            let bounds = body.visualBounds(relativeTo: nil)
+            let silhouette = body.isEnabled ? body : supports[item.id]?.findEntity(named: "hermes-shell") ?? body
+            let bounds = silhouette.visualBounds(relativeTo: nil)
             let lo = bounds.min, hi = bounds.max
             guard let bodyBox = screenBox([[lo.x, lo.y, lo.z], [hi.x, lo.y, lo.z], [lo.x, hi.y, lo.z], [hi.x, hi.y, lo.z],
                                            [lo.x, lo.y, hi.z], [hi.x, lo.y, hi.z], [lo.x, hi.y, hi.z], [hi.x, hi.y, hi.z]]),
@@ -935,6 +947,8 @@ final class AquariumResidents {
                     body.orientation = simd_slerp(body.orientation, orientation, blend)
                 }
                 hermesRigs[item.id]?.pose(swim)
+                HermesMermaid.poseHome(supports[item.id]?.findEntity(named: "hermes-shell"),
+                                       body: entity.findEntity(named: "body"), swim: swim)
                 if swim.effort > 0.01 {
                     wakes.append(.init(position: swim.position, strength: swim.effort * abs(swim.tail), radius: residentSize * 2))
                 }
@@ -1007,6 +1021,8 @@ final class AquariumResidents {
     /// Hermes is drawn larger than the other residents so her face and the
     /// Nous sticker on her laptop read at aquarium distance (2026-10-02).
     static let hermesScale: Float = 1.35
+    /// The wide bivalve stays inside a bottom slot even with three Hermes homes.
+    static let hermesShellScale: Float = 1.15
 
     static func isGrounded(_ kind: String) -> Bool {
         kind == "claudecode" || kind == "openclaw"
@@ -1045,6 +1061,7 @@ final class AquariumResidents {
         var current: Entity? = entity
         while let node = current {
             if node.name.hasPrefix("session|") { return String(node.name.dropFirst(8)) }
+            if node.name.hasPrefix("substrate|") { return String(node.name.dropFirst(10)) }
             current = node.parent
         }
         return nil

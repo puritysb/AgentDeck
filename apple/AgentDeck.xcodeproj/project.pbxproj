@@ -194,6 +194,7 @@
 		3A341BC1D4421CE024022F05 /* AquariumShoal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C095A676EC89446C067731C /* AquariumShoal.swift */; };
 		3AA3A8CEDFE2A89F0708D96E /* ClaudeBackgroundJobRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */; };
 		3AB4FFE7850E2A1AB615E162 /* ApmeParseJudgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DB04CEEDD6C769AD9056561 /* ApmeParseJudgeTests.swift */; };
+		3AD2ED362BDA90381C32A342 /* DotHabitatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5D75803ADE88BEC7AB4596 /* DotHabitatView.swift */; };
 		3B27BBB5E9F60E825C5CEDE9 /* DotHTTPSListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C49F45DBB77B44A88CC3B10 /* DotHTTPSListener.swift */; };
 		3B811EEE60C3BC211B2A5373 /* ApmeClassifierRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */; };
 		3C1F74B5C8002F65FFDA282F /* ProcessEnumerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32CE020EB705544FFD580DD9 /* ProcessEnumerator.swift */; };
@@ -354,6 +355,7 @@
 		6C8A94CCD06F235CD13392D0 /* MatrixFrames.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF60395052D2A0438569E98B /* MatrixFrames.generated.swift */; };
 		6CD7D33001A71DC9A5790F34 /* DeviceIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1FB433513319C533AFDD85 /* DeviceIdentity.swift */; };
 		6D2EA7E15F98B8510CF048E9 /* SessionLauncherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CF82AE8E20EDCAE99DCEDD /* SessionLauncherTests.swift */; };
+		6D5970183107321FAE81C2C1 /* hermes-shell.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 5E4C7D924F74E3E303B70108 /* hermes-shell.usdz */; };
 		6D9C5D2BBACEF2F070863C45 /* TimeboxBLE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06FFF88A2747DFBB1E626CA9 /* TimeboxBLE.swift */; };
 		6DFE7629526D3F58A8B4915C /* PixooTideTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096F7A3D4B10DE473C67521D /* PixooTideTests.swift */; };
 		6EBE9EE758C949CF2BC6A868 /* jp-n3-ko.pdl in Resources */ = {isa = PBXBuildFile; fileRef = BC0BF196200C039B585FDCFE /* jp-n3-ko.pdl */; };
@@ -650,6 +652,7 @@
 		C46F9CBAF1E5CFC66037BDA2 /* IDotMatrixIdentity.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6218B1AC0EA6F206DB424EC5 /* IDotMatrixIdentity.generated.swift */; };
 		C4E318F694193401A193DEB8 /* DotCompanionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B515282657E9C46C6A833F16 /* DotCompanionView.swift */; };
 		C4F117E796C0C81A8E52A02B /* PortDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15083D65B8571C662DD6E2CE /* PortDiagnostics.swift */; };
+		C4FA1FEF369538F132E75486 /* DotHabitatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC5D75803ADE88BEC7AB4596 /* DotHabitatView.swift */; };
 		C53E6FF3C458CFE3A65A926F /* UsageRelayFreshness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 832BF47EA8F4F9DE55F6EA4F /* UsageRelayFreshness.swift */; };
 		C56483E3A5459DA1C120BADC /* CodexHookHarness.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11B35DB1B02937B963A3E6A1 /* CodexHookHarness.generated.swift */; };
 		C5F162AA9AB80292E55F6046 /* CiWaitRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */; };
@@ -739,6 +742,7 @@
 		E082EDBFACADF5992BE8A9E0 /* AgentDeckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D587189DB0E504028BE4BEF /* AgentDeckApp.swift */; };
 		E0FC9CE10F57DA5CAE6814C5 /* HookInstallerStatuslineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 782729BD6D5D879B62816D56 /* HookInstallerStatuslineTests.swift */; };
 		E1027789C4EBBF134CA8D464 /* TerrariumCrayfishPresenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E75D955A31F999F568B7BED /* TerrariumCrayfishPresenceTests.swift */; };
+		E1F3B86A57280CDC7E35EF92 /* hermes-shell.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 5E4C7D924F74E3E303B70108 /* hermes-shell.usdz */; };
 		E22E6C703C183F1E8C36E7D9 /* SquatterCleaner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B120CABC9029C801CF0A77A2 /* SquatterCleaner.swift */; };
 		E29B9F7B467F17A2B4FB65EE /* SessionWeightRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03941C6DD60609AB9D1E12C1 /* SessionWeightRules.generated.swift */; };
 		E2A2D16B6B22232302404F71 /* ApmeClassifierBackendTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94B060A15BF6B6EFD1848C81 /* ApmeClassifierBackendTests.swift */; };
@@ -1016,6 +1020,7 @@
 		5C6550B652E631866F47C813 /* ApmeClassifierRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeClassifierRules.generated.swift; sourceTree = "<group>"; };
 		5CAC7DB1B1460CCEF53951DD /* HermesSwim.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSwim.swift; sourceTree = "<group>"; };
 		5D8D7D1387331B547042853D /* AgentDeck.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = AgentDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5E4C7D924F74E3E303B70108 /* hermes-shell.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "hermes-shell.usdz"; sourceTree = "<group>"; };
 		5F7897FE76F480951CD34749 /* ProjectNameResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectNameResolver.swift; sourceTree = "<group>"; };
 		603AE403ECE592BCF9FAD994 /* KiroTimelineFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KiroTimelineFeed.swift; sourceTree = "<group>"; };
 		6165A6BFF174139F6AF07CED /* PortFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortFormatting.swift; sourceTree = "<group>"; };
@@ -1144,6 +1149,7 @@
 		AA6B880920FED6442871AA9F /* OFL-PocketSansWorld.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-PocketSansWorld.txt"; sourceTree = "<group>"; };
 		AA9933A43DAF2E11AE595B84 /* CiWaitRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRules.generated.swift; sourceTree = "<group>"; };
 		ABBD412B771BBC8D6616B48D /* ClaudeBackgroundJobRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRulesTests.swift; sourceTree = "<group>"; };
+		AC5D75803ADE88BEC7AB4596 /* DotHabitatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DotHabitatView.swift; sourceTree = "<group>"; };
 		ACF3E9B667BE141F81917F89 /* DaemonVoiceAssistant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonVoiceAssistant.swift; sourceTree = "<group>"; };
 		AE17EFB01F43FCB1A53F644D /* DaemonTimelineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonTimelineStore.swift; sourceTree = "<group>"; };
 		AE54073C739D0A39C5112C94 /* AppleBuildBoundaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBuildBoundaryTests.swift; sourceTree = "<group>"; };
@@ -1512,6 +1518,7 @@
 				F03AB0EE3D1D587EFC3604FC /* ci-companion.png */,
 				28D92D8BEAB46A00CF081716 /* ci-companion.usdz */,
 				97FD2FC56DAE932DFA3CAB82 /* hermes-mermaid.usdz */,
+				5E4C7D924F74E3E303B70108 /* hermes-shell.usdz */,
 				E6382C68380E57D0B8C08301 /* living-aquarium.usdz */,
 			);
 			path = Aquarium;
@@ -1864,6 +1871,7 @@
 				8A5A10C1FD79BB64BD2BB8D5 /* ConnectionOverlay.swift */,
 				6DED33AE69720D9843CE2CF5 /* DotCharacterImage.swift */,
 				B515282657E9C46C6A833F16 /* DotCompanionView.swift */,
+				AC5D75803ADE88BEC7AB4596 /* DotHabitatView.swift */,
 				FC2C2FC450290089CE89830A /* DotInteractionView.swift */,
 				A24DADC358394A2EA21D82E7 /* DotPaperCharacter.swift */,
 				A21629400210C88B7A9F0E3C /* DotSurfaceView.swift */,
@@ -2159,6 +2167,7 @@
 				B3B13E3EA601A3E8C3001775 /* ci-companion.usdz in Resources */,
 				F4F0057AAC2CAE163C440A13 /* dot-mcp-contract.json in Resources */,
 				1485D7307E8E9F0E057450C1 /* hermes-mermaid.usdz in Resources */,
+				6D5970183107321FAE81C2C1 /* hermes-shell.usdz in Resources */,
 				ED33FD094A4EF68734AC9886 /* jp-n3-ko.manifest.json in Resources */,
 				567713AB74E05824DBE77C48 /* jp-n3-ko.pdl in Resources */,
 				6923A8C834228B700B0DD433 /* living-aquarium.usdz in Resources */,
@@ -2183,6 +2192,7 @@
 				C3BFB9980016E999CFD1BA9F /* ci-companion.usdz in Resources */,
 				F4ADA603AE92064770BBAD3C /* dot-mcp-contract.json in Resources */,
 				9AF99AF180FB27AB3470A4C2 /* hermes-mermaid.usdz in Resources */,
+				E1F3B86A57280CDC7E35EF92 /* hermes-shell.usdz in Resources */,
 				FC69321DFB051CE20F9FC541 /* jp-n3-ko.manifest.json in Resources */,
 				6EBE9EE758C949CF2BC6A868 /* jp-n3-ko.pdl in Resources */,
 				4518FB4ABB74CDB32F082833 /* living-aquarium.usdz in Resources */,
@@ -2574,6 +2584,7 @@
 				BD04C67F1DE284DA64CF6647 /* DotCompanionView.swift in Sources */,
 				C40E0DA1A8C2D9A78FF65C7E /* DotConnectionSetupView.swift in Sources */,
 				3B27BBB5E9F60E825C5CEDE9 /* DotHTTPSListener.swift in Sources */,
+				C4FA1FEF369538F132E75486 /* DotHabitatView.swift in Sources */,
 				8A85C2C10B0D18325FCA19A7 /* DotHost.swift in Sources */,
 				C7BD32F014792DEBF43E9818 /* DotInteraction.generated.swift in Sources */,
 				6EE5AA7C7AF2171C8C94674D /* DotInteractionView.swift in Sources */,
@@ -2865,6 +2876,7 @@
 				C4E318F694193401A193DEB8 /* DotCompanionView.swift in Sources */,
 				69BD3486E8AD3A99A68CBA39 /* DotConnectionSetupView.swift in Sources */,
 				B2A7A24B5879D2B2C3F1AD89 /* DotHTTPSListener.swift in Sources */,
+				3AD2ED362BDA90381C32A342 /* DotHabitatView.swift in Sources */,
 				E739E51365F230ED44B8C80B /* DotHost.swift in Sources */,
 				F5352BCCDCEF7CDDB90AC58A /* DotInteraction.generated.swift in Sources */,
 				9D70A91FFE3582A3BCFDA72B /* DotInteractionView.swift in Sources */,

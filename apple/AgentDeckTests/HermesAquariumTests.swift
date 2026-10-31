@@ -219,15 +219,17 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertNotNil(shell.findEntity(named: "shell-lid") as? ModelEntity)
         let home = resident.position, support = shell.transformMatrix(relativeTo: nil)
         let body = try XCTUnwrap(resident.findEntity(named: "body"))
-        XCTAssertGreaterThanOrEqual(body.visualBounds(relativeTo: scene.root).min.y,
-                                    shell.position(relativeTo: scene.root).y,
-                                    "The imported tail must stay above the substrate, not sink into it")
+        XCTAssertFalse(body.isEnabled, "A newly loaded idle mermaid rests inside the closed shell")
         for _ in 0..<600 { scene.step(1/60) }
         XCTAssertEqual(resident.position, home, "Idle must not drift away from the shell")
         state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .working)]
         scene.sync(state, aspect: 1.6)
         for _ in 0..<600 { scene.step(1/60) }
         XCTAssertGreaterThan(resident.position.y, home.y + 0.25)
+        XCTAssertTrue(body.isEnabled)
+        XCTAssertGreaterThanOrEqual(body.visualBounds(relativeTo: scene.root).min.y,
+                                    shell.position(relativeTo: scene.root).y,
+                                    "The emerging tail must clear the substrate")
         XCTAssertEqual(shell.transformMatrix(relativeTo: nil), support)
         state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .idle)]
         scene.sync(state, aspect: 1.6)
@@ -235,6 +237,8 @@ final class HermesAquariumTests: XCTestCase {
         for _ in 0..<1200 { scene.step(1/60) }
         XCTAssertEqual(resident.position, home)
         XCTAssertEqual(shell.transformMatrix(relativeTo: nil), support)
+        XCTAssertEqual(AquariumResidents.sessionID(for: try XCTUnwrap(shell.findEntity(named: "shell-seat"))), "rest",
+                       "The closed shell remains an inspection target while the mermaid is inside")
         state.hermesCreatures = []
         scene.sync(state, aspect: 1.6)
         XCTAssertNil(scene.root.findEntity(named: "hermes-shell"))
@@ -281,6 +285,67 @@ final class HermesAquariumTests: XCTestCase {
         state.hermesCreatures = []
         renderer.update(dt: 0.05, state: state)
         XCTAssertNil(renderer.creatureAtPoint(nx: 0.5, ny: 0.82 - 2.5/7))
+    }
+
+    func testShellOpensBeforeDepartureAndClosesOnlyAfterMermaidReturns() {
+        let home: SIMD3<Float> = [0, 2, 0]
+        var swim = HermesSwim(id: "shell", position: home)
+        for _ in 0..<50 { swim.step(1/60, home: home, size: 0.8, activity: .working, neighbours: [], aspect: 1.6) }
+        XCTAssertLessThan(swim.shellOpen, 0.98)
+        XCTAssertEqual(swim.emergence, 0)
+        XCTAssertEqual(swim.position, home, "She must not swim through the unopened lid")
+        var frozen = swim
+        frozen.step(0, home: home, size: 0.8, activity: .working, neighbours: [], aspect: 1.6)
+        XCTAssertEqual(frozen.shellOpen, 1)
+        XCTAssertEqual(frozen.emergence, 1)
+        for _ in 0..<600 { swim.step(1/60, home: home, size: 0.8, activity: .working, neighbours: [], aspect: 1.6) }
+        XCTAssertEqual(swim.shellOpen, 1)
+        XCTAssertEqual(swim.emergence, 1)
+        XCTAssertGreaterThan(swim.position.y, home.y + 0.2)
+        for _ in 0..<1800 {
+            swim.step(1/60, home: home, size: 0.8, activity: .idle, neighbours: [], aspect: 1.6)
+            if simd_distance(swim.position, home) > 0.05 { XCTAssertEqual(swim.shellOpen, 1) }
+            if swim.emergence > 0 { XCTAssertEqual(swim.shellOpen, 1) }
+        }
+        XCTAssertEqual(swim.position, home)
+        XCTAssertEqual(swim.emergence, 0)
+        XCTAssertEqual(swim.shellOpen, 0)
+        swim.step(0, home: home, size: 0.8, activity: .working, neighbours: [], aspect: 1.6)
+        XCTAssertEqual(swim.shellOpen, 1, "Reduced Motion shows a readable static active pose")
+        XCTAssertEqual(swim.emergence, 1)
+    }
+
+    @MainActor
+    func testAuthoredShellImportsItsHingeAndOnlyTheLidMoves() async throws {
+        let source = try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-shell", withExtension: "usdz")))
+        let shell = HermesMermaid.makeShell(template: source)
+        let lid = try XCTUnwrap(shell.findEntity(named: "shell-lid"))
+        let seat = try XCTUnwrap(shell.findEntity(named: "shell-seat"))
+        XCTAssertGreaterThan(shell.visualBounds(relativeTo: shell).extents.x, 1.5)
+        let seatRest = seat.transform
+        var swim = HermesSwim(id: "hinge", position: .zero)
+        swim.step(0, home: .zero, size: 1, activity: .working, neighbours: [], aspect: 1.6)
+        HermesMermaid.poseHome(shell, body: nil, swim: swim)
+        XCTAssertEqual(seat.transform, seatRest)
+        XCTAssertNotEqual(lid.orientation, simd_quatf())
+    }
+
+    @MainActor
+    func testThreeAuthoredShellHomesKeepTheirValvesApart() async throws {
+        let scene = AquariumResidents()
+        scene.loadHermesTemplate(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz"))))
+        scene.loadHermesShell(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-shell", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.hermesCreatures = (0..<3).map { .init(id: "home-" + String($0), projectName: "Hermes", activity: .idle) }
+        scene.sync(state, aspect: 1.6)
+        let homes = scene.root.children.filter { $0.name.hasPrefix("substrate|") }
+            .sorted { $0.position.x < $1.position.x }
+        XCTAssertEqual(homes.count, 3)
+        for index in 1..<homes.count {
+            let left = try XCTUnwrap(homes[index-1].findEntity(named: "hermes-shell")).visualBounds(relativeTo: scene.root)
+            let right = try XCTUnwrap(homes[index].findEntity(named: "hermes-shell")).visualBounds(relativeTo: scene.root)
+            XCTAssertLessThan(left.max.x, right.min.x, "Adjacent large shells need a visible water gap")
+        }
     }
 
     func testSwimIsBoundedSmoothAndDoesNotJumpOnStateChangesOrSleep() {

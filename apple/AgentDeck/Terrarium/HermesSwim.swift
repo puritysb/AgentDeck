@@ -7,6 +7,9 @@ import simd
 struct HermesSwim {
     enum Activity: String { case idle, working, waiting, error }
     var position: SIMD3<Float>
+    /// Sequential shell lifecycle: open before emergence, settle before closing.
+    private(set) var shellOpen: Float = 0
+    private(set) var emergence: Float = 0
     private(set) var velocity = SIMD3<Float>.zero
     private(set) var phase: Float
     private(set) var effort: Float = 0
@@ -175,8 +178,21 @@ struct HermesSwim {
                 celebration = 0
                 previous = activity
             }
+            shellOpen = activity == .working || activity == .waiting ? 1 : 0
+            emergence = shellOpen
             return
         }
+        let active = activity == .working || activity == .waiting
+        if active {
+            shellOpen = min(1, shellOpen + dt * 0.9)
+            // The lid clears her head before the mermaid leaves the pearl basin.
+            if shellOpen >= 0.98 { emergence = min(1, emergence + dt * 0.65) }
+        } else if simd_distance(position, home) < max(0.01, size * 0.04) && simd_length(velocity) < 0.04 {
+            emergence = max(0, emergence - dt * 0.65)
+            if emergence == 0 { shellOpen = max(0, shellOpen - dt * 0.7) }
+        }
+        let departure = max(0, min(1, (emergence - 0.6) / 0.4))
+        let swimBlend = departure * departure * (3 - 2 * departure)
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
         effort += ((activity == .working ? 1 : 0) - effort) * blend
@@ -241,6 +257,7 @@ struct HermesSwim {
         // Idle is a planted resting pose, not an endless swimming loop. Gaze,
         // blinking and gentle articulation remain; neighbours cannot move the seat.
         if resting { destination = home }
+        else { destination = home + (destination - home) * swimBlend }
         let desired = (destination - position) * 1.5
         velocity += (desired - velocity) * (1 - exp(-dt * 2.5))
         let speed = simd_length(velocity)

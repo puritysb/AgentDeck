@@ -398,3 +398,27 @@ refresh. Geometry, integer UTF-8 FNV phase seeds and rhythm live in
 
 Source/render previews establish appearance and source fidelity. Physical-device
 frame time, crowded-scene readability and owner acceptance are separate evidence.
+
+## Hermes scallop home
+
+`hermes-shell.blend` is an original, token-colored, ribbed bivalve with thick
+valves, a concave nacre basin and a rear hinge. Regenerate it with:
+
+```sh
+blender --background --python assets/terrarium/build-hermes-shell.py
+```
+
+The same script exports Apple's bundled `hermes-shell.usdz`, the portable
+`hermes-shell.glb`, and three review renders under `diagnostics/hermes-shell/`.
+The source uses `hermes_shell`, `shell_seat` and `shell_lid` names so USD keeps
+stable identifiers; the native loader restores the runtime's hyphenated names.
+Only the lid rotates about its authored origin. This prop is separate from the
+habitat backdrop, so no character or UI gets baked into a background image.
+
+Apple's simulation opens the shell before emergence, expands into bounded
+swimming, returns to the same seat, settles, and closes only after landing.
+State reversals retain position and hinge progress. A paused/reduced-motion
+view resolves to an open active or closed resting pose without replaying an
+animation. The portable GLB is exported for reuse; it is not yet consumed by
+Android's native renderer. Blender previews check geometry, not the assembled
+RealityKit scene or physical-device acceptance.

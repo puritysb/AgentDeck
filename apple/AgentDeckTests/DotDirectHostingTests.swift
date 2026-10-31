@@ -283,6 +283,37 @@ final class DotDirectHostingTests: XCTestCase {
         try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-companion-preview.png"))
     }
     @MainActor
+    func testPortableCompanionUsesWaterResidentAndTimelineRowGrammar() throws {
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        let frame = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now)
+        let view = VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 32) {
+                ForEach(["working", "needs_attention", "completed", "failed"], id: \.self) { state in
+                    let dot = DotSurfaceSnapshot(configured: true, hosting: true, reportState: state, reportedAt: now)
+                    DotSurfaceView(snapshot: dot, style: .habitat).frame(width: 44, height: 60)
+                }
+            }
+            Text("TIMELINE").font(.custom("JetBrainsMono-Regular", size: 10)).foregroundStyle(.secondary)
+            DotSurfaceView(snapshot: frame, style: .timeline)
+        }.padding(24).frame(width: 480).background(DesignTokens.Ink.s900)
+            .environment(\.colorScheme, .dark)
+        let renderer = ImageRenderer(content: view); renderer.scale = 2
+        let image = try XCTUnwrap(renderer.cgImage)
+        XCTAssertGreaterThan(image.width, 600)
+        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-water-timeline.png"))
+    }
+
+    func testUpperWaterCurrentClosesAndFreezesOutsideReportedWork() {
+        let start = DotHabitatRules.offset(seconds: 3, working: true, motion: true)
+        let end = DotHabitatRules.offset(seconds: 3 + DotHabitatRules.periodSeconds, working: true, motion: true)
+        XCTAssertEqual(start.x, end.x, accuracy: 0.000001)
+        XCTAssertEqual(start.y, end.y, accuracy: 0.000001)
+        XCTAssertEqual(DotHabitatRules.offset(seconds: 3, working: true, motion: false).x, 0)
+        XCTAssertEqual(DotHabitatRules.offset(seconds: 3, working: false, motion: true).y, 0)
+    }
+
+    @MainActor
     func testThreeDimensionalCompanionIsSeparateFromSessionsAndHonorsMotion() {
         let now = 1800000000000
         var row = DotBriefing(id: "3d", owner: "owner", profile: "desk", key: "k", fingerprint: "h", context: "", capturedAt: now, createdAt: now,

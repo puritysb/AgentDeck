@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: required
 owner: Design system and surface maintainers
-reviewed: 2026-10-09
-revision: 2026-10-09
+reviewed: 2026-11-01
+revision: 2026-11-01
 source_of_truth: docs/dot-creature-surfaces.md
 validators: [pnpm docs:check, pnpm design-system:check]
 ---
@@ -36,6 +36,26 @@ The Apple 3D companion reconciles the latest host snapshot and checks report exp
 ## Habitat composition
 
 Dot lives in the upper water beside the residents, below the HUD, rather than appearing as a separate status panel in the sky. The 3D label is centered above its body with a readable foreground color: only “Dot” before any shared activity, with the reported state added when relevant. Viewing mode hides that label with the other resident labels. The macOS detail entry sits in the toolbar rather than covering the chat/timeline panel; selecting it retains full report and relationship evidence.
+
+The orb is a buoyant resident of the upper current, rather than a floor animal
+or a flying mascot above the tank. On Apple/Android LCD habitats its home is a
+small upper-central water pocket between the side HUD columns. The 3D Apple
+resident uses the corresponding upper-water space. A fresh working report follows
+a small, closed 12-second figure eight: horizontal drift with a smaller vertical
+rise and fall. The face remains upright, its body stays tide-colored, and a
+separate semantic shape/text carries status. Attention holds position; completion
+and failure stop work motion. Reduce Motion freezes the current at home, and
+backgrounding pauses frame updates. Coordinates, travel and period live in
+`DOT_HABITAT_RULES`, generated into the portable Swift/Kotlin model.
+
+On Apple/Android LCD dashboards the latest Dot report has a measured row within
+the timeline region, using report time, Dot identity, state and detail disclosure.
+This is the latest shared report, not synthesized session history; it does not
+enter session filtering, counts, or chronological task grouping. Selecting it
+opens the existing read-only evidence view. Connection-only states remain in
+status chrome (the system rail on iOS/Android, toolbar on macOS), and never create
+a timeline event or floating resident. The 2D orb itself opens the same details;
+viewing mode hides its name with resident labels.
 
 On 64×64 and 32×32 matrices, the companion occupies a small upper-right water pocket. It has no horizontal frame, underline or D/W/N initial codes. The quiet face stands alone; working has a small cyan bubble, attention an amber exclamation mark, completion a check and failure a cross. Old/unknown reports have a question mark. These shapes and placement rules come from the shared appearance source and its generated Swift renderer. Custom portraits keep their pixels; the state cue stays outside the face. The 11×11 collective face remains unchanged.
 
@@ -193,7 +213,9 @@ Details open on tap. Removing an orb never removes an agent session or its contr
 
 The dedicated TC001 DOT status page and paper/status chrome may keep a labeled
 connection state. They are diagnostic controls, not evidence of a present habitat
-resident. The native 3D Hermes resident instead has a fixed open shell: idle/error
-poses remain at that seat, observed work rises into the water, and completion
-returns smoothly to the same seat. The imported mesh bounds determine contact
-height so the tail is not buried in its support.
+resident. The native 3D Hermes resident has a fixed, hinged scallop home authored in
+Blender. Active work or waiting opens the lid before she emerges and swims;
+idle/error returns her to that seat before she settles into the shell and the
+lid closes. The substrate and bowl stay fixed throughout. Reduce Motion uses a
+static open active pose or closed resting pose. The imported mesh bounds determine
+contact height; the shell's hinge and the resident's lift remain independent.

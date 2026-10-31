@@ -290,6 +290,10 @@ fun MonitorScreen(
             )
         }
 
+        if (!showDisconnected && !attentionVisible) {
+            dashState.dot?.let { DotHabitat(it, labelsVisible = !hudHidden) }
+        }
+
         if (showDisconnected) {
             // Layer 2: Connection overlay when disconnected
             ConnectionOverlay(
@@ -315,6 +319,7 @@ fun MonitorScreen(
                 if (showTimeline && (!nativeAquarium || !hudHidden)) {
                     TimelineStrip(
                         entries = timelineEntries,
+                        dot = dashState.dot,
                         filter = timelineFilter,
                         onClearFilter = { inspection = null },
                         modifier = Modifier

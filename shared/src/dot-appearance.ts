@@ -7,6 +7,21 @@ export const DOT_APPEARANCE_RULES = Object.freeze({
   pixelSizeDivisor: 6, pixelMinSize: 7, pixelMargin: 3, pixelYDivisor: 4,
   panelGlyphSize: 32, paperGlyphSize: 24, matrixGlyphSize: 7, panelMargin: 8,
 });
+/** Upper-water companion pocket; normalized coordinates are independent of session slots.
+ * A slow closed figure-eight suggests a buoyant orb following a current, without
+ * tails, fins, locomotion borrowed from a provider, or implied delegation.
+ */
+export const DOT_HABITAT_RULES = Object.freeze({
+  homeX: 0.58, homeY: 0.25, travelX: 0.028, travelY: 0.012,
+  periodSeconds: 12, sizeFraction: 0.055, minSize: 28, maxSize: 44,
+  nativeX: 0.9, nativeY: 4.35, nativeZ: 1.4,
+  nativeTravelX: 0.24, nativeTravelY: 0.08,
+});
+export function dotHabitatOffset(seconds: number, working: boolean, motion: boolean): { x: number; y: number } {
+  if (!working || !motion || !Number.isFinite(seconds)) return { x: 0, y: 0 };
+  const angle = seconds * Math.PI * 2 / DOT_HABITAT_RULES.periodSeconds;
+  return { x: Math.sin(angle), y: Math.sin(angle * 2) };
+}
 export interface DotAppearance {
   version: number;
   id: string;

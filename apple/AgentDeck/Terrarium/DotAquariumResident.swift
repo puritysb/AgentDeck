@@ -24,7 +24,7 @@ final class DotAquariumResident {
     private var elapsed: Double = 0
     var labelsVisible = true { didSet { badge.isEnabled = labelsVisible } }
     var animate = false
-    private let home = SIMD3<Float>(2.9, 2.7, 1.4)
+    private let home = SIMD3<Float>(Float(DotHabitatRules.nativeX), Float(DotHabitatRules.nativeY), Float(DotHabitatRules.nativeZ))
 
     init() {
         root.name = "dot-companion"
@@ -73,7 +73,7 @@ final class DotAquariumResident {
         code = snapshot?.phase(at: now) ?? 1
         root.isEnabled = snapshot?.inhabitsHabitat(at: now) == true
         if displayedCode != code {
-            body.model?.materials = [SimpleMaterial(color: DotNativeColor(DotSurfaceView.tint(code)), roughness: 0.5, isMetallic: false)]
+            body.model?.materials = [SimpleMaterial(color: DotNativeColor(DesignTokens.Tide.s300), roughness: 0.5, isMetallic: false)]
             displayedCode = code
             let mark = code == 0 ? "Dot" : "Dot · " + DotAppearanceRules.labels[code].capitalized
             badge.model = ModelComponent(mesh: .generateText(mark, extrusionDepth: 0.002,
@@ -83,7 +83,7 @@ final class DotAquariumResident {
             let bounds = badge.visualBounds(relativeTo: badge)
             badge.position = [-bounds.center.x, 0.40, 0.28]
         }
-        if code != 2 { root.position = home }
+        if code != 2 || !animate { root.position = home }
     }
     #if os(macOS)
     func sync(_ snapshot: DotHostSnapshot, now: Int) {
@@ -99,7 +99,9 @@ final class DotAquariumResident {
         refreshPhase(at: now)
         guard animate && root.isEnabled && code == 2 else { return }
         elapsed += min(max(delta, 0), 1.0 / 20)
-        root.position = home + [0, Float(sin(elapsed * 2)) * 0.06, 0]
+        let current = DotHabitatRules.offset(seconds: elapsed, working: true, motion: true)
+        root.position = home + [Float(current.x * DotHabitatRules.nativeTravelX),
+                                Float(current.y * DotHabitatRules.nativeTravelY), 0]
     }
 
     static func contains(_ entity: Entity) -> Bool {

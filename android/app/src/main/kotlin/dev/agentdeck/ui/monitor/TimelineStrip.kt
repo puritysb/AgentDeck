@@ -93,6 +93,7 @@ fun TimelineStrip(
     entries: List<TimelineEntry>,
     modifier: Modifier = Modifier,
     filter: TimelineSessionFilter? = null,
+    dot: dev.agentdeck.net.DotSurfaceSnapshot? = null,
     onClearFilter: () -> Unit = {},
     scale: MonitorLayoutScale = rememberMonitorLayoutScale(),
 ) {
@@ -183,6 +184,9 @@ fun TimelineStrip(
                         .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
                 ) {
                     TimelineHeader(scale = scale, filter = filter, onClearFilter = onClearFilter)
+                    if (filter == null && dot?.configured == true && dot.reportState != null && dot.reportedAt != null) {
+                        DotCompanion(dot, scale = scale, style = DotCompanionStyle.Timeline)
+                    }
                     // weight(1f, fill = false) bounds the LazyColumn's height
                     // to the column's remaining space — required because a
                     // scrollable composable measured with infinite max height
@@ -221,6 +225,9 @@ fun TimelineStrip(
                 modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 4.dp, vertical = 4.dp),
             ) {
                 TimelineHeader(scale = scale, filter = filter, onClearFilter = onClearFilter)
+                if (filter == null && dot?.configured == true && dot.reportState != null && dot.reportedAt != null) {
+                    DotCompanion(dot, scale = scale, style = DotCompanionStyle.Timeline)
+                }
                 // weight(1f, fill = false): bound LazyColumn height to the
                 // remaining vertical space in the compact column.
                 TimelineList(
