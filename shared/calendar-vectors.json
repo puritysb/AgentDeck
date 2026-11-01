@@ -1,0 +1,441 @@
+[
+  {
+    "name": "cross-zone",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART;TZID=America/New_York:20260804T090000\r\nDTEND;TZID=America/New_York:20260804T100000\r\nSUMMARY:NY\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "Asia/Seoul",
+    "expected": [
+      {
+        "title": "NY",
+        "startHm": "22:00",
+        "endHm": "23:00"
+      }
+    ]
+  },
+  {
+    "name": "wall-DST-07",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART;TZID=America/New_York:20260307T090000\r\nRRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:DST\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772841600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "DST",
+        "startHm": "14:00"
+      }
+    ]
+  },
+  {
+    "name": "wall-DST-08",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART;TZID=America/New_York:20260307T090000\r\nRRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:DST\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772928000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "DST",
+        "startHm": "13:00"
+      }
+    ]
+  },
+  {
+    "name": "wall-DST-09",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART;TZID=America/New_York:20260307T090000\r\nRRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:DST\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1773014400000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "DST",
+        "startHm": "13:00"
+      }
+    ]
+  },
+  {
+    "name": "utc-recurrence",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART:20260307T140000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\nSUMMARY:UTC\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772946000000,
+    "zone": "America/New_York",
+    "expected": [
+      {
+        "title": "UTC",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "gap-count-08",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260307T023000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772928000000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "gap-count-09",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260307T023000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1773014400000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "gap",
+        "startHm": "06:30"
+      }
+    ]
+  },
+  {
+    "name": "gap-count-10",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260307T023000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1773100800000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "explicit-gap",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260308T023000\r\nSUMMARY:gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772928000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "gap",
+        "startHm": "07:30"
+      }
+    ]
+  },
+  {
+    "name": "overlap-first",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:o\r\nDTSTART;TZID=America/New_York:20261101T013000\r\nSUMMARY:overlap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793491200000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "overlap",
+        "startHm": "05:30"
+      }
+    ]
+  },
+  {
+    "name": "floating",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:f\r\nDTSTART:20260804T140000\r\nSUMMARY:float\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "Asia/Seoul",
+    "expected": [
+      {
+        "title": "float",
+        "startHm": "14:00"
+      }
+    ]
+  },
+  {
+    "name": "all-day-exclusive-03",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:h\r\nDTSTART;VALUE=DATE:20260802\r\nDTEND;VALUE=DATE:20260804\r\nSUMMARY:holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785715200000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "holiday"
+      }
+    ]
+  },
+  {
+    "name": "all-day-exclusive-04",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:h\r\nDTSTART;VALUE=DATE:20260802\r\nDTEND;VALUE=DATE:20260804\r\nSUMMARY:holiday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "overnight-already-ended",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:m\r\nDTSTART:20260803T230000Z\r\nDTEND:20260804T010000Z\r\nSUMMARY:night\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785808800000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "overnight-ongoing",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:m\r\nDTSTART:20260803T230000Z\r\nDTEND:20260804T030000Z\r\nSUMMARY:night\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785808800000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "night"
+      }
+    ]
+  },
+  {
+    "name": "moved-04",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260801T100000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:master\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:r\r\nRECURRENCE-ID:20260804T100000Z\r\nDTSTART:20260805T110000Z\r\nSUMMARY:moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "moved-05",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260801T100000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:master\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:r\r\nRECURRENCE-ID:20260804T100000Z\r\nDTSTART:20260805T110000Z\r\nSUMMARY:moved\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785888000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "master",
+        "startHm": "10:00"
+      },
+      {
+        "title": "moved",
+        "startHm": "11:00"
+      }
+    ]
+  },
+  {
+    "name": "cancelled-override",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260801T100000Z\r\nRRULE:FREQ=DAILY\r\nSUMMARY:master\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:r\r\nRECURRENCE-ID:20260804T100000Z\r\nSTATUS:CANCELLED\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "absolute-exdate",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART;TZID=America/New_York:20260801T100000\r\nRRULE:FREQ=DAILY\r\nEXDATE:20260804T140000Z\r\nSUMMARY:master\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "monthly-count-skips-feb",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260131T100000Z\r\nRRULE:FREQ=MONTHLY;COUNT=2\r\nSUMMARY:month\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1774915200000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "month",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "monthly-ordinal",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260112T100000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=2MO\r\nSUMMARY:second Monday\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1786320000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "second Monday",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "monthly-negative",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260131T100000Z\r\nRRULE:FREQ=MONTHLY;BYMONTHDAY=-1\r\nSUMMARY:last day\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1788134400000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "last day",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "weekly-interval",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260707T100000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=TU,TH\r\nSUMMARY:week\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "week",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "until-absolute",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART;TZID=America/New_York:20260801T100000\r\nRRULE:FREQ=DAILY;UNTIL=20260804T135959Z\r\nSUMMARY:until\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "yearly-leap",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20240229T100000Z\r\nRRULE:FREQ=YEARLY;COUNT=2\r\nSUMMARY:leap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1835395200000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "leap",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "unicode-unfold",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260804T140000Z\r\nSUMMARY:Hello\\,\r\n  world\\n😀\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "Hello, world 😀",
+        "startHm": "14:00"
+      }
+    ]
+  },
+  {
+    "name": "nested-alarm",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260804T140000Z\r\nSUMMARY:main\r\nBEGIN:VALARM\r\nSUMMARY:alarm\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "main",
+        "startHm": "14:00"
+      }
+    ]
+  },
+  {
+    "name": "unknown-zone",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART;TZID=Unknown/Private:20260804T140000\r\nSUMMARY:bad\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "unsupported-rule",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260804T140000Z\r\nRRULE:FREQ=MONTHLY;BYSETPOS=-1\r\nSUMMARY:bad\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "invalid-date",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260230T140000Z\r\nSUMMARY:bad\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772409600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "same-day-end-filter",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260804T080000Z\r\nDTEND:20260804T090000Z\r\nSUMMARY:past\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785834060000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "sorting-cap",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:14\r\nDTSTART:20260804T140000Z\r\nSUMMARY:14\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:12\r\nDTSTART:20260804T120000Z\r\nSUMMARY:12\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:13\r\nDTSTART:20260804T130000Z\r\nSUMMARY:13\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:11\r\nDTSTART:20260804T110000Z\r\nSUMMARY:11\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART;VALUE=DATE:20260804\r\nSUMMARY:day\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "day"
+      },
+      {
+        "title": "11",
+        "startHm": "11:00"
+      },
+      {
+        "title": "12",
+        "startHm": "12:00"
+      }
+    ]
+  },
+  {
+    "name": "recurring-explicit-gap-start",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260308T023000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:first gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772928000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "first gap",
+        "startHm": "07:30"
+      }
+    ]
+  },
+  {
+    "name": "recurring-after-gap-start",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:g\r\nDTSTART;TZID=America/New_York:20260308T023000\r\nRRULE:FREQ=DAILY;COUNT=2\r\nSUMMARY:first gap\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1773014400000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "first gap",
+        "startHm": "06:30"
+      }
+    ]
+  },
+  {
+    "name": "exact-end-exclusive",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nDTSTART:20260804T080000Z\r\nDTEND:20260804T090000Z\r\nSUMMARY:ended\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785834000000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "escaped-backslash",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nDTSTART:20260804T100000Z\r\nSUMMARY:Literal \\\\n and \\;\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "Literal \\n and ;",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "duplicate-rrule-key",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nDTSTART:20260804T100000Z\r\nRRULE:FREQ=DAILY;COUNT=2;COUNT=3\r\nSUMMARY:bad\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "unsupported-yearly-byday",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e\r\nDTSTART:20260101T100000Z\r\nRRULE:FREQ=YEARLY;BYDAY=1MO\r\nSUMMARY:bad\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1767571200000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "utf8-budget",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20260804T100000Z\r\nSUMMARY:😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "😀😀😀😀😀😀😀😀😀😀😀😀",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "until-inclusive-instant",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART;TZID=America/New_York:20260801T100000\r\nRRULE:FREQ=DAILY;UNTIL=20260804T140000Z\r\nSUMMARY:until\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "until",
+        "startHm": "14:00"
+      }
+    ]
+  },
+  {
+    "name": "exdate-must-match-time",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART:20260801T100000Z\r\nRRULE:FREQ=DAILY\r\nEXDATE:20260804T200000Z\r\nSUMMARY:keep\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "keep",
+        "startHm": "10:00"
+      }
+    ]
+  },
+  {
+    "name": "weekly-wall-dst",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:r\r\nDTSTART;TZID=America/New_York:20260301T090000\r\nRRULE:FREQ=WEEKLY;BYDAY=SU;COUNT=3\r\nSUMMARY:weekly\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1772928000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "weekly",
+        "startHm": "13:00"
+      }
+    ]
+  }
+]

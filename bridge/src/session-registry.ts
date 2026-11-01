@@ -1,3 +1,5 @@
+import { DEFAULT_DAEMON_PORT_WINDOW, parseDaemonPortWindow, DAEMON_CONFIGURATION_POLICY, DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
+export { DEFAULT_DAEMON_PORT_WINDOW } from '@agentdeck/shared';
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { createServer } from 'net';
@@ -66,7 +68,7 @@ export function getOwnTimelineFile(): string { return join(getDataDir(), 'timeli
 function getDaemonFile(): string { return join(getDataDir(), 'daemon.json'); }
 export const DAEMON_DEFAULT_PORT = 9120;
 /** Documented daemon port window (docs/daemon.md). */
-export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139];
+// The discovery window is canonical in shared/src/daemon-parity.ts.
 
 /**
  * Resolve the port window this process works in.
@@ -92,15 +94,7 @@ export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139
 export function resolveDaemonPortWindow(
   raw: string | undefined = process.env.AGENTDECK_PORT_WINDOW,
 ): readonly [number, number] {
-  const text = raw?.trim();
-  if (!text) return DEFAULT_DAEMON_PORT_WINDOW;
-  const match = /^(\d{4,5})\s*-\s*(\d{4,5})$/.exec(text);
-  if (!match) return DEFAULT_DAEMON_PORT_WINDOW;
-  const lo = Number(match[1]);
-  const hi = Number(match[2]);
-  if (!Number.isInteger(lo) || !Number.isInteger(hi)) return DEFAULT_DAEMON_PORT_WINDOW;
-  if (lo < 1024 || hi > 65535 || hi < lo) return DEFAULT_DAEMON_PORT_WINDOW;
-  return [lo, hi];
+  return parseDaemonPortWindow(raw);
 }
 
 /** True when this process is working in the documented window. */
@@ -588,22 +582,45 @@ export function requestDaemonShutdown(port: number): Promise<void> {
  * acknowledged (HTTP 2xx). The caller should then `waitForDaemonExit()` for the
  * port to clear before binding.
  */
-export function requestDaemonStandDown(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
+export async function requestDaemonStandDown(port: number): Promise<boolean> {
+  const call = (path: string, body?: object): Promise<{ status: number; body: string }> => new Promise((resolve, reject) => {
     const req = http.request({
       hostname: '127.0.0.1',
       port,
-      path: '/stand-down',
+      path,
       method: 'POST',
+      headers: { 'X-AgentDeck-Checkpoint': '1', [DAEMON_CONFIGURATION_POLICY.handoverHeader]: String(DAEMON_CONFIGURATION_POLICY.version), 'Content-Type': 'application/json' },
       timeout: 2000,
     }, (res) => {
-      res.on('data', () => {});
-      res.on('end', () => { resolve((res.statusCode ?? 500) < 300); });
+      let payload = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => {
+        payload += chunk;
+        if (Buffer.byteLength(payload) > DAEMON_CHECKPOINT_POLICY.maxBytes * 2) req.destroy(new Error('handover response too large'));
+      });
+      res.on('end', () => resolve({ status: res.statusCode ?? 500, body: payload }));
+      res.on('error', () => reject(new Error('handover response unavailable')));
     });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.end();
+    req.on('error', () => reject(new Error('handover request unavailable')));
+    req.on('timeout', () => req.destroy(new Error('handover request timed out')));
+    req.end(body ? JSON.stringify(body) : undefined);
   });
+  const response = await call('/stand-down');
+  if (response.status === 404 || response.status === 501) return false; // legacy endpoint absence only
+  if (response.status >= 300) throw new Error('Daemon refused handover; leaving the current owner running');
+  let parsed: { continuity?: unknown; lease?: unknown };
+  try { parsed = JSON.parse(response.body || '{}'); } catch { throw new Error('Invalid handover response'); }
+  if (typeof parsed.continuity === 'string') {
+    const { stagePeerCheckpoint, parseDaemonCheckpoint, checkpointId } = await import('./daemon-checkpoint.js');
+    const checkpoint = parseDaemonCheckpoint(parsed.continuity);
+    if (typeof parsed.lease === 'string' && !checkpoint?.configuration) throw new Error('Configuration handover unsupported; current owner retained');
+    if (!checkpoint || !stagePeerCheckpoint(getDataDir(), parsed.continuity)) throw new Error('Could not preserve daemon checkpoint');
+    if (typeof parsed.lease === 'string') {
+      const committed = await call('/stand-down/commit', { lease: parsed.lease, checkpointId: checkpointId(checkpoint) });
+      if (committed.status >= 300) throw new Error('Handover lease expired; current owner retained');
+    }
+  } else if (parsed.lease !== undefined) throw new Error('Handover checkpoint missing');
+  return true;
 }
 
 /**

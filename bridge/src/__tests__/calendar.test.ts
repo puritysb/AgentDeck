@@ -1,6 +1,13 @@
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { CALENDAR_POLICY as CP } from '../calendar-policy.generated.js';
+import { outputs } from '../../../scripts/generate-calendar-policy.mjs';
 import { describe, it, expect, vi } from 'vitest';
 import {
   parseCalendarSettings,
+  validCalendarURL,
   unfoldIcsLines,
   parseIcsInstant,
   parseIcsEvents,
@@ -183,5 +190,86 @@ describe('CalendarProvider', () => {
     const p = new CalendarProvider(failing as unknown as typeof fetch);
     expect(await p.get(null)).toBeUndefined();
     expect(await p.get({ urls: ['https://x/a.ics'] }, NOW.getTime())).toBeUndefined();
+  });
+});
+
+const calendarVectors = JSON.parse(readFileSync('shared/calendar-vectors.json', 'utf8')) as Array<{ name: string; ics: string; nowMs: number; zone: string; expected: unknown }>;
+describe('shared calendar contract', () => {
+  it('keeps generated policy and wire bounds current', () => { for (const {path, expected} of outputs()) expect(readFileSync(path, 'utf8')).toBe(expected); });
+  it.each(calendarVectors)('$name', v => { expect(buildTodayEvents(parseIcsEvents(v.ics), new Date(v.nowMs), v.zone)).toEqual(v.expected); });
+  it.skipIf(process.platform !== 'darwin')('executes the actual Swift parser on every shared vector', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'calendar-swift-'));
+    try {
+      const binary = join(dir, 'calendar');
+      execFileSync('swiftc', ['-module-cache-path',join(dir,'modules'),'-parse-as-library','apple/AgentDeck/Daemon/Server/CalendarPolicy.generated.swift','apple/AgentDeck/Daemon/Server/CalendarICS.swift','apple/AgentDeck/Daemon/Server/CalendarConnection.swift','apple/AgentDeck/Daemon/Server/CalendarProvider.swift','bridge/src/__tests__/fixtures/calendar-main.swift','-o',binary], { timeout:120000 });
+      const native = JSON.parse(execFileSync(binary, { input:JSON.stringify(calendarVectors),encoding:'utf8',timeout:30000 }));
+      expect(native).toEqual(calendarVectors.map(v => v.expected));
+      const urls = JSON.parse(readFileSync('shared/calendar-url-vectors.json','utf8')) as Array<{value:string;valid:boolean}>;
+      expect(JSON.parse(execFileSync(binary,['--urls'],{input:JSON.stringify(urls),encoding:'utf8',timeout:15000}))).toEqual(urls.map(v => v.valid));
+      const cases = JSON.parse(readFileSync('shared/calendar-cache-vectors.json','utf8'));
+      const swiftCache = JSON.parse(execFileSync(binary, ['--cache'], { input:JSON.stringify(cases),encoding:'utf8',timeout:30000 }));
+      expect(swiftCache).toEqual(cases.map((v: any) => v.steps.map((s: any) => ({ status:s.status, requests:s.requests, ...(s.events === undefined ? {} : {events:s.events}), ...(s.stamp === undefined ? {} : {fetchedAt:v.nowMs+s.stamp}) }))));
+    } finally { rmSync(dir,{recursive:true,force:true}); }
+  },150000);
+});
+
+describe('calendar cache contract', () => {
+  const cases = JSON.parse(readFileSync('shared/calendar-cache-vectors.json','utf8')) as Array<{name:string;body:string;nowMs:number;steps:Array<{delta:number;fail?:boolean;disabled?:boolean;source?:string;status:string;events?:unknown;stamp?:number;requests:number}>}>;
+  it.each(cases)('$name', async v => {
+    let fail = false;
+    const fetcher = vi.fn(async () => { if (fail) throw new Error('secret URL must not reach logs'); return new Response(v.body); });
+    const logs:string[] = [], provider = new CalendarProvider(fetcher as typeof fetch, s => logs.push(s));
+    for (const s of v.steps) {
+      fail = s.fail === true;
+      const cfg = s.disabled ? null : { urls:['https://calendar.invalid/' + (s.source ?? 'a')], timeZone:'UTC' };
+      expect({...await provider.snapshot(cfg,v.nowMs+s.delta), requests:fetcher.mock.calls.length}).toEqual({status:s.status,requests:s.requests,...(s.events === undefined ? {} : {events:s.events}),...(s.stamp === undefined ? {} : {fetchedAt:v.nowMs+s.stamp})});
+    }
+    expect(logs.every(s => s === '[calendar] fetch failed')).toBe(true);
+  });
+  it('never publishes a revoked in-flight result or borrows another source job', async () => {
+    let resolve!: (r:Response)=>void;
+    const provider = new CalendarProvider((() => new Promise<Response>(r => { resolve = r; })) as typeof fetch);
+    const pending = provider.snapshot({urls:['https://calendar.invalid/secret']},NOW.getTime());
+    await provider.snapshot(null,NOW.getTime());
+    resolve(new Response('BEGIN:VCALENDAR\r\nEND:VCALENDAR'));
+    expect(await pending).toEqual({status:'disabled'});
+  });
+});
+
+it('validates the same explicit source URL scope', () => {
+  const urls = JSON.parse(readFileSync('shared/calendar-url-vectors.json','utf8')) as Array<{value:string;valid:boolean}>;
+  for (const v of urls) expect(validCalendarURL(v.value),v.value).toBe(v.valid);
+});
+
+describe('calendar network bounds', () => {
+  it('keeps concurrent sources isolated even when a cancelled transport returns late', async () => {
+    const resolvers: Array<(response:Response)=>void> = [];
+    const fetcher = vi.fn(() => new Promise<Response>(resolve => resolvers.push(resolve)));
+    const p = new CalendarProvider(fetcher as typeof fetch);
+    const cfg = (id:string) => ({urls:['https://calendar.invalid/'+id],timeZone:'UTC'});
+    const a = p.snapshot(cfg('A'),NOW.getTime()), b = p.snapshot(cfg('B'),NOW.getTime());
+    const body = (title:string) => ics(vevent(['UID:x','DTSTART;VALUE=DATE:20260804','SUMMARY:'+title]));
+    resolvers[0](new Response(body('secret A')));
+    expect(await a).toEqual({status:'disabled'});
+    resolvers[1](new Response(body('B')));
+    expect((await b).events).toEqual([{title:'B'}]);
+    expect((await p.snapshot(cfg('B'),NOW.getTime())).events).toEqual([{title:'B'}]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('bounds silent requests with an abort deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = ((_url:unknown, init?:RequestInit) => new Promise<Response>((_resolve,reject) => init!.signal!.addEventListener('abort',() => reject(new Error('aborted'))))) as typeof fetch;
+      const p = new CalendarProvider(fetcher);
+      const pending = p.snapshot({urls:['https://calendar.invalid/silent']},NOW.getTime());
+      await vi.advanceTimersByTimeAsync(CP.timeoutMs+1);
+      expect(await pending).toEqual({status:'unknown'});
+    } finally { vi.useRealTimers(); }
+  });
+  it('refuses oversized and malformed successful replies without logging secret-bearing errors', async () => {
+    for (const body of ['<html>not a calendar</html>', 'x'.repeat(CP.maxBodyBytes+1)]) {
+      const p = new CalendarProvider((async () => new Response(body)) as typeof fetch);
+      expect(await p.snapshot({urls:['https://calendar.invalid/private']},NOW.getTime())).toEqual({status:'unknown'});
+    }
   });
 });

@@ -1145,9 +1145,14 @@ private fun MonitorHUD(
                     // first; the question echo lets the daemon drop a press
                     // aimed at a question the prompt has already moved past.
                     featured.sessionId?.let { BridgeConnection.instance.sendFocusSession(it) }
-                    BridgeConnection.instance.sendSelectOption(
-                        index, featured.sessionId, featured.question,
-                    )
+                    if (featured.actionable) {
+                        val request = featured.permissionRequestId
+                        if (request != null) {
+                            dev.agentdeck.state.DeviceControllerRules.permissionChoices.firstOrNull { it.index == index }?.let {
+                                BridgeConnection.instance.sendPermissionDecision(request, it.decision)
+                            }
+                        } else BridgeConnection.instance.sendSelectOption(index, featured.sessionId, featured.question)
+                    }
                 },
                 onFocus = {
                     featured.sessionId?.let { BridgeConnection.instance.sendFocusSession(it) }

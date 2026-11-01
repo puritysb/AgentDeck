@@ -240,6 +240,11 @@ struct AgentDeckApp: App {
         // The one-shot launch guard keeps this independent of roster updates.
         AttentionSessionShortcuts.updateAppShortcutParameters()
 
+        daemonService.onLocalReceiverChanged = { port in
+            HermesReceiverSettings.shared.localReceiverChanged(port: port)
+            OpenCodeObserverSetup.shared.localReceiverChanged(port: port)
+        }
+
         daemonService.onReady = { [stateHolder, weak daemonService] wsUrl in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 guard daemonService?.isCurrentReadyURL(wsUrl) == true else { return }
@@ -251,6 +256,18 @@ struct AgentDeckApp: App {
             guard daemonService.isUsingExternalDaemon,
                   let data = try? JSONEncoder().encode(entries) else { return }
             DaemonTimelineStore.stageHandoverSnapshot(data)
+        }
+        stateHolder.onLocalDaemonCheckpoint = { [weak daemonService] payload, admission, token in
+            guard daemonService?.isUsingExternalDaemon == true else { return nil }
+            do {
+                let id = try await DaemonCheckpointStore.stagePeer(payload,
+                    directory: AgentDeckPaths.baseDirectory, admission: admission, isCurrent: { token.isValid })
+                guard daemonService?.isUsingExternalDaemon == true else { return nil }
+                return id
+            } catch {
+                DaemonLogger.shared.error("Local daemon checkpoint could not be persisted")
+                return nil
+            }
         }
 
         // On external→owner promotion, purge Node-relayed usage/subscription

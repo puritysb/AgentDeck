@@ -1,0 +1,15 @@
+[package]
+name = "agentdeck-glance-raster"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Exactly the engine used by @resvg/resvg-js 2.6.2. No system fonts or images.
+resvg = { git = "https://github.com/zimond/resvg", rev = "3495d870", default-features = false, features = ["text"] }
+
+[profile.release]
+panic = "abort"

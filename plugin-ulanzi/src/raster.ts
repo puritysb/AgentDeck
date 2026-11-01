@@ -50,7 +50,8 @@ export const GIF_ICON_SIZE = 144;
 /** `<plugin>/plugin/*.js` → resources at `<plugin>/resources`. */
 function resourceDirs(): string[] {
   const here = dirname(fileURLToPath(import.meta.url));
-  return [join(here, '..', 'resources'), join(here, '..', '..', 'resources')];
+  return [join(here, '..', 'resources'), join(here, '..', '..', 'resources'),
+    join(here, '..', 'com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin', 'resources')];
 }
 
 const FONT_FILES = [
@@ -58,6 +59,8 @@ const FONT_FILES = [
   'IBMPlexSans-Bold.ttf',
   'JetBrainsMono-Regular.ttf',
   'JetBrainsMono-Bold.ttf',
+  'IBMPlexSansKR-Regular.ttf',
+  'IBMPlexSansKR-Bold.ttf',
 ];
 
 const FONT_OPTS: { fontBuffers: Uint8Array[]; loadSystemFonts: boolean; defaultFontFamily: string } =

@@ -1,0 +1,80 @@
+{
+  "decision": {
+    "cardId": "opaque:fixture",
+    "action": "card_choice",
+    "choiceId": "useful",
+    "text": "private text / 한글"
+  },
+  "checkpoint": {
+    "version": 1,
+    "lineage": "11111111-1111-4111-8111-111111111111",
+    "writer": "22222222-2222-4222-8222-222222222222",
+    "generation": 1,
+    "sequence": 2,
+    "sealed": true,
+    "pocket": {
+      "rev": 1,
+      "feedbackCount": 0,
+      "arms": {},
+      "pending": [],
+      "seen": {},
+      "answered": {}
+    },
+    "receipts": [
+      {
+        "key": "0a7a9ddffe5f4e0e7ff49509d75f3801d7260dacbc9d6aefb52cd98fa8c7218f",
+        "status": "applied"
+      }
+    ]
+  },
+  "decisions": [
+    {
+      "decision": {
+        "cardId": "opaque:fixture",
+        "action": "card_choice",
+        "choiceId": "useful",
+        "text": "private text / 한글"
+      },
+      "key": "0a7a9ddffe5f4e0e7ff49509d75f3801d7260dacbc9d6aefb52cd98fa8c7218f"
+    },
+    {
+      "decision": {
+        "cardId": "session:fixture",
+        "requestId": "request-1",
+        "action": "permission_decision",
+        "decision": "deny"
+      },
+      "key": "14ef1a5e86a30ada16e14c56680a08d172cb11cea912bf8956b2cb37cd37b170"
+    },
+    {
+      "decision": {
+        "cardId": "session:fixture",
+        "action": "select_option",
+        "index": 0,
+        "question": "줄바꿈\n따옴표 \" / 😀  "
+      },
+      "key": "be0d9876696ba421af4ea4985cdb92c61ad82f6eaa277806e63d2127e0ffd0fe"
+    },
+    {
+      "decision": {
+        "cardId": "session:fixture",
+        "action": "send_prompt",
+        "text": "日本語\t한글 / \\ 문자",
+        "value": "exact text"
+      },
+      "key": "df121565116082ddd89d11daefd99f7fe01767261b255e969f2eb04adc38e1da"
+    }
+  ],
+  "authorityCases": [
+    {
+      "name": "peerless restart retains local data on a new authority branch",
+      "withPeer": false,
+      "newLineage": true
+    },
+    {
+      "name": "admitted current peer continues its authority lineage",
+      "withPeer": true,
+      "newLineage": false
+    }
+  ]
+}

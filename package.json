@@ -11,6 +11,7 @@
     "clean": "pnpm -r clean",
     "flash:build": "vite build tools/web-flasher --base=/AgentDeck/flash/ --outDir ../../dist/flash --emptyOutDir && node scripts/generate-flash-third-party.mjs dist/flash",
     "typecheck": "pnpm -r typecheck",
+    "generate-opencode-observer": "pnpm --filter @agentdeck/hooks build && node scripts/generate-opencode-observer.mjs",
     "generate-connection-labels": "node scripts/generate-connection-labels.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
     "generate-brand-features": "node scripts/generate-brand-features.mjs",
@@ -26,6 +27,8 @@
     "generate-idotmatrix-identity": "node scripts/generate-idotmatrix-identity.mjs",
     "generate-pairing-code-rules": "node scripts/generate-pairing-code-rules.mjs",
     "generate-apme-display-rules": "node scripts/generate-apme-display-rules.mjs",
+    "generate-antigravity-observation": "node scripts/generate-antigravity-observation.mjs",
+    "generate-apme-retention": "node scripts/generate-apme-retention.mjs",
     "generate-apme-read-indexes": "node scripts/generate-apme-read-indexes.mjs",
     "generate-apme-dashboard": "node scripts/generate-apme-dashboard.mjs",
     "generate-esp32-board-matrix": "node scripts/generate-esp32-board-matrix.mjs",
@@ -85,9 +88,14 @@
     "generate-matrix-expressions": "tsx scripts/generate-matrix-expressions.mts",
     "generate-gateway-live-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-gateway-live-rules.mjs",
     "generate-dot-contract": "pnpm --filter @agentdeck/shared build && pnpm --filter @agentdeck/dot-relay build && node services/dot-relay/generate-native.mjs",
+    "generate-daemon-relay": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-relay.mjs",
+    "generate-ci-provider": "node scripts/generate-ci-provider.mjs",
     "generate-ci-wait": "node scripts/generate-ci-wait.mjs",
     "generate-session-settings-rules": "pnpm --filter @agentdeck/shared build && node scripts/generate-session-settings-rules.mjs",
-    "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs"
+    "generate-daemon-parity": "pnpm --filter @agentdeck/shared build && node scripts/generate-daemon-parity.mjs",
+    "generate-glance-policy": "node scripts/generate-glance-policy.mjs",
+    "generate-pocket-policy": "pnpm --filter @agentdeck/shared build && node scripts/generate-pocket-policy.mjs",
+    "generate-pocket-vectors": "pnpm build && node scripts/generate-pocket-vectors.mjs"
   },
   "engines": {
     "node": "22.x || 24.x || 26.x",

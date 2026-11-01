@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-01T16:37:12.229Z",
+  "finished_at": "2026-11-01T16:41:16.860Z",
+  "duration_ms": 244631,
+  "commit": "d78e9f34a9147c6530caf6815c871b0ed265437a",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "version",
+      "gate": "typecheck",
+      "name": "Version sync",
+      "status": "pass",
+      "duration_ms": 451
+    },
+    {
+      "id": "build",
+      "gate": "typecheck",
+      "name": "Build every workspace package",
+      "status": "pass",
+      "duration_ms": 9006
+    },
+    {
+      "id": "typecheck",
+      "gate": "typecheck",
+      "name": "Strict type check",
+      "status": "pass",
+      "duration_ms": 4840
+    },
+    {
+      "id": "eslint",
+      "gate": "eslint",
+      "name": "ESLint error ratchet",
+      "status": "pass",
+      "duration_ms": 13658
+    },
+    {
+      "id": "vitest-coverage",
+      "gate": "vitest",
+      "name": "Vitest, whole suite + coverage floor",
+      "status": "pass",
+      "duration_ms": 72294
+    },
+    {
+      "id": "e2e",
+      "gate": "daemon-e2e",
+      "name": "Daemon hub end-to-end",
+      "status": "skip",
+      "reason": "opt-in on this platform: on macOS the daemon's usage poller reads the login Keychain; pass --allow-keychain to run it"
+    },
+    {
+      "id": "protocol-drift",
+      "gate": "typecheck",
+      "name": "Generated protocol types match protocol.ts",
+      "status": "pass",
+      "duration_ms": 9974
+    },
+    {
+      "id": "preview-mirror",
+      "gate": "typecheck",
+      "name": "Preview mirror SYNC-HASH pins",
+      "status": "pass",
+      "duration_ms": 286
+    },
+    {
+      "id": "tokens",
+      "gate": "design-docs",
+      "name": "Design token mirrors",
+      "status": "pass",
+      "duration_ms": 1348
+    },
+    {
+      "id": "design-lint",
+      "gate": "design-docs",
+      "name": "Design-lint ratchet",
+      "status": "pass",
+      "duration_ms": 973
+    },
+    {
+      "id": "docs",
+      "gate": "design-docs",
+      "name": "Markdown links, anchors and the AGENTS.md budget",
+      "status": "pass",
+      "duration_ms": 595
+    },
+    {
+      "id": "design-catalog",
+      "gate": "design-docs",
+      "name": "Design-system catalog and translations",
+      "status": "pass",
+      "duration_ms": 518
+    },
+    {
+      "id": "devlog",
+      "gate": "design-docs",
+      "name": "Development-log entries",
+      "status": "pass",
+      "duration_ms": 705
+    },
+    {
+      "id": "pages-parity",
+      "gate": "design-docs",
+      "name": "Board table, GNB, spec-card and surface-count parity",
+      "status": "pass",
+      "duration_ms": 250
+    },
+    {
+      "id": "npm-packaged",
+      "gate": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "status": "pass",
+      "duration_ms": 129722
+    }
+  ]
+}

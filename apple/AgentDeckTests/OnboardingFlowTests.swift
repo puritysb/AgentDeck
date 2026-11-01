@@ -211,6 +211,19 @@ final class OnboardingIntegrationTests: XCTestCase {
             state: state, hostConnected: true).label, "Unsupported")
     }
 
+    func testOpenCodeHookActivityIsVisibleWithoutEnablingServerMonitoring() {
+        let suite = "OpenCodeHookStatus.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let prefs = AppPreferences(defaults: defaults)
+        prefs.openCodeMonitoringEnabled = false
+        var state = DashboardState()
+        state.siblingSessions = [SessionInfo(id: "observed:opencode:fixture", port: 0, projectName: "Fixture", agentType: "opencode")]
+        let status = IntegrationStatusEvaluator.status(for: IntegrationCatalog.openCode,
+            state: state, preferences: prefs, anthropicKeySaved: false)
+        XCTAssertEqual(status.label, "Connected")
+    }
+
     func testOpenCodeEnabledDoesNotClaimAConnectionBeforeASessionArrives() {
         let suite = "OnboardingIntegration.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

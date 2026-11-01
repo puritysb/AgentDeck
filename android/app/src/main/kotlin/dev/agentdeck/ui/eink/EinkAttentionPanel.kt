@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +46,7 @@ data class EinkAttentionFeatured(
     val navigable: Boolean,
     val actionable: Boolean = true,
     val queuedCount: Int,
+    val permissionRequestId: String? = null,
 )
 
 fun buildEinkAttentionFeatured(state: DashboardState): EinkAttentionFeatured? {
@@ -59,7 +61,9 @@ fun buildEinkAttentionFeatured(state: DashboardState): EinkAttentionFeatured? {
         agentType = featured.agentType,
         modelName = featured.modelName,
         question = featured.question ?: (if (isFocused) state.question else null),
-        options = if (featured.controlMode == "observed") {
+        options = if (!featured.requestId.isNullOrBlank()) dev.agentdeck.state.DeviceControllerRules.permissionChoices.map {
+            PromptOption(label = it.label, index = it.index)
+        } else if (featured.controlMode == "observed") {
             featured.options.orEmpty()
         } else if (isFocused) {
             state.options
@@ -75,8 +79,10 @@ fun buildEinkAttentionFeatured(state: DashboardState): EinkAttentionFeatured? {
         // deliver the answer — by typing into that session's terminal, or by
         // holding its AskUserQuestion open to resolve with our choice. Absent
         // flag ⇒ not actionable, never a button that silently goes nowhere.
-        actionable = featured.controlMode != "observed" || featured.liveAnswerable == true,
+        actionable = if (!featured.requestId.isNullOrBlank()) dev.agentdeck.state.DeviceControllerRules.heldReplyable(featured.requestId, featured.liveAnswerable)
+            else featured.controlMode != "observed" || featured.liveAnswerable == true,
         queuedCount = (sessions.size - 1).coerceAtLeast(0),
+        permissionRequestId = featured.requestId?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -223,6 +229,7 @@ private fun AttentionOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .minimumInteractiveComponentSize()
             .border(
                 width = if (selected) 2.dp else 1.dp,
                 color = if (selected) Color.Black else Color.DarkGray,
@@ -243,8 +250,8 @@ private fun AttentionOptionRow(
         )
         Text(
             text = option.label,
-            fontSize = 14.sp,
-            lineHeight = 18.sp,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
             fontWeight = if (option.recommended == true || selected) FontWeight.Bold else FontWeight.Normal,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 2,

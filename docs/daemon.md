@@ -48,6 +48,14 @@ UI는 CLI 전용 섹션을 숨기고 companion executable 설치를 유도하지
 
 **외부 CLI daemon 이 이미 실행 중인 경우**: `DaemonService.alreadyRunning` → `connectToExternalDaemon`. Swift 앱은 죽지 않고 CLI daemon 의 WS 클라이언트가 된다 (`isUsingExternalDaemon = true`). 이 모드는 사용자가 터미널에서 별도 daemon 을 이미 운영하는 고급 경로이며, App Store 앱 자체는 외부 실행 파일 설치/기동을 요구하지 않는다. 하드웨어 상태는 CLI daemon 이 `state_update.moduleHealth` 로 브로드캐스트한 범위만 UI 에 표시한다.
 
+개발용 격리 그룹에서는 **두 런타임 모두** `AGENTDECK_PORT_WINDOW=19450-19459`로
+탐색·할당 범위를 바꿀 수 있다. 선호 포트도 그 범위 안으로 별도 지정하고 각자의
+데이터 디렉터리를 분리해야 한다. 기본값과 잘못된 환경 변수의 폴백은 기존과 같은
+9120–9139이며, 환경 변수만으로 선호 포트·앱 컨테이너·기기 모듈이 바뀌지는 않는다.
+Swift도 Node와 같은 파서 벡터 및 생성된 규칙을 사용한다.
+실제 두 프로세스 수명주기 검증 방법과 범위는
+[격리 통합 검증](testing.md#signed-swiftnode-lifecycle-acceptance)에 정리되어 있다.
+
 **iDotMatrix BLE 구동 주체**: CLI(Node) 데몬이 포트를 소유하면 데몬이 부팅 시 `startIDotMatrixSync(port)`로 npm 패키지에 포함된 `bridge/src/idotmatrix/sync.py`(bleak)를 **자식 프로세스로 자동 spawn**한다(라이프사이클 관리: 크래시 시 backoff 재spawn, 데몬 종료 시 kill). Python 의존성은 npm 설치 중 받지 않고, 첫 BLE 명령 또는 `agentdeck ble setup` 때 `~/.agentdeck/python-ble`에 준비한다. 데몬 시작 자체는 네트워크 설치를 하지 않으며 런타임이 준비되지 않았으면 명시적인 setup 안내를 로그에 남긴다. 이로써 **CLI 데몬만 떠 있어도**(Swift 앱·수동 `idotmatrix sync` 불필요) 준비된 기기가 구동된다. sync.py 는 `/pixoo/frame?size=32`를 폴링해 BLE push. 패널에 연결되지 않은 동안에는 데몬이 30 s 마다 설정의 첫 기기를 다시 읽어, 주소나 밝기가 바뀌면 새 설정으로 다시 띄우고 기기가 제거되면 멈춘다(설정 파일을 읽지 못하면 그대로 둔다). — 단독 Swift 앱(CLI 데몬 없음)일 때만 Swift 가 hub 모듈로 직접 구동하고, **CLI 데몬이 있으면 Swift client-mode 는 stand down**(`DaemonService.syncClientModeDevices`가 client 모드 BLE 구동을 띄우지 않음) → BLE 단일연결 충돌 방지. Pixoo/D200H/ESP32 도 CLI 가 소유.
 
 **Timebox Mini Light 구동 주체**: CLI(Node) 데몬이 `timeboxDevices` 설정을 발견하면 `startTimeboxSync(port)`로 npm 패키지에 포함된 `bridge/src/timebox/sync_ble.py`(bleak)를 **자식 프로세스로 자동 spawn**한다(iDotMatrix 와 동일 라이프사이클·`~/.agentdeck/python-ble` 런타임). 사용자는 `agentdeck timebox scan` 으로 런타임 준비와 검색을 한 번에 수행하고 `TimeBox-mini-light` BLE 주소를 `agentdeck timebox add <address>`로 등록한다. sync_ble.py 는 `/pixoo/frame?size=11&layout=micro`를 폴링해 ISSC transparent-UART(`49535343-…`)로 GATT write. 패널이 꺼져 있거나 범위 밖이면 같은 프로세스 안에서 재시도하고(3 s 부터 두 배씩, 최대 30 s), 데몬이 30 s 동안 응답하지 않을 때만 스스로 종료한다(iDotMatrix `sync.py` 도 같다). 단독 Swift 앱일 때는 CoreBluetooth 로 네이티브 구동, CLI 데몬이 있으면 Swift client-mode stand down (BLE 단일연결). 구 Bluetooth Classic SPP 변종(`sync.py`)은 호환성·App Store 제약으로 제거됨.
@@ -184,6 +192,50 @@ snapshots received from its preferred local external daemon into its own
 container's separate handover cache. Its daemon merges that cache on promotion;
 remote dashboard connections cannot populate it. The dashboard reconnects once
 the listener, handlers and history are ready, before device-module discovery.
+
+## Aggregate Feed and in-flight handover
+
+Each owner keeps `daemon-checkpoint.json`: normalized Pocket aggregates and a
+bounded ledger of SHA-256 Outbox receipt keys/statuses. It contains no card copy,
+queued command text, source URL, token or source grant. Receipt hashes use the
+same fixed field array in both runtimes and exclude retry-varying `ageSec`.
+Limits and field order come from `shared/src/daemon-parity.ts`; common vectors
+and both native/Node tests cover restart, stale generations and malformed state.
+
+Swift→Node uses a two-phase loopback stand-down. Swift seals its checkpoint and
+freezes Feed/Outbox mutations under an expiring preparation lease, while keeping
+the listener. Node durably stages that payload in its own directory before
+committing the exact lease/checkpoint identity. A failed incoming process leaves
+Swift serving after lease expiry; unknown/refused capture never becomes a
+shutdown fallback. Legacy endpoint absence remains the explicit fallback case.
+Node→Swift sends the checkpoint only on admitted local program sockets, with
+Surface, ESP32, serial/matrix and remote peers excluded. The native client
+subscribes before storage; once subscribed, Node waits for bounded durable ACKs
+before reporting Feed/Outbox success. A missing ACK produces 503 with the local
+checkpoint retained, so retry can use the receipt without applying feedback twice.
+A retired socket's token and generation/sequence guards fence late async writes.
+A restart without an admitted current peer keeps its local aggregates/receipts
+but starts a new authority lineage: another runtime may have advanced the old
+lineage while it was absent, and that must not permanently refuse a valid new
+owner's initial replica.
+
+The active owner's profile continues across promotion. A different inactive
+profile and its original aggregate file are archived locally before adoption;
+unrelated totals are not added together. An absent receiving runtime has no
+replica: this does not promise cross-container recovery after simultaneous loss
+or transfer source permissions or staged firmware. Session pins and the bounded
+Pixoo settings subset have the contract below; remaining settings need their own
+consent/configuration contract. Portable control dispatch
+retains its existing accepted-for-delivery semantics; copying a receipt does not
+prove execution of an arbitrary queued prompt. Queue transfer and execution ACKs
+remain a separate portable-control completion item.
+
+Held approvals belong to their HTTP connection and end undecided on owner loss.
+Old request IDs cannot answer new holds. Approval presses and OTA ACKs check wall
+clock expiry on read as well as timers, so sleep cannot extend their budget.
+Push OTA aborts on owner loss and a new transfer uses a fresh ID. Pull OTA can
+resume byte ranges against identical bytes already staged for the same
+product/board/channel on both owners; downloading is not an installation ACK.
 
 ## Session timeline relay
 
@@ -441,7 +493,7 @@ daemon** publishes the sessions it observes — Claude, Codex, OpenCode and the
 rest, launched normally — to a hub daemon, and the hub's decks steer them.
 Managed remote attach keeps working unchanged alongside it.
 
-- **Enable (worker)**: `agentdeck relay set <host[:port]> --token <hub token>`
+- **Enable (Node worker)**: `agentdeck relay set <host[:port]> --token <hub token>`
   writes `relay.json` (0600, this daemon's data dir); `agentdeck daemon restart`
   starts publishing. It is read once at daemon start, so an autostart unit
   picks it up with no credential in its argv. `agentdeck relay clear` removes
@@ -449,11 +501,28 @@ Managed remote attach keeps working unchanged alongside it.
   daemon reports (`/health.relay`), including why it is not connected (missing
   capability, rejected token, refusal). For an `ssh -L` forward, name the local
   end (`agentdeck relay set 127.0.0.1:19120`) — loopback needs no token.
+- **Enable (Swift worker)**: macOS Settings → Integrations → Daemon relay asks for
+  the hub host, port, optional pairing token for loopback and explicit consent
+  to publish observed session metadata/accept supported controls. The target and
+  token stay in the app’s own device-local Data Protection Keychain; only the
+  consent bit goes into preferences. Changes apply without a daemon restart.
+  **Disable relay** invalidates the live generation before deleting storage;
+  failed deletion cannot restore consent after relaunch. No Node `relay.json`,
+  environment credential or another tool’s Keychain is imported. The Settings
+  card configures only the native owner and is hidden in external-daemon mode.
+  [Signed two-Mac acceptance](appstore-feature-matrix.md#signed-daemon-relay-two-mac-acceptance-2026-10-31)
+  covers real Keychain save/relaunch/disable and mixed Node/Swift control.
+  macOS permits HTTP/WebSocket to explicit RFC 6598 `100.64.0.0/10` targets
+  through a CIDR-scoped ATS exception, fixing the earlier numeric Tailscale
+  `-1022` failure. It does not enable arbitrary loads, public DNS exceptions,
+  lower TLS versions or custom certificate trust. This shared-address range
+  alone proves neither Tailscale membership nor hub identity; endpoint consent,
+  pairing authentication and the trusted-network/tunnel guidance still apply.
 - **Same boundary as remote attach**: opt-in per worker, never discovered;
   outbound only — the worker dials, commands come back down that socket, and the
   hub never dials a worker; a non-loopback hub needs its pairing token, which
   is never logged; the worker refuses a hub whose `/health` lacks
-  `daemonRelay: true` (the Swift daemon advertises neither side) and a hub
+  `daemonRelay: true` (both Node and Swift hubs advertise it) and a hub
   refuses a relay from its own process. As with remote attach, the link is
   plain `ws://` and the token rides its query string, and the hub is not
   authenticated to the worker — anyone able to impersonate the hub's address
@@ -471,7 +540,11 @@ Managed remote attach keeps working unchanged alongside it.
   rebroadcasts (debounced) only when rows changed and stops serving a worker's
   rows 45 s after its last frame. The worker pings the hub; a hub that does not
   answer the hello within 10 s or stops answering pings for 45 s is torn down
-  and redialed with backoff.
+  and redialed with backoff. Both sides bound relay frames to 2 MiB and accept
+  at most 64 workers/64 rows per worker. A reconnect replaces its old instance
+  socket; stale old callbacks cannot delete the replacement. Native hub focus
+  retains bounded retired ids so a stale remote press never becomes local
+  focused-session control.
 - **What the hub can do to a worker**: route a device command for a relayed
   session down the socket — `session_command`
   (`interrupt`/`escape`/`send_prompt`/`respond`/`select_option`), a
@@ -482,7 +555,15 @@ Managed remote attach keeps working unchanged alongside it.
   Claude rows only, since for any other agent the daemon's handler would fall
   through to whatever session the worker's own deck has focused. The hub cannot
   reach any other worker command (settings, voice, focus, agent switch).
-- **Controls are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
+- **Native worker control boundary**: Claude hook soft stop, queued directives,
+  held permission decisions and held AskUserQuestion answers; native Codex
+  held approvals also qualify while their actual hold remains current. A stale
+  publication/request, terminal-only input, unsupported agent or global
+  settings/voice/launch command is refused. Additive `relay_command_refused`
+  frames report refusal without echoing command text. Native ask answers still
+  require their current question and use the existing hook gate, never guessed
+  terminal input. Snapshot receipt is not execution acknowledgement.
+- **Controls on Node workers are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
   answer, a prompt queued for the end of the turn, a stop at the next tool call,
   and terminal injection where the worker's platform has a rung (macOS
   terminals, tmux). Managed PTY controls (immediate Ctrl-C, Shift+Tab mode
@@ -528,11 +609,14 @@ their order.
   near-transliteration (`apple/AgentDeck/Daemon/Session/SessionOrderStore.swift`)
   — it reads/writes the same `session-order.json` and serves the same
   `GET/POST /sessions/order` with byte-compatible response shapes, so
-  `agentdeck order` works against whichever daemon owns the port and pins
-  survive a handover in either direction. Unsandboxed dev builds share the
-  exact `~/.agentdeck` file with Node; the sandboxed App Store build writes a
-  container-local copy Node cannot read (the same asymmetry its
-  `daemon.json`/`timeline.json` already carry). The TTL and pin cap are a
+  `agentdeck order` works against whichever daemon owns the port. Pins survive
+  a restart within the same store. Unsandboxed dev builds share the exact
+  `~/.agentdeck` file with Node; the sandboxed App Store build writes a
+  container-local copy Node cannot read. Matching formats do not transfer pins
+  between those stores: signed Swift↔Node pin continuity is an open gap in the
+  [three-configuration parity audit](appstore-feature-matrix.md#three-configuration-parity-audit-2026-10-31).
+  Timeline has a separate explicit transport cache; it does not carry pins.
+  The TTL and pin cap are a
   cross-daemon file contract single-sourced in `shared/src/session-utils.ts`
   and emitted to both platforms by `pnpm generate-session-weight-rules`.
 
@@ -584,3 +668,189 @@ available. A changed host address is a new endpoint and is not silently trusted.
 Regression coverage uses real loopback refusal handshakes on both native clients,
 plus host-selection and credential-retention tests. Tracking:
 [#493](https://github.com/puritysb/AgentDeck/issues/493).
+
+
+## Session-pin and Pixoo configuration handover
+
+An optional `configuration` member of the local checkpoint carries version 1
+session pins (bare ID, weight, updated/last-seen epoch milliseconds) and Pixoo
+IPv4 address, optional name, brightness, animation and explicit discovery
+preference. `shared/src/daemon-configuration.ts` owns limits and validation;
+`generate-daemon-parity` emits native constants and both suites replay
+`shared/daemon-configuration-vectors.json`, including canonical revision hashes.
+Unknown wire fields, duplicate IDs/IPs, booleans in numeric fields and invalid
+addresses are rejected. This member contains no provider credentials, source
+grants, prompt/card content or unrelated settings. Pocket still stores aggregate
+learning only; the configuration member is a separate supported settings subset.
+
+The active owner is authoritative. Swift→Node requires an explicit configuration
+handover header before preparation; a prepared older payload without configuration
+is refused before commit. Node→Swift uses a separate configuration subscription
+capability: an older replica must not make a settings mutation look durably
+replicated. Once subscribed, Node waits for the same bounded durable checkpoint
+ACK before returning settings success. Unavailable replicas return 503 (unknown,
+local data retained), rather than a false save confirmation. Swift's preparation
+lease freezes settings mutations too. Pairing/HTTP trust policy is unchanged.
+
+Before applying an incoming profile, each runtime archives its supported inactive
+configuration and local per-device extra fields. Unrelated settings stay in the
+existing file; common IP rows retain local unknown keys. The extra-field archive
+never enters the peer checkpoint. Deletions and unpins transfer as explicit empty
+sets, rather than merging stale inactive pins or resurrecting removed devices.
+A peerless restart uses the local files, including offline edits, instead of
+replacing them with its older checkpoint. Adoption completes before module start;
+the durable inbox remains available if either compatibility-file write fails.
+
+`GET /configuration/pixoo` returns `{configuration, revision}`. POST accepts that
+revision and the replacement configuration; a concurrent edit returns 409.
+Swift's Pixoo editor and `agentdeck pixoo` scan/add/list/remove use the active
+local daemon, with bounded requests and no redirects. A connected editor never
+falls back to its inactive settings file. CLI `--port` selects a known endpoint;
+without a listener in either loopback family an offline CLI edit may update its
+own Node profile. Unknown liveness or an unsupported live endpoint refuses the
+write. `pixoo add --no-test` skips the optional device reachability probe.
+
+Pins retain the managed/remote explicit-weight precedence. A cached native pin
+has internal provenance so changing or clearing it updates the next roster,
+without overwriting an explicit launch weight. Pixoo hot reload keeps existing
+stream subscriptions and respects an already dimmed display's brightness.
+
+Acceptance is deliberately scoped to each solo runtime's restart and live-peer
+handover/previously subscribed native promotion. When both runtimes were absent,
+there is no shared entitled store from which to recover a later edit in the
+other private profile. That cold cross-container recovery, provider/calendar/relay
+grants, staged firmware and physical writer recovery remain separate P1.2/P1.1
+work. No private-container cross-read or silently copied credential is a substitute.
+
+## Same-project display names
+
+`SessionInfo.displayName` is a presentation hint, never a session ID, routing
+argument, sort key or folding key. The active owner produces the roster; a Swift
+app attached to Node consumes its hints without rescanning private Claude files.
+On promotion, Swift explicitly emits `displayName: ""` for local rows without a
+source, retiring previously relayed Node names. No new folder grant, subprocess,
+account access or background name migration is introduced.
+
+- Node's passive Claude observer refreshes names on its existing scan (normally
+  five seconds; adaptive backoff applies). Priority: registry `nameSource=user`
+  name → matching-session JSONL `custom-title` → other registry name → Git branch
+  read from `.git/HEAD` (including worktree `.git` pointers). Detached HEAD has no
+  invented branch. Only the bounded transcript head/tail already read for state
+  is inspected; a custom title outside that window requires the registry source.
+  Managed sessions and other agents keep their existing ID fallback unless
+  their own producer supplies a hint; this change adds no terminal-title census.
+- Claude **2.1.316** was measured in an isolated temporary config/project, with
+  hooks disabled and no model prompt: `--name AgentDeckNameProbe` wrote
+  `nameSource=user`; `/rename AgentDeckRenameProbe` kept `user`, changed
+  `nameSince`, and appended the matching `custom-title`. `derived` is an automatic
+  hint, not evidence of a user choice. Unknown source values are not classified
+  as user names. `agent-name` is ignored; its session-title meaning is unproven.
+- A valid explicit empty registry/title value clears older fallback hints.
+  Unreadable registry identity retains the existing observed row, including its
+  name; a fresh observer rebuilds from the source rather than a name cache.
+  On the wire, absent means unknown/retain for the same ID; `""` explicitly clears.
+  Removed rows are removed, and a new ID never inherits another row's hint.
+- `shared/src/session-labels.ts` owns consumer normalization: NFC, ANSI CSI and
+  control/bidi removal, whitespace collapse and a 64-code-point cap. The Swift
+  D200H preview mirrors it behind shared vectors and the origin hash pin.
+  Only same-project/same-agent collision groups replace project text with the
+  hint; unique-project sessions keep their existing project label. Missing and
+  duplicate hints keep the ID tag. Even distinct hints keep the tag so 10/13/18
+  character tiles shorten the name first and preserve recipient disambiguation.
+- Stream Deck and Ulanzi list keys, detail INFO and VOICE share the same row ID.
+  The old `assignDisplayNames(project #N)` is a TUI-only helper; it does not
+  produce this wire field. Serial compact projection also uses `displayName`
+  for its complete board label; that transport projection is not a name source.
+
+The Swift standalone fallback is intentional: there is no security-scoped grant
+for Claude's registry/transcripts. No cmux executable was available on PATH or
+at its standard app location;
+existing `CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH` delivery correlation supplies IDs,
+not verified live titles. cmux workspace/tab title production remains open until
+its current title API and rename behavior can be measured. Never guess a title
+from a UUID or use a startup workspace ID as a current destination.
+
+Automated acceptance covers same-agent/project pairs, duplicate/missing/renamed
+hints, fresh-observer reconstruction/reconnect and explicit clear, narrow INFO
+labels and unchanged list/VOICE targets. Physical D200X session-key/INFO/VOICE recipient acceptance of
+the friendly-name change remains pending; the reporter's earlier #548 ID-tag
+receipt does not certify this change. Shared daemon/devices are not redeployed
+by the isolated source checks.
+
+## Explicit local cold recovery
+
+The optional recovery folder closes the interval when the other runtime was not
+running to receive a live checkpoint. On macOS the app asks the user to select
+`~/Library/Application Support` or its existing `AgentDeck Recovery` folder,
+creates only that dedicated child, and retains an app-scoped read/write bookmark
+for the child. The known location lets a later Node-only launch discover the
+explicit consent marker even if Node was absent during setup. No application
+container, home-directory entitlement or cloud service is used as a shortcut.
+Existing selected-file/bookmark entitlements suffice. Apple's
+[Sandbox file-access contract](https://developer.apple.com/documentation/security/accessing-files-from-the-macos-app-sandbox)
+requires the explicit user selection and balanced security-scoped access.
+
+The folder holds `agentdeck-recovery.sqlite` and a versioned consent marker.
+`shared/src/daemon-recovery.ts` owns the SQLite schema, filename and lock budget;
+`generate-daemon-parity` emits the same native constants. SQLite's immediate
+transaction and full synchronous commit serialize updates from both implementations.
+Each replacement compares the prior store ID, revision and payload; a losing or
+unknown writer refuses the update instead of replacing the latest commit. File
+modification times and independent daemon generations do not establish authority.
+The checkpoint is normalized through the existing strict parser: supported pins,
+Pixoo fields, Pocket aggregates and opaque receipts only. Account tokens, source
+grants, original records, prompt/card text and queued commands are excluded.
+
+A private cursor remembers the selected store, committed revision and last local
+checkpoint digest. A newer shared revision is restored before device modules
+start. A persisted client inbox cannot outrank that commit after the receiver was
+absent; an older inbox is archived locally before replacement. When there is no
+intervening commit, the local profile and offline edits remain authoritative.
+The native app resolves its folder grant only after acquiring listener ownership;
+an unavailable native grant must not prevent attaching to a healthy Node owner.
+Authenticated HTTP requests return 503 until native restoration finishes.
+Both participants must implement the opted-in recovery store; older live-only
+versions do not participate in cold continuity. Existing inactive profiles are
+archived using the live-handover machinery;
+explicit empty sets still remove pins/devices. A local edit with no intervening
+shared commit remains authoritative. Divergent offline edits, a changed store,
+unsupported schema, permission failure, busy database or corrupt content refuse
+recovery/writes and preserve the original files. They never become an empty
+successful restore. A crash between the shared commit and local cursor write can
+recognize the same normalized payload and resume without adding histories.
+
+`POST /configuration/recovery` is a normal authenticated operator route. The app
+may configure a local Node owner; a native owner accepts an enabled path only
+when its own matching user-selected bookmark supplies access. An incoming string
+never grants native file permission. The selection is bound to its private data
+profile; explicit test data directories do not discover the real user's default
+folder. Disconnect retains shared data and the private cursor. Configuration and
+bookmark revocation are distinct from deleting backup data.
+
+Explicit `AGENTDECK_DATA_DIR` profiles may select a different local folder; they
+must configure that location explicitly on both runtimes. Ordinary profiles keep
+the known-folder discovery contract above. Network and cloud volumes are refused.
+
+### Resolving divergent recovery profiles
+
+Schema v2 adds a bounded pending-conflict table and a durable resolution history.
+Opening a valid v1 store migrates its schema in a transaction while retaining the
+head and v1 consent marker. Both runtimes must be updated: older implementations
+refuse schema v2 rather than silently dropping its history.
+
+A producer that refuses divergent offline edits publishes only its minimized
+checkpoint, an opaque profile hash and its content digest to the selected store.
+The app's **Review Conflicts** compares saved and recovery pin/display/aggregate
+counts. **Use saved Node/Swift profile** and **Use recovery profile** are explicit
+choices; neither implies merging histories. The app never reads the other
+runtime's private directory. A stopped Node producer can publish its conflict
+before startup fails, so it does not need to serve HTTP for the app to resolve it.
+
+Each choice compares the exact head and pending local digest, preserves both
+minimized snapshots and advances the shared revision in one immediate transaction.
+A changed preview is rejected. The producer rechecks its private content before
+adopting an approval, saves its existing supported files under a private
+`daemon-recovery-resolution-<UUID>` directory, then acknowledges only after its
+new cursor is durable. Later private edits require a fresh choice. Consumed or
+superseded decisions cannot replay. A pending choice remains visible until that
+profile reconnects. Disconnect leaves this history and all original files intact.

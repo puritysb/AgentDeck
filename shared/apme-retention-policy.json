@@ -1,0 +1,9 @@
+{
+  "predicate": "ts > 0 AND ts < ? AND payload IS NOT NULL AND payload NOT LIKE ?",
+  "prunedPayloadLike": "%\"pruned\":true%",
+  "samplePredicate": "kind = 'tool' AND ",
+  "batchSize": 2000,
+  "defaultDays": 30,
+  "dayMs": 86400000,
+  "vacuumSpaceMultiplier": 1.1
+}

@@ -159,8 +159,8 @@ real spawn, so it was measured directly instead (§2.7).
 
 ### 2.1 Everything `OutputParser` produces, and where it goes
 
-Seventeen distinct events (`bridge/src/output-parser.ts`). The Claude adapter forwards
-twelve (`adapters/claude-code.ts:32-70`) under a comment that states the boundary
+Twelve terminal UI/metadata events (`bridge/src/output-parser.ts`). The Claude adapter forwards
+all twelve (`adapters/claude-code.ts:32-70`) under a comment that states the boundary
 directly: *"Never add turn lifecycle or tool events here: hooks own state, timeline, and
 APME correctness."*
 
@@ -178,19 +178,18 @@ APME correctness."*
 | `cursor_update` | `metadata` | none — no cursor exists to track | **Managed-only by construction** |
 | `usage_info` | `metadata` | daemon usage/quota clients (`usage-*.ts`) | Covered by a better source |
 | `user_prompt` | `metadata` | `UserPromptSubmit` hook / transcript | Covered |
-| `spinner_start` | *not forwarded* | hooks | lifecycle — hook-owned |
-| `spinner_stop` | *not forwarded* | hooks | lifecycle — hook-owned |
-| `idle` | *not forwarded* | hooks | lifecycle — hook-owned |
-| `tool_action` | *not forwarded* | `PreToolUse` | hook-owned |
-| `effort_level` | *not forwarded* | — | unused |
 
-The five unforwarded events do not reach the state machine at all, and the boundary is
-enforced twice rather than by convention. Both PTY adapters refuse to forward them, each
-with the reason in a comment (`claude-code.ts:33`, `codex-cli.ts:26`), and the receiving
-end filters independently: terminal events arrive at `handleTerminalUiEvent`
-(`index.ts:669`), which drops anything outside `TERMINAL_UI_EVENTS`
-(`state-machine.ts:56-67`) — a set that excludes `spinner_start`, `spinner_stop`, `idle`
-and `tool_action`.
+**November 2 cleanup:** the unused `spinner_start`, `spinner_stop`, `idle`,
+`tool_action` and `effort_level` producers are removed from the terminal parsers.
+Codex no longer infers spinner/idle/tool activity or schedules their timers.
+Claude retains spinner/input-prompt recognition only where it gates picker redraws,
+mode confirmation and suggested prompts; its unused tool/effort inference and
+idle-only timers are removed. Approval choices, cursor tracking, mode switching,
+status telemetry and managed PTY transport remain intact.
+
+Both PTY adapters still forward only their terminal UI allow-lists. The receiving
+`handleTerminalUiEvent` independently excludes lifecycle/tool events. Structured
+adapter events keep their existing vocabulary and state-machine handlers.
 
 So **principle 2 of #273 is not violated anywhere today**: no terminal parse authors
 lifecycle, in the managed path or outside it. That is worth stating positively, because a

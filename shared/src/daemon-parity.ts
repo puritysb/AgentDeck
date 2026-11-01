@@ -1,4 +1,13 @@
+export { DAEMON_CONFIGURATION_POLICY } from './daemon-configuration.js';
+export { DAEMON_RECOVERY_POLICY } from './daemon-recovery.js';
 /** Pure policies shared by the Node and native Swift daemons. */
+export const DAEMON_CHECKPOINT_POLICY = {
+  version: 1, subscriptionId: 'subscribe', maxBytes: 262_144, receiptLimit: 1024, ackTimeoutMs: 1500,
+  prepareLeaseMs: 10_000,
+  maxCounter: Number.MAX_SAFE_INTEGER - 1,
+  receiptFields: ['cardId', 'sessionId', 'requestId', 'action', 'choiceId', 'decision', 'index', 'value', 'text', 'question'],
+  statuses: ['applied', 'expired', 'unknown_card', 'rejected'],
+} as const;
 export const DAEMON_HANDOVER = {
   exitWaitMs: 12_000,
   bindableWaitMs: 30_000,
@@ -33,4 +42,18 @@ export function kiroLegacyTurnState(state: 'processing' | 'idle', event: string,
   if (event === 'AssistantMessage') return hasToolUse ? 'processing' : 'idle';
   return Object.hasOwn(KIRO_LEGACY_BOUNDARIES, event)
     ? KIRO_LEGACY_BOUNDARIES[event as keyof typeof KIRO_LEGACY_BOUNDARIES] : state;
+}
+
+/** Discovery/fallback contract. Override only for an isolated daemon group. */
+export const DEFAULT_DAEMON_PORT_WINDOW: readonly [number, number] = [9120, 9139];
+export const DAEMON_PORT_WINDOW_LIMITS = { min: 1024, max: 65535 } as const;
+/** ECMAScript whitespace, shared with the native parser. */
+export const DAEMON_PORT_WINDOW_WHITESPACE = [9, 10, 11, 12, 13, 32, 160, 5760,
+  8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200, 8201, 8202, 8232, 8233, 8239, 8287, 12288, 65279];
+export function parseDaemonPortWindow(raw?: string): readonly [number, number] {
+  const match = /^(\d{4,5})\s*-\s*(\d{4,5})$/.exec(raw?.trim() ?? '');
+  if (!match) return DEFAULT_DAEMON_PORT_WINDOW;
+  const lo = Number(match[1]), hi = Number(match[2]);
+  if (lo < DAEMON_PORT_WINDOW_LIMITS.min || hi > DAEMON_PORT_WINDOW_LIMITS.max || hi < lo) return DEFAULT_DAEMON_PORT_WINDOW;
+  return [lo, hi];
 }

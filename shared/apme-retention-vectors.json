@@ -1,0 +1,181 @@
+{
+  "cutoffMs": 1000,
+  "prunedAt": 2000,
+  "rows": [
+    {
+      "table": "steps",
+      "label": "old",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"input\":\"한글😀é\"}"
+    },
+    {
+      "table": "steps",
+      "label": "recent",
+      "ts": 1000,
+      "kind": "tool",
+      "payload": "{\"input\":\"keep\"}"
+    },
+    {
+      "table": "steps",
+      "label": "zero",
+      "ts": 0,
+      "kind": "tool",
+      "payload": "unknown age"
+    },
+    {
+      "table": "steps",
+      "label": "negative",
+      "ts": -1,
+      "kind": "tool",
+      "payload": "unknown age"
+    },
+    {
+      "table": "steps",
+      "label": "null",
+      "ts": 1,
+      "kind": "tool",
+      "payload": null
+    },
+    {
+      "table": "steps",
+      "label": "pruned",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"pruned\":true,\"prunedAt\":2,\"bytes\":20}"
+    },
+    {
+      "table": "steps",
+      "label": "spaced",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"pruned\": true}"
+    },
+    {
+      "table": "steps",
+      "label": "empty",
+      "ts": 1,
+      "kind": "tool",
+      "payload": ""
+    },
+    {
+      "table": "steps",
+      "label": "nul",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "a\u0000😀z"
+    },
+    {
+      "table": "sample_events",
+      "label": "old",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"input\":\"한글😀é\"}"
+    },
+    {
+      "table": "sample_events",
+      "label": "recent",
+      "ts": 1000,
+      "kind": "tool",
+      "payload": "{\"input\":\"keep\"}"
+    },
+    {
+      "table": "sample_events",
+      "label": "zero",
+      "ts": 0,
+      "kind": "tool",
+      "payload": "unknown age"
+    },
+    {
+      "table": "sample_events",
+      "label": "negative",
+      "ts": -1,
+      "kind": "tool",
+      "payload": "unknown age"
+    },
+    {
+      "table": "sample_events",
+      "label": "null",
+      "ts": 1,
+      "kind": "tool",
+      "payload": null
+    },
+    {
+      "table": "sample_events",
+      "label": "pruned",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"pruned\":true,\"prunedAt\":2,\"bytes\":20}"
+    },
+    {
+      "table": "sample_events",
+      "label": "spaced",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "{\"pruned\": true}"
+    },
+    {
+      "table": "sample_events",
+      "label": "empty",
+      "ts": 1,
+      "kind": "tool",
+      "payload": ""
+    },
+    {
+      "table": "sample_events",
+      "label": "nul",
+      "ts": 1,
+      "kind": "tool",
+      "payload": "a\u0000😀z"
+    },
+    {
+      "table": "sample_events",
+      "label": "user_message",
+      "ts": 1,
+      "kind": "user_message",
+      "payload": "Keep user_message"
+    },
+    {
+      "table": "sample_events",
+      "label": "assistant_message",
+      "ts": 1,
+      "kind": "assistant_message",
+      "payload": "Keep assistant_message"
+    },
+    {
+      "table": "sample_events",
+      "label": "model",
+      "ts": 1,
+      "kind": "model",
+      "payload": "Keep model"
+    },
+    {
+      "table": "sample_events",
+      "label": "subagent",
+      "ts": 1,
+      "kind": "subagent",
+      "payload": "Keep subagent"
+    },
+    {
+      "table": "sample_events",
+      "label": "state",
+      "ts": 1,
+      "kind": "state",
+      "payload": "Keep state"
+    },
+    {
+      "table": "sample_events",
+      "label": "info",
+      "ts": 1,
+      "kind": "info",
+      "payload": "Keep info"
+    },
+    {
+      "table": "sample_events",
+      "label": "relation",
+      "ts": 1,
+      "kind": "relation",
+      "payload": "Keep relation"
+    }
+  ]
+}

@@ -250,6 +250,7 @@ struct CellMeta {
     char tool[40];
     uint32_t elapsed;
     uint32_t accent;
+    bool controllable;
 };
 static CellMeta cellMetaData[MOSAIC_MAX];
 
@@ -615,7 +616,7 @@ static void detailBtnACb(lv_event_t* e) {
     CellMeta& m = cellMetaData[detailCellIdx];
     // Awaiting is display-only: btnA is a plain "Close", so it just dismisses.
     // Only processing keeps an actionable Interrupt.
-    if (strcmp(m.state, "processing") == 0 && m.sid[0]) {
+    if (strcmp(m.state, "processing") == 0 && m.controllable && m.sid[0]) {
         char buf[160];
         snprintf(buf, sizeof(buf),
                  "{\"type\":\"session_command\",\"sessionId\":\"%s\",\"command\":{\"type\":\"interrupt\"}}", m.sid);
@@ -827,7 +828,7 @@ static void detailRefresh() {
         lv_label_set_text(detailBtnALabel, "Close");
         lv_obj_set_style_text_color(detailBtnALabel, lv_color_hex(0x1A1205), 0);
         lv_obj_add_flag(detailBtnB, LV_OBJ_FLAG_HIDDEN);
-    } else if (strcmp(m.state, "processing") == 0) {
+    } else if (strcmp(m.state, "processing") == 0 && m.controllable) {
         lv_obj_set_style_bg_color(detailBtnA, lv_color_hex(Theme::HUDDim), 0);
         lv_label_set_text(detailBtnALabel, "Interrupt");
         lv_obj_set_style_text_color(detailBtnALabel, lv_color_hex(0x07140F), 0);
@@ -2037,7 +2038,7 @@ void update() {
     //     each cell narrates inline what that agent is doing. ===
     if (cellsBox) {
         struct MCell { uint32_t accent; uint32_t stateCol; char name[40]; char agent[16]; char state[20];
-                       char model[32]; char tool[40]; uint32_t elapsed;
+                       char model[32]; char tool[40]; uint32_t elapsed; bool controllable;
                        char sid[32]; char requestId[40]; char question[160]; char body[240];
                        // Older per-session milestone rows (newest-first) for the
                        // card's TIMELINE feed — rendered dimmed under `body`,
@@ -2070,6 +2071,7 @@ void update() {
             mc[n].backgroundJobs = si.backgroundJobs;
             mc[n].spawnedActive = si.spawnedActive;
             strncpy(mc[n].sid, si.id, sizeof(mc[n].sid) - 1); mc[n].sid[sizeof(mc[n].sid) - 1] = '\0';
+            mc[n].controllable = si.controllable;
             strncpy(mc[n].requestId, si.requestId, sizeof(mc[n].requestId) - 1); mc[n].requestId[sizeof(mc[n].requestId) - 1] = '\0';
             strncpy(mc[n].question, si.question, sizeof(mc[n].question) - 1); mc[n].question[sizeof(mc[n].question) - 1] = '\0';
             strncpy(mc[n].activity, si.activity, sizeof(mc[n].activity) - 1); mc[n].activity[sizeof(mc[n].activity) - 1] = '\0';
@@ -2178,6 +2180,7 @@ void update() {
             mc[n].accent = Theme::CrayfishShell; mc[n].stateCol = Theme::StatusGreen;
             strcpy(mc[n].name, "OpenClaw"); strcpy(mc[n].agent, "openclaw");
             strcpy(mc[n].state, "idle"); mc[n].model[0] = '\0'; mc[n].tool[0] = '\0'; mc[n].elapsed = 0;
+            mc[n].controllable = false;
             mc[n].sid[0] = '\0'; mc[n].requestId[0] = '\0'; mc[n].question[0] = '\0'; mc[n].body[0] = '\0';
             mc[n].feedCount = 0; mc[n].activity[0] = '\0';
             mc[n].childrenKnown = false; mc[n].childrenActive = 0; mc[n].childrenCompleted = 0;
@@ -2195,6 +2198,7 @@ void update() {
             strncpy(mc[0].state, ps, sizeof(mc[0].state) - 1); mc[0].state[sizeof(mc[0].state) - 1] = '\0';
             strncpy(mc[0].tool, g_state.currentTool, sizeof(mc[0].tool) - 1); mc[0].tool[sizeof(mc[0].tool) - 1] = '\0';
             mc[0].model[0] = '\0'; mc[0].elapsed = g_state.sessionDurationSec;
+            mc[0].controllable = false;
             mc[0].sid[0] = '\0'; mc[0].requestId[0] = '\0'; mc[0].body[0] = '\0'; mc[0].feedCount = 0;
             mc[0].activity[0] = '\0';
             strncpy(mc[0].question, g_state.question, sizeof(mc[0].question) - 1); mc[0].question[sizeof(mc[0].question) - 1] = '\0';
@@ -2360,6 +2364,7 @@ void update() {
             strncpy(cm.name, mc[i].name, sizeof(cm.name) - 1); cm.name[sizeof(cm.name) - 1] = '\0';
             strncpy(cm.tool, mc[i].tool, sizeof(cm.tool) - 1); cm.tool[sizeof(cm.tool) - 1] = '\0';
             cm.elapsed = mc[i].elapsed; cm.accent = mc[i].accent;
+            cm.controllable = mc[i].controllable;
 
             bool awaiting = (strstr(mc[i].state, "awaiting") != nullptr);
             bool working  = (strcmp(mc[i].state, "processing") == 0);
@@ -2377,7 +2382,7 @@ void update() {
             lv_obj_set_size(cell[i], pw, ph);
 
             // Change signature (content + size + focus). Skip label churn when unchanged.
-            uint32_t sig = 2166136261u;
+            uint32_t sig = 2166136261u ^ (mc[i].controllable ? 47u : 0u);
             sig ^= (uint32_t)mc[i].childrenActive * 131u + (uint32_t)mc[i].childrenCompleted * 17u
                 + (mc[i].childrenKnown ? 97u : 0u)
                 + (uint32_t)mc[i].backgroundJobs * 1031u + (uint32_t)mc[i].spawnedActive * 4099u

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { registerDotCommands } from './dot-cli.js';
+import { APME_RETENTION } from './apme/retention-policy.generated.js';
 import { acceptsDaemonRuntime } from '@agentdeck/shared';
 
 import { Command, InvalidArgumentError } from 'commander';
@@ -4108,7 +4109,8 @@ timebox
 
 // ===== Pixoo commands =====
 
-const pixoo = program.command('pixoo').description('Manage Pixoo64 LED matrix devices');
+const pixoo = program.command('pixoo').description('Manage Pixoo64 LED matrix devices')
+  .option('-p, --port <port>', 'Active daemon port for display settings');
 
 pixoo
   .command('scan')
@@ -4117,7 +4119,7 @@ pixoo
   .action(async (opts) => {
     const { getDeviceConfig } = await import('./pixoo/pixoo-client.js');
     const { discoverPixoo } = await import('./pixoo/pixoo-discover.js');
-    const { loadPixooDevices, savePixooDevices } = await import('./pixoo/pixoo-settings.js');
+    const { loadPixooEditTarget, savePixooEditTarget } = await import('./pixoo/pixoo-configuration-client.js');
 
     // Say what this actually does before it does it. Auto-discovery is off by
     // default precisely because these two steps are not free on a shared
@@ -4164,7 +4166,8 @@ pixoo
       return;
     }
 
-    const existing = loadPixooDevices();
+    const target = await loadPixooEditTarget(pixoo.opts().port);
+    const existing = target.configuration.devices;
     const existingIps = new Set(existing.map(d => d.ip));
     const newDevices = reachable
       .filter(d => !existingIps.has(d.ip))
@@ -4175,27 +4178,32 @@ pixoo
       return;
     }
 
-    savePixooDevices([...existing, ...newDevices]);
-    log(`Added ${newDevices.length} device(s) to ~/.agentdeck/settings.json`);
+    await savePixooEditTarget(target, {...target.configuration, devices:[...existing,...newDevices.map(d=>({...d,brightness:100,animation:'single-frame' as const}))]});
+    log(`Added ${newDevices.length} device(s).`);
   });
 
 pixoo
   .command('add <ip>')
   .description('Manually add a Pixoo device')
+  .option('--no-test', 'Skip the device connectivity check')
   .option('-n, --name <name>', 'Device name', 'Pixoo64')
   .option('-b, --brightness <value>', 'Brightness 0-100')
   .action(async (ip: string, opts) => {
     const { getDeviceConfig } = await import('./pixoo/pixoo-client.js');
-    const { addDevice } = await import('./pixoo/pixoo-settings.js');
+    const { loadPixooEditTarget, savePixooEditTarget } = await import('./pixoo/pixoo-configuration-client.js');
+    const target = await loadPixooEditTarget(pixoo.opts().port);
 
-    log(`Testing connection to ${ip}...`);
-    const config = await getDeviceConfig(ip);
-    log(config ? 'Device reachable \u2713' : `Cannot reach ${ip}. Adding anyway.`);
+    if (opts.test !== false) {
+      log(`Testing connection to ${ip}...`);
+      const config = await getDeviceConfig(ip);
+      log(config ? 'Device reachable \u2713' : `Cannot reach ${ip}. Adding anyway.`);
+    }
 
     const device: { ip: string; name?: string; brightness?: number } = { ip, name: opts.name };
     if (opts.brightness) device.brightness = Math.max(0, Math.min(100, parseInt(opts.brightness, 10)));
 
-    if (addDevice(device)) {
+    if (!target.configuration.devices.some(d=>d.ip===ip)) {
+      await savePixooEditTarget(target,{...target.configuration, devices:[...target.configuration.devices,{...device,brightness:device.brightness??100,animation:'single-frame'}]});
       log(`Added ${device.name} (${ip}) to settings.`);
     } else {
       log(`Device ${ip} already exists.`);
@@ -4206,15 +4214,14 @@ pixoo
   .command('list')
   .description('List configured Pixoo devices')
   .action(async () => {
-    const { loadPixooDevices } = await import('./pixoo/pixoo-settings.js');
-    const devices = loadPixooDevices();
+    const { loadPixooEditTarget } = await import('./pixoo/pixoo-configuration-client.js');
+    const devices = (await loadPixooEditTarget(pixoo.opts().port)).configuration.devices;
     if (devices.length === 0) {
       // Says why nothing appeared on its own. The daemon no longer sweeps the
       // LAN unprompted, so "I plugged it in and nothing happened" needs an
       // answer here — this is where a user looks when the panel is missing.
       log('No Pixoo devices configured. Run `agentdeck pixoo scan` (add --no-cloud to keep the lookup on your own network).');
       log('Auto-discovery is off by default: the daemon does not sweep the LAN or call the Divoom cloud on its own.');
-      log('Set "pixooAutoDiscover": true in ~/.agentdeck/settings.json to opt back in.');
       return;
     }
     log(`${devices.length} device(s):`);
@@ -4229,8 +4236,10 @@ pixoo
   .command('remove <ip>')
   .description('Remove a Pixoo device')
   .action(async (ip: string) => {
-    const { removeDevice } = await import('./pixoo/pixoo-settings.js');
-    if (removeDevice(ip)) {
+    const { loadPixooEditTarget, savePixooEditTarget } = await import('./pixoo/pixoo-configuration-client.js');
+    const target = await loadPixooEditTarget(pixoo.opts().port);
+    if (target.configuration.devices.some(d=>d.ip===ip)) {
+      await savePixooEditTarget(target,{...target.configuration,devices:target.configuration.devices.filter(d=>d.ip!==ip)});
       log(`Removed ${ip}.`);
     } else {
       log(`Device ${ip} not found.`);
@@ -4241,12 +4250,12 @@ pixoo
   .command('test [ip]')
   .description('Send a test frame to a Pixoo device')
   .action(async (ip?: string) => {
-    const { loadPixooDevices } = await import('./pixoo/pixoo-settings.js');
+    const { loadPixooEditTarget } = await import('./pixoo/pixoo-configuration-client.js');
     const { pushFrame, setBrightness } = await import('./pixoo/pixoo-client.js');
 
     let targetIp = ip;
     if (!targetIp) {
-      const devices = loadPixooDevices();
+      const devices = (await loadPixooEditTarget(pixoo.opts().port)).configuration.devices;
       if (devices.length === 0) {
         log('No device specified and none configured.');
         return;
@@ -5284,7 +5293,7 @@ apme
     'pass --apply to actually prune. There is no automatic or background ' +
     'pruning — this command must be run by hand (or from your own cron/launchd).',
   )
-  .option('--older-than <days>', 'Age cutoff in days', '30')
+  .option('--older-than <days>', 'Age cutoff in days', String(APME_RETENTION.defaultDays))
   .option('--apply', 'Actually prune (default is dry-run)')
   .option('--vacuum', 'Run VACUUM after --apply, only if free disk space is >= 1.1x the file size')
   .action(async (opts) => {
@@ -5298,7 +5307,7 @@ apme
       log(`Invalid --older-than value: ${opts.olderThan} (must be a positive number of days)`);
       process.exit(1);
     }
-    const cutoffMs = Date.now() - days * 86_400_000;
+    const cutoffMs = Date.now() - days * APME_RETENTION.dayMs;
     const fileSizeOf = (p: string): number => { try { return statSync(p).size; } catch { return 0; } };
     const sizeBefore = fileSizeOf(apme.store.dbPath);
 

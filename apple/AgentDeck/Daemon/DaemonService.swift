@@ -87,6 +87,17 @@ final class DaemonService: ObservableObject {
         }
     }
 
+    /// Ready local receiver only. Unlike onReady, also reports retirement so
+    /// integrations cannot save an intended or stale port during a restart.
+    var onLocalReceiverChanged: ((UInt16?) -> Void)? {
+        didSet { onLocalReceiverChanged?(readyLocalPort) }
+    }
+
+    private var readyLocalPort: UInt16? {
+        guard let readyUrl, let port = URL(string: readyUrl)?.port else { return nil }
+        return UInt16(exactly: port)
+    }
+
     private var server: (any InProcessDaemonRuntime)?
 
     struct LocalStartupConfiguration {
@@ -113,7 +124,9 @@ final class DaemonService: ObservableObject {
     private var localTeardownTask: Task<Void, Never>?
 
     private var isStarting = false
-    private var readyUrl: String?
+    private var readyUrl: String? {
+        didSet { onLocalReceiverChanged?(readyLocalPort) }
+    }
     private var healthMonitorTask: Task<Void, Never>?
     private var externalAttachRetryTask: Task<Void, Never>?
     /// An automatic handover keeps its next step when bounded teardown returns

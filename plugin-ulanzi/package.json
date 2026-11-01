@@ -5,7 +5,7 @@
   "type": "module",
   "description": "AgentDeck plugin for Ulanzi Studio (D200H and D200X LCD keys) — official UlanziDeckPlugin-SDK",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/stage-fonts.mjs",
     "dev": "tsc --watch",
     "clean": "rm -rf com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/plugin",
     "typecheck": "tsc --noEmit",

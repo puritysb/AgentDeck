@@ -793,6 +793,35 @@ describe('CodexCliAdapter start lifecycle', () => {
     }
   });
 
+  it('keeps real PTY approval labels and cursor detail through spinner redraws', async () => {
+    vi.useFakeTimers();
+    try {
+      await adapter.start({ port: 9173 });
+      const pty = await import('node-pty');
+      const mockPty = vi.mocked(pty.spawn).mock.results.at(-1)!.value;
+      const data = vi.mocked(mockPty.onData).mock.calls[0][0];
+      events.length = 0;
+      data('> \n⠋ Working...\n');
+      data('Would you like to run the following command?\n$ npm test\n');
+      data('  1. Yes, proceed (y)\n› 2. No, and tell Codex what to do differently (esc)\n');
+      data('⠙ Working...\n');
+      vi.advanceTimersByTime(150);
+      expect(events).toContainEqual({
+        source: 'terminal_ui', event: 'permission_prompt', data: {
+          question: 'npm test', navigable: true, cursorIndex: 1,
+          options: [
+            { index: 0, label: 'Yes, proceed', shortcut: 'y' },
+            { index: 1, label: 'No, and tell Codex what to do differently', shortcut: 'esc' },
+          ],
+        },
+      });
+      expect(events.some((event) => event.source === 'parser')).toBe(false);
+      expect(events.filter((event) => event.source === 'activity')).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('exports only terminal UI affordances, not parser lifecycle guesses', async () => {
     await adapter.start({ port: 9172 });
     events.length = 0;
@@ -973,6 +1002,39 @@ describe('ClaudeCodeAdapter start lifecycle', () => {
       expect(events).toContainEqual(
         expect.objectContaining({ source: 'activity' }),
       );
+    }
+  });
+
+  it('preserves PTY choices, mode and telemetry without inferred lifecycle events', async () => {
+    vi.useFakeTimers();
+    try {
+      await adapter.start({ port: 9166 });
+      const pty = await import('node-pty');
+      const mockPty = vi.mocked(pty.spawn).mock.results.at(-1)!.value;
+      const data = vi.mocked(mockPty.onData).mock.calls[0][0];
+      events.length = 0;
+      data('❯ \n');
+      data('✳ Working\n');
+      data('⏺ Read(file.ts)\nHigh effort ← → to adjust\n');
+      data('Choose one:\n❯ 1. Alpha\n  2. Beta\n');
+      data('✻ Running build…\n');
+      vi.advanceTimersByTime(200);
+      expect(events).toContainEqual(expect.objectContaining({
+        source: 'terminal_ui', event: 'option_prompt', data: expect.objectContaining({
+          navigable: true, cursorIndex: 0, options: [
+            { index: 0, label: 'Alpha' }, { index: 1, label: 'Beta' },
+          ],
+        }),
+      }));
+      adapter.handleCommand({ type: 'switch_mode' });
+      expect(mockPty.write).toHaveBeenCalledWith('\x1b[Z');
+      data('⏸ plan mode on\n');
+      data('1m 5s · ↓ 1.9k tokens\n');
+      expect(events).toContainEqual({ source: 'terminal_ui', event: 'mode_change', data: { mode: 'plan' } });
+      expect(events).toContainEqual({ source: 'terminal_ui', event: 'status_line', data: { durationSec: 65, tokens: 1900 } });
+      expect(events.some((event) => event.source === 'parser')).toBe(false);
+    } finally {
+      vi.useRealTimers();
     }
   });
 

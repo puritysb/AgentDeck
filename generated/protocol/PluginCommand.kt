@@ -26,6 +26,8 @@ private val klaxon = Klaxon()
     .convert(Value::class,     { Value.fromJson(it) },               { it.toJson() }, true)
 
 /**
+ * Durable checkpoint receipt from the local native client, scoped to this socket.
+ *
  * Request a session's recent timeline. The daemon replies (to the requester only) with a
  * `timeline_history` carrying that session's entries. Lets a device that connects
  * mid-session fill its per-session Detail view.
@@ -87,6 +89,9 @@ data class PluginCommand (
     val text: String? = null,
     val mode: Mode? = null,
     val action: Action? = null,
+
+    @Json(name = "checkpointId")
+    val checkpointID: String? = null,
 
     /**
      * Optional epoch-ms lower bound; omit for the full retained history.
@@ -301,6 +306,7 @@ enum class Type(val value: String) {
     ApmeVibe("apme_vibe"),
     ClearSessionFocus("clear_session_focus"),
     ClientRegister("client_register"),
+    DaemonCheckpointACK("daemon_checkpoint_ack"),
     Diag("diag"),
     Escape("escape"),
     Esp32OtaACK("esp32_ota_ack"),
@@ -329,6 +335,7 @@ enum class Type(val value: String) {
             "apme_vibe"              -> ApmeVibe
             "clear_session_focus"    -> ClearSessionFocus
             "client_register"        -> ClientRegister
+            "daemon_checkpoint_ack"  -> DaemonCheckpointACK
             "diag"                   -> Diag
             "escape"                 -> Escape
             "esp32_ota_ack"          -> Esp32OtaACK

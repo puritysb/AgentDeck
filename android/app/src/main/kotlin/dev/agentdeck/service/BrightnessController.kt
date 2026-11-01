@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import org.json.JSONObject
 
 /**
  * Controls display brightness/timeout in response to host display sleep events.
@@ -55,6 +56,7 @@ class BrightnessController(
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val moaanFrontlight = createMoaanFrontlight()
     private val frontlightPaths: List<String> = discoverFrontlightPaths()
     private var isDimmed = false
     /** "mode|level" of the last applied dim, so a live level change (re-dim
@@ -66,6 +68,9 @@ class BrightnessController(
     private var savedFrontlight: Map<String, Int>? = null
 
     init {
+        if (isEink && moaanFrontlight?.pending == true) {
+            isDimmed = !moaanFrontlight.restore()
+        }
         // Recover from crash/restart while dimmed. E-ink should not stay dark
         // if the service died before a wake event; LCD values are kept so a
         // later wake can restore even if the process was recreated.
@@ -110,6 +115,14 @@ class BrightnessController(
             return
         }
 
+        if (isEink && moaanFrontlight?.available == true) {
+            val applied = moaanFrontlight.dim(mode, level)
+            isDimmed = moaanFrontlight.pending
+            lastDimSignature = if (applied) sig else ""
+            Log.i(TAG, "MOAAN frontlight mode: ${if (applied) "applied" else "pending retry"} ($mode)")
+            return
+        }
+
         val firstDim = !isDimmed
         isDimmed = true
         lastDimSignature = sig
@@ -123,6 +136,16 @@ class BrightnessController(
 
     fun restore() {
         if (!isDimmed) return
+        if (isEink && moaanFrontlight?.pending == true) {
+            if (!moaanFrontlight.restore()) {
+                Log.w(TAG, "MOAAN frontlight restore pending; original settings retained")
+                return
+            }
+            isDimmed = false
+            lastDimSignature = ""
+            Log.i(TAG, "MOAAN frontlight mode and presets restored")
+            return
+        }
         isDimmed = false
         lastDimSignature = ""
 
@@ -280,6 +303,48 @@ class BrightnessController(
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private fun createMoaanFrontlight(): MoaanFrontlightControl? {
+        if (!isEink) return null
+        return try {
+            val journal = prefs.getString("moaan_mode_snapshot", null)?.let { raw ->
+                val json = JSONObject(raw)
+                require(json.getInt("version") == 1)
+                val values = json.getJSONObject("presets")
+                require(values.keys().asSequence().toSet() == MoaanFrontlightControl.savedKeys.toSet())
+                MoaanFrontlightControl.Snapshot(json.getInt("mode"), json.getInt("light"), json.getInt("warm"),
+                    json.getBoolean("lightEnabled"), json.getBoolean("warmEnabled"),
+                    MoaanFrontlightControl.savedKeys.associateWith { if (values.isNull(it)) null else values.getString(it) })
+            }
+            MoaanFrontlightControl(
+                read = { Settings.Global.getString(contentResolver, it) },
+                write = { key, value ->
+                    if (value == null) {
+                        // putString(null) leaves a null-valued row on this ROM.
+                        // Restore a previously absent preset as absent.
+                        contentResolver.delete(Settings.Global.getUriFor(key), null, null)
+                        true
+                    } else Settings.Global.putString(contentResolver, key, value)
+                },
+                save = { snapshot ->
+                    val editor = prefs.edit()
+                    if (snapshot == null) editor.remove("moaan_mode_snapshot")
+                    else {
+                        val values = JSONObject()
+                        snapshot.presets.forEach { (key, value) -> values.put(key, value ?: JSONObject.NULL) }
+                        editor.putString("moaan_mode_snapshot", JSONObject().put("version", 1)
+                            .put("mode", snapshot.mode).put("light", snapshot.light).put("warm", snapshot.warm)
+                            .put("lightEnabled", snapshot.lightEnabled).put("warmEnabled", snapshot.warmEnabled)
+                            .put("presets", values).toString())
+                    }
+                    editor.commit()
+                }, restored = journal,
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "MOAAN recovery could not be loaded; journal retained: ${e.message}")
+            null
+        }
+    }
 
     /** Probe known sysfs backlight device paths. */
     private fun discoverFrontlightPaths(): List<String> {

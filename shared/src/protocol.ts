@@ -233,6 +233,9 @@ export interface ZaiWindow extends CodexRateLimitWindow {
 export interface StateUpdateEvent {
   type: 'state_update';
   state: State;
+  /** Same-machine daemon handover only: bounded aggregate/opaque-receipt JSON.
+   * Never contains card copy, prompt text, source credentials or executable data. */
+  daemonCheckpoint?: string;
   permissionMode: PermissionMode;
   agentType?: AgentType;
   /** Session ID associated with this state payload; may move with hook activity. */
@@ -559,7 +562,10 @@ export interface CiWaitStatus {
 export interface SessionInfo {
   /** CI is a separate axis from agent state. Explicit null clears a prior wait. */
   waitingOn?: CiWaitStatus | null;
-  /** Optional compact device label; never a session identity or folding key. */
+  /** Optional presentation hint; never identity, folding or command routing.
+   * Absent retains the prior hint; explicit empty clears. Decks use it only
+   * for same-project/agent collisions, preserving a short ID tag. Serial compact
+   * projections may supply a complete device label instead (not a source hint). */
   displayName?: string;
   id: string;
   port: number;
@@ -631,6 +637,10 @@ export interface SessionInfo {
    *  makes devices render a binary Allow/Deny, which would collapse a 4-option
    *  question into a permission decision. Answers ride `select_option`. */
   liveAnswerable?: boolean;
+  /** Producer-verified compact-display delivery; false also covers truncated context. */
+  controllerAnswerable?: boolean;
+  /** User input/interrupt delivery exists for this compact session row. */
+  controllerInput?: boolean;
   /** A single AskUserQuestion call may carry up to four question groups. The
    *  daemon presents them ONE AT A TIME (`question`/`options` above are the
    *  active group's projection) and advances as each is answered, so a device
@@ -1755,6 +1765,12 @@ export interface QueryUsageCommand {
   type: 'query_usage';
 }
 
+/** Durable checkpoint receipt from the local native client, scoped to this socket. */
+export interface DaemonCheckpointAckCommand {
+  type: 'daemon_checkpoint_ack';
+  checkpointId: string;
+}
+
 /** Request a session's recent timeline. The daemon replies (to the requester
  *  only) with a `timeline_history` carrying that session's entries. Lets a
  *  device that connects mid-session fill its per-session Detail view. */
@@ -1910,6 +1926,7 @@ export type PluginCommand =
   | EscapeCommand
   | VoiceCommand
   | QueryUsageCommand
+  | DaemonCheckpointAckCommand
   | QuerySessionTimelineCommand
   | DiagCommand
   | UtilityCommand

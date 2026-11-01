@@ -116,7 +116,7 @@ describe('Cursor Synchronization', () => {
     it('treats "❯ \\n" as genuine idle (clears navigable state)', () => {
       const p = armParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
+      const cursors = collectEvents(p, 'cursor_update');
 
       // Establish navigable state with non-permission labels
       p.feed('❯ 1. Alpha\n  2. Beta\n');
@@ -127,13 +127,15 @@ describe('Cursor Synchronization', () => {
       p.feed('❯ \n');
       vi.advanceTimersByTime(400);
 
-      expect(idleEvents).toHaveLength(1);
+      p.feed('1. Unselected prose\n2. More prose\n');
+      vi.advanceTimersByTime(200);
+      expect(optEvents).toHaveLength(1);
+      expect(cursors).toHaveLength(0);
     });
 
     it('does NOT treat "❯ Beta" as idle (cursor on option label)', () => {
       const p = armParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Establish navigable state
       p.feed('❯ 1. Alpha\n  2. Beta\n');
@@ -144,13 +146,16 @@ describe('Cursor Synchronization', () => {
       p.feed('❯ Beta');
       vi.advanceTimersByTime(400);
 
-      expect(idleEvents).toHaveLength(0);
+      // Cursorless redraws remain eligible while the picker is still live.
+      const redraws = collectEvents(p, 'option_prompt');
+      p.feed('\n1. Alpha\n2. Beta\n');
+      vi.advanceTimersByTime(200);
+      expect(redraws).toHaveLength(1);
     });
 
     it('does NOT treat "❯ Allow once" as idle (permission cursor move)', () => {
       const p = armParser();
       const permEvents = collectEvents(p, 'permission_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Establish navigable permission state
       p.feed('❯ 1. Yes, allow once\n  2. No, deny\n  3. Always allow\n');
@@ -161,7 +166,11 @@ describe('Cursor Synchronization', () => {
       p.feed('❯ Yes, allow once');
       vi.advanceTimersByTime(400);
 
-      expect(idleEvents).toHaveLength(0);
+      // Cursorless redraws remain eligible while the picker is still live.
+      const redraws = collectEvents(p, 'option_prompt');
+      p.feed('\n1. Alpha\n2. Beta\n');
+      vi.advanceTimersByTime(200);
+      expect(redraws).toHaveLength(1);
     });
   });
 

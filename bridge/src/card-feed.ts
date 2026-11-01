@@ -9,6 +9,8 @@
  * Autonomous Pocket's PULSE / NUDGE / QUEST producers into this pure builder.
  */
 
+import { createHash } from 'node:crypto';
+import { DAEMON_CHECKPOINT_POLICY } from '@agentdeck/shared';
 import type {
   SessionInfo,
   FeedCard,
@@ -361,29 +363,34 @@ const OUTBOX_ACTIONS = new Set([
 function outboxDecisionKey(d: OutboxDecision): string {
   // `ageSec` is intentionally absent: Pocket recomputes it on each retry, so
   // including it would turn a lost HTTP response into a second control press.
-  return JSON.stringify({
-    cardId: d.cardId,
-    sessionId: d.sessionId,
-    requestId: d.requestId,
-    action: d.action,
-    choiceId: d.choiceId,
-    decision: d.decision,
-    index: d.index,
-    value: d.value,
-    text: d.text,
-    question: d.question,
-  });
+  return createHash('sha256').update(JSON.stringify(
+    DAEMON_CHECKPOINT_POLICY.receiptFields.map(field => d[field] ?? null),
+  )).digest('hex');
 }
 
 /** Bounded daemon-lifetime ledger for response-loss retries. */
 export class OutboxIdempotencyLedger {
   private readonly outcomes = new Map<string, OutboxDecisionResult>();
 
-  constructor(private readonly limit = 1024) {}
+  constructor(private readonly limit: number = DAEMON_CHECKPOINT_POLICY.receiptLimit) {}
+
+  snapshot(): Array<{ key: string; status: OutboxDecisionResult['status'] }> {
+    return [...this.outcomes].map(([key, result]) => ({ key, status: result.status }));
+  }
+
+  restore(rows: unknown): void {
+    if (!Array.isArray(rows)) return;
+    for (const row of rows.slice(-this.limit)) {
+      if (!row || typeof row !== 'object' || !/^[a-f0-9]{64}$/.test(row.key)
+        || !DAEMON_CHECKPOINT_POLICY.statuses.includes(row.status)) continue;
+      this.outcomes.set(row.key, { cardId: '', status: row.status });
+    }
+    while (this.outcomes.size > this.limit) this.outcomes.delete(this.outcomes.keys().next().value!);
+  }
 
   get(decision: OutboxDecision): OutboxDecisionResult | undefined {
     const result = this.outcomes.get(outboxDecisionKey(decision));
-    return result ? { ...result } : undefined;
+    return result ? { ...result, cardId: typeof decision.cardId === 'string' ? decision.cardId : '' } : undefined;
   }
 
   remember(decision: OutboxDecision, result: OutboxDecisionResult): void {

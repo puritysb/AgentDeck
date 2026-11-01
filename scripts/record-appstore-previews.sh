@@ -84,7 +84,7 @@ encode() {
     -vf "$filter,format=yuv420p" -r 30 \
     -c:v libx264 -profile:v high -level:v 4.0 \
     -b:v 11M -maxrate 11M -bufsize 22M \
-    -c:a aac -b:a 128k -ar 44100 -ac 2 \
+    -c:a aac -b:a 256k -ar 44100 -ac 2 \
     -map 0:v:0 -map 1:a:0 -shortest \
     -movflags +faststart "$out"
   echo "wrote $out"

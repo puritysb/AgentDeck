@@ -94,14 +94,6 @@ static uint32_t s_camLastFrameMs = 0;
 
 // ── outbound steering (thread-safe queue; drained on the network core) ──────
 
-static void sendSelectOption(const char* sid, int index) {
-    char buf[96];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"select_option\",\"index\":%d,\"sessionId\":\"%s\"}",
-             index, sid);
-    Net::queueOutbound(buf);
-}
-
 static void sendPermissionDecision(const char* requestId, bool allow) {
     char buf[160];
     snprintf(buf, sizeof(buf),
@@ -110,14 +102,7 @@ static void sendPermissionDecision(const char* requestId, bool allow) {
     Net::queueOutbound(buf);
 }
 
-static void sendSessionEscape(const char* sid) {
-    if(!sid || !sid[0]) return;
-    char buf[160];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"session_command\",\"sessionId\":\"%s\",\"command\":{\"type\":\"escape\"}}",
-             sid);
-    Net::queueOutbound(buf);
-}
+
 
 static void sendFocusSession(const char* sid) {
     if(!sid || !sid[0]) return;
@@ -369,7 +354,7 @@ static void renderFocusPage(const FocusSnap& f, bool connected) {
             lv_obj_align(text, LV_ALIGN_CENTER, 0, 0);
         };
         actionChip(272, 92, "DENY", Theme::StatusRed);
-        actionChip(372, 96, "APPROVE", Theme::StatusGreen);
+        actionChip(372, 96, "ALLOW", Theme::StatusGreen);
         lv_obj_t* hint = makeLabel(s_body, &lv_font_montserrat_12,
                                    Theme::HUDFaint, "tap a labelled action");
         lv_obj_align(hint, LV_ALIGN_BOTTOM_LEFT, 16, -11);
@@ -830,14 +815,12 @@ void onTouch(const Input::TouchEvent& event) {
     if (!connected || !same || !s_visibleFocus.canAnswer || s_visibleFocus.ended || s_flashText[0] || s_pendingReply.active) return;
     const auto& f = s_visibleFocus;
     if (f.awaiting && event.y >= BODY_Y + BODY_H - 44 && event.y < BODY_Y + BODY_H && event.x >= 372 && event.x < 468) {
-        if (f.requestId[0]) sendPermissionDecision(f.requestId, true);
-        else sendSelectOption(f.id, 0);
+        sendPermissionDecision(f.requestId, true);
         s_pendingReply.begin(s_visibleRequest, millis());
         flash("sent - waiting for update");
     } else if (f.awaiting && event.y >= BODY_Y + BODY_H - 44 && event.y < BODY_Y + BODY_H &&
                event.x >= 272 && event.x < 364) {
-        if (f.requestId[0]) sendPermissionDecision(f.requestId, false);
-        else sendSessionEscape(f.id);
+        sendPermissionDecision(f.requestId, false);
         s_pendingReply.begin(s_visibleRequest, millis());
         flash("sent - waiting for update");
     }
@@ -910,7 +893,8 @@ void update(float dt) {
             const SessionInfo& sess = g_state.sessions[idx];
             focus.have = true;
             focus.awaiting = strstr(sess.state, "awaiting") != nullptr;
-            focus.canAnswer = focus.awaiting && (sess.optionCount == 0 || !strcmp(sess.promptType, "yes_no"));
+            focus.canAnswer = focus.awaiting && sess.answerable
+                && sess.requestId[0];
             s_frameRequest.capture(sess);
             if (!s_initialFocusChosen) {
                 Companion::copy(s_pinId, sess.id);
@@ -1034,6 +1018,7 @@ void update(float dt) {
                 full = (full ^ row.options[j].recommended) * 16777619u;
             }
             full = (full ^ row.optionCount) * 16777619u;
+            full = (full ^ row.answerable) * 16777619u;
         }
         unlockState();
         snprintf(sig, sizeof(sig), "%lu|%s|%d%d%d%d|%u|%u", (unsigned long)full, s_pinId,

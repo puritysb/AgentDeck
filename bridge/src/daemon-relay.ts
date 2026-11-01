@@ -17,7 +17,7 @@
  *   socket. The hub never dials a worker, so an SSH-only / NAT'd worker needs
  *   no inbound reachability (an `ssh -L` forward is enough).
  * - **Capability-gated.** The worker refuses a hub whose `/health` does not
- *   advertise `daemonRelay` (the Swift daemon does not implement it).
+ *   advertise `daemonRelay` (Node or Swift).
  * - **Token-authenticated.** Non-loopback hubs require the hub's pairing
  *   token; the token is never logged.
  *
@@ -34,7 +34,7 @@
  * allow-list, and only for sessions it is currently relaying.
  */
 import WebSocket from 'ws';
-import { sanitizeWeightForWire } from '@agentdeck/shared';
+import { RELAY_POLICY, sanitizeWeightForWire } from '@agentdeck/shared';
 import type { EnrichedSession } from './session-aggregator.js';
 import type { PluginCommand } from './types.js';
 import { debug } from './logger.js';
@@ -43,21 +43,21 @@ import { formatHostForUrl, isLoopbackHost } from './session-registry.js';
 const TAG = 'relay';
 
 /** Bumped only when an existing frame changes meaning. */
-export const RELAY_PROTOCOL_VERSION = 1;
+export const RELAY_PROTOCOL_VERSION = RELAY_POLICY.RELAY_PROTOCOL_VERSION;
 /** Worker resends its snapshot at least this often, changed or not. */
-export const RELAY_SNAPSHOT_HEARTBEAT_MS = 15_000;
+export const RELAY_SNAPSHOT_HEARTBEAT_MS = RELAY_POLICY.RELAY_SNAPSHOT_HEARTBEAT_MS;
 /** Hub forgets a worker's rows when no frame arrived for this long. */
-export const RELAY_ROW_TTL_MS = 45_000;
+export const RELAY_ROW_TTL_MS = RELAY_POLICY.RELAY_ROW_TTL_MS;
 /** Upper bound on rows accepted from one worker. */
-export const RELAY_MAX_ROWS = 64;
+export const RELAY_MAX_ROWS = RELAY_POLICY.RELAY_MAX_ROWS;
 /** Worker checks for roster changes this often. */
-export const RELAY_POLL_MS = 2_000;
+export const RELAY_POLL_MS = RELAY_POLICY.RELAY_POLL_MS;
 /** A worker whose hub stops answering pings is torn down after this long. */
-export const RELAY_PONG_TIMEOUT_MS = 45_000;
+export const RELAY_PONG_TIMEOUT_MS = RELAY_POLICY.RELAY_PONG_TIMEOUT_MS;
 /** A hub that accepts the socket but never answers relay_hello is dropped after this long. */
-export const RELAY_ACK_TIMEOUT_MS = 10_000;
+export const RELAY_ACK_TIMEOUT_MS = RELAY_POLICY.RELAY_ACK_TIMEOUT_MS;
 /** Redial delay after a refusal the user has to act on (capability, token, self-relay). */
-export const RELAY_REFUSED_RETRY_MS = 60_000;
+export const RELAY_REFUSED_RETRY_MS = RELAY_POLICY.RELAY_REFUSED_RETRY_MS;
 /** WS close code the hub's auth gate uses for a missing or wrong token. */
 const WS_CLOSE_UNAUTHORIZED = 4001;
 
@@ -67,7 +67,7 @@ const WS_CLOSE_UNAUTHORIZED = 4001;
  * snapshot that carries it sends — and makes the hub rebroadcast — every poll.
  * The hub derives it again from `startedAt`.
  */
-const RELAY_VOLATILE_FIELDS = ['elapsedSec'] as const;
+const RELAY_VOLATILE_FIELDS = RELAY_POLICY.RELAY_VOLATILE_FIELDS;
 
 /** Inner command types a relayed `session_command` may carry. */
 export const RELAY_SESSION_COMMANDS: ReadonlySet<string> = new Set([
@@ -120,20 +120,12 @@ export function selectRelayableRows(rows: EnrichedSession[], excludeIds: Readonl
 // methods on these fields (`state.startsWith`, …) and every client decodes
 // them strictly, so one wrongly-typed value in a peer's row would otherwise
 // throw inside the enricher and blank `sessions_list` for every device.
-const RELAY_STRING_FIELDS = [
-  'displayName', 'projectName', 'agentType', 'state', 'modelName', 'effortLevel',
-  'permissionMode', 'startedAt', 'currentTool', 'cwd', 'currentTask', 'activity', 'goal',
-  'question', 'questionDetail', 'requestId', 'reviewStatus', 'reviewRisk', 'promptType',
-  'lastEventText', 'lastEventTask', 'lastEventHm',
-] as const;
-const RELAY_NUMBER_FIELDS = [
-  'groupSize', 'contextPercent', 'totalTokens', 'queuedDirectives', 'reviewFindings',
-  'askGroupIndex', 'askGroupCount', 'backgroundTaskCount', 'backgroundStandbyCount',
-] as const;
-const RELAY_BOOLEAN_FIELDS = ['stopRequested', 'liveAnswerable'] as const;
-const RELAY_OBJECT_FIELDS = ['subagents', 'coordination'] as const;
-const RELAY_MAX_STRING = 4_000;
-const RELAY_MAX_OPTIONS = 16;
+const RELAY_STRING_FIELDS = RELAY_POLICY.RELAY_STRING_FIELDS;
+const RELAY_NUMBER_FIELDS = RELAY_POLICY.RELAY_NUMBER_FIELDS;
+const RELAY_BOOLEAN_FIELDS = RELAY_POLICY.RELAY_BOOLEAN_FIELDS;
+const RELAY_OBJECT_FIELDS = RELAY_POLICY.RELAY_OBJECT_FIELDS;
+const RELAY_MAX_STRING = RELAY_POLICY.RELAY_MAX_STRING;
+const RELAY_MAX_OPTIONS = RELAY_POLICY.RELAY_MAX_OPTIONS;
 
 function plainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -325,6 +317,15 @@ export class RelayHub {
 
   /** Consume a relay frame. Returns true when the frame was a relay frame. */
   handleFrame(msg: { type?: string }, sender: WebSocket): boolean {
+    if (typeof msg.type === 'string' && msg.type.startsWith('relay_')) {
+      try {
+        if (Buffer.byteLength(JSON.stringify(msg)) > RELAY_POLICY.RELAY_MAX_MESSAGE_BYTES) {
+          this.dropSocket(sender);
+          sender.send(JSON.stringify({ type: 'relay_refused', reason: 'oversized relay frame' }));
+          return true;
+        }
+      } catch { return true; }
+    }
     if (msg.type === 'relay_hello') {
       const hello = msg as Partial<RelayHello>;
       const reply = (frame: Record<string, unknown>) => {
@@ -334,7 +335,7 @@ export class RelayHub {
         reply({ type: 'relay_refused', reason: `unsupported relay protocol ${String(hello.v)} (hub speaks ${RELAY_PROTOCOL_VERSION})` });
         return true;
       }
-      if (typeof hello.instanceId !== 'string' || !hello.instanceId) {
+      if (typeof hello.instanceId !== 'string' || !hello.instanceId || hello.instanceId.length > RELAY_MAX_STRING) {
         reply({ type: 'relay_refused', reason: 'missing instanceId' });
         return true;
       }
@@ -351,6 +352,10 @@ export class RelayHub {
         if (w.instanceId === hello.instanceId && ws !== sender) this.workers.delete(ws);
       }
       const known = this.workers.has(sender);
+      if (!known && this.workers.size >= RELAY_POLICY.RELAY_MAX_WORKERS) {
+        reply({ type: 'relay_refused', reason: 'worker limit' });
+        return true;
+      }
       this.workers.set(sender, { instanceId: hello.instanceId, host, rows: [], rowsJson: '[]', lastFrameAt: this.now() });
       if (!known) sender.once('close', () => this.dropSocket(sender));
       debug(TAG, `relay worker attached: ${host}`);
@@ -515,7 +520,7 @@ export class RelayUplink {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private pingTimer: NodeJS.Timeout | null = null;
-  private reconnectDelay = 2_000;
+  private reconnectDelay: number = RELAY_POLICY.RELAY_RECONNECT_INITIAL_MS;
   private lastSentJson = '';
   private lastSentAt = 0;
   private lastPongAt = 0;
@@ -553,13 +558,14 @@ export class RelayUplink {
   async pushSnapshot(force = false): Promise<void> {
     if (!this.acked || !this.ws || this.ws.readyState !== WebSocket.OPEN || this.sending) return;
     this.sending = true;
+    const socket = this.ws;
     try {
       const rows = selectRelayableRows(await this.opts.snapshot(), this.opts.excludeIds?.() ?? new Set());
       const json = JSON.stringify(rows);
       const due = Date.now() - this.lastSentAt >= RELAY_SNAPSHOT_HEARTBEAT_MS;
       if (!force && !due && json === this.lastSentJson) return;
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-      this.ws.send(`{"type":"relay_sessions","sessions":${json}}`);
+      if (this.closed || this.ws !== socket || !this.acked || socket.readyState !== WebSocket.OPEN) return;
+      socket.send(`{"type":"relay_sessions","sessions":${json}}`);
       this.lastSentJson = json;
       this.lastSentAt = Date.now();
       this.relayedIds = new Set(rows.map((r) => r.id));
@@ -567,7 +573,7 @@ export class RelayUplink {
     } catch (err) {
       debug(TAG, `snapshot failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      this.sending = false;
+      if (this.ws === socket) this.sending = false;
     }
   }
 
@@ -583,7 +589,7 @@ export class RelayUplink {
       return;
     }
     if (health.daemonRelay !== true) {
-      this.setRefused(`hub ${label} does not support the daemon relay (no daemonRelay capability — a current Node CLI daemon is required)`);
+      this.setRefused(`hub ${label} does not support the daemon relay (no daemonRelay capability — a compatible daemon is required)`);
       this.scheduleReconnect(RELAY_REFUSED_RETRY_MS);
       return;
     }
@@ -598,7 +604,7 @@ export class RelayUplink {
       ? `ws://127.0.0.1:${port}`
       : `ws://${label}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     debug(TAG, `connecting to hub ws://${label} (token: ${token ? 'yes' : 'no'})`);
-    const ws = new WebSocket(url, { handshakeTimeout: 5_000 });
+    const ws = new WebSocket(url, { handshakeTimeout: RELAY_POLICY.RELAY_CONNECT_TIMEOUT_MS, maxPayload: RELAY_POLICY.RELAY_MAX_MESSAGE_BYTES });
     this.ws = ws;
 
     ws.on('open', () => {
@@ -623,11 +629,17 @@ export class RelayUplink {
       let msg: Record<string, unknown>;
       try { msg = JSON.parse(raw.toString()) as Record<string, unknown>; } catch { return; }
       if (msg.type === 'relay_ack') {
+        if (msg.v !== RELAY_PROTOCOL_VERSION) {
+          this.setRefused(`hub ${label} returned an unsupported relay protocol`);
+          this.refusedUntilRetry = true;
+          ws.close();
+          return;
+        }
         if (this.ackTimer) clearTimeout(this.ackTimer);
         this.ackTimer = null;
         this.acked = true;
         this.refusedReason = null;
-        this.reconnectDelay = 2_000;
+        this.reconnectDelay = RELAY_POLICY.RELAY_RECONNECT_INITIAL_MS;
         this.opts.log(`[relay] publishing observed sessions to hub ${label}`);
         this.startTimers();
         void this.pushSnapshot(true);
@@ -708,6 +720,7 @@ export class RelayUplink {
     if (this.ackTimer) clearTimeout(this.ackTimer);
     this.ackTimer = null;
     this.acked = false;
+    this.sending = false;
     this.lastSentJson = '';
     this.lastSentAt = 0;
     this.relayedIds = new Set();
@@ -725,7 +738,7 @@ export class RelayUplink {
   private scheduleReconnect(delayMs?: number): void {
     if (this.closed || this.reconnectTimer) return;
     const delay = delayMs ?? this.reconnectDelay;
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30_000);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, RELAY_POLICY.RELAY_RECONNECT_MAX_MS);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       void this.connect();

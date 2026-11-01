@@ -1,3 +1,4 @@
+import { PIXOO_LOOP_POLICY as LOOP_POLICY } from './pixoo-loop-policy.generated.js';
 import { backgroundCount, BACKGROUND_PRESENTATION, UI } from '@agentdeck/shared';
 import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
@@ -1741,9 +1742,9 @@ export function renderFrame(
  * frozen inside one loop and step between uploads.
  */
 export const PIXOO_LOOP = {
-  uniqueFrames: 8,
-  tickStep: 2,
-  picSpeedMs: 200,
+  uniqueFrames: LOOP_POLICY.uniqueFrames,
+  tickStep: LOOP_POLICY.tickStep,
+  picSpeedMs: LOOP_POLICY.picSpeedMs,
 } as const;
 
 /** Upload order for a closed palindrome loop over `n` unique frames. */
@@ -1766,7 +1767,7 @@ export function renderPixooLoop(
   for (let i = 0; i < PIXOO_LOOP.uniqueFrames; i++) {
     unique.push(renderFrame(
       stateEvent, usageEvent, sessions,
-      nowMs + i * PIXOO_LOOP.tickStep * 100,
+      nowMs + i * PIXOO_LOOP.tickStep * LOOP_POLICY.tickMs,
       64, 'standard', subagentActivity,
       i === 0 ? {} : { freezeSimulation: true, cueNowMs: nowMs },
     ));

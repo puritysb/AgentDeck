@@ -146,3 +146,12 @@ See [testing.md](testing.md) for the full testing reference.
 ## Report metrics
 
 Latest run, history test counts and pass-rate charts use **executed = passed + failed**; skipped cases remain separate in the machine-readable summary and history. Older history entries are normalized at display time. Pass-rate curves plot percentages for each run, not raw passing-test counts. Cumulative test time sums file durations; it is not workflow elapsed time. The overall result includes suite execution failures (for example a coverage-floor failure without a failed assertion). Android JUnit `error` and `skipped` cases retain those states in the detailed list.
+
+## 2.0 capture checkpoint
+
+The [2.0 integration and media plan](../RELEASING.md#200-integration-target-2026-11-02)
+owns the new capture scope and promotion gate. Current Pages/README media work
+can supply current renderer assets, but final 2.0 introduction and Store takes
+follow the frozen candidate and combined device acceptance. Preserve dated 1.x
+footage and capture provenance; a new version label cannot substitute for a new
+recording of changed behavior.

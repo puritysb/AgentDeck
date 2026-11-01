@@ -41,10 +41,10 @@
 // Not ported, by scope: `DeckView.sessionOrder` (the plugin's sticky list order
 // is per-plugin state the preview does not have) and hiding the no-data Codex
 // credits tile (the preview only draws credits for a known balance).
-// SYNC-HASH shared/src/d200h-layout.ts 7465e5ced4194acef317cd14f9bc2a6cfd676976
-// SYNC-HASH shared/src/session-utils.ts 1051754c77fa1dbaac1160ac39f1257c4d4397d8
+// SYNC-HASH shared/src/d200h-layout.ts 709a82b41592f6e932240ba2eb994758d182ee22
+// SYNC-HASH shared/src/session-utils.ts f756fa1a85b62dbc63eb0dbeb2096878df3a1e60
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
-// SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
+// SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -54,20 +54,12 @@
 //     model aliasing) ARE ported so text matches.
 //   • Runtime command dispatch. `DeckAction` mirrors the TS `DeckAction` union
 //     so the preview can show what a key *would* do, but nothing is executed.
-//   • Observed-session inertness on STOP, ESC and idle-STOP. In TS,
-//     `controlMode === 'observed'` (hook-only, no PTY) nulls those actions
-//     because the keystrokes have no delivery path; this mirror models the
-//     PTY-session semantics for them. Action-only, so the layout is identical
-//     either way. The awaiting OPTION cells are NOT in this exemption: they now
-//     carry `controlMode` / `liveAnswerable` / `requestId` / `question` and
-//     reproduce the three-way branch (pressable answer, Allow/Deny gate,
-//     display-only) the hardware shows.
 //   • The setting picker sub-view (`DeckView.picker`, #463). Its cells are the
 //     agent's live `session_settings` answer, which a static preview never has;
 //     the MODEL / THINKING entry tiles that open it ARE ported.
 //   • The NOW card (#463: `activity` / `goal` / `subagents` / `contextPercent`).
 //     `D200HSession` carries none of those row facts, and the observed idle
-//     branch it replaces is itself modelled with PTY semantics here.
+//     branch uses an inert IDLE card when no row facts are available.
 //   • Animation frames (`animFrame`/`animated`) — the preview is a static frame.
 //   • resvg text sanitization (ANSI/control-char stripping) — irrelevant to a
 //     native SwiftUI text surface.
@@ -106,6 +98,8 @@ public struct D200HSession: Equatable, Sendable {
     public var agentType: String
     /// e.g. "idle", "processing", "awaiting_permission", "awaiting_option", "awaiting_diff".
     public var state: String
+    public var displayName: String?
+    public var controllerInput: Bool?
     public var projectName: String
     public var modelName: String?
     public var currentTool: String?
@@ -139,6 +133,8 @@ public struct D200HSession: Equatable, Sendable {
         agentType: String,
         state: String,
         projectName: String,
+        displayName: String? = nil,
+        controllerInput: Bool? = nil,
         modelName: String? = nil,
         currentTool: String? = nil,
         startedAt: String? = nil,
@@ -156,6 +152,8 @@ public struct D200HSession: Equatable, Sendable {
         self.agentType = agentType
         self.state = state
         self.projectName = projectName
+        self.displayName = displayName
+        self.controllerInput = controllerInput
         self.modelName = modelName
         self.currentTool = currentTool
         self.startedAt = startedAt
@@ -425,7 +423,7 @@ public enum D200HSlotKind: Equatable, Sendable {
     case esc(active: Bool)
     /// A permission/option button (renderOptionButton). `index` is 0-based.
     case option(index: Int)
-    /// Idle quick-action preset (actionTile): GO ON / REVIEW / COMMIT / CLEAR.
+    /// Explicit controller input or native session setting.
     case actionPreset
     /// Pagination MORE tile (renderNextPageButton).
     case nextPage
@@ -699,14 +697,17 @@ public enum D200HLayoutModel {
             action: .none
         ))
 
-        // STOP / ESC on the last slot
+        // Preview the same delivery boundary as the physical controller.
+        let observed = sess?.controlMode == "observed"
+        let inputAvailable = sess?.controllerInput != false && (sess?.controlMode == "managed" || agentType == "openclaw"
+            || (observed && DeviceControllerRules.observedInputAgents.contains(agentType)))
         let (lc, lr) = parse(last)
-        if isProcessing(sState) {
+        if isProcessing(sState) && inputAvailable {
             out.append(D200HKeySlot(position: last, col: lc, row: lr, kind: .stop(active: true), label: "STOP", subtitle: "interrupt", action: .command(type: "interrupt", payload: [:])))
-        } else if isAwaiting(sState) {
+        } else if isAwaiting(sState) && !observed {
             out.append(D200HKeySlot(position: last, col: lc, row: lr, kind: .esc(active: true), label: "ESC", subtitle: "cancel", action: .command(type: "escape", payload: [:])))
         } else {
-            out.append(D200HKeySlot(position: last, col: lc, row: lr, kind: .stop(active: false), label: "STOP", subtitle: "idle", action: .command(type: "interrupt", payload: [:])))
+            out.append(D200HKeySlot(position: last, col: lc, row: lr, kind: .stop(active: false), label: "", subtitle: nil, action: .none))
         }
 
         // Content slots between INFO and STOP.
@@ -728,7 +729,13 @@ public enum D200HLayoutModel {
             // Without the flag the cells mirror the terminal rather than pretend
             // a press will work.
             let answerable = sess?.liveAnswerable == true
-            if !options.isEmpty {
+            if let gate = sess?.requestId, !gate.isEmpty {
+                let canReply = !gate.hasPrefix("ocperm:") || answerable
+                for choice in ObservedAgentRules.openCodePermissionChoices {
+                    cells.append(Cell(kind: .option(index: choice.index), label: choice.label, subtitle: nil,
+                        action: canReply ? .command(type: "permission_decision", payload: ["requestId": gate, "decision": choice.decision, "sessionId": sid]) : .none))
+                }
+            } else             if !options.isEmpty {
                 for (i, opt) in options.enumerated() {
                     // The server-assigned index is what a press must send back;
                     // the array position only happens to match when nothing was
@@ -747,15 +754,6 @@ public enum D200HLayoutModel {
                         subtitle: nil,
                         action: (isObserved && !answerable) ? .none : action))
                 }
-            } else if isObserved, let gate = sess?.requestId, !gate.isEmpty {
-                // Held PreToolUse gate: device-native semantics (permit/deny
-                // THIS tool call), never a mirror of the TUI's option labels.
-                cells.append(Cell(
-                    kind: .option(index: 0), label: "ALLOW", subtitle: "this tool call",
-                    action: .command(type: "permission_decision", payload: ["requestId": gate, "decision": "allow"])))
-                cells.append(Cell(
-                    kind: .option(index: 1), label: "DENY", subtitle: "this tool call",
-                    action: .command(type: "permission_decision", payload: ["requestId": gate, "decision": "deny"])))
             } else {
                 // Awaiting but no real options — don't fabricate Allow/Deny.
                 cells.append(Cell(kind: .info(icon: "status", tone: "warning"), label: "PERMIT?", subtitle: "answer in terminal", action: .none))
@@ -769,20 +767,15 @@ public enum D200HLayoutModel {
             // shared last-slot logic above.
             cells.append(Cell(kind: .info(icon: "activity", tone: "info"), label: "RUNNING", subtitle: (tool?.isEmpty == false ? tool : "working"), action: .none))
         } else {
-            // Idle quick-actions. OpenClaw leads with its agent-native MODEL /
-            // THINKING picker entries (#463); with no live `session_settings`
-            // answer in a preview, they show the row's model and "choose".
-            if agentType == "openclaw" {
+            // Native settings and explicit user input replace canned task prompts.
+            if agentType == "openclaw" && !observed {
                 cells.append(Cell(kind: .actionPreset, label: "MODEL",
                                   subtitle: model.isEmpty ? "choose" : formatModel(model, maxLen: 16),
                                   action: .pickerOpen(key: "model")))
                 cells.append(Cell(kind: .actionPreset, label: "THINKING", subtitle: "choose", action: .pickerOpen(key: "effort")))
             }
-            let presets: [(String, String)] = [("GO ON", "continue"), ("REVIEW", "review the changes"), ("COMMIT", "commit the changes"), ("CLEAR", "/clear")]
-            for (label, text) in presets {
-                cells.append(Cell(kind: .actionPreset, label: label, subtitle: nil, action: .command(type: "send_prompt", payload: ["text": text])))
-            }
-            cells.append(voiceCell(view: view, sid: sid))
+            if inputAvailable { cells.append(voiceCell(view: view, sid: sid)) }
+            cells.append(Cell(kind: .info(icon: "status", tone: "info"), label: "IDLE", subtitle: "no pending request", action: .none))
         }
 
         // Paginate cells into content slots; reserve last content slot for MORE.
@@ -1147,6 +1140,17 @@ public enum D200HLayoutModel {
         return String(body.prefix(prefix ?? min(12, body.count)))
     }
 
+    /// Mirror of normalizeSessionDisplayName in session-labels.ts (code points).
+    static func normalizedDisplayName(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        let clean = raw.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\\x1b\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "[\\t\\r\\n ]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(String.UnicodeScalarView(clean.unicodeScalars.prefix(64)))
+    }
+
     /// Rows sharing projectName AND agentType get a short unique id tag
     /// (`sessionTag`); every other row is left untagged.
     static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
@@ -1170,7 +1174,7 @@ public enum D200HLayoutModel {
                 return b.isEmpty ? m.id.lowercased() : b
             }
             for (i, s) in members.enumerated() {
-                labels[s.id] = SessionDeckLabel(name: s.projectName, tag: sessionTag(bodies, i))
+                labels[s.id] = SessionDeckLabel(name: normalizedDisplayName(s.displayName).isEmpty ? s.projectName : normalizedDisplayName(s.displayName), tag: sessionTag(bodies, i))
             }
         }
         return labels

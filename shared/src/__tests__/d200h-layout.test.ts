@@ -379,8 +379,8 @@ describe('VOICE tile — hold-to-talk contract', () => {
   // Stream Deck — never stopped the capture and it ran to the 30s cap.
   const state = {
     state: 'idle',
-    sessions: [
-      { id: 'observed:claude:abc', agentType: 'claude-code', state: 'idle', projectName: 'demo' },
+    allSessions: [
+      { id: 'observed:claude:abc', agentType: 'claude-code', controlMode: 'observed', alive: true, state: 'idle', projectName: 'demo' },
     ],
   };
   const view = { mode: 'detail' as const, openSessionId: 'observed:claude:abc' };

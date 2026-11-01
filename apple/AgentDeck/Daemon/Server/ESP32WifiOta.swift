@@ -103,6 +103,7 @@ final class ESP32WifiOtaManager {
     var releaseSerialHold: ((_ port: String) async -> Void)?
 
     private struct Waiter {
+        let expiresAt: Date
         let stage: String
         let seq: Int?
         // Void, not the ack dict — nothing consumes the payload, and resuming
@@ -114,6 +115,26 @@ final class ESP32WifiOtaManager {
     private var waiters: [String: Waiter] = [:]
     private var timeoutTasks: [String: Task<Void, Never>] = [:]
     private(set) var transferInFlight = false
+    private var stopped = false
+    private var activeTransfer: (key: String, id: String)?
+
+    /// Invalidate the owner before closing its sockets. A late ACK must not
+    /// advance a transfer after the listener has been handed to another daemon.
+    func stop() {
+        stopped = true
+        if let activeTransfer, let conn = liveConnection?(activeTransfer.key),
+           let data = (["type": "esp32_ota_abort", "otaId": activeTransfer.id] as [String: Any]).jsonData {
+            conn.send(data)
+        }
+        for id in Array(waiters.keys) {
+            resolveWaiter(otaId: id) { $0.continuation.resume(throwing: CancellationError()) }
+        }
+    }
+
+    private func checkActive() throws {
+        try Task.checkCancellation()
+        if stopped { throw CancellationError() }
+    }
 
     /// Route an `esp32_ota_ack` / `esp32_ota_error` frame from a board.
     /// Returns true when the frame was an OTA reply (consumed), false to let
@@ -124,6 +145,10 @@ final class ESP32WifiOtaManager {
               type == "esp32_ota_ack" || type == "esp32_ota_error" else { return false }
         guard let otaId = msg["otaId"] as? String, let waiter = waiters[otaId] else { return true }
 
+        guard Date() < waiter.expiresAt else {
+            resolveWaiter(otaId: otaId) { $0.continuation.resume(throwing: OtaError.ackTimeout(stage: waiter.stage, seq: waiter.seq)) }
+            return true
+        }
         if type == "esp32_ota_error" {
             resolveWaiter(otaId: otaId) {
                 $0.continuation.resume(throwing: OtaError.boardError(msg["error"] as? String ?? "esp32_ota_error"))
@@ -149,7 +174,7 @@ final class ESP32WifiOtaManager {
 
     private func waitForAck(otaId: String, stage: String, seq: Int?, timeout: TimeInterval) async throws {
         try await withCheckedThrowingContinuation { continuation in
-            waiters[otaId] = Waiter(stage: stage, seq: seq, continuation: continuation)
+            waiters[otaId] = Waiter(expiresAt: Date().addingTimeInterval(timeout), stage: stage, seq: seq, continuation: continuation)
             timeoutTasks[otaId] = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(timeout))
                 guard !Task.isCancelled, let self else { return }
@@ -163,10 +188,12 @@ final class ESP32WifiOtaManager {
     /// Wait up to `wait` for the target's live socket (rides out the ~3-4 s
     /// WiFi-flash coexistence reconnect gap).
     private func awaitLiveConnection(key: String, wait: TimeInterval) async -> WebSocketConnection? {
+        guard !stopped, !Task.isCancelled else { return nil }
         let deadline = Date().addingTimeInterval(wait)
         var conn = liveConnection?(key)
-        while conn == nil && Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(200))
+        while conn == nil && Date() < deadline && !stopped {
+            do { try await Task.sleep(for: .milliseconds(200)) } catch { return nil }
+            guard !stopped else { return nil }
             conn = liveConnection?(key)
         }
         return conn
@@ -175,12 +202,13 @@ final class ESP32WifiOtaManager {
     /// Run a full OTA transfer. Throws OtaError; returns the transfer
     /// summary on success.
     func performOta(target: String, firmware: Data) async throws -> OtaResult {
+        try checkActive()
         guard let resolveTarget, let liveConnection else {
             throw OtaError.boardError("OTA manager not wired")
         }
         guard !transferInFlight else { throw OtaError.busy }
         transferInFlight = true
-        defer { transferInFlight = false }
+        defer { transferInFlight = false; activeTransfer = nil }
 
         let heldPort = try await wakeSerialParkedTarget(target, resolveTarget: resolveTarget)
         do {
@@ -207,8 +235,13 @@ final class ESP32WifiOtaManager {
         DaemonLogger.shared.info("[ESP32 OTA] \(target) is on USB serial with its WiFi radio parked — released \(port), waiting for it to join WiFi")
         let deadline = Date().addingTimeInterval(serialWakeWait)
         while Date() < deadline {
+            if stopped || Task.isCancelled {
+                await releaseSerialHold?(port)
+                throw CancellationError()
+            }
             if (try? resolveTarget(target)) != nil { return port }
-            try? await Task.sleep(for: .milliseconds(500))
+            do { try await Task.sleep(for: .milliseconds(500)) }
+            catch { await releaseSerialHold?(port); throw error }
         }
         await releaseSerialHold?(port)
         throw OtaError.serialWakeTimeout(target, Int(serialWakeWait))
@@ -230,6 +263,7 @@ final class ESP32WifiOtaManager {
 
         let key = resolved.key
         let otaId = UUID().uuidString
+        activeTransfer = (key, otaId)
         let md5 = Insecure.MD5.hash(data: firmware).map { String(format: "%02x", $0) }.joined()
         var reconnectResends = 0
 
@@ -240,14 +274,17 @@ final class ESP32WifiOtaManager {
         // same seq once is safe. A genuinely-gone board still fails after
         // `reconnectWait`.
         func sendAndAck(_ frame: [String: Any], stage: String, seq: Int?, timeout: TimeInterval) async throws {
+            try checkActive()
             guard let conn = await awaitLiveConnection(key: key, wait: reconnectWait) else {
                 throw OtaError.boardOffline(key, stage: stage)
             }
             guard let data = frame.jsonData else { throw OtaError.boardError("OTA frame encode failed") }
+            try checkActive()
             conn.send(data)
             do {
                 try await waitForAck(otaId: otaId, stage: stage, seq: seq, timeout: timeout)
             } catch {
+                try checkActive()
                 guard let fresh = await awaitLiveConnection(key: key, wait: reconnectWait),
                       fresh !== conn, reconnectResends < maxReconnectResends else { throw error }
                 reconnectResends += 1
@@ -282,6 +319,7 @@ final class ESP32WifiOtaManager {
 
             try await sendAndAck(["type": "esp32_ota_end", "otaId": otaId],
                                  stage: "end", seq: nil, timeout: endAckTimeout)
+            try checkActive()
             onTransferComplete?(key)
 
             return OtaResult(
@@ -293,7 +331,7 @@ final class ESP32WifiOtaManager {
                 md5: md5)
         } catch {
             // Best-effort abort so the board frees its OTA slot cursor.
-            if let conn = liveConnection(key),
+            if !stopped, let conn = liveConnection(key),
                let data = (["type": "esp32_ota_abort", "otaId": otaId] as [String: Any]).jsonData {
                 conn.send(data)
             }

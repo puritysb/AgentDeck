@@ -13,6 +13,7 @@ export interface EnrichedSession {
   port: number;
   pid?: number;
   projectName: string;
+  displayName?: string;
   agentType?: AgentType;
   alive: boolean;
   state?: string;
@@ -43,6 +44,8 @@ export interface EnrichedSession {
    *  (observed steering, or the OpenClaw Gateway's approval RPC). Without it the
    *  option cells render display-only. Mirrors `SessionInfo.liveAnswerable`. */
   liveAnswerable?: boolean;
+  /** Explicit delivery denial from observation-only producers. */
+  controllerInput?: boolean;
   /** Seconds since startedAt — derived at broadcast time so NTP-less devices (ESP32) render elapsed per session. */
   elapsedSec?: number;
   /** Daemon-synthesized "what is this agent doing right now" one-liner (heuristic,

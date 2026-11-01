@@ -172,6 +172,24 @@
       ],
       "type": "object"
     },
+    "DaemonCheckpointAckCommand": {
+      "additionalProperties": false,
+      "description": "Durable checkpoint receipt from the local native client, scoped to this socket.",
+      "properties": {
+        "checkpointId": {
+          "type": "string"
+        },
+        "type": {
+          "const": "daemon_checkpoint_ack",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "checkpointId"
+      ],
+      "type": "object"
+    },
     "DiagCommand": {
       "additionalProperties": false,
       "properties": {
@@ -370,6 +388,9 @@
         },
         {
           "$ref": "#/definitions/QueryUsageCommand"
+        },
+        {
+          "$ref": "#/definitions/DaemonCheckpointAckCommand"
         },
         {
           "$ref": "#/definitions/QuerySessionTimelineCommand"

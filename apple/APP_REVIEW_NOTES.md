@@ -118,6 +118,14 @@ AgentDeck Dashboard is a real-time monitoring and evaluation app for AI coding a
 
 **Works standalone on Mac.** The review scope is a clean Mac running only the submitted Swift app. Dashboard, APME reports, the 17-target Device Preview, opt-in Claude/Codex observation, opt-in OpenCode/OpenClaw monitoring, opt-in Kiro observation, and iOS pairing work without another AgentDeck executable. Users start their chosen agent independently and AgentDeck receives only the integrations they enable.
 
+**Glance rendering implementation (local development, not a release receipt).** The macOS daemon renders optional Glance framebuffers inside the app. A statically linked resvg library and bundled OFL fonts produce the same pixels as the Node daemon. There is no renderer executable, interpreter, runtime download, system-font scan or external install requirement. The app bundle includes `Glance-ThirdPartyNotices.txt` with the engine/font notices and source locations. X4 integration is reserved for the future companion-app work and is not claimed as physical-device acceptance.
+
+**Optional native daemon relay (local implementation).** The macOS daemon accepts authenticated observed-session relay workers and can publish its own observed rows to an explicitly consented hub. Native Settings stores the hub endpoint/token in app-owned device-local Keychain. The existing pairing and browser-origin gates protect the listener; public health exposes only the capability. Commands return over the same outbound connection and must match current published/local session or held-request identity. Native workers support hook controls and held approvals, refuse terminal injection and unsupported commands, and expire disconnected/stale rows. No CLI, subprocess, runtime download or companion installation is used. Signed-app and two-Mac acceptance is recorded separately in the feature matrix.
+
+**Scoped ATS exception for user-selected relay hubs.** The existing local daemon protocol uses HTTP/WebSocket. macOS adds `NSExceptionAllowsInsecureHTTPLoads` only for the RFC 6598 CIDR `100.64.0.0/10`, used by numeric Tailscale endpoints that are outside RFC 1918 local-network space. There is no arbitrary-load flag, public DNS exception, TLS-version reduction or custom server-trust bypass. The address range is not authentication or proof of a VPN; users explicitly choose and consent to a trusted hub, and non-loopback connections require its pairing token. This exception does not install or require Tailscale and does not change the iOS transport policy.
+
+**Optional GitHub CI enrichment (local implementation).** Settings asks explicit consent for the selected repository/run identities sent to GitHub.com. Public repositories may be read anonymously; a user-pasted fine-grained token for selected private repositories is verified against GitHub's authenticated-user endpoint and stored in the app's own device-local Data Protection Keychain. Only a consent bit goes into preferences. The app never reads `gh` or another tool's credential store. Native bounded read-only HTTPS supplies existing CI-wait badges; denied, unavailable, incomplete or stale observations stay unknown. There is no workflow control, subprocess or external install requirement. Disconnect disables polling before attempting credential deletion.
+
 **First use.** Users choose the 2D or available 3D appearance, optionally connect Claude Code or Codex through explicit file-access consent, and enter the dashboard. The app distinguishes observation being configured from a session actually arriving. Every step can be skipped, and Settings → Dashboard → Set Up AgentDeck reopens setup without clearing integrations. Hardware examples are optional: existing Stream Deck users can preview session keys, and companion owners can open pairing. No purchase, plugin installation, agent launch, or API key is required to complete setup. iOS/iPadOS offers appearance followed by bounded discovery, Mac approval or QR pairing, with retry/manual/offline recovery. QR does not provide connectivity across otherwise unreachable networks. Notification authorization is offered only when the user chooses it.
 
 **Optional hardware extensions** render the same state on Stream Deck+ (Elgato plugin), Ulanzi D200H (Ulanzi Studio plugin), supported ESP32 status displays (native serial/network), Divoom Pixoo (network), and iDotMatrix / Divoom Timebox Mini (native CoreBluetooth). Hardware is not required.
@@ -254,6 +262,15 @@ feed uses separately attributed MET Norway open data, not Apple Weather. AgentDe
 does not infer location from an IP address or retain location history. No analytics,
 AgentDeck cloud backend, or subprocess is involved.
 
+Portable Feed responses can also include locally selected adaptive Pocket cards
+(PULSE, NUDGE and QUEST). Their selection uses already available session/weather
+context; no remote model or executable is downloaded or launched. Device choices
+return through the existing authenticated Outbox. Learning persistence contains
+only category counters, hour buckets, bounded exposure/answer metadata and opaque
+content fingerprints, never session names, card copy or weather locations.
+Conditional and OTA-first responses do not count as new card exposure. The app
+adds no analytics upload or account credential requirement for this feature.
+
 The one-time Core Location result is immediately rounded to two decimal places
 (roughly 1 km), stored only in the app container, and declared as unlinked coarse
 location for app functionality in `PrivacyInfo.xcprivacy`.
@@ -322,14 +339,34 @@ Unlike the other advanced integrations, OpenClaw **is** first-class in the App S
   2. Tap "Import token" in the OpenClaw troubleshoot row. AgentDeck presents an `NSOpenPanel`. The panel's title and message text mention `~/.openclaw/openclaw.json` as the *typical* OpenClaw config location — this is human-readable hint text only. `directoryURL` is set to `~/.openclaw/` when that folder exists (so the non-hidden `openclaw.json` is immediately visible), otherwise to the user's real home directory (resolved via `getpwuid(getuid()).pw_dir`, since `NSHomeDirectory()` inside the sandbox returns the app's container path which is not where OpenClaw lives). The only programmatic file-system call before the user selects anything is a single `FileManager.fileExists` check to choose that starting folder — no directory enumeration. The panel itself runs in Powerbox outside the sandbox and is allowed to present that path as a navigation starting point; the hint grants no read permission by itself — only what the user explicitly selects in the panel is readable. The panel does **not** preselect any specific file, the user is free to navigate elsewhere or cancel, and AgentDeck never opens, traverses, or enumerates any path under the user's real home outside the file the user picks here. The selected file's bytes are read into memory (`Data(contentsOf:)`) and parsed via `JSONSerialization`; from the resulting object **only the gateway token string is used** — it is written to the macOS Keychain via `OpenClawGatewayTokenStore`, and every other parsed value goes out of scope and is freed when the import method returns. The read is performed inside a `startAccessingSecurityScopedResource()` / `defer stop` pair under the existing `com.apple.security.files.user-selected.read-write` entitlement. AgentDeck additionally stores an app-scoped security-scoped bookmark to **the single file the user picked** (under `com.apple.security.files.bookmarks.app-scope`, the same mechanism used for the Claude/Codex/Antigravity file integrations) so that a later rotated token can be re-read from that same file on reconnect — never any other path. The bookmark is revoked when the user taps "Clear" on the token.
 - Reviewers without OpenClaw installed will see "Not configured" and can skip this integration entirely. The "Import token" button is also fully optional — reviewers can validate the panel without selecting any file.
 
-### OpenCode (opt-in local server monitoring)
+### OpenCode (opt-in monitoring and observer file setup)
+
+Settings → Integrations → OpenCode also offers optional **observer file setup**.
+The user picks an existing OpenCode plugins directory through NSOpenPanel,
+then explicitly chooses Install / Update. An app-scoped security bookmark retains
+access to that folder. The app writes only `agentdeck.js` and its owned
+`agentdeck-connection.json` receiver data; it never edits OpenCode JSON/JSONC,
+package manifests, credentials or other plugins. The bundled template is
+canonical AgentDeck source packaged as JSON data, never executed by this app.
+OpenCode independently loads the installed plugin. No interpreter, subprocess,
+companion-install prompt or new entitlement is added.
+
+This native installation is observation-only: it sends activity to the ready
+local receiver, including after port changes, and never polls device commands.
+Permission/question attention remains display-only. Installation receipts do
+not claim event delivery. Modified or unrecognized files and symlinks are
+refused; only verified owned files can be updated or removed. Removing folder
+access leaves installed files in place. Removal deletes the verified plugin and
+receiver file, and revokes the bookmark. An already-running OpenCode process
+retains loaded code until it exits. The existing server-monitoring option below
+remains separate and off by default.
 
 OpenCode session monitoring in the App Store build is an **opt-in, read-only local network client** to a server the user runs themselves — the same posture as the OpenClaw Gateway integration:
 
 - The feature is **off by default**. While off, AgentDeck makes zero OpenCode-related network probes. The user enables it from Settings → Integrations → OpenCode ("Monitor OpenCode server").
-- When enabled, AgentDeck connects (plain `URLSession`, `com.apple.security.network.client`) to an OpenCode HTTP server that the user started independently in their own terminal (`opencode serve`). Discovery is limited to exactly three inputs: (1) the URL the user typed into Settings (default `http://127.0.0.1:4096`), (2) a health check of OpenCode's fixed default port 4096 (the same shape as the OpenClaw fixed-port probe on 18789), and (3) macOS process metadata (`sysctl KERN_PROC_ALL` / `KERN_PROCARGS2` — the same first-party API already used for Codex Desktop detection) to notice an `opencode` process the user launched with an explicit `--port N` argument. AgentDeck does **not** port-scan, does not install OpenCode plugins, and never spawns `opencode`.
+- When enabled, AgentDeck connects (plain `URLSession`, `com.apple.security.network.client`) to an OpenCode HTTP server that the user started independently in their own terminal (`opencode serve`). Discovery is limited to exactly three inputs: (1) the URL the user typed into Settings (default `http://127.0.0.1:4096`), (2) a health check of OpenCode's fixed default port 4096 (the same shape as the OpenClaw fixed-port probe on 18789), and (3) macOS process metadata (`sysctl KERN_PROC_ALL` / `KERN_PROCARGS2` — the same first-party API already used for Codex Desktop detection) to notice an `opencode` process the user launched with an explicit `--port N` argument. AgentDeck does **not** port-scan and never spawns `opencode`.
 - The connection consumes OpenCode's own read-only event stream (`GET /global/event`, Server-Sent Events) and renders session rows (project, working/idle, current tool). When OpenCode reports a permission request, AgentDeck shows a display-only "needs attention" state — the user responds in their own OpenCode terminal; AgentDeck sends no commands to the server.
-- Reviewers without OpenCode installed see "Not configured" with the toggle off; the integration is fully inert. No OpenCode-related copy in the App Store app prompts the user to install or launch anything.
+- Reviewers without OpenCode installed see "Not configured" with the toggle off; the integration is fully inert. No OpenCode-related copy prompts the user to install or launch OpenCode or a companion executable. Observer file installation is the separate, explicit consent action described above.
 
 ### Antigravity (usage only in the App Store build)
 
@@ -364,11 +401,18 @@ AgentDeck observes Codex and OpenCode only through the opt-in Swift paths descri
 
 Hermes sessions render as a mermaid in the aquarium and previews. They are
 read-only: no approval, prompt injection, voice target or installer is exposed.
-The Swift receiver understands the observer hooks, but the observer's automatic
-endpoint discovery uses the CLI data directory outside the App Sandbox. The
-App Store app therefore receives live Hermes sessions only through an already
-configured external relay. Standalone review does not require this integration;
-the built-in previews work without it.
+The Swift receiver accepts observer hooks directly over loopback; it does not
+require a Node daemon. Settings → Integrations → Hermes optionally lets the
+user select an **existing** observer folder through NSOpenPanel. AgentDeck
+stores a security-scoped bookmark and writes only its `connection.json` data
+file when this Mac's receiver is ready, including after a port change or local
+daemon handover. It checks the existing ownership marker and plugin files but
+never installs, enables, loads or executes Python. No companion-install prompt,
+new entitlement or home-relative-path exception is added. File access is scoped
+to the user-selected folder. “Stop syncing” revokes that access; the last saved
+port remains in place. Saved settings do not claim live activity: the row only
+reports received activity when a live Hermes session is present. Standalone
+review does not require Hermes; built-in previews work without it.
 
 ## APME evaluation module
 

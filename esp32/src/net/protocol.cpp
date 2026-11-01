@@ -1,5 +1,6 @@
 #include "../util/background_work.generated.h"
 #include "../state/ci_wait_generated.h"
+#include "../state/device_controller_generated.h"
 #include "../audio/wake_word.h"
 #include "../audio/mic_capture.h"
 #include "protocol.h"
@@ -551,11 +552,14 @@ static void handleSessionsList(JsonObject& obj) {
         // Per-session options — lets an interactive surface answer with the
         // session-scoped select_option without global focus (knob detail view).
         g_state.sessions[i].optionCount = 0;
+        bool optionLabelsFit = true;
         if (s["options"].is<JsonArray>()) {
             JsonArray sopts = s["options"].as<JsonArray>();
             uint8_t n = 0;
             for (JsonObject o : sopts) {
                 if (n >= SESSION_OPTIONS_CAP) break;
+                optionLabelsFit = optionLabelsFit && o["label"].is<const char*>()
+                    && strlen(o["label"] | "") <= DeviceController::optionLabelBytes;
                 SessionOption& dst = g_state.sessions[i].options[n];
                 copyTextU8(dst.label, sizeof(dst.label), o["label"] | "");
                 dst.index = o["index"] | n;
@@ -563,6 +567,23 @@ static void handleSessionsList(JsonObject& obj) {
                 n++;
             }
             g_state.sessions[i].optionCount = n;
+        }
+        {
+            auto& row = g_state.sessions[i];
+            const char* mode = s["controlMode"] | "";
+            const bool observed = !strcmp(mode, "observed");
+            const bool managed = !strcmp(mode, "managed") || (!observed && row.port > 0);
+            const bool input = DeviceController::input(row.alive, managed, observed, row.agentType);
+            const bool answer = DeviceController::answer(row.alive, strstr(row.state, "awaiting_") == row.state,
+                s["liveAnswerable"].is<bool>(), s["liveAnswerable"] | false, managed,
+                row.optionCount, row.requestId[0] != 0, !strncmp(row.requestId, "ocperm:", 7));
+            row.controllable = row.alive && (s["controllerInput"].is<bool>() ? s["controllerInput"].as<bool>() : input);
+            row.answerable = row.alive && strstr(row.state, "awaiting_") == row.state
+                && (s["controllerAnswerable"].is<bool>() ? s["controllerAnswerable"].as<bool>() : answer)
+                && strlen(s["question"] | "") <= DeviceController::questionBytes
+                && strlen(s["requestId"] | "") <= DeviceController::requestBytes
+                && s["options"].as<JsonArray>().size() <= SESSION_OPTIONS_CAP
+                && optionLabelsFit && (row.optionCount > 0 || row.requestId[0]);
         }
 #if defined(BOARD_IPS10)
         // sessions_list is a full snapshot: absent/malformed census means
@@ -1623,6 +1644,9 @@ static void sendDeviceInfo() {
     }
 #endif
 }
+
+static_assert(sizeof(SessionOption::label) - 1 == DeviceController::optionLabelBytes, "controller label bound drift");
+static_assert(SESSION_OPTIONS_CAP <= DeviceController::maxOptions, "controller option bound drift");
 
 namespace Protocol {
 

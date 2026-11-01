@@ -1945,7 +1945,7 @@ struct SettingsScreen: View {
             ESP32ProvisionSheet(daemonPort: Int(daemonService.port))
         }
         .sheet(isPresented: $showPixooSheet) {
-            PixooSheet()
+            PixooSheet(connectionURL: { stateHolder.connection.url })
         }
         .sheet(isPresented: $showIDotMatrixSheet) {
             IDotMatrixSheet()
@@ -1988,6 +1988,12 @@ struct SettingsScreen: View {
     /// branches every time we add an integration.
     private var servicesContent: some View {
         VStack(alignment: .leading, spacing: 14) {
+            #if os(macOS)
+            RecoveryFolderView(connectionURL: { stateHolder.connection.url }, restartLocal: {
+                Task { await daemonService.restart() }
+            })
+            if !daemonService.isUsingExternalDaemon { GitHubCISettings(); CalendarSettings(); DaemonRelaySettings() }
+            #endif
             IntegrationsView(
                 anthropicKeySaved: anthropicAdminApiKeySaved,
                 zaiKeySaved: zaiApiKeySaved,
@@ -2063,6 +2069,10 @@ struct SettingsScreen: View {
             EmptyView()
             #endif
         case "antigravity":
+            #if os(macOS)
+            AntigravitySessionSettingsView()
+            Divider()
+            #endif
             antigravityDatabaseSlot
         case "codex":
             codexUsageDirectorySlot
@@ -2070,6 +2080,12 @@ struct SettingsScreen: View {
             openCodeMonitoringSlot
         case "kiro":
             kiroDirectorySlot
+        case "hermes":
+            #if os(macOS)
+            HermesReceiverSettingsView()
+            #else
+            EmptyView()
+            #endif
         default:
             EmptyView()
         }
@@ -2082,6 +2098,7 @@ struct SettingsScreen: View {
     private var openCodeMonitoringSlot: some View {
         #if os(macOS)
         VStack(alignment: .leading, spacing: 6) {
+            OpenCodeObserverSetupView()
             Toggle("Monitor OpenCode server", isOn: $preferences.openCodeMonitoringEnabled)
                 .toggleStyle(.switch)
                 .controlSize(.small)

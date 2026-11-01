@@ -463,4 +463,37 @@ private final class StartupPermission {
     private(set) var allowed = true
     func stop() { allowed = false }
 }
+
+private actor LifecycleProbeCounter {
+    var count = 0
+    func tick() -> Bool { count += 1; return false }
+}
+
+final class LifecycleGatewayProbeTests: XCTestCase {
+    func testDisabledProbeAndStoppedSleepNeverTouchTheGateway() async throws {
+        let counter = LifecycleProbeCounter()
+        let disabled = GatewayProbe(enabled: false, pollInterval: .milliseconds(5), probe: { await counter.tick() })
+        await disabled.start()
+        try await Task.sleep(for: .milliseconds(30))
+        let before = await counter.count
+        XCTAssertEqual(before, 0)
+        let active = GatewayProbe(enabled: true, pollInterval: .milliseconds(100), probe: { await counter.tick() })
+        await active.start()
+        try await Task.sleep(for: .milliseconds(30))
+        await active.stop()
+        try await Task.sleep(for: .milliseconds(150))
+        let after = await counter.count
+        XCTAssertEqual(after, 0, "cancelled sleep must not perform a final probe")
+        await disabled.stop()
+        let enabled = GatewayProbe(enabled: true, pollInterval: .milliseconds(5), probe: { await counter.tick() })
+        await enabled.start()
+        for _ in 0..<100 {
+            if await counter.count > 0 { break }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        await enabled.stop()
+        let observed = await counter.count
+        XCTAssertGreaterThan(observed, 0, "normal enabled probing still runs")
+    }
+}
 #endif

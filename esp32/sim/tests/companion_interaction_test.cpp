@@ -1,11 +1,18 @@
 #include "ui/companion/interaction_state.h"
+#include "state/device_controller_generated.h"
 #include <cassert>
 struct Session {
     char id[32]{}, requestId[40]{}, question[160]{}, promptType[20]{}, state[20]{};
     struct Option { char label[64]{}; unsigned char index{}, recommended{}; } options[6];
     unsigned optionCount{};
+    bool answerable{};
 };
 int main() {
+    assert(!DeviceController::answer(true, true, false, false, false, 0, false, false));
+    assert(!DeviceController::answer(true, true, true, false, false, 2, false, false));
+    assert(DeviceController::answer(true, true, false, false, true, 2, false, false));
+    assert(DeviceController::answer(true, true, true, false, false, 0, true, false));
+    assert(!DeviceController::answer(true, true, true, false, false, 2, true, true));
     Session sessions[3]{};
     for (unsigned i = 0; i < 3; ++i) {
         sessions[i].id[0] = 'a' + i;
@@ -23,6 +30,7 @@ int main() {
     Companion::copy(s.options[0].label, "First");
     Companion::copy(s.options[1].label, "Second"); s.options[1].index = 1;
     Companion::Request<6> displayed; displayed.capture(s); assert(displayed.matches(s));
+    s.answerable = true; assert(!displayed.matches(s)); s.answerable = false;
     s.options[0].index = 2; assert(!displayed.matches(s)); s.options[0].index = 0;
     Companion::copy(s.options[0].label, "Changed"); assert(!displayed.matches(s));
     displayed.capture(s);

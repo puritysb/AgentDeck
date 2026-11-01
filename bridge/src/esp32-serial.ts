@@ -2,6 +2,7 @@ import { backgroundCount } from '@agentdeck/shared';
 import { compactDotSnapshot } from '@agentdeck/shared';
 import { ciWaitPhaseId, type CiWaitStatus } from '@agentdeck/shared';
 import { compactSessionLabels } from './compact-session-labels.js';
+import { compactControllerCapabilities } from '@agentdeck/shared';
 import { compactProjectName } from './utils/project-name.js';
 import { ips10RosterIndices } from './ips10-roster.js';
 /**
@@ -447,7 +448,7 @@ export function stableCardRoster(sessions: any[], cap: number, nowMs = Date.now(
   return picked.sort((a, b) => String(a?.id ?? '').localeCompare(String(b?.id ?? '')));
 }
 
-export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnection, 'deviceInfo'>): BridgeEvent {
+export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnection, 'deviceInfo'>, sessionCap = SERIAL_SESSIONS_CAP): BridgeEvent {
   const e = event as any;
 
   if (event.type === 'usage_update') {
@@ -584,7 +585,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     const labels = compactSessionLabels(raw.filter((s: any) => s?.alive !== false).map((s: any) => ({
       id: s.id, name: compactProjectName(s.projectName ?? '', s.cwd),
     })), _conn?.deviceInfo?.board);
-    const selected = isIps10 ? stableCardRoster(raw, SERIAL_SESSIONS_CAP) : roundRobinByAgentType(raw, SERIAL_SESSIONS_CAP);
+    const selected = isIps10 ? stableCardRoster(raw, sessionCap) : roundRobinByAgentType(raw, sessionCap);
     const prepared = {
       type: 'sessions_list',
       sessions: selected.map((s: any) => ({
@@ -595,6 +596,8 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         state: limitString(s.state, 19),
         port: Number.isFinite(s.port) ? s.port : 0,
         alive: Boolean(s.alive),
+        ...compactControllerCapabilities(s),
+        ...(typeof s.requestId === 'string' && s.requestId ? { requestId: limitString(s.requestId, 39) } : {}),
         // Per-session detail for the IPS10 D1 mosaic (cells show tool/elapsed,
         // and awaiting cells render the real option buttons Claude reported).
         currentTool: limitString(s.currentTool, 39),
@@ -623,6 +626,10 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
         options: sanitizeOptions(s.options),
       })),
     } as BridgeEvent;
+    if (!isIps10 && raw.filter((s: any) => s?.alive !== false).length > selected.length) {
+      (prepared as any).total = raw.filter((s: any) => s?.alive !== false).length;
+      (prepared as any).rosterRotating = false;
+    }
     // Optional read-only census on IPS10 only. Every older/smaller board gets
     // exactly the baseline projection. Preserve the conservative frame budget;
     // omission is explicitly "unknown" on the new firmware, never zero.
@@ -670,6 +677,11 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
       const d = (prepared as any).dot;
       (prepared as any).dot = { configured: true, hosting: d.hosting, code: d.code, validForMs: d.validForMs };
       if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) delete (prepared as any).dot;
+    }
+    if (Buffer.byteLength(JSON.stringify(prepared), 'utf8') > TIMELINE_HISTORY_BYTE_BUDGET) {
+      if (selected.length > 1) return prepareForSerial(event, _conn, selected.length - 1);
+      const row = (prepared as any).sessions[0];
+      if (row) { row.options = []; row.question = ''; row.requestId = ''; row.controllerAnswerable = false; }
     }
     return prepared;
   }

@@ -23,10 +23,12 @@ describe('compact device labels', () => {
     expect(ttgo.sessions.find((s: any) => s.id === 'session-11').displayName).toBe('AgentDeck-lo #12');
     expect(ttgo.sessions.every((s: any) => Buffer.byteLength(s.displayName, 'utf8') < 20)).toBe(true);
   });
-  it('adds no label bytes when the baseline frame already exceeds the budget', () => {
+  it('keeps a metadata-heavy roster bounded and labels only within spare bytes', () => {
     const sessions = Array.from({length: 10}, (_, i) => ({id: String(i), projectName: 'AgentDeck', alive: true, port: 0, question: 'q'.repeat(159), activity: 'a'.repeat(79), lastEventText: 'e'.repeat(99), currentTool: 't'.repeat(39)}));
     const result = prepareForSerial({type: 'sessions_list', sessions}) as any;
-    expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(TIMELINE_HISTORY_BYTE_BUDGET);
-    expect(result.sessions.every((s: any) => !s.displayName)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
+    expect(result.sessions.length).toBeLessThan(sessions.length);
+    expect(result.total).toBe(sessions.length);
+    expect(result.rosterRotating).toBe(false);
   });
 });

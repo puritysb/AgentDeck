@@ -24,6 +24,7 @@
 
 #if os(macOS)
 import Foundation
+import CoreFoundation
 
 /// One persisted pin. Milliseconds since epoch, matching the Node writer.
 struct SessionOrderPin: Codable, Sendable, Equatable {
@@ -57,6 +58,7 @@ enum SessionOrderRules {
     /// `parseSessionOrderWeight` on the Node side, including the string
     /// tolerance for hand-rolled `curl` users.
     static func parseWeight(_ value: Any?) -> Int? {
+        if let value = value as? NSNumber, CFGetTypeID(value) == CFBooleanGetTypeID() { return nil }
         let n: Int
         switch value {
         case let i as Int: n = i
@@ -139,8 +141,8 @@ final class SessionOrderStore {
                 if weight == 0 { continue }
                 pins[ObservedAgentRules.rawSessionId(id)] = SessionOrderPin(
                     weight: weight,
-                    updatedAt: pin.updatedAt > 0 ? pin.updatedAt : nowMs(),
-                    lastSeenAt: pin.lastSeenAt > 0 ? pin.lastSeenAt : nowMs()
+                    updatedAt: pin.updatedAt >= 0 ? pin.updatedAt : nowMs(),
+                    lastSeenAt: pin.lastSeenAt >= 0 ? pin.lastSeenAt : nowMs()
                 )
             }
         }
@@ -157,10 +159,11 @@ final class SessionOrderStore {
     /// own weight get the pin; managed/remote rows and rows that already
     /// carry a weight pass through unchanged (precedence rule in the header).
     func apply(to entry: DaemonSessionEntry) -> DaemonSessionEntry {
-        guard entry.controlMode == "observed", entry.weight == nil else { return entry }
-        guard let weight = pins[ObservedAgentRules.rawSessionId(entry.id)]?.weight else { return entry }
+        guard entry.controlMode == "observed", entry.weight == nil || entry.sessionOrderPinWeight != nil else { return entry }
+        let weight = pins[ObservedAgentRules.rawSessionId(entry.id)]?.weight
         var pinned = entry
         pinned.weight = weight
+        pinned.sessionOrderPinWeight = weight
         return pinned
     }
 
@@ -248,6 +251,17 @@ final class SessionOrderStore {
             }
         }
         return before - pins.count
+    }
+
+    func persistNow() throws {
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder.pretty.encode(SessionOrderDocument(version: 1, pins: pins)).write(to: fileURL, options: .atomic)
+    }
+    func replace(_ rows: [ConfigurationPin]) throws {
+        let prior = pins
+        pins = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, SessionOrderPin(weight: $0.weight, updatedAt: $0.updatedAt, lastSeenAt: $0.lastSeenAt)) })
+        do { try persistNow() } catch { pins = prior; throw error }
+        garbageCollect()
     }
 
     /// Atomic tmp+rename write, best-effort. Node reads this file with a

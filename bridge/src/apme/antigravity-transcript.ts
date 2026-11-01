@@ -19,10 +19,11 @@
 import { readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
+import { ANTIGRAVITY_POLICY } from '../antigravity-policy.generated.js';
 
 export interface AntigravityTranscriptSummary {
   goal?: string;
-  state: 'idle' | 'processing';
+  state: 'idle' | 'processing' | 'unknown';
   currentTask?: string;
   /** Human model label from the transcript's last USER_SETTINGS_CHANGE, if any
    *  (e.g. "GPT-OSS 120B (Medium)", "Gemini 3.5 Flash (Medium)"). */
@@ -39,9 +40,7 @@ interface AgyRecord {
 }
 
 /** Step types that represent the agent doing tool work (drives currentTask). */
-const TOOL_TYPES = new Set([
-  'VIEW_FILE', 'RUN_COMMAND', 'GREP_SEARCH', 'LIST_DIRECTORY', 'CODE_ACTION', 'EDIT_FILE',
-]);
+const TOOL_TYPES = new Set<string>(ANTIGRAVITY_POLICY.toolTypes);
 
 export function antigravityRoot(): string {
   return join(homedir(), '.gemini', 'antigravity-cli');
@@ -52,7 +51,10 @@ export function parseAntigravityTranscript(raw: string): AntigravityTranscriptSu
   const records: AgyRecord[] = [];
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
-    try { records.push(JSON.parse(line) as AgyRecord); } catch { /* skip malformed line */ }
+    try {
+      const value: unknown = JSON.parse(line.trim());
+      if (value && typeof value === 'object' && !Array.isArray(value)) records.push(value as AgyRecord);
+    } catch { /* skip malformed line */ }
   }
 
   let goal: string | undefined;
@@ -79,7 +81,9 @@ export function parseAntigravityTranscript(raw: string): AntigravityTranscriptSu
       if (change && change[1].trim()) model = change[1].trim();
     }
     if (rec.type && TOOL_TYPES.has(rec.type)) {
-      currentTask = rec.tool_calls?.[0]?.name ?? rec.type.toLowerCase();
+      const tools = Array.isArray(rec.tool_calls) && rec.tool_calls.every(item => item && typeof item === 'object' && !Array.isArray(item)) ? rec.tool_calls : undefined;
+      const name = tools?.[0]?.name;
+      currentTask = typeof name === 'string' && name.length > 0 ? name : rec.type.toLowerCase();
     }
     // Records arrive in file order (newest last within the tail), so prefer a
     // higher step_index and otherwise advance on every record so records
@@ -93,11 +97,11 @@ export function parseAntigravityTranscript(raw: string): AntigravityTranscriptSu
   }
 
   const processing = latestStep?.status === 'RUNNING';
-  return { goal, model, currentTask, state: processing ? 'processing' : 'idle' };
+  return { goal, model, currentTask, state: !latestStep ? 'unknown' : processing ? 'processing' : 'idle' };
 }
 
 function cleanGoal(s: string): string {
-  return s.replace(/\s+/g, ' ').trim().slice(0, 200);
+  return Array.from(s.replace(/\s+/g, ' ').trim()).slice(0, ANTIGRAVITY_POLICY.labelCodePoints).join('');
 }
 
 /** Global default model from settings.json (fallback when a conversation never

@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Firmware maintainers
 reviewed: 2026-08-30
-revision: 2026-08-30
+revision: 2026-10-30
 source_of_truth: docs/esp32-client-contract.md
 validators: [bash scripts/sync-xteink-eink-dashboard.sh --check]
 ---
@@ -160,8 +160,8 @@ Pull Sync; server: `bridge/src/card-feed.ts` + the daemon routes. Both Node and 
 Swift in-process daemon implement the portable transport runtime: full identity,
 conditional Feed, Outbox replay, telemetry, product-scoped persistent pull OTA,
 bounded resume, negotiated 206, licensed offline learning-pack delivery, and install acknowledgement. Swift authors a bounded
-THREAD digest plus MET Norway weather; Node additionally owns adaptive personal card
-modules and Glance Frame pixels. Neither daemon grants Inbox.
+THREAD digest plus MET Norway weather, adaptive Pocket cards and Glance Frame
+pixels, all natively. Node retains separate ICS calendar ingestion. Neither daemon grants Inbox.
 Always-powered clients keep using WS; a dual-mode client uses WS while docked
 and pull while on battery.
 
@@ -326,11 +326,17 @@ Card Feed implementation.
   for clients that display rather than lay out (rich typography, vector
   weather icons, dithered fills; ordered dithering keeps the bytes — and the
   sig — deterministic). `?sig=` echo → `304` with no body; `?format=png` →
-  the SAME dithered pixels as a PNG, so a browser preview is byte-for-byte
-  what the panel will hold. Presets: `xteink_x3` 528×792 portrait,
+  the SAME dithered pixels as a PNG; its decoded preview matches the packed
+  panel pixels. Presets: `xteink_x3` 528×792 portrait,
   `xteink_x4`/`trmnl_75` 800×480 landscape; `?w=&h=` overrides. The
   device-side glance renderer stays as the offline fallback. Renderer:
-  `bridge/src/glance-frame.ts` (Node daemon only).
+  [Node renderer](../bridge/src/glance-frame.ts) and
+  [Swift renderer](../apple/AgentDeck/Daemon/Server/GlanceFrame.swift), with a
+  common pinned resvg engine and bundled fonts. Identical input produces
+  identical packed bytes; renderer/font/policy/rotation identity participates
+  in the content signature. The clock stamp alone does not invalidate it. X3
+  response geometry is physical 792×528 after rotation. X4 physical acceptance
+  is deferred to future companion-app integration.
 - **Auth**: same as `/apme` — local connections free, LAN needs the pairing
   token as `?token=`. Devices must already hold it from explicit provisioning;
   unauthenticated `/health`, mDNS, and UDP discovery never expose it.
@@ -379,14 +385,20 @@ carries its own body in `FeedCard.module` (`ModuleCard`) instead of
   `nudge` and `quest` are `day` — answerable offline and queued in the device
   outbox. XTeink owns slot 1 as *Later*; slots 2–4 map to stable choice IDs.
 
-### Autonomous Pocket (Node daemon)
+<a id="autonomous-pocket-node-daemon"></a>
 
-`AutonomousPocketEngine` is the initial authoring and learning loop. It runs in
-the Node daemon only. The Swift in-process daemon's Card Feed route authors a
-deterministic THREAD digest and weather glance, but does not claim to author
-adaptive Pocket cards.
-The engine is injected into the Node feed builder rather than added to the pure
-default module list.
+### Autonomous Pocket (Node and Swift daemons)
+
+Node's `AutonomousPocketEngine` and the native Swift `PocketAutonomy` implement
+the same adaptive authoring and aggregate learning loop over Feed/Outbox.
+Shared policy and cross-daemon vectors gate selection, fingerprints, feedback
+and persistence. The Node engine is injected into the feed builder rather than
+added to the pure default module list; Swift appends adaptive cards alongside
+its existing THREAD digest. Parity assumes the same supplied context: this
+increment does not port Node's ICS calendar provider or add a new quota source.
+See [native software acceptance](appstore-feature-matrix.md#native-pocket-content-acceptance-2026-10-30).
+Current X4 hardware verification remains deferred to future companion-app
+integration; these software checks do not establish current firmware compatibility.
 
 - **Inputs are already-resolved context.** It considers the live session roster
   plus the same `CardFeedGlance` snapshot used by the sleep screen: agenda,
@@ -409,13 +421,15 @@ default module list.
 - **Configuration.** `settings.json` accepts
   `pocketAutonomy: { enabled, maxCards, exploration }`; defaults are enabled,
   two autonomous cards, and exploration `0.65`. `maxCards` is clamped to 1–3
-  by the daemon; the XTeink hand-port deliberately consumes at most two in
+  by the daemon; the legacy XTeink hand-port deliberately consumes at most two in
   addition to `THREAD` for its fixed-memory budget.
 - **Storage and observability.** Node stores the bounded learning state at
   `$AGENTDECK_DATA_DIR/pocket-autonomy.json` or
-  `~/.agentdeck/pocket-autonomy.json`. `/diag` reports aggregate engine status,
-  not authored card copy. A feed exposure is recorded only after a full card
-  response; conditional `unchanged` pulls do not inflate it.
+  `~/.agentdeck/pocket-autonomy.json`. Swift uses `AgentDeckPaths` inside its
+  app container. Node `/diag` and Swift `/devices`'s `card-feed.pocketAutonomy`
+  report aggregate engine status, not authored card copy. A feed exposure is
+  recorded only after a full card response; conditional `unchanged` pulls and
+  OTA-first envelopes do not inflate it.
 
 ## Peripheral primitives (optional, 2026-07-25)
 

@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-10-31T20:14:27.109Z",
+  "finished_at": "2026-10-31T20:15:58.886Z",
+  "duration_ms": 91777,
+  "commit": "3255af58e3719a489b533c55065e3d0f2240d260",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "android",
+      "gate": "android-unit",
+      "name": "Android compile + JUnit + Robolectric",
+      "status": "pass",
+      "duration_ms": 91682
+    }
+  ]
+}

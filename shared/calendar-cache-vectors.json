@@ -1,0 +1,186 @@
+[
+  {
+    "name": "fresh-refilter-stale-expiry-disable",
+    "body": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:private-uid\r\nDTSTART:20260804T001000Z\r\nSUMMARY:Private calendar title\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "steps": [
+      {
+        "delta": 0,
+        "status": "fresh",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "00:10"
+          }
+        ],
+        "stamp": 0,
+        "requests": 1
+      },
+      {
+        "delta": 1200000,
+        "status": "fresh",
+        "events": [],
+        "stamp": 0,
+        "requests": 1
+      },
+      {
+        "delta": 1800000,
+        "fail": true,
+        "status": "stale",
+        "events": [],
+        "stamp": 0,
+        "requests": 2
+      },
+      {
+        "delta": 1801000,
+        "fail": true,
+        "status": "stale",
+        "events": [],
+        "stamp": 0,
+        "requests": 2
+      },
+      {
+        "delta": 21599999,
+        "fail": true,
+        "status": "stale",
+        "events": [],
+        "stamp": 0,
+        "requests": 3
+      },
+      {
+        "delta": 21600000,
+        "fail": true,
+        "status": "unknown",
+        "requests": 3
+      },
+      {
+        "delta": 21600001,
+        "disabled": true,
+        "status": "disabled",
+        "requests": 3
+      }
+    ]
+  },
+  {
+    "name": "source-switch-failure-never-borrows-cache",
+    "body": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:private-uid\r\nDTSTART:20260804T001000Z\r\nSUMMARY:Private calendar title\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "steps": [
+      {
+        "delta": 0,
+        "status": "fresh",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "00:10"
+          }
+        ],
+        "stamp": 0,
+        "requests": 1
+      },
+      {
+        "delta": 1000,
+        "source": "b",
+        "fail": true,
+        "status": "unknown",
+        "requests": 2
+      },
+      {
+        "delta": 2000,
+        "source": "b",
+        "fail": true,
+        "status": "unknown",
+        "requests": 2
+      },
+      {
+        "delta": 62000,
+        "source": "b",
+        "status": "fresh",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "00:10"
+          }
+        ],
+        "stamp": 62000,
+        "requests": 3
+      }
+    ]
+  },
+  {
+    "name": "clock-rollback-is-not-fresh",
+    "body": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:private-uid\r\nDTSTART:20260804T001000Z\r\nSUMMARY:Private calendar title\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "steps": [
+      {
+        "delta": 0,
+        "status": "fresh",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "00:10"
+          }
+        ],
+        "stamp": 0,
+        "requests": 1
+      },
+      {
+        "delta": -1000,
+        "fail": true,
+        "status": "unknown",
+        "requests": 2
+      }
+    ]
+  },
+  {
+    "name": "future-events-survive-stale-with-original-stamp",
+    "body": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:private-uid\r\nDTSTART:20260804T140000Z\r\nSUMMARY:Private calendar title\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1785801600000,
+    "steps": [
+      {
+        "delta": 0,
+        "status": "fresh",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "14:00"
+          }
+        ],
+        "stamp": 0,
+        "requests": 1
+      },
+      {
+        "delta": 1800000,
+        "fail": true,
+        "status": "stale",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "14:00"
+          }
+        ],
+        "stamp": 0,
+        "requests": 2
+      },
+      {
+        "delta": 21599999,
+        "fail": true,
+        "status": "stale",
+        "events": [
+          {
+            "title": "Private calendar title",
+            "startHm": "14:00"
+          }
+        ],
+        "stamp": 0,
+        "requests": 3
+      },
+      {
+        "delta": 21600000,
+        "fail": true,
+        "status": "unknown",
+        "requests": 3
+      }
+    ]
+  }
+]

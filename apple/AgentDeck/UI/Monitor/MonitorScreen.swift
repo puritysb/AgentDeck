@@ -804,9 +804,6 @@ private struct KeyboardShortcutsModifier: ViewModifier {
     private func handleCommandKey(_ key: KeyEquivalent) -> KeyPress.Result {
         // Non-awaiting shortcuts: always live regardless of prompt state.
         switch key {
-        case .return:
-            stateHolder.sendCommand(.respond(value: "go on"))
-            return .handled
         case KeyEquivalent("."):
             stateHolder.sendCommand(.interrupt)
             return .handled

@@ -5,7 +5,15 @@
 import Foundation
 
 struct DaemonTimelineEntry: Codable, Sendable {
-    let ts: Double  // milliseconds
+    /// One precision for local storage, handover identity and public wire rows.
+    /// Keep the guarded conversion shared with DaemonServer's wire facade.
+    static func wireEpochMs(_ value: Double) -> Int {
+        guard value.isFinite else { return 0 }
+        let rounded = value.rounded()
+        guard rounded >= Double(Int.min), rounded <= Double(Int.max) else { return 0 }
+        return Int(rounded)
+    }
+    var ts: Double  // milliseconds; normalized to the wire integer before storage
     let type: String
     var raw: String
     var detail: String?
@@ -494,6 +502,14 @@ actor DaemonTimelineStore {
     }
 
     static func normalizeForStorage(_ entry: DaemonTimelineEntry) -> DaemonTimelineEntry? {
+        // The wire snapshot uses integral milliseconds. Persisting Date's
+        // fractional value made the returning Node snapshot look like a second
+        // event when merging it with this daemon's own pre-yield history.
+        // Normalize legacy disk rows too, before boundedHistory builds its key.
+        var entry = entry
+        entry.ts = Double(DaemonTimelineEntry.wireEpochMs(entry.ts))
+        if let value = entry.startedAt { entry.startedAt = Double(DaemonTimelineEntry.wireEpochMs(value)) }
+        if let value = entry.endedAt { entry.endedAt = Double(DaemonTimelineEntry.wireEpochMs(value)) }
         // Claude's per-tool hook rows are opt-in (`timeline.tool-events.read`),
         // and only the Node daemon produces or serves them. They reach this
         // store only by rehydrating a timeline.json the Node daemon wrote (an

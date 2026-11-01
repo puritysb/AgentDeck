@@ -111,6 +111,17 @@ sealed class AgentCommand {
         }
     }
 
+    data class DaemonCheckpointAck(val checkpointId: String) : AgentCommand() {
+        override val typeTag: String = "daemon_checkpoint_ack"
+        override fun toJson(): String {
+            val buf = StringBuilder()
+            buf.append("{\"type\":\"daemon_checkpoint_ack\"")
+            buf.append(",\"checkpointId\":").append(encode(checkpointId))
+            buf.append("}")
+            return buf.toString()
+        }
+    }
+
     data class QuerySessionTimeline(val sessionId: String) : AgentCommand() {
         override val typeTag: String = "query_session_timeline"
         override fun toJson(): String {

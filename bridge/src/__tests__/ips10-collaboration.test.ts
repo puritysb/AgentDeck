@@ -38,13 +38,14 @@ describe('IPS10 additive collaboration census', () => {
     const out = prepareForSerial(input, { deviceInfo: { board: 'ips_10' } }) as any;
     const baseline = prepareForSerial(input) as any;
     expect(Buffer.byteLength(JSON.stringify(baseline))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
-    // Optional compact labels spend only spare bytes; IPS10's roster flag can
-    // leave less room than another board. Essential rows remain identical.
-    const essentials = (e: any) => ({ ...e, sessions: e.sessions.map(({ displayName: _label, ...row }: any) => row) });
-    expect(essentials(out)).toEqual({ ...essentials(baseline), rosterRotating: false });
+    expect(out.total).toBe(10);
+    expect(out.rosterRotating).toBe(true);
+    expect(out.sessions.length).toBeGreaterThan(0);
+    expect(out.sessions.length).toBeLessThan(10);
+    expect(out.sessions.every((s: any) => s.controllerAnswerable === false)).toBe(true);
     expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
     expect(out.sessions.every((s: any) => s.subagents === undefined)).toBe(true);
-    expect(out.sessions).toHaveLength(10);
+    expect(out.sessions.length).toBeLessThan(10);
   });
 });
 
@@ -77,7 +78,7 @@ describe('IPS10 stable card roster', () => {
     expect(out.total).toBe(12);
     expect(out.sessions[0].coordination).toEqual({ backgroundJobs: 1, spawnedActive: 2 });
     const other = prepareForSerial({ type: 'sessions_list', sessions: many } as any, { deviceInfo: { board: '86box' } }) as any;
-    expect(other.total).toBeUndefined();
+    expect(other.total).toBe(12); // Every truncated roster states its scope.
     expect(other.sessions.every((s: any) => s.coordination === undefined)).toBe(true);
   });
 });

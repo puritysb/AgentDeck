@@ -20,6 +20,7 @@ settings:
     AGENTDECK_CLOUDKIT_CONDITION: ""
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.9.5"
+    SWIFT_INCLUDE_PATHS: "$(inherited) $(PROJECT_DIR)/../shared/glance-raster/include"
     CURRENT_PROJECT_VERSION: 5
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     # Dot is an explicitly selected development feature, never a runtime switch.
@@ -50,6 +51,7 @@ targets:
         excludes:
           - Resources/Info.plist
           - Resources/Info-macOS.plist
+          - Resources/OpenCodeObserver.json
       - path: ../generated/protocol/AgentCommand.swift
         group: AgentDeck/Generated
     settings:
@@ -90,9 +92,27 @@ targets:
         group: AgentDeck/Generated
       - path: ../generated/protocol/GatewayFrame.swift
         group: AgentDeck/Generated
+      - path: ../bridge/assets/fonts/IBMPlexSans-Regular.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/IBMPlexSans-Bold.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/JetBrainsMono-Regular.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/JetBrainsMono-Bold.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/IBMPlexSansKR-Regular.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/IBMPlexSansKR-Bold.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/IBMPlexSansJP-Regular.ttf
+        buildPhase: resources
+      - path: ../bridge/assets/fonts/IBMPlexSansJP-Bold.ttf
+        buildPhase: resources
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: AgentDeck/Resources/AgentDeck.entitlements
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(BUILT_PRODUCTS_DIR)"
+        OTHER_LDFLAGS: "$(inherited) -lagentdeck_glance_raster -liconv -framework Security"
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
         INFOPLIST_FILE: AgentDeck/Resources/Info-macOS.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
@@ -123,6 +143,10 @@ targets:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: AgentDeck Dashboard macOS AppStore
+    preBuildScripts:
+      - name: "Build Glance static rasterizer"
+        script: '"${PROJECT_DIR}/scripts/build-glance-raster.sh"'
+        basedOnDependencyAnalysis: false
     postCompileScripts:
       - name: "App Store Helper Guard"
         script: |

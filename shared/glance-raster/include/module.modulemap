@@ -1,0 +1,4 @@
+module CGlanceRaster {
+    header "glance-raster.h"
+    export *
+}

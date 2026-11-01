@@ -333,6 +333,8 @@ export interface SessionDisplayInfo {
 }
 
 /**
+ * Legacy TUI-only ordinal labels, NOT the SessionInfo.displayName producer.
+ * Decks use session-labels.ts; never copy these #N strings onto roster rows.
  * Assign display names with #N suffixes for duplicate (projectName, agentType) tuples.
  * Input is NOT mutated. Returns new display info objects.
  *

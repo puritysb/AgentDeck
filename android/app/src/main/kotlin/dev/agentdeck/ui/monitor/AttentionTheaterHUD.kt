@@ -296,6 +296,7 @@ data class AttentionFeatured(
     val cursorIndex: Int = 0,
     val navigable: Boolean = false,
     val actionable: Boolean = true,
+    val permissionRequestId: String? = null,
 )
 
 @Composable
@@ -393,8 +394,8 @@ private fun TheaterListRow(
  * Build the `AttentionFeatured` payload from a tablet SessionInfo + the
  * current DashboardState's prompt fields. Only the focused session has
  * live `options`/`question`/`cursorIndex`, so non-focused sessions
- * surface with an empty option set and the fallback yes/no/always trio
- * takes over in the card.
+ * surface with an empty option set unless a native held permission request
+ * supplies its own explicit Allow once/Deny semantics.
  */
 fun buildAttentionFeatured(
     session: SessionInfo,
@@ -427,7 +428,9 @@ fun buildAttentionFeatured(
         modelName = session.modelName,
         question = question,
         subtitle = parts.joinToString(" · "),
-        options = options,
+        options = if (!session.requestId.isNullOrBlank()) dev.agentdeck.state.DeviceControllerRules.permissionChoices.map {
+            PromptOption(label = it.label, index = it.index)
+        } else options,
         promptType = promptType,
         cursorIndex = cursorIndex,
         navigable = navigable,
@@ -438,7 +441,9 @@ fun buildAttentionFeatured(
         // both directions: it refused answerable sessions on a CLI daemon, and
         // it would now refuse the ask-gate too. Absent flag ⇒ not actionable,
         // never a live-looking button that goes nowhere.
-        actionable = session.controlMode != "observed" || session.liveAnswerable == true,
+        actionable = if (!session.requestId.isNullOrBlank()) dev.agentdeck.state.DeviceControllerRules.heldReplyable(session.requestId, session.liveAnswerable)
+            else session.controlMode != "observed" || session.liveAnswerable == true,
+        permissionRequestId = session.requestId?.takeIf { it.isNotBlank() },
     )
 }
 

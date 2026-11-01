@@ -1,0 +1,196 @@
+{
+  "revision": "resvg-js-2.6.2-3495d870-v1",
+  "boards": {
+    "xteink_x3": {
+      "width": 528,
+      "height": 792,
+      "landscape": false,
+      "rotateToPhysical": true
+    },
+    "xteink_x4": {
+      "width": 800,
+      "height": 480,
+      "landscape": true
+    },
+    "trmnl_75": {
+      "width": 800,
+      "height": 480,
+      "landscape": true
+    },
+    "nm_epd_420": {
+      "width": 400,
+      "height": 300,
+      "landscape": true
+    },
+    "lilygo_epd47": {
+      "width": 960,
+      "height": 540,
+      "landscape": true
+    }
+  },
+  "bayer": [
+    [
+      8,
+      135,
+      40,
+      167
+    ],
+    [
+      199,
+      72,
+      231,
+      104
+    ],
+    [
+      56,
+      183,
+      24,
+      151
+    ],
+    [
+      247,
+      120,
+      215,
+      88
+    ]
+  ],
+  "fonts": [
+    "IBMPlexSans-Regular.ttf",
+    "IBMPlexSans-Bold.ttf",
+    "JetBrainsMono-Regular.ttf",
+    "JetBrainsMono-Bold.ttf",
+    "IBMPlexSansKR-Regular.ttf",
+    "IBMPlexSansKR-Bold.ttf",
+    "IBMPlexSansJP-Regular.ttf",
+    "IBMPlexSansJP-Bold.ttf"
+  ],
+  "layout": {
+    "margin": 36,
+    "columnGap": 40,
+    "sectionSize": 17,
+    "sectionSpacing": 3,
+    "sectionRuleOffset": 10,
+    "ruleWidth": 2,
+    "quotaNameOffset": 20,
+    "quotaNameSize": 22,
+    "barOffset": 118,
+    "barHeight": 18,
+    "barTagGap": 8,
+    "barTagBaseline": 3,
+    "barTagSize": 15,
+    "barInset": 2,
+    "barLabelInset": 6,
+    "barLabelBaseline": 4,
+    "barLabelSize": 14,
+    "barLabelRoom": 90,
+    "primaryBarOffset": 4,
+    "secondaryBarOffset": 30,
+    "quotaHeight": 62,
+    "quotaGap": 8,
+    "iconSize": 96,
+    "iconTextGap": 26,
+    "temperatureOffset": 78,
+    "temperatureSize": 88,
+    "summaryOffset": 34,
+    "summarySize": 26,
+    "rangeOffset": 66,
+    "rangeSize": 21,
+    "weatherHeight": 112,
+    "rainBaseline": 8,
+    "rainSize": 22,
+    "weatherLineHeight": 34,
+    "tomorrowBaseline": 6,
+    "tomorrowSize": 19,
+    "tomorrowRuleOffset": 16,
+    "tomorrowRuleHeight": 4,
+    "mastheadY": 46,
+    "mastheadSize": 24,
+    "mastheadSpacing": 1,
+    "mastheadRightSize": 19,
+    "mastheadRuleY": 62,
+    "mastheadRuleWidth": 3,
+    "startY": 96,
+    "weatherGap": 18,
+    "eventHeadingGap": 34,
+    "bodySize": 20,
+    "lineHeight": 32,
+    "sectionGap": 10,
+    "quotaHeadingGap": 26,
+    "workHeadingGap": 34,
+    "emptyWorkHeight": 30,
+    "workClipTop": 30,
+    "workClipBottom": 30,
+    "workFooterRoom": 60,
+    "bulletX": 5,
+    "bulletY": 6,
+    "bulletRadius": 4,
+    "workTextInset": 20,
+    "footerRuleY": 44,
+    "footerTextY": 18,
+    "footerSize": 17,
+    "footerSpacing": 2,
+    "cjkThreshold": 11904,
+    "spaceEm": 0.33,
+    "narrowEm": 0.28,
+    "wideEm": 0.82,
+    "normalEm": 0.56
+  },
+  "icons": [
+    {
+      "key": "sun",
+      "eq": [
+        0
+      ]
+    },
+    {
+      "key": "partly",
+      "lte": 2
+    },
+    {
+      "key": "cloud",
+      "eq": [
+        3
+      ]
+    },
+    {
+      "key": "fog",
+      "eq": [
+        45,
+        48
+      ]
+    },
+    {
+      "key": "rain",
+      "ranges": [
+        [
+          51,
+          67
+        ],
+        [
+          80,
+          82
+        ]
+      ]
+    },
+    {
+      "key": "snow",
+      "ranges": [
+        [
+          71,
+          77
+        ]
+      ],
+      "eq": [
+        85,
+        86
+      ]
+    },
+    {
+      "key": "storm",
+      "gte": 95
+    }
+  ],
+  "sans": "IBM Plex Sans, IBM Plex Sans KR, IBM Plex Sans JP",
+  "mono": "JetBrains Mono, IBM Plex Sans KR, IBM Plex Sans JP",
+  "gray": "#808080"
+}
