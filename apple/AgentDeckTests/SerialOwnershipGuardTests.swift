@@ -88,4 +88,30 @@ final class SerialOwnershipGuardTests: XCTestCase {
         XCTAssertFalse(wasAgain)
     }
 }
+
+/// The USB vendor gate in front of port detection: a CDC-ACM port the name
+/// patterns accept is still never opened when its vendor is known and not an
+/// ESP32 serial bridge (an LG monitor's "USB Controls" reset its display link
+/// on AgentDeck JSON). Mirror of the Node `ESP32 serial USB vendor gate` suite.
+final class ESP32SerialVendorGateTests: XCTestCase {
+    func testESP32SerialBridgesAreAllowed() {
+        for vendorID in [0x303A, 0x1A86, 0x10C4] {
+            XCTAssertTrue(ESP32Serial.esp32USBVendorIDs.contains(vendorID))
+            XCTAssertTrue(ESP32Serial.isAllowedSerialVendor(vendorID))
+        }
+    }
+
+    func testForeignVendorIsRejected() {
+        XCTAssertFalse(ESP32Serial.isAllowedSerialVendor(0x043E))  // LG Electronics
+        XCTAssertFalse(ESP32Serial.isAllowedSerialVendor(0x05AC))  // Apple
+    }
+
+    func testUnresolvedVendorKeepsPatternOnlyBehavior() {
+        XCTAssertTrue(ESP32Serial.isAllowedSerialVendor(nil))
+    }
+
+    func testVendorSetMatchesNodeDaemon() {
+        XCTAssertEqual(ESP32Serial.esp32USBVendorIDs, [0x303A, 0x1A86, 0x10C4])
+    }
+}
 #endif

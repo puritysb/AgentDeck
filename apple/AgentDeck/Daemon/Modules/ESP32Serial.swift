@@ -4,6 +4,8 @@
 
 import Foundation
 import Darwin
+import IOKit
+import IOKit.serial
 
 /// Thread-safe token to signal read threads to stop.
 /// Shared between actor (invalidate) and read dispatch queue (check).
@@ -45,6 +47,22 @@ actor ESP32Serial {
         }
     }()
     private static let excludePatterns = ["Bluetooth", "WLAN"]
+
+    /// USB vendor IDs of the serial bridges AgentDeck boards use: Espressif
+    /// native USB (0x303A), WCH CH340/CH9102 (0x1A86), Silicon Labs CP210x
+    /// (0x10C4). macOS names every CDC-ACM device `cu.usbmodem…`, so the
+    /// patterns above also match third-party hardware — an LG monitor's "USB
+    /// Controls" interface (0x043E, `cu.usbmodem807NT…`) resets its
+    /// USB-C/DisplayPort link after a few KB of JSON, re-enumerates and is
+    /// reopened on the next poll. A port whose vendor is known and not listed
+    /// is never opened; an unresolved vendor keeps the pattern-only behavior.
+    /// Mirror of Node `ESP32_USB_VENDOR_IDS`.
+    static let esp32USBVendorIDs: Set<Int> = [0x303A, 0x1A86, 0x10C4]
+
+    static func isAllowedSerialVendor(_ vendorID: Int?) -> Bool {
+        guard let vendorID else { return true }
+        return esp32USBVendorIDs.contains(vendorID)
+    }
 
     struct SerialConnection: Identifiable {
         let id = UUID()
@@ -296,6 +314,8 @@ actor ESP32Serial {
     /// a dead module that nobody will ever stop again (each daemon restart cycle
     /// stranded another generation of readers holding the port's FD).
     private var isStopped = false
+    /// Ports skipped for a foreign USB vendor, so each is logged once.
+    private var skippedForeignPorts: Set<String> = []
 
     // MARK: - Sibling ownership guard (#327)
     //
@@ -964,7 +984,7 @@ actor ESP32Serial {
         guard let entries = try? fm.contentsOfDirectory(atPath: "/dev") else {
             return []
         }
-        return entries
+        let candidates = entries
             .filter { $0.hasPrefix("cu.") }
             .map { "/dev/\($0)" }
             .filter { port in
@@ -972,11 +992,56 @@ actor ESP32Serial {
                 let range = NSRange(port.startIndex..., in: port)
                 return Self.portPatterns.contains { $0.firstMatch(in: port, range: range) != nil }
             }
+        guard !candidates.isEmpty else { return [] }
+
+        // Never open a port whose USB vendor is known to be something else.
+        let vendors = Self.serialVendorsByPort()
+        return candidates
+            .filter { port in
+                let vendorID = vendors[port]
+                if Self.isAllowedSerialVendor(vendorID) {
+                    skippedForeignPorts.remove(port)
+                    return true
+                }
+                if skippedForeignPorts.insert(port).inserted {
+                    DaemonLogger.shared.info(
+                        "ESP32 serial \(port) skipped: USB vendor \(String(format: "0x%04x", vendorID ?? 0)) is not an ESP32 serial bridge"
+                    )
+                }
+                return false
+            }
             .sorted { a, b in
                 let ap = Self.portPriority(a)
                 let bp = Self.portPriority(b)
                 return ap == bp ? a < b : ap < bp
             }
+    }
+
+    /// Callout path → `idVendor` of the nearest USB ancestor, read from the
+    /// I/O Registry (no subprocess, App Store safe).
+    private static func serialVendorsByPort() -> [String: Int] {
+        var iterator: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(
+            kIOMainPortDefault, IOServiceMatching(kIOSerialBSDServiceValue), &iterator
+        ) == KERN_SUCCESS else { return [:] }
+        defer { IOObjectRelease(iterator) }
+
+        var vendors: [String: Int] = [:]
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            if let path = IORegistryEntryCreateCFProperty(
+                service, kIOCalloutDeviceKey as CFString, kCFAllocatorDefault, 0
+            )?.takeRetainedValue() as? String,
+               let vendorID = IORegistryEntrySearchCFProperty(
+                service, kIOServicePlane, "idVendor" as CFString, kCFAllocatorDefault,
+                IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)
+               ) as? Int {
+                vendors[path] = vendorID
+            }
+            IOObjectRelease(service)
+            service = IOIteratorNext(iterator)
+        }
+        return vendors
     }
 
     private static func portPriority(_ port: String) -> Int {

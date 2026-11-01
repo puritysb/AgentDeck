@@ -27,6 +27,9 @@ import {
   isRetryableSerialIoError,
   ESP32_PORT_PATTERNS,
   EXCLUDE_PATTERNS,
+  ESP32_USB_VENDOR_IDS,
+  isAllowedSerialVendor,
+  parseIoregSerialVendors,
   isUnidentifiedForeign,
   isHalfOpenIdentifiedCdc,
   isSilentIdentifiedUart,
@@ -148,6 +151,83 @@ describe('ESP32 port detection patterns', () => {
   it('excludes non-ESP32 ports', () => {
     expect(matchesESP32('/dev/cu.serial')).toBe(false);
     expect(matchesESP32('/dev/tty.usbserial-1')).toBe(false);
+  });
+});
+
+// ─── USB vendor gate ─────────────────────────────────────────────────
+
+describe('ESP32 serial USB vendor gate', () => {
+  // Trimmed from `ioreg -r -c IOUSBHostDevice -l -w0` on macOS: an LG monitor's
+  // "USB Controls" CDC interface, a CH340 behind a Genesys hub, and an
+  // Espressif native-USB board.
+  const IOREG = [
+    '+-o USB Controls@01140000  <class IOUSBHostDevice, id 0x10005cc70, registered, matched, active>',
+    '  | {',
+    '  |   "idVendor" = 1086',
+    '  |   "idProduct" = 39481',
+    '  | }',
+    '  | ',
+    '  +-o AppleUSBACMData  <class AppleUSBACMData, id 0x10005cc87, registered, matched, active>',
+    '    | {',
+    '    |   "idVendor" = 1086',
+    '    | }',
+    '    | ',
+    '    +-o IOSerialBSDClient  <class IOSerialBSDClient, id 0x10005cc98, registered, matched, active>',
+    '        {',
+    '          "IOCalloutDevice" = "/dev/cu.usbmodem807NTAB1C2D31"',
+    '        }',
+    '        ',
+    '+-o USB2.0 Hub@01100000  <class IOUSBHostDevice, id 0x100001234, registered, matched, active>',
+    '  | {',
+    '  |   "idVendor" = 1507',
+    '  | }',
+    '  | ',
+    '  +-o USB Serial@01110000  <class IOUSBHostDevice, id 0x100001235, registered, matched, active>',
+    '    | {',
+    '    |   "idVendor" = 6790',
+    '    | }',
+    '    | ',
+    '    +-o IOSerialBSDClient  <class IOSerialBSDClient, id 0x100001236, registered, matched, active>',
+    '        {',
+    '          "IOCalloutDevice" = "/dev/cu.wchusbserial1110"',
+    '        }',
+    '        ',
+    '+-o USB JTAG/serial debug unit@02100000  <class IOUSBHostDevice, id 0x100002000, registered, matched, active>',
+    '  | {',
+    '  |   "idVendor" = 12346',
+    '  | }',
+    '  | ',
+    '  +-o IOSerialBSDClient  <class IOSerialBSDClient, id 0x100002001, registered, matched, active>',
+    '      {',
+    '        "IOCalloutDevice" = "/dev/cu.usbmodem2101"',
+    '      }',
+  ].join('\n');
+
+  it('maps each callout device to its nearest USB vendor', () => {
+    const vendors = parseIoregSerialVendors(IOREG);
+    expect(vendors.get('/dev/cu.usbmodem807NTAB1C2D31')).toBe(0x043e);
+    expect(vendors.get('/dev/cu.wchusbserial1110')).toBe(0x1a86);
+    expect(vendors.get('/dev/cu.usbmodem2101')).toBe(0x303a);
+    expect(vendors.size).toBe(3);
+  });
+
+  it('allows the ESP32 serial bridges and an unresolved vendor', () => {
+    for (const vendorId of [0x303a, 0x1a86, 0x10c4]) {
+      expect(ESP32_USB_VENDOR_IDS.has(vendorId)).toBe(true);
+      expect(isAllowedSerialVendor(vendorId)).toBe(true);
+    }
+    expect(isAllowedSerialVendor(undefined)).toBe(true);
+  });
+
+  it('rejects a CDC port the name patterns accept but whose vendor is not an ESP32 bridge', () => {
+    const port = '/dev/cu.usbmodem807NTAB1C2D31';
+    expect(ESP32_PORT_PATTERNS.some(p => p.test(port))).toBe(true);
+    expect(isAllowedSerialVendor(parseIoregSerialVendors(IOREG).get(port))).toBe(false);
+  });
+
+  it('returns an empty map for empty or unrelated output', () => {
+    expect(parseIoregSerialVendors('').size).toBe(0);
+    expect(parseIoregSerialVendors('+-o Root  <class IORegistryEntry>\n  "idVendor" = 1086').size).toBe(0);
   });
 });
 

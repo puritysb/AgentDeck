@@ -65,6 +65,69 @@ export const EXCLUDE_PATTERNS = [
   /WLAN/i,
 ];
 
+/**
+ * USB vendor IDs of the serial bridges AgentDeck boards use: Espressif native
+ * USB (0x303a), WCH CH340/CH9102 (0x1a86) and Silicon Labs CP210x (0x10c4).
+ *
+ * macOS names every CDC-ACM device `cu.usbmodem…`, so the port patterns above
+ * also match third-party hardware. An LG monitor's "USB Controls" interface
+ * (0x043e, `cu.usbmodem807NT…`) resets its USB-C/DisplayPort link after a few
+ * KB of AgentDeck JSON, re-enumerates, and is reopened on the next poll — a
+ * blackout loop the foreign-port denylist never catches because the device
+ * resets before the first identification cycle ends. A port whose vendor is
+ * known and not listed here is never opened. A port whose vendor cannot be
+ * resolved keeps the pattern-only behavior. Mirror of Swift
+ * ESP32Serial.esp32USBVendorIDs.
+ * @internal Exported for testing only
+ */
+export const ESP32_USB_VENDOR_IDS: ReadonlySet<number> = new Set([0x303a, 0x1a86, 0x10c4]);
+
+/** @internal Exported for testing only */
+export function isAllowedSerialVendor(vendorId: number | undefined): boolean {
+  return vendorId === undefined || ESP32_USB_VENDOR_IDS.has(vendorId);
+}
+
+/**
+ * Map each callout device in `ioreg -r -c IOUSBHostDevice -l -w0` output to the
+ * `idVendor` of its nearest enclosing USB device (a CH340 behind a hub belongs
+ * to the CH340, not the hub).
+ * @internal Exported for testing only
+ */
+export function parseIoregSerialVendors(output: string): Map<string, number> {
+  const vendors = new Map<string, number>();
+  const stack: { column: number; vendorId?: number }[] = [];
+  for (const line of output.split('\n')) {
+    const node = line.indexOf('+-o ');
+    if (node >= 0) {
+      while (stack.length > 0 && stack[stack.length - 1].column >= node) stack.pop();
+      stack.push({ column: node });
+      continue;
+    }
+    const vendor = /"idVendor" = (\d+)/.exec(line);
+    if (vendor && stack.length > 0) {
+      stack[stack.length - 1].vendorId = Number(vendor[1]);
+      continue;
+    }
+    const callout = /"IOCalloutDevice" = "([^"]+)"/.exec(line);
+    if (callout) {
+      const owner = [...stack].reverse().find(entry => entry.vendorId !== undefined);
+      if (owner?.vendorId !== undefined) vendors.set(callout[1], owner.vendorId);
+    }
+  }
+  return vendors;
+}
+
+const skippedForeignPorts = new Set<string>();
+
+async function serialVendorsByPort(): Promise<Map<string, number>> {
+  if (process.platform !== 'darwin') return new Map();
+  try {
+    return parseIoregSerialVendors(await execWithKill('ioreg -r -c IOUSBHostDevice -l -w0'));
+  } catch {
+    return new Map();
+  }
+}
+
 /** No-traffic threshold. ESP32 firmware should answer device_info/heartbeat JSON. */
 const STALE_THRESHOLD_MS = 60000; // 60 seconds
 const INITIAL_READ_TIMEOUT_MS = 20000;
@@ -860,9 +923,25 @@ async function detectESP32Ports(): Promise<string[]> {
     const ports = output.trim().split('\n').filter(Boolean);
 
     // Filter to ESP32 patterns, exclude known non-ESP32
-    return ports.filter(port => {
+    const candidates = ports.filter(port => {
       if (EXCLUDE_PATTERNS.some(p => p.test(port))) return false;
       return ESP32_PORT_PATTERNS.some(p => p.test(port));
+    });
+    if (candidates.length === 0) return [];
+
+    // Never open a port whose USB vendor is known to be something else.
+    const vendors = await serialVendorsByPort();
+    return candidates.filter(port => {
+      const vendorId = vendors.get(port);
+      if (isAllowedSerialVendor(vendorId)) {
+        skippedForeignPorts.delete(port);
+        return true;
+      }
+      if (!skippedForeignPorts.has(port)) {
+        skippedForeignPorts.add(port);
+        log(`ESP32 serial ${port} skipped: USB vendor 0x${vendorId!.toString(16).padStart(4, '0')} is not an ESP32 serial bridge`);
+      }
+      return false;
     }).sort(compareSerialPorts);
   } catch (err) {
     lastErrorByPort.set('detect', `port detection failed: ${err instanceof Error ? err.message : String(err)}`);
