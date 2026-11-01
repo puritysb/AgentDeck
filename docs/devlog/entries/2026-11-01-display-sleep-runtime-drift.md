@@ -98,3 +98,14 @@ each alternate owner configuration remains separate from these wire receipts.
 Quick passed 7,188 tests (17 skipped); macOS XCTest passed 1,476 tests (five
 skipped). The scoped pre-release receipt records only the local arm64 macOS
 Release/Dot-exclusion build, not a universal archive or all-platform release.
+
+### Installed follow-up
+
+The earlier no-restart boundary above is superseded by the operator's explicit
+approval for one shared restart and temporary target-device reconnection.
+[Current runtime acceptance](docs/devlog/entries/2026-11-01-display-wake-runtime-acceptance.md)
+records the additional presence-cache/recovery fixes, all three real-device
+configurations and the actual installed 1.9.5 Dot Preview app/Node update. Its
+preservation checks compare all 200 original timeline objects, not nonexistent
+row IDs. A later host idle sleep correctly reapplies dimming; original presets
+were compared under a temporary awake assertion, without changing power settings.

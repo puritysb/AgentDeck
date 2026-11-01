@@ -332,28 +332,38 @@ Actual machine sleep requires a dedicated second Mac. The user deferred full
 sleep/wake acceptance after the first sleep request; no actual wake/restoration
 pass is claimed. Suspending the shared host remains outside this verification.
 
-Display-only sleep is a separate accepted check (2026-11-01): a freshly built
-Release derivative, signed with Developer ID and Sandbox enabled, ran on private
-19450–19459 ports alongside the unchanged shared daemon. Independent CoreGraphics
-timestamps and asynchronous command execution measured these actual edge-to-wire
-delays; the clients were isolated protocol consumers, not redirected hardware.
+Display-only sleep is separately accepted (2026-11-01). After initial wire-only
+checks, a current 1.9.5 Dot Preview Release derivative, signed with Developer ID
+and Sandbox enabled, served real Pantone and Lenovo clients on private ports.
+Only those clients' USB reverse tunnels were temporarily redirected; the shared
+daemon continued serving the other devices. Independent CG timestamps measured
+these observed off/on delays in milliseconds:
 
-| Configuration | Display-off delivery | Display-on delivery |
+| Isolated configuration | Pantone LED power off/on | Lenovo brightness off/on |
 | --- | ---: | ---: |
-| Swift only | 10ms | 381ms |
-| Node only | 2ms | 2ms |
-| Node owner + Swift client | 85ms | 45ms |
+| Swift only | 440 / 847 | 245 / 663 |
+| Node only | 239 / 841 | 237 / 848 |
+| Node owner + Swift client | 398 / 1,001 | 241 / 1,055 |
 
 Swift now observes workspace display notifications, with a 2s repair poll;
-Node samples CoreGraphics every 250ms. The 15s wire repair is retained. Initial
-sampling follows callback registration, and retired Node helper output cannot
-publish into a new lifecycle. These receipts do not accept full machine sleep,
-physical writer handover, or delivery to the installed shared runtime.
-The unchanged shared Node/Pantone path separately measured approximately 149ms
-to LED off and 1,628ms to LED on after observed Mac transitions. The earlier
-ten-second delay was not reproduced and lacked a paired Mac transition timestamp;
-it is not attributed to the 15s repair cadence. Applying the new sampling interval
-to the shared Node process still requires a normal restart.
+Node samples CG every 250ms and briefly rechecks independently observed presence
+after wake. Observed locks remain authoritative; slow power probes do not block
+completed presence observations. The 15s wire repair remains. Initial sampling
+follows callback registration, retired helper output is fenced, and display wake
+does not reset live transports. Actual system resume still owns device recovery.
+
+The actual development installation was then updated, preserving its current
+1.9.5 Dot Preview UI, signing identity and entitlements. One supported shared
+restart applied Node build `2e74dc230e94`. In that installed combined environment,
+Pantone off/on measured 314/1,466ms, Lenovo brightness 379/1,486ms and Pixoo
+brightness 547/1,514ms. Settings, token, all 11 serial connections, original
+lighting presets, USB mappings and all 200 captured timeline rows were preserved.
+See [runtime acceptance](devlog/entries/2026-11-01-display-wake-runtime-acceptance.md).
+This receipt concerns the display fix, not delivery of every unmerged audit
+capability. Full machine sleep, physical producer handover and optical LCD
+power-off are not established by these display-only/readback measurements.
+The earlier ten-second observation lacked a paired Mac transition timestamp and
+was not reproduced; it is not attributed to the 15s repair cadence.
 
 [DaemonService](../apple/AgentDeck/Daemon/DaemonService.swift) implements attach,
 yield, bounded teardown and promotion; [Node takeover](../bridge/src/daemon-takeover.ts)
