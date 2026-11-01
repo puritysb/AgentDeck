@@ -4,6 +4,26 @@ import CloudKit
 @testable import AgentDeck
 
 final class CloudKitProbeTests: XCTestCase {
+    @MainActor
+    func testUnknownAccountStateRetainsDiskReaderButConfirmedLogoutClearsIt() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = RemoteReaderCache(disk: RemoteProbeDisk(directory: directory))
+        let summary = RemoteRosterSummary(schemaVersion: 1, observedAt: Date(), workingCount: 2, waitingCount: 1)
+        for status in [CKAccountStatus.couldNotDetermine, .temporarilyUnavailable, .restricted] {
+            try cache.save(summary, account: "test-owner", localIdentity: nil)
+            let store = CloudKitProbeStore(accountStatus: { $0.finish(.success(status)) })
+            let model = CloudKitProbeModel(store: store, cache: cache)
+            await model.run("restore")
+            XCTAssertNil(model.roster, "unknown identity must not reveal a reader")
+            XCTAssertEqual(cache.load(localIdentity: nil, verifiedAccount: "test-owner"), summary)
+            XCTAssertTrue(model.status.contains("unverified"))
+        }
+        let signedOut = CloudKitProbeStore(accountStatus: { $0.finish(.success(.noAccount)) })
+        await CloudKitProbeModel(store: signedOut, cache: cache).run("restore")
+        XCTAssertNil(cache.disk.read("reader.json", as: RemoteReaderCache.Envelope.self))
+    }
+
     private final class WriteCapture: @unchecked Sendable {
         private let lock = NSLock()
         private var operations: [CKDatabaseOperation] = []

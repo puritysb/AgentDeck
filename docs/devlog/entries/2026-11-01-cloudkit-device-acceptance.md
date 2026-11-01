@@ -55,3 +55,13 @@ The final ordinary-tap test passed in 32.4 seconds, with OpenCode returning both
 the exact original selected label and the harmless Bash output. It used no
 coordinate fallback. This does not upgrade simulator evidence into physical
 phone or Stream Deck hardware acceptance.
+
+
+Final review also found that `checkAccount` collapsed every non-available status
+into confirmed account absence. That could erase a valid local reader when
+CloudKit could not determine state. The native regression now drives the actual
+reader model and disk file through unknown/temporary/restricted states, then
+confirmed logout. Unknown retains the file without exposing an unverified
+reader; logout clears it. Account-change notification consent revocation remains
+intact. The final full receipt must describe this fix as well; the preceding
+`979742d5` full run was intentionally interrupted before its record was written.
