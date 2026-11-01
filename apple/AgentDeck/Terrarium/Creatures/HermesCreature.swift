@@ -26,6 +26,7 @@ final class HermesCreature: Creature {
         swim.step(dt, home:[(TerrariumRules.hermesHomeCanvasX-0.5)*8,(0.82-TerrariumRules.hermesHomeCanvasY)*7,0],size:scale,activity:activity,neighbours:[],aspect:1.6,berth:home)
     }
     func draw(context: inout GraphicsContext, size: CGSize) {
+        guard swim.emergence > 0.02 else { return }
         let x = CGFloat(currentX) * size.width, y = CGFloat(currentY) * size.height
         let r = min(size.width, size.height) * 0.053 * CGFloat(scale)
         var c = context

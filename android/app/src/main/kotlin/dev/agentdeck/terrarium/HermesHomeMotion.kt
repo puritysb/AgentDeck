@@ -51,7 +51,12 @@ internal class HermesHomeMotion(private val offset: Float = 0f) {
         val t = elapsed*TerrariumRules.HERMES_HOME_TRAVEL_RATE+offset
         val radius = size*(TerrariumRules.HERMES_HOME_SWIM_RADIUS+if (waiting) 0f else TerrariumRules.HERMES_HOME_WORK_RADIUS)*(if(waiting) .15f else 1f)*(if(berthX!=homeX || berthY!=homeY || berthZ!=homeZ) TerrariumRules.HERMES_HOME_BERTH_TRAVEL_SCALE else 1f)
         val limit = min(3.65f,max(.9f,aspect*3f))-size*.35f
-        val tx = (homeX+(berthX-homeX+sin(t)*radius)*swim).coerceIn(-limit,limit)
+        var outsideX=(berthX+sin(t)*radius).coerceIn(-limit,limit)
+        if(berthX!=homeX && abs(berthX)>.001f) {
+            val inward=min(limit,max(0f,abs(berthX)-size*TerrariumRules.HERMES_HOME_BERTH_INWARD_TRAVEL))
+            outsideX=if(berthX<0f) min(-inward,outsideX) else max(inward,outsideX)
+        }
+        val tx = homeX+(outsideX-homeX)*swim
         val ty = homeY+(berthY-homeY+size*TerrariumRules.HERMES_HOME_SWIM_LIFT+sin(t*1.37f)*radius*.16f+sin(elapsed*1.7f+offset)*size*.07f)*swim
         val tz = homeZ+(berthZ-homeZ+sin(t*.83f)*radius*.7f)*swim
         val blend = 1f-exp(-dt*2.5f)

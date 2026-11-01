@@ -59,7 +59,12 @@ export const TERRARIUM_RULES = {
   },
   /** Open before emergence; return and tuck before closing, in simulation seconds. */
   hermesHome: {
-    sharedX: 0, sharedFloor: 0.95, sharedZ: 1.35, sharedSize: 0.72, sharedRockWidth: 1.05, sharedRockDepth: 0.85, mouthClearance: 0.45, berthTravelScale: 0.35, berthFront: 0.3, frontLimit: 2.4,
+    sharedX: 0, sharedFloor: 0.12, sharedZ: 1.35, sharedSize: 0.72, mouthClearance: 0.45, berthTravelScale: 0.35, berthInwardTravel: 0.12, berthFront: 0.3, frontLimit: 2.4,
+    berthLaneMinX: 1.4, berthLaneMaxX: 1.8, berthLaneWidthFraction: 0.30, berthFloor: 0.95, berthRise: 0.48, berthZ: 1, berthDepth: 1.1,
+    neighbourSceneMinWidth: 1.6, neighbourSceneMaxWidth: 6.2, neighbourSceneAspect: 5.5,
+    neighbourLaneMinX: 1.8, neighbourLaneMaxX: 2.35, neighbourLaneWidthFraction: 0.38,
+    neighbourFloor: 0.32, neighbourRise: 0.28, neighbourZ: 1, neighbourDepth: 1.4, neighbourSize: 0.75,
+    neighbourRockWidth: 0.9, neighbourRockMinWidth: 0.5, neighbourRockDepth: 0.8, neighbourRockMinDepth: 0.45,
     canvasX: 0.5, canvasY: 0.74, canvasRadius: 0.06,
     blinkPeriod: 5.3, blinkClose: 0.075, blinkHold: 0.035, blinkOpen: 0.145,
     canvasRestY: 0.70, headScale: 0.78, bodyWidth: 1.18, bodyLength: 1.15, bodyDepth: 1.08,
@@ -91,6 +96,7 @@ export const TERRARIUM_RULES = {
     barRange: 0.55,
     barRate: 2,
     barPhase: 1.2,
+    barGap: 0.09,
     barCount: 3,
     barX: 0.82,
     barSpacing: 0.085,

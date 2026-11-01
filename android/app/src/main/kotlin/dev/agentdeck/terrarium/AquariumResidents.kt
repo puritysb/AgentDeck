@@ -67,6 +67,21 @@ internal fun visibleAquariumResidents(items: List<AquariumResident>, focusedId: 
             it.ciWait?.agentWaiting == true || it.ciWait?.phase == "failed" -> 2; it.state == OctopusVisualState.WORKING -> 3; else -> 4 }
     }.thenBy { if (it.ciWait?.agentWaiting == true || it.ciWait?.phase == "failed") it.ciWait?.openedAt ?: 0L else 0L }.thenBy { it.id }).take(TerrariumRules.NATIVE_RESIDENT_LIMIT)
 
+internal data class ShellNeighbourSlot(val x:Float,val y:Float,val z:Float)
+internal fun shellNeighbour(index:Int,count:Int,aspect:Float):ShellNeighbourSlot {
+    val width=min(TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_MAX_WIDTH,max(TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_MIN_WIDTH,TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_ASPECT*aspect))
+    val lane=min(TerrariumRules.HERMES_HOME_NEIGHBOUR_LANE_MAX_X,max(TerrariumRules.HERMES_HOME_NEIGHBOUR_LANE_MIN_X,width*TerrariumRules.HERMES_HOME_NEIGHBOUR_LANE_WIDTH_FRACTION))
+    val side=if(count>1 && index%2==0) -1f else 1f
+    return ShellNeighbourSlot(side*lane,TerrariumRules.HERMES_HOME_NEIGHBOUR_FLOOR+(index/2)*TerrariumRules.HERMES_HOME_NEIGHBOUR_RISE,TerrariumRules.HERMES_HOME_NEIGHBOUR_Z-(index/2)*TerrariumRules.HERMES_HOME_NEIGHBOUR_DEPTH)
+}
+
+internal fun shellBerth(index:Int,count:Int,aspect:Float):ShellNeighbourSlot {
+    val width=min(TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_MAX_WIDTH,max(TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_MIN_WIDTH,TerrariumRules.HERMES_HOME_NEIGHBOUR_SCENE_ASPECT*aspect))
+    val lane=min(TerrariumRules.HERMES_HOME_BERTH_LANE_MAX_X,max(TerrariumRules.HERMES_HOME_BERTH_LANE_MIN_X,width*TerrariumRules.HERMES_HOME_BERTH_LANE_WIDTH_FRACTION))
+    val side=if(count>1 && index%2==0) -1f else 1f
+    return ShellNeighbourSlot(side*lane,TerrariumRules.HERMES_HOME_BERTH_FLOOR+(index/2)*TerrariumRules.HERMES_HOME_BERTH_RISE,TerrariumRules.HERMES_HOME_BERTH_Z-(index/2)*TerrariumRules.HERMES_HOME_BERTH_DEPTH)
+}
+
 /** Filament resources live and die with the surface's engine, never with recomposition. */
 internal class AquariumResidents(private val context: Context, private val viewer: ModelViewer) {
     private val materials = UbershaderProvider(viewer.engine)
@@ -88,7 +103,6 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private val shellTraffic=SharedShellTraffic()
     private var sharedOpening=0f
     private var sharedShell:FilamentAsset?=null
-    private var sharedPedestal:FilamentAsset?=null
     private var sharedLid:Joint?=null
     private fun hasShell(kind:String)=kind=="hermes" || kind=="dot"
     private fun wantsOutside(body:Body)=body.item.habitatActive ?: (body.item.state==OctopusVisualState.WORKING || body.item.state==OctopusVisualState.ASKING)
@@ -201,7 +215,6 @@ internal class AquariumResidents(private val context: Context, private val viewe
             val pedestal:FilamentAsset?=null
             if(hasShell(item.kind) && sharedShell==null) {
                 sharedShell=load("hermes-shell").also { viewer.scene.addEntities(it.entities);it.releaseSourceData() }
-                sharedPedestal=load("substrate").also { viewer.scene.addEntities(it.entities);it.releaseSourceData() }
                 val house=sharedShell!!
                 sharedLid=house.entities.firstOrNull { house.getName(it)=="shell_lid" }?.let { Joint(it,"shell_lid",transforms.getTransform(transforms.getInstance(it),FloatArray(16))) }
             }
@@ -225,6 +238,11 @@ internal class AquariumResidents(private val context: Context, private val viewe
         val width = min(6f, max(2f, aspect * 4f))
         val baseScale = if (aspect < 1f) .60f else .78f
         val groundedCount = bodies.values.count { it.item.kind in setOf("claudecode", "openclaw", "hermes", "dot") }
+        val hasSharedHome=bodies.values.any { hasShell(it.item.kind) }
+        val neighbourCount=bodies.values.count { it.item.kind=="claudecode" || it.item.kind=="openclaw" }
+        val shellCount=bodies.values.count { hasShell(it.item.kind) }
+        var shellIndex=0
+        var neighbourIndex=0
         var groundIndex = 0
         var waterIndex = 0
         shellTraffic.update(bodies.values.filter { hasShell(it.item.kind) }.map { body ->
@@ -252,24 +270,30 @@ internal class AquariumResidents(private val context: Context, private val viewe
             val isHermes = body.item.kind == "hermes"
             val hasShell = hasShell(body.item.kind)
             if (isHermes) scale *= 1.35f
+            if(grounded && !hasShell && hasSharedHome) scale=min(scale,TerrariumRules.HERMES_HOME_NEIGHBOUR_SIZE)
             body.size = scale
             val index = if (grounded) groundIndex++ else waterIndex++
             val row = index / columns
             val count = min(columns, (if (grounded) groundedCount else bodies.size - groundedCount) - row * columns)
             val spacing = width / (if (grounded) min(columns, groundedCount) else columns).coerceAtLeast(1)
             // A lone clam gets a side home when mid-water residents occupy the centre.
-            val homeX = (index % columns - (count - 1) / 2f) * spacing -
+            var homeX = (index % columns - (count - 1) / 2f) * spacing -
                 if (hasShell && groundedCount == 1 && bodies.size > groundedCount) width * .25f else 0f
+            val neighbour=if(grounded && !hasShell && hasSharedHome) shellNeighbour(neighbourIndex++,neighbourCount,aspect) else null
+            val berth=if(hasShell) shellBerth(shellIndex++,shellCount,aspect) else null
+            if(neighbour!=null) homeX=neighbour.x
+            if(berth!=null) homeX=berth.x
+            val surfaceY=berth?.y ?: neighbour?.y ?: (.95f + row * .48f)
             val swing = sin(body.phase) * body.effort
             body.x = homeX + scale * if (grounded) sin(body.phase * .5f) * body.effort * TerrariumRules.NATIVE_ACTIVITY_GROUND_TRAVEL
                 else sin(body.phase * .5f) * .18f + swing * TerrariumRules.NATIVE_ACTIVITY_WATER_TRAVEL
             val waterRows = (bodies.size - groundedCount + columns - 1) / columns
-            body.y = if (grounded) body.footHeight * scale + .95f + row * .48f
+            body.y = if (grounded) body.footHeight * scale + surfaceY
                 else (if (waterRows <= 1) 2.8f else 4.0f - row * 1.6f) + sin(body.phase * .7f) * .06f
-            body.z = if (grounded) 1.8f - row * 1.1f else .9f - row * .65f
-            val homeY = body.footHeight * scale + .95f + row * .48f + if (hasShell) .12f else 0f
+            body.z = if (grounded) berth?.let { it.z+scale*.35f } ?: neighbour?.z ?: (1.8f - row * 1.1f) else .9f - row * .65f
+            val homeY = body.footHeight * scale + surfaceY + if (hasShell) .12f else 0f
             val homeZ = body.z
-            body.homeX=homeX; body.shellY=.95f+row*.48f; body.homeZ=homeZ-scale*.35f
+            body.homeX=homeX; body.shellY=surfaceY; body.homeZ=homeZ-scale*.35f
             if (hasShell) {
                 body.hermes.step(dt,shellTraffic.active(body.item.id,wantsOutside(body),body.hermes.emergence),
                     body.item.state==OctopusVisualState.ASKING,TerrariumRules.HERMES_HOME_SHARED_X,entranceY(body),
@@ -289,7 +313,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
                     Matrix.scaleM(matrix, 0, scale * (if(isHermes) .8f else .65f), scale * .8f, scale * (if(isHermes) .8f else .9f))
                 } else {
                     Matrix.translateM(matrix, 0, homeX, 0f, body.z)
-                    Matrix.scaleM(matrix, 0, max(.65f, scale * 1.35f), .95f + row * .48f, max(.55f, scale))
+                    if(neighbour!=null) Matrix.scaleM(matrix,0,max(TerrariumRules.HERMES_HOME_NEIGHBOUR_ROCK_MIN_WIDTH,scale*TerrariumRules.HERMES_HOME_NEIGHBOUR_ROCK_WIDTH),surfaceY,max(TerrariumRules.HERMES_HOME_NEIGHBOUR_ROCK_MIN_DEPTH,scale*TerrariumRules.HERMES_HOME_NEIGHBOUR_ROCK_DEPTH))
+                    else Matrix.scaleM(matrix, 0, max(.65f, scale * 1.35f), surfaceY, max(.55f, scale))
                 }
                 transforms.setTransform(transforms.getInstance(shelf.root), matrix)
             }
@@ -385,11 +410,6 @@ internal class AquariumResidents(private val context: Context, private val viewe
                 transforms.setTransform(transforms.getInstance(lid.entity),pose)
             }
         }
-        sharedPedestal?.let { rock ->
-            Matrix.setIdentityM(matrix,0);Matrix.translateM(matrix,0,TerrariumRules.HERMES_HOME_SHARED_X,0f,TerrariumRules.HERMES_HOME_SHARED_Z)
-            Matrix.scaleM(matrix,0,TerrariumRules.HERMES_HOME_SHARED_ROCK_WIDTH,TerrariumRules.HERMES_HOME_SHARED_FLOOR,TerrariumRules.HERMES_HOME_SHARED_ROCK_DEPTH)
-            transforms.setTransform(transforms.getInstance(rock.root),matrix)
-        }
         for (id in bodies.keys.filter { bodies[it]?.let { b -> hasShell(b.item.kind) && b.item.habitatActive==false && b.item.dot==null && b.hermes.shellOpen==0f }==true }) {
             bodies.remove(id)?.let { body ->
                 for(asset in listOfNotNull(body.asset,body.support,body.pedestal,body.companion)) { viewer.scene.removeEntities(asset.entities);loader.destroyAsset(asset) }
@@ -426,6 +446,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
         for (i in 0..15) floatProjection[i] = cameraProjection[i].toFloat()
         Matrix.multiplyMM(viewProjection, 0, floatProjection, 0, cameraView, 0)
         val onScreen = bodies.values.mapNotNull { body ->
+            if (hasShell(body.item.kind) && !body.hermesVisible) return@mapNotNull null
             if (!project(canvas, body.x, body.y, body.z)) return@mapNotNull null
             val bodyX = screenX; val bodyY = screenY
             if (!project(canvas, body.x + body.size, body.y, body.z)) return@mapNotNull null
@@ -497,8 +518,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
         }
         bodies.clear()
         hitRegions = emptyList()
-        for(asset in listOfNotNull(sharedShell,sharedPedestal)) { viewer.scene.removeEntities(asset.entities);loader.destroyAsset(asset) }
-        sharedShell=null;sharedPedestal=null;sharedLid=null
+        for(asset in listOfNotNull(sharedShell)) { viewer.scene.removeEntities(asset.entities);loader.destroyAsset(asset) }
+        sharedShell=null;sharedLid=null
         resources.destroy()
         loader.destroy()
         materials.destroyMaterials()
