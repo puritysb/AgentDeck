@@ -75,3 +75,9 @@ check. It writes and reads a disposable marker using the actual app directory,
 file protection and backup exclusion, then removes that marker. No iCloud account
 or fake summary is needed. Run it separately from the cloud/relaunch test: a
 passed storage probe cannot attest account matching or notification delivery.
+
+Before starting the question UI test, confirm the actual daemon has the new
+session's `awaiting_option` row, original choices and live response capability.
+The fixture model's `question` stage alone does not prove observer readiness.
+The runner waits for enabled/hittable controls and uses ordinary taps; no
+label-only coordinate fallback masks a broken button hit region.

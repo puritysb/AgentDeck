@@ -637,3 +637,17 @@ records screenshots, accessibility trees, returned question labels and tool
 results. A local model fixture drives an actual new TUI; it never fabricates a
 hook or answers another running session. Quota provenance, widgets, the final
 Production schema and 24-hour cloud event cleanup remain deferred.
+
+
+Final local UI follow-up: the installed Node daemon and emitted observer completed
+an actual OpenCode question and harmless one-time Bash permission through the
+iOS simulator UI. OpenCode returned the original `Phone acceptance` label and
+`agentdeck_device_acceptance_probe` output; the UI test passed in 32.4 seconds.
+A failed ordinary tap and successful label-area diagnostic led to explicit full
+button-label hit shapes in both attention views. The final test uses ordinary
+taps, waits for enabled/hittable controls, and has no label-coordinate fallback.
+It starts only after the real question and response channel are present; model
+request emission alone was an insufficient readiness signal. The PoC Close
+control now has a separate header so it cannot cover the question context.
+This result completes the simulated UI/native transport acceptance while keeping
+physical iPhone/cache and Stream Deck key acceptance explicitly pending.

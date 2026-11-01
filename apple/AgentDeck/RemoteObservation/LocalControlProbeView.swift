@@ -6,14 +6,22 @@ struct LocalControlProbeView: View {
     @StateObject private var holder = AgentStateHolder()
     @Environment(\.dismiss) private var dismiss
     var body: some View {
-        ContentView()
-            .environmentObject(holder)
-            .environmentObject(AppPreferences.shared)
-            .overlay(alignment: .topTrailing) {
-                Button("Close local dashboard") { dismiss() }
-                    .buttonStyle(.bordered).padding()
+        VStack(spacing: 0) {
+            HStack {
+                Text("Local network controls").font(.caption)
+                Spacer()
+                Button("Close") { dismiss() }
+                    .accessibilityLabel("Close local dashboard")
+                    .buttonStyle(.bordered)
             }
-            .onDisappear { holder.prepareForTermination() }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.bar)
+            ContentView()
+                .environmentObject(holder)
+                .environmentObject(AppPreferences.shared)
+        }
+        .onDisappear { holder.prepareForTermination() }
     }
 }
 #endif
