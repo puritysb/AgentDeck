@@ -102,7 +102,7 @@ also invalidate the D200H NOW card, even when the session's state is unchanged.
 - **Press session**: 먼저 선택 세션의 list-state 로 상세 화면을 즉시 표시하고, daemon focus relay 가 도착하면 tool/options/current model 을 갱신한다. 사용자는 빈 화면이나 다른 세션 옵션을 보지 않는다.
 - **INFO readout** (Stream Deck·D200H 공통): 프로젝트, `model · effort`, permission mode, 상태. 값은 세션 row 의 `modelName`/`effortLevel`/`permissionMode` 를 **에이전트 고유 단어 그대로** 표시한다 — Claude hook 의 `model`·`effort.level`·`permission_mode`, Codex rollout `turn_context` 의 `effort` 와 `plan` 또는 `sandbox_policy.type`. 레벨 집합과 기본값은 에이전트·모델마다 다르므로 덱이 단계나 기본값을 만들지 않고, 리터럴 `default` 만 생략한다. 다른 세션이나 daemon-global 값을 빌려 오지 않는다 ([#463](https://github.com/puritysb/AgentDeck/issues/463)).
 - **NOW card** (observed 세션, Stream Deck·D200H 공통): "지금 무엇을 하는지"를 row 사실로만 보여준다 — 라벨은 진행 중 subagent 수(`2 SUBAGENTS`) 또는 `NOW`, 부제는 idle 에선 공유 `activity`(없으면 `goal`), 처리 중에는 RUNNING 카드가 이미 도구를 말하므로 `goal` 우선, 상세는 `context N%`. row 에 아무 사실이 없으면 카드를 만들지 않고 기존 OBSERVED 카드를 둔다 ([#463](https://github.com/puritysb/AgentDeck/issues/463)).
-- **Detail idle**: GO ON / REVIEW / COMMIT / CLEAR 를 1-tap 명령으로 두고, 남는 칸은 MODEL/MODE/READY 이미지 카드로 채운다.
+- **Detail idle**: 실제 상태와 사용자 입력만 제공한다. GO ON / REVIEW / COMMIT / CLEAR 및 자동 추천 문장 전송은 기본 키에서 제거한다. 전달 가능한 세션의 VOICE, Gateway가 제공하는 MODEL/THINKING 설정, 현재 상태를 표시한다. 대기 요청이 없으면 승인·ESC·STOP 키는 실행되지 않는다.
 - **Detail awaiting**: 실제 parser options 를 아이콘이 붙은 선택 카드로 노출한다. overflow 는 MORE 로 페이지 전환한다.
 - **Detail processing**: 현재 tool/status 를 첫 content 키에 고정하고, STOP 을 항상 기기의 마지막 버튼에 둔다. OpenClaw 도 STATUS/MODEL/GATEWAY 보다 현재 작업 문맥을 먼저 보여준다.
 
@@ -110,14 +110,14 @@ also invalidate the D200H NOW card, even when the session's state is unchanged.
 
 - Keypad UX 는 Stream Deck 과 동일하지만, encoder 가 상세 화면의 보조 조작면이다.
 - E1 은 볼륨, E2/E3 는 usage 게이지(기본 Claude/Codex, LCD 탭으로 provider 전환), E4 는 에이전트 런처다.
-- Session detail 에 들어가면 keypad 는 "결정 버튼", encoder LCD 는 "읽기/스크롤" 역할로 분리한다. 긴 approval 문구를 키 타일에 억지로 넣지 않고 wide canvas 에서 읽게 한다.
+- Session detail 에 들어가면 keypad 는 "결정 버튼", encoder LCD 는 기존 볼륨·사용량·런처를 유지한다. 선택지 키는 144 단위 캔버스에서 22 단위 글씨와 최대 세 줄을 사용한다. 긴 질문은 대상이 보이는 요약과 말줄임표로 표시하고 전체 내용은 연결된 큰 화면에서 확인한다.
 
 ### Ulanzi D200H
 
 - 14키/5×3 구조를 살려 **overview 우선**으로 둔다. List mode 는 최대 13세션 + merged usage monitor 이고, 세션을 누르면 optionSelect 로 들어간다.
 - D200H 는 실질적으로 정지 이미지 파이프라인이므로 상태 표현은 애니메이션 의존도를 낮춘다. PROCESSING 은 고정 amber ring + STOP, AWAITING 은 밝은 solid/pulse peak ring + 실제 option 버튼으로 읽힌다. D200H 세션 타일은 provider logo path 가 아니라 terrarium creature 축약형(Claude robot, Codex cloud prompt, OpenClaw crayfish, OpenCode nested square, Kiro ghost)을 그린다.
-- D200H no-session/detail action 텍스트는 native label 에만 맡기지 않고 PNG 에 직접 굽는다. `HUB READY / NO SESSION / AgentDeck`, quick actions, STOP/ESC/MORE/BACK 은 모두 icon + baked label 구성을 유지한다.
-- Detail mode 는 BACK(0/13), INFO(1), options/quick actions(2-9), STOP/ESC(10), MORE(11) 의 고정 좌표를 유지한다. 손이 기억해야 하는 위험 명령은 STOP/ESC 하나뿐이다.
+- D200H no-session/detail action 텍스트는 native label 에만 맡기지 않고 PNG 에 직접 굽는다. `HUB READY / NO SESSION / AgentDeck`, native controls, STOP/ESC/MORE/BACK 은 모두 icon + baked label 구성을 유지한다.
+- Detail mode 는 BACK(0/13), INFO(1), options/native controls(2-9), STOP/ESC(10), MORE(11) 의 고정 좌표를 유지한다. 손이 기억해야 하는 위험 명령은 STOP/ESC 하나뿐이다.
 - 버튼 명령은 선택된 sessionId 를 기준으로 전달한다. 포커스 전환 지연 때문에 다른 세션으로 STOP/option 이 가는 일을 막는다.
 
 ## Encoders (4 slots)

@@ -10,6 +10,24 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class EinkAttentionPanelTest {
+    @Test
+    fun `native held approvals retain identity and disable an unpolled OpenCode request`() {
+        val row = session("held", "AgentDeck", "awaiting_permission").copy(
+            controlMode = "observed", agentType = "opencode", requestId = "ocperm:request-1", liveAnswerable = true,
+            question = "Run the harmless command?",
+        )
+        fun paper(session: SessionInfo) = buildEinkAttentionFeatured(DashboardState(siblingSessions = listOf(session)))!!
+        val eink = paper(row)
+        assertEquals(listOf("Allow once", "Deny"), eink.options.map { it.label })
+        assertEquals(row.requestId, eink.permissionRequestId)
+        assertEquals(true, eink.actionable)
+        assertFalse(paper(row.copy(liveAnswerable = false)).actionable)
+        val lcd = dev.agentdeck.ui.monitor.buildAttentionFeatured(row, row.question)
+        assertEquals(eink.options, lcd.options)
+        assertEquals(eink.permissionRequestId, lcd.permissionRequestId)
+        assertEquals(true, lcd.actionable)
+        assertFalse(dev.agentdeck.ui.monitor.buildAttentionFeatured(row.copy(liveAnswerable = false), row.question).actionable)
+    }
 
     @Test
     fun `featured attention prefers focused awaiting session`() {

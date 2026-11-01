@@ -1,4 +1,5 @@
 export * from './states.js';
+export * from './device-controller.js';
 export * from './protocol.js';
 export * from './openclaw-approval.js';
 export * from './openclaw-session-key.js';

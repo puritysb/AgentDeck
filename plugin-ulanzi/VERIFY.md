@@ -204,3 +204,11 @@ A reproducible failure reopens the original bug or gets a linked regression
 issue. A proposed PR should include a reproducer and an automated regression case
 where possible. A community pass extends hardware evidence; it does not change
 what CI proves.
+
+Choice typography and Korean coverage are checked by
+`pnpm exec vitest run plugin-ulanzi/src/__tests__/font-resources.test.ts` from the
+repository root. It renders actual choice buttons through the packaged WASM
+renderer and compares distinct Korean labels. The build stages the canonical
+IBM Plex Sans KR Regular/Bold faces and their OFL license; packaging requires all
+three resources. Inspect actual key text on the target display before claiming
+physical readability acceptance.

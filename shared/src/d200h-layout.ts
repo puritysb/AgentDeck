@@ -1,3 +1,5 @@
+import { OPENCODE_PERMISSION_CHOICES } from './opencode-question.js';
+import { hasControllerInput, hasControllerAnswer } from './device-controller.js';
 import { dotDeckReservedKeys, renderDotDeckSlot } from './dot-deck.js';
 import type { DotDeckSnapshot } from './protocol.js';
 import { claudeWeeklyReadings, type ClaudeWeeklyMode } from './claude-weekly-view.js';
@@ -889,29 +891,6 @@ function actionTile(label: string, color: string, subtitle?: string): string {
 }
 
 /**
- * REVIEW = independent on-demand eval (review_run), NOT a prompt to the
- * agent — the daemon judges the session's latest COMPLETED work with a
- * separate model, so this tile is valid for EVERY session type (managed,
- * observed Claude/OpenCode, even control-less observed Codex) — but only
- * once the turn has ended. Shows the last verdict as a badge; REVIEWING
- * while the judge runs.
- */
-function reviewTile(sess: SessionInfo | undefined, sid: string): SessionDeckCell {
-  if (sess?.reviewStatus === 'running') {
-    return { svg: renderInfoSlot('REVIEWING', 'judge running', 'activity', 'info'), action: null };
-  }
-  const risk = sess?.reviewRisk;
-  const subtitle = risk
-    ? `risk ${risk}${sess?.reviewFindings != null ? ` · ${sess.reviewFindings}` : ''}`
-    : 'independent eval';
-  const color = risk === 'high' ? '#f87171' : risk === 'medium' ? '#fbbf24' : '#93c5fd';
-  return {
-    svg: actionTile('REVIEW', color, subtitle),
-    action: { kind: 'command', command: { type: 'review_run', sessionId: sid } },
-  };
-}
-
-/**
  * Non-pressable review status for the PROCESSING branch: REVIEWING while the
  * judge runs, or the last verdict as an inert badge. Null when there is
  * nothing to show. Mid-turn the tile must not fire review_run — the work is
@@ -921,13 +900,13 @@ function reviewTile(sess: SessionInfo | undefined, sid: string): SessionDeckCell
  */
 function reviewBadgeTile(sess: SessionInfo | undefined): SessionDeckCell | null {
   if (sess?.reviewStatus === 'running') {
-    return { svg: renderInfoSlot('REVIEWING', 'judge running', 'activity', 'info'), action: null };
+    return { svg: renderInfoSlot('EVALUATING', 'judge running', 'activity', 'info'), action: null };
   }
   const risk = sess?.reviewRisk;
   if (!risk) return null;
   const subtitle = `risk ${risk}${sess?.reviewFindings != null ? ` · ${sess.reviewFindings}` : ''}`;
   const color = risk === 'high' ? '#f87171' : risk === 'medium' ? '#fbbf24' : '#93c5fd';
-  return { svg: actionTile('REVIEW', color, subtitle), action: null };
+  return { svg: actionTile('EVAL', color, subtitle), action: null };
 }
 
 export function buildSessionDeck(stateEvt: any, view: DeckView, positions: string[]): Map<string, SessionDeckCell> {
@@ -1243,7 +1222,7 @@ function buildDetail(
     // (the old always-armed interrupt here was a silent-drop trap).
     out.set(last, {
       svg: renderStopButton(false),
-      action: isObserved ? null : { kind: 'command', command: { type: 'interrupt' } },
+      action: null,
     });
   }
 
@@ -1259,7 +1238,15 @@ function buildDetail(
     // A focused PTY session reports `navigable` on the live state_update; a
     // non-focused SessionInfo never carries it (and rarely carries options).
     const navigable = Boolean(focused ? stateEvt?.navigable : false);
-    if (options.length > 0) {
+    if (gateRequestId) {
+      const replyable = hasControllerAnswer(heroSess);
+      OPENCODE_PERMISSION_CHOICES.forEach(choice => cells.push({
+        svg: renderOptionButton({ label: choice.label, index: choice.index }, choice.index),
+        action: replyable ? { kind: 'command', command: {
+          type: 'permission_decision', requestId: gateRequestId, decision: choice.decision, sessionId: sid,
+        } } : null,
+      }));
+    } else     if (options.length > 0) {
       // Render the REAL option set (permission OR multi-select) regardless of
       // promptType — the parser already extracted the actual labels (e.g.
       // "Yes" / "Yes, and don't ask again" / "No, tell Claude"). Navigable TUI
@@ -1295,18 +1282,6 @@ function buildDetail(
           action: (isObserved && !answerable) ? null : { kind: 'command', command },
         });
       });
-    } else if (isObserved && gateRequestId) {
-      // Held PreToolUse gate: these two answers are device-native semantics
-      // (permit/deny THIS tool call), not a mirror of the TUI prompt — the
-      // daemon only holds calls it verified Claude would genuinely prompt for.
-      cells.push({
-        svg: actionTile('ALLOW', '#22c55e', 'this tool call'),
-        action: { kind: 'command', command: { type: 'permission_decision', requestId: gateRequestId, decision: 'allow' } },
-      });
-      cells.push({
-        svg: actionTile('DENY', '#f87171', 'this tool call'),
-        action: { kind: 'command', command: { type: 'permission_decision', requestId: gateRequestId, decision: 'deny' } },
-      });
     } else {
       // Awaiting but no real options to render — only PTY-managed sessions expose
       // Claude's actual choices. Don't fabricate Allow/Deny that may not match the
@@ -1327,52 +1302,16 @@ function buildDetail(
     if (now) cells.push(now);
     const badge = reviewBadgeTile(sess);
     if (badge) cells.push(badge);
-  } else if (isObserved) {
-    if (sess?.agentType === 'opencode') {
-      // OpenCode observed injects immediately even while idle (observer
-      // plugin + in-process SDK) — same semantics as managed idle presets.
-      const inject: Array<[string, string]> = [
-        ['GO ON', 'continue'], ['COMMIT', 'commit the changes'],
-      ];
-      inject.forEach(([label, text]) => cells.push({
-        svg: actionTile(label, '#cbd5e1', 'inject now'),
-        action: { kind: 'command', command: { type: 'session_command', sessionId: sid, command: { type: 'send_prompt', text } } },
-      }));
-      cells.push(reviewTile(sess, sid));
-      cells.push(voiceTile(view, sid));
-    } else {
-      // Idle observed Claude/Codex: deck-native prompt presets don't exist,
-      // but the independent review stays live — and so does voice, because
-      // the daemon delivers a dictated prompt through its observed-steering
-      // ladder (terminal injection on the Node daemon, queued directive on
-      // the Swift daemon).
-      cells.push(reviewTile(sess, sid));
-      cells.push(voiceTile(view, sid));
-      cells.push(nowTile(sess) ?? { svg: renderInfoSlot('OBSERVED', 'control in terminal', 'status', 'info'), action: null });
-    }
   } else {
-    // Managed idle quick-actions. REVIEW routes to the independent eval
-    // (uniform semantics across every session type); the rest type into the
-    // PTY as before. OpenClaw leads with its agent-native MODEL / THINKING
-    // pickers (#463) — the Gateway's own values, applied via sessions.patch.
-    if (sess?.agentType === 'openclaw') {
+    // Real controls only: user-authored voice input and Gateway-native settings.
+    if (!isObserved && sess?.agentType === 'openclaw') {
       cells.push(settingOpenTile('model', view.settings, sess?.modelName));
       cells.push(settingOpenTile('effort', view.settings));
     }
-    cells.push({
-      svg: actionTile('GO ON', '#cbd5e1'),
-      action: { kind: 'command', command: { type: 'send_prompt', text: 'continue' } },
+    if (hasControllerInput(sess)) cells.push(voiceTile(view, sid));
+    cells.push(nowTile(sess) ?? {
+      svg: renderInfoSlot('IDLE', 'no pending request', 'status', 'info'), action: null,
     });
-    cells.push(reviewTile(sess, sid));
-    cells.push({
-      svg: actionTile('COMMIT', '#cbd5e1'),
-      action: { kind: 'command', command: { type: 'send_prompt', text: 'commit the changes' } },
-    });
-    cells.push({
-      svg: actionTile('CLEAR', '#cbd5e1'),
-      action: { kind: 'command', command: { type: 'send_prompt', text: '/clear' } },
-    });
-    cells.push(voiceTile(view, sid));
   }
 
   // Paginate cells into content slots; reserve last content slot for MORE if overflow.

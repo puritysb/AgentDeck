@@ -117,29 +117,11 @@ static void sendFocusSession(const char* sid) {
     Net::queueOutbound(buf);
 }
 
-static void sendSelectOption(const char* sid, int index) {
-    char buf[96];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"select_option\",\"index\":%d,\"sessionId\":\"%s\"}",
-             index, sid);
-    Net::queueOutbound(buf);
-}
 
-static void sendPermissionDecision(const char* requestId, bool allow) {
-    char buf[160];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"permission_decision\",\"requestId\":\"%s\",\"decision\":\"%s\"}",
-             requestId, allow ? "allow" : "deny");
-    Net::queueOutbound(buf);
-}
 
-static void sendSessionEscape(const char* sid) {
-    char buf[160];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"session_command\",\"sessionId\":\"%s\",\"command\":{\"type\":\"escape\"}}",
-             sid);
-    Net::queueOutbound(buf);
-}
+
+
+
 
 static void toast(const char* text) {
     if (!s_toastText) return;
@@ -212,51 +194,6 @@ static void onCardClicked(lv_event_t* e) {
     s_lastSig[0] = '\0';
 }
 
-// Answer a permission gate from an awaiting card. The requestId is re-read
-// from live state at press time — render-time copies go stale the moment the
-// desk answers first, and a stale id must degrade to "already answered",
-// never to a mis-aimed decision.
-static void answerCard(int idx, bool allow) {
-    if (idx < 0 || idx >= s_cardCount || !s_cardIds[idx][0]) return;
-    char sid[32];
-    strncpy(sid, s_cardIds[idx], sizeof(sid) - 1);
-    sid[sizeof(sid) - 1] = '\0';
-    char req[40] = {0};
-    bool awaiting = false;
-    lockState();
-    for (uint8_t i = 0; i < g_state.sessionCount; i++) {
-        if (sameSessionId(g_state.sessions[i].id, sid)) {
-            awaiting = strstr(g_state.sessions[i].state, "awaiting") != nullptr;
-            strncpy(req, g_state.sessions[i].requestId, sizeof(req) - 1);
-            break;
-        }
-    }
-    unlockState();
-    if (!awaiting) {
-        toast("already answered");
-        s_lastSig[0] = '\0';
-        return;
-    }
-    // Same fallback ladder as the landscape strip: observed gates carry a
-    // requestId; a managed PTY prompt answers via option 0 / escape.
-    if (allow) {
-        if (req[0]) sendPermissionDecision(req, true);
-        else sendSelectOption(sid, 0);
-        toast("sent: approve");
-    } else {
-        if (req[0]) sendPermissionDecision(req, false);
-        else sendSessionEscape(sid);
-        toast("sent: deny");
-    }
-}
-
-static void onApproveClicked(lv_event_t* e) {
-    answerCard((int)(intptr_t)lv_event_get_user_data(e), true);
-}
-
-static void onDenyClicked(lv_event_t* e) {
-    answerCard((int)(intptr_t)lv_event_get_user_data(e), false);
-}
 
 static void onNavClicked(lv_event_t* e) {
     int tab = (int)(intptr_t)lv_event_get_user_data(e);
@@ -409,23 +346,17 @@ static void renderSessionsTab() {
         lv_obj_set_pos(proj, 12, 22);
 
         if (awaiting) {
-            // The question, given room to wrap; the two explicit chips below
-            // are the only way to answer (Focus-strip rule: a stray tap on
-            // the card body still only focuses, never decides).
+            // Pocket cards are glance/focus surfaces; decisions need a readable detail view.
             lv_obj_t* line = makeLabel(card, &font_kr_12, Theme::HUDText, rows[i].line);
             lv_obj_set_width(line, POCKET_W - 40);
             lv_label_set_long_mode(line, LV_LABEL_LONG_DOT);
             lv_obj_set_height(line, 44);
             lv_obj_set_pos(line, 12, 46);
 
-            lv_obj_t* deny = makeButton(card, 92, 32, Theme::StatusRed, "DENY",
-                                        &lv_font_montserrat_14, onDenyClicked,
-                                        (void*)(intptr_t)i);
-            lv_obj_set_pos(deny, 12, 98);
-            lv_obj_t* approve = makeButton(card, 92, 32, Theme::StatusGreen,
-                                           "APPROVE", &lv_font_montserrat_14,
-                                           onApproveClicked, (void*)(intptr_t)i);
-            lv_obj_set_pos(approve, 110, 98);
+            lv_obj_t* hint = makeLabel(card, &font_kr_12, Theme::HUDDim, "Reply on phone or computer");
+            lv_obj_set_width(hint, POCKET_W - 40);
+            lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+            lv_obj_set_pos(hint, 12, 98);
         } else {
             lv_obj_t* line = makeLabel(card, &font_kr_12, Theme::HUDDim, rows[i].line);
             lv_obj_set_width(line, POCKET_W - 40);

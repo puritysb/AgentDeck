@@ -1680,7 +1680,7 @@ actor ESP32Serial {
                 e["entries"] = Self.budgetTimelineEntries(entries.suffix(64).map(shrinkEntry))
             }
         }
-        return shapeSessionsList(e, type: type, deviceInfo: deviceInfo)
+        return shapeSessionsList(e, type: type, deviceInfo: deviceInfo, sessionCap: Self.serialSessionsCap)
     }
 
     /// Node parity: SERIAL_SESSIONS_CAP in bridge/src/esp32-serial.ts.
@@ -1819,7 +1819,7 @@ actor ESP32Serial {
         return picked.sorted { (($0["id"] as? String) ?? "") < (($1["id"] as? String) ?? "") }
     }
 
-    private static func shapeSessionsList(_ event: [String: Any], type: String?, deviceInfo: DeviceInfo?) -> [String: Any] {
+    private static func shapeSessionsList(_ event: [String: Any], type: String?, deviceInfo: DeviceInfo?, sessionCap: Int) -> [String: Any] {
         var e = event
         if type == "sessions_list" {
             // Per-session fields the device needs, with serial-size caps. Mirrors the Node
@@ -1838,13 +1838,13 @@ actor ESP32Serial {
                 let aliveSessions = sessions.filter { s in (s["alive"] as? Bool) ?? true }
                 let isIps10 = deviceInfo?.board == "ips_10"
                 // IPS10 pages stay stable for a minute, then visit the next cohort.
-                if isIps10 {
-                    e["rosterRotating"] = aliveSessions.count > Self.serialSessionsCap
-                    if aliveSessions.count > Self.serialSessionsCap { e["total"] = aliveSessions.count }
+                if isIps10 || aliveSessions.count > sessionCap {
+                    e["rosterRotating"] = aliveSessions.count > sessionCap
+                    if aliveSessions.count > sessionCap { e["total"] = aliveSessions.count }
                 }
                 e["sessions"] = (isIps10
-                    ? Self.stableCardRoster(aliveSessions, cap: Self.serialSessionsCap)
-                    : Self.roundRobinByAgentType(aliveSessions, cap: Self.serialSessionsCap))
+                    ? Self.stableCardRoster(aliveSessions, cap: sessionCap)
+                    : Self.roundRobinByAgentType(aliveSessions, cap: sessionCap))
                     .map { s -> [String: Any] in
                         var o: [String: Any] = [
                             "id": lim(s["id"], 31),
@@ -1864,6 +1864,8 @@ actor ESP32Serial {
                             "promptType": lim(s["promptType"], 19),
                             "question": lim(s["question"], 159)
                         ]
+                        for (key, value) in DeviceControllerRules.compactCapabilities(s) { o[key] = value }
+                        if let request = s["requestId"] as? String, !request.isEmpty { o["requestId"] = lim(request, 39) }
                         // Managed-session permission mode — knob INTENT label.
                         if let pm = s["permissionMode"] as? String, !pm.isEmpty {
                             o["permissionMode"] = lim(pm, 19)
@@ -1983,6 +1985,15 @@ actor ESP32Serial {
                 if ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget { e.removeValue(forKey: "dot") }
             }
             #endif
+        }
+        if type == "sessions_list", let rows = e["sessions"] as? [[String: Any]],
+           ((try? JSONSerialization.data(withJSONObject: e).count) ?? Int.max) > Self.timelineHistoryByteBudget {
+            if rows.count > 1 { return shapeSessionsList(event, type: type, deviceInfo: deviceInfo, sessionCap: rows.count - 1) }
+            if !rows.isEmpty {
+                var row = rows[0]
+                row["options"] = [[String: Any]](); row["question"] = ""; row["requestId"] = ""; row["controllerAnswerable"] = false
+                e["sessions"] = [row]
+            }
         }
         if Self.needsLegacyCodexAppAlias(deviceInfo) {
             e = Self.aliasCodexAppAgentTypes(e) as? [String: Any] ?? e

@@ -13,6 +13,44 @@ import XCTest
 /// unshrunk / non-display events at ESP32 boards again, these fail.
 /// See memory `esp32-wifi-flap-broadcast-amplification`.
 final class ESP32WifiForwardTests: XCTestCase {
+    func testCrowdedPermissionRosterFitsWithoutAlteringShownRequestIdentities() throws {
+        let rows: [[String: Any]] = (0..<10).map { i in [
+            "id": "session-\(i)", "port": 0, "alive": true, "agentType": "opencode", "controlMode": "observed",
+            "state": "awaiting_permission", "question": "Run this specific command?", "requestId": "ocperm:request-\(i)", "liveAnswerable": true,
+            "options": (0..<6).map { ["index": $0, "label": String(repeating: "A", count: 60)] },
+        ] }
+        let out = ESP32Serial.prepareForSerial(["type": "sessions_list", "sessions": rows], deviceInfo: nil)
+        XCTAssertLessThanOrEqual(try JSONSerialization.data(withJSONObject: out).count, ESP32Serial.timelineHistoryByteBudget)
+        let shown = try XCTUnwrap(out["sessions"] as? [[String: Any]])
+        XCTAssertFalse(shown.isEmpty); XCTAssertLessThan(shown.count, rows.count)
+        XCTAssertEqual(out["total"] as? Int, 10)
+        for row in shown {
+            XCTAssertEqual(row["controllerAnswerable"] as? Bool, true)
+            let original = try XCTUnwrap(rows.first { $0["id"] as? String == row["id"] as? String })
+            XCTAssertEqual(row["requestId"] as? String, original["requestId"] as? String)
+        }
+    }
+
+    func testCompactControlsRetainRequestIdentityAndRefuseUnrepresentableOrRevokedRequests() throws {
+        let board = ESP32Serial.wifiDeviceInfo(["board": "t_embed"])
+        let base: [String: Any] = ["id": "opencode-session", "port": 0, "alive": true, "agentType": "opencode",
+            "controlMode": "observed", "state": "awaiting_permission", "question": "Run the harmless command?",
+            "requestId": "ocperm:request-1", "liveAnswerable": true,
+            "options": [["label": "Allow once", "index": 0], ["label": "Deny", "index": 1]]]
+        func compact(_ patch: [String: Any] = [:]) throws -> [String: Any] {
+            let row = base.merging(patch, uniquingKeysWith: { _, new in new })
+            let event = ESP32Serial.prepareForSerial(["type": "sessions_list", "sessions": [row]], deviceInfo: board)
+            return try XCTUnwrap((event["sessions"] as? [[String: Any]])?.first)
+        }
+        let good = try compact()
+        XCTAssertEqual(good["requestId"] as? String, "ocperm:request-1")
+        XCTAssertEqual(good["controllerAnswerable"] as? Bool, true)
+        XCTAssertEqual(good["controllerInput"] as? Bool, true)
+        XCTAssertEqual(try compact(["liveAnswerable": false])["controllerAnswerable"] as? Bool, false)
+        XCTAssertEqual(try compact(["question": String(repeating: "가", count: 80)])["controllerAnswerable"] as? Bool, false)
+        XCTAssertEqual(try compact(["requestId": "ocperm:" + String(repeating: "x", count: 40)])["controllerAnswerable"] as? Bool, false)
+    }
+
     func testHeartbeatDeliversCodexResetWithoutClaudeQuota() throws {
         let board = ESP32Serial.wifiDeviceInfo(["board": "ttgo_t_display"])
         for percent in [86, 100, 0] {

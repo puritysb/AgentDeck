@@ -15,9 +15,11 @@ template<unsigned OptionCap> struct Request {
     char id[32]{}, requestId[40]{}, question[160]{}, promptType[20]{}, state[20]{};
     struct Option { char label[64]{}; uint8_t index{}, recommended{}; } options[OptionCap];
     unsigned count{};
+    bool answerable{};
     template<class S> void capture(const S& s) {
         copy(id, s.id); copy(requestId, s.requestId); copy(question, s.question);
         copy(promptType, s.promptType); copy(state, s.state);
+        answerable = s.answerable;
         count = s.optionCount < OptionCap ? s.optionCount : OptionCap;
         for (unsigned i = 0; i < count; ++i) {
             copy(options[i].label, s.options[i].label);
@@ -28,7 +30,7 @@ template<unsigned OptionCap> struct Request {
     template<class S> bool matches(const S& s) const {
         if (std::strcmp(id, s.id) || std::strcmp(requestId, s.requestId) ||
             std::strcmp(question, s.question) || std::strcmp(promptType, s.promptType) ||
-            std::strcmp(state, s.state) || count != s.optionCount) return false;
+            std::strcmp(state, s.state) || count != s.optionCount || answerable != bool(s.answerable)) return false;
         for (unsigned i = 0; i < count; ++i)
             if (std::strcmp(options[i].label, s.options[i].label) ||
                 options[i].index != s.options[i].index ||

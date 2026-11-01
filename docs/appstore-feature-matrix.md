@@ -44,7 +44,7 @@ The upgrade story exists in README, web, and developer documentation only. App S
 
 All surfaces follow the same rule:
 
-1. Render steering controls only from real `options[]` the agent itself supplied — never invented ones. A PTY-managed session's options are always pressable; an observed session's are pressable only when the daemon reports `liveAnswerable`, meaning it has a way to deliver the answer (typing into that terminal, or holding the question's hook open to resolve it).
+1. Render actual agent `options[]` or the explicit one-time Allow/Deny semantics of a native held tool request. Display-only notifications do not create decisions. Observed questions require `liveAnswerable`; OpenCode native requests also require fresh observer polling. Default device controls do not send canned Review/Commit/Go on/Clear or suggested tasks. Evaluations remain a separate workflow.
 2. An observed session emits `requestId` only while the daemon is holding a real
    decision open for that session (a Claude PreToolUse or an opted-in Codex
    `PermissionRequest`). Display-only notifications and non-held

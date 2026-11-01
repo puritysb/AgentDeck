@@ -263,9 +263,14 @@ fun EinkMonitorScreen(
                             featured = featuredAttention,
                             onFocusSession = { connection.sendFocusSession(it) },
                             onSelectOption = { index ->
-                                connection.sendSelectOption(
-                                    index, featuredAttention.sessionId, featuredAttention.question,
-                                )
+                                if (featuredAttention.actionable) {
+                                    val request = featuredAttention.permissionRequestId
+                                    if (request != null) {
+                                        dev.agentdeck.state.DeviceControllerRules.permissionChoices.firstOrNull { it.index == index }?.let {
+                                            connection.sendPermissionDecision(request, it.decision)
+                                        }
+                                    } else connection.sendSelectOption(index, featuredAttention.sessionId, featuredAttention.question)
+                                }
                             },
                             modifier = Modifier.fillMaxSize(),
                         )

@@ -581,6 +581,36 @@ describe('prepareForSerial (source)', () => {
     expect(prepared.sessions[0].extra).toBeUndefined();
   });
 
+  it('preserves a deliverable permission identity and explicitly disables truncated or revoked compact controls', () => {
+    const row = { id: 'opencode-session', port: 0, alive: true, agentType: 'opencode', controlMode: 'observed',
+      state: 'awaiting_permission', question: 'Run the harmless command?', requestId: 'ocperm:request-1',
+      liveAnswerable: true, options: [{ label: 'Allow once', index: 0 }, { label: 'Deny', index: 1 }] };
+    const compact = (patch: object = {}) => (prepareForSerial({ type: 'sessions_list', sessions: [{ ...row, ...patch }] } as any) as any).sessions[0];
+    expect(compact()).toMatchObject({ requestId: row.requestId, controllerAnswerable: true, controllerInput: true });
+    expect(compact({ liveAnswerable: false }).controllerAnswerable).toBe(false);
+    expect(compact({ question: '가'.repeat(80) }).controllerAnswerable).toBe(false);
+    expect(compact({ requestId: 'ocperm:' + 'x'.repeat(40) }).controllerAnswerable).toBe(false);
+    expect(compact({ agentType: 'codex-cli', state: 'idle', requestId: undefined, options: [] }))
+      .toMatchObject({ controllerAnswerable: false, controllerInput: false });
+  });
+
+  it('fits crowded native permission rosters without losing the shown request identities', () => {
+    const sessions = Array.from({ length: 10 }, (_, i) => ({
+      id: `session-${i}`, port: 0, alive: true, agentType: 'opencode', controlMode: 'observed',
+      state: 'awaiting_permission', question: 'Run this specific command?', requestId: `ocperm:request-${i}`, liveAnswerable: true,
+      options: Array.from({ length: 6 }, (_, index) => ({ index, label: 'A'.repeat(60) })),
+    }));
+    const out = prepareForSerial({ type: 'sessions_list', sessions } as any) as any;
+    expect(Buffer.byteLength(JSON.stringify(out))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
+    expect(out.sessions.length).toBeGreaterThan(0);
+    expect(out.sessions.length).toBeLessThan(10);
+    expect(out.total).toBe(10);
+    for (const row of out.sessions) {
+      expect(row.controllerAnswerable).toBe(true);
+      expect(row.requestId).toBe(sessions.find(s => s.id === row.id)!.requestId);
+    }
+  });
+
   it('forwards per-session D1 mosaic fields (tool/elapsed/awaiting prompt) and trims oversized strings', () => {
     const prepared = prepareForSerial({
       type: 'sessions_list',

@@ -56,7 +56,7 @@ describe('buildSessionDeck detail-view awaiting', () => {
     expect(cmds).toContainEqual({ type: 'respond', value: 'n' });
   });
 
-  it('observed session (requestId, no options): no fabricated Allow/Deny — only PTY sessions expose real choices', () => {
+  it('observed native held request uses exact permission decisions rather than invented option indices', () => {
     // Observed (hook-only) sessions carry no real permission options, so the deck
     // must NOT synthesize an Allow/Deny that may not match Claude's actual prompt.
     const deck = buildSessionDeck({
@@ -64,7 +64,7 @@ describe('buildSessionDeck detail-view awaiting', () => {
       allSessions: [sess({ requestId: 'req-9' })],
     }, { mode: 'detail', openSessionId: 's1' }, POS);
     const cmds = commandsOf(deck);
-    expect(cmds.find((c) => c.type === 'permission_decision')).toBeUndefined();
+    expect(cmds.filter((c) => c.type === 'permission_decision').map(c => c.decision)).toEqual(['allow', 'deny']);
     expect(cmds.find((c) => c.type === 'select_option')).toBeUndefined();
     expect(cmds.find((c) => c.type === 'respond')).toBeUndefined();
   });

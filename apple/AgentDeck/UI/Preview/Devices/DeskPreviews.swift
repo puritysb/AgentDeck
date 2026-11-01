@@ -588,6 +588,23 @@ private struct D200HSlotTile: View {
                 .multilineTextAlignment(.center)
                 .padding(size * 0.06)
             #endif
+        case .detailInfo(_, _, let question, let why):
+            VStack(alignment: .leading, spacing: size * 0.04) {
+                Text(slot.label).font(.system(size: size * 0.11, weight: .bold)).lineLimit(1)
+                Text(question ?? slot.subtitle ?? "")
+                    .font(.system(size: size * DeviceControllerRules.questionFont / DeviceControllerRules.keyCanvas, weight: .semibold))
+                    .foregroundStyle(question == nil ? .white : DesignTokens.UI.attn)
+                    .lineLimit(3)
+                if let why { Text(why).font(.system(size: size * 0.08)).lineLimit(1) }
+            }
+            .padding(size * 0.08)
+        case .option, .actionPreset:
+            Text(slot.label)
+                .font(.system(size: size * DeviceControllerRules.optionFont / DeviceControllerRules.keyCanvas, weight: .heavy))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(DeviceControllerRules.optionLines)
+                .padding(size * 0.06)
         case .nextPage:
             VStack(spacing: 2) {
                 Image(systemName: "ellipsis")

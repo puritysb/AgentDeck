@@ -58,6 +58,9 @@ static bool verifyCompanionInteractions(const char* outdir) {
     tick(); Knob::onKey(Input::KeyEvent::SHORT_PRESS); tick(); SimCommands::reset();
     Knob::onKey(Input::KeyEvent::SHORT_PRESS); assert(SimCommands::count() == 0); // no default affirmative
     Knob::onRotate(1); tick(); shot("knob-options");
+    request.answerable = false;
+    Knob::onKey(Input::KeyEvent::SHORT_PRESS); assert(SimCommands::count() == 0);
+    tick(); request.answerable = true; tick(); Knob::onRotate(1); tick();
     request.options[0].index = 4; // request changed after rendering, before click
     Knob::onKey(Input::KeyEvent::SHORT_PRESS); assert(SimCommands::count() == 0);
     tick(); Knob::onRotate(1); tick(); Knob::onKey(Input::KeyEvent::SHORT_PRESS);
@@ -65,6 +68,12 @@ static bool verifyCompanionInteractions(const char* outdir) {
     tick(); assert(visibleText(lv_screen_active(), "waiting for state update")); shot("knob-sent");
     Knob::onKey(Input::KeyEvent::SHORT_PRESS); tick(); Knob::onRotate(1); tick(); SimCommands::reset();
     Knob::onKey(Input::KeyEvent::SHORT_PRESS); assert(SimCommands::count() == 0); // pending duplicate refused
+    Companion::copy(request.requestId, "native-knob-gate"); tick();
+    Knob::onRotate(1); tick(); SimCommands::reset();
+    assert(visibleText(lv_screen_active(), "Allow once"));
+    Knob::onKey(Input::KeyEvent::SHORT_PRESS);
+    assert(strstr(SimCommands::last(), "\"type\":\"permission_decision\"") && strstr(SimCommands::last(), "native-knob-gate"));
+    SimCommands::reset();
     g_state.wsConnected = false; tick(); Knob::onKey(Input::KeyEvent::SHORT_PRESS); assert(SimCommands::count() == 0);
     g_state.wsConnected = true; Companion::copy(request.state, "processing"); tick();
     assert(visibleText(lv_screen_active(), "State updated"));
@@ -107,10 +116,16 @@ static bool verifyCompanionInteractions(const char* outdir) {
     assert(visibleText(lv_screen_active(), "4-6 / 6"));
     Ticker::onTouch({Input::TouchGesture::TAP, 140, 60}); tick();
     assert(!strcmp(Ticker::displayedSessionId(), "wait-4"));
-    auto& gate = g_state.sessions[4]; gate.optionCount = 0;
+    auto& gate = g_state.sessions[4]; gate.requestId[0] = '\0';
+    Companion::copy(gate.promptType, "yes_no"); gate.optionCount = 2; tick(); SimCommands::reset();
+    Ticker::onTouch({Input::TouchGesture::TAP, 410, 190}); assert(SimCommands::count() == 0);
+    gate.optionCount = 0;
     Companion::copy(gate.requestId, "request-current"); tick(); SimCommands::reset();
     Companion::copy(gate.requestId, "request-replaced");
     Ticker::onTouch({Input::TouchGesture::TAP, 410, 190}); assert(SimCommands::count() == 0);
+    gate.answerable = false; tick();
+    Ticker::onTouch({Input::TouchGesture::TAP, 410, 190}); assert(SimCommands::count() == 0);
+    gate.answerable = true;
     tick(); Ticker::onTouch({Input::TouchGesture::TAP, 410, 190});
     assert(strstr(SimCommands::last(), "request-replaced"));
     g_state.sessionCount = 1; tick();

@@ -631,6 +631,10 @@ export interface SessionInfo {
    *  makes devices render a binary Allow/Deny, which would collapse a 4-option
    *  question into a permission decision. Answers ride `select_option`. */
   liveAnswerable?: boolean;
+  /** Producer-verified compact-display delivery; false also covers truncated context. */
+  controllerAnswerable?: boolean;
+  /** User input/interrupt delivery exists for this compact session row. */
+  controllerInput?: boolean;
   /** A single AskUserQuestion call may carry up to four question groups. The
    *  daemon presents them ONE AT A TIME (`question`/`options` above are the
    *  active group's projection) and advances as each is answered, so a device

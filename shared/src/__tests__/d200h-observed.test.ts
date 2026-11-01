@@ -39,16 +39,16 @@ function commandsOf(cells: Map<string, { svg: string; action: DeckAction }>) {
 }
 
 describe('D200H observed session detail', () => {
-  it('idle: REVIEW + VOICE are the actionable cells — no fake prompts, inert STOP', () => {
+  it('idle: user-authored VOICE is the only input — no fake prompts, inert STOP', () => {
     const cells = detailCells(observedStateEvt({ state: 'idle' }));
     const cmds = commandsOf(cells);
     // Both are deliverable without deck-native prompt presets: REVIEW is the
     // daemon-side eval, VOICE dictates through the observed-steering ladder.
-    expect(cmds.map((c) => c.type)).toEqual(['review_run', 'voice']);
+    expect(cmds.map((c) => c.type)).toEqual(['voice']);
     expect(cmds[0].sessionId).toBe('observed:claude:uuid-1');
-    expect(cmds[1]).toMatchObject({ type: 'voice', action: 'start', sessionId: 'observed:claude:uuid-1' });
+    expect(cmds[0]).toMatchObject({ type: 'voice', action: 'start', sessionId: 'observed:claude:uuid-1' });
     const svgs = [...cells.values()].map((c) => c.svg).join('');
-    expect(svgs).toContain('OBSERVED');
+    expect(svgs).toContain('IDLE');
     expect(svgs).not.toContain('GO ON');
   });
 
@@ -152,7 +152,7 @@ describe('D200H observed session detail', () => {
     expect(selects.every((c) => c.sessionId === 'observed:claude:uuid-1')).toBe(true);
   });
 
-  it('codex observed idle: REVIEW only — steering stays inert (notify-only hooks)', () => {
+  it('codex observed idle: readouts only — steering stays inert (notify-only hooks)', () => {
     const evt = {
       type: 'state_update', state: 'idle',
       allSessions: [{
@@ -165,7 +165,7 @@ describe('D200H observed session detail', () => {
     // The independent eval needs no agent control, so it stays live even for
     // notify-only codex; VOICE is likewise daemon-delivered (terminal
     // injection on the Node daemon). Steering commands stay absent.
-    expect(cmds.map((c) => c.type)).toEqual(['review_run', 'voice']);
+    expect(cmds).toEqual([]);
   });
 
   it('codex observed processing: nothing actionable — REVIEW waits for turn end', () => {
@@ -180,7 +180,7 @@ describe('D200H observed session detail', () => {
     expect(commandsOf(cells)).toHaveLength(0);
   });
 
-  it('opencode observed idle: inject-now presets via session_command (plugin queue)', () => {
+  it('opencode observed idle: explicit voice input without canned tasks', () => {
     const evt = {
       type: 'state_update', state: 'idle',
       allSessions: [{
@@ -194,9 +194,9 @@ describe('D200H observed session detail', () => {
       && (c.command as { type?: string })?.type === 'send_prompt');
     // GO ON + COMMIT inject immediately; REVIEW rides the independent eval.
     expect(prompts.map((p) => (p.command as { text?: string }).text))
-      .toEqual(['continue', 'commit the changes']);
+      .toEqual([]);
     expect(prompts.every((p) => p.sessionId === 'opencode:ses_1')).toBe(true);
-    expect(cmds.filter((c) => c.type === 'review_run')).toHaveLength(1);
+    expect(cmds.filter((c) => c.type === 'review_run')).toHaveLength(0);
   });
 
   it('opencode observed permission gate: ALLOW/DENY carry the ocperm requestId', () => {
@@ -205,7 +205,7 @@ describe('D200H observed session detail', () => {
       allSessions: [{
         id: 'opencode:ses_1', port: 0, alive: true, projectName: 'proj',
         agentType: 'opencode', controlMode: 'observed',
-        state: 'awaiting_permission', question: 'Run git push?', requestId: 'ocperm:ses_1:perm_9',
+        state: 'awaiting_permission', question: 'Run git push?', requestId: 'ocperm:ses_1:perm_9', liveAnswerable: true,
       }],
     };
     const cells = buildSessionDeck(evt, { mode: 'detail', openSessionId: 'opencode:ses_1' }, POSITIONS);
@@ -214,7 +214,7 @@ describe('D200H observed session detail', () => {
     expect(cmds.every((c) => c.requestId === 'ocperm:ses_1:perm_9')).toBe(true);
   });
 
-  it('managed sessions keep the original idle quick-actions (regression)', () => {
+  it('managed idle has explicit input without unsolicited tasks or interrupt', () => {
     const evt = {
       type: 'state_update', state: 'idle',
       allSessions: [{
@@ -225,12 +225,12 @@ describe('D200H observed session detail', () => {
     const cells = buildSessionDeck(evt, { mode: 'detail', openSessionId: 'managed-1' }, POSITIONS);
     const cmds = commandsOf(cells);
     const prompts = cmds.filter((c) => c.type === 'send_prompt').map((c) => c.text);
-    expect(prompts).toContain('/clear');
-    expect(prompts).toContain('continue');
+    expect(prompts).toEqual([]);
+    expect(cmds.some(c => c.type === 'voice')).toBe(true);
     // REVIEW switched from a PTY prompt to the independent eval.
     expect(prompts).not.toContain('review the changes');
-    expect(cmds.filter((c) => c.type === 'review_run')).toHaveLength(1);
-    expect(cmds.find((c) => c.type === 'interrupt')).toBeTruthy();
+    expect(cmds.filter((c) => c.type === 'review_run')).toHaveLength(0);
+    expect(cmds.find((c) => c.type === 'interrupt')).toBeUndefined();
   });
 });
 
@@ -264,6 +264,6 @@ describe('D200H observed NOW card (#463)', () => {
 
   it('keeps OBSERVED when the row carries nothing to say', () => {
     const svgs = [...detailCells(observedStateEvt({ state: 'idle' })).values()].map((c) => c.svg).join('');
-    expect(svgs).toContain('OBSERVED');
+    expect(svgs).toContain('IDLE');
   });
 });

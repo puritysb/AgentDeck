@@ -2705,6 +2705,10 @@ struct ADSessionInfo: Codable, Equatable {
     /// census. Explicit zero clears prior work; absent means the producer has no snapshot.
     var backgroundTaskCount: Double?
     var contextPercent: Double?
+    /// Producer-verified compact-display delivery; false also covers truncated context.
+    var controllerAnswerable: Bool?
+    /// User input/interrupt delivery exists for this compact session row.
+    var controllerInput: Bool?
     var controlMode: ADControlMode?
     /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
     /// `subagents`: present with zeros once observed, absent only when this session has never
@@ -2796,6 +2800,8 @@ struct ADSessionInfo: Codable, Equatable {
         case backgroundStandbyCount = "backgroundStandbyCount"
         case backgroundTaskCount = "backgroundTaskCount"
         case contextPercent = "contextPercent"
+        case controllerAnswerable = "controllerAnswerable"
+        case controllerInput = "controllerInput"
         case controlMode = "controlMode"
         case coordination = "coordination"
         case currentTask = "currentTask"
@@ -2860,6 +2866,8 @@ extension ADSessionInfo {
         backgroundStandbyCount: Double?? = nil,
         backgroundTaskCount: Double?? = nil,
         contextPercent: Double?? = nil,
+        controllerAnswerable: Bool?? = nil,
+        controllerInput: Bool?? = nil,
         controlMode: ADControlMode?? = nil,
         coordination: ADCoordinationSummary?? = nil,
         currentTask: String?? = nil,
@@ -2904,6 +2912,8 @@ extension ADSessionInfo {
             backgroundStandbyCount: backgroundStandbyCount ?? self.backgroundStandbyCount,
             backgroundTaskCount: backgroundTaskCount ?? self.backgroundTaskCount,
             contextPercent: contextPercent ?? self.contextPercent,
+            controllerAnswerable: controllerAnswerable ?? self.controllerAnswerable,
+            controllerInput: controllerInput ?? self.controllerInput,
             controlMode: controlMode ?? self.controlMode,
             coordination: coordination ?? self.coordination,
             currentTask: currentTask ?? self.currentTask,

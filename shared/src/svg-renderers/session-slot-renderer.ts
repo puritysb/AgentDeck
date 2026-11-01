@@ -13,9 +13,10 @@ import { State } from '../states.js';
 import { stateColor } from '../state-colors.js';
 import { PASSIVE_OFFLINE_LABEL, OPEN_AGENTDECK_LABEL } from '../connection-status.js';
 import { agentLogoIcon } from './agent-logos.js';
-import { wrapTextByWidth, escSvgText } from './text-utils.js';
+import { wrapTextByWidth, sliceByPx, escSvgText } from './text-utils.js';
+import { DEVICE_CONTROLLER_RULES } from '../device-controller.js';
 
-const SIZE = 144;
+const SIZE = DEVICE_CONTROLLER_RULES.key.canvas;
 const BORDER_PERIMETER = 512;
 
 /**
@@ -723,7 +724,7 @@ export function renderDetailInfo(
   if (!session) return renderEmptySlot();
   const agent = (session.agentType as AgentType) || 'claude-code';
   const nameForDisplay = displayName ?? session.projectName;
-  const fontFam = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
+  const fontFam = 'IBM Plex Sans KR, IBM Plex Sans, -apple-system, system-ui, sans-serif';
   const effectiveState = state || session.state;
   const sColor = stateColor(effectiveState);
   const stateLbl = stateLabel(effectiveState, agent);
@@ -745,13 +746,16 @@ export function renderDetailInfo(
   const awaitingPrompt = isAwaiting
     ? (session.question ?? '').replace(/\s+/g, ' ').trim()
     : '';
-  const promptLines = awaitingPrompt ? wrapTextByWidth(awaitingPrompt, 122, 11).slice(0, 3) : [];
+  const questionFont = DEVICE_CONTROLLER_RULES.key.questionFont;
+  const allPromptLines = awaitingPrompt ? wrapTextByWidth(summarizeQuestionForKey(awaitingPrompt, 38), 112, questionFont) : [];
+  const promptLines = allPromptLines.slice(0, 3);
+  if (allPromptLines.length > 3) promptLines[2] = sliceByPx(promptLines[2], 112 - questionFont, questionFont)[0] + '…';
   // The reason approval is required is the most decisive supporting line, and
   // `questionDetail` is ordered most-decisive-first, so take its head.
   const promptWhy = awaitingPrompt ? (approvalReasonHead(session.questionDetail) ?? '') : '';
   const promptEls = promptLines.length > 0
-    ? promptLines.map((line, i) => `<text x="20" y="${62 + i * 13}" font-size="11" font-weight="700" text-anchor="start" fill="#fbbf24" font-family="${fontFam}">${escXml(line)}</text>`).join('')
-      + (promptWhy ? `<text x="20" y="${62 + promptLines.length * 13 + 2}" font-size="9.5" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(truncate(promptWhy, 30))}</text>` : '')
+    ? promptLines.map((line, i) => `<text x="16" y="${59 + i * 20}" font-size="${questionFont}" font-weight="700" text-anchor="start" fill="#fbbf24" font-family="${fontFam}">${escXml(line)}</text>`).join('')
+      + (promptWhy ? `<text x="16" y="124" font-size="12" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(truncate(promptWhy, 17))}</text>` : '')
     : '';
   const elements = [
     `<defs><linearGradient id="${gradId}" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#151720"/><stop offset="100%" stop-color="#0A0B10"/></linearGradient></defs>`,
@@ -767,7 +771,7 @@ export function renderDetailInfo(
     (modelName && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="56" font-size="12" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(formatModelEffort(modelName, effortLevel, 17))}</text>` : '',
     (mode && mode !== 'default' && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="74" font-size="11" font-weight="700" text-anchor="start" fill="#a78bfa" font-family="${fontFam}">${escXml(truncate(mode.toUpperCase(), 17))}</text>` : '',
     promptEls,
-    `<text x="20" y="120" font-size="12" font-weight="700" text-anchor="start" fill="${tool ? '#fbbf24' : sColor}" font-family="${fontFam}">${escXml(toolDisplay)}</text>`,
+    promptEls ? '' : `<text x="20" y="120" font-size="12" font-weight="700" text-anchor="start" fill="${tool ? '#fbbf24' : sColor}" font-family="${fontFam}">${escXml(toolDisplay)}</text>`,
   ].join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${elements}</svg>`;
 }
@@ -784,26 +788,32 @@ export function renderOptionButton(option: PromptOption, index: number): string 
   const label = option.label || `Option ${index + 1}`;
   const { icon, tone } = optionVisual(label);
   const colors = toneColors(tone);
-  const fontFam = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
-  const lines = wrapTextByWidth(label, 112, 13).slice(0, 2);
-  const startY = lines.length === 1 ? 103 : 96;
+  const fontFam = 'IBM Plex Sans KR, IBM Plex Sans, -apple-system, system-ui, sans-serif';
+  const key = DEVICE_CONTROLLER_RULES.key;
+  const wrapped = wrapTextByWidth(label, key.optionWidth, key.optionFont);
+  const lines = wrapped.slice(0, key.optionLines);
+  if (wrapped.length > key.optionLines) {
+    const last = lines.length - 1;
+    lines[last] = sliceByPx(lines[last], key.optionWidth - key.optionFont, key.optionFont)[0].trimEnd() + '…';
+  }
+  const startY = lines.length === 1 ? 100 : lines.length === 2 ? 88 : 70;
   const slotNum = `<circle cx="119" cy="23" r="12" fill="${colors.panel}" stroke="${colors.accent}" stroke-width="1" opacity="0.9"/><text x="119" y="28" text-anchor="middle" font-family="${fontFam}" font-size="12" font-weight="800" fill="${colors.text}" opacity="0.8">${index + 1}</text>`;
-  const textEls = lines.map((line, i) => `<text x="72" y="${startY + i * 17}" text-anchor="middle" font-family="${fontFam}" font-size="${line.length > 13 ? '12' : '13'}" font-weight="800" fill="${colors.text}">${escXml(line)}</text>`).join('');
+  const textEls = lines.map((line, i) => `<text x="72" y="${startY + i * key.optionLine}" text-anchor="middle" font-family="${fontFam}" font-size="${key.optionFont}" font-weight="800" fill="${colors.text}">${escXml(line)}</text>`).join('');
   return svgFrame(
     colors.bg,
-    `<rect x="25" y="18" width="94" height="58" rx="14" fill="${colors.panel}" opacity="0.58" stroke="${colors.accent}" stroke-width="1.2" stroke-opacity="0.26"/>`
-      + renderGlyphIcon(icon, colors.icon, colors.accent, 72, 43, 0.84)
+    `<rect x="50" y="14" width="44" height="36" rx="10" fill="${colors.panel}" opacity="0.58" stroke="${colors.accent}" stroke-width="1.2" stroke-opacity="0.26"/>`
+      + renderGlyphIcon(icon, colors.icon, colors.accent, 72, 30, 0.48)
       + slotNum
       + textEls,
   );
 }
 
 export function renderPresetButton(label: string, iconSvg: string, color: string, textColor: string, subtitle?: string, loading?: boolean): string {
-  const fontFam = 'Inter, -apple-system, system-ui, Helvetica Neue, sans-serif';
+  const fontFam = 'IBM Plex Sans KR, IBM Plex Sans, -apple-system, system-ui, sans-serif';
   if (loading) {
     return svgFrame(color, iconSvg + `<text x="72" y="103" text-anchor="middle" font-family="${fontFam}" font-size="13" font-weight="800" fill="${textColor}">SWITCHING</text>`);
   }
-  const labelEl = `<text x="72" y="100" text-anchor="middle" font-family="${fontFam}" font-size="16" font-weight="800" fill="${textColor}">${escXml(label)}</text>`;
+  const labelEl = `<text x="72" y="100" text-anchor="middle" font-family="${fontFam}" font-size="${DEVICE_CONTROLLER_RULES.key.optionFont}" font-weight="800" fill="${textColor}">${escXml(label)}</text>`;
   const subEl = subtitle ? `<text x="72" y="118" text-anchor="middle" font-family="${fontFam}" font-size="11" font-weight="650" fill="${textColor}" opacity="0.7">${escXml(truncate(subtitle, 14))}</text>` : '';
   return svgFrame(color, iconSvg + labelEl + subEl);
 }

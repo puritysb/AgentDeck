@@ -16,6 +16,31 @@ validators: [pnpm design-system:check]
 
 대시보드 디바이스 + 프로토콜 종합 레퍼런스 (전송/디스커버리/이벤트 중심). 하드웨어/OS 사양 전체 인벤토리는 [hardware-compatibility.md](hardware-compatibility.md) 가 SSOT.
 
+## Controller scope by device
+
+Primary controls answer actual agent requests; canned Review, Commit, Go on,
+Clear and suggested tasks are removed. Evaluation remains a separate workflow.
+Every response retains its session/question or native permission identity.
+
+| Surface | Useful controls | Limit |
+|---|---|---|
+| Stream Deck / Stream Deck+ / Ulanzi keypad | Real options, one-time permission decisions, supported STOP, native Gateway settings, explicit user input | Larger 22-unit choice text and bundled Korean glyphs on Ulanzi; three lines and visible truncation. Read full long subjects on a larger companion. Idle keys never send canned work. |
+| iPhone / iPad / macOS / Android LCD | Readable question context and choices, request-bound permission decisions, local session inspection | Only a live local delivery path enables responses; CloudKit observations cannot authorize commands. |
+| Android e-ink reader/tablet | High-contrast questions, scrollable larger touch targets, actual choices and native held approvals | Display-only when delivery is absent; no animation or tiny action chips required to operate the agent. |
+| T-Embed encoder (320×170) | Session/history navigation, explicit option selection, supported STOP and native settings | Delivery and exact displayed request must still match. No canned continuation or inferred approval. |
+| T-Display Pro Focus Strip (480×222) | Focus/result/usage navigation and native one-time permission decisions | Ordinary questions, multi-choice or unrepresentable subjects are read-only. |
+| Large touch HUDs (IPS10 / 86Box / AMOLED) | Session focus, readable attention detail, supported STOP | Awaiting detail remains read-only; unsupported input paths never expose Interrupt. |
+| Pocket portrait | Session observation/focus and existing camera/voice capture workflows | Small clipped session cards do not offer approval chips; respond on a readable controller. |
+| TTGO, small matrix/LED panels, non-touch e-ink | Session state, attention, usage and source/link freshness | Glance surfaces: no fabricated selection, approval or generic task controls. |
+
+Compact ESP32 frames preserve permission IDs and explicit delivery capabilities.
+A subject exceeding 159 UTF-8 bytes, request ID exceeding 39 bytes, or more than
+six options cannot become an active compact-display response. These limits come
+from the shared controller contract; missing delivery evidence remains read-only.
+Crowded serial rosters reduce the selected cohort to stay within the existing
+frame budget and report the full count. A receiver never gains a partial
+approval by losing request context to fit the transport.
+
 ## Device Matrix
 
 | Device | Transport | Port | Auth | Discovery | Direction | Events |

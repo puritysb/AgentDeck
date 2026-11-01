@@ -99,8 +99,10 @@ struct SessionInfo {
     uint32_t elapsedSec;    // seconds since this session started (0 when unknown)
     uint16_t port;
     int16_t backgroundTaskCount = -1;
-    uint8_t optionCount : 7; // bounded by SESSION_OPTIONS_CAP (at most six)
+    uint8_t optionCount : 5; // bounded by SESSION_OPTIONS_CAP (at most six)
     uint8_t alive : 1;
+    uint8_t answerable : 1;
+    uint8_t controllable : 1;
     uint8_t ciPhase;         // generated phase ID, 0 explicitly clears
     char id[32];
     char projectName[40]; // original project/worktree label
@@ -146,7 +148,7 @@ struct SessionInfo {
 #if defined(BOARD_TTGO)
 static_assert(sizeof(SessionInfo) <= 808, "TTGO roster must not consume additional static DRAM");
 #endif
-static_assert(SESSION_OPTIONS_CAP < 128, "Session option count must fit its bounded field");
+static_assert(SESSION_OPTIONS_CAP < 32, "Session option count must fit its bounded field");
 
 inline const char* sessionDisplayName(const SessionInfo& session) {
     return session.displayName[0] ? session.displayName : session.projectName;

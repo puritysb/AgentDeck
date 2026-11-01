@@ -65,9 +65,10 @@ Only the **Launcher encoder (E4)** carries per-instance settings:
 agent opens in.
 
 The keypad has no per-button configuration. Every key is a `session-slot` whose
-content is derived from live session state, and the detail-view quick actions
-(GO ON / REVIEW / COMMIT / CLEAR) are defined by the shared layout engine in
-`shared/src/d200h-layout.ts`, not by user settings. The earlier configurable
+content is derived from live session state. The detail view offers actual request
+choices, native settings and explicit user input where delivery is available.
+Canned GO ON / REVIEW / COMMIT / CLEAR and suggested-prompt buttons are retired;
+the shared layout lives in `shared/src/d200h-layout.ts`. The earlier configurable
 slots 3-6 belonged to the retired mode-dial keypad — see
 [Retired and Experimental Surfaces](retired-surfaces.md).
 

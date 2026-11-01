@@ -1509,6 +1509,14 @@
           ],
           "type": "string"
         },
+        "controllerAnswerable": {
+          "description": "Producer-verified compact-display delivery; false also covers truncated context.",
+          "type": "boolean"
+        },
+        "controllerInput": {
+          "description": "User input/interrupt delivery exists for this compact session row.",
+          "type": "boolean"
+        },
         "coordination": {
           "$ref": "#/definitions/CoordinationSummary",
           "description": "Cross-session coordination census — see CoordinationSummary. Same emission rule as `subagents`: present with zeros once observed, absent only when this session has never had a relation."

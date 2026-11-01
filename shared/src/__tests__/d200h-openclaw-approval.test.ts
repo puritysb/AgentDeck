@@ -129,7 +129,7 @@ describe('D200H — the approval says what it is', () => {
     const svgs = [...detailCells(pending).values()].map((c) => c.svg).join('');
     // Most-decisive-first ordering means the policy warning is the head, not
     // the cwd (which is identical for every request and distinguishes nothing).
-    expect(svgs).toContain('strict inline-eval');
+    expect(svgs).toContain('strict inline-'); // readable abbreviated reason; full detail stays on the host
     expect(svgs).not.toContain('cwd:');
   });
 

@@ -28,7 +28,7 @@ The grammar is the Stream Deck session-centric two-level UX ([streamdeck-layout]
 | Short press | Enter session (`focus_session`) | Commit (`select_option` / state command) |
 | Long press | — | BACK / cancel (`session_command{escape}`) |
 
-Detail-level commands are state-dependent, mirroring the Stream Deck grammar: an **awaiting** session exposes the real parsed options (approve/deny, AskUserQuestion choices); a **processing** session exposes STOP (`interrupt`); an **idle** session exposes GO ON / REVIEW (`review_run`) — making the knob the minimum viable steering device for a desk without a Stream Deck.
+Detail-level commands are state-dependent, mirroring the Stream Deck grammar: an **awaiting** session exposes the real parsed options (approve/deny, AskUserQuestion choices); a **processing** session exposes STOP (`interrupt`); an **idle** session exposes history and applicable native settings. Canned GO ON / REVIEW commands are removed. A reply also requires producer-confirmed delivery and an intact request; unsupported or truncated requests are read-only.
 
 ### Mode A — docked steering knob
 
@@ -92,7 +92,7 @@ A ten-concept external study of the T-Embed form factor ("AI ORBIT CONTROLLER") 
 - **INTENT (autonomy dial)** — the strongest addition. "Click-then-rotate adjusts how boldly the agent acts" maps directly onto machinery AgentDeck already has: Claude Code **permission modes** (default / acceptEdits / plan / bypassPermissions) are switchable today via the routable `switch_mode` command (the Shift+Tab convention), **effort level** already travels in the state stream, and the model choice already has a daemon-side answer in the APME Pareto **Recommend**. A detail-level "Autonomy" menu entry — rotate through mode/effort steps, press to apply — turns the knob into the physical steering wheel for *how* an agent works, not just *what it does next*. No new protocol; managed PTY sessions only at first (observed sessions can't switch modes).
 - **RESUME (timeline scrubbing)** — rotate to scrub the focused session's milestone history. The daemon already serves exactly this via `query_session_timeline` (session-scoped `timeline_history` backfill); the knob adds a read-only "scrub" sub-view in detail mode. Checkpoint *jumping* stays out (no such primitive), but scrub + read is a natural encoder gesture.
 - **WHISPER (voice capture → next action)** — refines voice Stage 3: a captured utterance doesn't have to open a live Q&A; routed through the existing turn-end **directive queue** (`send_prompt`), a spoken thought becomes the session's next instruction. "Speak → pick target session with the dial → queued" is the AgentDeck-native version of the study's idea-inbox.
-- **RELAY (work-token framing)** — not a feature but the right *mental model* for the grammar we shipped: STOP = take the baton, options/approve = answer and hand it back, Go on = hand the baton to the agent. Worth adopting in copy and docs.
+- **RELAY (work-token framing)** — not a feature but the right *mental model* for the grammar we shipped: STOP = take the baton, request-bound options/approval = answer and hand it back. The generic Go on step is retired from primary controls; retain this framing only for actual supported actions.
 - **Screen discipline** — the study's four-line rule matches this panel: *who is working, what they're doing, how far along, what I can do*. The list-level card already approximates it; treat it as the explicit acceptance test for every future knob screen.
 - **ORBIT (radio-channel switching)** — validates the shipped list level (rotate = cycle sessions, ring = fleet state). One deviation stays deliberate: "needs human" pulses **amber**, not red — semantic status colors are a design-system invariant.
 
@@ -254,7 +254,10 @@ the last result remains readable until tapped. A removed pinned session stays
 visible as ENDED. The persistent waiting count opens an arrival-ordered list;
 three readable rows and a next-page target make every waiting session reachable.
 New requests never steal the Usage or Sessions page. Selecting a session row pins
-it. The camera-equipped model retains its portrait Pocket role.
+it. Native held permission requests can expose one-time Allow/Deny actions only
+when the complete compact subject and request identity remain answerable.
+Ordinary questions stay read-only on this strip; choose on the Knob, keypad or
+phone. The camera-equipped model retains its portrait Pocket role.
 
 ### Companion Knob
 

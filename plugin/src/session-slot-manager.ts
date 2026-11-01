@@ -1,4 +1,4 @@
-import { OPENCODE_PERMISSION_CHOICES } from '@agentdeck/shared';
+import { hasControllerInput, OPENCODE_PERMISSION_CHOICES } from '@agentdeck/shared';
 import { dotDeckReservedKeys, type DotDeckSnapshot } from '@agentdeck/shared';
 import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 import { selectedLunaReserve, selectedCodexCredits } from '@agentdeck/shared';
@@ -120,14 +120,6 @@ export interface DeckLayout {
 
 // ---- OpenClaw preset SVG icons (144x144 button canvas) ----
 
-const SUMMARIZE_ICON_SVG = [
-  `<rect x="40" y="14" width="64" height="56" rx="5" fill="none" stroke="#93c5fd" stroke-width="2"/>`,
-  `<line x1="50" y1="28" x2="94" y2="28" stroke="#93c5fd" stroke-width="2" opacity="0.6"/>`,
-  `<line x1="50" y1="40" x2="88" y2="40" stroke="#93c5fd" stroke-width="2" opacity="0.6"/>`,
-  `<line x1="50" y1="52" x2="78" y2="52" stroke="#93c5fd" stroke-width="2" opacity="0.6"/>`,
-  `<polyline points="82,50 87,56 96,44" fill="none" stroke="#93c5fd" stroke-width="2.5" stroke-linecap="round"/>`,
-].join('');
-
 // MODEL icon: model name large + swap indicator. loading=true shows spinner animation.
 function buildModelIcon(_modelName?: string, loading?: boolean): string {
   if (loading) {
@@ -166,49 +158,12 @@ const GATEWAY_ICON_SVG = [
 // MODEL / THINKING open a picker of the Gateway's own values (#463); their
 // subtitles show the value in effect, in the Gateway's words.
 const OC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; dynamicIcon?: 'model' | 'effort' }> = [
-  { label: 'STATUS', iconSvg: SUMMARIZE_ICON_SVG, color: '#1a1a3e', textColor: '#93c5fd', prompt: 'status' },
   { label: 'MODEL', dynamicIcon: 'model', color: '#2d1f3d', textColor: '#e9d5ff', localAction: 'pick_model' },
   { label: 'GATEWAY', iconSvg: GATEWAY_ICON_SVG, color: '#1a0f2e', textColor: '#c084fc', localAction: 'open_gateway' },
   // Last: a processing row spends its first content key on the tool status, and
   // the Gateway applies thinking to subsequent turns only, so this is the one
   // a small deck drops mid-turn.
   { label: 'THINKING', dynamicIcon: 'effort', color: '#2d1f3d', textColor: '#e9d5ff', localAction: 'pick_effort' },
-];
-
-// Claude Code quick actions (IDLE detail view)
-const GO_ON_ICON_SVG = `<polygon points="60,20 100,44 60,68" fill="#22c55e" opacity="0.8"/>`;
-const REVIEW_ICON_SVG = `<rect x="42" y="18" width="60" height="48" rx="4" fill="none" stroke="#93c5fd" stroke-width="2"/><path d="M52,34 h40 M52,46 h32 M52,58 h24" stroke="#93c5fd" stroke-width="1.5" opacity="0.6"/>`;
-const COMMIT_ICON_SVG = `<circle cx="72" cy="40" r="20" fill="none" stroke="#22c55e" stroke-width="2"/><polyline points="62,40 70,48 84,32" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round"/>`;
-const CLEAR_ICON_SVG = `<line x1="52" y1="24" x2="92" y2="64" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/><line x1="92" y1="24" x2="52" y2="64" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>`;
-
-// Suggested-prompt quick-send (relocated from the SD+ E2 idle encoder rotate/press
-// to a keypad button). A spark/lightbulb glyph; amber to read as a hint, not a
-// command. The full suggestion rides `prompt`; the subtitle previews it.
-const SUGGEST_ICON_SVG = [
-  `<path d="M72 18a24 24 0 0 0-14 43c3 2 4 5 4 8v3h20v-3c0-3 1-6 4-8a24 24 0 0 0-14-43z" fill="#f59e0b" opacity="0.18" stroke="#fbbf24" stroke-width="2.5"/>`,
-  `<line x1="63" y1="78" x2="81" y2="78" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>`,
-  `<line x1="66" y1="86" x2="78" y2="86" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round"/>`,
-].join('');
-
-/** Build the suggested-prompt quick-send keypad preset (SD+ idle detail view). */
-function buildSuggestPreset(prompt: string): PresetAction {
-  return {
-    label: 'SUGGESTED',
-    iconSvg: SUGGEST_ICON_SVG,
-    color: '#3a2a0f',
-    textColor: '#fbbf24',
-    subtitle: truncateStr(prompt, 18),
-    prompt,
-  };
-}
-
-// REVIEW routes to the independent on-demand eval (review_run — daemon-side
-// judge, no agent control), so it is uniform across every session type.
-const CC_PRESET_DEFS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string; dynamicIcon?: 'model' }> = [
-  { label: 'GO ON', iconSvg: GO_ON_ICON_SVG, color: '#1e3a2f', textColor: '#22c55e', prompt: 'go on' },
-  { label: 'REVIEW', iconSvg: REVIEW_ICON_SVG, color: '#1e293b', textColor: '#93c5fd', localAction: 'review_run' },
-  { label: 'COMMIT', iconSvg: COMMIT_ICON_SVG, color: '#1e293b', textColor: '#22c55e', prompt: '/commit' },
-  { label: 'CLEAR', iconSvg: CLEAR_ICON_SVG, color: '#1e293b', textColor: '#94a3b8', prompt: '/clear' },
 ];
 
 // Host push-to-talk. The deck contributes the button; the daemon records on
@@ -257,10 +212,7 @@ function buildVoicePreset(state: SlotVoiceState): PresetAction {
 
 // OpenCode observed idle: the observer plugin injects immediately via the
 // in-process SDK — same semantics as managed idle presets.
-const OC_OBSERVED_INJECT_PRESETS: Array<Omit<PresetAction, 'iconSvg'> & { iconSvg?: string }> = [
-  { label: 'GO ON', iconSvg: GO_ON_ICON_SVG, color: '#1e3a2f', textColor: '#22c55e', prompt: 'continue', subtitle: 'inject now' },
-  { label: 'COMMIT', iconSvg: COMMIT_ICON_SVG, color: '#1e293b', textColor: '#22c55e', prompt: 'commit the changes', subtitle: 'inject now' },
-];
+
 
 const DEFAULT_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckplus' };
 // 36 covers the Stream Deck + XL's full 9×4 keypad (usage rides its dials, so no
@@ -1201,32 +1153,6 @@ export class SessionSlotManager {
   }
 
   /**
-   * REVIEW tile = independent on-demand eval (review_run) — daemon-side
-   * judge, no agent control, valid for every session type once the turn has
-   * completed. Badge shows the last verdict; REVIEWING while the judge runs
-   * (not pressable).
-   */
-  private reviewSlotConfig(session: SessionInfo | undefined): SessionSlotConfig {
-    if (this.isReviewRunning(session)) {
-      return { type: 'status', label: 'REVIEWING', subtitle: 'judge running', icon: 'tool', tone: 'info' };
-    }
-    const risk = session?.reviewRisk;
-    return {
-      type: 'preset',
-      preset: {
-        label: 'REVIEW',
-        iconSvg: REVIEW_ICON_SVG,
-        color: '#1e293b',
-        textColor: risk === 'high' ? '#f87171' : risk === 'medium' ? '#fbbf24' : '#93c5fd',
-        subtitle: risk
-          ? `risk ${risk}${session?.reviewFindings != null ? ` · ${session.reviewFindings}` : ''}`
-          : undefined,
-        localAction: 'review_run',
-      },
-    };
-  }
-
-  /**
    * Non-pressable review status for PROCESSING: REVIEWING while the judge
    * runs, or the last verdict as an inert badge; null when there is nothing
    * to show. Mid-turn the tile must not fire review_run — the work isn't
@@ -1236,13 +1162,13 @@ export class SessionSlotManager {
    */
   private reviewBadgeSlotConfig(session: SessionInfo | undefined): SessionSlotConfig | null {
     if (this.isReviewRunning(session)) {
-      return { type: 'status', label: 'REVIEWING', subtitle: 'judge running', icon: 'tool', tone: 'info' };
+      return { type: 'status', label: 'EVALUATING', subtitle: 'judge running', icon: 'tool', tone: 'info' };
     }
     const risk = session?.reviewRisk;
     if (!risk) return null;
     return {
       type: 'status',
-      label: 'REVIEW',
+      label: 'EVAL',
       subtitle: `risk ${risk}${session?.reviewFindings != null ? ` · ${session.reviewFindings}` : ''}`,
       icon: 'ready',
       tone: risk === 'high' ? 'danger' : risk === 'medium' ? 'warning' : 'info',
@@ -1255,8 +1181,7 @@ export class SessionSlotManager {
    *   - held gate (Claude PreToolUse / OpenCode permission.asked / Codex
    *     opt-in approval hold) → Allow/Deny
    *   - processing → live readouts + STOP only
-   *   - OpenCode idle → immediate injection presets
-   *   - REVIEW (independent eval) → everywhere, including Codex
+   *   - idle → explicit user input only where a delivery channel exists
    */
   private observedContentSlot(
     session: SessionInfo | undefined, idx: number,
@@ -1353,28 +1278,13 @@ export class SessionSlotManager {
       const cellIdx = idx - 1;
       return cells[cellIdx] ?? { type: 'empty' };
     }
-    // Idle observed.
-    if (isOpenCodeObserved) {
-      if (idx < OC_OBSERVED_INJECT_PRESETS.length) {
-        const def = OC_OBSERVED_INJECT_PRESETS[idx];
-        return { type: 'preset', preset: { ...def, iconSvg: def.iconSvg ?? '' } };
-      }
-      if (idx === OC_OBSERVED_INJECT_PRESETS.length) return this.reviewSlotConfig(session);
-      return this.idleStatusCard(session, idx - OC_OBSERVED_INJECT_PRESETS.length - 1, false, false);
-    }
-    // Claude/Codex observed idle: no deck-native prompt presets, but the
-    // independent review stays live — and so does voice, because the daemon
-    // delivers a dictated prompt by typing into the owning terminal
-    // (injectObservedText), the same ladder a board's PTT rides.
-    if (idx === 0) return this.reviewSlotConfig(session);
-    if (idx === 1) {
-      return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
-    }
-    if (idx === 2) {
-      return this.nowCard(session)
-        ?? { type: 'status', label: 'OBSERVED', subtitle: 'control in terminal', icon: 'ready', tone: 'info' };
-    }
-    return this.idleStatusCard(session, idx - 3, false, false);
+    // Idle is a readout plus user-authored input where delivery exists.
+    const input = hasControllerInput(session);
+    if (input && idx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
+    const card = idx - (input ? 1 : 0);
+    if (card === 0) return this.nowCard(session)
+      ?? { type: 'status', label: 'IDLE', subtitle: 'no pending request', icon: 'ready', tone: 'info' };
+    return this.idleStatusCard(session, card - 1, false, false);
   }
 
   private getDetailSlotConfig(slot: number, layout: DeckLayout): SessionSlotConfig {
@@ -1426,7 +1336,7 @@ export class SessionSlotManager {
       }
       if (isAwaiting) return { type: 'esc', label: 'active' };
       if (isProcessing) return { type: 'stop', label: 'active' };
-      return { type: 'esc', label: 'dim' };
+      return { type: 'empty' };
     }
 
     if (slot === controls.info) {
@@ -1451,21 +1361,6 @@ export class SessionSlotManager {
     // idle/processing OpenClaw row keeps its existing managed layout.
     if (isObserved || (rowDriven && isAwaiting)) {
       return this.observedContentSlot(session, isAwaiting ? detailOptionStart + contentIdx : contentIdx, isAwaiting, isProcessing);
-    }
-
-    // Plus family only: the suggested-prompt quick-send leads the IDLE content
-    // slots (relocated from the retired E2 encoder rotate/press). Gated on the
-    // Plus family (SD+ / + XL) so classic-deck detail layouts are unchanged.
-    const suggestEnabled = isPlusFamily(layout.family)
-      && this._detailState === State.IDLE
-      && !!this._detailSuggestedPrompt;
-    if (suggestEnabled) {
-      if (contentIdx === 0) {
-        return { type: 'preset', preset: buildSuggestPreset(this._detailSuggestedPrompt!) };
-      }
-      // Shift the remaining IDLE content down by one so the existing layout
-      // (presets → status cards) follows the suggested button.
-      contentIdx -= 1;
     }
 
     const optionIndex = detailOptionStart + contentIdx;
@@ -1522,30 +1417,10 @@ export class SessionSlotManager {
       }
     }
 
-    // Claude Code IDLE: show quick action presets (GO ON, REVIEW, COMMIT, CLEAR)
-    if (!isOpenClaw && this._detailState === State.IDLE && contentIdx < CC_PRESET_DEFS.length) {
-      const def = CC_PRESET_DEFS[contentIdx];
-      const preset: PresetAction = {
-        label: def.label,
-        iconSvg: def.iconSvg ?? '',
-        color: def.color,
-        textColor: def.textColor,
-        prompt: def.prompt,
-        // Without this, localAction presets (REVIEW → review_run) press as
-        // dead keys: handleSlotPress dispatches on preset.localAction.
-        localAction: def.localAction,
-      };
-      return { type: 'preset', preset };
-    }
-
-    // VOICE hold-to-talk follows the preset row — host mic + host speakers,
-    // routed by the daemon through the same pipeline as a board's PTT key.
-    if (!isOpenClaw && this._detailState === State.IDLE && contentIdx === CC_PRESET_DEFS.length) {
-      return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
-    }
-
     if (!isOpenClaw && this._detailState === State.IDLE) {
-      return this.idleStatusCard(session, contentIdx - CC_PRESET_DEFS.length - 1);
+      const input = hasControllerInput(session);
+      if (input && contentIdx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
+      return this.idleStatusCard(session, contentIdx - (input ? 1 : 0));
     }
 
     // OpenClaw already surfaces MODEL as an actionable preset, and PROCESSING

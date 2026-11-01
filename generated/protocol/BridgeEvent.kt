@@ -1355,6 +1355,17 @@ data class SessionInfo (
     val backgroundTaskCount: Double? = null,
 
     val contextPercent: Double? = null,
+
+    /**
+     * Producer-verified compact-display delivery; false also covers truncated context.
+     */
+    val controllerAnswerable: Boolean? = null,
+
+    /**
+     * User input/interrupt delivery exists for this compact session row.
+     */
+    val controllerInput: Boolean? = null,
+
     val controlMode: ControlMode? = null,
 
     /**

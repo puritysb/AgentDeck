@@ -35,6 +35,7 @@ void addSession(const char* agentType, const char* state, const char* project) {
   setStr(s.projectName, sizeof(s.projectName), project);
   setStr(s.modelName, sizeof(s.modelName), "opus-4.8");
   s.alive = true;
+  s.controllable = true; s.answerable = true; // Explicit interactive lab fixture capability.
   if (std::strcmp(agentType, "claude-code") == 0)
     setStr(g_state.sessionNames[g_state.octopusCount++], 24, project);
   else if (std::strcmp(agentType, "codex-cli") == 0 || std::strcmp(agentType, "codex-app") == 0)

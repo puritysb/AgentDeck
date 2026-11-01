@@ -229,15 +229,15 @@ describe('SessionSlotManager detail layout', () => {
     });
     expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'preset',
-      preset: { label: 'STATUS' },
+      preset: { label: 'MODEL' },
     });
     expect(manager.getSlotConfig(4, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'preset',
-      preset: { label: 'MODEL' },
+      preset: { label: 'GATEWAY' },
     });
     expect(manager.getSlotConfig(5, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'preset',
-      preset: { label: 'GATEWAY' },
+      preset: { label: 'THINKING' },
     });
   });
 
@@ -261,7 +261,7 @@ describe('SessionSlotManager detail layout', () => {
     });
     expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'preset',
-      preset: { label: 'STATUS' },
+      preset: { label: 'MODEL' },
     });
   });
 
@@ -545,50 +545,17 @@ describe('SD+ keypad relocation (Phase 2)', () => {
     expect(manager.handleSlotPress(7, SD_PLUS_LAYOUT)).toMatchObject({ action: 'esc' });
   });
 
-  it('shows a SUGGESTED quick-send button leading the IDLE detail content on SD+', () => {
-    const manager = new SessionSlotManager();
-    manager.updateSessions([makeSession({ state: State.IDLE })]);
-    manager.enterDetailView('session-1');
-    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'claude-opus-4-8', undefined, undefined, 'run the test suite');
-
-    // Leading content slot (slot 2 on SD+) = the suggested-prompt preset.
-    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({
-      type: 'preset',
-      preset: { label: 'SUGGESTED', prompt: 'run the test suite' },
-    });
-    // Pressing it sends the suggestion as a prompt.
-    expect(manager.handleSlotPress(2, SD_PLUS_LAYOUT)).toMatchObject({ action: 'send-prompt', promptText: 'run the test suite' });
-    // The CC quick-action presets follow (shifted by one).
-    expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ type: 'preset', preset: { label: 'GO ON' } });
-  });
-
-  it('does NOT add a SUGGESTED button on classic Stream Deck (behavior unchanged)', () => {
-    const manager = new SessionSlotManager();
-    manager.updateSessions([makeSession({ state: State.IDLE })]);
-    manager.enterDetailView('session-1');
-    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'claude-opus-4-8', undefined, undefined, 'run the test suite');
-
-    const suggested = Array.from({ length: 15 }, (_, i) => manager.getSlotConfig(i, SD_CLASSIC_LAYOUT))
-      .filter(c => c.type === 'preset' && c.preset?.label === 'SUGGESTED');
-    expect(suggested).toHaveLength(0);
-    // Classic IDLE detail still leads with the CC quick-action presets.
-    const firstContent = manager.getSlotConfig(2, SD_CLASSIC_LAYOUT);
-    expect(firstContent).toMatchObject({ type: 'preset', preset: { label: 'GO ON' } });
-  });
-
-  it('drops the SUGGESTED button when the session leaves IDLE', () => {
-    const manager = new SessionSlotManager();
-    manager.updateSessions([makeSession({ state: State.IDLE })]);
-    manager.enterDetailView('session-1');
-    manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'm', undefined, undefined, 'do the thing');
-    expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ preset: { label: 'SUGGESTED' } });
-
-    // A PROCESSING update with a stale suggestion must not surface the button.
-    manager.updateDetailState(State.PROCESSING, [], 'Edit', 'x.ts', undefined, 'm', undefined, undefined, 'do the thing');
-    const suggested = [0, 1, 2, 3, 4, 5, 6, 7]
-      .map(i => manager.getSlotConfig(i, SD_PLUS_LAYOUT))
-      .filter(c => c.type === 'preset' && c.preset?.label === 'SUGGESTED');
-    expect(suggested).toHaveLength(0);
+  it('keeps canned and suggested prompts off every keypad family', () => {
+    for (const layout of [SD_PLUS_LAYOUT, SD_CLASSIC_LAYOUT]) {
+      const manager = new SessionSlotManager();
+      manager.updateSessions([makeSession({ state: State.IDLE })]);
+      manager.enterDetailView('session-1');
+      manager.updateDetailState(State.IDLE, [], undefined, undefined, undefined, 'claude-opus-4-8', undefined, undefined, 'run the test suite');
+      const configs = Array.from({ length: layout.keyCount }, (_, i) => manager.getSlotConfig(i, layout));
+      expect(configs.filter(c => c.type === 'preset' && (c.preset?.prompt || c.preset?.localAction === 'review_run'))).toEqual([]);
+      expect(configs.some(c => c.type === 'preset' && c.preset?.localAction === 'voice_ptt')).toBe(true);
+      expect(manager.handleSlotPress(layout.keyCount - 1, layout)).toEqual({ action: 'none' });
+    }
   });
 });
 
@@ -863,11 +830,8 @@ describe('VOICE hold-to-talk key', () => {
     expect(press).toMatchObject({ action: 'voice-ptt-begin', sessionId: 'session-1' });
   });
 
-  it('keeps localAction on materialized CC presets so REVIEW presses dispatch', () => {
-    const mgr = idleDetailManager();
-    const review = allSlots(mgr, SD_PLUS_LAYOUT)
-      .find(c => c.type === 'preset' && c.preset?.label === 'REVIEW');
-    expect(review?.preset?.localAction).toBe('review_run');
+  it('keeps evaluation outside the primary controller keys', () => {
+    expect(allSlots(idleDetailManager(), SD_PLUS_LAYOUT).some(c => c.preset?.localAction === 'review_run')).toBe(false);
   });
 
   it('restyles the VOICE key from daemon voice_state transitions', () => {
@@ -879,7 +843,7 @@ describe('VOICE hold-to-talk key', () => {
     expect(voice?.preset?.subtitle).toBe('● listening');
   });
 
-  it('offers VOICE on observed Claude idle next to REVIEW (terminal-injection delivery)', () => {
+  it('offers user-authored VOICE on observed Claude idle (terminal-injection delivery)', () => {
     const mgr = new SessionSlotManager();
     mgr.updateSessions([makeSession({
       id: 'observed:claude:abc',
@@ -891,7 +855,7 @@ describe('VOICE hold-to-talk key', () => {
     const voice = configs.find(c => c.type === 'preset' && c.preset?.localAction === 'voice_ptt');
     expect(voice?.preset?.label).toBe('VOICE');
     // The honest "control in terminal" tile survives the insertion.
-    expect(configs.some(c => c.type === 'status' && c.label === 'OBSERVED')).toBe(true);
+    expect(configs.some(c => c.type === 'status' && c.label === 'IDLE')).toBe(true);
   });
 });
 
@@ -1200,12 +1164,12 @@ describe('OpenClaw setting picker (#463)', () => {
     return manager;
   }
 
-  it('idle shows STATUS · MODEL · GATEWAY · THINKING, and THINKING opens the picker', () => {
+  it('idle shows only native MODEL · GATEWAY · THINKING, and THINKING opens the picker', () => {
     const manager = openClaw();
-    expect([2, 3, 4, 5].map((slot) => (manager.getSlotConfig(slot, SD_PLUS_LAYOUT) as any).preset?.label))
-      .toEqual(['STATUS', 'MODEL', 'GATEWAY', 'THINKING']);
-    expect(manager.handleSlotPress(5, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'effort' });
-    expect(manager.handleSlotPress(3, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'model' });
+    expect([2, 3, 4].map((slot) => (manager.getSlotConfig(slot, SD_PLUS_LAYOUT) as any).preset?.label))
+      .toEqual(['MODEL', 'GATEWAY', 'THINKING']);
+    expect(manager.handleSlotPress(4, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'effort' });
+    expect(manager.handleSlotPress(2, SD_PLUS_LAYOUT)).toEqual({ action: 'open-setting-picker', settingKey: 'model' });
   });
 
   it('pages the agent\'s own levels, marks current/default, and sends ids verbatim (null = default)', () => {
@@ -1234,7 +1198,7 @@ describe('OpenClaw setting picker (#463)', () => {
     const effortQuery = manager.openPicker('effort')!;
     manager.applySessionSettings({ type: 'session_settings', requestId: effortQuery.requestId, targetSessionKey: 'agent:main', sessionId: 'openclaw-gateway', settings: [{ key: 'effort', current: 'xhigh', options: LEVELS }] });
     manager.closePicker();
-    expect((manager.getSlotConfig(5, SD_PLUS_LAYOUT) as any).preset.subtitle).toBe('xhigh');
+    expect((manager.getSlotConfig(4, SD_PLUS_LAYOUT) as any).preset.subtitle).toBe('xhigh');
     const modelQuery = manager.openPicker('model')!;
     expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'status', label: 'LOADING' });
     manager.applySessionSettings({ type: 'session_settings', requestId: modelQuery.requestId, targetSessionKey: 'agent:main', sessionId: 'openclaw-gateway', settings: [], error: 'model not allowed' });
@@ -1257,8 +1221,8 @@ describe('Observed NOW card (#463)', () => {
       activity: 'Reviewing picker', contextPercent: 63, subagents: { active: 1, peak: 1, completed: 0 },
     })]);
     manager.enterDetailView('observed:claude:a');
-    // SD+ content keys 2-5: REVIEW, VOICE, NOW, …
-    expect(manager.getSlotConfig(4, SD_PLUS_LAYOUT)).toMatchObject({
+    // SD+ content keys start with VOICE, then the real NOW readout.
+    expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({
       type: 'status', label: '1 SUBAGENT', subtitle: 'Reviewing picker', detail: 'context 63%',
     });
   });

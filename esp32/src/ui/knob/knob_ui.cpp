@@ -36,10 +36,10 @@ enum MenuKind : uint8_t {
     MI_DENY,      // permission_decision deny (requestId) / escape
     MI_ESC,       // session escape
     MI_STOP,      // session interrupt
-    MI_CONTINUE,  // send_prompt "go on"
     MI_HISTORY,   // query_session_timeline -> History scrub view
     MI_POWER,     // power the board off (no side key exists on this hardware)
     MI_MODE,      // session_command switch_mode (Shift+Tab cycle; managed only)
+    MI_READ_ONLY,
     MI_BACK,      // leave detail
 };
 
@@ -56,6 +56,8 @@ static constexpr uint8_t MENU_VISIBLE = 2;
 // Snapshot of the one session the UI is looking at (copied under lock).
 struct SessionSnap {
     bool dotPeer = false;
+    bool answerable = false;
+    bool controllable = false;
     char id[32];
     char projectName[40];
     char projectDetail[40];
@@ -232,15 +234,7 @@ static void sendSessionCommand(const char* sid, const char* cmdType) {
     Net::queueOutbound(buf);
 }
 
-static void sendGoOn(const char* sid) {
-    if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
-    char buf[176];
-    snprintf(buf, sizeof(buf),
-             "{\"type\":\"session_command\",\"sessionId\":\"%s\","
-             "\"command\":{\"type\":\"send_prompt\",\"text\":\"go on\"}}",
-             sid);
-    Net::queueOutbound(buf);
-}
+
 
 static void sendHistoryQuery(const char* sid) {
     if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
@@ -268,6 +262,7 @@ static bool snapshotSession(int idx, SessionSnap& out) {
     lockState();
     if (idx >= 0 && idx < g_state.sessionCount) {
         const SessionInfo& s = g_state.sessions[idx];
+        out.answerable = s.answerable; out.controllable = s.controllable;
         strncpy(out.id, s.id, sizeof(out.id));
         strncpy(out.projectName, sessionDisplayName(s), sizeof(out.projectName));
         Companion::copy(out.projectDetail, s.projectName);
@@ -371,7 +366,7 @@ static void addMenuItem(const char* label, uint8_t kind, uint8_t optIndex,
 
 // Build the state-dependent command menu for the entered session. Mirrors the
 // Stream Deck detail-level grammar: awaiting = real options, processing = STOP,
-// idle = GO ON; BACK is always last.
+// idle = history and native settings; BACK is always last.
 static void buildMenu(const SessionSnap& s, bool entering = false) {
     s_menuCount = 0;
     bool changed = false, found = false;
@@ -387,29 +382,23 @@ static void buildMenu(const SessionSnap& s, bool entering = false) {
     if (changed) { ++s_requestRevision; s_menuIdx = -1; s_menuScroll = 0; }
     if (entering) s_menuIdx = awaiting ? -1 : 0;
 
-    if (awaiting) {
-        if (s_displayedRequest.count > 0) {
+    if (awaiting && s.answerable) {
+        if (s.requestId[0]) {
+            addMenuItem("Allow once", MI_APPROVE, 0, true);
+            addMenuItem("Deny", MI_DENY, 0, false);
+        } else if (s_displayedRequest.count > 0) {
             for (unsigned i = 0; i < s_displayedRequest.count; ++i) {
                 char label[64]; Companion::copy(label, s_displayedRequest.options[i].label);
                 Utf8::sanitizeLvglText(label);
                 addMenuItem(label, MI_OPTION, s_displayedRequest.options[i].index,
                             s_displayedRequest.options[i].recommended);
             }
-        } else {
-            // No parsed options (plain permission gate) — Approve/Deny pair.
-            addMenuItem("Approve", MI_APPROVE, 0, true);
-            addMenuItem("Deny", MI_DENY, 0, false);
         }
-        addMenuItem("Esc (cancel prompt)", MI_ESC, 0, false);
-    } else if (strcmp(s.state, "processing") == 0) {
+        if (!s.requestId[0] && s.port > 0) addMenuItem("Esc (cancel prompt)", MI_ESC, 0, false);
+    } else if (awaiting) {
+        addMenuItem("Reply on phone/computer", MI_READ_ONLY, 0, false);
+    } else if (strcmp(s.state, "processing") == 0 && s.controllable) {
         addMenuItem("STOP (interrupt)", MI_STOP, 0, false);
-    } else if (strncmp(s.id, "observed:", 9) != 0) {
-        // "Go on" types into the managed PTY. An observed session's terminal
-        // cannot be typed into, and its idle directive queue only drains at a
-        // turn end that never comes — so the item is honest only for managed
-        // sessions. (Observed processing sessions still get STOP: the soft-stop
-        // ladder is real.)
-        addMenuItem("Go on", MI_CONTINUE, 0, false);
     }
     addMenuItem("History", MI_HISTORY, 0, false);
     // INTENT step 1: cycle the agent's permission mode (Shift+Tab). Managed
@@ -432,7 +421,11 @@ static void buildMenu(const SessionSnap& s, bool entering = false) {
 }
 
 static void executeMenuItem(const SessionSnap& s, const MenuItem& m) {
+    if ((m.kind <= MI_ESC && !s.answerable) || (m.kind == MI_STOP && !s.controllable)) {
+        flash("Read only - use phone"); return;
+    }
     switch (m.kind) {
+        case MI_READ_ONLY: flash("Read only - use phone"); break;
         case MI_OPTION: {
             // This item came from the live option list, so the press can name
             // the question it answers — which is what lets a held ask-gate
@@ -443,20 +436,15 @@ static void executeMenuItem(const SessionSnap& s, const MenuItem& m) {
             break;
         }
         case MI_APPROVE:
-            // Observed gate carries a requestId → resolve it; managed PTY
-            // session drives the live prompt (same fallback as the IPS10
-            // mosaic: select_option(0) is the affirmative). No question echo:
-            // this item exists only when the session parsed NO options, so
-            // "option 0" here is a yes/no stand-in, not a chosen answer — a
-            // held ask-gate must keep refusing it.
-            if (s.requestId[0]) sendPermissionDecision(s.requestId, true);
-            else sendSelectOption(s.id, 0, nullptr);
+            // Native gate only; ordinary choices use their displayed index/question.
+            if (!s.requestId[0]) return;
+            sendPermissionDecision(s.requestId, true);
             flash("sent: approve");
             s_mode = Mode::LIST;
             break;
         case MI_DENY:
-            if (s.requestId[0]) sendPermissionDecision(s.requestId, false);
-            else sendSessionCommand(s.id, "escape");
+            if (!s.requestId[0]) return;
+            sendPermissionDecision(s.requestId, false);
             flash("sent: deny");
             s_mode = Mode::LIST;
             break;
@@ -468,11 +456,6 @@ static void executeMenuItem(const SessionSnap& s, const MenuItem& m) {
         case MI_STOP:
             sendSessionCommand(s.id, "interrupt");
             flash("sent: stop");
-            s_mode = Mode::LIST;
-            break;
-        case MI_CONTINUE:
-            sendGoOn(s.id);
-            flash("sent: go on");
             s_mode = Mode::LIST;
             break;
         case MI_HISTORY:
