@@ -310,7 +310,8 @@ final class CodexApprovalHoldTests: XCTestCase {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("tests/parity/gateway-frames/exec-approval-requested.json")
         let frame = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-        let payload = try XCTUnwrap(frame["payload"] as? [String: Any])
+        var payload = try XCTUnwrap(frame["payload"] as? [String: Any])
+        payload["expiresAtMs"] = Date().timeIntervalSince1970 * 1000 + 60_000
         let approvalId = try XCTUnwrap(payload["id"] as? String)
 
         let adapter = OpenClawAdapter(gatewayUrl: "ws://127.0.0.1:9")

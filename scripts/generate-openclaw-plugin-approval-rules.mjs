@@ -99,13 +99,14 @@ enum OpenClawPluginApprovalRules {
     ///
     /// The Gateway sends \`{approvalKind: "plugin", id, request, createdAtMs,
     /// expiresAtMs}\` — every display field lives under \`request\`. The flat
-    /// lookup is a compatibility path only. Returns nil only when there is no
+    /// lookup is a compatibility path only. Returns nil for expired requests or no
     /// usable id: a request with no title/description still yields a prompt,
     /// because the user must keep the ability to deny something they cannot
     /// see described.
     static func parse(_ payload: [String: Any], nowMs: Double) -> OpenClawPluginApprovalPrompt? {
         let id = (payload["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !id.isEmpty else { return nil }
+        if let expiry = numeric(payload["expiresAtMs"]), expiry.isFinite, expiry <= nowMs { return nil }
 
         var body = payload
         if let request = payload["request"] as? [String: Any] {

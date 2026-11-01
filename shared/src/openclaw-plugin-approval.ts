@@ -281,8 +281,8 @@ function resolveDecisions(body: PluginApprovalRequestBody): PluginApprovalDecisi
 }
 
 /**
- * Normalize a raw `plugin.approval.requested` payload. Returns `null` only
- * when the payload carries no usable id — mirroring exec, a request with no
+ * Normalize a raw `plugin.approval.requested` payload. Returns `null` when explicitly
+ * expired or the payload carries no usable id — mirroring exec, a request with no
  * title/description still produces a prompt (labeled as unknown) so the user
  * keeps the ability to deny.
  */
@@ -294,6 +294,8 @@ export function parsePluginApprovalRequest(
   const raw = payload as PluginApprovalRequestedPayload;
   const id = typeof raw.id === 'string' ? raw.id.trim() : '';
   if (!id) return null;
+  if (typeof raw.expiresAtMs === 'number' && Number.isFinite(raw.expiresAtMs)
+    && raw.expiresAtMs <= nowMs) return null;
 
   const body: PluginApprovalRequestBody = { ...raw, ...(raw.request ?? {}) } as PluginApprovalRequestBody;
 

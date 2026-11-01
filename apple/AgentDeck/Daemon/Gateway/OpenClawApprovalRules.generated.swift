@@ -79,12 +79,13 @@ enum OpenClawApprovalRules {
     /// The Gateway sends `{ id, request, createdAtMs, expiresAtMs }` — every
     /// display field lives under `request`. The flat lookup is a compatibility
     /// path only, so a Gateway that inlines a field degrades instead of blanking
-    /// the prompt. Returns nil only when there is no usable id: a request with no
+    /// the prompt. Returns nil for an expired request or no usable id: a request with no
     /// command text still yields a prompt, because the user must keep the ability
     /// to deny something they cannot see.
     static func parse(_ payload: [String: Any], nowMs: Double) -> OpenClawApprovalPrompt? {
         let id = (payload["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !id.isEmpty else { return nil }
+        if let expiry = numeric(payload["expiresAtMs"]), expiry.isFinite, expiry <= nowMs { return nil }
 
         var body = payload
         if let request = payload["request"] as? [String: Any] {
