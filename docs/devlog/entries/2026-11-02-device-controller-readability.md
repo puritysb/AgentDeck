@@ -47,3 +47,10 @@ Partial non-IPS10 rosters report their total with rotation explicitly false:
 only IPS10's minute-based cohort policy can claim timed rotation. The first full
 verification was stopped before these follow-up source edits and restarted on
 the resulting clean commit.
+
+The coverage run exposed test-only binary comparison overhead: deep assertions
+on two 2.7 MB font buffers took 28.7 seconds and exceeded the 20-second test
+limit. Native `Buffer.equals` preserves exact-byte verification without walking
+millions of assertion nodes. All 7,115 tests then passed with coverage. The
+interrupted run was stopped before editing the test; the clean full check is
+rerun afterward.

@@ -9,11 +9,11 @@ describe('portable controller fonts', () => {
     for (const name of koreanFonts) {
       const source = new URL('../../../design/fonts/' + name, import.meta.url);
       const staged = new URL('../../com.ulanzi.ulanzistudio.agentdeck.ulanziPlugin/resources/fonts/' + name, import.meta.url);
-      expect(readFileSync(staged)).toEqual(readFileSync(source));
+      expect(readFileSync(staged).equals(readFileSync(source))).toBe(true);
     }
     const { initRaster, svgToPng } = await import('../raster.js');
     await initRaster();
     const render = (text: string) => svgToPng(renderOptionButton({ label: text, index: 0 }, 0), 144);
-    expect(render('승인')).not.toEqual(render('거절'));
+    expect(render('승인').equals(render('거절'))).toBe(false);
   }, 20_000);
 });
