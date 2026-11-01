@@ -106,3 +106,18 @@ the encrypted-summary save acknowledgement with `2 working · 0 waiting` at
 23:02 KST. Automatic sharing was left enabled. The synthetic test record and
 notification subscription were retained; notification presentation was not
 re-attested during this recovery.
+
+Physical follow-up at 23:14–23:18 KST passed all three phone XCUITest cases.
+The private CloudKit read cached `2 working · 0 waiting` at original source time
+23:13; the relaunched process displayed the same values and explicit local-cache
+restore status. Phone approval screenshots show the complete wrapped command
+and separate ordinary Allow once/Deny buttons. A separate actual OpenCode TUI
+returned `Phone acceptance` and the harmless command output.
+
+The user also pressed the physical Stream Deck+ session, choice and Allow once
+keys. Host screenshots showed the layouts; the real OpenCode model requests
+contained `Deck acceptance` then the executed probe output. No SDK key event was
+fabricated. Plugin runtime `7b0f554baeac` was reverified, and both fixture rows
+were absent after cleanup. Auto-lock relocked the phone during preparation;
+unlocking immediately before the already-waiting runner resolved it. There was
+no new product failure or executable change in this acceptance follow-up.

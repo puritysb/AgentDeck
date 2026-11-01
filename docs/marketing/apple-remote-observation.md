@@ -1,7 +1,7 @@
 # Apple remote observation — planned feature introduction
 
 **2026-11-01 — development-only PoC; one user-assisted iPhone/Watch delivery route verified.**
-This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, manual encrypted-summary read and offline-age check also passed; automatic publication and durable storage are implemented for the development PoC and awaiting device acceptance; quota and Production remain incomplete.
+This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, encrypted-summary read and offline-age check passed. The development PoC also passed physical iPhone cache/relaunch and local choice/one-time approval checks, plus user-operated Stream Deck+ keys. Quota and Production remain incomplete.
 The [technical design](../apple-remote-observation.md) owns the scope and gates;
 the [feature matrix](../appstore-feature-matrix.md) owns availability.
 
@@ -51,7 +51,7 @@ AgentDeck은 실행 중인 Mac 앱에서 선택한 상태를 iCloud 개인 데�
 않도록 설계합니다. 구독 사용량은 계정과 측정 출처를 검증한 뒤 추가할 후속 범위입니다.
 
 개발 기기에서는 실제 응답 대기 알림, iPhone 요약 조회와 오프라인 과거 상태 표시,
-Watch 알림 전달을 확인했습니다. 자동 발행과 로컬 캐시도 구현했으며, 수정 후 실기기 캐시·버튼 응답 검증은 남아 있습니다. 현재는 개발 전용 PoC이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
+Watch 알림 전달을 확인했습니다. 자동 발행과 로컬 캐시를 구현하고, iPhone 실기기의 캐시 복원·로컬 선택 응답·일회 승인 및 Stream Deck+ 물리 키 경로도 검증했습니다. 현재는 개발 전용 PoC이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
 같은 Apple 계정의 iPhone, 연결된 Watch를 대상으로 합니다. Mac 앱이 꺼져 있으면
 새 상태를 관찰할 수 없고, 알림 표시와 지연은 Apple의 시스템 설정과 네트워크에
 영향을 받습니다. 워치 전용 앱·위젯·원격 승인은 후속 검토 범위입니다.
