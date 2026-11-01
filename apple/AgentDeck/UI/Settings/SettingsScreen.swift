@@ -389,6 +389,10 @@ struct SettingsScreen: View {
         switch section {
         case .integrations:
             VStack(alignment: .leading, spacing: 14) {
+                #if AGENTDECK_CLOUDKIT_POC
+                CloudKitProbeView()
+                Divider()
+                #endif
                 claudeHooksContent
                 Divider()
                 codexObservationContent

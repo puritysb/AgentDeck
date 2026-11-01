@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands,
-  isOpenCodeSteerable, _resetOpenCodeSteering,
+  isOpenCodeSteerable, observeOpenCodeSteerability, _resetOpenCodeSteering,
 } from '../opencode-steering.js';
 
 beforeEach(() => _resetOpenCodeSteering());
+afterEach(() => { _resetOpenCodeSteering(); vi.useRealTimers(); });
 
 describe('opencode steering queue', () => {
   it('poll drains queued commands immediately', async () => {
@@ -75,6 +76,23 @@ describe('opencode steering queue', () => {
     const parked = pollOpenCodeCommands('s9', 25_000);
     requeueOpenCodeCommands('s9', [{ type: 'permission_respond', permissionId: 'p', response: 'deny' }]);
     expect(await parked).toEqual([{ type: 'permission_respond', permissionId: 'p', response: 'deny' }]);
+  });
+
+  it('retires question reply availability after the last poll and broadcasts the change', async () => {
+    vi.useFakeTimers();
+    const changed = vi.fn();
+    observeOpenCodeSteerability(changed);
+    const pending = pollOpenCodeCommands('expiry', 1_000);
+    expect(isOpenCodeSteerable('expiry')).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toEqual([]);
+    await vi.advanceTimersByTimeAsync(39_001);
+    expect(isOpenCodeSteerable('expiry')).toBe(false);
+    expect(changed.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const renewed = pollOpenCodeCommands('expiry', 1_000);
+    expect(isOpenCodeSteerable('expiry')).toBe(true);
+    enqueueOpenCodeCommand('expiry', { type: 'question_reply', questionId: 'q', answers: [['Keep exact label']] });
+    expect(await renewed).toEqual([{ type: 'question_reply', questionId: 'q', answers: [['Keep exact label']] }]);
   });
 
   it('steerability reflects a live poller', async () => {

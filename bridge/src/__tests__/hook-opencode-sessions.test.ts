@@ -123,6 +123,42 @@ it('replays the shared identity-scoped wait contract', () => {
     const [session] = hooks.snapshot();
     expect(session.state, row.event).toBe(row.state);
     expect(session.requestId).toBe(row.state === 'awaiting_permission' ? `ocperm:${SID}:${row.pending}` : undefined);
-    if (row.state === 'awaiting_option') expect(hooks.applyTo([], index)[0].options).toBeUndefined();
+    if (row.state === 'awaiting_option') expect(hooks.applyTo([], index)[0].options).toEqual([]);
+  }
+});
+
+it('publishes real choices and correlates a device reply to the live question', () => {
+  const hooks = new HookOpenCodeSessions();
+  const payload = { sessionId: SID, questionId: 'q-live', title: 'Choose target', questionAnswerable: true,
+    questions: [{ question: 'Choose target', options: [{ label: ' local ' }, { label: 'Remote' }] }] };
+  hooks.note('opencode_question_asked', payload, 1000);
+  expect(hooks.applyTo([], 1001)[0]).toMatchObject({ liveAnswerable: true,
+    options: [{ index: 0, label: ' local ' }, { index: 1, label: 'Remote' }] });
+  const sent: unknown[] = [];
+  const enqueue = (id: string, answers: string[][]) => { sent.push({ id, answers }); return true; };
+  expect(hooks.answerQuestion(SID, 0, 'unrelated prompt', enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, -1, 'Choose target', enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, undefined, enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', () => false)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', enqueue)).toBe(true);
+  expect(sent).toEqual([{ id: 'q-live', answers: [[' local ']] }]);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', enqueue)).toBe(false);
+  hooks.note('opencode_question_asked', { ...payload, replyFailed: true }, 1100);
+  expect(hooks.answerQuestion(SID, 1, 'Choose target', enqueue)).toBe(true);
+  hooks.note('opencode_question_unavailable', { sessionId: SID, questionId: 'q-live' }, 1200);
+  expect(hooks.applyTo([], 1201)[0]).toMatchObject({ state: 'processing', liveAnswerable: false, options: [] });
+});
+
+it('does not convert multiple-choice groups or missing transport into a binary permission', () => {
+  for (const multiple of [true, false]) {
+    const hooks = new HookOpenCodeSessions();
+    hooks.note('opencode_question_asked', { sessionId: SID, questionId: 'q',
+      questionAnswerable: multiple, questions: [{ question: 'Choose', multiple,
+        options: [{ label: 'A' }, { label: 'B' }] }] }, 1000);
+    const row = hooks.applyTo([], 1001)[0];
+    expect(row.liveAnswerable).toBe(false);
+    expect(row.requestId).toBeUndefined();
+    expect(row.options).toHaveLength(2);
+    expect(hooks.answerQuestion(SID, 0, 'Choose', () => true)).toBe(false);
   }
 });

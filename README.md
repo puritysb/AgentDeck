@@ -241,6 +241,11 @@ an AgentDeck daemon on your network.
 
 Requires macOS 26+ or iOS/iPadOS 17+. See the [Apple guide](docs/apple-app.md).
 
+**Planned, not available yet:** a [CloudKit remote-observation PoC](docs/apple-remote-observation.md)
+will test selected Mac updates on iPhone and forwarded Apple Watch notifications.
+The running Mac remains the observation source; phone/Watch widgets and remote
+approvals are outside the first experiment. [Preview and limits](docs/marketing/apple-remote-observation.md).
+
 ### Terminal, Windows, Linux, and external integrations
 
 Requires Node.js **22, 24, or 26** and a supported agent on macOS 15+,

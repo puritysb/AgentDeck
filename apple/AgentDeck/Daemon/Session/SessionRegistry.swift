@@ -104,6 +104,7 @@ struct DaemonSessionEntry: Codable, Sendable, Identifiable {
     var options: [[String: AnyCodable]]?
     var navigable: Bool?
     var question: String?  // awaiting prompt question (PTY-managed session)
+    var questionDetail: String?
     var promptType: String?  // shape of the awaiting prompt (yes_no / multi_select / diff_review)
     var elapsedSec: Int?     // seconds since startedAt — derived at broadcast for NTP-less devices (ESP32 D1 mosaic)
     // Observed-session steering (hook-only sessions; see ObservedSteering.swift)

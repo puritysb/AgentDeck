@@ -42,7 +42,7 @@
 // is per-plugin state the preview does not have) and hiding the no-data Codex
 // credits tile (the preview only draws credits for a known balance).
 // SYNC-HASH shared/src/d200h-layout.ts 7465e5ced4194acef317cd14f9bc2a6cfd676976
-// SYNC-HASH shared/src/session-utils.ts e964d4e0fe0497a40bfb4f02b7de1eb2bf1cbf95
+// SYNC-HASH shared/src/session-utils.ts 1051754c77fa1dbaac1160ac39f1257c4d4397d8
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
 //

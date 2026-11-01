@@ -4134,6 +4134,7 @@ final class DaemonServer {
             }
             let wait = Double(request.queryParams["wait"] ?? "25") ?? 25
             let peerClose = HTTPRequestContext.peerClose
+            await self.noteOpenCodeQuestionPoll(rawSessionId: sid)
             let commands = await OpenCodeCommandQueue.shared.poll(
                 sessionId: sid, waitSeconds: wait, peerClose: peerClose)
             if peerClose?.isClosed == true {
@@ -4145,6 +4146,8 @@ final class DaemonServer {
                 if let t = c.text { d["text"] = t }
                 if let p = c.permissionId { d["permissionId"] = p }
                 if let r = c.response { d["response"] = r }
+                if let id = c.questionId { d["questionId"] = id }
+                if let answers = c.answers { d["answers"] = answers }
                 return d
             }
             return .json(["commands": payload])
@@ -5337,6 +5340,10 @@ final class DaemonServer {
                 : sessionId
             let innerType = innerCommand["type"] as? String ?? ""
             let text = innerCommand["text"] as? String
+            if innerType == "select_option", openCodeWaits[sessionId]?.first?.kind == "question" {
+                answerOpenCodeQuestion(sessionId: sessionId, command: innerCommand)
+                return
+            }
             // respond/select_option answer a pending permission gate
             // (requestId "ocperm:<rawSid>:<permissionID>" on the row).
             if innerType == "respond" || innerType == "select_option",
@@ -5360,6 +5367,12 @@ final class DaemonServer {
                         sessionId: rawSid, command: .init(type: "send_prompt", text: text))
                 }
             }
+            return
+        }
+
+        if type == "select_option", let sid = (cmd["sessionId"] as? String) ?? userFocusedSessionId,
+           openCodeWaits[sid]?.first?.kind == "question" {
+            answerOpenCodeQuestion(sessionId: sid, command: cmd)
             return
         }
 
@@ -6799,7 +6812,10 @@ final class DaemonServer {
         if isOpenCodeEvent, let sessionId {
             applyOpenCodeWait(sessionId: sessionId, event: event,
                 id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
-                title: json["title"] as? String, answerable: true)
+                title: json["title"] as? String, answerable: true,
+                prompt: OpenCodeDeviceQuestion.parse(json["questions"]),
+                questionAnswerable: json["question_answerable"] as? Bool == true,
+                replyFailed: json["reply_failed"] as? Bool == true)
         }
 
 
@@ -7407,27 +7423,94 @@ final class DaemonServer {
 
     private var openCodeOwnership = OpenCodeObservationOwnership()
     private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+    private var openCodeQuestionPollAt: [String: Date] = [:]
 
-    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true) {
+    private func noteOpenCodeQuestionPoll(rawSessionId: String) {
+        openCodeQuestionPollAt = openCodeQuestionPollAt.filter { Date().timeIntervalSince($0.value) < ObservedAgentRules.openCodeQuestionPollFreshSeconds }
+        guard openCodeQuestionPollAt[rawSessionId] != nil
+            || openCodeQuestionPollAt.count < ObservedAgentRules.openCodePendingRequestLimit else { return }
+        let sid = Self.openCodeSessionPrefix + rawSessionId
+        let before = canAnswerOpenCodeQuestion(sessionId: sid)
+        let stamp = Date()
+        openCodeQuestionPollAt[rawSessionId] = stamp
+        if !before && canAnswerOpenCodeQuestion(sessionId: sid) { broadcastSessionsList() }
+        Task {
+            try? await Task.sleep(for: .seconds(ObservedAgentRules.openCodeQuestionPollFreshSeconds))
+            guard openCodeQuestionPollAt[rawSessionId] == stamp else { return }
+            openCodeQuestionPollAt.removeValue(forKey: rawSessionId)
+            if openCodeWaits[sid]?.first?.kind == "question" { broadcastSessionsList() }
+        }
+    }
+
+    private func canAnswerOpenCodeQuestion(sessionId: String) -> Bool {
+        guard let pending = openCodeWaits[sessionId]?.first,
+              pending.kind == "question", pending.prompt?.replyable == true,
+              pending.answerable, !pending.sending else { return false }
+        let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+        guard let polledAt = openCodeQuestionPollAt[raw] else { return false }
+        let age = Date().timeIntervalSince(polledAt)
+        return age >= 0 && age < ObservedAgentRules.openCodeQuestionPollFreshSeconds
+    }
+
+    private func answerOpenCodeQuestion(sessionId: String, command: [String: Any]) {
+        guard canAnswerOpenCodeQuestion(sessionId: sessionId),
+              let wait = openCodeWaits[sessionId]?.first, let prompt = wait.prompt,
+              let number = command["index"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              let index = command["index"] as? Int, let echo = command["question"] as? String,
+              ObservedSteering.askEchoMatches(echo, prompt.question),
+              let option = prompt.options.first(where: { $0.index == index }) else { return }
+        let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+        openCodeWaits[sessionId]?.markSending(id: wait.id)
+        pushedSessionsById[sessionId]?.questionDetail = ObservedAgentRules.openCodeQuestionSendingText
+        if let entry = pushedSessionsById[sessionId] { upsertIntoCachedSessions(entry) }
+        broadcastSessionsList()
+        Task {
+            let queued = await OpenCodeCommandQueue.shared.enqueue(sessionId: raw,
+                command: .init(type: "question_reply", text: nil, questionId: wait.id, answers: [[option.label]]))
+            if !queued, openCodeWaits[sessionId]?.first?.id == wait.id,
+               openCodeWaits[sessionId]?.first?.sending == true {
+                // Queue refusal is not an upstream answer. Restore the same prompt.
+                var state = openCodeWaits[sessionId] ?? OpenCodeWaitState()
+                _ = state.consume(event: "opencode_question_asked", id: wait.id, title: wait.title,
+                    prompt: prompt, answerable: wait.answerable, replyFailed: true)
+                openCodeWaits[sessionId] = state
+                pushedSessionsById[sessionId]?.questionDetail = ObservedAgentRules.openCodeQuestionUnconfirmedText
+                if let entry = pushedSessionsById[sessionId] { upsertIntoCachedSessions(entry) }
+                broadcastSessionsList()
+            }
+        }
+    }
+
+    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true, prompt: OpenCodeDeviceQuestion? = nil, questionAnswerable: Bool = false, replyFailed: Bool = false) {
         guard var entry = pushedSessionsById[sessionId] else { return }
         let before = entry
         openCodeWaits = openCodeWaits.filter { pushedSessionsById[$0.key] != nil }
         var waits = openCodeWaits[sessionId] ?? OpenCodeWaitState()
-        let resolved = waits.consume(event: event, id: id, title: title)
+        let resolved = waits.consume(event: event, id: id, title: title, prompt: prompt, answerable: questionAnswerable, replyFailed: replyFailed)
         openCodeWaits[sessionId] = waits
         if let wait = waits.first {
             entry.state = wait.kind == "permission" ? "awaiting_permission" : "awaiting_option"
-            entry.question = wait.title
+            entry.question = wait.prompt?.question ?? wait.title
+            entry.questionDetail = wait.sending ? ObservedAgentRules.openCodeQuestionSendingText
+                : wait.replyError ? ObservedAgentRules.openCodeQuestionUnconfirmedText : nil
+            entry.options = wait.prompt?.options.map { option in
+                var fields = ["label": AnyCodable(option.label), "index": AnyCodable(option.index)]
+                if let description = option.description { fields["description"] = AnyCodable(description) }
+                return fields
+            } ?? []
             let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
             entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
         } else if resolved {
-            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") { entry.state = "processing" }
+            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") || event.hasSuffix("_unavailable") { entry.state = "processing" }
             entry.question = nil
+            entry.options = []
+            entry.questionDetail = nil
             entry.requestId = nil
         }
         pushedSessionsById[sessionId] = entry
         upsertIntoCachedSessions(entry)
-        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId) {
+        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId || prompt != nil || replyFailed) {
             broadcastSessionsList()
         }
     }
@@ -7438,8 +7521,7 @@ final class DaemonServer {
     /// Merge one classified OpenCode SSE update into `pushedSessionsById`.
     /// Same integration contract as the Codex OTel path: upsert + cached
     /// sessions + eviction timestamp + broadcast-on-change. Display-only —
-    /// `options`/`requestId` are never set, so awaiting renders the
-    /// respond-in-terminal path on every surface.
+    /// options may be shown, but no native reply capability is asserted by SSE.
     private func handleOpenCodeObserverUpdate(_ update: OpenCodeSessionUpdate) {
         let sid = Self.openCodeSessionPrefix + update.sessionID
         guard openCodeOwnership.acceptSSE(sid, rowExists: pushedSessionsById[sid] != nil) else { return }
@@ -7487,7 +7569,7 @@ final class DaemonServer {
         case .idle: event = "opencode_stop"
         default: event = "opencode_activity"
         }
-        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false)
+        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false, prompt: update.questionPrompt)
         if let final = pushedSessionsById[sid], existing == nil || existing?.state != final.state
             || existing?.question != final.question || existing?.currentTool != final.currentTool
             || existing?.projectName != final.projectName || existing?.modelName != final.modelName {
@@ -12396,8 +12478,11 @@ final class DaemonServer {
             // CLI-daemon roster has been seen on the same device.
             if cm == "observed" {
                 d["liveAnswerable"] = pendingAskBySession[s.id]?.gateRequestId != nil
+                    || canAnswerOpenCodeQuestion(sessionId: s.id)
             }
         }
+        if s.agentType == "opencode" { d["questionDetail"] = s.questionDetail ?? "" }
+        else if let detail = s.questionDetail { d["questionDetail"] = detail }
         if let rid = s.requestId { d["requestId"] = rid }
         if let gi = s.askGroupIndex { d["askGroupIndex"] = gi }
         if let gc = s.askGroupCount { d["askGroupCount"] = gc }

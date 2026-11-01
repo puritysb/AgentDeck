@@ -15,6 +15,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   OPENCODE_PENDING_REQUEST_LIMIT,
+  OPENCODE_QUESTION_RULES,
   CODEX_OTEL_METADATA_RULES,
   codexSessionMetaIsSubagent,
   codexSessionMetaSubagentVerdict,
@@ -86,6 +87,7 @@ describe('generated mirrors', () => {
     const rules = {
       prefixes: [...OBSERVED_SESSION_PREFIXES],
       openCodePendingLimit: OPENCODE_PENDING_REQUEST_LIMIT,
+      questions: OPENCODE_QUESTION_RULES,
       codexMetadata: CODEX_OTEL_METADATA_RULES,
       suppressed: [...TOOL_EXEC_SUPPRESSED_AGENTS],
       turn: TIMELINE_TURN_RULES,

@@ -520,6 +520,8 @@ actor OpenCodeCommandQueue {
         var permissionId: String? = nil
         /// permission_respond: device decision; the plugin maps allow→"once", deny→"reject".
         var response: String? = nil
+        var questionId: String? = nil
+        var answers: [[String]]? = nil
     }
 
     private struct Waiter {

@@ -68,6 +68,8 @@
       "docs/windows.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/linux.md": "User manual (see docs/install.md). Platform setup steps rather than a platform contract.",
       "docs/troubleshooting.md": "User manual (see docs/install.md). Symptom-to-fix table, not a specification surface.",
+      "docs/apple-remote-observation.md": "CloudKit development PoC design, checkpoints and remaining acceptance plan. A single user-assisted iPhone/Watch route and manual summary read are verified; unattended publication and Production are incomplete. Excluded from the as-built catalog until adopted as a supported surface; availability is recorded in the feature matrix.",
+      "docs/marketing/apple-remote-observation.md": "Planned-feature introduction copy for the CloudKit PoC, explicitly unavailable. Marketing preparation rather than an as-built specification; canonical scope is docs/apple-remote-observation.md.",
       "docs/roadmap.md": "Forward-looking plan. Binding it would imply the catalog publishes commitments rather than the system as built.",
       "docs/ENTERPRISE-ROADMAP.md": "Forward-looking plan (see docs/roadmap.md). Binding it would imply the catalog publishes commitments rather than the system as built.",
       "docs/marketing/ad-platform-revenue-research-2026-09-13.md": "Dated business research snapshot (ad-platform revenue options, Korean body). Nothing here is adopted; it records platform rules and sensitivity math for a decision not yet made, so cataloguing it would imply a policy the project has not set.",

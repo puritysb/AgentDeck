@@ -107,7 +107,7 @@ import {
   synthesizeWavWithHelper,
   recordWithHelper, stopHelperRecording, speakWithHelper,
 } from './foundation-models-helper.js';
-import { enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands } from './opencode-steering.js';
+import { enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands, isOpenCodeSteerable, observeOpenCodeSteerability } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
 
 /** Device approval holds, including the opt-in human Codex handler. Claude's
@@ -1368,7 +1368,7 @@ export function classifyObservedHookEvent(
   if (eventName === 'opencode_subagent_start' || eventName === 'opencode_subagent_stop') {
     return { boundary: eventName, agentType: 'opencode' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected|question_unavailable)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
@@ -3777,6 +3777,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
             permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
             questionId: typeof json.question_id === 'string' ? json.question_id : undefined,
+            questions: json.questions,
+            questionAnswerable: json.question_answerable === true,
+            replyFailed: json.reply_failed === true,
             title: typeof json.title === 'string' ? json.title : undefined,
           });
         }
@@ -5833,6 +5836,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   };
   hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  observeOpenCodeSteerability(() => core.maybeBroadcastSessionsList());
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -5860,6 +5864,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.
+        if (s.id.startsWith('observed:opencode:')) return { ...s,
+          liveAnswerable: s.liveAnswerable === true && isOpenCodeSteerable(s.id.slice('observed:opencode:'.length)) };
         if (!s.id.startsWith('observed:claude:')) return { ...s, liveAnswerable: false };
         // Will a device press on this session's options reach the agent? Two
         // rungs qualify: this daemon can type into the session's live prompt
@@ -6876,7 +6882,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (typeof sessionId === 'string' && (sessionId.startsWith('opencode:') || sessionId.startsWith('observed:opencode:'))) {
         const rawSid = sessionId.replace(/^(?:observed:)?opencode:/, '');
         const type = typeof command?.type === 'string' ? command.type : '';
-        if (type === 'interrupt' || type === 'escape') {
+        if (type === 'select_option') {
+          if (isOpenCodeSteerable(rawSid)) hookOpenCodeSessions.answerQuestion(rawSid, command.index, command.question,
+            (questionId, answers) => enqueueOpenCodeCommand(rawSid, { type: 'question_reply', questionId, answers }));
+        } else if (type === 'interrupt' || type === 'escape') {
           enqueueOpenCodeCommand(rawSid, { type: 'interrupt' });
         } else if (type === 'send_prompt' && typeof command.text === 'string') {
           enqueueOpenCodeCommand(rawSid, { type: 'send_prompt', text: command.text });
@@ -6918,6 +6927,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         handleObservedClaudeCommand(sessionId.slice('observed:claude:'.length), cmd as any);
         return;
       }
+      if (sessionId.startsWith('observed:opencode:')) {
+        const sid = sessionId.slice('observed:opencode:'.length);
+        if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerQuestion(sid, (cmd as any).index, (cmd as any).question,
+          (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }));
+        return;
+      }
       if (answerCodexApproval(sessionId, cmd as unknown as Record<string, unknown>)) return;
       const target = listActiveSessions().find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (target) {
@@ -6931,6 +6946,12 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }, 100);
         return;
       }
+    }
+    if (cmd.type === 'select_option' && userFocusedSessionId?.startsWith('observed:opencode:')) {
+      const sid = userFocusedSessionId.slice('observed:opencode:'.length);
+      if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerQuestion(sid, (cmd as any).index, (cmd as any).question,
+        (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }));
+      return;
     }
     // Route interactive commands to focused session (if any)
     if (focusRelay.getFocusedSessionId() && focusRelay.routeCommand(cmd)) {
