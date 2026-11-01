@@ -35,10 +35,11 @@ Every response retains its session/question or native permission identity.
 
 Compact ESP32 frames preserve permission IDs and explicit delivery capabilities.
 A subject exceeding 159 UTF-8 bytes, request ID exceeding 39 bytes, or more than
-six options cannot become an active compact-display response. These limits come
+six options or an option label beyond 63 UTF-8 bytes cannot become an active compact-display response. These limits come
 from the shared controller contract; missing delivery evidence remains read-only.
 Crowded serial rosters reduce the selected cohort to stay within the existing
-frame budget and report the full count. A receiver never gains a partial
+frame budget and report the full count. Only IPS10 advertises timed rotation;
+other compact surfaces retain their priority selection. A receiver never gains a partial
 approval by losing request context to fit the transport.
 
 ## Device Matrix

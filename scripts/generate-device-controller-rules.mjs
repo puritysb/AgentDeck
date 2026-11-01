@@ -28,6 +28,7 @@ export function emitCpp(rules) {
 namespace DeviceController {
 static constexpr unsigned questionBytes = ${rules.compact.questionBytes};
 static constexpr unsigned requestBytes = ${rules.compact.requestBytes};
+static constexpr unsigned optionLabelBytes = ${rules.compact.optionLabelBytes};
 static constexpr unsigned maxOptions = ${rules.compact.options};
 inline bool input(bool alive, bool managed, bool observed, const char* agent) {
     return alive && (managed || !std::strcmp(agent, "openclaw") || (observed && (${rules.observedInputAgents.map(a => `!std::strcmp(agent, "${a}")`).join(' || ')})));
@@ -56,12 +57,14 @@ enum DeviceControllerRules {
         let input = alive && (managed || agent == "openclaw" || (mode == "observed" && observedInputAgents.contains(agent)))
         let request = row["requestId"] as? String ?? ""
         let question = row["question"] as? String ?? ""
-        let options = (row["options"] as? [[String: Any]])?.count ?? 0
+        let choices = row["options"] as? [[String: Any]] ?? []
+        let options = choices.count
+        let labelsFit = choices.allSatisfy { ($0["label"] as? String).map { $0.utf8.count <= ${rules.compact.optionLabelBytes} } ?? false }
         let live = row["liveAnswerable"] as? Bool
         let held = !request.isEmpty && (!request.hasPrefix("ocperm:") || live == true)
         let awaiting = (row["state"] as? String ?? "").hasPrefix("awaiting_")
         let answer = alive && awaiting && (held || ((live ?? managed) && options > 0))
-            && request.utf8.count <= ${rules.compact.requestBytes} && question.utf8.count <= ${rules.compact.questionBytes} && options <= ${rules.compact.options}
+            && request.utf8.count <= ${rules.compact.requestBytes} && question.utf8.count <= ${rules.compact.questionBytes} && options <= ${rules.compact.options} && labelsFit
         return ["controllerInput": input, "controllerAnswerable": answer]
     }
 }

@@ -628,7 +628,7 @@ export function prepareForSerial(event: BridgeEvent, _conn?: Pick<SerialConnecti
     } as BridgeEvent;
     if (!isIps10 && raw.filter((s: any) => s?.alive !== false).length > selected.length) {
       (prepared as any).total = raw.filter((s: any) => s?.alive !== false).length;
-      (prepared as any).rosterRotating = true;
+      (prepared as any).rosterRotating = false;
     }
     // Optional read-only census on IPS10 only. Every older/smaller board gets
     // exactly the baseline projection. Preserve the conservative frame budget;

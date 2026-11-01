@@ -588,6 +588,7 @@ describe('prepareForSerial (source)', () => {
     const compact = (patch: object = {}) => (prepareForSerial({ type: 'sessions_list', sessions: [{ ...row, ...patch }] } as any) as any).sessions[0];
     expect(compact()).toMatchObject({ requestId: row.requestId, controllerAnswerable: true, controllerInput: true });
     expect(compact({ liveAnswerable: false }).controllerAnswerable).toBe(false);
+    expect(compact({ options: [{label: '가'.repeat(22), index: 0}] }).controllerAnswerable).toBe(false);
     expect(compact({ question: '가'.repeat(80) }).controllerAnswerable).toBe(false);
     expect(compact({ requestId: 'ocperm:' + 'x'.repeat(40) }).controllerAnswerable).toBe(false);
     expect(compact({ agentType: 'codex-cli', state: 'idle', requestId: undefined, options: [] }))

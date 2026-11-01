@@ -1839,7 +1839,7 @@ actor ESP32Serial {
                 let isIps10 = deviceInfo?.board == "ips_10"
                 // IPS10 pages stay stable for a minute, then visit the next cohort.
                 if isIps10 || aliveSessions.count > sessionCap {
-                    e["rosterRotating"] = aliveSessions.count > sessionCap
+                    e["rosterRotating"] = isIps10 && aliveSessions.count > sessionCap
                     if aliveSessions.count > sessionCap { e["total"] = aliveSessions.count }
                 }
                 e["sessions"] = (isIps10

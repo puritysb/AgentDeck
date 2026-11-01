@@ -15,12 +15,14 @@ enum DeviceControllerRules {
         let input = alive && (managed || agent == "openclaw" || (mode == "observed" && observedInputAgents.contains(agent)))
         let request = row["requestId"] as? String ?? ""
         let question = row["question"] as? String ?? ""
-        let options = (row["options"] as? [[String: Any]])?.count ?? 0
+        let choices = row["options"] as? [[String: Any]] ?? []
+        let options = choices.count
+        let labelsFit = choices.allSatisfy { ($0["label"] as? String).map { $0.utf8.count <= 63 } ?? false }
         let live = row["liveAnswerable"] as? Bool
         let held = !request.isEmpty && (!request.hasPrefix("ocperm:") || live == true)
         let awaiting = (row["state"] as? String ?? "").hasPrefix("awaiting_")
         let answer = alive && awaiting && (held || ((live ?? managed) && options > 0))
-            && request.utf8.count <= 39 && question.utf8.count <= 159 && options <= 6
+            && request.utf8.count <= 39 && question.utf8.count <= 159 && options <= 6 && labelsFit
         return ["controllerInput": input, "controllerAnswerable": answer]
     }
 }

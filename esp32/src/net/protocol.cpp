@@ -552,11 +552,14 @@ static void handleSessionsList(JsonObject& obj) {
         // Per-session options — lets an interactive surface answer with the
         // session-scoped select_option without global focus (knob detail view).
         g_state.sessions[i].optionCount = 0;
+        bool optionLabelsFit = true;
         if (s["options"].is<JsonArray>()) {
             JsonArray sopts = s["options"].as<JsonArray>();
             uint8_t n = 0;
             for (JsonObject o : sopts) {
                 if (n >= SESSION_OPTIONS_CAP) break;
+                optionLabelsFit = optionLabelsFit && o["label"].is<const char*>()
+                    && strlen(o["label"] | "") <= DeviceController::optionLabelBytes;
                 SessionOption& dst = g_state.sessions[i].options[n];
                 copyTextU8(dst.label, sizeof(dst.label), o["label"] | "");
                 dst.index = o["index"] | n;
@@ -580,7 +583,7 @@ static void handleSessionsList(JsonObject& obj) {
                 && strlen(s["question"] | "") <= DeviceController::questionBytes
                 && strlen(s["requestId"] | "") <= DeviceController::requestBytes
                 && s["options"].as<JsonArray>().size() <= SESSION_OPTIONS_CAP
-                && (row.optionCount > 0 || row.requestId[0]);
+                && optionLabelsFit && (row.optionCount > 0 || row.requestId[0]);
         }
 #if defined(BOARD_IPS10)
         // sessions_list is a full snapshot: absent/malformed census means
@@ -1642,6 +1645,7 @@ static void sendDeviceInfo() {
 #endif
 }
 
+static_assert(sizeof(SessionOption::label) - 1 == DeviceController::optionLabelBytes, "controller label bound drift");
 static_assert(SESSION_OPTIONS_CAP <= DeviceController::maxOptions, "controller option bound drift");
 
 namespace Protocol {

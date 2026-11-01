@@ -5,6 +5,7 @@
 namespace DeviceController {
 static constexpr unsigned questionBytes = 159;
 static constexpr unsigned requestBytes = 39;
+static constexpr unsigned optionLabelBytes = 63;
 static constexpr unsigned maxOptions = 6;
 inline bool input(bool alive, bool managed, bool observed, const char* agent) {
     return alive && (managed || !std::strcmp(agent, "openclaw") || (observed && (!std::strcmp(agent, "claude-code") || !std::strcmp(agent, "opencode"))));

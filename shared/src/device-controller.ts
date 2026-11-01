@@ -5,7 +5,7 @@ import { OPENCODE_PERMISSION_CHOICES } from './opencode-question.js';
 export const DEVICE_CONTROLLER_RULES = {
   observedInputAgents: ['claude-code', 'opencode'],
   key: { canvas: 144, optionFont: 22, optionLine: 25, optionWidth: 120, optionLines: 3, questionFont: 16 },
-  compact: { questionBytes: 159, requestBytes: 39, options: 6 },
+  compact: { questionBytes: 159, requestBytes: 39, optionLabelBytes: 63, options: 6 },
   permissionChoices: OPENCODE_PERMISSION_CHOICES,
 } as const;
 
@@ -25,7 +25,8 @@ export function compactControllerCapabilities(session: SessionInfo): { controlle
     controllerInput: hasControllerInput(session),
     controllerAnswerable: hasControllerAnswer(session) && (session.question == null || typeof session.question === 'string')
       && bytes(session.question) <= limits.questionBytes && bytes(session.requestId) <= limits.requestBytes
-      && (!Array.isArray(session.options) || session.options.length <= limits.options),
+      && (!Array.isArray(session.options) || (session.options.length <= limits.options
+        && session.options.every(option => typeof option?.label === 'string' && bytes(option.label) <= limits.optionLabelBytes))),
   };
 }
 

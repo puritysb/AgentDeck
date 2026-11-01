@@ -28,6 +28,8 @@ describe('device controller delivery and mirrors', () => {
     expect(hasControllerAnswer({ ...waiting, requestId: 'held-claude-tool', liveAnswerable: false })).toBe(true);
     expect(hasControllerAnswer({ ...waiting, controlMode: 'managed', options: [{ label: 'Yes' }] })).toBe(true);
     expect(compactControllerCapabilities({ ...waiting, requestId: 'held', question: '가'.repeat(80) }).controllerAnswerable).toBe(false);
+    expect(compactControllerCapabilities({ ...waiting, requestId: 'held', options: [{label: '가'.repeat(22), index: 0}] }).controllerAnswerable).toBe(false);
+    expect(compactControllerCapabilities({ ...waiting, requestId: 'held', options: [{label: 'A'.repeat(63), index: 0}] }).controllerAnswerable).toBe(true);
     expect(compactControllerCapabilities({ ...waiting, state: 42, requestId: {} } as unknown as SessionInfo).controllerAnswerable).toBe(false);
   });
   it('uses readable fixed-size decision text, bounded lines and visible truncation', () => {

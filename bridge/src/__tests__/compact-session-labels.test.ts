@@ -29,6 +29,6 @@ describe('compact device labels', () => {
     expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(TIMELINE_HISTORY_BYTE_BUDGET);
     expect(result.sessions.length).toBeLessThan(sessions.length);
     expect(result.total).toBe(sessions.length);
-    expect(result.rosterRotating).toBe(true);
+    expect(result.rosterRotating).toBe(false);
   });
 });

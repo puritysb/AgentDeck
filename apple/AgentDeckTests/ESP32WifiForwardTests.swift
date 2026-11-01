@@ -24,6 +24,7 @@ final class ESP32WifiForwardTests: XCTestCase {
         let shown = try XCTUnwrap(out["sessions"] as? [[String: Any]])
         XCTAssertFalse(shown.isEmpty); XCTAssertLessThan(shown.count, rows.count)
         XCTAssertEqual(out["total"] as? Int, 10)
+        XCTAssertEqual(out["rosterRotating"] as? Bool, false)
         for row in shown {
             XCTAssertEqual(row["controllerAnswerable"] as? Bool, true)
             let original = try XCTUnwrap(rows.first { $0["id"] as? String == row["id"] as? String })
@@ -46,6 +47,7 @@ final class ESP32WifiForwardTests: XCTestCase {
         XCTAssertEqual(good["requestId"] as? String, "ocperm:request-1")
         XCTAssertEqual(good["controllerAnswerable"] as? Bool, true)
         XCTAssertEqual(good["controllerInput"] as? Bool, true)
+        XCTAssertEqual(try compact(["options": [["label": String(repeating: "가", count: 22), "index": 0]]])["controllerAnswerable"] as? Bool, false)
         XCTAssertEqual(try compact(["liveAnswerable": false])["controllerAnswerable"] as? Bool, false)
         XCTAssertEqual(try compact(["question": String(repeating: "가", count: 80)])["controllerAnswerable"] as? Bool, false)
         XCTAssertEqual(try compact(["requestId": "ocperm:" + String(repeating: "x", count: 40)])["controllerAnswerable"] as? Bool, false)

@@ -38,3 +38,12 @@ ESP32 host assertions and all 14 simulator builds/surface checks passed after th
 redraw fix. Both companion production firmware targets built, and the portable
 Ulanzi package passed resource/native-binary/archive checks (9.1 MB directory).
 These are source/build results, not claims of new hardware installation.
+
+A final boundary review found that session-option storage is 64 bytes although
+serial transport can carry longer labels. A label beyond 63 UTF-8 bytes now
+revokes compact answerability in both producers and the firmware's full-frame
+fallback; the limit is generated and asserted against the actual C++ buffer.
+Partial non-IPS10 rosters report their total with rotation explicitly false:
+only IPS10's minute-based cohort policy can claim timed rotation. The first full
+verification was stopped before these follow-up source edits and restarted on
+the resulting clean commit.
