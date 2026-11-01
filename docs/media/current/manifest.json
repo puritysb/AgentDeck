@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "title": "Current habitat media — development preview",
+  "title": "AgentDeck 2.0 development media — local control and activity",
   "updatedAt": "2026-11-02",
   "availability": "Development validation builds; not a claim about the current App Store or Play Store release.",
   "evidence": "Native app captures use fictional local activity. Firmware host frames are not physical display captures. The AI composite is labeled and never used as device-verification evidence.",
@@ -415,6 +415,379 @@
         "width": 135,
         "height": 240
       }
+    },
+    {
+      "file": "agentdeck-200-ipad-choice.png",
+      "kind": "recording-still",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "c6ddce194ab658ff820e2984fe587822cc36732ffd1e8c1b729894f673ea3e12",
+      "bytes": 50502,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/ipad/original.mov",
+        "sha256": "76e568c12a09aba17c08bbca11876e14adb0d5aef81651a6914ad7bd2b795584"
+      },
+      "transformation": "Full native frame, resize/encode only, original speed, no UI retouching.",
+      "dimensions": {
+        "width": 720,
+        "height": 960
+      }
+    },
+    {
+      "file": "agentdeck-200-iphone.mp4",
+      "kind": "native-app-recording",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "60bd4c745f7cf2e77dd05daefce92f75a889c3ff22d28fdf9d3edc6728eded10",
+      "bytes": 1591404,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Full native frame, resize/encode only, original speed, no UI retouching.",
+      "dimensions": {
+        "width": 720,
+        "height": 1564
+      },
+      "durationSeconds": 25.033333
+    },
+    {
+      "file": "agentdeck-200-macos-choice.png",
+      "kind": "recording-still",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "1fc2a272b00d8633a2f174937b8bd362a46645b25346ad904fe266ab5717224a",
+      "bytes": 273012,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/macos/original.mov",
+        "sha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+      },
+      "transformation": "Full native frame, resize/encode only, original speed, no UI retouching.",
+      "dimensions": {
+        "width": 1280,
+        "height": 706
+      }
+    },
+    {
+      "file": "agentdeck-200-macos.mp4",
+      "kind": "native-app-recording",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "26309da366fe6f4a534eb07a508c5d8d86744ef34fff3c32a3bf889dc7e574c0",
+      "bytes": 1380207,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/macos/original.mov",
+        "sha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+      },
+      "transformation": "Full native frame, resize/encode only, original speed, no UI retouching.",
+      "dimensions": {
+        "width": 1280,
+        "height": 706
+      },
+      "durationSeconds": 21.433333
+    },
+    {
+      "file": "agentdeck-200-workflow-poster.png",
+      "kind": "recording-still",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "652a47d717a0c3c5767954250e8a525e1d0b1ac4c58e7ae5d4be06f1687964c1",
+      "bytes": 119015,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Native phone top 1320x850 crop at (0,0), resized; original speed, no UI retouching.",
+      "dimensions": {
+        "width": 960,
+        "height": 618
+      }
+    },
+    {
+      "file": "agentdeck-200-workflow-preview.gif",
+      "kind": "recording-excerpt",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "95921809252f1d3009232f813e8af49634d59253427c471c0387e66ab9cdd848",
+      "bytes": 1834751,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Native phone top 1320x850 crop at (0,0), resized; original speed, no UI retouching. 16-second GIF excerpt, 8 fps, 640px wide.",
+      "dimensions": {
+        "width": 640,
+        "height": 412
+      },
+      "durationSeconds": 16.01
+    },
+    {
+      "file": "agentdeck-200-workflow.en.vtt",
+      "kind": "captions",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "1cae3c606732b6ddd496427aa5f22278922f15e30cd76f1ae63c09d937fb3a23",
+      "bytes": 306,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Authored EN/KO/JA captions for observed native phone phases."
+    },
+    {
+      "file": "agentdeck-200-workflow.ja.vtt",
+      "kind": "captions",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "fdf5880a255cfa78dfa735da239cc84d430932c95f530995278e3d077667f6bf",
+      "bytes": 390,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Authored EN/KO/JA captions for observed native phone phases."
+    },
+    {
+      "file": "agentdeck-200-workflow.ko.vtt",
+      "kind": "captions",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "10222a83010e119a02a250704115c4d6aa7cc98c88b933ed76dd565ab875c2e8",
+      "bytes": 369,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Authored EN/KO/JA captions for observed native phone phases."
+    },
+    {
+      "file": "agentdeck-200-workflow.mp4",
+      "kind": "native-app-recording",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "763198ba5314f559d0bc90fe64f429dc13075be5651e1e968d12f874c24ddfe4",
+      "bytes": 689373,
+      "input": {
+        "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      "transformation": "Native phone top 1320x850 crop at (0,0), resized; original speed, no UI retouching.",
+      "dimensions": {
+        "width": 960,
+        "height": 618
+      },
+      "durationSeconds": 25.033008
     }
-  ]
+  ],
+  "workflowCapture": {
+    "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+    "mergedMasterRevision": "35ec15b483e9f1c3bf816ba684431e5b4fb10271",
+    "verificationReceipt": "verification/receipts/2026-11-01-4100e0c.json",
+    "scenario": "Real standalone OpenCode 1.18.35, generated observer, daemon, native app UI and SDK replies. Fictional Local Demo workspace; original question, Local demo answer, node --test one-time permission, one test passed.",
+    "model": "Loopback Anthropic-compatible fixture; no remote provider or provider keys.",
+    "isolation": "Private loopback daemon on 19550; observer pinned to that receiver for its whole lifetime. Unrelated passive discovery and provider polling suppressed in capture-only host; usage rows hidden on Mac. Does not validate default discovery or subscription data.",
+    "speed": "1x; no replacement UI. Native phone overview is explicitly cropped, full phone/Mac views are linked.",
+    "availability": "Development candidate, not the current Store release. CloudKit PoC and remote approvals are not shown.",
+    "platforms": {
+      "iphone": {
+        "surface": "iPhone 16 Pro Max simulator, iOS 18.6, standard dashboard",
+        "configuration": "Debug",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "rawFile": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+        "rawSha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0",
+        "rawBytes": 144306255,
+        "clip": {
+          "start": 19.001342058181763,
+          "duration": 24.948155879974365,
+          "cuesFromStart": {
+            "original-choice": 4.5,
+            "one-time-permission": 13.259986877441406,
+            "resumed-after-native-answer": 19.948155879974365
+          },
+          "raw": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+          "publicCrop": [
+            1320,
+            850,
+            0,
+            0
+          ],
+          "publicSize": [
+            960,
+            618
+          ],
+          "storeSize": [
+            886,
+            1920
+          ]
+        },
+        "resultSha256": "feebf56e8dafd31d81b1e47b859093cfe2a0acacd7c9cbdcccc67c0395ded274",
+        "result": "Original answer received; one-time command executed; node:test demo total passed.",
+        "inputMethod": "XCTest ordinary UI taps",
+        "uiTestLogSha256": "4bf881c3184eaa0c89b1cd922e88441d87f4307ede8518d56317f053dc3a5d7e",
+        "binarySha256": {
+          "AgentDeck": "198537e7c2d2f65c8ce6c6993287657f491ca5aeef8b9cb46f9b255105e80d0a",
+          "AgentDeck.debug.dylib": "3d1be37305c5eda260c4383af5e6776c7cab92024b3c4ef1a2bd8adf5dcb5d7f"
+        }
+      },
+      "ipad": {
+        "surface": "iPad Pro 13-inch M4 simulator, iOS 18.6, 2D aquarium",
+        "configuration": "Debug",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "rawFile": "diagnostics/media-2.0/4100e0ca/ipad/original.mov",
+        "rawSha256": "76e568c12a09aba17c08bbca11876e14adb0d5aef81651a6914ad7bd2b795584",
+        "rawBytes": 139651634,
+        "clip": {
+          "start": 9.625648975372314,
+          "duration": 24.32721495628357,
+          "cuesFromStart": {
+            "original-choice": 4.5,
+            "one-time-permission": 12.437718152999878,
+            "resumed-after-native-answer": 19.32721495628357
+          }
+        },
+        "resultSha256": "c7bc3499eb0366b467f380d6f6bdc6f75b2246dee1bee0bbaa4579c25a36ec4d",
+        "result": "Original answer received; one-time command executed; node:test demo total passed.",
+        "inputMethod": "XCTest ordinary UI taps",
+        "uiTestLogSha256": "0716347b48ecd0c1ff93958726563815ed00d80d487c6f4000b409eee6672b44",
+        "binarySha256": {
+          "AgentDeck": "198537e7c2d2f65c8ce6c6993287657f491ca5aeef8b9cb46f9b255105e80d0a",
+          "AgentDeck.debug.dylib": "3d1be37305c5eda260c4383af5e6776c7cab92024b3c4ef1a2bd8adf5dcb5d7f"
+        }
+      },
+      "macos": {
+        "surface": "macOS 27.0.1, native Mac, 2D aquarium",
+        "configuration": "Debug",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "rawFile": "diagnostics/media-2.0/4100e0ca/macos/original.mov",
+        "rawSha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429",
+        "rawBytes": 227607107,
+        "clip": {
+          "start": 17.22529411315918,
+          "duration": 21.371000051498413,
+          "cuesFromStart": {
+            "original-choice": 4.5,
+            "one-time-permission": 11.934000015258789,
+            "resumed-after-native-answer": 16.371000051498413
+          }
+        },
+        "resultSha256": "92ca7d7e1cbdbdfa052a45d497a95892768ba14c40ec4f7040e6be5685c02e10",
+        "result": "Original answer received; one-time command executed; node:test demo total passed.",
+        "inputMethod": "CUA native UI clicks",
+        "binarySha256": {
+          "AgentDeck": "34092e229ab4f2789938e174d2c3c2cd54617b9afe012563b5ac1bb6b531cb2c",
+          "AgentDeck.debug.dylib": "d82ded8f3bb7bc6c382c31e5bd1a2605c7595dbd254af01a9a09756d38b2a4f8"
+        }
+      }
+    },
+    "limitations": [
+      "Simulator UI execution is not physical iPhone/iPad acceptance.",
+      "Mac was controlled through native UI automation. A Mac recorder interrupted with SIGINT discarded its output; final take completed its 45-second timer with exit 0.",
+      "No new physical Stream Deck/Watch, firmware flash, Production CloudKit or Store upload acceptance is claimed."
+    ],
+    "harnessSha256": {
+      "capture-daemon.mjs": "a3e0d0a529ef3a3390c846e9506afa656798660ab6dbb2199b94bcff21469119",
+      "capture-opencode.mjs": "ec47caec03ae0aec13e0ffe4ab8ab5593a55cd136d611df91368f737495a5cf5"
+    },
+    "uiRunnerSha256": "c702731814c79036755c84231e8a0bf2e00edee40187743d47ab60d836914606"
+  },
+  "storePreviewCandidates": {
+    "status": "Prepared locally only; no upload or release approval. Recheck current Store requirements and submitted-build feature parity at release time.",
+    "files": [
+      {
+        "file": "apple/appstore-submission/previews/iPhone/agentdeck-preview.mp4",
+        "platform": "iPhone",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "sha256": "6c0b6f5c4da4fe824ee4fbe12e853410629ce6d42b49895c2708cb8f24162d9c",
+        "bytes": 34443180,
+        "durationSeconds": 25.033333,
+        "video": {
+          "codec_name": "h264",
+          "profile": "High",
+          "width": 886,
+          "height": 1920,
+          "r_frame_rate": "30/1",
+          "bit_rate": "10996106"
+        },
+        "audio": {
+          "codec_name": "aac",
+          "profile": "LC",
+          "sample_rate": "44100",
+          "channels": 2,
+          "bit_rate": "2091"
+        },
+        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "inputSha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+      },
+      {
+        "file": "apple/appstore-submission/previews/iPad/agentdeck-preview.mp4",
+        "platform": "iPad",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "sha256": "95db344bdcd7d7b37a24f8e7e36497663c27bc507d0146313d50e783dab91c91",
+        "bytes": 33430718,
+        "durationSeconds": 24.4,
+        "video": {
+          "codec_name": "h264",
+          "profile": "High",
+          "width": 1200,
+          "height": 1600,
+          "r_frame_rate": "30/1",
+          "bit_rate": "10949639"
+        },
+        "audio": {
+          "codec_name": "aac",
+          "profile": "LC",
+          "sample_rate": "44100",
+          "channels": 2,
+          "bit_rate": "2091"
+        },
+        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "inputSha256": "76e568c12a09aba17c08bbca11876e14adb0d5aef81651a6914ad7bd2b795584"
+      },
+      {
+        "file": "apple/appstore-submission/previews/macOS/agentdeck-preview.mp4",
+        "platform": "macOS",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "sha256": "eb693b1ee4352475965edca800eb28de8736f8d9f98f0e3cc1ff91a16709fe64",
+        "bytes": 29239596,
+        "durationSeconds": 21.433333,
+        "video": {
+          "codec_name": "h264",
+          "profile": "High",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1",
+          "bit_rate": "10902376"
+        },
+        "audio": {
+          "codec_name": "aac",
+          "profile": "LC",
+          "sample_rate": "44100",
+          "channels": 2,
+          "bit_rate": "2089"
+        },
+        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "inputSha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+      }
+    ]
+  }
 }

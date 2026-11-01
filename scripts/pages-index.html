@@ -320,6 +320,10 @@ html body :target { scroll-margin-block-start: 0; }
     background: var(--tide-100); border-top: 1px solid var(--tide-200); text-align: left;
   }
 
+  .controller-workflow h2 { margin-top:var(--s-3); }
+  .controller-workflow > .section-lede { margin-inline:auto; }
+  .controller-workflow .hero-shot { max-width:960px; margin-inline:auto; }
+  .controller-workflow video { aspect-ratio:960 / 618; }
   .current-habitat { text-align:left; scroll-margin-top:var(--s-20); }
   .current-habitat h2 { margin-top:var(--s-3); }
   .current-layout { display:grid; grid-template-columns:minmax(240px,0.65fr) minmax(0,1fr); gap:var(--s-4); align-items:start; }
@@ -541,14 +545,31 @@ html body :target { scroll-margin-block-start: 0; }
     <p class="kicker" data-i18n="hero.kicker">Physical control surface for AI coding agents</p>
     <h1>Stop Chatting.<br><span class="tagline">Start Steering.</span></h1>
     <p class="lede" data-i18n="hero.lede">
-      AgentDeck puts your coding agents on the desk. One daemon hub renders every session live
-      across 29 surfaces — and lets you steer them without leaving the keyboard.
+      AgentDeck brings coding agents onto your desk. One local hub shows which sessions are working
+      or waiting across 29 surfaces, with supported choices and approvals on connected controllers.
     </p>
     <div class="cta">
       <a class="btn btn-primary" href="#get-agentdeck" data-i18n="cta.start">Choose your setup</a>
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
 
+    <section id="controller-workflow" class="controller-workflow" aria-labelledby="workflow-title">
+      <p class="kicker" data-i18n="workflow.kicker">2.0 development · Native app recording</p>
+      <h2 id="workflow-title" data-i18n="workflow.h">Follow the work. Respond with context.</h2>
+      <p class="section-lede" data-i18n="workflow.p">See an agent working, read its original question, choose a target and approve one local test run. The result comes back through the same local connection.</p>
+      <figure class="hero-shot">
+        <video controls playsinline preload="none" poster="media/current/agentdeck-200-workflow-poster.png" width="960" height="618" aria-describedby="workflow-caption">
+          <source src="media/current/agentdeck-200-workflow.mp4" type="video/mp4">
+          <track kind="captions" src="media/current/agentdeck-200-workflow.en.vtt" srclang="en" label="English" default>
+          <track kind="captions" src="media/current/agentdeck-200-workflow.ko.vtt" srclang="ko" label="한국어">
+          <track kind="captions" src="media/current/agentdeck-200-workflow.ja.vtt" srclang="ja" label="日本語">
+          <a href="media/current/agentdeck-200-workflow.mp4">Download the local-control recording</a>
+        </video>
+        <figcaption id="workflow-caption" data-i18n="workflow.caption">Actual iPhone Simulator UI with a real local OpenCode session and fictional workspace. 25 seconds at original speed; cropped for readable controls. This is a 2.0 development candidate, not the current Store release.</figcaption>
+      </figure>
+      <p class="section-lede"><a href="media/current/agentdeck-200-iphone.mp4" data-i18n="workflow.full">Full native phone view →</a> · <a href="media/current/agentdeck-200-macos.mp4" data-i18n="workflow.mac">Native Mac view →</a> · <a href="#current-habitat" data-i18n="workflow.detail">Aquarium detail</a> · <a href="media/current/manifest.json" data-i18n="current.sources">Media sources</a></p>
+    </section>
+    <details class="media-history"><summary data-i18n="workflow.visualization">Activity visualization · development detail</summary>
     <section id="current-habitat" class="current-habitat" aria-labelledby="current-title">
       <p class="kicker" data-i18n="current.kicker">Current implementation · Development preview · November 2, 2026</p>
       <h2 id="current-title" data-i18n="current.h">See your agents at work.</h2>
@@ -571,6 +592,7 @@ html body :target { scroll-margin-block-start: 0; }
       </div>
       <p class="section-lede"><a href="hardware/#current-captures" data-i18n="current.devices">See current device captures and the labeled photo composite →</a> · <a href="media/current/manifest.json" data-i18n="current.sources">Media sources</a></p>
     </section>
+    </details>
     <details class="media-history"><summary data-i18n="current.history">Earlier aquarium introduction · archived recording</summary>
     <figure id="aquarium" class="hero-shot">
       <video controls playsinline preload="none" poster="media/aquarium-dashboard.jpg" width="2752" height="2000" aria-describedby="aquarium-caption">
@@ -793,6 +815,14 @@ html body :target { scroll-margin-block-start: 0; }
   (function () {
     var I18N = {
       ko: {
+        "workflow.kicker": "2.0 개발 버전 · 실제 앱 녹화",
+        "workflow.h": "작업을 확인하고, 필요한 순간에 응답하세요.",
+        "workflow.p": "에이전트의 작업 상태를 보고, 원래 질문을 읽고, 검사할 대상을 선택한 뒤 로컬 테스트를 한 번 승인합니다. 결과도 같은 로컬 연결로 돌아옵니다.",
+        "workflow.caption": "iPhone 시뮬레이터의 실제 앱 UI와 실제 로컬 OpenCode 세션 · 가상의 작업 공간. 원래 재생 속도 그대로 25초이며, 조작부를 읽기 쉽게 화면 일부를 잘랐습니다. 현재 스토어 출시본이 아닌 2.0 개발 후보입니다.",
+        "workflow.full": "전체 휴대폰 화면 보기 →",
+        "workflow.mac": "Mac 실제 화면 보기 →",
+        "workflow.detail": "수족관 상세 보기",
+        "workflow.visualization": "활동 시각화 · 개발 상세 영상",
         "current.kicker": "최신 구현 · 개발 프리뷰 · 2026년 11월 2일",
         "current.h": "작업 중인 에이전트를 한눈에.",
         "current.p": "어떤 에이전트가 일하고, 응답을 기다리고, 작업을 마쳤는지 확인하세요. 연결된 컨트롤러에서는 지원되는 질문과 승인 요청에 응답할 수 있습니다. 아래 영상은 이 활동을 수족관으로 보여주는 화면에 초점을 맞춥니다.",
@@ -826,7 +856,7 @@ html body :target { scroll-margin-block-start: 0; }
         "usage.h": "필요한 정보를 가까이",
         "usage.p": "제공 가능한 Claude·Codex·z.ai/GLM 사용량을 화면에 맞게 표시합니다. Android GitHub APK는 설정에서 무선 업데이트하고, 스토어 설치본은 해당 스토어를 사용합니다.",
         'hero.kicker': 'AI 코딩 에이전트를 위한 피지컬 컨트롤 서피스',
-        'hero.lede': 'AgentDeck은 코딩 에이전트를 책상 위로 꺼내 놓습니다. 하나의 데몬 허브가 모든 세션을 29개 서피스에 라이브로 렌더링하고 — 키보드를 떠나지 않고 조종하게 해줍니다.',
+        'hero.lede': 'AgentDeck은 코딩 에이전트의 작업을 책상 위에서 확인하고 제어하게 해줍니다. 하나의 로컬 허브가 29개 서피스에 작업·응답 대기 상태를 전하고, 연결된 컨트롤러에서 지원되는 선택지와 승인 요청에 응답할 수 있습니다.',
         'cta.start': '내 환경에 맞게 시작하기',
         'cta.demo': '라이브 프리뷰 열기',
         'get.eyebrow': 'AgentDeck 시작하기',
@@ -869,6 +899,14 @@ html body :target { scroll-margin-block-start: 0; }
         'policy.canonical': '개인정보 처리방침은 영어 원문이 정본입니다.'
       },
       ja: {
+        "workflow.kicker": "2.0開発版 · 実アプリの画面収録",
+        "workflow.h": "作業を確認し、必要なときに応答。",
+        "workflow.p": "エージェントの作業を確認し、元の質問を読んで対象を選び、ローカルテストを一度だけ承認します。結果も同じローカル接続で戻ります。",
+        "workflow.caption": "iPhoneシミュレータの実UIと実際のローカルOpenCodeセッション。架空の作業環境、元の速度で25秒。操作を読みやすくするため画面を切り抜いています。現在のストア公開版ではなく2.0開発候補です。",
+        "workflow.full": "スマートフォンの全画面を見る →",
+        "workflow.mac": "Macの実画面を見る →",
+        "workflow.detail": "水槽の詳細を見る",
+        "workflow.visualization": "活動の可視化 · 開発詳細映像",
         "current.kicker": "最新実装 · 開発プレビュー · 2026年11月2日",
         "current.h": "エージェントの作業をひと目で。",
         "current.p": "作業中、応答待ち、完了したエージェントを確認できます。接続したコントローラーから、対応する質問や承認要求に応答できます。下の映像では、その活動を水槽で表す画面を紹介します。",
@@ -902,7 +940,7 @@ html body :target { scroll-margin-block-start: 0; }
         "usage.h": "必要な情報を手元に",
         "usage.p": "利用可能なClaude・Codex・z.ai/GLM使用量を画面に合わせて表示。Android GitHub APKは設定から無線更新し、ストア版は各ストアで更新します。",
         'hero.kicker': 'AIコーディングエージェントのためのフィジカルコントロールサーフェス',
-        'hero.lede': 'AgentDeckはコーディングエージェントを机の上に連れ出します。ひとつのdaemonハブがすべてのセッションを29のサーフェスにライブ描画し — キーボードを離れずに操縦させてくれます。',
+        'hero.lede': 'AgentDeckはエージェントの作業を机の上で確認・操作できます。ひとつのローカルハブが29のサーフェスに作業中・応答待ちの状態を伝え、接続したコントローラーから対応する選択肢や承認要求に応答できます。',
         'cta.start': '環境に合わせて始める',
         'cta.demo': 'ライブプレビューを試す',
         'get.eyebrow': 'AgentDeckを始める',
