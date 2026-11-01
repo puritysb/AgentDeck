@@ -34,6 +34,7 @@ actor CloudKitProbeStore {
     private var container: CKContainer { CKContainer(identifier: Self.containerID) }
     private var database: CKDatabase { container.privateCloudDatabase }
     private let recordID = CKRecord.ID(recordName: "stage-a-latest-test")
+    private(set) var phase = "idle"
 
     func bounded<T: Sendable>(timeout: Duration = .seconds(15), _ start: @escaping @Sendable (ProbeCompletion<T>) -> Void) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
@@ -47,6 +48,7 @@ actor CloudKitProbeStore {
     }
 
     func checkAccount() async throws {
+        phase = "account check"
         let container = container
         let status: CKAccountStatus = try await bounded { done in
             container.accountStatus { status, error in
@@ -77,12 +79,16 @@ actor CloudKitProbeStore {
     }
 
     private func save(_ record: CKRecord) async throws {
+        phase = "save " + record.recordType
         let operation = CKModifyRecordsOperation(recordsToSave: [record])
         operation.savePolicy = .allKeys
         operation.configuration.timeoutIntervalForRequest = 15
         operation.configuration.timeoutIntervalForResource = 15
         let database = database
         let _: Bool = try await bounded { done in
+            operation.perRecordSaveBlock = { _, result in
+                done.finish(result.map { _ in true })
+            }
             operation.modifyRecordsResultBlock = { result in
                 done.finish(result.map { true })
             }
@@ -124,6 +130,55 @@ actor CloudKitProbeStore {
         return CloudKitProbeEvent(id: id, occurredAt: occurred, expiresAt: expiry)
     }
 
+    func saveRoster(_ summary: RemoteRosterSummary) async throws {
+        try await checkAccount()
+        guard summary.freshness(at: Date()) == .recent else { throw ProbeError.invalidRecord }
+        let record = CKRecord(recordType: "RosterProbe", recordID: CKRecord.ID(recordName: "stage-b-latest"))
+        record.encryptedValues["summary"] = try JSONEncoder().encode(summary)
+        try await save(record)
+    }
+
+    func saveWaitEpisode(id: UUID, occurredAt: Date) async throws {
+        try await checkAccount()
+        let age = Date().timeIntervalSince(occurredAt)
+        guard age >= 0, age < 300 else { throw ProbeError.invalidRecord }
+        let record = CKRecord(recordType: "AttentionProbe", recordID: CKRecord.ID(recordName: id.uuidString))
+        record["occurredAt"] = occurredAt
+        record["expiresAt"] = occurredAt.addingTimeInterval(300)
+        record.encryptedValues["kind"] = "needsResponse"
+        try await save(record)
+    }
+
+    func deleteRoster() async throws {
+        try await checkAccount()
+        let database = database
+        let _: Bool = try await bounded { done in
+            database.delete(withRecordID: CKRecord.ID(recordName: "stage-b-latest")) { _, error in
+                if let error, (error as? CKError)?.code != .unknownItem { done.finish(.failure(error)) }
+                else { done.finish(.success(true)) }
+            }
+        }
+    }
+
+    func fetchRoster() async throws -> RemoteRosterSummary {
+        try await checkAccount()
+        let database = database
+        let record: CKRecord = try await bounded { done in
+            database.fetch(withRecordID: CKRecord.ID(recordName: "stage-b-latest")) { record, error in
+                if let error { done.finish(.failure(error)) }
+                else if let record { done.finish(.success(record)) }
+                else { done.finish(.failure(ProbeError.invalidRecord)) }
+            }
+        }
+        guard let data = record.encryptedValues["summary"] as? Data else { throw ProbeError.invalidRecord }
+        guard data.count <= 16384 else { throw ProbeError.invalidRecord }
+        let summary = try JSONDecoder().decode(RemoteRosterSummary.self, from: data)
+        guard summary.schemaVersion == 1, summary.workingCount >= 0, summary.waitingCount >= 0 else {
+            throw ProbeError.invalidRecord
+        }
+        return summary
+    }
+
     enum ProbeError: Error { case accountUnavailable, invalidRecord }
 }
 
@@ -133,6 +188,7 @@ final class CloudKitProbeModel: ObservableObject {
     @Published private(set) var status = "Not connected"
     @Published private(set) var event: CloudKitProbeEvent?
     @Published private(set) var busy = false
+    @Published private(set) var roster: RemoteRosterSummary?
     private let store = CloudKitProbeStore()
     private var generation = 0
     private var accountObserver: NSObjectProtocol?
@@ -141,6 +197,7 @@ final class CloudKitProbeModel: ObservableObject {
             Task { @MainActor in
                 self?.generation += 1
                 self?.event = nil
+                self?.roster = nil
                 self?.busy = false
                 self?.status = "iCloud account changed. Enable receiving again."
             }
@@ -166,6 +223,11 @@ final class CloudKitProbeModel: ObservableObject {
                 try await store.subscribe()
                 guard token == generation else { return }
                 status = "Subscription saved. Send a test from the Mac."
+            } else if action == "roster" {
+                let result = try await store.fetchRoster()
+                guard token == generation else { return }
+                roster = result
+                status = "Fetched historical source observation."
             } else {
                 let result = try await store.fetchLatest()
                 guard token == generation else { return }
@@ -174,7 +236,14 @@ final class CloudKitProbeModel: ObservableObject {
             }
         } catch {
             guard token == generation else { return }
-            status = "CloudKit unavailable (\((error as NSError).domain):\((error as NSError).code)). Retry when ready."
+            if action == "roster", (error as? CKError)?.code == .unknownItem {
+                roster = nil
+                status = "Shared summary is unavailable or has been deleted."
+            } else if (error as? URLError)?.code == .timedOut {
+                status = "CloudKit response timed out. Save outcome is unknown; fetch to check before retrying."
+            } else {
+                status = "CloudKit unavailable (\((error as NSError).domain):\((error as NSError).code)). Retry when ready."
+            }
         }
     }
 }
@@ -184,11 +253,25 @@ struct CloudKitProbeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("CloudKit delivery experiment").font(.headline)
-            Text("Only synthetic test IDs and times are shared through your private iCloud database. No agent data is uploaded.")
+            Text("Test buttons share synthetic IDs and times. The optional local summary experiment separately shares only encrypted counts and their original observation time.")
             #if os(macOS)
             Button("Send test update") { Task { await model.run("send") } }
             #else
             Button("Enable test notifications") { Task { await model.run("receive") } }
+            #endif
+            #if os(macOS)
+            LocalRosterProbeView()
+            #else
+            Button("Fetch local work summary") { Task { await model.run("roster") } }
+            if let roster = model.roster {
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    if roster.freshness(at: context.date) != .expired {
+                        Text("Last observed: \(roster.workingCount) working · \(roster.waitingCount) waiting")
+                    }
+                    Text("Freshness: \(String(describing: roster.freshness(at: context.date)))")
+                    Text(roster.observedAt, style: .time)
+                }
+            }
             #endif
             Button("Fetch latest test") { Task { await model.run("fetch") } }
             Text(model.status).foregroundStyle(.secondary)
@@ -222,7 +305,10 @@ final class CloudKitProbeDelegate: NSObject, UIApplicationDelegate, UNUserNotifi
         [.banner, .sound]
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        await CloudKitProbeModel.shared.run("fetch")
+        await CloudKitProbeModel.shared.run("roster")
+        if await CloudKitProbeModel.shared.roster == nil {
+            await CloudKitProbeModel.shared.run("fetch")
+        }
     }
 }
 #endif

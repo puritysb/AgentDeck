@@ -1,7 +1,7 @@
 # Apple remote observation — CloudKit PoC design
 
 **Decision date: 2026-11-01. Status: Stage A development-only transport code
-implemented; end-to-end CloudKit/Watch delivery unverified, not released.** This document owns the proposed PoC
+implemented; a user-assisted iPhone/Watch route verified, not released.** This document owns the proposed PoC
 contract and acceptance plan. The [feature matrix](appstore-feature-matrix.md)
 owns availability; [introduction copy](marketing/apple-remote-observation.md)
 must retain the planned label until measured delivery evidence exists.
@@ -235,7 +235,8 @@ outside the app's deletion guarantee; do not promise instant forensic erasure.
 ## Implementation sequence and acceptance gates
 
 Stage A now has a development-only implementation. Delivery evidence remains
-pending. Stages B–E remain unimplemented. See the transport notes below.
+pending. Stage B has a manual real-roster projection/share/read spike; automatic attention
+publication, provider quota and stages C–E remain incomplete. See the transport notes below.
 
 | Stage | Work | Exit criterion |
 |---|---|---|
@@ -394,3 +395,62 @@ macOS and iOS changed-area native suites passed. Quick checks passed after
 repairing dependencies except the design ratchet's system Bash incompatibility;
 the ratchet passed separately with Homebrew Bash (89 tracked violations, baseline
 89). Keychain-dependent daemon E2E was skipped by the standard macOS policy.
+
+## Stage B manual real-summary checkpoint
+
+The Mac experiment can explicitly connect to `ws://127.0.0.1:9120` without starting
+or taking over the daemon. It accepts only fresh, endpoint-matching full rosters,
+projects working/waiting counts and original receipt time, and displays a local
+preview. A separate button shares exactly that summary once. No automatic upload is enabled; real wait alerts require an explicit manual
+share action. Stop local observation terminates the source;
+Delete shared summary removes the probe record with a visible failure state if
+cloud deletion is not confirmed.
+
+The temporary `RosterProbe/stage-b-latest` record stores JSON summary bytes in
+CloudKit `encryptedValues`. It is still an isolated default-zone probe, not the
+contract-v1 production schema. It contains no raw session IDs, questions or paths.
+The iPhone fetches/decrypts it, keeps the original timestamp and derives historical
+state locally after 3 minutes. Expired summaries omit the count values. The
+in-memory reader survives a failed fetch; persistent cold-start cache and
+account-scoped cleanup remain Stage C work. No quota window is fabricated when
+its provenance/validity contract has not yet been connected.
+
+Observed real data on 2026-11-01: the Mac preview showed 2 working and 0 waiting;
+manual encrypted save succeeded; the user confirmed the same real summary and
+original time on iPhone. The event reducer separately passed baseline, repeated
+frame, resolution/reentry, unknown-gap and identifier-exclusion tests. Five PoC
+regression tests passed in both standalone Swift 6 and the dedicated macOS Xcode
+scheme. The full quick tier passed with Homebrew Bash; standard macOS/iOS native
+changed suites also passed. These do not prove unattended publication, durable
+outbox, provider quota, Production, widgets or independent Watch operation.
+
+Remaining implementation order: account-scoped durable event/outbox integration
+and explicit sharing controls; actual wait episode publication/resolution;
+provenance-preserving optional quota; persistent reader/expiry/deletion recovery;
+disruption/20-event measurements; only then widgets. Keep Stage B unchecked until
+its actual wait notification and optional-source acceptance are recorded.
+
+The manual real-summary checkpoint also gained eligible wait publication: a
+32-item in-memory queue retains opaque episode IDs and original times, removes
+resolved episodes and prunes entries older than 5 minutes. Each manual share
+saves the summary first, revalidates a fresh local roster, then saves pending
+events under stable IDs using the proven generic AttentionProbe subscription.
+Repeated saves update the same event instead of generating another creation.
+The initial roster is a baseline and generates no historical wait alert. Account
+change stops the local source and clears this in-memory queue. This is not the
+durable unattended publisher: restart persistence, automatic scheduling and
+full account-scoped outbox recovery still require Stage C integration. The subsequent user-assisted real-wait check is recorded below.
+
+User-assisted offline check: the user confirmed the iPhone retained the real
+summary and original time in airplane mode and changed freshness to historical
+after the source-age threshold. This checks the in-memory reader, not cold-start
+offline restoration.
+
+Real-wait follow-up: the user created a real local wait; the Mac read 2 working /
+1 waiting. An explicit current-wait manual action published its episode and the
+user confirmed a new phone/Watch notification, even though the Mac timed out.
+This is evidence of an ambiguous acknowledgement, not a failed server write.
+The save path now accepts a successful per-record server acknowledgement and
+the UI labels timeouts as unknown rather than failed. Stable episode IDs are
+retained for retries in this process. Restarts still discard the in-memory queue;
+no durable exactly-once or automatic delivery claim is made.

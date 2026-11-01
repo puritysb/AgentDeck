@@ -18,17 +18,21 @@ struct AgentDeckApp: App {
     /// Restrict host isolation to XCTest's explicit launch markers. Individual
     /// AgentStateHolder fixtures keep their production behavior under XCTest.
     nonisolated static func isHostedTest(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        #if AGENTDECK_CLOUDKIT_POC
-        return true
-        #else
         return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
+    }
+
+    nonisolated static var isCloudKitTransportProbe: Bool {
+        #if AGENTDECK_CLOUDKIT_POC
+        true
+        #else
+        false
         #endif
     }
 
     nonisolated static func makeStateHolder(environment: [String: String] = ProcessInfo.processInfo.environment) -> AgentStateHolder {
-        AgentStateHolder(inertHost: isHostedTest(environment: environment))
+        AgentStateHolder(inertHost: isHostedTest(environment: environment) || isCloudKitTransportProbe)
     }
 
     #if os(macOS)
@@ -39,7 +43,7 @@ struct AgentDeckApp: App {
     init() {
         // A hosted test must neither start a hub nor install exit handlers that
         // can remove the live app's registry. Its fixtures opt into their own work.
-        if Self.isHostedTest() {
+        if Self.isHostedTest() || Self.isCloudKitTransportProbe {
             _daemonService = StateObject(wrappedValue: DaemonService(automaticallyStart: false))
             return
         }
@@ -286,7 +290,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     weak var stateHolder: AgentStateHolder?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        guard !AgentDeckApp.isHostedTest() else { return }
+        guard !AgentDeckApp.isHostedTest(), !AgentDeckApp.isCloudKitTransportProbe else { return }
         // Foreground-banner presentation for attention notifications
         // (see UNUserNotificationCenterDelegate extension below).
         UNUserNotificationCenter.current().delegate = self
