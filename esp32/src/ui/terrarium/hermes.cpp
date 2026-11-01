@@ -120,12 +120,13 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     homeY += jitterY[idx];
 
     const bool active = state == CreatureState::WORKING || state == CreatureState::ASKING;
-    const float restY = Layout::HermesSleepY + jitterY[idx];
+    const float restY = TerrariumRules::HermesHomeCanvasY;
+    const float entranceX=TerrariumRules::HermesHomeCanvasX;
     if (active) {
         shellOpen[idx] = fminf(1, shellOpen[idx] + dt * TerrariumRules::HermesHomeOpenRate);
         if (shellOpen[idx] >= TerrariumRules::HermesHomeLidClearance)
             emergence[idx] = fminf(1, emergence[idx] + dt * TerrariumRules::HermesHomeEmergeRate);
-    } else if (fabsf(currentX[idx]-homeX)*w < 1 && fabsf(currentY[idx]-restY)*h < 1) {
+    } else if (fabsf(currentX[idx]-entranceX)*w < 1 && fabsf(currentY[idx]-restY)*h < 1) {
         emergence[idx] = fmaxf(0, emergence[idx] - dt * TerrariumRules::HermesHomeEmergeRate);
         if (emergence[idx] == 0) shellOpen[idx] = fmaxf(0, shellOpen[idx] - dt * TerrariumRules::HermesHomeCloseRate);
     }
@@ -146,22 +147,11 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY > Layout::HermesSwimMaxY) renderY = Layout::HermesSwimMaxY;
     }
 
-    renderX = homeX + (renderX-homeX)*departure;
+    renderX = entranceX + (renderX-entranceX)*departure;
     renderY = restY + (renderY-restY)*departure;
     const float blend = 1-expf(-dt*4);
     renderX = currentX[idx] + (renderX-currentX[idx])*blend;
     renderY = currentY[idx] + (renderY-currentY[idx])*blend;
-    // Fixed, bounded geometry: no render-loop allocation on no-PSRAM boards.
-    const int hx = (int)(homeX*w), hy = (int)(restY*h + bodyRadius*1.5f);
-    const int rx = max(4, (int)(bodyRadius*1.35f));
-    const int lift = max(2, (int)(bodyRadius*(.25f+shellOpen[idx]*1.2f)));
-    Draw::line(hx-rx,hy,hx-rx/2,hy-lift,Theme::HUDText,190);
-    Draw::line(hx-rx/2,hy-lift,hx+rx/2,hy-lift,Theme::HUDText,190);
-    Draw::line(hx+rx/2,hy-lift,hx+rx,hy,Theme::HUDText,190);
-    Draw::line(hx-rx,hy,hx+rx,hy,Theme::HUDText,230);
-    Draw::line(hx-rx,hy,hx,hy+max(2,rx/3),Theme::HUDText,190);
-    Draw::line(hx,hy+max(2,rx/3),hx+rx,hy,Theme::HUDText,190);
-    for (int rib=-2;rib<=2;rib++) Draw::line(hx+rib*rx/3,hy-lift,hx,hy,Theme::HUDText,120);
 
     float breathBob = 0.0f;
     uint8_t alpha = 255;
@@ -271,5 +261,7 @@ float getY(uint8_t idx) {
     if (idx >= MAX_HERMES) return Layout::HermesStandingY;
     return currentY[idx];
 }
+
+float getShellOpening(uint8_t idx) { return idx < HERMES_ARR_SIZE ? shellOpen[idx] : 0; }
 
 }  // namespace Hermes

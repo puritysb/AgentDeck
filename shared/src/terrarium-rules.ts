@@ -59,6 +59,10 @@ export const TERRARIUM_RULES = {
   },
   /** Open before emergence; return and tuck before closing, in simulation seconds. */
   hermesHome: {
+    sharedX: 0, sharedFloor: 0.95, sharedZ: 1.35, sharedSize: 0.72, sharedRockWidth: 1.05, sharedRockDepth: 0.85, mouthClearance: 0.45, berthTravelScale: 0.35, berthFront: 0.3, frontLimit: 2.4,
+    canvasX: 0.5, canvasY: 0.74, canvasRadius: 0.06,
+    blinkPeriod: 5.3, blinkClose: 0.075, blinkHold: 0.035, blinkOpen: 0.145,
+    canvasRestY: 0.70, headScale: 0.78, bodyWidth: 1.18, bodyLength: 1.15, bodyDepth: 1.08,
     openRate: 0.9, closeRate: 0.7, emergeRate: 0.65, lidClearance: 0.98,
     departureStart: 0.6, lidAngle: 1.22, tuckDepth: 0.65,
     settleDistance: 0.04, settleSpeed: 0.04, travelRate: 0.34,

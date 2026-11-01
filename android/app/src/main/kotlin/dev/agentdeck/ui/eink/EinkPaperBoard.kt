@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -84,6 +85,7 @@ internal data class BoardSession(
     val activity: String?,
     val question: String?,
     val ciWait: CiWaitStatus? = null,
+    val dot: dev.agentdeck.net.DotSurfaceSnapshot? = null,
 )
 
 internal data class PaperBoard(
@@ -114,6 +116,12 @@ internal fun buildPaperBoard(state: DashboardState): PaperBoard {
             raw += Raw(BoardSession(it.id, it.projectName ?: "Agent", it.agentType, it.modelName,
                 einkBoardState(state,it), dev.agentdeck.terrarium.BackgroundWorkPolicy.label(it.backgroundTaskCount, it.backgroundStandbyCount)?.takeUnless { _ -> it.state == "error" || einkBoardState(state, it).isAwaiting() } ?: it.activity, it.question, it.waitingOn?.takeUnless { _ -> einkBoardState(state,it).isAwaiting() }), it.weight, it.startedAt)
         }
+    state.dot?.takeIf { it.configured }?.let { dot ->
+        val code=dot.effectiveCode(System.currentTimeMillis())
+        raw += Raw(BoardSession(null,"Dot",null,null,
+            if(code==2) AgentState.PROCESSING else if(code==3 || code==5) AgentState.AWAITING_OPTION else AgentState.IDLE,
+            dev.agentdeck.net.DotSurfaceRules.labels[code],null,dot=dot),null,null)
+    }
     // Same project and agent twice: number them so a row names one session.
     val counts = raw.groupingBy { it.s.name to it.s.agentType }.eachCount()
     val seen = mutableMapOf<Pair<String, String?>, Int>()
@@ -237,8 +245,9 @@ private fun AgentState.isAwaiting() = this == AgentState.AWAITING_PERMISSION ||
 private val Ink = Color.Black
 
 /** Brand marks keep their own colour on colour e-ink, and are ink elsewhere. */
-private fun markTint(onInk: Boolean = false): Color? = when {
+private fun markTint(onInk: Boolean = false, agentType:String?=null): Color? = when {
     onInk -> Paper
+    einkColorEnabled && (agentType == "hermes" || agentType == "opencode") -> Ink
     einkColorEnabled -> null
     else -> Ink
 }
@@ -274,7 +283,8 @@ private fun BoardRow(session: BoardSession, scale: EinkLayoutScale, onFocus: (St
             .padding(horizontal = if (waiting) 8.dp else 0.dp, vertical = 5.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BrandIcon(agentType = session.agentType, isEink = !einkColorEnabled, size = 20.dp, tint = markTint(onInk = waiting))
+            if(session.dot != null) dev.agentdeck.ui.monitor.DotPaperGlyph(session.dot,Modifier.size(20.dp))
+            else BrandIcon(agentType = session.agentType, isEink = !einkColorEnabled, size = 20.dp, tint = markTint(onInk = waiting,agentType=session.agentType))
             Text(
                 text = session.name,
                 fontSize = nameSize,
@@ -406,7 +416,7 @@ private fun UsageZone(groups: List<EinkUsageGroup>, scale: EinkLayoutScale, head
             groups.forEach { group ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 5.dp)) {
                     Box(Modifier.width(UsageIndentW)) {
-                        BrandIcon(agentType = group.agentType, isEink = !einkColorEnabled, size = 16.dp, tint = markTint())
+                        BrandIcon(agentType = group.agentType, isEink = !einkColorEnabled, size = 16.dp, tint = markTint(agentType=group.agentType))
                     }
                     Column(Modifier.weight(1f)) {
                         Text(group.provider, fontSize = scale.sessionTitleFont, lineHeight = scale.sessionTitleFont * 1.2f, fontWeight = FontWeight.Bold, color = Ink)
@@ -551,7 +561,7 @@ private fun RecentZone(entries: List<TimelineEntry>, scale: EinkLayoutScale, lim
                 )
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        BrandIcon(agentType = item.agentType, isEink = !einkColorEnabled, size = 12.dp, tint = markTint())
+                        BrandIcon(agentType = item.agentType, isEink = !einkColorEnabled, size = 12.dp, tint = markTint(agentType=item.agentType))
                         Text(
                             text = (item.projectName?.takeIf { it.isNotBlank() } ?: "Agent") +
                                 (item.mark?.let { "  ·  $it" } ?: ""),

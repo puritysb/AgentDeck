@@ -64,7 +64,6 @@ static lv_obj_t *s_pinLabel, *s_waitingLabel;
 static char s_waitingText[24]{};
 
 static lv_obj_t* s_scr = nullptr;
-static DotCompanion::Badge s_dotBadge;
 static lv_obj_t* s_tabs[4] = {nullptr, nullptr, nullptr, nullptr};
 static lv_obj_t* s_hdrWifi = nullptr;
 static lv_obj_t* s_hdrBattery = nullptr;
@@ -112,6 +111,7 @@ static void sendPermissionDecision(const char* requestId, bool allow) {
 }
 
 static void sendSessionEscape(const char* sid) {
+    if(!sid || !sid[0]) return;
     char buf[160];
     snprintf(buf, sizeof(buf),
              "{\"type\":\"session_command\",\"sessionId\":\"%s\",\"command\":{\"type\":\"escape\"}}",
@@ -120,6 +120,7 @@ static void sendSessionEscape(const char* sid) {
 }
 
 static void sendFocusSession(const char* sid) {
+    if(!sid || !sid[0]) return;
     char buf[80];
     snprintf(buf, sizeof(buf),
              "{\"type\":\"focus_session\",\"sessionId\":\"%s\"}", sid);
@@ -401,12 +402,13 @@ static void renderSessionsPage() {
         char state[20];
         char line[100];
         bool focused;
+        bool dotPeer;
     } rows[3];
     uint8_t n = 0;
     s_sessionRowCount = 0;
     memset(s_sessionRowIds, 0, sizeof(s_sessionRowIds));
     lockState();
-    uint8_t order[10];
+    uint8_t order[11];
     uint8_t orderCount = 0;
     auto addIndex = [&](uint8_t idx) {
         for (uint8_t j = 0; j < orderCount; j++) if (order[j] == idx) return;
@@ -423,10 +425,21 @@ static void renderSessionsPage() {
             if (strcmp(g_state.sessions[i].state, "processing") == 0) addIndex(i);
         for (uint8_t i = 0; i < g_state.sessionCount; i++) addIndex(i);
     }
+    const bool dotPresent=g_state.dot && g_state.dot->configured;
+    if(dotPresent && !s_waitingFilter && orderCount<11) order[orderCount++]=g_state.sessionCount;
     s_sessionTotal = orderCount;
     if (s_sessionOffset >= orderCount) s_sessionOffset = 0;
 
     for (uint8_t oi = s_sessionOffset; oi < orderCount && n < 3; oi++) {
+        if(order[oi]==g_state.sessionCount && dotPresent) {
+            const uint8_t code=g_state.dot->effectiveCode(millis());
+            memset(&rows[n],0,sizeof(rows[n]));rows[n].dotPeer=true;
+            strncpy(rows[n].agentType,"dot",sizeof(rows[n].agentType)-1);strncpy(rows[n].projectName,"Dot",sizeof(rows[n].projectName)-1);
+            strncpy(rows[n].state,code==2 ? "processing" : code==3 ? "awaiting_option" : code==5 ? "error" : "idle",sizeof(rows[n].state)-1);
+            strncpy(rows[n].line,DotSurfaceRules::labels[code],sizeof(rows[n].line)-1);
+            n++;continue;
+        }
+        rows[n].dotPeer=false;
         const SessionInfo& s = g_state.sessions[order[oi]];
         strncpy(rows[n].agentType, s.agentType, sizeof(rows[n].agentType));
         strncpy(rows[n].projectName, sessionDisplayName(s), sizeof(rows[n].projectName));
@@ -473,7 +486,7 @@ static void renderSessionsPage() {
 
         lv_obj_t* brand = makeLabel(s_body, &lv_font_montserrat_14,
                                     agentColor(rows[i].agentType),
-                                    agentShortLabel(rows[i].agentType));
+                                    rows[i].dotPeer ? "Dot" : agentShortLabel(rows[i].agentType));
         lv_obj_align(brand, LV_ALIGN_TOP_LEFT, 30, y);
 
         lv_obj_t* proj = makeLabel(s_body, &font_kr_16, Theme::HUDText,
@@ -581,7 +594,6 @@ namespace Ticker {
 
 void create() {
     s_scr = lv_obj_create(NULL);
-    s_dotBadge.create(s_scr, &font_kr_12);
     lv_obj_set_style_bg_color(s_scr, lv_color_hex(Theme::DeepSea), 0);
     lv_obj_set_style_bg_opa(s_scr, LV_OPA_COVER, 0);
 
@@ -836,7 +848,6 @@ void update(float dt) {
     (void)dt;
     uint32_t now = millis();
     updateKeyHints(now);
-    s_dotBadge.update(s_page != PAGE_CAM, 4, SCREEN_H - 20);
 
     // Camera power follows the page: acquire on entry, release on leave.
     // Keeping the sensor powered around the clock tripped the brownout
@@ -1007,6 +1018,8 @@ void update(float dt) {
         full = Companion::textHash(focus.result, full);
         full = Companion::textHash(focus.resultHm, full);
         lockState();
+        const uint8_t dotPhase=g_state.dot && g_state.dot->configured ? g_state.dot->effectiveCode(millis()) : 255;
+        full=(full^dotPhase)*16777619u;
         for (uint8_t i = 0; i < g_state.sessionCount; ++i) {
             const auto& row = g_state.sessions[i];
             full = Companion::textHash(row.id, full);

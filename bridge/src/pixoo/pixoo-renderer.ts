@@ -1,8 +1,8 @@
 import { backgroundCount, BACKGROUND_PRESENTATION, UI } from '@agentdeck/shared';
-import { paintDotPixels, type DotDeckSnapshot } from '@agentdeck/shared';
+import { paintDotPixels, dotDeckPresentation, type DotDeckSnapshot } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 import { usageRgb } from '@agentdeck/shared';
-import { TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
+import { DOT_HABITAT_RULES, TERRARIUM_RULES, ciCompanionSeed } from '@agentdeck/shared';
 /**
  * Pixoo64 Frame Renderer — camera-based animated terrarium.
  *
@@ -939,6 +939,7 @@ function renderMicroFrame(
   sessions: SessionInfo[] | null,
   subagentActivity: SubagentActivityBySession,
   now: number,
+  dot?: DotDeckSnapshot | null,
 ): string | undefined {
   // Presence-driven SSOT: the crayfish renders iff the daemon emitted an
   // OpenClaw session — never from raw gateway flags. The daemon emits it iff
@@ -974,12 +975,19 @@ function renderMicroFrame(
   } else if (hasGateway) {
     creature = 'crayfish';
   }
-  paintTimeboxBeacon(base, creature, aggregate, animFrame);
+  const dotLabel = dot?.configured ? dotDeckPresentation(dot, now).label : null;
+  const dotPriority = dotLabel === 'NEEDS YOU' || dotLabel === 'FAILED' ? 0 : dotLabel === 'WORKING' ? 1 : 2;
+  const peerPriority = dominant ? byPriority(dominant) : routing ? 1 : 2;
+  const dotSelected = !!dotLabel && ((!dominant && !hasGateway) || dotPriority < peerPriority ||
+    (dotPriority === peerPriority && Math.floor(now / DOT_HABITAT_RULES.pixelPeerTurnMs) % 2 === 1));
+  const selectedAggregate = dotSelected ? dotLabel === 'FAILED' ? 'error' : dotPriority === 0 ? 'awaiting' : dotPriority === 1 ? 'processing' : 'idle' : aggregate;
+  paintTimeboxBeacon(base, dotSelected ? null : creature, selectedAggregate, animFrame);
+  if (dotSelected) paintDotPixels(base, MICRO_SIZE, dot, now, {x: 5,y: 5,size: DOT_HABITAT_RULES.microGlyphSize,beacon: true});
 
   // At 11×11 a literal orbit would destroy the official mark. Keep only a
   // fixed perimeter constellation: up to three cyan companion pixels owned by
   // the dominant parent. It is static, legible, and still non-interactive.
-  const dominantActivity = dominant
+  const dominantActivity = !dotSelected && dominant
     ? subagentActivity[dominant.sessionId]
     : undefined;
   const companionPixels: ReadonlyArray<readonly [number, number]> = [
@@ -1005,7 +1013,7 @@ function renderMicroFrame(
       outputBuf[d] = base[s]; outputBuf[d + 1] = base[s + 1]; outputBuf[d + 2] = base[s + 2];
     }
   }
-  return dominant?.sessionId ?? sessions?.find(s => s.alive && s.agentType === 'openclaw')?.id;
+  return dotSelected ? undefined : dominant?.sessionId ?? sessions?.find(s => s.alive && s.agentType === 'openclaw')?.id;
 }
 
 /** Native 32×32 iDotMatrix identity stage. The panel gets saturated official
@@ -1019,6 +1027,7 @@ function renderCompact32Frame(
   usageEvent: UsageEvent | null,
   subagentActivity: SubagentActivityBySession,
   now: number,
+  dot?: DotDeckSnapshot | null,
 ): void {
   const set = (x: number, y: number, color: RGB) => setPixel(outputBuf, x, y, color);
   const state = String(stateEvent?.state ?? State.IDLE);
@@ -1040,7 +1049,7 @@ function renderCompact32Frame(
         : kind === 'hermes' ? 'hermes' : 'claudeCode';
   const priority = (s: CreatureInstance['state']) => s === 'awaiting' ? 0 : s === 'processing' ? 1 : 2;
   const marks: Array<{
-    glyph: OfficialDotGlyphName;
+    glyph: OfficialDotGlyphName | 'dot';
     state: CreatureInstance['state'];
     sessionId?: string;
   }> = [...creatureInstances.values()].map((c) => ({
@@ -1053,6 +1062,10 @@ function renderCompact32Frame(
     marks.push({ glyph: 'openClaw', state: routing ? 'processing' : 'idle',
       sessionId: sessions?.find(s => s.alive && s.agentType === 'openclaw')?.id });
   }
+  if (dot?.configured) {
+    const phase=dotDeckPresentation(dot,now).label;
+    marks.push({glyph:'dot',state: phase==='WORKING' ? 'processing' : phase==='NEEDS YOU' || phase==='FAILED' ? 'awaiting' : 'idle'});
+  }
   marks.sort((a, b) => priority(a.state) - priority(b.state));
   // One slot per DISTINCT agent before any agent gets a second one.
   //
@@ -1063,7 +1076,7 @@ function renderCompact32Frame(
   // different ones, and the agent that disappears is always the one the user
   // has fewest of, which is exactly the one worth reporting. Measured with the
   // live session set (2026-08-18): kiro 0px before, visible after.
-  const seen = new Set<OfficialDotGlyphName>();
+  const seen = new Set<OfficialDotGlyphName | 'dot'>();
   const distinct = marks.filter((m) => !seen.has(m.glyph) && seen.add(m.glyph));
   const duplicates = marks.filter((m) => !distinct.includes(m));
   marks.splice(0, marks.length, ...distinct, ...duplicates);
@@ -1089,6 +1102,10 @@ function renderCompact32Frame(
 
   marks.forEach((mark, index) => {
     const slot = slots[index];
+    if(mark.glyph==='dot') {
+      paintDotPixels(outputBuf,32,dot,now,{x:slot.x,y:slot.y,size:slot.size,beacon:true});
+      return;
+    }
     const mask = OFFICIAL_DOT_GLYPHS[mark.glyph];
     const bob = mark.state === 'processing' ? Math.round(Math.sin((animFrame + index * 5) * 0.28)) : 0;
     const x0 = slot.x - Math.floor(slot.size / 2);
@@ -1226,6 +1243,7 @@ function drawSubagentOrbitForCreature(
   activity: SubagentVisualActivity,
   animFrame: number,
   now: number,
+  dot?: DotDeckSnapshot | null,
 ): void {
   const completionAge = activity.lastCompletedAt == null
     ? Infinity
@@ -1316,6 +1334,7 @@ function drawSubagentOrbits(
   activityBySession: SubagentActivityBySession,
   animFrame: number,
   now: number,
+  dot?: DotDeckSnapshot | null,
 ): void {
   for (const creature of creatureInstances.values()) {
     const activity = activityBySession[creature.sessionId];
@@ -1441,6 +1460,7 @@ export function renderFrame(
       sessions,
       subagentActivity,
       timeOverrideMs ?? Date.now(),
+      options.dot,
     );
     drawCiCue(outputBuf, size, sessions, timeOverrideMs ?? Date.now(), selectedSessionId
       ? [{ sessionId: selectedSessionId, x: size / 2, y: size / 2, bodySize: CI_WAIT_CUE.glyphSize }] : [], true);
@@ -1457,6 +1477,7 @@ export function renderFrame(
       usageEvent,
       subagentActivity,
       timeOverrideMs ?? Date.now(),
+      options.dot,
     );
     return outputBuf;
   }
@@ -1622,12 +1643,6 @@ export function renderFrame(
           : c.creatureType === 'kiro' ? 'kiro'
           : c.creatureType === 'hermes' ? 'hermes'
           : 'claudeCode';
-    if (c.creatureType === 'hermes') {
-      const peers = [...creatureInstances.values()].filter(p => p.creatureType === 'hermes');
-      const slot = slotAt(slotsForType('hermes', peers.length), peers.indexOf(c));
-      const home = stateYForType('idle', 'hermes', slot.y, getUsageProviderCount(usageEvent));
-      drawHermesShell(outputBuf, c.worldX, home + 0.08 * c.sizeScale, c.state !== 'idle', camera, c.sizeScale);
-    }
     drawOfficialDotGlyph(
       outputBuf,
       glyph,
@@ -1686,6 +1701,15 @@ export function renderFrame(
     }
   }
 
+  const shellPeers=[...creatureInstances.values()].filter(c=>c.creatureType==='hermes');
+  const pearlOut=options.dot?.configured && ['AWAITING ACTIVITY','WORKING','NEEDS YOU','COMPLETED','FAILED'].includes(dotDeckPresentation(options.dot,options.cueNowMs ?? timeOverrideMs ?? Date.now()).label);
+  if(shellPeers.length || options.dot?.configured) drawHermesShell(outputBuf,TERRARIUM_RULES.hermesHome.canvasX,Math.min(TERRARIUM_RULES.hermesHome.canvasY,(W-hudProviderCount*TERRARIUM_RULES.pixooUsageRowHeight-3)/W),
+    !!pearlOut || shellPeers.some(c=>c.state!=='idle'),camera,1);
+  // Dot shares the world projection and creature band; the HUD retains its own pixels.
+  const dotY=Math.min(DOT_HABITAT_RULES.homeY,(W-hudProviderCount*TERRARIUM_RULES.pixooUsageRowHeight-3)/W);
+  const [dotX,dotHomeY]=worldToScreen(DOT_HABITAT_RULES.homeX,dotY,camera);
+  paintDotPixels(outputBuf,size,options.dot,options.cueNowMs ?? timeOverrideMs ?? Date.now(),
+    {x:dotX,y:dotHomeY,size:Math.max(7,Math.round(10*camera.zoom)),shell:false});
   // Usage HUD (bottom-right, screen-space)
   drawUsageHUD(outputBuf, usageEvent, animFrame);
 
@@ -1700,7 +1724,7 @@ export function renderFrame(
   }
   drawCiCue(outputBuf, size, sessions, options.cueNowMs ?? timeOverrideMs ?? Date.now(), ciAnchors, false,
     size - hudProviderCount * TERRARIUM_RULES.pixooUsageRowHeight);
-  return paintDotPixels(outputBuf, size, options.dot, options.cueNowMs ?? timeOverrideMs ?? Date.now());
+  return outputBuf;
 }
 
 // ===== Baked device loop =====

@@ -122,9 +122,10 @@ class OpenCodeCreature(
         }
 
         if (isHermes()) {
-            val restY = (homeY + .18f).coerceIn(.59f,.69f)
+            val restY = dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_REST_Y
             hermesMotion.step(dt, visualState == OctopusVisualState.WORKING || visualState == OctopusVisualState.ASKING,
-                visualState == OctopusVisualState.ASKING, (homeX-.5f)*8f, (.82f-restY)*7f, 0f, scaleFactor*.65f, 1.6f)
+                visualState == OctopusVisualState.ASKING, (dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_X-.5f)*8f, (.82f-dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_Y)*7f, 0f, scaleFactor*.65f, 1.6f,
+                berthX=(homeX-.5f)*8f,berthY=(.82f-restY)*7f)
             currentX=.5f+hermesMotion.x/8f; currentY=.82f-hermesMotion.y/7f
             return
         }
@@ -236,11 +237,6 @@ class OpenCodeCreature(
         val scaledSize = bodySize * pulseScale
 
         // Draw the canonical vector mark for this agent.
-        if (isHermes()) {
-            val restY = (homeY + .18f).coerceIn(.59f,.69f)
-            HermesShell.draw(scope.drawContext.canvas.nativeCanvas, shellPaint, homeX*w, restY*h+bodySize*.4f,
-                bodySize*1.15f, hermesMotion.shellOpen, DesignTokens.Tide.s100.toArgb(), DesignTokens.Tide.s300.toArgb())
-        }
         if (!isHermes() || hermesMotion.visible) drawBrandMark(scope, centerX, centerY, scaledSize,
             bodyAlpha * if (isHermes()) hermesMotion.emergence else 1f)
 
@@ -309,7 +305,9 @@ class OpenCodeCreature(
                 withTransform({ translate(flukeDx, 0f) }) {
                     drawPath(hermesFluke, color = DesignTokens.Kelp.s300, alpha = alpha * dim)
                 }
-                for (path in paths) drawPath(path, brush = headFade, alpha = alpha)
+                withTransform({ scale(HermesMermaid2D.HEAD_SCALE,HermesMermaid2D.HEAD_SCALE,pivot=Offset(12f,12f)) }) {
+                    for (path in paths) drawPath(path, brush = headFade, alpha = alpha)
+                }
             }
             return
         }

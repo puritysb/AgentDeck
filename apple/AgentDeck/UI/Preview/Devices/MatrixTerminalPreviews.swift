@@ -154,9 +154,8 @@ private struct PixooPixelGrid: View {
 
 // MARK: - Ulanzi TC001 matrix
 //
-// Firmware also has an optional independent DOT page. This view mirrors only
-// renderAgents; the DOT page is verified by the actual firmware simulator,
-// and does not change AGENTS pixels or session counts.
+// Configured Dot is a read-only peer in the ordinary AGENTS roster.
+// There is no independent Dot page.
 // Firmware cycles AGENTS and the live Claude/Codex/z.ai usage pages. Each
 // usage page introduces the provider/window/percentage for two seconds, then
 // holds the window label and reset countdown for four seconds.
@@ -164,7 +163,7 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 616ada6d0ca72f9e33d0c7c9275f71a013750484
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 4f239b847368e1926cf5edd83845a7febceeccb6
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 
@@ -241,7 +240,14 @@ struct UlanziMatrixPreview: View {
         // a straight walk drops the lowest-ranked agent first: five Claudes and
         // a Codex filled it exactly and Kiro never appeared. A preview that
         // keeps the old order would disagree with the panel beside it.
-        let sessions = distinctAgentsFirst(selection.displaySessions)
+        var peers=selection.displaySessions
+        #if AGENTDECK_DOT_PREVIEW
+        if let dot=selection.live?.source.dot, dot.configured {
+            let code=dot.effectiveCode
+            peers.append(PreviewDisplaySession(id:"habitat:dot",agent:.hermes,projectName:"Dot",state:code == 2 ? .processing : code == 3 || code == 5 ? .awaitingPrompt : .idle))
+        }
+        #endif
+        let sessions = distinctAgentsFirst(peers)
         let hasOpenClaw = sessions.contains { $0.agent == .openclaw }
         let crayfishX = 24
         let agentMaxX = hasOpenClaw ? crayfishX - 8 : matrixW - 8
@@ -250,6 +256,17 @@ struct UlanziMatrixPreview: View {
         var cursorX = 0
         for (index, session) in sessions.enumerated() where session.agent != .openclaw {
             guard cursorX <= agentMaxX else { break }
+            #if AGENTDECK_DOT_PREVIEW
+            if session.id == "habitat:dot" {
+                let rgba=selection.live?.source.dot?.appearance?.glyph.map { [UInt8]($0) } ?? DotPixelOverlay.defaultRgba
+                for y in 0..<8 { for x in 0..<8 {
+                    let i=((y*2)*16+x*2)*4
+                    if rgba[i+3]>127 { plot(ctx:&ctx,x:cursorX+x,y:y,color:Color(red:Double(rgba[i])/255,green:Double(rgba[i+1])/255,blue:Double(rgba[i+2])/255),cellW:cellW,cellH:cellH) }
+                } }
+                cursorX += 8
+                continue
+            }
+            #endif
             let agent = session.agent
             let state = session.state
             let ci = state == .awaitingPrompt ? nil : session.ciWait
@@ -339,11 +356,11 @@ struct UlanziMatrixPreview: View {
     /// One session per agent kind first, then the duplicates in their original
     /// order. Mirrors the two-pass fill in `matrix_pages.cpp`.
     func distinctAgentsFirst(_ sessions: [PreviewDisplaySession]) -> [PreviewDisplaySession] {
-        var seen = Set<PixooPreviewAgent>()
+        var seen = Set<String>()
         var first: [PreviewDisplaySession] = []
         var rest: [PreviewDisplaySession] = []
         for session in sessions {
-            if seen.insert(session.agent).inserted { first.append(session) }
+            if seen.insert(session.id == "habitat:dot" ? "dot" : session.agent.rawValue).inserted { first.append(session) }
             else { rest.append(session) }
         }
         return first + rest

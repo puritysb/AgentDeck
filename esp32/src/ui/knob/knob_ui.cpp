@@ -55,6 +55,7 @@ static constexpr uint8_t MENU_VISIBLE = 2;
 
 // Snapshot of the one session the UI is looking at (copied under lock).
 struct SessionSnap {
+    bool dotPeer = false;
     char id[32];
     char projectName[40];
     char projectDetail[40];
@@ -131,7 +132,6 @@ static lv_obj_t* s_hdrWifi = nullptr;   // WiFi/WS link glyph
 static lv_obj_t* s_hdrBatt = nullptr;   // battery % (+ charge bolt)
 static lv_obj_t* s_body = nullptr;
 static lv_obj_t* s_footer = nullptr;
-static DotCompanion::Badge s_dotBadge;
 
 static lv_obj_t *s_questionPanel, *s_questionProject, *s_questionAgent, *s_questionText;
 static char s_projectText[40]{}, s_agentText[32]{}, s_questionLabel[160]{};
@@ -196,6 +196,7 @@ static const lv_image_dsc_t* glyphForAgent(const char* agentType) {
 // snapshot is sanitized in place for LVGL's font coverage, which rewrites
 // punctuation and blanks non-Hangul CJK, and an echo of that matches nothing.
 static void sendSelectOption(const char* sid, int index, const char* question) {
+    if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
     char buf[Net::OUTBOUND_MAX_LEN];
     int n = snprintf(buf, sizeof(buf),
                      "{\"type\":\"select_option\",\"index\":%d,\"sessionId\":\"%s\"",
@@ -223,6 +224,7 @@ static void sendPermissionDecision(const char* requestId, bool allow) {
 }
 
 static void sendSessionCommand(const char* sid, const char* cmdType) {
+    if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
     char buf[160];
     snprintf(buf, sizeof(buf),
              "{\"type\":\"session_command\",\"sessionId\":\"%s\",\"command\":{\"type\":\"%s\"}}",
@@ -231,6 +233,7 @@ static void sendSessionCommand(const char* sid, const char* cmdType) {
 }
 
 static void sendGoOn(const char* sid) {
+    if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
     char buf[176];
     snprintf(buf, sizeof(buf),
              "{\"type\":\"session_command\",\"sessionId\":\"%s\","
@@ -240,6 +243,7 @@ static void sendGoOn(const char* sid) {
 }
 
 static void sendHistoryQuery(const char* sid) {
+    if(!sid || !sid[0] || !strcmp(sid,"habitat:dot")) return;
     char buf[112];
     snprintf(buf, sizeof(buf),
              "{\"type\":\"query_session_timeline\",\"sessionId\":\"%s\"}", sid);
@@ -282,6 +286,16 @@ static bool snapshotSession(int idx, SessionSnap& out) {
         out.port = s.port;
         ok = true;
     }
+    if(idx==g_state.sessionCount && g_state.dot && g_state.dot->configured) {
+        const uint8_t code=g_state.dot->effectiveCode(millis());
+        out=SessionSnap{};out.dotPeer=true;
+        Companion::copy(out.id,"habitat:dot");
+        strncpy(out.projectName,"Dot",sizeof(out.projectName)-1);
+        strncpy(out.agentType,"dot",sizeof(out.agentType)-1);
+        strncpy(out.state,code==2 ? "processing" : code==3 ? "awaiting_option" : code==5 ? "error" : "idle",sizeof(out.state)-1);
+        strncpy(out.activity,DotSurfaceRules::labels[code],sizeof(out.activity)-1);
+        out.backgroundTaskCount=-1;ok=true;
+    }
     unlockState();
     if (ok) {
         // Daemon text can carry punctuation outside Montserrat + the Hangul-only
@@ -303,6 +317,7 @@ static int findSessionById(const char* sid) {
     for (uint8_t i = 0; i < g_state.sessionCount; i++) {
         if (strcmp(g_state.sessions[i].id, sid) == 0) { found = i; break; }
     }
+    if(!strcmp(sid,"habitat:dot") && g_state.dot && g_state.dot->configured) found=g_state.sessionCount;
     unlockState();
     return found;
 }
@@ -550,10 +565,10 @@ static void renderListBody(bool connected, uint8_t sessionCount) {
     SessionSnap s;
     if (!snapshotSession(s_listIdx, s)) return;
     auto* brand = makeLabel(s_body, &lv_font_montserrat_12,
-                            agentColor(s.agentType), agentShortLabel(s.agentType));
+                            agentColor(s.agentType), s.dotPeer ? "Dot" : agentShortLabel(s.agentType));
     lv_obj_set_pos(brand, 8, 2);
     auto* status = makeLabel(s_body, &lv_font_montserrat_12,
-                             stateColorOf(s.state), statePhrase(s.state));
+                             stateColorOf(s.state), s.dotPeer ? s.activity : statePhrase(s.state));
     lv_obj_align(status, LV_ALIGN_TOP_RIGHT, -8, 2);
     auto* project = makeLabel(s_body, &font_kr_16, Theme::HUDText,
                               s.projectName[0] ? s.projectName : "(no project)");
@@ -700,6 +715,7 @@ static void selectListSession(int idx) {
     s_listIdx = idx; s_queueShortcut = false;
     lockState();
     if (idx >= 0 && idx < g_state.sessionCount) Companion::copy(s_listSessionId, g_state.sessions[idx].id);
+    else if(idx==g_state.sessionCount && g_state.dot && g_state.dot->configured) Companion::copy(s_listSessionId,"habitat:dot");
     unlockState();
 }
 
@@ -740,7 +756,6 @@ void create() {
 
     // Korean-capable face: voice transcripts render here, and montserrat alone
     // drew them as tofu boxes.
-    s_dotBadge.create(s_scr, &font_kr_12);
     s_footer = makeLabel(s_scr, &font_kr_12, Theme::HUDFaint, "");
     lv_obj_align(s_footer, LV_ALIGN_BOTTOM_LEFT, 8, -3);
     lv_obj_set_width(s_footer, 304);
@@ -757,7 +772,7 @@ void notify(const char* text) {
 void onRotate(int detents) {
     if (detents == 0) return;
     lockState();
-    uint8_t count = g_state.sessionCount;
+    uint8_t count = g_state.sessionCount + ((g_state.dot && g_state.dot->configured) ? 1 : 0);
     unlockState();
 
     if (s_mode == Mode::SCRUB) {
@@ -817,6 +832,7 @@ void onKey(Input::KeyEvent evt) {
         }
         SessionSnap s;
         if (!snapshotSession(s_listIdx, s)) return;
+        if(s.dotPeer) { flash(s.activity); return; }
         strncpy(s_detailSessionId, s.id, sizeof(s_detailSessionId) - 1);
         s_detailSessionId[sizeof(s_detailSessionId) - 1] = '\0';
         // Inspect locally; a physical dial must not steal the desktop focus.
@@ -907,7 +923,7 @@ const char* focusedSessionId() {
         return sid;
     }
     SessionSnap s;
-    if (snapshotSession(s_listIdx, s)) {
+    if (snapshotSession(s_listIdx, s) && !s.dotPeer) {
         strncpy(sid, s.id, sizeof(sid) - 1);
         sid[sizeof(sid) - 1] = '\0';
     }
@@ -915,6 +931,7 @@ const char* focusedSessionId() {
 }
 
 int selectedSessionIdx() {
+    if(!strcmp(s_listSessionId,"habitat:dot")) return -1;
     lockState();
     uint8_t count = g_state.sessionCount;
     unlockState();
@@ -939,7 +956,8 @@ void update(float dt) {
     bool attentionDetected = false;
     lockState();
     bool connected = g_state.wsConnected;
-    uint8_t count = g_state.sessionCount;
+    uint8_t observedCount=g_state.sessionCount;
+    uint8_t count=observedCount+((g_state.dot && g_state.dot->configured) ? 1 : 0);
     char sharedFocus[32];
     strncpy(sharedFocus, g_state.focusedSessionId, sizeof(sharedFocus) - 1);
     sharedFocus[sizeof(sharedFocus) - 1] = '\0';
@@ -1184,9 +1202,7 @@ void update(float dt) {
         renderListBody(connected, count);
     }
 
-    const bool dotVisible = s_dotBadge.update(!listening && !speaking && !s_pendingReply.active && !flashOn && !questionPanel,
-        SCREEN_W - 108, SCREEN_H - 20);
-    lv_obj_set_width(s_footer, dotVisible ? SCREEN_W - 120 : SCREEN_W - 16);
+    lv_obj_set_width(s_footer, SCREEN_W - 16);
     // Footer: the listening banner outranks everything — while the user is
     // speaking, the one thing they need on screen is who is listening.
     if (listening) {

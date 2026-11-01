@@ -333,6 +333,11 @@ internal fun renderEinkFrame(
     // Reuse the native aquarium's priority and capacity policy. The roster
     // retains every session; a crowd never shrinks the scene into tiny marks.
     val residents = visibleAquariumResidents(aquariumResidents(state), state.focusedSessionId)
+    val shellResidents=residents.filter { it.kind=="hermes" || it.kind=="dot" }
+    if(shellResidents.isNotEmpty()) dev.agentdeck.terrarium.HermesShell.draw(canvas,paint,
+        width*TerrariumRules.HERMES_HOME_CANVAS_X,height*TerrariumRules.HERMES_HOME_CANVAS_Y,minOf(width,height)*TerrariumRules.HERMES_HOME_CANVAS_RADIUS,
+        if(shellResidents.any { it.habitatActive==true || it.state==OctopusVisualState.WORKING || it.state==OctopusVisualState.ASKING }) 1f else 0f,
+        einkPick(GRAY_HERMES_SLEEP,COLOR_HERMES_TAIL_SLEEP),einkPick(GRAY_HERMES_TAIL,COLOR_HERMES_TAIL))
     val poses = (residentMotion ?: EinkResidentMotion()).advance(residents, residentTimeSeconds, width, height)
     val anchors = mutableMapOf<String, Pair<Float, Float>>()
     // A small contact shadow travels with the creature rather than marking a fixed icon slot.
@@ -368,6 +373,20 @@ internal fun renderEinkFrame(
                 scaleFactor = slot.scaleFactor,
                 agentType = if (resident.kind == "kiro") "kiro-cli" else resident.kind,
                 displayName = resident.title, pose = pose)
+            "dot" -> {
+                val radius=pose.home.body*.28f
+                val out=resident.dot?.inhabitsHabitat(System.currentTimeMillis())==true
+                val pearlY=cy-if(out) radius*1.2f else 0f
+                val ink=paint.color
+                if(out) {
+                    paint.style=Paint.Style.FILL;paint.shader=null
+                    paint.color=einkPick(GRAY_HERMES_SLEEP,COLOR_HERMES_TAIL_SLEEP);canvas.drawCircle(cx,pearlY,radius,paint)
+                    paint.color=ink;paint.style=Paint.Style.STROKE;paint.strokeWidth=maxOf(1f,radius*.04f);canvas.drawCircle(cx,pearlY,radius,paint)
+                    paint.style=Paint.Style.FILL
+                    for(side in listOf(-1f,1f)) canvas.drawOval(cx+side*radius*.3f-radius*.05f,pearlY-radius*.1f,cx+side*radius*.3f+radius*.05f,pearlY+radius*.22f,paint)
+                }
+                paint.color=ink;paint.style=Paint.Style.FILL
+            }
             "antigravity" -> drawEinkAntigravity(canvas, paint, width, height, resident.state,
                 centerXFraction = slot.centerXFraction, centerYFraction = slot.centerYFraction,
                 scaleFactor = slot.scaleFactor, displayName = resident.title, pose = pose)
@@ -1670,8 +1689,6 @@ internal fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint
     val headColor = paint.color
     // Static state cue only: no timer or extra e-paper refresh. Keep the official face visible.
     val active = state == OctopusVisualState.WORKING || state == OctopusVisualState.ASKING
-    dev.agentdeck.terrarium.HermesShell.draw(canvas, paint, 12f, 34f, 25f, if(active) 1f else 0f,
-        einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP), headColor)
     canvas.save()
     // Nous girl's source face looks left. Turn the complete figure so her tail
     // trails the same way; the name remains outside this body transform.
@@ -1701,7 +1718,10 @@ internal fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint
         headColor, headColor and 0x00FFFFFF, android.graphics.Shader.TileMode.CLAMP,
     )
     paint.shader = fade
+    canvas.save()
+    canvas.scale(dev.agentdeck.terrarium.HermesMermaid2D.HEAD_SCALE,dev.agentdeck.terrarium.HermesMermaid2D.HEAD_SCALE,12f,12f)
     for (markPath in dev.agentdeck.terrarium.CreatureGeometry.hermesNativePaths) canvas.drawPath(markPath, paint)
+    canvas.restore()
     paint.shader = null
     paint.color = headColor
     }

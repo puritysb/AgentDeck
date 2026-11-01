@@ -15,7 +15,7 @@
 // don't change path geometry and only need a pin bump.
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt d2814a37171c40b66ea48baeae8371257c70bb8f
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt ccf91203a69099cabb8b8968052c253201377dfe
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt d7a5bfa0931f444848528bf7283e37c6b7dd5af5
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 66c693f1c30fbc9094a5f409158d60c4819e5246
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)
@@ -294,13 +294,14 @@ struct CanonicalCreatureView: View {
         context.fill(hermesFluke.applying(transform), with: .color(DesignTokens.Kelp.s300))
         let fade = GraphicsContext.Shading.linearGradient(
             Gradient(stops: [
-                .init(color: headColor, location: HermesMermaid2D.fadeStart / HermesMermaid2D.viewHeight),
-                .init(color: headColor.opacity(0), location: HermesMermaid2D.fadeEnd / HermesMermaid2D.viewHeight),
+                .init(color: headColor, location: (12+(HermesMermaid2D.fadeStart-12)*HermesMermaid2D.headScale) / HermesMermaid2D.viewHeight),
+                .init(color: headColor.opacity(0), location: (12+(HermesMermaid2D.fadeEnd-12)*HermesMermaid2D.headScale) / HermesMermaid2D.viewHeight),
             ]),
             startPoint: CGPoint(x: 0, y: dy),
             endPoint: CGPoint(x: 0, y: dy + HermesMermaid2D.viewHeight * scale))
+        let headTransform = CGAffineTransform(translationX:12,y:12).scaledBy(x:HermesMermaid2D.headScale,y:HermesMermaid2D.headScale).translatedBy(x:-12,y:-12).concatenating(transform)
         for path in CreatureGeometry.hermesPaths {
-            context.fill(path.applying(transform), with: fade, style: FillStyle(eoFill: true))
+            context.fill(path.applying(headTransform), with: fade, style: FillStyle(eoFill: true))
         }
     }
 

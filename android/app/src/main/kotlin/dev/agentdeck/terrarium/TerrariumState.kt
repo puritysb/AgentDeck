@@ -61,6 +61,7 @@ data class TerrariumState(
     val tetra: TetraVisualState,
     val environment: EnvironmentVisualState,
     val focusedSessionId: String? = null,
+    val dot: dev.agentdeck.net.DotSurfaceSnapshot? = null,
     val ciWaits: Map<String, dev.agentdeck.net.CiWaitStatus> = emptyMap(),
     val ciWaitLabels: Map<String, String> = emptyMap(),
     val backgroundTaskCounts: Map<String, Int> = emptyMap(),
@@ -383,6 +384,7 @@ fun DashboardState.toTerrariumState(
         .filter { it.visualState == OctopusVisualState.ASKING }.map { it.sessionId }.toSet()
 
     return TerrariumState(
+        dot = dot,
         focusedSessionId = focusedSessionId,
         backgroundAttentionIds = siblingSessions.filter { it.alive && (it.state == "error" || it.state?.startsWith("awaiting") == true) }.map { it.id }.toSet(),
         backgroundTaskCounts = siblingSessions.filter { it.alive }.mapNotNull { s ->

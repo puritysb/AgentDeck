@@ -113,7 +113,7 @@ final class TerrariumRenderer {
             if hermesCreatures[item.id] == nil {
                 hermesCreatures[item.id] = HermesCreature(id: item.id, index: index, count: hermesIDs.count)
             }
-            hermesCreatures[item.id]?.home = [Float(index - hermesIDs.count / 2) * 0.9, 2.5, 0]
+            hermesCreatures[item.id]?.home = [Float(index - hermesIDs.count / 2) * 0.9, HermesCreature.homeElevation, 0]
             hermesCreatures[item.id]?.scale = min(1, 3 / Float(max(1, hermesIDs.count)))
             hermesCreatures[item.id]?.update(dt: animateHermes ? dt : 0, state: state)
         }

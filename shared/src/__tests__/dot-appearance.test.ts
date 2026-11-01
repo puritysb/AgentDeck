@@ -33,13 +33,13 @@ it('distinguishes missing authorization and clears working on revocation without
   expect(dotDeckPresentation({...dot, authorized:false, hosting:false}, now).label).toBe('HOST STOPPED');
 });
 
-it('keeps the buoyant orb in its upper-water pocket and closes its current loop', () => {
+it('keeps the buoyant orb in its shell-side water pocket and closes its current loop', () => {
   for (let seconds = 0; seconds <= H.periodSeconds; seconds += 0.125) {
     const p = dotHabitatOffset(seconds, true, true);
     expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(p.y)).toBeLessThanOrEqual(1);
-    expect(H.homeY + p.y * H.travelY).toBeLessThan(0.3);
-    expect(H.homeX + p.x * H.travelX).toBeGreaterThan(0.5);
+    expect(H.homeY + p.y * H.travelY).toBeLessThan(0.8);
+    expect(H.homeX + p.x * H.travelX).toBeGreaterThan(0.3);
     const next = dotHabitatOffset(seconds + H.periodSeconds, true, true);
     expect(next.x).toBeCloseTo(p.x, 10);
     expect(next.y).toBeCloseTo(p.y, 10);

@@ -359,7 +359,7 @@ constexpr int16_t W = SCREEN_W, H = SCREEN_H;
 
 // ===== Render snapshot (copied out of g_state under the mutex so the slow
 // e-ink refresh never holds the lock) =====
-constexpr uint8_t MAX_ROWS = 10;   // matches the sessions_list cap
+constexpr uint8_t MAX_ROWS = 11;   // ten observed sessions plus one endpoint presentation
 
 struct RowSnap {
     char id[32];
@@ -505,6 +505,13 @@ void snapshot(Snap& s) {
             memcpy(dst.work, summary, sizeof(dst.work));
             dst.work[Utf8::utf8Boundary(dst.work, strlen(dst.work))] = '\0';
         }
+    }
+    if(s.dot.configured && s.rowCount<MAX_ROWS) {
+        RowSnap& peer=s.rows[s.rowCount++];
+        const uint8_t code=s.dot.effectiveCode(millis());
+        strncpy(peer.id,"habitat:dot",sizeof(peer.id)-1);strncpy(peer.name,"Dot",sizeof(peer.name)-1);strncpy(peer.agentType,"dot",sizeof(peer.agentType)-1);
+        strncpy(peer.state,code==2 ? "processing" : code==3 ? "awaiting_option" : code==5 ? "error" : "idle",sizeof(peer.state)-1);
+        strncpy(peer.activity,DotSurfaceRules::labels[code],sizeof(peer.activity)-1);peer.alive=true;s.totalSessions++;
     }
     s.optionCount = g_state.optionCount < 3 ? g_state.optionCount : 3;
     for (uint8_t i = 0; i < s.optionCount; i++)
@@ -1002,7 +1009,10 @@ static void drawAgentFeatures(int16_t x, int16_t y, const CreatureGlyphs::Featur
         }
     }
 }
-void drawAgentGlyph(const char* agentType, int16_t x, int16_t y, int size) {
+void drawAgentGlyph(const char* agentType, int16_t x, int16_t y, int size, const DotSurfaceState* dot=nullptr) {
+    if(agentType && !strcmp(agentType,"dot") && dot) {
+        DotCompanion::mono(*dot,x,y,size,[](int px,int py,bool dark) { display.drawPixel(px,py,dark ? GxEPD_BLACK : GxEPD_WHITE); });return;
+    }
     const auto glyph = CreatureGlyphs::selectAgent(agentType);
     if (!glyph.alpha || size <= 0) return;
     const bool actualCreature = size >= CreatureGlyphs::MIN_MONO_CREATURE_SIZE;
@@ -1128,17 +1138,7 @@ void drawBrandHeader(const Snap& s, const AgentDeckEink::Layout& /*layout*/) {
         textAt(chipX + 12, 38, link, &FreeSansBold9pt7b);
     }
 
-    int16_t dotWidth = 0;
-    if (s.dot.configured && DotSurfaceRules::inhabitsHabitat(s.dot.effectiveCode(millis())) && chipX >= 290) {
-        dotWidth = chipX >= 480 ? 168 : 84;
-        const int16_t x = chipX - dotWidth - 4;
-        DotCompanion::mono(s.dot, x, 18, DotSurfaceRules::paperGlyphSize,
-            [](int px, int py, bool dark) { display.drawPixel(px, py, dark ? GxEPD_BLACK : GxEPD_WHITE); });
-        const uint8_t code = s.dot.effectiveCode(millis());
-        char label[40];
-        snprintf(label, sizeof(label), "%s", DotSurfaceRules::compactLabels[code]);
-        textAt(x + DotSurfaceRules::paperGlyphSize + 3, 36, label, CLASSIC_FONT);
-    }
+    const int16_t dotWidth = 0;
     // Session counts by state, left of the chip.
     if (s.totalSessions > 0) {
         // Degrade by dropping the quiet categories, then the font — never by
@@ -1333,7 +1333,7 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
     int glyph = tall ? 110 : (w >= 340 ? 72 : 48);
     int16_t gx = x + (w >= 340 ? 16 : 10), gy = y + (h - glyph) / 2;
     if (tall) gy = y + 28;
-    drawAgentGlyph(r.agentType, gx, gy, glyph);
+    drawAgentGlyph(r.agentType, gx, gy, glyph, &s.dot);
 
     int16_t tx = gx + glyph + (w >= 340 ? 18 : 12);
     int16_t subagentReserve = r.subagentCount > 0 ? 52 : 0;
@@ -1420,7 +1420,7 @@ void drawSessionCard(const Snap& s, const RowSnap& r, bool firstAwaiting,
             dy += 20;
         }
         // Options (focused/global) on the first awaiting card
-        if (firstAwaiting && s.optionCount > 0 && tall) {
+        if (strcmp(r.agentType,"dot") && firstAwaiting && s.optionCount > 0 && tall) {
             for (uint8_t i = 0; i < s.optionCount && dy < y + h - 10; i++) {
                 char opt[48], oa[40];
                 ascii(oa, sizeof(oa), s.options[i]);
@@ -1491,7 +1491,7 @@ void drawIdleLine(const Snap& s, const AgentDeckEink::Layout& layout,
         const int16_t itemW = (int16_t)(22 + 6 + smartWidth(fitted, &FreeSans9pt7b));
         const bool last = drawn + 1 == quiet;
         if (x + itemW > right - (last ? 0 : 44)) break;
-        drawAgentGlyph(r.agentType, x, baseline - 18, 22);
+        drawAgentGlyph(r.agentType, x, baseline - 18, 22, &s.dot);
         smartTextAt((int16_t)(x + 28), baseline, fitted, &FreeSans9pt7b);
         x = (int16_t)(x + itemW + 18);
         drawn++;
@@ -1697,7 +1697,7 @@ uint32_t decisionHash(const Snap& s) {
 
 bool sendDecisionSelection(const Snap& s, uint8_t selection) {
     const int awaiting = primarySession(s, AgentDeckEink::StatusKind::Attention);
-    if (awaiting < 0 || s.optionCount == 0 || selection >= s.optionCount ||
+    if (awaiting < 0 || !strcmp(s.rows[awaiting].agentType,"dot") || s.optionCount == 0 || selection >= s.optionCount ||
         !displayedDecisionHash || decisionHash(s) != displayedDecisionHash) return false;
     char command[112];
     snprintf(command, sizeof(command),
@@ -2087,7 +2087,7 @@ void drawEp47Focus(const Snap& s) {
 
     const RowSnap& r = s.rows[i];
     constexpr int16_t top = 112;
-    drawAgentGlyph(r.agentType, 34, top, 92);
+    drawAgentGlyph(r.agentType, 34, top, 92, &s.dot);
     char state[20]; stateLabel(r.state, state, sizeof(state));
     textAt(154, top + 24, state, &FreeSansBold9pt7b);
     char name[72]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "AgentDeck",
@@ -2201,7 +2201,7 @@ void drawEp47Queue(const Snap& s) {
         if (awaiting) display.fillRect(24, y, 6, EPD47_QUEUE_ROW, GxEPD_BLACK);
 
         const int16_t base = y + 29;
-        drawAgentGlyph(r.agentType, 40, y + 9, 26);
+        drawAgentGlyph(r.agentType, 40, y + 9, 26, &s.dot);
         char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "session",
                                     250, &FreeSansBold12pt7b);
         smartTextAt(80, base, name, &FreeSansBold12pt7b);
@@ -2333,7 +2333,7 @@ void drawEp47Home(const Snap& s) {
     if (i >= 0) {
         const auto& r = s.rows[i];
         const auto kind = AgentDeckEink::classifyStatus(r.state);
-        drawAgentGlyph(r.agentType, 24, 120, 40);
+        drawAgentGlyph(r.agentType, 24, 120, 40, &s.dot);
         char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "AgentDeck", 452,
                                     &FreeSansBold18pt7b);
         smartTextAt(76, 146, name, &FreeSansBold18pt7b);
@@ -2428,7 +2428,7 @@ void drawEp47Home(const Snap& s) {
         strncpy(epd47SheetRows[shown], r.id, sizeof(epd47SheetRows[shown]) - 1);
         if (kind == AgentDeckEink::StatusKind::Attention)
             display.fillRect(right - 14, y + 4, 5, EPD47_SHEET_ROW - 14, GxEPD_BLACK);
-        drawAgentGlyph(r.agentType, right, y + 6, 24);
+        drawAgentGlyph(r.agentType, right, y + 6, 24, &s.dot);
         const char* state = epd47StateWord(kind);
         const int16_t stateW = textWidth(state, &FreeSansBold9pt7b);
         char name[64]; smartFitText(name, sizeof(name), r.name[0] ? r.name : "session",
@@ -2760,7 +2760,13 @@ void drawDecisionFace(const Snap& s) {
         return;
     }
     const RowSnap& r = s.rows[i];
-    drawAgentGlyph(r.agentType, pad, 138, 56);
+    if(!strcmp(r.agentType,"dot")) {
+        drawAgentGlyph(r.agentType,pad,138,56,&s.dot);
+        textAt(102,170,"Dot",&FreeSansBold12pt7b);
+        drawParagraph(102,208,W-130,30,3,r.activity,&FreeSansBold18pt7b);
+        return;
+    }
+    drawAgentGlyph(r.agentType, pad, 138, 56, &s.dot);
     smartTextAt(102, 170, r.name, &FreeSansBold12pt7b);
     drawParagraph(102, 208, W - 130, 30, 3,
                   r.question[0] ? r.question : "Agent is waiting for your decision.",
@@ -2810,6 +2816,11 @@ void drawDecisionFace(const Snap& s) {
         return;
     }
     const RowSnap& r = s.rows[i];
+    if(!strcmp(r.agentType,"dot")) {
+        smartTextAt(pad,top+20,"Dot",&FreeSansBold12pt7b);
+        drawParagraph(pad,top+62,W-pad*2,30,3,r.activity,&FreeSansBold18pt7b);
+        return;
+    }
     smartTextAt(pad, top + 20, r.name, &FreeSansBold9pt7b);
     // At 400x300 three options and a three-line question do not both fit, and
     // the old layout let the LAST option fall off the panel — on a permission

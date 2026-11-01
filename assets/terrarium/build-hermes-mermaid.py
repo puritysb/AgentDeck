@@ -346,8 +346,8 @@ def palette_material(name, key, roughness=.8, specular=.1, glow=0.0):
     return m
 m_white = palette_material('Eye white', 'white', .6, .1, glow=.15)
 m_lidshadow = palette_material('Lid shadow', 'lid_shadow')
-m_iris = palette_material('Iris', 'iris', .4, .3)
-m_glow = palette_material('Iris glow', 'glow', .5, .2)
+m_iris = palette_material('Iris', 'iris', .95, .0)
+m_glow = palette_material('Iris glow', 'glow', .95, .0)
 m_line = palette_material('Ink line', 'line', .9, .0)
 m_shade = palette_material('Nose shade', 'shade')
 m_lip = palette_material('Lower lip', 'lip', .6, .2)
@@ -527,74 +527,27 @@ sticker.parent = lid; _sm.materials.append(m_sticker)
 
 # The official Nous girl's most recognisable cue: a jagged row of white glints
 # across the fringe (the anime "shine band"). Laid out in (angle, height)
-# around the head, then ray-cast onto the outer hair surface and lifted 1.5 mm.
-def hair_shine():
-    bob = bpy.data.objects.get('portrait_bob')
-    if bob is None:
-        return None
-    hb = BVHTree.FromObject(bob, bpy.context.evaluated_depsgraph_get())
-    axis_z = -0.05
-    def on_hair(theta, y):
-        d = Vector((math.sin(theta), 0, math.cos(theta)))
-        hit, n, _, _ = hb.ray_cast(Vector((0, y, axis_z)) + d * 0.8, -d)
-        if hit is None:
-            return None
-        return hit + (n if n.dot(d) > 0 else -n) * 0.0015
-    rnd = [0.37, 0.81, 0.12, 0.66, 0.93, 0.28, 0.55, 0.04, 0.72, 0.19, 0.88, 0.46, 0.61, 0.33, 0.97, 0.08, 0.51, 0.77,
-           0.24, 0.69, 0.42, 0.86, 0.15, 0.58]
-    bm = bmesh.new()
-    pieces = 0
-    centre_y = 0.135
-    span = math.radians(184)
-    n = 10
-    for i in range(n):
-        # wide jagged glints, nearly touching, as in the portrait's shine band
-        u0 = i / n + 0.012; u1 = (i + 1) / n - 0.012 - rnd[i] * 0.025
-        t0 = -span / 2 + span * u0; t1 = -span / 2 + span * u1
-        mid = (t0 + t1) / 2
-        y0 = centre_y - 0.024 * (abs(mid) / (span / 2)) ** 2 + (rnd[i + 3] - 0.5) * 0.006
-        spikes_up = 3 + i % 2
-        top = []
-        for k in range(spikes_up * 2 + 1):
-            f = k / (spikes_up * 2)
-            h = (0.006 if k % 2 == 0 else 0.015 + rnd[(i + k) % 24] * 0.020) * (math.sin(math.pi * f) ** 0.25)
-            top.append((t0 + (t1 - t0) * f, h))
-        bot = []
-        for k in range(5):
-            f = 1 - k / 4
-            h = (0.003 if k % 2 == 0 else 0.008 + rnd[(i + k + 7) % 24] * 0.012) * (math.sin(math.pi * f) ** 0.25)
-            bot.append((t0 + (t1 - t0) * f, -h))
-        outline = top + bot[1:-1]
-        pts = [on_hair(t, y0 + h) for t, h in outline]
-        if any(p is None for p in pts):
-            continue
-        # fan from the piece's centre so the concave zigzag triangulates cleanly
-        c = on_hair(mid, y0 + 0.002)
-        if c is None:
-            continue
-        cv = bm.verts.new(c); vs = [bm.verts.new(p) for p in pts]
-        for k in range(len(vs)):
-            try:
-                bm.faces.new((cv, vs[k], vs[(k + 1) % len(vs)]))
-            except ValueError:
-                pass
-        pieces += 1
-    bmesh.ops.triangulate(bm, faces=bm.faces[:])
-    for f in bm.faces:                              # face outward, away from the hair
-        f.normal_update()
-        if f.normal.dot(f.calc_center_median() - Vector((0, f.calc_center_median().y, axis_z))) < 0:
-            f.normal_flip()
-    o = bm_to('hair_shine', bm, m_shine, head)
-    print('hair shine glints', pieces)
-    return o
-
-m_shine = bpy.data.materials.new('Hair shine'); m_shine.use_nodes = True
-_ps = m_shine.node_tree.nodes['Principled BSDF']
-_ps.inputs['Base Color'].default_value = (0.80, 0.84, 0.90, 1)
-_ps.inputs['Roughness'].default_value = 0.6
-_ps.inputs['Emission Color'].default_value = (0.80, 0.84, 0.90, 1)
-_ps.inputs['Emission Strength'].default_value = 0.8
-hair_shine()
+# Soft satin reflections define the bob; the portrait's white shine glyphs
+# are not literal decorations on an animated character's fringe.
+_hb.inputs['Roughness'].default_value = .48
+_hb.inputs['Specular IOR Level'].default_value = .22
+_hb.inputs['IOR'].default_value = 1.35
+frame_mat = material('Headset soft shell', 'tide-300', .65, .12)
+cushion_mat = material('Headset cushions', 'ink-700', .88, .06)
+for obj in list(bpy.data.objects):
+    if obj.name.startswith('headset_'):
+        if obj.name == 'headset_band':
+            obj.data.materials.clear();obj.data.materials.append(frame_mat)
+        else: bpy.data.objects.remove(obj, do_unlink=True)
+def earcup(name, location, scale, mat):
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=16, radius=1)
+    obj=bpy.context.object;obj.name=name;obj.parent=head;obj.location=location;obj.scale=scale;obj.data.materials.append(mat)
+    for poly in obj.data.polygons:poly.use_smooth=True
+for side,label in [(-1,'left'),(1,'right')]:
+    tube('headset-yoke-'+label,head,[(side*.268,.116,.067),(side*.292,.055,.065),(side*.285,-.015,.06)],
+         [.009,.010,.009],frame_mat,sides=12,smooth=True)
+    earcup('headset-earcup-'+label,(side*.285,-.015,.060),(.034,.072,.048),frame_mat)
+    earcup('headset-cushion-'+label,(side*.265,-.015,.057),(.018,.062,.043),cushion_mat)
 # v19: the nose is a form on the face plus painted shade (hermes-head/face_paint.py), not a line decal
 mouth = joint('hermes_mouth', head, (0, F.MOUTH_Y, 0))
 up = joint('hermes_lip_upper', mouth)
@@ -618,7 +571,21 @@ for o in decals:
     backward = [p for p in o.data.polygons if p.normal.dot(FACE_BVH.find_nearest(p.center + offset)[1]) < 0]
     assert not backward, f'{o.name}: {len(backward)} faces point into the head'
 
-manifest = {'schema': 2, 'boneNames': [b[0] for b in bone_specs],
+# Keep the Nous face artwork intact; a smaller head and a longer, broader
+# silhouette read as a playful mermaid at device scale instead of a portrait doll.
+rule_source = (ROOT / 'shared/src/terrarium-rules.ts').read_text()
+def proportion(key): return float(re.search(r'\b'+key+r':\s*([\d.]+)', rule_source).group(1))
+proportions = {'head': proportion('headScale'), 'bodyWidth': proportion('bodyWidth'), 'bodyLength': proportion('bodyLength'), 'bodyDepth': proportion('bodyDepth')}
+head.scale = (proportions['head'],) * 3
+body_transform = Matrix.Diagonal((proportions['bodyWidth'], proportions['bodyLength'], proportions['bodyDepth'], 1))
+body_transform.translation = Vector((0, .07 * (1 - proportions['bodyLength']), 0))
+for obj in rig.children:
+    if obj.type == 'MESH': obj.data.transform(body_transform)
+rig.data.transform(body_transform)
+laptop.scale = (proportions['bodyWidth'], proportions['bodyLength'], proportions['bodyDepth'])
+laptop.location.y = .07 * (1 - proportions['bodyLength'])
+
+manifest = {'schema': 2, 'proportions': proportions, 'boneNames': [b[0] for b in bone_specs],
             'controls': sorted(o.name for o in root.children_recursive if o.type == 'EMPTY'),
             'skinnedMeshes': sorted(o.name for o in rig.children if o.type == 'MESH')}
 # Skin is flat-shaded. RealityKit shaded smooth skin with single NaN-black
@@ -672,7 +639,7 @@ root.rotation_euler.x = 0
 
 # ------------------------------------------------------------- review ----
 for o in list(bpy.data.objects):
-    if o.name in ('mouth_open', 'closed_lid_left', 'closed_lid_right', 'laptop_screen_alert'): o.hide_render = True
+    if o.name in ('mouth_open', 'closed_lid_left', 'closed_lid_right', 'laptop_screen_alert') or o.name.startswith('lid_skin_'): o.hide_render = True
 scene.render.engine = 'BLENDER_EEVEE'
 scene.world = bpy.data.worlds.new('Water'); scene.world.use_nodes = True
 bg = scene.world.node_tree.nodes['Background']; bg.inputs[0].default_value = (.012, .035, .055, 1); bg.inputs[1].default_value = 1.2

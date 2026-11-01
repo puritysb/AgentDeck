@@ -55,7 +55,6 @@ struct MonitorScreen: View {
     @StateObject private var inspection = DashboardInspection()
     @State private var terrariumState = TerrariumState()
     #if os(macOS) && AGENTDECK_DOT_PREVIEW
-    @State private var showDotSetup = false
     #endif
     #if os(iOS)
     @State private var showSettingsSheet = false
@@ -163,28 +162,7 @@ struct MonitorScreen: View {
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
-            #if AGENTDECK_DOT_PREVIEW
-            .sheet(isPresented: $showDotSetup) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack { Text("Dot connection").font(.title2.bold()); Spacer(); Button("Done") { showDotSetup = false } }
-                        DotConnectionSetupView()
-                    }.padding(24)
-                }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
-            }
-            #endif
             .toolbar {
-                #if AGENTDECK_DOT_PREVIEW
-                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, style: .compact) }
-                }
-                if stateHolder.state.dot?.configured != true {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Connect Dot…") { showDotSetup = true }
-                            .accessibilityIdentifier("dot-setup-entry")
-                    }
-                }
-                #endif
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)
@@ -200,12 +178,34 @@ struct MonitorScreen: View {
             #endif
     }
 
+    private var shellHomePresent:Bool {
+        #if AGENTDECK_DOT_PREVIEW
+        return !terrariumState.hermesCreatures.isEmpty || stateHolder.state.dot?.configured == true
+        #else
+        return !terrariumState.hermesCreatures.isEmpty
+        #endif
+    }
+    private var shellHomeOccupied:Bool {
+        let hermes=terrariumState.hermesCreatures.contains { $0.activity == .working || $0.activity == .waiting }
+        #if AGENTDECK_DOT_PREVIEW
+        return hermes || stateHolder.state.dot?.inhabitsHabitat(at:Int(Date().timeIntervalSince1970*1000)) == true
+        #else
+        return hermes
+        #endif
+    }
+
     // MARK: - Main Content
 
     private var mainContent: some View {
         GeometryReader { geo in
             ZStack {
                 terrariumLayer
+                if preferences.effectiveDashboardType != .aquarium3D && shellHomePresent {
+                    Canvas { context,size in
+                        ShellHome2D.draw(context:&context,cx:size.width*CGFloat(TerrariumRules.hermesHomeCanvasX),cy:size.height*CGFloat(TerrariumRules.hermesHomeCanvasY),
+                            radius:min(size.width,size.height)*CGFloat(TerrariumRules.hermesHomeCanvasRadius),opening:shellHomeOccupied ? 1 : 0)
+                    }.allowsHitTesting(false)
+                }
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
                 #if AGENTDECK_DOT_PREVIEW

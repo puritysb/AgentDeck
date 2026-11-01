@@ -8,7 +8,6 @@ namespace MatrixPages {
 void renderUsage(CRGB* leds, float animTime);
 void renderCodex(CRGB* leds, float animTime);
 void renderZai(CRGB* leds, float animTime);
-void renderDot(CRGB* leds, float animTime);
 void renderAgents(CRGB* leds, float animTime);
 
 } // namespace MatrixPages

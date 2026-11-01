@@ -8,6 +8,27 @@ class HermesHomeMotionTest {
     private fun tick(m: HermesHomeMotion, active: Boolean, seconds: Float, step: Float = 1f/60f) {
         repeat((seconds/step).toInt()) { m.step(step,active,false,0f,1f,.8f,1f,1.6f) }
     }
+    @Test fun `shared entrance serializes departures and returns without blocking outside peers`() {
+        val traffic=SharedShellTraffic()
+        val a=SharedShellTraffic.Request("a",true,0f,0f)
+        val b=a.copy(id="b")
+        traffic.update(listOf(b,a));assertEquals("a",traffic.owner)
+        assertTrue(traffic.active("a",true,0f));assertFalse(traffic.active("b",true,0f))
+        traffic.update(listOf(a.copy(emergence=1f,distance=1f),b));assertEquals("b",traffic.owner)
+        assertTrue(traffic.active("a",true,1f))
+        traffic.update(listOf(a.copy(wantsOut=false,emergence=1f,distance=1f),b.copy(emergence=.5f)))
+        assertEquals("b",traffic.owner);assertTrue(traffic.active("a",false,1f))
+        traffic.update(listOf(a.copy(wantsOut=false,emergence=1f,distance=1f),b.copy(emergence=1f,distance=1f)))
+        assertEquals("a",traffic.owner);assertFalse(traffic.active("a",false,1f))
+        traffic.update(emptyList());assertNull(traffic.owner)
+    }
+    @Test fun `shared home departure reaches its assigned berth and returns to the same mouth`() {
+        val m=HermesHomeMotion()
+        repeat(1200) { m.step(1f/60f,true,true,0f,1f,.8f,1f,1.6f,berthX=2f) }
+        assertTrue(m.x>1.5f)
+        repeat(2400) { m.step(1f/60f,false,false,0f,1f,.8f,1f,1.6f,berthX=2f) }
+        assertEquals(0f,m.x,.01f);assertEquals(0f,m.emergence,0f)
+    }
     @Test fun `lid clears head before emergence and swimming`() {
         val m=HermesHomeMotion()
         tick(m,true,.8f)

@@ -89,6 +89,7 @@ final class PixooRenderer {
         let state: CreatureState
         let toneIndex: Int
         var sessionId: String? = nil
+        var isDot = false
     }
     struct CiCueAnchor { let sessionId: String; let x: Double; let y: Double; let bodySize: Double }
     private struct CiCueMemo { var phase: String; let openedAt: Int; var waiting: Bool; var changedAt: Double; var lastAt: Double; var angle: Double; var speed: Double }
@@ -613,15 +614,6 @@ final class PixooRenderer {
                 case .hermes: .hermes
                 case .octopus: .claudeCode
                 }
-                if creature.creatureType == .hermes {
-                    let peers = creatureOrder.compactMap { creatureInstances[$0] }.filter { $0.creatureType == .hermes }
-                    let index = peers.firstIndex { $0.sessionId == sessionId } ?? 0
-                    let slots = pixooSlots(for: .hermes, count: peers.count)
-                    let slot = slots[min(index, slots.count-1)]
-                    let home = stateY(.idle, kind: .hermes, baseY: Double(slot.y), hudProviderCount: hudCount)
-                    drawHermesShell(&output, worldX: creature.worldX, worldY: home+0.08*creature.sizeScale,
-                        active: creature.state != .idle, camera: camera, sizeScale: creature.sizeScale)
-                }
                 drawOfficialDotGlyph(&output, glyph: glyph, worldX: creature.worldX, worldY: creature.worldY, state: spriteState, animFrame: animFrame + creature.phaseOffset, camera: camera, sessionToneIndex: sessionToneIndex, sizeScale: creature.sizeScale)
             }
 
@@ -656,6 +648,20 @@ final class PixooRenderer {
                 }
             }
 
+            let shellPeers=creatureOrder.compactMap { creatureInstances[$0] }.filter { $0.creatureType == .hermes }
+            var shellPresent = !shellPeers.isEmpty
+            var shellActive=shellPeers.contains { $0.state != .idle }
+            #if AGENTDECK_DOT_PREVIEW
+            shellPresent = shellPresent || dashboardState.dot?.configured == true
+            shellActive = shellActive || dashboardState.dot?.inhabitsHabitat(at:Int(nowMs)) == true
+            #endif
+            if shellPresent { drawHermesShell(&output,worldX:Double(TerrariumRules.hermesHomeCanvasX),worldY:min(Double(TerrariumRules.hermesHomeCanvasY),Double(Self.width-hudCount*TerrariumRules.pixooUsageRowHeight-3)/Double(Self.width)),active:shellActive,camera:camera,sizeScale:1) }
+            #if AGENTDECK_DOT_PREVIEW
+            let dotY=min(DotHabitatRules.homeY,Double(Self.width-hudCount*TerrariumRules.pixooUsageRowHeight-3)/Double(Self.width))
+            let (dotX,dotHomeY)=worldToScreen(DotHabitatRules.homeX,dotY,camera)
+            output=[UInt8](DotPixelOverlay.paint(Data(output),width:64,dot:dashboardState.dot,now:Int(nowMs)+i*intervalMs,
+                anchorX:Int(dotX.rounded()),anchorY:Int(dotHomeY.rounded()),bodySize:max(7,Int((10*camera.zoom).rounded())),shell:false))
+            #endif
             drawUsageHUD(&output, dashboardState: dashboardState, animFrame: animFrame)
             var ciAnchors = creatureOrder.compactMap { id -> CiCueAnchor? in
                 guard let creature = creatureInstances[id] else { return nil }
@@ -668,11 +674,7 @@ final class PixooRenderer {
             }
             drawCiCue(&output, size: 64, state: dashboardState, now: nowMs + Double(i * intervalMs), anchors: ciAnchors,
                       bottom: Self.width - hudCount * TerrariumRules.pixooUsageRowHeight)
-            #if AGENTDECK_DOT_PREVIEW
-            frames.append(DotPixelOverlay.paint(Data(output), width: 64, dot: dashboardState.dot))
-            #else
             frames.append(Data(output))
-            #endif
         }
 
         return frames
@@ -696,7 +698,7 @@ final class PixooRenderer {
         // drives the background (no dominant creature instance exists for OpenClaw).
         let routing = dashboardState.siblingSessions.contains { $0.agentType == "openclaw" && $0.state == "processing" }
 
-        let aggregate: MicroAggregate
+        var aggregate: MicroAggregate
         if gatewayHasError {
             aggregate = .error
         } else if dominant?.state == .awaiting {
@@ -722,9 +724,25 @@ final class PixooRenderer {
         } else if hasGateway {
             creature = .crayfish
         }
+        #if AGENTDECK_DOT_PREVIEW
+        let now=Int(Date().timeIntervalSince1970*1000)
+        let dot=dashboardState.dot
+        let dotCode=dot?.phase(at:now) ?? 1
+        let dotPriority = dotCode == 3 || dotCode == 5 ? 0 : dotCode == 2 ? 1 : 2
+        let peerPriority=dominant.map(priority) ?? (routing ? 1 : 2)
+        let dotSelected=dot?.configured == true && ((dominant == nil && !hasGateway) || dotPriority < peerPriority ||
+            (dotPriority == peerPriority && (now/Int(DotHabitatRules.pixelPeerTurnMs))%2 == 1))
+        if dotSelected { creature=nil; aggregate=dotCode == 5 ? .error : dotPriority == 0 ? .awaiting : dotPriority == 1 ? .processing : .idle }
+        #endif
         MicroGlyphs.paintBeacon(&out, creature: creature, aggregate: aggregate, animFrame: animFrame)
+        #if AGENTDECK_DOT_PREVIEW
+        if dotSelected { out=[UInt8](DotPixelOverlay.paint(Data(out),width:n,dot:dot,now:now,anchorX:5,anchorY:5,bodySize:Int(DotHabitatRules.microGlyphSize),beacon:true)) }
+        #endif
 
-        let selected = dominant?.sessionId ?? dashboardState.siblingSessions.first { $0.alive && $0.agentType == "openclaw" }?.id
+        var selected = dominant?.sessionId ?? dashboardState.siblingSessions.first { $0.alive && $0.agentType == "openclaw" }?.id
+        #if AGENTDECK_DOT_PREVIEW
+        if dotSelected { selected=nil }
+        #endif
         drawCiCue(&out, size: n, state: dashboardState, now: Date().timeIntervalSince1970 * 1000,
                   anchors: selected.map { [CiCueAnchor(sessionId: $0, x: Double(n) / 2, y: Double(n) / 2, bodySize: Double(CiWaitVisual.github.count))] } ?? [], tiny: true)
         return Data(out)
@@ -803,6 +821,12 @@ final class PixooRenderer {
             marks.append(CompactMark(glyph: .openClaw, state: routing ? .processing : .idle, toneIndex: 0,
                 sessionId: dashboardState.siblingSessions.first { $0.alive && $0.agentType == "openclaw" }?.id))
         }
+        #if AGENTDECK_DOT_PREVIEW
+        if let dot=dashboardState.dot, dot.configured {
+            let phase=dot.effectiveCode
+            marks.append(CompactMark(glyph:.hermes,state:phase == 2 ? .processing : phase == 3 || phase == 5 ? .awaiting : .idle,toneIndex:0,isDot:true))
+        }
+        #endif
         marks.sort { priority($0.state) < priority($1.state) }
         marks = Array(marks.prefix(3))
 
@@ -833,6 +857,12 @@ final class PixooRenderer {
 
         for (index, mark) in marks.enumerated() {
             let slot = slots[index]
+            #if AGENTDECK_DOT_PREVIEW
+            if mark.isDot {
+                out=[UInt8](DotPixelOverlay.paint(Data(out),width:n,dot:dashboardState.dot,anchorX:slot.x,anchorY:slot.y,bodySize:slot.size,beacon:true))
+                continue
+            }
+            #endif
             guard let mask = OfficialDotGlyphs.masks[mark.glyph] else { continue }
             let bob = mark.state == .processing ? Int(round(sin(Double(animFrame + index * 5) * 0.28))) : 0
             let x0 = slot.x - slot.size / 2
@@ -922,11 +952,7 @@ final class PixooRenderer {
             if width > 0 { for x in 3..<(3 + width) { set(x, y, color) } }
         }
 
-        #if AGENTDECK_DOT_PREVIEW
-        return DotPixelOverlay.paint(Data(out), width: 32, dot: dashboardState.dot)
-        #else
         return Data(out)
-        #endif
     }
 
     /// Static dark frame with a centered grey "OFFLINE" label and sparse cyan

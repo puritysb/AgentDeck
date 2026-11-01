@@ -71,8 +71,8 @@ enum HermesMermaid {
     }
 
     /// Only the hinged valve moves. The home stays fixed on the substrate.
-    static func poseHome(_ shell: Entity?, body: Entity?, swim: HermesSwim) {
-        shell?.findEntity(named: "shell-lid")?.orientation = simd_quatf(angle: -TerrariumRules.hermesHomeLidAngle * swim.shellOpen, axis: [1, 0, 0])
+    static func poseHome(_ shell: Entity?, body: Entity?, swim: HermesSwim, opening:Float? = nil) {
+        shell?.findEntity(named: "shell-lid")?.orientation = simd_quatf(angle: -TerrariumRules.hermesHomeLidAngle * (opening ?? swim.shellOpen), axis: [1, 0, 0])
         body?.isEnabled = swim.emergence > 0.02
         body?.position.y = -(1 - swim.emergence) * TerrariumRules.hermesHomeTuckDepth
     }

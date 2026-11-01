@@ -14,6 +14,31 @@ import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 class AquariumResidentsTest {
+    @Test fun `Dot shares the resident budget without inventing a working session`() {
+        val now=1800000000000L
+        val ready=dev.agentdeck.net.DotSurfaceSnapshot(configured=true,hosting=true)
+        val peer=dotAquariumResident(ready,now)
+        assertEquals("dot",peer.kind)
+        assertEquals(OctopusVisualState.FLOATING,peer.state)
+        assertEquals(true,peer.habitatActive)
+        val work=dotAquariumResident(ready.copy(reportState="working",reportedAt=now,expiresAt=now+10000),now)
+        assertEquals(OctopusVisualState.WORKING,work.state)
+        assertEquals(false,dotAquariumResident(ready.copy(hosting=false),now).habitatActive)
+        val peers=(0..TerrariumRules.NATIVE_RESIDENT_LIMIT).map { peer.copy(id="peer-$it") }+work
+        assertEquals(TerrariumRules.NATIVE_RESIDENT_LIMIT,visibleAquariumResidents(peers,null).size)
+        assertTrue(visibleAquariumResidents(peers,null).any { it.id==work.id })
+    }
+
+    @Test fun `Hermes wears a real headset without painted white bang glyphs`() {
+        val bytes=RuntimeEnvironment.getApplication().assets.open("residents/hermes.glb").use { it.readBytes() }
+        val length=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(12)
+        val nodes=JSONObject(String(bytes,20,length,Charsets.UTF_8)).getJSONArray("nodes")
+        val names=(0 until nodes.length()).map { nodes.getJSONObject(it).optString("name") }
+        assertTrue(names.any { it.contains("headset-earcup-left") })
+        assertTrue(names.any { it.contains("headset-earcup-right") })
+        assertFalse(names.any { it.startsWith("hair_shine") })
+    }
+
     @Test fun `instanced buddy materials have unique immutable names`() {
         for (kind in listOf("buddy", "pearl", "bubble")) {
             val bytes = RuntimeEnvironment.getApplication().assets.open("residents/background-$kind.glb").use { it.readBytes() }

@@ -60,6 +60,7 @@ fun SessionListPanel(
     onFocusSession: (String) -> Unit = {},
     inspectedSessionId: String? = null,
     modifier: Modifier = Modifier,
+    dot: dev.agentdeck.net.DotSurfaceSnapshot? = null,
 ) {
     // Build unified entry list: primary + siblings (excluding self)
     data class SessionEntry(
@@ -367,6 +368,8 @@ fun SessionListPanel(
                 sessionRow(entry = entry, label = entry.projectName + suffixFor(entry), indent = false)
             }
         }
+
+        dot?.takeIf { it.configured }?.let { DotCompanion(it,scale=scale) }
 
         // Worker count
         if (workerSessionCount != null && workerSessionCount > 0) {
