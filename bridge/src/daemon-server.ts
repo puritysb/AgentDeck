@@ -3771,6 +3771,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // by OpenCode session id and carry both. See hook-opencode-sessions.ts.
         if (eventName.startsWith('opencode_')) {
           hookOpenCodeSessions.note(eventName, {
+            pid: typeof json.agentdeck_pid === 'number' ? json.agentdeck_pid : undefined,
             sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
             cwd: earlyHookCwd || undefined,
             projectName: earlyHookProject,

@@ -75,3 +75,5 @@ check. It writes and reads a disposable marker using the actual app directory,
 file protection and backup exclusion, then removes that marker. No iCloud account
 or fake summary is needed. Run it separately from the cloud/relaunch test: a
 passed storage probe cannot attest account matching or notification delivery.
+
+The OpenCode fixture closes its child after three minutes by default and also cleans up on parent exit. Set `AGENTDECK_ACCEPTANCE_TIMEOUT_MS` explicitly for a longer manual run (1000–3600000 ms). Stop the fixture when acceptance ends; do not leave its approval request in the live Dashboard.

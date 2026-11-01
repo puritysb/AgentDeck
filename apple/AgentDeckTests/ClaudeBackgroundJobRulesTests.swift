@@ -15,6 +15,13 @@ final class ClaudeBackgroundJobRulesTests: XCTestCase {
         return try XCTUnwrap(root["vectors"] as? [[String: Any]])
     }
 
+    func testProcessLivenessKeepsUnknownSeparateFromConfirmedExit() {
+        XCTAssertEqual(ProcessEnumerator.processLiveness(pid: Int(getpid())), true)
+        XCTAssertEqual(ProcessEnumerator.processLiveness(pid: Int(Int32.max)), false)
+        XCTAssertNil(ProcessEnumerator.processLiveness(pid: 0))
+        XCTAssertNil(ProcessEnumerator.processLiveness(pid: Int.max))
+    }
+
     func testEveryVectorMatchesTheNodeSSOT() throws {
         let cases = try vectors()
         XCTAssertGreaterThan(cases.count, 0)

@@ -180,3 +180,28 @@ it('renders one-time permission choices and routes each transport to the current
   expect(hooks.answerPermission(SID, `ocperm:${SID}:p1`, 'allow', enqueue)).toBe(false);
   expect(replies).toEqual([{ permissionId: 'p1', decision: 'allow' }, { permissionId: 'p1', decision: 'deny' }]);
 });
+
+
+it('removes a permission wait after its owning OpenCode process is confirmed exited', () => {
+  let alive: boolean | undefined = true;
+  const hooks = new HookOpenCodeSessions(() => alive);
+  hooks.note('opencode_permission_asked', { sessionId: SID, pid: 1234, permissionId: 'p', title: 'bash' }, 1000);
+  expect(hooks.applyTo([], 1001)[0]).toMatchObject({ state: 'awaiting_permission', pid: 1234 });
+  alive = undefined;
+  expect(hooks.applyTo([], 1002)[0].state).toBe('awaiting_permission');
+  alive = false;
+  expect(hooks.applyTo([], 1003)).toEqual([]);
+  // A delayed callback from that dead process must not resurrect its prompt.
+  hooks.note('opencode_permission_asked', { sessionId: SID, pid: 1234, permissionId: 'p' }, 1004);
+  expect(hooks.applyTo([], 1005)).toEqual([]);
+});
+
+it('retains legacy unknown-PID sessions and updates the owner when a session resumes', () => {
+  const dead = new Set([1234]);
+  const hooks = new HookOpenCodeSessions(pid => !dead.has(pid));
+  hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p' }, 1000);
+  expect(hooks.applyTo([], 1001)).toHaveLength(1);
+  hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 1234 }, 1002);
+  hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 4321 }, 1003);
+  expect(hooks.applyTo([], 1004)[0]).toMatchObject({ state: 'processing', pid: 4321 });
+});

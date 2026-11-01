@@ -218,6 +218,8 @@ describe.skipIf(DARWIN_BLOCKED)('daemon relay (two real CLI daemons)', () => {
     const client = await connect(hub!.port);
     try {
       await waitFor('hub roster with the relayed row', () => (latestRow(client.frames) ? true : undefined));
+      // The observer must be live before an approval can be delivered.
+      expect(await pollOpenCode(worker!.port, 0)).toEqual([]);
       client.send({ type: 'permission_decision', requestId: REQUEST_ID, decision: 'allow' });
       client.send({ type: 'session_command', sessionId: ROW_ID, command: { type: 'send_prompt', text: 'relay says hello' } });
       const received: Array<Record<string, unknown>> = [];

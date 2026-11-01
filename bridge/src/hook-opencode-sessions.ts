@@ -35,6 +35,7 @@ export interface HookOpenCodeSession {
   sessionId: string;
   projectName: string;
   cwd?: string;
+  pid?: number;
   state: HookOpenCodeState;
   currentTool?: string;
   /** Permission prompt text while `awaiting_permission`. */
@@ -51,6 +52,7 @@ export interface HookOpenCodeSession {
 
 export interface HookOpenCodePayload {
   sessionId?: string;
+  pid?: number;
   cwd?: string;
   projectName?: string;
   toolName?: string;
@@ -72,6 +74,10 @@ export function openCodePermissionRequestId(sessionId: string, permissionId: str
 }
 
 export class HookOpenCodeSessions {
+  constructor(private readonly processAlive: (pid: number) => boolean | undefined = (pid) => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'ESRCH' ? false : undefined; }
+  }) {}
   private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string; prompt?: OpenCodeQuestionPrompt; answerable?: boolean; sending?: boolean; replyError?: boolean }>>();
   private readonly sessions = new Map<string, HookOpenCodeSession>();
 
@@ -101,6 +107,7 @@ export class HookOpenCodeSessions {
     };
     const before = JSON.stringify(session);
     session.lastHookAt = now;
+    if (Number.isSafeInteger(payload.pid) && payload.pid! > 1) session.pid = payload.pid;
 
     if (!session.cwd && payload.cwd) {
       session.cwd = payload.cwd;
@@ -228,7 +235,8 @@ export class HookOpenCodeSessions {
 
   private reap(now: number): void {
     for (const [sessionId, session] of this.sessions) {
-      if (now - session.lastHookAt > SILENT_TTL_MS) {
+      if ((session.pid !== undefined && this.processAlive(session.pid) === false)
+        || now - session.lastHookAt > SILENT_TTL_MS) {
         this.sessions.delete(sessionId);
         this.waits.delete(sessionId);
       }
@@ -270,7 +278,7 @@ export class HookOpenCodeSessions {
       kept.push({
         id: `observed:opencode:${session.sessionId}`,
         port: 0,
-        pid: 0,
+        pid: session.pid ?? 0,
         projectName: session.projectName || (session.cwd ? resolveProjectNameFromCwdCached(session.cwd) : 'OpenCode'),
         agentType: 'opencode',
         alive: true,
