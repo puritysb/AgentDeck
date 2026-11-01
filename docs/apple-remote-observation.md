@@ -700,3 +700,27 @@ configurations and documentation. Its [six-gate receipt](../verification/receipt
 complements the preceding complete run; it does not relabel six checks as a new
 26-gate run. This follow-up changes only the development Mac PoC and its lab
 fixture. The signed Mac PoC was rebuilt, verified and installed again.
+
+### Physical control and reader acceptance — 2026-11-01
+
+The previously pending physical checks passed on the installed development
+candidates. SBiPhone (iPhone 14 Pro Max) passed three XCUITest cases: the real
+local cache file round-trip, CloudKit summary restoration after terminate/launch,
+and a new actual OpenCode question followed by one-time Bash approval. The
+reader retained `2 working · 0 waiting` and the original `11:13 PM` source time
+after relaunch, with an explicit local-cache restoration status.
+
+On the physical Stream Deck+, the user pressed the test session key, then
+`Deck acceptance`, then `Allow once`. The host preview showed the actual choice
+and approval layouts; OpenCode returned the exact original label followed by
+`agentdeck_device_acceptance_probe`. A separate phone session returned
+`Phone acceptance` and the same harmless command output through ordinary app
+taps. The installed plugin identity was `7b0f554baeac`.
+
+Both bounded test processes and their daemon rows were removed. No new product
+failure was found; auto-lock delayed runner startup and required unlocking just
+before execution. Evidence is local in
+`diagnostics/cloudkit-integration-acceptance/physical/`. These results supersede
+the earlier physical-control/cache pending state. This is development acceptance;
+Production delivery, offline cold-start variations, physical account switching,
+and long-duration disruption measurements remain separate checks.
