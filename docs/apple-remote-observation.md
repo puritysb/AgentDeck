@@ -693,3 +693,10 @@ enablement conflict with its own CloudKit snapshot. The follow-up retains only
 the disabled account-scoped writer binding, clears old events/session mappings
 and still requires verified identity plus explicit consent. It also revokes a
 saved enabled flag when the notification precedes startup restoration.
+
+The `4b0c9ca7` follow-up passed quick verification and the changed PoC gates
+(18 native tests), then a clean scoped full-tier rerun of coverage, both PoC
+configurations and documentation. Its [six-gate receipt](../verification/receipts/2026-11-01-4b0c9ca.json)
+complements the preceding complete run; it does not relabel six checks as a new
+26-gate run. This follow-up changes only the development Mac PoC and its lab
+fixture. The signed Mac PoC was rebuilt, verified and installed again.

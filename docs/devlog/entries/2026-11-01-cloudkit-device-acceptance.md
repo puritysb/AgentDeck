@@ -90,3 +90,11 @@ Handlers and the child-exit listener now register before publishing readiness.
 The existing parent-signal/deadline tests cover that ordering. An unchanged WS
 auth test also exceeded its 60ms rejection grace under concurrent native build
 load; both isolated suites then passed (five tests). No auth behavior was relaxed.
+
+The follow-up `4b0c9ca7` passed a fresh quick run (7,101 tests), changed PoC
+macOS/iOS gates (18 native tests), and a clean six-gate full-tier recording:
+coverage, both PoC configurations, docs/catalog/devlog. That receipt complements
+the complete 26-gate `9c59666b` recording rather than replacing its scope. The
+follow-up is confined to development-only Mac PoC code and the lab fixture;
+no Store or production daemon/plugin executable changed. The signed Mac PoC
+was rebuilt after checks, verified and installed again.
