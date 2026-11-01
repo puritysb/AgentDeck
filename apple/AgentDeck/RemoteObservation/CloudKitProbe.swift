@@ -85,8 +85,13 @@ actor CloudKitProbeStore {
         }
         let status = try await bounded(read)
         guard generation == accountGeneration, expected == nil || expected == generation else { throw ProbeError.accountChanged }
-        guard status == .available else { throw ProbeError.accountUnavailable }
-        return generation
+        switch status {
+        case .available: return generation
+        case .noAccount: throw ProbeError.accountUnavailable
+        case .couldNotDetermine, .temporarilyUnavailable, .restricted:
+            throw ProbeError.accountUnverified
+        @unknown default: throw ProbeError.accountUnverified
+        }
     }
 
     func accountIdentity(account: Int? = nil) async throws -> String {
@@ -282,7 +287,7 @@ actor CloudKitProbeStore {
         return summary
     }
 
-    enum ProbeError: Error, Equatable { case accountUnavailable, accountChanged, invalidRecord, publisherConflict }
+    enum ProbeError: Error, Equatable { case accountUnavailable, accountUnverified, accountChanged, invalidRecord, publisherConflict }
 }
 
 @MainActor
@@ -292,11 +297,13 @@ final class CloudKitProbeModel: ObservableObject {
     @Published private(set) var event: CloudKitProbeEvent?
     @Published private(set) var busy = false
     @Published private(set) var roster: RemoteRosterSummary?
-    private let store = CloudKitProbeStore()
-    private let cache = RemoteReaderCache()
+    private let store: CloudKitProbeStore
+    private let cache: RemoteReaderCache
     private var generation = 0
     private var accountObserver: NSObjectProtocol?
-    init() {
+    init(store: CloudKitProbeStore = CloudKitProbeStore(), cache: RemoteReaderCache = RemoteReaderCache()) {
+        self.store = store
+        self.cache = cache
         guard !AgentDeckApp.isHostedTest() else { return }
         roster = cache.load(localIdentity: RemoteLocalIdentity.current())
         if roster != nil { status = "Restored last observation from this account’s local cache." }
@@ -395,6 +402,8 @@ final class CloudKitProbeModel: ObservableObject {
             guard token == generation else { return }
             if action == "disable" {
                 status = "This device stopped push registration and cleared its reader. Cloud subscription deletion is not confirmed; retry when online."
+            } else if (error as? CloudKitProbeStore.ProbeError) == .accountUnverified {
+                status = "iCloud account state is unverified. The last saved observation is retained; retry when available."
             } else if (error as? CloudKitProbeStore.ProbeError) == .accountUnavailable
                 || (error as? CloudKitProbeStore.ProbeError) == .accountChanged {
                 roster = nil; event = nil

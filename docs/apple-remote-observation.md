@@ -651,3 +651,13 @@ request emission alone was an insufficient readiness signal. The PoC Close
 control now has a separate header so it cannot cover the question context.
 This result completes the simulated UI/native transport acceptance while keeping
 physical iPhone/cache and Stream Deck key acceptance explicitly pending.
+
+
+Account-status retention guard: `couldNotDetermine`, temporary unavailability
+and restrictions do not prove logout. Those responses refuse cloud access while
+preserving the account-scoped disk reader; only confirmed `noAccount` or an
+identity change clears it. A native model test writes a real reader file,
+exercises all three unverified statuses, and then confirms that `noAccount`
+removes it. Account-change notifications continue to revoke saved sharing
+consent. Publisher pause messages distinguish ownership, quota and authorization
+so a retry does not hide the actual cause.

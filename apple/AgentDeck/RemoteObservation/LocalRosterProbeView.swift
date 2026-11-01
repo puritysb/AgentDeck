@@ -235,7 +235,13 @@ final class LocalRosterProbeModel: ObservableObject {
                 automatic = false; state.enabled = false
                 releaseActivity()
                 scheduler?.cancel(); scheduler = nil
-                status = "Sharing paused: account, quota or publisher ownership needs attention. Retry enablement when ready."
+                if (error as? CloudKitProbeStore.ProbeError) == .publisherConflict {
+                    status = "Another installation owns the shared summary. Automatic sharing is off."
+                } else if ck?.code == .quotaExceeded {
+                    status = "iCloud quota is exceeded. Automatic sharing is off; retry enablement after storage is available."
+                } else {
+                    status = "iCloud authorization needs attention. Automatic sharing is off; retry enablement when ready."
+                }
             } else {
                 let delay = RemoteObservationPolicy.retryDelay(attempt: state.failures,
                     retryAfter: ck?.retryAfterSeconds, jitter: Double.random(in: 0.8...1.2))
