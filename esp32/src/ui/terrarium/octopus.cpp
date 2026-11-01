@@ -77,7 +77,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float bodyRadius = w * Layout::OctBodyRadiusFrac * scaleFactor;
+    float bodyRadius = w * Layout::OctBodyRadiusFrac * scaleFactor * Terrarium::residentScale();
     // The robot occupies the full 24×24 viewBox; map it into a square box so the
     // on-screen footprint matches the old block glyph (~bodyRadius*2.2 wide).
     float glyphW = bodyRadius * 2.2f;
@@ -126,18 +126,16 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY < Layout::OctSwimMinY) renderY = Layout::OctSwimMinY;
         if (renderY > Layout::OctSwimMaxY) renderY = Layout::OctSwimMaxY;
         // Track for particles/bubbles
-        currentX[idx] = renderX;
-        currentY[idx] = renderY;
     } else {
         renderX = homeX;
         renderY = homeY;
-        currentX[idx] = homeX;
-        currentY[idx] = homeY;
     }
 
     float t = time + phaseOffset[idx];
 
     // Animation offsets
+    Terrarium::placeResident(renderX,renderY,bodyRadius*1.5f,bodyRadius*1.5f,state==CreatureState::WORKING || state==CreatureState::ASKING,currentX[idx],currentY[idx]);
+    currentX[idx]=renderX;currentY[idx]=renderY;
     float breathBob = 0;
     float bodyAlpha = 1.0f;
     uint32_t bodyColor = Theme::ClaudeBody;
@@ -212,8 +210,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
     if (!showName) return;
 

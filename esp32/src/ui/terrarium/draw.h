@@ -51,10 +51,15 @@ inline void attention(int x, int y, int r, uint32_t fill, uint32_t ink) {
 inline void scallop(int x, int y, int r, float open, uint32_t color) {
     open = max(0.0f, min(1.0f, open));
     const int lift = (int)(r * (0.25f + open * 1.2f)) + 2;
+    // A curved, filled fan rather than a trapezoid outlined like a basket.
     for (int dy = -lift; dy <= 0; ++dy) {
-        const float t = float(dy + lift) / max(1, lift);
-        const int half = max(1, int(r * (0.50f + t * 0.50f)));
-        line(x-half,y+dy,x+half,y+dy,color,open > .5f ? 45 : 155);
+        const float t = float(dy) / max(1, lift);
+        const int half = max(1, int(r * sqrtf(max(0.0f, 1-t*t))));
+        line(x-half,y+dy,x+half,y+dy,color,165);
+    }
+    for (int rib=1;rib<6;++rib) {
+        const float angle=M_PI*float(rib)/6;
+        line(x,y,x+int(fastCos(angle)*r),y-int(fastSin(angle)*lift),color,100);
     }
     const int depth = max(2, r / 3 + 2);
     for (int dy = 0; dy <= depth; ++dy) {
@@ -62,9 +67,7 @@ inline void scallop(int x, int y, int r, float open, uint32_t color) {
         const int half = int(r * sqrtf(max(0.0f, 1-t*t)));
         line(x-half,y+dy,x+half,y+dy,color,200);
     }
-    line(x-r,y,x-r/2,y-lift,color,220);line(x-r/2,y-lift,x+r/2,y-lift,color,220);
-    line(x+r/2,y-lift,x+r,y,color,220);line(x-r,y,x+r,y,color,255);
-    for (int rib=-2;rib<=2;rib++) line(x+rib*r/3,y-lift,x,y,color,150);
+    line(x-r,y,x+r,y,color,240);
 }
 
 

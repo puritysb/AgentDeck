@@ -461,6 +461,20 @@ static uint32_t agentDotColor(const char* agentType) {
 
 namespace HUD {
 
+size_t habitatObstacles(HabitatSpacing::Rect* out, size_t capacity) {
+    size_t count=0;
+#if !defined(BOARD_IPS10) && !defined(BOARD_TTGO)
+    for(auto* panel:{panelLeft,panelRight}) {
+        if(!panel || lv_obj_has_flag(panel,LV_OBJ_FLAG_HIDDEN) || count>=capacity)continue;
+        lv_area_t area;lv_obj_get_coords(panel,&area);
+        out[count++]={float(area.x1),float(area.y1),float(area.x2-area.x1+1),float(area.y2-area.y1+1)};
+    }
+#else
+    (void)out;(void)capacity;
+#endif
+    return count;
+}
+
 // Helper: create a water-fill gauge column: [gauge box] + "1h 55m".
 // Returns the column wrapper so callers can hide the whole gauge as a unit
 // (e.g. hide the Claude pair when only Codex data is present).
@@ -1882,6 +1896,8 @@ void update() {
 
         #if IS_ROUND
         const uint8_t rowBudget = 1, expandedLimit = 1;
+#elif defined(BOARD_IPS35)
+        const uint8_t rowBudget = 2, expandedLimit = 2;
 #else
         const uint8_t rowBudget = 5, expandedLimit = 6;
 #endif

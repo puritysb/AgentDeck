@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include "../terrarium/habitat_spacing.h"
 // Self-sufficient: the voice API below is gated on board-header capability
 // macros, not -D flags, so every includer must see them — and the guard in the
 // implementation must agree with the guard here or the definitions vanish while
@@ -26,6 +27,8 @@ void update();
  */
 void setVisible(bool visible);
 bool isVisible();
+// Snapshot actual overlay bounds once per frame; UI task only, no allocations.
+size_t habitatObstacles(HabitatSpacing::Rect* out, size_t capacity);
 
 #if defined(BOARD_HAS_VOICE_CAPTURE) || defined(BOARD_HAS_SPEAKER)
 /**

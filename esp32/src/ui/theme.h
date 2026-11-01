@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "terrarium/terrarium_rules_generated.h"
 #include "product_palette.generated.h"  // design tokens + session state (generated)
 
 // ===== RGB565 color macros =====
@@ -114,7 +115,19 @@ constexpr uint32_t LEDRed    = ProductPalette::UiError;
 namespace Layout {
 
 // Sand/terrain
+#if IS_ROUND
+constexpr float SandHeightFrac = 0.43f; // raised substrate above the round quota rail
+constexpr float SharedShellY = 0.57f;
+constexpr float CrowdedResidentScale = .78f;
+#else
 constexpr float SandHeightFrac = 0.35f;
+constexpr float SharedShellY = TerrariumRules::HermesHomeCanvasY;
+#if defined(BOARD_IPS35)
+constexpr float CrowdedResidentScale = .80f;
+#else
+constexpr float CrowdedResidentScale = 1.0f;
+#endif
+#endif
 
 #if IS_ROUND
 // Round AMOLED: tighter swim boundaries to stay within circular mask
@@ -133,7 +146,7 @@ constexpr float OctSwimMaxY       = 0.58f;
 constexpr float CfWidthFrac  = 0.12f;
 constexpr float CfHomeX      = 0.72f;
 constexpr float CfHomeY      = 0.55f;
-constexpr float CfSittingY   = 0.68f;
+constexpr float CfSittingY   = 0.53f;
 constexpr float CfRoutingY   = 0.52f;
 
 // Cloud (Codex CLI) — slightly smaller body so the ">_" prompt reads more prominently

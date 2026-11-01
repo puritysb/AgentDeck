@@ -7,7 +7,8 @@
 # `pio run` in esp32/sim builds every env on the *native* host platform — one
 # render tree per env (fw/, mtx/, eink/, knob/, ticker/) compiled against the
 # real esp32/src headers — so it needs no Xtensa toolchain and no hardware.
-# It is a compile gate, not the hardware Robot suite; that stays hardware-only.
+# Deterministic UI assertions run too; physical scanout and the hardware Robot
+# suite remain separate evidence.
 #
 # The scope check keeps the cost off unrelated PRs, but it is a STEP condition,
 # not a workflow-level `paths:` filter, because this is a required status check.
@@ -106,6 +107,10 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         working-directory: esp32/sim
         run: pio run
+
+      - name: Resident placement and input assertions
+        if: steps.scope.outputs.run == 'true'
+        run: bash esp32/sim/check-surfaces.sh
 
       # Plain assert() mains over the firmware's policy headers (e-ink geometry,
       # glyph selection, usage rows, …). Host compiler only, a few seconds; they

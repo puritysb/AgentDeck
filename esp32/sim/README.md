@@ -105,7 +105,7 @@ so they exercise the real session → creature/card derivation. On TRMNL 7.5",
 keeps useful status visible when the host monitors are off.
 
 There is also a parameterized scene family `demo:<agent>:<state>` (agents:
-`claude|codex|opencode|openclaw|antigravity|kiro`; states:
+`claude|codex|opencode|openclaw|antigravity|kiro|hermes`; states:
 `idle|working|asking|sleeping`) that mirrors the creature-simulator web demo's
 agent × state matrix — session shape and usage values match
 `scripts/render-creature-simulator.mjs`, so the GitHub Pages `/demo` ESP32
@@ -174,3 +174,34 @@ are `usage-none`, `usage-zero`, `usage-stale`, and `codex-only`; `multi` exercis
 all four windows. `--verify-mode` checks the default, repeated mode toggles, and
 mode retention across twelve screen rebuilds. Hardware GPIO debounce and panel
 rotation still require a physical button check.
+
+
+### Creature coverage and spacing
+
+`habitat-all` and `habitat-all-working` include all seven agent families plus
+Dot. On 86 Box, IPS35, round AMOLED and TTGO, `--verify-habitat --page terrarium`
+checks every settled frame of mixed idle/working scenes: all eight bodies must
+participate, with no overlap against its HUD, shell-mouth reservation or peers.
+It then stops Hermes and Dot and requires both bodies to disappear and the
+shared lid to close. Doorway residents claim space first so resting peers yield
+during return; movement retains the previous pose through state changes.
+The allocation-free placement code retains authored homes as preferences and
+finds free space inside the water band. Round and IPS35 scenes use a bounded header and
+smaller readable bodies at high population; their crowded names yield to the
+HUD. The occupancy cache is 240 bytes of reusable static memory.
+
+`dot:ready`, `dot:working`, `dot:attention`, `dot:completed`, `dot:failed`,
+`dot:stopped`, `dot:stale`, `dot:unknown`, `dot:unlinked` and `dot:custom`
+exercise every portable Dot phase and the custom-pixel path. Ready is quiet,
+not fabricated work. OpenClaw demo fixtures use authenticated sitting/routing
+states and an observed roster entry when selected; dormant means hidden and
+must not stand in for a connected idle gateway. The `sleeping` demo alias maps
+to wire idle; `display-off` is the separate host-display-sleep scenario.
+
+The local `esp32-sim` verification step and CI both run `check-surfaces.sh`
+after building every host environment. The script exercises
+IPS10 selection/detail/voice exclusion, knob/ticker read-only Dot navigation
+and the four mixed-habitat checks.
+These prove software composition, not LCD scanout timing, physical e-ink
+refresh or device inputs. C6 has a native firmware build but no dedicated host
+preview environment; do not claim a panel capture from a different aspect ratio.

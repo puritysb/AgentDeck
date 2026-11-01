@@ -91,7 +91,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float bodyRadius = w * Layout::HermesRadiusFrac * scaleFactor;
+    float bodyRadius = w * Layout::HermesRadiusFrac * scaleFactor * Terrarium::residentScale();
 
     float homeX;
     if (total <= 1) {
@@ -113,8 +113,8 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     homeY += jitterY[idx];
 
     const bool active = state == CreatureState::WORKING || state == CreatureState::ASKING;
-    const float restY = TerrariumRules::HermesHomeCanvasY;
-    const float entranceX=TerrariumRules::HermesHomeCanvasX;
+    const float restY = Terrarium::sharedHomeY();
+    const float entranceX=Terrarium::sharedHomeX();
     if (active) {
         shellOpen[idx] = fminf(1, shellOpen[idx] + dt * TerrariumRules::HermesHomeOpenRate);
         if (shellOpen[idx] >= TerrariumRules::HermesHomeLidClearance)
@@ -123,7 +123,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         emergence[idx] = fmaxf(0, emergence[idx] - dt * TerrariumRules::HermesHomeEmergeRate);
         if (emergence[idx] == 0) shellOpen[idx] = fmaxf(0, shellOpen[idx] - dt * TerrariumRules::HermesHomeCloseRate);
     }
-    if (!active) homeY = restY;
+    if (!active) { homeX=entranceX;homeY=restY; }
     float departure = fminf(1, fmaxf(0, (emergence[idx]-TerrariumRules::HermesHomeDepartureStart)/(1-TerrariumRules::HermesHomeDepartureStart)));
     departure = departure*departure*(3-2*departure);
     float renderX = homeX;
@@ -142,10 +142,13 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
 
     renderX = entranceX + (renderX-entranceX)*departure;
     renderY = restY + (renderY-restY)*departure;
+    // Align with the clear doorway lane before descending past the quota rail.
+    if(!active && fabsf(currentX[idx]-entranceX)*w>1) renderY=currentY[idx];
     const float blend = 1-expf(-dt*4);
     renderX = currentX[idx] + (renderX-currentX[idx])*blend;
     renderY = currentY[idx] + (renderY-currentY[idx])*blend;
 
+    if(emergence[idx]>.02f) Terrarium::placeResident(renderX,renderY,bodyRadius*1.3f,bodyRadius*1.8f,active,currentX[idx],currentY[idx],!active || emergence[idx]<.99f);
     float breathBob = 0.0f;
     uint8_t alpha = 255;
     if (state == CreatureState::SLEEPING) {
@@ -198,8 +201,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
 
     if (name[0] && showName && alpha > 0) {
@@ -247,6 +249,14 @@ float getY(uint8_t idx) {
     return currentY[idx];
 }
 
+bool isVisible(uint8_t idx){return idx<MAX_HERMES && emergence[idx]>.02f;}
+bool entranceBusy(){
+    for(uint8_t i=0;i<MAX_HERMES;++i)
+        if(isVisible(i) && (emergence[i]<.99f ||
+           (fabsf(currentX[i]-Terrarium::sharedHomeX())<TerrariumRules::HermesHomeCanvasRadius*2.4f &&
+            fabsf(currentY[i]-Terrarium::sharedHomeY())<TerrariumRules::HermesHomeCanvasRadius*2.4f)))return true;
+    return false;
+}
 float getShellOpening(uint8_t idx) { return idx < HERMES_ARR_SIZE ? shellOpen[idx] : 0; }
 
 }  // namespace Hermes

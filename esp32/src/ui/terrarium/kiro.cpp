@@ -98,7 +98,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float bodyRadius = w * Layout::KiroRadiusFrac * scaleFactor;
+    float bodyRadius = w * Layout::KiroRadiusFrac * scaleFactor * Terrarium::residentScale();
 
     float homeX;
     if (total <= 1) {
@@ -133,6 +133,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY > Layout::KiroSwimMaxY) renderY = Layout::KiroSwimMaxY;
     }
 
+    Terrarium::placeResident(renderX,renderY,bodyRadius*1.5f,bodyRadius*1.5f,state==CreatureState::WORKING || state==CreatureState::ASKING,currentX[idx],currentY[idx]);
     float breathBob = 0.0f;
     uint8_t alpha = 255;
     if (state == CreatureState::SLEEPING) {
@@ -174,8 +175,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
 
     if (name[0] && showName) {

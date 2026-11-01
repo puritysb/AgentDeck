@@ -10,6 +10,13 @@ static bool visibleText(lv_obj_t* obj, const char* text) {
         if (visibleText(lv_obj_get_child(obj, i), text)) return true;
     return false;
 }
+static lv_obj_t* companionDotLabel(lv_obj_t* obj) {
+    if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return nullptr;
+    if(lv_obj_check_type(obj,&lv_label_class) && !strcmp(lv_label_get_text(obj),"Dot"))return obj;
+    for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+        if(auto* found=companionDotLabel(lv_obj_get_child(obj,i)))return found;
+    return nullptr;
+}
 static bool verifyCompanionInteractions(const char* outdir) {
     auto tick = [] {
         SimDisplay::tick(33);
@@ -111,6 +118,23 @@ static bool verifyCompanionInteractions(const char* outdir) {
     assert(visibleText(lv_screen_active(), "ENDED")); shot("ticker-ended");
     SimCommands::reset(); Ticker::onTouch({Input::TouchGesture::TAP, 410, 190}); assert(SimCommands::count() == 0);
 #endif
+    SimScenes::apply("dot:attention");tick();SimCommands::reset();
+#if defined(BOARD_T_EMBED)
+    Knob::onKey(Input::KeyEvent::LONG_PRESS);Knob::onKey(Input::KeyEvent::LONG_PRESS);tick();
+    for(int i=0;i<3 && !visibleText(lv_screen_active(),"Dot");++i){Knob::onRotate(1);tick();}
+    assert(Knob::selectedSessionIdx()==-1); // Dot never lights a real-session ring slot
+    assert(visibleText(lv_screen_active(),"Dot"));
+    assert(!Knob::focusedSessionId()[0]);shot("knob-dot-roster");
+    Knob::onKey(Input::KeyEvent::SHORT_PRESS);tick();assert(SimCommands::count()==0);
+#else
+    Ticker::onTouch({Input::TouchGesture::TAP,200,27});tick(); // explicit All sessions tab
+    assert(visibleText(lv_screen_active(),"Dot"));shot("ticker-dot-roster");
+    auto* dotLabel=companionDotLabel(lv_screen_active());assert(dotLabel);
+    lv_area_t area;lv_obj_get_coords(dotLabel,&area);
+    Ticker::onTouch({Input::TouchGesture::TAP,static_cast<int16_t>((area.x1+area.x2)/2),static_cast<int16_t>((area.y1+area.y2)/2)});tick();
+    assert(Ticker::currentPage()==2 && SimCommands::count()==0);
+#endif
+    assert(g_state.sessionCount==1);
     std::fprintf(stderr, "[sim] companion interaction checks: passed\n");
     return true;
 }

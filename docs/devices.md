@@ -451,7 +451,7 @@ known creature.
 |---|---|---|
 | macOS, iPhone, iPad, Android LCD | Native articulated residents; Hermes and Dot share one shell, OpenClaw keeps its rock | Native lifecycle, imported-asset, label and collision tests; physical acceptance is recorded separately from builds |
 | Apple/Android 2D and Android reader Frame | Canonical silhouettes, mermaid tail and shared shell; paper uses contrast and restrained refresh | Canvas/paper tests and captures; emulator frames do not establish physical e-ink ghosting |
-| 86 Box, IPS35, round AMOLED, TTGO, C6 | Live 2D habitat with official masks, attached semantic attention badges and hidden-body label suppression | Firmware host frames at each panel size; round HUD bounds its roster, TTGO keeps usage as the default |
+| 86 Box, IPS35, round AMOLED, TTGO, C6 | Live 2D habitat with official masks, attached semantic attention badges and hidden-body label suppression | Firmware host frames at each panel size; round HUD bounds its roster and crowded bodies; live pixel-space packing reserves HUD, shell and peer bounds, TTGO keeps usage as the default |
 | IPS10 | Project spaces containing resident seats, inline work/attention and an independent usage pane | Actual workspace renderer and interaction tests; its eleven-seat pool includes Dot alongside ten wire sessions |
 | T-Embed, T-Display-S3-Pro | Compact focus/list views with identity, state and useful work text | Knob/ticker simulator and interaction checks; no miniature aquarium behind text |
 | TRMNL, NM-EPD-420, LilyGo EPD47 | Static canonical creature marks in priority cards, with explicit hidden-state counts | Shared paper renderer at physical dimensions; refresh timing and ghosting need panel observation |

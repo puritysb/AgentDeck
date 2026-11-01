@@ -318,10 +318,10 @@
     },
     {
       "id": "esp32-sim",
-      "name": "ESP32 firmware simulator compile",
+      "name": "ESP32 simulator builds and resident/input checks",
       "gate": "esp32-sim",
       "tiers": ["changed", "full"],
-      "run": "cd esp32/sim && pio run && mkdir -p sim-out/verification && .pio/build/ips10/program --verify-interactions --outdir sim-out/verification",
+      "run": "cd esp32/sim && pio run && bash check-surfaces.sh",
       "requires": { "commands": ["pio"] },
       "paths": ["esp32/**"]
     },
@@ -715,16 +715,16 @@
     },
     {
       "id": "esp32-sim",
-      "name": "ESP32 firmware host build",
-      "level": ["compile"],
+      "name": "ESP32 firmware host build and resident/input checks",
+      "level": ["compile", "integration"],
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/esp32-sim.yml",
       "job": "compile",
       "trigger": "PRs and master pushes touching esp32/**",
       "blocking": true,
       "required": true,
-      "command": "pio run (every esp32/sim env)",
-      "proves": ["the real esp32/src render trees compile for the native simulator"],
+      "command": "pio run (every esp32/sim env); bash esp32/sim/check-surfaces.sh",
+      "proves": ["the real esp32/src render trees compile for the native simulator", "all eight resident types clear HUD, shell and peer bounds on 86 Box, IPS35, round AMOLED and TTGO; IPS10/knob/ticker inputs retain identity and keep Dot read-only"],
       "does_not_prove": ["the Xtensa build, flashing, or behaviour on a board"]
     },
     {

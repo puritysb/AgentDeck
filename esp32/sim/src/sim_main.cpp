@@ -110,6 +110,8 @@ int main(int argc, char** argv) {
 #include "ui/ticker/ticker_ui.h"
 #else
 #include "ui/screens/aquarium.h"
+#include "ui/terrarium/renderer.h"
+#include "ui/terrarium/hermes.h"
 #if defined(BOARD_TTGO)
 #include "ui/widgets/ttgo_usage.h"
 #include "ui/display.h"
@@ -131,6 +133,7 @@ extern bool g_simSerialConnected;
 namespace {
 constexpr uint32_t FRAME_MS = 33;                 // ~30fps
 constexpr float    FRAME_DT = FRAME_MS / 1000.0f;
+static bool checkingHabitat=false;
 
 // Board render tree: build the screen once, then advance it per frame.
 #if defined(BOARD_T_EMBED)
@@ -145,12 +148,12 @@ void treeUpdate(float dt) { Screens::aquariumUpdate(dt); }
 #endif
 
 bool renderScene(const char* scene, const char* path, int frames, const char* page) {
+  g_sim_millis = 0; // reset before stamping any report freshness budget
   if (!SimScenes::apply(scene)) {
     std::fprintf(stderr, "[sim] unknown scene '%s' (have: %s)\n", scene, SimScenes::catalog());
     return false;
   }
   randomSeed(0xA6E7DECC);  // deterministic frames per run
-  g_sim_millis = 0;
 #if defined(BOARD_T_DISPLAY_PRO)
   // Physical rocker navigation, exercised without a hand-authored preview.
   // Attention updates the rail without taking over the current page.
@@ -166,6 +169,14 @@ bool renderScene(const char* scene, const char* path, int frames, const char* pa
     SimDisplay::tick(FRAME_MS);
     treeUpdate(FRAME_DT);
     SimDisplay::refresh();
+#if defined(BOARD_BOX_86) || defined(BOARD_IPS35) || defined(BOARD_AMOLED) || defined(BOARD_TTGO)
+    if(checkingHabitat && i>=120) {
+      const auto stats=Terrarium::layoutDiagnostics();
+      if(stats.residents!=8 || stats.collisions) {
+        std::fprintf(stderr,"[sim] habitat frame %d occupants=%u collisions=%u\n",i,stats.residents,stats.collisions);return false;
+      }
+    }
+#endif
   }
 #if defined(BOARD_T_EMBED)
   if (std::strcmp(scene, "attention") == 0) {
@@ -530,6 +541,36 @@ int main(int argc, char** argv) {
   SimDisplay::init(SCREEN_W, SCREEN_H);
 #endif
   treeCreate();
+
+#if defined(BOARD_BOX_86) || defined(BOARD_IPS35) || defined(BOARD_AMOLED) || defined(BOARD_TTGO)
+  if(flag(argc,argv,"--verify-habitat")) {
+    checkingHabitat=true;
+    for(const char* scene:{"habitat-all","habitat-all-working"}) {
+      const std::string path=std::string(arg(argc,argv,"--outdir","sim-out"))+"/"+scene+".png";
+      if(!renderScene(scene,path.c_str(),360,page))return 1;
+      const auto stats=Terrarium::layoutDiagnostics();
+      if(stats.residents!=8 || stats.collisions) {
+        std::fprintf(stderr,"[sim] habitat occupants=%u collisions=%u\n",stats.residents,stats.collisions);return 1;
+      }
+    }
+    for(uint8_t i=0;i<g_state.sessionCount;++i)std::strcpy(g_state.sessions[i].state,"idle");
+    g_state.crayfishState=CrayfishState::SITTING;g_state.dot->hosting=false;g_state.dot->code=1;
+    for(int i=0;i<360;++i){
+      SimDisplay::tick(FRAME_MS);treeUpdate(FRAME_DT);SimDisplay::refresh();
+      if(Terrarium::layoutDiagnostics().collisions)return 1;
+    }
+    const auto returned=Terrarium::layoutDiagnostics();
+    if(returned.shellBodiesVisible || returned.shellOpening>.01f){
+      const std::string failed=std::string(arg(argc,argv,"--outdir","sim-out"))+"/habitat-return-failed.png";
+      SimPng::writeRgb565(failed.c_str(),SimDisplay::framebuffer(),SimDisplay::width(),SimDisplay::height());
+      std::fprintf(stderr,"[sim] shared home not settled: opening=%.3f visible=%d\n",returned.shellOpening,returned.shellBodiesVisible);
+      std::fprintf(stderr,"[sim] Hermes opening=%.3f position=(%.3f,%.3f) home=(%.3f,%.3f)\n",Hermes::getShellOpening(0),Hermes::getX(0),Hermes::getY(0),Terrarium::sharedHomeX(),Terrarium::sharedHomeY());return 1;
+    }
+    const std::string closed=std::string(arg(argc,argv,"--outdir","sim-out"))+"/habitat-returned.png";
+    if(!SimPng::writeRgb565(closed.c_str(),SimDisplay::framebuffer(),SimDisplay::width(),SimDisplay::height()))return 1;
+    std::fprintf(stderr,"[sim] all species + Dot clear HUD, shell and peers through swimming and return: ok\n");return 0;
+  }
+#endif
 #if defined(BOARD_IPS10)
   if(flag(argc,argv,"--verify-interactions")) return verifyIpsInteractions(arg(argc,argv,"--outdir","sim-out")) ? 0 : 1;
 #endif
