@@ -472,7 +472,7 @@ float residentScale(){return denseHabitat ? Layout::CrowdedResidentScale : 1.0f;
 float sharedHomeX(){return homeX;}
 float sharedHomeY(){return homeY;}
 bool showResidentName(bool active){
-#if IS_ROUND || defined(BOARD_IPS35)
+#if IS_ROUND || defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     (void)active;return !denseHabitat;
 #else
     return !denseHabitat || active;
@@ -488,7 +488,7 @@ void placeResident(float& x, float& y, float halfWidth, float halfHeight, bool a
         const float step=max(1.0f,min(int(canvasW),int(canvasH))*.22f*placementDt);
         if(distance>step){x=previousX+(x-previousX)*step/distance;y=previousY+(y-previousY)*step/distance;}
     }
-#if IS_ROUND || defined(BOARD_IPS35)
+#if IS_ROUND || defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
     const float tag=!denseHabitat ? 20 : 0; // crowded identities stay in the bounded HUD
 #else
     const float tag=(!denseHabitat || active) && canvasW>180 ? 20 : 0;

@@ -454,7 +454,8 @@ known creature.
 | 86 Box, IPS35, round AMOLED, TTGO, C6 | Live 2D habitat with official masks, attached semantic attention badges and hidden-body label suppression | Firmware host frames at each panel size; round HUD bounds its roster and crowded bodies; live pixel-space packing reserves HUD, shell and peer bounds, TTGO keeps usage as the default |
 | IPS10 | Project spaces containing resident seats, inline work/attention and an independent usage pane | Actual workspace renderer and interaction tests; its eleven-seat pool includes Dot alongside ten wire sessions |
 | T-Embed, T-Display-S3-Pro | Compact focus/list views with identity, state and useful work text | Knob/ticker simulator and interaction checks; no miniature aquarium behind text |
-| TRMNL, NM-EPD-420, LilyGo EPD47 | Static canonical creature marks in priority cards, with explicit hidden-state counts | Shared paper renderer at physical dimensions; refresh timing and ghosting need panel observation |
+| TRMNL, LilyGo EPD47 | Static canonical creature marks in priority cards, with explicit hidden-state counts | Shared paper renderer at physical dimensions; refresh timing and ghosting need panel observation |
+| NM-EPD-420 | Minimal text identity/state summary and usage; slow tri-color cycles stay reserved for meaningful changes | Actual NM face at 400×300; intentionally no animated habitat or decorative refresh |
 | XTeink X3/X4 | Community CrossPoint reader adaptation | Shared geometry only in this checkout; local layout previews are not the fork's actual screen |
 | Stream Deck / Mini / XL / + / + XL, D200H / D200X | Full identity/state tiles; Dot occupies the same tile layer | Shared layout and baked-loop tests; D200X encoder support is not implied by keypad support |
 | Pixoo64, iDotMatrix, TC001 | Generated species masks and device-sized status/usage composition | Generated-mask identity tests and Node/Swift parity; TC001's serial TX limitation still applies |

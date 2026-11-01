@@ -557,7 +557,8 @@ tag already placed drops out — the roster still lists it. Paper (Android e-ink
 uses upright text with a light halo, without a rectangular backing: priority names paint last and a colliding idle name drops out.
 ESP32 boards draw tags per creature and apply the density half — idle tags
 hide at the same resident count. Crowded round and IPS35 panels yield every name tag
-to their bounded HUD so their limited water area keeps readable bodies. Floor-standing residents (idle, waiting,
+to their bounded HUD; compact TTGO/C6 scenes also collapse body tags so the
+small water area keeps readable bodies. Floor-standing residents (idle, waiting,
 asleep) are also spread apart before they are drawn, so the band layout's
 allowed half-overlap does not read as a pile (`floorSpacing`,
 `spreadFloorResidents`). The thresholds and

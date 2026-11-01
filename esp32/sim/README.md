@@ -188,7 +188,8 @@ during return; movement retains the previous pose through state changes.
 The allocation-free placement code retains authored homes as preferences and
 finds free space inside the water band. Round and IPS35 scenes use a bounded header and
 smaller readable bodies at high population; their crowded names yield to the
-HUD. The occupancy cache is 240 bytes of reusable static memory.
+HUD. Crowded TTGO/C6 scenes also suppress body tags rather than clipping them
+against the short viewport. The occupancy cache is 240 bytes of reusable static memory.
 
 `dot:ready`, `dot:working`, `dot:attention`, `dot:completed`, `dot:failed`,
 `dot:stopped`, `dot:stale`, `dot:unknown`, `dot:unlinked` and `dot:custom`

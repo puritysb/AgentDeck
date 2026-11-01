@@ -134,6 +134,15 @@ namespace {
 constexpr uint32_t FRAME_MS = 33;                 // ~30fps
 constexpr float    FRAME_DT = FRAME_MS / 1000.0f;
 static bool checkingHabitat=false;
+#if defined(BOARD_TTGO)
+static bool visibleDotTag(lv_obj_t* obj) {
+  if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return false;
+  if(lv_obj_check_type(obj,&lv_label_class) && !std::strcmp(lv_label_get_text(obj),"Dot"))return true;
+  for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if(visibleDotTag(lv_obj_get_child(obj,i)))return true;
+  return false;
+}
+#endif
 
 // Board render tree: build the screen once, then advance it per frame.
 #if defined(BOARD_T_EMBED)
@@ -171,6 +180,11 @@ bool renderScene(const char* scene, const char* path, int frames, const char* pa
     SimDisplay::refresh();
 #if defined(BOARD_BOX_86) || defined(BOARD_IPS35) || defined(BOARD_AMOLED) || defined(BOARD_TTGO)
     if(checkingHabitat && i>=120) {
+#if defined(BOARD_TTGO)
+      if(visibleDotTag(lv_screen_active())) {
+        std::fprintf(stderr,"[sim] crowded compact habitat leaked a body tag into its short viewport\n");return false;
+      }
+#endif
       const auto stats=Terrarium::layoutDiagnostics();
       if(stats.residents!=8 || stats.collisions) {
         std::fprintf(stderr,"[sim] habitat frame %d occupants=%u collisions=%u\n",i,stats.residents,stats.collisions);return false;
