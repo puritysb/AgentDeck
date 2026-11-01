@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-01T04:28:53.457Z",
+  "finished_at": "2026-11-01T04:35:53.301Z",
+  "duration_ms": 419844,
+  "commit": "2cb093d42cbdff699079d05e1b1917618e8a17d0",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "apple-dot-macos",
+      "gate": "apple-unit",
+      "name": "macOS DotPreview optimized build + XCTest + artifact boundary",
+      "status": "pass",
+      "duration_ms": 419827
+    }
+  ]
+}

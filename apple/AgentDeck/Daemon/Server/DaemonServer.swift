@@ -2261,7 +2261,8 @@ final class DaemonServer {
                     // pre-sleep cachedSessions snapshot — stale.
                     Task {
                         await self.refreshSessions()
-                        await self.moduleManager.wakeAll()
+                        // Display wake keeps live transports. IOKit system wake
+                        // owns device recovery in handleSystemWake().
                     }
                     self.broadcastStateUpdate()
                 }

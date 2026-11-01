@@ -4965,7 +4965,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.onSystemWake(() => {
     log('[daemon] System wake detected — recovering devices');
     triggerMdnsRecovery();
-    handleESP32Wake();
+    if (esp32SerialRunning()) handleESP32Wake();
     handlePixooWake();
     // Reset backoff from pre-sleep failures and fetch fresh usage after network stabilizes
     resetConsecutiveFailures();
