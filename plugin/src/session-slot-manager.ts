@@ -1277,12 +1277,13 @@ export class SessionSlotManager {
         if (idx === 1) return { type: 'option', option: { label: 'Deny', shortcut: 'n', index: 1 }, optionIndex: 1 };
         return this.awaitingStatusCard(session, idx - 2, false);
       }
-      // AskUserQuestion. A hook-observed session has no response channel of its
+      // Structured question. A hook-observed session needs a native response channel of its
       // own, but the daemon may still be able to deliver the answer: by typing
       // it into the session's terminal (observed-inject.ts, CLI daemon only),
       // or by holding the question's hook open and resolving it with our choice
       // (the ask-gate, which the sandboxed App Store daemon can do too).
-      // `liveAnswerable` covers both. Pressable only then: without it the deck
+      // OpenCode uses its observer’s native SDK channel.
+      // `liveAnswerable` covers these paths. Pressable only then: without it the deck
       // must mirror the terminal rather than pretend taps will work.
       const displayOption = session?.options?.[idx];
       if (displayOption) {
@@ -1290,8 +1291,7 @@ export class SessionSlotManager {
           return {
             type: 'option',
             option: {
-              label: displayOption.label,
-              shortcut: displayOption.shortcut,
+              ...displayOption,
               // The server-assigned index is what the daemon expects back; the
               // slot position only happens to match when nothing was dropped.
               index: displayOption.index ?? idx,
@@ -1302,7 +1302,7 @@ export class SessionSlotManager {
         return {
           type: 'status',
           label: truncateStr(displayOption.label, 16),
-          subtitle: idx === 0 ? 'answer in terminal' : undefined,
+          subtitle: idx === 0 ? (session?.questionDetail || 'answer in terminal') : undefined,
           icon: 'option',
           tone: 'warning',
         };
@@ -1310,7 +1310,7 @@ export class SessionSlotManager {
       // Generic display-only permission Notification.
       if (idx === 0 && !session?.options?.length) {
         return {
-          type: 'status', label: 'PERMIT?',
+          type: 'status', label: session?.state === State.AWAITING_OPTION ? 'QUESTION' : 'PERMIT?',
           subtitle: session?.question ? summarizeQuestionForKey(session.question, 18) : 'answer in terminal',
           ...(approvalReasonHead(session?.questionDetail)
             ? { detail: approvalReasonHead(session?.questionDetail) }
@@ -1443,7 +1443,7 @@ export class SessionSlotManager {
     // cells gated on `liveAnswerable`. Restricted to the awaiting case so an
     // idle/processing OpenClaw row keeps its existing managed layout.
     if (isObserved || (rowDriven && isAwaiting)) {
-      return this.observedContentSlot(session, contentIdx, isAwaiting, isProcessing);
+      return this.observedContentSlot(session, isAwaiting ? detailOptionStart + contentIdx : contentIdx, isAwaiting, isProcessing);
     }
 
     // Plus family only: the suggested-prompt quick-send leads the IDLE content

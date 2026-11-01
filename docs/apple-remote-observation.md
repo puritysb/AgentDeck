@@ -454,3 +454,83 @@ The save path now accepts a successful per-record server acknowledgement and
 the UI labels timeouts as unknown rather than failed. Stable episode IDs are
 retained for retries in this process. Restarts still discard the in-memory queue;
 no durable exactly-once or automatic delivery claim is made.
+
+### Local response interface follow-up
+
+The real wait exposed a separate local-control gap: the OpenCode v5 observer
+forwarded only the question title, so the daemon had neither choices nor a native
+reply channel. The v6 source now forwards bounded structured questions and sends
+validated single-choice answers through OpenCode’s existing SDK transport. This
+is independent of CloudKit; no remote approval path or decision payload is added.
+Stream Deck observed-option paging also now advances the actual option offset.
+
+An isolated OpenCode 1.18.35 instance with a local model fixture exercised a real
+question tool: two original labels/descriptions reached the observer/reducer; a
+stale question echo was refused; selecting the original label reached the real
+native reply endpoint, emitted `question.replied`, and finished the turn with an
+empty upstream pending-question list. A second isolated actual OpenCode run
+also exercised a harmless Bash permission wait through the existing native
+`permission_respond` → one-time (`once`) approval path and completed the turn.
+The fixture used a separate loopback
+receiver and temporary OpenCode configuration/data; it did not answer or restart
+the user’s existing session. This proves native transport and reducer/queue
+integration, not an installed Stream Deck hardware acceptance.
+
+Single-question/single-choice prompts are supported. Multi-question, multi-select
+and custom text stay display-only. Sending disables further choices until
+upstream resolution; an uncertain reply allows an explicitly labelled retry. A
+readable pending-question list retires stale waits; failed reads retain them.
+Shared vectors pin the TypeScript/Swift shape and numeric limits. Compatible
+observer code must be loaded by a subsequent OpenCode start before the installed
+user session can gain this channel; its already-loaded observer is left intact.
+
+### Account-change and receiving cleanup checkpoint
+
+The probe now cancels in-flight record writes on an iCloud account change and
+checks the account generation before submitting each record and after its
+acknowledgement. Callers retain the account lease across a multi-record share,
+so an old queued summary cannot adopt a new account’s authorization. A dedicated XCTest drives the real two-record publication
+sequence with a delayed first acknowledgement: switching accounts cancels that
+operation and prevents the following alert record from being submitted. All nine
+CloudKit/projection regression tests pass in the dedicated native PoC scheme.
+This guards an active process; durable account-scoped outbox/cache remains open.
+
+The iPhone probe also has an explicit disable action: stop this device’s remote
+notification registration, clear its in-memory reader, then attempt to delete
+the deterministic experiment subscription. Failed deletion remains visible and
+retryable. This subscription is shared by the experiment in the current iCloud
+account, so the UI states that deletion scope. This action has not been invoked
+on the user’s phone during unattended development.
+
+### Unattended development review state
+
+Source is isolated on `codex/cloudkit-observation-design`. Existing user OpenCode
+sessions, the installed Stream Deck plugin and the primary checkout are not
+restarted or switched during this follow-up. The new device-choice path is
+verified against an isolated actual OpenCode process, not the already-running
+v5 observer. Review/integration should therefore distinguish the tested source
+from the installed runtime.
+
+Local quick verification passed (7,093 tests, with platform skips); macOS XCTest
+passed 1,396 tests with three skips; standard macOS Release and iOS checks also
+passed. The standard daemon E2E remains skipped by the macOS Keychain policy.
+The isolated native OpenCode test uses a local model fixture and its own
+loopback receiver, so it establishes the native observer/queue/reply path without
+claiming the full production daemon or hardware path.
+
+Remaining acceptance: install the integrated observer/daemon/plugin together,
+start a fresh OpenCode session, and exercise actual Stream Deck and native-device
+choices. Multi-question/multi-select/custom text remain terminal-only. The new
+iPhone disable action and physical account-switch handling need device checks.
+CloudKit unattended scheduling, durable account-scoped outbox and cold-start
+cache, optional quota provenance, disruption measurements and widgets remain
+explicit follow-ups; none is marked complete by this checkpoint.
+
+Quota export has a concrete source-contract prerequisite: the current native
+`CodexRateLimits` wire model carries capture time, plan and limit ID, but no
+account-generation reference or explicit account-live/passive provenance. As the
+[quota rules](../.claude/rules/usage-quota.md) record, a passive rollout can label
+a model pool as the account limit. The remote reader therefore does not promote
+that block into a trustworthy subscription widget. Add producer-owned provenance
+and retirement evidence before exporting it; preserve unavailable rather than
+publishing plausible percentages.

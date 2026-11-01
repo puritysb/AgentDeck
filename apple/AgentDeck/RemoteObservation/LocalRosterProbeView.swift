@@ -18,7 +18,10 @@ final class LocalRosterProbeModel: ObservableObject {
 
     init() {
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.stop() }
+            Task { @MainActor in
+                self?.stop()
+                await self?.store.invalidateAccount()
+            }
         }
     }
 
@@ -71,11 +74,15 @@ final class LocalRosterProbeModel: ObservableObject {
     func deleteSharedSummary() async {
         guard !busy else { return }
         busy = true
+        let token = generation
         defer { busy = false }
         do {
-            try await store.deleteRoster()
+            let account = try await store.checkAccount()
+            guard token == generation else { return }
+            try await store.deleteRoster(account: account)
             status = "Shared summary deleted. Local observation can continue."
         } catch {
+            guard token == generation else { return }
             status = "Deletion not confirmed. Retry when online."
         }
     }
@@ -96,19 +103,27 @@ final class LocalRosterProbeModel: ObservableObject {
         let token = generation
         defer { busy = false }
         do {
-            try await store.saveRoster(summary)
+            let account = try await store.checkAccount()
+            guard token == generation else { return }
+            inspect()
+            guard let fresh = self.summary, Date().timeIntervalSince(fresh.observedAt) < 20 else {
+                status = "A fresh local roster is required"
+                return
+            }
+            try await store.saveRoster(fresh, account: account)
             guard token == generation else { return }
             for (id, time) in pendingEpisodes.sorted(by: { $0.value < $1.value }) {
                 guard token == generation else { return }
                 // Revalidate against a fresh roster before each send.
                 inspect()
                 guard self.summary != nil, pendingEpisodes[id] != nil else { continue }
-                try await store.saveWaitEpisode(id: id, occurredAt: time)
+                try await store.saveWaitEpisode(id: id, occurredAt: time, account: account)
                 guard token == generation else { return }
                 pendingEpisodes.removeValue(forKey: id)
             }
             status = "Encrypted counts and eligible new wait updates saved. Delivery is not confirmed."
         } catch {
+            guard token == generation else { return }
             if (error as? URLError)?.code == .timedOut {
                 status = "CloudKit response timed out during \(await store.phase). Save outcome is unknown; retries keep the same wait IDs."
             } else {

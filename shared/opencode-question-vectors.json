@@ -1,0 +1,215 @@
+[
+  {
+    "name": "single choice preserves upstream labels",
+    "questions": [
+      {
+        "question": "Choose target",
+        "options": [
+          {
+            "label": " local "
+          },
+          {
+            "label": "Remote",
+            "description": "Another machine"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "Choose target",
+      "labels": [
+        " local ",
+        "Remote"
+      ],
+      "replyable": true
+    }
+  },
+  {
+    "name": "Korean question",
+    "questions": [
+      {
+        "question": "어느 환경에 배포할까요?",
+        "options": [
+          {
+            "label": "개발 환경"
+          },
+          {
+            "label": "검토만"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "어느 환경에 배포할까요?",
+      "labels": [
+        "개발 환경",
+        "검토만"
+      ],
+      "replyable": true
+    }
+  },
+  {
+    "name": "header fallback",
+    "questions": [
+      {
+        "header": "Target",
+        "options": [
+          {
+            "label": "A"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "Target",
+      "labels": [
+        "A"
+      ],
+      "replyable": true
+    }
+  },
+  {
+    "name": "multiple selection is display only",
+    "questions": [
+      {
+        "question": "Pick several",
+        "multiple": true,
+        "options": [
+          {
+            "label": "A"
+          },
+          {
+            "label": "B"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "Pick several",
+      "labels": [
+        "A",
+        "B"
+      ],
+      "replyable": false
+    }
+  },
+  {
+    "name": "multiple groups are never flattened",
+    "questions": [
+      {
+        "question": "First",
+        "options": [
+          {
+            "label": "A"
+          }
+        ]
+      },
+      {
+        "question": "Second",
+        "options": [
+          {
+            "label": "B"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "First",
+      "labels": [
+        "A"
+      ],
+      "replyable": false
+    }
+  },
+  {
+    "name": "free text has no invented choice",
+    "questions": [
+      {
+        "question": "Enter a name",
+        "options": []
+      }
+    ],
+    "expected": {
+      "question": "Enter a name",
+      "labels": [],
+      "replyable": false
+    }
+  },
+  {
+    "name": "duplicate labels are display only",
+    "questions": [
+      {
+        "question": "Pick one",
+        "options": [
+          {
+            "label": "A"
+          },
+          {
+            "label": "A"
+          }
+        ]
+      }
+    ],
+    "expected": {
+      "question": "Pick one",
+      "labels": [
+        "A",
+        "A"
+      ],
+      "replyable": false
+    }
+  },
+  {
+    "name": "missing choices invalid",
+    "questions": [
+      {
+        "question": "Incomplete"
+      }
+    ]
+  },
+  {
+    "name": "malformed choice invalidates whole request",
+    "questions": [
+      {
+        "question": "Pick",
+        "options": [
+          {
+            "label": "A"
+          },
+          {}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "non boolean multiple invalid",
+    "questions": [
+      {
+        "question": "Pick",
+        "multiple": 1,
+        "options": [
+          {
+            "label": "A"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "oversized label rejected",
+    "questions": [
+      {
+        "question": "Pick",
+        "options": [
+          {
+            "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "empty request",
+    "questions": []
+  }
+]

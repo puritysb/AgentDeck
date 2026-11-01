@@ -130,6 +130,83 @@ describe('AgentDeckObserver event sequencing', () => {
     expect(posts.find(p => p.event === 'opencode_tool_end')?.body).toMatchObject({ tool_use_id: 'watch-1', is_error: true });
   });
 
+  it('routes a correlated device choice through the existing native SDK transport', async () => {
+    let releasePoll: ((value: unknown) => void) | undefined;
+    const nativePost = vi.fn(async () => ({ data: true }));
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      const u = String(url);
+      if (u.endsWith('/health')) return { ok: true };
+      const hook = u.match(/\/hooks\/([a-z_]+)$/);
+      if (hook && init?.body) { posts.push({ event: hook[1], body: JSON.parse(init.body) }); return { ok: true }; }
+      if (u.includes('/opencode/commands')) return new Promise(resolve => { releasePoll = resolve; });
+      return { ok: false };
+    });
+    const { event } = await observer({ _client: { post: nativePost } });
+    await event({ event: { type: 'question.asked', properties: { sessionID: 's1', id: 'q-native',
+      questions: [{ question: 'Choose a target', options: [{ label: ' local ' }, { label: 'Remote' }] }] } } });
+    await flush();
+    expect(posts.find(p => p.event === 'opencode_question_asked')?.body).toMatchObject({
+      question_answerable: true, questions: [{ options: [{ label: ' local ' }, { label: 'Remote' }] }],
+    });
+    expect(releasePoll).toBeTypeOf('function');
+    releasePoll!({ ok: true, json: async () => ({ commands: [{ type: 'question_reply', questionId: 'q-native', answers: [[' local ']] }] }) });
+    await flush();
+    expect(nativePost).toHaveBeenCalledWith(expect.objectContaining({
+      url: '/question/{requestID}/reply', path: { requestID: 'q-native' },
+      query: { directory: '/tmp/proj' }, body: { answers: [[' local ']] }, throwOnError: true,
+    }));
+  });
+
+  it.each([
+    { error: new Error('transport timeout'), expected: 'opencode_question_asked', failed: true },
+    { error: Object.assign(new Error('gone'), { status: 404 }), expected: 'opencode_question_unavailable', failed: false },
+  ])('keeps transport uncertainty distinct from a gone native question: $expected', async ({ error, expected, failed }) => {
+    let releasePoll: ((value: unknown) => void) | undefined;
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      const u = String(url);
+      if (u.endsWith('/health')) return { ok: true };
+      const hook = u.match(/\/hooks\/([a-z_]+)$/);
+      if (hook && init?.body) { posts.push({ event: hook[1], body: JSON.parse(init.body) }); return { ok: true }; }
+      if (u.includes('/opencode/commands')) return new Promise(resolve => { releasePoll = resolve; });
+      return { ok: false };
+    });
+    const { event } = await observer({ _client: { post: async () => { throw error; } } });
+    await event({ event: { type: 'question.asked', properties: { sessionID: 's1', id: 'q-native',
+      questions: [{ question: 'Target?', options: [{ label: 'Local' }] }] } } });
+    await flush();
+    releasePoll!({ ok: true, json: async () => ({ commands: [{ type: 'question_reply', questionId: 'q-native', answers: [['Local']] }] }) });
+    await flush();
+    const last = posts.filter(p => p.event.startsWith('opencode_question_')).at(-1);
+    expect(last?.event).toBe(expected);
+    expect(last?.body.reply_failed === true).toBe(failed);
+    expect(posts.some(p => p.event === 'opencode_question_rejected')).toBe(false);
+  });
+
+  it('ignores an older pending-question snapshot when a new event arrives during its read', async () => {
+    let releasePoll: ((value: unknown) => void) | undefined;
+    let releaseList: ((value: unknown) => void) | undefined;
+    vi.stubGlobal('fetch', async (url: unknown, init?: { body?: string }) => {
+      const u = String(url);
+      if (u.endsWith('/health')) return { ok: true };
+      const hook = u.match(/\/hooks\/([a-z_]+)$/);
+      if (hook && init?.body) { posts.push({ event: hook[1], body: JSON.parse(init.body) }); return { ok: true }; }
+      if (u.includes('/opencode/commands')) return new Promise(resolve => { releasePoll = resolve; });
+      return { ok: false };
+    });
+    const { event } = await observer({ _client: {
+      post: async () => ({ data: true }), get: () => new Promise(resolve => { releaseList = resolve; }),
+    } });
+    const ask = (id: string) => event({ event: { type: 'question.asked', properties: {
+      sessionID: 's1', id, questions: [{ question: 'Target?', options: [{ label: 'Local' }] }],
+    } } });
+    await ask('first'); await flush();
+    releasePoll!({ ok: true, json: async () => ({ commands: [] }) }); await flush();
+    expect(releaseList).toBeTypeOf('function');
+    await ask('newer'); await flush();
+    releaseList!({ data: [] }); await flush();
+    expect(posts.some(p => p.event === 'opencode_question_unavailable')).toBe(false);
+  });
+
   it('forwards current permission and question request identities', async () => {
     const { event } = await observer();
     for (const wire of [

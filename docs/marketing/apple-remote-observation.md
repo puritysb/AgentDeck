@@ -1,7 +1,7 @@
 # Apple remote observation — planned feature introduction
 
 **2026-11-01 — development-only PoC; one user-assisted iPhone/Watch delivery route verified.**
-This is reusable preview copy, not an announcement of an available feature. A manual real-summary read and offline-age check also passed; unattended publication, quota and Production remain incomplete.
+This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, manual encrypted-summary read and offline-age check also passed; unattended publication, quota and Production remain incomplete.
 The [technical design](../apple-remote-observation.md) owns the scope and gates;
 the [feature matrix](../appstore-feature-matrix.md) owns availability.
 
@@ -50,7 +50,8 @@ AgentDeck은 실행 중인 Mac 앱에서 선택한 상태를 iCloud 개인 데�
 최근 작업 상태와 확인 가능한 사용량을 함께 보여주며, 마지막 관찰 시각을
 표시해 오래된 정보를 현재 상태로 오해하지 않도록 설계합니다.
 
-현재는 개발 전용 PoC 구현 단계이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
+개발 기기에서는 실제 응답 대기 알림, iPhone 요약 조회와 오프라인 과거 상태 표시,
+Watch 알림 전달을 확인했습니다. 현재는 개발 전용 PoC이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
 같은 Apple 계정의 iPhone, 연결된 Watch를 대상으로 합니다. Mac 앱이 꺼져 있으면
 새 상태를 관찰할 수 없고, 알림 표시와 지연은 Apple의 시스템 설정과 네트워크에
 영향을 받습니다. 워치 전용 앱·위젯·원격 승인은 후속 검토 범위입니다.

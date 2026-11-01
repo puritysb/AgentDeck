@@ -56,7 +56,7 @@ function envOptOut(): boolean {
   return process.env.AGENTDECK_NO_OPENCODE_HOOKS === '1';
 }
 
-const PLUGIN_VERSION = 5;
+const PLUGIN_VERSION = 6;
 
 /** Assemble the plugin source. Exported so tests can assert schema
  *  regressions (event names, payload fields, managed-session guard)
@@ -146,8 +146,92 @@ const steerLoops = new Set();
 // permission is surfaced on its parent's row (a real wait the user must see),
 // but OpenCode resolves it against the session that asked.
 const permissionSession = new Map();
+// Retain only live requests; this is also the authority for command correlation.
+const questionRequests = new Map();
+let questionRevision = 0;
+function questionResponderAvailable(client) {
+  return typeof client?._client?.post === "function" || typeof client?.question?.reply === "function";
+}
+function questionPayload(props, sessionID, cwd, client) {
+  return {
+    session_id: sessionID, question_id: props.id,
+    title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
+    questions: (Array.isArray(props.questions) ? props.questions : []).map(q => ({
+      question: q.question, header: q.header, multiple: q.multiple, custom: q.custom,
+      options: Array.isArray(q.options) ? q.options.map(o => ({ label: o.label, description: o.description })) : [],
+    })),
+    question_answerable: questionResponderAvailable(client), cwd,
+  };
+}
+async function replyQuestion(client, sessionID, cmd) {
+  const pending = questionRequests.get(cmd.questionId);
+  if (!pending || pending.session_id !== sessionID || !Array.isArray(cmd.answers)
+    || pending.questions.length !== 1 || pending.questions[0].multiple === true
+    || cmd.answers.length !== 1 || !Array.isArray(cmd.answers[0]) || cmd.answers[0].length !== 1
+    || !pending.questions[0].options.some(o => o.label === cmd.answers[0][0])) return;
+  let timer;
+  try {
+    const signal = AbortSignal.timeout(5000);
+    // The v1 plugin client has no question facade in OpenCode 1.18.35.
+    // Reuse its existing SDK transport, preserving in-process fetch/auth and
+    // directory context; never dial the nominal serverUrl of a standalone TUI.
+    const send = typeof client?._client?.post === "function"
+      ? client._client.post({ url: "/question/{requestID}/reply", path: { requestID: cmd.questionId },
+          query: { directory: pending.cwd }, body: { answers: cmd.answers },
+          headers: { "Content-Type": "application/json" }, signal, throwOnError: true })
+      : client.question.reply({ requestID: cmd.questionId, answers: cmd.answers, directory: pending.cwd }, { signal, throwOnError: true });
+    const result = await Promise.race([send, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("question reply timed out")), 5000);
+    })]);
+    if (result?.error) throw Object.assign(new Error("question reply unconfirmed"), { status: result.response?.status });
+  } catch (error) {
+    const gone = error?.status === 404 || error?.response?.status === 404;
+    if (gone) {
+      questionRevision++;
+      questionRequests.delete(cmd.questionId);
+      post("opencode_question_unavailable", { session_id: pending.session_id, question_id: cmd.questionId, cwd: pending.cwd });
+    } else if (questionRequests.has(cmd.questionId)) {
+      post("opencode_question_asked", { ...pending, reply_failed: true });
+    }
+  } finally { clearTimeout(timer); }
+}
 
-function startSteerLoop(client, sessionID) {
+async function reconcileQuestions(client, sessionID, directory) {
+  if (typeof client?._client?.get !== "function") return;
+  const revision = questionRevision;
+  let timer;
+  try {
+    const read = client._client.get({ url: "/question", query: { directory },
+      signal: AbortSignal.timeout(5000), throwOnError: true });
+    const result = await Promise.race([read, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("question list timed out")), 5000);
+    })]);
+    // Lifecycle events received during the read outrank its older snapshot.
+    if (revision !== questionRevision) return;
+    const rows = Array.isArray(result) ? result : result?.data;
+    if (!Array.isArray(rows) || !rows.every(q => q && typeof q.id === "string" && typeof q.sessionID === "string")) return;
+    const ids = new Set(rows.map(q => q.id));
+    for (const [id, pending] of questionRequests) {
+      if (pending.session_id === sessionID && !ids.has(id)) {
+        questionRequests.delete(id);
+        post("opencode_question_unavailable", { session_id: sessionID, question_id: id, cwd: pending.cwd });
+      }
+    }
+    // A readable list can restore a missed initial hook. Keep child routing
+    // with the parent's cached identity; a child is not a new top-level row.
+    for (const row of rows) {
+      const cached = questionRequests.get(row.id);
+      if (row.sessionID !== sessionID && cached?.session_id !== sessionID) continue;
+      const payload = questionPayload(row, sessionID, cached?.cwd || directory, client);
+      questionRequests.set(row.id, payload);
+      if (questionRequests.size > 256) questionRequests.delete(questionRequests.keys().next().value);
+      post("opencode_question_asked", payload);
+    }
+  } catch { /* unreadable is not an empty list; retain the known wait */ }
+  finally { clearTimeout(timer); }
+}
+
+function startSteerLoop(client, sessionID, directory) {
   if (!client || steerLoops.has(sessionID)) return;
   steerLoops.add(sessionID);
   (async () => {
@@ -176,6 +260,8 @@ function startSteerLoop(client, sessionID) {
               if (client.session.promptAsync) await client.session.promptAsync({ path: { id: sessionID }, body });
               else if (client.session.prompt) client.session.prompt({ path: { id: sessionID }, body }).catch(() => {});
               else if (client.session.chat) client.session.chat({ path: { id: sessionID }, body }).catch(() => {});
+            } else if (cmd.type === "question_reply" && cmd.questionId) {
+              await replyQuestion(client, sessionID, cmd);
             } else if (cmd.type === "permission_respond" && cmd.permissionId) {
               // Resolve a pending OpenCode permission from the device.
               // "once" (not "always") keeps device-approval one-shot.
@@ -188,6 +274,7 @@ function startSteerLoop(client, sessionID) {
             }
           } catch { /* one bad command must not kill the loop */ }
         }
+        await reconcileQuestions(client, sessionID, directory);
       } catch {
         failures += 1;
         // Backoff on repeated failures so a dead daemon costs one probe/30s.
@@ -362,16 +449,19 @@ export const AgentDeckObserver = async ({ directory, client }) => {
       permissionSession.delete(id);
       post("opencode_permission_replied", { session_id: parent, permission_id: id, cwd });
     } else if (type === "question.asked") {
-      // Display-only on every surface, so the parent's row can show it.
+      // Preserve the child request identity while displaying it on the parent.
       if (props.id) {
-        post("opencode_question_asked", {
-          session_id: parent, question_id: props.id,
-          title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
-          cwd,
-        });
+        announce(parent);
+        const payload = questionPayload(props, parent, cwd, client);
+        questionRevision++;
+        questionRequests.set(props.id, payload);
+        if (questionRequests.size > 256) questionRequests.delete(questionRequests.keys().next().value);
+        post("opencode_question_asked", payload);
       }
     } else if (type === "question.replied" || type === "question.rejected") {
       if (props.requestID) {
+        questionRevision++;
+        questionRequests.delete(props.requestID);
         post(type === "question.replied" ? "opencode_question_replied" : "opencode_question_rejected", {
           session_id: parent, question_id: props.requestID, cwd,
         });
@@ -395,7 +485,7 @@ export const AgentDeckObserver = async ({ directory, client }) => {
     // Steering: start draining device commands for this session (abort /
     // prompt injection through the in-process client). Loop lives for the
     // opencode process lifetime — sessions in one TUI are few and cheap.
-    startSteerLoop(client, sessionID);
+    startSteerLoop(client, sessionID, cwd);
   }
 
   function sendPrompt(messageID, sessionID, prompt) {
@@ -507,14 +597,16 @@ export const AgentDeckObserver = async ({ directory, client }) => {
         } else if (type === "question.asked") {
           if (props.sessionID && props.id) {
             announce(props.sessionID);
-            post("opencode_question_asked", {
-              session_id: props.sessionID, question_id: props.id,
-              title: (Array.isArray(props.questions) ? props.questions : []).map(q => q.question || q.header || "").filter(Boolean).join(" / "),
-              cwd,
-            });
+            const payload = questionPayload(props, props.sessionID, cwd, client);
+            questionRevision++;
+            questionRequests.set(props.id, payload);
+            if (questionRequests.size > 256) questionRequests.delete(questionRequests.keys().next().value);
+            post("opencode_question_asked", payload);
           }
         } else if (type === "question.replied" || type === "question.rejected") {
           if (props.sessionID && props.requestID) {
+            questionRevision++;
+            questionRequests.delete(props.requestID);
             post(type === "question.replied" ? "opencode_question_replied" : "opencode_question_rejected", {
               session_id: props.sessionID, question_id: props.requestID, cwd,
             });

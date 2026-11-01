@@ -50,6 +50,7 @@ struct OpenCodeSessionUpdate: Equatable, Sendable {
     var modelName: String?
     var question: String?
     var waitID: String?
+    var questionPrompt: OpenCodeDeviceQuestion?
 }
 
 enum OpenCodeEventClassifier {
@@ -146,7 +147,8 @@ enum OpenCodeEventClassifier {
             let questions = props["questions"] as? [[String: Any]] ?? []
             let text = questions.compactMap { ($0["question"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? ($0["header"] as? String) }.joined(separator: " / ")
             return OpenCodeSessionUpdate(sessionID: id, kind: .awaitingQuestion,
-                question: text.isEmpty ? "Answer in OpenCode" : text, waitID: request)
+                question: text.isEmpty ? "Answer in OpenCode" : text, waitID: request,
+                questionPrompt: OpenCodeDeviceQuestion.parse(props["questions"]))
 
         default:
             return nil
@@ -178,12 +180,16 @@ struct OpenCodeWaitState {
         var kind: String
         var id: String
         var title: String
+        var prompt: OpenCodeDeviceQuestion? = nil
+        var answerable = false
+        var sending = false
+        var replyError = false
     }
     private(set) var pending: [Pending] = []
     var first: Pending? { pending.first }
 
     @discardableResult
-    mutating func consume(event: String, id: String?, title: String?) -> Bool {
+    mutating func consume(event: String, id: String?, title: String?, prompt: OpenCodeDeviceQuestion? = nil, answerable: Bool = false, replyFailed: Bool = false) -> Bool {
         if event == "opencode_stop" || event == "opencode_user_prompt_submit" || event == "opencode_session_end" {
             pending.removeAll()
             return true
@@ -192,18 +198,30 @@ struct OpenCodeWaitState {
         let kind = event.contains("permission") ? "permission" : "question"
         if event.hasSuffix("_asked") {
             let flat = (title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
-            let value = Pending(kind: kind, id: id, title: String((flat.isEmpty ? (kind == "permission" ? "Permission requested" : "Answer in OpenCode") : flat).prefix(120)))
-            if let index = pending.firstIndex(where: { $0.kind == kind && $0.id == id }) { pending[index] = value }
+            var value = Pending(kind: kind, id: id, title: String((flat.isEmpty ? (kind == "permission" ? "Permission requested" : "Answer in OpenCode") : flat).prefix(120)))
+            value.prompt = prompt
+            value.answerable = answerable
+            if let index = pending.firstIndex(where: { $0.kind == kind && $0.id == id }) {
+                value.sending = replyFailed ? false : pending[index].sending
+                value.replyError = replyFailed || pending[index].replyError
+                pending[index] = value
+            }
             else if pending.count < ObservedAgentRules.openCodePendingRequestLimit { pending.append(value) }
             return false
         }
-        if event.hasSuffix("_replied") || event.hasSuffix("_rejected"),
+        if event.hasSuffix("_replied") || event.hasSuffix("_rejected") || event.hasSuffix("_unavailable"),
            let index = pending.firstIndex(where: { $0.kind == kind && $0.id == id }) {
             pending.remove(at: index)
             return true
         }
         return false
     }
+    mutating func markSending(id: String) {
+        guard let index = pending.firstIndex(where: { $0.kind == "question" && $0.id == id }) else { return }
+        pending[index].sending = true
+        pending[index].replyError = false
+    }
+
 }
 
 // MARK: - Client

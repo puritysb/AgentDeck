@@ -1,3 +1,4 @@
+import { OPENCODE_QUESTION_RULES } from '@agentdeck/shared';
 /**
  * Command queue for observed (standalone TUI) OpenCode sessions.
  *
@@ -15,8 +16,10 @@
  */
 
 export interface OpenCodeCommand {
-  type: 'interrupt' | 'send_prompt' | 'permission_respond';
+  type: 'interrupt' | 'send_prompt' | 'permission_respond' | 'question_reply';
   text?: string;
+  questionId?: string;
+  answers?: string[][];
   /** permission_respond: the OpenCode permission id (from permission.asked). */
   permissionId?: string;
   /** permission_respond: device decision; the plugin maps allow→"once", deny→"reject". */
@@ -32,16 +35,20 @@ interface QueueEntry {
   commands: OpenCodeCommand[];
   waiters: Waiter[];
   /** Last poll seen — a live poller marks the session steerable. */
-  lastPollAt: number;
+  lastPollAt: number | undefined;
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
 
 const QUEUE_CAP = 8;
 const queues = new Map<string, QueueEntry>();
 
+let onSteerabilityChanged: (() => void) | undefined;
+export function observeOpenCodeSteerability(listener: () => void): void { onSteerabilityChanged = listener; }
+
 function entry(sid: string): QueueEntry {
   let e = queues.get(sid);
   if (!e) {
-    e = { commands: [], waiters: [], lastPollAt: 0 };
+    e = { commands: [], waiters: [], lastPollAt: undefined };
     queues.set(sid, e);
   }
   return e;
@@ -85,7 +92,12 @@ export function pollOpenCodeCommands(
   sid: string, waitMs: number, signal?: AbortSignal,
 ): Promise<OpenCodeCommand[]> {
   const e = entry(sid);
+  const wasSteerable = isOpenCodeSteerable(sid);
   e.lastPollAt = Date.now();
+  if (e.expiryTimer) clearTimeout(e.expiryTimer);
+  e.expiryTimer = setTimeout(() => onSteerabilityChanged?.(), OPENCODE_QUESTION_RULES.pollFreshMs);
+  e.expiryTimer.unref?.();
+  if (!wasSteerable) onSteerabilityChanged?.();
   if (signal?.aborted) return Promise.resolve([]);
   if (e.commands.length > 0) {
     return Promise.resolve(e.commands.splice(0, e.commands.length));
@@ -96,6 +108,7 @@ export function pollOpenCodeCommands(
       const idx = e.waiters.indexOf(waiter);
       if (idx >= 0) e.waiters.splice(idx, 1);
       resolve([]);
+      onSteerabilityChanged?.();
     };
     const waiter: Waiter = {
       resolve: (cmds) => {
@@ -117,18 +130,21 @@ export function isOpenCodeSteerable(sid: string, now: number = Date.now()): bool
   const e = queues.get(sid);
   if (!e) return false;
   // A live long-poll re-arms at least every wait window + margin.
-  return e.waiters.length > 0 || now - e.lastPollAt < 40_000;
+  return e.waiters.length > 0 || (e.lastPollAt !== undefined && now >= e.lastPollAt
+    && now - e.lastPollAt < OPENCODE_QUESTION_RULES.pollFreshMs);
 }
 
 /** Release all waiters (daemon shutdown). */
 export function drainOpenCodeSteering(): void {
   for (const e of queues.values()) {
+    if (e.expiryTimer) clearTimeout(e.expiryTimer);
     for (const w of e.waiters.splice(0)) {
       clearTimeout(w.timer);
       w.resolve([]);
     }
   }
   queues.clear();
+  onSteerabilityChanged = undefined;
 }
 
 /** Test helper. */

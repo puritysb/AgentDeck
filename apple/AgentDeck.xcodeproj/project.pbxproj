@@ -95,6 +95,7 @@
 		1D193B9524AA5E561A899882 /* Adapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 979988BB4CB2A4B5948FD360 /* Adapter.swift */; };
 		1D406D25862B20792A8293F3 /* DevicePreviewSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E033ABF49F0DDF31D309181 /* DevicePreviewSnapshotTests.swift */; };
 		1D7D47E636111F846F706B32 /* BridgeLogStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F9ACDDF739DF572C9280B38 /* BridgeLogStream.swift */; };
+		1DA436F83EB89E1937878F3A /* OpenCodeDeviceQuestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59A58B282C41FFBC3302091 /* OpenCodeDeviceQuestion.swift */; };
 		1DA82A36B17B48756691D2CD /* DeviceApprovalGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95997D1E19933CBB5A3F400D /* DeviceApprovalGateTests.swift */; };
 		1DD64D5ABE5A6DB9B73B2589 /* Trmnl75Preview.swift in Sources */ = {isa = PBXBuildFile; fileRef = F00E8A6E53EE95228BACB04B /* Trmnl75Preview.swift */; };
 		1E522268DE9B6DC2D8AFCDEC /* DevicePairingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918C108FEF53B66BF6D944B7 /* DevicePairingWindow.swift */; };
@@ -413,6 +414,7 @@
 		7B8203E7A47E50E838D94808 /* DotOAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EDC925E6430AD4045865EDA /* DotOAuth.swift */; };
 		7BDDF6B91F9378908A89E1F5 /* GatewayProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BCC68BE56702DFD637FFE02 /* GatewayProbe.swift */; };
 		7C1CBB4102C77A567092B565 /* AgentDeckPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D55999BEAD84484D03EEB51 /* AgentDeckPathsTests.swift */; };
+		7C6D0D548FABB73645D4F476 /* OpenCodeDeviceQuestionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F2AB0B1EB25751B22A6347 /* OpenCodeDeviceQuestionTests.swift */; };
 		7C82850EC02DC12B6B2C7EE0 /* MicroGlyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAF67F9EA0CB4FD3EE8C963A /* MicroGlyphs.swift */; };
 		7D1FA2E1BD47D35C7E3FEB23 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = E532E5457B6DFDE324D8F11C /* Protocol.swift */; };
 		7D6011100BB1B77CAD8A709E /* DataParticleSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57722317EDF1D567981112DE /* DataParticleSystem.swift */; };
@@ -439,6 +441,7 @@
 		81E6580438641DA75FA6F745 /* UsageSeverityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43AB0C6E20525BB9BF1592B /* UsageSeverityTests.swift */; };
 		81FB7F07DA3C42E702A462CF /* CommunicationGraphTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D772F82AFF7FC3211F94F98 /* CommunicationGraphTests.swift */; };
 		8295818460D24DA1FF5992DF /* ZaiUsageClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E5D1306D12A8F901214C795 /* ZaiUsageClient.swift */; };
+		829A0E2C93999816E6DC020B /* OpenCodeDeviceQuestionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F2AB0B1EB25751B22A6347 /* OpenCodeDeviceQuestionTests.swift */; };
 		82E9E69FDCEB956332E0D117 /* TaskTitleRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF625C2B3057379F5CFA1B0 /* TaskTitleRules.generated.swift */; };
 		830C151322C62CF4B3ADA406 /* ApmeCollector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EF540FF89BA54744CF94CC4 /* ApmeCollector.swift */; };
 		838450A0CF588614736D3F60 /* ConnectionOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A5A10C1FD79BB64BD2BB8D5 /* ConnectionOverlay.swift */; };
@@ -850,6 +853,7 @@
 		FDDA6D8721BF7FDEFCCEB729 /* HermesAquariumTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F065367613106CF36A21BF2 /* HermesAquariumTests.swift */; };
 		FDE24F470C55939E9503C810 /* IDotMatrixProtocolTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640AC95BED93D142107D828E /* IDotMatrixProtocolTests.swift */; };
 		FEA477EB09C6A7DE0EA46F22 /* AttentionTheaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1853443C348441BF748662A /* AttentionTheaterView.swift */; };
+		FED3C03A223D4D1264A3B981 /* OpenCodeDeviceQuestion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59A58B282C41FFBC3302091 /* OpenCodeDeviceQuestion.swift */; };
 		FEE72EA19EDA357DBF73D02A /* AttentionSessionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AFD55329DBF36B7172CE45 /* AttentionSessionAccess.swift */; };
 		FEEAB16BAED7AAD30A5C4EB6 /* AttentionSessionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AFD55329DBF36B7172CE45 /* AttentionSessionAccess.swift */; };
 		FF1039649940B130E347B27A /* CloudKitProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3612EE46DAFB95ABED0261 /* CloudKitProbe.swift */; };
@@ -972,6 +976,7 @@
 		362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeboxSheet.swift; sourceTree = "<group>"; };
 		375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalAttachRetryTests.swift; sourceTree = "<group>"; };
 		38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateTimelineGenerator.swift; sourceTree = "<group>"; };
+		38F2AB0B1EB25751B22A6347 /* OpenCodeDeviceQuestionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeDeviceQuestionTests.swift; sourceTree = "<group>"; };
 		3981B8BD45562A5FEF556DFA /* CloudKitProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitProbeTests.swift; sourceTree = "<group>"; };
 		3A59CDD89266C18C80F6F324 /* 3d-residents.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "3d-residents.usdz"; sourceTree = "<group>"; };
 		3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigInstaller.swift; sourceTree = "<group>"; };
@@ -1290,6 +1295,7 @@
 		F319423D12FE16538847B2A6 /* AttentionSessionAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionSessionAccessTests.swift; sourceTree = "<group>"; };
 		F358D3115EEB262D59BD6439 /* ToastOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastOverlay.swift; sourceTree = "<group>"; };
 		F4FF80663C090E22A9DA63E8 /* LICENSE-CC-BY-SA-4.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE-CC-BY-SA-4.0.txt"; sourceTree = "<group>"; };
+		F59A58B282C41FFBC3302091 /* OpenCodeDeviceQuestion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenCodeDeviceQuestion.swift; sourceTree = "<group>"; };
 		F6D5D47532E0BFEC96101B27 /* ApmeJudgeCrossDaemonTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeCrossDaemonTests.swift; sourceTree = "<group>"; };
 		F7B4E454713DFE2DECC4D154 /* MonitorScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorScreen.swift; sourceTree = "<group>"; };
 		F8A8384A78E6B40497C01168 /* ReviewRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewRunner.swift; sourceTree = "<group>"; };
@@ -1469,6 +1475,7 @@
 				9AF98CA1BB582FB56637BB59 /* OpenClawSessionSettingsTests.swift */,
 				DAF69E65D3118C105A193227 /* OpenClawTokenExtractTests.swift */,
 				52BC4C62CBEEE99555CED707 /* OpenClawToolNoiseTests.swift */,
+				38F2AB0B1EB25751B22A6347 /* OpenCodeDeviceQuestionTests.swift */,
 				21073CA63BB9403D46212547 /* OpenCodeObserverTests.swift */,
 				FD0E0570EC405C2542D130A1 /* PairingCredentialTests.swift */,
 				C7B2EDFD5ED44F2D0F6D7E71 /* PairingWindowStoreTests.swift */,
@@ -1841,6 +1848,7 @@
 				9F2EC34C4CCC580125F6904D /* LocalPortProbe.swift */,
 				F191BB05A8E86E61E7A12CCE /* ObservedAgentSettings.swift */,
 				BB4AC33AE24184BF90D4CAFE /* ObservedSteering.swift */,
+				F59A58B282C41FFBC3302091 /* OpenCodeDeviceQuestion.swift */,
 				F9C1092C93CA846103C9692C /* OpenCodeObserver.swift */,
 				07E03521107C667F3ED4EA7A /* OpenCodeSSEClient.swift */,
 				F9DE0EB2323067971D7AD59C /* PromptDelivery.swift */,
@@ -2355,6 +2363,7 @@
 				D4596068D1B0207EFD0BB829 /* OpenClawSessionSettingsTests.swift in Sources */,
 				7B0F7E18D01881EF81E3F08E /* OpenClawTokenExtractTests.swift in Sources */,
 				2CA69943196E37F61A932DEF /* OpenClawToolNoiseTests.swift in Sources */,
+				7C6D0D548FABB73645D4F476 /* OpenCodeDeviceQuestionTests.swift in Sources */,
 				7F7AC94714D1AA6767605207 /* OpenCodeObserverTests.swift in Sources */,
 				2EEDFE019406138F64268122 /* PairingCredentialTests.swift in Sources */,
 				B1DA074241F457CA53E71966 /* PairingWindowStoreTests.swift in Sources */,
@@ -2478,6 +2487,7 @@
 				9ABF9EC3B767F9589CAC5902 /* OpenClawSessionSettingsTests.swift in Sources */,
 				9A5DC975FE1C36D4AB0B13A4 /* OpenClawTokenExtractTests.swift in Sources */,
 				45C2A8320BF4C10E8106CF6B /* OpenClawToolNoiseTests.swift in Sources */,
+				829A0E2C93999816E6DC020B /* OpenCodeDeviceQuestionTests.swift in Sources */,
 				8693E499DE95572584CC9DA9 /* OpenCodeObserverTests.swift in Sources */,
 				7FD70D74C3300CE4E4818E1A /* PairingCredentialTests.swift in Sources */,
 				8D501F2309922E5A6A8D3E5C /* PairingWindowStoreTests.swift in Sources */,
@@ -2718,6 +2728,7 @@
 				2FDF3D0AE2DC4A95A35811DC /* OpenClawSessionSettings.swift in Sources */,
 				7AA10F90E922138D683C318D /* OpenClawTokenImporter.swift in Sources */,
 				46086D1358BD25389E304052 /* OpenCodeCreature.swift in Sources */,
+				FED3C03A223D4D1264A3B981 /* OpenCodeDeviceQuestion.swift in Sources */,
 				F9EEBCC88FC55225E6D60AEE /* OpenCodeObserver.swift in Sources */,
 				2C10018050B390B0B4EA76DD /* OpenCodeSSEClient.swift in Sources */,
 				9EC638F130D8419C32A2C027 /* PairingCodeController.swift in Sources */,
@@ -3015,6 +3026,7 @@
 				D9ED8E3AA3918D61737BE6B1 /* OpenClawSessionSettings.swift in Sources */,
 				D53FC33DD05A32D719809874 /* OpenClawTokenImporter.swift in Sources */,
 				996C92E310F9A7E69C40C803 /* OpenCodeCreature.swift in Sources */,
+				1DA436F83EB89E1937878F3A /* OpenCodeDeviceQuestion.swift in Sources */,
 				FA2AA2B226EBD69F45238A1F /* OpenCodeObserver.swift in Sources */,
 				76A9E5A970D9D7CE317E46FD /* OpenCodeSSEClient.swift in Sources */,
 				0DB57F4D3BAAD25B7622574A /* PairingCodeController.swift in Sources */,

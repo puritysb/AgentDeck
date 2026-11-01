@@ -983,6 +983,7 @@
         "shared/src/__tests__/hook-harness*.test.ts",
         "shared/src/__tests__/codex-approval-hold*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
+        "shared/src/__tests__/opencode-question*.test.ts",
         "shared/src/__tests__/subagent-activity.test.ts",
         "shared/src/__tests__/ci-wait*.test.ts",
         "bridge/src/__tests__/ci-wait*.test.ts"
