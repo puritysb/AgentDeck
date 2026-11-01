@@ -10,6 +10,7 @@ void init();
 void render(uint16_t* buf, int w, int h, float time, float dt,
             CreatureState state, uint8_t idx, uint8_t total);
 
+float getShellOpening(uint8_t idx);
 float getX(uint8_t idx);
 float getY(uint8_t idx);
 

@@ -204,7 +204,7 @@ describe('tide frame digests (shared with the Swift daemon)', () => {
     expect(digests(null, null, [
       sess('a', 'hermes', 'processing'), sess('b', 'antigravity', 'awaiting_permission'), sess('c', 'kiro-cli', 'idle'),
     ])).toEqual([
-      '9085f818d08955c5', '147d2c6650d316b0', '7fda6973b235b9ed', '7a2b1e39d3467039', '9db620dc5b0bd4ca', '81e4477f85c99b54',
+      '50d7749b5966355b', 'ccbc7c554d941095', '9238d2694abf881a', '10a52ad086ca0c35', 'ea66669f4bac2d8c', '95353b4556d79c2f',
     ]);
     expect(digests(state('idle', { gatewayHasError: true }), usagePct(5, 5), [
       sess('o', 'openclaw', 'idle'), sess('a', 'claude-code', 'idle'),

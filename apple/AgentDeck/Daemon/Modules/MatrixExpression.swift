@@ -47,6 +47,13 @@ struct MatrixExpression {
     #if AGENTDECK_DOT_PREVIEW
     private var dot: DotSurfaceSnapshot?
     #endif
+    private var hasPresentationRoster:Bool {
+        #if AGENTDECK_DOT_PREVIEW
+        sessions != nil || dot?.configured == true
+        #else
+        sessions != nil
+        #endif
+    }
     private var sessions: [Resident]?
     private var timeline: [Result] = []
     private var seen: [String] = []
@@ -173,13 +180,20 @@ struct MatrixExpression {
         return answered ? nil : ("asked", ask, ask.ts)
     }
     func scene(now: Double) -> Scene {
-        let live = (sessions ?? []).filter(\.alive).sorted { $0.id < $1.id }
+        var live=(sessions ?? []).filter(\.alive)
+        #if AGENTDECK_DOT_PREVIEW
+        if let dot,dot.configured {
+            let code=dot.phase(at:Int(now))
+            live.append(Resident(id:"habitat:dot",alive:true,state:code == 2 ? "processing" : code == 3 ? "awaiting_dot" : code == 5 ? "error" : "idle",agentType:"@dot-pearl"))
+        }
+        #endif
+        live.sort { $0.id < $1.id }
         let waiting = live.filter { Self.state($0.state) == "waiting" }.count
         let errors = live.filter { Self.state($0.state) == "error" }.count
         let working = live.filter { Self.state($0.state) == "working" }.count
         let done = results(now)
         let counts = ["waiting": waiting, "error": errors, "done": done.count, "working": working, "idle": live.count]
-        var kind = sessions == nil ? "unknown" : MatrixFrames.priority.first { (counts[$0] ?? 0) > 0 } ?? "idle"
+        var kind = !hasPresentationRoster ? "unknown" : MatrixFrames.priority.first { (counts[$0] ?? 0) > 0 } ?? "idle"
         var count = counts[kind] ?? 0
         var glyph = "summary"
         var frameTime = now
@@ -220,7 +234,7 @@ struct MatrixExpression {
             return Companion(kind: kind, glyph: MatrixFrames.agents[hero?.agentType ?? ""] ?? "neutral",
                              count: count ?? owners.count, lowerBound: lowerBound, hasError: !errors.isEmpty)
         }
-        if sessions == nil { return make("unknown", [], count: 0) }
+        if !hasPresentationRoster { return make("unknown", [], count: 0) }
         let waiting = live.filter { Self.state($0.state) == "waiting" }
         if !waiting.isEmpty {
             let hero = waiting[tick % waiting.count]
@@ -254,7 +268,7 @@ struct MatrixExpression {
     /// conversation / entrance / fresh result → working → children under an
     /// idle parent → CI wait → a result within its window → empty → idle.
     private func face(_ live: [Resident], kind: String, results: [Result], now: Double) -> (String, Int) {
-        if sessions == nil { return ("unknown", 0) }
+        if !hasPresentationRoster { return ("unknown", 0) }
         let waiting = live.filter { Self.state($0.state) == "waiting" }
         if !waiting.isEmpty {
             let face = MatrixFrames.awaitingFaces.first { pair in waiting.contains { $0.state == pair[0] } }?[1] ?? "waiting"
@@ -277,12 +291,17 @@ struct MatrixExpression {
         return live.isEmpty ? ("empty", 0) : ("idle", live.count)
     }
     func render(size: Int, now: Double) -> Data {
+        let value=scene(now:now)
+        let frame=Self.render(size:size,scene:value)
         #if AGENTDECK_DOT_PREVIEW
-        DotPixelOverlay.paint(Self.render(size: size, scene: scene(now: now)), width: size, dot: dot, now: Int(now))
-        #else
-        Self.render(size: size, scene: scene(now: now))
+        if size==32,value.companion?.glyph=="dot",dot?.appearance?.glyph != nil {
+            return DotPixelOverlay.paint(frame,width:size,dot:dot,now:Int(now),anchorX:MatrixFrames.companionX+MatrixFrames.companionSide/2,
+                anchorY:MatrixFrames.companionY+MatrixFrames.companionSide/2,bodySize:MatrixFrames.companionSide,beacon:true,shell:false)
+        }
         #endif
+        return frame
     }
+
     static func render(size: Int, scene: Scene) -> Data {
         precondition(size == 11 || size == 32)
         if size == 32, let c = scene.companion {

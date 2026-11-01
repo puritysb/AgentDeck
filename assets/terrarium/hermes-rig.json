@@ -1,5 +1,11 @@
 {
   "schema": 2,
+  "proportions": {
+    "head": 0.78,
+    "bodyWidth": 1.18,
+    "bodyLength": 1.15,
+    "bodyDepth": 1.08
+  },
   "boneNames": [
     "spine",
     "tail_base",

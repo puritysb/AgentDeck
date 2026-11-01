@@ -1,3 +1,4 @@
+import { dotDeckPresentation } from './dot-deck.js';
 import { backgroundCount } from './background-work-presentation.js';
 import type { DotDeckSnapshot } from './protocol.js';
 /** BLE expression policy SSOT. Swift constants/frames are generated; sequence tests
@@ -30,6 +31,7 @@ export const MATRIX_POLICY = {
 export const MATRIX_AGENTS: Record<string, string> = {
   'claude-code': 'claudeCode', 'codex-cli': 'codex', 'codex-app': 'codex',
   opencode: 'openCode', openclaw: 'openClaw', antigravity: 'antigravity',
+  '@dot-pearl': 'dot', // Local presentation peer, never a wire SessionInfo.
   'kiro-cli': 'kiro', 'kiro-ide': 'kiro', hermes: 'hermes',
 };
 export const MATRIX_KINDS = ['waiting', 'error', 'done', 'working', 'idle', 'unknown', 'arrival', 'asked', 'reply'] as const;
@@ -201,9 +203,14 @@ export class MatrixExpression {
     }
   }
   scene(now: number): MatrixScene {
-    const signal = deskSignal(this.sessions, this.timeline, now);
-    let kind = signal.kind;
-    const live = (this.sessions ?? []).filter(s => s.alive).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const live = (this.sessions ?? []).filter(s => s.alive);
+    if(this.dot?.configured) {
+      const phase=dotDeckPresentation(this.dot,now).label;
+      live.push({id:'habitat:dot',alive:true,agentType:'@dot-pearl',state:phase==='WORKING' ? 'processing' : phase==='NEEDS YOU' ? 'awaiting_dot' : phase==='FAILED' ? 'error' : 'idle'});
+    }
+    live.sort((a,b)=>a.id<b.id ? -1 : a.id>b.id ? 1 : 0);
+    const signal=deskSignal(this.sessions===null && !this.dot?.configured ? null : live,this.timeline,now);
+    let kind=signal.kind;
     const arrival = this.arrival && now >= this.arrival.ts && now - this.arrival.ts < MATRIX_RULES.arrivalMs
       ? live.find(s => s.id === this.arrival!.id) : undefined;
     let glyph = 'summary';
@@ -259,7 +266,7 @@ export class MatrixExpression {
       lowerBound = false, index = tick): MatrixCompanion => ({ kind, count, lowerBound,
         glyph: MATRIX_AGENTS[owners[index % Math.max(1, owners.length)]?.agentType ?? ''] ?? 'neutral',
         hasError: errors.length > 0 });
-    if (this.sessions === null) return make('unknown', [], 0);
+    if (this.sessions === null && !this.dot?.configured) return make('unknown', [], 0);
     const waiting = live.filter(s => matrixState(s.state) === 'waiting');
     if (waiting.length) {
       const hero = waiting[tick % waiting.length];
@@ -296,7 +303,7 @@ export class MatrixExpression {
    * entrance / fresh result → working → children under an idle parent → CI
    * wait → a result within its window → empty roster → idle. */
   private face(live: MatrixSession[], kind: MatrixKind, now: number): { face: MatrixFace; pips: number } {
-    if (this.sessions === null) return { face: 'unknown', pips: 0 };
+    if (this.sessions === null && !this.dot?.configured) return { face: 'unknown', pips: 0 };
     const waiting = live.filter(s => matrixState(s.state) === 'waiting');
     if (waiting.length) {
       const face = MATRIX_POLICY.awaitingFaces.find(([state]) => waiting.some(s => s.state === state))?.[1] ?? 'waiting';

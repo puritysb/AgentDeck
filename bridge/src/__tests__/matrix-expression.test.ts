@@ -11,6 +11,20 @@ import { broadcastMatrix, getLastFrame, renderPreviewFrame } from '../pixoo/pixo
 const row = (id: string, state = 'processing', agentType = 'claude-code', alive = true): MatrixSession => ({ id, state, agentType, alive });
 afterEach(() => vi.useRealTimers());
 describe('expressive BLE matrices', () => {
+  it('treats Dot as an idle presentation peer until a real report changes the common face and stage', () => {
+    const e=new MatrixExpression();
+    const dot={configured:true,hosting:true,authorized:true,reportState:null,reportedAt:null,expiresAt:null};
+    e.ingest({type:'sessions_list',sessions:[],dot} as MatrixBroadcast,100);
+    expect(e.scene(100)).toMatchObject({face:'idle',pips:1,companion:{glyph:'dot',kind:'idle',count:1}});
+    e.ingest({type:'sessions_list',sessions:[],dot:{...dot,reportState:'working',reportedAt:100,expiresAt:10000}} as MatrixBroadcast,101);
+    expect(e.scene(101)).toMatchObject({face:'working',pips:1,companion:{glyph:'dot',kind:'working',count:1}});
+    const frame=renderMatrixScene(11,e.scene(101));
+    expect(frame).toEqual(renderMatrixFace('working',e.scene(101).frame));
+    e.ingest({type:'sessions_list',sessions:[],dot:{...dot,reportState:'needs_attention',reportedAt:100,expiresAt:10000}} as MatrixBroadcast,102);
+    expect(e.scene(102)).toMatchObject({face:'waiting',companion:{glyph:'dot',kind:'waiting'}});
+    e.ingest({type:'sessions_list',sessions:[],dot:null} as MatrixBroadcast,103);
+    expect(e.scene(103)).toMatchObject({face:'empty',pips:0});
+  });
   it('keeps a working owner permanently visible with fleet counts', () => {
     const engine = new MatrixExpression();
     engine.updateSessions([row('c'), row('x', 'idle', 'codex-cli')], 100);
@@ -322,13 +336,20 @@ describe('expressive BLE matrices', () => {
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'matrix-parity-'));
     try {
       const exe = path.join(temp, 'parity');
-      execFileSync('xcrun', ['swiftc', 'apple/AgentDeck/Model/BackgroundDevicePolicy.generated.swift', 'apple/AgentDeck/Model/ObservedAgentRules.generated.swift',
+      execFileSync('xcrun', ['swiftc', '-D', 'AGENTDECK_DOT_PREVIEW', 'apple/AgentDeck/Model/BackgroundDevicePolicy.generated.swift', 'apple/AgentDeck/Model/ObservedAgentRules.generated.swift',
         'apple/AgentDeck/Daemon/Modules/MatrixFrames.generated.swift',
         'apple/AgentDeck/Daemon/Dot/DotRules.generated.swift', 'apple/AgentDeck/Model/DotSurface.generated.swift',
-        'apple/AgentDeck/Model/DotPixels.generated.swift', 'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
+        'apple/AgentDeck/Terrarium/TerrariumRules.generated.swift', 'apple/AgentDeck/Model/DotPixels.generated.swift', 'apple/AgentDeck/Daemon/Modules/MatrixExpression.swift', 'scripts/matrix-expression-parity.swift', '-o', exe], { timeout: 120000 });
       const steps: { now: number; event?: Record<string, unknown> }[] = [{ now: 0 }];
       const add = (now: number, event?: Record<string, unknown>) => steps.push({ now, event });
       add(1, { type: 'sessions_list', sessions: [] });
+      const dot={configured:true,hosting:true,authorized:true,reportState:null,reportedAt:null,expiresAt:null};
+      add(2,{type:'sessions_list',sessions:[],dot});
+      add(3,{type:'sessions_list',sessions:[],dot:{...dot,reportState:'working',reportedAt:2,expiresAt:50}});
+      add(4,{type:'sessions_list',sessions:[],dot:{...dot,reportState:'needs_attention',reportedAt:2,expiresAt:50}});
+      add(51);
+      add(52,{type:'sessions_list',sessions:[],dot:null});
+
       add(100, { type: 'sessions_list', sessions: [row('c'), row('x', 'idle', 'codex-cli')] });
       for (let frame = 0; frame < 9; frame++) add(100 + frame * 750);
       add(8000, { type: 'sessions_list', sessions: [{...row('c'),backgroundTaskCount:4},row('x','idle','codex-cli')] });

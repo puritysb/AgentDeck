@@ -7,15 +7,19 @@ export const DOT_APPEARANCE_RULES = Object.freeze({
   pixelSizeDivisor: 6, pixelMinSize: 7, pixelMargin: 3, pixelYDivisor: 4,
   panelGlyphSize: 32, paperGlyphSize: 24, matrixGlyphSize: 7, panelMargin: 8,
 });
-/** Upper-water companion pocket; normalized coordinates are independent of session slots.
- * A slow closed figure-eight suggests a buoyant orb following a current, without
- * tails, fins, locomotion borrowed from a provider, or implied delegation.
- */
+/** Pearl-home layout for ordinary habitat residents. Activity remains evidence-based. */
 export const DOT_HABITAT_RULES = Object.freeze({
-  homeX: 0.58, homeY: 0.25, travelX: 0.028, travelY: 0.012,
+  homeX: 0.43, homeY: 0.72, travelX: 0.045, travelY: 0.020,
   periodSeconds: 12, sizeFraction: 0.055, minSize: 28, maxSize: 44,
-  nativeX: 0.9, nativeY: 4.35, nativeZ: 1.4,
-  nativeTravelX: 0.24, nativeTravelY: 0.08,
+  nativeX: -0.9, nativeY: 1.30, nativeZ: 1.4,
+  pixelPeerTurnMs: 4000, microGlyphSize: 9,
+  nativeTravelX: 0.35, nativeTravelY: 0.12,
+  // Authored pearl geometry, consumed by RealityKit and the Blender glTF export.
+  pearlRadius: 0.28, pearlEyeX: 0.09, pearlEyeY: 0.025, pearlEyeZ: 0.265,
+  pearlEyeRadius: 0.025, pearlEyeAspect: 1.6, pearlEyeDepth: 0.6,
+  pearlShineRadius: 0.036, pearlShineX: -0.10, pearlShineY: 0.13, pearlShineZ: 0.23,
+  pearlShineWidth: 1.4, pearlShineHeight: 0.7, pearlShineDepth: 0.4,
+  pearlDecalSize: 0.38, pearlDecalZ: 0.282,
 });
 export function dotHabitatOffset(seconds: number, working: boolean, motion: boolean): { x: number; y: number } {
   if (!working || !motion || !Number.isFinite(seconds)) return { x: 0, y: 0 };
@@ -51,8 +55,8 @@ export function compactDotAppearance(value: unknown): DotAppearance | null {
   return validDotAppearance(value) ? { version: value.version, id: value.id, rgba: value.rgba } : null;
 }
 export const DOT_PHASES = ['AWAITING ACTIVITY', 'HOST STOPPED', 'WORKING', 'NEEDS YOU', 'COMPLETED', 'FAILED', 'OLD REPORT', 'UNKNOWN', 'NOT LINKED'] as const;
-/** Habitat residents require a real report; setup/status stays in chrome and fixed keys. */
-export const DOT_HABITAT_PHASES: readonly number[] = [2, 3, 4, 5];
+/** A ready endpoint is an idle resident; working still requires an explicit fresh report. */
+export const DOT_HABITAT_PHASES: readonly number[] = [0, 2, 3, 4, 5];
 export const DOT_COMPACT_LABELS = ['Dot', 'Stopped', 'Working', 'Help', 'Done', 'Failed', 'Old', 'Unknown', 'Unlinked'] as const;
 /** Original default geometry, shared by generated firmware and tiny host previews. */
 export const DOT_ORB_GEOMETRY = Object.freeze({ center: 7.5, radius: 7, eyeLeft: 5, eyeRight: 10, eyeTop: 5, eyeBottom: 9 });
@@ -60,12 +64,16 @@ export function defaultDotRGBA(size: number = DOT_APPEARANCE_RULES.glyphSize): U
   const out = new Uint8Array(size * size * 4);
   const g = DOT_ORB_GEOMETRY;
   const rgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-  const body = rgb(Tide.s300), eyes = rgb(Ink.s900);
+  const body = rgb(Tide.s100), shade = rgb(Tide.s300), shine = rgb(Tide.s50), eyes = rgb(Ink.s900);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     if ((x - (size - 1) / 2) ** 2 + (y - (size - 1) / 2) ** 2 > (g.radius * size / DOT_APPEARANCE_RULES.glyphSize) ** 2) continue;
     const eye = (x === Math.round(g.eyeLeft * (size - 1) / 15) || x === Math.round(g.eyeRight * (size - 1) / 15)) && y >= Math.round(g.eyeTop * (size - 1) / 15) && y <= Math.round(g.eyeBottom * (size - 1) / 15);
     const i = (y * size + x) * 4;
-    out.set([...(eye ? eyes : body), 255], i);
+    const edge=Math.hypot(x-(size-1)/2,y-(size-1)/2)/(size/2);
+    const t=Math.min(1,y/Math.max(1,size-1)*0.65+edge*0.35);
+    const pearl=body.map((c,k)=>Math.round(c+(shade[k]-c)*t));
+    const glint=(x-size*0.32)**2+(y-size*0.24)**2 < (size*0.09)**2;
+    out.set([...(eye ? eyes : glint ? shine : pearl),255],i);
   }
   return out;
 }

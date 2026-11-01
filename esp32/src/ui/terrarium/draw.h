@@ -35,6 +35,15 @@ void circle(int cx, int cy, int r, uint32_t color24, uint8_t alpha);
 
 /** Line (Bresenham) with alpha blend. */
 void line(int x0, int y0, int x1, int y1, uint32_t color24, uint8_t alpha);
+// Bounded scallop geometry shared by the two shell inhabitants; no allocation.
+inline void scallop(int x, int y, int r, float open, uint32_t color) {
+    const int lift = (int)(r * (0.25f + open * 1.2f)) + 2;
+    line(x-r,y,x-r/2,y-lift,color,190);line(x-r/2,y-lift,x+r/2,y-lift,color,190);
+    line(x+r/2,y-lift,x+r,y,color,190);line(x-r,y,x+r,y,color,230);
+    line(x-r,y,x,y+r/3+2,color,190);line(x,y+r/3+2,x+r,y,color,190);
+    for (int rib=-2;rib<=2;rib++) line(x+rib*r/3,y-lift,x,y,color,120);
+}
+
 
 /** Draw an 8-bit alpha coverage mask scaled into a dst box, tinted + alpha-modulated.
  *  Bilinear sampling. Used for rasterized creature silhouettes (creature_glyphs_generated.h). */

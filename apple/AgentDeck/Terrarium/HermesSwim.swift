@@ -35,13 +35,15 @@ struct HermesSwim {
     }
 
     private func eyelid(_ lag: Float) -> Float {
-        let period: Float = 5.3
+        let period = TerrariumRules.hermesHomeBlinkPeriod
         let time = elapsed + offset + lag
         let t = time.truncatingRemainder(dividingBy: period)
         func closure(_ t: Float) -> Float {
-            guard t >= 0 && t < 0.22 else { return 1 }
+            guard t >= 0 && t < TerrariumRules.hermesHomeBlinkClose + TerrariumRules.hermesHomeBlinkHold + TerrariumRules.hermesHomeBlinkOpen else { return 1 }
             // Fast closure, slower opening; occasional double blink.
-            return t < 0.075 ? max(0, 1 - t / 0.075) : min(1, (t - 0.075) / 0.145)
+            if t < TerrariumRules.hermesHomeBlinkClose { return max(0,1-t/TerrariumRules.hermesHomeBlinkClose) }
+            if t < TerrariumRules.hermesHomeBlinkClose + TerrariumRules.hermesHomeBlinkHold { return 0 }
+            return min(1,(t-TerrariumRules.hermesHomeBlinkClose-TerrariumRules.hermesHomeBlinkHold)/TerrariumRules.hermesHomeBlinkOpen)
         }
         let first = closure(t)
         return Int(time / period) % 3 == 2 ? min(first, closure(t - 0.36)) : first
@@ -154,7 +156,7 @@ struct HermesSwim {
             hairRight: sin(phase - 1.9) * (0.015 + speed * 0.025) + roll * 0.06,
             eyeLeft: eyelid(0) * (1 - tension * 0.30),
             eyeRight: eyelid(0.014) * (1 - tension * 0.30),
-            pupil: [gaze.x * 0.006, gaze.y * 0.004],
+            pupil: [gaze.x * 0.004, gaze.y * 0.003],
             browLeft: -sadness * 0.18 + effort * 0.07 - attention * 0.09,
             browRight: sadness * 0.18 - effort * 0.07 + attention * 0.09,
             browLift: attention * 0.006 - effort * 0.002,
@@ -167,7 +169,7 @@ struct HermesSwim {
     }
 
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
-                       activity: Activity, neighbours: [SIMD3<Float>], aspect: Float) {
+                       activity: Activity, neighbours: [SIMD3<Float>], aspect: Float, shellActive: Bool? = nil, berth: SIMD3<Float>? = nil) {
         let dt = min(max(delta.isFinite ? delta : 0, 0), 0.05)
         guard dt > 0 else {
             // A paused clock must freeze motion, not a previous task's expression.
@@ -178,20 +180,21 @@ struct HermesSwim {
                 celebration = 0
                 previous = activity
             }
-            shellOpen = activity == .working || activity == .waiting ? 1 : 0
+            shellOpen = (shellActive ?? (activity == .working || activity == .waiting)) ? 1 : 0
             emergence = shellOpen
+            if let berth { position = shellOpen > 0 ? berth + SIMD3(0,size * TerrariumRules.hermesHomeSwimLift,0) : home; velocity = .zero }
             return
         }
-        let active = activity == .working || activity == .waiting
+        let active = shellActive ?? (activity == .working || activity == .waiting)
         if active {
-            shellOpen = min(1, shellOpen + dt * 0.9)
+            shellOpen = min(1, shellOpen + dt * TerrariumRules.hermesHomeOpenRate)
             // The lid clears her head before the mermaid leaves the pearl basin.
-            if shellOpen >= 0.98 { emergence = min(1, emergence + dt * 0.65) }
-        } else if simd_distance(position, home) < max(0.01, size * 0.04) && simd_length(velocity) < 0.04 {
-            emergence = max(0, emergence - dt * 0.65)
-            if emergence == 0 { shellOpen = max(0, shellOpen - dt * 0.7) }
+            if shellOpen >= TerrariumRules.hermesHomeLidClearance { emergence = min(1, emergence + dt * TerrariumRules.hermesHomeEmergeRate) }
+        } else if simd_distance(position, home) < max(0.01, size * TerrariumRules.hermesHomeSettleDistance) && simd_length(velocity) < TerrariumRules.hermesHomeSettleSpeed {
+            emergence = max(0, emergence - dt * TerrariumRules.hermesHomeEmergeRate)
+            if emergence == 0 { shellOpen = max(0, shellOpen - dt * TerrariumRules.hermesHomeCloseRate) }
         }
-        let departure = max(0, min(1, (emergence - 0.6) / 0.4))
+        let departure = max(0, min(1, (emergence - TerrariumRules.hermesHomeDepartureStart) / (1 - TerrariumRules.hermesHomeDepartureStart)))
         let swimBlend = departure * departure * (3 - 2 * departure)
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
@@ -205,11 +208,11 @@ struct HermesSwim {
 
         // A slow three-dimensional figure eight, tightly bounded around the
         // assigned slot so crowded/portrait tanks retain their label layout.
-        let t = elapsed * 0.34 + offset
-        let resting = activity == .idle || activity == .error
-        let radius = size * (0.85 + effort * 0.35) * (1 - attention * 0.85)
-        var destination = home + SIMD3<Float>(sin(t) * radius,
-            size * 0.85 + sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // above her shell
+        let t = elapsed * TerrariumRules.hermesHomeTravelRate + offset
+        let resting = !active
+        let radius = size * (TerrariumRules.hermesHomeSwimRadius + effort * TerrariumRules.hermesHomeWorkRadius) * (berth == nil ? 1 : TerrariumRules.hermesHomeBerthTravelScale) * (1 - attention * 0.85)
+        var destination = (berth ?? home) + SIMD3<Float>(sin(t) * radius,
+            size * TerrariumRules.hermesHomeSwimLift + sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // above her shell
                 + sin(elapsed * 3.4) * size * 0.05 * attention,                        // waiting: an eager bob
             sin(t * 0.83) * radius * 0.70)
         var nearest: SIMD3<Float>?
@@ -253,7 +256,7 @@ struct HermesSwim {
         let halfWidth = min(3.65, max(0.9, aspect * 3.0)) - size * 0.35
         destination.x = max(-halfWidth, min(halfWidth, destination.x))
         destination.y = max(home.y, min(4.65, destination.y))
-        destination.z = max(-1.0, min(1.7, destination.z))
+        destination.z = max(-1.0, min(berth == nil ? 1.7 : TerrariumRules.hermesHomeFrontLimit, destination.z))
         // Idle is a planted resting pose, not an endless swimming loop. Gaze,
         // blinking and gentle articulation remain; neighbours cannot move the seat.
         if resting { destination = home }
@@ -269,4 +272,16 @@ struct HermesSwim {
             velocity = .zero
         }
     }
+}
+
+/// One entrance lease. Returning residents wait outside rather than crossing an emergence.
+struct SharedShellTraffic {
+    struct Request { var id:String;var wantsOut:Bool;var emergence:Float;var distance:Float }
+    private(set) var owner:String?
+    mutating func update(_ requests:[Request]) {
+        func needs(_ r:Request)->Bool { r.wantsOut ? r.emergence < 1 || r.distance < TerrariumRules.hermesHomeMouthClearance : r.emergence > 0 }
+        if !requests.contains(where:{$0.id==owner && needs($0)}) { owner=nil }
+        if owner==nil { owner=requests.filter(needs).sorted { $0.wantsOut != $1.wantsOut ? !$0.wantsOut : $0.id < $1.id }.first?.id }
+    }
+    func active(_ id:String,wantsOut:Bool,emergence:Float)->Bool { wantsOut ? emergence > 0 || owner==id : emergence > 0 && owner != id }
 }

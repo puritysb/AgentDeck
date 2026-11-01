@@ -243,6 +243,7 @@ fun MonitorScreen(
     // fade out so the user can watch the terrarium uninterrupted. Toggled
     // by tapping empty water (mirrors ESP32 firmware aquarium screen).
     var hudHidden by remember { mutableStateOf(false) }
+    var dotInspected by remember { mutableStateOf(false) }
 
     // Pre-compute attention card visibility so we can gate the background
     // tap detector — tapping outside the question card during an awaiting
@@ -284,15 +285,17 @@ fun MonitorScreen(
                     .pointerInput(creatureHitTest, inspection, dashState.siblingSessions) {
                         detectTapGestures { point ->
                             val id = creatureHitTest?.invoke(point.x, point.y)
-                            if (id != null) inspectSession(id) else hudHidden = !hudHidden
+                            if(id == "habitat:dot") dotInspected=true else if (id != null) inspectSession(id) else hudHidden = !hudHidden
                         }
                     },
             )
         }
 
-        if (!showDisconnected && !attentionVisible) {
+        if (!showDisconnected && !attentionVisible && !nativeAquarium) {
             dashState.dot?.let { DotHabitat(it, labelsVisible = !hudHidden) }
         }
+
+        if(dotInspected) dashState.dot?.let { DotReportDialog(it) { dotInspected=false } }
 
         if (showDisconnected) {
             // Layer 2: Connection overlay when disconnected
@@ -1029,6 +1032,7 @@ private fun MonitorHUD(
                             agentState = dashState.agentState,
                             sessionId = dashState.sessionId,
                             siblingSessions = dashState.siblingSessions,
+                            dot = dashState.dot,
                             workerSessionCount = dashState.workerSessionCount
                                 ?.takeIf { dashState.gatewayConnected == true },
                             permissionMode = dashState.permissionMode,
@@ -1070,6 +1074,7 @@ private fun MonitorHUD(
                     agentState = dashState.agentState,
                     sessionId = dashState.sessionId,
                     siblingSessions = dashState.siblingSessions,
+                            dot = dashState.dot,
                     workerSessionCount = dashState.workerSessionCount?.takeIf { dashState.gatewayConnected == true },
                     permissionMode = dashState.permissionMode,
                     scale = scale,

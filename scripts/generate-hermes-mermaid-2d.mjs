@@ -27,13 +27,18 @@ const CHECK = process.argv.includes('--check');
 
 // ── geometry SSOT ──────────────────────────────────────────────────────────
 const VIEW_W = 28;
-const VIEW_H = 40;
+const VIEW_H = 44;
+const RULE_SOURCE = readFileSync(resolve(ROOT,'shared/src/terrarium-rules.ts'),'utf8');
+const proportion = key => Number(RULE_SOURCE.match(new RegExp(`\\b${key}:\\s*([\\d.]+)`))[1]);
+const HEAD_SCALE = proportion('headScale');
+const BODY_WIDTH = proportion('bodyWidth');
+const BODY_LENGTH = proportion('bodyLength');
 /** The mark's crop (y 24) fades out across this band. */
 const FADE = [21.6, 24.0];
 /** Tail centerline (cubic Bézier), starting behind the bust. */
-const CENTERLINE = [[13.6, 19.5], [12.0, 29.5], [16.4, 33.8], [21.0, 33.6]];
+const CENTERLINE = [[13.6, 19.5], [12.0, 29.5], [16.4, 33.8], [21.0, 33.6]].map(([x,y]) => [x,19.5+(y-19.5)*BODY_LENGTH]);
 /** Full tail width along the centerline: hips → narrowing → peduncle. */
-const PROFILE = [[0.0, 10.4], [0.18, 9.4], [0.42, 6.4], [0.66, 4.0], [0.86, 2.5], [1.0, 1.8]];
+const PROFILE = [[0.0, 10.4], [0.18, 9.4], [0.42, 6.4], [0.66, 4.0], [0.86, 2.5], [1.0, 1.8]].map(([t,w]) => [t,w*BODY_WIDTH]);
 const FLUKE = { length: 5.2, spreadDeg: 56, bulge: 2.6 };
 const SAMPLES = 16;
 /** Kelp tokens, read from design/tokens.css: body, shadow rim, fluke. */
@@ -120,7 +125,7 @@ function svgDoc(geo, head, { only = null, headFill = '#ffffff', scale = 1 } = {}
     show('tail') ? `<path id="tail" d="${geo.tail}" fill="${only ? '#fff' : COLORS.body}"/>` : '',
     show('rim') ? `<path id="rim" d="${geo.rim}" fill="${only ? '#fff' : COLORS.rim}"/>` : '',
     show('fluke') ? `<path id="fluke" d="${geo.fluke}" fill="${only ? '#fff' : COLORS.fluke}"/>` : '',
-    show('head') ? `<g id="head" fill="${only ? '#fff' : headFill}" fill-rule="evenodd" mask="url(#crop)">${head.map((d) => `<path d="${d}"/>`).join('')}</g>` : '',
+    show('head') ? `<g id="head" transform="translate(12 12) scale(${HEAD_SCALE}) translate(-12 -12)" fill="${only ? '#fff' : headFill}" fill-rule="evenodd" mask="url(#crop)">${head.map((d) => `<path d="${d}"/>`).join('')}</g>` : '',
   ].join('');
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" width="${VIEW_W * scale}" height="${VIEW_H * scale}">`
     + `<defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="${VIEW_H}" gradientUnits="userSpaceOnUse">`
@@ -150,26 +155,26 @@ async function main() {
   outputs['shared/src/svg-renderers/hermes-mermaid-2d.generated.ts'] = HEADER
     + '// Hermes 2D mermaid: the tail layers drawn under the official Nous girl head\n'
     + '// (HERMES_BRAND_PATHS), whose crop fades out across `fade`.\n'
-    + `export const HERMES_MERMAID_2D = {\n  viewBox: [${VIEW_W}, ${VIEW_H}] as const,\n  fade: [${FADE[0]}, ${FADE[1]}] as const,\n`
+    + `export const HERMES_MERMAID_2D = {\n  viewBox: [${VIEW_W}, ${VIEW_H}] as const,\n  headScale: ${HEAD_SCALE},\n  fade: [${FADE[0]}, ${FADE[1]}] as const,\n`
     + `  colors: ${JSON.stringify(COLORS)} as const,\n  tail: ${JSON.stringify(geo.tail)},\n  rim: ${JSON.stringify(geo.rim)},\n  fluke: ${JSON.stringify(geo.fluke)},\n} as const;\n`;
 
   outputs['android/app/src/main/kotlin/dev/agentdeck/terrarium/HermesMermaid2D.generated.kt'] = HEADER
     + 'package dev.agentdeck.terrarium\n\n'
     + '/** Hermes 2D mermaid: tail layers under the official Nous girl head\n * ([CreatureGeometry.HERMES_PATH_DATA]), whose crop fades out across FADE. */\n'
     + 'object HermesMermaid2D {\n'
-    + `    const val VIEW_W = ${VIEW_W}f\n    const val VIEW_H = ${VIEW_H}f\n    const val FADE_START = ${FADE[0]}f\n    const val FADE_END = ${FADE[1]}f\n`
+    + `    const val HEAD_SCALE = ${HEAD_SCALE}f\n    const val VIEW_W = ${VIEW_W}f\n    const val VIEW_H = ${VIEW_H}f\n    const val FADE_START = ${FADE[0]}f\n    const val FADE_END = ${FADE[1]}f\n`
     + `    const val TAIL = "${geo.tail}"\n    const val RIM = "${geo.rim}"\n    const val FLUKE = "${geo.fluke}"\n}\n`;
 
   outputs['apple/AgentDeck/Rendering/HermesMermaid2D.generated.swift'] = HEADER
     + '// Hermes 2D mermaid path data — the macOS/iOS device previews draw the same\n'
     + '// terrarium creature as the boards (tail layers under HermesBrandPaths).\n'
     + 'import CoreGraphics\n\n'
-    + `enum HermesMermaid2D {\n    static let viewWidth: CGFloat = ${VIEW_W}\n    static let viewHeight: CGFloat = ${VIEW_H}\n`
+    + `enum HermesMermaid2D {\n    static let headScale: CGFloat = ${HEAD_SCALE}\n    static let viewWidth: CGFloat = ${VIEW_W}\n    static let viewHeight: CGFloat = ${VIEW_H}\n`
     + `    static let fadeStart: CGFloat = ${FADE[0]}\n    static let fadeEnd: CGFloat = ${FADE[1]}\n`
     + `    static let tail = "${geo.tail}"\n    static let rim = "${geo.rim}"\n    static let fluke = "${geo.fluke}"\n}\n`;
 
   const masks = async (w, h) => Object.fromEntries(await Promise.all(LAYERS.map(async (k) => [k, await layerMask(geo, head, k, w, h)])));
-  const [MW, MH] = [42, 60];
+  const [MW, MH] = [42, 66];
   const esp = await masks(MW, MH);
   const row = (a, w, y) => Array.from(a.slice(y * w, (y + 1) * w)).join(',');
   outputs['esp32/src/ui/terrarium/hermes_mermaid_generated.h'] = HEADER
@@ -179,7 +184,7 @@ async function main() {
     + LAYERS.map((k) => `static const uint8_t ${k.toUpperCase()}_A8[W * H] = {\n${Array.from({ length: MH }, (_, y) => '    ' + row(esp[k], MW, y) + ',').join('\n')}\n};`).join('\n')
     + '\n}  // namespace HermesMermaid\n';
 
-  const [PW, PH] = [28, 40];
+  const [PW, PH] = [28, 44];
   const px = await masks(PW, PH);
   outputs['bridge/src/pixoo/hermes-mermaid.generated.ts'] = HEADER
     + '// Hermes 2D mermaid layer masks for dot-matrix terrariums (Pixoo 64).\n'
