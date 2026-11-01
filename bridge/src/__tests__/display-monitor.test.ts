@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 
 const { execFileMock, spawnMock } = vi.hoisted(() => ({ execFileMock: vi.fn(), spawnMock: vi.fn() }));
 vi.mock('child_process', () => ({ execFile: execFileMock, spawn: spawnMock }));
@@ -40,6 +41,27 @@ function answer(round: Probe[], screensaver: number | string, asleep = false) {
 }
 
 describe('asynchronous display fallback probes', () => {
+  it('publishes rapid CG edges once and ignores stdout/exit from a stopped helper', async () => {
+    const helpers: Array<EventEmitter & { stdout: PassThrough; kill: ReturnType<typeof vi.fn> }> = [];
+    spawnMock.mockImplementation(() => {
+      const helper = Object.assign(new EventEmitter(), { stdout: new PassThrough(), kill: vi.fn() });
+      helpers.push(helper);
+      return helper;
+    });
+    const changed = vi.fn();
+    monitor.on('display_state_changed', changed);
+    monitor.start();
+    helpers[0].stdout.write('1\n1\n0\n');
+    expect(changed.mock.calls).toEqual([[false], [true]]);
+    monitor.stop();
+    monitor.start();
+    helpers[0].stdout.write('1\n');
+    helpers[0].emit('exit', 0);
+    helpers[1].stdout.write('1\n0\n');
+    expect(changed.mock.calls).toEqual([[false], [true], [false], [true]]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(helpers).toHaveLength(2);
+  });
   it('leaves timers free while probes are pending, then applies presence and no-match results', async () => {
     monitor.start();
     expect(probes.map(p => p.file)).toEqual(['pmset', 'ioreg', 'pgrep']);

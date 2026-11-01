@@ -3,7 +3,9 @@ import { spawn, execFile, type ChildProcess } from 'child_process';
 import { createInterface } from 'readline';
 import { debug } from './logger.js';
 
-const POLL_INTERVAL_S = 2;
+// Persistent CoreGraphics calls are cheap; do not wait for the 15s wire repair
+// heartbeat (or miss a short sleep/wake edge between two 2s samples).
+const POLL_INTERVAL_S = 0.25;
 const MAX_RESTARTS = Infinity; // keep trying forever
 const RESTART_DELAY_MS = 5_000;
 const FALLBACK_POLL_MS = 5_000;
@@ -17,10 +19,9 @@ cg = ctypes.CDLL(ctypes.util.find_library('CoreGraphics'))
 cg.CGMainDisplayID.restype = ctypes.c_uint32
 cg.CGDisplayIsAsleep.restype = ctypes.c_uint32
 cg.CGDisplayIsAsleep.argtypes = [ctypes.c_uint32]
-display = cg.CGMainDisplayID()
 prev = -1
 while True:
-    cur = cg.CGDisplayIsAsleep(display)
+    cur = cg.CGDisplayIsAsleep(cg.CGMainDisplayID())
     if cur != prev:
         prev = cur
         print(cur, flush=True)
@@ -32,7 +33,7 @@ while True:
  * Emits 'display_state_changed' with boolean (true = on, false = asleep)
  * only when the state actually changes.
  *
- * Uses a persistent python3 process that checks every 2s and outputs
+ * Uses a persistent python3 process that checks every 250ms and outputs
  * only on state transitions (no per-poll process spawning).
  */
 export class DisplayMonitor extends EventEmitter {
@@ -139,9 +140,11 @@ export class DisplayMonitor extends EventEmitter {
       return;
     }
 
-    if (this.proc.stdout) {
-      const rl = createInterface({ input: this.proc.stdout });
+    const proc = this.proc;
+    if (proc.stdout) {
+      const rl = createInterface({ input: proc.stdout });
       rl.on('line', (line) => {
+        if (!this.running || this.proc !== proc) return;
         const trimmed = line.trim();
         if (trimmed !== '0' && trimmed !== '1') return;
         this.setComponent('displayAsleepByCG', trimmed === '1', trimmed === '1' ? 'cgDisplaySleep' : 'cgDisplayWake');
@@ -149,12 +152,14 @@ export class DisplayMonitor extends EventEmitter {
     }
 
     this.proc.on('error', (err) => {
+      if (this.proc !== proc) return;
       debug('display', `python3 process error: ${err.message}`);
       this.proc = null;
       this.scheduleRestart();
     });
 
     this.proc.on('exit', (code) => {
+      if (this.proc !== proc) return;
       debug('display', `python3 process exited (code=${code})`);
       this.proc = null;
       this.scheduleRestart();

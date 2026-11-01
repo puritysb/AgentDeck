@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-01T03:35:20.923Z",
+  "finished_at": "2026-11-01T03:38:52.046Z",
+  "duration_ms": 211123,
+  "commit": "e1232453de223a4d1435aa1a05bdc0398bc2886c",
+  "dirty": true,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "apple-macos-release",
+      "gate": "apple-unit",
+      "name": "macOS Store Release build + Dot exclusion",
+      "status": "pass",
+      "duration_ms": 211093
+    }
+  ]
+}

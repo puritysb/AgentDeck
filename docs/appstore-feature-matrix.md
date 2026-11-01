@@ -332,6 +332,29 @@ Actual machine sleep requires a dedicated second Mac. The user deferred full
 sleep/wake acceptance after the first sleep request; no actual wake/restoration
 pass is claimed. Suspending the shared host remains outside this verification.
 
+Display-only sleep is a separate accepted check (2026-11-01): a freshly built
+Release derivative, signed with Developer ID and Sandbox enabled, ran on private
+19450–19459 ports alongside the unchanged shared daemon. Independent CoreGraphics
+timestamps and asynchronous command execution measured these actual edge-to-wire
+delays; the clients were isolated protocol consumers, not redirected hardware.
+
+| Configuration | Display-off delivery | Display-on delivery |
+| --- | ---: | ---: |
+| Swift only | 10ms | 381ms |
+| Node only | 2ms | 2ms |
+| Node owner + Swift client | 85ms | 45ms |
+
+Swift now observes workspace display notifications, with a 2s repair poll;
+Node samples CoreGraphics every 250ms. The 15s wire repair is retained. Initial
+sampling follows callback registration, and retired Node helper output cannot
+publish into a new lifecycle. These receipts do not accept full machine sleep,
+physical writer handover, or delivery to the installed shared runtime.
+The unchanged shared Node/Pantone path separately measured approximately 149ms
+to LED off and 1,628ms to LED on after observed Mac transitions. The earlier
+ten-second delay was not reproduced and lacked a paired Mac transition timestamp;
+it is not attributed to the 15s repair cadence. Applying the new sampling interval
+to the shared Node process still requires a normal restart.
+
 [DaemonService](../apple/AgentDeck/Daemon/DaemonService.swift) implements attach,
 yield, bounded teardown and promotion; [Node takeover](../bridge/src/daemon-takeover.ts)
 adopts the same-user token before asking Swift to stand down.

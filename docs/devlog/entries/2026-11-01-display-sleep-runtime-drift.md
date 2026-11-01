@@ -59,3 +59,42 @@ adapter uses public `ContentResolver.delete` to restore a previously absent key.
 Android's 550 tests and the scoped Android pre-release receipt pass; Quick passes
 7,187 cases with 17 skipped. This is a local same-version/code verification build,
 not a published Android release. The shared Node process was not restarted again.
+
+### Follow-up: separate actual display timing from the request and repair cadence
+
+The earlier ten-second sample had no independent timestamp for the Mac actually
+going asleep. It cannot establish that the 15-second repair timer caused that
+delay. Initial follow-up runs had no sleep transition, or only a roughly 440ms
+CG sleep pulse that the running daemon's two-second poll missed. Do not count
+those as a sustained-sleep latency result.
+
+After the operator left input idle, the unchanged shared daemon/Pantone path
+measured CG asleep → WebSocket off in 49ms → both LED engines off another 100ms
+later. On wake, CG awake → WebSocket on took 1,446ms, then LED power returned
+after 182ms. Thus the ten-second delay was not reproduced; the measurable host
+delay is consistent with the existing two-second sampling interval. Hardware
+readback is sampled, so these are observed bounds, not exact actuator timings.
+
+Node now samples CoreGraphics every 250ms, resolving the main display each time,
+and ignores retired helper stdout/exit callbacks. Swift uses public workspace
+screen sleep/wake notifications, keeps its two-second repair probe, subscribes
+before initial sampling and removes/fences display observers on stop. No
+permissions, Android data or frontlight recovery semantics changed.
+
+The signed Sandbox Release derivative (executable SHA-256 prefix
+`ad89bd42f6de`) and isolated CLI passed display-only sleep/wake in all three
+configurations. Independent 25ms CG sampling and nonblocking measurement commands
+gave off/on edge-to-wire times of Swift 10/381ms, Node 2/2ms, combined 85/45ms.
+An earlier measurement used synchronous wake commands and was discarded because
+it could delay both observer callbacks and hide latency. The final runner uses
+source timestamps and also pairs genuine early wake edges with their preceding
+sleep rather than mistaking them for missing commanded wakes.
+
+The shared daemon remains PID 12363/build `8fe2909f2930`; its running helper still
+uses the old two-second interval. No installed-app swap, shared restart or physical
+device redirection is included in this acceptance. Physical device acceptance in
+each alternate owner configuration remains separate from these wire receipts.
+
+Quick passed 7,188 tests (17 skipped); macOS XCTest passed 1,476 tests (five
+skipped). The scoped pre-release receipt records only the local arm64 macOS
+Release/Dot-exclusion build, not a universal archive or all-platform release.

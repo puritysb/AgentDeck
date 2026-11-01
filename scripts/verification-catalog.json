@@ -462,7 +462,8 @@
         "An incoming Node crash after Swift yields recovers without restarting the app or contacting the shared daemon",
         "Opt-in in-flight replay checks undecided approvals, stale IDs, aggregate Feed receipts and unconfirmed replica failures across both owner directions",
         "Synthetic OTA push retires old transfers and pull OTA reconstructs identical bytes explicitly pre-staged on both owners",
-        "Dedicated-Mac sleep modes require actual OS sleep and full-wake evidence before checking expired approvals, OTA and Feed restoration"
+        "Dedicated-Mac sleep modes require actual OS sleep and full-wake evidence before checking expired approvals, OTA and Feed restoration",
+        "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations"
       ],
       "does_not_prove": [
         "Installed App Store or Release delivery, real providers, source grants, physical writers or remote network partitions",

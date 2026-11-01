@@ -3,7 +3,9 @@
  * Never run against production 9120, an installed app, real sources or hardware.
  * Build/sign the alternate-bundle app and bootstrap its typed preferences first.
  */
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync, openSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
@@ -356,6 +358,77 @@ async function sleepScenario(mode) {
   });
 }
 
+// Display-only sleep keeps the host and its shared sockets alive. The independent
+// CG sampler separates macOS/input delay from daemon/wire latency; no repair
+// heartbeat may be mistaken for prompt edge delivery. Hardware remains owned by
+// the shared daemon: these sockets are isolated protocol consumers, not devices.
+async function displayScenarios() {
+  const execute = promisify(execFile);
+  const assertion = spawn('/usr/bin/caffeinate', ['-i', '-t', '180']);
+  try {
+    for (const mode of ['swift', 'node', 'both']) await scenario(`Display edges ${mode}`, async start => {
+      if (mode !== 'swift') { startNode(); await owner(false); }
+      if (mode !== 'node') { await startApp(); if (mode === 'both') await appClient(); else await owner(true); }
+      const before = await owner(mode === 'swift');
+      const rows = [], devices = [];
+      const reference = spawn('/usr/bin/python3', ['-u', '-c', `import ctypes,ctypes.util,time
+c=ctypes.CDLL(ctypes.util.find_library('CoreGraphics'))
+c.CGMainDisplayID.restype=ctypes.c_uint32
+c.CGDisplayIsAsleep.argtypes=[ctypes.c_uint32]
+p=None
+while True:
+ v=c.CGDisplayIsAsleep(c.CGMainDisplayID())
+ if v!=p: print(str(time.time_ns()//1000000)+' '+str(v),flush=True);p=v
+ time.sleep(.025)`], { stdio: ['ignore', 'pipe', 'ignore'] });
+      createInterface({input: reference.stdout}).on('line', line => {
+        const match = /^(\d+) ([01])$/.exec(line);
+        if (match) rows.push({ source: 'cg', on: match[2] === '0', at: Number(match[1]) });
+      });
+      const ws = new WebSocket(`ws://127.0.0.1:${port}`, { handshakeTimeout: 3000 });
+      ws.on('message', data => {
+        const event = JSON.parse(String(data));
+        if (event.type === 'display_state') { devices.push(event); rows.push({ source: 'wire', on: event.displayOn, at: Date.now() }); }
+      });
+      try {
+        await until('initial display seed and independent reference', () => devices.length && rows.some(r => r.source === 'cg'));
+        assert.equal(devices.at(-1).displayOn, true, 'Start with Mac display awake');
+        const requestedAt = Date.now();
+        await execute('/usr/bin/pmset', ['displaysleepnow'], { timeout: 5000 });
+        await until('actual display sleep, without intervening input', () => rows.some(r => r.source === 'cg' && !r.on && r.at >= requestedAt), 15_000);
+        await until('prompt wire sleep edge', () => rows.some(r => r.source === 'wire' && !r.on && r.at >= requestedAt), 1000);
+        const asleepAt = rows.find(r => r.source === 'cg' && !r.on && r.at >= requestedAt).at;
+        await delay(500);
+        const wakeAt = Date.now();
+        await execute('/usr/bin/caffeinate', ['-u', '-t', '1'], { timeout: 5000 });
+        // Input may wake the display before our safety wake. Match the actual
+        // post-sleep edge, never the earlier startup seed or command timestamp.
+        await until('independent display wake', () => rows.some(r => r.source === 'cg' && r.on && r.at > asleepAt), 5000);
+        await until('prompt wire wake edge', () => rows.some(r => r.source === 'wire' && r.on && r.at > asleepAt), 1000);
+        const latency = on => {
+          const since = on ? asleepAt + 1 : requestedAt;
+          const cg = rows.find(r => r.source === 'cg' && r.on === on && r.at >= since);
+          const wire = rows.find(r => r.source === 'wire' && r.on === on && r.at >= since);
+          const ms = wire.at - cg.at;
+          assert(ms >= -1000 && ms <= 1000, `Display ${on ? 'wake' : 'sleep'} took ${ms}ms after independent detection`);
+          return ms;
+        };
+        const after = await owner(mode === 'swift');
+        assert.equal(after.pid, before.pid, 'Display-only sleep changed the owner');
+        if (mode === 'both') await appClient();
+        record(`Display edges ${mode}`, start, { sleepMs: latency(false), wakeMs: latency(true),
+          requestToSleepMs: asleepAt - requestedAt, wokeBeforeSafetyRequest: rows.some(r => r.source === 'cg' && r.on && r.at > asleepAt && r.at < wakeAt), rows,
+          scope: 'actual Mac display and isolated wire consumers; shared physical devices not redirected' });
+      } finally {
+        execFileSync('/usr/bin/caffeinate', ['-u', '-t', '1'], { timeout: 5000 });
+        reference.kill(); ws.terminate();
+        writeFileSync(join(out, `display-${mode}.json`), JSON.stringify(rows, null, 2));
+      }
+      if (mode !== 'node') await stopApp();
+      if (mode !== 'swift') await stopNode();
+    });
+  } finally { assertion.kill(); }
+}
+
 async function replicaScenario() {
   await scenario('Unconfirmed initial replica and response-loss retry stay explicit',async start=>{
     startNode();await owner(false);
@@ -587,7 +660,7 @@ try {
       if(name!=='settings.json' && !(args.includes('--cold-recovery') && dir===swiftData && name==='RecoveryFixture'))rmSync(join(dir,name),{recursive:true,force:true});
     }
   }
-  if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes('--cold-recovery')) { await coldRecoveryScenarios(); } else if(args.includes("--configuration")) { await configurationScenarios(); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
+  if(args.includes('--display-only')) { await displayScenarios(); } else if(args.includes("--sleep-mode")) { await sleepScenario(arg("--sleep-mode")); } else if(args.includes('--cold-recovery')) { await coldRecoveryScenarios(); } else if(args.includes("--configuration")) { await configurationScenarios(); } else if(args.includes("--inflight")) { await replicaScenario(); await inflightScenarios(); await otaScenario(); await pullOtaScenario(); } else {
   await scenario('Swift-only quit and relaunch',async start=>{
     await startApp();const first=await owner(true);noSharedSockets(first.pid);const prompt=await mark('swift-only');const token=hash(first.pairingToken);
     await stopApp();await startApp();const next=await owner(true);assert.equal(hash(next.pairingToken),token);await retains(prompt);

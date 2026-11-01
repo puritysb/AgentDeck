@@ -123,6 +123,15 @@ node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures \
   --out diagnostics/lifecycle-integration/run
 ```
 
+Add `--display-only` to measure actual **display-only** sleep/wake in Swift-only,
+Node-only and Node-owner/Swift-client mode. Leave the keyboard, mouse and trackpad
+idle during the run. An independent 25ms CoreGraphics probe separates macOS
+transition timing from WebSocket edge delivery; each direction must arrive within
+one second of that observation. The runner prevents system idle sleep temporarily,
+wakes the display even on failure, and keeps the same private owner PID. It uses
+isolated protocol clients, not physical-device rendering or installed-app delivery
+acceptance. Unlike `--sleep-mode`, it does not suspend the shared host.
+
 The runner checks the sandbox signature and alternate identity before launching;
 uses isolated Node HOME/data and a Keychain-denying shim; starts the CLI with
 `--local --loopback --no-build`; and exercises both solo modes, both startup
