@@ -95,6 +95,108 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2.0.0 integration target (2026-11-02)
+
+The owner selected **2.0.0 as the next coordinated product release** on November
+2. This is an integration target, not a submitted or published version. Collect
+completed improvements on `master`, let the remaining workstreams finish, then
+freeze one candidate and run whole-product acceptance before release preparation.
+The earlier delivery records below remain historical evidence.
+
+Keep current manifests, published tags, consumed build numbers and Store states
+unchanged during collection. The owner-directed major target does not prove a
+wire incompatibility: before changing `VERSION` or channel manifests, review the
+compatibility-major checks, mixed 1.x/2.x peers, update order and rollback. Preserve
+managed CLI compatibility; do not use the major target as permission to delete
+maintained commands or erase pairing/cache data.
+
+#### Collection checkpoint
+
+This snapshot describes local source at `b8ef9272`; refresh it before freezing.
+A clean branch or an old passing receipt alone does not establish readiness of a
+new combination. Keep work owned by active sessions in their isolated checkouts.
+
+| Workstream | Current evidence | Integration gate |
+| --- | --- | --- |
+| Native request control, CloudKit observation and readable device controls | Integrated through `d78e9f34`; physical iPhone choice/approval/cache and Stream Deck key paths recorded; larger key rendering checked | Repeat the combined journeys on the frozen candidate, including stale/replaced requests and reconnect |
+| Attention lifetimes, OpenCode cleanup and creature surfaces | Integrated predecessors on `master`; source/build/device evidence is in their dated devlogs | Verify the combined roster, completed-session cleanup and device presentation, not only each patch separately |
+| CLI 터미널 파싱 코드 점검 | `b8ef9272` integrated; 7,078 tests passed, 42 skipped in that session | Preserve managed approval labels, cursor, Shift+Tab/mode and state lines in combined acceptance |
+| dot 크리처 배치와 표기 개선 | Pages/media checkpoint `fa2a31be` plus active dropdown/navigation edits in `codex/pages-media-refresh` | Wait for completion and its checks; integrate current renderer assets and accessible translated navigation together |
+| `codex/mcp-auto-review-attention`, `codex/swift-capability-audit` | Unmerged local candidates, with their own histories | Reconcile against current fixes and check intended scope before selecting; do not blindly merge old snapshots |
+| `codex/dot-native-local-wip` | Explicit native/local-route experiments | Retain as WIP until availability/security decisions and its own acceptance; not an implicit Store promise |
+
+CloudKit remains a development experiment until its production account,
+entitlements, privacy, offline/account-change and delivery gates are explicitly
+completed. Its current Watch path is notification mirroring, and its snapshots
+cannot approve commands. Widgets, direct Watch controls and experimental Dot
+routes are not made public features merely by naming this release 2.0.
+
+#### Integration and release sequence
+
+1. Collect completed, reviewed commits without resetting other work. Record
+   included SHAs, pending work and any deliberately deferred capability.
+2. Freeze a candidate after the remaining selected workstreams finish. Rebuild
+   from that SHA and run `PATH=/opt/homebrew/bin:$PATH pnpm verify:full --record`
+   on the Mac, plus the supported Windows/Linux checks and applicable hardware
+   gates. The explicit PATH selects the Bash version used by design lint.
+3. Run real request journeys using bounded, isolated fixtures: original option
+   labels/index/question identity, native one-time permission IDs, replaced
+   requests, disconnect/reconnect and pending-result handling. Cover Stream Deck,
+   iPhone, one Android LCD and one e-ink controller. Glance devices must remain
+   useful and read-only at their declared ceiling.
+4. Verify local-first operation: Mac-to-private-CloudKit-to-iPhone/Watch delivery,
+   source timestamps, persistent cache after relaunch, offline historical state,
+   outbox retry/deduplication and account/consent changes. A delivery timeout must
+   not become an approval or a claim of live state. Keep the experiment excluded
+   from channels whose production gates are still incomplete.
+5. Capture the media below from the accepted binaries. Then reconcile release
+   notes, feature matrices, Store availability and the version/build decision.
+   Only the later release phase creates release tags, uploads or submissions.
+
+Earlier implementation receipts are checkpoints, **not the final 2.0 integration
+sign-off**. The native matrix at `9de8dc4f` passed its Apple/CloudKit/Android/ESP32
+steps; its design-lint failure used macOS Bash 3 and passed when rerun with the
+Homebrew PATH. The TypeScript-only label follow-up at `d78e9f34` passed its scoped
+full check, including coverage and clean npm package acceptance. Neither receipt
+includes the later parser cleanup or unfinished Pages work.
+
+The local controller install is also not a release deployment: Stream Deck
+runtime hash `ea60b48d94ad` and daemon build `061f55ca55f0` were verified;
+Pantone 6 and Crema S retained data and matched the new APK hash. Lenovo's
+Google Play-signed installation was preserved because its certificate differs
+from the sideload key; test it with a matching Play candidate later.
+
+#### 2.0 media refresh
+
+Re-record/re-generate the introduction after the candidate is stable, rather
+than relabeling the dated 1.x footage. Keep raw takes, source SHA, binary hash,
+platform/configuration, device or simulator, locale, fixture recipe, timing and
+crop/encode metadata under `diagnostics/media-2.0/<sha>/` for review.
+
+| Destination | New material | Acceptance |
+| --- | --- | --- |
+| Pages overview / guide | A new native-app introduction, current habitat frames and real hardware excerpts; poster and EN/KO/JA captions | Player controls, no autoplay, `preload="none"`, responsive layout, translated menu/keyboard behavior, correct copied assets and no dead links |
+| GitHub README | A short GIF excerpt and poster linked to the same 2.0 player; current hardware stills where the controls changed | Same source take, readable text at README size, accurate alt text and capture provenance; retain historical photos/footage as dated material |
+| App Store previews | Separate Mac, iPhone and iPad native captures of features actually available in each submitted build | Check current Apple requirements at release-preparation time; validate frame size, timing/audio/encoding and actual Store feature boundaries; no PoC-only screens or composited replacement UI |
+
+The core story is **observe real work → find a genuine response wait → read the
+original choices → answer/permit once → observe the result**. Then show usage
+with source freshness and the appropriate role of an e-ink, encoder or glance
+screen. Demonstrate the larger key labels at real display size. Use fictional
+projects and bounded harmless commands, keep the fixture loopback-only, and
+remove it afterwards. A read-only notification/cache clip must not imply remote
+control, guaranteed immediate delivery or an always-online Mac.
+
+The existing recording entry points are
+[`record-feature-demo.sh`](scripts/record-feature-demo.sh) and
+[`record-appstore-previews.sh`](scripts/record-appstore-previews.sh); the former's
+current canned feed is a rehearsal, not evidence of an executed response. For a
+real control take use the bounded [OpenCode device acceptance fixture](apple/DeviceAcceptance/README.md).
+Regenerate renderer/firmware frames through the [Pages media pipeline](docs/pages-site.md).
+Plan new `agentdeck-200-*` public filenames, update the README/player/caption
+links together, and run the public-media checks before promoting the takes.
+Keep the current published assets until the replacement passes review.
+
 ### 2026-10-30 integration hardening preparation decision
 
 The maintainer authorized the focused correction, public source integration and

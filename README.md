@@ -22,6 +22,10 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
+**2.0 development:** improvements are being collected on `master` before combined
+acceptance and new demo recordings. See the [integration and media plan](RELEASING.md#200-integration-target-2026-11-02);
+[released downloads](#releases) retain their recorded channel versions.
+
 <p align="center">
   <a href="docs/media/desk-overview.jpg"><img src="docs/media/setup-full.jpg" width="900" alt="AgentDeck on a real desk, photographed September 28, 2026: iPad and Android dashboards, Stream Deck and Ulanzi controls, e-ink readers, ESP32 panels, and LED matrices"></a>
 </p>
