@@ -108,6 +108,10 @@ there is no separate AgentDeck account or remote LAN token. On account switch,
 cancel requests, invalidate asynchronous completions with a generation guard,
 clear the previous account's reader cache and outbox, and require new publishing
 consent. Do not upload old-account queued data to a newly signed-in account.
+An account-change notification retains a disabled local writer binding (opaque
+installation ID, account hash and revisions), while clearing queued episodes and
+session mappings. Only explicit enablement after verifying that same account can
+reuse the binding; a different verified account gets a new installation ID.
 
 ## Data contract v1
 
@@ -661,3 +665,31 @@ exercises all three unverified statuses, and then confirms that `noAccount`
 removes it. Account-change notifications continue to revoke saved sharing
 consent. Publisher pause messages distinguish ownership, quota and authorization
 so a retry does not hide the actual cause.
+
+### Final integrated acceptance
+
+The clean integrated `9c59666b` source passed the complete default
+`verify:full --record` run: 26 automatic gates passed, two platform/policy gates
+were skipped and three lab gates remained unattested. TypeScript coverage passed
+with 7,101 tests; macOS XCTest passed 1,402 tests (three skips), DotPreview passed
+1,422 (eight skips), and the CloudKit suite passed 17. Store, iOS, preview and PoC
+builds, firmware checks and clean npm package acceptance passed. The committed
+[receipt](../verification/receipts/2026-11-01-9c59666.json) describes that exact
+source; it does not attest physical controls or notification presentation.
+
+The final integration was also installed on the phone and separate Mac PoC.
+A new actual OpenCode session again completed the original `Phone acceptance`
+choice and harmless one-time Bash approval through ordinary simulator UI taps;
+the returned tool results and the local storage round-trip both passed. The
+completed fixture's process and daemon row were removed. Review artifacts remain
+local in `diagnostics/cloudkit-integration-acceptance/`. Physical phone UI/cache
+acceptance remains blocked by its passcode lock, and physical Stream Deck key
+input remains unattested.
+
+Longer-running acceptance observed an iCloud account-change notification; this
+does not independently prove that the person switched accounts. Consent was
+correctly revoked, but deleting all writer metadata made a later same-account
+enablement conflict with its own CloudKit snapshot. The follow-up retains only
+the disabled account-scoped writer binding, clears old events/session mappings
+and still requires verified identity plus explicit consent. It also revokes a
+saved enabled flag when the notification precedes startup restoration.
