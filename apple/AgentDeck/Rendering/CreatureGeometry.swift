@@ -15,7 +15,8 @@
 // don't change path geometry and only need a pin bump.
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt d2814a37171c40b66ea48baeae8371257c70bb8f
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt ccf91203a69099cabb8b8968052c253201377dfe
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 66c693f1c30fbc9094a5f409158d60c4819e5246
+// Tucked Hermes body/tag visibility is mirrored by HermesCreature, outside these canonical paths.
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 7c6f735b24dcf1803b351b58336d27886a6d146f
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)

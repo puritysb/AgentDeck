@@ -332,12 +332,14 @@ internal fun renderEinkFrame(
 
     // Reuse the native aquarium's priority and capacity policy. The roster
     // retains every session; a crowd never shrinks the scene into tiny marks.
-    val residents = visibleAquariumResidents(aquariumResidents(state), state.focusedSessionId)
-    val shellResidents=residents.filter { it.kind=="hermes" || it.kind=="dot" }
+    val allResidents = visibleAquariumResidents(aquariumResidents(state), state.focusedSessionId)
+    val shellResidents=allResidents.filter { it.kind=="hermes" || it.kind=="dot" }
     if(shellResidents.isNotEmpty()) dev.agentdeck.terrarium.HermesShell.draw(canvas,paint,
         width*TerrariumRules.HERMES_HOME_CANVAS_X,height*TerrariumRules.HERMES_HOME_CANVAS_Y,minOf(width,height)*TerrariumRules.HERMES_HOME_CANVAS_RADIUS,
-        if(shellResidents.any { it.habitatActive==true || it.state==OctopusVisualState.WORKING || it.state==OctopusVisualState.ASKING }) 1f else 0f,
+        if(shellResidents.any { it.habitatActive ?: (it.state==OctopusVisualState.WORKING || it.state==OctopusVisualState.ASKING) }) 1f else 0f,
         einkPick(GRAY_HERMES_SLEEP,COLOR_HERMES_TAIL_SLEEP),einkPick(GRAY_HERMES_TAIL,COLOR_HERMES_TAIL))
+    // Paper changes pose only with state: tucked residents leave no floating tags or shadows.
+    val residents = allResidents.filter { it.kind !in setOf("hermes","dot") || (it.habitatActive ?: (it.state==OctopusVisualState.WORKING || it.state==OctopusVisualState.ASKING)) }
     val poses = (residentMotion ?: EinkResidentMotion()).advance(residents, residentTimeSeconds, width, height)
     val anchors = mutableMapOf<String, Pair<Float, Float>>()
     // A small contact shadow travels with the creature rather than marking a fixed icon slot.

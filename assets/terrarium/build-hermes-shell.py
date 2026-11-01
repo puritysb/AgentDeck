@@ -5,7 +5,7 @@ Writes the editable source, Apple USDZ, portable GLB, and three review frames.
 The lid's object origin is the rear hinge; runtime rotates only this node.
 """
 from pathlib import Path
-import bpy, math, re, sys
+import bpy, bmesh, math, re, sys
 from mathutils import Vector
 sys.path.insert(0, str(Path(__file__).parent))
 from brand_materials import linear_rgb
@@ -52,7 +52,7 @@ for lid in (False, True):
                 boundary = max(0, math.sin(math.pi*r)) * max(0, math.cos(a/1.475*math.pi/2))
                 dome = (.30 if lid else .22)*boundary
                 z = (dome if lid else -dome) + .026*math.cos(a*13)*boundary
-                z += (.018 if layer else -.018)
+                z += (.045 if layer else -.045)
                 verts.append((x,y,z))
     n=(rings+1)*(slices+1)
     for ring in range(rings):
@@ -70,6 +70,11 @@ for lid in (False, True):
     mesh.from_pydata(verts,[],faces);mesh.materials.clear()
     for m in (outer,inner,rim):mesh.materials.append(m)
     mesh.update()
+    bm=bmesh.new();bm.from_mesh(mesh)
+    bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=0.000001)
+    bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces))
+    assert not any(edge.is_boundary for edge in bm.edges), 'Scallop valve must have a sealed underside'
+    bm.to_mesh(mesh);bm.free();mesh.update()
     obj=bpy.data.objects.new('shell_lid' if lid else 'shell_seat',mesh)
     scene.collection.objects.link(obj);obj.parent=root;obj.location=(0,.40,.16)
     for i,p in enumerate(mesh.polygons):
@@ -82,6 +87,32 @@ for lid in (False, True):
 bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=12, radius=1, location=(0,.40,.16))
 hinge=bpy.context.object;hinge.name='shell-hinge';hinge.scale=(.24,.13,.10);hinge.parent=root;hinge.data.materials.append(rim)
 for p in hinge.data.polygons:p.use_smooth=True
+# A shallow, asymmetric stone settles into the sand instead of a display plinth.
+# Its crown intersects the bowl's underside; the bottom is buried by the shared
+# native placement rule. The complete contact geometry travels with this asset.
+stone = material('Scallop bedding stone', 'ink-700', .92)
+pebble = material('Scallop bedding pebbles', 'ink-500', .88)
+vertices=[(0,-.27,-.11)];faces=[];segments=48
+for ring,radius,height in [(0,.46,-.13),(1,.82,-.20),(2,1,-.28)]:
+    for i in range(segments):
+        a=i/segments*math.tau
+        edge=radius*(1+.06*math.sin(a*3+.7)+.035*math.cos(a*5))
+        vertices.append((math.cos(a)*edge*1.19,-.27+math.sin(a)*edge*.95,height))
+for i in range(segments):
+    n=(i+1)%segments
+    faces.append((0,1+i,1+n))
+    for row in range(2):
+        a=1+row*segments+i;b=1+row*segments+n
+        faces.extend([(a,a+segments,b+segments),(a,b+segments,b)])
+vertices.append((0,-.27,-.32));bottom=len(vertices)-1
+for i in range(segments):faces.append((bottom,1+2*segments+(i+1)%segments,1+2*segments+i))
+mesh=bpy.data.meshes.new('Low weathered bedding');mesh.from_pydata(vertices,[],faces);mesh.update()
+bed=bpy.data.objects.new('shell_bedding',mesh);scene.collection.objects.link(bed);bed.parent=root;mesh.materials.append(stone)
+for face in mesh.polygons:face.use_smooth=True
+for i,(x,y,s) in enumerate([(-1.08,-.64,.12),(.89,-.98,.10),(.99,.12,.14),(-.73,.37,.09)]):
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2,radius=1,location=(x,y,-.245))
+    obj=bpy.context.object;obj.name=f'shell_pebble_{i}';obj.scale=(s,s*.77,s*.46);obj.parent=root;obj.data.materials.append(pebble)
+    for face in obj.data.polygons:face.use_smooth=True
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'assets/terrarium/hermes-shell.blend'))
 bpy.ops.wm.usd_export(filepath=str(ROOT/'apple/AgentDeck/Resources/Aquarium/hermes-shell.usdz'),
@@ -89,6 +120,11 @@ bpy.ops.wm.usd_export(filepath=str(ROOT/'apple/AgentDeck/Resources/Aquarium/herm
     convert_orientation=True, export_global_forward_selection='NEGATIVE_Z', export_global_up_selection='Y')
 portable=ROOT/'assets/terrarium/hermes-shell.glb'
 bpy.ops.export_scene.gltf(filepath=str(portable),export_format='GLB',use_selection=True,export_animations=False,export_cameras=False,export_lights=False)
+import shutil
+shutil.copyfile(portable,ROOT/'android/app/src/main/assets/residents/hermes-shell.glb')
+if '--export-only' in sys.argv:
+    print('HERMES_SHELL exported with low bedding and contact pebbles')
+    raise SystemExit(0)
 # Review with the actual bundled mermaid, preserving her materials and anatomy.
 shell_objects=set(bpy.data.objects)
 bpy.ops.wm.usd_import(filepath=str(ROOT/'apple/AgentDeck/Resources/Aquarium/hermes-mermaid.usdz'))
