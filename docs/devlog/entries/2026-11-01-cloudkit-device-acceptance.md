@@ -98,3 +98,11 @@ the complete 26-gate `9c59666b` recording rather than replacing its scope. The
 follow-up is confined to development-only Mac PoC code and the lab fixture;
 no Store or production daemon/plugin executable changed. The signed Mac PoC
 was rebuilt after checks, verified and installed again.
+
+The old lab snapshot already carried the deleted writer identity, so recovery
+reset only that regenerable shared summary through the PoC UI. Deletion was
+acknowledged, automatic sharing was enabled, and the rebuilt Mac app received
+the encrypted-summary save acknowledgement with `2 working · 0 waiting` at
+23:02 KST. Automatic sharing was left enabled. The synthetic test record and
+notification subscription were retained; notification presentation was not
+re-attested during this recovery.
