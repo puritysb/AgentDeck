@@ -11,6 +11,29 @@ final class RemoteObservationPersistenceTests: XCTestCase {
         var count: Int { lock.lock(); defer { lock.unlock() }; return value }
     }
     @MainActor
+    func testAccountNotificationRevokesColdConsentWithoutLosingWriterOwnership() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let disk = RemoteProbeDisk(directory: root)
+        var saved = RemotePublisherState(account: "verified-account-a"); saved.enabled = true; saved.revision = 42
+        _ = saved.observe([], at: Date())
+        _ = saved.observe([.init(localID: "private-session", alive: true, working: false, waitingForResponse: true)], at: Date())
+        XCTAssertFalse(saved.pending.isEmpty)
+        try disk.write(saved, to: "publisher.json")
+        let model = LocalRosterProbeModel(disk: disk)
+        await model.accountDidChange()
+        let revoked = try XCTUnwrap(disk.read("publisher.json", as: RemotePublisherState.self))
+        XCTAssertFalse(model.automatic)
+        XCTAssertNil(model.summary)
+        XCTAssertFalse(revoked.enabled, "even consent not yet restored must be revoked")
+        XCTAssertEqual(revoked.account, saved.account)
+        XCTAssertEqual(revoked.installation, saved.installation, "same verified account can explicitly reclaim its own writer")
+        XCTAssertEqual(revoked.revision, 42)
+        XCTAssertTrue(revoked.pending.isEmpty)
+        XCTAssertTrue(revoked.tracker.currentWaitIDs.isEmpty)
+    }
+
+    @MainActor
     func testHostedAppDoesNotResumeRealSavedConsentOrContactCloudKit() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

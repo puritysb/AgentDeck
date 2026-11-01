@@ -65,3 +65,36 @@ confirmed logout. Unknown retains the file without exposing an unverified
 reader; logout clears it. Account-change notification consent revocation remains
 intact. The final full receipt must describe this fix as well; the preceding
 `979742d5` full run was intentionally interrupted before its record was written.
+
+The clean integrated `9c59666b` run completed all 26 automatic gates in 52m11s;
+the two policy/platform skips and three unattested lab gates remain explicit in
+its receipt. A final ordinary-tap simulator run also passed (Xcode elapsed
+28.156s), with the original question label and actual harmless Bash output.
+Its bounded fixture was stopped and its real daemon row disappeared. The signed
+Mac/iPhone PoC candidates were installed; the phone still required its passcode.
+
+Long-running Mac observation exposed a recovery problem after an account-change
+notification. That notification alone is not evidence of an actual user account
+switch. Revoking consent was correct, but deleting the installation ID made
+same-account enablement conflict with the existing summary's writer ownership.
+The follow-up keeps only the disabled account-scoped writer binding and revisions;
+pending episodes/session mappings still clear and explicit enablement still
+verifies identity. A real-disk regression covers the harder pre-restoration case:
+saved consent must become false even when no in-memory publisher was loaded.
+Another account cannot adopt that binding under the existing identity guard.
+
+The first follow-up quick run exposed a lab-fixture startup race: it printed
+ready metadata before registering SIGTERM/SIGINT handling. An immediate parent
+signal could therefore terminate by signal instead of completing child cleanup.
+Handlers and the child-exit listener now register before publishing readiness.
+The existing parent-signal/deadline tests cover that ordering. An unchanged WS
+auth test also exceeded its 60ms rejection grace under concurrent native build
+load; both isolated suites then passed (five tests). No auth behavior was relaxed.
+
+The follow-up `4b0c9ca7` passed a fresh quick run (7,101 tests), changed PoC
+macOS/iOS gates (18 native tests), and a clean six-gate full-tier recording:
+coverage, both PoC configurations, docs/catalog/devlog. That receipt complements
+the complete 26-gate `9c59666b` recording rather than replacing its scope. The
+follow-up is confined to development-only Mac PoC code and the lab fixture;
+no Store or production daemon/plugin executable changed. The signed Mac PoC
+was rebuilt after checks, verified and installed again.
