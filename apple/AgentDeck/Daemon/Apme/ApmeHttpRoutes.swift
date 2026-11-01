@@ -16,6 +16,75 @@ enum ApmeHttpRoutes {
         return AuthManager.shared.validateToken(token) ? nil : unauthorizedResponse()
     }
 
+    private struct CompactRequest: Decodable { let confirm: Bool }
+
+    private struct PruneRequest: Decodable {
+        let cutoffMs: Int64
+        let fingerprint: String
+        let confirm: Bool
+    }
+
+    private static func storageAccess(_ request: HTTPServer.HTTPRequest) -> HTTPServer.HTTPResponse? {
+        if let denied = requireToken(request) { return denied }
+        guard ["127.0.0.1", "::1", "::ffff:127.0.0.1"].contains(request.remoteIP) else {
+            return .json(["error": "Storage maintenance is local-only"], status: 403)
+        }
+        return nil
+    }
+
+    private static func storageResponse<T: Encodable & Sendable>(
+        _ operation: @escaping @Sendable () throws -> T
+    ) async -> HTTPServer.HTTPResponse {
+        await Task.detached(priority: .utility) {
+            do {
+                let data = try JSONEncoder().encode(operation())
+                return HTTPServer.HTTPResponse(status: 200, headers: ["Content-Type": "application/json", "Cache-Control": "no-store"], body: data)
+            } catch {
+                let status: Int
+                if case ApmeStorageError.stalePreview = error { status = 409 }
+                else { status = 503 }
+                return .json(["error": error.localizedDescription], status: status)
+            }
+        }.value
+    }
+
+    private static func registerStorage(on http: HTTPServer, store: ApmeStore) async {
+        await http.get("/apme/storage") { request in
+            if let denied = storageAccess(request) { return denied }
+            return await storageResponse { try store.storageStatus() }
+        }
+        await http.get("/apme/storage/preview") { request in
+            if let denied = storageAccess(request) { return denied }
+            guard let days = Int64(request.queryParams["days"] ?? ""), (1...36500).contains(days) else {
+                return .json(["error": "days must be an integer from 1 to 36500"], status: 400)
+            }
+            let cutoff = Int64(Date().timeIntervalSince1970 * 1000) - days * Int64(ApmeRetentionPolicy.dayMs)
+            guard cutoff > 0 else { return .json(["error": "cutoff precedes recorded time"], status: 400) }
+            return await storageResponse { try store.previewPrune(cutoffMs: cutoff) }
+        }
+        await http.post("/apme/storage/prune") { request in
+            if let denied = storageAccess(request) { return denied }
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            guard let body = request.body, body.count <= 1024,
+                  let input = try? JSONDecoder().decode(PruneRequest.self, from: body), input.confirm,
+                  input.cutoffMs > 0, input.cutoffMs <= now,
+                  input.fingerprint.count == 64, input.fingerprint.allSatisfy({ $0.isHexDigit && $0.isASCII }) else {
+                return .json(["error": "A confirmed, valid preview is required"], status: 400)
+            }
+            return await storageResponse {
+                try store.applyPrune(cutoffMs: input.cutoffMs, expectedFingerprint: input.fingerprint, prunedAt: now)
+            }
+        }
+        await http.post("/apme/storage/compact") { request in
+            if let denied = storageAccess(request) { return denied }
+            guard let body = request.body, body.count <= 1024,
+                  let input = try? JSONDecoder().decode(CompactRequest.self, from: body), input.confirm else {
+                return .json(["error": "Explicit confirmation is required"], status: 400)
+            }
+            return await storageResponse { try store.compactStorage() }
+        }
+    }
+
     private static func evalDict(_ e: ApmeEval, includeRaw: Bool = false) -> [String: Any] {
         var ed: [String: Any] = [
             "layer": e.layer,
@@ -41,6 +110,7 @@ enum ApmeHttpRoutes {
 
     /// Register all /apme/* routes on the given HTTP server.
     static func register(on httpServer: HTTPServer, store: ApmeStore) async {
+        await registerStorage(on: httpServer, store: store)
         await httpServer.get("/apme/communications") { request in
             if let denied = Self.requireToken(request) { return denied }
             let capturedAt = Int(Date().timeIntervalSince1970 * 1000)

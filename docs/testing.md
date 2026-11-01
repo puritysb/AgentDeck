@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Quality maintainers
-reviewed: 2026-10-07
-revision: 2026-10-07
+reviewed: 2026-10-31
+revision: 2026-10-31
 source_of_truth: docs/testing.md
 validators: [pnpm test, pnpm verify:quick]
 ---
@@ -88,6 +88,122 @@ from the receipt. A failed cleanup fails the run.
 This is live sandboxed transport evidence using synthetic events. It does not
 prove actual CLI emission, first-run trust, Kiro folder consent/revocation,
 OpenCode SSE reconnect, App Store distribution, or physical display rendering.
+
+## Signed Swift/Node lifecycle acceptance
+
+[`verify-daemon-lifecycle.mjs`](../scripts/verify-daemon-lifecycle.mjs) is an
+opt-in real-process lab gate. It never targets the installed app or ports
+9120–9139. Build the current macOS app using the
+[Apple workflow](../.agents/workflows/apple-xcode-debug.md), then prepare:
+
+1. Copy the complete app to `/private/tmp/agentdeck-lifecycle-acceptance/AgentDeck Lifecycle Audit.app`.
+   Give this copy bundle ID `bound.serendipity.agent.deck.lifecycle-audit` and a
+   distinct display name. Keep all frameworks, resources and, for Debug builds,
+   `AgentDeck.debug.dylib`: the Debug executable alone is only a trampoline.
+2. Sign that copy with the local Developer ID identity and App Sandbox/network
+   entitlements from the production app. An alternate identifier may require
+   removing its copied provisioning profile and WeatherKit entitlement; this is
+   a **local signed derivative**, not an installed Release or Store acceptance.
+   Verify it with `codesign --verify --deep --strict`.
+3. Compile [`lifecycle-preferences.swift`](../bridge/src/__tests__/fixtures/lifecycle-preferences.swift)
+   as the executable of a temporary Foundation-only helper bundle with that same
+   alternate identifier and sandbox signature. Run the helper with argument
+   `19450` before launching the app. It sets typed own-app preferences for
+   loopback-only/no-device mode and prints its private container `dataDirectory`.
+   Launch-argument strings are not a replacement for typed port preferences.
+   It writes only synthetic APME/provider settings inside that test container.
+4. Keep 19450–19459 free. Run the command below with the printed directory. Do
+   not launch the copy manually: the runner supplies the private data/window,
+   Gateway opt-out and UI discovery-disable settings on **every** launch.
+
+```bash
+node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures \
+  --app '/private/tmp/agentdeck-lifecycle-acceptance/AgentDeck Lifecycle Audit.app' \
+  --swift-data 'TEST_CONTAINER_DATA_DIRECTORY' \
+  --out diagnostics/lifecycle-integration/run
+```
+
+Add `--display-only` to measure actual **display-only** sleep/wake in Swift-only,
+Node-only and Node-owner/Swift-client mode. Leave the keyboard, mouse and trackpad
+idle during the run. An independent 25ms CoreGraphics probe separates macOS
+transition timing from WebSocket edge delivery; each direction must arrive within
+one second of that observation. The runner prevents system idle sleep temporarily,
+wakes the display even on failure, and keeps the same private owner PID. It uses
+isolated protocol clients, not physical-device rendering or installed-app delivery
+acceptance. Unlike `--sleep-mode`, it does not suspend the shared host.
+
+The runner checks the sandbox signature and alternate identity before launching;
+uses isolated Node HOME/data and a Keychain-denying shim; starts the CLI with
+`--local --loopback --no-build`; and exercises both solo modes, both startup
+orders, concurrent startup, client app termination/relaunch, Node CLI restart,
+owner crash and incoming-owner crash after Swift has yielded. It verifies real
+HTTP/WS history, token continuity without recording token values, one prompt
+receipt per marker, no client TCP listener and no shared-window sockets. Cleanup
+signals only processes whose executable and private data scope were verified.
+`results.json` records scenario timings; on failure `failure.json` identifies the
+step. Logs and synthetic histories remain in private diagnostic/test stores.
+
+Allow several minutes: failed incoming takeover deliberately waits out the
+production yield lease, rather than shortening it for acceptance. The
+2026-10-31 signed derivative run is recorded in the
+[feature boundary table](appstore-feature-matrix.md#startup-shutdown-restart-and-handover-evidence).
+Add `--configuration --fresh` for session-pin and Pixoo settings acceptance:
+Swift-only and Node-only edits/restart, both startup orders, native-client
+relaunch/promotion, repeated handover, stale-revision and unsupported-replica
+refusal, explicit removals and real CLI editing against the Swift owner. All
+addresses are synthetic loopback devices and hardware modules remain disabled;
+this does not certify physical output or cold recovery without a receiving peer.
+
+For opt-in cold recovery, bootstrap the alternate signed fixture's preferences
+helper with its `--recovery` argument, then run the same isolated runner with
+`--cold-recovery --fresh`. Its bookmark targets only `RecoveryFixture` in the
+disposable container. The scenarios stop one runtime before starting the other,
+check settings/removals/opaque receipt replay and disconnect, and reject an
+ungranted native path. This proves process/storage integration; external-folder
+Powerbox selection and real post-relaunch bookmark access remain separate UI gates.
+
+For that UI gate, clear only the alternate fixture's recovery preference keys with
+the signed helper's `--clear-recovery` option. Keep its isolated data root and
+19450–19459 window; select a disposable **external** local parent through the
+actual app's system folder picker. Do not seed a bookmark with the helper. Verify
+the child store can be written, quit and relaunch the exact signed fixture with
+the same environment, and verify access without reselecting. Include cancellation
+and disconnect while checking that pre-existing sentinel files and stored history
+remain unchanged. The Mac must be unlocked for native UI automation.
+
+Conflict regression tests exercise both explicit choices, rejected stale previews,
+private-file preservation, v1 migration and refusal to replay an acknowledged
+approval. UI acceptance additionally requires a published Node/Swift conflict,
+the corresponding **Review Conflicts** counts and an actual choice followed by
+producer adoption. Passing storage tests alone does not certify these UI steps.
+The 2026-11-01 signed Release run completed those external-picker/relaunch,
+Node saved-profile choice, Swift recovery-profile choice, stale-preview rejection
+and disconnect/relaunch steps; the acceptance table is in the
+[feature matrix](appstore-feature-matrix.md#opt-in-cold-recovery-p12).
+
+Add `--inflight --fresh` for the synthetic approval, adaptive Feed, checkpoint
+replica, paused-owner and OTA push/pull scenarios. `--fresh` resets only the
+explicit isolated synthetic stores after the private window is proven vacant.
+The pull test explicitly stages identical images on both owners; it does not
+implement stage/configuration distribution. Source tests cover wall-clock expiry
+before sleeping timers run and retired IOKit registrations.
+
+Actual machine sleep uses a **dedicated Mac**, never the shared hardware host.
+Prepare the same signed derivative and private runtime there, then use
+`--sleep-mode swift`, `node` and `both` separately with fresh synthetic data scopes.
+`--sleep-now --dedicated-sleep-host` requires the shared daemon window to be
+provably free and invokes macOS sleep from this developer fixture immediately after
+approval and OTA waits are live. Arrange physical wake after at least 45 seconds;
+do not change power settings. The controller must verify actual OS sleep and
+full wake records before writing `wake-verified.json` in that run's output folder.
+Elapsed time, SIGSTOP or an unavailable SSH connection alone are not sleep proof.
+`--signal-cleanup` avoids Apple Events for cleanup on an SSH-only fixture host;
+it signals only the verified alternate app process. Keep baseline and partial
+attempts separate from completed acceptance receipts.
+
+This does not certify installed delivery, real provider/source grants, physical
+writers, remote network partitions, absent-replica recovery or configuration
+migration. X4 physical acceptance remains deferred to companion-app integration.
 
 ## macOS device runs: preflight before you deploy
 

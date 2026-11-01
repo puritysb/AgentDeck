@@ -95,7 +95,7 @@ validate_previews() {
 
   for file in "${files[@]}"; do
     local codec profile level width height pixels fps fps_num fps_den duration bytes bitrate field_order
-    local audio_codec audio_rate
+    local audio_codec audio_rate audio_channels
     codec="$(probe_stream "$file" codec_name)"
     profile="$(probe_stream "$file" profile)"
     level="$(probe_stream "$file" level)"
@@ -110,12 +110,15 @@ validate_previews() {
     audio_codec="$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of default=noprint_wrappers=1:nokey=1 "$file" | head -n 1)"
     audio_rate="$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=noprint_wrappers=1:nokey=1 "$file" | head -n 1)"
 
+    audio_channels="$(ffprobe -v error -select_streams a:0 -show_entries stream=channels -of default=noprint_wrappers=1:nokey=1 "$file" | head -n 1)"
+
     # ASC rejects App Previews with no audio stream ("unsupported or
     # corrupted audio") — a silent AAC-LC track is required even for
     # genuinely silent captures. See scripts/record-appstore-previews.sh.
     [[ -n "$audio_codec" ]] || fail "$platform/$(basename "$file") has no audio stream — ASC requires a silent AAC track"
     [[ -z "$audio_codec" || "$audio_codec" == "aac" ]] || fail "$platform/$(basename "$file") audio must be AAC; found $audio_codec"
-    [[ -z "$audio_rate" || "$audio_rate" -ge 8000 ]] || fail "$platform/$(basename "$file") audio sample rate too low: $audio_rate"
+    [[ "$audio_rate" == "44100" || "$audio_rate" == "48000" ]] || fail "$platform/$(basename "$file") audio must use 44.1 or 48 kHz; found $audio_rate"
+    [[ "$audio_channels" == "2" ]] || fail "$platform/$(basename "$file") audio must be stereo; found $audio_channels channel(s)"
 
     [[ "$codec" == "h264" ]] || fail "$platform/$(basename "$file") must use H.264; found $codec"
     [[ "$profile" == "High" || "$profile" == "Main" || "$profile" == "Baseline" ]] || fail "$platform/$(basename "$file") has unsupported H.264 profile $profile"

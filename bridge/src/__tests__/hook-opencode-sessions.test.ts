@@ -26,6 +26,17 @@ function pidRow(pid: number, cwd?: string): ObservedSession {
 }
 
 describe('HookOpenCodeSessions', () => {
+  it('native observation-only permissions carry attention without an answerable request', () => {
+    const hooks = new HookOpenCodeSessions();
+    hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p1', title: 'Read file', observerOnly: true }, 1000);
+    const [row] = hooks.applyTo([], 1100);
+    expect(row.state).toBe('awaiting_permission');
+    expect(row.question).toBe('Read file');
+    expect(row.requestId).toBeUndefined();
+    expect(row.liveAnswerable).toBe(false);
+    expect(row.controllerInput).toBe(false);
+  });
+
   it('surfaces a session from its hooks with the turn state the process scan cannot see', () => {
     const hooks = new HookOpenCodeSessions();
     hooks.note('opencode_session_start', { sessionId: SID, cwd: CWD }, 1_000);
@@ -204,4 +215,16 @@ it('retains legacy unknown-PID sessions and updates the owner when a session res
   hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 1234 }, 1002);
   hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 4321 }, 1003);
   expect(hooks.applyTo([], 1004)[0]).toMatchObject({ state: 'processing', pid: 4321 });
+});
+
+// Native folder-installed observers never poll the response queue. A structured
+// question is still useful for display, but must not grant a response channel.
+it('keeps observer-only structured choices read-only even if the SDK supports replies', () => {
+  const hooks = new HookOpenCodeSessions();
+  hooks.note('opencode_question_asked', { sessionId: SID, questionId: 'native-q',
+    observerOnly: true, questionAnswerable: true, questions: [{ question: 'Target?',
+      options: [{ label: 'Local' }, { label: 'Remote' }] }] }, 1000);
+  expect(hooks.applyTo([], 1001)[0]).toMatchObject({ state: 'awaiting_option', liveAnswerable: false, controllerInput: false,
+    options: [{ index: 0, label: 'Local' }, { index: 1, label: 'Remote' }] });
+  expect(hooks.answerQuestion(SID, 0, 'Target?', () => true)).toBe(false);
 });

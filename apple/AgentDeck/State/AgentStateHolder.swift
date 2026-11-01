@@ -39,6 +39,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     let timelineStore = TimelineStore()
     /// App-layer handover cache; only snapshots from the preferred local daemon qualify.
     var onLocalTimelineSnapshot: (([TimelineEntry]) -> Void)?
+    var onLocalDaemonCheckpoint: (@MainActor (String, Int, BridgeDeliveryToken) async -> String?)?
+    private var checkpointAdmission = 0
     let displaySync = DisplaySyncService()
     private(set) var timelineGenerator: StateTimelineGenerator!
 
@@ -810,6 +812,25 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         switch event {
         case .stateUpdate(let e):
             handleStateUpdate(e)
+            #if os(macOS)
+            if let payload = e.daemonCheckpoint, let token = e.deliveryToken, token.isValid, let preferredLocalBridgeUrl,
+               PairingCredential.sameEndpoint(preferredLocalBridgeUrl, connection.url),
+               let host = URL(string: preferredLocalBridgeUrl)?.host?.lowercased(),
+               ["127.0.0.1", "localhost", "::1", "[::1]"].contains(host) {
+                if token.claimCheckpointSubscription() {
+                    sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.checkpointSubscriptionId))
+                    sendCommand(.daemonCheckpointAck(checkpointId: DaemonParityRules.configurationSubscriptionId))
+                }
+                checkpointAdmission += 1
+                let admission = checkpointAdmission, endpoint = connection.url
+                Task { @MainActor [weak self] in
+                    guard let self, token.isValid, self.connection.url == endpoint,
+                          let id = await self.onLocalDaemonCheckpoint?(payload, admission, token),
+                          token.isValid, self.connection.url == endpoint else { return }
+                    self.sendCommand(.daemonCheckpointAck(checkpointId: id))
+                }
+            }
+            #endif
         case .usageUpdate(let e):
             handleUsageUpdate(e)
         case .connection(let e):
@@ -822,7 +843,12 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             state.hostDisplayOn = e.displayOn
             displaySync.handleDisplayState(displayOn: e.displayOn, dim: e.dim)
         case .sessionsList(let e):
-            state.siblingSessions = e.sessions
+            let previousNames = Dictionary(state.siblingSessions.map { ($0.id, $0.displayName) }, uniquingKeysWith: { _, new in new })
+            state.siblingSessions = e.sessions.map { row in
+                var row = row
+                if row.displayName == nil { row.displayName = previousNames[row.id] ?? nil }
+                return row
+            }
             #if AGENTDECK_DOT_PREVIEW
             state.dot = e.dot
             #endif

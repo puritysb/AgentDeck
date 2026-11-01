@@ -50,13 +50,14 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
   <a href="https://puritysb.github.io/AgentDeck/design-system/">Design system</a>
 </p>
 
-## Current habitat · development preview
+## Agent activity · development preview
 
-[![Shared-shell motion on the connected Android tablet](docs/media/current/shared-home-preview.gif)](https://puritysb.github.io/AgentDeck/#current-habitat)
+[![Agent activity visualization on the connected Android tablet](docs/media/current/shared-home-preview.gif)](https://puritysb.github.io/AgentDeck/#current-habitat)
 
-Hermes, Dot and OpenClaw share one shell and move to their own places. Hermes and Dot
-return after activity; OpenClaw stays on its rock while available, then returns when the
-gateway disconnects. Recorded November 2, 2026 in the native Android
+See which agents are working, waiting for input or finished, and respond to supported
+questions and approvals from a connected controller. The recording below focuses on
+the aquarium visualization: residents emerge during activity and return when it ends.
+Recorded November 2, 2026 in the native Android
 validation app with fictional local activity; the video shows the actual app, not generated UI.
 This is a development preview, not a claim about the current store release.
 

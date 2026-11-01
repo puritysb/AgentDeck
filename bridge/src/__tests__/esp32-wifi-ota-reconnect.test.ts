@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WebSocket } from 'ws';
 import type { BridgeCore } from '../bridge-core.js';
 import {
+  abortWifiEsp32Ota,
   __setOtaTimeoutsForTest,
   __resetWifiEsp32OtaState,
   __wifiOtaTestApi,
@@ -157,4 +158,40 @@ describe('WiFi OTA reconnect-follow', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+});
+
+// Owner replacement invalidates outstanding continuations before sockets close.
+it('aborts an in-flight owner and ignores its late ACK before a fresh transfer', async () => {
+  __setOtaTimeoutsForTest({ begin: 200, chunk: 100, end: 200, reconnectWait: 300 });
+  const { dir, path } = writeFirmware(3 * CHUNK);
+  try {
+    const socketA = fakeWs();
+    const first = makeCore({ socketA, dropSeq: 1, onDrop: () => setImmediate(abortWifiEsp32Ota) });
+    __wifiOtaTestApi.registerWifiEsp32(KEY_DEVICE, socketA);
+    await expect(__wifiOtaTestApi.performWifiEsp32Ota(first.core, 'ttgo_t_display', path)).rejects.toThrow();
+    const oldId = first.sends[0].evt.otaId;
+    __wifiOtaTestApi.handleEsp32OtaReply({ type: 'esp32_ota_ack', otaId: oldId, stage: 'chunk', seq: 1 });
+    expect(first.sends.filter(s => s.evt.type === 'esp32_ota_abort')).toHaveLength(1);
+    expect(first.sends.some(s => s.evt.type === 'esp32_ota_end')).toBe(false);
+    const next = makeCore({ socketA });
+    expect((await __wifiOtaTestApi.performWifiEsp32Ota(next.core, 'ttgo_t_display', path)).ok).toBe(true);
+    expect(next.sends[0].evt.otaId).not.toBe(oldId);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('refuses a post-wake ACK whose wall deadline passed before its timer', async () => {
+  __setOtaTimeoutsForTest({ begin: 200, chunk: 100, end: 200, reconnectWait: 300 });
+  const { dir, path } = writeFirmware(3 * CHUNK);
+  try {
+    const socketA = fakeWs(); let sends: Array<{ sock: WebSocket; evt: any }>;
+    const fixture = makeCore({ socketA, dropSeq: 1, onDrop: () => setImmediate(() => {
+      const old = Date.now(); vi.spyOn(Date, 'now').mockReturnValue(old + 1000);
+      const frame = sends.find(s => s.evt.type === 'esp32_ota_chunk' && s.evt.seq === 1)!.evt;
+      __wifiOtaTestApi.handleEsp32OtaReply({ type: 'esp32_ota_ack', otaId: frame.otaId, stage: 'chunk', seq: 1 });
+    }) });
+    sends = fixture.sends;
+    __wifiOtaTestApi.registerWifiEsp32(KEY_DEVICE, socketA);
+    await expect(__wifiOtaTestApi.performWifiEsp32Ota(fixture.core, 'ttgo_t_display', path)).rejects.toThrow('timed out');
+    expect(sends.some(s => s.evt.type === 'esp32_ota_end')).toBe(false);
+  } finally { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); }
 });

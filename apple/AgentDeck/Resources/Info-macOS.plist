@@ -30,6 +30,16 @@
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<!-- RFC 6598 shared space used by explicit Tailscale relay targets.
+		     This is not RFC 1918 local space; keep the HTTP exception CIDR-scoped. -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>100.64.0.0/10</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>AgentDeck connects to iDotMatrix LED displays over Bluetooth to show live session status.</string>

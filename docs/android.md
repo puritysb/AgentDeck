@@ -270,6 +270,28 @@ The same grant also powers `stay_on_while_plugged_in` from `MonitorService`. Not
 
 ---
 
+### Host display sleep and frontlight
+
+With display sync enabled, LCD dashboards dim when the host display sleeps;
+e-ink dashboards retain their image and dim only the frontlight. Settings access
+belongs to the installed package: a separate QA package does not inherit the
+production app's brightness permission.
+
+Pantone 6's Android 14 firmware uses the vendor `LightUtils` mode settings.
+AgentDeck uses the existing WRITE_SECURE_SETTINGS grant: full-off selects the
+vendor's close mode; minimum brightness uses a temporary custom preset while
+retaining the original color temperature and channel status. The previous mode
+and both touched presets are committed to private recovery preferences before
+any setting changes, then restored on wake or process recreation. Missing keys
+are restored as missing, and a failed write retains the recovery journal for retry.
+
+Generic Android `screen_brightness`, sysfs aliases and procfs cache writes can
+disagree with the physical light on this firmware. Acceptance checks both LED
+drivers' power-mode bits and the physical panel, rather than requiring the
+brightness register to become zero while its engine is disabled. No root access,
+driver debug mode or raw-register write is part of the app. Other firmware or a
+missing existing vendor-settings grant can still refuse the operation.
+
 ## Connection ladder (SSOT)
 
 `net/BridgeAutoConnect.kt` is the **only** auto-connect ladder, shared by

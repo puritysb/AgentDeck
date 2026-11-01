@@ -1,0 +1,48 @@
+{
+  "cacheMs": 1800000,
+  "staleMs": 21600000,
+  "timeoutMs": 8000,
+  "retryMs": 60000,
+  "maxSources": 4,
+  "maxBodyBytes": 1048576,
+  "maxEvents": 1024,
+  "maxLineBytes": 8192,
+  "maxWalkDays": 3700,
+  "maxWalkSteps": 100000,
+  "maxOccurrences": 10000,
+  "maxUrlBytes": 8192,
+  "minYear": 1600,
+  "maxYear": 9999,
+  "dayMs": 86400000,
+  "minuteMs": 60000,
+  "offsetSamplesHours": [
+    -36,
+    -12,
+    12,
+    36
+  ],
+  "frequencies": [
+    "DAILY",
+    "WEEKLY",
+    "MONTHLY",
+    "YEARLY"
+  ],
+  "ruleKeys": [
+    "FREQ",
+    "INTERVAL",
+    "COUNT",
+    "UNTIL",
+    "BYDAY",
+    "BYMONTHDAY",
+    "WKST"
+  ],
+  "weekdays": [
+    "SU",
+    "MO",
+    "TU",
+    "WE",
+    "TH",
+    "FR",
+    "SA"
+  ]
+}

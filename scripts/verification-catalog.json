@@ -207,8 +207,8 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS Debug",
       "report_suite": "apple",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-macos-release",
@@ -216,8 +216,8 @@
       "gate": "apple-unit",
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS Release",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-ios",
@@ -226,7 +226,7 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh iOS Release",
       "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-dot-macos",
@@ -234,8 +234,8 @@
       "gate": "apple-unit",
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh macOS DotPreviewRelease",
-      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3", "cargo"] },
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-dot-ios",
@@ -244,7 +244,7 @@
       "tiers": ["changed", "full"],
       "run": "bash apple/scripts/verify-build.sh iOS DotPreviewRelease",
       "requires": { "platform": "darwin", "commands": ["xcodebuild", "xcodegen", "python3"] },
-      "paths": ["apple/**", "generated/protocol/**"]
+      "paths": ["apple/**", "generated/protocol/**", "shared/glance-raster/**", "shared/glance-frame-policy.json", "bridge/assets/fonts/**"]
     },
     {
       "id": "apple-cloudkit-macos",
@@ -372,6 +372,15 @@
       "gate": "swift-codex-live",
       "tiers": ["full"],
       "manual": "With the signed sandboxed app running, run node scripts/verify-swift-codex-live.mjs --port PORT --pid PID --app /path/AgentDeck.app --allow-visible-fixtures, then pass --attest swift-codex-live=pass."
+    },
+    {
+      "id": "daemon-lifecycle-live",
+      "name": "Signed Swift and Node lifecycle acceptance",
+      "gate": "daemon-lifecycle-live",
+      "tiers": [
+        "full"
+      ],
+      "manual": "Prepare the alternate signed app and private data/ports in docs/testing.md; run the default lifecycle and --inflight modes. Run --sleep-mode swift/node/both only on a dedicated Mac with verified OS sleep/full-wake records. Attest daemon-lifecycle-live=pass only after all modes pass."
     }
   ],
   "gates": [
@@ -467,6 +476,51 @@
         "physical device rendering, hardware transport or optical acceptance",
         "Swift/Node ownership handover, store signing or publication",
         "a long-term production soak (duration is selected by the operator)"
+      ]
+    },
+    {
+      "id": "daemon-lifecycle-live",
+      "name": "Signed Swift and Node lifecycle acceptance",
+      "level": [
+        "e2e",
+        "integration"
+      ],
+      "where": "Maintainer Mac, alternate sandboxed signed app and private data/ports",
+      "workflow": null,
+      "trigger": "Opt-in after building and signing the isolated test app",
+      "blocking": false,
+      "command": "node scripts/verify-daemon-lifecycle.mjs --allow-visible-fixtures --app APP --swift-data DATA --out OUTPUT",
+      "evidence": [
+        "scripts/verify-daemon-lifecycle.mjs",
+        "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
+        "bridge/src/__tests__/fixtures/lifecycle-preferences.swift",
+        "apple/AgentDeckTests/DaemonStartupCancellationTests.swift",
+        "shared/src/__tests__/daemon-parity.test.ts",
+        "bridge/src/__tests__/daemon-checkpoint.test.ts",
+        "bridge/src/__tests__/daemon-configuration.test.ts",
+        "shared/daemon-configuration-vectors.json",
+        "bridge/src/__tests__/daemon-checkpoint-handover.test.ts",
+        "apple/AgentDeckTests/DaemonCheckpointTests.swift",
+        "apple/AgentDeckTests/DaemonConfigurationTests.swift",
+        "shared/daemon-checkpoint-vectors.json",
+        "bridge/src/__tests__/esp32-wifi-ota-reconnect.test.ts",
+        "apple/AgentDeckTests/PocketAutonomyTests.swift",
+        "bridge/src/__tests__/daemon-recovery.test.ts",
+        "apple/AgentDeckTests/DaemonRecoveryTests.swift"
+      ],
+      "proves": [
+        "Actual signed Swift and Node processes converge on one private listener in both startup orders and concurrent startup",
+        "Isolated stop/restart, client-app crash and owner failure recover with token and synthetic timeline continuity",
+        "An incoming Node crash after Swift yields recovers without restarting the app or contacting the shared daemon",
+        "Opt-in in-flight replay checks undecided approvals, stale IDs, aggregate Feed receipts and unconfirmed replica failures across both owner directions",
+        "Synthetic OTA push retires old transfers and pull OTA reconstructs identical bytes explicitly pre-staged on both owners",
+        "Dedicated-Mac sleep modes require actual OS sleep and full-wake evidence before checking expired approvals, OTA and Feed restoration",
+        "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations"
+      ],
+      "does_not_prove": [
+        "Installed App Store or Release delivery, real providers, source grants, physical writers or remote network partitions",
+        "Absent-replica recovery, simultaneous durable-store loss, pins/settings/source-grant migration or staged-image distribution",
+        "Physical X4 acceptance is deferred to companion-app integration"
       ]
     },
     {
@@ -589,8 +643,17 @@
       "blocking": true,
       "command": "vitest run <the files below>",
       "files": [
+        "bridge/src/__tests__/daemon-recovery.test.ts",
         "shared/src/__tests__/daemon-parity.test.ts",
         "shared/src/__tests__/ci-wait-sync.test.ts",
+        "shared/src/__tests__/daemon-relay-sync.test.ts",
+        "bridge/src/__tests__/daemon-relay-native.test.ts",
+        "bridge/src/__tests__/apme-retention-parity.test.ts",
+        "bridge/src/__tests__/antigravity-observation.test.ts",
+        "bridge/src/__tests__/calendar.test.ts",
+        "bridge/src/__tests__/pixoo-baked.test.ts",
+        "bridge/src/__tests__/pocket-autonomy-parity.test.ts",
+        "bridge/src/__tests__/glance-frame-parity.test.ts",
         "bridge/src/__tests__/ips10-roster.test.ts",
         "bridge/src/__tests__/claude-background-tasks.test.ts",
         "bridge/src/__tests__/codex-background-terminals.test.ts",
@@ -604,7 +667,12 @@
       ],
       "proves": [
         "the Node rules and their generated Swift mirrors execute the same vectors and agree: daemon policies, the CI-wait command classifier, the IPS10 roster kernel, matrix expressions (including iDotMatrix creature ownership, attention preemption, background lower bounds and CI/child separation) and the native TUI samples",
-        "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain"
+        "the launchd supervisor probe answers on a real launchd, and the Foundation Models helper builds and signs with the runner's Swift toolchain",
+        "native Glance uses the pinned common rasterizer and bundled fonts to match Node SVG, every packed 1bpp byte, content signatures, physical orientation and decoded PNG pixels; Swift routes preserve conditional responses, Surface identity and listener authentication",
+        "native Pixoo baked loops use fixed bundled pixel code in system JavaScriptCore to match every Node RGB byte; bounded input/cache, palindrome playback and upload packing are checked",
+        "native ICS source URL scope, actual parser recurrence/timezone/DST vectors and cache/stale policy match Node; memory-only calendar context preserves aggregate Pocket storage",
+        "native GitHub CI phase classification and aggregation match Node response vectors, and generated transport/identity/freshness policy has no drift",
+        "real Node/Swift relay sockets work in both directions with native authentication, reconnect dedup, supported controls, explicit rejection and bounded hello acknowledgement; typed row policy matches compiled Swift"
       ],
       "does_not_prove": [
         "how the Swift app uses those mirrors (that is apple-test.yml)",
@@ -649,6 +717,7 @@
       "proves": [
         "the Android app compiles",
         "protocol parsing, timeline store and state logic behave as specified on the JVM",
+        "MOAAN frontlight mode transitions preserve original presets and absent keys across dim levels, process recreation, durable-save failure and refused settings writes",
         "multi-host refusal recovery retains endpoint-specific errors and distinguishes approval from network failure",
         "e-ink work and usage regions remain visible together with independent scrolling and inline provider limits across roster growth, rotation and large fonts; separate Frame mode preserves continuous travel, state-dependent work and rest behavior, bounded resident separation and quiet Hermes stillness on the JVM",
         "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host"
@@ -669,10 +738,16 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; verify-build.sh macOS / iOS CloudKitPoCDebug; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift", "apple/AgentDeckTests/CloudKitProbeTests.swift", "apple/AgentDeckTests/RemoteObservationProjectionTests.swift", "apple/AgentDeckTests/RemoteObservationPersistenceTests.swift"],
+      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift", "apple/AgentDeckTests/CloudKitProbeTests.swift", "apple/AgentDeckTests/RemoteObservationProjectionTests.swift", "apple/AgentDeckTests/RemoteObservationPersistenceTests.swift", "apple/AgentDeckTests/PixooBakedTests.swift", "apple/AgentDeckTests/CalendarTests.swift", "apple/AgentDeckTests/AntigravityObservationTests.swift", "apple/AgentDeckTests/ApmeStorageModelTests.swift", "apple/AgentDeckTests/ApmeRetentionTests.swift", "apple/AgentDeckTests/HermesReceiverSettingsTests.swift", "apple/AgentDeckTests/OpenCodeObserverSetupTests.swift", "apple/AgentDeckTests/PocketAutonomyTests.swift", "apple/AgentDeckTests/GitHubCIProviderTests.swift", "apple/AgentDeckTests/DaemonRelayTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
         "the development-only CloudKit configuration deterministically tests bounded completion, account-generation invalidation, local cache/outbox reload and coalesced retry policy without contacting iCloud; the iOS PoC configuration compiles separately",
+        "native Pixoo scheduling tests exercise actual one-frame HTTP payloads, coalescing, failed-loop cooldown, dim cancellation, wake brightness and settings preservation; physical Pixoo acceptance is local opt-in",
+        "native ICS consent and revision-scoped cache projection reject revoked source work, while calendar-derived Pocket persistence keeps only aggregate feedback",
+        "native APME retention preserves rows/history, validates preview fingerprints and explicit local-only confirmation, rolls both tables back on failure, handles WAL/busy stores and compacts disposable stores; Node/Swift SQL and UTF-16 marker parity use shared vectors",
+        "native adaptive Pocket cards match the Node golden vectors for selection, Unicode fingerprints, feedback, ignored exposures and persistence; actual Feed/Outbox route tests preserve conditional/OTA-first exposure counting, first-answer-wins replay across restart and LAN authentication",
+        "native OpenCode observer setup preserves user files, refuses edited or linked assets, updates and removes only owned files, and restores scoped receiver synchronization",
+        "Hermes folder consent persists receiver selection, follows actual local ready ports across restart, renews stale bookmarks, preserves unknown settings, refuses invalid/unowned/symlinked files, and stops file access after revocation; saved configuration does not prove hook delivery",
         "preferred-port listener startup retries address-in-use failures only within a bounded budget and after explicit TCP refusal; peer arrival, unknown probes, cancellation and superseded startup stop retries, failed listeners are released and a ready listener survives its startup deadline",
         "daemon process activity is acquired before startup suspends, remains held after success and is released exactly once after failure, cancellation or shutdown; a retired instance cannot release its replacement activity",
         "automatic daemon handover and listener-failure recovery resume after actual teardown completion when their bounded wait expires; explicit stop, Settings restart and newer ownership or connection intents suppress stale continuation, and the resumed client monitor supports a subsequent local promotion",
@@ -685,6 +760,8 @@
         "selected-host discovery recovery survives network retry exhaustion while explicit stops and authentication refusals remain stopped",
         "explicit daemon data-directory overrides avoid legacy user-data migration and own only their temporary paths",
         "native CI wait intent, lifecycle and foreground accounting replay shared CI fixtures through CiWaitRulesTests",
+        "native relay hub preserves local ownership, supersedes old sockets, removes stale rows and rejects unsupported or stale worker controls; explicit Keychain-backed target consent survives restart and failed removal stays disabled; built macOS ATS policy permits HTTP only for the RFC 6598 shared IPv4 CIDR in addition to existing local-network access, with no arbitrary-load or TLS-version exception",
+        "native GitHub CI uses explicit repository/run identity and consent, app-owned Keychain custody, bounded read-only HTTPS, complete evidence and stale/unknown handling; account changes and closed waits reject late replies",
         "background task snapshots reach creature accents, stay bounded, freeze under Reduce Motion and clear on completion or approval",
         "the iOS app builds unsigned in Store and DotPreview configurations",
         "iOS onboarding keeps guidance and recovery in one scroll view with pinned controls at phone portrait, landscape, accessibility text and iPad sizes; reopening retains preferences",
@@ -692,7 +769,10 @@
         "App Store metadata, screenshots and privacy manifest are within submission limits"
       ],
       "does_not_prove": [
+        "real Data Protection Keychain custody in an unsigned XCTest host; signed sandbox save, new-process restore and deletion are separate local acceptance",
         "UI flows (there is no UI-test target)",
+        "relay across two physical machines or live signed relay Settings/Keychain acceptance",
+        "live private GitHub access or signed Keychain availability: transport/storage fixtures run in XCTest; real Keychain requires a separately signed host",
         "Shortcuts discovery, Siri execution or real notification clicks on an installed signed app",
         "GPU screenshot availability: native scene captures are bounded, optional review attachments; capture failure is recorded and scene assertions still execute",
         "behaviour on a signed build with real TCC grants"
@@ -983,6 +1063,7 @@
       "match": [
         "bridge/src/__tests__/daemon-*.test.ts",
         "shared/src/__tests__/daemon-parity.test.ts",
+        "shared/src/__tests__/daemon-relay-sync.test.ts",
         "bridge/src/__tests__/session-registry.test.ts",
         "bridge/src/__tests__/linux-service.test.ts",
         "bridge/src/__tests__/windows-*.test.ts",
@@ -1024,6 +1105,7 @@
         "bridge/src/__tests__/opencode-*.test.ts",
         "bridge/src/__tests__/observed-*.test.ts",
         "bridge/src/__tests__/passive-observer.test.ts",
+        "bridge/src/__tests__/session-display-name.test.ts",
         "bridge/src/__tests__/antigravity-*.test.ts",
         "bridge/src/__tests__/subagent-*.test.ts",
         "bridge/src/__tests__/coordination-evidence.test.ts",
@@ -1058,7 +1140,6 @@
         "bridge/src/__tests__/remote-reverse-e2e.test.ts",
         "bridge/src/__tests__/focus-relay-samesocket.test.ts",
         "bridge/src/__tests__/session-push-channel.test.ts",
-        "bridge/src/__tests__/daemon-relay.test.ts",
         "bridge/src/__tests__/compact-session-labels.test.ts"
       ]
     },
@@ -1149,14 +1230,15 @@
         "bridge/src/__tests__/peripheral-mapping.test.ts",
         "bridge/src/__tests__/display-*.test.ts",
         "bridge/src/__tests__/ips10-*.test.ts",
-        "bridge/src/__tests__/glance-frame.test.ts",
+        "bridge/src/__tests__/glance-frame*.test.ts",
         "bridge/src/__tests__/card-*.test.ts",
-        "bridge/src/__tests__/pocket-autonomy.test.ts",
+        "bridge/src/__tests__/pocket-autonomy*.test.ts",
         "bridge/src/__tests__/learning-pack.test.ts",
         "bridge/src/__tests__/font-pack.test.ts",
         "bridge/src/__tests__/dashboard-provider*.test.ts",
         "bridge/src/__tests__/weather*.test.ts",
         "bridge/src/__tests__/calendar.test.ts",
+        "bridge/src/__tests__/pixoo-baked.test.ts",
         "bridge/src/__tests__/desk-awareness.test.ts",
         "shared/src/__tests__/esp32-boards.test.ts",
         "shared/src/__tests__/esp32-wifi-provision*.test.ts",

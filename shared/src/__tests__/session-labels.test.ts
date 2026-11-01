@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { sessionDeckLabels, sessionLabelText } from '../session-labels.js';
+import { sessionDeckLabels, sessionLabelText, normalizeSessionDisplayName, retainSessionDisplayNames } from '../session-labels.js';
 import { buildSessionDeck } from '../d200h-layout.js';
 import type { SessionInfo } from '../protocol.js';
 
@@ -114,4 +115,41 @@ describe('D200 deck — same-project sessions are distinguishable (#544)', () =>
     const svgs = [...deck.values()].map((c) => c.svg).join('\n');
     expect(svgs).toContain('che… #b80c');
   });
+});
+
+
+describe('friendly labels (#544)', () => {
+  const vectors = JSON.parse(readFileSync(new URL('../../session-display-name-vectors.json', import.meta.url), 'utf8'));
+  it('normalizes the same bounded hints as Swift', () => {
+    for (const v of vectors) expect(normalizeSessionDisplayName(v.raw)).toBe(v.expected);
+  });
+  it('retains identity tags for duplicate/renamed hints, and preserves solo projects', () => {
+    const a = { ...row('5f8faaaa', 'proj'), displayName: 'Release' };
+    const b = { ...row('b80cbbbb', 'proj'), displayName: 'Release' };
+    const before = JSON.stringify([a, b]);
+    expect(sessionLabelText(sessionDeckLabels([a,b]).get(a.id), 10)).toBe('Rel… #5f8f');
+    expect(JSON.stringify([a,b])).toBe(before);
+    expect(sessionLabelText(sessionDeckLabels([{...a, displayName:'Renamed'},b]).get(a.id))).toBe('Renamed #5f8f');
+    expect(sessionLabelText(sessionDeckLabels([a]).get(a.id))).toBe('proj');
+  });
+  it('retains only absent hints, clears explicit empty, and drops removed rows', () => {
+    const old = [{ id: 'a', displayName: 'Old' }, {id:'removed', displayName:'Gone'}];
+    expect(retainSessionDisplayNames([{id:'a'}], old)).toEqual([{id:'a',displayName:'Old'}]);
+    expect(retainSessionDisplayNames([{id:'a',displayName:''}], old)).toEqual([{id:'a',displayName:''}]);
+  });
+});
+
+it('keeps session keys, INFO and VOICE bound to the same ID after friendly rename (#544/#632)', () => {
+  const sessions = [{...row('5f8faaaa','proj'),displayName:'Alpha'}, {...row('b80cbbbb','proj'),displayName:'Beta'}];
+  const state = {state:'disconnected' as const,daemonConnected:true,allSessions:sessions};
+  const list = buildSessionDeck(state,{mode:'list'},positions(15));
+  expect([...list.values()].map(c=>c.action).filter(a=>a?.kind==='open')).toEqual([
+    {kind:'open',sessionId:'5f8faaaa'},{kind:'open',sessionId:'b80cbbbb'},
+  ]);
+  for (const session of sessions) {
+    const detail = [...buildSessionDeck(state,{mode:'detail',openSessionId:session.id},positions(15)).values()];
+    expect(detail[1].svg).toContain(session.id==='5f8faaaa'?'Alp… #5f8f':'Beta #b80c');
+    expect(detail[1].svg).not.toContain('>INFO<'); // the corner pill must not paint over the ID
+    expect(detail.some(c=>c.action?.kind==='command' && c.action.command.type==='voice' && c.action.command.sessionId===session.id)).toBe(true);
+  }
 });

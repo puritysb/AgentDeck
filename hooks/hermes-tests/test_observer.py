@@ -279,6 +279,37 @@ class ObserverTests(unittest.TestCase):
             self.emit('on_session_end', completed=True, interrupted=False)
         self.assertNotIn('hermes_background_snapshot', [e for e, _ in self.events])
 
+    def test_running_observer_follows_atomic_receiver_port_changes_without_registry(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        received = []
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                body = json.dumps({'mode': 'daemon', 'hermesObserver': 1}).encode()
+                self.send_response(200); self.send_header('Content-Length', str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def do_POST(self):
+                received.append((self.server.server_port, self.path))
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(200); self.send_header('Content-Length', '0'); self.end_headers()
+        servers = [ThreadingHTTPServer(('127.0.0.1', 0), Handler) for _ in range(2)]
+        workers = [threading.Thread(target=s.serve_forever, daemon=True) for s in servers]
+        for worker in workers: worker.start()
+        try:
+            with tempfile.TemporaryDirectory() as home, patch.object(self.module, '__file__', str(Path(home) / '__init__.py')):
+                with patch.object(self.module.Path, 'home', side_effect=AssertionError('must not consult registry')):
+                    for server, event in zip(servers, ['hermes_session_start', 'hermes_stop']):
+                        pending = Path(home) / 'connection.pending'
+                        pending.write_text(json.dumps({'port': server.server_port, 'future': {'keep': True}}))
+                        pending.replace(Path(home) / 'connection.json')
+                        self.module._deliver(event, {'session_id': 'same-running-observer'})
+                self.assertEqual(received, [(servers[0].server_port, '/hooks/hermes_session_start'),
+                                            (servers[1].server_port, '/hooks/hermes_stop')])
+        finally:
+            for server in servers: server.shutdown(); server.server_close()
+            for worker in workers: worker.join(timeout=2)
+
     def test_real_loopback_export_requires_receiver_capability(self):
         import threading
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer

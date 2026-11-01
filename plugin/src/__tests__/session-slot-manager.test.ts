@@ -1292,3 +1292,16 @@ it('offers OpenCode one-time permission only with a live native response channel
   manager.updateSessions([{ ...row, liveAnswerable: false }]);
   expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT).type).not.toBe('option');
 });
+
+it('refreshes friendly labels without changing deck targets (#544/#632)', () => {
+  const manager = new SessionSlotManager();
+  const a = makeSession({id:'5f8faaaa', displayName:'Alpha'});
+  const b = makeSession({id:'b80cbbbb', displayName:'Beta'});
+  manager.updateSessions([a,b]);
+  expect(manager.displayNameFor(a,10)).toBe('Alp… #5f8f');
+  manager.updateSessions([{...a,displayName:undefined},b]);
+  expect(manager.displayNameFor(a)).toBe('Alpha #5f8f');
+  manager.updateSessions([{...a,displayName:''}, {...b,displayName:'Renamed'}]);
+  expect(manager.displayNameFor(a)).toBe('AgentDeck #5f8f');
+  expect(manager.sessions.map(s=>s.id)).toEqual(['5f8faaaa','b80cbbbb']);
+});

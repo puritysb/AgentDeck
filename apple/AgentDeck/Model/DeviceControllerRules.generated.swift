@@ -12,7 +12,7 @@ enum DeviceControllerRules {
         let mode = row["controlMode"] as? String ?? ""
         let agent = row["agentType"] as? String ?? ""
         let managed = mode == "managed" || (mode != "observed" && (row["port"] as? Int ?? 0) > 0)
-        let input = alive && (managed || agent == "openclaw" || (mode == "observed" && observedInputAgents.contains(agent)))
+        let input = alive && row["controllerInput"] as? Bool != false && (managed || agent == "openclaw" || (mode == "observed" && observedInputAgents.contains(agent)))
         let request = row["requestId"] as? String ?? ""
         let question = row["question"] as? String ?? ""
         let choices = row["options"] as? [[String: Any]] ?? []

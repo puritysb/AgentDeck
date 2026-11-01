@@ -425,10 +425,40 @@ agentdeck hermes-observer --home /path/to/hermes-profile --check
 This stores only a loopback port in the observer's `connection.json`, preserves
 Hermes configuration and does not start or replace any daemon. Ordinary observer
 updates preserve that selection. Use `--registry` instead of `--port` to remove
-it and restore registry discovery. Reconfigure it if the intended daemon moves.
+it and restore registry discovery. Without the macOS sync described below,
+reconfigure it if the intended daemon moves.
 An invalid explicit selection never falls back to another receiver. Installation
 prints the readiness report so copied plugin files cannot be mistaken for a
 completed connection. `--check` cannot be combined with selection changes.
+
+#### Keep the macOS receiver selected across port changes
+
+In macOS **Settings → Integrations → Hermes → Choose observer folder…**, select
+`<your Hermes profile>/plugins/agentdeck-observer`. This is an opt-in grant for
+an existing observer, not an installer or plugin enablement step. The app retains
+a security-scoped bookmark and writes only `connection.json`, preserving other
+JSON keys. A malformed file, symlink, missing marker or lost folder permission
+is reported without overwriting it; repair the file or reselect the folder and
+use **Retry**. Select the profile the running Hermes process actually uses.
+
+While AgentDeck is open, the selection follows the **ready local receiver**:
+Swift's actual bound port (including a fallback), or the local daemon the app
+has attached to after handover. It never writes a preferred port before binding,
+a remote dashboard endpoint, or removes the selection during teardown. The
+observer rereads this file for each delivery, so a running Hermes process uses
+the new port on its next event without a restart. Events sent during receiver
+downtime are still best-effort; this does not add replay or recover a session
+start lost during a restart.
+
+The saved-port message confirms a file write, not observer enablement or event
+receipt. **Stop syncing** removes the bookmark and stops further writes while
+leaving the last explicit port intact; it does not disable Hermes or silently
+switch it back to Node registry discovery. While sync is enabled the app owns
+receiver selection, so stop syncing before using CLI `--port` / `--registry` to
+choose a different receiver. Relaunching AgentDeck restores the grant and syncs
+once its local receiver is ready. The local signed Release acceptance below covers picker/bookmark restoration
+and automatic port changes. The earlier Store 9401 receipt covers direct hook
+delivery and explicit CLI selection only.
 
 The observer exports bounded prompt/final-response text (8,192 characters each),
 model, platform, CLI working directory, tool name and its own process id to the
@@ -616,6 +646,41 @@ No production daemon restart, user Hermes profile edit or paid model call was
 needed for these isolated runtime checks. The Android visual turn used the
 existing production receiver and only synthetic fixture content.
 
+### Direct Store Swift receiver acceptance 2026-10-29
+
+The installed Store app **1.9.2 / 9401** passed strict code-signature verification
+with `com.apple.security.app-sandbox=true`. Its executable SHA-256 was
+`b730880f02ae9a1397beaef267ccfdd7922a2119bd457ba74d8f10584cbdcac5`.
+An isolated container subdirectory, explicit loopback port and disabled device
+modules separated the receiver from the shared production Node daemon. Health
+confirmed `isSwift: true` and `hermesObserver: 1`. The Node daemon stayed running
+for other sessions; it was not the receiver or an intermediary for these turns.
+This proves direct delivery without a Node dependency on that path, not a
+machine-wide test with every Node process stopped.
+
+The real Hermes classic CLI at `0a374d167424cdc730ce9761368b62255b551e58`
+loaded the observer from a temporary profile. A local OpenAI-compatible SSE
+fixture supplied one fixed answer; no paid provider or tool execution was used.
+Installed dependency activation preceded temporary-profile selection because
+the upstream launcher rejects dependency environments outside a new profile.
+Lazy installs were disabled; its dependency-sync warning was retained in logs.
+
+| Case | Observed result |
+|---|---|
+| Explicit receiver port, real CLI turn | CLI exit 0; Swift WS roster idle → processing → idle → removed; one closed Hermes APME run and one turn with `end_source=stop` and the exact fixture response |
+| `AGENTDECK_NO_HERMES_HOOKS=1` | CLI still completed; no Hermes roster entry or new timeline event on the Swift receiver |
+| Invalid explicit selection (`port: false`) | CLI still completed; no Hermes roster entry or new timeline event. Existing Python tests separately prove no registry/network fallback |
+| Swift restart on a new port, observer reconfigured | Repeated direct delivery and clean session retirement; explicit selection must be updated when the receiver moves |
+
+Raw local receipts are retained under
+`diagnostics/hermes-swift-direct-20261029/` (gitignored). Observer tests passed
+25 cases and installer/diagnostic tests passed 27 cases. These do not prove
+Gateway messaging-platform behavior, automatic port discovery, physical-device
+appearance, a current-source Store release, or full delivery under congestion.
+The test app's temporary preference changes were restored and the original
+development GUI reopened after verification; the production Node daemon was
+not restarted.
+
 Follow-up tickets: [native/device coverage #425](https://github.com/puritysb/AgentDeck/issues/425)
 and [live compatibility verification #426](https://github.com/puritysb/AgentDeck/issues/426).
 
@@ -646,3 +711,71 @@ about what to pursue. It does not claim that the gates were met.
 
 Hermes stays observation-only. A new receipt for any gap above can reopen the
 matching issue.
+
+### Signed local Release setup acceptance 2026-10-29
+
+Source `fd9ed18f` was verified in a local Apple Development-signed Release
+1.9.4 / build 5 with App Sandbox enabled. The Release output was copied to a
+separate test app, then signed using the available development identity;
+WeatherKit was the sole entitlement omitted for that local signature. This is
+local signed-app acceptance, not acceptance of a final Store distribution artifact.
+
+The real NSOpenPanel selected a temporary profile's existing observer directory
+once. The app saved receiver port **49764**. A real installed Hermes CLI turn,
+using a deterministic loopback model fixture, reached Swift and moved through
+idle → processing → idle with a successful response. After a complete app quit
+and relaunch, the stored security-scoped bookmark restored access without a
+second folder selection, and another real CLI turn reached the same receiver.
+
+In Settings → Local server, **Apply & Restart** changed the port to **51702**.
+The GUI process remained running, the Hermes settings row showed the new port,
+and the app atomically changed the observer's connection file. Without a CLI
+`--port` update or observer reinstall, a third actual CLI turn reached Swift on
+the new port and completed normally. Each CLI invocation exited 0. These were
+three distinct CLI invocations; continuous delivery from one long-lived Hermes
+process across the change was not exercised in that run; the follow-up below
+closes that gap.
+
+The production Node daemon was kept running; the test app used a separate
+loopback port/data directory with device modules disabled. All scoped preferences
+were backed up and restored, and the original development GUI was reopened on
+9120. Local evidence: `diagnostics/hermes-signed-ui-20261029/` (gitignored), with
+per-case wire captures, CLI logs, signature/entitlement receipt and results JSON.
+Signed executable SHA-256:
+`cae33b4b67afa5eff2580b6a6a0d15bc5a7937af20be966977bcebe600297c83`.
+
+### Long-lived Hermes process acceptance 2026-10-29
+
+A real interactive Hermes classic CLI stayed alive as PID **15115** (start
+20:15:00 KST) for **23m 37s**, ending normally through `/exit`. Its upstream
+session was `20261029_201522_a8dec4`; all observed turns used
+`observed:hermes:hermes-a9c640f86ee8c67381756af5f9bf2fca`. No observer reinstall,
+Hermes restart or CLI receiver override occurred between turns. Replies came
+from the same deterministic local model fixture; no tools were called.
+
+A concurrent development session launched another app with the production
+bundle ID during the initial restart attempt. The singleton guard correctly
+terminated the test app. To avoid interrupting that session, the test copy was
+re-signed with bundle ID `bound.serendipity.agent.deck.hermes-continuity` and a
+separate preferences/container namespace, retaining App Sandbox. Its first-run
+onboarding was dismissed before measuring actual quit/relaunch. The source
+executable was unchanged; this identity isolation is a local-test limitation.
+
+With that isolated signed app, one completed turn established the baseline.
+The app then quit fully and relaunched: receiver PID **24821 → 74755**, with
+Hermes PID/start time unchanged. No second folder selection was needed. The
+next turn reached Swift at **60489** and completed `processing → idle`.
+Settings → Local server → Apply & Restart then changed the listener to
+**60490**, while GUI PID **74755** and Hermes PID **15115** stayed fixed. The
+connection file updated automatically, and the next turn in the same Hermes
+conversation reached **60490**, again completing `processing → idle`.
+
+An early turn sent while the first receiver was absent was not counted as a
+successful recovery; this still provides no downtime replay guarantee. The
+successful measurements explicitly checked receiver readiness before sending.
+The original app preferences matched all eight backed-up keys after restoration.
+The production Node daemon was not restarted. Local evidence is under
+`diagnostics/hermes-continuity-20261029/` (gitignored): `stages.json` records
+Hermes PID/start time, Swift PID and actual port; `wire.json` records received
+frames; `results.json` asserts both post-transition turns completed under the
+same observed identity.

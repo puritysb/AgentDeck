@@ -42,6 +42,7 @@ export interface HookOpenCodeSession {
   question?: string;
   options?: PromptOption[];
   liveAnswerable?: boolean;
+  controllerInput?: boolean;
   questionDetail?: string;
   /** `ocperm:<sid>:<permissionId>` — the daemon's `permission_decision`
    *  route recognises this prefix and answers through the plugin queue. */
@@ -62,6 +63,7 @@ export interface HookOpenCodePayload {
   questions?: unknown;
   questionAnswerable?: boolean;
   replyFailed?: boolean;
+  observerOnly?: boolean;
 }
 
 const OPENING_EVENTS = new Set([
@@ -107,6 +109,7 @@ export class HookOpenCodeSessions {
     };
     const before = JSON.stringify(session);
     session.lastHookAt = now;
+    session.controllerInput = payload.observerOnly !== true;
     if (Number.isSafeInteger(payload.pid) && payload.pid! > 1) session.pid = payload.pid;
 
     if (!session.cwd && payload.cwd) {
@@ -146,7 +149,7 @@ export class HookOpenCodeSessions {
         if (waits.size < OPENCODE_PENDING_REQUEST_LIMIT || waits.has(key)) {
           const old = waits.get(key);
           waits.set(key, { kind, id, prompt: kind === 'question' ? openCodeQuestionPrompt(payload.questions) : undefined,
-            answerable: payload.questionAnswerable === true, sending: payload.replyFailed ? false : old?.sending,
+            answerable: payload.observerOnly !== true && (kind === 'permission' || payload.questionAnswerable === true), sending: payload.replyFailed ? false : old?.sending,
             replyError: payload.replyFailed || old?.replyError, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, OPENCODE_QUESTION_RULES.maxText) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
         }
         this.waits.set(sessionId, waits);
@@ -175,9 +178,9 @@ export class HookOpenCodeSessions {
       session.options = pending.kind === 'permission' ? OPENCODE_PERMISSION_CHOICES.map(({ index, label }) => ({ index, label })) : pending.prompt?.options;
       session.questionDetail = pending.sending ? OPENCODE_QUESTION_RULES.sendingText
         : pending.replyError ? OPENCODE_QUESTION_RULES.unconfirmedText : undefined;
-      session.liveAnswerable = pending.kind === 'permission' || (pending.answerable === true
-        && pending.prompt?.replyable === true && pending.sending !== true);
-      session.requestId = pending.kind === 'permission' ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
+      session.liveAnswerable = pending.answerable === true && (pending.kind === 'permission'
+        || (pending.prompt?.replyable === true && pending.sending !== true));
+      session.requestId = pending.kind === 'permission' && pending.answerable === true ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
     }
     this.sessions.set(sessionId, session);
     this.reap(now);
@@ -264,7 +267,7 @@ export class HookOpenCodeSessions {
       }
       if (this.sessions.has(match[1])) {
         seen.add(match[1]);
-        kept.push(session);
+        kept.push({ ...session, controllerInput: this.sessions.get(match[1])?.controllerInput !== false });
         continue;
       }
       // A PID-keyed scan row in a directory a hook row already covers.
@@ -292,6 +295,7 @@ export class HookOpenCodeSessions {
         ...(session.requestId ? { requestId: session.requestId } : {}),
         options: session.options ?? [],
         liveAnswerable: session.liveAnswerable === true,
+        controllerInput: session.controllerInput !== false,
       } as ObservedSession);
     }
     return kept;

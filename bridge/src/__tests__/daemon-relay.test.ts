@@ -363,6 +363,31 @@ describe('relay over real sockets (worker uplink ↔ hub WsServer)', () => {
 });
 
 describe('RelayUplink refusals', () => {
+  it('rejects an ack for a different protocol version', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    wss.on('connection', ws => ws.send(JSON.stringify({ type: 'relay_ack', v: 2 })));
+    await new Promise<void>(r => wss.once('listening', r));
+    const up = new RelayUplink({ target: { host: '127.0.0.1', port: (wss.address() as { port: number }).port }, instanceId: 'w', hostLabel: 'w', snapshot: async () => [], execute: () => {}, probeHealth: async () => ({ mode: 'daemon', daemonRelay: true }), log: () => {} });
+    up.start();
+    try { await vi.waitFor(() => expect(up.status().refused).toMatch(/unsupported relay protocol/)); expect(up.status().connected).toBe(false); }
+    finally { up.stop(); for (const ws of wss.clients) ws.terminate(); wss.close(); }
+  });
+  it('discards a retired socket snapshot without delaying or replacing its reconnected roster', async () => {
+    const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+    let peer: WebSocket | undefined, connections = 0, calls = 0;
+    let release: ((rows: EnrichedSession[]) => void) | undefined;
+    const received: string[] = [];
+    wss.on('connection', ws => { peer = ws; connections++; ws.on('message', raw => { const msg = JSON.parse(raw.toString()); if (msg.type === 'relay_hello') ws.send(JSON.stringify({ type: 'relay_ack', v: 1 })); if (msg.type === 'relay_sessions') received.push(msg.sessions[0]?.id); }); });
+    await new Promise<void>(r => wss.once('listening', r));
+    const up = new RelayUplink({ target: { host: '127.0.0.1', port: (wss.address() as { port: number }).port }, instanceId: 'w', hostLabel: 'w', snapshot: async () => ++calls === 1 ? await new Promise<EnrichedSession[]>(r => { release = r; }) : [row('new')], execute: () => {}, probeHealth: async () => ({ mode: 'daemon', daemonRelay: true }), log: () => {} });
+    up.start();
+    try {
+      await vi.waitFor(() => expect(release).toBeDefined()); peer!.terminate();
+      await vi.waitFor(() => { expect(connections).toBe(2); expect(received).toContain('new'); }, { timeout: 5000 });
+      release!([row('retired')]); await new Promise(r => setTimeout(r, 30)); expect(received).not.toContain('retired');
+    } finally { release?.([]); up.stop(); for (const ws of wss.clients) ws.terminate(); wss.close(); }
+  }, 8000);
+
   it('does not dial a hub that lacks the daemonRelay capability', async () => {
     const logs: string[] = [];
     const up = new RelayUplink({

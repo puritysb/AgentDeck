@@ -34,6 +34,7 @@ final class ApmeDashboardNavigation: ObservableObject {
 }
 
 struct ApmeDashboardWindow: View {
+    @State private var showingStorage = false
     @ObservedObject private var navigation = ApmeDashboardNavigation.shared
     @EnvironmentObject var daemonService: DaemonService
 
@@ -49,6 +50,18 @@ struct ApmeDashboardWindow: View {
             }
         }
         .frame(minWidth: 900, minHeight: 640)
+        .toolbar {
+            if daemonService.isSelfDaemon {
+                Button("Storage", systemImage: "internaldrive") { showingStorage = true }
+            }
+        }
+        .onChange(of: daemonService.port) { _, _ in showingStorage = false }
+        .onChange(of: daemonService.isUsingExternalDaemon) { _, _ in showingStorage = false }
+        .sheet(isPresented: $showingStorage) {
+            if daemonService.isSelfDaemon, let endpoint = URL(string: "http://127.0.0.1:\(daemonService.port)") {
+                ApmeStorageView(model: ApmeStorageModel(endpoint: endpoint, token: AuthManager.shared.token))
+            }
+        }
     }
 
     private var dashboardURL: URL? {

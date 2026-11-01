@@ -1,0 +1,838 @@
+[
+  {
+    "name": "claude-code-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "claude-code"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "claude-code",
+          "agentType": "claude-code",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "claude-code-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "claude-code"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "claude-code",
+          "agentType": "claude-code",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "claude-code-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "claude-code"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "claude-code",
+          "agentType": "claude-code",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-cli-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "codex-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-cli",
+          "agentType": "codex-cli",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-cli-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "codex-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-cli",
+          "agentType": "codex-cli",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-cli-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "codex-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-cli",
+          "agentType": "codex-cli",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-app-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "codex-app"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-app",
+          "agentType": "codex-app",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-app-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "codex-app"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-app",
+          "agentType": "codex-app",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "codex-app-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "codex-app"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "codex-app",
+          "agentType": "codex-app",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "opencode-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "opencode"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "opencode",
+          "agentType": "opencode",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "opencode-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "opencode"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "opencode",
+          "agentType": "opencode",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "opencode-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "opencode"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "opencode",
+          "agentType": "opencode",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "antigravity-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "antigravity"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "antigravity",
+          "agentType": "antigravity",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "antigravity-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "antigravity"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "antigravity",
+          "agentType": "antigravity",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "antigravity-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "antigravity"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "antigravity",
+          "agentType": "antigravity",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-cli-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "kiro-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-cli",
+          "agentType": "kiro-cli",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-cli-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "kiro-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-cli",
+          "agentType": "kiro-cli",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-cli-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "kiro-cli"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-cli",
+          "agentType": "kiro-cli",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-ide-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "kiro-ide"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-ide",
+          "agentType": "kiro-ide",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-ide-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "kiro-ide"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-ide",
+          "agentType": "kiro-ide",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "kiro-ide-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "kiro-ide"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "kiro-ide",
+          "agentType": "kiro-ide",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hermes-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "hermes"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "hermes",
+          "agentType": "hermes",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hermes-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "hermes"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "hermes",
+          "agentType": "hermes",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "hermes-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "hermes"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "hermes",
+          "agentType": "hermes",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "openclaw-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "openclaw"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "openclaw",
+          "agentType": "openclaw",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "openclaw-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "openclaw"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "openclaw",
+          "agentType": "openclaw",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "openclaw-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "openclaw"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "openclaw",
+          "agentType": "openclaw",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown-processing",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "processing",
+        "agentType": "unknown"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "unknown",
+          "agentType": "unknown",
+          "state": "processing",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown-idle",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "unknown"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "unknown",
+          "agentType": "unknown",
+          "state": "idle",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown-awaiting_permission",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "awaiting_permission",
+        "agentType": "unknown"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "unknown",
+          "agentType": "unknown",
+          "state": "awaiting_permission",
+          "alive": true,
+          "projectName": "감사 😀"
+        }
+      ]
+    }
+  },
+  {
+    "name": "crowd",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "state": "processing",
+        "agentType": "claude-code"
+      },
+      "usage": {
+        "type": "usage_update",
+        "fiveHourPercent": 96,
+        "sevenDayPercent": 55,
+        "codexRateLimits": {
+          "primary": {
+            "usedPercent": 30
+          }
+        },
+        "zaiRateLimits": {
+          "fiveHourPercent": 70
+        }
+      },
+      "sessions": [
+        {
+          "id": "0",
+          "agentType": "claude-code",
+          "alive": true,
+          "state": "idle",
+          "projectName": "team-0"
+        },
+        {
+          "id": "1",
+          "agentType": "claude-code",
+          "alive": true,
+          "state": "processing",
+          "projectName": "team-1"
+        },
+        {
+          "id": "2",
+          "agentType": "codex-cli",
+          "alive": true,
+          "state": "idle",
+          "projectName": "team-2"
+        },
+        {
+          "id": "3",
+          "agentType": "opencode",
+          "alive": true,
+          "state": "processing",
+          "projectName": "team-3"
+        },
+        {
+          "id": "4",
+          "agentType": "antigravity",
+          "alive": true,
+          "state": "idle",
+          "projectName": "team-4"
+        },
+        {
+          "id": "5",
+          "agentType": "kiro-cli",
+          "alive": true,
+          "state": "processing",
+          "projectName": "team-5"
+        },
+        {
+          "id": "6",
+          "agentType": "hermes",
+          "alive": true,
+          "state": "idle",
+          "projectName": "team-6"
+        },
+        {
+          "id": "7",
+          "agentType": "openclaw",
+          "alive": true,
+          "state": "processing",
+          "projectName": "team-7"
+        }
+      ]
+    }
+  },
+  {
+    "name": "idle-single",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "state": "idle",
+        "agentType": "hermes"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "h",
+          "agentType": "hermes",
+          "state": "idle",
+          "alive": true
+        }
+      ],
+      "loop": false
+    }
+  },
+  {
+    "name": "no-sessions",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": null,
+      "usage": null,
+      "sessions": null
+    }
+  },
+  {
+    "name": "ci-unicode",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "state": "idle",
+        "agentType": "claude-code"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "ci😀",
+          "agentType": "claude-code",
+          "state": "idle",
+          "alive": true,
+          "waitingOn": {
+            "kind": "ci",
+            "phase": "running",
+            "openedAt": 1793423980000,
+            "agentWaiting": true,
+            "intentId": "ci-watch",
+            "label": "테스트"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "name": "subagent-background-and-stale-usage",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "state": "idle",
+        "agentType": "claude-code"
+      },
+      "usage": {
+        "codexRateLimits": {
+          "primary": {
+            "usedPercent": 80,
+            "stale": true
+          },
+          "secondary": {
+            "usedPercent": 95,
+            "stale": false
+          }
+        },
+        "fiveHourPercent": 99
+      },
+      "sessions": [
+        {
+          "id": "a",
+          "agentType": "claude-code",
+          "state": "idle",
+          "alive": true,
+          "backgroundWork": {
+            "active": true,
+            "count": 4
+          }
+        }
+      ],
+      "subagents": {
+        "a": {
+          "activeCount": 3
+        }
+      }
+    }
+  },
+  {
+    "name": "timeline-subagent",
+    "input": {
+      "nowMs": 1793424000000,
+      "state": {
+        "type": "state_update",
+        "state": "idle",
+        "agentType": "claude-code"
+      },
+      "usage": null,
+      "sessions": [
+        {
+          "id": "children",
+          "agentType": "claude-code",
+          "state": "idle",
+          "alive": true
+        }
+      ],
+      "timeline": [
+        {
+          "sessionId": "children",
+          "type": "tool_exec",
+          "ts": 1793423999000,
+          "raw": "Subagent ×3 helpers",
+          "subagentId": "burst"
+        }
+      ]
+    }
+  }
+]

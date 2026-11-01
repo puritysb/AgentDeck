@@ -42,9 +42,9 @@
 // is per-plugin state the preview does not have) and hiding the no-data Codex
 // credits tile (the preview only draws credits for a known balance).
 // SYNC-HASH shared/src/d200h-layout.ts 709a82b41592f6e932240ba2eb994758d182ee22
-// SYNC-HASH shared/src/session-utils.ts 1051754c77fa1dbaac1160ac39f1257c4d4397d8
+// SYNC-HASH shared/src/session-utils.ts f756fa1a85b62dbc63eb0dbeb2096878df3a1e60
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
-// SYNC-HASH shared/src/session-labels.ts df272c694793c4a5bd81aad2c32843a377efeb95
+// SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333
 //
 // INTENTIONALLY OMITTED (not needed by a read-only preview):
 //   • Actual SVG rasterization. The TS engine emits per-key SVG strings via the
@@ -98,6 +98,8 @@ public struct D200HSession: Equatable, Sendable {
     public var agentType: String
     /// e.g. "idle", "processing", "awaiting_permission", "awaiting_option", "awaiting_diff".
     public var state: String
+    public var displayName: String?
+    public var controllerInput: Bool?
     public var projectName: String
     public var modelName: String?
     public var currentTool: String?
@@ -131,6 +133,8 @@ public struct D200HSession: Equatable, Sendable {
         agentType: String,
         state: String,
         projectName: String,
+        displayName: String? = nil,
+        controllerInput: Bool? = nil,
         modelName: String? = nil,
         currentTool: String? = nil,
         startedAt: String? = nil,
@@ -148,6 +152,8 @@ public struct D200HSession: Equatable, Sendable {
         self.agentType = agentType
         self.state = state
         self.projectName = projectName
+        self.displayName = displayName
+        self.controllerInput = controllerInput
         self.modelName = modelName
         self.currentTool = currentTool
         self.startedAt = startedAt
@@ -693,8 +699,8 @@ public enum D200HLayoutModel {
 
         // Preview the same delivery boundary as the physical controller.
         let observed = sess?.controlMode == "observed"
-        let inputAvailable = sess?.controlMode == "managed" || agentType == "openclaw"
-            || (observed && DeviceControllerRules.observedInputAgents.contains(agentType))
+        let inputAvailable = sess?.controllerInput != false && (sess?.controlMode == "managed" || agentType == "openclaw"
+            || (observed && DeviceControllerRules.observedInputAgents.contains(agentType)))
         let (lc, lr) = parse(last)
         if isProcessing(sState) && inputAvailable {
             out.append(D200HKeySlot(position: last, col: lc, row: lr, kind: .stop(active: true), label: "STOP", subtitle: "interrupt", action: .command(type: "interrupt", payload: [:])))
@@ -1134,6 +1140,17 @@ public enum D200HLayoutModel {
         return String(body.prefix(prefix ?? min(12, body.count)))
     }
 
+    /// Mirror of normalizeSessionDisplayName in session-labels.ts (code points).
+    static func normalizedDisplayName(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        let clean = raw.precomposedStringWithCanonicalMapping
+            .replacingOccurrences(of: "\\x1b\\[[0-?]*[ -/]*[@-~]", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "[\\t\\r\\n ]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[\\x00-\\x1f\\x7f-\\x9f\\u202a-\\u202e\\u2066-\\u2069]", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(String.UnicodeScalarView(clean.unicodeScalars.prefix(64)))
+    }
+
     /// Rows sharing projectName AND agentType get a short unique id tag
     /// (`sessionTag`); every other row is left untagged.
     static func sessionDeckLabels(_ sessions: [D200HSession]) -> [String: SessionDeckLabel] {
@@ -1157,7 +1174,7 @@ public enum D200HLayoutModel {
                 return b.isEmpty ? m.id.lowercased() : b
             }
             for (i, s) in members.enumerated() {
-                labels[s.id] = SessionDeckLabel(name: s.projectName, tag: sessionTag(bodies, i))
+                labels[s.id] = SessionDeckLabel(name: normalizedDisplayName(s.displayName).isEmpty ? s.projectName : normalizedDisplayName(s.displayName), tag: sessionTag(bodies, i))
             }
         }
         return labels

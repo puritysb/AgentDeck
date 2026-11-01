@@ -17,6 +17,7 @@ public enum AgentCommand: Equatable {
     case escape
     case voice(action: String, sessionId: String?)
     case queryUsage
+    case daemonCheckpointAck(checkpointId: String)
     case querySessionTimeline(sessionId: String)
     case diag(action: String)
     case utility(action: String, value: Int?)
@@ -69,6 +70,10 @@ public enum AgentCommand: Equatable {
             return dict
         case .queryUsage:
             return ["type": "query_usage"]
+        case .daemonCheckpointAck(let checkpointId):
+            var dict: [String: Any] = ["type": "daemon_checkpoint_ack"]
+            dict["checkpointId"] = checkpointId
+            return dict
         case .querySessionTimeline(let sessionId):
             var dict: [String: Any] = ["type": "query_session_timeline"]
             dict["sessionId"] = sessionId
@@ -167,6 +172,7 @@ public enum AgentCommand: Equatable {
         case .escape: return "escape"
         case .voice: return "voice"
         case .queryUsage: return "query_usage"
+        case .daemonCheckpointAck: return "daemon_checkpoint_ack"
         case .querySessionTimeline: return "query_session_timeline"
         case .diag: return "diag"
         case .utility: return "utility"

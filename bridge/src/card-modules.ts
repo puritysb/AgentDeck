@@ -32,6 +32,7 @@ import type {
   OutboxDecisionStatus,
 } from '@agentdeck/shared';
 import {
+  POCKET_POLICY,
   CARD_MAX_CHOICES,
   CARD_MAX_CONTEXT_LINES,
   truncateUtf8Bytes,
@@ -40,11 +41,11 @@ import {
 /** Text budgets, in UTF-8 bytes, matched to the device's card buffers
  *  (`question[160]`, `PromptOption.label[80]` in the fork's agent_state.h).
  *  A re-port that grows a buffer bumps these together with it. */
-export const CARD_TITLE_MAX_BYTES = 24;
-export const CARD_QUESTION_MAX_BYTES = 160;
-export const CARD_CONTEXT_LINE_MAX_BYTES = 96;
-export const CARD_CHOICE_ID_MAX_BYTES = 31;
-export const CARD_CHOICE_LABEL_MAX_BYTES = 40;
+export const CARD_TITLE_MAX_BYTES = POCKET_POLICY.titleBytes;
+export const CARD_QUESTION_MAX_BYTES = POCKET_POLICY.questionBytes;
+export const CARD_CONTEXT_LINE_MAX_BYTES = POCKET_POLICY.contextBytes;
+export const CARD_CHOICE_ID_MAX_BYTES = POCKET_POLICY.choiceIdBytes;
+export const CARD_CHOICE_LABEL_MAX_BYTES = POCKET_POLICY.choiceLabelBytes;
 
 export const CARD_ID_PREFIX = 'module:';
 

@@ -7,15 +7,19 @@
 // itself, so discovery via mDNS won't find them — we fall back to manual
 // IP entry with a "Ping" test button.
 //
-// Device list persistence lives in `~/.agentdeck/settings.json` under
-// `pixooDevices`. The PixooModule hot-reloads this array while the daemon is
-// running, so adding or removing a display takes effect without a restart.
+// Device edits go to the active local daemon. The sheet never writes an
+// inactive runtime's settings file; a revision protects concurrent editors.
 
 import SwiftUI
 import AppKit
 
 struct PixooSheet: View {
     @Environment(\.dismiss) private var dismiss
+    var connectionURL: () -> String? = { nil }
+    @State private var configurationRevision: String?
+    @State private var autoDiscover = false
+    @State private var saving = false
+    @State private var loading = false
 
     @State private var ipInput: String = ""
     @State private var nameInput: String = ""
@@ -36,6 +40,8 @@ struct PixooSheet: View {
         let id = UUID()
         let ip: String
         let name: String?
+        var animation: String = "single-frame"
+        var brightness: Int = 100
     }
 
     var body: some View {
@@ -52,7 +58,8 @@ struct PixooSheet: View {
         .padding(20)
         .frame(width: 520, height: 520)
         .aquariumSurface()
-        .onAppear(perform: loadDevices)
+        .disabled(saving || loading)
+        .task(id: connectionURL() ?? "") { await loadDevices() }
     }
 
     // MARK: - Sections
@@ -103,6 +110,16 @@ struct PixooSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Picker("Animation", selection: Binding(get: { device.animation }, set: { mode in
+                guard let index = devices.firstIndex(where: { $0.id == device.id }) else { return }
+                let previous = devices[index].animation
+                devices[index].animation = mode
+                if !saveDevices() { devices[index].animation = previous }
+            })) {
+                Text("Single frame").tag("single-frame")
+                Text("Aquarium loop").tag("loop")
+                Text("Tide").tag("tide")
+            }.labelsHidden().frame(width: 130)
             Button {
                 removeDevice(device)
             } label: {
@@ -241,7 +258,8 @@ struct PixooSheet: View {
 
     private var footer: some View {
         HStack {
-            Text("Changes are picked up automatically by the local daemon.")
+            if loading || saving { ProgressView().controlSize(.small) }
+            Text(saving ? "Saving display settings…" : loading ? "Loading display settings…" : "Changes apply automatically.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
             Spacer()
@@ -269,18 +287,20 @@ struct PixooSheet: View {
 
     // MARK: - I/O
 
-    private func loadDevices() {
-        let url = AgentDeckPaths.settingsJson
-        guard let data = try? Data(contentsOf: url),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let arr = json["pixooDevices"] as? [[String: Any]] else {
-            devices = []
-            return
-        }
-        devices = arr.compactMap { d in
-            guard let ip = d["ip"] as? String else { return nil }
-            return PixooDeviceEntry(ip: ip, name: d["name"] as? String)
-        }
+    private func loadDevices() async {
+        guard let endpoint = connectionURL() else { savingError = "Connect to AgentDeck to edit displays."; return }
+        loading = true
+        defer { loading = false }
+        do {
+            let response = try await PixooConfigurationClient.request(connectionURL: endpoint)
+            guard connectionURL() == endpoint else { return }
+            apply(response)
+        } catch { savingError = error.localizedDescription }
+    }
+    private func apply(_ response: PixooConfigurationResponse) {
+        configurationRevision = response.revision
+        autoDiscover = response.configuration.autoDiscover
+        devices = response.configuration.devices.map { .init(ip: $0.ip, name: $0.name, animation: $0.animation, brightness: $0.brightness) }
     }
 
     private func addDevice() {
@@ -301,7 +321,6 @@ struct PixooSheet: View {
             devices.removeLast()
             return
         }
-        NotificationCenter.default.post(name: .pixooSettingsChanged, object: nil)
         ipInput = ""
         nameInput = ""
         testResult = nil
@@ -315,33 +334,37 @@ struct PixooSheet: View {
             devices = before
             return
         }
-        NotificationCenter.default.post(name: .pixooSettingsChanged, object: nil)
     }
 
-    /// Persist `devices` into the shared settings.json under `pixooDevices`.
-    /// Merges non-destructively with whatever else lives in the file.
+    /// Submit the supported fields to the active owner; never fall back to local disk.
     @discardableResult
     private func saveDevices() -> Bool {
-        let url = AgentDeckPaths.settingsJson
-        var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: url),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            root = parsed
+        guard !saving, !loading, let endpoint = connectionURL(), let revision = configurationRevision else {
+            savingError = "Reload display settings before saving."; return false
         }
-        let arr: [[String: Any]] = devices.map { d in
-            var obj: [String: Any] = ["ip": d.ip]
-            if let name = d.name { obj["name"] = name }
-            return obj
+        let value = PixooConfiguration(devices: devices.map { .init(ip: $0.ip, name: $0.name, brightness: $0.brightness, animation: $0.animation) }, autoDiscover: autoDiscover)
+        saving = true; savingError = nil
+        Task { @MainActor in
+            defer { saving = false }
+            do {
+                let result = try await PixooConfigurationClient.request(connectionURL: endpoint, configuration: value, revision: revision)
+                guard connectionURL() == endpoint else { return }
+                apply(result)
+            } catch {
+                guard connectionURL() == endpoint else { return }
+                let message = error.localizedDescription
+                await loadDevices()
+                savingError = message
+            }
         }
-        root["pixooDevices"] = arr
-        do {
-            let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-            try out.write(to: url, options: [.atomic])
-            savingError = nil
-            return true
-        } catch {
-            savingError = "Couldn't save: \(error.localizedDescription)"
-            return false
+        return true
+    }
+
+    static func updatedDeviceRows(currentRows: [[String: Any]], devices: [PixooDeviceEntry]) -> [[String: Any]] {
+        devices.map { device in
+            var row = currentRows.first { $0["ip"] as? String == device.ip } ?? [:]
+            row["ip"] = device.ip; row["name"] = device.name; row["animation"] = device.animation
+            return row
         }
     }
 

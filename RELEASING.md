@@ -112,7 +112,7 @@ maintained commands or erase pairing/cache data.
 
 #### Collection checkpoint
 
-This snapshot describes local source at `b8ef9272`; refresh it before freezing.
+This collection pass combines local `2d9f3389` with upstream `0d721829` and the completed `codex/swift-capability-audit` history through `76d19ec2`; record the verified combined SHA before recording final media.
 A clean branch or an old passing receipt alone does not establish readiness of a
 new combination. Keep work owned by active sessions in their isolated checkouts.
 
@@ -121,8 +121,9 @@ new combination. Keep work owned by active sessions in their isolated checkouts.
 | Native request control, CloudKit observation and readable device controls | Integrated through `d78e9f34`; physical iPhone choice/approval/cache and Stream Deck key paths recorded; larger key rendering checked | Repeat the combined journeys on the frozen candidate, including stale/replaced requests and reconnect |
 | Attention lifetimes, OpenCode cleanup and creature surfaces | Integrated predecessors on `master`; source/build/device evidence is in their dated devlogs | Verify the combined roster, completed-session cleanup and device presentation, not only each patch separately |
 | CLI 터미널 파싱 코드 점검 | `b8ef9272` integrated; 7,078 tests passed, 42 skipped in that session | Preserve managed approval labels, cursor, Shift+Tab/mode and state lines in combined acceptance |
-| dot 크리처 배치와 표기 개선 | Pages/media checkpoint `fa2a31be` plus active dropdown/navigation edits in `codex/pages-media-refresh` | Wait for completion and its checks; integrate current renderer assets and accessible translated navigation together |
-| `codex/mcp-auto-review-attention`, `codex/swift-capability-audit` | Unmerged local candidates, with their own histories | Reconcile against current fixes and check intended scope before selecting; do not blindly merge old snapshots |
+| dot 크리처 배치와 표기 개선 | Completed Pages/navigation and native habitat work through PR #640 and #642 (`0d721829`), including a physical-tablet development recording | Included in the combined candidate; activity and response value leads the introduction in English, Korean and Japanese |
+| `codex/mcp-auto-review-attention` | Behavioral fixes were already present; merged remaining history/receipts while retaining later Blender and process-exit regression cases | Repeat confirmed-human versus automatic-review semantics in combined daemon tests |
+| `codex/swift-capability-audit` | Completed through `76d19ec2`: native observation/setup, CI/calendar/Glance/Pocket/Pixoo, recovery/handover and display wake work | Included for integration verification; preserve newer CloudKit opt-in, actual choice controls, observation-only native plugin boundaries and current versions |
 | `codex/dot-native-local-wip` | Explicit native/local-route experiments | Retain as WIP until availability/security decisions and its own acceptance; not an implicit Store promise |
 
 CloudKit remains a development experiment until its production account,

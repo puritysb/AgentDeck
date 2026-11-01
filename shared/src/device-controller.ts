@@ -11,7 +11,7 @@ export const DEVICE_CONTROLLER_RULES = {
 
 /** User-authored input needs an actual delivery path, never an inferred agent. */
 export function hasControllerInput(session: SessionInfo | undefined): boolean {
-  if (session?.alive !== true) return false;
+  if (session?.alive !== true || session.controllerInput === false) return false;
   return session.controlMode === 'managed' || (session.controlMode !== 'observed' && Number.isFinite(session.port) && session.port > 0)
     || session.agentType === 'openclaw'
     || (session.controlMode === 'observed' && (DEVICE_CONTROLLER_RULES.observedInputAgents as readonly string[]).includes(session.agentType ?? ''));

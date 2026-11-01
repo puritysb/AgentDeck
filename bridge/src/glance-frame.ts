@@ -2,7 +2,7 @@
  * Glance Frame — daemon-side pixel rendering of the sleep/ambient dashboard
  * (M8). The device-side glance (fork `renderGlance`) is the offline fallback;
  * this is the rich face: the daemon lays the glance out as SVG (real
- * typography, vector weather icons, gauge bars), rasterizes it with sharp,
+ * typography, vector weather icons, gauge bars), rasterizes it with pinned resvg,
  * ordered-dithers to 1-bit, and packs it in the e-ink framebuffer format
  * (1bpp, MSB-first rows, 1 = white — matching `clearScreen(0xFF)` semantics).
  *
@@ -12,11 +12,22 @@
  * "looked fine in the preview, broke on the panel" cannot happen).
  *
  * Ordered (Bayer) dithering, not error diffusion: deterministic output means
- * the frame bytes — and therefore the frame sig — are stable for stable input.
+ * the frame bytes are stable for stable input. Content signatures omit the clock.
  */
 
 import sharp from 'sharp';
+import { Resvg } from '@resvg/resvg-js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { GLANCE_POLICY } from '@agentdeck/shared';
 import type { CardFeedGlance, GlanceWeather } from '@agentdeck/shared';
+
+const GLANCE_FONT_FILES = GLANCE_POLICY.fonts.map(name => fileURLToPath(new URL(`../assets/fonts/${name}`, import.meta.url)));
+const GLANCE_FONTS = GLANCE_FONT_FILES.map(name => readFileSync(name));
+const GLANCE_FONT_SIG = frameSig(Buffer.concat(GLANCE_FONTS));
+const GLANCE_POLICY_SIG = frameSig(Buffer.from(JSON.stringify(GLANCE_POLICY)));
+
+const L = GLANCE_POLICY.layout;
 
 // ===== Board presets (logical orientation the UI renders in) =====
 
@@ -38,27 +49,18 @@ export interface FrameGeometry {
   rotateToPhysical?: boolean;
 }
 
-export const GLANCE_FRAME_BOARDS: Record<string, FrameGeometry> = {
-  // X3 panel: physical 792×528 (stride 99); layout stays portrait 528×792.
-  xteink_x3: { width: 528, height: 792, landscape: false, rotateToPhysical: true },
-  xteink_x4: { width: 800, height: 480, landscape: true },
-  trmnl_75: { width: 800, height: 480, landscape: true },
-  nm_epd_420: { width: 400, height: 300, landscape: true },
-  lilygo_epd47: { width: 960, height: 540, landscape: true },
-};
+export const GLANCE_FRAME_BOARDS: Record<string, FrameGeometry> = GLANCE_POLICY.boards;
 
 // ===== Weather icons (vector, 1-bit friendly) =====
 
 /** WMO code → icon key. Kept alongside `wmoSummary` in weather.ts semantics. */
 export function wmoIconKey(code: number | undefined): string {
   if (code === undefined || !Number.isFinite(code)) return 'cloud';
-  if (code === 0) return 'sun';
-  if (code <= 2) return 'partly';
-  if (code === 3) return 'cloud';
-  if (code === 45 || code === 48) return 'fog';
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
-  if (code >= 95) return 'storm';
+  for (const rule of GLANCE_POLICY.icons) {
+    if (('eq' in rule && rule.eq?.includes(code)) || ('lte' in rule && rule.lte !== undefined && code <= rule.lte)
+      || ('gte' in rule && rule.gte !== undefined && code >= rule.gte)
+      || ('ranges' in rule && rule.ranges?.some(([min, max]) => code >= min && code <= max))) return rule.key;
+  }
   return 'cloud';
 }
 
@@ -109,28 +111,28 @@ function iconSvg(key: string): string {
 
 // ===== SVG layout =====
 
-const SANS = 'IBM Plex Sans, Helvetica, Arial, sans-serif';
-const MONO = 'JetBrains Mono, Menlo, monospace';
+const SANS = GLANCE_POLICY.sans;
+const MONO = GLANCE_POLICY.mono;
 /** 50% gray — the Bayer pass turns it into a clean checker; used for
  *  secondary fills so the frame has depth without real grayscale. */
-const GRAY = '#808080';
+const GRAY = GLANCE_POLICY.gray;
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Conservative SVG text-width estimate used only to add an honest ellipsis
- * before the hard clip. The production renderer cannot ask librsvg for text
+ * before the hard clip. The production renderer does not query the rasterizer for text
  * metrics before composing the SVG, and emitting the full string lets e-ink
  * crop a word mid-letter. Count CJK/full-width glyphs as one em and bucket the
  * common Latin widths; the clipPath remains the final safety boundary. */
 function fitText(s: string, maxWidth: number, fontSize: number): string {
   const glyphEm = (ch: string): number => {
     const cp = ch.codePointAt(0) ?? 0;
-    if (cp >= 0x2e80) return 1;
-    if (/\s/.test(ch)) return 0.33;
-    if (/[ilI1.,'`|!:;]/.test(ch)) return 0.28;
-    if (/[mwMW@#%&]/.test(ch)) return 0.82;
-    return 0.56;
+    if (cp >= L.cjkThreshold) return 1;
+    if (/\s/.test(ch)) return L.spaceEm;
+    if (/[ilI1.,'`|!:;]/.test(ch)) return L.narrowEm;
+    if (/[mwMW@#%&]/.test(ch)) return L.wideEm;
+    return L.normalEm;
   };
   const width = (value: string): number => [...value].reduce((sum, ch) => sum + glyphEm(ch) * fontSize, 0);
   if (width(s) <= maxWidth) return s;
@@ -173,13 +175,13 @@ function text(c: Ctx, x: number, y: number, size: number, s: string, opts: {
   );
 }
 
-function rule(c: Ctx, x1: number, y: number, x2: number, thick = 2): void {
+function rule(c: Ctx, x1: number, y: number, x2: number, thick: number = L.ruleWidth): void {
   c.parts.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="black" stroke-width="${thick}"/>`);
 }
 
 function sectionLabel(c: Ctx, x: number, y: number, label: string): void {
-  text(c, x, y, 17, label, { weight: 700, spacing: '3' });
-  rule(c, x, y + 10, c.w - 36, 2);
+  text(c, x, y, L.sectionSize, label, { weight: 700, spacing: String(L.sectionSpacing) });
+  rule(c, x, y + L.sectionRuleOffset, c.w - L.margin);
 }
 
 /** One provider quota row: name + 5H/7D bars with the reset time. Returns the
@@ -188,45 +190,45 @@ function quotaRow(
   c: Ctx, x: number, y: number, width: number,
   row: { label: string; primaryPercent?: number; primaryResetHm?: string; secondaryPercent?: number; stale: boolean },
 ): number {
-  text(c, x, y + 20, 22, row.label + (row.stale ? ' *' : ''), { weight: 600 });
-  const barX = x + 118;
-  const barW = width - 118;
+  text(c, x, y + L.quotaNameOffset, L.quotaNameSize, row.label + (row.stale ? ' *' : ''), { weight: 600 });
+  const barX = x + L.barOffset;
+  const barW = width - L.barOffset;
   const drawBar = (by: number, tag: string, pct: number | undefined, extra?: string) => {
     if (pct === undefined) return;
-    const h = 18;
-    text(c, barX - 8, by + h - 3, 15, tag, { weight: 700, anchor: 'end', mono: true });
-    c.parts.push(`<rect x="${barX}" y="${by}" width="${barW}" height="${h}" fill="white" stroke="black" stroke-width="2"/>`);
-    const fw = Math.round(((barW - 4) * Math.min(100, Math.max(0, pct))) / 100);
-    if (fw > 0) c.parts.push(`<rect x="${barX + 2}" y="${by + 2}" width="${fw}" height="${h - 4}" fill="black"/>`);
+    const h = L.barHeight;
+    text(c, barX - L.barTagGap, by + h - L.barTagBaseline, L.barTagSize, tag, { weight: 700, anchor: 'end', mono: true });
+    c.parts.push(`<rect x="${barX}" y="${by}" width="${barW}" height="${h}" fill="white" stroke="black" stroke-width="${L.ruleWidth}"/>`);
+    const fw = Math.round(((barW - 2 * L.barInset) * Math.min(100, Math.max(0, pct))) / 100);
+    if (fw > 0) c.parts.push(`<rect x="${barX + L.barInset}" y="${by + L.barInset}" width="${fw}" height="${h - 2 * L.barInset}" fill="black"/>`);
     const label = `${Math.round(pct)}%${extra ? ` ${extra}` : ''}`;
     // Percent label sits inside the empty end of the bar when it fits, else
     // just past the fill — always readable at 1 bit.
-    text(c, barX + barW - 6, by + h - 4, 14, label, { anchor: 'end', mono: true, fill: fw > barW - 90 ? 'white' : 'black' });
+    text(c, barX + barW - L.barLabelInset, by + h - L.barLabelBaseline, L.barLabelSize, label, { anchor: 'end', mono: true, fill: fw > barW - L.barLabelRoom ? 'white' : 'black' });
   };
-  drawBar(y + 4, '5H', row.primaryPercent, row.primaryResetHm ? `→${row.primaryResetHm}` : undefined);
-  drawBar(y + 30, '7D', row.secondaryPercent);
-  return 62;
+  drawBar(y + L.primaryBarOffset, '5H', row.primaryPercent, row.primaryResetHm ? `→${row.primaryResetHm}` : undefined);
+  drawBar(y + L.secondaryBarOffset, '7D', row.secondaryPercent);
+  return L.quotaHeight;
 }
 
 function weatherBlock(c: Ctx, x: number, y: number, width: number, w: GlanceWeather): number {
   const startY = y;
   // Hero: icon + big temperature.
-  const iconSize = 96;
+  const iconSize = L.iconSize;
   c.parts.push(`<g transform="translate(${x},${y}) scale(${iconSize / 100})">${iconSvg(wmoIconKey(w.code))}</g>`);
-  const tx = x + iconSize + 26;
-  if (w.tempC !== undefined) text(c, tx, y + 78, 88, `${w.tempC}°`, { weight: 700 });
+  const tx = x + iconSize + L.iconTextGap;
+  if (w.tempC !== undefined) text(c, tx, y + L.temperatureOffset, L.temperatureSize, `${w.tempC}°`, { weight: 700 });
   const rx = x + width;
-  if (w.summary) text(c, rx, y + 34, 26, w.summary, { weight: 600, anchor: 'end' });
+  if (w.summary) text(c, rx, y + L.summaryOffset, L.summarySize, w.summary, { weight: 600, anchor: 'end' });
   if (w.todayMinC !== undefined && w.todayMaxC !== undefined) {
-    text(c, rx, y + 66, 21, `${w.todayMinC}–${w.todayMaxC}°`, { anchor: 'end' });
+    text(c, rx, y + L.rangeOffset, L.rangeSize, `${w.todayMinC}–${w.todayMaxC}°`, { anchor: 'end' });
   }
-  y += 112;
+  y += L.weatherHeight;
   if (w.rain) {
     const range = w.rain.endHm ? `${w.rain.startHm}–${w.rain.endHm}` : `~${w.rain.startHm}`;
     const amount = w.rain.amountMm !== undefined ? ` · ${w.rain.amountMm} mm` : '';
     const probability = w.rain.probability !== undefined ? ` · ${w.rain.probability}%` : '';
-    text(c, x, y + 8, 22, `☂ Rain ${range}${probability}${amount}`, { weight: 600 });
-    y += 34;
+    text(c, x, y + L.rainBaseline, L.rainSize, `☂ Rain ${range}${probability}${amount}`, { weight: 600 });
+    y += L.weatherLineHeight;
   }
   if (w.tomorrow && (w.tomorrow.summary || w.tomorrow.minC !== undefined)) {
     const t = w.tomorrow;
@@ -234,10 +236,10 @@ function weatherBlock(c: Ctx, x: number, y: number, width: number, w: GlanceWeat
     if (t.summary) bits.push(t.summary);
     if (t.minC !== undefined && t.maxC !== undefined) bits.push(`${t.minC}–${t.maxC}°`);
     if (t.rainProbability !== undefined && t.rainProbability > 0) bits.push(`rain ${t.rainProbability}%`);
-    text(c, x, y + 6, 19, bits.join('  ·  '), { fill: 'black' });
+    text(c, x, y + L.tomorrowBaseline, L.tomorrowSize, bits.join('  ·  '), { fill: 'black' });
     // A quiet gray underline separates the outlook from the sections below.
-    c.parts.push(`<rect x="${x}" y="${y + 16}" width="${width}" height="4" fill="${GRAY}"/>`);
-    y += 34;
+    c.parts.push(`<rect x="${x}" y="${y + L.tomorrowRuleOffset}" width="${width}" height="${L.tomorrowRuleHeight}" fill="${GRAY}"/>`);
+    y += L.weatherLineHeight;
   }
   return y - startY;
 }
@@ -246,38 +248,38 @@ export function renderGlanceFrameSvg(input: GlanceFrameInput): string {
   const { width: W, height: H, landscape } = input.geometry;
   const g = input.glance ?? {};
   const c: Ctx = { parts: [], w: W };
-  const M = 36; // outer margin
+  const M = L.margin; // outer margin
 
   c.parts.push(`<rect width="${W}" height="${H}" fill="white"/>`);
 
   // ── Masthead ──
-  text(c, M, 46, 24, 'AgentDeck', { weight: 700, spacing: '1' });
+  text(c, M, L.mastheadY, L.mastheadSize, 'AgentDeck', { weight: 700, spacing: String(L.mastheadSpacing) });
   const mastRight = [g.weather?.place, input.serverHm ? `Synced ${input.serverHm}` : ''].filter(Boolean).join('  ·  ');
-  text(c, W - M, 46, 19, mastRight, { anchor: 'end' });
-  rule(c, M, 62, W - M, 3);
+  text(c, W - M, L.mastheadY, L.mastheadRightSize, mastRight, { anchor: 'end' });
+  rule(c, M, L.mastheadRuleY, W - M, L.mastheadRuleWidth);
 
   const colX = M;
-  const colW = landscape ? Math.floor((W - M * 2 - 40) / 2) : W - M * 2;
-  const rightX = M + colW + 40;
-  let yL = 96;
-  let yR = 96;
+  const colW = landscape ? Math.floor((W - M * 2 - L.columnGap) / 2) : W - M * 2;
+  const rightX = M + colW + L.columnGap;
+  let yL = L.startY;
+  let yR = L.startY;
 
   // ── Weather (left column / top block) ──
   if (g.weather && (g.weather.tempC !== undefined || g.weather.summary)) {
-    yL += weatherBlock(c, colX, yL, colW, g.weather) + 18;
+    yL += weatherBlock(c, colX, yL, colW, g.weather) + L.weatherGap;
   }
 
   // ── Today's schedule (left column, under weather) ──
   const events = g.events ?? [];
   if (events.length > 0) {
     sectionLabel(c, colX, yL, 'TODAY');
-    yL += 34;
+    yL += L.eventHeadingGap;
     for (const e of events) {
       const time = e.startHm ? (e.endHm ? `${e.startHm}–${e.endHm}` : e.startHm) : 'All day';
-      text(c, colX, yL, 20, fitText(`${time}  ·  ${e.title}`, colW, 20));
-      yL += 32;
+      text(c, colX, yL, L.bodySize, fitText(`${time}  ·  ${e.title}`, colW, L.bodySize));
+      yL += L.lineHeight;
     }
-    yL += 10;
+    yL += L.sectionGap;
   }
 
   // ── Quota ──
@@ -285,9 +287,9 @@ export function renderGlanceFrameSvg(input: GlanceFrameInput): string {
   if (landscape) { qx = rightX; qy = yR; qw = W - M - rightX; }
   if (g.usage && g.usage.length > 0) {
     sectionLabel(c, qx, qy, 'AI BUDGET');
-    qy += 26;
-    for (const row of g.usage) qy += quotaRow(c, qx, qy, qw, row) + 8;
-    qy += 10;
+    qy += L.quotaHeadingGap;
+    for (const row of g.usage) qy += quotaRow(c, qx, qy, qw, row) + L.quotaGap;
+    qy += L.sectionGap;
   }
   if (landscape) yR = qy; else yL = qy;
 
@@ -296,40 +298,35 @@ export function renderGlanceFrameSvg(input: GlanceFrameInput): string {
   if (landscape) { wx = rightX; wy = yR; ww = W - M - rightX; }
   const wrapup = g.wrapup ?? [];
   sectionLabel(c, wx, wy, 'WORK');
-  wy += 34;
+  wy += L.workHeadingGap;
   if (wrapup.length === 0) {
-    text(c, wx, wy, 20, 'No active sessions', { fill: GRAY });
-    wy += 30;
+    text(c, wx, wy, L.bodySize, 'No active sessions', { fill: GRAY });
+    wy += L.emptyWorkHeight;
   }
   // Clip the work lines to their column — a long CJK line must never bleed
   // into the margin or the other column.
-  c.parts.push(`<clipPath id="work"><rect x="${wx}" y="${wy - 30}" width="${ww}" height="${H - wy - 30}"/></clipPath>`);
+  c.parts.push(`<clipPath id="work"><rect x="${wx}" y="${wy - L.workClipTop}" width="${ww}" height="${H - wy - L.workClipBottom}"/></clipPath>`);
   c.parts.push(`<g clip-path="url(#work)">`);
   for (const line of wrapup) {
-    if (wy > H - 60) break;
-    c.parts.push(`<circle cx="${wx + 5}" cy="${wy - 6}" r="4" fill="black"/>`);
-    text(c, wx + 20, wy, 20, fitText(line, ww - 20, 20));
-    wy += 32;
+    if (wy > H - L.workFooterRoom) break;
+    c.parts.push(`<circle cx="${wx + L.bulletX}" cy="${wy - L.bulletY}" r="${L.bulletRadius}" fill="black"/>`);
+    text(c, wx + L.workTextInset, wy, L.bodySize, fitText(line, ww - L.workTextInset, L.bodySize));
+    wy += L.lineHeight;
   }
   c.parts.push('</g>');
 
   // ── Footer status ──
-  rule(c, M, H - 44, W - M, 2);
-  text(c, M, H - 18, 17, 'AGENTDECK · GLANCE', { weight: 700, spacing: '2', fill: GRAY });
+  rule(c, M, H - L.footerRuleY, W - M);
+  text(c, M, H - L.footerTextY, L.footerSize, 'AGENTDECK · GLANCE', { weight: 700, spacing: String(L.footerSpacing), fill: GRAY });
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${c.parts.join('')}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" data-renderer="${GLANCE_POLICY.revision}" data-fonts="${GLANCE_FONT_SIG}" data-policy="${GLANCE_POLICY_SIG}" data-rotate="${input.geometry.rotateToPhysical ? 1 : 0}">${c.parts.join('')}</svg>`;
 }
 
 // ===== Rasterize → dither → pack =====
 
 /** 4×4 Bayer matrix, thresholds spread over 0..255. Ordered dithering is
  *  deterministic, so identical input yields identical bytes (stable sig). */
-const BAYER4 = [
-  [0, 8, 2, 10],
-  [12, 4, 14, 6],
-  [3, 11, 1, 9],
-  [15, 7, 13, 5],
-].map((row) => row.map((v) => Math.round(((v + 0.5) * 255) / 16)));
+const BAYER4 = GLANCE_POLICY.bayer;
 
 /** Rotate a logical-space grayscale raster (w×h) into physical panel space
  *  (h×w), using the device GfxRenderer Portrait mapping: phyX = y,
@@ -384,7 +381,15 @@ export interface RenderedGlanceFrame {
 
 export async function renderGlanceFrame(input: GlanceFrameInput): Promise<RenderedGlanceFrame> {
   const svg = Buffer.from(renderGlanceFrameSvg(input));
-  let gray = await sharp(svg, { density: 72 }).flatten({ background: 'white' }).greyscale().raw().toBuffer();
+  const image = new Resvg(svg, { font: { loadSystemFonts: false, fontFiles: GLANCE_FONT_FILES,
+    defaultFontFamily: 'IBM Plex Sans' } }).render();
+  const rgba = image.pixels;
+  let gray: Buffer = Buffer.alloc(image.width * image.height);
+  // Premultiplied RGBA, white composition, integer BT.601 luminance.
+  for (let i = 0; i < gray.length; i++) {
+    const j = i * 4;
+    gray[i] = Math.floor((299 * rgba[j] + 587 * rgba[j + 1] + 114 * rgba[j + 2] + 500) / 1000) + 255 - rgba[j + 3];
+  }
   let { width, height } = input.geometry;
   if (input.geometry.rotateToPhysical) {
     gray = rotateGrayToPhysical(gray, width, height);

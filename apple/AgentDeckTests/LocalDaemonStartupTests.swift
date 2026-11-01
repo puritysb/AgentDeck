@@ -8,6 +8,38 @@ import Combine
 /// cancellation. No real server, listener, registry or preferences are changed.
 final class LocalDaemonStartupTests: XCTestCase {
     @MainActor
+    func testReceiverSelectionPublishesActualReadyPortAndRetiresItAcrossRestart() async {
+        let old = await StartupRuntime(name: "fallback", port: 49_152)
+        let latest = await StartupRuntime(name: "latest", port: 49_153)
+        let fixture = LocalStartupFixture(daemons: [old, latest], delayedFactories: [1], expectedReadyCount: 2)
+        let service = fixture.makeService()
+        var ports: [UInt16?] = []
+        service.onLocalReceiverChanged = { ports.append($0) }
+        XCTAssertEqual(ports, [nil])
+        service.start()
+        await fulfillment(of: [old.startReturned], timeout: 2)
+        await settleCallbacks()
+        XCTAssertEqual(ports.compactMap { $0 }, [49_152], "publish the actual bind, not the preferred port")
+        var lateSubscriber: UInt16?
+        service.onLocalReceiverChanged = { lateSubscriber = $0; ports.append($0) }
+        XCTAssertEqual(lateSubscriber, 49_152, "a menu-bar-only launch can register after readiness")
+
+        fixture.configuredPort = 49_151
+        await restartWithDeadline(service)
+        await fulfillment(of: [fixture.factoryEntered[1]], timeout: 2)
+        XCTAssertNil(lateSubscriber, "retire before waiting for the replacement")
+        await old.emitReady()
+        await settleCallbacks()
+        XCTAssertNil(lateSubscriber, "a late old callback must not restore its port")
+        fixture.finishFactory(1)
+        await fulfillment(of: [fixture.ready], timeout: 2)
+        XCTAssertEqual(lateSubscriber, 49_153)
+        XCTAssertFalse(ports.contains(49_151), "an intended port is never a ready endpoint")
+        await fixture.cleanUp(service)
+        XCTAssertNil(lateSubscriber)
+    }
+
+    @MainActor
     func testStopWhileFactoryIsSuspendedDiscardsTheLateUnstartedDaemon() async {
         let daemon = await StartupRuntime(name: "old", port: 49_150)
         let fixture = LocalStartupFixture(daemons: [daemon], delayedFactories: [0])
@@ -343,6 +375,8 @@ final class LocalDaemonStartupTests: XCTestCase {
         fixture.teardownTimeout = 0.05
         fixture.externalHealth = ["mode": "daemon", "isSwift": false]
         let service = fixture.makeService()
+        var receiverPort: UInt16?
+        service.onLocalReceiverChanged = { receiverPort = $0 }
         service.start()
         await fulfillment(of: [old.startReturned], timeout: 2)
         service.standDownForTakeover()
@@ -353,11 +387,13 @@ final class LocalDaemonStartupTests: XCTestCase {
         // daemon. Its own bounded wait must preserve the newer endpoint too.
         await service.connectToExternalDaemon(port: 49_151)
         assertStopped(service)
+        XCTAssertNil(receiverPort)
         await old.finishShutdown()
         await fulfillment(of: [fixture.ready], timeout: 2)
         await settleCallbacks()
         XCTAssertTrue(service.isUsingExternalDaemon)
         XCTAssertEqual(service.port, 49_151)
+        XCTAssertEqual(receiverPort, 49_151)
         XCTAssertEqual(fixture.readyURLs, ["ws://127.0.0.1:49150", "ws://127.0.0.1:49151"])
         XCTAssertEqual(fixture.externalProbePorts, [49_151, 49_151], "only the latest endpoint may be revalidated")
         XCTAssertEqual(fixture.requests.count, 1)

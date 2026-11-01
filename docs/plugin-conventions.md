@@ -129,7 +129,15 @@ Ulanzi D200H communicates via **stock HID protocol** (VID `0x2207`/PID `0x0019`,
 
 ## Display sleep/wake sync
 
-`DisplayMonitor` → `display_state` BridgeEvent → all devices dim/restore. Node daemon fuses python3 `CGDisplayIsAsleep()` 2s poll with fallback `pmset IODisplayWrangler`, `ioreg` lock/session presence, and `ScreenSaverEngine` polling; Swift daemon mirrors this as a display + lock + screensaver + session-active aggregator. `displayOn=true` means the user is present and the host display is on. `DISPLAY_FORWARDED_EVENTS` includes `display_state` (auto-propagates to `SERIAL_FORWARDED_EVENTS`).
+`DisplayMonitor` → `display_state` BridgeEvent → all devices dim/restore. Node daemon fuses a persistent python3 `CGDisplayIsAsleep()` 250ms poll with fallback `pmset IODisplayWrangler`, `ioreg` lock/session presence, and `ScreenSaverEngine` polling. Swift receives `NSWorkspace` screen sleep/wake notifications directly, retaining its 2s CoreGraphics poll as a repair path and lock/screensaver/session-active aggregation. `displayOn=true` means the user is present and the host display is on. `DISPLAY_FORWARDED_EVENTS` includes `display_state` (auto-propagates to `SERIAL_FORWARDED_EVENTS`).
+
+State changes are pushed immediately; the 15s WebSocket and 5s serial re-syncs
+repair missed edges and are not the intended response latency. Measure from
+an independently observed macOS state change, separately from the sleep request:
+user input or an OS fade can postpone or reverse the actual display transition.
+The opt-in [display-only acceptance](testing.md#signed-swiftnode-lifecycle-acceptance)
+checks isolated Swift-only, Node-only and Node-owner/Swift-client configurations
+without suspending the Mac or redirecting shared physical devices.
 
 - **Pixoo**: `setBrightness(0)` + stream pause (saves HTTP), wake restores `dev.brightness`
 - **SD+ Plugin**: gate in `plugin/src/display-dim.ts` → black SVG on all buttons/LCDs, wake → `broadcastStateUpdate()` re-render (which also repaints keypad slots — `sessions_list` only fires on change and would leave them black). **Every paint chokepoint consults `isDisplayDimmed()`, not just `broadcastStateUpdate()`**: the usage encoders (`usage_update` ticks), the volume encoder (poll timer), and the keypad (awaiting/processing animation timer) each repaint on their own schedule and will otherwise overwrite the black frame seconds after sleep. Actions appearing while already dark never saw the sleep edge, so their `onWillAppear` calls `dimActionIfNeeded()`

@@ -12,6 +12,8 @@ describe('device controller delivery and mirrors', () => {
     expect(hasControllerInput(undefined)).toBe(false);
     expect(hasControllerInput(row('opencode', 'observed', false))).toBe(false);
     expect(hasControllerInput(row('opencode', 'observed'))).toBe(true);
+    expect(hasControllerInput({ ...row('opencode', 'observed'), controllerInput: false })).toBe(false);
+    expect(compactControllerCapabilities({ ...row('opencode', 'observed'), controllerInput: false }).controllerInput).toBe(false);
     expect(hasControllerInput(row('claude-code', 'observed'))).toBe(true);
     expect(hasControllerInput(row('codex', 'managed'))).toBe(true);
   });

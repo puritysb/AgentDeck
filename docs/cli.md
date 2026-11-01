@@ -467,3 +467,11 @@ agent session is active.
 The optional direct host runs inside the Node daemon after explicit private configuration. See [configuration and security boundaries](../services/dot-relay/README.md). `agentdeck dot status` shows pending approvals, grants and results; `approve <id> --code <browser-code>` or `deny <id>` resolves a local connection request. `request <grantId> --context-file <absolute-path> --profile desk` explicitly shares a briefing, and `disconnect <grantId>` revokes access and deletes its local content. These commands use a separate authenticated loopback operator endpoint; they never expose LAN pairing credentials through MCP.
 
 Dot character: `agentdeck dot character import <file>` selects a local static PNG/WebP/JPEG for this Node host; `agentdeck dot character reset` restores the original orb. It does not configure HTTPS, connect an account, fetch ChatGPT artwork or create a session.
+
+
+## Pixoo settings ownership
+
+`agentdeck pixoo --port <port> add|list|remove` edits the active local daemon.
+With no daemon, offline edits stay in the Node profile; an unknown or unsupported
+live owner never triggers an inactive-file fallback. `add --no-test` skips the
+optional device connectivity probe.

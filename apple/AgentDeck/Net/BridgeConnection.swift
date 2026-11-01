@@ -4,6 +4,20 @@
 import Foundation
 import Combine
 
+/// A frame may outlive its socket while awaiting durable storage.
+final class BridgeDeliveryToken: @unchecked Sendable {
+    private let lock = NSLock()
+    private var valid = true
+    private var checkpointSubscribed = false
+    var isValid: Bool { lock.lock(); defer { lock.unlock() }; return valid }
+    func invalidate() { lock.lock(); defer { lock.unlock() }; valid = false }
+    func claimCheckpointSubscription() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard valid, !checkpointSubscribed else { return false }
+        checkpointSubscribed = true; return true
+    }
+}
+
 final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private final class HealthCheckBox: @unchecked Sendable {
         private let lock = NSLock()
@@ -86,6 +100,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private var hasReceivedMessage = false
     /// Incremented on disconnect(reconnect: false) to invalidate pending reconnect work
     private var connectionGeneration = 0
+    private var deliveryToken = BridgeDeliveryToken()
     /// Guard against concurrent handleDisconnect calls (ping callback + receive loop race)
     private var isHandlingDisconnect = false
     /// Permanent stop flag used during app termination. Once set, no reconnect
@@ -111,6 +126,8 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     private func connectInternal(_ urlString: String, reconnecting: Bool) {
         guard !isTerminating else { return }
 
+        deliveryToken.invalidate()
+        deliveryToken = BridgeDeliveryToken()
         connectionGeneration += 1
         reconnectWork?.cancel()
         reconnectWork = nil
@@ -214,6 +231,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
 
     func disconnect(reconnect: Bool = false) {
         guard !isTerminating else { return }
+        deliveryToken.invalidate()
         shouldReconnect = reconnect
         reconnectWork?.cancel()
         reconnectWork = nil
@@ -244,6 +262,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     func prepareForTermination() {
         queue.async { [weak self] in
             guard let self else { return }
+            self.deliveryToken.invalidate()
             self.isTerminating = true
             self.shouldReconnect = false
             self.connectionGeneration += 1
@@ -350,10 +369,15 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
     /// before delivery, so a queued frame belongs to its original generation.
     func dispatchInbound(_ text: String) {
         let generation = connectionGeneration
-        if let event = BridgeEventParser.parse(text) {
+        if var event = BridgeEventParser.parse(text) {
+            if case .stateUpdate(var update) = event {
+                update.deliveryToken = deliveryToken
+                event = .stateUpdate(update)
+            }
+            let admittedEvent = event
             DispatchQueue.main.async {
                 guard !self.isTerminating, self.connectionGeneration == generation else { return }
-                self.onEvent?(event)
+                self.onEvent?(admittedEvent)
             }
         }
     }
@@ -479,6 +503,7 @@ final class BridgeConnection: ObservableObject, @unchecked Sendable {
         queue.async { [weak self] in
             guard let self, !self.isTerminating, !self.isHandlingDisconnect,
                   self.connectionGeneration == generation, self.webSocket === source else { return }
+            self.deliveryToken.invalidate()
             self.isHandlingDisconnect = true
 
             let closeCode = self.webSocket?.closeCode.rawValue

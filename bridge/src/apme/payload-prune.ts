@@ -25,6 +25,7 @@
 
 import { statSync, statfsSync } from 'fs';
 import { dirname } from 'path';
+import { APME_RETENTION } from './retention-policy.generated.js';
 
 /** A string every marker this module writes starts with — `JSON.stringify`
  *  on a plain object with `pruned` as its first key is deterministic key
@@ -32,7 +33,7 @@ import { dirname } from 'path';
  *  already-pruned rows from a preview/apply pass) without parsing JSON per
  *  row. `isPrunedPayload` below is the authoritative check — this constant
  *  is a performance shortcut for the store's SQL, not a second definition. */
-export const PRUNED_PAYLOAD_LIKE = '%"pruned":true%';
+export const PRUNED_PAYLOAD_LIKE = APME_RETENTION.prunedPayloadLike;
 
 export interface PrunedPayloadMarker {
   pruned: true;
@@ -103,7 +104,7 @@ function realVacuumSpaceProbe(): VacuumSpaceProbe {
  *  than running it and hoping. */
 export function checkVacuumSpace(dbPath: string, probe: VacuumSpaceProbe = realVacuumSpaceProbe()): VacuumSpaceCheck {
   const fileBytes = probe.statSize(dbPath);
-  const requiredBytes = Math.ceil(fileBytes * 1.1);
+  const requiredBytes = Math.ceil(fileBytes * APME_RETENTION.vacuumSpaceMultiplier);
   const freeBytes = probe.statfsFreeBytes(dbPath);
   return { ok: freeBytes >= requiredBytes, freeBytes, requiredBytes, fileBytes };
 }

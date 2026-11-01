@@ -169,19 +169,26 @@ private func d200hDeckSlots(for selection: DevicePreviewSelection) -> [D200HKeyS
 func liveD200HInput(for selection: DevicePreviewSelection) -> D200HDeckInput? {
     guard let live = selection.live else { return nil }
     let sessions = live.sessions.map { s -> D200HSession in
-        let opts = s.id == live.focusedSessionId
-            ? live.focusedOptions.map { D200HOption(label: $0.label, shortcut: $0.shortcut) }
-            : []
+        let opts = s.options?.map { D200HOption(label: $0.label, shortcut: $0.shortcut) }
+            ?? (s.id == live.focusedSessionId
+                ? live.focusedOptions.map { D200HOption(label: $0.label, shortcut: $0.shortcut) } : [])
         return D200HSession(
             id: s.id,
             agentType: s.agentType ?? "claude-code",
             state: s.state ?? "idle",
             projectName: s.projectName ?? "",
+            displayName: s.displayName,
+            controllerInput: s.controllerInput,
             modelName: s.modelName,
             currentTool: s.currentTool,
             startedAt: s.startedAt,
             weight: s.weight,  // --weight pin must reach the preview's sort/fold mirror
             options: opts,
+            controlMode: s.controlMode,
+            liveAnswerable: s.liveAnswerable,
+            requestId: s.requestId,
+            question: s.question,
+            questionDetail: s.questionDetail,
             groupSize: s.groupSize,
             foldedSessionIds: s.foldedSessionIds
         )

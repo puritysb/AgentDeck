@@ -8,7 +8,7 @@ canonical: true
 status: stable
 owner: Bridge maintainers
 reviewed: 2026-08-19
-revision: 2026-10-06
+revision: 2026-10-31
 source_of_truth: docs/architecture.md
 validators: [pnpm build, pnpm test]
 ---
@@ -81,15 +81,27 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 
 | Canonical source | Generator | Gate / note |
 |---|---|---|
+| `shared/src/daemon-recovery.ts` (opt-in cold-recovery filenames, SQLite schema and commit limits) | `pnpm generate-daemon-parity` → native constants | `daemon-recovery.test.ts`, `DaemonRecoveryTests` and signed `--cold-recovery` lifecycle acceptance. Schema v2 preserves both conflict snapshots behind explicit, revision-fenced choices; producer content checks and durable cursor ACK prevent stale approval replay. Credentials and original records are excluded. |
+| `shared/src/daemon-configuration.ts` (minimized pin/Pixoo snapshot, limits and capability) | `pnpm generate-daemon-parity` → native constants; native Codable/validation mirror | `shared/daemon-configuration-vectors.json` replayed by Node and `DaemonConfigurationTests`, including revision SHA-256, strict types and exclusions. Actual CLI and native editors route to the active owner; no credentials or source grants. |
+| `shared/src/daemon-parity.ts` (takeover lease, local aggregate checkpoint/receipt limits, runtime identity, Kiro boundaries and daemon discovery/fallback window) | `pnpm generate-daemon-parity` → `DaemonParityRules.generated.swift`; Node registry delegates to the shared parser | `daemon-parity.test.ts` executes common policies and port-window vectors in Node/Swift; default discovery is unchanged and isolated fallback stays in the selected window. `daemon-checkpoint.test.ts` and `DaemonCheckpointTests` gate aggregate-only admission, receipt hashes, stale generations and corrupt-file preservation. |
+| `shared/src/daemon-relay-policy.ts` (v1 limits, typed row fields, heartbeat/TTL and reconnect bounds) + `bridge/src/daemon-relay.ts` (routing/Node control allow-list) | `pnpm generate-daemon-relay` → `DaemonRelayPolicy.generated.swift`; Node imports the same policy | `daemon-relay-sync.test.ts` executes Node/Swift row and every canonical relay command-routing vector; `daemon-relay-native.test.ts` connects the production native relay/network/auth components to real Node peers in both directions; `DaemonRelayTests` covers native lifecycle, consent, stale and control gates. |
+| `shared/src/ci-provider-policy.ts` + `shared/src/ci-wait.ts` (GitHub transport/freshness bounds and explicit watch identity) | `pnpm generate-ci-provider` → `GitHubCIPolicy.generated.swift`; existing `generate-ci-wait` also emits head enumeration/close for native polling | `ci-wait-sync.test.ts` gates generated policy and runs 63 response/6 aggregate verdict vectors against Node; `GitHubCIProviderTests` covers authorization, Keychain consent/restart, identity/page/head guards, bounded polling, stale, account change and late replies. |
+| `shared/glance-frame-policy.json` + `bridge/src/glance-frame.ts` (geometry, layout units, icons, Bayer thresholds, font/renderer identity); `shared/glance-raster/Cargo.lock` pins the native resvg engine | `pnpm generate-glance-policy` → TS policy + `GlancePolicy.generated.swift`; macOS statically links the same resvg revision as resvg-js 2.6.2, with identical bundled fonts | `glance-frame-parity.test.ts` checks generated mirrors and executes both implementations against 29 SVG/packed/PNG vectors and daemon snapshot projections. `GlanceFrameTests` drives the actual Swift route, identity, 304 and listener auth. X4 physical acceptance is deferred to companion-app integration. |
+| `shared/src/pocket-policy.ts` (adaptive selection weights, retention, card byte budgets and opaque ID grammar) + `bridge/src/pocket-autonomy.ts` (reference behavior) | `pnpm generate-pocket-policy` → Swift `PocketPolicy.generated.swift`; native `PocketAutonomy` mirrors state and selection | `pocket-autonomy-parity.test.ts` replays shared `pocket-autonomy-vectors.json` against the real Node and compiled Swift engines, including Unicode fingerprints, feedback, expiry and actual file reloads; `PocketAutonomyTests` replays the same golden vectors and actual Feed/Outbox handlers. Runtime state stores only aggregates and opaque IDs. |
+| `hooks/src/opencode-install.ts` (native observer template, filenames, ownership and observation-only hook flag) | `pnpm generate-opencode-observer` → `apple/AgentDeck/Resources/OpenCodeObserver.json` | `opencode-native.test.ts` checks exact source/contract drift and live module receiver changes without command polling. Swift and Node suppress actionable permission IDs for `observer_only` hooks; native file tests verify ownership, preservation, update/removal and scoped access. |
 | `shared/src/apme-comparison.ts` (minimum task samples and non-model/category exclusions) | `pnpm generate-apme-display-rules` → `ApmeComparisonRules.generated.swift` | `apme-display-rules-sync.test.ts` checks drift; `shared/apme-comparison-vectors.json` is replayed by the Node and Swift suites. Recommendations never fall back to another category or legacy run scores. |
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
+| `shared/pixoo-loop-policy.json` and canonical `bridge/src/pixoo/pixoo-renderer.ts` / shared art-layout rules | `node scripts/generate-pixoo-loop-policy.mjs` and `node scripts/generate-pixoo-baked.mjs` → Node/Swift bounds and fixed bundled Pixoo pixel code | `pixoo-baked.test.ts` checks both generators and compares every RGB byte against actual Swift/JavaScriptCore; `PixooBakedTests` drives real module scheduling/payloads with bounded fixtures. |
+| `shared/calendar-policy.json` plus Glance event bounds in `shared/src/protocol.ts` (ICS subset, recurrence/fetch/cache limits) | `node scripts/generate-calendar-policy.mjs` → Node/Swift calendar policy | `calendar.test.ts` executes actual Node/Swift parser, URL and cache vectors; `CalendarTests` covers consent, Keychain, revocation and aggregate-only Pocket storage. |
+| `shared/antigravity-observation-policy.json` (JSONL identity, read-only SQLite activity queries, status enums, metadata and freshness bounds) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
+| `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
 | `shared/src/connection-status.ts` (native recovery labels) | `node scripts/generate-connection-labels.mjs` → existing Swift/Kotlin lexicons | `connection-status.test.ts` checks generated label drift; native connection tests cover selection, approval and recovery. |
 | `shared/src/dot-appearance.ts` pearl geometry and habitat phase rules + `shared/src/dot-pixels.ts` | `pnpm generate-dot-contract` → native Swift/Kotlin/C++ constants and Swift pixel painter; Blender `assets/terrarium/build-dot-pearl.py` → Android pearl GLB | Dot appearance/pixel tests, native common-resident tests, Android asset contract; availability never creates observed work. |
 | `shared/src/dot-deck.ts` | Both deck plugins consume one reservation/status SVG implementation; native D200H preview reservation mirror | Deck layout tests and preview SYNC-HASH drift gate; native Dot tests. |
 | `shared/src/session-utils.ts` (independent top-level display identities) | Existing Swift roster and D200H preview projections; aquarium groups only exact identities | `shared/codex-display-vectors.json` replayed by TS and Swift; production roster/deck/focus and aquarium regressions. Project, weight and process membership never establish parentage; actual children are reduced by the observation layer. |
-| `shared/src/session-labels.ts` (same-project deck tags, #544) | Direct TS import in Stream Deck and Ulanzi; hand-ported into the native D200H preview (`D200HLayoutModel.sessionDeckLabels` / `sessionTag` / `deckLabel`) | `session-labels.test.ts` and `session-slot-manager.test.ts`; the preview port is behind a `SYNC-HASH shared/src/session-labels.ts` pin (`check-preview-mirror-sync.mjs`) and mirrored by `ProtocolTests.testD200HPreviewMirrorTagsSameProjectSessions`. Presentation only, never an identity key. |
+| `shared/src/session-labels.ts` (same-project deck tags, #544) | Direct TS import in Stream Deck and Ulanzi; hand-ported into the native D200H preview (`D200HLayoutModel.sessionDeckLabels` / `sessionTag` / `deckLabel`) | `session-labels.test.ts`, `session-slot-manager.test.ts` and shared `session-display-name-vectors.json` (normalization, Unicode cap and native replay); the preview port is behind a `SYNC-HASH shared/src/session-labels.ts` pin (`check-preview-mirror-sync.mjs`) and mirrored by `ProtocolTests.testD200HPreviewMirrorTagsSameProjectSessions`. Presentation only, never an identity key. |
 | `shared/src/dot-rules.ts` + `shared/src/dot-interactions.ts` + `services/dot-relay/src/contracts.ts` | `pnpm generate-dot-contract` → Swift budgets, local MCP host/ports/public-client contract, relationship stages and bundled JSON schemas | `native-contract.test.ts` checks all generated budgets, event and tool schemas; `DotDirectHostingTests` exercises the native consumer. The loopback OAuth client rules (registered redirects, metadata-document URLs and port-agnostic redirect matching) are hand-mirrored in `DotOAuth.swift` and pinned by `shared/dot-oauth-client-vectors.json`, replayed by `local-oauth.test.ts` and `DotDirectHostingTests`. |
 | `shared/src/timeline.ts` (scheduled evidence exact dedup) | Swift `DaemonTimelineStore.add` mirrors the session boundary and absolute 8-second window | Shared `timeline-ci-dedup-vectors.json` runs in TS and native XCTest: concurrent sessions retain independent CI annotations, repeated same-session evidence is deduplicated, legacy unattributed rows retain content dedup. |
 | `shared/src/ci-wait.ts` (CI command intent and bounded hook lifecycle; #433) | `pnpm generate-ci-wait` → `CiWaitRules.generated.swift`, Hermes observer `ci-wait-rules.json`, Kotlin/C++ CI visual mirrors; Node and Swift daemons emit optional `SessionInfo.waitingOn` | Byte drift gate + command and lifecycle JSON vectors executed in TS and Swift (Vitest on macOS and native XCTest). Source-hook aliases normalize at the tracker boundary, including OpenCode and Interrupt. Strict identity, invocation matching, normalized Hermes intent with hashed tool IDs, background Stop retention, expiry and explicit wire clearing; Node GitHub/process evidence has separate tests. Shared accounting vectors pin union/clipping of foreground spans; background spans do not subtract active time. Original Octocat PNG → `assets/terrarium/build-ci-companion.py` → native USDZ/GLB and unchanged Canvas sprite preserves source artwork; `shared/src/terrarium-rules.ts` owns per-session orbit geometry and UTF-8 phase seeds. Official GitHub SVG-derived compact glyphs and stable phase IDs reach firmware surfaces. Hardware and real-agent receipts remain acceptance gates. |
@@ -131,7 +143,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/gateway-setup-status.json` | `node scripts/generate-gateway-setup-status.mjs` | Vitest drift gate (`scripts/__tests__/gateway-setup-status.test.ts`); Apple integration/setup status and Android Gateway guidance. Only explicit actionable authentication states request setup; transport progress and unknown states remain neutral. |
 | `shared/src/device-controller.ts` | `node scripts/generate-device-controller-rules.mjs` → Swift/Kotlin/C++ controller rules | Key typography, known input families, held-permission choices and bounded compact-display delivery; byte drift in `device-controller.test.ts`, native serial tests and firmware host interaction tests. Explicit false capabilities survive compaction; truncated subjects/IDs are read-only. |
 | `shared/src/session-settings.ts` | `pnpm generate-session-settings-rules` | Shared request deadline and UTF-16 identifier/value bounds for correlated, conversation-bound deck settings; Swift `SessionSettingsRules.generated.swift` is byte-drift checked by `session-settings.test.ts`. |
-| `shared/src/daemon-parity.ts` | `pnpm generate-daemon-parity` | Node takeover negotiation/reclaim budgets derive the Swift yield lease; native and legacy Kiro turn boundaries share generated tables; Node readiness and Swift takeover attachment share the runtime-acceptance predicate. `daemon-parity.test.ts` checks byte drift and executes common `shared/daemon-parity-vectors.json` through TS and Swift on macOS. Production CLI tests reject Swift as Node readiness; Kiro observer tests retain silent turns. File-only discovery can expire without synthesizing a turn end; Node's live-process census remains a different evidence source. |
+| `shared/src/daemon-parity.ts` | `pnpm generate-daemon-parity` | Node takeover negotiation/reclaim budgets derive the Swift yield lease; aggregate checkpoint bounds, receipt field order and ACK/preparation budgets are generated too; current-peer/peerless authority transitions replay `daemon-checkpoint-vectors.json` in both stores; native and legacy Kiro turn boundaries share generated tables; Node readiness and Swift takeover attachment share the runtime-acceptance predicate. `daemon-parity.test.ts` checks byte drift and executes common `shared/daemon-parity-vectors.json` through TS and Swift on macOS. Production CLI tests reject Swift as Node readiness; Kiro observer tests retain silent turns. File-only discovery can expire without synthesizing a turn end; Node's live-process census remains a different evidence source. |
 | `shared/src/session-utils.ts` (`SESSION_WEIGHT_MIN/MAX`; `SESSION_ORDER_TTL_MS`/`MAX_SESSION_ORDER_PINS`) | `pnpm generate-session-weight-rules` | vitest drift gate (`session-weight-rules.test.ts`); Swift + Kotlin mirrors, D200H hand-port literals grep-gated. The weight range is a wire contract; the order-pin TTL/cap are a cross-daemon FILE contract — both daemons read and write one `session-order.json` (#273), so a pin must not live 30 days under one daemon and 7 under the other |
 | `shared/src/openclaw-approval.ts` (exec-approval parser/decision vocabulary and default observer scopes; existing device grants retained) | `pnpm generate-openclaw-approval-rules` | `openclaw-approval-rules-sync.test.ts`; behavior additionally pinned by `shared/openclaw-approval-error-vectors.json`, replayed by both suites |
 | `apple/AgentDeck/RemoteObservation/RemoteObservationPersistence.swift` (`RemoteObservationPolicy`) | One Swift source compiled by both Apple PoC targets | Development-only source age, retention, queue cap and backoff; `RemoteObservationProjectionTests` / `RemoteObservationPersistenceTests` cover both reader and publisher policy. No non-Apple consumer yet. |
@@ -220,7 +232,7 @@ preference.
    AgentDeck-installed lifecycle hooks POST to the daemon. This is the default
    and covers the great majority of real traffic.
 3. **Transcript-observed** — the agent has no usable hook surface, so the daemon
-   correlates its process with the agent's own on-disk store and polls it.
+   polls the agent's own on-disk store, using process correlation only where its source contract needs it.
 
 **Kiro is tier 3 on both of its versions**, and that is a measurement, not a
 default. Kiro CLI 2.13+ accepts global `~/.kiro/hooks/*.json` and AgentDeck can
@@ -253,6 +265,74 @@ explicit boundary exists. Node retains its existing store-specific inference.
 File recency never proves a completed turn. Swift shares one bounded snapshot
 between session rows and timeline while the granted-folder scope is open.
 
+### Antigravity transcript observation
+
+Node and Swift share the generated [observation policy](../shared/antigravity-observation-policy.json)
+and [contract vectors](../shared/antigravity-observation-vectors.json). The supported
+read-only source is `brain/<conversation-id>/.system_generated/logs/transcript.jsonl`
+inside an Antigravity root. Node checks its CLI and IDE roots; Swift reads only the
+root selected in Settings → Integrations → Antigravity → Session Observation.
+The read-only security-scoped bookmark is separate from the existing account/plan
+`state.vscdb` grant, survives relaunch and can be removed with Stop observing.
+Neither observer reads OAuth credentials or changes transcript/DB records.
+
+- Session identity is `observed:antigravity:<conversation-id>`. Turn identity is
+  `<conversation-id>:step:<USER_INPUT step_index>:<created_at epoch-ms>` from an
+  explicit `USER_EXPLICIT` record. Repeated updates to one step keep its identity;
+  a rotated transcript that reuses an index with a new timestamp starts a new turn.
+- The latest indexed step's `RUNNING`/`DONE` supplies processing/idle evidence.
+  DONE describes that step; it does **not** assert a completed task/turn or produce
+  APME Stop records. No permission request, answer options or controls are inferred.
+- The CLI persists DONE-only JSONL while streaming ACTIVE. The direct activity
+  reader therefore opens `conversations/<conversation-id>.db` read-only under the
+  same folder grant. Explicit Cortex `steps.status` values RUNNING(2) and
+  GENERATING(8) mean processing; DONE(3) means idle. Other values remain unknown,
+  never permission attention. These values and all read queries are generated
+  from the shared policy; they were checked against the installed CLI descriptor
+  and actual ACTIVE/DONE stream events.
+- The DB must identify the same `cascade_id`, current USER_INPUT index and user
+  creation timestamp as JSONL. Metadata field 1 contains a protobuf Timestamp;
+  comparison uses the precision JSONL actually preserves (seconds or milliseconds).
+  A bounded indexed search refuses a newer/missing user step rather than borrowing
+  a previous turn's state. Only scalar status/identity and bounded metadata columns are queried;
+  no `step_payload`, prompt/response columns, OAuth data or model credentials are
+  decoded or exposed.
+- Read-only snapshot transactions include live WAL. Existing DB/WAL/SHM/journal symlinks
+  are refused. A closed WAL-format main file with no WAL frames or rollback journal
+  uses a stable, bounded (64 MiB) snapshot without creating sidecars: Swift opens a
+  per-connection immutable read URI; Node deserializes a private RAM image with only
+  its WAL header normalized. Source fingerprints before/after reject concurrent
+  changes. Live WAL always uses normal SQLite snapshots; missing SHM is unknown
+  rather than permission to create it. Neither SHM nor an empty
+  WAL counts as activity; busy waits are capped at 25 ms,
+  and native queries have a 100 ms progress deadline with a file-scope C callback.
+  A present unreadable, unsupported or mismatched DB withdraws the source; it does
+  not fall back to an older DONE JSONL step. An absent DB retains file-only behavior.
+  Fresh explicit DB activity can revive a cold JSONL identity after revalidation;
+  touching old activity cannot renew its source timestamp.
+- Swift refreshes this consent-scoped source on a separate one-second loop. Slow
+  registry/provider refreshes reapply the current activity snapshot, so they cannot
+  overwrite WORKING with an older idle read. Revocation and shutdown reject late
+  results and stop the owned task. Node uses the same DB projection within its
+  existing passive scan cadence. This is direct state polling, not a CLI subprocess,
+  stdout relay or cloud Remote Control subscription.
+- Both original record time and file modification time must be fresh: RUNNING
+  expires after ten minutes, other roster evidence after one hour. Unknown status,
+  malformed final records, missing identity/time, unsafe paths or unreadable files
+  withdraw source rows rather than converting them to idle. Historical files are
+  skipped by metadata; touching an ancient record does not renew its evidence.
+- A scan visits at most 256 conversation directories, returns 32 observations and
+  has a two-second budget. Reads use 64 KiB head + 512 KiB tail; a gap requires an
+  explicit USER_INPUT in the tail before its turn can be identified. Optional
+  model/project metadata is bounded and workspace paths are never followed.
+- Node now uses this same file-evidence lease, replacing the old PID-keyed idle
+  fallback. Recent evidence can appear without a process; it is not proof of OS
+  process liveness. An exact, unambiguous cwd/cache owner can still suppress a
+  duplicate managed PTY. Swift has no process probe.
+- Swift's authenticated `GET /antigravity/observation` reports status, reasons and
+  identity/timestamps without transcript copy, model/tool labels or source paths.
+  Revocation invalidates cached rows synchronously and rejects late reads.
+
 **Rendering rule for any agent a surface predates.** Every surface's agent
 handling is an allow-list, never a deny-list. A bucket spelled as "not these
 known agents" dresses a future agent as the bucket's owner, which is a *wrong*
@@ -276,3 +356,101 @@ not the membership, so adding a real agent needs no test edit.
 ## node-pty optional
 
 `optionalDependencies` + dynamic `await import('node-pty')` in PtyManager. Daemon/monitor modes never load the native module. Setup forces source build (`npm_config_build_from_source=true`) to avoid prebuilt ABI mismatch across Node versions. PtyManager catches `posix_spawnp` errors with rebuild guidance.
+
+## ICS calendar context
+
+Calendar access is explicit. Native Settings → Integrations → Calendar schedule
+requires source/share consent and stores private URLs in a device-only,
+non-synchronizing Data Protection Keychain item. UserDefaults stores only the
+consent bit. No Node plaintext URLs are automatically imported. Configured means
+saved, not a successful network probe. Disconnect disables access before deleting
+the Keychain item, cancels owned work and invalidates all cached/late projections.
+
+`calendar-ics.ts` and `CalendarICS.swift` implement the bounded shared subset in
+[calendar-policy](../shared/calendar-policy.json). A calendar retains source wall
+time and its UTC/IANA/floating form until occurrence expansion. The display zone is
+the daemon's local zone. DAILY, Monday-based WEEKLY (plain BYDAY), MONTHLY
+(BYMONTHDAY including negative/list values or ordinal/plain BYDAY), and simple
+YEARLY rules support INTERVAL and COUNT or inclusive UNTIL. EXDATE and moved or
+cancelled RECURRENCE-ID entries match UID plus the full recurrence instant, scoped
+per source. Date-only DTEND is exclusive. Timed events are retained while ongoing;
+multiday events use the existing all-day Glance presentation. Explicit gap starts
+use the pre-gap offset, repeated gap instances are skipped without consuming COUNT,
+and overlap picks the first instant, following [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html).
+Custom VTIMEZONE definitions, RDATE/DURATION, RANGE and other unsupported rule
+modifiers are omitted rather than misinterpreted. Malformed calendar envelopes, invalid UTF-8 and expansion-limit failures cannot
+replace a good cached parse. Expansion is bounded, not a full iCalendar engine.
+
+This also corrects Node's former literal-TZID, ordinal-BYDAY, date-only end and
+date-only exception matching behavior. Both implementations use the same vectors
+for source zones differing from the display zone, DST gaps/overlaps, leap dates,
+recurrence exceptions, UTF-8 bounds and invalid input. No platform keeps the old
+timezone guess as its compatibility contract.
+
+Fetches accept HTTPS (HTTP only for explicit localhost/loopback testing), reject
+URL credentials/fragments and redirects, omit ambient cookies/credentials, limit
+each body to 1 MiB and the whole batch to eight seconds. At most four sources are
+fetched. Parsed events remain only in memory: fresh for 30 minutes, last-good data
+served stale after failures for less than six hours, then unknown/omitted. Failure
+retries have a one-minute backoff and never renew fetchedAt. Every cache hit is
+filtered against the current clock, including midnight/timezone changes. A source
+change cannot reuse a different source's cache or in-flight response; invalid or
+revoked consent never becomes an empty successful schedule. Logs carry only a
+generic fetch failure, never the URL or its underlying error text. A daemon-instance
+ownership token prevents retired teardown or late reads from clearing or publishing
+over a replacement instance's calendar context.
+
+Authorized Feed/Glance responses may include event titles/times and Pocket agenda
+cards. The existing Feed signature, conditional response and Outbox feedback
+contracts remain in place. Pocket persists only its existing aggregate counters,
+opaque content hashes and feedback receipts: no feed, URL, UID, title or event
+copy enters its learning file. Software acceptance does not claim X4 hardware
+acceptance; that stays deferred to companion integration.
+
+## Pixoo baked aquarium loops
+
+`animation: "loop"` is an explicit opt-in in both daemons. Default single-frame
+and the separate six-frame Tide scene retain their renderers. Baked aquarium
+pixels use the existing canonical TypeScript art/layout renderer, generated as
+fixed application code into both the Node package and the signed app resource.
+Swift owns the module, scheduling, configuration, cache and LAN HTTP; the OS
+[JavaScriptCore framework](https://developer.apple.com/documentation/javascriptcore)
+evaluates only that bundled fixed pixel code. No Node process, bundled interpreter,
+host callback, filesystem/network scripting API, remote code download or user-script
+entry point is added. Generator checks reject retained external modules and execution
+or I/O primitives. This is an implementation boundary, not a Store approval claim.
+
+An isolated seeded simulation belongs to each baked renderer, independent of preview
+calls. It continues across bakes, while simulation and camera are frozen inside each
+loop. Equal ordered inputs/times from the same seed produce equal RGB bytes. Eight
+unique frames at 200 ms form the closed 14-frame palindrome `0…7,6…1`; the final-to-first
+step is the reverse of the first-to-second step. Optional Dot painting stays a
+separate, development-only overlay; the generator strips it from the fixed core.
+
+The bounded input is at most 32 sessions and 128 KiB of JSON. Native timeline
+fallback keeps 96 non-tool rows and only the identity/time fields and a 256-Unicode-scalar
+raw prefix needed for subagent counts. Each driver retains one raw frame pack and
+one isolated rendering context, plus a small activity context in Swift. Cache keys
+include the input and a ten-second clock bucket; a consumer cannot mutate the stored
+pixels. Wake, source lifecycle and configuration changes invalidate the cache.
+
+Active opted-in devices upload a loop at most every ten seconds, or after at least
+three seconds when visible state changes. Both daemons use the same visible-state
+signature, including subagent activity, and coalesce changes per device. Idle or cooling-down devices use single
+frames. A failed loop aborts at its first failed frame and cools down to single frames
+for 15 minutes; failed attempts consume the cadence budget. Each POST carries one
+64×64 RGB frame, one shared PicID/PicNum and an increasing PicOffset, with 120 ms
+between requests. Existing bounds cap animations at 40 frames. The generated 256-entry gamma LUT
+keeps wire RGB/base64 identical; upload requests have a three-second deadline.
+Explicit nonzero or missing error acknowledgements fail, and an absent/invalid
+PicID stays unknown rather than becoming zero. HTTP awaits remain bounded, and no overlapping scheduled upload starts. Dim/stop/configuration epochs
+stop the remainder of an in-flight loop without interpreting cancellation as a
+network failure. A canceled reserved PicID is discarded and resynchronized before
+the next upload. Counters reset at 250 only after an explicit successful reset
+acknowledgement, with a two-second stabilization delay. A repeated unchanged display-on event does not cancel a loop.
+
+Dim pauses uploads and applies the configured off/min level. Wake restores each
+panel's own brightness (default 100), invalidates the baked cache and resumes the
+normal rate limits. Explicit device wake recovery also drops PicID/backoff state
+before resynchronizing. The Settings animation picker preserves brightness and
+unknown fields in existing device rows; no unrelated setting is replaced.

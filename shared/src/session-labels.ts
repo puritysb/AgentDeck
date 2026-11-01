@@ -20,15 +20,36 @@
  * their shortest unique prefix can outgrow a tile and truncate into identical
  * text again. Past `PREFER_PREFIX_MAX` characters the shorter unique TAIL is
  * used instead, written `…<tail>` so it still reads as part of the id.
- * Richer hints (terminal tab title, `claude --name`, git branch) are not on the
- * session row from either daemon today; they would need producer work first.
+ * An optional producer displayName replaces the project text only in collision
+ * groups. Keep the ID even with a friendly name: titles can collide or truncate.
  *
  * Presentation only — never a routing, folding or identity key.
  */
 import { rawSessionId } from './session-utils.js';
 
+/** Presentation hint cap, in Unicode code points; mirrored by D200HLayoutModel. */
+export const SESSION_DISPLAY_NAME_MAX_CHARS = 64;
+export function normalizeSessionDisplayName(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const clean = value.normalize('NFC')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/[\t\r\n ]+/g, ' ')
+    .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069\ud800-\udfff]/gu, '')
+    .trim();
+  return Array.from(clean).slice(0, SESSION_DISPLAY_NAME_MAX_CHARS).join('');
+}
+
+/** Missing = unknown/retain; explicit empty = clear. Removed rows stay removed. */
+export function retainSessionDisplayNames<T extends { id: string; displayName?: string }>(
+  rows: readonly T[], previous: readonly { id: string; displayName?: string }[],
+): T[] {
+  const old = new Map(previous.map(row => [row.id, row.displayName]));
+  return rows.map(row => row.displayName === undefined && old.get(row.id) !== undefined
+    ? { ...row, displayName: old.get(row.id) } : row);
+}
+
 export interface SessionDeckLabel {
-  /** The session's project name, unchanged. */
+  /** Project name, or the normalized friendly hint in a collision group. */
   name: string;
   /** Short id tag, present only when another visible row shares name + agent. */
   tag?: string;
@@ -82,7 +103,7 @@ function collisionKey(s: { projectName?: string; agentType?: string }): string {
  * share `projectName` AND `agentType` get a `tag`; different agents in one
  * project already differ by creature and colour.
  */
-export function sessionDeckLabels<T extends { id: string; projectName?: string; agentType?: string }>(
+export function sessionDeckLabels<T extends { id: string; projectName?: string; agentType?: string; displayName?: string }>(
   sessions: readonly T[],
 ): Map<string, SessionDeckLabel> {
   const groups = new Map<string, T[]>();
@@ -102,7 +123,7 @@ export function sessionDeckLabels<T extends { id: string; projectName?: string; 
     }
     const bodies = members.map((s) => idBody(s.id) || s.id.toLowerCase());
     members.forEach((s, i) => {
-      labels.set(s.id, { name: s.projectName ?? '', tag: tagFor(bodies, i) });
+      labels.set(s.id, { name: normalizeSessionDisplayName(s.displayName) || s.projectName || '', tag: tagFor(bodies, i) });
     });
   }
   return labels;

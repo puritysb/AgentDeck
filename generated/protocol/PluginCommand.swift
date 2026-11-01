@@ -11,6 +11,8 @@
 
 import Foundation
 
+/// Durable checkpoint receipt from the local native client, scoped to this socket.
+///
 /// Request a session's recent timeline. The daemon replies (to the requester only) with a
 /// `timeline_history` carrying that session's entries. Lets a device that connects
 /// mid-session fill its per-session Detail view.
@@ -64,6 +66,7 @@ struct ADPluginCommand: Codable, Equatable {
     var text: String?
     var mode: ADMode?
     var action: ADAction?
+    var checkpointId: String?
     /// Optional epoch-ms lower bound; omit for the full retained history.
     var since: Double?
     var agent: ADAgent?
@@ -106,6 +109,7 @@ struct ADPluginCommand: Codable, Equatable {
         case text = "text"
         case mode = "mode"
         case action = "action"
+        case checkpointId = "checkpointId"
         case since = "since"
         case agent = "agent"
         case command = "command"
@@ -161,6 +165,7 @@ extension ADPluginCommand {
         text: String?? = nil,
         mode: ADMode?? = nil,
         action: ADAction?? = nil,
+        checkpointId: String?? = nil,
         since: Double?? = nil,
         agent: ADAgent?? = nil,
         command: ADCommand?? = nil,
@@ -196,6 +201,7 @@ extension ADPluginCommand {
             text: text ?? self.text,
             mode: mode ?? self.mode,
             action: action ?? self.action,
+            checkpointId: checkpointId ?? self.checkpointId,
             since: since ?? self.since,
             agent: agent ?? self.agent,
             command: command ?? self.command,
@@ -516,6 +522,7 @@ enum ADType: String, Codable, Equatable {
     case apmeVibe = "apme_vibe"
     case clearSessionFocus = "clear_session_focus"
     case clientRegister = "client_register"
+    case daemonCheckpointAck = "daemon_checkpoint_ack"
     case diag = "diag"
     case escape = "escape"
     case esp32OtaAck = "esp32_ota_ack"

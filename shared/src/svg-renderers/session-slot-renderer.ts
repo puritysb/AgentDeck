@@ -729,8 +729,12 @@ export function renderDetailInfo(
   const sColor = stateColor(effectiveState);
   const stateLbl = stateLabel(effectiveState, agent);
   const gradId = `sd-bg-detail-${agent}`;
+  // A collision label must keep its ID readable. INFO's corner pill otherwise
+  // paints across the suffix; fit the complete label in the 104px title row.
+  const taggedTitle = Boolean(displayName?.includes(' #'));
+  const titleFit = taggedTitle ? ' textLength="104" lengthAdjust="spacingAndGlyphs"' : '';
   const watermark = `<g transform="translate(92, 80)" opacity="0.42">${agentLogoIcon(agent, 48, 1, 0, 0)}</g>`;
-  const badgeObj = `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">INFO</text>`;
+  const badgeObj = taggedTitle ? '' : `<rect x="100" y="14" width="28" height="16" rx="8" fill="#ffffff" opacity="0.1" /><text x="114" y="25" font-size="10" font-weight="700" text-anchor="middle" fill="#A1A1AA" font-family="${fontFam}">INFO</text>`;
   const toolDisplay = !effectiveState?.startsWith('awaiting') && session.waitingOn
     ? ciWaitDetail(session.waitingOn)! : !effectiveState?.startsWith('awaiting') && backgroundCompact(session.backgroundTaskCount, session.backgroundStandbyCount) ? backgroundCompact(session.backgroundTaskCount, session.backgroundStandbyCount)! : tool ? `▶ ${truncate(tool, 18)}` : stateLbl;
   // An awaiting session's INFO cell must state WHAT is being asked. This cell
@@ -766,7 +770,7 @@ export function renderDetailInfo(
     // decoration and the question is the decision — drop it while one is up.
     promptEls ? '' : watermark,
     badgeObj,
-    `<text x="20" y="34" font-size="18" font-weight="800" text-anchor="start" fill="#ffffff" font-family="${fontFam}">${escXml(truncate(nameForDisplay, 10))}</text>`,
+    `<text x="20" y="34" font-size="18" font-weight="800" text-anchor="start" fill="#ffffff" font-family="${fontFam}"${titleFit}>${escXml(truncate(nameForDisplay, 10))}</text>`,
     // Model and mode yield their rows to the prompt for the same reason.
     (modelName && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="56" font-size="12" font-weight="600" text-anchor="start" fill="#94a3b8" font-family="${fontFam}">${escXml(formatModelEffort(modelName, effortLevel, 17))}</text>` : '',
     (mode && mode !== 'default' && agent !== 'openclaw' && !promptEls) ? `<text x="20" y="74" font-size="11" font-weight="700" text-anchor="start" fill="#a78bfa" font-family="${fontFam}">${escXml(truncate(mode.toUpperCase(), 17))}</text>` : '',

@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import * as rules from '../ci-wait.js';
+import { CI_PROVIDER_POLICY } from '../ci-provider-policy.js';
+import { emitPolicy, OUTPUT as PROVIDER_OUTPUT } from '../../../scripts/generate-ci-provider.mjs';
 import sharp from 'sharp';
+import { ciPhaseFromResponse } from '../../../bridge/src/ci-wait-probe.js';
 import projection from '../../ci-wait-projection-vectors.json';
 import { createHash } from 'node:crypto';
 import { CI_GITHUB_GLYPH, CI_GITHUB_GLYPH_SOURCE_SHA256 } from '../ci-github-glyph.generated.js';
@@ -14,6 +17,33 @@ const root = fileURLToPath(new URL('../../..', import.meta.url));
 const arduinoJson = join(root, 'esp32/.pio/libdeps/box_86/ArduinoJson/src');
 
 describe('Node/Swift CI wait command parity', () => {
+  it('generates GitHub transport, identity and freshness policy without drift', () => {
+    expect(readFileSync(join(root, PROVIDER_OUTPUT), 'utf8')).toBe(emitPolicy(CI_PROVIDER_POLICY, rules.CI_WAIT_LIFECYCLE, rules.CI_WAIT_RULES));
+  });
+  it.skipIf(process.platform !== 'darwin')('executes native GitHub verdicts against Node response rules', () => {
+    const statuses = ['in_progress','queued','waiting','pending','requested','completed','unknown'];
+    const conclusions = ['success','failure','timed_out','action_required','startup_failure','cancelled','skipped','neutral',''];
+    const vectors = statuses.flatMap(status => conclusions.map(conclusion => ({ status, conclusion })));
+    const groups = [[], ['passed'], ['failed'], ['running','failed'], ['queued','passed'], ['unknown','passed']];
+    const expectedGroups = groups.map(group => ciPhaseFromResponse({total_count:group.length,check_runs:group.map(phase =>
+      phase === 'passed' ? {status:'completed',conclusion:'success'} : phase === 'failed' ? {status:'completed',conclusion:'failure'} : {status:phase === 'running' ? 'in_progress' : phase})}));
+    const dir = mkdtempSync(join(tmpdir(), 'github-ci-parity-'));
+    try {
+      const main = join(dir, 'main.swift');
+      writeFileSync(main, `import Foundation
+let data = FileHandle.standardInput.readDataToEndOfFile()
+let input = try JSONSerialization.jsonObject(with:data) as! [String:Any]
+let phases = (input["vectors"] as! [[String:Any]]).map { GitHubCIClient.phase($0) }
+let groups = (input["groups"] as! [[String]]).map { GitHubCIClient.combine($0).phase }
+FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject:["phases":phases,"groups":groups]))
+`);
+      execFileSync('xcrun',['swiftc','-swift-version','6','-module-cache-path',join(dir,'modules'),
+        join(root,PROVIDER_OUTPUT),join(root,'apple/AgentDeck/Daemon/Session/GitHubCIClient.swift'),main,'-o',join(dir,'probe')],{timeout:90_000,stdio:'pipe'});
+      const actual = JSON.parse(execFileSync(join(dir,'probe'),[],{input:JSON.stringify({vectors,groups}),encoding:'utf8',timeout:10_000}));
+      expect(actual.phases).toEqual(vectors.map(ciPhaseFromResponse));
+      expect(actual.groups).toEqual(expectedGroups);
+    } finally { rmSync(dir,{recursive:true,force:true}); }
+  },120_000);
   it('clears inactive pending phase evidence while preserving terminal verdicts', () => {
     for (const vector of projection) expect(rules.ciWaitPhaseId(vector.wait as never)).toBe(vector.expected);
   });

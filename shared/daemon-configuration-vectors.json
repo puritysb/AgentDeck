@@ -1,0 +1,342 @@
+[
+  {
+    "name": "empty",
+    "value": {
+      "version": 1,
+      "pins": [],
+      "pixoo": {
+        "devices": [],
+        "autoDiscover": false
+      }
+    },
+    "valid": true,
+    "pixooRevision": "35be6417eae8b5ded3e6d463859859b9227653c69bbfb7fd880516d41740036d"
+  },
+  {
+    "name": "unicode-and-slash",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": true,
+    "pixooRevision": "74c9379127ab0f8b53888c0160a26bb3aa622b9feb9b172d500bc690a966a654"
+  },
+  {
+    "name": "boolean brightness",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": true,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "duplicate devices",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          },
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "secret field refused",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide",
+            "token": "not-a-real-token"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "url refused",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "http://127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "boolean weight",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": true,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "foreign id form",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "observed:claude:abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "duplicate pins",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        },
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "fractional time",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1.25,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "unknown root",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      },
+      "credentials": {}
+    },
+    "valid": false
+  },
+  {
+    "name": "invalid mode",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.2",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "future"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  },
+  {
+    "name": "out of range IP",
+    "value": {
+      "version": 1,
+      "pins": [
+        {
+          "id": "abc-1",
+          "weight": -5,
+          "updatedAt": 1793450000000,
+          "lastSeenAt": 1793450000000
+        }
+      ],
+      "pixoo": {
+        "devices": [
+          {
+            "ip": "127.0.0.256",
+            "name": "Desk / \uc791\uc5c5 \ud83d\udc19",
+            "brightness": 27,
+            "animation": "tide"
+          }
+        ],
+        "autoDiscover": false
+      }
+    },
+    "valid": false
+  }
+]
