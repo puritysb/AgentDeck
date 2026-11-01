@@ -62,6 +62,13 @@ struct AgentDeckApp: App {
     var body: some Scene {
         #if AGENTDECK_CLOUDKIT_POC
         WindowGroup("CloudKit delivery experiment") { CloudKitProbeView() }
+        #if os(macOS)
+        MenuBarExtra("AgentDeck cloud observation", systemImage: "icloud",
+                     isInserted: .constant(!Self.isHostedTest())) {
+            CloudKitProbeView().frame(width: 480)
+        }
+        .menuBarExtraStyle(.window)
+        #endif
         #else
         #if os(macOS)
         Window("AgentDeck Dashboard", id: "dashboard") {

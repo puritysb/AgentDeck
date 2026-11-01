@@ -1,7 +1,7 @@
 # Apple remote observation — planned feature introduction
 
 **2026-11-01 — development-only PoC; one user-assisted iPhone/Watch delivery route verified.**
-This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, manual encrypted-summary read and offline-age check also passed; unattended publication, quota and Production remain incomplete.
+This is reusable preview copy, not an announcement of an available feature. A real response-wait alert, manual encrypted-summary read and offline-age check also passed; automatic publication and durable storage are implemented for the development PoC and awaiting device acceptance; quota and Production remain incomplete.
 The [technical design](../apple-remote-observation.md) owns the scope and gates;
 the [feature matrix](../appstore-feature-matrix.md) owns availability.
 

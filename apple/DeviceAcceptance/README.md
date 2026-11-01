@@ -26,3 +26,18 @@ Store signing, or validate 3D creature coordinates. On 2026-10-13 it reproduced
 header taps being intercepted by overflowing timeline content on iPhone 14 Pro Max;
 the same test passed after bounding the scroll hit area and raising the header.
 An iPad runner initialization timeout is a tooling failure, not an app pass.
+
+## OpenCode and CloudKit lab acceptance
+
+`OpenCodeAttention` adds explicit installed-device checks. An external lab
+orchestrator must first create a fresh real OpenCode session whose single-choice
+label includes `Phone acceptance`, followed by a harmless permission wait.
+Run only `OpenCodeAttention/testQuestionThenOneTimePermission`; the runner opens
+the existing local dashboard, chooses the real option, allows the tool once and
+retains screenshots/accessibility evidence. It does not inject app state.
+
+`OpenCodeAttention/testCacheRestoresAfterProcessRelaunch` requires a current
+CloudKit summary and the PoC candidate already installed. It fetches once,
+terminates/relaunches the app and asserts that the original summary reappears
+without another refresh. Offline identity-token availability and original source
+time remain separate assertions in the persistence unit suite and device record.

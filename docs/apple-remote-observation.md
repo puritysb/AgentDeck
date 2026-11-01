@@ -234,9 +234,10 @@ outside the app's deletion guarantee; do not promise instant forensic erasure.
 
 ## Implementation sequence and acceptance gates
 
-Stage A now has a development-only implementation. Delivery evidence remains
-pending. Stage B has a manual real-roster projection/share/read spike; automatic attention
-publication, provider quota and stages C–E remain incomplete. See the transport notes below.
+Stage A Development delivery and Stage B manual real-roster/wait delivery are
+verified. Stage C automatic publication and durable cache/outbox are implemented
+and undergoing integrated device acceptance. Provider quota and stages D–E
+remain deferred. See the dated checkpoints below for evidence and limits.
 
 | Stage | Work | Exit criterion |
 |---|---|---|
@@ -522,9 +523,10 @@ Remaining acceptance: install the integrated observer/daemon/plugin together,
 start a fresh OpenCode session, and exercise actual Stream Deck and native-device
 choices. Multi-question/multi-select/custom text remain terminal-only. The new
 iPhone disable action and physical account-switch handling need device checks.
-CloudKit unattended scheduling, durable account-scoped outbox and cold-start
-cache, optional quota provenance, disruption measurements and widgets remain
-explicit follow-ups; none is marked complete by this checkpoint.
+At that checkpoint, unattended scheduling, durable outbox/cache, quota,
+disruption measurements and widgets were follow-ups. The next implementation
+checkpoint supersedes scheduling and persistence status; quota and widgets
+remain deferred.
 
 Quota export has a concrete source-contract prerequisite: the current native
 `CodexRateLimits` wire model carries capture time, plan and limit ID, but no
@@ -534,3 +536,45 @@ a model pool as the account limit. The remote reader therefore does not promote
 that block into a trustworthy subscription widget. Add producer-owned provenance
 and retirement evidence before exporting it; preserve unavailable rather than
 publishing plausible percentages.
+
+### Automatic publication and durable storage implementation
+
+The development-only Mac probe now has explicit automatic sharing. It retains
+a random installation ID, increasing snapshot revision, local episode mapping,
+one bounded 32-event outbox and retry state in an atomic account-scoped file.
+CloudKit’s verified user-record identity scopes saved consent; a changed account
+requires enablement again. No account identity or local session ID is uploaded.
+A restored roster starts a new baseline while retaining still-waiting pending
+episode IDs. Unknown/disconnected sources never drain the outbox. Events older
+than five minutes or resolved before sending are dropped.
+
+The app-owned publisher survives closing its view; a PoC menu-bar view retains
+access to Stop sharing. Its activity assertion prevents App Nap while enabled
+but allows normal system sleep. It coalesces normal snapshots
+to 60 seconds and sends eligible new waits sooner. Transient errors use bounded
+5-second-to-5-minute jittered backoff and honor longer CloudKit retry-after.
+Authentication, quota and competing installation ownership pause automatic
+sharing. Before retrying an uncertain attention write it fetches that same ID.
+Snapshot compare-and-save preserves CloudKit change tags and rejects stale
+revisions or another installation; an existing single-Mac probe can be adopted.
+The temporary probe record names remain in use; this does not claim the final
+custom-zone Production schema or 24-hour event cleanup.
+
+The phone persists only summary counts, original time and account-scope metadata,
+with atomic writes, owner-only permissions, backup exclusion and iOS file
+protection. Cold-start offline restoration requires a matching locally available
+iCloud identity token; when that token is unavailable, the file remains private
+and unread until CloudKit verifies the account online. Account mismatch, expiry,
+confirmed cloud deletion and explicit receiving disable clear the cache. No fetch
+advances source time. A separate local dashboard entry in the PoC uses the
+existing LAN connection and controls; cloud data cannot enable answers.
+
+The dedicated PoC gate now runs in changed/full verification and Apple CI;
+standard Store configurations keep this code excluded. Hosted tests cannot
+restore saved sharing consent or contact the service. Record reads, as well as
+mutations, cancel on their deadline/account invalidation.
+
+Regression coverage adds real disk reload, expired/future/corrupt/oversized
+cache rejection, unknown-vs-mismatched identity handling, stable outbox IDs,
+reconnect baseline behavior, coalescing and retry-after. Physical acceptance
+results are recorded separately from these source-level checks.

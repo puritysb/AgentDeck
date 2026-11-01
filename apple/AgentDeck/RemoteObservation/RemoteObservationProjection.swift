@@ -19,8 +19,8 @@ struct RemoteRosterSummary: Codable, Equatable, Sendable {
     func freshness(at now: Date) -> RemoteObservationFreshness {
         let age = now.timeIntervalSince(observedAt)
         guard age >= 0 else { return .unknown }
-        if age >= 7 * 24 * 60 * 60 { return .expired }
-        return age >= 180 ? .historical : .recent
+        if age >= RemoteObservationPolicy.readerLifetime { return .expired }
+        return age >= RemoteObservationPolicy.historicalAfter ? .historical : .recent
     }
 }
 
@@ -36,7 +36,7 @@ struct RemoteWaitTransition: Sendable {
 }
 
 /// A full roster is evidence; a socket loss is not an empty roster.
-struct RemoteWaitTracker: Sendable {
+struct RemoteWaitTracker: Codable, Equatable, Sendable {
     private var active: [String: UUID] = [:]
     private var hasBaseline = false
     /// Only an explicit manual action may notify a wait already present at baseline.

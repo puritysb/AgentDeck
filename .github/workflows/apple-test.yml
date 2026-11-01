@@ -103,6 +103,12 @@ jobs:
       - name: Verify compiled Dot boundary
         run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}/AgentDeck.app" '${{ matrix.dot }}'
 
+      - name: Verify deterministic CloudKit PoC without iCloud access
+        if: matrix.configuration == 'Debug'
+        env:
+          AGENTDECK_APPLE_DERIVED_DATA: ${{ runner.temp }}/AgentDeckCloudKitDerivedData
+        run: bash apple/scripts/verify-build.sh macOS CloudKitPoCDebug
+
       - name: Upload xcresult on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -150,6 +156,12 @@ jobs:
 
       - name: Verify compiled Dot boundary
         run: python3 apple/scripts/verify-dot-build.py "$RUNNER_TEMP/AgentDeckDerivedData/Build/Products/${{ matrix.configuration }}-iphonesimulator/AgentDeck.app" '${{ matrix.dot }}'
+
+      - name: Build CloudKit PoC companion without signing
+        if: matrix.configuration == 'Release'
+        env:
+          AGENTDECK_APPLE_DERIVED_DATA: ${{ runner.temp }}/AgentDeckCloudKitDerivedData
+        run: bash apple/scripts/verify-build.sh iOS CloudKitPoCDebug
 
       - name: Test companion onboarding layouts
         if: matrix.configuration == 'Release'

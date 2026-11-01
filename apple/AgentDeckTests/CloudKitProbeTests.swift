@@ -82,6 +82,36 @@ final class CloudKitProbeTests: XCTestCase {
         XCTAssertEqual(capture.count, 0)
     }
 
+    func testMissingRecordIsAbsentButTransportFailureIsUnknown() async throws {
+        for code in [CKError.Code.unknownItem, .networkUnavailable] {
+            let capture = WriteCapture()
+            let store = CloudKitProbeStore(accountStatus: { $0.finish(.success(.available)) }, submit: {
+                capture.add($0)
+                guard let fetch = $0 as? CKFetchRecordsOperation, let id = fetch.recordIDs?.first else { return }
+                fetch.perRecordResultBlock?(id, .failure(CKError(code)))
+            })
+            let account = try await store.checkAccount()
+            do {
+                let exists = try await store.waitEpisodeExists(id: UUID(), account: account)
+                XCTAssertEqual(code, .unknownItem)
+                XCTAssertFalse(exists)
+            } catch { XCTAssertEqual((error as? CKError)?.code, .networkUnavailable) }
+            XCTAssertEqual(capture.first?.isCancelled, true)
+        }
+    }
+
+    func testSilentRecordFetchCancelsAtDeadline() async throws {
+        let capture = WriteCapture()
+        let store = CloudKitProbeStore(accountStatus: { $0.finish(.success(.available)) },
+                                      submit: { capture.add($0) }, deadline: .milliseconds(10))
+        let account = try await store.checkAccount()
+        do {
+            _ = try await store.waitEpisodeExists(id: UUID(), account: account)
+            XCTFail("an unresponsive record read must terminate")
+        } catch { XCTAssertEqual((error as? URLError)?.code, .timedOut) }
+        XCTAssertEqual(capture.first?.isCancelled, true)
+    }
+
     func testSilentPeerTerminatesWithTimeout() async {
         let store = CloudKitProbeStore()
         do {
