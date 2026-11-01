@@ -10,14 +10,14 @@ collaboration summaries, and personalized agent evaluation.
 
 ### Apple remote observation — implementation preparation
 
-**2026-11-01: design ready; implementation and device evidence pending.**
+**2026-11-01: Stage A development transport implemented; single-route iPhone/Watch delivery verified; resilience work pending.**
 The selected first experiment uses CloudKit private storage and query-subscription
 alerts, with the running Mac app as publisher and iPhone as reader. Apple Watch
 receives eligible forwarded iPhone notifications; no dedicated Watch target is
 part of this PoC. This avoids operating an AgentDeck relay before the value of
 away-from-desk attention has been established.
 
-- [ ] A: Prove Mac → CloudKit → iPhone cellular → Watch delivery using a test event.
+- [x] A: Prove Mac → CloudKit → iPhone cellular → Watch delivery using a test event.
 - [ ] B: Connect real response-wait transitions, summary counts and one trustworthy quota source.
 - [ ] C: Verify offline history, retries, duplicate prevention, account changes and disable/delete.
 - [ ] D: Measure normal/delayed alerts and assess added value over a standalone usage gauge.

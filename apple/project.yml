@@ -1,10 +1,12 @@
 name: AgentDeck
 configs:
+  CloudKitPoCDebug: debug
   Debug: debug
   Release: release
   DotPreviewDebug: debug
   DotPreviewRelease: release
 options:
+  defaultConfig: Debug
   bundleIdPrefix: bound.serendipity.agent.deck
   deploymentTarget:
     iOS: "17.0"
@@ -15,6 +17,7 @@ options:
 
 settings:
   base:
+    AGENTDECK_CLOUDKIT_CONDITION: ""
     SWIFT_VERSION: "6.0"
     MARKETING_VERSION: "1.9.5"
     CURRENT_PROJECT_VERSION: 5
@@ -24,6 +27,8 @@ settings:
     AGENTDECK_DOT_SUPPORT: excluded
     EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) Dot*.swift dot-mcp-contract.json"
   configs:
+    CloudKitPoCDebug:
+      AGENTDECK_CLOUDKIT_CONDITION: AGENTDECK_CLOUDKIT_POC
     DotPreviewDebug:
       AGENTDECK_DOT_CONDITION: AGENTDECK_DOT_PREVIEW
       AGENTDECK_DOT_SUPPORT: preview
@@ -56,11 +61,14 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_PREVIEWS: true
         DEVELOPMENT_TEAM: QF36NDHYHD
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
       configs:
+        CloudKitPoCDebug:
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_ENTITLEMENTS: AgentDeck/Resources/CloudKitPoC-iOS.entitlements
         debug:
           CODE_SIGN_STYLE: Automatic
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION)"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
         release:
           # Release archives use one persistent organization Distribution
           # identity. Automatic signing on an ephemeral CI runner creates a
@@ -84,6 +92,7 @@ targets:
         group: AgentDeck/Generated
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: AgentDeck/Resources/AgentDeck.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: bound.serendipity.agent.deck
         INFOPLIST_FILE: AgentDeck/Resources/Info-macOS.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
@@ -95,8 +104,11 @@ targets:
         # only; full-spec developer integrations live in the external Node
         # CLI/daemon. Do not use this as a distribution switch or reintroduce
         # subprocess/bundled-helper paths under another condition.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
       configs:
+        CloudKitPoCDebug:
+          CODE_SIGN_STYLE: Automatic
+          CODE_SIGN_ENTITLEMENTS: AgentDeck/Resources/CloudKitPoC-macOS.entitlements
         debug:
           CODE_SIGN_STYLE: Automatic
           # Setting the base condition above REPLACES Xcode's per-config
@@ -105,25 +117,12 @@ targets:
           # `-AgentDeckScreenshotURL` launch pin the recording runbook
           # depends on. Re-add it for Debug only; Release keeps the App
           # Store token alone, so debug-only paths still never ship.
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
         release:
           # Persistent manual signing — see the iOS release config note.
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: AgentDeck Dashboard macOS AppStore
-    entitlements:
-      path: AgentDeck/Resources/AgentDeck.entitlements
-      properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.network.client: true
-        com.apple.security.network.server: true
-        com.apple.security.device.audio-input: true
-        com.apple.security.device.bluetooth: true
-        com.apple.security.device.serial: true
-        com.apple.security.files.user-selected.read-write: true
-        com.apple.security.files.bookmarks.app-scope: true
-        com.apple.developer.weatherkit: true
-        com.apple.security.personal-information.location: true
     postCompileScripts:
       - name: "App Store Helper Guard"
         script: |
@@ -144,10 +143,10 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck"
         BUNDLE_LOADER: "$(TEST_HOST)"
         GENERATE_INFOPLIST_FILE: YES
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
       configs:
         debug:
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION)"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
 
   AgentDeckTests_macOS:
     type: bundle.unit-test
@@ -170,11 +169,11 @@ targets:
         # `#if AGENTDECK_APP_STORE` blocks. Without this the test target
         # would reference symbols the host compiled out (e.g. the
         # `.bundledBridge` launch mode fallback) and fail at link or run.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
       configs:
         debug:
           # Keep in step with the host app's Debug conditions above.
-          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)"
 
 schemes:
   AgentDeck_iOS:
@@ -250,3 +249,27 @@ schemes:
       config: DotPreviewDebug
     archive:
       config: DotPreviewRelease
+
+  AgentDeck_CloudKitPoC_iOS:
+    build:
+      targets:
+        AgentDeck_iOS: all
+        AgentDeckTests_iOS: [test]
+    test:
+      config: CloudKitPoCDebug
+      targets:
+        - AgentDeckTests_iOS
+    run:
+      config: CloudKitPoCDebug
+
+  AgentDeck_CloudKitPoC_macOS:
+    build:
+      targets:
+        AgentDeck_macOS: all
+        AgentDeckTests_macOS: [test]
+    test:
+      config: CloudKitPoCDebug
+      targets:
+        - AgentDeckTests_macOS
+    run:
+      config: CloudKitPoCDebug

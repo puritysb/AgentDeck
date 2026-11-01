@@ -332,6 +332,7 @@
 		62D5FBB2899D2690B43FF0C5 /* DemoPlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C8A40550B31856011EBBCB7 /* DemoPlayback.swift */; };
 		62F20845F1953514EFB1C11B /* SingletonGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B5C866AF54937CD8E433F49 /* SingletonGuard.swift */; };
 		634EEC168E46C62A2DBD1ACA /* FormatUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2994478DEFAA4A1CC8EC54D /* FormatUtils.swift */; };
+		6367A756315516AD5F917C53 /* CloudKitProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3981B8BD45562A5FEF556DFA /* CloudKitProbeTests.swift */; };
 		63934274932C59864347F6AB /* LocalKiroObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DCDE7C19F4BE7649995B33 /* LocalKiroObserver.swift */; };
 		647687A118742DCA7F1B2B54 /* CodexExecChildrenTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE433C0C306D430DE740AB0F /* CodexExecChildrenTests.swift */; };
 		6530D175E50846D9A760CF72 /* AquariumShoal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C095A676EC89446C067731C /* AquariumShoal.swift */; };
@@ -668,6 +669,7 @@
 		C7BD32F014792DEBF43E9818 /* DotInteraction.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6A487394776C9CC60C19C87 /* DotInteraction.generated.swift */; };
 		C811739586EAB613B7881490 /* ApmeClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5857149AEB13F8BEC5CDE41B /* ApmeClassifier.swift */; };
 		C8DE7EFB8EAFBD9E0BAD7852 /* CreatureLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDD4BFFE8B182F5EEBC3365 /* CreatureLayout.swift */; };
+		C95935A054C132415F6BF3F6 /* CloudKitProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3612EE46DAFB95ABED0261 /* CloudKitProbe.swift */; };
 		C984EE6C8F562962DBE4EB5B /* ClaudePermissionRulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 160B2258BF46CD03C53B5AC0 /* ClaudePermissionRulesTests.swift */; };
 		C9A93A44534B81815553F80B /* TimelineRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8884FD5EE02A0EDAF5D6C448 /* TimelineRelay.swift */; };
 		CA87D544027881EBC6EE45D8 /* DotDirectHostingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF123E62CA46345F1A78445F /* DotDirectHostingTests.swift */; };
@@ -834,6 +836,7 @@
 		FC8022AFF367CE956C1C2FE4 /* ToastOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = F358D3115EEB262D59BD6439 /* ToastOverlay.swift */; };
 		FC85871CF15E49966E5725C5 /* DashboardProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80F5AD0F31E7A87406FF94F4 /* DashboardProviders.swift */; };
 		FCF0A9C4BC88D7255023D2F7 /* DisplayMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1F43DCAC6100C73B98139EA /* DisplayMonitor.swift */; };
+		FD1B27CA2A991EABBCAB8464 /* CloudKitProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3981B8BD45562A5FEF556DFA /* CloudKitProbeTests.swift */; };
 		FD7FCF5CF42BE4A918EE5DB4 /* IDotMatrixModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D3815BC9679F080521D52D2 /* IDotMatrixModule.swift */; };
 		FD86AF81DA987540254BA326 /* OpenClawAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 427B912EBD043285F0A0008D /* OpenClawAdapter.swift */; };
 		FDBC11BBFAADC1E112AD05A0 /* HermesMermaid2D.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC229C52EC306C34CBD07396 /* HermesMermaid2D.generated.swift */; };
@@ -843,6 +846,7 @@
 		FEA477EB09C6A7DE0EA46F22 /* AttentionTheaterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1853443C348441BF748662A /* AttentionTheaterView.swift */; };
 		FEE72EA19EDA357DBF73D02A /* AttentionSessionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AFD55329DBF36B7172CE45 /* AttentionSessionAccess.swift */; };
 		FEEAB16BAED7AAD30A5C4EB6 /* AttentionSessionAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99AFD55329DBF36B7172CE45 /* AttentionSessionAccess.swift */; };
+		FF1039649940B130E347B27A /* CloudKitProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A3612EE46DAFB95ABED0261 /* CloudKitProbe.swift */; };
 		FFEFE3D0FCA06EE1E7760F3D /* TaskGradeabilityRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A5E894C58B03EE5C8EF791 /* TaskGradeabilityRules.generated.swift */; };
 /* End PBXBuildFile section */
 
@@ -962,6 +966,7 @@
 		362BC758256086C0D78EF7A8 /* TimeboxSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeboxSheet.swift; sourceTree = "<group>"; };
 		375A2B92423D3DB509A61372 /* ExternalAttachRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalAttachRetryTests.swift; sourceTree = "<group>"; };
 		38C2485BC8700CBDD9EDE70E /* StateTimelineGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateTimelineGenerator.swift; sourceTree = "<group>"; };
+		3981B8BD45562A5FEF556DFA /* CloudKitProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitProbeTests.swift; sourceTree = "<group>"; };
 		3A59CDD89266C18C80F6F324 /* 3d-residents.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = "3d-residents.usdz"; sourceTree = "<group>"; };
 		3A70C6FAC4BDE4DAAFA08E74 /* CodexConfigInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexConfigInstaller.swift; sourceTree = "<group>"; };
 		3AB5FA66873A6E7FACA1B8EE /* ApmeActivityHistoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeActivityHistoryTests.swift; sourceTree = "<group>"; };
@@ -985,6 +990,7 @@
 		43249471B78BB9975F736FC6 /* ClaudeBackgroundJobRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeBackgroundJobRules.generated.swift; sourceTree = "<group>"; };
 		43838A747888CB84DF5A6762 /* OpenClawTokenImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawTokenImporter.swift; sourceTree = "<group>"; };
 		43F7DA99E490C72ED75FF711 /* ApmeExternalCloseSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeExternalCloseSelectionTests.swift; sourceTree = "<group>"; };
+		44C46B1B04DD2FB785CE6B1B /* CloudKitPoC-iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "CloudKitPoC-iOS.entitlements"; sourceTree = "<group>"; };
 		44FA10A61851AAD5430F1685 /* CiWaitRulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CiWaitRulesTests.swift; sourceTree = "<group>"; };
 		46988130529D53105344C47F /* ApmeJudgeApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeJudgeApi.swift; sourceTree = "<group>"; };
 		46AB7A0263C3AFB217C9DF13 /* DevicePreviewShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicePreviewShared.swift; sourceTree = "<group>"; };
@@ -994,6 +1000,7 @@
 		48F37E295246F5931D533E31 /* TimelineStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineStripView.swift; sourceTree = "<group>"; };
 		49875783E44D33C86D04A038 /* HermesCreature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesCreature.swift; sourceTree = "<group>"; };
 		4A2D26F6BDF08F6E4F2F8439 /* ApmeHttpRoutes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApmeHttpRoutes.swift; sourceTree = "<group>"; };
+		4A3612EE46DAFB95ABED0261 /* CloudKitProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitProbe.swift; sourceTree = "<group>"; };
 		4AA25996ACA820A3C8D6273A /* CreatureGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatureGeometry.swift; sourceTree = "<group>"; };
 		4AAD1770E90957B6A00E7AC2 /* MenuBarSurfaceSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSurfaceSummary.swift; sourceTree = "<group>"; };
 		4AF67EB1D0BDEE57B39E6E9F /* OpenClawApprovalRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawApprovalRules.generated.swift; sourceTree = "<group>"; };
@@ -1125,6 +1132,7 @@
 		9965CED8937C8C1F27DFCC68 /* OnboardingScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingScreen.swift; sourceTree = "<group>"; };
 		99AFD55329DBF36B7172CE45 /* AttentionSessionAccess.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttentionSessionAccess.swift; sourceTree = "<group>"; };
 		99B649BF2ACE34B4E61EB10D /* DaemonOwnership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DaemonOwnership.swift; sourceTree = "<group>"; };
+		9A51FE10488D3280B35E6F48 /* CloudKitPoC-macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "CloudKitPoC-macOS.entitlements"; sourceTree = "<group>"; };
 		9AF98CA1BB582FB56637BB59 /* OpenClawSessionSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenClawSessionSettingsTests.swift; sourceTree = "<group>"; };
 		9C75E7B3676BD283B9A4BE27 /* PairingCodeRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingCodeRules.generated.swift; sourceTree = "<group>"; };
 		9DC487120E810897B3BF0FC4 /* CodexFreshnessRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexFreshnessRules.generated.swift; sourceTree = "<group>"; };
@@ -1292,6 +1300,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
+		0FE097D6984A9356A6B80701 /* RemoteObservation */ = {
+			isa = PBXGroup;
+			children = (
+				4A3612EE46DAFB95ABED0261 /* CloudKitProbe.swift */,
+			);
+			path = RemoteObservation;
+			sourceTree = "<group>";
+		};
 		140AF97BD543A868D285A3E3 /* UI */ = {
 			isa = PBXGroup;
 			children = (
@@ -1381,6 +1397,7 @@
 				8E1C1449392382945373BE3D /* ClaudePermissionRequestTests.swift */,
 				160B2258BF46CD03C53B5AC0 /* ClaudePermissionRulesTests.swift */,
 				87B953D8E77FC4425B70B384 /* ClaudeStatuslineRulesTests.swift */,
+				3981B8BD45562A5FEF556DFA /* CloudKitProbeTests.swift */,
 				8EE5AF611F51BB12390D4DB5 /* CodexApprovalHoldTests.swift */,
 				0392D39F45022F762AFE6BE0 /* CodexConfigInstallerTests.swift */,
 				2FBD79359C74EFD3D692FB05 /* CodexCreditsPresentationTests.swift */,
@@ -1732,6 +1749,7 @@
 				AE2C0B4AE497F08576484A2D /* Generated */,
 				EA3237691E872717C75DF805 /* Model */,
 				DCEC752C69312C74843D250D /* Net */,
+				0FE097D6984A9356A6B80701 /* RemoteObservation */,
 				764F7B627B5C94D36D30923C /* Rendering */,
 				AC7149D65EB34AE85760881A /* Resources */,
 				4BFA9357D1C2F3690DCD95CA /* State */,
@@ -1748,6 +1766,8 @@
 				83E77BCD933FB80831B3E6FD /* AgentDeck.entitlements */,
 				766909A21820E709DA63C7C2 /* apme-dashboard.html */,
 				2D2F35C5E4DF5DAE1C93F54B /* Assets.xcassets */,
+				44C46B1B04DD2FB785CE6B1B /* CloudKitPoC-iOS.entitlements */,
+				9A51FE10488D3280B35E6F48 /* CloudKitPoC-macOS.entitlements */,
 				8521590B433F1C0B3F3FB330 /* dot-mcp-contract.json */,
 				3B886C1F467A011D242E296E /* PrivacyInfo.xcprivacy */,
 				51F8835274D527676D10FDB5 /* Aquarium */,
@@ -2262,6 +2282,7 @@
 				CB1EFCC1BDAF5A521ABAC5D2 /* ClaudePermissionRequestTests.swift in Sources */,
 				ADC9C0B4303BEA1EEB33E969 /* ClaudePermissionRulesTests.swift in Sources */,
 				7508D8DB27034D39CA026615 /* ClaudeStatuslineRulesTests.swift in Sources */,
+				FD1B27CA2A991EABBCAB8464 /* CloudKitProbeTests.swift in Sources */,
 				8B6C5D6F726950635B32AB28 /* CodexApprovalHoldTests.swift in Sources */,
 				00E9789B6EFDA8174842999D /* CodexConfigInstallerTests.swift in Sources */,
 				9AC98859CDC66FD5342EEA61 /* CodexCreditsPresentationTests.swift in Sources */,
@@ -2383,6 +2404,7 @@
 				F49521249811C23E231FCB8D /* ClaudePermissionRequestTests.swift in Sources */,
 				C984EE6C8F562962DBE4EB5B /* ClaudePermissionRulesTests.swift in Sources */,
 				BC2D8940BCC6A284DD3E87A8 /* ClaudeStatuslineRulesTests.swift in Sources */,
+				6367A756315516AD5F917C53 /* CloudKitProbeTests.swift in Sources */,
 				7289CC0685570063D5C36712 /* CodexApprovalHoldTests.swift in Sources */,
 				23C366450AF88EC0E69DDD11 /* CodexConfigInstallerTests.swift in Sources */,
 				C10CD1596A8DC0CF050C6AED /* CodexCreditsPresentationTests.swift in Sources */,
@@ -2541,6 +2563,7 @@
 				BD603C0DA671877FFFF496E1 /* ClaudePermissionRules.generated.swift in Sources */,
 				8F90FB5485D7B6614F6F09A6 /* ClaudeStatuslineRules.generated.swift in Sources */,
 				08B47BC18D206538B33DD3B9 /* CloudCreature.swift in Sources */,
+				C95935A054C132415F6BF3F6 /* CloudKitProbe.swift in Sources */,
 				54B2769852F28BCF65A259A1 /* CodexApprovalFileReader.swift in Sources */,
 				9A0453468790BAF7FAE98D36 /* CodexApprovalHoldRules.generated.swift in Sources */,
 				EDB44E89F700BC28A7AB9A83 /* CodexConfigInstaller.swift in Sources */,
@@ -2834,6 +2857,7 @@
 				52F319B3F0699BDB206D714E /* ClaudePermissionRules.generated.swift in Sources */,
 				9D936EAA57266140F1A0CE67 /* ClaudeStatuslineRules.generated.swift in Sources */,
 				469316CAE1172CC311AD34F0 /* CloudCreature.swift in Sources */,
+				FF1039649940B130E347B27A /* CloudKitProbe.swift in Sources */,
 				170B9E57BD984D8F8C660F7A /* CodexApprovalFileReader.swift in Sources */,
 				C1288C445471587590AFCBFD /* CodexApprovalHoldRules.generated.swift in Sources */,
 				36A5E1C9F248EF1B2B36A6D5 /* CodexConfigInstaller.swift in Sources */,
@@ -3095,10 +3119,33 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Release;
+		};
+		0F6CC1973E97E2AA55CDFA53 /* CloudKitPoCDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "AgentDeck/Resources/CloudKitPoC-iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = AgentDeck/Resources/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = CloudKitPoCDebug;
 		};
 		1906D3D01CDC98FFC62F1B95 /* DotPreviewDebug */ = {
 			isa = XCBuildConfiguration;
@@ -3118,13 +3165,14 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 			};
 			name = DotPreviewDebug;
 		};
 		2930907BF0471CB90D2D5459 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_CLOUDKIT_CONDITION = "";
 				AGENTDECK_DOT_CONDITION = "";
 				AGENTDECK_DOT_SUPPORT = excluded;
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -3208,7 +3256,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = DotPreviewDebug;
@@ -3230,7 +3278,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -3238,6 +3286,7 @@
 		5D0AE4EA8EA1CB6A7B30FF2D /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_CLOUDKIT_CONDITION = "";
 				AGENTDECK_DOT_CONDITION = "";
 				AGENTDECK_DOT_SUPPORT = excluded;
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -3317,9 +3366,101 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 			};
 			name = DotPreviewRelease;
+		};
+		86494D0C6B920ACA4AE9C1AB /* CloudKitPoCDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				AGENTDECK_CLOUDKIT_CONDITION = AGENTDECK_CLOUDKIT_POC;
+				AGENTDECK_DOT_CONDITION = "";
+				AGENTDECK_DOT_SUPPORT = excluded;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 5;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) Dot*.swift dot-mcp-contract.json";
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.9.5;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = CloudKitPoCDebug;
+		};
+		95BE4B86940BA52E12CB501B /* CloudKitPoCDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
+			};
+			name = CloudKitPoCDebug;
 		};
 		9C72129C13F22FDF7EE21305 /* DotPreviewDebug */ = {
 			isa = XCBuildConfiguration;
@@ -3334,7 +3475,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3357,7 +3498,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = DotPreviewRelease;
@@ -3380,7 +3521,7 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = DotPreviewRelease;
@@ -3405,9 +3546,50 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard macOS AppStore";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 			};
 			name = Release;
+		};
+		B4AAC47F925E779DC6CF5C10 /* CloudKitPoCDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
+			};
+			name = CloudKitPoCDebug;
+		};
+		B6DD84CF4D80B1FE01594419 /* CloudKitPoCDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "AgentDeck/Resources/CloudKitPoC-macOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = QF36NDHYHD;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = "AgentDeck/Resources/Info-macOS.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
+				PRODUCT_NAME = AgentDeck;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
+			};
+			name = CloudKitPoCDebug;
 		};
 		CCEA9484E73F4F23DF1BAFA8 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -3422,7 +3604,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3445,7 +3627,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Debug;
@@ -3453,6 +3635,7 @@
 		D991119E1411B0668DF5A382 /* DotPreviewDebug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_CLOUDKIT_CONDITION = "";
 				AGENTDECK_DOT_CONDITION = AGENTDECK_DOT_PREVIEW;
 				AGENTDECK_DOT_SUPPORT = preview;
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -3536,7 +3719,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = DotPreviewDebug;
@@ -3554,7 +3737,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3578,7 +3761,7 @@
 				PRODUCT_NAME = AgentDeck;
 				PROVISIONING_PROFILE_SPECIFIER = "AgentDeck Dashboard AppStore";
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -3596,7 +3779,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck.tests;
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/AgentDeck";
 			};
@@ -3620,13 +3803,14 @@
 				PRODUCT_BUNDLE_IDENTIFIER = bound.serendipity.agent.deck;
 				PRODUCT_NAME = AgentDeck;
 				SDKROOT = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AGENTDECK_APP_STORE DEBUG $(AGENTDECK_DOT_CONDITION) $(AGENTDECK_CLOUDKIT_CONDITION)";
 			};
 			name = Debug;
 		};
 		FC705384554FF0D2119A07C8 /* DotPreviewRelease */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				AGENTDECK_CLOUDKIT_CONDITION = "";
 				AGENTDECK_DOT_CONDITION = AGENTDECK_DOT_PREVIEW;
 				AGENTDECK_DOT_SUPPORT = preview;
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -3693,6 +3877,7 @@
 		173A599128D27D8011B994FF /* Build configuration list for PBXNativeTarget "AgentDeckTests_macOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				95BE4B86940BA52E12CB501B /* CloudKitPoCDebug */,
 				CDA97A11E586550BBBFF05C0 /* Debug */,
 				E88F7EA4B17D7472674F8FCE /* DotPreviewDebug */,
 				A1F8E3211C3A7E0E936D5BFF /* DotPreviewRelease */,
@@ -3704,6 +3889,7 @@
 		19A00758BFDB219F41274DBD /* Build configuration list for PBXProject "AgentDeck" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				86494D0C6B920ACA4AE9C1AB /* CloudKitPoCDebug */,
 				2930907BF0471CB90D2D5459 /* Debug */,
 				D991119E1411B0668DF5A382 /* DotPreviewDebug */,
 				FC705384554FF0D2119A07C8 /* DotPreviewRelease */,
@@ -3715,6 +3901,7 @@
 		28706EF474E36656FE6F358F /* Build configuration list for PBXNativeTarget "AgentDeck_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				0F6CC1973E97E2AA55CDFA53 /* CloudKitPoCDebug */,
 				5BAFD22D350185D90AE95421 /* Debug */,
 				5AB2F9BA24015CAE9B0BD9CE /* DotPreviewDebug */,
 				A5F03DCB06460229E1E7D5D3 /* DotPreviewRelease */,
@@ -3726,6 +3913,7 @@
 		42C2CA2A040E2C6132174542 /* Build configuration list for PBXNativeTarget "AgentDeck_macOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				B6DD84CF4D80B1FE01594419 /* CloudKitPoCDebug */,
 				F1AC575B483B651F347D003B /* Debug */,
 				1906D3D01CDC98FFC62F1B95 /* DotPreviewDebug */,
 				8309E2B97EE96DF1E0AAABE9 /* DotPreviewRelease */,
@@ -3737,6 +3925,7 @@
 		DBF2997FF90CFE9269D9B4A4 /* Build configuration list for PBXNativeTarget "AgentDeckTests_iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
+				B4AAC47F925E779DC6CF5C10 /* CloudKitPoCDebug */,
 				E97D9DAD98830F00501B9250 /* Debug */,
 				9C72129C13F22FDF7EE21305 /* DotPreviewDebug */,
 				EB8EC003784FEBCED69C192D /* DotPreviewRelease */,

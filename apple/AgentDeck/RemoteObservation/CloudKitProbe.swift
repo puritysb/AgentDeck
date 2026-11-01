@@ -1,0 +1,229 @@
+#if AGENTDECK_CLOUDKIT_POC
+import CloudKit
+import Foundation
+import SwiftUI
+import UserNotifications
+#if os(iOS)
+import UIKit
+#endif
+
+/// Stage A deliberately carries no session content or credentials.
+struct CloudKitProbeEvent: Identifiable, Sendable {
+    let id: String
+    let occurredAt: Date
+    let expiresAt: Date
+    func isExpired(at now: Date) -> Bool { now >= expiresAt }
+}
+
+/// Resolves once, including when a cancelled CloudKit request completes late.
+final class ProbeCompletion<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    init(_ continuation: CheckedContinuation<T, Error>) { self.continuation = continuation }
+    func finish(_ result: Result<T, Error>) {
+        lock.lock()
+        let pending = continuation
+        continuation = nil
+        lock.unlock()
+        pending?.resume(with: result)
+    }
+}
+
+actor CloudKitProbeStore {
+    static let containerID = "iCloud.bound.serendipity.agent.deck"
+    private var container: CKContainer { CKContainer(identifier: Self.containerID) }
+    private var database: CKDatabase { container.privateCloudDatabase }
+    private let recordID = CKRecord.ID(recordName: "stage-a-latest-test")
+
+    func bounded<T: Sendable>(timeout: Duration = .seconds(15), _ start: @escaping @Sendable (ProbeCompletion<T>) -> Void) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            let completion = ProbeCompletion(continuation)
+            start(completion)
+            Task {
+                try? await Task.sleep(for: timeout)
+                completion.finish(.failure(URLError(.timedOut)))
+            }
+        }
+    }
+
+    func checkAccount() async throws {
+        let container = container
+        let status: CKAccountStatus = try await bounded { done in
+            container.accountStatus { status, error in
+                if let error { done.finish(.failure(error)) }
+                else { done.finish(.success(status)) }
+            }
+        }
+        guard status == .available else { throw ProbeError.accountUnavailable }
+    }
+
+    func sendTest() async throws -> CloudKitProbeEvent {
+        try await checkAccount()
+        let now = Date()
+        let event = CloudKitProbeEvent(id: UUID().uuidString, occurredAt: now,
+                                      expiresAt: now.addingTimeInterval(300))
+        // A separate immutable event triggers the creation subscription. The latest
+        // pointer is written first so a delayed notification always opens current data.
+        let latest = CKRecord(recordType: "ObservationProbe", recordID: recordID)
+        latest["occurredAt"] = event.occurredAt
+        latest["expiresAt"] = event.expiresAt
+        latest["eventID"] = event.id
+        let alert = CKRecord(recordType: "AttentionProbe", recordID: CKRecord.ID(recordName: event.id))
+        alert["occurredAt"] = event.occurredAt
+        alert["expiresAt"] = event.expiresAt
+        try await save(latest)
+        try await save(alert)
+        return event
+    }
+
+    private func save(_ record: CKRecord) async throws {
+        let operation = CKModifyRecordsOperation(recordsToSave: [record])
+        operation.savePolicy = .allKeys
+        operation.configuration.timeoutIntervalForRequest = 15
+        operation.configuration.timeoutIntervalForResource = 15
+        let database = database
+        let _: Bool = try await bounded { done in
+            operation.modifyRecordsResultBlock = { result in
+                done.finish(result.map { true })
+            }
+            database.add(operation)
+        }
+    }
+
+    func subscribe() async throws {
+        try await checkAccount()
+        let subscription = CKQuerySubscription(recordType: "AttentionProbe", predicate: NSPredicate(value: true),
+            subscriptionID: "stage-a-attention-v1", options: .firesOnRecordCreation)
+        let info = CKSubscription.NotificationInfo()
+        info.alertBody = "AgentDeck test update. Open to check its time."
+        info.soundName = "default"
+        subscription.notificationInfo = info
+        let database = database
+        let _: Bool = try await bounded { done in
+            database.save(subscription) { _, error in
+                if let error { done.finish(.failure(error)) }
+                else { done.finish(.success(true)) }
+            }
+        }
+    }
+
+    func fetchLatest() async throws -> CloudKitProbeEvent {
+        try await checkAccount()
+        let database = database
+        let recordID = recordID
+        let record: CKRecord = try await bounded { done in
+            database.fetch(withRecordID: recordID) { record, error in
+                if let error { done.finish(.failure(error)) }
+                else if let record { done.finish(.success(record)) }
+                else { done.finish(.failure(ProbeError.invalidRecord)) }
+            }
+        }
+        guard let id = record["eventID"] as? String,
+              let occurred = record["occurredAt"] as? Date,
+              let expiry = record["expiresAt"] as? Date else { throw ProbeError.invalidRecord }
+        return CloudKitProbeEvent(id: id, occurredAt: occurred, expiresAt: expiry)
+    }
+
+    enum ProbeError: Error { case accountUnavailable, invalidRecord }
+}
+
+@MainActor
+final class CloudKitProbeModel: ObservableObject {
+    static let shared = CloudKitProbeModel()
+    @Published private(set) var status = "Not connected"
+    @Published private(set) var event: CloudKitProbeEvent?
+    @Published private(set) var busy = false
+    private let store = CloudKitProbeStore()
+    private var generation = 0
+    private var accountObserver: NSObjectProtocol?
+    init() {
+        accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.generation += 1
+                self?.event = nil
+                self?.busy = false
+                self?.status = "iCloud account changed. Enable receiving again."
+            }
+        }
+    }
+    func run(_ action: String) async {
+        guard !busy else { return }
+        busy = true
+        let token = generation
+        defer { if token == generation { busy = false } }
+        do {
+            if action == "send" {
+                let result = try await store.sendTest()
+                guard token == generation else { return }
+                event = result
+                status = "Saved to CloudKit; notification delivery is not confirmed."
+            } else if action == "receive" {
+                #if os(iOS)
+                let allowed = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+                guard allowed else { status = "Notifications are disabled in Settings."; return }
+                UIApplication.shared.registerForRemoteNotifications()
+                #endif
+                try await store.subscribe()
+                guard token == generation else { return }
+                status = "Subscription saved. Send a test from the Mac."
+            } else {
+                let result = try await store.fetchLatest()
+                guard token == generation else { return }
+                event = result
+                status = "Fetched. Observation time below is unchanged."
+            }
+        } catch {
+            guard token == generation else { return }
+            status = "CloudKit unavailable (\((error as NSError).domain):\((error as NSError).code)). Retry when ready."
+        }
+    }
+}
+
+struct CloudKitProbeView: View {
+    @ObservedObject private var model = CloudKitProbeModel.shared
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("CloudKit delivery experiment").font(.headline)
+            Text("Only synthetic test IDs and times are shared through your private iCloud database. No agent data is uploaded.")
+            #if os(macOS)
+            Button("Send test update") { Task { await model.run("send") } }
+            #else
+            Button("Enable test notifications") { Task { await model.run("receive") } }
+            #endif
+            Button("Fetch latest test") { Task { await model.run("fetch") } }
+            Text(model.status).foregroundStyle(.secondary)
+            if let event = model.event {
+                TimelineView(.periodic(from: .now, by: 15)) { context in
+                    Text(event.isExpired(at: context.date) ? "Historical test · expired" : "Test observation")
+                    Text(event.occurredAt, style: .date)
+                    Text(event.occurredAt, style: .time)
+                }
+            }
+            if model.busy { ProgressView() }
+        }.padding().disabled(model.busy)
+        #if os(macOS)
+        .task {
+            if ProcessInfo.processInfo.environment["AGENTDECK_CLOUDKIT_TEST_SEND"] == "1" {
+                await model.run("send")
+                NSLog("CloudKit stage A: %@", model.status)
+            }
+        }
+        #endif
+    }
+}
+
+#if os(iOS)
+final class CloudKitProbeDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions options: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await CloudKitProbeModel.shared.run("fetch")
+    }
+}
+#endif
+#endif

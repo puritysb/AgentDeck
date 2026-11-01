@@ -10,14 +10,21 @@ import UserNotifications
 @main
 struct AgentDeckApp: App {
     @StateObject private var stateHolder = AgentDeckApp.makeStateHolder()
+    #if AGENTDECK_CLOUDKIT_POC && os(iOS)
+    @UIApplicationDelegateAdaptor(CloudKitProbeDelegate.self) private var cloudKitDelegate
+    #endif
     @StateObject private var preferences = AppPreferences.shared
 
     /// Restrict host isolation to XCTest's explicit launch markers. Individual
     /// AgentStateHolder fixtures keep their production behavior under XCTest.
     nonisolated static func isHostedTest(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment["XCTestConfigurationFilePath"] != nil
+        #if AGENTDECK_CLOUDKIT_POC
+        return true
+        #else
+        return environment["XCTestConfigurationFilePath"] != nil
             || environment["XCTestBundlePath"] != nil
             || environment["XCTestSessionIdentifier"] != nil
+        #endif
     }
 
     nonisolated static func makeStateHolder(environment: [String: String] = ProcessInfo.processInfo.environment) -> AgentStateHolder {
@@ -49,6 +56,9 @@ struct AgentDeckApp: App {
     #endif
 
     var body: some Scene {
+        #if AGENTDECK_CLOUDKIT_POC
+        WindowGroup("CloudKit delivery experiment") { CloudKitProbeView() }
+        #else
         #if os(macOS)
         Window("AgentDeck Dashboard", id: "dashboard") {
             ContentView()
@@ -190,6 +200,7 @@ struct AgentDeckApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+        #endif
         #endif
     }
 

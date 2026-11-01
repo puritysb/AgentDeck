@@ -1,7 +1,7 @@
 # Apple remote observation — CloudKit PoC design
 
-**Decision date: 2026-11-01. Status: design ready for implementation; not implemented,
-device-verified, submitted, or released.** This document owns the proposed PoC
+**Decision date: 2026-11-01. Status: Stage A development-only transport code
+implemented; end-to-end CloudKit/Watch delivery unverified, not released.** This document owns the proposed PoC
 contract and acceptance plan. The [feature matrix](appstore-feature-matrix.md)
 owns availability; [introduction copy](marketing/apple-remote-observation.md)
 must retain the planned label until measured delivery evidence exists.
@@ -234,8 +234,8 @@ outside the app's deletion guarantee; do not promise instant forensic erasure.
 
 ## Implementation sequence and acceptance gates
 
-All evidence below is **pending**. No implementation, signing, CloudKit console,
-device, release or background-delivery success is implied by this design.
+Stage A now has a development-only implementation. Delivery evidence remains
+pending. Stages B–E remain unimplemented. See the transport notes below.
 
 | Stage | Work | Exit criterion |
 |---|---|---|
@@ -328,3 +328,69 @@ again during the transport spike.
 - [CloudKit subscription troubleshooting](https://developer.apple.com/library/archive/qa/qa1917/_index.html) — archived diagnostic guidance, not a current simulator capability matrix
 - [Watch notification forwarding](https://developer.apple.com/documentation/watchos-apps/taking-advantage-of-notification-forwarding)
 - [WidgetKit push updates](https://developer.apple.com/documentation/widgetkit/updating-widgets-with-widgetkit-push-notifications)
+
+## Stage A transport implementation and current evidence
+
+Use `AgentDeck_CloudKitPoC_macOS` and `AgentDeck_CloudKitPoC_iOS` with
+`CloudKitPoCDebug`. Standard Debug/Release do not define
+`AGENTDECK_CLOUDKIT_POC`; the experimental screen is compiled out. The Mac probe keeps daemon startup inert automatically. It opens only the
+synthetic transport screen. `AGENTDECK_CLOUDKIT_TEST_SEND=1` is a development-only
+launch option to submit one test when that screen appears, not an App Store setup
+instruction.
+
+This spike uses temporary record types `ObservationProbe` (fixed latest pointer)
+and `AttentionProbe` (UUID creation events) in the default private zone. They are
+separate from contract-v1 real-data records. No session data or quota is sent.
+Latest is saved before the alert event; a partial failure can therefore leave a
+readable latest test without an alert. The UI distinguishes cloud-save success
+from notification delivery. Fetching preserves original occurrence/expiry times;
+a 5-minute expiry changes the display to historical, not the server's APNs queue.
+There is no automatic retry or persistent outbox in this manual spike.
+
+On the iPhone, enable test notifications first; then send a test from the Mac.
+Use Fetch latest test to distinguish database access from notification display.
+The permission and subscription steps are explicit. Account changes clear the
+in-memory view; no persisted cache is introduced yet. Test records are synthetic
+and have no automatic CloudKit TTL: remove them in the development container
+when the experiment ends. Full cleanup controls belong to Stage C before real
+observation data is enabled.
+
+Recorded on 2026-11-01:
+
+- Initial iPhone signing failed because the cached profile lacked iCloud/Push.
+  Automatic provisioning retry produced development entitlements for the selected
+  container, and installation on the connected iPhone 14 Pro Max succeeded.
+- Swift 6 rejected main-actor notification delegate witnesses with non-Sendable
+  parameters. Marking the notification methods nonisolated fixed that diagnostic.
+- Signed macOS build returned success. Device install succeeded, but launching
+  the iPhone was denied because it was locked. User unlock/notification consent
+  and actual CloudKit subscription, database save and Watch display remain pending.
+- Initial quick checks encountered missing worktree JS dependencies; dependencies
+  were repaired and verification was rerun. Full test outcomes must be read from
+  the current verification receipts, not inferred from successful installation.
+
+Do not advance the roadmap's Stage A checkbox or enable real session publishing
+until a successful record save/read and eligible Watch forwarding are observed.
+
+Latest live observation: Mac test submission timed out with
+`NSURLErrorDomain/-1001`. The busy state ended and a retry was available; a second
+attempt was made. iPhone permission was approved by the user, but CloudKit
+subscription success and Watch receipt have not yet been confirmed. Do not infer
+cloud readiness from permission approval. The earlier Mac entitlement override
+was corrected after inspecting the signed binary; its actual CloudKit/Push
+entitlements now match the PoC configuration. Timeout and duplicate-completion
+regression tests passed (2/2) in a standalone Swift 6 XCTest harness after making
+CloudKit container construction lazy, avoiding account access in pure timing tests.
+
+Mac retry result: the real PoC screen subsequently displayed "Saved to CloudKit;
+notification delivery is not confirmed" with the original test time. This proves
+the latest-record and event-save pipeline completed, not iPhone/Watch delivery.
+
+Stage A user-assisted acceptance: on 2026-11-01 the user confirmed iPhone visible
+notification and Fetch latest test, then locked the phone/wore and unlocked the
+Watch and confirmed the next test alert on Watch. This verifies a single real
+route; 20-event latency sampling, disruption trials and Production remain pending.
+macOS and iOS changed-area native suites passed. Quick checks passed after
+repairing dependencies except the design ratchet's system Bash incompatibility;
+the ratchet passed separately with Homebrew Bash (89 tracked violations, baseline
+89). Keychain-dependent daemon E2E was skipped by the standard macOS policy.
