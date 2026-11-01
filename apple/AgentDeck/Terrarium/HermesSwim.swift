@@ -20,6 +20,12 @@ struct HermesSwim {
     private(set) var elapsed: Float = 0
     private(set) var gaze = SIMD2<Float>.zero
     private var previous: Activity?
+    private var previousActive = false
+    private var clearingMouth = true
+    private var frontLaneReached = false
+    private var depthLaneReached = false
+    private var returnDepthReached = false
+    private var centerLaneReached = false
     private let offset: Float
 
     init(id: String, position: SIMD3<Float>) {
@@ -32,6 +38,16 @@ struct HermesSwim {
     mutating func relocate(_ destination: SIMD3<Float>) {
         position = destination
         velocity = .zero
+    }
+
+    /// A shared front approach clears the valve's rim before entering its basin.
+    static func mouth(home: SIMD3<Float>, size: Float) -> SIMD3<Float> {
+        [home.x, home.y + size * TerrariumRules.hermesHomeMouthLift,
+         TerrariumRules.hermesHomeSharedZ + TerrariumRules.hermesHomeMouthFront]
+    }
+    var dockScale: Float {
+        let p = emergence * emergence * (3 - 2 * emergence)
+        return TerrariumRules.hermesHomeCompactScale + (1 - TerrariumRules.hermesHomeCompactScale) * p
     }
 
     private func eyelid(_ lag: Float) -> Float {
@@ -63,10 +79,11 @@ struct HermesSwim {
         return 2 * .pi * t * t * (3 - 2 * t)
     }
     var yaw: Float { bodyYaw + twirl }
-    var pitch: Float { max(-0.30, min(0.30, -velocity.z * 0.6 - velocity.y * 0.4)) }
+    var navigatingDoorway: Bool { emergence < 1 || clearingMouth || !depthLaneReached || !previousActive }
+    var pitch: Float { navigatingDoorway ? 0 : max(-0.30, min(0.30, -velocity.z * 0.6 - velocity.y * 0.4)) }
     /// The concepts swim lying into the stroke: head leading, tail trailing.
     /// Upright travel read as a doll being dragged sideways.
-    var roll: Float { max(-0.85, min(0.85, -velocity.x * 1.8)) }
+    var roll: Float { navigatingDoorway ? 0 : max(-0.85, min(0.85, -velocity.x * 1.8)) }
     var arm: Float { attention * 1.4 + greeting * (0.55 + sin(phase) * 0.12) + celebration * 0.35 + effort * (0.18 + sin(phase) * 0.06) }
 
     var headRoll: Float { greeting * 0.10 - sadness * 0.15 - roll * 0.55
@@ -169,7 +186,7 @@ struct HermesSwim {
     }
 
     mutating func step(_ delta: Float, home: SIMD3<Float>, size: Float,
-                       activity: Activity, neighbours: [SIMD3<Float>], aspect: Float, shellActive: Bool? = nil, berth: SIMD3<Float>? = nil) {
+                       activity: Activity, neighbours: [SIMD3<Float>], aspect: Float, shellActive: Bool? = nil, berth: SIMD3<Float>? = nil, grounded: Bool = false, aperture: Float? = nil) {
         let dt = min(max(delta.isFinite ? delta : 0, 0), 0.05)
         guard dt > 0 else {
             // A paused clock must freeze motion, not a previous task's expression.
@@ -182,20 +199,46 @@ struct HermesSwim {
             }
             shellOpen = (shellActive ?? (activity == .working || activity == .waiting)) ? 1 : 0
             emergence = shellOpen
-            if let berth { position = shellOpen > 0 ? berth + SIMD3(0,size * TerrariumRules.hermesHomeSwimLift,0) : home; velocity = .zero }
+            previousActive = shellOpen > 0
+            centerLaneReached = previousActive; depthLaneReached = previousActive
+            clearingMouth = !previousActive; frontLaneReached = false; returnDepthReached = false
+            if let berth { position = shellOpen > 0 ? berth + SIMD3(0,grounded ? 0 : size * TerrariumRules.hermesHomeSwimLift,0) : home; velocity = .zero }
             return
         }
         let active = shellActive ?? (activity == .working || activity == .waiting)
+        if active != previousActive {
+            // Reverse the leg already in progress. Restarting at the first
+            // waypoint cuts diagonally through the shell on a short turn.
+            if emergence == 1 {
+                if active {
+                    let wasAtCenter = centerLaneReached
+                    clearingMouth = frontLaneReached
+                    depthLaneReached = !returnDepthReached
+                    centerLaneReached = !wasAtCenter
+                } else {
+                    returnDepthReached = !depthLaneReached
+                    frontLaneReached = clearingMouth
+                    centerLaneReached = !centerLaneReached
+                }
+            } else {
+                clearingMouth = true; frontLaneReached = false
+                depthLaneReached = false; returnDepthReached = false
+                centerLaneReached = false
+            }
+            previousActive = active
+        }
+        let mouth = Self.mouth(home: home, size: size)
+        let wasDocking = emergence < 1
         if active {
             shellOpen = min(1, shellOpen + dt * TerrariumRules.hermesHomeOpenRate)
             // The lid clears her head before the mermaid leaves the pearl basin.
-            if shellOpen >= TerrariumRules.hermesHomeLidClearance { emergence = min(1, emergence + dt * TerrariumRules.hermesHomeEmergeRate) }
-        } else if simd_distance(position, home) < max(0.01, size * TerrariumRules.hermesHomeSettleDistance) && simd_length(velocity) < TerrariumRules.hermesHomeSettleSpeed {
-            emergence = max(0, emergence - dt * TerrariumRules.hermesHomeEmergeRate)
+            if min(shellOpen, aperture ?? 1) >= TerrariumRules.hermesHomeLidClearance { emergence = min(1, emergence + dt * TerrariumRules.hermesHomeEmergeRate) }
+        } else if emergence < 1 || (simd_distance(position, mouth) < max(0.01, size * TerrariumRules.hermesHomeSettleDistance) && simd_length(velocity) < TerrariumRules.hermesHomeSettleSpeed) {
+            if emergence == 0 || (aperture ?? 1) >= TerrariumRules.hermesHomeLidClearance {
+                emergence = max(0, emergence - dt * TerrariumRules.hermesHomeEmergeRate)
+            }
             if emergence == 0 { shellOpen = max(0, shellOpen - dt * TerrariumRules.hermesHomeCloseRate) }
         }
-        let departure = max(0, min(1, (emergence - TerrariumRules.hermesHomeDepartureStart) / (1 - TerrariumRules.hermesHomeDepartureStart)))
-        let swimBlend = departure * departure * (3 - 2 * departure)
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
         effort += ((activity == .working ? 1 : 0) - effort) * blend
@@ -260,19 +303,62 @@ struct HermesSwim {
             destination.x = berth.x < 0 ? min(-inward, destination.x) : max(inward, destination.x)
         }
         destination.y = max(home.y, min(4.65, destination.y))
-        destination.z = max(-1.0, min(berth == nil ? 1.7 : TerrariumRules.hermesHomeFrontLimit, destination.z))
+        destination.z = max(berth.map { min(-1, $0.z - radius) } ?? -1, min(berth == nil ? 1.7 : TerrariumRules.hermesHomeFrontLimit, destination.z))
+        if grounded {
+            destination = (berth ?? home) + SIMD3(sin(t) * size * effort * TerrariumRules.nativeActivityGroundTravel, 0, 0)
+        }
         // Idle is a planted resting pose, not an endless swimming loop. Gaze,
         // blinking and gentle articulation remain; neighbours cannot move the seat.
-        if resting { destination = home }
-        else { destination = home + (destination - home) * swimBlend }
+        let laneY = home.y + size * TerrariumRules.hermesHomeLaneLift
+        let center = SIMD3<Float>(home.x, laneY, mouth.z)
+        let corner = SIMD3<Float>((berth ?? home).x, laneY, mouth.z)
+        let depthCorner = SIMD3<Float>(corner.x, laneY, (berth ?? home).z)
+        func settled(_ waypoint: SIMD3<Float>) -> Bool {
+            simd_distance(position, waypoint) < max(0.01, size * TerrariumRules.hermesHomeLaneDistance)
+                && simd_length(velocity) < TerrariumRules.hermesHomeLaneSpeed
+        }
+        // Keep the depth leg below the occupied swimming berths. A diagonal
+        // climb through another row's resident would cut across its body.
+        if active {
+            if !centerLaneReached {
+                if settled(center) { centerLaneReached = true }
+                destination = center
+            } else if clearingMouth {
+                if settled(corner) { clearingMouth = false }
+                destination = corner
+            } else if !depthLaneReached {
+                if settled(depthCorner) { depthLaneReached = true }
+                destination = depthCorner
+            }
+        } else {
+            if !returnDepthReached {
+                if settled(depthCorner) { returnDepthReached = true }
+                destination = depthCorner
+            } else if !frontLaneReached {
+                if settled(corner) { frontLaneReached = true }
+                destination = corner
+            } else if !centerLaneReached {
+                if settled(center) { centerLaneReached = true }
+                destination = center
+            } else { destination = mouth }
+        }
+        // Docking is a reversible path over the lip, not a damped fall through
+        // the floor. Shrinking happens around the feet only once in the basin.
+        if emergence < 1 || wasDocking {
+            let p = emergence * emergence * (3 - 2 * emergence)
+            let next = home + (mouth - home) * p
+            velocity = (next - position) / dt
+            position = next
+            return
+        }
         let desired = (destination - position) * 1.5
         velocity += (desired - velocity) * (1 - exp(-dt * 2.5))
         let speed = simd_length(velocity)
         let maximum = max(0.20, size * (0.50 + effort * 0.30))
         if speed > maximum { velocity *= maximum / speed }
         position += velocity * dt
-        if resting && simd_distance(position, home) < 0.002 && simd_length(velocity) < 0.005 {
-            position = home
+        if resting && simd_distance(position, mouth) < 0.002 && simd_length(velocity) < 0.005 {
+            position = mouth
             velocity = .zero
         }
     }

@@ -104,9 +104,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
     private var sharedOpening=0f
     private var sharedShell:FilamentAsset?=null
     private var sharedLid:Joint?=null
-    private fun hasShell(kind:String)=kind=="hermes" || kind=="dot"
-    private fun wantsOutside(body:Body)=body.item.habitatActive ?: (body.item.state==OctopusVisualState.WORKING || body.item.state==OctopusVisualState.ASKING)
-    private fun entranceY(body:Body)=TerrariumRules.HERMES_HOME_SHARED_FLOOR+(body.footHeight+.1f)*body.size
+    private fun hasShell(kind:String)=kind=="hermes" || kind=="dot" || kind=="openclaw"
+    private fun wantsOutside(body:Body)=body.item.habitatActive ?: (body.item.kind=="openclaw" || body.item.state==OctopusVisualState.WORKING || body.item.state==OctopusVisualState.ASKING)
+    private fun entranceY(body:Body)=TerrariumRules.HERMES_HOME_SHARED_FLOOR+body.footHeight*body.size+TerrariumRules.HERMES_HOME_BASIN_CLEARANCE
 
     private var ciSource: ByteArray? = null
     private fun loadCompanion(): FilamentAsset {
@@ -240,14 +240,14 @@ internal class AquariumResidents(private val context: Context, private val viewe
         val groundedCount = bodies.values.count { it.item.kind in setOf("claudecode", "openclaw", "hermes", "dot") }
         val hasSharedHome=bodies.values.any { hasShell(it.item.kind) }
         val neighbourCount=bodies.values.count { it.item.kind=="claudecode" || it.item.kind=="openclaw" }
-        val shellCount=bodies.values.count { hasShell(it.item.kind) }
+        val shellCount=bodies.values.count { hasShell(it.item.kind) && it.item.kind!="openclaw" }
         var shellIndex=0
         var neighbourIndex=0
         var groundIndex = 0
         var waterIndex = 0
         shellTraffic.update(bodies.values.filter { hasShell(it.item.kind) }.map { body ->
             SharedShellTraffic.Request(body.item.id,wantsOutside(body),body.hermes.emergence,
-                sqrt((body.hermes.x-TerrariumRules.HERMES_HOME_SHARED_X).pow(2)+(body.hermes.y-entranceY(body)).pow(2)+(body.hermes.z-TerrariumRules.HERMES_HOME_SHARED_Z-body.size*.35f).pow(2))/max(.1f,body.size))
+                sqrt((body.hermes.x-TerrariumRules.HERMES_HOME_SHARED_X).pow(2)+(body.hermes.y-body.hermes.mouthY(entranceY(body),body.size)).pow(2)+(body.hermes.z-body.hermes.mouthZ).pow(2))/max(.1f,body.size))
         })
         bodies.values.forEach { body ->
             body.item.dot?.let { body.item=dotAquariumResident(it,System.currentTimeMillis()) }
@@ -269,8 +269,9 @@ internal class AquariumResidents(private val context: Context, private val viewe
             var scale = if (grounded) min(baseScale, 1.8f / sqrt(groundedCount.toFloat())) else baseScale
             val isHermes = body.item.kind == "hermes"
             val hasShell = hasShell(body.item.kind)
+            val floatingBerth=hasShell && body.item.kind!="openclaw"
             if (isHermes) scale *= 1.35f
-            if(grounded && !hasShell && hasSharedHome) scale=min(scale,TerrariumRules.HERMES_HOME_NEIGHBOUR_SIZE)
+            if(grounded && !floatingBerth && hasSharedHome) scale=min(scale,TerrariumRules.HERMES_HOME_NEIGHBOUR_SIZE)
             body.size = scale
             val index = if (grounded) groundIndex++ else waterIndex++
             val row = index / columns
@@ -279,8 +280,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
             // A lone clam gets a side home when mid-water residents occupy the centre.
             var homeX = (index % columns - (count - 1) / 2f) * spacing -
                 if (hasShell && groundedCount == 1 && bodies.size > groundedCount) width * .25f else 0f
-            val neighbour=if(grounded && !hasShell && hasSharedHome) shellNeighbour(neighbourIndex++,neighbourCount,aspect) else null
-            val berth=if(hasShell) shellBerth(shellIndex++,shellCount,aspect) else null
+            val neighbour=if(grounded && !floatingBerth && hasSharedHome) shellNeighbour(neighbourIndex++,neighbourCount,aspect) else null
+            val berth=if(floatingBerth) shellBerth(shellIndex++,shellCount,aspect) else null
             if(neighbour!=null) homeX=neighbour.x
             if(berth!=null) homeX=berth.x
             val surfaceY=berth?.y ?: neighbour?.y ?: (.95f + row * .48f)
@@ -291,14 +292,14 @@ internal class AquariumResidents(private val context: Context, private val viewe
             body.y = if (grounded) body.footHeight * scale + surfaceY
                 else (if (waterRows <= 1) 2.8f else 4.0f - row * 1.6f) + sin(body.phase * .7f) * .06f
             body.z = if (grounded) berth?.let { it.z+scale*.35f } ?: neighbour?.z ?: (1.8f - row * 1.1f) else .9f - row * .65f
-            val homeY = body.footHeight * scale + surfaceY + if (hasShell) .12f else 0f
+            val homeY = body.footHeight * scale + surfaceY + if (floatingBerth) .12f else 0f
             val homeZ = body.z
             body.homeX=homeX; body.shellY=surfaceY; body.homeZ=homeZ-scale*.35f
             if (hasShell) {
                 body.hermes.step(dt,shellTraffic.active(body.item.id,wantsOutside(body),body.hermes.emergence),
                     body.item.state==OctopusVisualState.ASKING,TerrariumRules.HERMES_HOME_SHARED_X,entranceY(body),
                     TerrariumRules.HERMES_HOME_SHARED_Z+scale*.35f,scale,aspect,animate,
-                    berthX=homeX,berthY=homeY,berthZ=homeZ+TerrariumRules.HERMES_HOME_BERTH_FRONT)
+                    berthX=homeX,berthY=homeY,berthZ=homeZ+(if(floatingBerth) TerrariumRules.HERMES_HOME_BERTH_FRONT else 0f),grounded=body.item.kind=="openclaw",aperture=sharedOpening,effort=body.effort)
                 body.homeX=TerrariumRules.HERMES_HOME_SHARED_X;body.shellY=TerrariumRules.HERMES_HOME_SHARED_FLOOR;body.homeZ=TerrariumRules.HERMES_HOME_SHARED_Z
                 body.x = body.hermes.x; body.y = body.hermes.y; body.z = body.hermes.z
                 if (body.hermesVisible != body.hermes.visible) {
@@ -308,7 +309,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
             }
             body.support?.let { shelf ->
                 Matrix.setIdentityM(matrix, 0)
-                if (hasShell) {
+                if (floatingBerth) {
                     Matrix.translateM(matrix, 0, homeX, .95f + row * .48f, homeZ - scale * .35f)
                     Matrix.scaleM(matrix, 0, scale * (if(isHermes) .8f else .65f), scale * .8f, scale * (if(isHermes) .8f else .9f))
                 } else {
@@ -334,11 +335,11 @@ internal class AquariumResidents(private val context: Context, private val viewe
             }
             body.initialized = true
             Matrix.setIdentityM(matrix, 0)
-            Matrix.translateM(matrix, 0, body.x, body.y - if (hasShell) (1f-body.hermes.emergence)*TerrariumRules.HERMES_HOME_TUCK_DEPTH*scale else 0f, body.z)
+            Matrix.translateM(matrix, 0, body.x, body.y - if (hasShell) (1f-body.hermes.dockScale)*body.footHeight*scale else 0f, body.z)
             val yaw = if (hasShell) body.hermes.yaw else sin(body.phase * .5f) * if (grounded) body.effort * TerrariumRules.NATIVE_ACTIVITY_GROUND_YAW
                 else .20f + body.effort * TerrariumRules.NATIVE_ACTIVITY_WORK_YAW
             Matrix.rotateM(matrix, 0, Math.toDegrees(yaw.toDouble()).toFloat(), 0f, 1f, 0f)
-            if (hasShell) {
+            if (hasShell && body.hermes.emergence==1f && body.item.kind!="openclaw") {
                 Matrix.rotateM(matrix, 0, Math.toDegrees(body.hermes.pitch.toDouble()).toFloat(), 1f, 0f, 0f)
                 Matrix.rotateM(matrix, 0, Math.toDegrees(body.hermes.roll.toDouble()).toFloat(), 0f, 0f, 1f)
             } else if (!grounded) {
@@ -346,7 +347,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
                 Matrix.rotateM(matrix, 0, Math.toDegrees((-swing * TerrariumRules.NATIVE_ACTIVITY_WORK_ROLL).toDouble()).toFloat(), 0f, 0f, 1f)
             }
             val breath = if (grounded) 0f else sin(body.phase * 1.3f) * .009f + swing * TerrariumRules.NATIVE_ACTIVITY_WORK_BREATH
-            Matrix.scaleM(matrix, 0, scale * (1f + breath), scale * (1f - breath * .6f), scale * (1f + breath))
+            val visibleScale=scale*(if(hasShell) body.hermes.dockScale else 1f)
+            Matrix.scaleM(matrix, 0, visibleScale * (1f + breath), visibleScale * (1f - breath * .6f), visibleScale * (1f + breath))
             transforms.setTransform(transforms.getInstance(body.asset.root), matrix)
             body.item.ciWait?.let { wait ->
                 body.ciMotion.update(wait,dt)
@@ -364,6 +366,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
                 } else body.companion?.let { viewer.scene.removeEntities(it.entities) }
             }
 
+            val limbEffort=if(body.item.kind=="openclaw") max(body.effort,min(1f,sqrt(body.hermes.vx.pow(2)+body.hermes.vy.pow(2)+body.hermes.vz.pow(2))*2f)) else body.effort
             for ((i, joint) in body.joints.withIndex()) {
                 joint.rest.copyInto(pose)
                 if (isHermes) {
@@ -384,7 +387,7 @@ internal class AquariumResidents(private val context: Context, private val viewe
                     else if(joint.name.startsWith("hermes_pupil_")) Matrix.translateM(pose,0,sin(body.hermes.elapsed*.43f)*.004f,-body.effort*.002f,0f)
                     else Matrix.rotateM(pose,0,Math.toDegrees(angle.toDouble()).toFloat(),1f,0f,0f)
                 } else if (joint.name.startsWith("joint_foot")) {
-                    Matrix.translateM(pose, 0, 0f, 0f, -max(0f, sin(body.phase * 2f + i * PI.toFloat())) * body.effort * TerrariumRules.NATIVE_ACTIVITY_FOOT_LIFT)
+                    Matrix.translateM(pose, 0, 0f, 0f, -max(0f, sin(body.phase * 2f + i * PI.toFloat())) * limbEffort * TerrariumRules.NATIVE_ACTIVITY_FOOT_LIFT)
                 } else {
                     val side = if (joint.name.endsWith("_0")) -1f else 1f
                     Matrix.rotateM(pose, 0, side * (body.attention * 24f + body.effort * (12f + sin(body.phase) * 33f)), 0f, 1f, 0f)
@@ -397,8 +400,8 @@ internal class AquariumResidents(private val context: Context, private val viewe
                 body.asset.instance.animator.updateBoneMatrices()
             }
         }
-        val occupied=bodies.values.any { hasShell(it.item.kind) && (wantsOutside(it) || it.hermes.emergence>0f) }
-        sharedOpening=if(!animate) { if(occupied) 1f else 0f } else if(occupied) min(1f,sharedOpening+dt*TerrariumRules.HERMES_HOME_OPEN_RATE) else max(0f,sharedOpening-dt*TerrariumRules.HERMES_HOME_CLOSE_RATE)
+        val occupied=shellTraffic.owner!=null || bodies.values.any { hasShell(it.item.kind) && it.hermes.emergence<1f && (wantsOutside(it) || it.hermes.emergence>0f) }
+        sharedOpening=if(!animate) 0f else if(occupied) min(1f,sharedOpening+dt*TerrariumRules.HERMES_HOME_OPEN_RATE) else max(0f,sharedOpening-dt*TerrariumRules.HERMES_HOME_CLOSE_RATE)
         sharedShell?.let { house ->
             Matrix.setIdentityM(matrix,0);Matrix.translateM(matrix,0,TerrariumRules.HERMES_HOME_SHARED_X,TerrariumRules.HERMES_HOME_SHARED_FLOOR,TerrariumRules.HERMES_HOME_SHARED_Z)
             Matrix.scaleM(matrix,0,TerrariumRules.HERMES_HOME_SHARED_SIZE,TerrariumRules.HERMES_HOME_SHARED_SIZE,TerrariumRules.HERMES_HOME_SHARED_SIZE)

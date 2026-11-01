@@ -618,14 +618,14 @@ final class AquariumResidents {
         #if AGENTDECK_DOT_PREVIEW
         let code = dotSnapshot?.phase(at: dotNow()) ?? 1
         dotPhase = code
-        let returning = hermesSwims["habitat:dot"].map { $0.shellOpen > 0 || $0.emergence > 0 } ?? false
+        let returning = animate && (hermesSwims["habitat:dot"].map { $0.shellOpen > 0 || $0.emergence > 0 } ?? false)
         if dotSnapshot?.configured == true || returning {
             all.append(AquariumResident(id: "habitat:dot", kind: "dot", title: code == 0 ? "Dot" : "Dot · " + DotAppearanceRules.compactLabels[code],
                 activity: code == 2 ? .working : code == 3 ? .waiting : code == 5 ? .error : .idle))
         }
         #endif
         let incomingIDs=Set(all.map(\.id))
-        retiringShellIDs=Set(descriptors.filter { Self.hasShell($0.kind) && !incomingIDs.contains($0.id) && (hermesSwims[$0.id]?.shellOpen ?? 0)>0 }.map(\.id))
+        retiringShellIDs = animate ? Set(descriptors.filter { Self.hasShell($0.kind) && !incomingIDs.contains($0.id) && (hermesSwims[$0.id]?.shellOpen ?? 0)>0 }.map(\.id)) : []
         all += descriptors.filter { retiringShellIDs.contains($0.id) }.map { item in
             AquariumResident(id:item.id,kind:item.kind,title:item.title,activity:.idle)
         }
@@ -667,11 +667,11 @@ final class AquariumResidents {
         let waterIDs = slotOrder.filter { !bottomIDs.contains($0) }
         let waterLayout = Self.layout(count: waterIDs.count, aspect: aspect)
         let bottomLayout = Self.bottomLayout(count: bottomIDs.count, aspect: aspect)
-        let shellIDs = bottomIDs.filter { id in next.contains { $0.id == id && Self.hasShell($0.kind) } }
-        let neighbours = bottomIDs.filter { id in next.contains { $0.id == id && !Self.hasShell($0.kind) } }
+        let shellIDs = bottomIDs.filter { id in next.contains { $0.id == id && Self.hasShell($0.kind) && $0.kind != "openclaw" } }
+        let neighbours = bottomIDs.filter { id in next.contains { $0.id == id && (!Self.hasShell($0.kind) || $0.kind == "openclaw") } }
         let hasSharedHome = next.contains { Self.hasShell($0.kind) }
         for item in next {
-            let onShell = Self.hasShell(item.kind)
+            let onShell = Self.hasShell(item.kind) && item.kind != "openclaw"
             let grounded = Self.isGrounded(item.kind) || onShell
             if grounded {
                 let index = bottomIDs.firstIndex(of: item.id) ?? 0
@@ -731,7 +731,7 @@ final class AquariumResidents {
                 resident.addChild(brood)
                 broodRigs[item.id] = rig
                 bodyReach[item.id] = templateHalfWidths[item.kind] ?? Self.defaultBodyReach
-                resident.position = onShell ? shellHome(item,size:size * (item.kind == "hermes" ? Self.hermesScale : 1)) : targets[item.id]!
+                resident.position = Self.hasShell(item.kind) ? shellHome(item,size:size * (item.kind == "hermes" ? Self.hermesScale : 1)) : targets[item.id]!
                 root.addChild(resident)
                 residents[item.id] = resident
                 motions[item.id] = Motion(phase: Self.seed(item.id) * 6.28)
@@ -743,7 +743,7 @@ final class AquariumResidents {
                     hermesSwims[item.id] = HermesSwim(id: item.id, position: resident.position)
                     if item.kind == "hermes" { hermesRigs[item.id] = HermesMermaid.Rig(body) }
                     if let swim = hermesSwims[item.id] {
-                        HermesMermaid.poseHome(nil, body: body, swim: swim)
+                        HermesMermaid.poseHome(nil, body: body, swim: swim,footHeight:footHeights[item.kind] ?? 0)
                     }
                 }
             }
@@ -765,12 +765,12 @@ final class AquariumResidents {
                 if var swim = hermesSwims[item.id] {
                     swim.step(0, home: shellHome(item,size:resident.scale.x), size:resident.scale.x,
                         activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
-                        neighbours: [], aspect: aspect, shellActive: wantsOutside(item), berth: targets[item.id].map { $0 + SIMD3(0,0,TerrariumRules.hermesHomeBerthFront) })
+                        neighbours: [], aspect: aspect, shellActive: wantsOutside(item), berth: targets[item.id].map { $0 + SIMD3(0,0,item.kind == "openclaw" ? 0 : TerrariumRules.hermesHomeBerthFront) }, grounded:item.kind == "openclaw",aperture:sharedOpening)
                     hermesSwims[item.id] = swim
                     resident.position=swim.position
                     hermesRigs[item.id]?.pose(swim)
                     HermesMermaid.poseHome(nil,
-                                           body: resident.findEntity(named: "body"), swim: swim)
+                                           body: resident.findEntity(named: "body"), swim: swim,footHeight:footHeights[item.kind] ?? 0)
                 }
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
@@ -941,7 +941,7 @@ final class AquariumResidents {
         shellTraffic.update(descriptors.filter { Self.hasShell($0.kind) }.compactMap { item in
             guard let swim=hermesSwims[item.id],let entity=residents[item.id] else { return nil }
             return .init(id:item.id,wantsOut:wantsOutside(item),emergence:swim.emergence,
-                distance:simd_distance(swim.position,shellHome(item,size:entity.scale.x))/max(0.1,entity.scale.x))
+                distance:simd_distance(swim.position,HermesSwim.mouth(home:shellHome(item,size:entity.scale.x),size:entity.scale.x))/max(0.1,entity.scale.x))
         })
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
@@ -996,13 +996,13 @@ final class AquariumResidents {
             if Self.hasShell(item.kind), var swim = hermesSwims[item.id] {
                 swim.step(Float(dt), home: shellHome(item,size:residentSize), size: residentSize,
                     activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
-                    neighbours: snapshot.filter { $0.0 != item.id }.map { $0.1 }, aspect: aspect, shellActive: shellTraffic.active(item.id,wantsOut:wantsOutside(item),emergence:swim.emergence), berth:targets[item.id].map { $0 + SIMD3(0,0,TerrariumRules.hermesHomeBerthFront) })
+                    neighbours: snapshot.filter { $0.0 != item.id }.map { $0.1 }, aspect: aspect, shellActive: shellTraffic.active(item.id,wantsOut:wantsOutside(item),emergence:swim.emergence), berth:targets[item.id].map { $0 + SIMD3(0,0,item.kind == "openclaw" ? 0 : TerrariumRules.hermesHomeBerthFront) }, grounded:item.kind == "openclaw",aperture:sharedOpening)
                 hermesSwims[item.id] = swim
                 entity.position = swim.position
                 if let body = entity.findEntity(named: "body") {
                     let orientation = simd_quatf(angle: swim.yaw, axis: [0,1,0])
-                        * simd_quatf(angle: swim.pitch, axis: [1,0,0])
-                        * simd_quatf(angle: swim.roll, axis: [0,0,1])
+                        * simd_quatf(angle: swim.emergence < 1 || item.kind == "openclaw" ? 0 : swim.pitch, axis: [1,0,0])
+                        * simd_quatf(angle: swim.emergence < 1 || item.kind == "openclaw" ? 0 : swim.roll, axis: [0,0,1])
                     body.orientation = simd_slerp(body.orientation, orientation, blend)
                 }
                 hermesRigs[item.id]?.pose(swim)
@@ -1023,22 +1023,23 @@ final class AquariumResidents {
                     let breath = grounded ? Float(0) : sin(phase * 1.3) * 0.009 + workSwing * TerrariumRules.nativeActivityWorkBreath
                     body.scale = [1 + breath, 1 - breath * 0.6, 1 + breath]
                 }
-                for (index, pose) in (joints[item.id] ?? []).enumerated() {
-                    let joint = pose.entity
-                    let name = joint.name
-                    let side: Float = name.hasSuffix("_0") ? -1 : 1
-                    let wave = sin(phase * 2 + Float(index) * 1.8)
-                    joint.transform = pose.rest
-                    if name.hasPrefix("joint_foot") {
-                        // Alternate original-foot steps; swing feet only rise above rest.
-                        let number = Int(name.split(separator: "_").last ?? "0") ?? 0
-                        let stride = sin(phase * 2 + Float(number % 2) * .pi)
-                        joint.position.y += max(0, stride) * TerrariumRules.nativeActivityFootLift * motion.effort
-                        joint.orientation = pose.rest.rotation * simd_quatf(angle: stride * 0.12 * motion.effort, axis: [0,1,0])
-                    } else {
-                        let lift = motion.attention * 0.40 - motion.fatigue * 0.25 + socialWave
-                        joint.orientation = pose.rest.rotation * simd_quatf(angle: side * (lift + wave * 0.025 + motion.effort * (0.20 + sin(phase) * 0.58)), axis: [0,0,1])
-                    }
+            }
+            let limbEffort = item.kind == "openclaw" ? max(motion.effort, min(1, simd_length(hermesSwims[item.id]?.velocity ?? .zero) * 2)) : motion.effort
+            for (index, pose) in (joints[item.id] ?? []).enumerated() {
+                let joint = pose.entity
+                let name = joint.name
+                let side: Float = name.hasSuffix("_0") ? -1 : 1
+                let wave = sin(phase * 2 + Float(index) * 1.8)
+                joint.transform = pose.rest
+                if name.hasPrefix("joint_foot") {
+                    // Alternate original-foot steps; swing feet only rise above rest.
+                    let number = Int(name.split(separator: "_").last ?? "0") ?? 0
+                    let stride = sin(phase * 2 + Float(number % 2) * .pi)
+                    joint.position.y += max(0, stride) * TerrariumRules.nativeActivityFootLift * limbEffort
+                    joint.orientation = pose.rest.rotation * simd_quatf(angle: stride * 0.12 * limbEffort, axis: [0,1,0])
+                } else {
+                    let lift = motion.attention * 0.40 - motion.fatigue * 0.25 + socialWave
+                    joint.orientation = pose.rest.rotation * simd_quatf(angle: side * (lift + wave * 0.025 + limbEffort * (0.20 + sin(phase) * 0.58)), axis: [0,0,1])
                 }
             }
             if item.activity == .working, let indicator = entity.findEntity(named: "activity") {
@@ -1086,15 +1087,21 @@ final class AquariumResidents {
     static let hermesShellScale: Float = 1.15
 
     private func shellHome(_ item:AquariumResident,size:Float)->SIMD3<Float> {
-        [TerrariumRules.hermesHomeSharedX,TerrariumRules.hermesHomeSharedFloor + ((footHeights[item.kind] ?? 0.7)+0.1)*size,TerrariumRules.hermesHomeSharedZ + size*0.35]
+        [TerrariumRules.hermesHomeSharedX,TerrariumRules.hermesHomeSharedFloor + (footHeights[item.kind] ?? 0.7)*size + TerrariumRules.hermesHomeBasinClearance,TerrariumRules.hermesHomeSharedZ + size*0.35]
     }
     private func wantsOutside(_ item:AquariumResident)->Bool {
         if retiringShellIDs.contains(item.id) { return false }
+        // Gateway availability, not a routing pulse, owns the resident lifetime.
+        if item.kind == "openclaw" { return true }
         return shellActivity(for:item) ?? (item.activity == .working || item.activity == .waiting)
     }
     private func updateSharedShell(dt:Float=0) {
-        let occupied=descriptors.contains { Self.hasShell($0.kind) && (wantsOutside($0) || (hermesSwims[$0.id]?.emergence ?? 0)>0) }
-        if !animate { sharedOpening=occupied ? 1 : 0 }
+        let occupied = shellTraffic.owner != nil || descriptors.contains { item in
+            guard Self.hasShell(item.kind) else { return false }
+            let emergence = hermesSwims[item.id]?.emergence ?? 0
+            return emergence < 1 && (wantsOutside(item) || emergence > 0)
+        }
+        if !animate { sharedOpening=0 }
         else { sharedOpening=occupied ? min(1,sharedOpening+dt*TerrariumRules.hermesHomeOpenRate) : max(0,sharedOpening-dt*TerrariumRules.hermesHomeCloseRate) }
         guard descriptors.contains(where:{Self.hasShell($0.kind)}) else { sharedSupport?.removeFromParent();sharedSupport=nil;return }
         if sharedSupport == nil {
@@ -1110,7 +1117,7 @@ final class AquariumResidents {
         }
     }
 
-    static func hasShell(_ kind: String) -> Bool { kind == "hermes" || kind == "dot" }
+    static func hasShell(_ kind: String) -> Bool { kind == "hermes" || kind == "dot" || kind == "openclaw" }
     private func shellActivity(for item: AquariumResident) -> Bool? {
         #if AGENTDECK_DOT_PREVIEW
         if item.kind == "dot" { return dotIsOut }

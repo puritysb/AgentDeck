@@ -50,8 +50,9 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
 
 [![Shared-shell motion on the connected Android tablet](docs/media/current/shared-home-preview.gif)](https://puritysb.github.io/AgentDeck/#current-habitat)
 
-Hermes and Dot share one shell, leave for their own places, and return when activity stops.
-OpenClaw keeps its own rock beside them. Recorded November 1, 2026 in the native Android
+Hermes, Dot and OpenClaw share one shell and move to their own places. Hermes and Dot
+return after activity; OpenClaw stays on its rock while available, then returns when the
+gateway disconnects. Recorded November 2, 2026 in the native Android
 validation app with fictional local activity; the video shows the actual app, not generated UI.
 This is a development preview, not a claim about the current store release.
 

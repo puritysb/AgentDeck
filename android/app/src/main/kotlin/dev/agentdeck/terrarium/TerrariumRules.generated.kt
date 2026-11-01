@@ -31,7 +31,7 @@ object TerrariumRules {
     const val HERMES_HOME_SHARED_FLOOR = 0.12f
     const val HERMES_HOME_SHARED_Z = 1.35f
     const val HERMES_HOME_SHARED_SIZE = 0.72f
-    const val HERMES_HOME_MOUTH_CLEARANCE = 0.45f
+    const val HERMES_HOME_MOUTH_CLEARANCE = 1.4f
     const val HERMES_HOME_BERTH_TRAVEL_SCALE = 0.35f
     const val HERMES_HOME_BERTH_INWARD_TRAVEL = 0.12f
     const val HERMES_HOME_BERTH_FRONT = 0.3f
@@ -42,7 +42,7 @@ object TerrariumRules {
     const val HERMES_HOME_BERTH_FLOOR = 0.95f
     const val HERMES_HOME_BERTH_RISE = 0.48f
     const val HERMES_HOME_BERTH_Z = 1.0f
-    const val HERMES_HOME_BERTH_DEPTH = 1.1f
+    const val HERMES_HOME_BERTH_DEPTH = 1.65f
     const val HERMES_HOME_NEIGHBOUR_SCENE_MIN_WIDTH = 1.6f
     const val HERMES_HOME_NEIGHBOUR_SCENE_MAX_WIDTH = 6.2f
     const val HERMES_HOME_NEIGHBOUR_SCENE_ASPECT = 5.5f
@@ -74,9 +74,15 @@ object TerrariumRules {
     const val HERMES_HOME_CLOSE_RATE = 0.7f
     const val HERMES_HOME_EMERGE_RATE = 0.65f
     const val HERMES_HOME_LID_CLEARANCE = 0.98f
-    const val HERMES_HOME_DEPARTURE_START = 0.6f
     const val HERMES_HOME_LID_ANGLE = 1.22f
-    const val HERMES_HOME_TUCK_DEPTH = 0.65f
+    const val HERMES_HOME_DEPARTURE_START = 0.6f
+    const val HERMES_HOME_MOUTH_FRONT = 1.35f
+    const val HERMES_HOME_MOUTH_LIFT = 0.65f
+    const val HERMES_HOME_LANE_LIFT = 0.2f
+    const val HERMES_HOME_LANE_DISTANCE = 0.12f
+    const val HERMES_HOME_LANE_SPEED = 0.18f
+    const val HERMES_HOME_BASIN_CLEARANCE = 0.1f
+    const val HERMES_HOME_COMPACT_SCALE = 0.12f
     const val HERMES_HOME_SETTLE_DISTANCE = 0.04f
     const val HERMES_HOME_SETTLE_SPEED = 0.04f
     const val HERMES_HOME_TRAVEL_RATE = 0.34f

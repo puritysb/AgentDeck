@@ -112,21 +112,23 @@ The actual navigation height drives fragment clearance. Language options must
 match the design catalog; expansion requires translation/fallback and layout
 coverage. Detailed menu geometry and states live in `DESIGN.md` §1.5.
 
-`docs/media/current/` contains the November 1 native macOS/Android validation
-captures and source-identified ESP32 host frames. `manifest.json` records each
-asset's evidence type, source revision, fixture, dimensions, SHA-256, and
+`docs/media/current/` contains the November 1 native desktop/reader stills,
+November 2 connected-tablet validation captures, and source-identified ESP32 host
+frames. `manifest.json` records each asset's evidence type, source revision, fixture, dimensions, SHA-256, and
 transformation. The overview and Devices catalog distinguish app captures,
 firmware host renders, and the AI-assisted 86 Box composite. Store release
 availability is not implied. Original photographs and the two earlier video
 stories remain intact.
 
-`shared-home.mp4` is the connected Lenovo tablet's 59.6-second, silent native
-screen recording, transcoded to H.264/yuv420p at 30 fps without a speed change or
-UI retouching. `shared-home-preview.gif` is an 8-second excerpt (12–20 seconds),
+`shared-home.mp4` is the connected Lenovo tablet's approximately 135-second, silent
+native screen recording, transcoded to 720×1280 H.264/yuv420p at 30 fps without a
+speed change or UI retouching. It shows OpenClaw's first emergence, persistent idle
+berth and final gateway departure, plus Hermes/Dot's front-lip return.
+`shared-home-preview.gif` is an 8-second return excerpt (72–80 seconds),
 360 pixels wide at 10 fps; the full recording remains the evidence. Captions in
-English, Korean and Japanese identify the fixture, swimming, and return. PNG
-app captures and firmware frames are losslessly recompressed. Do not use a host
-frame as proof of e-ink refresh, ghosting, or physical panel image quality.
+English, Korean and Japanese identify the fixture, swimming, and return. Tablet
+captures retain their original PNG bytes; earlier app captures and firmware frames
+are losslessly recompressed. Do not use a host frame as proof of e-ink refresh, ghosting, or physical panel image quality.
 
 The AI composite is a new derivative of `box86.jpg`, using the actual 480×480
 firmware render as a screen reference. Its exact image-generation prompt and
