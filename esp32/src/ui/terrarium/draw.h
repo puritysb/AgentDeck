@@ -35,14 +35,38 @@ void circle(int cx, int cy, int r, uint32_t color24, uint8_t alpha);
 
 /** Line (Bresenham) with alpha blend. */
 void line(int x0, int y0, int x1, int y1, uint32_t color24, uint8_t alpha);
-// Bounded scallop geometry shared by the two shell inhabitants; no allocation.
-inline void scallop(int x, int y, int r, float open, uint32_t color) {
-    const int lift = (int)(r * (0.25f + open * 1.2f)) + 2;
-    line(x-r,y,x-r/2,y-lift,color,190);line(x-r/2,y-lift,x+r/2,y-lift,color,190);
-    line(x+r/2,y-lift,x+r,y,color,190);line(x-r,y,x+r,y,color,230);
-    line(x-r,y,x,y+r/3+2,color,190);line(x,y+r/3+2,x+r,y,color,190);
-    for (int rib=-2;rib<=2;rib++) line(x+rib*r/3,y-lift,x,y,color,120);
+// One contrast-safe attention grammar for every LCD species, including tiny panels.
+inline void attention(int x, int y, int r, uint32_t fill, uint32_t ink) {
+    r = max(4, r);
+    circle(x, y, r, fill, 255);
+    const int stroke = max(1, r / 3);
+    for (int dx = 0; dx < stroke; ++dx) {
+        line(x + dx - stroke/2, y-r/2, x + dx - stroke/2, y, ink, 255);
+        pixelA(x + dx - stroke/2, y+r/2, ink, 255);
+    }
 }
+
+// Filled nacre basin and a hinged fan. The closed shell retains
+// volume instead of reading as an empty wire basket; no frame allocations.
+inline void scallop(int x, int y, int r, float open, uint32_t color) {
+    open = max(0.0f, min(1.0f, open));
+    const int lift = (int)(r * (0.25f + open * 1.2f)) + 2;
+    for (int dy = -lift; dy <= 0; ++dy) {
+        const float t = float(dy + lift) / max(1, lift);
+        const int half = max(1, int(r * (0.50f + t * 0.50f)));
+        line(x-half,y+dy,x+half,y+dy,color,open > .5f ? 45 : 155);
+    }
+    const int depth = max(2, r / 3 + 2);
+    for (int dy = 0; dy <= depth; ++dy) {
+        const float t = float(dy) / depth;
+        const int half = int(r * sqrtf(max(0.0f, 1-t*t)));
+        line(x-half,y+dy,x+half,y+dy,color,200);
+    }
+    line(x-r,y,x-r/2,y-lift,color,220);line(x-r/2,y-lift,x+r/2,y-lift,color,220);
+    line(x+r/2,y-lift,x+r,y,color,220);line(x-r,y,x+r,y,color,255);
+    for (int rib=-2;rib<=2;rib++) line(x+rib*r/3,y-lift,x,y,color,150);
+}
+
 
 
 /** Draw an 8-bit alpha coverage mask scaled into a dst box, tinted + alpha-modulated.

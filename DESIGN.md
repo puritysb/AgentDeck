@@ -524,14 +524,14 @@ The menu bar uses the small-size aquarium-deck symbol, not the full app icon ill
 Hermes's aquarium resident is the user-directed exception: an AgentDeck-original
 Nous girl mermaid adaptation, preserving the portrait's black bob, bangs and
 pale face while adding a small articulated tail. Its compact brand icon remains
-the exact upstream mark. In the native aquarium, idle Hermes rests on a fixed
-open shell over the substrate; blinking and a restrained seated greeting are
-allowed, but idle never follows a swimming route. Observed work lifts her above
-the shell and drives working gestures; completion returns her smoothly to her
-seat. Proximity must never be presented as task delegation. Reduced Motion freezes
+the exact upstream mark. In the native aquarium, Hermes and Dot share one fixed scallop over the
+substrate. Its lid opens before a resident emerges, residents take separate
+berths clear of the mouth, and returning bodies tuck inside before the last
+resident closes it. Quiet Hermes stays home; observed work drives swimming and
+working gestures. OpenClaw keeps its adjacent rock and original silhouette. Proximity must never be presented as task delegation. Reduced Motion freezes
 these movements while keeping explicit status cues visible.
 
-Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
+Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity, Kiro, Hermes) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
 
 Creature status is a shape-and-contrast grammar, never a set of tiny letter
 codes. Idle creatures are dim with no badge. They stay still on static surfaces;

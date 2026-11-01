@@ -172,13 +172,13 @@ static void initGlyphs() {
 
 static const lv_image_dsc_t* glyphForAgent(const char* agentType) {
     if (!agentType) return nullptr;
-    if (strstr(agentType, "openclaw")) return &s_glyphOpenClaw;
-    if (strstr(agentType, "opencode")) return &s_glyphOpenCode;
-    if (strstr(agentType, "antigravity")) return &s_glyphAntigravity;
-    if (strstr(agentType, "kiro")) return &s_glyphKiro;
+    if (!strcmp(agentType, "openclaw")) return &s_glyphOpenClaw;
+    if (!strcmp(agentType, "opencode")) return &s_glyphOpenCode;
+    if (!strcmp(agentType, "antigravity")) return &s_glyphAntigravity;
+    if (!strcmp(agentType, "kiro") || !strcmp(agentType, "kiro-cli") || !strcmp(agentType, "kiro-ide")) return &s_glyphKiro;
     if (strcmp(agentType, "hermes") == 0) return &s_glyphHermes;
-    if (strstr(agentType, "codex")) return &s_glyphCodex;
-    if (strstr(agentType, "claude")) return &s_glyphClaude;
+    if (!strcmp(agentType, "codex-cli") || !strcmp(agentType, "codex-app")) return &s_glyphCodex;
+    if (!strcmp(agentType, "claude-code")) return &s_glyphClaude;
     return nullptr;
 }
 

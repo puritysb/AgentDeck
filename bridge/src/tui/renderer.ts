@@ -1,4 +1,3 @@
-import { dotDeckPresentation } from '@agentdeck/shared';
 /**
  * TUI Dashboard renderer — the "tide console".
  *
@@ -251,7 +250,6 @@ function renderHeader(state: DashboardState, cards: RosterCard[], cols: number, 
   if (c.idle) parts.push(`${ink.idle}${stateGlyph('idle')} ${c.idle} idle${RESET}`);
   if (c.offline) parts.push(`${ink.offline}${stateGlyph('disconnected')} ${c.offline} offline${RESET}`);
   if (state.gatewayHasError) parts.push(`${ink.error}${terminalCaps.unicode ? '⚠' : '!'} Gateway error${RESET}`);
-  if (state.connectionStatus === "connected" && state.dot?.configured) parts.push(`${ink.sub}Dot · ${dotDeckPresentation(state.dot).label} · report${RESET}`);
   const voice = voiceLabel(state);
   if (voice) parts.push(voice);
   const left = ` ${mark}  ${link.dot} ${ink.sub}${link.text}${RESET}${stale}`;
@@ -396,7 +394,8 @@ function renderDetail(card: RosterCard | undefined, width: number, frame: number
   if (card.modelName) meta.push(`model ${card.modelName}`);
   if (s?.effortLevel) meta.push(`effort ${s.effortLevel}`);
   if (s?.permissionMode) meta.push(`mode ${s.permissionMode}`);
-  meta.push(card.controlMode === 'observed' ? 'observed' : card.port ? `managed :${card.port}` : 'managed');
+  meta.push(card.isDot ? 'Dot report · read only' : card.controlMode === 'observed' ? 'observed' : card.port ? `managed :${card.port}` : 'managed');
+  if (card.isDot && card.focus) meta.push(card.focus.text);
   lines.push(` ${ink.faint}${meta.join(' · ')}${RESET}`);
   if (card.tone === 'awaiting') {
     lines.push(` ${ink.attn}${BOLD}${stateGlyph(card.state)} ${card.focus?.text ?? ''}${RESET}`);

@@ -202,6 +202,19 @@ lv_obj_t* ipsLabel(lv_obj_t* obj, const char* text) {
     if(auto* found=ipsLabel(lv_obj_get_child(obj,i),text)) return found;
   return nullptr;
 }
+lv_obj_t* ipsDotImage(lv_obj_t* obj) {
+  if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return nullptr;
+  if(lv_obj_check_type(obj,&lv_image_class)) {
+    const void* src=lv_image_get_src(obj);
+    if(src && lv_image_src_get_type(src)==LV_IMAGE_SRC_VARIABLE) {
+      const auto* image=static_cast<const lv_image_dsc_t*>(src);
+      if(image->header.cf==LV_COLOR_FORMAT_ARGB8888 && image->header.w==DotSurfaceRules::glyphSize)return obj;
+    }
+  }
+  for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if(auto* found=ipsDotImage(lv_obj_get_child(obj,i)))return found;
+  return nullptr;
+}
 bool ipsFailure(int line) {
   std::fprintf(stderr,"[sim] IPS10 check failed at line %d\n",line);
   return false;
@@ -449,6 +462,23 @@ bool verifyIpsInteractions(const char* outdir) {
   g_state.gatewayHasError=true;advance();if(ipsLabel(lv_screen_active(),"Say OpenClaw"))return ipsFailure(__LINE__);
   g_state.gatewayHasError=false;g_state.gatewayConnected=false;advance();
   if(g_state.zaiPrimaryPercent!=-1 || g_state.zaiSecondaryPercent!=-1 || g_state.zaiSecondaryIsMcp)return false;
+  // Dot occupies an ordinary seat without becoming an observed session or a
+  // voice target. Its own report stays readable in both overview and detail.
+  if(!SimScenes::apply("dot:attention"))return ipsFailure(__LINE__);
+  advance();
+  if(!IPS10Workspace::diagnostics().overview && !click("Aquarium"))return ipsFailure(__LINE__);
+  if(!ipsLabel(lv_screen_active(),"NEEDS YOU") || g_state.sessionCount!=1 || IPS10Workspace::diagnostics().sessions!=1)return ipsFailure(__LINE__);
+  if(IPS10Workspace::selectedSession()[0])return ipsFailure(__LINE__);
+  if(!click("Details") || !ipsLabel(lv_screen_active(),"Dot report - read only"))return ipsFailure(__LINE__);
+  auto* pearl=ipsDotImage(lv_screen_active());
+  if(!pearl || lv_image_get_scale_x(pearl)<512)return ipsFailure(__LINE__);
+  if(!save("ips10-dot-detail"))return ipsFailure(__LINE__);
+  auto* dot=g_state.dot;
+  if(!SimScenes::apply("dense"))return ipsFailure(__LINE__);
+  g_state.dot=dot;advance();
+  if(g_state.sessionCount!=10 || IPS10Workspace::diagnostics().sessions!=10)return ipsFailure(__LINE__);
+  dot->configured=false;advance();
+  if(!std::strcmp(IPS10Workspace::selectedSession(),"habitat:dot"))return ipsFailure(__LINE__);
   std::fprintf(stderr,"[sim] IPS10 observation, voice states, stable placement, pages, quotas, selection, attribution, drawer, offline: ok\n");
   return true;
 }

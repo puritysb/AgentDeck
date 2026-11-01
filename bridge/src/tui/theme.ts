@@ -95,6 +95,7 @@ export function agentMark(agentType: string | undefined): string {
       case 'antigravity': return 'A';
       case 'kiro-cli': case 'kiro-ide': return 'K';
       case 'hermes': return 'H';
+      case 'dot': return 'D';
       default: return '*';
     }
   }
@@ -105,6 +106,7 @@ export function agentMark(agentType: string | undefined): string {
     case 'opencode': return '▣';                    // ▣ nested square
     case 'antigravity': return '▲';                 // ▲ peak
     case 'kiro-cli': case 'kiro-ide': return terminalCaps.emoji ? '👻' : 'K'; // 👻 Kiro ghost (2 cells)
+    case 'dot': return '◉';
     case 'hermes': return '☤';                      // ☤ caduceus
     default: return '○';                            // ○ neutral
   }
@@ -122,6 +124,7 @@ export function agentName(agentType: string | undefined): string {
     case 'kiro-cli': return 'Kiro CLI';
     case 'kiro-ide': return 'Kiro';
     case 'hermes': return 'Hermes';
+    case 'dot': return 'Dot';
     default: return 'Agent';
   }
 }

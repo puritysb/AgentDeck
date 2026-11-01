@@ -14,7 +14,7 @@ import type {
   SessionInfo, TimelineEntry, UsageEvent, CodexRateLimitWindow, CiWaitStatus,
 } from '@agentdeck/shared';
 import {
-  sortSessions, assignDisplayNames, sessionTone, sessionStateWords,
+  sortSessions, assignDisplayNames, sessionTone, sessionStateWords, dotDeckPresentation,
   ciWaitPhaseId, ciWaitDetail, CI_WAIT_VISUAL, sessionNowSummary,
   selectedCodexCredits, selectedLunaReserve, formatCreditBalance,
   usageSubscriptionTier, usageSubscriptionProvider, USAGE_PRESENTATION,
@@ -162,6 +162,8 @@ export interface CiCue {
 }
 
 export interface RosterCard extends HudEntry {
+  /** Presentation peer only: no wire session, controls, or agent-count contribution. */
+  isDot?: boolean;
   tone: SessionTone;
   /** 1-based hotkey for switchable sessions (≤9), else null. */
   hotkey: number | null;
@@ -191,7 +193,7 @@ export function ciCue(wait: CiWaitStatus | null | undefined): CiCue | undefined 
 
 export function buildRoster(state: DashboardState): RosterCard[] {
   let hotkey = 0;
-  return buildHudEntries(state).map((e) => {
+  const cards: RosterCard[] = buildHudEntries(state).map((e) => {
     const s = e.session;
     const hk = isSwitchable(e) && hotkey < 9 ? ++hotkey : null;
     const meta = [text(e.modelName), text(s?.effortLevel), text(s?.permissionMode)]
@@ -226,6 +228,20 @@ export function buildRoster(state: DashboardState): RosterCard[] {
       context: ctx, review,
     };
   });
+  if (state.connectionStatus === 'connected' && state.dot?.configured) {
+    const phase = dotDeckPresentation(state.dot);
+    const dotState = phase.label === 'WORKING' ? 'processing'
+      : phase.label === 'NEEDS YOU' ? 'awaiting_option' : phase.label === 'FAILED' ? 'error' : 'idle';
+    cards.push({
+      id: 'habitat:dot', displayName: 'Dot', projectName: 'Dot', agentType: 'dot',
+      state: dotState, modelName: undefined, startedAt: undefined, port: undefined,
+      controlMode: 'observed', currentTask: undefined, contextPercent: undefined,
+      totalTokens: undefined, isPrimary: false, isVirtualOpenClaw: false, isDot: true,
+      tone: sessionTone(dotState), hotkey: null, meta: ['Dot report'],
+      focus: { kind: 'activity', text: phase.label }, subagents: 0,
+    });
+  }
+  return cards;
 }
 
 export interface RosterCounts {
@@ -238,8 +254,9 @@ export interface RosterCounts {
 }
 
 export function rosterCounts(cards: readonly RosterCard[]): RosterCounts {
-  const c: RosterCounts = { total: cards.length, working: 0, awaiting: 0, idle: 0, offline: 0, ci: 0 };
+  const c: RosterCounts = { total: cards.filter(card => !card.isDot).length, working: 0, awaiting: 0, idle: 0, offline: 0, ci: 0 };
   for (const card of cards) {
+    if (card.isDot) continue;
     if (card.tone === 'working') c.working++;
     else if (card.tone === 'awaiting') c.awaiting++;
     else if (card.tone === 'offline') c.offline++;

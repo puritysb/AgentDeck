@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SessionInfo, TimelineEntry, UsageEvent } from '@agentdeck/shared';
 import {
-  buildRoster, rosterCounts, rosterDensity, summarizeRoster, buildUsageGroups, buildTimelineRows,
+  isSwitchable, buildRoster, rosterCounts, rosterDensity, summarizeRoster, buildUsageGroups, buildTimelineRows,
 } from '../tui/model.js';
 import { renderDashboard, defaultView } from '../tui/renderer.js';
 import { textWidth, displayWidth, truncateWidth } from '../tui/width.js';
@@ -194,5 +194,29 @@ describe('aquarium residents', () => {
     expect(frame.some(l => l.includes('!'))).toBe(true);
     expect(frame.some(l => l.includes('?'))).toBe(false);
     expect(frame.some(l => /[▀▄]/.test(l))).toBe(true);
+  });
+});
+
+
+describe('Dot as an ordinary read-only roster peer', () => {
+  const dot = { configured: true, hosting: true, reportState: 'working', reportedAt: Date.now(), expiresAt: Date.now()+60_000 };
+  it('uses the roster, preserves session counts and grants no switch hotkey', () => {
+    const data = state({ sessions: [session({})], dot });
+    const cards = buildRoster(data);
+    const peer = cards.find(c => c.isDot)!;
+    expect(peer).toMatchObject({ displayName: 'Dot', state: 'processing', hotkey: null });
+    expect(peer.session).toBeUndefined();
+    expect(isSwitchable(peer)).toBe(false);
+    expect(rosterCounts(cards)).toMatchObject({ total: 1, working: 0, idle: 1 });
+    const rows = screenRows(renderDashboard(data, 100, 30, [], 0, 0, defaultView()));
+    expect(rows[0]).not.toContain('Dot');
+    expect(rows.slice(1).join('\n')).toContain('Dot');
+    expect(data.sessions).toHaveLength(1);
+  });
+  it('ages activity and removes the peer when the transport disconnects', () => {
+    const expired = buildRoster(state({ dot: { ...dot, expiresAt: 1 } })).find(c => c.isDot)!;
+    expect(expired.state).toBe('idle');
+    expect(expired.focus?.text).toBe('OLD REPORT');
+    expect(buildRoster(state({ dot, connectionStatus: 'reconnecting' })).some(c => c.isDot)).toBe(false);
   });
 });

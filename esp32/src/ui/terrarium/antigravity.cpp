@@ -175,15 +175,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         int bx = cx + (int)(bodyRadius * 1.2f);
         int by = cy;
         int br = (int)(bodyRadius * 0.52f);
-        Draw::circle(bx, by, br, 0xFFFFFF, 210);
-        int qx = bx - 2, qy = by - 3;
-        Draw::pixelA(qx + 1, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy + 1, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 2, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 4, Theme::DeepSea, 255);
-        Draw::line(bx - br / 3, by + br / 2, cx + (int)(bodyRadius * 0.6f), cy, 0xFFFFFF, 160);
+        Draw::attention(bx, by, br, Theme::StatusAmber, Theme::DeepSea);
     }
 
 #if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)

@@ -867,7 +867,8 @@ void render(float dt) {
             lv_obj_set_pos(dotLabel,max(0,(int)(x*canvasW)-56),(int)(y*canvasH)-size/2-19);
             lv_obj_set_width(dotLabel,112);
             lv_obj_set_style_text_color(dotLabel,lv_color_hex(Theme::HUDText),0);
-            lv_obj_remove_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+            if (emergence > .02f) lv_obj_remove_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
         } else lv_obj_add_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
     }
     if(sharedHomePresent) Draw::scallop((int)(TerrariumRules::HermesHomeCanvasX*canvasW),

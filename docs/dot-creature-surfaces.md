@@ -35,35 +35,35 @@ The Apple 3D companion reconciles the latest host snapshot and checks report exp
 
 ## Habitat composition
 
-Dot lives in the upper water beside the residents, below the HUD, rather than appearing as a separate status panel in the sky. The 3D label is centered above its body with a readable foreground color: only “Dot” before any shared activity, with the reported state added when relevant. Viewing mode hides that label with the other resident labels. The macOS detail entry sits in the toolbar rather than covering the chat/timeline panel; selecting it retains full report and relationship evidence.
+Dot is an ordinary pearl resident. Hermes and Dot use one shared scallop on
+the substrate, leave through its mouth in sequence, and take distinct berths.
+The shell closes after returning bodies disappear. OpenClaw keeps the adjacent
+rock. The original face/custom pixels remain identifiable at each scale.
+Coordinates, travel and lifecycle rates live in the generated shared rules.
+Fresh work drives bounded movement; attention holds position and stale evidence
+stops work. Reduce Motion preserves explicit status while freezing motion.
 
-The orb is a buoyant resident of the upper current, rather than a floor animal
-or a flying mascot above the tank. On Apple/Android LCD habitats its home is a
-small upper-central water pocket between the side HUD columns. The 3D Apple
-resident uses the corresponding upper-water space. A fresh working report follows
-a small, closed 12-second figure eight: horizontal drift with a smaller vertical
-rise and fall. The face remains upright, its body stays tide-colored, and a
-separate semantic shape/text carries status. Attention holds position; completion
-and failure stop work motion. Reduce Motion freezes the current at home, and
-backgrounding pauses frame updates. Coordinates, travel and period live in
-`DOT_HABITAT_RULES`, generated into the portable Swift/Kotlin model.
+Apple and Android put Dot in the ordinary presentation roster with read-only
+detail access. macOS has no dedicated Dashboard title-bar Dot entry. Dot does
+not enter the wire session list, session counts or chronological task grouping.
+Labels and cues disappear with hidden bodies; viewing mode hides names with
+other resident labels. Setup remains available in Settings.
 
-On Apple/Android LCD dashboards the latest Dot report has a measured row within
-the timeline region, using report time, Dot identity, state and detail disclosure.
-This is the latest shared report, not synthesized session history; it does not
-enter session filtering, counts, or chronological task grouping. Selecting it
-opens the existing read-only evidence view. Connection-only states remain in
-status chrome (the system rail on iOS/Android, toolbar on macOS), and never create
-a timeline event or floating resident. The 2D orb itself opens the same details;
-viewing mode hides its name with resident labels.
-
-On 64×64 and 32×32 matrices, the companion occupies a small upper-right water pocket. It has no horizontal frame, underline or D/W/N initial codes. The quiet face stands alone; working has a small cyan bubble, attention an amber exclamation mark, completion a check and failure a cross. Old/unknown reports have a question mark. These shapes and placement rules come from the shared appearance source and its generated Swift renderer. Custom portraits keep their pixels; the state cue stays outside the face. The 11×11 collective face remains unchanged.
+LCD firmware uses the same habitat layer or an ordinary read-only list/seat.
+IPS10 includes a Dot seat in its existing project-space layout; its agent total
+and voice target still derive only from real sessions. T-Embed and Focus Strip
+use ordinary roster entries. Paper firmware uses static priority cards. Matrix
+surfaces include Dot in their size-appropriate identity composition, rather than
+reserving a separate DOT page or corner status panel. The 11×11 Timebox retains
+the collective face. Shape/text carries report state independently of colour;
+custom portraits retain their pixels. See [surface acceptance](devices.md#creature-surface-acceptance)
+for the coverage and the distinction between host frames and physical panels.
 
 “Awaiting activity” means AgentDeck has received no shared activity report. Configuration alone does not prove an authorized connection, global idle or work in progress. The detail panel explains this explicitly. This wording also propagates to the deck, Android and generated firmware labels; compact pixel surfaces omit the sentence entirely. Narrow firmware badges use generated short words (“Dot”, “Working”, “Help”, “Done”) instead of ambiguous initial pairs; quiet labels occupy one line. No report-driven animation runs for this state. Completion stops working motion immediately, including the older native companion view.
 
 ## Connection discovery
 
-macOS exposes **Settings → Dot** and a **Connect Dot…** dashboard entry before the host reports a configured integration. This setup entry is not a creature or a connection claim. The native-owner UI offers local MCP setup and approval; external-host dashboards show the reported connection context. The [current distribution plan](dot-distribution-decision.md) documents the private plugin preview and its remaining real Dot interoperability acceptance. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Public HTTPS reachability applies only to the earlier direct-host experiment, not ordinary local onboarding.
+macOS exposes **Settings → Dot** before the host reports a configured integration. Settings setup is not a creature or a connection claim. The native-owner UI offers local MCP setup and approval; external-host dashboards show the reported connection context. The [current distribution plan](dot-distribution-decision.md) documents the private plugin preview and its remaining real Dot interoperability acceptance. Editing an external host’s Dot configuration from the Mac app remains unimplemented. Missing dashboard connectivity is shown as unknown, not unconfigured. Public HTTPS reachability applies only to the earlier direct-host experiment, not ordinary local onboarding.
 
 ## User-selected character
 
@@ -100,26 +100,26 @@ These are required cross-surface semantics, not a claim that all badges already 
 
 | Surface family and members | Creature treatment | Relationship and interaction treatment | Current implementation |
 |---|---|---|---|
-| macOS 3D aquarium | Independent shaded orb with paired eyes; preserve separation from residents, labels and selection targets | Tap opens relationship panel. Future spatial links connect only independently bound targets; unverified references stay in a separate panel | Implemented portable snapshot consumer, original orb or manual image billboard, separate status label and detail selection. Geometry/motion tested; assembled-scene/device acceptance remains separate |
-| macOS 2D habitat/dashboard | Flat orb, restrained halo, eyes and adjacent status text; companion remains separate from session creatures | Compact relationship summary opens full history, direction, target and provenance | Implemented portable snapshot/appearance/relationship consumer; local and remote hosts; SwiftUI fixtures rendered |
+| macOS 3D aquarium | Pearl with paired eyes in the shared shell habitat; separate berths and attached labels | Tap opens relationship panel. Future spatial links connect only independently bound targets; unverified references stay in a separate panel | Implemented portable snapshot consumer, original orb or manual image billboard, separate status label and detail selection. Geometry/motion tested; assembled-scene/device acceptance remains separate |
+| macOS 2D habitat/dashboard | Flat orb, restrained halo, eyes and adjacent status text; peer uses the ordinary creature layer | Compact relationship summary opens full history, direction, target and provenance | Implemented portable snapshot/appearance/relationship consumer; local and remote hosts; SwiftUI fixtures rendered |
 | macOS menu bar / compact popup | Monochrome or compact orb with nearby Dot label; preserve the existing app icon and session counters | Latest relationship as text, with a route to full detail; no animated relationship graph in a narrow popup | Implemented read-only companion and latest relation in the compact popup; app icon/session counters unchanged |
 | iPhone / iPad 2D and 3D | Same identity in flat or volumetric form; keep touch targets and status text readable independently of creature scale | Selected relationship in a sheet; retain direction, stage and provenance when layout collapses | Implemented portable Apple 2D companion and 3D orb/image billboard; readonly latest-relation detail; physical acceptance separate |
-| Android LCD tablet, including 2D and 3D habitats | Same orb silhouette and semantic state cues; flat or volumetric according to the selected habitat | Relationship panel beside or below the habitat; avoid persistent edges across unrelated residents | Implemented separate 2D image/orb overlay on LCD and 3D habitat modes, with latest-relation detail; image is not a volumetric model |
-| Android e-ink readers, including Crema/Onyx/Kobo configurations | Static high-contrast outline/filled silhouette; eyes cut out clearly, no glow or transparency | Text-first durable report, direction and absolute “as of” time; retain paper face/refresh arbitration | Implemented static monochrome glyph/status in paper chrome; respects existing refresh zones. Full relation history stays on a richer surface |
+| Android LCD tablet, including 2D and 3D habitats | Same orb silhouette and semantic state cues; flat or volumetric according to the selected habitat | Relationship panel beside or below the habitat; avoid persistent edges across unrelated residents | Implemented ordinary 2D/3D pearl resident and read-only roster detail; image is not a volumetric model |
+| Android e-ink readers, including Crema/Onyx/Kobo configurations | Static high-contrast outline/filled silhouette; eyes cut out clearly, no glow or transparency | Text-first durable report, direction and absolute “as of” time; retain paper face/refresh arbitration | Implemented static monochrome glyph/status in ordinary paper cards; respects existing refresh zones. Full relation history stays on a richer surface |
 | Stream Deck, Mini, XL, + and + XL keys | Compact orb plus status text in the fixed first list key; existing action identities remain unchanged | Read-only result/relationship view first; no assumed control meaning for a press | Implemented read-only first key, optional custom image and compact reported relation direction/kind/stage; installed-runtime/device acceptance separate |
 | Stream Deck encoder touch strips | Small glyph plus legible stage/target text, no miniature 3D scene | Focused relationship detail; existing dial assignments remain intact until a separate control design is adopted | Planned |
 | Ulanzi D200H / D200X LCD keys | Flat orb and status marker; any baked animation must close seamlessly and be deterministic | Bounded relationship detail within vendor-plugin layout; no implied D200X encoder support | Implemented the shared first-key image/status/reported-relation renderer. These are LCD keys, not e-ink; physical acceptance separate |
-| ESP32 IPS 3.5 / 86 Box / IPS 10.1 | Flat orb on smaller panels, existing relief style on the large panel; use reserved companion space | Direction and stage near the companion; detailed history only where text fits; preserve session priority | Implemented independent generated glyph/custom pixels and status/reported-relation text in LCD habitat; no session count/relief-provider substitution |
+| ESP32 IPS 3.5 / 86 Box / IPS 10.1 | Pearl in the small-panel habitat or an ordinary IPS10 project-space seat | Direction and stage near the companion; detailed history only where text fits; preserve session priority | Implemented independent generated glyph/custom pixels and status/reported-relation text in LCD habitat; no session count/relief-provider substitution |
 | ESP32 round AMOLED 1.8 | Centered compact orb within the circular safe area; status outside the eyes | One selected relationship at a time; target and stage in a readable band, not lines clipped by the round mask | Implemented circle-safe companion glyph/status label, preserving independent identity |
-| TTGO T-Display 1.14 / Waveshare LCD 1.47 / T-Display-S3-Pro Focus Strip | Small flat glyph and text; do not shrink a complete aquarium into a strip | Prefer stage + direction + target; long result belongs in detail. Preserve Focus pinning and result arbitration | Implemented LCD habitat glyph/status on TTGO/C6; Focus Strip uses an inert footer badge that yields to urgent work |
-| T-Embed Companion Knob | Compact on-screen Dot icon; existing ring continues to represent actual sessions | Local inspect/detail first. Encoder, voice and approval actions do not automatically apply to Dot | Implemented inert footer image/status badge; voice/reply/approval UI has priority and the ring remains actual sessions |
-| TRMNL 7.5 / RockBase NM-EPD-420 / LilyGo T5 ePaper S3 | Static paper silhouette; black/white shape carries state even on tri-color or grayscale panels | Durable report/relationship card with absolute time; no per-animation refresh and no transient work event taking over the body | Implemented independent static paper header glyph/status; appearance/status changes join semantic content hashes, no animation refresh. Physical acceptance separate |
+| TTGO T-Display 1.14 / Waveshare LCD 1.47 / T-Display-S3-Pro Focus Strip | Small flat glyph and text; do not shrink a complete aquarium into a strip | Prefer stage + direction + target; long result belongs in detail. Preserve Focus pinning and result arbitration | Implemented LCD habitat glyph/status on TTGO/C6; Focus Strip uses an ordinary inert roster entry |
+| T-Embed Companion Knob | Compact on-screen Dot icon; existing ring continues to represent actual sessions | Local inspect/detail first. Encoder, voice and approval actions do not automatically apply to Dot | Implemented ordinary read-only list entry; voice/reply/approval UI has priority and the ring remains actual sessions |
+| TRMNL 7.5 / RockBase NM-EPD-420 / LilyGo T5 ePaper S3 | Static paper silhouette; black/white shape carries state even on tri-color or grayscale panels | Durable report/relationship card with absolute time; no per-animation refresh and no transient work event taking over the body | Implemented ordinary static priority card with glyph/status; appearance/status changes join semantic content hashes, no animation refresh. Physical acceptance separate |
 | XTeink X3 / X4 readers | Paper glyph beside a text report, following the reader's supported face set | Selected relation and report age; preserve offline history without presenting cached work as live | Planned dedicated creature; producer-only fallback subject to client compatibility |
 | Divoom Pixoo64 | Dedicated pixel orb, generated from the approved companion artwork; shape-coded state cue | A selected relationship may earn an event scene, with direction and provenance available in the companion UI; no cosmetic message particles as execution proof | Implemented independent compact custom/default Dot glyph with punctuation cues, across normal and loop/Tide uploads; provider/session counts unchanged |
 | iDotMatrix 32×32 | Pixel orb only in a justified Dot event scene; keep normal fleet counts truthful | Do not add Dot to live/working/waiting session counts; never relabel existing ASK/SENT semantics as target acknowledgement | Implemented independent glyph/status on 32×32 fleet scenes; Timebox face/accounting unchanged; relation detail stays on the host |
 | Divoom Timebox Mini 11×11 | Preserve the collective robot face. A future Dot cue must be distinguishable and explicitly scoped; omit it if the grid cannot communicate that | No graph or target-identification claim on the face; details stay on a larger display | Deliberately preserves the collective 11×11 face; no separate Dot identity is inserted where it cannot be read |
-| Ulanzi TC001 32×8 | Minimal labeled glyph/marker with stage text where legible; no tiny 3D shading or two-agent tableau | Direction and stage take priority over long target names; detail is deferred to the host | Implemented optional independent DOT page with custom/default glyph and status text; no added session/LED counts |
-| TUI dashboard | Text glyph/name and explicit state; color is redundant | Plain directional text, stage, report time and source; safe truncation, no implicit interactive control | Implemented independent reported Dot status in the terminal header; custom bitmap is represented by the Dot label |
+| Ulanzi TC001 32×8 | Minimal labeled glyph/marker with stage text where legible; no tiny 3D shading or two-agent tableau | Direction and stage take priority over long target names; detail is deferred to the host | Implemented custom/default Dot glyph in the normal agent strip; no added session/LED counts |
+| TUI dashboard | Text glyph/name and explicit state; color is redundant | Plain directional text, stage, report time and source; safe truncation, no implicit interactive control | Implemented ordinary read-only Dot roster card with report expiry; custom bitmap is represented by the Dot label |
 | Third-party/browser/SSE surfaces | Choose flat glyph, text or no creature according to the negotiated profile | Display only fields actually supplied by the selected public contract. Generic SSE availability does not imply a Dot snapshot or relationship feed | Planned renderer integration; direct MCP and portable cards are distinct interfaces |
 
 This matrix covers the product surface families in the hardware catalogue, plus their compact and 3D presentation modes. It does not add hardware support, new protocol capabilities or distribution claims.
@@ -155,7 +155,7 @@ For compact cards, retain **kind → stage → direction → target** in that pr
 
 The current native reference implementations are [DotCompanionView.swift](../apple/AgentDeck/UI/Monitor/DotCompanionView.swift) and [DotAquariumResident.swift](../apple/AgentDeck/Terrarium/DotAquariumResident.swift). [DotPresentation.swift](../apple/AgentDeck/Daemon/Dot/DotPresentation.swift) resolves the macOS phase; [DotInteractionView.swift](../apple/AgentDeck/UI/Monitor/DotInteractionView.swift) renders the evidence panel. Portable phase/asset rules and default pixel geometry now have generated Swift/Kotlin/C++ consumers and drift tests. User GLB/USDZ import and a volumetric custom-character generator remain unsupported.
 
-Before implementing the remaining renderers, establish one approved companion geometry source and generate flat silhouettes, pixel masks and paper variants from it. Keep it separate from upstream provider marks. Add the source, generator and drift gate to [Design Resources](../design/RESOURCES.md) and the [architecture SSOT catalogue](architecture.md#cross-platform-ssot-catalogue). Promote phase/shape rules into shared generated data before adding platform-specific copies; do not describe the current Swift implementation as that completed pipeline.
+The approved original orb geometry, default pixels, phase rules and portable mirrors are listed in [Design Resources](../design/RESOURCES.md) and the [architecture SSOT catalogue](architecture.md#cross-platform-ssot-catalogue). Keep them separate from upstream provider marks and regenerate consumers from their canonical source.
 
 Animation expresses known activity and must stop on stale evidence, backgrounding or Reduce Motion. Never use animation as the only sign of work. Baked loops must close; paper never animates; limited-bandwidth displays update on meaningful report/state changes. Screen wake, card refresh and animation ticks never create MCP Events or new work.
 
@@ -164,7 +164,7 @@ Both daemons currently emit bounded read-only Dot cards. That producer does not 
 ## Acceptance before marking a surface complete
 
 1. Verify identity at the actual display size, monochrome/high contrast and reduced motion; status remains legible without animation or hue.
-2. Exercise stopped hosting, missing authorization, delivery-only receipt, fresh work, attention, completion, failure, future/stale timestamps and reconnect. Compare phase semantics against the shared reference when that mirror is introduced.
+2. Exercise stopped hosting, missing authorization, delivery-only receipt, fresh work, attention, completion, failure, future/stale timestamps and reconnect. Compare phase semantics against the shared generated reference.
 3. Exercise both directions and each relationship kind, unknown targets, long/CJK text, duplicate/reordered reports and terminal history. Verify that reports cannot become approval or execution commands.
 4. Check dense-scene occlusion, selection, accessibility labels and focus. Dot must not hide a higher-priority resident or affect session counts.
 5. For hardware, inspect actual pixels and inputs, offline recovery, refresh/transport budget and loop closure. For 3D, inspect the assembled scene as well as model geometry.

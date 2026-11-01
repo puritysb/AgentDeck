@@ -269,7 +269,7 @@
       "name": "ESP32 firmware simulator compile",
       "gate": "esp32-sim",
       "tiers": ["changed", "full"],
-      "run": "cd esp32/sim && pio run",
+      "run": "cd esp32/sim && pio run && mkdir -p sim-out/verification && .pio/build/ips10/program --verify-interactions --outdir sim-out/verification",
       "requires": { "commands": ["pio"] },
       "paths": ["esp32/**"]
     },

@@ -58,7 +58,12 @@ struct Row {
     uint16_t children, latestRank; bool childrenKnown;
     uint32_t elapsed;
 };
-static Row rows[10];
+constexpr int ResidentSlots = 11; // ten wire sessions plus one inert presentation peer
+static Row rows[ResidentSlots];
+static int agentCount;
+struct DotArt { lv_image_dsc_t image; uint32_t pixels[DotSurfaceRules::glyphSize * DotSurfaceRules::glyphSize]; uint8_t code; bool present; };
+// Device-lifetime PSRAM image, allocated once in create(); no render allocations.
+static DotArt* dotArt=nullptr;
 static SessionInfo selected;
 static TimelineEntry events[8];
 static int count, eventCount, filter;
@@ -66,36 +71,36 @@ static char selectedId[32] = "";
 static char presentedId[32] = "";
 static bool history, voiceOpen, connected, overviewMode=true;
 static uint32_t lastUpdate;
-static lv_obj_t *root, *rail, *detail, *voicePane, *filters[4], *cards[10], *marks[10], *eventBox, *activityScroll;
+static lv_obj_t *root, *rail, *detail, *voicePane, *filters[4], *cards[ResidentSlots], *marks[ResidentSlots], *eventBox, *activityScroll;
 static lv_obj_t *stateNodes[4], *eventCards[8], *historyButton, *focusGlyph;
 static Text<12> censusValue[4];
 static Text<80> link, summary, rosterTitle, heading, identity, stateText, census, empty;
 static Text<200> activity, instruction;
-static Text<56> rowTitle[10], rowState[10];
-static Text<96> rowTool[10];
+static Text<56> rowTitle[ResidentSlots], rowState[ResidentSlots];
+static Text<96> rowTool[ResidentSlots];
 static Text<240> eventText[8];
 static Text<64> eventMeta[8];
 static Text<32> filterText[4], filterNumber[4], historyLabel;
 static const lv_image_dsc_t* (*glyphFor)(const char*);
 static int detailW, sceneW;
-// Bounded, device-lifetime widget pools: ten projects / ten creatures total.
+// Bounded device-lifetime pools: ten observed sessions plus the Dot presentation peer.
 // The static ocean is cached once; live updates never allocate frame canvases.
-static lv_obj_t *overview, *viewButton, *resourcePane, *pods[10], *seats[10], *creatures[10];
-static Text<40> podName[10], seatState[10];
+static lv_obj_t *overview, *viewButton, *resourcePane, *pods[ResidentSlots], *seats[ResidentSlots], *creatures[ResidentSlots];
+static Text<40> podName[ResidentSlots], seatState[ResidentSlots];
 static Text<240> voiceHeard;
 static Text<480> voiceSaid;
 static Text<64> voiceAnswerLabel;
 struct VoiceSnapshot { char target[40], question[240], answer[480], notice[160]; };
 static VoiceSnapshot voicePending{}, voiceView{};
 static portMUX_TYPE voiceMux = portMUX_INITIALIZER_UNLOCKED;
-static Text<100> podStatus[10], overviewEmpty;
-static Text<200> podLatest[10], ambientVoice;
+static Text<100> podStatus[ResidentSlots], overviewEmpty;
+static Text<200> podLatest[ResidentSlots], ambientVoice;
 static Text<120> attentionLine;
 static Text<128> pageLabel;
-static Text<160> agentActivity[10];
+static Text<160> agentActivity[ResidentSlots];
 // Ten bounded role labels, created once with the existing card pool.
-static Text<64> agentTask[10];
-static Text<40> cohortLabel[10], childLabel[10];
+static Text<64> agentTask[ResidentSlots];
+static Text<40> cohortLabel[ResidentSlots], childLabel[ResidentSlots];
 static bool gatewayReady=false, retainedDetail=false;
 static lv_obj_t* recentCaption;
 // USAGE: one card per provider (UsageRows order). Header = brand mark, name
@@ -190,15 +195,19 @@ static bool cachedOcean(lv_obj_t* parent, int w, int h) {
     return true;
 }
 
-static int displayedSlot[10];
+static int displayedSlot[ResidentSlots];
 static lv_obj_t *voiceStatusPane, *attentionPane;
 static int page=0, pageCount=1;
 static uint32_t pageSince=0;
 static bool pageHeld=false;
-static char projectKeys[10][40];
+static char projectKeys[ResidentSlots][40];
 static UsageRows::Group usageGroups[UsageRows::MAX_GROUPS];
 static uint8_t usageGroupCount=0;
-static int podFor[10], memberSlot[10], podMembers[10], projectCount;
+static int podFor[ResidentSlots], memberSlot[ResidentSlots], podMembers[ResidentSlots], projectCount;
+static const lv_image_dsc_t* residentGlyph(const char* agent) {
+    if (!strcmp(agent,"dot")) return dotArt && dotArt->present ? &dotArt->image : nullptr;
+    return glyphFor ? glyphFor(agent) : nullptr;
+}
 static uint32_t brandColor(const char* agent) {
     if(!strcmp(agent,"claude-code") || !strcmp(agent,"claude")) return Theme::ClaudeBody;
     if(!strcmp(agent,"codex") || !strcmp(agent,"codex-cli") || !strcmp(agent,"codex-app")) return Theme::CloudBody;
@@ -435,7 +444,16 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     rail=box(root,24,238,railW,h-358,Theme::DeepSea);
     lv_obj_add_flag(rail,LV_OBJ_FLAG_SCROLLABLE);lv_obj_set_scroll_dir(rail,LV_DIR_VER);
     lv_obj_set_style_pad_bottom(rail,8,0);
-    for(int i=0;i<10;++i) {
+    if(!dotArt) {
+        dotArt=static_cast<DotArt*>(heap_caps_calloc(1,sizeof(DotArt),MALLOC_CAP_SPIRAM));
+        if(!dotArt) Serial.println("[IPS10] Dot image allocation failed");
+        else {
+            auto& image=dotArt->image;image.header.magic=LV_IMAGE_HEADER_MAGIC;image.header.cf=LV_COLOR_FORMAT_ARGB8888;
+            image.header.w=image.header.h=DotSurfaceRules::glyphSize;image.header.stride=DotSurfaceRules::glyphSize*4;
+            image.data_size=sizeof(dotArt->pixels);image.data=reinterpret_cast<const uint8_t*>(dotArt->pixels);
+        }
+    }
+    for(int i=0;i<ResidentSlots;++i) {
         cards[i]=box(rail,0,i*110,railW,100,Theme::MidWater);
         lv_obj_set_style_border_width(cards[i],2,0);
         marks[i]=lv_image_create(cards[i]);bindBrandFeatures(marks[i]);lv_obj_set_pos(marks[i],0,4);
@@ -517,7 +535,7 @@ lv_obj_t* init(lv_obj_t* parent,const lv_image_dsc_t* (*glyph)(const char*)) {
     }
     label(pageLabel,overview,0,0,sceneW,&font_studio_16,Theme::HUDDim);
     lv_obj_add_flag(pageLabel.obj,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(pageLabel.obj,pageCb,LV_EVENT_CLICKED,nullptr);
-    for(int i=0;i<10;++i) {
+    for(int i=0;i<ResidentSlots;++i) {
         pods[i]=box(overview,0,24,sceneW,560,Theme::MidWater);lv_obj_set_style_bg_opa(pods[i],LV_OPA_80,0);
         lv_obj_set_style_border_width(pods[i],0,0);lv_obj_set_style_border_side(pods[i],LV_BORDER_SIDE_RIGHT,0);lv_obj_set_style_border_color(pods[i],lv_color_hex(Theme::ShallowWater),0);
         label(podName[i],pods[i],16,16,sceneW-32,&font_studio_20,Theme::HUDText);
@@ -580,6 +598,7 @@ void update() {
     connected=g_state.wsConnected || Net::serialConnected();
     gatewayReady=connected && g_state.gatewayConnected && !g_state.gatewayHasError;
     count=0;
+    if(dotArt) dotArt->present=false;
     for(int i=0;i<g_state.sessionCount && i<10;++i) {
         const auto& s=g_state.sessions[i]; if(!s.alive || !s.id[0]) continue;
         auto& r=rows[count++];
@@ -602,6 +621,21 @@ void update() {
         r.children=s.childrenActive;r.childrenKnown=s.childrenKnown;
         ++totals[category(r.state)];
     }
+    agentCount=count;
+    if (dotArt && connected && g_state.dot && g_state.dot->configured) {
+        dotArt->present=true;dotArt->code=g_state.dot->effectiveCode(now);
+        const auto* rgba=g_state.dot->custom ? g_state.dot->rgba : DotSurfaceRules::defaultRgba;
+        for(size_t i=0;i<sizeof(dotArt->pixels)/sizeof(dotArt->pixels[0]);++i)
+            dotArt->pixels[i]=(uint32_t(rgba[i*4+3])<<24)|(uint32_t(rgba[i*4])<<16)|(uint32_t(rgba[i*4+1])<<8)|rgba[i*4+2];
+        auto& r=rows[count++];r={};
+        snprintf(r.id,sizeof(r.id),"habitat:dot");snprintf(r.name,sizeof(r.name),"Dot");
+        snprintf(r.projectLabel,sizeof(r.projectLabel),"Dot");snprintf(r.agent,sizeof(r.agent),"dot");
+        snprintf(r.state,sizeof(r.state),"%s",dotArt->code==2?"processing":dotArt->code==3?"awaiting_option":dotArt->code==5?"error":"idle");
+        snprintf(r.activity,sizeof(r.activity),"%s · Dot report",DotSurfaceRules::labels[dotArt->code]);
+        snprintf(r.tool,sizeof(r.tool),"%s",DotSurfaceRules::compactLabels[dotArt->code]);
+        r.latestRank=TIMELINE_MAX_ENTRIES;
+        ++totals[category(r.state)];
+    }
     // Priority ordering is deterministic; selection still follows the ID.
     for(int i=1;i<count;++i) {
         static Row r; r=rows[i];int j=i; // Reused bounded scratch; keep the UI stack small.
@@ -611,7 +645,7 @@ void update() {
     totals[0]=count;rosterTotal=g_state.sessionsTotal;rosterRotating=g_state.sessionsRotating;
     int chosen=-1;
     for(int i=0;i<count;++i) if(matches(rows[i]) && !strcmp(rows[i].id,selectedId)) chosen=i;
-    retainedDetail=chosen<0 && !overviewMode && selectedId[0] && !strcmp(selected.id,selectedId) && rosterTotal>count;
+    retainedDetail=chosen<0 && !overviewMode && selectedId[0] && !strcmp(selected.id,selectedId) && rosterTotal>agentCount;
     if(chosen<0 && !retainedDetail) {
         for(int i=0;i<count;++i) if(matches(rows[i]) && (chosen<0 || category(rows[i].state)<category(rows[chosen].state))) chosen=i;
         snprintf(selectedId,sizeof(selectedId),"%s",chosen>=0?rows[chosen].id:"");history=false;
@@ -695,7 +729,7 @@ void update() {
         podFor[i]=group;memberSlot[i]=podMembers[group]++;
     }
     // Sort project spaces by identity, never by their changing activity state.
-    int order[10], remap[10];
+    int order[ResidentSlots], remap[ResidentSlots];
     for(int g=0;g<projectCount;++g) {
         order[g]=g;
         for(int i=0;i<count;++i)if(podFor[i]==g) {snprintf(projectKeys[g],40,"%s",rows[i].project[0]?rows[i].project:rows[i].id);break;}
@@ -709,9 +743,9 @@ void update() {
     pageCount=(projectCount+capacity-1)/capacity;if(pageCount<1)pageCount=1;
     if(page>=pageCount)page=0;
     if(overviewMode && !pageHeld && now-pageSince>=12000){page=(page+1)%pageCount;pageSince=now;}
-    if(rosterTotal>count)snprintf(text,sizeof(text),"%d of %u agents · %s · Projects %d/%d · %s",count,rosterTotal,rosterRotating?"Roster rotates 60s":"Priority view",page+1,pageCount,pageHeld?"Paused":"12s");
-    else snprintf(text,sizeof(text),"%d agents · %d projects%s",count,projectCount,pageCount>1?(pageHeld?" · Paused":" · Auto rotate 12s"):"");
-    if(rosterTotal>count && pageCount==1)snprintf(text,sizeof(text),"%d of %u agents · %s",count,rosterTotal,rosterRotating?"Roster rotates 60s":"Priority view");
+    if(rosterTotal>agentCount)snprintf(text,sizeof(text),"%d of %u agents · %s · Projects %d/%d · %s",agentCount,rosterTotal,rosterRotating?"Roster rotates 60s":"Priority view",page+1,pageCount,pageHeld?"Paused":"12s");
+    else snprintf(text,sizeof(text),"%d agents · %d spaces%s",agentCount,projectCount,pageCount>1?(pageHeld?" · Paused":" · Auto rotate 12s"):"");
+    if(rosterTotal>agentCount && pageCount==1)snprintf(text,sizeof(text),"%d of %u agents · %s",agentCount,rosterTotal,rosterRotating?"Roster rotates 60s":"Priority view");
     pageLabel.set(text);visible(pageLabel.obj,count>0);
     const int columns=projectCount<capacity?(projectCount?projectCount:1):capacity;
     const int projectWidth=(sceneW-(columns-1)*Grid::Gap)/columns;
@@ -724,8 +758,8 @@ void update() {
     const int rowBudget=(g_screenH-(needsAttention?178:130)-128-Grid::Header-(pageHasLatest?88:16))/(peerRows?peerRows:1);
     const int rowHeight=rowBudget<Grid::AgentRow?(rowBudget<96?96:rowBudget):Grid::AgentRow;
     const int ph=Grid::Header+peerRows*rowHeight+(pageHasLatest?88:16);
-    for(int i=0;i<10;++i)displayedSlot[i]=-1;
-    for(int g=0;g<10;++g) {
+    for(int i=0;i<ResidentSlots;++i)displayedSlot[i]=-1;
+    for(int g=0;g<ResidentSlots;++g) {
         const bool show=g<projectCount && g/capacity==page;visible(pods[g],show);if(!show)continue;
         const int pw=projectWidth;
         lv_obj_set_pos(pods[g],projectX,40);projectX+=pw+Grid::Gap;lv_obj_set_size(pods[g],pw,ph);
@@ -733,8 +767,8 @@ void update() {
         for(int i=0;i<count;++i)if(podFor[i]==g){if(first<0)first=i;working+=category(rows[i].state)==2;attention+=category(rows[i].state)==1;}
         lv_obj_set_width(podName[g].obj,pw-32);lv_label_set_long_mode(podName[g].obj,LV_LABEL_LONG_DOT);lv_obj_set_height(podName[g].obj,font_studio_20.line_height);lv_obj_set_width(podStatus[g].obj,pw-32);
         podName[g].set(rows[first].projectLabel[0]?rows[first].projectLabel:"Unnamed project");
-        snprintf(text,sizeof(text),"%d %s · %d working",podMembers[g],podMembers[g]==1?"agent":"agents",working);podStatus[g].set(text);
-        int members[10],nMembers=0;
+        snprintf(text,sizeof(text),"%d %s · %d working",podMembers[g],!strcmp(rows[first].agent,"dot")?"companion":podMembers[g]==1?"agent":"agents",working);podStatus[g].set(text);
+        int members[ResidentSlots],nMembers=0;
         for(int i=0;i<count;++i)if(podFor[i]==g)members[nMembers++]=i;
         // Attention stays in view; reserve one slot for fair rotation of others.
         for(int i=1;i<nMembers;++i){int v=members[i],j=i;while(j>0 && (category(rows[members[j-1]].state)>category(rows[v].state) || (category(rows[members[j-1]].state)==category(rows[v].state) && strcmp(rows[members[j-1]].id,rows[v].id)>0))){members[j]=members[j-1];--j;}members[j]=v;}
@@ -751,7 +785,7 @@ void update() {
         lv_obj_set_height(podLatest[g].obj,3*font_workspace_20.line_height);
         snprintf(text,sizeof(text),"Latest %s\n%s",rows[recent].hm,rows[recent].latest);podLatest[g].set(text);
     }
-    for(int i=0;i<10;++i) {
+    for(int i=0;i<ResidentSlots;++i) {
         const bool show=i<count && displayedSlot[i]>=0;visible(seats[i],show);visible(agentActivity[i].obj,show);visible(agentTask[i].obj,show);if(!show)continue;
         if(lv_obj_get_parent(seats[i])!=pods[podFor[i]])lv_obj_set_parent(seats[i],pods[podFor[i]]);
         if(lv_obj_get_parent(agentActivity[i].obj)!=pods[podFor[i]])lv_obj_set_parent(agentActivity[i].obj,pods[podFor[i]]);
@@ -764,9 +798,9 @@ void update() {
         const int rowX=16+(across?slot*(cellW+16):0),rowY=Grid::Header+(across?0:slot*rowHeight);
         // One aligned agent row: illustration left, state and work right.
         lv_obj_set_pos(seats[i],rowX,rowY);lv_obj_set_size(seats[i],cellW,rowHeight-8);
-        const auto* relief=reliefFor(rows[i].agent);const auto* glyph=relief?relief:glyphFor?glyphFor(rows[i].agent):nullptr;visible(creatures[i],glyph);
+        const auto* relief=reliefFor(rows[i].agent);const auto* glyph=relief?relief:residentGlyph(rows[i].agent);visible(creatures[i],glyph);
         lv_obj_set_style_image_recolor_opa(creatures[i],relief?LV_OPA_TRANSP:LV_OPA_COVER,0);
-        if(glyph){if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],relief?128:192);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
+        if(glyph){lv_obj_set_style_image_recolor_opa(creatures[i],(relief || !strcmp(rows[i].agent,"dot"))?LV_OPA_TRANSP:LV_OPA_COVER,0);if(!strcmp(rows[i].agent,"dot"))lv_obj_invalidate(creatures[i]);if(lv_image_get_src(creatures[i])!=glyph)lv_image_set_src(creatures[i],glyph);lv_image_set_scale(creatures[i],!strcmp(rows[i].agent,"dot")?768:relief?128:192);lv_obj_set_style_image_opa(creatures[i],cat==3?LV_OPA_60:LV_OPA_COVER,0);lv_obj_set_style_image_recolor(creatures[i],lv_color_hex(brandColor(rows[i].agent)),0);}
         lv_obj_set_pos(creatures[i],0,cat==1 && overviewMode && connected?((now/300+i)%2?0:4):4);
         snprintf(text,sizeof(text),"#%d %s",memberSlot[i]+1,cat==1?"! Attention":cat==2?"Working":"Idle");seatState[i].set(text);
         lv_obj_set_pos(seatState[i].obj,64,4);lv_obj_set_width(seatState[i].obj,cellW-64);
@@ -805,11 +839,11 @@ void update() {
         lv_obj_set_style_border_width(filters[i],filter==i?2:0,0);
         lv_obj_set_style_border_color(filters[i],lv_color_hex(i?colorFor(i):Theme::StatusCyan),0);
     }
-    if(rosterTotal>count) snprintf(text,sizeof(text),"Sessions · %d of %u",count,rosterTotal);
+    if(rosterTotal>agentCount) snprintf(text,sizeof(text),"Sessions · %d of %u",agentCount,rosterTotal);
     else snprintf(text,sizeof(text),g_screenW<1100?"Sessions":"Sessions / inspect");
     rosterTitle.set(text);
     int shown=0;
-    for(int i=0;i<10;++i) {
+    for(int i=0;i<ResidentSlots;++i) {
         const bool show=i<count && matches(rows[i]);visible(cards[i],show);if(!show)continue;
         const auto& r=rows[i];const int cat=category(r.state);
         lv_obj_set_y(cards[i],shown++*110);
@@ -818,8 +852,8 @@ void update() {
         snprintf(text,sizeof(text),"%s  /  %s",r.agent,nameFor(cat));rowState[i].set(text);
         lv_obj_set_style_text_color(rowState[i].obj,lv_color_hex(colorFor(cat)),0);
         rowTool[i].set(r.tool[0]?r.tool:"No active tool");
-        const auto* glyph=glyphFor?glyphFor(r.agent):nullptr;visible(marks[i],glyph);
-        if(glyph) {if(lv_image_get_src(marks[i])!=glyph)lv_image_set_src(marks[i],glyph);lv_image_set_scale(marks[i],128);lv_obj_set_style_image_recolor(marks[i],lv_color_hex(brandColor(r.agent)),0);}
+        const auto* glyph=residentGlyph(r.agent);visible(marks[i],glyph);
+        if(glyph) {lv_obj_set_style_image_recolor_opa(marks[i],!strcmp(r.agent,"dot")?LV_OPA_TRANSP:LV_OPA_COVER,0);lv_image_set_scale(marks[i],!strcmp(r.agent,"dot")?512:128);if(!strcmp(r.agent,"dot"))lv_obj_invalidate(marks[i]);if(lv_image_get_src(marks[i])!=glyph)lv_image_set_src(marks[i],glyph);lv_obj_set_style_image_recolor(marks[i],lv_color_hex(brandColor(r.agent)),0);}
     }
     visible(empty.obj,!shown);empty.set(count?"No matching sessions":"Waiting for agents");
     // Keep known quotas beside every view. Detail prioritizes actual content.
@@ -830,7 +864,7 @@ void update() {
     lv_obj_set_y(rosterTitle.obj,220);lv_obj_set_size(rail,rw,portrait?112:g_screenH-366);lv_obj_set_scroll_dir(rail,portrait?LV_DIR_HOR:LV_DIR_VER);lv_obj_set_width(rosterTitle.obj,rw);
     lv_obj_set_pos(detail,portrait?24:48+rw,portrait?370:204);lv_obj_set_y(resourcePane,overviewMode?(needsAttention?178:130):portrait?370:204);lv_obj_set_size(detail,detailW,portrait?g_screenH-498:g_screenH-332);
     for(int i=0;i<4;++i){const int fw=(sceneW-36)/4;lv_obj_set_x(filters[i],24+i*(fw+12));lv_obj_set_width(filters[i],fw);lv_obj_set_width(filterText[i].obj,portrait?fw-16:fw-70);lv_obj_set_pos(filterText[i].obj,portrait?8:16,portrait?5:24);lv_obj_set_style_text_font(filterText[i].obj,portrait?&font_studio_16:&font_studio_20,0);lv_obj_set_pos(filterNumber[i].obj,fw-52,portrait?22:12);}
-    for(int i=0;i<10;++i){const int cardW=portrait?224:rw;lv_obj_set_width(cards[i],cardW);if(portrait)lv_obj_set_pos(cards[i],i*236,0);else lv_obj_set_x(cards[i],0);lv_obj_set_width(rowTitle[i].obj,cardW-80);lv_obj_set_height(rowTitle[i].obj,font_studio_20.line_height);lv_obj_set_width(rowState[i].obj,cardW-32);lv_obj_set_x(rowState[i].obj,16);lv_obj_set_y(rowState[i].obj,48);lv_obj_set_width(rowTool[i].obj,cardW-32);}
+    for(int i=0;i<ResidentSlots;++i){const int cardW=portrait?224:rw;lv_obj_set_width(cards[i],cardW);if(portrait)lv_obj_set_pos(cards[i],i*236,0);else lv_obj_set_x(cards[i],0);lv_obj_set_width(rowTitle[i].obj,cardW-80);lv_obj_set_height(rowTitle[i].obj,font_studio_20.line_height);lv_obj_set_width(rowState[i].obj,cardW-32);lv_obj_set_x(rowState[i].obj,16);lv_obj_set_y(rowState[i].obj,48);lv_obj_set_width(rowTool[i].obj,cardW-32);}
     lv_obj_set_width(heading.obj,detailW-112);lv_obj_set_width(identity.obj,detailW-48);lv_obj_set_x(focusGlyph,detailW-80);
     visible(detail,!overviewMode && (chosen>=0 || retainedDetail));
     if(strcmp(presentedId,selectedId)) {
@@ -838,11 +872,17 @@ void update() {
         lv_obj_scroll_to_y(eventBox,0,LV_ANIM_OFF);
         lv_obj_scroll_to_y(activityScroll,0,LV_ANIM_OFF);
     }
-    if(chosen>=0 || retainedDetail) {
+    if(chosen>=0 && !strcmp(rows[chosen].agent,"dot")) {
+        heading.set("Dot");identity.set("Dot report · read only");
+        activity.set(rows[chosen].activity);lv_obj_set_pos(activityScroll,24,82);lv_obj_set_size(activityScroll,detailW-48,120);
+        visible(focusGlyph,false);visible(instruction.obj,false);visible(historyButton,false);visible(recentCaption,false);
+        for(auto* node:stateNodes)visible(node,false);
+        for(auto* node:eventCards)visible(node,false);
+    } else if(chosen>=0 || retainedDetail) {
         heading.set(selected.lastEventTask[0]?selected.lastEventTask:selected.projectName[0]?selected.projectName:selected.agentType);
         snprintf(text,sizeof(text),"%s  /  %s  /  %lus",selected.agentType,selected.modelName[0]?selected.modelName:"Model unavailable",static_cast<unsigned long>(selected.elapsedSec));identity.set(text);
         const int cat=category(selected.state);
-        const auto* fg=glyphFor?glyphFor(selected.agentType):nullptr;visible(focusGlyph,fg);
+        const auto* fg=residentGlyph(selected.agentType);visible(focusGlyph,fg);
         if(fg){if(lv_image_get_src(focusGlyph)!=fg)lv_image_set_src(focusGlyph,fg);lv_obj_set_style_image_recolor(focusGlyph,lv_color_hex(brandColor(selected.agentType)),0);}
         int knownNodes=0;
         for(int i=0;i<4;++i)knownNodes+=(i<2?selected.childrenKnown:selected.coordinationKnown);
@@ -897,7 +937,7 @@ void update() {
     portENTER_CRITICAL(&diagMux);
     ++diag.updates;diag.lastUpdateUs=elapsed;
     if(elapsed>diag.maxUpdateUs)diag.maxUpdateUs=elapsed;
-    diag.width=g_screenW;diag.height=g_screenH;diag.sessions=count;diag.visibleSessions=shown;
+    diag.width=g_screenW;diag.height=g_screenH;diag.sessions=agentCount;diag.visibleSessions=shown;
     diag.filter=filter;diag.eventCount=eventCount;diag.connected=connected;
     diag.usageVisible=hasQuota;diag.quotaWindows=0;for(int i=0;i<usageGroupCount;++i)diag.quotaWindows+=usageGroups[i].rowCount;diag.rosterTotal=rosterTotal;diag.rosterRotating=rosterRotating;
     diag.history=history;diag.voiceOpen=voiceOpen;diag.overview=overviewMode;diag.projects=projectCount;
@@ -913,6 +953,6 @@ Diagnostics diagnostics() {
     portENTER_CRITICAL(&diagMux);const Diagnostics out=diag;portEXIT_CRITICAL(&diagMux);
     return out;
 }
-const char* selectedSession() { return selectedId; }
+const char* selectedSession() { return !strcmp(selectedId,"habitat:dot") ? "" : selectedId; }
 }
 #endif

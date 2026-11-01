@@ -1,12 +1,5 @@
-// Hermes creature — the official Nous girl mark from design/brand/hermes.svg
-// (the upstream white variant on these dark screens), swimming.
-//
-// A sibling of kiro.cpp: an alpha-mask mark, never a redrawn character. The
-// aquarium mermaid is an Apple/Android 3D adaptation; at LCD sizes the
-// canonical mark is the identity (issue #425 — do not invent a creature, do not
-// borrow OpenClaw's art). It sways like something swimming, not drifting.
-//
-// Only `agentType == "hermes"` maps here: the observed Hermes Agent row.
+// Hermes mermaid: canonical Nous girl head over the generated kelp tail.
+// One shared scallop with Dot; compact cards retain the plain upstream mark.
 
 #include "hermes.h"
 #include "draw.h"
@@ -192,15 +185,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         int bx = cx + (int)(bodyRadius * 1.2f);
         int by = cy;
         int br = (int)(bodyRadius * 0.52f);
-        Draw::circle(bx, by, br, 0xFFFFFF, 210);
-        int qx = bx - 2, qy = by - 3;
-        Draw::pixelA(qx + 1, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy + 1, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 2, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 4, Theme::DeepSea, 255);
-        Draw::line(bx - br / 3, by + br / 2, cx + (int)(bodyRadius * 0.6f), cy, 0xFFFFFF, 160);
+        Draw::attention(bx, by, br, Theme::StatusAmber, Theme::DeepSea);
     }
 
 #if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)
@@ -217,7 +202,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
                           state == CreatureState::WORKING || state == CreatureState::ASKING;
     unlockState();
 
-    if (name[0] && showName) {
+    if (name[0] && showName && alpha > 0) {
         lv_point_t txtSize;
         lv_text_get_size(&txtSize, name, &font_kr_12, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         int textW = txtSize.x + (total >= 3 ? 8 : 12);
