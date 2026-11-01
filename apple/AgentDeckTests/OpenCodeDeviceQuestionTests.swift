@@ -2,6 +2,7 @@ import XCTest
 @testable import AgentDeck
 
 final class OpenCodeDeviceQuestionTests: XCTestCase {
+    #if os(macOS)
     func testPermissionDecisionRejectsStaleQuestionInvalidIndicesAndBooleans() {
         XCTAssertEqual(OpenCodeDevicePermission.decision(command: ["index": 0, "question": "bash: harmless probe"], question: "bash: harmless probe"), "allow")
         XCTAssertEqual(OpenCodeDevicePermission.decision(command: ["index": 1, "question": "bash: harmless probe"], question: "bash: harmless probe"), "deny")
@@ -28,6 +29,8 @@ final class OpenCodeDeviceQuestionTests: XCTestCase {
         state.consume(event: "opencode_question_unavailable", id: "q", title: nil)
         XCTAssertNil(state.first)
     }
+
+    #endif
 
     func testSharedRequestVectors() throws {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

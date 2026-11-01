@@ -16,6 +16,8 @@
 }
 
 /* GNB-CSS:BEGIN (generated from scripts/pages-nav.css — do not edit by hand) */
+html { scroll-padding-block-start: calc(var(--pages-nav-height, 72px) + 16px); }
+html body :target { scroll-margin-block-start: 0; }
 .nav {
   position: sticky;
   top: 0;
@@ -28,7 +30,8 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 12px 32px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
 }
@@ -51,6 +54,7 @@
   border-radius: 8px;
 }
 .nav-links {
+  min-width: 0;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -62,7 +66,7 @@
   font-size: 14px;
   text-decoration: none;
   color: var(--ink-700);
-  padding: 6px 12px;
+  padding: 10px 12px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -79,38 +83,135 @@
   background: var(--ink-900);
   color: var(--tide-50);
 }
+.ad-language-control {
+  display: inline-block;
+  max-width: 20rem;
+}
+.ad-language-trigger, .ad-language-native {
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding-inline: 12px;
+  color: var(--ink-700);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-300);
+  border-radius: var(--r-xl, 12px);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ad-language-trigger { min-width: min(8rem, 100%); }
+.ad-language-trigger span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-trigger:hover, .ad-language-native:hover,
+.ad-language-trigger[aria-expanded="true"] {
+  background: var(--tide-100);
+  border-color: var(--kelp-700);
+}
+.ad-language-trigger:focus-visible, .ad-language-native:focus-within {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 3px;
+}
+.ad-language-control [hidden], .ad-language-menu[hidden] { display: none; }
+.ad-language-menu {
+  position: fixed;
+  z-index: 1000;
+  width: min(18rem, calc(100vw - 2 * var(--s-4, 16px)));
+  max-height: calc(100dvh - 2 * var(--s-4, 16px));
+  overflow-y: auto;
+  padding: var(--s-2, 8px);
+  color: var(--ink-900);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-200);
+  border-radius: var(--r-2xl, 14px);
+  box-shadow: var(--sh-card);
+  font-family: inherit;
+}
+.ad-language-menu-heading { padding: var(--s-2, 8px) var(--s-3, 12px) var(--s-3, 12px); }
+.ad-language-menu-heading strong { font-size: 14px; font-weight: 600; }
+.ad-language-menu-heading p { margin: 4px 0 0; color: var(--ink-500); font-size: 12px; line-height: 1.5; }
+.ad-language-menu [role="menuitemradio"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4, 16px);
+  width: 100%;
+  min-height: 56px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-lg, 10px);
+  background: transparent;
+  color: var(--ink-700);
+  text-align: start;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ad-language-menu [role="menuitemradio"] strong { display: block; font-size: 14px; font-weight: 600; }
+.ad-language-menu [role="menuitemradio"] > span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-menu [role="menuitemradio"] small { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-500); }
+.ad-language-menu [role="menuitemradio"] svg { visibility: hidden; flex: 0 0 auto; color: var(--kelp-700); }
+.ad-language-menu [aria-checked="true"] { background: var(--tide-100); color: var(--ink-900); }
+.ad-language-menu [aria-checked="true"] svg { visibility: visible; }
+.ad-language-menu [role="menuitemradio"]:hover { background: var(--tide-200); }
+.ad-language-menu [role="menuitemradio"]:focus-visible { outline: 2px solid var(--kelp-700); outline-offset: -2px; }
+.ad-language-menu[data-specimen] { position: static; width: min(18rem, 100%); margin-top: var(--s-2, 8px); }
 .lang {
   /* A <select> does not inherit font-family by default, so state it. */
   font-family: inherit;
   font-weight: 500;
-  font-size: 13px;
-  color: var(--ink-700);
-  background: var(--tide-100);
-  border: 1px solid var(--tide-200);
-  border-radius: 999px;
-  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  width: auto;
+  min-width: 8ch;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
 }
-.lang:hover {
-  background: var(--tide-200);
-  color: var(--ink-900);
+.lang:focus { outline: none; }
+.nav-links a:focus-visible {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 2px;
 }
-@media (max-width: 768px) {
+/* Translation length must not dictate a fixed card height or page width. */
+:where(.wrap, .shell, .page) :where(h1, h2, h3, p, figcaption) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
   .nav-in {
-    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     padding-inline: 16px;
   }
   .nav-links {
+    order: 2;
+    flex: 1 0 100%;
+    margin-left: 0;
+    width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-block: 4px;
+    scrollbar-width: thin;
   }
+  .ad-language-control { order: 1; margin-inline-start: auto; max-width: 100%; }
   .nav-links a {
     white-space: nowrap;
   }
   .nav-links .gh {
     display: none;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gnb] *, [data-gnb] *::before, [data-gnb] *::after { transition: none; }
 }
 /* GNB-CSS:END */
 

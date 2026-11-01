@@ -196,6 +196,8 @@
 /* === Lang switch === */
 .ad-lang {
   display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   background: var(--tide-100);
   border-radius: var(--r-pill);
   padding: 3px;
@@ -211,6 +213,8 @@
   cursor: pointer;
   color: var(--ink-500);
   font: inherit;
+  min-height: 44px;
+  overflow-wrap: anywhere;
 }
 .ad-lang button[aria-pressed="true"],
 .ad-lang button.on {

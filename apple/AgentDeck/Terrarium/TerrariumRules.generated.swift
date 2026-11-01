@@ -32,7 +32,7 @@ enum TerrariumRules {
     static let hermesHomeSharedFloor: Float = 0.12
     static let hermesHomeSharedZ: Float = 1.35
     static let hermesHomeSharedSize: Float = 0.72
-    static let hermesHomeMouthClearance: Float = 0.45
+    static let hermesHomeMouthClearance: Float = 1.4
     static let hermesHomeBerthTravelScale: Float = 0.35
     static let hermesHomeBerthInwardTravel: Float = 0.12
     static let hermesHomeBerthFront: Float = 0.3
@@ -43,7 +43,7 @@ enum TerrariumRules {
     static let hermesHomeBerthFloor: Float = 0.95
     static let hermesHomeBerthRise: Float = 0.48
     static let hermesHomeBerthZ: Float = 1.0
-    static let hermesHomeBerthDepth: Float = 1.1
+    static let hermesHomeBerthDepth: Float = 1.65
     static let hermesHomeNeighbourSceneMinWidth: Float = 1.6
     static let hermesHomeNeighbourSceneMaxWidth: Float = 6.2
     static let hermesHomeNeighbourSceneAspect: Float = 5.5
@@ -75,9 +75,15 @@ enum TerrariumRules {
     static let hermesHomeCloseRate: Float = 0.7
     static let hermesHomeEmergeRate: Float = 0.65
     static let hermesHomeLidClearance: Float = 0.98
-    static let hermesHomeDepartureStart: Float = 0.6
     static let hermesHomeLidAngle: Float = 1.22
-    static let hermesHomeTuckDepth: Float = 0.65
+    static let hermesHomeDepartureStart: Float = 0.6
+    static let hermesHomeMouthFront: Float = 1.35
+    static let hermesHomeMouthLift: Float = 0.65
+    static let hermesHomeLaneLift: Float = 0.2
+    static let hermesHomeLaneDistance: Float = 0.12
+    static let hermesHomeLaneSpeed: Float = 0.18
+    static let hermesHomeBasinClearance: Float = 0.1
+    static let hermesHomeCompactScale: Float = 0.12
     static let hermesHomeSettleDistance: Float = 0.04
     static let hermesHomeSettleSpeed: Float = 0.04
     static let hermesHomeTravelRate: Float = 0.34

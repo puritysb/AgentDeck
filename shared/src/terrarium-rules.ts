@@ -59,8 +59,8 @@ export const TERRARIUM_RULES = {
   },
   /** Open before emergence; return and tuck before closing, in simulation seconds. */
   hermesHome: {
-    sharedX: 0, sharedFloor: 0.12, sharedZ: 1.35, sharedSize: 0.72, mouthClearance: 0.45, berthTravelScale: 0.35, berthInwardTravel: 0.12, berthFront: 0.3, frontLimit: 2.4,
-    berthLaneMinX: 1.4, berthLaneMaxX: 1.8, berthLaneWidthFraction: 0.30, berthFloor: 0.95, berthRise: 0.48, berthZ: 1, berthDepth: 1.1,
+    sharedX: 0, sharedFloor: 0.12, sharedZ: 1.35, sharedSize: 0.72, mouthClearance: 1.4, berthTravelScale: 0.35, berthInwardTravel: 0.12, berthFront: 0.3, frontLimit: 2.4,
+    berthLaneMinX: 1.4, berthLaneMaxX: 1.8, berthLaneWidthFraction: 0.30, berthFloor: 0.95, berthRise: 0.48, berthZ: 1, berthDepth: 1.65,
     neighbourSceneMinWidth: 1.6, neighbourSceneMaxWidth: 6.2, neighbourSceneAspect: 5.5,
     neighbourLaneMinX: 1.8, neighbourLaneMaxX: 2.35, neighbourLaneWidthFraction: 0.38,
     neighbourFloor: 0.32, neighbourRise: 0.28, neighbourZ: 1, neighbourDepth: 1.4, neighbourSize: 0.75,
@@ -69,7 +69,13 @@ export const TERRARIUM_RULES = {
     blinkPeriod: 5.3, blinkClose: 0.075, blinkHold: 0.035, blinkOpen: 0.145,
     canvasRestY: 0.70, headScale: 0.78, bodyWidth: 1.18, bodyLength: 1.15, bodyDepth: 1.08,
     openRate: 0.9, closeRate: 0.7, emergeRate: 0.65, lidClearance: 0.98,
-    departureStart: 0.6, lidAngle: 1.22, tuckDepth: 0.65,
+    lidAngle: 1.22,
+    /** Folded 2D sprite departure threshold; native 3D uses the mouth/lanes below. */
+    departureStart: 0.6,
+    /** Enter over the front lip, never vertically through the sealed lower valve.
+     * Compact around planted feet inside the basin; the shared aperture is leased
+     * until the whole resident clears this waypoint. Native Y-up, +Z faces viewer. */
+    mouthFront: 1.35, mouthLift: 0.65, laneLift: 0.20, laneDistance: 0.12, laneSpeed: 0.18, basinClearance: 0.10, compactScale: 0.12,
     settleDistance: 0.04, settleSpeed: 0.04, travelRate: 0.34,
     swimLift: 0.85, swimRadius: 0.85, workRadius: 0.35,
   },

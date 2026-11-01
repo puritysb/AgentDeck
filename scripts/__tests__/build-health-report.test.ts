@@ -413,7 +413,7 @@ describe('report Korean locale', () => {
       body: {},
       documentElement: { lang: 'en' },
       title: '',
-      getElementById: () => control,
+      getElementById: (id: string) => id === 'lang' ? control : null,
       createTreeWalker: () => walker,
       querySelectorAll: () => [attributeNode],
     };

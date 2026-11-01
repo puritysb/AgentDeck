@@ -50,7 +50,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const simDir = path.resolve(__dirname, '../esp32/sim');
 const outDir = path.resolve(__dirname, '../tools/creature-simulator/sim-frames');
 
-const AGENTS = ['claude', 'codex', 'opencode', 'openclaw', 'antigravity', 'kiro', 'hermes'];
+const AGENTS = ['claude', 'codex', 'opencode', 'openclaw', 'antigravity', 'kiro', 'hermes', 'dot'];
 const STATES = ['idle', 'working', 'asking', 'sleeping'];
 
 // env name → demo board slug. LCD envs render the composed LVGL screen (the
@@ -94,13 +94,17 @@ for (const board of BOARDS) {
     const boardFrames = [];
     for (const agent of AGENTS) {
       for (const state of STATES) {
-        const scene = `demo:${agent}:${state}`;
+        const scene = agent === 'dot'
+          ? `dot:${({ idle: 'ready', working: 'working', asking: 'attention', sleeping: 'stopped' })[state]}`
+          : `demo:${agent}:${state}`;
         for (const page of board.pages ?? [null]) {
           const name = page
             ? `${board.slug}-${agent}-${state}-${page}.png`
             : `${board.slug}-${agent}-${state}.png`;
-          const args = ['--scene', scene, '--out', path.join(outDir, name), ...(board.extraArgs ?? [])];
+          const args = ['--scene', scene, '--frames', '360', '--out', path.join(outDir, name), ...(board.extraArgs ?? [])];
           if (page) args.push('--page', page);
+          else if (board.env === 'ttgo') args.push('--page', 'terrarium');
+          else if (board.env === 't_display_pro' && agent === 'dot') args.push('--page', 'sessions');
           execFileSync(program, args, { cwd: simDir, stdio: ['ignore', 'ignore', 'pipe'] });
           recompressPng(path.join(outDir, name));
           boardFrames.push(name);

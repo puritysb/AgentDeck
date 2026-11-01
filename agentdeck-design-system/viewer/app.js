@@ -718,13 +718,21 @@
     {
       group: 'Chrome',
       title: 'Language switcher',
-      classes: '.ad-lang',
-      note: 'DESIGN.md §1.5. KO/EN/JA are peers on the same pill; the active locale takes the ink fill.',
-      html: `<div class="ad-lang">
-          <button type="button" aria-pressed="true">EN</button>
-          <button type="button" aria-pressed="false">한국어</button>
-          <button type="button" aria-pressed="false">日本語</button>
-        </div>`,
+      classes: '.ad-language-control · .lang',
+      note: 'DESIGN.md §1.5. Closed control and open list, cloned from the canonical Pages component. Full names, a selected check, warm hover/focus states and keyboard navigation are defined together. Try the live control in the navigation above; this specimen is a static state preview.',
+      html: (() => {
+        const control = document.querySelector('[data-language-control]').cloneNode(true);
+        const menu = document.querySelector('[data-language-menu]').cloneNode(true);
+        control.querySelector('#lang').id = 'language-example';
+        control.setAttribute('inert', '');
+        control.querySelector('[data-language-trigger]').removeAttribute('aria-controls');
+        control.querySelector('[data-language-trigger]').setAttribute('aria-expanded', 'false');
+        menu.removeAttribute('id');
+        menu.removeAttribute('hidden');
+        menu.setAttribute('data-specimen', '');
+        menu.setAttribute('inert', '');
+        return control.outerHTML + menu.outerHTML;
+      })(),
     },
     {
       group: 'Hardware',

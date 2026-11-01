@@ -199,6 +199,7 @@ jobs:
           # Required real-app motion demo for the overview (fail on missing media).
           cp docs/media/aquarium-demo.mp4 docs/media/aquarium-preview.gif docs/media/aquarium-story.*.vtt _site/media/
           cp docs/media/aquarium-180-showcase.mp4 docs/media/aquarium-180.*.vtt _site/media/
+          cp -R docs/media/current _site/media/
           cp docs/media/macos-dashboard.png _site/media/ 2>/dev/null || true
           cp docs/media/android-eink.png _site/media/ 2>/dev/null || true
           cp docs/media/tui-dashboard.png _site/media/ 2>/dev/null || true

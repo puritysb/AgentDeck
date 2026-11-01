@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-01T20:05:42.254Z",
+  "finished_at": "2026-11-01T20:09:50.851Z",
+  "duration_ms": 248597,
+  "commit": "c374740d8eeab20020f44850cf37ade71d319845",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "protocol-drift",
+      "gate": "typecheck",
+      "name": "Generated protocol types match protocol.ts",
+      "status": "pass",
+      "duration_ms": 6766
+    },
+    {
+      "id": "esp32-host",
+      "gate": "esp32-host-policy",
+      "name": "ESP32 host policy assertions",
+      "status": "pass",
+      "duration_ms": 6632
+    },
+    {
+      "id": "esp32-sim",
+      "gate": "esp32-sim",
+      "name": "ESP32 simulator builds and resident/input checks",
+      "status": "pass",
+      "duration_ms": 61495
+    },
+    {
+      "id": "esp32-ttgo",
+      "gate": "esp32-ttgo",
+      "name": "ESP32 TTGO target build",
+      "status": "pass",
+      "duration_ms": 44045
+    },
+    {
+      "id": "npm-packaged",
+      "gate": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "status": "pass",
+      "duration_ms": 129641
+    }
+  ]
+}

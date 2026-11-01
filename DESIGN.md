@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-10-25
-revision: 2026-10-25
+reviewed: 2026-11-02
+revision: 2026-11-02
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -38,6 +38,45 @@ Two faces only: **IBM Plex Sans** for everything human, **JetBrains Mono** for e
 
 ### 1.5 Asia‑first multilingual
 KO/EN/JA all live on the same page; the type stack must render all three at the same optical weight. We use IBM Plex Sans / Plex Sans KR / Plex Sans JP as a unified family. Never set Korean in a Latin‑only face.
+
+**Language selection uses full native names: English, 한국어, 日本語.** The
+public `.ad-language-control` opens the styled `.ad-language-menu`; the native
+select is a no-JavaScript fallback. The closed control uses a globe, a full name,
+a 44px target and a visible focus ring, without a decorative chevron. It stays
+outside the scrolling navigation links. Markup, translations, interaction and
+styles are owned by `scripts/pages-nav.html` / `scripts/pages-nav.css`; the
+locale options are authored once and generate the menu rows. The design viewer
+clones the real closed control and open list as its component specimen.
+
+**The open list is part of the component contract.** Use Tide 50 for the panel,
+Tide 200 for its border, a 14px radius, the shared card shadow and 8px inner
+padding. The panel is 18rem wide, clamped to 16px viewport gutters, with an 8px
+gap from its trigger. Rows grow from a 56px minimum, with 10×12px padding and a
+10px radius. Each row has a full native name, a localized explanatory line and
+an explicit selected check. Tide 100 marks selection, Tide 200 marks hover,
+and the Kelp 700 focus outline remains visible independently of selection.
+Use Sans for all these human-facing labels; do not substitute language codes
+or flags. Longer rows wrap rather than ellipsize. The list scrolls within the
+viewport when more languages are admitted.
+
+**Interaction is defined with the visuals.** Opening focuses the selected row;
+Arrow Up/Down, Home/End and letter search move focus. Enter/Space select. Escape
+closes and restores trigger focus; Tab closes and continues through the page.
+Outside pointer/focus closes without stealing focus. Menu focus must not scroll
+the underlying page. Position the portal within the viewport, and measure the
+actual wrapped navigation height for fragment clearance. Navigation labels and
+accessible names use the same shared locale copy on every public surface.
+
+**Translate into fluid space, not fixed text boxes.** Cards and actions may grow
+vertically; grid children must be able to shrink, and long labels wrap without
+ellipsis. At narrow widths the navigation becomes two rows, while the links
+scroll within their own row. Tables, code and device frames may keep their own
+scroll area or aspect ratio; the page itself must not acquire horizontal scroll.
+Check English, Korean and Japanese at 320, 390, 768, 1024 and 1440 CSS pixels,
+plus expanded pseudo-localized labels. A new locale is admitted with its full
+native name, translation/fallback coverage and these layout checks, rather than
+an abbreviation or an unreviewed automatically translated page. Keep the
+catalog locale list and navigation options aligned behind the Pages checks.
 
 ### 1.6 Honest placeholders
 When an asset (a real screenshot, a hardware shot, an icon) is not ready, ship a **placeholder pattern** — diagonal hatch on warm sand, monospace label inside — rather than a stretched stock photo or a hand‑drawn SVG that pretends to be the real thing.
@@ -524,12 +563,21 @@ The menu bar uses the small-size aquarium-deck symbol, not the full app icon ill
 Hermes's aquarium resident is the user-directed exception: an AgentDeck-original
 Nous girl mermaid adaptation, preserving the portrait's black bob, bangs and
 pale face while adding a small articulated tail. Its compact brand icon remains
-the exact upstream mark. In the native aquarium, Hermes and Dot share one fixed scallop over the
-substrate. Its lid opens before a resident emerges, residents take separate
-berths clear of the mouth, and returning bodies tuck inside before the last
-resident closes it. Quiet Hermes stays home; observed work drives swimming and
-working gestures. OpenClaw keeps its adjacent rock and original silhouette. Proximity must never be presented as task delegation. Reduced Motion freezes
-these movements while keeping explicit status cues visible.
+the exact upstream mark. In the native aquarium, Hermes, Dot and OpenClaw share
+one fixed scallop over the substrate. The lid clears before a resident emerges;
+a single entrance lease keeps simultaneous departures and returns apart. Travel
+passes over the front lip, then follows a low depth lane below the occupied
+swimming berths before rising into its own place. Depth-separated rows leave room
+for the complete tail silhouette. Return follows that lane in reverse, rises above the front lip at the centre,
+then the resident curls smaller
+around its planted lowest point inside the basin. No visible tail or foot drops
+through the sealed lower valve. The lid closes after the aperture clears, even
+while residents work outside. Quiet Hermes stays home; observed work drives
+swimming and working gestures. OpenClaw preserves its original silhouette and
+adjacent rock: gateway availability owns its first emergence and final return,
+while routing/idle only changes its behaviour outside. Proximity must never be
+presented as task delegation. Reduced Motion resolves the live berth without
+travel and keeps explicit status cues visible.
 
 Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity, Kiro, Hermes) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
 

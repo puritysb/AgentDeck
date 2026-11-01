@@ -134,6 +134,15 @@ namespace {
 constexpr uint32_t FRAME_MS = 33;                 // ~30fps
 constexpr float    FRAME_DT = FRAME_MS / 1000.0f;
 static bool checkingHabitat=false;
+#if defined(BOARD_IPS10)
+static bool visibleProject(lv_obj_t* obj, const char* text) {
+  if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return false;
+  if (lv_obj_check_type(obj, &lv_label_class) && !std::strcmp(lv_label_get_text(obj), text)) return true;
+  for (uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if (visibleProject(lv_obj_get_child(obj,i),text)) return true;
+  return false;
+}
+#endif
 #if defined(BOARD_TTGO)
 static bool visibleDotTag(lv_obj_t* obj) {
   if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return false;
@@ -210,6 +219,27 @@ bool renderScene(const char* scene, const char* path, int frames, const char* pa
                    Knob::selectedSessionIdx());
       return false;
     }
+  }
+#endif
+#if defined(BOARD_T_EMBED)
+  if (!std::strncmp(scene,"dot:",4)) {
+    Knob::onKey(Input::KeyEvent::LONG_PRESS);
+    Knob::onKey(Input::KeyEvent::LONG_PRESS);
+    treeUpdate(FRAME_DT);
+    for (int i=0;i<11 && !visibleText(lv_screen_active(),"Dot");++i) {
+      Knob::onRotate(1); treeUpdate(FRAME_DT);
+    }
+    SimDisplay::refresh();
+    if (!visibleText(lv_screen_active(),"Dot")) return false;
+  }
+#elif defined(BOARD_IPS10)
+  if (!std::strncmp(scene,"demo:",5)) {
+    // Exercise the real project pager until the chosen fixture is on screen.
+    const char* project=g_state.sessions[0].projectName;
+    for (int i=0;i<11 && !visibleProject(lv_screen_active(),project);++i) {
+      SimDisplay::tick(13000); treeUpdate(FRAME_DT); SimDisplay::refresh();
+    }
+    if (!visibleProject(lv_screen_active(),project)) return false;
   }
 #endif
   bool ok = SimPng::writeRgb565(path, SimDisplay::framebuffer(),
