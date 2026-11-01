@@ -1,3 +1,4 @@
+import { ClaudeAttentionLifecycle } from '@agentdeck/shared';
 import { loadHandoverTimeline } from './daemon-timeline-handover.js';
 import { dotSurfaceSnapshot } from '@agentdeck/shared';
 import { readDotAppearance } from './dot-appearance.js';
@@ -78,9 +79,10 @@ import {
   sweepStalePending, drainAllPending, isPendingRequest, passPending,
 } from './permission-resolver.js';
 import {
-  CODEX_APPROVAL_HOLD_HEADER, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
+  CODEX_APPROVAL_HOLD_HEADER, codexApprovalNeedsHuman, codexApprovalDecisionBody, codexApprovalHoldMs, codexHoldDecision, codexHoldReleasedBy,
 } from '@agentdeck/shared';
 import { CodexApprovalHolds } from './codex-approval-hold.js';
+import { CodexApprovalProbes } from './codex-approval-probe.js';
 import {
   shouldHoldPreToolUse, beginAskGate, gateReleased, buildGateQuestion, buildAskAnswerReason,
   consumeStop, requestStop, clearStop, STOP_DENY_REASON,
@@ -106,7 +108,7 @@ import {
   synthesizeWavWithHelper,
   recordWithHelper, stopHelperRecording, speakWithHelper,
 } from './foundation-models-helper.js';
-import { enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands } from './opencode-steering.js';
+import { enqueueOpenCodeCommand, pollOpenCodeCommands, requeueOpenCodeCommands, isOpenCodeSteerable, observeOpenCodeSteerability } from './opencode-steering.js';
 import { runSessionReview, reviewSnapshot } from './review-runner.js';
 
 /** Device approval holds, including the opt-in human Codex handler. Claude's
@@ -1367,7 +1369,7 @@ export function classifyObservedHookEvent(
   if (eventName === 'opencode_subagent_start' || eventName === 'opencode_subagent_stop') {
     return { boundary: eventName, agentType: 'opencode' };
   }
-  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected)$/
+  const prefixed = /^(codex|opencode|antigravity|kiro|kiro_ide|hermes)_(agent_spawn|session_start|session_end|user_prompt_submit|tool_start|tool_end|stop|turn_complete|interrupt|notification|permission_request|permission_asked|permission_replied|question_asked|question_replied|question_rejected|question_unavailable)$/
     .exec(eventName);
   if (!prefixed) return { boundary: mapped, agentType: 'claude-code' };
   return {
@@ -1840,6 +1842,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const codexApmeSessions = new Set<string>();
   const codexRosterAbsentSince = new Map<string, number>();
   const hookClaudeSessions = new HookClaudeSessions();
+  const claudeAttentionLifecycle = new ClaudeAttentionLifecycle();
   // Who last moved the hub's global state machine — see hub-state-identity.ts.
   const hubDriver = new HubStateDriverTracker();
   // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
@@ -1847,6 +1850,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const codexHookReplay = new CodexHookReplayGuard();
   // Open Codex device-approval holds — shared/src/codex-approval-hold.ts.
   const codexApprovalHolds = new CodexApprovalHolds();
+  const codexApprovalProbes = new CodexApprovalProbes();
   const hookOpenCodeSessions = new HookOpenCodeSessions();
   // Declared before the HTTP server: the PreToolUse route reads it to decide
   // whether this daemon can type into a session's terminal, and hooks start
@@ -3541,6 +3545,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       let body = '';
       req.on('data', (c: Buffer) => { body += c; if (body.length > 1_000_000) req.destroy(); });
       req.on('end', async () => {
+        let approvalProbe: ReturnType<CodexApprovalProbes['begin']> | undefined;
+        try {
         let json: Record<string, unknown> = {};
         try { json = body ? JSON.parse(body) : {}; } catch { /* ignore */ }
         // The hook shell's parent pid (`X-AgentDeck-Pid: $PPID` in the
@@ -3558,7 +3564,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // could pair, so ingesting it would record every approval twice.
         const holdHeader = req.headers[CODEX_APPROVAL_HOLD_HEADER];
         if (eventName === 'codex_permission_request' && holdHeader !== undefined) {
-          holdCodexApproval(json, Array.isArray(holdHeader) ? holdHeader[0] : holdHeader, res);
+          await holdCodexApproval(json, Array.isArray(holdHeader) ? holdHeader[0] : holdHeader, res);
           return;
         }
         // Harness identity comes from the payload, not the endpoint (#490): a
@@ -3583,6 +3589,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           (res as unknown as { end: () => typeof res }).end = () => endEmpty('');
         }
         eventName = harness.eventName;
+        if (eventName.startsWith('codex_') && typeof json.session_id === 'string') {
+          if (eventName === 'codex_permission_request') approvalProbe = codexApprovalProbes.begin(json.session_id);
+          else codexApprovalProbes.invalidate(json.session_id, codexHoldReleasedBy(eventName) || eventName === 'codex_session_start');
+        }
         // Generic `<agent>_background_*` hooks (and each agent's session-reset
         // and child-stop events) feed the shared background-work tracker. The
         // three background events mean nothing else, so they stop here.
@@ -3711,6 +3721,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             : JSON.stringify({ received: true }));
           return;
         }
+        if (typeof json.session_id === 'string' && !eventName.includes('_')
+          && !claudeAttentionLifecycle.admit(eventName === 'Notification'
+            && isPermissionNotification(typeof json.notification_type === 'string' ? json.notification_type : undefined,
+              typeof json.message === 'string' ? json.message : '') ? 'PermissionNotification' : eventName, json.session_id)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(eventName === 'PreToolUse' || eventName === 'Stop' ? '' : JSON.stringify({ received: true }));
+          return;
+        }
         // After child-only filtering and before any state-machine broadcast.
         if (hookClaudeSessions.note(eventName, json)) core.maybeBroadcastSessionsList();
         const hookTimelineEntry = claudeHookTimelineEntry(eventName, json);
@@ -3727,14 +3745,17 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
           });
           // Codex PermissionRequest precedes reviewer routing: an explicit
-          // auto_review setting means no human is waiting. Other requests
-          // retain the display-only approval prompt, answered in the
+          // user setting is required to claim a human wait. Automatic or
+          // unknown reviewers get no prompt; confirmed human prompts use the
           // terminal. Any later lifecycle hook on the session ends the wait:
           // an approval runs the tool (tool_start/tool_end), a denial or
           // Ctrl+C ends the turn (stop/interrupt), a new prompt supersedes it.
           const codexSid = typeof json.session_id === 'string' ? json.session_id : '';
+          const reviewer = eventName === 'codex_permission_request' ? await codexApprovalReviewerForHook(json) : undefined;
           const heldRequestId = codexSid ? codexApprovalHolds.requestIdFor(codexSid) : undefined;
-          if (codexSid && heldRequestId) {
+          if (eventName === 'codex_permission_request' && !approvalProbe?.current()) {
+            // A later lifecycle hook overtook the read. Never resurrect its wait.
+          } else if (codexSid && heldRequestId) {
             // A held device approval owns the prompt until it is released: a
             // parallel call's notification or tool hooks must not swap the
             // question under its button. Only the end of the turn it waits
@@ -3744,7 +3765,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               passPending(heldRequestId);
             }
           } else if (codexSid) {
-            if (eventName === 'codex_permission_request' && codexApprovalReviewerForHook(json) !== 'auto_review') {
+            if (eventName === 'codex_permission_request' && codexApprovalNeedsHuman(reviewer)) {
               // `sticky`: the transcript-recency drop is a Claude ESC heuristic;
               // a Codex rollout may be appended while the approval waits, and
               // the explicit hook clears below already end this wait.
@@ -3760,12 +3781,16 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // by OpenCode session id and carry both. See hook-opencode-sessions.ts.
         if (eventName.startsWith('opencode_')) {
           hookOpenCodeSessions.note(eventName, {
+            pid: typeof json.agentdeck_pid === 'number' ? json.agentdeck_pid : undefined,
             sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
             cwd: earlyHookCwd || undefined,
             projectName: earlyHookProject,
             toolName: typeof json.tool_name === 'string' ? json.tool_name : undefined,
             permissionId: typeof json.permission_id === 'string' ? json.permission_id : undefined,
             questionId: typeof json.question_id === 'string' ? json.question_id : undefined,
+            questions: json.questions,
+            questionAnswerable: json.question_answerable === true,
+            replyFailed: json.reply_failed === true,
             title: typeof json.title === 'string' ? json.title : undefined,
           });
         }
@@ -4432,6 +4457,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ received: true }));
         }
+        } finally { approvalProbe?.dispose(); }
       });
       return;
     }
@@ -4965,7 +4991,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   core.onSystemWake(() => {
     log('[daemon] System wake detected — recovering devices');
     triggerMdnsRecovery();
-    handleESP32Wake();
+    if (esp32SerialRunning()) handleESP32Wake();
     handlePixooWake();
     // Reset backoff from pre-sleep failures and fetch fresh usage after network stabilizes
     resetConsecutiveFailures();
@@ -5653,17 +5679,22 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
    *  device's Allow/Deny, or answer at once with nothing so Codex draws its own
    *  prompt. A held request shows the prompt with its button; a released one
    *  leaves the prompt as display-only, since Codex is drawing it now. */
-  function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): void {
+  async function holdCodexApproval(json: Record<string, unknown>, header: string, res: import('http').ServerResponse): Promise<void> {
     const sid = typeof json.session_id === 'string' ? json.session_id : '';
-    // An automatic reviewer owns this decision. Printing nothing leaves its
-    // policy untouched; neither a device prompt nor a device hold belongs here.
-    if (codexApprovalReviewerForHook(json) === 'auto_review') {
+    // Only confirmed human review belongs on a device. Unreadable evidence
+    // passes without intercepting the agent's own approval flow.
+    const probe = codexApprovalProbes.begin(sid, () => !res.destroyed);
+    const readStarted = performance.now();
+    const reviewer = await codexApprovalReviewerForHook(json);
+    const current = probe.current();
+    probe.dispose();
+    if (!current || res.destroyed || !codexApprovalNeedsHuman(reviewer)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('');
       return;
     }
     const question = buildCodexPermissionQuestion(json);
-    const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS);
+    const holdMs = codexApprovalHoldMs(header, OBSERVED_APPROVAL_HOLD_MS, performance.now() - readStarted);
     const background = sid !== '' && (codexAmbientSessions.isAmbient(sid) || isCodexBackgroundCwd(json.cwd));
     const execChild = sid !== '' && codexExecChildren.knows(sid);
     const verdict = holdMs === null
@@ -5816,6 +5847,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   };
   hermesSessions.onChanged = () => core.maybeBroadcastSessionsList();
   hookOpenCodeSessions.onChanged = () => core.maybeBroadcastSessionsList();
+  observeOpenCodeSteerability(() => core.maybeBroadcastSessionsList());
 
   // ===== Gateway adapter lifecycle =====
   // (gatewayAdapter + gatewayConnecting declared earlier, before HTTP server)
@@ -5843,6 +5875,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       .map((s) => {
         // Steering feedback for observed Claude sessions: devices render
         // "stopping at next tool" / queued-directive badges from these.
+        if (s.id.startsWith('observed:opencode:')) return { ...s,
+          liveAnswerable: s.liveAnswerable === true && isOpenCodeSteerable(s.id.slice('observed:opencode:'.length)) };
         if (!s.id.startsWith('observed:claude:')) return { ...s, liveAnswerable: false };
         // Will a device press on this session's options reach the agent? Two
         // rungs qualify: this daemon can type into the session's live prompt
@@ -6821,10 +6855,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const sep = rest.indexOf(':');
         // The row keeps its prompt until OpenCode reports permission.replied,
         // so a full queue leaves the request answerable rather than lost.
-        if (sep > 0 && !enqueueOpenCodeCommand(rest.slice(0, sep), {
-          type: 'permission_respond', permissionId: rest.slice(sep + 1), response: decision,
-        })) {
-          debug('daemon', `opencode permission ${requestId} not queued: command queue full`);
+        if (sep > 0 && isOpenCodeSteerable(rest.slice(0, sep)) && !hookOpenCodeSessions.answerPermission(
+          rest.slice(0, sep), requestId, decision,
+          (permissionId, response) => enqueueOpenCodeCommand(rest.slice(0, sep), { type: 'permission_respond', permissionId, response }))) {
+          debug('daemon', `opencode permission ${requestId} not queued: stale request or full command queue`);
           core.broadcastSessionsList().catch(() => {});
         }
         return;
@@ -6859,7 +6893,11 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       if (typeof sessionId === 'string' && (sessionId.startsWith('opencode:') || sessionId.startsWith('observed:opencode:'))) {
         const rawSid = sessionId.replace(/^(?:observed:)?opencode:/, '');
         const type = typeof command?.type === 'string' ? command.type : '';
-        if (type === 'interrupt' || type === 'escape') {
+        if (type === 'select_option') {
+          if (isOpenCodeSteerable(rawSid)) hookOpenCodeSessions.answerOption(rawSid, command.index, command.question,
+            (questionId, answers) => enqueueOpenCodeCommand(rawSid, { type: 'question_reply', questionId, answers }),
+            (permissionId, response) => enqueueOpenCodeCommand(rawSid, { type: 'permission_respond', permissionId, response }));
+        } else if (type === 'interrupt' || type === 'escape') {
           enqueueOpenCodeCommand(rawSid, { type: 'interrupt' });
         } else if (type === 'send_prompt' && typeof command.text === 'string') {
           enqueueOpenCodeCommand(rawSid, { type: 'send_prompt', text: command.text });
@@ -6901,6 +6939,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         handleObservedClaudeCommand(sessionId.slice('observed:claude:'.length), cmd as any);
         return;
       }
+      if (sessionId.startsWith('observed:opencode:')) {
+        const sid = sessionId.slice('observed:opencode:'.length);
+        if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerOption(sid, (cmd as any).index, (cmd as any).question,
+          (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }),
+          (permissionId, response) => enqueueOpenCodeCommand(sid, { type: 'permission_respond', permissionId, response }));
+        return;
+      }
       if (answerCodexApproval(sessionId, cmd as unknown as Record<string, unknown>)) return;
       const target = listActiveSessions().find(s => s.id === sessionId) ?? getRemoteSession(sessionId);
       if (target) {
@@ -6914,6 +6959,13 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }, 100);
         return;
       }
+    }
+    if (cmd.type === 'select_option' && userFocusedSessionId?.startsWith('observed:opencode:')) {
+      const sid = userFocusedSessionId.slice('observed:opencode:'.length);
+      if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerOption(sid, (cmd as any).index, (cmd as any).question,
+        (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }),
+          (permissionId, response) => enqueueOpenCodeCommand(sid, { type: 'permission_respond', permissionId, response }));
+      return;
     }
     // Route interactive commands to focused session (if any)
     if (focusRelay.getFocusedSessionId() && focusRelay.routeCommand(cmd)) {

@@ -664,8 +664,9 @@ actor OpenClawAdapter {
             // here: everything the user needs to see lives under `request`, and
             // reading it flat (`payload["tool"]`, which never exists) is what
             // shipped an approval with no command on it.
-            setPendingApproval(
-                OpenClawApprovalRules.parse(payload, nowMs: Date().timeIntervalSince1970 * 1000))
+            guard let parsed = OpenClawApprovalRules.parse(payload, nowMs: Date().timeIntervalSince1970 * 1000)
+            else { break }
+            setPendingApproval(parsed)
             var approvalEvent: [String: Any] = ["type": "gateway_approval", "payload": payload]
             if let prompt = pendingApproval {
                 approvalEvent["prompt"] = Self.promptDict(prompt)
@@ -1191,9 +1192,9 @@ actor OpenClawAdapter {
             let sorted = rows.sorted {
                 (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
             }
-            if let oldest = sorted.first,
-               let prompt = OpenClawApprovalRules.parse(
-                oldest, nowMs: Date().timeIntervalSince1970 * 1000),
+            let nowMs = Date().timeIntervalSince1970 * 1000
+            if let oldest = sorted.first(where: { OpenClawApprovalRules.parse($0, nowMs: nowMs) != nil }),
+               let prompt = OpenClawApprovalRules.parse(oldest, nowMs: nowMs),
                prompt.id != pendingApproval?.id {
                 setPendingApproval(prompt)
                 DaemonLogger.shared.debug("OpenClaw", "adopted pending approval \(prompt.id) on connect")
@@ -1211,9 +1212,9 @@ actor OpenClawAdapter {
             let sorted = rows.sorted {
                 (($0["createdAtMs"] as? Double) ?? 0) < (($1["createdAtMs"] as? Double) ?? 0)
             }
-            if let oldest = sorted.first,
-               let prompt = OpenClawPluginApprovalRules.parse(
-                oldest, nowMs: Date().timeIntervalSince1970 * 1000),
+            let nowMs = Date().timeIntervalSince1970 * 1000
+            if let oldest = sorted.first(where: { OpenClawPluginApprovalRules.parse($0, nowMs: nowMs) != nil }),
+               let prompt = OpenClawPluginApprovalRules.parse(oldest, nowMs: nowMs),
                prompt.id != pendingPluginApproval?.id {
                 setPendingPluginApproval(prompt)
                 DaemonLogger.shared.debug(
@@ -1448,7 +1449,7 @@ actor OpenClawAdapter {
             let response = await self.rpcRequest(
                 method: "exec.approval.resolve",
                 params: ["id": prompt.id, "decision": decision.rawValue])
-            await self.handleApprovalResolveResponse(response, promptId: prompt.id)
+            await self.handleApprovalResolveResponse(response, promptId: prompt.id, decision: decision.rawValue)
         }
         return true
     }
@@ -1484,13 +1485,19 @@ actor OpenClawAdapter {
             let response = await self.rpcRequest(
                 method: "plugin.approval.resolve",
                 params: ["id": prompt.id, "decision": decision.rawValue])
-            await self.handlePluginApprovalResolveResponse(response, promptId: prompt.id)
+            await self.handlePluginApprovalResolveResponse(response, promptId: prompt.id, decision: decision.rawValue)
         }
         return true
     }
 
-    private func handleApprovalResolveResponse(_ response: RPCResponse, promptId: String) {
-        guard !response.ok else { return }
+    private func handleApprovalResolveResponse(_ response: RPCResponse, promptId: String, decision: String) {
+        if response.ok {
+            // The RPC answer closes the wait even if the resolution push was lost.
+            if pendingApproval?.id == promptId {
+                handleGatewayEvent(.execApprovalResolved, rawEvent: nil, payload: ["id": promptId, "decision": decision])
+            }
+            return
+        }
         DaemonLogger.shared.error(
             "OpenClaw: exec.approval.resolve failed: "
             + "\(response.error?["message"] as? String ?? "unknown")")
@@ -1499,8 +1506,14 @@ actor OpenClawAdapter {
         abandonPendingApproval(reason: "No longer pending")
     }
 
-    private func handlePluginApprovalResolveResponse(_ response: RPCResponse, promptId: String) {
-        guard !response.ok else { return }
+    private func handlePluginApprovalResolveResponse(_ response: RPCResponse, promptId: String, decision: String) {
+        if response.ok {
+            // The RPC answer closes the wait even if the resolution push was lost.
+            if pendingPluginApproval?.id == promptId {
+                handleGatewayEvent(.pluginApprovalResolved, rawEvent: nil, payload: ["id": promptId, "decision": decision])
+            }
+            return
+        }
         DaemonLogger.shared.error(
             "OpenClaw: plugin.approval.resolve failed: "
             + "\(response.error?["message"] as? String ?? "unknown")")

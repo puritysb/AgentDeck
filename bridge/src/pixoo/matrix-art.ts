@@ -1,4 +1,4 @@
-import { paintDotPixels, BACKGROUND_PRESENTATION } from '@agentdeck/shared';
+import { paintDotPixels, defaultDotRGBA, BACKGROUND_PRESENTATION } from '@agentdeck/shared';
 import { paintOfficialFeatures } from './official-features.js';
 /** Canonical pixel art for both BLE runtimes. Swift consumes generated RLE frames
  * from this renderer, so eyes, official masks and motion cannot drift by platform. */
@@ -21,8 +21,8 @@ export const MATRIX_FACE_COLORS: Record<MatrixFace, string> = {
   waiting: UI.attn, choosing: UI.attn, reviewing: UI.attn, error: UI.error, done: UI.ok,
   arrival: UI.cyan, asked: UI.cyan, reply: UI.ok,
 };
-export const MATRIX_LAYOUT = { companionCountY: 27, companionLabelX: 1, companionSide: 24, companionX: 4, countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, backgroundDotStep: 3, maxCount: 99 };
-export const MATRIX_GLYPHS = ['summary', 'summary-error', 'neutral', ...Object.keys(OFFICIAL_DOT_GLYPHS)];
+export const MATRIX_LAYOUT = { companionCountY: 27, companionLabelX: 1, companionSide: 24, companionX: 4, companionY: 0, countX: 20, countColumns: 3, countY: 1, dotX: 1, dotY: 29, dotStep: 4, summaryStep: 8, zeroRowIntensity: .35, zeroCountIntensity: .4, dotIntensity: .7, digitStep: 4, backgroundDotStep: 3, maxCount: 99 };
+export const MATRIX_GLYPHS = ['summary', 'summary-error', 'neutral', 'dot', ...Object.keys(OFFICIAL_DOT_GLYPHS)];
 export function rgb(hex: string): number[] { return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)); }
 function painter(buf: Uint8Array, size: number) {
   return (x: number, y: number, color: string, brightness = 1) => {
@@ -208,6 +208,13 @@ export function renderCompanionBase(kind: MatrixCompanionKind, glyph: string, fr
   const active = ['working', 'background', 'delegating', 'asked', 'arrival', 'reply', 'done'].includes(kind);
   const bob = active ? [0,1,0,1][beat] : 0;
   const x0 = MATRIX_LAYOUT.companionX, y0 = bob, side = MATRIX_LAYOUT.companionSide;
+  if(glyph==='dot') {
+    const pearl=defaultDotRGBA(side);
+    for(let y=0;y<side;y++) for(let x=0;x<side;x++) {
+      const i=(y*side+x)*4;
+      if(pearl[i+3]) { const d=((y0+y)*32+x0+x)*3;out[d]=pearl[i];out[d+1]=pearl[i+1];out[d+2]=pearl[i+2]; }
+    }
+  }
   const mask = OFFICIAL_DOT_GLYPHS[glyph as OfficialDotGlyphName];
   if (mask) {
     const brand: Record<string, string> = { claudeCode: Brand.claudeCode, codex: Brand.codex,
@@ -218,7 +225,7 @@ export function renderCompanionBase(kind: MatrixCompanionKind, glyph: string, fr
       if (alpha>0) put(x0+x,y0+y,brand[glyph],alpha);
     }
     paintOfficialFeatures(out,32,glyph as OfficialDotGlyphName,x0,y0,side);
-  } else {
+  } else if(glyph!=='dot') {
     for (let y=7;y<20;y++) for (let x=9;x<23;x++) {
       if (x===9||x===22||y===7||y===19) put(x,y+bob,UI.hudSubtext,.7);
     }
@@ -355,7 +362,9 @@ export function renderMatrixScene(size: 11 | 32, scene: MatrixScene): Uint8Array
       });
     }
     if(c.hasError && c.kind !== 'error') { put(0,0,UI.error);put(1,1,UI.error);put(2,0,UI.error);put(0,2,UI.error);put(2,2,UI.error); }
-    return paintDotPixels(out,size,scene.dot,scene.dotNow);
+    if(c.glyph==='dot' && scene.dot?.appearance) paintDotPixels(out,size,scene.dot,scene.dotNow,
+      {x:MATRIX_LAYOUT.companionX+MATRIX_LAYOUT.companionSide/2,y:MATRIX_LAYOUT.companionY+MATRIX_LAYOUT.companionSide/2,size:MATRIX_LAYOUT.companionSide,beacon:true,shell:false});
+    return out;
   }
   const out = renderMatrixBase(size, scene.kind, scene.glyph, scene.frame);
   const put = painter(out, 32);
@@ -392,5 +401,5 @@ export function renderMatrixScene(size: 11 | 32, scene: MatrixScene): Uint8Array
     for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) put(x + dx, MATRIX_LAYOUT.dotY + dy, MATRIX_COLORS[kind], MATRIX_LAYOUT.dotIntensity);
     if (i === MATRIX_RULES.rosterDots - 1 && scene.roster.length > MATRIX_RULES.rosterDots) put(x, MATRIX_LAYOUT.dotY - 1, UI.hudText);
   });
-  return paintDotPixels(out, size, scene.dot, scene.dotNow);
+  return out;
 }

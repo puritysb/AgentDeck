@@ -90,7 +90,54 @@ English, Korean, and Japanese captions use `aquarium-180.{en,ko,ja}.vtt`.
 The player keeps controls, no autoplay, and `preload="none"`; stills load lazily.
 The Pages assembly copies the new MP4 and captions explicitly and the JPEGs via
 the existing photo copy step. Do not replace older dated footage with a new
-version label or composite new UI into the historical hardware photos.
+version label. Preserve the historical hardware photos unchanged. A user-requested
+composite belongs in a separate, clearly labeled derivative file with its original
+photograph and native screen input recorded; it is not physical-device evidence.
+
+## Current habitat media (November 2026)
+
+The shared navigation uses a styled language menu with full native names,
+localized helper text, a selected check, warm hover/focus states, and a native
+select only as its no-JavaScript fallback. The 44px trigger remains visible
+while links move to a separate scroll row on narrow screens. The menu is a
+viewport-clamped portal with keyboard navigation, Escape/Tab/outside dismissal,
+and focus restoration. Edit only `pages-nav.html` / `pages-nav.css`, then run
+`node scripts/sync-pages-nav.mjs`. Menu rows come from the one locale option
+list; navigation translations and accessible names are shared too. The design
+viewer clones the closed control and open list as a static specimen.
+
+Check all six public surfaces and every locale at 320–1440 CSS pixels, including
+opened-menu bounds, keyboard/touch selection, long labels and section anchors.
+The actual navigation height drives fragment clearance. Language options must
+match the design catalog; expansion requires translation/fallback and layout
+coverage. Detailed menu geometry and states live in `DESIGN.md` §1.5.
+
+`docs/media/current/` contains the November 1 native macOS/Android validation
+captures and source-identified ESP32 host frames. `manifest.json` records each
+asset's evidence type, source revision, fixture, dimensions, SHA-256, and
+transformation. The overview and Devices catalog distinguish app captures,
+firmware host renders, and the AI-assisted 86 Box composite. Store release
+availability is not implied. Original photographs and the two earlier video
+stories remain intact.
+
+`shared-home.mp4` is the connected Lenovo tablet's 59.6-second, silent native
+screen recording, transcoded to H.264/yuv420p at 30 fps without a speed change or
+UI retouching. `shared-home-preview.gif` is an 8-second excerpt (12–20 seconds),
+360 pixels wide at 10 fps; the full recording remains the evidence. Captions in
+English, Korean and Japanese identify the fixture, swimming, and return. PNG
+app captures and firmware frames are losslessly recompressed. Do not use a host
+frame as proof of e-ink refresh, ghosting, or physical panel image quality.
+
+The AI composite is a new derivative of `box86.jpg`, using the actual 480×480
+firmware render as a screen reference. Its exact image-generation prompt and
+input hashes are recorded in the manifest. It is a visual presentation sample;
+compare it with the unmodified render, and retain the original photo.
+
+Live Preview offers seven agent kinds plus the separate Dot report resident.
+Dot uses a `DotDeckSnapshot`, never a fake session; states map to awaiting
+activity, working, needs-you and host-stopped. Firmware capture uses the actual
+TTGO terrarium page, real knob navigation for Dot, and the IPS10 project pager
+to expose the selected agent. Browser layout studies are not native 3D previews.
 
 See [testing.md](testing.md) for the full testing reference.
 

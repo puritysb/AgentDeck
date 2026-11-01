@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, appendFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { CODEX_OTEL_METADATA_RULES } from '@agentdeck/shared';
@@ -55,15 +55,67 @@ describe('codex rollout response reader', () => {
     expect(await codexRolloutIsSubagent(SID, root)).toBeUndefined();
   });
 
-  it('reads automatic review from the actual hook rollout beyond the response tail', () => {
+  it('reads automatic review from the actual hook rollout beyond the response tail', async () => {
     const path = writeRollout([
       { type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'auto_review' } },
       { type: 'response_item', payload: { output: 'x'.repeat(200_000) } },
     ]);
-    expect(codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBe('auto_review');
-    expect(codexApprovalReviewerForHook({ transcript_path: path, turn_id: 'other' })).toBeUndefined();
-    expect(codexApprovalReviewerForHook({ transcript_path: join(root, 'missing') })).toBeUndefined();
-    expect(codexApprovalReviewerForHook({ transcript_path: path, approvals_reviewer: 'user' })).toBe('user');
+    expect(await codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBe('auto_review');
+    expect(await codexApprovalReviewerForHook({ transcript_path: path, turn_id: 'other' })).toBeUndefined();
+    expect(await codexApprovalReviewerForHook({ transcript_path: join(root, 'missing') })).toBeUndefined();
+    expect(await codexApprovalReviewerForHook({ transcript_path: path, approvals_reviewer: 'user' })).toBe('user');
+  });
+
+  it('finds either reviewer beyond multiple windows, including a single huge tool record', async () => {
+    const padding = JSON.stringify({ type: 'response_item', payload: { type: 'function_call_output',
+      output: 'x'.repeat(2 * 8 * 1024 * 1024 + 4096) } }) + '\n';
+    for (const reviewer of ['user', 'auto_review']) {
+      const path = writeRollout([{ type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: reviewer } }]);
+      appendFileSync(path, padding);
+      expect(await codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBe(reviewer);
+    }
+  });
+
+  it('retains a complete settings record that itself crosses several windows', async () => {
+    const path = writeRollout([{ type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'user',
+      developer_instructions: 'x'.repeat(2 * 8 * 1024 * 1024 + 4096) } }]);
+    expect(await codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBe('user');
+  });
+
+  it('stops at the newest unknown or different-turn record instead of reviving an older user', async () => {
+    const gap = JSON.stringify({ type: 'response_item', payload: { output: 'x'.repeat(9 * 1024 * 1024) } });
+    const cases = [
+      { type: 'turn_context', payload: { turn_id: 't1' } },
+      { type: 'turn_context', payload: { turn_id: 't2', approvals_reviewer: 'user' } },
+      { type: 'event_msg', payload: { type: 'thread_settings_applied', thread_settings: {} } },
+    ];
+    for (const latest of cases) {
+      const path = writeRollout([
+        { type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'user' } }, latest,
+      ]);
+      appendFileSync(path, gap + '\n');
+      expect(await codexApprovalReviewerForHook({ transcript_path: path, turn_id: 't1' })).toBeUndefined();
+    }
+  });
+
+  it('reads append, same-size rewrite, truncation and replacement afresh', async () => {
+    const path = writeRollout([{ type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'user' } }]);
+    const hook = { transcript_path: path, turn_id: 't1' };
+    expect(await codexApprovalReviewerForHook(hook)).toBe('user');
+    appendFileSync(path, JSON.stringify({ type: 'event_msg', payload: { type: 'thread_settings_applied',
+      thread_settings: { approvals_reviewer: 'auto_review' } } }) + '\n');
+    expect(await codexApprovalReviewerForHook(hook)).toBe('auto_review');
+    const user = JSON.stringify({ type: 'turn_context', payload: { turn_id: 't1', approvals_reviewer: 'user' } });
+    const auto = user.replace('user', 'auto_review');
+    writeFileSync(path, user.padEnd(auto.length, ' ') + '\n');
+    expect(await codexApprovalReviewerForHook(hook)).toBe('user');
+    writeFileSync(path, auto + '\n');
+    expect(await codexApprovalReviewerForHook(hook)).toBe('auto_review');
+    writeFileSync(path, '');
+    expect(await codexApprovalReviewerForHook(hook)).toBeUndefined();
+    rmSync(path);
+    writeFileSync(path, user + '\n');
+    expect(await codexApprovalReviewerForHook(hook)).toBe('user');
   });
 
   it('locates a rollout by the session uuid embedded in the filename', () => {

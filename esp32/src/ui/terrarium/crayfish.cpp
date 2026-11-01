@@ -1,4 +1,5 @@
 #include "crayfish.h"
+#include "renderer.h"
 #include "draw.h"
 #include "creature_glyphs_generated.h"
 #include "../theme.h"
@@ -18,17 +19,23 @@ constexpr float SVG_VB = 120.0f;
 constexpr float HEARTBEAT_PERIOD = 4.0f;
 
 namespace Crayfish {
+static float currentX=Layout::CfHomeX,currentY=Layout::CfSittingY;
+float getX(){return currentX;}
+float getY(){return currentY;}
 
 void init() {}
 
-void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
+void render(uint16_t* buf, int w, int h, float time, CrayfishState state, bool needsInput) {
     if (state == CrayfishState::DORMANT) return;
 
     // Body size from layout config
-    float bodyW = w * Layout::CfWidthFrac;
+    float bodyW = w * Layout::CfWidthFrac * Terrarium::residentScale();
     float scale = bodyW / SVG_VB;
 
-    int cx = (int)(Layout::CfHomeX * w);
+    float x=Layout::CfHomeX,y=state==CrayfishState::ROUTING ? Layout::CfRoutingY : Layout::CfSittingY;
+    Terrarium::placeResident(x,y,bodyW*.65f,bodyW*.65f,state==CrayfishState::ROUTING || needsInput,currentX,currentY);
+    currentX=x;currentY=y;
+    int cx = (int)(x * w);
     int baseY;
 
     uint32_t shellColor = Theme::CrayfishShell;
@@ -38,7 +45,7 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
 
     switch (state) {
         case CrayfishState::SITTING: {
-            baseY = (int)(Layout::CfSittingY * h);
+            baseY = (int)(y * h);
             // Nearly still — matches Android's 0.008f factor (imperceptible)
             vertBob = fastSin(time * 0.5f) * bodyW * 0.008f;
 
@@ -58,7 +65,7 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
         }
 
         case CrayfishState::ROUTING: {
-            baseY = (int)(Layout::CfRoutingY * h);
+            baseY = (int)(y * h);
             vertBob = fastSin(time * 3.0f) * bodyW * 0.05f;
 
             // Body color pulse
@@ -88,7 +95,7 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
         }
 
         case CrayfishState::SICK: {
-            baseY = (int)(Layout::CfSittingY * h) + (int)(bodyW * 0.08f);
+            baseY = (int)(y * h) + (int)(bodyW * 0.08f);
             vertBob = fastSin(time * 0.7f) * bodyW * 0.02f;
             alpha = 178;
             shellColor = lerpColor(Theme::CrayfishShell, 0x8B7B7B, 0.55f);
@@ -114,6 +121,10 @@ void render(uint16_t* buf, int w, int h, float time, CrayfishState state) {
     Draw::featureLayers(CreatureGlyphs::OPENCLAW_MARK_FEATURES, CreatureGlyphs::OPENCLAW_MARK_FEATURE_COUNT,
                         CreatureGlyphs::OPENCLAW_MARK_W, CreatureGlyphs::OPENCLAW_MARK_H,
                         bodyX0, bodyY0, bodyBox, bodyBox, alpha);
+    if(needsInput || state==CrayfishState::SICK)
+        Draw::attention(cx+int(bodyW*.6f),cy,max(4,int(bodyW*.22f)),
+            state==CrayfishState::SICK ? Theme::StatusRed : Theme::StatusAmber,Theme::DeepSea);
+
 
 }
 

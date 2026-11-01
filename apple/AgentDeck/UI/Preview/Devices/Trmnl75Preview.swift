@@ -35,6 +35,7 @@
 //     single ticker line. The host-display-sleep card was removed — TRMNL 7.5" is
 //     always USB-powered and keeps the dashboard retained instead.
 //
+// Dot report rows are read-only; the firmware never offers another session's options on them.
 // Sync pins (below) are the git blob hashes of the origin files at the last
 // re-sync; scripts/check-preview-mirror-sync.mjs verifies they still match and
 // fails CI when the firmware drifts ahead of this mirror. Update this view and
@@ -47,7 +48,7 @@
 // masked EPD47 bands, NM gate, "as of" band on EPD47/NM only, push delivery)
 // does not change the TRMNL dashboard this view mirrors. The OFFLINE subtitle
 // separators became ASCII; this mirror shows only "Searching for AgentDeck…".
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp c0dccc2576b63256386abe72e70bfb969f3c4fb1
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 189d42952a59ddb24c2dd91919ea970688645c9d
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI
@@ -114,12 +115,6 @@ struct Trmnl75Preview: View {
                         .minimumScaleFactor(0.72)
                         .foregroundStyle(ink.opacity(0.8))
                 }
-                #if AGENTDECK_DOT_PREVIEW
-                if let dot = selection.live?.source.dot, dot.inhabitsHabitat(at: Int(Date().timeIntervalSince1970 * 1000)) {
-                    DotPaperCharacter(appearance: dot.appearance).frame(width: 24, height: 24)
-                    Text(DotAppearanceRules.compactLabels[dot.effectiveCode]).font(.system(size: 8)).foregroundStyle(ink).lineLimit(1)
-                }
-                #endif
                 linkChip
             }
             // Print-style double rule.
@@ -175,8 +170,29 @@ struct Trmnl75Preview: View {
     /// boardCountSummary: counts by state in the reader's words. Sessions
     /// beyond the rows on hand count as idle, like the firmware's
     /// `totalSessions - rowCount`.
+    private var displayResidents: [PreviewDisplaySession] {
+        var result=selection.displaySessions
+        #if AGENTDECK_DOT_PREVIEW
+        if let dot=selection.live?.source.dot, dot.configured {
+            let phase=dot.effectiveCode
+            result.append(PreviewDisplaySession(id:"habitat:dot",agent:.hermes,projectName:"Dot",
+                state:phase == 2 ? .processing : phase == 3 || phase == 5 ? .awaitingPrompt : .idle,
+                activity:DotAppearanceRules.compactLabels[phase]))
+        }
+        #endif
+        return result
+    }
+    @ViewBuilder private func residentGlyph(_ session:PreviewDisplaySession,size:CGFloat,tint:Color) -> some View {
+        #if AGENTDECK_DOT_PREVIEW
+        if session.id == "habitat:dot" { DotPaperCharacter(appearance:selection.live?.source.dot?.appearance).frame(width:size,height:size) }
+        else { PreviewCreatureGlyph(agent:session.agent,state:session.state,size:size,tintOverride:tint,monochrome:true) }
+        #else
+        PreviewCreatureGlyph(agent:session.agent,state:session.state,size:size,tintOverride:tint,monochrome:true)
+        #endif
+    }
+
     private var sessionCountLabel: String {
-        let sessions = selection.displaySessions
+        let sessions = displayResidents
         let input = sessions.filter { $0.state == .awaitingPrompt }.count
         let working = sessions.filter { $0.state == .processing }.count
         let idle = sessions.filter { $0.state == .idle }.count
@@ -199,7 +215,7 @@ struct Trmnl75Preview: View {
         // cards from `prioritizedSessionOrder` and simply stops at
         // `layout.capacity`, so what a full page drops is always the quietest
         // thing, never whatever happened to sort last.
-        let ordered = prioritized(selection.displaySessions)
+        let ordered = prioritized(displayResidents)
         // usesIdleLine: cards for the active sessions only, quiet ones on one
         // line below; with nothing active (or nothing quiet) every row is a card.
         let active = ordered.filter(isActive)
@@ -275,8 +291,7 @@ struct Trmnl75Preview: View {
                     .foregroundStyle(ink)
                 ForEach(quiet) { session in
                     HStack(spacing: 3) {
-                        PreviewCreatureGlyph(agent: session.agent, state: session.state,
-                                             size: 12, tintOverride: ink, monochrome: true)
+                        residentGlyph(session,size:12,tint:ink)
                         Text(session.projectName)
                             .font(.system(size: 9))
                             .foregroundStyle(ink)
@@ -297,13 +312,7 @@ struct Trmnl75Preview: View {
             ? BackgroundDevicePolicy.compact(session.backgroundTaskCount, standby: session.backgroundStandbyCount) : nil
         let detail = background.map { $0 + " / " } ?? ""
         return HStack(spacing: 8) {
-            PreviewCreatureGlyph(
-                agent: session.agent,
-                state: state,
-                size: 34,
-                tintOverride: cardInk,
-                monochrome: true
-            )
+            residentGlyph(session,size:34,tint:cardInk)
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.projectName)
                     .font(.system(size: 12, weight: .bold))

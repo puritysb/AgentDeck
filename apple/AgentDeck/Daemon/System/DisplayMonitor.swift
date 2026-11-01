@@ -3,7 +3,7 @@
 //
 // Signals fused into a single `displayOn` boolean for downstream consumers
 // (Pixoo, D200H, ESP32, Android, WS clients):
-//   1. Display hardware asleep (CGDisplayIsAsleep polling, 2s)
+//   1. NSWorkspace display sleep/wake notifications (2s CG polling repairs misses)
 //   2. Screen locked (com.apple.screenIsLocked DistributedNotification)
 //   3. Screensaver running (com.apple.screensaver.didstart DistributedNotification)
 //   4. Fast User Switching — session resigned active (NSWorkspace)
@@ -17,6 +17,14 @@ import AppKit
 import CoreGraphics
 
 actor DisplayMonitor {
+    private let workspaceNotifications: NotificationCenter
+    private let readDisplayAsleep: @Sendable () -> Bool
+
+    init(workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter,
+         readDisplayAsleep: @escaping @Sendable () -> Bool = { CGDisplayIsAsleep(CGMainDisplayID()) != 0 }) {
+        self.workspaceNotifications = workspaceNotifications
+        self.readDisplayAsleep = readDisplayAsleep
+    }
     private var isDisplayAsleep = false
     private var isScreenLocked = false
     private var isScreensaverActive = false
@@ -27,24 +35,31 @@ actor DisplayMonitor {
     private var _onStateChanged: (@Sendable (Bool) -> Void)?
 
     private var observerHandles: [NSObjectProtocol] = []
+    private var generation = 0
 
     func setOnStateChanged(_ handler: @escaping @Sendable (Bool) -> Void) {
         _onStateChanged = handler
     }
 
     func start() {
+        guard pollTask == nil else { return }
+        generation += 1
+        installPresenceObservers()
+        checkDisplayState()
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                do { try await Task.sleep(for: .seconds(2)) }
+                catch { return }
                 await self?.checkDisplayState()
             }
         }
-        installPresenceObservers()
         DaemonLogger.shared.debug("Display", "Monitor started (display+lock+screensaver+session)")
     }
 
     func stop() {
+        generation += 1
         pollTask?.cancel()
+        pollTask = nil
         removePresenceObservers()
     }
 
@@ -73,8 +88,7 @@ actor DisplayMonitor {
     // MARK: - Poll (hardware display)
 
     private func checkDisplayState() {
-        let mainDisplay = CGMainDisplayID()
-        let isAsleep = CGDisplayIsAsleep(mainDisplay) != 0
+        let isAsleep = readDisplayAsleep()
         if isAsleep != isDisplayAsleep {
             isDisplayAsleep = isAsleep
             emitIfChanged(reason: "display\(isAsleep ? "Sleep" : "Wake")")
@@ -85,7 +99,18 @@ actor DisplayMonitor {
 
     private func installPresenceObservers() {
         let dnc = DistributedNotificationCenter.default()
-        let wsc = NSWorkspace.shared.notificationCenter
+        let wsc = workspaceNotifications
+        let epoch = generation
+        let displaySleep = wsc.addObserver(
+            forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { await self?.setDisplayAsleep(true, generation: epoch) }
+        }
+        let displayWake = wsc.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            Task { await self?.setDisplayAsleep(false, generation: epoch) }
+        }
 
         let lockObs = dnc.addObserver(
             forName: Notification.Name("com.apple.screenIsLocked"),
@@ -130,12 +155,12 @@ actor DisplayMonitor {
             Task { await self?.setSessionInactive(false) }
         }
 
-        observerHandles = [lockObs, unlockObs, ssStartObs, ssStopObs, sessionOut, sessionIn]
+        observerHandles = [displaySleep, displayWake, lockObs, unlockObs, ssStartObs, ssStopObs, sessionOut, sessionIn]
     }
 
     private func removePresenceObservers() {
         let dnc = DistributedNotificationCenter.default()
-        let wsc = NSWorkspace.shared.notificationCenter
+        let wsc = workspaceNotifications
         for handle in observerHandles {
             dnc.removeObserver(handle)
             wsc.removeObserver(handle)
@@ -147,6 +172,12 @@ actor DisplayMonitor {
         guard locked != isScreenLocked else { return }
         isScreenLocked = locked
         emitIfChanged(reason: locked ? "screenLock" : "screenUnlock")
+    }
+
+    private func setDisplayAsleep(_ asleep: Bool, generation epoch: Int) {
+        guard epoch == generation, pollTask != nil, asleep != isDisplayAsleep else { return }
+        isDisplayAsleep = asleep
+        emitIfChanged(reason: asleep ? "workspaceDisplaySleep" : "workspaceDisplayWake")
     }
 
     private func setScreensaver(_ active: Bool) {

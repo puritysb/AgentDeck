@@ -77,7 +77,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float bodyRadius = w * Layout::OctBodyRadiusFrac * scaleFactor;
+    float bodyRadius = w * Layout::OctBodyRadiusFrac * scaleFactor * Terrarium::residentScale();
     // The robot occupies the full 24×24 viewBox; map it into a square box so the
     // on-screen footprint matches the old block glyph (~bodyRadius*2.2 wide).
     float glyphW = bodyRadius * 2.2f;
@@ -126,18 +126,16 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY < Layout::OctSwimMinY) renderY = Layout::OctSwimMinY;
         if (renderY > Layout::OctSwimMaxY) renderY = Layout::OctSwimMaxY;
         // Track for particles/bubbles
-        currentX[idx] = renderX;
-        currentY[idx] = renderY;
     } else {
         renderX = homeX;
         renderY = homeY;
-        currentX[idx] = homeX;
-        currentY[idx] = homeY;
     }
 
     float t = time + phaseOffset[idx];
 
     // Animation offsets
+    Terrarium::placeResident(renderX,renderY,bodyRadius*1.5f,bodyRadius*1.5f,state==CreatureState::WORKING || state==CreatureState::ASKING,currentX[idx],currentY[idx]);
+    currentX[idx]=renderX;currentY[idx]=renderY;
     float breathBob = 0;
     float bodyAlpha = 1.0f;
     uint32_t bodyColor = Theme::ClaudeBody;
@@ -193,20 +191,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         int by = cy;  // Body center height — clear of name tag above
         int br = (int)(bodyRadius * 0.6f * bubblePulse);
 
-        Draw::circle(bx, by, br, 0xFFFFFF, 200);
-        // "?" text — simple pixel art
-        int qx = bx - 2, qy = by - 3;
-        // Simplified "?" shape
-        Draw::pixelA(qx + 1, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy + 1, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 2, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 4, Theme::DeepSea, 255);
-
-        // Tail triangle — points from bubble to body right edge
-        Draw::line(bx - br / 3, by + br / 2, cx + (int)(bodyRadius * 0.5f),
-                   cy, 0xFFFFFF, 160);
+        Draw::attention(bx, by, br, Theme::StatusAmber, Theme::DeepSea);
     }
 
 #if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)
@@ -225,8 +210,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
     if (!showName) return;
 

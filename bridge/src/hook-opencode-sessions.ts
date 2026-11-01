@@ -20,7 +20,8 @@
  * never two creatures.
  */
 
-import { OPENCODE_PENDING_REQUEST_LIMIT } from '@agentdeck/shared';
+import { OPENCODE_PERMISSION_CHOICES, OPENCODE_PENDING_REQUEST_LIMIT, OPENCODE_QUESTION_RULES, openCodeQuestionPrompt, type OpenCodeQuestionPrompt, type PromptOption } from '@agentdeck/shared';
+import { askEchoMatches } from './ask-gate.js';
 import type { ObservedSession } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
 
@@ -34,10 +35,14 @@ export interface HookOpenCodeSession {
   sessionId: string;
   projectName: string;
   cwd?: string;
+  pid?: number;
   state: HookOpenCodeState;
   currentTool?: string;
   /** Permission prompt text while `awaiting_permission`. */
   question?: string;
+  options?: PromptOption[];
+  liveAnswerable?: boolean;
+  questionDetail?: string;
   /** `ocperm:<sid>:<permissionId>` — the daemon's `permission_decision`
    *  route recognises this prefix and answers through the plugin queue. */
   requestId?: string;
@@ -47,12 +52,16 @@ export interface HookOpenCodeSession {
 
 export interface HookOpenCodePayload {
   sessionId?: string;
+  pid?: number;
   cwd?: string;
   projectName?: string;
   toolName?: string;
   permissionId?: string;
   questionId?: string;
   title?: string;
+  questions?: unknown;
+  questionAnswerable?: boolean;
+  replyFailed?: boolean;
 }
 
 const OPENING_EVENTS = new Set([
@@ -65,7 +74,11 @@ export function openCodePermissionRequestId(sessionId: string, permissionId: str
 }
 
 export class HookOpenCodeSessions {
-  private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string }>>();
+  constructor(private readonly processAlive: (pid: number) => boolean | undefined = (pid) => {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'ESRCH' ? false : undefined; }
+  }) {}
+  private readonly waits = new Map<string, Map<string, { kind: string; id: string; title: string; prompt?: OpenCodeQuestionPrompt; answerable?: boolean; sending?: boolean; replyError?: boolean }>>();
   private readonly sessions = new Map<string, HookOpenCodeSession>();
 
   /** Fired when a hook changed something worth broadcasting. */
@@ -94,6 +107,7 @@ export class HookOpenCodeSessions {
     };
     const before = JSON.stringify(session);
     session.lastHookAt = now;
+    if (Number.isSafeInteger(payload.pid) && payload.pid! > 1) session.pid = payload.pid;
 
     if (!session.cwd && payload.cwd) {
       session.cwd = payload.cwd;
@@ -130,14 +144,18 @@ export class HookOpenCodeSessions {
         const waits = this.waits.get(sessionId) ?? new Map();
         const key = `${kind}:${id}`;
         if (waits.size < OPENCODE_PENDING_REQUEST_LIMIT || waits.has(key)) {
-          waits.set(key, { kind, id, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
+          const old = waits.get(key);
+          waits.set(key, { kind, id, prompt: kind === 'question' ? openCodeQuestionPrompt(payload.questions) : undefined,
+            answerable: payload.questionAnswerable === true, sending: payload.replyFailed ? false : old?.sending,
+            replyError: payload.replyFailed || old?.replyError, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, OPENCODE_QUESTION_RULES.maxText) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
         }
         this.waits.set(sessionId, waits);
         break;
       }
       case 'opencode_permission_replied':
       case 'opencode_question_replied':
-      case 'opencode_question_rejected': {
+      case 'opencode_question_rejected':
+      case 'opencode_question_unavailable': {
         const kind = event === 'opencode_permission_replied' ? 'permission' : 'question';
         const id = kind === 'permission' ? payload.permissionId : payload.questionId;
         if (id && this.waits.get(sessionId)?.delete(`${kind}:${id}`)) {
@@ -153,7 +171,12 @@ export class HookOpenCodeSessions {
     const pending = this.waits.get(sessionId)?.values().next().value;
     if (pending) {
       session.state = pending.kind === 'permission' ? 'awaiting_permission' : 'awaiting_option';
-      session.question = pending.title;
+      session.question = pending.prompt?.question ?? pending.title;
+      session.options = pending.kind === 'permission' ? OPENCODE_PERMISSION_CHOICES.map(({ index, label }) => ({ index, label })) : pending.prompt?.options;
+      session.questionDetail = pending.sending ? OPENCODE_QUESTION_RULES.sendingText
+        : pending.replyError ? OPENCODE_QUESTION_RULES.unconfirmedText : undefined;
+      session.liveAnswerable = pending.kind === 'permission' || (pending.answerable === true
+        && pending.prompt?.replyable === true && pending.sending !== true);
       session.requestId = pending.kind === 'permission' ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
     }
     this.sessions.set(sessionId, session);
@@ -163,18 +186,57 @@ export class HookOpenCodeSessions {
     return changed;
   }
 
+  answerPermission(sessionId: string, requestId: string, decision: unknown,
+    enqueue: (permissionId: string, decision: 'allow' | 'deny') => boolean): boolean {
+    const wait = this.waits.get(sessionId)?.values().next().value;
+    if (!wait || wait.kind !== 'permission' || requestId !== openCodePermissionRequestId(sessionId, wait.id)
+      || (decision !== 'allow' && decision !== 'deny')) return false;
+    return enqueue(wait.id, decision);
+  }
+
+  answerOption(sessionId: string, index: unknown, echo: unknown,
+    question: (questionId: string, answers: string[][]) => boolean,
+    permission: (permissionId: string, decision: 'allow' | 'deny') => boolean): boolean {
+    const wait = this.waits.get(sessionId)?.values().next().value;
+    if (wait?.kind !== 'permission') return this.answerQuestion(sessionId, index, echo, question);
+    const choice = OPENCODE_PERMISSION_CHOICES.find(c => c.index === index);
+    if (!choice || typeof echo !== 'string' || !askEchoMatches(echo, wait.title)) return false;
+    return this.answerPermission(sessionId, openCodePermissionRequestId(sessionId, wait.id), choice.decision, permission);
+  }
+
+  answerQuestion(sessionId: string, index: unknown, echo: unknown,
+    enqueue: (questionId: string, answers: string[][]) => boolean): boolean {
+    const session = this.sessions.get(sessionId);
+    const wait = this.waits.get(sessionId)?.values().next().value;
+    if (!session || !wait || wait.kind !== 'question' || !wait.prompt?.replyable
+      || !wait.answerable || wait.sending || !Number.isInteger(index) || typeof echo !== 'string'
+      || !askEchoMatches(echo, wait.prompt.question)) return false;
+    const option = wait.prompt.options.find(o => o.index === index);
+    if (!option || !enqueue(wait.id, [[option.label]])) return false;
+    wait.sending = true;
+    wait.replyError = false;
+    session.questionDetail = OPENCODE_QUESTION_RULES.sendingText;
+    session.liveAnswerable = false;
+    this.onChanged?.();
+    return true;
+  }
+
   snapshot(): HookOpenCodeSession[] {
     return [...this.sessions.values()];
   }
 
   private clearPermission(session: HookOpenCodeSession): void {
     session.question = undefined;
+    session.questionDetail = undefined;
+    session.options = undefined;
+    session.liveAnswerable = false;
     session.requestId = undefined;
   }
 
   private reap(now: number): void {
     for (const [sessionId, session] of this.sessions) {
-      if (now - session.lastHookAt > SILENT_TTL_MS) {
+      if ((session.pid !== undefined && this.processAlive(session.pid) === false)
+        || now - session.lastHookAt > SILENT_TTL_MS) {
         this.sessions.delete(sessionId);
         this.waits.delete(sessionId);
       }
@@ -216,7 +278,7 @@ export class HookOpenCodeSessions {
       kept.push({
         id: `observed:opencode:${session.sessionId}`,
         port: 0,
-        pid: 0,
+        pid: session.pid ?? 0,
         projectName: session.projectName || (session.cwd ? resolveProjectNameFromCwdCached(session.cwd) : 'OpenCode'),
         agentType: 'opencode',
         alive: true,
@@ -226,7 +288,10 @@ export class HookOpenCodeSessions {
         startedAt: new Date(session.startedAt).toISOString(),
         currentTask: session.currentTool,
         ...(session.question ? { question: session.question } : {}),
+        questionDetail: session.questionDetail ?? '',
         ...(session.requestId ? { requestId: session.requestId } : {}),
+        options: session.options ?? [],
+        liveAnswerable: session.liveAnswerable === true,
       } as ObservedSession);
     }
     return kept;

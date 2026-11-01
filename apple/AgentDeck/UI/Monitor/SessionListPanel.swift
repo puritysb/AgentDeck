@@ -134,6 +134,12 @@ struct SessionListPanel: View {
                 }
             }
 
+            #if AGENTDECK_DOT_PREVIEW
+            if let dot=stateHolder.state.dot, dot.configured {
+                DotSurfaceView(snapshot:dot,style:.compact)
+            }
+            #endif
+
             // Worker count
             if let count = stateHolder.state.workerSessionCount, count > 0 {
                 Text("Workers: \(count)")

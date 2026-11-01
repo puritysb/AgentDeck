@@ -573,23 +573,7 @@ internal fun EinkDashboardChromeBar(
                 }
             }
         }
-        state.dot?.takeIf { it.configured }?.let { dot ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                dev.agentdeck.ui.monitor.DotPaperGlyph(dot)
-                val label = dev.agentdeck.net.DotSurfaceRules.labels[dot.effectiveCode(System.currentTimeMillis())]
-                Text(
-                    text = "Dot · $label",
-                    fontSize = 11.sp,
-                    lineHeight = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+
     }
 }
 

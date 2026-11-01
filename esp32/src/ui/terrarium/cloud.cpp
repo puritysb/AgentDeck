@@ -73,7 +73,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float baseRadius = w * Layout::CloudRadiusFrac * scaleFactor;
+    float baseRadius = w * Layout::CloudRadiusFrac * scaleFactor * Terrarium::residentScale();
 
     // Calculate home position — wider spread for more creatures
     float homeX;
@@ -117,18 +117,16 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderX > Layout::CloudSwimMaxX) renderX = Layout::CloudSwimMaxX;
         if (renderY < Layout::CloudSwimMinY) renderY = Layout::CloudSwimMinY;
         if (renderY > Layout::CloudSwimMaxY) renderY = Layout::CloudSwimMaxY;
-        currentX[idx] = renderX;
-        currentY[idx] = renderY;
     } else {
         renderX = homeX;
         renderY = homeY;
-        currentX[idx] = homeX;
-        currentY[idx] = homeY;
     }
 
     float t = time + phaseOffset[idx];
 
     // Animation parameters
+    Terrarium::placeResident(renderX,renderY,baseRadius*1.5f,baseRadius*1.5f,state==CreatureState::WORKING || state==CreatureState::ASKING,currentX[idx],currentY[idx]);
+    currentX[idx]=renderX;currentY[idx]=renderY;
     float breathBob = 0;
     float bodyAlpha = 1.0f;
     uint32_t bodyColor = Theme::CloudBody;
@@ -184,19 +182,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         int by = cy;
         int br = (int)(baseRadius * 0.5f * bubblePulse);
 
-        Draw::circle(bx, by, br, 0xFFFFFF, 200);
-        // "?" text
-        int qx = bx - 2, qy = by - 3;
-        Draw::pixelA(qx + 1, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy + 1, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 2, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 4, Theme::DeepSea, 255);
-
-        // Tail pointing back to cloud
-        Draw::line(bx - br / 3, by + br / 2, cx + (int)(baseRadius * 0.6f),
-                   cy, 0xFFFFFF, 160);
+        Draw::attention(bx, by, br, Theme::StatusAmber, Theme::DeepSea);
     }
 
 #if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)
@@ -212,8 +198,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
     if (!showName) return;
 

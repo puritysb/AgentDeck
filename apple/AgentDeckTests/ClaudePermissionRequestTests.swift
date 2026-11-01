@@ -11,6 +11,23 @@ import XCTest
 @testable import AgentDeck
 
 final class ClaudePermissionRequestTests: XCTestCase {
+    func testTerminalHooksPreventLateAttentionResurrection() {
+        var lifecycle = ClaudeAttentionLifecycle()
+        XCTAssertTrue(lifecycle.admit(event: "PermissionNotification", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "stop", sessionId: "a"))
+        XCTAssertFalse(lifecycle.admit(event: "PermissionNotification", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "notification", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "PermissionNotification", sessionId: "b"))
+        XCTAssertTrue(lifecycle.admit(event: "user_prompt_submit", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "PermissionNotification", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "session_end", sessionId: "a"))
+        for event in ["tool_start", "PermissionNotification", "user_prompt_submit"] {
+            XCTAssertFalse(lifecycle.admit(event: event, sessionId: "a"))
+        }
+        XCTAssertTrue(lifecycle.admit(event: "session_start", sessionId: "a"))
+        XCTAssertTrue(lifecycle.admit(event: "PermissionNotification", sessionId: "a"))
+    }
+
     private typealias Signal = DaemonServer.ClaudePermissionPromptSignal
 
     private func question(

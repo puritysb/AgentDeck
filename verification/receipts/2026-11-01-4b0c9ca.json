@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-01T13:55:30.121Z",
+  "finished_at": "2026-11-01T13:56:42.437Z",
+  "duration_ms": 72316,
+  "commit": "4b0c9ca7098c6170b6ecbe91f10c6252e7d88e78",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "vitest-coverage",
+      "gate": "vitest",
+      "name": "Vitest, whole suite + coverage floor",
+      "status": "pass",
+      "duration_ms": 46010
+    },
+    {
+      "id": "docs",
+      "gate": "design-docs",
+      "name": "Markdown links, anchors and the AGENTS.md budget",
+      "status": "pass",
+      "duration_ms": 600
+    },
+    {
+      "id": "design-catalog",
+      "gate": "design-docs",
+      "name": "Design-system catalog and translations",
+      "status": "pass",
+      "duration_ms": 522
+    },
+    {
+      "id": "devlog",
+      "gate": "design-docs",
+      "name": "Development-log entries",
+      "status": "pass",
+      "duration_ms": 532
+    },
+    {
+      "id": "apple-cloudkit-macos",
+      "gate": "apple-unit",
+      "name": "macOS CloudKit PoC deterministic persistence + transport XCTest",
+      "status": "pass",
+      "duration_ms": 14425
+    },
+    {
+      "id": "apple-cloudkit-ios",
+      "gate": "apple-unit",
+      "name": "iOS CloudKit PoC unsigned companion build",
+      "status": "pass",
+      "duration_ms": 10181
+    }
+  ]
+}

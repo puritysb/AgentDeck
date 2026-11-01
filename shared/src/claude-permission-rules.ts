@@ -42,6 +42,38 @@
 /** Exact legacy Notification sentence; structured notification_type takes priority. */
 export const CLAUDE_PERMISSION_NOTIFICATION_PATTERN = '^Claude needs your permission to use [^\\r\\n]+[.!]?$';
 
+/** Terminal hooks outrank delayed permission notifications. Unknown sessions
+ * remain admissible after a daemon restart; only an observed boundary blocks. */
+export const CLAUDE_ATTENTION_LIFECYCLE = {
+  maxSessions: 4096,
+  events: {
+    SessionStart: 'session_start', UserPromptSubmit: 'user_prompt_submit',
+    PreToolUse: 'tool_start', Stop: 'stop', SessionEnd: 'session_end',
+    Notification: 'notification', PermissionNotification: 'permission_notification',
+  },
+} as const;
+
+export class ClaudeAttentionLifecycle {
+  private readonly terminal = new Map<string, 'stopped' | 'ended'>();
+
+  admit(event: string, sessionId: string): boolean {
+    const normalized = CLAUDE_ATTENTION_LIFECYCLE.events[event as keyof typeof CLAUDE_ATTENTION_LIFECYCLE.events] ?? event;
+    const prior = this.terminal.get(sessionId);
+    if (prior === 'ended' && normalized !== 'session_start') return false;
+    if (prior === 'stopped' && normalized === 'permission_notification') return false;
+    if (normalized === 'session_start' || normalized === 'user_prompt_submit' || normalized === 'tool_start') {
+      this.terminal.delete(sessionId);
+    } else if (normalized === 'stop' || normalized === 'session_end') {
+      this.terminal.delete(sessionId);
+      this.terminal.set(sessionId, normalized === 'stop' ? 'stopped' : 'ended');
+      if (this.terminal.size > CLAUDE_ATTENTION_LIFECYCLE.maxSessions) {
+        this.terminal.delete(this.terminal.keys().next().value!);
+      }
+    }
+    return true;
+  }
+}
+
 // ─── Permission modes ───
 
 /** Values Claude Code writes into a hook payload's `permission_mode`. */

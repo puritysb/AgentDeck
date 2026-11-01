@@ -151,6 +151,8 @@ bool applyDemoScene(const char* agent, const char* state) {
   bool known = std::strcmp(agent, "openclaw") == 0;
   const char* selectedState = working ? "processing"
                                       : asking ? "awaiting_permission" : "idle";
+  // Gateway roster entries are observed residents too, not managed PTYs.
+  if(!std::strcmp(agent,"openclaw"))addSession("openclaw",selectedState,"OpenClaw");
   // Selected agent first (demo ordering), then the rest idle.
   for (const Row& r : rows)
     if (std::strcmp(agent, r.key) == 0) {
@@ -169,13 +171,24 @@ bool applyDemoScene(const char* agent, const char* state) {
   g_state.crayfishCount = 1;
   g_state.crayfishState = (std::strcmp(agent, "openclaw") == 0 && working)
                               ? CrayfishState::ROUTING
-                              : CrayfishState::DORMANT;
+                              : CrayfishState::SITTING;
   return known;
 }
 
 }  // namespace
 
 bool SimScenes::apply(const char* name) {
+  if(!std::strcmp(name,"habitat-all") || !std::strcmp(name,"habitat-all-working")) {
+    if(!SimScenes::apply("dot:attention"))return false;
+    auto* dot=g_state.dot;
+    if(!applyDemoScene("hermes","working"))return false;
+    g_state.dot=dot;
+    if(!std::strcmp(name,"habitat-all-working")) {
+      for(int i=0;i<g_state.sessionCount;++i) setStr(g_state.sessions[i].state,sizeof(g_state.sessions[i].state),"processing");
+      g_state.crayfishState=CrayfishState::ROUTING;dot->code=2;
+    }
+    return true;
+  }
   if (std::strncmp(name, "dot:", 4) == 0) {
     base(CreatureState::FLOATING);
     addSession("claude-code", "idle", "Fixture workspace");
@@ -187,6 +200,11 @@ bool SimScenes::apply(const char* name) {
     if (!std::strcmp(name + 4, "attention")) dot.code = 3;
     else if (!std::strcmp(name + 4, "stopped")) { dot.hosting = false; dot.code = 1; }
     else if (!std::strcmp(name + 4, "stale")) { dot.code = 6; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "ready")) { dot.code = 0; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "completed")) { dot.code = 4; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "failed")) { dot.code = 5; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "unknown")) { dot.code = 7; dot.validForMs = 0; }
+    else if (!std::strcmp(name + 4, "unlinked")) { dot.code = 8; dot.validForMs = 0; }
     else if (!std::strcmp(name + 4, "custom")) {
       dot.custom = true; std::memcpy(dot.rgba, DotSurfaceRules::defaultRgba, sizeof(dot.rgba));
       for (size_t i = 0; i < sizeof(dot.rgba); i += 4) if (dot.rgba[i] > 100) {

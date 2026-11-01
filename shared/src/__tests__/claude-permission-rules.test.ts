@@ -8,6 +8,7 @@ import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
+  ClaudeAttentionLifecycle,
   bashRuleMatches,
   splitCompoundCommand,
   stripCommandWrappers,
@@ -177,5 +178,24 @@ describe('mode gate, signature, learn window', () => {
   });
   it('learn window outlasts a slow tool (was 8 s, which a curl fetch exceeds)', () => {
     expect(GATE_LEARN_WINDOW_MS).toBeGreaterThanOrEqual(5 * 60_000);
+  });
+});
+
+describe('Claude terminal Attention boundaries', () => {
+  it('rejects delayed human-wait notifications until a fresh opening event', () => {
+    const lifecycle = new ClaudeAttentionLifecycle();
+    expect(lifecycle.admit('PermissionNotification', 'a')).toBe(true);
+    lifecycle.admit('Stop', 'a');
+    expect(lifecycle.admit('PermissionNotification', 'a')).toBe(false);
+    expect(lifecycle.admit('Notification', 'a')).toBe(true); // background/idle telemetry
+    expect(lifecycle.admit('PermissionNotification', 'b')).toBe(true);
+    lifecycle.admit('UserPromptSubmit', 'a');
+    expect(lifecycle.admit('PermissionNotification', 'a')).toBe(true);
+    lifecycle.admit('SessionEnd', 'a');
+    for (const event of ['PreToolUse', 'PermissionNotification', 'UserPromptSubmit']) {
+      expect(lifecycle.admit(event, 'a')).toBe(false);
+    }
+    lifecycle.admit('SessionStart', 'a');
+    expect(lifecycle.admit('PermissionNotification', 'a')).toBe(true);
   });
 });

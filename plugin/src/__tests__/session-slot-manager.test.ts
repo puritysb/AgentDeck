@@ -1303,3 +1303,28 @@ describe('Dot integration first-key reservation', () => {
     expect(found.size).toBe(17);
   });
 });
+
+it('pages observed OpenCode choices without repeating the first page', () => {
+  const manager = new SessionSlotManager();
+  manager.updateSessions([makeSession({ id: 'observed:opencode:q', agentType: 'opencode',
+    controlMode: 'observed', liveAnswerable: true, state: State.AWAITING_OPTION,
+    question: 'Choose a target', options: Array.from({ length: 9 }, (_, index) => ({ index, label: `Choice ${index}`, description: `Target details ${index}` })) })]);
+  manager.enterDetailView('observed:opencode:q');
+  const first = manager.getSlotConfig(2, SD_PLUS_LAYOUT);
+  manager.nextPage(SD_PLUS_LAYOUT);
+  const second = manager.getSlotConfig(2, SD_PLUS_LAYOUT);
+  expect(first).toMatchObject({ type: 'option', optionIndex: 0, option: { description: 'Target details 0' } });
+  expect(second.type).toBe('option');
+  expect(second.optionIndex).toBeGreaterThan(0);
+});
+
+it('offers OpenCode one-time permission only with a live native response channel', () => {
+  const manager = new SessionSlotManager();
+  const row = makeSession({ id: 'observed:opencode:p', agentType: 'opencode', controlMode: 'observed',
+    liveAnswerable: true, state: State.AWAITING_PERMISSION, requestId: 'ocperm:p:permission1', question: 'bash: harmless probe' });
+  manager.updateSessions([row]); manager.enterDetailView(row.id);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', option: { label: 'Allow once' }, optionIndex: 0 });
+  expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', option: { label: 'Deny' }, optionIndex: 1 });
+  manager.updateSessions([{ ...row, liveAnswerable: false }]);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT).type).not.toBe('option');
+});

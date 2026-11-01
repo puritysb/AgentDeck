@@ -283,64 +283,67 @@ final class DotDirectHostingTests: XCTestCase {
         try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-companion-preview.png"))
     }
     @MainActor
-    func testThreeDimensionalCompanionIsSeparateFromSessionsAndHonorsMotion() {
-        let now = 1800000000000
-        var row = DotBriefing(id: "3d", owner: "owner", profile: "desk", key: "k", fingerprint: "h", context: "", capturedAt: now, createdAt: now,
-            expiresAt: now + DotLimits.requestMs, eventId: "e", subscriptionId: "s", delivery: "accepted", attempts: 1, nextAttemptAt: now)
-        row.report = .init(sequence: 1, state: "working", summary: "", receivedAt: now)
-        var snapshot = DotHostSnapshot(hosting: true, available: true, status: "Listening", origin: "https://example.test", clientID: "id", consents: [],
-            grants: [DotGrant(id: "owner", scopes: ["agentdeck:report"], expiresAt: now + 1000, revoked: false)], reports: [row])
-        let resident = DotAquariumResident()
-        XCTAssertFalse(resident.root.isEnabled)
-        resident.sync(snapshot, now: now)
-        XCTAssertTrue(resident.root.isEnabled)
-        XCTAssertNil(AquariumResidents.sessionID(for: resident.root))
-        XCTAssertTrue(DotAquariumResident.contains(resident.root.children.first!))
-        XCTAssertGreaterThan(resident.root.visualBounds(relativeTo: resident.root).extents.x, 0.5)
-        let home = resident.root.position
-        resident.step(1, now: now); XCTAssertEqual(resident.root.position, home)
-        resident.animate = true; resident.step(1, now: now); XCTAssertNotEqual(resident.root.position, home)
-        resident.sync(snapshot, now: now + DotLimits.reportFreshMs)
-        resident.step(1, now: now + DotLimits.reportFreshMs); XCTAssertEqual(resident.root.position, home)
-        snapshot.origin = ""; resident.sync(snapshot, now: now); XCTAssertFalse(resident.root.isEnabled)
+    func testPortableCompanionUsesWaterResidentAndTimelineRowGrammar() throws {
+        let now = Int(Date().timeIntervalSince1970 * 1000)
+        let frame = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now)
+        let view = VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 32) {
+                ForEach(["working", "needs_attention", "completed", "failed"], id: \.self) { state in
+                    let dot = DotSurfaceSnapshot(configured: true, hosting: true, reportState: state, reportedAt: now)
+                    DotSurfaceView(snapshot: dot, style: .habitat).frame(width: 44, height: 60)
+                }
+            }
+            Text("TIMELINE").font(.custom("JetBrainsMono-Regular", size: 10)).foregroundStyle(.secondary)
+            DotSurfaceView(snapshot: frame, style: .timeline)
+        }.padding(24).frame(width: 480).background(DesignTokens.Ink.s900)
+            .environment(\.colorScheme, .dark)
+        let renderer = ImageRenderer(content: view); renderer.scale = 2
+        let image = try XCTUnwrap(renderer.cgImage)
+        XCTAssertGreaterThan(image.width, 600)
+        let png = try XCTUnwrap(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+        try png.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("agentdeck-dot-water-timeline.png"))
+    }
+
+    func testUpperWaterCurrentClosesAndFreezesOutsideReportedWork() {
+        let start = DotHabitatRules.offset(seconds: 3, working: true, motion: true)
+        let end = DotHabitatRules.offset(seconds: 3 + DotHabitatRules.periodSeconds, working: true, motion: true)
+        XCTAssertEqual(start.x, end.x, accuracy: 0.000001)
+        XCTAssertEqual(start.y, end.y, accuracy: 0.000001)
+        XCTAssertEqual(DotHabitatRules.offset(seconds: 3, working: true, motion: false).x, 0)
+        XCTAssertEqual(DotHabitatRules.offset(seconds: 3, working: false, motion: true).y, 0)
+    }
+
+    @MainActor
+    func testPearlUsesCommonResidentLayoutLabelsAndShellWithoutInventingASession() throws {
+        let now=1800000000000
+        let frame=DotSurfaceSnapshot(configured:true,hosting:true,reportState:"working",reportedAt:now,expiresAt:now+DotLimits.requestMs)
+        let native=AquariumResidents();native.dotNow={now};native.animate=false
+        native.syncDot(frame);native.sync(TerrariumState(),aspect:1.6)
+        let resident=try XCTUnwrap(native.root.findEntity(named:"session|habitat:dot"))
+        XCTAssertEqual(native.presentedCount,1)
+        XCTAssertNotNil(resident.findEntity(named:"label"))
+        XCTAssertNotNil(native.root.findEntity(named:"shared-shell-home"))
+        XCTAssertEqual(AquariumResidents.sessionID(for:try XCTUnwrap(resident.findEntity(named:"pearl"))),"habitat:dot")
+        XCTAssertEqual(AquariumResident.project(TerrariumState()).count,0,"A presentation peer never fabricates an observed coding session")
+        XCTAssertTrue(DotAquariumResident.contains(resident))
+        native.syncDot(nil);native.sync(TerrariumState(),aspect:1.6);native.step(0)
+        XCTAssertNil(native.root.findEntity(named:"session|habitat:dot"))
     }
     @MainActor
-    func testLatestCompanionStateWinsAndExpiryStopsMotionWithoutAnotherSnapshot() {
-        let now = 1800000000000
-        let resident = DotAquariumResident()
-        var frame = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + DotLimits.requestMs)
-        resident.animate = true
-        resident.sync(frame, now: now)
-        resident.animate = false
-        let home = resident.root.position
-        resident.animate = true
-        resident.step(0.05, now: now)
-        XCTAssertNotEqual(resident.root.position, home)
-        // The clock alone expires activity, including under Reduce Motion.
-        resident.animate = false
-        resident.step(0, now: now + DotLimits.reportFreshMs)
-        XCTAssertEqual(resident.root.position, home)
-        resident.animate = true
-        resident.step(0.05, now: now + DotLimits.reportFreshMs)
-        XCTAssertEqual(resident.root.position, home)
-        // Fresh work may resume, but completion, stopped hosting and disconnect win immediately.
-        resident.sync(frame, now: now)
-        resident.step(0.05, now: now)
-        XCTAssertNotEqual(resident.root.position, home)
-        frame.reportState = "completed"
-        resident.sync(frame, now: now)
-        for _ in 0..<5 { resident.step(0.05, now: now + 1) }
-        XCTAssertEqual(resident.root.position, home)
-        frame.reportState = "working"; frame.authorized = false
-        resident.sync(frame, now: now); resident.step(0.05, now: now)
-        XCTAssertEqual(frame.phase(at: now), 8)
-        XCTAssertFalse(resident.root.isEnabled)
-        XCTAssertEqual(resident.root.position, home)
-        frame.hosting = false
-        resident.sync(frame, now: now); resident.step(0.05, now: now)
-        XCTAssertEqual(resident.root.position, home)
-        resident.sync(nil as DotSurfaceSnapshot?, now: now); resident.step(0.05, now: now)
-        XCTAssertFalse(resident.root.isEnabled)
+    func testClockExpiryReturnsPearlWhileRetainingItsConfiguredHouse() throws {
+        var now=1800000000000
+        let frame=DotSurfaceSnapshot(configured:true,hosting:true,reportState:"working",reportedAt:now,expiresAt:now+DotLimits.requestMs)
+        let native=AquariumResidents();native.dotNow={now};native.animate=false
+        native.syncDot(frame);native.sync(TerrariumState(),aspect:1.6)
+        let resident=try XCTUnwrap(native.root.findEntity(named:"session|habitat:dot"))
+        XCTAssertTrue(try XCTUnwrap(resident.findEntity(named:"body")).isEnabled)
+        now += DotLimits.reportFreshMs
+        native.step(0)
+        XCTAssertFalse(try XCTUnwrap(resident.findEntity(named:"body")).isEnabled)
+        XCTAssertNotNil(native.root.findEntity(named:"shared-shell-home"))
+        XCTAssertEqual(native.presentedCount,1)
+        let pearl=DotAquariumResident()
+        XCTAssertEqual(pearl.root.position,.zero,"Geometry never owns a second layout or animation clock")
     }
     @MainActor
     func testRelationshipPreviewShowsDirectionAndUnverifiedTarget() throws {
@@ -568,30 +571,31 @@ final class DotDirectHostingTests: XCTestCase {
         let painted = DotPixelOverlay.paint(plain, width: 64, dot: event.dot, now: now)
         XCTAssertEqual(painted.prefix(64 * 10 * 3), plain.prefix(64 * 10 * 3))
         XCTAssertNotEqual(painted, plain)
-        XCTAssertEqual(DotPixelOverlay.paint(Data(repeating: 13, count: 11 * 11 * 3), width: 11, dot: event.dot), Data(repeating: 13, count: 11 * 11 * 3))
+        XCTAssertNotEqual(DotPixelOverlay.paint(Data(repeating: 13, count: 11 * 11 * 3), width: 11, dot: event.dot,anchorX:5,anchorY:5,bodySize:9,beacon:true), Data(repeating: 13, count: 11 * 11 * 3))
         let legacy = try JSONDecoder().decode(SessionsListEvent.self, from: Data("{\"type\":\"sessions_list\",\"sessions\":[]}".utf8))
         XCTAssertNil(legacy.dot)
     }
 
-    func testReportOnlyMatrixDotPreservesEyesWithoutFrameOrInitials() throws {
-        let now = 1800000000000
-        let quiet = DotSurfaceSnapshot(configured: true, hosting: true)
-        let dot = DotSurfaceSnapshot(configured: true, hosting: true, reportState: "working", reportedAt: now, expiresAt: now + 10000)
-        for width in [32, 64] {
-            let plain = Data(repeating: 13, count: width * width * 3)
-            XCTAssertEqual(DotPixelOverlay.paint(plain, width: width, dot: quiet, now: now), plain)
-            let pixels = [UInt8](DotPixelOverlay.paint(plain, width: width, dot: dot, now: now))
-            let size = max(DotAppearanceRules.pixelMinSize, width / DotAppearanceRules.pixelSizeDivisor)
-            let x0 = width - size - DotAppearanceRules.pixelMargin, y0 = width / DotAppearanceRules.pixelYDivisor
-            for y in 0..<width { for x in 0..<width {
-                if x < x0 || x >= x0 + size + 2 || y < y0 - 2 || y >= y0 + size {
-                    XCTAssertEqual(pixels[(y * width + x) * 3], 13)
-                }
-            } }
-            for eye in [5, 10] {
-                let x = x0 + Int((Double(eye * (size - 1)) / 15).rounded())
-                let y = y0 + Int((Double(5 * (size - 1)) / 15).rounded())
-                XCTAssertLessThan(pixels[(y * width + x) * 3], 60)
+    func testMatrixPearlUsesResidentHomeAndRetainsClosedShell() throws {
+        let now=1800000000000
+        let quiet=DotSurfaceSnapshot(configured:true,hosting:true)
+        for width in [32,64] {
+            let plain=Data(repeating:13,count:width*width*3)
+            let ready=DotPixelOverlay.paint(plain,width:width,dot:quiet,now:now)
+            var stopped=quiet; stopped.hosting=false
+            let closed=DotPixelOverlay.paint(plain,width:width,dot:stopped,now:now)
+            XCTAssertNotEqual(ready,plain)
+            XCTAssertNotEqual(closed,plain)
+            XCTAssertNotEqual(ready,closed)
+            XCTAssertEqual(ready.prefix(width*10*3),plain.prefix(width*10*3))
+            var removed=quiet; removed.configured=false
+            XCTAssertEqual(DotPixelOverlay.paint(plain,width:width,dot:removed,now:now),plain)
+            let size=max(DotAppearanceRules.pixelMinSize,width/DotAppearanceRules.pixelSizeDivisor)
+            let pixels=[UInt8](DotPixelOverlay.paint(plain,width:width,dot:quiet,now:now,anchorX:16,anchorY:16,bodySize:size,beacon:true))
+            for eye in [5,10] {
+                let x=16-size/2+Int((Double(eye*(size-1))/15).rounded())
+                let y=16-size/2+Int((Double(5*(size-1))/15).rounded())
+                XCTAssertLessThan(pixels[(y*width+x)*3],60)
             }
         }
     }

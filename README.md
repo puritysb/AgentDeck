@@ -46,6 +46,22 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
   <a href="https://puritysb.github.io/AgentDeck/design-system/">Design system</a>
 </p>
 
+## Current habitat · development preview
+
+[![Shared-shell motion on the connected Android tablet](docs/media/current/shared-home-preview.gif)](https://puritysb.github.io/AgentDeck/#current-habitat)
+
+Hermes and Dot share one shell, leave for their own places, and return when activity stops.
+OpenClaw keeps its own rock beside them. Recorded November 1, 2026 in the native Android
+validation app with fictional local activity; the video shows the actual app, not generated UI.
+This is a development preview, not a claim about the current store release.
+
+[Watch the full native recording](https://puritysb.github.io/AgentDeck/#current-habitat) ·
+[Current macOS, tablet, e-ink and ESP32 views](https://puritysb.github.io/AgentDeck/hardware/#current-captures) ·
+[Media provenance](docs/media/current/manifest.json)
+
+The device gallery also includes a clearly labeled AI-assisted 86 Box photo composite,
+alongside its unmodified firmware render. Original photographs and earlier videos remain available.
+
 ## Choose your view
 
 One local daemon connects your sessions to these screens and controls.
@@ -240,6 +256,11 @@ integrations in Settings, then run your agents normally. iPhone/iPad pair with
 an AgentDeck daemon on your network.
 
 Requires macOS 26+ or iOS/iPadOS 17+. See the [Apple guide](docs/apple-app.md).
+
+**Planned, not available yet:** a [CloudKit remote-observation PoC](docs/apple-remote-observation.md)
+will test selected Mac updates on iPhone and forwarded Apple Watch notifications.
+The running Mac remains the observation source; phone/Watch widgets and remote
+approvals are outside the first experiment. [Preview and limits](docs/marketing/apple-remote-observation.md).
 
 ### Terminal, Windows, Linux, and external integrations
 

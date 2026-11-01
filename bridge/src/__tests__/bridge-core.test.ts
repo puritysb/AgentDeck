@@ -71,6 +71,24 @@ describe('BridgeCore Orchestration', () => {
     tempDir.cleanup();
   });
 
+  it('publishes display wake without running system recovery or resetting transports', () => {
+    vi.useFakeTimers();
+    try {
+      const wake = vi.fn();
+      const send = vi.spyOn(core, 'broadcast').mockImplementation(() => {});
+      vi.spyOn(core.displayMonitor, 'start').mockImplementation(() => {});
+      core.onSystemWake(wake);
+      core.wireDisplayMonitor();
+      core.displayMonitor.emit('display_state_changed', false);
+      core.displayMonitor.emit('display_state_changed', true);
+      expect(send.mock.calls.map(([event]) => (event as { displayOn?: boolean }).displayOn)).toEqual([false, true]);
+      expect(wake).not.toHaveBeenCalled();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it('shares a pending local-status probe and rejects a superseded completion', async () => {
     const releases: Array<(value: antigravityLocal.AntigravityStatusInfo) => void> = [];
     const ticks: Array<() => void> = [];

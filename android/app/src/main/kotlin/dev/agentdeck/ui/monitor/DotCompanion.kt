@@ -16,13 +16,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.agentdeck.net.DotSurfaceSnapshot
 import dev.agentdeck.net.DotSurfaceRules
 import dev.agentdeck.ui.theme.DesignTokens
 import kotlinx.coroutines.delay
 
+enum class DotCompanionStyle { Status, Timeline, Habitat }
+
 @Composable
-fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: MonitorLayoutScale = MonitorLayoutScale.phone) {
+fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: MonitorLayoutScale = MonitorLayoutScale.phone,
+    style: DotCompanionStyle = DotCompanionStyle.Status, showLabel: Boolean = true, glyphSize: androidx.compose.ui.unit.Dp = 24.dp) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var expanded by remember { mutableStateOf(false) }
     LaunchedEffect(dot) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
@@ -47,22 +52,37 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: 
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
         }.getOrNull()
     }
-    Row(modifier.heightIn(min = 48.dp).clickable { expanded = true }.padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (dot.inhabitsHabitat(now)) {
-            if (image != null) Image(image, contentDescription = "Dot character", modifier = Modifier.size(24.dp))
-            else Canvas(Modifier.size(24.dp)) {
-                drawCircle(tint, radius = size.minDimension / 2)
-                for (x in listOf(0.37f, 0.63f)) drawLine(DesignTokens.Ink.s900, Offset(size.width * x, size.height * 0.35f), Offset(size.width * x, size.height * 0.6f), 3.dp.toPx())
-            }
+    val mark = when (code) { 2 -> "◌"; 3 -> "!"; 4 -> "✓"; 5 -> "×"; else -> "?" }
+    @Composable fun character() {
+        if (image != null) Image(image, contentDescription = "Dot character", modifier = Modifier.size(glyphSize))
+        else Canvas(Modifier.size(glyphSize)) {
+            drawCircle(DesignTokens.Tide.s100, radius = size.minDimension / 2)
+            for (x in listOf(0.37f, 0.63f)) drawLine(DesignTokens.Ink.s900, Offset(size.width * x, size.height * 0.35f), Offset(size.width * x, size.height * 0.6f), size.width * 0.08f)
         }
-        Text("Dot · ${DotSurfaceRules.labels[code]}", color = tint, fontSize = scale.fontSub,
-            modifier = Modifier.weight(1f))
-
     }
-    if (expanded) AlertDialog(onDismissRequest = { expanded = false },
-        title = { Text("Dot report") },
-        text = { Column { Text(DotSurfaceRules.labels[code]); Text(if (dot.reportState == null) "No activity shared yet" else "Dot report"); dot.reportedAt?.let { Text(java.util.Date(it).toString()) }; dot.relation?.takeIf { it.evidence == "dot_report" }?.let { Text(it.label) } } },
-        confirmButton = { TextButton(onClick = { expanded = false }) { Text("Done") } })
+    when (style) {
+        DotCompanionStyle.Habitat -> Column(modifier.semantics(mergeDescendants = true) {
+            contentDescription = "Dot. ${DotSurfaceRules.labels[code]}. Open report details."
+        }.clickable { expanded = true }, horizontalAlignment = Alignment.CenterHorizontally) {
+            character()
+            if (showLabel) Text("Dot", color = DesignTokens.Tide.s50, fontSize = scale.fontSub)
+        }
+        DotCompanionStyle.Timeline -> Row(modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            dot.reportedAt?.let { Text(java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(it)),
+                color = DesignTokens.Ink.s300, fontSize = scale.fontSub) }
+            Text(mark, color = tint, fontSize = scale.fontSub)
+            Text("Dot · ${DotSurfaceRules.labels[code]}", color = tint, fontSize = scale.fontSub, maxLines = 1,
+                modifier = Modifier.weight(1f), overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text("Dot report ›", color = DesignTokens.Ink.s300, fontSize = scale.fontSub)
+        }
+        DotCompanionStyle.Status -> Row(modifier.heightIn(min = 48.dp).clickable { expanded = true }.padding(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (dot.inhabitsHabitat(now)) character()
+            Text("Dot · ${DotSurfaceRules.labels[code]}", color = tint, fontSize = scale.fontSub, modifier = Modifier.weight(1f))
+        }
+    }
+    if (expanded) DotReportDialog(dot) { expanded=false }
 }
 
 /** Static 1-bit companion for paper chrome; no animation or periodic refresh. */
@@ -90,4 +110,13 @@ fun DotPaperGlyph(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier) {
                 size = androidx.compose.ui.geometry.Size(size.width / side, size.height / side))
         }
     }
+}
+
+@Composable
+fun DotReportDialog(dot: DotSurfaceSnapshot, onDismiss: () -> Unit) {
+    val code=dot.effectiveCode(System.currentTimeMillis())
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text("Dot report") },
+        text = { Column { Text(DotSurfaceRules.labels[code]); Text(if (dot.reportState == null) "No activity shared yet" else "Dot report"); dot.reportedAt?.let { Text(java.util.Date(it).toString()) }; dot.relation?.takeIf { it.evidence == "dot_report" }?.let { Text(it.label) } } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } })
 }

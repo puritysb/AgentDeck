@@ -247,6 +247,58 @@
       "paths": ["apple/**", "generated/protocol/**"]
     },
     {
+      "id": "apple-cloudkit-macos",
+      "name": "macOS CloudKit PoC deterministic persistence + transport XCTest",
+      "gate": "apple-unit",
+      "tiers": [
+        "changed",
+        "full"
+      ],
+      "run": "bash apple/scripts/verify-build.sh macOS CloudKitPoCDebug",
+      "requires": {
+        "platform": "darwin",
+        "commands": [
+          "xcodebuild",
+          "xcodegen",
+          "python3"
+        ]
+      },
+      "paths": [
+        "apple/AgentDeck/RemoteObservation/**",
+        "apple/AgentDeckTests/CloudKitProbeTests.swift",
+        "apple/AgentDeckTests/RemoteObservation*",
+        "apple/AgentDeck/App/AgentDeckApp.swift",
+        "apple/project.yml",
+        "apple/scripts/verify-build.sh"
+      ]
+    },
+    {
+      "id": "apple-cloudkit-ios",
+      "name": "iOS CloudKit PoC unsigned companion build",
+      "gate": "apple-unit",
+      "tiers": [
+        "changed",
+        "full"
+      ],
+      "run": "bash apple/scripts/verify-build.sh iOS CloudKitPoCDebug",
+      "requires": {
+        "platform": "darwin",
+        "commands": [
+          "xcodebuild",
+          "xcodegen",
+          "python3"
+        ]
+      },
+      "paths": [
+        "apple/AgentDeck/RemoteObservation/**",
+        "apple/AgentDeckTests/CloudKitProbeTests.swift",
+        "apple/AgentDeckTests/RemoteObservation*",
+        "apple/AgentDeck/App/AgentDeckApp.swift",
+        "apple/project.yml",
+        "apple/scripts/verify-build.sh"
+      ]
+    },
+    {
       "id": "apple-submission",
       "name": "App Store submission bundle limits",
       "gate": "apple-unit",
@@ -266,10 +318,10 @@
     },
     {
       "id": "esp32-sim",
-      "name": "ESP32 firmware simulator compile",
+      "name": "ESP32 simulator builds and resident/input checks",
       "gate": "esp32-sim",
       "tiers": ["changed", "full"],
-      "run": "cd esp32/sim && pio run",
+      "run": "cd esp32/sim && pio run && bash check-surfaces.sh",
       "requires": { "commands": ["pio"] },
       "paths": ["esp32/**"]
     },
@@ -616,10 +668,11 @@
       "job": "test-macos, build-ios, validate-submission",
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
-      "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift"],
+      "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; verify-build.sh macOS / iOS CloudKitPoCDebug; validate-appstore-submission.sh",
+      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift", "apple/AgentDeckTests/CloudKitProbeTests.swift", "apple/AgentDeckTests/RemoteObservationProjectionTests.swift", "apple/AgentDeckTests/RemoteObservationPersistenceTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
+        "the development-only CloudKit configuration deterministically tests bounded completion, account-generation invalidation, local cache/outbox reload and coalesced retry policy without contacting iCloud; the iOS PoC configuration compiles separately",
         "preferred-port listener startup retries address-in-use failures only within a bounded budget and after explicit TCP refusal; peer arrival, unknown probes, cancellation and superseded startup stop retries, failed listeners are released and a ready listener survives its startup deadline",
         "daemon process activity is acquired before startup suspends, remains held after success and is released exactly once after failure, cancellation or shutdown; a retired instance cannot release its replacement activity",
         "automatic daemon handover and listener-failure recovery resume after actual teardown completion when their bounded wait expires; explicit stop, Settings restart and newer ownership or connection intents suppress stale continuation, and the resumed client monitor supports a subsequent local promotion",
@@ -662,16 +715,16 @@
     },
     {
       "id": "esp32-sim",
-      "name": "ESP32 firmware host build",
-      "level": ["compile"],
+      "name": "ESP32 firmware host build and resident/input checks",
+      "level": ["compile", "integration"],
       "where": "ubuntu-latest",
       "workflow": ".github/workflows/esp32-sim.yml",
       "job": "compile",
       "trigger": "PRs and master pushes touching esp32/**",
       "blocking": true,
       "required": true,
-      "command": "pio run (every esp32/sim env)",
-      "proves": ["the real esp32/src render trees compile for the native simulator"],
+      "command": "pio run (every esp32/sim env); bash esp32/sim/check-surfaces.sh",
+      "proves": ["the real esp32/src render trees compile for the native simulator", "all eight resident types clear HUD, shell and peer bounds on 86 Box, IPS35, round AMOLED and TTGO; IPS10/knob/ticker inputs retain identity and keep Dot read-only"],
       "does_not_prove": ["the Xtensa build, flashing, or behaviour on a board"]
     },
     {
@@ -740,6 +793,8 @@
         "scripts/macos-preflight.sh",
         "apple/DeviceAcceptance/README.md",
         "apple/DeviceAcceptance/Tests/TimelineSelectionTests.swift",
+        "apple/DeviceAcceptance/Tests/OpenCodeAttentionTests.swift",
+        "apple/DeviceAcceptance/fixtures/opencode-attention.mjs",
         "apple/DeviceAcceptance/project.yml"
       ],
       "proves": ["the built artifacts install and connect to a daemon on the maintainer's hardware"],
@@ -956,6 +1011,7 @@
         "bridge/src/__tests__/background-work.test.ts",
         "bridge/src/__tests__/codex-hook-replay.test.ts",
         "bridge/src/__tests__/codex-approval-hold.test.ts",
+        "bridge/src/__tests__/codex-approval-probe.test.ts",
         "bridge/src/__tests__/managed-hook-harness.test.ts",
         "bridge/src/__tests__/codex-exec-children.test.ts",
         "bridge/src/__tests__/codex-auth.test.ts",
@@ -982,6 +1038,7 @@
         "shared/src/__tests__/hook-harness*.test.ts",
         "shared/src/__tests__/codex-approval-hold*.test.ts",
         "shared/src/__tests__/observed-agent-rules.test.ts",
+        "shared/src/__tests__/opencode-question*.test.ts",
         "shared/src/__tests__/subagent-activity.test.ts",
         "shared/src/__tests__/ci-wait*.test.ts",
         "bridge/src/__tests__/ci-wait*.test.ts"

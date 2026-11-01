@@ -39,7 +39,6 @@ struct LivingAquariumScene: View {
     var onBackgroundTapped: (() -> Void)?
     @State private var scene = AquariumSceneState()
     #if AGENTDECK_DOT_PREVIEW
-    @State private var dot = DotAquariumResident()
     @State private var showDot = false
     #endif
     @State private var rendererLifetime = AquariumRendererLifetime()
@@ -84,7 +83,7 @@ struct LivingAquariumScene: View {
         }
         .task { await assets.load() }
         .overlay(alignment: .bottom) {
-            let count = AquariumResident.project(terrariumState).count
+            let count = residents.presentedCount
             if !viewingMode && count > TerrariumRules.nativeResidentLimit {
                 Text("\(count) residents · Select a session in the list to bring it into view")
                     .font(.caption)
@@ -102,7 +101,6 @@ struct LivingAquariumScene: View {
                 if let dotSnapshot { DotSurfaceView(snapshot: dotSnapshot) }
             }.padding().frame(width: 580, height: 650)
         }
-        .onChange(of: dotSnapshot?.appearance?.id) { _, _ in dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000)) }
         #endif
         .onAppear { rendererLifetime.appear(); updatePlayback() }
         .onChange(of: renderingEnabled) { _, enabled in
@@ -130,12 +128,7 @@ struct LivingAquariumScene: View {
             onFailure: { assets.reportSceneFailure($0, templateCount: residents.templateCount) }
         )
         #if AGENTDECK_DOT_PREVIEW
-        surface.companion = dot.root
-        surface.updateCompanion = {
-            dot.labelsVisible = !viewingMode
-            dot.sync(dotSnapshot, now: Int(Date().timeIntervalSince1970 * 1000))
-        }
-        surface.stepCompanion = { [weak dot] in dot?.step($0) }
+        surface.updateResidents = { residents.syncDot(dotSnapshot) }
         #endif
         return surface
     }
@@ -144,7 +137,6 @@ struct LivingAquariumScene: View {
         let active = visible && renderingEnabled && scenePhase == .active
         scene.updatePlayback(active: active, reduceMotion: reduceMotion)
         #if AGENTDECK_DOT_PREVIEW
-        dot.animate = active && !reduceMotion
         #endif
     }
 }
@@ -178,9 +170,7 @@ private struct AquariumRealitySurface: View {
     let reduceMotion: Bool
     let active: Bool
     let onFailure: (Error) -> Void
-    var companion: Entity?
-    var updateCompanion: () -> Void = {}
-    var stepCompanion: (Double) -> Void = { _ in }
+    var updateResidents: () -> Void = {}
     @State private var mountID = UUID()
 
     var body: some View {
@@ -191,12 +181,11 @@ private struct AquariumRealitySurface: View {
                 scene.beginMount(mountID)
                 content.camera = .virtual
                 for entity in scene.entities { content.add(entity) }
-                if let companion { content.add(companion) }
                 // A retained entity may still belong to the old RealityView's
                 // content. Remove it through that owner before another mount
                 // attaches it; dropping the SwiftUI child alone is insufficient.
                 let mountedContent = content
-                let mountedEntities = scene.entities + (companion.map { [$0] } ?? [])
+                let mountedEntities = scene.entities
                 scene.installDetachment(mountID: mountID) {
                     for entity in mountedEntities { mountedContent.remove(entity) }
                     let attached = mountedEntities.filter { $0.scene != nil }.count
@@ -207,10 +196,8 @@ private struct AquariumRealitySurface: View {
                 let attached = mountedEntities.filter { $0.scene != nil }.count
                 aquariumAssetLogger.notice("Attached aquarium renderer; roots attached: \(attached)/\(mountedEntities.count)")
                 let token = mountID
-                let companionFrame = stepCompanion
                 let subscription = content.subscribe(to: SceneEvents.Update.self) { [weak scene = scene] event in
                     if scene?.step(event.deltaTime, mountID: token) == true {
-                        companionFrame(event.deltaTime)
                     }
                 }
                 scene.installSubscription(mountID: mountID) { subscription.cancel() }
@@ -225,9 +212,9 @@ private struct AquariumRealitySurface: View {
     }
 
     private func synchronize() {
+        updateResidents()
         scene.synchronize(state, size: size, viewingMode: viewingMode,
                           reduceMotion: reduceMotion, active: active)
-        updateCompanion()
     }
 }
 
@@ -272,6 +259,7 @@ final class AquariumSceneState {
         residents.loadTemplates(loaded.residents)
         guard residents.templateCount == 6 else { throw CocoaError(.fileReadCorruptFile) }
         residents.loadHermesTemplate(loaded.hermes)
+        residents.loadHermesShell(loaded.hermesShell)
         guard residents.templateCount == 7 else { throw CocoaError(.fileReadCorruptFile) }
         residents.loadCiCompanion(loaded.ciCompanion)
         habitat = loaded.habitat
@@ -473,6 +461,7 @@ final class AquariumAssetLoader {
         let habitat: Entity
         let residents: Entity
         let hermes: Entity
+        let hermesShell: Entity
         let ciCompanion: Entity
     }
     private(set) var loaded: Assets?
@@ -499,9 +488,11 @@ final class AquariumAssetLoader {
             let residents = try await importEntity(url("3d-residents")); try checkCurrent()
             stage = "Hermes resident"
             let hermes = try await importEntity(url("hermes-mermaid")); try checkCurrent()
+            stage = "Hermes shell"
+            let hermesShell = try await importEntity(url("hermes-shell")); try checkCurrent()
             stage = "CI companion"
             let ciCompanion = try await importEntity(url("ci-companion")); try checkCurrent()
-            loaded = Assets(habitat: habitat, residents: residents, hermes: hermes, ciCompanion: ciCompanion)
+            loaded = Assets(habitat: habitat, residents: residents, hermes: hermes, hermesShell: hermesShell, ciCompanion: ciCompanion)
             aquariumAssetLogger.info("Loaded all aquarium assets")
         } catch is CancellationError {
             aquariumAssetLogger.debug("Cancelled aquarium asset load at \(stage, privacy: .public)")

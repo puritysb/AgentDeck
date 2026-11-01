@@ -431,8 +431,8 @@ enum CodexRolloutResponseReader {
         let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
             ?? locateRollout(sessionId: sessionId, sessionsRoot: sessionsRoot)
         guard let file else { return nil }
-        return CodexApprovalHoldRules.reviewer(
-            inRollout: readTail(file, maxBytes: CodexApprovalHoldRules.contextBytes), turnId: turnId)
+        return CodexApprovalFileReader.reviewer(file: file, turnId: turnId,
+            deadline: ContinuousClock().now.advanced(by: .milliseconds(CodexApprovalHoldRules.readTimeoutMs)))
     }
 
     static func lastAgentMessage(sessionId: String, sessionsRoot: URL? = nil) -> String? {
@@ -1256,6 +1256,24 @@ final class DaemonServer {
     /// answer (CodexApprovalHoldRules). A held session is also in
     /// `heldGateSessionIds` until its hold is released.
     private var codexHoldRequestBySession: [String: String] = [:]
+    private struct PendingCodexApprovalProbe {
+        let held: Bool
+        let peer: HTTPPeerCloseSignal?
+        var liveHold: Bool { held && peer?.isClosed != true }
+    }
+    private var codexApprovalProbes: [String: [UUID: PendingCodexApprovalProbe]] = [:]
+
+    private func beginCodexApprovalProbe(_ sid: String, held: Bool = false) -> UUID {
+        let token = UUID()
+        codexApprovalProbes[sid, default: [:]][token] = .init(held: held, peer: held ? HTTPRequestContext.peerClose : nil)
+        return token
+    }
+
+    private func finishCodexApprovalProbe(_ sid: String, _ token: UUID) {
+        codexApprovalProbes[sid]?.removeValue(forKey: token)
+        if codexApprovalProbes[sid]?.isEmpty == true { codexApprovalProbes.removeValue(forKey: sid) }
+    }
+
     /// A structured direct-Claude AskUserQuestion wait.
     ///
     /// One call may carry up to four question groups while SessionInfo has room
@@ -2240,8 +2258,6 @@ final class DaemonServer {
         // 6. Start display monitor
         loadDisplaySleepDimFromSettings()
         serialEventSnapshot.setDisplayDim(currentDimDict())
-        await displayMonitor.start()
-        try checkStartupActive()
         await displayMonitor.setOnStateChanged { [weak self] displayOn in
             Task { @DaemonActor in
                 guard let self else { return }
@@ -2263,12 +2279,15 @@ final class DaemonServer {
                     // pre-sleep cachedSessions snapshot — stale.
                     Task {
                         await self.refreshSessions()
-                        await self.moduleManager.wakeAll()
+                        // Display wake keeps live transports. IOKit system wake
+                        // owns device recovery in handleSystemWake().
                     }
                     self.broadcastStateUpdate()
                 }
             }
         }
+        await displayMonitor.start()
+        try checkStartupActive()
 
         // The listener, handlers and restored timeline are usable now. Slow
         // device discovery must not pin the dashboard to a retired fallback port.
@@ -4115,6 +4134,7 @@ final class DaemonServer {
             }
             let wait = Double(request.queryParams["wait"] ?? "25") ?? 25
             let peerClose = HTTPRequestContext.peerClose
+            await self.noteOpenCodeQuestionPoll(rawSessionId: sid)
             let commands = await OpenCodeCommandQueue.shared.poll(
                 sessionId: sid, waitSeconds: wait, peerClose: peerClose)
             if peerClose?.isClosed == true {
@@ -4126,6 +4146,8 @@ final class DaemonServer {
                 if let t = c.text { d["text"] = t }
                 if let p = c.permissionId { d["permissionId"] = p }
                 if let r = c.response { d["response"] = r }
+                if let id = c.questionId { d["questionId"] = id }
+                if let answers = c.answers { d["answers"] = answers }
                 return d
             }
             return .json(["commands": payload])
@@ -5228,7 +5250,10 @@ final class DaemonServer {
                 if let sep = rest.firstIndex(of: ":") {
                     let rawSid = String(rest[rest.startIndex..<sep])
                     let permId = String(rest[rest.index(after: sep)...])
-                    guard !rawSid.isEmpty, !permId.isEmpty else { return }
+                    let rowId = Self.openCodeSessionPrefix + rawSid
+                    guard !rawSid.isEmpty, !permId.isEmpty,
+                          pushedSessionsById[rowId]?.requestId == requestId,
+                          canAnswerOpenCodeQuestion(sessionId: rowId) else { return }
                     Task {
                         let queued = await OpenCodeCommandQueue.shared.enqueue(
                             sessionId: rawSid,
@@ -5318,17 +5343,27 @@ final class DaemonServer {
                 : sessionId
             let innerType = innerCommand["type"] as? String ?? ""
             let text = innerCommand["text"] as? String
+            if innerType == "select_option", openCodeWaits[sessionId]?.first?.kind == "question" {
+                answerOpenCodeQuestion(sessionId: sessionId, command: innerCommand)
+                return
+            }
             // respond/select_option answer a pending permission gate
             // (requestId "ocperm:<rawSid>:<permissionID>" on the row).
             if innerType == "respond" || innerType == "select_option",
                let rid = target.requestId, rid.hasPrefix("ocperm:") {
-                let allow = innerType == "select_option"
-                    ? (innerCommand["index"] as? Int) == 0
-                    : ["y", "yes"].contains(((innerCommand["value"] as? String) ?? "").lowercased())
+                let decision: String
+                if innerType == "select_option" {
+                    guard let value = OpenCodeDevicePermission.decision(command: innerCommand, question: target.question) else { return }
+                    decision = value
+                } else {
+                    let value = ((innerCommand["value"] as? String) ?? "").lowercased()
+                    guard ["y", "yes", "n", "no"].contains(value) else { return }
+                    decision = ["y", "yes"].contains(value) ? "allow" : "deny"
+                }
                 handleCommand([
                     "type": "permission_decision",
                     "requestId": rid,
-                    "decision": allow ? "allow" : "deny",
+                    "decision": decision,
                 ])
                 return
             }
@@ -5341,6 +5376,12 @@ final class DaemonServer {
                         sessionId: rawSid, command: .init(type: "send_prompt", text: text))
                 }
             }
+            return
+        }
+
+        if type == "select_option", let sid = (cmd["sessionId"] as? String) ?? userFocusedSessionId,
+           openCodeWaits[sid]?.first?.kind == "question" {
+            answerOpenCodeQuestion(sessionId: sid, command: cmd)
             return
         }
 
@@ -6202,6 +6243,16 @@ final class DaemonServer {
         // durable thread ids become `codex:<id>` session rows.
         let isCodexEvent = event.hasPrefix("codex_")
         let sessionId = Self.hookSessionId(event: event, json: json)
+        var approvalProbe: UUID?
+        if isCodexEvent, let sessionId {
+            if event == "codex_permission_request" { approvalProbe = beginCodexApprovalProbe(sessionId) }
+            else if CodexApprovalHoldRules.releasingEvents.contains(event) || event == "codex_session_start"
+                || codexApprovalProbes[sessionId]?.values.contains(where: { $0.liveHold }) != true {
+                codexApprovalProbes.removeValue(forKey: sessionId)
+            }
+        }
+        defer { if let sessionId, let approvalProbe { finishCodexApprovalProbe(sessionId, approvalProbe) } }
+
 
         if isOpenCodeEvent, let sessionId {
             // Hooks own control and state once seen. SSE cannot refresh or
@@ -6259,6 +6310,12 @@ final class DaemonServer {
         if await handleSubagentTimelineHook(event: event, json: json, sessionId: sessionId) {
             return
         }
+
+        if !isCodexEvent, !isOpenCodeEvent, let sessionId,
+           !claudeAttentionLifecycle.admit(
+            event: event == "notification" && Self.isPermissionNotification(
+                notificationType: json["notification_type"] as? String, message: json["message"] as? String ?? "")
+                ? "PermissionNotification" : event, sessionId: sessionId) { return }
 
         // Codex Desktop ambient-suggestions threads fire the user-global hooks
         // for prompts the user never typed. Drop them before session, state,
@@ -6510,6 +6567,7 @@ final class DaemonServer {
                 _ = stateMachine.transition(trigger: "session_end", source: .hook)
             }
             if let sessionId {
+                observedHookProcessIDs.removeValue(forKey: sessionId)
                 let expiredEntry = pushedSessionsById[sessionId]
                 let isCodex = expiredEntry.map { Self.isCodexSession(sessionId: sessionId, entry: $0) } ?? false
                 if isCodex {
@@ -6651,20 +6709,23 @@ final class DaemonServer {
             // ephemeral companion-task entry well before pushedSessionStaleTTL.
             if let sessionId { lastTerminalCodexEventBySession[sessionId] = Date() }
         case "codex_permission_request":
-            // PermissionRequest runs before reviewer routing. Explicit automatic
-            // review is working activity, not a human approval prompt. Other
-            // requests remain display-only (respond in the terminal).
+            let reviewer = await codexApprovalReviewer(json: json)
+            guard let sessionId, let approvalProbe,
+                  codexApprovalProbes[sessionId]?[approvalProbe] != nil else { break }
+            // PermissionRequest runs before reviewer routing. Only confirmed
+            // user review proves a human wait; automatic and unknown evidence
+            // must not create Attention or intercept the approval flow.
             // The next lifecycle hook on the session ends the wait:
             // an approval runs the tool, a denial or Ctrl+C ends the turn, a
             // new prompt supersedes it — all of which pass through
             // updateSessionHookState and overwrite the state. A held device
             // approval owns the prompt and its button until it is released, so
             // a parallel call's notification must not swap the question.
-            if let sessionId, codexHoldRequestBySession[sessionId] == nil,
-               codexApprovalReviewer(json: json) != "auto_review" {
+            if codexHoldRequestBySession[sessionId] == nil,
+               CodexApprovalHoldRules.needsHuman(reviewer) {
                 showCodexApprovalPrompt(
                     sessionId: sessionId, question: Self.codexPermissionQuestion(json), requestId: nil)
-            } else if let sessionId, codexHoldRequestBySession[sessionId] == nil,
+            } else if codexHoldRequestBySession[sessionId] == nil,
                       pushedSessionsById[sessionId]?.state == "awaiting_permission" {
                 updateSessionHookState(sessionId: sessionId, state: "processing")
             }
@@ -6744,6 +6805,7 @@ final class DaemonServer {
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             appendOpenCodeChatEnd(json: json, sessionId: sessionId)
         case "opencode_session_end":
+            if let sessionId { observedHookProcessIDs.removeValue(forKey: sessionId) }
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
             if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
@@ -6761,13 +6823,22 @@ final class DaemonServer {
             }
         default: break
         }
+        if let sessionId,
+           isOpenCodeEvent || pushedSessionsById[sessionId]?.agentType == "claude-code",
+           pushedSessionsById[sessionId] != nil,
+           let pid = json["agentdeck_pid"] as? Int, pid > 1 {
+            observedHookProcessIDs[sessionId] = pid
+        }
         if let sessionId, !isOpenCodeEvent {
             noteObservedAgentSettings(event: event, json: json, sessionId: sessionId, isCodex: isCodexEvent)
         }
         if isOpenCodeEvent, let sessionId {
             applyOpenCodeWait(sessionId: sessionId, event: event,
                 id: (json["permission_id"] as? String) ?? (json["question_id"] as? String),
-                title: json["title"] as? String, answerable: true)
+                title: json["title"] as? String, answerable: true,
+                prompt: OpenCodeDeviceQuestion.parse(json["questions"]),
+                questionAnswerable: json["question_answerable"] as? Bool == true,
+                replyFailed: json["reply_failed"] as? Bool == true)
         }
 
 
@@ -7260,6 +7331,9 @@ final class DaemonServer {
         let tombstoneCutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
         codexTerminalTombstoneBySession = codexTerminalTombstoneBySession.filter { $0.value >= tombstoneCutoff }
 
+        let exitedObservedHooks = Set(observedHookProcessIDs.compactMap { sid, pid in
+            ProcessEnumerator.processLiveness(pid: pid) == false ? sid : nil
+        })
         var expired = Set(lastHookAtByPushedSession.compactMap { (sid, ts) -> String? in
             guard let entry = pushedSessionsById[sid] else { return sid }
             let ttl = Self.hookIdleTTL(
@@ -7269,6 +7343,7 @@ final class DaemonServer {
             )
             return ts < now.addingTimeInterval(-ttl) ? sid : nil
         })
+        expired.formUnion(exitedObservedHooks)
         // Faster eviction for Codex sessions whose terminal event (codex_stop /
         // codex_turn_complete / OTel turnEnd) is past the post-terminal TTL.
         // Without this, a burst of single-turn Codex Companion Tasks each
@@ -7288,6 +7363,9 @@ final class DaemonServer {
             ciWaits.forget(ObservedAgentRules.rawSessionId(sid))
             hermesGate.forget(sessionKey: sid)
             let expiredEntry = pushedSessionsById[sid]
+            if exitedObservedHooks.contains(sid), expiredEntry?.agentType == "claude-code" {
+                _ = claudeAttentionLifecycle.admit(event: "session_end", sessionId: sid)
+            }
             let isPostTerminal = lastTerminalCodexEventBySession[sid]
                 .map { $0 < codexTerminalCutoff } ?? false
 
@@ -7325,6 +7403,8 @@ final class DaemonServer {
             pushedSessionsById.removeValue(forKey: sid)
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
+            openCodeWaits.removeValue(forKey: sid)
+            observedHookProcessIDs.removeValue(forKey: sid)
             // Preserve the terminal timestamp as a tombstone: it is the only
             // signal that distinguishes a finished companion thread's late
             // tool callbacks (must stay dead) from a live turn whose row was
@@ -7345,7 +7425,9 @@ final class DaemonServer {
             openCodeLastPromptTopicBySession.removeValue(forKey: sid)
             if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
             if userFocusedSessionId == sid { userFocusedSessionId = nil }
-            if isPostTerminal {
+            if exitedObservedHooks.contains(sid) {
+                DaemonLogger.shared.debug("Hook", "Evicted observed session \(sid) after confirmed process exit")
+            } else if isPostTerminal {
                 DaemonLogger.shared.debug("Hook", "Evicted finished codex session \(sid) (post-terminal \(Int(Self.codexPostTerminalTTL))s)")
             } else if let entry = expiredEntry {
                 // Report the TTL the ladder actually applied. Restating a
@@ -7375,27 +7457,99 @@ final class DaemonServer {
 
     private var openCodeOwnership = OpenCodeObservationOwnership()
     private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+    private var claudeAttentionLifecycle = ClaudeAttentionLifecycle()
+    private var observedHookProcessIDs: [String: Int] = [:]
+    private var openCodeQuestionPollAt: [String: Date] = [:]
 
-    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true) {
+    private func noteOpenCodeQuestionPoll(rawSessionId: String) {
+        openCodeQuestionPollAt = openCodeQuestionPollAt.filter { Date().timeIntervalSince($0.value) < ObservedAgentRules.openCodeQuestionPollFreshSeconds }
+        guard openCodeQuestionPollAt[rawSessionId] != nil
+            || openCodeQuestionPollAt.count < ObservedAgentRules.openCodePendingRequestLimit else { return }
+        let sid = Self.openCodeSessionPrefix + rawSessionId
+        let before = canAnswerOpenCodeQuestion(sessionId: sid)
+        let stamp = Date()
+        openCodeQuestionPollAt[rawSessionId] = stamp
+        if !before && canAnswerOpenCodeQuestion(sessionId: sid) { broadcastSessionsList() }
+        Task {
+            try? await Task.sleep(for: .seconds(ObservedAgentRules.openCodeQuestionPollFreshSeconds))
+            guard openCodeQuestionPollAt[rawSessionId] == stamp else { return }
+            openCodeQuestionPollAt.removeValue(forKey: rawSessionId)
+            if openCodeWaits[sid]?.first != nil { broadcastSessionsList() }
+        }
+    }
+
+    private func canAnswerOpenCodeQuestion(sessionId: String) -> Bool {
+        guard let pending = openCodeWaits[sessionId]?.first,
+              (pending.kind == "permission" && pushedSessionsById[sessionId]?.requestId != nil)
+                || (pending.kind == "question" && pending.prompt?.replyable == true && pending.answerable && !pending.sending)
+        else { return false }
+        let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+        guard let polledAt = openCodeQuestionPollAt[raw] else { return false }
+        let age = Date().timeIntervalSince(polledAt)
+        return age >= 0 && age < ObservedAgentRules.openCodeQuestionPollFreshSeconds
+    }
+
+    private func answerOpenCodeQuestion(sessionId: String, command: [String: Any]) {
+        guard canAnswerOpenCodeQuestion(sessionId: sessionId),
+              let wait = openCodeWaits[sessionId]?.first, let prompt = wait.prompt,
+              let number = command["index"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              let index = command["index"] as? Int, let echo = command["question"] as? String,
+              ObservedSteering.askEchoMatches(echo, prompt.question),
+              let option = prompt.options.first(where: { $0.index == index }) else { return }
+        let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
+        openCodeWaits[sessionId]?.markSending(id: wait.id)
+        pushedSessionsById[sessionId]?.questionDetail = ObservedAgentRules.openCodeQuestionSendingText
+        if let entry = pushedSessionsById[sessionId] { upsertIntoCachedSessions(entry) }
+        broadcastSessionsList()
+        Task {
+            let queued = await OpenCodeCommandQueue.shared.enqueue(sessionId: raw,
+                command: .init(type: "question_reply", text: nil, questionId: wait.id, answers: [[option.label]]))
+            if !queued, openCodeWaits[sessionId]?.first?.id == wait.id,
+               openCodeWaits[sessionId]?.first?.sending == true {
+                // Queue refusal is not an upstream answer. Restore the same prompt.
+                var state = openCodeWaits[sessionId] ?? OpenCodeWaitState()
+                _ = state.consume(event: "opencode_question_asked", id: wait.id, title: wait.title,
+                    prompt: prompt, answerable: wait.answerable, replyFailed: true)
+                openCodeWaits[sessionId] = state
+                pushedSessionsById[sessionId]?.questionDetail = ObservedAgentRules.openCodeQuestionUnconfirmedText
+                if let entry = pushedSessionsById[sessionId] { upsertIntoCachedSessions(entry) }
+                broadcastSessionsList()
+            }
+        }
+    }
+
+    private func applyOpenCodeWait(sessionId: String, event: String, id: String?, title: String?, answerable: Bool, broadcast: Bool = true, prompt: OpenCodeDeviceQuestion? = nil, questionAnswerable: Bool = false, replyFailed: Bool = false) {
         guard var entry = pushedSessionsById[sessionId] else { return }
         let before = entry
         openCodeWaits = openCodeWaits.filter { pushedSessionsById[$0.key] != nil }
         var waits = openCodeWaits[sessionId] ?? OpenCodeWaitState()
-        let resolved = waits.consume(event: event, id: id, title: title)
+        let resolved = waits.consume(event: event, id: id, title: title, prompt: prompt, answerable: questionAnswerable, replyFailed: replyFailed)
         openCodeWaits[sessionId] = waits
         if let wait = waits.first {
             entry.state = wait.kind == "permission" ? "awaiting_permission" : "awaiting_option"
-            entry.question = wait.title
+            entry.question = wait.prompt?.question ?? wait.title
+            entry.questionDetail = wait.sending ? ObservedAgentRules.openCodeQuestionSendingText
+                : wait.replyError ? ObservedAgentRules.openCodeQuestionUnconfirmedText : nil
+            entry.options = wait.prompt?.options.map { option in
+                var fields = ["label": AnyCodable(option.label), "index": AnyCodable(option.index)]
+                if let description = option.description { fields["description"] = AnyCodable(description) }
+                return fields
+            } ?? (wait.kind == "permission" ? ObservedAgentRules.openCodePermissionChoices.map {
+                ["label": AnyCodable($0.label), "index": AnyCodable($0.index)]
+            } : [])
             let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
             entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
         } else if resolved {
-            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") { entry.state = "processing" }
+            if event.hasSuffix("_replied") || event.hasSuffix("_rejected") || event.hasSuffix("_unavailable") { entry.state = "processing" }
             entry.question = nil
+            entry.options = []
+            entry.questionDetail = nil
             entry.requestId = nil
         }
         pushedSessionsById[sessionId] = entry
         upsertIntoCachedSessions(entry)
-        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId) {
+        if broadcast && (before.state != entry.state || before.question != entry.question || before.requestId != entry.requestId || prompt != nil || replyFailed) {
             broadcastSessionsList()
         }
     }
@@ -7406,8 +7560,7 @@ final class DaemonServer {
     /// Merge one classified OpenCode SSE update into `pushedSessionsById`.
     /// Same integration contract as the Codex OTel path: upsert + cached
     /// sessions + eviction timestamp + broadcast-on-change. Display-only —
-    /// `options`/`requestId` are never set, so awaiting renders the
-    /// respond-in-terminal path on every surface.
+    /// options may be shown, but no native reply capability is asserted by SSE.
     private func handleOpenCodeObserverUpdate(_ update: OpenCodeSessionUpdate) {
         let sid = Self.openCodeSessionPrefix + update.sessionID
         guard openCodeOwnership.acceptSSE(sid, rowExists: pushedSessionsById[sid] != nil) else { return }
@@ -7455,7 +7608,7 @@ final class DaemonServer {
         case .idle: event = "opencode_stop"
         default: event = "opencode_activity"
         }
-        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false)
+        applyOpenCodeWait(sessionId: sid, event: event, id: update.waitID, title: update.question, answerable: false, broadcast: false, prompt: update.questionPrompt)
         if let final = pushedSessionsById[sid], existing == nil || existing?.state != final.state
             || existing?.question != final.question || existing?.currentTool != final.currentTool
             || existing?.projectName != final.projectName || existing?.modelName != final.modelName {
@@ -8250,16 +8403,26 @@ final class DaemonServer {
         scheduleSessionsListBroadcast()
     }
 
-    private func codexApprovalReviewer(json: [String: Any]) -> String? {
+    private func codexApprovalReviewer(json: [String: Any]) async -> String? {
         if let reviewer = json["approvals_reviewer"] as? String { return reviewer }
-        let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
-        let read: (URL?) -> String? = { dir in
-            CodexRolloutResponseReader.approvalReviewer(
-                sessionId: Self.codexBareId(sid), transcriptPath: json["transcript_path"] as? String,
-                turnId: json["turn_id"] as? String,
-                sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+        let sid = Self.codexBareId(Self.hookSessionId(event: "codex_permission_request", json: json) ?? "")
+        let transcriptPath = json["transcript_path"] as? String
+        let turnId = json["turn_id"] as? String
+        return await CodexApprovalReadWorker.read { deadline in
+            let read: @Sendable (URL?) -> String? = { dir in
+                let file = transcriptPath.flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+                    ?? CodexRolloutResponseReader.locateRollout(sessionId: sid,
+                        sessionsRoot: dir?.appendingPathComponent("sessions", isDirectory: true))
+                guard let file else { return nil }
+                return CodexApprovalFileReader.reviewer(file: file, turnId: turnId, deadline: deadline)
+            }
+            // The security scope belongs to the actual I/O worker, including
+            // when its bounded waiter has already abandoned a slow read.
+            if let scoped = AppPreferences.shared.withCodexDirectoryAccess({ dir in
+                CodexApprovalHoldRules.ReviewerRecord(reviewer: read(dir))
+            }) { return scoped.reviewer }
+            return read(nil)
         }
-        return AppPreferences.shared.withCodexDirectoryAccess { read($0) } ?? read(nil)
     }
 
     private func codexRolloutTurnContext(sessionId: String) -> [String: Any]? {
@@ -8587,11 +8750,18 @@ final class DaemonServer {
         guard let json = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else {
             return .text("")
         }
-        guard codexApprovalReviewer(json: json) != "auto_review" else { return .text("") }
         let sid = Self.hookSessionId(event: "codex_permission_request", json: json) ?? ""
+        let probe = beginCodexApprovalProbe(sid, held: true)
+        let readStarted = ContinuousClock().now
+        defer { finishCodexApprovalProbe(sid, probe) }
+        let reviewer = await codexApprovalReviewer(json: json)
+        guard codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true,
+              CodexApprovalHoldRules.needsHuman(reviewer) else { return .text("") }
         let question = Self.codexPermissionQuestion(json)
+        let elapsed = readStarted.duration(to: ContinuousClock().now).components
+        let elapsedMs = Int(elapsed.seconds * 1000 + (elapsed.attoseconds + 999_999_999_999_999) / 1_000_000_000_000_000)
         let holdMs = CodexApprovalHoldRules.holdMilliseconds(
-            header: budgetHeader, defaultMs: Int(ObservedSteering.holdTimeoutSeconds * 1000))
+            header: budgetHeader, defaultMs: Int(ObservedSteering.holdTimeoutSeconds * 1000), elapsedMs: elapsedMs)
         let background = !sid.isEmpty && (codexAmbientThreads.isAmbient(sid)
             || CodexAmbientHookRules.isBackgroundCwd(json["cwd"] ?? json["project_path"]))
         let execChild = !sid.isEmpty && codexExecChildren.knows(sid)
@@ -8612,10 +8782,15 @@ final class DaemonServer {
             DaemonLogger.shared.debug("Steering", "Codex approval not held: \(verdict.hold ? "gate busy" : verdict.reason) (\(sid.prefix(14)))")
             // The display-only prompt still belongs on the row when Codex ran
             // only this handler (the notification one untrusted or removed).
-            if !sid.isEmpty, !background, !execChild, codexHoldRequestBySession[sid] == nil,
+            if codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true,
+               !sid.isEmpty, !background, !execChild, codexHoldRequestBySession[sid] == nil,
                let entry = pushedSessionsById[sid], entry.state != "awaiting_permission" {
                 showCodexApprovalPrompt(sessionId: sid, question: question, requestId: nil)
             }
+            return .text("")
+        }
+        guard codexApprovalProbes[sid]?[probe] != nil && HTTPRequestContext.peerClose?.isClosed != true else {
+            await ObservedSteering.shared.endGate(requestId: requestId)
             return .text("")
         }
         codexHoldRequestBySession[sid] = requestId
@@ -12342,8 +12517,11 @@ final class DaemonServer {
             // CLI-daemon roster has been seen on the same device.
             if cm == "observed" {
                 d["liveAnswerable"] = pendingAskBySession[s.id]?.gateRequestId != nil
+                    || canAnswerOpenCodeQuestion(sessionId: s.id)
             }
         }
+        if s.agentType == "opencode" { d["questionDetail"] = s.questionDetail ?? "" }
+        else if let detail = s.questionDetail { d["questionDetail"] = detail }
         if let rid = s.requestId { d["requestId"] = rid }
         if let gi = s.askGroupIndex { d["askGroupIndex"] = gi }
         if let gc = s.askGroupCount { d["askGroupCount"] = gc }

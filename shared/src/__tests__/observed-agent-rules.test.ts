@@ -15,6 +15,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   OPENCODE_PENDING_REQUEST_LIMIT,
+  OPENCODE_QUESTION_RULES,
   CODEX_OTEL_METADATA_RULES,
   codexSessionMetaIsSubagent,
   codexSessionMetaSubagentVerdict,
@@ -26,6 +27,7 @@ import {
 } from '../session-utils.js';
 import { TOOL_EXEC_SUPPRESSED_AGENTS, isToolExecSuppressedAgent } from '../timeline.js';
 import { TIMELINE_TURN_RULES } from '../timeline-task-display.js';
+import { OPENCODE_PERMISSION_CHOICES } from '../opencode-question.js';
 import { OUTPUTS } from '../../../scripts/generate-observed-agent-rules.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -86,6 +88,8 @@ describe('generated mirrors', () => {
     const rules = {
       prefixes: [...OBSERVED_SESSION_PREFIXES],
       openCodePendingLimit: OPENCODE_PENDING_REQUEST_LIMIT,
+      questions: OPENCODE_QUESTION_RULES,
+      permissions: OPENCODE_PERMISSION_CHOICES,
       codexMetadata: CODEX_OTEL_METADATA_RULES,
       suppressed: [...TOOL_EXEC_SUPPRESSED_AGENTS],
       turn: TIMELINE_TURN_RULES,

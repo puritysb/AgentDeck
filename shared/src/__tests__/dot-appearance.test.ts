@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { DOT_APPEARANCE_RULES as R, defaultDotRGBA, validDotAppearance, compactDotAppearance } from '../dot-appearance.js';
+import { DOT_APPEARANCE_RULES as R, defaultDotRGBA, validDotAppearance, compactDotAppearance, DOT_HABITAT_RULES as H, dotHabitatOffset } from '../dot-appearance.js';
 import { dotSurfaceSnapshot, dotDeckPresentation } from '../dot-deck.js';
 it('rejects malformed character payloads without replacing the default identity', () => {
   const a = { version:R.version,id:'a'.repeat(64),rgba:Buffer.from(defaultDotRGBA()).toString('base64') };
@@ -31,4 +31,21 @@ it('distinguishes missing authorization and clears working on revocation without
   expect(dotSurfaceSnapshot({...dot, authorized:true}, null, null, now).code).toBe(2);
   expect(dotSurfaceSnapshot(dot, null, null, now).code).toBe(2);
   expect(dotDeckPresentation({...dot, authorized:false, hosting:false}, now).label).toBe('HOST STOPPED');
+});
+
+it('keeps the buoyant orb in its shell-side water pocket and closes its current loop', () => {
+  for (let seconds = 0; seconds <= H.periodSeconds; seconds += 0.125) {
+    const p = dotHabitatOffset(seconds, true, true);
+    expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(p.y)).toBeLessThanOrEqual(1);
+    expect(H.homeY + p.y * H.travelY).toBeLessThan(0.8);
+    expect(H.homeX + p.x * H.travelX).toBeGreaterThan(0.3);
+    const next = dotHabitatOffset(seconds + H.periodSeconds, true, true);
+    expect(next.x).toBeCloseTo(p.x, 10);
+    expect(next.y).toBeCloseTo(p.y, 10);
+  }
+  for (const seconds of [0, 3, 99, NaN, Infinity]) {
+    expect(dotHabitatOffset(seconds, false, true)).toEqual({ x: 0, y: 0 });
+    expect(dotHabitatOffset(seconds, true, false)).toEqual({ x: 0, y: 0 });
+  }
 });

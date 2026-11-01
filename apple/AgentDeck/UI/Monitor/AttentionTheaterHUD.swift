@@ -267,6 +267,7 @@ struct AttentionTheaterHUD: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.white.opacity(isCursor ? 0.9 : 0), lineWidth: 1.5)
                 )
+                .contentShape(Rectangle())
             } else {
                 VStack(spacing: 1) {
                     Text(option.label)
@@ -290,6 +291,7 @@ struct AttentionTheaterHUD: View {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.white.opacity(isCursor ? 0.9 : 0), lineWidth: 1.5)
                 )
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(.plain)

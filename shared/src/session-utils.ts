@@ -6,6 +6,16 @@
 /** Bound pending OpenCode request identities per session in both daemons.
  * The Swift value is emitted by generate-observed-agent-rules.mjs. */
 export const OPENCODE_PENDING_REQUEST_LIMIT = 64;
+/** Question payload budgets shared by both daemons; emitted to Swift. */
+export const OPENCODE_QUESTION_RULES = {
+  maxQuestions: 4,
+  maxOptions: 16,
+  maxText: 2048,
+  maxLabel: 256,
+  pollFreshMs: 40_000,
+  sendingText: 'Sending answer to OpenCode…',
+  unconfirmedText: 'Answer not confirmed; retry or answer in OpenCode',
+} as const;
 
 /** Bounded asynchronous rollout metadata checks used by both daemon OTel fallbacks. */
 export const CODEX_OTEL_METADATA_RULES = {

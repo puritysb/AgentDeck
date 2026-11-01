@@ -7,7 +7,15 @@ import RealityKit
 enum HermesMermaid {
     /// Fixed habitat prop, built once per resident. The fan ribs and open lid
     /// make the seat read as a shell instead of another agent's stone pedestal.
-    static func makeShell() -> Entity {
+    static func makeShell(template: Entity? = nil) -> Entity {
+        if let template, let imported = template.findEntity(named: "hermes_shell") ?? template.findEntity(named: "hermes-shell") {
+            let shell = imported.clone(recursive: true)
+            shell.transform = Transform(matrix: imported.transformMatrix(relativeTo: nil))
+            shell.name = "hermes-shell"
+            shell.findEntity(named: "shell_lid")?.name = "shell-lid"
+            shell.findEntity(named: "shell_seat")?.name = "shell-seat"
+            return shell
+        }
         let shell = Entity()
         shell.name = "hermes-shell"
         var positions: [SIMD3<Float>] = []
@@ -60,6 +68,13 @@ enum HermesMermaid {
         lid.scale = [1, 1, 0.9]
         shell.addChild(lid)
         return shell
+    }
+
+    /// Only the hinged valve moves. The home stays fixed on the substrate.
+    static func poseHome(_ shell: Entity?, body: Entity?, swim: HermesSwim, opening:Float? = nil) {
+        shell?.findEntity(named: "shell-lid")?.orientation = simd_quatf(angle: -TerrariumRules.hermesHomeLidAngle * (opening ?? swim.shellOpen), axis: [1, 0, 0])
+        body?.isEnabled = swim.emergence > 0.02
+        body?.position.y = -(1 - swim.emergence) * TerrariumRules.hermesHomeTuckDepth
     }
 
     static let requiredBones: Set<String> = ["spine", "tail_base", "tail_mid", "tail_tip", "fin",

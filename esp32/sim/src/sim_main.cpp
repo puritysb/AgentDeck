@@ -110,6 +110,8 @@ int main(int argc, char** argv) {
 #include "ui/ticker/ticker_ui.h"
 #else
 #include "ui/screens/aquarium.h"
+#include "ui/terrarium/renderer.h"
+#include "ui/terrarium/hermes.h"
 #if defined(BOARD_TTGO)
 #include "ui/widgets/ttgo_usage.h"
 #include "ui/display.h"
@@ -131,6 +133,25 @@ extern bool g_simSerialConnected;
 namespace {
 constexpr uint32_t FRAME_MS = 33;                 // ~30fps
 constexpr float    FRAME_DT = FRAME_MS / 1000.0f;
+static bool checkingHabitat=false;
+#if defined(BOARD_IPS10)
+static bool visibleProject(lv_obj_t* obj, const char* text) {
+  if (lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN)) return false;
+  if (lv_obj_check_type(obj, &lv_label_class) && !std::strcmp(lv_label_get_text(obj), text)) return true;
+  for (uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if (visibleProject(lv_obj_get_child(obj,i),text)) return true;
+  return false;
+}
+#endif
+#if defined(BOARD_TTGO)
+static bool visibleDotTag(lv_obj_t* obj) {
+  if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return false;
+  if(lv_obj_check_type(obj,&lv_label_class) && !std::strcmp(lv_label_get_text(obj),"Dot"))return true;
+  for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if(visibleDotTag(lv_obj_get_child(obj,i)))return true;
+  return false;
+}
+#endif
 
 // Board render tree: build the screen once, then advance it per frame.
 #if defined(BOARD_T_EMBED)
@@ -145,12 +166,12 @@ void treeUpdate(float dt) { Screens::aquariumUpdate(dt); }
 #endif
 
 bool renderScene(const char* scene, const char* path, int frames, const char* page) {
+  g_sim_millis = 0; // reset before stamping any report freshness budget
   if (!SimScenes::apply(scene)) {
     std::fprintf(stderr, "[sim] unknown scene '%s' (have: %s)\n", scene, SimScenes::catalog());
     return false;
   }
   randomSeed(0xA6E7DECC);  // deterministic frames per run
-  g_sim_millis = 0;
 #if defined(BOARD_T_DISPLAY_PRO)
   // Physical rocker navigation, exercised without a hand-authored preview.
   // Attention updates the rail without taking over the current page.
@@ -166,6 +187,19 @@ bool renderScene(const char* scene, const char* path, int frames, const char* pa
     SimDisplay::tick(FRAME_MS);
     treeUpdate(FRAME_DT);
     SimDisplay::refresh();
+#if defined(BOARD_BOX_86) || defined(BOARD_IPS35) || defined(BOARD_AMOLED) || defined(BOARD_TTGO)
+    if(checkingHabitat && i>=120) {
+#if defined(BOARD_TTGO)
+      if(visibleDotTag(lv_screen_active())) {
+        std::fprintf(stderr,"[sim] crowded compact habitat leaked a body tag into its short viewport\n");return false;
+      }
+#endif
+      const auto stats=Terrarium::layoutDiagnostics();
+      if(stats.residents!=8 || stats.collisions) {
+        std::fprintf(stderr,"[sim] habitat frame %d occupants=%u collisions=%u\n",i,stats.residents,stats.collisions);return false;
+      }
+    }
+#endif
   }
 #if defined(BOARD_T_EMBED)
   if (std::strcmp(scene, "attention") == 0) {
@@ -187,6 +221,27 @@ bool renderScene(const char* scene, const char* path, int frames, const char* pa
     }
   }
 #endif
+#if defined(BOARD_T_EMBED)
+  if (!std::strncmp(scene,"dot:",4)) {
+    Knob::onKey(Input::KeyEvent::LONG_PRESS);
+    Knob::onKey(Input::KeyEvent::LONG_PRESS);
+    treeUpdate(FRAME_DT);
+    for (int i=0;i<11 && !visibleText(lv_screen_active(),"Dot");++i) {
+      Knob::onRotate(1); treeUpdate(FRAME_DT);
+    }
+    SimDisplay::refresh();
+    if (!visibleText(lv_screen_active(),"Dot")) return false;
+  }
+#elif defined(BOARD_IPS10)
+  if (!std::strncmp(scene,"demo:",5)) {
+    // Exercise the real project pager until the chosen fixture is on screen.
+    const char* project=g_state.sessions[0].projectName;
+    for (int i=0;i<11 && !visibleProject(lv_screen_active(),project);++i) {
+      SimDisplay::tick(13000); treeUpdate(FRAME_DT); SimDisplay::refresh();
+    }
+    if (!visibleProject(lv_screen_active(),project)) return false;
+  }
+#endif
   bool ok = SimPng::writeRgb565(path, SimDisplay::framebuffer(),
                                 SimDisplay::width(), SimDisplay::height());
   std::fprintf(stderr, "[sim] %-11s → %s (%dx%d, %d frames) %s\n",
@@ -200,6 +255,19 @@ lv_obj_t* ipsLabel(lv_obj_t* obj, const char* text) {
   if (lv_obj_check_type(obj, &lv_label_class) && strstr(lv_label_get_text(obj), text)) return obj;
   for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
     if(auto* found=ipsLabel(lv_obj_get_child(obj,i),text)) return found;
+  return nullptr;
+}
+lv_obj_t* ipsDotImage(lv_obj_t* obj) {
+  if(lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN))return nullptr;
+  if(lv_obj_check_type(obj,&lv_image_class)) {
+    const void* src=lv_image_get_src(obj);
+    if(src && lv_image_src_get_type(src)==LV_IMAGE_SRC_VARIABLE) {
+      const auto* image=static_cast<const lv_image_dsc_t*>(src);
+      if(image->header.cf==LV_COLOR_FORMAT_ARGB8888 && image->header.w==DotSurfaceRules::glyphSize)return obj;
+    }
+  }
+  for(uint32_t i=0;i<lv_obj_get_child_count(obj);++i)
+    if(auto* found=ipsDotImage(lv_obj_get_child(obj,i)))return found;
   return nullptr;
 }
 bool ipsFailure(int line) {
@@ -449,6 +517,23 @@ bool verifyIpsInteractions(const char* outdir) {
   g_state.gatewayHasError=true;advance();if(ipsLabel(lv_screen_active(),"Say OpenClaw"))return ipsFailure(__LINE__);
   g_state.gatewayHasError=false;g_state.gatewayConnected=false;advance();
   if(g_state.zaiPrimaryPercent!=-1 || g_state.zaiSecondaryPercent!=-1 || g_state.zaiSecondaryIsMcp)return false;
+  // Dot occupies an ordinary seat without becoming an observed session or a
+  // voice target. Its own report stays readable in both overview and detail.
+  if(!SimScenes::apply("dot:attention"))return ipsFailure(__LINE__);
+  advance();
+  if(!IPS10Workspace::diagnostics().overview && !click("Aquarium"))return ipsFailure(__LINE__);
+  if(!ipsLabel(lv_screen_active(),"NEEDS YOU") || g_state.sessionCount!=1 || IPS10Workspace::diagnostics().sessions!=1)return ipsFailure(__LINE__);
+  if(IPS10Workspace::selectedSession()[0])return ipsFailure(__LINE__);
+  if(!click("Details") || !ipsLabel(lv_screen_active(),"Dot report - read only"))return ipsFailure(__LINE__);
+  auto* pearl=ipsDotImage(lv_screen_active());
+  if(!pearl || lv_image_get_scale_x(pearl)<512)return ipsFailure(__LINE__);
+  if(!save("ips10-dot-detail"))return ipsFailure(__LINE__);
+  auto* dot=g_state.dot;
+  if(!SimScenes::apply("dense"))return ipsFailure(__LINE__);
+  g_state.dot=dot;advance();
+  if(g_state.sessionCount!=10 || IPS10Workspace::diagnostics().sessions!=10)return ipsFailure(__LINE__);
+  dot->configured=false;advance();
+  if(!std::strcmp(IPS10Workspace::selectedSession(),"habitat:dot"))return ipsFailure(__LINE__);
   std::fprintf(stderr,"[sim] IPS10 observation, voice states, stable placement, pages, quotas, selection, attribution, drawer, offline: ok\n");
   return true;
 }
@@ -500,6 +585,36 @@ int main(int argc, char** argv) {
   SimDisplay::init(SCREEN_W, SCREEN_H);
 #endif
   treeCreate();
+
+#if defined(BOARD_BOX_86) || defined(BOARD_IPS35) || defined(BOARD_AMOLED) || defined(BOARD_TTGO)
+  if(flag(argc,argv,"--verify-habitat")) {
+    checkingHabitat=true;
+    for(const char* scene:{"habitat-all","habitat-all-working"}) {
+      const std::string path=std::string(arg(argc,argv,"--outdir","sim-out"))+"/"+scene+".png";
+      if(!renderScene(scene,path.c_str(),360,page))return 1;
+      const auto stats=Terrarium::layoutDiagnostics();
+      if(stats.residents!=8 || stats.collisions) {
+        std::fprintf(stderr,"[sim] habitat occupants=%u collisions=%u\n",stats.residents,stats.collisions);return 1;
+      }
+    }
+    for(uint8_t i=0;i<g_state.sessionCount;++i)std::strcpy(g_state.sessions[i].state,"idle");
+    g_state.crayfishState=CrayfishState::SITTING;g_state.dot->hosting=false;g_state.dot->code=1;
+    for(int i=0;i<360;++i){
+      SimDisplay::tick(FRAME_MS);treeUpdate(FRAME_DT);SimDisplay::refresh();
+      if(Terrarium::layoutDiagnostics().collisions)return 1;
+    }
+    const auto returned=Terrarium::layoutDiagnostics();
+    if(returned.shellBodiesVisible || returned.shellOpening>.01f){
+      const std::string failed=std::string(arg(argc,argv,"--outdir","sim-out"))+"/habitat-return-failed.png";
+      SimPng::writeRgb565(failed.c_str(),SimDisplay::framebuffer(),SimDisplay::width(),SimDisplay::height());
+      std::fprintf(stderr,"[sim] shared home not settled: opening=%.3f visible=%d\n",returned.shellOpening,returned.shellBodiesVisible);
+      std::fprintf(stderr,"[sim] Hermes opening=%.3f position=(%.3f,%.3f) home=(%.3f,%.3f)\n",Hermes::getShellOpening(0),Hermes::getX(0),Hermes::getY(0),Terrarium::sharedHomeX(),Terrarium::sharedHomeY());return 1;
+    }
+    const std::string closed=std::string(arg(argc,argv,"--outdir","sim-out"))+"/habitat-returned.png";
+    if(!SimPng::writeRgb565(closed.c_str(),SimDisplay::framebuffer(),SimDisplay::width(),SimDisplay::height()))return 1;
+    std::fprintf(stderr,"[sim] all species + Dot clear HUD, shell and peers through swimming and return: ok\n");return 0;
+  }
+#endif
 #if defined(BOARD_IPS10)
   if(flag(argc,argv,"--verify-interactions")) return verifyIpsInteractions(arg(argc,argv,"--outdir","sim-out")) ? 0 : 1;
 #endif

@@ -61,11 +61,6 @@ struct ControlTowerPanel: View {
             }
             .frame(maxHeight: .infinity)
 
-            #if AGENTDECK_DOT_PREVIEW
-            if let dot = stateHolder.state.dot, dot.configured && stateHolder.state.bridgeConnected {
-                DotSurfaceView(snapshot: dot).padding(.horizontal, 10).padding(.bottom, 8)
-            }
-            #endif
             bottomActionArea
         }
         .frame(
@@ -149,6 +144,12 @@ struct ControlTowerPanel: View {
 
             sessionsPane
                 .frame(maxHeight: .infinity)
+            #if AGENTDECK_DOT_PREVIEW
+            if let dot = stateHolder.state.dot, dot.configured && stateHolder.state.bridgeConnected {
+                DotSurfaceView(snapshot: dot, style: .compact).padding(.horizontal, 10).padding(.bottom, 8)
+            }
+            #endif
+
         }
     }
 
@@ -236,6 +237,12 @@ struct ControlTowerPanel: View {
     }
 
     private func respondToAwaiting(_ optionIndex: Int, session: SessionInfo) {
+        if let requestId = session.requestId, requestId.hasPrefix("ocperm:") {
+            if let choice = ObservedAgentRules.openCodePermissionChoices.first(where: { $0.index == optionIndex }) {
+                stateHolder.sendCommand(.permissionDecision(requestId: requestId, decision: choice.decision))
+            }
+            return
+        }
         // `selectOption` is the canonical path (same as D200H + Cmd+Y/N/A).
         // Focus keeps the UI in step, but the answer addresses the session by
         // id rather than depending on the relay landing first; the question

@@ -1,5 +1,6 @@
 #include "../../util/background_work.generated.h"
 #include "renderer.h"
+#include "../widgets/hud_bar.h"
 #include "draw.h"
 #include "creature_glyphs_generated.h"
 #include "water.h"
@@ -37,6 +38,7 @@ struct DotRenderCache {
     DotSurfaceState state;
     lv_obj_t* label = nullptr;
     char text[DotSurfaceRules::relationBytes + 40] = {};
+    float opening=0,emergence=0,x=DotHabitatRules::homeX,y=DotHabitatRules::homeY;
 };
 static std::unique_ptr<DotRenderCache> dotCache;
 #define dotFrame (dotCache->state)
@@ -52,6 +54,13 @@ static uint16_t* baseCache = nullptr;
 static bool baseCacheDirty = true;
 #endif
 static float totalTime = 0;
+static HabitatSpacing::Rect occupied[15]; // 240 B reused across frames; no heap churn
+static_assert(sizeof(occupied)<=256,"Habitat occupancy stays inside a bounded static budget");
+static size_t occupiedCount=0,shellObstacle=size_t(-1);
+static bool denseHabitat=false;
+static float placementDt=0;
+static float homeX=TerrariumRules::HermesHomeCanvasX,homeY=Layout::SharedShellY;
+static Terrarium::LayoutDiagnostics layoutStats{};
 
 enum class CiOwner : uint8_t { none, octopus, cloud, opencode, antigravity, kiro, hermes, openclaw };
 struct CiCueSnapshot { uint32_t key; CiOwner owner; uint8_t index; uint8_t phase; int16_t background; };
@@ -458,13 +467,55 @@ void init(lv_obj_t* parent) {
     logHeap("post-terrarium");
 }
 
+LayoutDiagnostics layoutDiagnostics(){return layoutStats;}
+float residentScale(){return denseHabitat ? Layout::CrowdedResidentScale : 1.0f;}
+float sharedHomeX(){return homeX;}
+float sharedHomeY(){return homeY;}
+bool showResidentName(bool active){
+#if IS_ROUND || defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    (void)active;return !denseHabitat;
+#else
+    return !denseHabitat || active;
+#endif
+}
+
+void placeResident(float& x, float& y, float halfWidth, float halfHeight, bool active, float previousX, float previousY, bool enteringHome) {
+    // Preserve the existing pose through state changes; steer toward the authored
+    // destination instead of snapping back to a type's home every frame.
+    if(previousX>=0 && previousY>=0 && std::isfinite(previousX) && std::isfinite(previousY)) {
+        const float dx=(x-previousX)*canvasW,dy=(y-previousY)*canvasH;
+        const float distance=sqrtf(dx*dx+dy*dy);
+        const float step=max(1.0f,min(int(canvasW),int(canvasH))*.22f*placementDt);
+        if(distance>step){x=previousX+(x-previousX)*step/distance;y=previousY+(y-previousY)*step/distance;}
+    }
+#if IS_ROUND || defined(BOARD_IPS35) || defined(BOARD_TTGO) || defined(BOARD_ESP32_C6_147)
+    const float tag=!denseHabitat ? 20 : 0; // crowded identities stay in the bounded HUD
+#else
+    const float tag=(!denseHabitat || active) && canvasW>180 ? 20 : 0;
+#endif
+    const float bodyW=halfWidth*2+4,bodyH=halfHeight*2+4;
+    auto rect=HabitatSpacing::place({x*canvasW-bodyW/2,y*canvasH-bodyH/2-tag,bodyW,bodyH+tag},
+        occupied,occupiedCount,min(int(canvasW),int(g_screenW)),min(int(canvasH),int(g_screenH)),
+#if IS_ROUND
+        true,enteringHome ? canvasH : canvasH*(1-Layout::SandHeightFrac)+10,enteringHome ? shellObstacle : size_t(-1));
+#else
+        false,enteringHome ? canvasH : canvasH*(1-Layout::SandHeightFrac)+10,enteringHome ? shellObstacle : size_t(-1));
+#endif
+    ++layoutStats.residents;
+    for(size_t i=0;i<occupiedCount;++i)if((!enteringHome || i!=shellObstacle) && HabitatSpacing::overlaps(rect,occupied[i]))++layoutStats.collisions;
+    x=(rect.x+bodyW/2)/canvasW;y=(rect.y+tag+bodyH/2)/canvasH;
+    if(occupiedCount<sizeof(occupied)/sizeof(occupied[0]))occupied[occupiedCount++]=rect;
+}
+
 void render(float dt) {
     if (!canvas_buf) return;
 
-    totalTime += dt;
+    placementDt=std::isfinite(dt) ? min(.05f,max(0.0f,dt)) : 0;
+    totalTime += placementDt;
     CiCueSnapshot ciCues[CI_CUE_SLOTS] = {};
     uint8_t ciCueCount = 0;
     bool ciPermissionPriority = false;
+    bool crayfishNeedsInput=false;
 
     // Read state snapshot
     lockState();
@@ -513,13 +564,20 @@ void render(float dt) {
     // missing, which made the board read as "OpenClaw wired up" when it
     // wasn't. Parity with the iOS/Android terrariums.
     bool showCrayfish = hasData && (g_state.gatewayConnected || g_state.gatewayHasError || g_state.crayfishCount > 0);
+    // Visual population only; this never changes session or agent accounting.
+    denseHabitat=octCount+cloudCount+opencodeCount+antigravityCount+kiroCount+hermesCount+
+        (showCrayfish ? 1 : 0)+(dotCache && dotFrame.configured && DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis())) ? 1 : 0)
+        >=TerrariumRules::NativeLabelDenseResidentCount;
     // Copy only bounded scalar ownership while the state lock is held. The
     // actual glyph anchor is resolved after its creature has rendered/moved.
     uint8_t ciOwnerIndices[8] = {};
     for (uint8_t s = 0; s < g_state.sessionCount; ++s) {
         const SessionInfo& session = g_state.sessions[s];
         if (!session.alive) continue;
-        if (strstr(session.state, "awaiting")) ciPermissionPriority = true;
+        if (strstr(session.state, "awaiting")) {
+            ciPermissionPriority = true;
+            if(!strcmp(session.agentType,"openclaw"))crayfishNeedsInput=true;
+        }
         CiOwner owner = CiOwner::none;
         if (!strcmp(session.agentType, "claude-code")) owner = CiOwner::octopus;
         else if (isCodexAgentType(session.agentType)) owner = CiOwner::cloud;
@@ -755,9 +813,90 @@ void render(float dt) {
     }
 #endif
 
+    layoutStats={};
+    occupiedCount=HUD::habitatObstacles(occupied,2);
+    shellObstacle=size_t(-1);
+    if(hermesCount || (dotCache && (dotFrame.configured || dotCache->opening>0))) {
+        shellObstacle=occupiedCount;
+        const float r=fminf(canvasW,canvasH)*TerrariumRules::HermesHomeCanvasRadius;
+        const float mermaidRadius=canvasW*Layout::HermesRadiusFrac*residentScale();
+        const float pearlRadius=min((int)DotSurfaceRules::panelGlyphSize,max(12,canvasW/7))*.5f*residentScale();
+        const float halfW=max(r+6,max(mermaidRadius*1.3f+2,pearlRadius+2));
+        const float halfH=max(r*1.6f,max(mermaidRadius*1.8f+2,pearlRadius+2));
+        const auto home=HabitatSpacing::place({homeX*canvasW-halfW,homeY*canvasH-halfH,halfW*2,halfH*2},
+            occupied,occupiedCount,min(int(canvasW),int(g_screenW)),min(int(canvasH),int(g_screenH)),
+#if IS_ROUND
+            true);
+#else
+            false);
+#endif
+        homeX=(home.x+halfW)/canvasW;homeY=(home.y+halfH)/canvasH;
+        occupied[occupiedCount++]={homeX*canvasW-r-6,homeY*canvasH-r*1.6f,r*2+12,r*2.1f};
+    }
+
+
+    // Returning residents claim the doorway first; ordinary swimming retains
+    // stable species order so a busy tank does not churn its packed layout.
+    float sharedHomeOpening=0;
+    bool sharedHomePresent=hermesCount>0;
+    auto renderHermes=[&](bool returning) {
+        for(uint8_t i=0;i<hermesCount && i<MAX_HERMES;++i) {
+            const bool active=hermesStates[i]==CreatureState::WORKING || hermesStates[i]==CreatureState::ASKING;
+            if(active==returning)continue;
+            Hermes::render(canvas_buf,canvasW,canvasH,totalTime,dt,hermesStates[i],i,hermesCount);
+            sharedHomeOpening=fmaxf(sharedHomeOpening,Hermes::getShellOpening(i));
+        }
+    };
+    auto renderDot=[&]() {
+    if (dotCache && dotLabel) {
+        // One ordinary inhabitant in the substrate band, not a corner/HUD badge.
+        float &opening=dotCache->opening,&emergence=dotCache->emergence,&x=dotCache->x,&y=dotCache->y;
+        const uint8_t code=dotFrame.effectiveCode(millis());
+        const bool out=dotFrame.configured && DotSurfaceRules::inhabitsHabitat(code);
+        const float hx=sharedHomeX(),hy=sharedHomeY();
+        if(out) {
+            opening=fminf(1,opening+dt*TerrariumRules::HermesHomeOpenRate);
+            if(opening>=TerrariumRules::HermesHomeLidClearance && !Hermes::entranceBusy()) emergence=fminf(1,emergence+dt*TerrariumRules::HermesHomeEmergeRate);
+        } else if(fabsf(x-hx)*canvasW<1 && fabsf(y-hy)*canvasH<1) {
+            emergence=fmaxf(0,emergence-dt*TerrariumRules::HermesHomeEmergeRate);
+            if(emergence==0) opening=fmaxf(0,opening-dt*TerrariumRules::HermesHomeCloseRate);
+        }
+        float departure=fmaxf(0,fminf(1,(emergence-TerrariumRules::HermesHomeDepartureStart)/(1-TerrariumRules::HermesHomeDepartureStart)));
+        departure=out ? departure*departure*(3-2*departure) : 0;
+        const float phase=totalTime*6.2831853f/DotHabitatRules::periodSeconds;
+        const float tx=hx+(code==2 ? fastSin(phase)*DotHabitatRules::travelX : 0)*departure;
+        const float ty=!out && fabsf(x-hx)*canvasW>1 ? y
+            : hy-(0.12f+(code==2 ? fastSin(phase*2)*DotHabitatRules::travelY : 0))*departure;
+        const float previousX=x,previousY=y;
+        const float blend=1-expf(-dt*4);
+        x+=(tx-x)*blend;y+=(ty-y)*blend;
+        if(dotFrame.configured || opening>0) {
+            const int size=max(12,int(min((int)DotSurfaceRules::panelGlyphSize,max(12,canvasW/7))*residentScale()));
+            sharedHomePresent=true;sharedHomeOpening=fmaxf(sharedHomeOpening,opening);
+            if(emergence>.02f) placeResident(x,y,size*.5f,size*.5f,code==2 || code==3 || code==5,previousX,previousY,!out || emergence<.99f);
+            layoutStats.shellBodiesVisible|=emergence>.02f;
+            const float opacity=emergence;
+            if(emergence>.02f) DotCompanion::glyph(dotFrame,(int)(x*canvasW)-size/2,(int)(y*canvasH)-size/2,size,
+                [opacity](int px,int py,uint8_t r,uint8_t g,uint8_t b,uint8_t a) {
+                    setPixelAlpha(px,py,(uint32_t(r)<<16)|(uint32_t(g)<<8)|b,(uint8_t)(a*opacity));
+                });
+            snprintf(dotText,sizeof(dotText),"Dot");
+            lv_obj_set_pos(dotLabel,max(0,(int)(x*canvasW)-56),(int)(y*canvasH)-size/2-19);
+            lv_obj_set_width(dotLabel,112);
+            lv_obj_set_style_text_align(dotLabel,LV_TEXT_ALIGN_CENTER,0);
+            lv_obj_set_style_text_color(dotLabel,lv_color_hex(Theme::HUDText),0);
+            if (emergence > .02f && showResidentName(code==2 || code==3 || code==5)) lv_obj_remove_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+        } else lv_obj_add_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+    }
+    };
+    const bool dotOut=dotCache && dotFrame.configured && DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis()));
+    renderHermes(true);
+    if(!dotOut)renderDot();
+
     // 6. Crayfish (if visible)
     if (showCrayfish) {
-        Crayfish::render(canvas_buf, canvasW, canvasH, totalTime, cfState);
+        Crayfish::render(canvas_buf, canvasW, canvasH, totalTime, cfState, crayfishNeedsInput);
     }
 
     // 7. Octopus(es) — per-instance state (daemon reports sibling states)
@@ -784,9 +923,8 @@ void render(float dt) {
     for (uint8_t i = 0; i < kiroCount && i < MAX_KIRO; i++) {
         Kiro::render(canvas_buf, canvasW, canvasH, totalTime, dt, kiroStates[i], i, kiroCount);
     }
-    for (uint8_t i = 0; i < hermesCount && i < MAX_HERMES; i++) {
-        Hermes::render(canvas_buf, canvasW, canvasH, totalTime, dt, hermesStates[i], i, hermesCount);
-    }
+    renderHermes(false);
+    if(dotOut)renderDot();
 
     // Parent-linked orbit accents sit above the creature layer but remain
     // decorative; the underlying session is still the only interaction target.
@@ -811,7 +949,7 @@ void render(float dt) {
         drawSubagentOrbit(Kiro::getX(i), Kiro::getY(i), kiroSubagents[i], totalTime);
     }
     for (uint8_t i = 0; i < hermesCount && i < MAX_HERMES; i++) {
-        drawSubagentOrbit(Hermes::getX(i), Hermes::getY(i), hermesSubagents[i], totalTime);
+        if(Hermes::isVisible(i)) drawSubagentOrbit(Hermes::getX(i), Hermes::getY(i), hermesSubagents[i], totalTime);
     }
 
     for (auto& memo : ciMemos) memo.seen = false;
@@ -823,38 +961,19 @@ void render(float dt) {
             case CiOwner::opencode: if (cue.index < opencodeCount && cue.index < MAX_OPENCODE) drawCiCompanion(OpenCode::getX(cue.index), OpenCode::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
             case CiOwner::antigravity: if (cue.index < antigravityCount && cue.index < MAX_ANTIGRAVITY) drawCiCompanion(Antigravity::getX(cue.index), Antigravity::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
             case CiOwner::kiro: if (cue.index < kiroCount && cue.index < MAX_KIRO) drawCiCompanion(Kiro::getX(cue.index), Kiro::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
-            case CiOwner::hermes: if (cue.index < hermesCount && cue.index < MAX_HERMES) drawCiCompanion(Hermes::getX(cue.index), Hermes::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
-            case CiOwner::openclaw: if (showCrayfish) drawCiCompanion(Layout::CfHomeX, cfState == CrayfishState::ROUTING ? Layout::CfRoutingY : Layout::CfSittingY, cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::hermes: if (cue.index < hermesCount && cue.index < MAX_HERMES && Hermes::isVisible(cue.index)) drawCiCompanion(Hermes::getX(cue.index), Hermes::getY(cue.index), cue, totalTime, !ciPermissionPriority); break;
+            case CiOwner::openclaw: if (showCrayfish) drawCiCompanion(Crayfish::getX(), Crayfish::getY(), cue, totalTime, !ciPermissionPriority); break;
             default: break;
         }
     }
     // Explicit phase0 or a departed owner clears the renderer-lifetime memo.
     for (auto& memo : ciMemos) if (!memo.seen) memo.occupied = false;
 
-    if (dotCache && dotLabel) {
-        if (!dotFrame.configured || !DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis()))) lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
-        else {
-            const uint8_t code = dotFrame.effectiveCode(millis());
-            const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn
-                : code == 4 ? ProductPalette::UiOk : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
-            const int size = DotSurfaceRules::panelGlyphSize;
-            #if defined(BOARD_AMOLED)
-            const int x = canvasW * 3 / 4 - size / 2, y = canvasH / 4;
-#else
-            const int x = max(0, canvasW - size - (int)DotSurfaceRules::panelMargin);
-            const int y = max(24, canvasH / 5);
-#endif
-            DotCompanion::glyph(dotFrame, x, y, size, [](int px, int py, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-                setPixelAlpha(px, py, (uint32_t(r) << 16) | (uint32_t(g) << 8) | b, a);
-            });
-            snprintf(dotText, sizeof(dotText), "%s%s%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code], dotFrame.relation[0] ? "\n" : "", dotFrame.relation);
-            lv_obj_set_pos(dotLabel, max(0, x + size - 112), y + size + 4);
-            lv_obj_set_width(dotLabel, 112);
-            lv_obj_set_style_text_color(dotLabel, lv_color_hex(tint), 0);
-            lv_obj_remove_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_invalidate(dotLabel);
-        }
-    }
+    layoutStats.shellOpening=sharedHomeOpening;
+    for(uint8_t i=0;i<hermesCount && i<MAX_HERMES;++i)layoutStats.shellBodiesVisible|=Hermes::isVisible(i);
+    if(sharedHomePresent) Draw::scallop((int)(sharedHomeX()*canvasW),
+        (int)(sharedHomeY()*canvasH),max(4,(int)(fminf(canvasW,canvasH)*TerrariumRules::HermesHomeCanvasRadius)),sharedHomeOpening,Theme::HUDText);
+
 
     // 8. Data particles (food crumbs from working agents)
     Particles::update(dt, totalTime, cState, octCount, cfState, showCrayfish, octStates);

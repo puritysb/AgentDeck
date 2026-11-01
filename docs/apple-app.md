@@ -80,9 +80,28 @@ On macOS the app always lives in the menu bar — one click reveals the full top
 - **QR pairing** — scan with the in-app camera (`agentdeck qr` on your Mac)
 - **Manual** — enter bridge IP and port
 
+## Planned remote observation
+
+The current companion uses a local-network connection. The
+[CloudKit remote-observation design](apple-remote-observation.md) is a planned,
+unimplemented PoC for selected updates from the running Mac app to the same
+Apple Account's iPhone, with eligible notifications forwarded to Apple Watch.
+It will use a separate read-only summary with original observation times, not
+the live control dashboard. No CloudKit setup or Watch app is available in the
+current build. See the [planned feature introduction](marketing/apple-remote-observation.md)
+for scope and limits; widgets follow only after real-device delivery validation.
+
 ## iOS Foreground Recovery
 
 The app handles iOS background/foreground transitions gracefully — WebSocket reconnects immediately on foregrounding, state syncs within milliseconds, and the terrarium animation resumes without flicker.
+
+The development CloudKit PoC also includes opt-in Mac automatic publication and
+an account-scoped durable reader. iOS stores its files under the app container's
+`Library/Application Support/AgentDeck`, through `AgentDeckPaths`. A storage-only
+check is available in the PoC; a cloud fetch does not by itself prove persistence.
+Cold offline restoration with no local iCloud identity token remains withheld
+until online account verification. These controls remain excluded from Store
+configurations.
 
 ## Two-tier product: App Store app alone vs +CLI
 

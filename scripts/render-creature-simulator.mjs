@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { renderFrame, resetDirector } from '../bridge/dist/pixoo/pixoo-renderer.js';
 import { renderSessionSlot } from '../shared/dist/svg-renderers/session-slot-renderer.js';
 import { renderUsageWideSlot } from '../shared/dist/d200h-layout.js';
+import { renderDotDeckSlot } from '../shared/dist/dot-deck.js';
+import { defaultDotRGBA } from '../shared/dist/dot-appearance.js';
+import { Brand } from '../shared/dist/design-tokens.js';
 import {
   initTerrarium,
   setOctopi,
@@ -33,8 +36,18 @@ const AGENTS = {
   antigravity: { type: 'antigravity', name: 'Antigravity' },
   kiro: { type: 'kiro-cli', name: 'Kiro' },
   hermes: { type: 'hermes', name: 'Hermes' },
+  dot: { name: 'Dot' }, // A report snapshot, never a synthetic SessionInfo.
 };
 const STATES = ['idle', 'working', 'sleeping', 'asking'];
+const DEMO_NOW = Date.now();
+function buildDot(agent, state) {
+  if (agent !== 'dot') return null;
+  return {
+    configured: true, hosting: state !== 'sleeping', authorized: true,
+    reportState: state === 'working' ? 'working' : state === 'asking' ? 'needs_attention' : null,
+    reportedAt: DEMO_NOW - 1000, expiresAt: DEMO_NOW + 60_000,
+  };
+}
 
 function withSeed(seed, fn) {
   const originalRandom = Math.random;
@@ -61,7 +74,7 @@ function buildSessions(selectedAgent, state) {
     { key: 'claude', id: 's-claude', alive: true, agentType: 'claude-code', state: selectedAgent === 'claude' ? simStateToBridge(state) : 'idle', projectName: 'Claude', modelName: 'opus-4' },
     { key: 'codex', id: 's-codex', alive: true, agentType: 'codex-cli', state: selectedAgent === 'codex' ? simStateToBridge(state) : 'idle', projectName: 'Codex', modelName: 'gpt-5-codex' },
     { key: 'opencode', id: 's-open', alive: true, agentType: 'opencode', state: selectedAgent === 'opencode' ? simStateToBridge(state) : 'idle', projectName: 'OpenCode', modelName: 'opencode' },
-    { key: 'openclaw', id: 's-claw', alive: true, agentType: 'openclaw', state: selectedAgent === 'openclaw' && state === 'working' ? 'processing' : 'idle', projectName: 'OpenClaw', modelName: 'OPENCLAW' },
+    { key: 'openclaw', id: 's-claw', alive: true, agentType: 'openclaw', state: selectedAgent === 'openclaw' ? simStateToBridge(state) : 'idle', projectName: 'OpenClaw', modelName: 'OPENCLAW' },
     { key: 'antigravity', id: 's-antigravity', alive: true, agentType: 'antigravity', state: selectedAgent === 'antigravity' ? simStateToBridge(state) : 'idle', projectName: 'Antigravity', modelName: 'gemini' },
     { key: 'kiro', id: 's-kiro', alive: true, agentType: 'kiro-cli', state: selectedAgent === 'kiro' ? simStateToBridge(state) : 'idle', projectName: 'Kiro', modelName: 'auto' },
     { key: 'hermes', id: 's-hermes', alive: true, agentType: 'hermes', state: selectedAgent === 'hermes' ? simStateToBridge(state) : 'idle', projectName: 'Hermes (cli)', modelName: 'glm-5.3' },
@@ -99,14 +112,16 @@ function buildUsage(_animationNow) {
 function buildStateEvent(selectedAgent, state) {
   return {
     state: simStateToBridge(state),
-    agentType: AGENTS[selectedAgent].type,
+    agentType: AGENTS[selectedAgent].type ?? 'daemon',
     gatewayAvailable: true,
+    gatewayConnected: true,
+    gatewayAuthenticated: true,
     gatewayHasError: false,
   };
 }
 
 function renderPixooData() {
-  const now = Date.UTC(2026, 2, 28, 12, 0, 0);
+  const now = DEMO_NOW;
   const result = {};
   for (const agent of Object.keys(AGENTS)) {
     for (const state of STATES) {
@@ -116,6 +131,7 @@ function renderPixooData() {
         buildUsage(now),
         buildSessions(agent, state),
         now + STATES.indexOf(state) * 1000 + Object.keys(AGENTS).indexOf(agent) * 250,
+        64, 'standard', {}, { dot: buildDot(agent, state) },
       );
       result[`${agent}:${state}`] = {
         width: 64,
@@ -131,7 +147,7 @@ function renderPixooData() {
 // device's native size: iDotMatrix 32×32 (standard terrarium) and Timebox Mini
 // 11×11 (micro layout). renderFrame supports size 11|32|64.
 function renderMatrixData(size, layout) {
-  const now = Date.UTC(2026, 2, 28, 12, 0, 0);
+  const now = DEMO_NOW;
   const result = {};
   for (const agent of Object.keys(AGENTS)) {
     for (const state of STATES) {
@@ -143,6 +159,7 @@ function renderMatrixData(size, layout) {
         now + STATES.indexOf(state) * 1000 + Object.keys(AGENTS).indexOf(agent) * 250,
         size,
         layout,
+        {}, { dot: buildDot(agent, state) },
       );
       result[`${agent}:${state}`] = {
         width: size,
@@ -167,7 +184,8 @@ function renderStreamDeckData() {
     for (const state of STATES) {
       const session = buildSessions(agent, state)[0];
       result[`${agent}:${state}`] = {
-        svg: renderSessionSlot(session, true, 36, session.projectName),
+        svg: agent === 'dot' ? renderDotDeckSlot(buildDot(agent, state), DEMO_NOW)
+          : renderSessionSlot(session, true, 36, session.projectName),
       };
     }
   }
@@ -216,6 +234,7 @@ function renderTuiData() {
           modelName: agent === 'claude' ? 'opus-4' : agent === 'codex' ? 'gpt-5-codex' : agent === 'opencode' ? 'opencode' : agent === 'antigravity' ? 'gemini' : agent === 'kiro' ? 'auto' : agent === 'hermes' ? 'glm-5.3' : 'OPENCLAW',
           currentTool: state === 'working' ? 'Read file' : null,
           sessions: buildSessions(agent, state),
+          dot: buildDot(agent, state),
           usage: {
             fiveHourPercent: 46,
             sevenDayPercent: 72,
@@ -279,6 +298,9 @@ function renderTuiTerrariumData() {
 }
 
 const simulatorData = {
+  sourceMarks: Object.fromEntries(['kiro', 'hermes'].map(agent => [agent,
+    { svg: fs.readFileSync(path.resolve(__dirname, `../design/brand/${agent}.svg`), 'utf8'), color: agent === 'hermes' ? Brand.hermesOnDark : Brand.kiro }])),
+  dotGlyph: { size: 16, rgba: Array.from(defaultDotRGBA()) },
   pixoo: renderPixooData(),
   idot: renderMatrixData(32, 'standard'),
   timebox: renderMatrixData(11, 'micro'),

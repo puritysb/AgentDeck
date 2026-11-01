@@ -436,3 +436,36 @@ The Timebox Mini drives an 11×11 LED screen over **BLE**. A `timeboxDevices` en
 3. Register broadcast hook: `wsServer.onBroadcast(broadcastNewDevice)` in `bridge/src/index.ts`
 4. Add discovery/polling if needed
 5. Update this document
+
+
+## Creature surface acceptance
+
+The renderer audit covers Claude, Codex CLI/App, OpenCode, Antigravity, Kiro
+CLI/IDE, OpenClaw, Hermes and Dot. Dot is a read-only presentation peer: it
+never creates a transport session, increases agent totals or becomes a command
+or voice target. A configured endpoint without a fresh activity report is idle.
+Unknown future agent IDs retain a neutral/raw identity rather than borrowing a
+known creature.
+
+| Surface family | Intended adaptation | Acceptance boundary |
+|---|---|---|
+| macOS, iPhone, iPad, Android LCD | Native articulated residents; Hermes and Dot share one shell, OpenClaw keeps its rock | Native lifecycle, imported-asset, label and collision tests; physical acceptance is recorded separately from builds |
+| Apple/Android 2D and Android reader Frame | Canonical silhouettes, mermaid tail and shared shell; paper uses contrast and restrained refresh | Canvas/paper tests and captures; emulator frames do not establish physical e-ink ghosting |
+| 86 Box, IPS35, round AMOLED, TTGO, C6 | Live 2D habitat with official masks, attached semantic attention badges and hidden-body label suppression | Host frames for the available simulator boards; C6 is native-build-only in this checkout. Round HUD bounds its roster and crowded bodies; live pixel-space packing reserves HUD, shell and peer bounds, TTGO keeps usage as the default |
+| IPS10 | Project spaces containing resident seats, inline work/attention and an independent usage pane | Actual workspace renderer and interaction tests; its eleven-seat pool includes Dot alongside ten wire sessions |
+| T-Embed, T-Display-S3-Pro | Compact focus/list views with identity, state and useful work text | Knob/ticker simulator and interaction checks; no miniature aquarium behind text |
+| TRMNL, LilyGo EPD47 | Static canonical creature marks in priority cards, with explicit hidden-state counts | Shared paper renderer at physical dimensions; refresh timing and ghosting need panel observation |
+| NM-EPD-420 | Minimal text identity/state summary and usage; slow tri-color cycles stay reserved for meaningful changes | Actual NM face at 400×300; intentionally no animated habitat or decorative refresh |
+| XTeink X3/X4 | Community CrossPoint reader adaptation | Shared geometry only in this checkout; local layout previews are not the fork's actual screen |
+| Stream Deck / Mini / XL / + / + XL, D200H / D200X | Full identity/state tiles; Dot occupies the same tile layer | Shared layout and baked-loop tests; D200X encoder support is not implied by keypad support |
+| Pixoo64, iDotMatrix, TC001 | Generated species masks and device-sized status/usage composition | Generated-mask identity tests and Node/Swift parity; TC001's serial TX limitation still applies |
+| Timebox Mini | One collective expressive face, representing live activity/attention | Expression ownership/parity tests; intentionally does not rotate through decorative species |
+| TUI | Canonical terminal reductions and ordinary read-only Dot roster card | Width/layout, roster count, report-age and switchability tests |
+
+The 2D habitat remains useful on small colour panels when it leaves a clear
+water region, makes attention unambiguous and preserves the useful quota view.
+It is not the default for every form factor: the narrow knob/strip use focus
+views, TTGO opens with usage, and slow native e-ink panels stay static. Inspect
+empty, quiet, working, needs-you, error, expired-report and dense rosters; a
+single attractive working screenshot is insufficient. Local review captures
+belong under `diagnostics/surface-audit/`, not in historical hardware photography.

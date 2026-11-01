@@ -35,6 +35,42 @@ void circle(int cx, int cy, int r, uint32_t color24, uint8_t alpha);
 
 /** Line (Bresenham) with alpha blend. */
 void line(int x0, int y0, int x1, int y1, uint32_t color24, uint8_t alpha);
+// One contrast-safe attention grammar for every LCD species, including tiny panels.
+inline void attention(int x, int y, int r, uint32_t fill, uint32_t ink) {
+    r = max(4, r);
+    circle(x, y, r, fill, 255);
+    const int stroke = max(1, r / 3);
+    for (int dx = 0; dx < stroke; ++dx) {
+        line(x + dx - stroke/2, y-r/2, x + dx - stroke/2, y, ink, 255);
+        pixelA(x + dx - stroke/2, y+r/2, ink, 255);
+    }
+}
+
+// Filled nacre basin and a hinged fan. The closed shell retains
+// volume instead of reading as an empty wire basket; no frame allocations.
+inline void scallop(int x, int y, int r, float open, uint32_t color) {
+    open = max(0.0f, min(1.0f, open));
+    const int lift = (int)(r * (0.25f + open * 1.2f)) + 2;
+    // A curved, filled fan rather than a trapezoid outlined like a basket.
+    for (int dy = -lift; dy <= 0; ++dy) {
+        const float t = float(dy) / max(1, lift);
+        const int half = max(1, int(r * sqrtf(max(0.0f, 1-t*t))));
+        line(x-half,y+dy,x+half,y+dy,color,165);
+    }
+    for (int rib=1;rib<6;++rib) {
+        const float angle=M_PI*float(rib)/6;
+        line(x,y,x+int(fastCos(angle)*r),y-int(fastSin(angle)*lift),color,100);
+    }
+    const int depth = max(2, r / 3 + 2);
+    for (int dy = 0; dy <= depth; ++dy) {
+        const float t = float(dy) / depth;
+        const int half = int(r * sqrtf(max(0.0f, 1-t*t)));
+        line(x-half,y+dy,x+half,y+dy,color,200);
+    }
+    line(x-r,y,x+r,y,color,240);
+}
+
+
 
 /** Draw an 8-bit alpha coverage mask scaled into a dst box, tinted + alpha-modulated.
  *  Bilinear sampling. Used for rasterized creature silhouettes (creature_glyphs_generated.h). */

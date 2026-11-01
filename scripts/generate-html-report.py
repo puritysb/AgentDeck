@@ -1533,7 +1533,7 @@ def generate_html(vitest, android_suites, cov_data, scenarios, scenario_results,
 <link rel="icon" type="image/png" href="../icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=IBM+Plex+Sans+JP:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
 <style>
 :root {{
   --tide-50:#f5f3ec; --tide-100:#ebe6d6; --tide-200:#d8cfb6; --tide-300:#a8b09a;
@@ -1706,6 +1706,7 @@ footer {{ max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var
     <p class="kicker">AgentDeck · Build health</p>
     <h1>Test Report</h1>
     <p class="lede">Review the decision, remaining risk and next action first; inspect the exact test evidence below.</p>
+    <p id="report-locale-note" class="fine" lang="ja" role="status" hidden>レポート本文の日本語訳は準備中のため、英語で表示しています。</p>
     <p class="run-chip"><span class="dot {overall}"></span>{_DECISION_LABEL[overall]} · {total_all:,} tests{commit_bit} · generated {now}</p>
   </header>
   {_render_qa_summary(counts, metadata)}

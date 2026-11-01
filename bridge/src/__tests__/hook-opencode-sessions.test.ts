@@ -123,6 +123,85 @@ it('replays the shared identity-scoped wait contract', () => {
     const [session] = hooks.snapshot();
     expect(session.state, row.event).toBe(row.state);
     expect(session.requestId).toBe(row.state === 'awaiting_permission' ? `ocperm:${SID}:${row.pending}` : undefined);
-    if (row.state === 'awaiting_option') expect(hooks.applyTo([], index)[0].options).toBeUndefined();
+    if (row.state === 'awaiting_option') expect(hooks.applyTo([], index)[0].options).toEqual([]);
   }
+});
+
+it('publishes real choices and correlates a device reply to the live question', () => {
+  const hooks = new HookOpenCodeSessions();
+  const payload = { sessionId: SID, questionId: 'q-live', title: 'Choose target', questionAnswerable: true,
+    questions: [{ question: 'Choose target', options: [{ label: ' local ' }, { label: 'Remote' }] }] };
+  hooks.note('opencode_question_asked', payload, 1000);
+  expect(hooks.applyTo([], 1001)[0]).toMatchObject({ liveAnswerable: true,
+    options: [{ index: 0, label: ' local ' }, { index: 1, label: 'Remote' }] });
+  const sent: unknown[] = [];
+  const enqueue = (id: string, answers: string[][]) => { sent.push({ id, answers }); return true; };
+  expect(hooks.answerQuestion(SID, 0, 'unrelated prompt', enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, -1, 'Choose target', enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, undefined, enqueue)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', () => false)).toBe(false);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', enqueue)).toBe(true);
+  expect(sent).toEqual([{ id: 'q-live', answers: [[' local ']] }]);
+  expect(hooks.answerQuestion(SID, 0, 'Choose target', enqueue)).toBe(false);
+  hooks.note('opencode_question_asked', { ...payload, replyFailed: true }, 1100);
+  expect(hooks.answerQuestion(SID, 1, 'Choose target', enqueue)).toBe(true);
+  hooks.note('opencode_question_unavailable', { sessionId: SID, questionId: 'q-live' }, 1200);
+  expect(hooks.applyTo([], 1201)[0]).toMatchObject({ state: 'processing', liveAnswerable: false, options: [] });
+});
+
+it('does not convert multiple-choice groups or missing transport into a binary permission', () => {
+  for (const multiple of [true, false]) {
+    const hooks = new HookOpenCodeSessions();
+    hooks.note('opencode_question_asked', { sessionId: SID, questionId: 'q',
+      questionAnswerable: multiple, questions: [{ question: 'Choose', multiple,
+        options: [{ label: 'A' }, { label: 'B' }] }] }, 1000);
+    const row = hooks.applyTo([], 1001)[0];
+    expect(row.liveAnswerable).toBe(false);
+    expect(row.requestId).toBeUndefined();
+    expect(row.options).toHaveLength(2);
+    expect(hooks.answerQuestion(SID, 0, 'Choose', () => true)).toBe(false);
+  }
+});
+
+it('renders one-time permission choices and routes each transport to the current native permission', () => {
+  const hooks = new HookOpenCodeSessions();
+  hooks.note('opencode_permission_asked', { sessionId: SID, cwd: CWD, permissionId: 'p1', title: 'bash: harmless probe' }, 1000);
+  const row = hooks.applyTo([], 1001)[0];
+  expect(row).toMatchObject({ liveAnswerable: true, options: [{ index: 0, label: 'Allow once' }, { index: 1, label: 'Deny' }] });
+  const replies: unknown[] = [];
+  const enqueue = (permissionId: string, decision: 'allow' | 'deny') => { replies.push({ permissionId, decision }); return true; };
+  expect(hooks.answerOption(SID, 0, 'bash: harmless probe', () => { throw Error('permission is not a question'); }, enqueue)).toBe(true);
+  expect(hooks.answerOption(SID, 1, 'bash: harmless probe', () => false, enqueue)).toBe(true);
+  expect(hooks.answerOption(SID, 2, 'bash: harmless probe', () => false, enqueue)).toBe(false);
+  expect(hooks.answerOption(SID, 0, 'previous command', () => false, enqueue)).toBe(false);
+  expect(hooks.answerPermission(SID, `ocperm:${SID}:old`, 'allow', enqueue)).toBe(false);
+  expect(hooks.answerPermission(SID, `ocperm:${SID}:p1`, 'allow', () => false)).toBe(false);
+  hooks.note('opencode_permission_replied', { sessionId: SID, permissionId: 'p1' }, 1002);
+  expect(hooks.answerPermission(SID, `ocperm:${SID}:p1`, 'allow', enqueue)).toBe(false);
+  expect(replies).toEqual([{ permissionId: 'p1', decision: 'allow' }, { permissionId: 'p1', decision: 'deny' }]);
+});
+
+
+it('removes a permission wait after its owning OpenCode process is confirmed exited', () => {
+  let alive: boolean | undefined = true;
+  const hooks = new HookOpenCodeSessions(() => alive);
+  hooks.note('opencode_permission_asked', { sessionId: SID, pid: 1234, permissionId: 'p', title: 'bash' }, 1000);
+  expect(hooks.applyTo([], 1001)[0]).toMatchObject({ state: 'awaiting_permission', pid: 1234 });
+  alive = undefined;
+  expect(hooks.applyTo([], 1002)[0].state).toBe('awaiting_permission');
+  alive = false;
+  expect(hooks.applyTo([], 1003)).toEqual([]);
+  // A delayed callback from that dead process must not resurrect its prompt.
+  hooks.note('opencode_permission_asked', { sessionId: SID, pid: 1234, permissionId: 'p' }, 1004);
+  expect(hooks.applyTo([], 1005)).toEqual([]);
+});
+
+it('retains legacy unknown-PID sessions and updates the owner when a session resumes', () => {
+  const dead = new Set([1234]);
+  const hooks = new HookOpenCodeSessions(pid => !dead.has(pid));
+  hooks.note('opencode_permission_asked', { sessionId: SID, permissionId: 'p' }, 1000);
+  expect(hooks.applyTo([], 1001)).toHaveLength(1);
+  hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 1234 }, 1002);
+  hooks.note('opencode_user_prompt_submit', { sessionId: SID, pid: 4321 }, 1003);
+  expect(hooks.applyTo([], 1004)[0]).toMatchObject({ state: 'processing', pid: 4321 });
 });

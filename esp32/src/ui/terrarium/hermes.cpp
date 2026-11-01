@@ -1,12 +1,5 @@
-// Hermes creature — the official Nous girl mark from design/brand/hermes.svg
-// (the upstream white variant on these dark screens), swimming.
-//
-// A sibling of kiro.cpp: an alpha-mask mark, never a redrawn character. The
-// aquarium mermaid is an Apple/Android 3D adaptation; at LCD sizes the
-// canonical mark is the identity (issue #425 — do not invent a creature, do not
-// borrow OpenClaw's art). It sways like something swimming, not drifting.
-//
-// Only `agentType == "hermes"` maps here: the observed Hermes Agent row.
+// Hermes mermaid: canonical Nous girl head over the generated kelp tail.
+// One shared scallop with Dot; compact cards retain the plain upstream mark.
 
 #include "hermes.h"
 #include "draw.h"
@@ -30,6 +23,8 @@ static float jitterY[HERMES_ARR_SIZE];
 static float phaseOffset[HERMES_ARR_SIZE];
 static float currentX[HERMES_ARR_SIZE];
 static float currentY[HERMES_ARR_SIZE];
+static float shellOpen[HERMES_ARR_SIZE];
+static float emergence[HERMES_ARR_SIZE];
 
 /** Bilinear-sampled layer of the generated mermaid sprite (42×60 A8), filled
  *  with one colour. Layers are drawn tail → rim → fluke → head; the head is
@@ -80,7 +75,7 @@ void init() {
 void render(uint16_t* buf, int w, int h, float time, float dt,
             CreatureState state, uint8_t idx, uint8_t total) {
     (void)buf;
-    (void)dt;
+    dt = std::isfinite(dt) ? fminf(.05f, fmaxf(0, dt)) : 0;
     if (idx >= MAX_HERMES) return;
 
     float scaleFactor = (total >= 4) ? 0.70f : (total >= 3) ? 0.84f : 1.0f;
@@ -96,7 +91,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (scaleFactor < 0.45f) scaleFactor = 0.45f;
     }
 
-    float bodyRadius = w * Layout::HermesRadiusFrac * scaleFactor;
+    float bodyRadius = w * Layout::HermesRadiusFrac * scaleFactor * Terrarium::residentScale();
 
     float homeX;
     if (total <= 1) {
@@ -117,6 +112,20 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     homeY += jitterY[idx];
 
+    const bool active = state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const float restY = Terrarium::sharedHomeY();
+    const float entranceX=Terrarium::sharedHomeX();
+    if (active) {
+        shellOpen[idx] = fminf(1, shellOpen[idx] + dt * TerrariumRules::HermesHomeOpenRate);
+        if (shellOpen[idx] >= TerrariumRules::HermesHomeLidClearance)
+            emergence[idx] = fminf(1, emergence[idx] + dt * TerrariumRules::HermesHomeEmergeRate);
+    } else if (fabsf(currentX[idx]-entranceX)*w < 1 && fabsf(currentY[idx]-restY)*h < 1) {
+        emergence[idx] = fmaxf(0, emergence[idx] - dt * TerrariumRules::HermesHomeEmergeRate);
+        if (emergence[idx] == 0) shellOpen[idx] = fmaxf(0, shellOpen[idx] - dt * TerrariumRules::HermesHomeCloseRate);
+    }
+    if (!active) { homeX=entranceX;homeY=restY; }
+    float departure = fminf(1, fmaxf(0, (emergence[idx]-TerrariumRules::HermesHomeDepartureStart)/(1-TerrariumRules::HermesHomeDepartureStart)));
+    departure = departure*departure*(3-2*departure);
     float renderX = homeX;
     float renderY = homeY;
     float t = time + phaseOffset[idx];
@@ -131,6 +140,15 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY > Layout::HermesSwimMaxY) renderY = Layout::HermesSwimMaxY;
     }
 
+    renderX = entranceX + (renderX-entranceX)*departure;
+    renderY = restY + (renderY-restY)*departure;
+    // Align with the clear doorway lane before descending past the quota rail.
+    if(!active && fabsf(currentX[idx]-entranceX)*w>1) renderY=currentY[idx];
+    const float blend = 1-expf(-dt*4);
+    renderX = currentX[idx] + (renderX-currentX[idx])*blend;
+    renderY = currentY[idx] + (renderY-currentY[idx])*blend;
+
+    if(emergence[idx]>.02f) Terrarium::placeResident(renderX,renderY,bodyRadius*1.3f,bodyRadius*1.8f,active,currentX[idx],currentY[idx],!active || emergence[idx]<.99f);
     float breathBob = 0.0f;
     uint8_t alpha = 255;
     if (state == CreatureState::SLEEPING) {
@@ -147,6 +165,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         breathBob = fastSin(t * 0.9f) * h * 0.002f;
     }
 
+    alpha = (uint8_t)(alpha * emergence[idx]);
     int cx = (int)(renderX * w);
     int cy = (int)(renderY * h + breathBob);
     currentX[idx] = renderX;
@@ -169,15 +188,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         int bx = cx + (int)(bodyRadius * 1.2f);
         int by = cy;
         int br = (int)(bodyRadius * 0.52f);
-        Draw::circle(bx, by, br, 0xFFFFFF, 210);
-        int qx = bx - 2, qy = by - 3;
-        Draw::pixelA(qx + 1, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 3, qy + 1, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 2, Theme::DeepSea, 255);
-        Draw::pixelA(qx + 2, qy + 4, Theme::DeepSea, 255);
-        Draw::line(bx - br / 3, by + br / 2, cx + (int)(bodyRadius * 0.6f), cy, 0xFFFFFF, 160);
+        Draw::attention(bx, by, br, Theme::StatusAmber, Theme::DeepSea);
     }
 
 #if !defined(BOARD_TTGO) && !defined(BOARD_ESP32_C6_147)
@@ -190,11 +201,10 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     name[sizeof(name) - 1] = '\0';
     // Dense tank: idle tags collapse (shared rule, DESIGN.md §6.4).
-    const bool showName = g_state.sessionCount < TerrariumRules::NativeLabelDenseResidentCount ||
-                          state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const bool showName=Terrarium::showResidentName(state==CreatureState::WORKING || state==CreatureState::ASKING);
     unlockState();
 
-    if (name[0] && showName) {
+    if (name[0] && showName && alpha > 0) {
         lv_point_t txtSize;
         lv_text_get_size(&txtSize, name, &font_kr_12, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
         int textW = txtSize.x + (total >= 3 ? 8 : 12);
@@ -238,5 +248,15 @@ float getY(uint8_t idx) {
     if (idx >= MAX_HERMES) return Layout::HermesStandingY;
     return currentY[idx];
 }
+
+bool isVisible(uint8_t idx){return idx<MAX_HERMES && emergence[idx]>.02f;}
+bool entranceBusy(){
+    for(uint8_t i=0;i<MAX_HERMES;++i)
+        if(isVisible(i) && (emergence[i]<.99f ||
+           (fabsf(currentX[i]-Terrarium::sharedHomeX())<TerrariumRules::HermesHomeCanvasRadius*2.4f &&
+            fabsf(currentY[i]-Terrarium::sharedHomeY())<TerrariumRules::HermesHomeCanvasRadius*2.4f)))return true;
+    return false;
+}
+float getShellOpening(uint8_t idx) { return idx < HERMES_ARR_SIZE ? shellOpen[idx] : 0; }
 
 }  // namespace Hermes

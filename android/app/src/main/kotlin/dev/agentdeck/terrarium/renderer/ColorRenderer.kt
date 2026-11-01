@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import dev.agentdeck.terrarium.TerrariumColors
 import dev.agentdeck.terrarium.TerrariumState
@@ -125,6 +126,15 @@ fun ColorTerrariumCanvas(
         val now=System.nanoTime();val dt=if(lastCiFrame[0]==0L)0f else ((now-lastCiFrame[0])/1_000_000_000f).coerceIn(0f,.05f);lastCiFrame[0]=now
         ciMotions.keys.retainAll(originals.keys.intersect(state.ciWaits.keys))
         for ((id,_) in originals) state.ciWaits[id]?.let { wait -> ciMotions.getOrPut(id){CiCompanionMotion(id)}.update(wait,dt) }
+
+        val shellResidents=aquariumResidents(state).filter { it.kind=="hermes" || it.kind=="dot" }
+        if(shellResidents.isNotEmpty()) {
+            val opening=if(shellResidents.any { it.habitatActive==true || it.state==dev.agentdeck.terrarium.OctopusVisualState.WORKING || it.state==dev.agentdeck.terrarium.OctopusVisualState.ASKING }) 1f else 0f
+            dev.agentdeck.terrarium.HermesShell.draw(drawContext.canvas.nativeCanvas,SHARED_SHELL_PAINT,
+                w*dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_X,h*dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_Y,
+                min(w,h)*dev.agentdeck.terrarium.TerrariumRules.HERMES_HOME_CANVAS_RADIUS,opening,
+                dev.agentdeck.ui.theme.DesignTokens.Tide.s100.toArgb(),dev.agentdeck.ui.theme.DesignTokens.Tide.s300.toArgb())
+        }
 
         // Layer 6.5: Back-layer fish (behind creatures for 3D depth)
         dataParticles.drawBackLayer(this)
@@ -384,3 +394,5 @@ private fun spreadFloorOctopuses(octopuses: List<OctopusCreature>) {
     standing.forEachIndexed { i, (oct, _) -> oct.restX = xs[i] }
     for (oct in octopuses) if (oct.floorFootprint() == null) oct.restX = null
 }
+
+private val SHARED_SHELL_PAINT=Paint(Paint.ANTI_ALIAS_FLAG)

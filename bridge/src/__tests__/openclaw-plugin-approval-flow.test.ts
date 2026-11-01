@@ -478,3 +478,35 @@ describe('an approval the Gateway has already dropped comes off the deck', () =>
     }
   });
 });
+
+describe('only live plugin approvals need attention', () => {
+  it('does not replace a live request with a delayed expired event', () => {
+    const { adapter, gw, parser } = harness();
+    gw('plugin.approval.requested', PLUGIN_REQUESTED);
+    const count = parser.length;
+    gw('plugin.approval.requested', { ...PLUGIN_REQUESTED, id: 'expired', expiresAtMs: Date.now() });
+    expect(adapter.getPendingApproval()?.id).toBe(PLUGIN_REQUESTED.id);
+    expect(parser).toHaveLength(count);
+  });
+
+  it('skips expired catch-up rows and adopts the oldest live request', async () => {
+    const { adapter } = harness();
+    (adapter as unknown as { rpcCall(m: string): Promise<unknown> }).rpcCall =
+      (method) => Promise.resolve(method === 'plugin.approval.list' ? [
+        { ...PLUGIN_REQUESTED, id: 'expired', createdAtMs: 0, expiresAtMs: Date.now() - 1 },
+        PLUGIN_REQUESTED,
+      ] : []);
+    await (adapter as unknown as { adoptPendingApprovals(): Promise<void> }).adoptPendingApprovals();
+    expect(adapter.getPendingApproval()?.id).toBe(PLUGIN_REQUESTED.id);
+  });
+
+  it('closes attention on successful RPC even when the resolved push is lost', async () => {
+    const { adapter, gw, parser, rows } = harness();
+    gw('plugin.approval.requested', PLUGIN_REQUESTED);
+    adapter.handleCommand({ type: 'select_option', index: 0 });
+    await Promise.resolve();
+    expect(adapter.getPendingApproval()).toBeNull();
+    expect(parser.at(-1)?.event).toBe('spinner_start');
+    expect(rows.at(-1)?.type).toBe('tool_resolved');
+  });
+});

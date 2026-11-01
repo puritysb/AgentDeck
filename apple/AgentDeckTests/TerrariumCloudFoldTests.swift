@@ -1460,10 +1460,10 @@ final class TerrariumCloudFoldTests: XCTestCase {
         plain.update(dt:0,state:state)
         state.ciWaits = ["ci":ciWait("unknown")]
         waiting.update(dt:0,state:state)
-        XCTAssertEqual(plain.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
-        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
+        XCTAssertEqual(plain.creatureAtPoint(nx:0.5,ny:TerrariumRules.hermesHomeCanvasY),"ci")
+        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:TerrariumRules.hermesHomeCanvasY),"ci")
         state.ciWaits = [:]; waiting.update(dt:0,state:state)
-        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:0.82-2.5/7),"ci")
+        XCTAssertEqual(waiting.creatureAtPoint(nx:0.5,ny:TerrariumRules.hermesHomeCanvasY),"ci")
     }
 
     @MainActor
@@ -1473,7 +1473,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
         var state = TerrariumState()
         state.creatures = [.init(id:"ci-preview",projectName:"Agent session",modelName:nil,state:.floating,homeX:0.50,homeY:0.50,scale:1)]
         state.ciWaits = ["ci-preview":ciWait("running")]
-        let folder = URL(fileURLWithPath:"/tmp/ci-orbit-preview",isDirectory:true)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ci-orbit-preview",isDirectory:true)
         try FileManager.default.createDirectory(at:folder,withIntermediateDirectories:true)
         for frame in 0..<32 {
             for _ in 0..<10 { renderer.update(dt:0.025,state:state) }
@@ -1504,7 +1504,7 @@ final class TerrariumCloudFoldTests: XCTestCase {
                     let bitmap = try XCTUnwrap(image.nsImage?.tiffRepresentation)
                     XCTAssertGreaterThan(bitmap.count, 100)
                     do {
-                        let output = ProcessInfo.processInfo.environment["AGENTDECK_CI_VISUAL_OUTPUT"] ?? "/tmp/ci-orbit-visuals"
+                        let output = ProcessInfo.processInfo.environment["AGENTDECK_CI_VISUAL_OUTPUT"] ?? FileManager.default.temporaryDirectory.appendingPathComponent("ci-orbit-visuals",isDirectory:true).path
                         let folder = URL(fileURLWithPath: output, isDirectory: true)
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                         let data = try XCTUnwrap(NSBitmapImageRep(data: bitmap)?.representation(using: .png, properties: [:]))

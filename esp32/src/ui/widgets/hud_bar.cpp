@@ -1,6 +1,7 @@
 #include "util/usage_severity.generated.h"
 #include "../../audio/wake_word.h"
 #include "hud_bar.h"
+#include "glance_roster.h"
 #if defined(BOARD_IPS10)
 #include "ips10_workspace.h"
 #endif
@@ -459,6 +460,20 @@ static uint32_t agentDotColor(const char* agentType) {
 }
 
 namespace HUD {
+
+size_t habitatObstacles(HabitatSpacing::Rect* out, size_t capacity) {
+    size_t count=0;
+#if !defined(BOARD_IPS10) && !defined(BOARD_TTGO)
+    for(auto* panel:{panelLeft,panelRight}) {
+        if(!panel || lv_obj_has_flag(panel,LV_OBJ_FLAG_HIDDEN) || count>=capacity)continue;
+        lv_area_t area;lv_obj_get_coords(panel,&area);
+        out[count++]={float(area.x1),float(area.y1),float(area.x2-area.x1+1),float(area.y2-area.y1+1)};
+    }
+#else
+    (void)out;(void)capacity;
+#endif
+    return count;
+}
 
 // Helper: create a water-fill gauge column: [gauge box] + "1h 55m".
 // Returns the column wrapper so callers can hide the whole gauge as a unit
@@ -1530,6 +1545,7 @@ void init(lv_obj_t* parent) {
     lv_label_set_recolor(lblSessions, true);
     lv_label_set_text(lblSessions, "");
     lv_obj_set_width(lblSessions, 240);
+    lv_label_set_long_mode(lblSessions, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(lblSessions, LV_TEXT_ALIGN_CENTER, 0);
 
     // Bottom gauge panel — centered at bottom of circle
@@ -1677,7 +1693,7 @@ void init(lv_obj_t* parent) {
     lv_obj_set_flex_align(providerRail, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(providerRail, LV_OBJ_FLAG_SCROLLABLE);
 #if IS_ROUND
-    lv_obj_align(panelRight, LV_ALIGN_BOTTOM_MID, 0, -52);
+    lv_obj_align(panelRight, LV_ALIGN_BOTTOM_MID, 0, -30);
 #else
     lv_obj_align(panelRight, LV_ALIGN_BOTTOM_RIGHT, -8, -8);
 #endif
@@ -1817,7 +1833,7 @@ void update() {
     uint8_t sessionCount = hasData ? g_state.sessionCount : (uint8_t)0;
     // UI-task-only display snapshot: reuse 520 bytes instead of ten complete
     // session records on the stack. Compact flags keep no-PSRAM DRAM bounded.
-    static struct { char name[40]; uint32_t dotColor, stateColor; bool alive:1, input:1, working:1, idle:1, openclaw:1; } sessions[10];
+    static struct { char name[40]; uint32_t dotColor, stateColor; bool alive:1, input:1, working:1, idle:1, openclaw:1, error:1; } sessions[10];
     static_assert(sizeof(sessions) == 520, "Keep the no-PSRAM HUD snapshot bounded");
     for (uint8_t i = 0; i < sessionCount && i < 10; ++i) {
         const auto& source = g_state.sessions[i];
@@ -1831,6 +1847,7 @@ void update() {
         target.stateColor = sessionStateColor(source.state);
         target.alive = source.alive;
         target.input = strstr(source.state, "awaiting") != nullptr;
+        target.error = strcmp(source.state, "error") == 0;
         target.working = strcmp(source.state, "processing") == 0;
         target.idle = strcmp(source.state, "idle") == 0;
         target.openclaw = strstr(source.agentType, "openclaw") != nullptr;
@@ -1877,25 +1894,31 @@ void update() {
             visible++;
         };
 
-        if (aliveCount <= 6) {
+        #if IS_ROUND
+        const uint8_t rowBudget = 1, expandedLimit = 1;
+#elif defined(BOARD_IPS35)
+        const uint8_t rowBudget = 2, expandedLimit = 2;
+#else
+        const uint8_t rowBudget = 5, expandedLimit = 6;
+#endif
+        if (aliveCount <= expandedLimit) {
             for (uint8_t i = 0; i < limit; i++) if (sessions[i].alive) appendSession(i);
         } else {
-            // A bounded glance: input first, then active work, then enough quiet
-            // context to reach five rows. The final row names every hidden state.
-            for (uint8_t pass = 0; pass < 3 && visible < 5; pass++) {
-                for (uint8_t i = 0; i < limit && visible < 5; i++) {
+            // Round panels reserve the water between the header and usage tanks.
+            // Errors/input preempt work; the summary accounts for every other resident.
+            for (uint8_t pass = 0; pass < 4 && visible < rowBudget; pass++) {
+                for (uint8_t i = 0; i < limit && visible < rowBudget; i++) {
                     if (!sessions[i].alive || shown[i]) continue;
-                    const bool input = sessions[i].input;
-                    const bool working = sessions[i].working;
-                    if ((pass == 0 && input) || (pass == 1 && working) || pass == 2)
+                    if (GlanceRoster::priority(sessions[i].error, sessions[i].input, sessions[i].working) == pass)
                         appendSession(i);
                 }
             }
 
-            uint8_t hiddenInput = 0, hiddenWork = 0, hiddenIdle = 0, hiddenReady = 0;
+            uint8_t hiddenError = 0, hiddenInput = 0, hiddenWork = 0, hiddenIdle = 0, hiddenReady = 0;
             for (uint8_t i = 0; i < limit; i++) {
                 if (!sessions[i].alive || shown[i]) continue;
-                if (sessions[i].input) hiddenInput++;
+                if (sessions[i].error) hiddenError++;
+                else if (sessions[i].input) hiddenInput++;
                 else if (sessions[i].working) hiddenWork++;
                 else if (sessions[i].idle) hiddenIdle++;
                 else hiddenReady++;
@@ -1907,11 +1930,12 @@ void update() {
                 snprintf(hidden + used, sizeof(hidden) - used, "%s%d %s",
                          used ? " / " : "", count, label);
             };
+            appendHidden(hiddenError, "error");
             appendHidden(hiddenInput, "input");
             appendHidden(hiddenWork, "working");
             appendHidden(hiddenIdle, "idle");
             appendHidden(hiddenReady, "ready");
-            if (hidden[0]) appendBounded(buf, sizeof(buf), pos, "#94A3B8 %s hidden#\n", hidden);
+            if (hidden[0]) appendBounded(buf, sizeof(buf), pos, "#%06lX + %s#\n", (unsigned long)(hiddenError ? Theme::StatusRed : hiddenInput ? Theme::StatusAmber : Theme::HUDDim), hidden);
         }
     } else if (hasData) {
         // Fallback: show primary session info (only when real data received)

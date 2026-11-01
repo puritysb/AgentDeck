@@ -465,6 +465,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         const int count=g_state.sessions[i].backgroundTaskCount;
         if(count>=0) { backgroundKnown=true; backgroundTotal+=count; }
     }
+    if(g_state.dot && g_state.dot->configured) { const uint8_t code=g_state.dot->effectiveCode(millis());attention |= code==3 || code==5; }
     unlockState();
     if (!connectedFast) {
         renderDisconnectStatus(leds, animTime);
@@ -488,7 +489,7 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
     CrayfishState cfState = g_state.crayfishState;
 
     // Collect non-openclaw sessions with agent type
-    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO, AGENT_HERMES,
+    enum AgentKind { AGENT_CLAUDE, AGENT_CODEX, AGENT_OPENCODE, AGENT_ANTIGRAVITY, AGENT_KIRO, AGENT_HERMES, AGENT_DOT,
                      AGENT_KIND_COUNT };
     struct AgentInfo {
         char state[20];
@@ -498,7 +499,8 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         uint8_t ciPhase;
         int16_t background;
     };
-    AgentInfo agents[6];
+    AgentInfo agents[7];
+    static DotSurfaceState dotPeer; // replaces the former standalone page cache
     int agentCount = 0;
     int claudeSeen = 0, codexSeen = 0, opencodeSeen = 0, antigravitySeen = 0, kiroSeen = 0, hermesSeen = 0;
     bool openclawAlive = false;
@@ -571,6 +573,12 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
         placed[i] = true;
         agentCount++;
     }
+    if(g_state.dot && g_state.dot->configured && agentCount<7) {
+        dotPeer=*g_state.dot;
+        const uint8_t code=dotPeer.effectiveCode(millis());
+        auto& peer=agents[agentCount++];peer.kind=AGENT_DOT;peer.instanceIdx=0;peer.subagentCount=0;peer.ciPhase=0;peer.background=-1;
+        strncpy(peer.state,code==2 ? "processing" : code==3 ? "awaiting_option" : code==5 ? "error" : "idle",sizeof(peer.state)-1);peer.state[sizeof(peer.state)-1]='\0';
+    } else dotPeer.configured=false;
     unlockState();
 
     // === Crayfish: fixed at right (x=27, y=1) ===
@@ -741,7 +749,9 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                     if (CiWaitVisual::GITHUB[y] & (0x80 >> dx)) setPixel(leds, x + dx, y, CRGB(CiWaitVisual::HELPER_COLOR));
                 setPixel(leds, x + 7, 7, color);
             } else {
-                drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
+                if(agents[i].kind==AGENT_DOT) DotCompanion::glyph(dotPeer,x,0,DotSurfaceRules::matrixGlyphSize,
+                    [leds](int px,int py,uint8_t r,uint8_t g,uint8_t b,uint8_t alpha) { if(alpha>=128) setPixel(leds,px,py,CRGB(r,g,b)); });
+                else drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
                                         agents[i].kind == AGENT_ANTIGRAVITY);
             }
             drawSubagentSatellites(x, agents[i].subagentCount);
@@ -788,7 +798,9 @@ void MatrixPages::renderAgents(CRGB* leds, float animTime) {
                     if (CiWaitVisual::GITHUB[y] & (0x80 >> dx)) setPixel(leds, x + dx, y, CRGB(CiWaitVisual::HELPER_COLOR));
                 setPixel(leds, x + 7, 7, color);
             } else {
-                drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
+                if(agents[i].kind==AGENT_DOT) DotCompanion::glyph(dotPeer,x,0,DotSurfaceRules::matrixGlyphSize,
+                    [leds](int px,int py,uint8_t r,uint8_t g,uint8_t b,uint8_t alpha) { if(alpha>=128) setPixel(leds,px,py,CRGB(r,g,b)); });
+                else drawOfficialMatrixGlyph(leds, x, agentSprite(agents[i].kind), bc,
                                         agents[i].kind == AGENT_ANTIGRAVITY);
             }
             drawSubagentSatellites(x, agents[i].subagentCount);
@@ -928,20 +940,3 @@ void MatrixPages::renderInfo(CRGB* leds, float animTime) {
 }
 #endif // renderInfo disabled
 #endif // BOARD_LED8X32
-
-#if defined(BOARD_LED8X32)
-void MatrixPages::renderDot(CRGB* leds, float animTime) {
-    static DotSurfaceState dot; // Reused 1.2 KiB; no stack/heap buffer per frame.
-    lockState(); if (g_state.dot) dot = *g_state.dot; else dot.configured = false; const bool connected = g_state.wsConnected || Net::serialConnected(); unlockState();
-    if (!connected) { renderDisconnectStatus(leds, animTime); return; }
-    fill_solid(leds, MATRIX_W * MATRIX_H, CRGB::Black);
-    if (!dot.configured) return;
-    const uint8_t code = dot.effectiveCode(millis());
-    DotCompanion::glyph(dot, 0, 0, DotSurfaceRules::matrixGlyphSize,
-        [leds](int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) { if (a >= 128) setPixel(leds, x, y, CRGB(r, g, b)); });
-    const char* text = code == 2 ? "WORK" : code == 3 ? "ASK" : code == 4 ? "DONE" : code == 5 ? "FAIL" : "DOT?";
-    const uint32_t color = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
-    MatrixFont::drawScrollText(leds, text, 9, 1, CRGB(color), MATRIX_W, MATRIX_H);
-}
-
-#endif // BOARD_LED8X32 Dot page

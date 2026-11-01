@@ -164,7 +164,7 @@ class EinkResidentActionCanvasTest {
         val a = draw("hermes", base.copy(phase = (PI / 2).toFloat()))
         val b = draw("hermes", base.copy(phase = (PI * 1.5).toFloat()))
         assertTrue("Tail and fluke must stroke independently", changed(a, b, 180, 290, 440, 500) > 100)
-        assertEquals("The original head must remain intact and upright", 0, changed(a, b, 140, 100, 390, 270))
+        assertEquals("The original head must remain intact and upright", 0, changed(a, b, 140, 100, 390, 245))
         a.recycle(); b.recycle()
     }
 

@@ -50,7 +50,7 @@ class EinkDashboardChromeLayoutTest {
         dot = DotSurfaceSnapshot(configured = true, hosting = true),
     )
 
-    @Test fun `large text keeps clock and touch controls visible with Dot on its own line`() {
+    @Test fun `large text keeps clock and touch controls visible without a separate Dot badge`() {
         val prefs = DisplayPreferences(RuntimeEnvironment.getApplication(), isEink = true)
         runBlocking { prefs.setOrientation(DashboardOrientation.Portrait) }
         var settingsClicks = 0
@@ -63,7 +63,7 @@ class EinkDashboardChromeLayoutTest {
             }
         }
 
-        assertTextFits("AgentDeck", "23:59", "Frame", "Dot · AWAITING ACTIVITY")
+        assertTextFits("AgentDeck", "23:59", "Frame")
         val frame = compose.onNodeWithContentDescription("Open frame mode").assertIsDisplayed().assertHasClickAction()
         val rotate = compose.onNodeWithContentDescription("Rotate screen").assertIsDisplayed().assertHasClickAction()
         val settings = compose.onNodeWithContentDescription("Settings").assertIsDisplayed().assertHasClickAction()
@@ -76,8 +76,7 @@ class EinkDashboardChromeLayoutTest {
         assertTrue("Rotation lost its touch target", rotateBounds.width >= 44 && rotateBounds.height >= 44)
         assertTrue("Settings lost its touch target", settingsBounds.width >= 44 && settingsBounds.height >= 44)
         assertTrue("Settings was pushed past the screen", settingsBounds.right <= 400)
-        val dotBounds = compose.onNodeWithText("Dot · AWAITING ACTIVITY").fetchSemanticsNode().boundsInRoot
-        assertTrue("Dot must have a separate readable row", dotBounds.top >= rotateBounds.bottom)
+        compose.onNodeWithText("Dot · AWAITING ACTIVITY").assertDoesNotExist()
 
         frame.performClick()
         compose.runOnIdle { assertTrue(frameMode.value) }
@@ -107,7 +106,7 @@ class EinkDashboardChromeLayoutTest {
         val initialClock = compose.onNodeWithText("23:59").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         val initialRotation = compose.onNodeWithContentDescription("Rotate screen").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { state.value = sessions(32) }
-        assertTextFits("AgentDeck", "23:59", "Dot · AWAITING ACTIVITY")
+        assertTextFits("AgentDeck", "23:59")
         assertEquals(initialClock, compose.onNodeWithText("23:59").fetchSemanticsNode().boundsInRoot)
         assertEquals(initialRotation, compose.onNodeWithContentDescription("Rotate screen").fetchSemanticsNode().boundsInRoot)
         compose.onNodeWithContentDescription("Open frame mode").assertIsDisplayed().assertHasClickAction()
@@ -123,7 +122,7 @@ class EinkDashboardChromeLayoutTest {
                     modifier = Modifier.requiredWidth(320.dp).testTag("narrow-header"))
             }
         }
-        assertTextFits("AgentDeck", "23:59", "Frame", "Dot · AWAITING ACTIVITY")
+        assertTextFits("AgentDeck", "23:59", "Frame")
         val header = compose.onNodeWithTag("narrow-header").fetchSemanticsNode().boundsInRoot
         val controls = listOf("Open frame mode", "Rotate screen", "Settings").map { label ->
             compose.onNodeWithContentDescription(label).assertIsDisplayed().assertHasClickAction()

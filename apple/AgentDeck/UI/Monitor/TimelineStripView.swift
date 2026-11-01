@@ -158,6 +158,7 @@ struct TimelineStripView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     timelineHeader
                         .zIndex(1)
+                    dotReportRow
                     timelineList(allowExpand: false, snapshot: snapshot)
                 }
                 .frame(width: geo.size.width * 0.65, alignment: .topLeading)
@@ -186,9 +187,20 @@ struct TimelineStripView: View {
         VStack(alignment: .leading, spacing: 0) {
             timelineHeader
                 .zIndex(1)
+            dotReportRow
             timelineList(allowExpand: true, snapshot: snapshot)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var dotReportRow: some View {
+        #if AGENTDECK_DOT_PREVIEW
+        if timelineFilter == nil, stateHolder.state.bridgeConnected,
+           let dot = stateHolder.state.dot, dot.configured, dot.reportState != nil, dot.reportedAt != nil {
+            DotSurfaceView(snapshot: dot, style: .timeline)
+        }
+        #endif
     }
 
     @ViewBuilder

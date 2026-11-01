@@ -55,7 +55,6 @@ struct MonitorScreen: View {
     @StateObject private var inspection = DashboardInspection()
     @State private var terrariumState = TerrariumState()
     #if os(macOS) && AGENTDECK_DOT_PREVIEW
-    @State private var showDotSetup = false
     #endif
     #if os(iOS)
     @State private var showSettingsSheet = false
@@ -163,28 +162,7 @@ struct MonitorScreen: View {
                 await communications.observe(port: communicationPort, connected: stateHolder.state.bridgeConnected)
             }
             .modifier(KeyboardShortcutsModifier(stateHolder: stateHolder))
-            #if AGENTDECK_DOT_PREVIEW
-            .sheet(isPresented: $showDotSetup) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        HStack { Text("Dot connection").font(.title2.bold()); Spacer(); Button("Done") { showDotSetup = false } }
-                        DotConnectionSetupView()
-                    }.padding(24)
-                }.frame(minWidth: 520, idealWidth: 600, minHeight: 420)
-            }
-            #endif
             .toolbar {
-                #if AGENTDECK_DOT_PREVIEW
-                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    ToolbarItem(placement: .primaryAction) { DotSurfaceView(snapshot: dot, compact: true) }
-                }
-                if stateHolder.state.dot?.configured != true {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Connect Dot…") { showDotSetup = true }
-                            .accessibilityIdentifier("dot-setup-entry")
-                    }
-                }
-                #endif
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Dashboard view", selection: $collaborationEnabled) {
                         Text("Habitat").tag(false)
@@ -200,17 +178,40 @@ struct MonitorScreen: View {
             #endif
     }
 
+    private var shellHomePresent:Bool {
+        #if AGENTDECK_DOT_PREVIEW
+        return !terrariumState.hermesCreatures.isEmpty || stateHolder.state.dot?.configured == true
+        #else
+        return !terrariumState.hermesCreatures.isEmpty
+        #endif
+    }
+    private var shellHomeOccupied:Bool {
+        let hermes=terrariumState.hermesCreatures.contains { $0.activity == .working || $0.activity == .waiting }
+        #if AGENTDECK_DOT_PREVIEW
+        return hermes || stateHolder.state.dot?.inhabitsHabitat(at:Int(Date().timeIntervalSince1970*1000)) == true
+        #else
+        return hermes
+        #endif
+    }
+
     // MARK: - Main Content
 
     private var mainContent: some View {
         GeometryReader { geo in
             ZStack {
                 terrariumLayer
+                if preferences.effectiveDashboardType != .aquarium3D && shellHomePresent {
+                    Canvas { context,size in
+                        ShellHome2D.draw(context:&context,cx:size.width*CGFloat(TerrariumRules.hermesHomeCanvasX),cy:size.height*CGFloat(TerrariumRules.hermesHomeCanvasY),
+                            radius:min(size.width,size.height)*CGFloat(TerrariumRules.hermesHomeCanvasRadius),opening:shellHomeOccupied ? 1 : 0)
+                    }.allowsHitTesting(false)
+                }
 
                 hudLayer(geo: geo, disconnected: !stateHolder.state.bridgeConnected)
-                #if os(iOS) && AGENTDECK_DOT_PREVIEW
-                if !hudHidden && stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                    DotSurfaceView(snapshot: dot, compact: true).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing).padding(24)
+                #if AGENTDECK_DOT_PREVIEW
+                if preferences.effectiveDashboardType != .aquarium3D && stateHolder.state.bridgeConnected,
+                   let dot = stateHolder.state.dot {
+                    DotHabitatView(snapshot: dot, labelsVisible: !hudHidden)
                 }
                 #endif
 
@@ -299,7 +300,7 @@ struct MonitorScreen: View {
         if preferences.effectiveDashboardType == .aquarium3D {
             if #available(iOS 18.0, macOS 15.0, *) {
                 GeometryReader { geometry in
-                    let top = featuredAwaitingSession == nil ? 0 : attentionHeight + 24
+                    let top = hudHidden || featuredAwaitingSession == nil ? 0 : attentionHeight + 24
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
                         livingAquariumScene(labelInsets: communicationLabelInsets(size: geometry.size))
@@ -335,11 +336,9 @@ struct MonitorScreen: View {
         }
     }
 
-    /// Tap handler for empty terrarium water. When the AttentionTheater
-    /// card is up the user is mid-answer, so we disable the toggle to
-    /// avoid an off-target tap collapsing the HUD behind the question card.
+    /// Attention is non-modal: empty water still toggles the viewing mode.
+    /// Hiding the HUD never answers or dismisses the underlying request.
     private var backgroundTapHandler: (() -> Void)? {
-        guard featuredAwaitingSession == nil else { return nil }
         return {
             withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
         }
@@ -379,7 +378,7 @@ struct MonitorScreen: View {
     /// showing we suppress it (ConnectionOverlay owns the screen).
     @ViewBuilder
     private func attentionTheaterLayer(geo: GeometryProxy) -> some View {
-        if stateHolder.state.bridgeConnected,
+        if !hudHidden, stateHolder.state.bridgeConnected,
            let featured = featuredAwaitingSession {
             let awaiting = attentionSessions
             let queued = max(0, awaiting.count - 1)
@@ -545,6 +544,12 @@ struct MonitorScreen: View {
     /// that relay landing first. The question echo lets the daemon drop a press
     /// that answers a question the prompt has already moved past.
     private func respondToAwaiting(_ index: Int, session: SessionInfo) {
+        if let requestId = session.requestId, requestId.hasPrefix("ocperm:") {
+            if let choice = ObservedAgentRules.openCodePermissionChoices.first(where: { $0.index == index }) {
+                stateHolder.sendCommand(.permissionDecision(requestId: requestId, decision: choice.decision))
+            }
+            return
+        }
         stateHolder.sendCommand(.focusSession(sessionId: session.id))
         stateHolder.sendCommand(.selectOption(
             index: index, sessionId: session.id, question: questionFor(session)))
@@ -558,22 +563,40 @@ struct MonitorScreen: View {
             HStack {
                 Spacer()
                 rotationButton
+                viewingModeButton
                 if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
                     settingsGearButton
                 }
             }
         }
         #else
-        if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
-            VStack {
+        VStack {
+            Spacer()
+            HStack {
                 Spacer()
-                HStack {
-                    Spacer()
+                viewingModeButton
+                if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
                     settingsGearButton
                 }
             }
         }
         #endif
+    }
+
+    private var viewingModeButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
+        } label: {
+            Label(hudHidden ? "Show dashboard" : "View aquarium",
+                  systemImage: hudHidden ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .labelStyle(.iconOnly)
+                .font(.title2)
+                .foregroundStyle(TerrariumHUD.subtext)
+                .padding(16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard-viewing-mode")
+        .help(hudHidden ? "Show dashboard" : "View aquarium")
     }
 
     /// Gear icon that opens Settings. Routes through `openWindow(id:)`

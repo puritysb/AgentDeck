@@ -516,6 +516,33 @@ final class AquariumResidents {
         var fatigue: Float = 0
     }
     private var motions: [String: Motion] = [:]
+    private(set) var presentedCount = 0
+    private var lastState:TerrariumState?
+    private var retiringShellIDs=Set<String>()
+    #if AGENTDECK_DOT_PREVIEW
+    private let dotTemplate = DotAquariumResident()
+    private var dotSnapshot: DotSurfaceSnapshot?
+    private var dotPhase: Int?
+    var dotNow: () -> Int = { Int(Date().timeIntervalSince1970 * 1000) }
+    func syncDot(_ snapshot: DotSurfaceSnapshot?) {
+        let changed = snapshot?.appearance?.id != dotSnapshot?.appearance?.id
+        dotSnapshot = snapshot
+        dotTemplate.sync(snapshot, now: dotNow())
+        templates["dot"] = dotTemplate.root
+        footHeights["dot"] = Float(DotHabitatRules.pearlRadius); templateHalfWidths["dot"] = Float(DotHabitatRules.pearlRadius)
+        if changed, let body = residents["habitat:dot"]?.findEntity(named: "body") {
+            for child in Array(body.children) { child.removeFromParent() }
+            body.addChild(dotTemplate.root.clone(recursive: true));body.generateCollisionShapes(recursive: true)
+        }
+    }
+    private var dotIsOut: Bool { dotSnapshot?.inhabitsHabitat(at: dotNow()) == true }
+    #endif
+    private var hermesShellTemplate: Entity?
+    func loadHermesShell(_ template: Entity) { hermesShellTemplate = template }
+
+    private var sharedOpening:Float=0
+    private var sharedSupport: Entity?
+    private var shellTraffic = SharedShellTraffic()
     private var hermesSwims: [String: HermesSwim] = [:]
     private var hermesRigs: [String: HermesMermaid.Rig] = [:]
 
@@ -544,7 +571,7 @@ final class AquariumResidents {
         didSet {
             guard labelsVisible != oldValue else { return }
             for (id, entity) in residents {
-                entity.findEntity(named: "label")?.isEnabled = labelsVisible && labelDecisions[id]?.mode != .hidden
+                entity.findEntity(named: "label")?.isEnabled = labelsVisible && entity.findEntity(named: "body")?.isEnabled == true && labelDecisions[id]?.mode != .hidden
             }
         }
     }
@@ -586,7 +613,24 @@ final class AquariumResidents {
     func sync(_ state: TerrariumState, aspect: Float) {
         self.aspect = aspect
         focusedID = state.focusedSessionId
-        var next = AquariumResident.foreground(AquariumResident.project(state), focusedID: state.focusedSessionId)
+        lastState=state
+        var all = AquariumResident.project(state)
+        #if AGENTDECK_DOT_PREVIEW
+        let code = dotSnapshot?.phase(at: dotNow()) ?? 1
+        dotPhase = code
+        let returning = hermesSwims["habitat:dot"].map { $0.shellOpen > 0 || $0.emergence > 0 } ?? false
+        if dotSnapshot?.configured == true || returning {
+            all.append(AquariumResident(id: "habitat:dot", kind: "dot", title: code == 0 ? "Dot" : "Dot · " + DotAppearanceRules.compactLabels[code],
+                activity: code == 2 ? .working : code == 3 ? .waiting : code == 5 ? .error : .idle))
+        }
+        #endif
+        let incomingIDs=Set(all.map(\.id))
+        retiringShellIDs=Set(descriptors.filter { Self.hasShell($0.kind) && !incomingIDs.contains($0.id) && (hermesSwims[$0.id]?.shellOpen ?? 0)>0 }.map(\.id))
+        all += descriptors.filter { retiringShellIDs.contains($0.id) }.map { item in
+            AquariumResident(id:item.id,kind:item.kind,title:item.title,activity:.idle)
+        }
+        presentedCount = all.count
+        var next = AquariumResident.foreground(all, focusedID: state.focusedSessionId)
         // The brood owns the shown task count: it reads the raw count (nil is
         // unknown, never zero) and retains it, so the activity bars and the tag
         // follow what the buddies show instead of the snapshot's missing field.
@@ -619,39 +663,40 @@ final class AquariumResidents {
         // Existing residents retain their relative order when sessions arrive or depart.
         let existing = slotOrder.filter(ids.contains)
         slotOrder = existing + next.map(\.id).filter { !existing.contains($0) }
-        let bottomIDs = slotOrder.filter { id in next.contains { $0.id == id && (Self.isGrounded($0.kind) || $0.kind == "hermes") } }
+        let bottomIDs = slotOrder.filter { id in next.contains { $0.id == id && (Self.isGrounded($0.kind) || Self.hasShell($0.kind)) } }
         let waterIDs = slotOrder.filter { !bottomIDs.contains($0) }
         let waterLayout = Self.layout(count: waterIDs.count, aspect: aspect)
         let bottomLayout = Self.bottomLayout(count: bottomIDs.count, aspect: aspect)
+        let shellIDs = bottomIDs.filter { id in next.contains { $0.id == id && Self.hasShell($0.kind) } }
+        let neighbours = bottomIDs.filter { id in next.contains { $0.id == id && !Self.hasShell($0.kind) } }
+        let hasSharedHome = next.contains { Self.hasShell($0.kind) }
         for item in next {
-            let onShell = item.kind == "hermes"
+            let onShell = Self.hasShell(item.kind)
             let grounded = Self.isGrounded(item.kind) || onShell
             if grounded {
                 let index = bottomIDs.firstIndex(of: item.id) ?? 0
-                let surface = bottomLayout.positions[index]
+                var surface = bottomLayout.positions[index]
                 size = bottomLayout.size
-                targets[item.id] = surface + [0, (onShell ? ((footHeights["hermes"] ?? 0.7) + 0.10) * Self.hermesScale : (footHeights[item.kind] ?? 0.43)) * size, 0]
+                if onShell {
+                    surface = Self.shellBerth(index: shellIDs.firstIndex(of: item.id) ?? 0, count: shellIDs.count, aspect: aspect)
+                }
+                if !onShell && hasSharedHome {
+                    surface = Self.shellNeighbour(index: neighbours.firstIndex(of: item.id) ?? 0, count: neighbours.count, aspect: aspect)
+                    size = min(size, TerrariumRules.hermesHomeNeighbourSize)
+                }
+                targets[item.id] = surface + [0, (onShell ? ((footHeights[item.kind] ?? 0.7) + 0.10) * (item.kind == "hermes" ? Self.hermesScale : 1) : (footHeights[item.kind] ?? 0.43)) * size, onShell ? size * 0.35 : 0]
                 // A broad, flat-topped substrate rock is fixed in habitat space.
                 // It does not follow the resident's pacing or breathing.
-                if supports[item.id] == nil {
-                    let support = onShell ? Entity() : makeSubstrate()
-                    if onShell {
-                        let rock = makeSubstrate()
-                        rock.name = "support-rock"
-                        support.addChild(rock)
-                        support.addChild(HermesMermaid.makeShell())
-                    }
+                if !onShell && supports[item.id] == nil {
+                    let support = makeSubstrate()
                     support.name = "substrate|" + item.id
                     root.addChild(support)
                     supports[item.id] = support
                 }
                 supports[item.id]?.position = [surface.x, 0, surface.z]
-                let rock = onShell ? supports[item.id]?.findEntity(named: "support-rock") : supports[item.id]
-                rock?.scale = [max(0.65, size * 1.35), surface.y, max(0.55, size)]
-                if let shell = supports[item.id]?.findEntity(named: "hermes-shell") {
-                    shell.position = [0, surface.y, 0]
-                    shell.scale = .init(repeating: size * Self.hermesScale)
-                }
+                let rock = supports[item.id]
+                rock?.scale = hasSharedHome ? [max(TerrariumRules.hermesHomeNeighbourRockMinWidth, size * TerrariumRules.hermesHomeNeighbourRockWidth), surface.y, max(TerrariumRules.hermesHomeNeighbourRockMinDepth, size * TerrariumRules.hermesHomeNeighbourRockDepth)] : [max(0.65, size * 1.35), surface.y, max(0.55, size)]
+
             } else {
                 let index = waterIDs.firstIndex(of: item.id) ?? 0
                 size = waterLayout.size
@@ -686,7 +731,7 @@ final class AquariumResidents {
                 resident.addChild(brood)
                 broodRigs[item.id] = rig
                 bodyReach[item.id] = templateHalfWidths[item.kind] ?? Self.defaultBodyReach
-                resident.position = targets[item.id]!
+                resident.position = onShell ? shellHome(item,size:size * (item.kind == "hermes" ? Self.hermesScale : 1)) : targets[item.id]!
                 root.addChild(resident)
                 residents[item.id] = resident
                 motions[item.id] = Motion(phase: Self.seed(item.id) * 6.28)
@@ -694,9 +739,12 @@ final class AquariumResidents {
                     (node.name.hasPrefix("joint_") ? [Joint(entity: node, rest: node.transform)] : []) + node.children.flatMap { collect($0) }
                 }
                 joints[item.id] = collect(body)
-                if item.kind == "hermes" {
+                if Self.hasShell(item.kind) {
                     hermesSwims[item.id] = HermesSwim(id: item.id, position: resident.position)
-                    hermesRigs[item.id] = HermesMermaid.Rig(body)
+                    if item.kind == "hermes" { hermesRigs[item.id] = HermesMermaid.Rig(body) }
+                    if let swim = hermesSwims[item.id] {
+                        HermesMermaid.poseHome(nil, body: body, swim: swim)
+                    }
                 }
             }
             guard let resident = residents[item.id] else { continue }
@@ -710,15 +758,19 @@ final class AquariumResidents {
             }
             updateBackgroundWork(resident, id: item.id)
             resident.scale = .init(repeating: size * (item.kind == "hermes" ? Self.hermesScale : 1))
+            updateActivityAnchor(resident)
             if !animate {
                 resident.position = targets[item.id]!
                 hermesSwims[item.id]?.relocate(resident.position)
                 if var swim = hermesSwims[item.id] {
-                    swim.step(0, home: resident.position, size: size,
+                    swim.step(0, home: shellHome(item,size:resident.scale.x), size:resident.scale.x,
                         activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
-                        neighbours: [], aspect: aspect)
+                        neighbours: [], aspect: aspect, shellActive: wantsOutside(item), berth: targets[item.id].map { $0 + SIMD3(0,0,TerrariumRules.hermesHomeBerthFront) })
                     hermesSwims[item.id] = swim
+                    resident.position=swim.position
                     hermesRigs[item.id]?.pose(swim)
+                    HermesMermaid.poseHome(nil,
+                                           body: resident.findEntity(named: "body"), swim: swim)
                 }
             }
             if resident.findEntity(named: "label") == nil || descriptors.first(where: { $0.id == item.id }) != item {
@@ -754,6 +806,7 @@ final class AquariumResidents {
             resident.findEntity(named: "focus")?.isEnabled = state.focusedSessionId == item.id || (item.id == "crayfish" && state.focusedSessionId == "openclaw-gateway")
         }
         descriptors = next
+        updateSharedShell()
         applyLabelLayout()
     }
 
@@ -774,7 +827,7 @@ final class AquariumResidents {
     private func rebuildLabel(for item: AquariumResident, on resident: Entity, compact: Bool) {
         resident.findEntity(named: "label")?.removeFromParent()
         let label = makeLabel(String(item.title.prefix(22)), activity: item.activity, helpers: item.helpers, backgroundTasks: item.backgroundTasks, compact: compact, ciWaitLabel: item.ciWaitLabel, ciWait: item.ciWait)
-        label.isEnabled = labelsVisible && labelDecisions[item.id]?.mode != .hidden
+        label.isEnabled = labelsVisible && resident.findEntity(named: "body")?.isEnabled == true && labelDecisions[item.id]?.mode != .hidden
         resident.addChild(label)
         labelCompact[item.id] = compact
         labelDecisions[item.id] = nil  // force opacity to be re-applied
@@ -786,6 +839,10 @@ final class AquariumResidents {
 
     /// Places every tag so none hides another resident (DESIGN.md §6.4).
     private func applyLabelLayout() {
+        // Body and label retire together, including Reduced Motion and camera-less previews.
+        for (id, resident) in residents {
+            resident.findEntity(named: "label")?.isEnabled = labelsVisible && resident.findEntity(named: "body")?.isEnabled == true && labelDecisions[id]?.mode != .hidden
+        }
         guard let camera else { return }
         let fov = camera.camera.fieldOfViewInDegrees * .pi / 180
         let f = 1 / tan(fov / 2)
@@ -817,7 +874,9 @@ final class AquariumResidents {
         var inputs: [ResidentLabelLayout.Input] = []
         for item in descriptors {
             guard let resident = residents[item.id], let body = resident.findEntity(named: "body") else { continue }
-            let bounds = body.visualBounds(relativeTo: nil)
+            guard body.isEnabled else { continue }
+            let silhouette = body
+            let bounds = silhouette.visualBounds(relativeTo: nil)
             let lo = bounds.min, hi = bounds.max
             guard let bodyBox = screenBox([[lo.x, lo.y, lo.z], [hi.x, lo.y, lo.z], [lo.x, hi.y, lo.z], [hi.x, hi.y, lo.z],
                                            [lo.x, lo.y, hi.z], [hi.x, lo.y, hi.z], [lo.x, hi.y, hi.z], [hi.x, hi.y, hi.z]]),
@@ -857,12 +916,19 @@ final class AquariumResidents {
     }
 
     func step(_ delta: Double) {
+        if !retiringShellIDs.isEmpty,let lastState { sync(lastState,aspect:aspect) }
+        #if AGENTDECK_DOT_PREVIEW
+        let phase = dotSnapshot?.phase(at: dotNow()) ?? 1
+        let hasReturningPearl = dotSnapshot?.configured != true && residents["habitat:dot"] != nil
+        if (phase != dotPhase || hasReturningPearl), let lastState { sync(lastState, aspect: aspect) }
+        #endif
         // Result lifetime is monotonic time, independent of animation/sleep.
         for item in descriptors {
             if let wait = item.ciWait, let motion = ciMotions[item.id] {
                 residents[item.id]?.findEntity(named: "ci-companion")?.isEnabled = motion.visible(wait,now:ciClock())
             }
         }
+        updateSharedShell(dt:Float(min(max(delta,0),0.05)))
         guard animate else { return }
         // Bound integration after occlusion/sleep; no wall-clock jump on resume.
         let dt = min(max(delta, 0), 1.0 / 20)
@@ -872,6 +938,11 @@ final class AquariumResidents {
         var wakes: [AquariumShoal.WorkWake] = []
         let snapshot = residents.keys.sorted().compactMap { id in residents[id].map { (id, $0.position) } }
         let greetings = hermesSwims.keys.sorted().compactMap { id in hermesSwims[id].map { ($0.position, $0.greeting) } }
+        shellTraffic.update(descriptors.filter { Self.hasShell($0.kind) }.compactMap { item in
+            guard let swim=hermesSwims[item.id],let entity=residents[item.id] else { return nil }
+            return .init(id:item.id,wantsOut:wantsOutside(item),emergence:swim.emergence,
+                distance:simd_distance(swim.position,shellHome(item,size:entity.scale.x))/max(0.1,entity.scale.x))
+        })
         for item in descriptors {
             guard let entity = residents[item.id], var target = targets[item.id], var motion = motions[item.id] else { continue }
             if broods[item.id]?.isEmpty == false {
@@ -922,10 +993,10 @@ final class AquariumResidents {
             if stroke > 0.001 && item.kind != "hermes" {
                 wakes.append(.init(position: entity.position, strength: stroke, radius: max(1.2, residentSize * 2.8)))
             }
-            if item.kind == "hermes", var swim = hermesSwims[item.id] {
-                swim.step(Float(dt), home: targets[item.id]!, size: residentSize,
+            if Self.hasShell(item.kind), var swim = hermesSwims[item.id] {
+                swim.step(Float(dt), home: shellHome(item,size:residentSize), size: residentSize,
                     activity: HermesSwim.Activity(rawValue: item.activity.rawValue.lowercased()) ?? .idle,
-                    neighbours: snapshot.filter { $0.0 != item.id }.map { $0.1 }, aspect: aspect)
+                    neighbours: snapshot.filter { $0.0 != item.id }.map { $0.1 }, aspect: aspect, shellActive: shellTraffic.active(item.id,wantsOut:wantsOutside(item),emergence:swim.emergence), berth:targets[item.id].map { $0 + SIMD3(0,0,TerrariumRules.hermesHomeBerthFront) })
                 hermesSwims[item.id] = swim
                 entity.position = swim.position
                 if let body = entity.findEntity(named: "body") {
@@ -935,6 +1006,8 @@ final class AquariumResidents {
                     body.orientation = simd_slerp(body.orientation, orientation, blend)
                 }
                 hermesRigs[item.id]?.pose(swim)
+                HermesMermaid.poseHome(nil,
+                                       body: entity.findEntity(named: "body"), swim: swim)
                 if swim.effort > 0.01 {
                     wakes.append(.init(position: swim.position, strength: swim.effort * abs(swim.tail), radius: residentSize * 2))
                 }
@@ -969,6 +1042,8 @@ final class AquariumResidents {
                 }
             }
             if item.activity == .working, let indicator = entity.findEntity(named: "activity") {
+                indicator.isEnabled = entity.findEntity(named: "body")?.isEnabled == true && item.backgroundTasks == 0
+                updateActivityAnchor(entity)
                 for (index, bar) in indicator.children.enumerated() {
                     bar.scale.y = TerrariumRules.nativeActivityBarMinimum + TerrariumRules.nativeActivityBarRange * (0.5 + 0.5 * sin(phase * TerrariumRules.nativeActivityBarRate + Float(index) * TerrariumRules.nativeActivityBarPhase))
                 }
@@ -1007,9 +1082,62 @@ final class AquariumResidents {
     /// Hermes is drawn larger than the other residents so her face and the
     /// Nous sticker on her laptop read at aquarium distance (2026-10-02).
     static let hermesScale: Float = 1.35
+    /// The wide bivalve stays inside a bottom slot even with three Hermes homes.
+    static let hermesShellScale: Float = 1.15
+
+    private func shellHome(_ item:AquariumResident,size:Float)->SIMD3<Float> {
+        [TerrariumRules.hermesHomeSharedX,TerrariumRules.hermesHomeSharedFloor + ((footHeights[item.kind] ?? 0.7)+0.1)*size,TerrariumRules.hermesHomeSharedZ + size*0.35]
+    }
+    private func wantsOutside(_ item:AquariumResident)->Bool {
+        if retiringShellIDs.contains(item.id) { return false }
+        return shellActivity(for:item) ?? (item.activity == .working || item.activity == .waiting)
+    }
+    private func updateSharedShell(dt:Float=0) {
+        let occupied=descriptors.contains { Self.hasShell($0.kind) && (wantsOutside($0) || (hermesSwims[$0.id]?.emergence ?? 0)>0) }
+        if !animate { sharedOpening=occupied ? 1 : 0 }
+        else { sharedOpening=occupied ? min(1,sharedOpening+dt*TerrariumRules.hermesHomeOpenRate) : max(0,sharedOpening-dt*TerrariumRules.hermesHomeCloseRate) }
+        guard descriptors.contains(where:{Self.hasShell($0.kind)}) else { sharedSupport?.removeFromParent();sharedSupport=nil;return }
+        if sharedSupport == nil {
+            let support=Entity();support.name="shared-shell-home"
+            let shell=HermesMermaid.makeShell(template:hermesShellTemplate)
+            shell.position=[0,TerrariumRules.hermesHomeSharedFloor,0]
+            shell.scale = .init(repeating:TerrariumRules.hermesHomeSharedSize)
+            support.addChild(shell);root.addChild(support);sharedSupport=support
+        }
+        sharedSupport?.position=[TerrariumRules.hermesHomeSharedX,0,TerrariumRules.hermesHomeSharedZ]
+        if let swim=hermesSwims.values.max(by:{$0.shellOpen<$1.shellOpen}) {
+            HermesMermaid.poseHome(sharedSupport?.findEntity(named:"hermes-shell"),body:nil,swim:swim,opening:sharedOpening)
+        }
+    }
+
+    static func hasShell(_ kind: String) -> Bool { kind == "hermes" || kind == "dot" }
+    private func shellActivity(for item: AquariumResident) -> Bool? {
+        #if AGENTDECK_DOT_PREVIEW
+        if item.kind == "dot" { return dotIsOut }
+        #endif
+        return nil
+    }
 
     static func isGrounded(_ kind: String) -> Bool {
         kind == "claudecode" || kind == "openclaw"
+    }
+
+    /// Floating berths do not inherit the row of an unrelated bottom dweller.
+    static func shellBerth(index: Int, count: Int, aspect: Float) -> SIMD3<Float> {
+        let width = min(TerrariumRules.hermesHomeNeighbourSceneMaxWidth, max(TerrariumRules.hermesHomeNeighbourSceneMinWidth, TerrariumRules.hermesHomeNeighbourSceneAspect * aspect))
+        let lane = min(TerrariumRules.hermesHomeBerthLaneMaxX, max(TerrariumRules.hermesHomeBerthLaneMinX, width * TerrariumRules.hermesHomeBerthLaneWidthFraction))
+        let side: Float = count > 1 && index % 2 == 0 ? -1 : 1
+        return [side * lane, TerrariumRules.hermesHomeBerthFloor + Float(index / 2) * TerrariumRules.hermesHomeBerthRise,
+                TerrariumRules.hermesHomeBerthZ - Float(index / 2) * TerrariumRules.hermesHomeBerthDepth]
+    }
+
+    /// The common doorway reserves the centre; bottom dwellers use the side lanes.
+    static func shellNeighbour(index: Int, count: Int, aspect: Float) -> SIMD3<Float> {
+        let width = min(TerrariumRules.hermesHomeNeighbourSceneMaxWidth, max(TerrariumRules.hermesHomeNeighbourSceneMinWidth, TerrariumRules.hermesHomeNeighbourSceneAspect * aspect))
+        let lane = min(TerrariumRules.hermesHomeNeighbourLaneMaxX, max(TerrariumRules.hermesHomeNeighbourLaneMinX, width * TerrariumRules.hermesHomeNeighbourLaneWidthFraction))
+        let side: Float = count > 1 && index % 2 == 0 ? -1 : 1
+        return [side * lane, TerrariumRules.hermesHomeNeighbourFloor + Float(index / 2) * TerrariumRules.hermesHomeNeighbourRise,
+                TerrariumRules.hermesHomeNeighbourZ - Float(index / 2) * TerrariumRules.hermesHomeNeighbourDepth]
     }
 
     static func bottomLayout(count: Int, aspect: Float) -> (positions: [SIMD3<Float>], size: Float) {
@@ -1045,6 +1173,7 @@ final class AquariumResidents {
         var current: Entity? = entity
         while let node = current {
             if node.name.hasPrefix("session|") { return String(node.name.dropFirst(8)) }
+            if node.name.hasPrefix("substrate|") { return String(node.name.dropFirst(10)) }
             current = node.parent
         }
         return nil
@@ -1052,6 +1181,13 @@ final class AquariumResidents {
 
     /// A small equalizer beside (never behind) the body works for every provider.
     /// It remains visible in viewing mode and frozen under Reduce Motion.
+    private func updateActivityAnchor(_ resident: Entity) {
+        guard let body = resident.findEntity(named: "body"), let indicator = resident.findEntity(named: "activity") else { return }
+        let edge = body.visualBounds(relativeTo: resident).max.x
+        guard edge.isFinite else { return }
+        indicator.position.x = edge + TerrariumRules.nativeActivityBarGap - TerrariumRules.nativeActivityBarX
+    }
+
     private func makeActivityIndicator() -> Entity {
         let group = Entity()
         group.name = "activity"

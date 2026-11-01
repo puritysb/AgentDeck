@@ -14,6 +14,31 @@ import org.json.JSONObject
 
 @RunWith(RobolectricTestRunner::class)
 class AquariumResidentsTest {
+    @Test fun `Dot shares the resident budget without inventing a working session`() {
+        val now=1800000000000L
+        val ready=dev.agentdeck.net.DotSurfaceSnapshot(configured=true,hosting=true)
+        val peer=dotAquariumResident(ready,now)
+        assertEquals("dot",peer.kind)
+        assertEquals(OctopusVisualState.FLOATING,peer.state)
+        assertEquals(true,peer.habitatActive)
+        val work=dotAquariumResident(ready.copy(reportState="working",reportedAt=now,expiresAt=now+10000),now)
+        assertEquals(OctopusVisualState.WORKING,work.state)
+        assertEquals(false,dotAquariumResident(ready.copy(hosting=false),now).habitatActive)
+        val peers=(0..TerrariumRules.NATIVE_RESIDENT_LIMIT).map { peer.copy(id="peer-$it") }+work
+        assertEquals(TerrariumRules.NATIVE_RESIDENT_LIMIT,visibleAquariumResidents(peers,null).size)
+        assertTrue(visibleAquariumResidents(peers,null).any { it.id==work.id })
+    }
+
+    @Test fun `Hermes wears a real headset without painted white bang glyphs`() {
+        val bytes=RuntimeEnvironment.getApplication().assets.open("residents/hermes.glb").use { it.readBytes() }
+        val length=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(12)
+        val nodes=JSONObject(String(bytes,20,length,Charsets.UTF_8)).getJSONArray("nodes")
+        val names=(0 until nodes.length()).map { nodes.getJSONObject(it).optString("name") }
+        assertTrue(names.any { it.contains("headset-earcup-left") })
+        assertTrue(names.any { it.contains("headset-earcup-right") })
+        assertFalse(names.any { it.startsWith("hair_shine") })
+    }
+
     @Test fun `instanced buddy materials have unique immutable names`() {
         for (kind in listOf("buddy", "pearl", "bubble")) {
             val bytes = RuntimeEnvironment.getApplication().assets.open("residents/background-$kind.glb").use { it.readBytes() }
@@ -92,6 +117,52 @@ class AquariumResidentsTest {
         val hermes = state.openCodeCreatures.single()
         val slot = vectorMarkSlots(listOf(hermes)).single()
         assertEquals(layoutHermesCreatures(1).single(), slot)
+    }
+
+    @Test fun `Hermes keeps its skin and shell lid hinge in the shipped assets`() {
+        val assets=RuntimeEnvironment.getApplication().assets
+        fun gltf(name: String): JSONObject {
+            val bytes=assets.open("residents/$name.glb").use { it.readBytes() }
+            val length=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(12)
+            return JSONObject(String(bytes,20,length,Charsets.UTF_8))
+        }
+        val mermaid=gltf("hermes")
+        assertEquals(1,mermaid.getJSONArray("skins").length())
+        val nodes=mermaid.getJSONArray("nodes")
+        val names=(0 until nodes.length()).map { nodes.getJSONObject(it).optString("name") }
+        for(name in listOf("resident_hermes","tail_base","tail_mid","tail_tip","fin_left","fin_right")) assertTrue(name,names.contains(name))
+        val shell=gltf("hermes-shell").getJSONArray("nodes")
+        assertTrue((0 until shell.length()).any { shell.getJSONObject(it).optString("name")=="shell_bedding" })
+        val lid=(0 until shell.length()).map { shell.getJSONObject(it) }.single { it.optString("name")=="shell_lid" }
+        assertEquals("The hinge origin must survive export",-.4,lid.getJSONArray("translation").getDouble(2),.0001)
+    }
+
+    @Test fun `shared doorway keeps OpenClaw and bottom dwellers in clear side lanes`() {
+        for(aspect in listOf(.6f,1.6f,2.4f)) {
+            val one=shellNeighbour(0,1,aspect)
+            val left=shellNeighbour(0,2,aspect)
+            val right=shellNeighbour(1,2,aspect)
+            assertTrue(one.x>1.7f)
+            assertTrue(left.x < -1.7f)
+            assertEquals(-left.x,right.x,.0001f)
+            val shellReach=1.27f*TerrariumRules.HERMES_HOME_SHARED_SIZE
+            val stoneReach=1.18f*TerrariumRules.HERMES_HOME_NEIGHBOUR_SIZE*TerrariumRules.HERMES_HOME_NEIGHBOUR_ROCK_WIDTH
+            assertTrue(one.x>shellReach+stoneReach)
+        }
+    }
+
+    @Test fun `shell swimmers use lateral berths independent of bottom dwellers`() {
+        for(aspect in listOf(.6f,1.6f,2.4f)) {
+            assertTrue(shellBerth(0,2,aspect).x < -1.3f)
+            assertTrue(shellBerth(1,2,aspect).x > 1.3f)
+            assertEquals(shellBerth(0,2,aspect).y,shellBerth(1,2,aspect).y,.0001f)
+            val motion=HermesHomeMotion()
+            val berth=shellBerth(1,2,aspect)
+            repeat(3000) { frame ->
+                motion.step(1f/60,true,false,0f,.5f,1.35f,.8f,aspect,berthX=berth.x,berthY=berth.y,berthZ=berth.z)
+                if(frame>600) assertTrue("Swim stays out of the central cloud corridor",motion.x>1.15f)
+            }
+        }
     }
 
     @Test fun `crowds remain bounded but focus and waiting sessions stay reachable`() {

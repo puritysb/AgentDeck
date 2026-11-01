@@ -21,7 +21,7 @@
 <link rel="icon" type="image/png" href="../icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=IBM+Plex+Sans+JP:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
 <style>
   :root {
     --tide-50:#f5f3ec; --tide-100:#ebe6d6; --tide-200:#d8cfb6; --tide-300:#a8b09a;
@@ -46,6 +46,8 @@
   code, .mono { font-family:var(--font-mono); }
 
   /* GNB-CSS:BEGIN (generated from scripts/pages-nav.css — do not edit by hand) */
+html { scroll-padding-block-start: calc(var(--pages-nav-height, 72px) + 16px); }
+html body :target { scroll-margin-block-start: 0; }
 .nav {
   position: sticky;
   top: 0;
@@ -58,7 +60,8 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 12px 32px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
 }
@@ -81,6 +84,7 @@
   border-radius: 8px;
 }
 .nav-links {
+  min-width: 0;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -92,7 +96,7 @@
   font-size: 14px;
   text-decoration: none;
   color: var(--ink-700);
-  padding: 6px 12px;
+  padding: 10px 12px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -109,32 +113,126 @@
   background: var(--ink-900);
   color: var(--tide-50);
 }
+.ad-language-control {
+  display: inline-block;
+  max-width: 20rem;
+}
+.ad-language-trigger, .ad-language-native {
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding-inline: 12px;
+  color: var(--ink-700);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-300);
+  border-radius: var(--r-xl, 12px);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.ad-language-trigger { min-width: min(8rem, 100%); }
+.ad-language-trigger span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-trigger:hover, .ad-language-native:hover,
+.ad-language-trigger[aria-expanded="true"] {
+  background: var(--tide-100);
+  border-color: var(--kelp-700);
+}
+.ad-language-trigger:focus-visible, .ad-language-native:focus-within {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 3px;
+}
+.ad-language-control [hidden], .ad-language-menu[hidden] { display: none; }
+.ad-language-menu {
+  position: fixed;
+  z-index: 1000;
+  width: min(18rem, calc(100vw - 2 * var(--s-4, 16px)));
+  max-height: calc(100dvh - 2 * var(--s-4, 16px));
+  overflow-y: auto;
+  padding: var(--s-2, 8px);
+  color: var(--ink-900);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-200);
+  border-radius: var(--r-2xl, 14px);
+  box-shadow: var(--sh-card);
+  font-family: inherit;
+}
+.ad-language-menu-heading { padding: var(--s-2, 8px) var(--s-3, 12px) var(--s-3, 12px); }
+.ad-language-menu-heading strong { font-size: 14px; font-weight: 600; }
+.ad-language-menu-heading p { margin: 4px 0 0; color: var(--ink-500); font-size: 12px; line-height: 1.5; }
+.ad-language-menu [role="menuitemradio"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4, 16px);
+  width: 100%;
+  min-height: 56px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-lg, 10px);
+  background: transparent;
+  color: var(--ink-700);
+  text-align: start;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ad-language-menu [role="menuitemradio"] strong { display: block; font-size: 14px; font-weight: 600; }
+.ad-language-menu [role="menuitemradio"] > span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-menu [role="menuitemradio"] small { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-500); }
+.ad-language-menu [role="menuitemradio"] svg { visibility: hidden; flex: 0 0 auto; color: var(--kelp-700); }
+.ad-language-menu [aria-checked="true"] { background: var(--tide-100); color: var(--ink-900); }
+.ad-language-menu [aria-checked="true"] svg { visibility: visible; }
+.ad-language-menu [role="menuitemradio"]:hover { background: var(--tide-200); }
+.ad-language-menu [role="menuitemradio"]:focus-visible { outline: 2px solid var(--kelp-700); outline-offset: -2px; }
+.ad-language-menu[data-specimen] { position: static; width: min(18rem, 100%); margin-top: var(--s-2, 8px); }
 .lang {
   /* A <select> does not inherit font-family by default, so state it. */
   font-family: inherit;
   font-weight: 500;
-  font-size: 13px;
-  color: var(--ink-700);
-  background: var(--tide-100);
-  border: 1px solid var(--tide-200);
-  border-radius: 999px;
-  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  width: auto;
+  min-width: 8ch;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
 }
-.lang:hover {
-  background: var(--tide-200);
-  color: var(--ink-900);
+.lang:focus { outline: none; }
+.nav-links a:focus-visible {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 2px;
 }
-@media (max-width: 768px) {
+/* Translation length must not dictate a fixed card height or page width. */
+:where(.wrap, .shell, .page) :where(h1, h2, h3, p, figcaption) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
   .nav-in {
-    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     padding-inline: 16px;
   }
   .nav-links {
+    order: 2;
+    flex: 1 0 100%;
+    margin-left: 0;
+    width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-block: 4px;
+    scrollbar-width: thin;
   }
+  .ad-language-control { order: 1; margin-inline-start: auto; max-width: 100%; }
   .nav-links a {
     white-space: nowrap;
   }
@@ -142,9 +240,17 @@
     display: none;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  [data-gnb] *, [data-gnb] *::before, [data-gnb] *::after { transition: none; }
+}
 /* GNB-CSS:END */
 
   .wrap { max-width:var(--container-max); margin:0 auto; padding:var(--s-10) var(--container-pad) var(--s-20); }
+  .current-captures { scroll-margin-top:var(--s-20); }
+  .capture-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:var(--s-4); }
+  .capture-grid figure { margin:0; background:var(--tide-100); border:1px solid var(--tide-200); border-radius:var(--r-xl); overflow:hidden; }
+  .capture-grid img { display:block; width:100%; height:260px; object-fit:contain; background:var(--ink-900); }
+  .capture-grid figcaption { padding:var(--s-4); font-size:14px; }
   .hero-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,46%); gap:var(--s-10); align-items:center; }
   .hero-shot { margin:0; border-radius:var(--r-2xl); overflow:hidden; background:var(--ink-900); box-shadow:var(--sh-card); }
   .hero-shot img { display:block; width:100%; aspect-ratio:3/2; object-fit:cover; }
@@ -239,14 +345,146 @@
       <a href="../design-system/">Design System</a>
       <a href="../reports/">Test Report</a>
       <a class="gh" href="https://github.com/puritysb/AgentDeck">GitHub</a>
+    </div>
+    <div class="ad-language-control" data-language-control>
+      <label class="ad-language-native" data-language-native>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
       <select id="lang" class="lang" aria-label="Language">
-        <option value="en">EN</option>
-        <option value="ko">KO</option>
-        <option value="ja">JA</option>
+        <option value="en" lang="en">English</option>
+        <option value="ko" lang="ko">한국어</option>
+        <option value="ja" lang="ja">日本語</option>
       </select>
+      </label>
+      <button type="button" class="ad-language-trigger" data-language-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="language-menu" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
+        <span data-language-current>English</span>
+      </button>
     </div>
   </div>
 </nav>
+<div id="language-menu" class="ad-language-menu" data-language-menu role="menu" aria-label="Language" hidden>
+  <div class="ad-language-menu-heading"><strong data-language-heading>Language</strong><p data-language-hint>Choose your display language.</p></div>
+</div>
+<template data-language-option><button type="button" role="menuitemradio" aria-checked="false" tabindex="-1"><span><strong data-language-name></strong><small data-language-detail></small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button></template>
+<script>
+// Match fragment clearance to the actual translated, wrapped navigation.
+(() => {
+  const nav = document.querySelector('[data-gnb]');
+  const measure = () => document.documentElement.style.setProperty('--pages-nav-height', `${nav.getBoundingClientRect().height}px`);
+  measure();
+  if ('ResizeObserver' in window) new ResizeObserver(measure).observe(nav);
+  else window.addEventListener('resize', measure, { passive: true });
+})();
+</script>
+<script>
+(() => {
+  const control = document.getElementById('lang');
+  const trigger = document.querySelector('[data-language-trigger]');
+  const menu = document.querySelector('[data-language-menu]');
+  const template = document.querySelector('[data-language-option]');
+  const options = [...control.options].map(source => {
+    const option = template.content.firstElementChild.cloneNode(true);
+    option.dataset.locale = source.value;
+    option.lang = source.lang || source.value;
+    option.querySelector('[data-language-name]').textContent = source.textContent;
+    menu.appendChild(option);
+    return option;
+  });
+  const copy = {
+    en: {label:'Language',hint:'Choose your display language.',current:'Current language',names:['English','Korean','Japanese'],nav:['Overview','Devices','Flash','Live Preview','Design System','Test Report'],primary:'Primary'},
+    ko: {label:'언어',hint:'화면에 표시할 언어를 선택하세요.',current:'현재 사용 중',names:['영어','한국어','일본어'],nav:['소개','기기','펌웨어 설치','라이브 미리보기','디자인 시스템','테스트 리포트'],primary:'주 메뉴'},
+    ja: {label:'言語',hint:'表示する言語を選んでください。',current:'現在の言語',names:['英語','韓国語','日本語'],nav:['概要','デバイス','書き込み','ライブプレビュー','デザインシステム','テストレポート'],primary:'メインメニュー'},
+  };
+  let opened = false;
+  const nativeNames = Object.fromEntries([...control.options].map(o => [o.value,o.textContent]));
+  function render() {
+    const locale = Object.hasOwn(copy,control.value) ? control.value : 'en';
+    const text = copy[locale];
+    trigger.querySelector('[data-language-current]').textContent = nativeNames[locale];
+    trigger.lang = locale;
+    trigger.setAttribute('aria-label',`${text.label}: ${nativeNames[locale]}`);
+    menu.setAttribute('aria-label',text.label);
+    menu.lang = locale;
+    menu.querySelector('[data-language-heading]').textContent = text.label;
+    menu.querySelector('[data-language-hint]').textContent = text.hint;
+    options.forEach((option,index) => {
+      const selected = option.dataset.locale === locale;
+      option.setAttribute('aria-checked',String(selected));
+      const detail = option.querySelector('[data-language-detail]');
+      detail.textContent = selected ? text.current : (text.names[index] ?? nativeNames[option.dataset.locale]);
+      detail.lang = locale;
+    });
+    document.querySelector('[data-gnb]').setAttribute('aria-label',text.primary);
+    document.querySelector('[data-gnb]').lang = locale;
+    document.querySelectorAll('[data-gnb] .nav-links a:not(.gh)').forEach((link,index) => { link.textContent = text.nav[index]; });
+  }
+  function position() {
+    if (!opened) return;
+    const rect = trigger.getBoundingClientRect();
+    const styles = getComputedStyle(menu);
+    const gutter = parseFloat(styles.getPropertyValue('--s-4')) || 16;
+    const gap = parseFloat(styles.getPropertyValue('--s-2')) || 8;
+    const box = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(gutter,Math.min(rect.right-box.width,innerWidth-box.width-gutter))}px`;
+    menu.style.top = `${Math.max(gutter,Math.min(rect.bottom+gap,innerHeight-box.height-gutter))}px`;
+  }
+  function close(restoreFocus = false) {
+    opened = false; menu.hidden = true; trigger.setAttribute('aria-expanded','false');
+    if (restoreFocus) trigger.focus({preventScroll:true});
+  }
+  function focusOption(index) {
+    const option = options[index];
+    option.focus({preventScroll:true});
+    const row = option.getBoundingClientRect(), panel = menu.getBoundingClientRect();
+    const inset = parseFloat(getComputedStyle(menu).paddingTop) || 0;
+    if (row.bottom > panel.bottom-inset) menu.scrollTop += row.bottom-panel.bottom+inset;
+    else if (row.top < panel.top+inset) menu.scrollTop -= panel.top+inset-row.top;
+  }
+  function open(index = options.findIndex(o => o.getAttribute('aria-checked') === 'true')) {
+    opened = true; menu.hidden = false; trigger.setAttribute('aria-expanded','true');
+    position(); focusOption(Math.max(0,index));
+  }
+  trigger.addEventListener('click',() => opened ? close(true) : open());
+  trigger.addEventListener('keydown',event => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault(); open(event.key === 'ArrowDown' ? 0 : options.length-1);
+    }
+  });
+  menu.addEventListener('keydown',event => {
+    const index = options.indexOf(document.activeElement);
+    if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length-1 : (index+(event.key === 'ArrowDown' ? 1 : -1)+options.length)%options.length;
+      focusOption(next);
+    } else if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();close(true);}
+    else if (event.key === 'Tab') close(true);
+    else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const locale = Object.hasOwn(copy,control.value) ? control.value : 'en';
+      const next = options.findIndex((option,i) => [nativeNames[option.dataset.locale],copy[locale].names[i]].some(name => name.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase())));
+      if (next >= 0) {event.preventDefault();focusOption(next);}
+    }
+  });
+  options.forEach(option => option.addEventListener('click',() => {
+    control.value = option.dataset.locale;
+    control.dispatchEvent(new Event('change',{bubbles:true}));
+    close(true);
+  }));
+  control.addEventListener('change',render);
+  document.addEventListener('pointerdown',event => {
+    if (opened && !menu.contains(event.target) && !trigger.contains(event.target)) close();
+  });
+  document.addEventListener('focusin',event => {
+    if (opened && !menu.contains(event.target) && event.target !== trigger) close();
+  });
+  document.addEventListener('keydown',event => {if(opened && event.key==='Escape'){event.preventDefault();close(true);}});
+  window.addEventListener('resize',position,{passive:true});
+  window.addEventListener('scroll',position,{passive:true,capture:true});
+  try {const saved = localStorage.getItem('agentdeck-design-locale');if(Object.hasOwn(copy,saved))control.value=saved;} catch {}
+  document.querySelector('[data-language-native]').hidden = true;
+  trigger.hidden = false;
+  render();
+})();
+</script>
 <!-- GNB:END -->
 
 <main class="wrap">
@@ -255,7 +493,7 @@
       <div>
     <p class="kicker" data-i18n="hero.kicker">AgentDeck · Surface catalog</p>
     <h1 data-i18n="hero.h1">Every surface,<br>made physical.</h1>
-    <p class="lede" data-i18n="hero.lede">Every card is the real thing running a live session — photographed on the desk, or captured from the surface itself. Board-level specifications live in the compatibility matrix.</p>
+    <p class="lede" data-i18n="hero.lede">Current captures and renderer previews appear first; the device cards retain the original September 28 desk photographs. Each new image states how it was made. Board specifications live in the compatibility matrix.</p>
     <div class="hero-actions">
       <a class="btn primary" href="../demo/" data-i18n="hero.demo">Try the interactive preview</a>
       <a class="btn secondary" href="../design-system/#hardware.compatibility" data-i18n="hero.matrix">Read the full spec matrix</a>
@@ -267,6 +505,27 @@
       <a href="#controls" data-i18n="jump.controls">Control decks</a><a href="#apps" data-i18n="jump.apps">Apps &amp; terminal</a><a href="#esp32" data-i18n="jump.esp32">ESP32 displays</a><a href="#pixel" data-i18n="jump.pixel">Pixel displays</a><a href="#specs" data-i18n="jump.specs">Board spec sheet</a>
     </nav>
   </header>
+
+
+  <section id="current-captures" class="current-captures" aria-labelledby="captures-title">
+    <div class="section-head"><h2 id="captures-title" data-i18n="capture.h">Current habitat · November 2026</h2><p data-i18n="capture.p">Development implementation with fictional activity. App captures below were taken November 1; ESP32 images come from the actual firmware host renderer. Store releases may differ. Original desk photographs remain below.</p></div>
+    <p><a href="../#current-habitat" data-i18n="capture.video">Watch the native shared-shell motion →</a> · <a href="../demo/?agent=dot&amp;state=working" data-i18n="capture.demo">Compare all eight residents in Live Preview →</a> · <a href="../media/current/manifest.json" data-i18n="capture.source">Sources and hashes</a></p>
+    <div class="capture-grid">
+      <figure><a href="../media/current/macos-working.png"><img src="../media/current/macos-working.png" alt="macOS · actual native development app capture." loading="lazy"></a><figcaption data-i18n="capture.mac">macOS · actual native development app capture.</figcaption></figure>
+      <figure><a href="../media/current/tablet-working.png"><img src="../media/current/tablet-working.png" alt="Lenovo tablet · actual native Android validation app capture." loading="lazy"></a><figcaption data-i18n="capture.tablet">Lenovo tablet · actual native Android validation app capture.</figcaption></figure>
+      <figure><a href="../media/current/pantone-working.png"><img src="../media/current/pantone-working.png" alt="Pantone · actual color e-ink app capture; a still, not a panel-refresh test." loading="lazy"></a><figcaption data-i18n="capture.pantone">Pantone · actual color e-ink app capture; a still, not a panel-refresh test.</figcaption></figure>
+      <figure><a href="../media/current/crema-working.png"><img src="../media/current/crema-working.png" alt="Crema S · actual monochrome e-ink app capture; a still, not a ghosting test." loading="lazy"></a><figcaption data-i18n="capture.crema">Crema S · actual monochrome e-ink app capture; a still, not a ghosting test.</figcaption></figure>
+      <figure><a href="../media/current/box86-working.png"><img src="../media/current/box86-working.png" alt="86 Box · firmware host render, all eight residents." loading="lazy"></a><figcaption data-i18n="capture.box">86 Box · firmware host render, all eight residents.</figcaption></figure>
+      <figure><a href="../media/current/ips35-working.png"><img src="../media/current/ips35-working.png" alt="IPS 3.5″ · firmware host render, all eight residents." loading="lazy"></a><figcaption data-i18n="capture.ips">IPS 3.5″ · firmware host render, all eight residents.</figcaption></figure>
+      <figure><a href="../media/current/amoled-working.png"><img src="../media/current/amoled-working.png" alt="Round AMOLED · firmware host render, circular viewport." loading="lazy"></a><figcaption data-i18n="capture.round">Round AMOLED · firmware host render, circular viewport.</figcaption></figure>
+      <figure><a href="../media/current/ttgo-working.png"><img src="../media/current/ttgo-working.png" alt="TTGO · firmware host render, compact habitat without crowded body labels." loading="lazy"></a><figcaption data-i18n="capture.ttgo">TTGO · firmware host render, compact habitat without crowded body labels.</figcaption></figure>
+      <figure><a href="../media/current/ips10-working.png"><img src="../media/current/ips10-working.png" alt="IPS 10.1″ · firmware host render, project workspace and usage information." loading="lazy"></a><figcaption data-i18n="capture.ips10">IPS 10.1″ · firmware host render, project workspace and usage information.</figcaption></figure>
+      <figure><a href="../media/current/knob-dot-roster.png"><img src="../media/current/knob-dot-roster.png" alt="T-Embed · firmware host render, Dot in the ordinary read-only roster." loading="lazy"></a><figcaption data-i18n="capture.knob">T-Embed · firmware host render, Dot in the ordinary read-only roster.</figcaption></figure>
+      <figure><a href="../media/current/ticker-dot-roster.png"><img src="../media/current/ticker-dot-roster.png" alt="T-Display-S3-Pro · firmware host render, Dot in All sessions." loading="lazy"></a><figcaption data-i18n="capture.ticker">T-Display-S3-Pro · firmware host render, Dot in All sessions.</figcaption></figure>
+      <figure><a href="../media/current/trmnl_75-working.png"><img src="../media/current/trmnl_75-working.png" alt="TRMNL · 1-bit firmware host render; no claim about physical refresh or ghosting." loading="lazy"></a><figcaption data-i18n="capture.trmnl">TRMNL · 1-bit firmware host render; no claim about physical refresh or ghosting.</figcaption></figure>
+      <figure data-evidence="ai-composite"><a href="../media/current/box86-composite.png"><img src="../media/current/box86-composite.png" alt="AI-assisted composite: latest 86 Box firmware screen placed into the preserved September 28 device photograph" loading="lazy"></a><figcaption data-i18n="capture.composite">AI-assisted composite · latest firmware screen in the September 28 device photograph. A visual preview, not a newly photographed device or evidence of physical display quality. The unmodified firmware render is above.</figcaption></figure>
+    </div>
+  </section>
 
   <section id="controls">
     <div class="section-head"><h2 data-i18n="s.controls.h">Control decks</h2><p data-i18n="s.controls.p">Two-way surfaces: they show session state and let you focus, approve, stop, and respond without returning to the terminal.</p></div>
@@ -552,9 +811,28 @@
   (function () {
     var I18N = {
       ko: {
+        "capture.h": "최신 테라리움 · 2026년 11월",
+        "capture.p": "가상의 활동으로 확인한 개발 구현입니다. 앱은 11월 1일 실제 캡처이며 ESP32 이미지는 실제 펌웨어의 호스트 렌더입니다. 스토어 출시 버전과 다를 수 있습니다. 원본 책상 사진은 아래에 보존합니다.",
+        "capture.video": "네이티브 공유 조개 동작 보기 →",
+        "capture.demo": "Live Preview에서 전체 8종 비교 →",
+        "capture.source": "출처와 해시",
+        "capture.mac": "macOS · 네이티브 개발 앱의 실제 캡처.",
+        "capture.tablet": "Lenovo 태블릿 · 네이티브 Android 검증 앱의 실제 캡처.",
+        "capture.pantone": "Pantone · 컬러 전자잉크 앱의 실제 정지 캡처. 패널 갱신 테스트는 아닙니다.",
+        "capture.crema": "Crema S · 흑백 전자잉크 앱의 실제 정지 캡처. 잔상 테스트는 아닙니다.",
+        "capture.box": "86 Box · 전체 8종이 함께 있는 펌웨어 호스트 렌더.",
+        "capture.ips": "IPS 3.5″ · 전체 8종이 함께 있는 펌웨어 호스트 렌더.",
+        "capture.round": "원형 AMOLED · 원형 화면에 맞춘 펌웨어 호스트 렌더.",
+        "capture.ttgo": "TTGO · 복잡한 몸체 라벨을 줄인 작은 테라리움의 펌웨어 호스트 렌더.",
+        "capture.ips10": "IPS 10.1″ · 프로젝트 작업 공간과 사용량 정보를 담은 펌웨어 호스트 렌더.",
+        "capture.knob": "T-Embed · 일반 읽기 전용 목록 안의 Dot을 보여주는 펌웨어 호스트 렌더.",
+        "capture.ticker": "T-Display-S3-Pro · 전체 세션 안의 Dot을 보여주는 펌웨어 호스트 렌더.",
+        "capture.trmnl": "TRMNL · 1비트 펌웨어 호스트 렌더. 실제 패널 갱신과 잔상을 검증하는 사진이 아닙니다.",
+        "capture.composite": "AI 합성 프리뷰 · 9월 28일 기기 사진에 최신 펌웨어 화면을 넣었습니다. 새로 촬영한 사진이나 실제 패널 화질 검증 자료가 아닙니다. 위의 수정하지 않은 펌웨어 렌더와 비교할 수 있습니다.",
+
         'hero.kicker': 'AgentDeck · 서피스 카탈로그',
         'hero.h1': '모든 서피스를,<br>실물로.',
-        'hero.lede': '모든 카드는 실제로 세션을 구동 중인 실물입니다 — 책상 위에서 촬영했거나, 해당 서피스에서 직접 캡처했습니다. 보드 수준 사양은 호환성 매트릭스에 있습니다.',
+        "hero.lede": "최신 캡처와 렌더 프리뷰를 먼저 소개합니다. 기존 기기 카드에는 9월 28일의 원본 책상 사진을 보존하며, 새 이미지는 제작 방식을 명시합니다. 보드 사양은 호환성 매트릭스에 있습니다.",
         'hero.demo': '인터랙티브 프리뷰 열기',
         'hero.matrix': '전체 스펙 매트릭스 보기',
         'jump.controls': '컨트롤 데크',
@@ -608,9 +886,28 @@
         'detail.a': '호환성 SSOT 열기'
       },
       ja: {
+        "capture.h": "最新の水槽 · 2026年11月",
+        "capture.p": "架空の活動による開発実装です。アプリは11月1日の実キャプチャ、ESP32は実ファームウェアのホストレンダーです。ストア公開版とは異なる場合があります。元のデスク写真は下に残しています。",
+        "capture.video": "ネイティブの共有貝アニメーションを見る →",
+        "capture.demo": "Live Previewで全8種を比較 →",
+        "capture.source": "出典とハッシュ",
+        "capture.mac": "macOS · ネイティブ開発アプリの実キャプチャ。",
+        "capture.tablet": "Lenovoタブレット · Android検証アプリの実キャプチャ。",
+        "capture.pantone": "Pantone · カラー電子ペーパーアプリの静止キャプチャ。パネル更新の検証ではありません。",
+        "capture.crema": "Crema S · モノクロ電子ペーパーアプリの静止キャプチャ。残像の検証ではありません。",
+        "capture.box": "86 Box · 全8種のファームウェアホストレンダー。",
+        "capture.ips": "IPS 3.5″ · 全8種のファームウェアホストレンダー。",
+        "capture.round": "円形AMOLED · 円形画面のファームウェアホストレンダー。",
+        "capture.ttgo": "TTGO · ラベルを抑えた小型水槽のファームウェアホストレンダー。",
+        "capture.ips10": "IPS 10.1″ · プロジェクトと使用量情報のファームウェアホストレンダー。",
+        "capture.knob": "T-Embed · 通常の読み取り専用一覧にあるDotのファームウェアホストレンダー。",
+        "capture.ticker": "T-Display-S3-Pro · 全セッション内のDotのファームウェアホストレンダー。",
+        "capture.trmnl": "TRMNL · 1ビットのファームウェアホストレンダー。実パネルの更新や残像を検証する写真ではありません。",
+        "capture.composite": "AI合成プレビュー · 9月28日の機器写真に最新のファームウェア画面を配置。新しい実機写真やパネル画質の証拠ではありません。未加工のファームウェアレンダーは上にあります。",
+
         'hero.kicker': 'AgentDeck · サーフェスカタログ',
         'hero.h1': 'すべてのサーフェスを、<br>実機で。',
-        'hero.lede': 'すべてのカードは実際にセッションを動かしている実物です — 机の上で撮影したもの、あるいはそのサーフェス自身からキャプチャしたものです。ボードレベル仕様は互換性マトリクスにあります。',
+        "hero.lede": "最新キャプチャとレンダープレビューを先に紹介します。デバイスカードには9月28日の元のデスク写真を残し、新しい画像には制作方法を明記しています。仕様は互換性表をご覧ください。",
         'hero.demo': 'インタラクティブプレビューを開く',
         'hero.matrix': 'フル仕様マトリクスを読む',
         'jump.controls': 'コントロールデッキ',
