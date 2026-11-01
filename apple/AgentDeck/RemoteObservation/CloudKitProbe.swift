@@ -85,8 +85,13 @@ actor CloudKitProbeStore {
         }
         let status = try await bounded(read)
         guard generation == accountGeneration, expected == nil || expected == generation else { throw ProbeError.accountChanged }
-        guard status == .available else { throw ProbeError.accountUnavailable }
-        return generation
+        switch status {
+        case .available: return generation
+        case .noAccount: throw ProbeError.accountUnavailable
+        case .couldNotDetermine, .temporarilyUnavailable, .restricted:
+            throw ProbeError.accountUnverified
+        @unknown default: throw ProbeError.accountUnverified
+        }
     }
 
     func accountIdentity(account: Int? = nil) async throws -> String {
@@ -282,7 +287,7 @@ actor CloudKitProbeStore {
         return summary
     }
 
-    enum ProbeError: Error, Equatable { case accountUnavailable, accountChanged, invalidRecord, publisherConflict }
+    enum ProbeError: Error, Equatable { case accountUnavailable, accountUnverified, accountChanged, invalidRecord, publisherConflict }
 }
 
 @MainActor
@@ -292,11 +297,13 @@ final class CloudKitProbeModel: ObservableObject {
     @Published private(set) var event: CloudKitProbeEvent?
     @Published private(set) var busy = false
     @Published private(set) var roster: RemoteRosterSummary?
-    private let store = CloudKitProbeStore()
-    private let cache = RemoteReaderCache()
+    private let store: CloudKitProbeStore
+    private let cache: RemoteReaderCache
     private var generation = 0
     private var accountObserver: NSObjectProtocol?
-    init() {
+    init(store: CloudKitProbeStore = CloudKitProbeStore(), cache: RemoteReaderCache = RemoteReaderCache()) {
+        self.store = store
+        self.cache = cache
         guard !AgentDeckApp.isHostedTest() else { return }
         roster = cache.load(localIdentity: RemoteLocalIdentity.current())
         if roster != nil { status = "Restored last observation from this account’s local cache." }
@@ -312,6 +319,12 @@ final class CloudKitProbeModel: ObservableObject {
             }
         }
     }
+    func restoreCachedObservation() async {
+        guard !AgentDeckApp.isHostedTest(), roster == nil,
+              cache.disk.read("reader.json", as: RemoteReaderCache.Envelope.self) != nil else { return }
+        status = "Verifying iCloud account before restoring the saved observation…"
+        await run("restore")
+    }
     func run(_ action: String) async {
         guard !busy else { return }
         busy = true
@@ -324,6 +337,20 @@ final class CloudKitProbeModel: ObservableObject {
             roster = nil
             event = nil
             try? cache.clear()
+        }
+        if action == "storage" {
+            defer { try? cache.disk.remove("storage-check.json") }
+            do {
+                try cache.disk.write(["version": 1], to: "storage-check.json")
+                guard cache.disk.read("storage-check.json", as: [String: Int].self) == ["version": 1] else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                status = "Local cache storage round trip passed."
+            } catch {
+                let failure = error as NSError
+                status = "Local cache storage failed: \(failure.domain) \(failure.code)."
+            }
+            return
         }
         do {
             let account = try await store.checkAccount()
@@ -346,6 +373,11 @@ final class CloudKitProbeModel: ObservableObject {
                 try await store.subscribe(account: account)
                 guard token == generation else { return }
                 status = "Subscription saved. Send a test from the Mac."
+            } else if action == "restore" {
+                let owner = try await store.accountIdentity(account: account)
+                guard token == generation else { return }
+                roster = cache.load(localIdentity: RemoteLocalIdentity.current(), verifiedAccount: owner)
+                status = roster == nil ? "No saved observation for this account." : "Restored original observation from this account’s local cache."
             } else if action == "roster" {
                 let owner = try await store.accountIdentity(account: account)
                 guard token == generation else { return }
@@ -356,7 +388,10 @@ final class CloudKitProbeModel: ObservableObject {
                 do {
                     try cache.save(result, account: owner, localIdentity: RemoteLocalIdentity.current())
                     status = "Fetched and cached original source observation."
-                } catch { status = "Fetched; durable cache write failed. Retry refresh when storage is available." }
+                } catch {
+                    let failure = error as NSError
+                    status = "Fetched; durable cache write failed: \(failure.domain) \(failure.code). Retry refresh when storage is available."
+                }
             } else {
                 let result = try await store.fetchLatest(account: account)
                 guard token == generation else { return }
@@ -367,6 +402,8 @@ final class CloudKitProbeModel: ObservableObject {
             guard token == generation else { return }
             if action == "disable" {
                 status = "This device stopped push registration and cleared its reader. Cloud subscription deletion is not confirmed; retry when online."
+            } else if (error as? CloudKitProbeStore.ProbeError) == .accountUnverified {
+                status = "iCloud account state is unverified. The last saved observation is retained; retry when available."
             } else if (error as? CloudKitProbeStore.ProbeError) == .accountUnavailable
                 || (error as? CloudKitProbeStore.ProbeError) == .accountChanged {
                 roster = nil; event = nil
@@ -397,17 +434,18 @@ struct CloudKitProbeView: View {
             Text("CloudKit delivery experiment").font(.headline)
             Text("Test buttons share synthetic IDs and times. The optional local summary experiment separately shares only encrypted counts and their original observation time.")
             #if os(macOS)
-            Button("Send test update") { Task { await model.run("send") } }
+            Button("Send test update") { Task { await model.run("send") } }.disabled(model.busy)
             #else
             Button("Local network dashboard") { showLocalDashboard = true }
-            Button("Enable test notifications") { Task { await model.run("receive") } }
-            Button("Disable PoC notifications and clear reader") { Task { await model.run("disable") } }
+            Button("Enable test notifications") { Task { await model.run("receive") } }.disabled(model.busy)
+            Button("Disable PoC notifications and clear reader") { Task { await model.run("disable") } }.disabled(model.busy)
             Text("Disabling also removes this experiment’s shared iCloud subscription.").font(.caption)
             #endif
             #if os(macOS)
             LocalRosterProbeView()
             #else
-            Button("Fetch local work summary") { Task { await model.run("roster") } }
+            Button("Check local cache storage") { Task { await model.run("storage") } }.disabled(model.busy)
+            Button("Fetch local work summary") { Task { await model.run("roster") } }.disabled(model.busy)
             if let roster = model.roster {
                 TimelineView(.periodic(from: .now, by: 15)) { context in
                     if roster.freshness(at: context.date) == .recent || roster.freshness(at: context.date) == .historical {
@@ -420,7 +458,7 @@ struct CloudKitProbeView: View {
                 }
             }
             #endif
-            Button("Fetch latest test") { Task { await model.run("fetch") } }
+            Button("Fetch latest test") { Task { await model.run("fetch") } }.disabled(model.busy)
             Text(model.status).foregroundStyle(.secondary)
             if let event = model.event {
                 TimelineView(.periodic(from: .now, by: 15)) { context in
@@ -430,9 +468,10 @@ struct CloudKitProbeView: View {
                 }
             }
             if model.busy { ProgressView() }
-        }.padding().disabled(model.busy)
+        }.padding()
         #if os(iOS)
         .fullScreenCover(isPresented: $showLocalDashboard) { LocalControlProbeView() }
+        .task { await model.restoreCachedObservation() }
         #endif
         #if os(macOS)
         .task {

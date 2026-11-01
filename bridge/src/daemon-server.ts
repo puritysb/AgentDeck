@@ -3771,6 +3771,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         // by OpenCode session id and carry both. See hook-opencode-sessions.ts.
         if (eventName.startsWith('opencode_')) {
           hookOpenCodeSessions.note(eventName, {
+            pid: typeof json.agentdeck_pid === 'number' ? json.agentdeck_pid : undefined,
             sessionId: typeof json.session_id === 'string' ? json.session_id : undefined,
             cwd: earlyHookCwd || undefined,
             projectName: earlyHookProject,
@@ -6844,10 +6845,10 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const sep = rest.indexOf(':');
         // The row keeps its prompt until OpenCode reports permission.replied,
         // so a full queue leaves the request answerable rather than lost.
-        if (sep > 0 && !enqueueOpenCodeCommand(rest.slice(0, sep), {
-          type: 'permission_respond', permissionId: rest.slice(sep + 1), response: decision,
-        })) {
-          debug('daemon', `opencode permission ${requestId} not queued: command queue full`);
+        if (sep > 0 && isOpenCodeSteerable(rest.slice(0, sep)) && !hookOpenCodeSessions.answerPermission(
+          rest.slice(0, sep), requestId, decision,
+          (permissionId, response) => enqueueOpenCodeCommand(rest.slice(0, sep), { type: 'permission_respond', permissionId, response }))) {
+          debug('daemon', `opencode permission ${requestId} not queued: stale request or full command queue`);
           core.broadcastSessionsList().catch(() => {});
         }
         return;
@@ -6883,8 +6884,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         const rawSid = sessionId.replace(/^(?:observed:)?opencode:/, '');
         const type = typeof command?.type === 'string' ? command.type : '';
         if (type === 'select_option') {
-          if (isOpenCodeSteerable(rawSid)) hookOpenCodeSessions.answerQuestion(rawSid, command.index, command.question,
-            (questionId, answers) => enqueueOpenCodeCommand(rawSid, { type: 'question_reply', questionId, answers }));
+          if (isOpenCodeSteerable(rawSid)) hookOpenCodeSessions.answerOption(rawSid, command.index, command.question,
+            (questionId, answers) => enqueueOpenCodeCommand(rawSid, { type: 'question_reply', questionId, answers }),
+            (permissionId, response) => enqueueOpenCodeCommand(rawSid, { type: 'permission_respond', permissionId, response }));
         } else if (type === 'interrupt' || type === 'escape') {
           enqueueOpenCodeCommand(rawSid, { type: 'interrupt' });
         } else if (type === 'send_prompt' && typeof command.text === 'string') {
@@ -6929,8 +6931,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       }
       if (sessionId.startsWith('observed:opencode:')) {
         const sid = sessionId.slice('observed:opencode:'.length);
-        if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerQuestion(sid, (cmd as any).index, (cmd as any).question,
-          (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }));
+        if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerOption(sid, (cmd as any).index, (cmd as any).question,
+          (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }),
+          (permissionId, response) => enqueueOpenCodeCommand(sid, { type: 'permission_respond', permissionId, response }));
         return;
       }
       if (answerCodexApproval(sessionId, cmd as unknown as Record<string, unknown>)) return;
@@ -6949,8 +6952,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
     if (cmd.type === 'select_option' && userFocusedSessionId?.startsWith('observed:opencode:')) {
       const sid = userFocusedSessionId.slice('observed:opencode:'.length);
-      if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerQuestion(sid, (cmd as any).index, (cmd as any).question,
-        (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }));
+      if (isOpenCodeSteerable(sid)) hookOpenCodeSessions.answerOption(sid, (cmd as any).index, (cmd as any).question,
+        (questionId, answers) => enqueueOpenCodeCommand(sid, { type: 'question_reply', questionId, answers }),
+          (permissionId, response) => enqueueOpenCodeCommand(sid, { type: 'permission_respond', permissionId, response }));
       return;
     }
     // Route interactive commands to focused session (if any)

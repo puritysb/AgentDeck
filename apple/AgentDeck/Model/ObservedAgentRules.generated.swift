@@ -10,6 +10,10 @@ import Foundation
 /// out of the timeline. See the TypeScript sources for why these are generated
 /// rather than written twice.
 enum ObservedAgentRules {
+    static let openCodePermissionChoices: [(index: Int, label: String, decision: String)] = [
+        (0, "Allow once", "allow"),
+        (1, "Deny", "deny"),
+    ]
     static let openCodePendingRequestLimit = 64
     static let openCodeQuestionMaxQuestions = 4
     static let openCodeQuestionMaxOptions = 16

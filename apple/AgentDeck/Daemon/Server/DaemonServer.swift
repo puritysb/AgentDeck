@@ -5250,7 +5250,10 @@ final class DaemonServer {
                 if let sep = rest.firstIndex(of: ":") {
                     let rawSid = String(rest[rest.startIndex..<sep])
                     let permId = String(rest[rest.index(after: sep)...])
-                    guard !rawSid.isEmpty, !permId.isEmpty else { return }
+                    let rowId = Self.openCodeSessionPrefix + rawSid
+                    guard !rawSid.isEmpty, !permId.isEmpty,
+                          pushedSessionsById[rowId]?.requestId == requestId,
+                          canAnswerOpenCodeQuestion(sessionId: rowId) else { return }
                     Task {
                         let queued = await OpenCodeCommandQueue.shared.enqueue(
                             sessionId: rawSid,
@@ -5348,13 +5351,19 @@ final class DaemonServer {
             // (requestId "ocperm:<rawSid>:<permissionID>" on the row).
             if innerType == "respond" || innerType == "select_option",
                let rid = target.requestId, rid.hasPrefix("ocperm:") {
-                let allow = innerType == "select_option"
-                    ? (innerCommand["index"] as? Int) == 0
-                    : ["y", "yes"].contains(((innerCommand["value"] as? String) ?? "").lowercased())
+                let decision: String
+                if innerType == "select_option" {
+                    guard let value = OpenCodeDevicePermission.decision(command: innerCommand, question: target.question) else { return }
+                    decision = value
+                } else {
+                    let value = ((innerCommand["value"] as? String) ?? "").lowercased()
+                    guard ["y", "yes", "n", "no"].contains(value) else { return }
+                    decision = ["y", "yes"].contains(value) ? "allow" : "deny"
+                }
                 handleCommand([
                     "type": "permission_decision",
                     "requestId": rid,
-                    "decision": allow ? "allow" : "deny",
+                    "decision": decision,
                 ])
                 return
             }
@@ -6789,6 +6798,7 @@ final class DaemonServer {
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             appendOpenCodeChatEnd(json: json, sessionId: sessionId)
         case "opencode_session_end":
+            if let sessionId { openCodeProcessIDs.removeValue(forKey: sessionId) }
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
             if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
@@ -6805,6 +6815,10 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         default: break
+        }
+        if isOpenCodeEvent, let sessionId, pushedSessionsById[sessionId] != nil,
+           let pid = json["agentdeck_pid"] as? Int, pid > 1 {
+            openCodeProcessIDs[sessionId] = pid
         }
         if let sessionId, !isOpenCodeEvent {
             noteObservedAgentSettings(event: event, json: json, sessionId: sessionId, isCodex: isCodexEvent)
@@ -7308,6 +7322,9 @@ final class DaemonServer {
         let tombstoneCutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
         codexTerminalTombstoneBySession = codexTerminalTombstoneBySession.filter { $0.value >= tombstoneCutoff }
 
+        let exitedOpenCode = Set(openCodeProcessIDs.compactMap { sid, pid in
+            ProcessEnumerator.processLiveness(pid: pid) == false ? sid : nil
+        })
         var expired = Set(lastHookAtByPushedSession.compactMap { (sid, ts) -> String? in
             guard let entry = pushedSessionsById[sid] else { return sid }
             let ttl = Self.hookIdleTTL(
@@ -7317,6 +7334,7 @@ final class DaemonServer {
             )
             return ts < now.addingTimeInterval(-ttl) ? sid : nil
         })
+        expired.formUnion(exitedOpenCode)
         // Faster eviction for Codex sessions whose terminal event (codex_stop /
         // codex_turn_complete / OTel turnEnd) is past the post-terminal TTL.
         // Without this, a burst of single-turn Codex Companion Tasks each
@@ -7373,6 +7391,8 @@ final class DaemonServer {
             pushedSessionsById.removeValue(forKey: sid)
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
+            openCodeWaits.removeValue(forKey: sid)
+            openCodeProcessIDs.removeValue(forKey: sid)
             // Preserve the terminal timestamp as a tombstone: it is the only
             // signal that distinguishes a finished companion thread's late
             // tool callbacks (must stay dead) from a live turn whose row was
@@ -7393,7 +7413,9 @@ final class DaemonServer {
             openCodeLastPromptTopicBySession.removeValue(forKey: sid)
             if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
             if userFocusedSessionId == sid { userFocusedSessionId = nil }
-            if isPostTerminal {
+            if exitedOpenCode.contains(sid) {
+                DaemonLogger.shared.debug("Hook", "Evicted OpenCode session \(sid) after confirmed process exit")
+            } else if isPostTerminal {
                 DaemonLogger.shared.debug("Hook", "Evicted finished codex session \(sid) (post-terminal \(Int(Self.codexPostTerminalTTL))s)")
             } else if let entry = expiredEntry {
                 // Report the TTL the ladder actually applied. Restating a
@@ -7423,6 +7445,7 @@ final class DaemonServer {
 
     private var openCodeOwnership = OpenCodeObservationOwnership()
     private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+    private var openCodeProcessIDs: [String: Int] = [:]
     private var openCodeQuestionPollAt: [String: Date] = [:]
 
     private func noteOpenCodeQuestionPoll(rawSessionId: String) {
@@ -7438,14 +7461,15 @@ final class DaemonServer {
             try? await Task.sleep(for: .seconds(ObservedAgentRules.openCodeQuestionPollFreshSeconds))
             guard openCodeQuestionPollAt[rawSessionId] == stamp else { return }
             openCodeQuestionPollAt.removeValue(forKey: rawSessionId)
-            if openCodeWaits[sid]?.first?.kind == "question" { broadcastSessionsList() }
+            if openCodeWaits[sid]?.first != nil { broadcastSessionsList() }
         }
     }
 
     private func canAnswerOpenCodeQuestion(sessionId: String) -> Bool {
         guard let pending = openCodeWaits[sessionId]?.first,
-              pending.kind == "question", pending.prompt?.replyable == true,
-              pending.answerable, !pending.sending else { return false }
+              (pending.kind == "permission" && pushedSessionsById[sessionId]?.requestId != nil)
+                || (pending.kind == "question" && pending.prompt?.replyable == true && pending.answerable && !pending.sending)
+        else { return false }
         let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
         guard let polledAt = openCodeQuestionPollAt[raw] else { return false }
         let age = Date().timeIntervalSince(polledAt)
@@ -7498,7 +7522,9 @@ final class DaemonServer {
                 var fields = ["label": AnyCodable(option.label), "index": AnyCodable(option.index)]
                 if let description = option.description { fields["description"] = AnyCodable(description) }
                 return fields
-            } ?? []
+            } ?? (wait.kind == "permission" ? ObservedAgentRules.openCodePermissionChoices.map {
+                ["label": AnyCodable($0.label), "index": AnyCodable($0.index)]
+            } : [])
             let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
             entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
         } else if resolved {

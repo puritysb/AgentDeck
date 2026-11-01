@@ -95,6 +95,14 @@ for scope and limits; widgets follow only after real-device delivery validation.
 
 The app handles iOS background/foreground transitions gracefully — WebSocket reconnects immediately on foregrounding, state syncs within milliseconds, and the terrarium animation resumes without flicker.
 
+The development CloudKit PoC also includes opt-in Mac automatic publication and
+an account-scoped durable reader. iOS stores its files under the app container's
+`Library/Application Support/AgentDeck`, through `AgentDeckPaths`. A storage-only
+check is available in the PoC; a cloud fetch does not by itself prove persistence.
+Cold offline restoration with no local iCloud identity token remains withheld
+until online account verification. These controls remain excluded from Store
+configurations.
+
 ## Two-tier product: App Store app alone vs +CLI
 
 AgentDeck is deliberately a two-tier product:

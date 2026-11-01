@@ -812,6 +812,28 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     }
   });
 
+  it('withdraws OpenCode Attention when its process exits without a final hook', async () => {
+    const owner = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    await new Promise<void>((resolve, reject) => { owner.once('spawn', resolve); owner.once('error', reject); });
+    const thread = 'e2e-opencode-process-exit';
+    const base = { session_id: thread, cwd: '/tmp/opencode-process-exit', agentdeck_pid: owner.pid };
+    const client = await connect(daemon.port);
+    const row = () => (client.frames.filter(f => f.type === 'sessions_list').at(-1)?.sessions as
+      Array<Record<string, unknown>> | undefined)?.find(r => r.id === `observed:opencode:${thread}`);
+    try {
+      await postHook(daemon.port, 'opencode_permission_asked', { ...base, permission_id: 'real-wait', title: 'bash' });
+      await waitFor('live OpenCode approval', () => row()?.state === 'awaiting_permission' ? true : undefined);
+      const exited = new Promise<void>(resolve => owner.once('exit', () => resolve()));
+      owner.kill();
+      await exited;
+      await waitFor('dead OpenCode approval removed without Stop or SessionEnd', () => !row() ? true : undefined);
+    } finally {
+      owner.kill();
+      await postHook(daemon.port, 'opencode_session_end', base);
+      client.close();
+    }
+  });
+
   it.each(['beyond-window', 'missing-file', 'malformed', 'missing-reviewer', 'unknown-reviewer'])(
     'does not invent an MCP human wait when reviewer evidence is %s', async (evidence) => {
       const transcript = join(home, `mcp-review-${evidence}.jsonl`);

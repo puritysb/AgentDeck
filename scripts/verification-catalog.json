@@ -793,6 +793,8 @@
         "scripts/macos-preflight.sh",
         "apple/DeviceAcceptance/README.md",
         "apple/DeviceAcceptance/Tests/TimelineSelectionTests.swift",
+        "apple/DeviceAcceptance/Tests/OpenCodeAttentionTests.swift",
+        "apple/DeviceAcceptance/fixtures/opencode-attention.mjs",
         "apple/DeviceAcceptance/project.yml"
       ],
       "proves": ["the built artifacts install and connect to a daemon on the maintainer's hardware"],

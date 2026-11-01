@@ -44,6 +44,9 @@ import Foundation
 /// out of the timeline. See the TypeScript sources for why these are generated
 /// rather than written twice.
 enum ObservedAgentRules {
+    static let openCodePermissionChoices: [(index: Int, label: String, decision: String)] = [
+${rules.permissions.map(p => `        (${p.index}, ${JSON.stringify(p.label)}, ${JSON.stringify(p.decision)}),`).join('\n')}
+    ]
     static let openCodePendingRequestLimit = ${rules.openCodePendingLimit}
     static let openCodeQuestionMaxQuestions = ${rules.questions.maxQuestions}
     static let openCodeQuestionMaxOptions = ${rules.questions.maxOptions}
@@ -159,6 +162,7 @@ async function main() {
       prefixes: [...sessionUtils.OBSERVED_SESSION_PREFIXES],
       openCodePendingLimit: sessionUtils.OPENCODE_PENDING_REQUEST_LIMIT,
       questions: sessionUtils.OPENCODE_QUESTION_RULES,
+      permissions: (await import('../shared/dist/opencode-question.js')).OPENCODE_PERMISSION_CHOICES,
       codexMetadata: sessionUtils.CODEX_OTEL_METADATA_RULES,
       suppressed: [...timeline.TOOL_EXEC_SUPPRESSED_AGENTS],
       turn: TIMELINE_TURN_RULES,

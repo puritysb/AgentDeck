@@ -6,7 +6,7 @@ import {
   type SessionInfo,
   type StateUpdateEvent,
 } from '@agentdeck/shared';
-import { FocusedDetailState } from '../focused-detail-state.js';
+import { FocusedDetailState, permissionCommandForDetail } from '../focused-detail-state.js';
 
 const claude: SessionInfo = {
   id: 'claude:enhance-timeline',
@@ -134,4 +134,21 @@ describe('FocusedDetailState', () => {
       options: [{ index: 0, label: 'Yes' }],
     });
   });
+});
+
+
+it('binds one-time approval to the displayed request and drops cross-question and superseded presses', () => {
+  const store = new FocusedDetailState();
+  const permission: SessionInfo = { ...claude, id: 'observed:opencode:p', port: 0, agentType: 'opencode',
+    controlMode: 'observed', liveAnswerable: true, state: State.AWAITING_PERMISSION,
+    requestId: 'ocperm:p:first', question: 'bash: harmless probe' };
+  const displayed = store.prime(permission);
+  expect(permissionCommandForDetail(permission, displayed, 0, permission.question)).toEqual({ type: 'permission_decision', requestId: 'ocperm:p:first', decision: 'allow' });
+  expect(permissionCommandForDetail(permission, displayed, 1, permission.question)?.decision).toBe('deny');
+  expect(permissionCommandForDetail(permission, displayed, 2, permission.question)).toBeUndefined();
+  expect(permissionCommandForDetail(permission, displayed, 0, 'Choose target')).toBeUndefined();
+  expect(permissionCommandForDetail({ ...permission, requestId: 'ocperm:p:next' }, displayed, 0, permission.question)).toBeUndefined();
+  expect(permissionCommandForDetail({ ...permission, id: 'observed:opencode:other' }, displayed, 0, permission.question)).toBeUndefined();
+  expect(permissionCommandForDetail({ ...permission, liveAnswerable: false }, displayed, 0, permission.question)).toBeUndefined();
+  expect(store.prime({ ...claude, question: 'Choose target' }).requestId).toBeUndefined();
 });

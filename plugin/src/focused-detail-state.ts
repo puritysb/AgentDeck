@@ -1,5 +1,6 @@
 import {
   State,
+  OPENCODE_PERMISSION_CHOICES,
   type PromptOption,
   type PromptOptionsEvent,
   type SessionInfo,
@@ -14,6 +15,7 @@ export interface FocusedDetailSnapshot {
   tool?: string;
   toolInput?: string;
   question?: string;
+  requestId?: string;
   modelName?: string;
   mode?: string;
   effortLevel?: string;
@@ -71,6 +73,7 @@ export class FocusedDetailState {
       options: session.options ?? [],
       tool: session.currentTool ?? session.currentTask,
       question: session.question,
+      requestId: session.requestId,
       modelName: session.modelName,
       mode: session.permissionMode,
       effortLevel: session.effortLevel,
@@ -127,4 +130,19 @@ export class FocusedDetailState {
     };
     return this.current;
   }
+}
+
+/** Bind approval to the permission actually represented by the detail view.
+ * A newer roster row or an old question press must not authorize another tool. */
+export function permissionCommandForDetail(
+  session: SessionInfo | undefined, detail: FocusedDetailSnapshot | null,
+  index: unknown, question: unknown,
+): { type: 'permission_decision'; requestId: string; decision: 'allow' | 'deny' } | undefined {
+  if (!session || !detail || session.id !== detail.sessionId || session.agentType !== 'opencode'
+    || session.controlMode !== 'observed' || session.liveAnswerable !== true
+    || session.state !== State.AWAITING_PERMISSION || detail.state !== State.AWAITING_PERMISSION
+    || !detail.requestId?.startsWith('ocperm:') || session.requestId !== detail.requestId
+    || typeof question !== 'string' || question !== detail.question || question !== session.question) return;
+  const choice = OPENCODE_PERMISSION_CHOICES.find(c => c.index === index);
+  if (choice) return { type: 'permission_decision', requestId: detail.requestId, decision: choice.decision };
 }

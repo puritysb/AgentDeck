@@ -1317,3 +1317,14 @@ it('pages observed OpenCode choices without repeating the first page', () => {
   expect(second.type).toBe('option');
   expect(second.optionIndex).toBeGreaterThan(0);
 });
+
+it('offers OpenCode one-time permission only with a live native response channel', () => {
+  const manager = new SessionSlotManager();
+  const row = makeSession({ id: 'observed:opencode:p', agentType: 'opencode', controlMode: 'observed',
+    liveAnswerable: true, state: State.AWAITING_PERMISSION, requestId: 'ocperm:p:permission1', question: 'bash: harmless probe' });
+  manager.updateSessions([row]); manager.enterDetailView(row.id);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', option: { label: 'Allow once' }, optionIndex: 0 });
+  expect(manager.getSlotConfig(3, SD_PLUS_LAYOUT)).toMatchObject({ type: 'option', option: { label: 'Deny' }, optionIndex: 1 });
+  manager.updateSessions([{ ...row, liveAnswerable: false }]);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT).type).not.toBe('option');
+});

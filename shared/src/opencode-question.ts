@@ -1,5 +1,11 @@
 import { OPENCODE_QUESTION_RULES } from './session-utils.js';
 
+/** Device approval is always scoped to this request, never a persistent grant. */
+export const OPENCODE_PERMISSION_CHOICES = [
+  { index: 0, label: 'Allow once', decision: 'allow' },
+  { index: 1, label: 'Deny', decision: 'deny' },
+] as const;
+
 export interface OpenCodeQuestionPrompt {
   question: string;
   options: Array<{ label: string; description?: string; index: number }>;
