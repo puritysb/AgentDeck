@@ -34,6 +34,9 @@ describe('device controller delivery and mirrors', () => {
   });
   it('uses readable fixed-size decision text, bounded lines and visible truncation', () => {
     const key = DEVICE_CONTROLLER_RULES.key;
+    const decision = renderOptionButton({ label: 'Deck acceptance', index: 0 }, 0);
+    expect([...decision.matchAll(new RegExp(`<text[^>]*font-size="${key.optionFont}"[^>]*>(.*?)</text>`, 'g'))].map(m => m[1]))
+      .toEqual(['Deck', 'acceptance']);
     for (const label of ['Allow once', 'Deny', '지금 이 작업만 허용합니다', 'A deliberately long choice that cannot fit in one physical key']) {
       const svg = renderOptionButton({ label, index: 0 }, 0);
       const labels = [...svg.matchAll(new RegExp(`<text[^>]*font-size="${key.optionFont}"[^>]*>(.*?)</text>`, 'g'))];

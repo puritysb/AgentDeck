@@ -26,6 +26,7 @@ Every response retains its session/question or native permission identity.
 |---|---|---|
 | Stream Deck / Stream Deck+ / Ulanzi keypad | Real options, one-time permission decisions, supported STOP, native Gateway settings, explicit user input | Larger 22-unit choice text and bundled Korean glyphs on Ulanzi; three lines and visible truncation. Read full long subjects on a larger companion. Idle keys never send canned work. |
 | iPhone / iPad / macOS / Android LCD | Readable question context and choices, request-bound permission decisions, local session inspection | Only a live local delivery path enables responses; CloudKit observations cannot authorize commands. |
+| Apple Watch notification mirror (CloudKit PoC) | Generic attention notification and handoff to the phone | Observation only; responses require a live local controller. No remote permission decisions through CloudKit. |
 | Android e-ink reader/tablet | High-contrast questions, scrollable larger touch targets, actual choices and native held approvals | Display-only when delivery is absent; no animation or tiny action chips required to operate the agent. |
 | T-Embed encoder (320×170) | Session/history navigation, explicit option selection, supported STOP and native settings | Delivery and exact displayed request must still match. No canned continuation or inferred approval. |
 | T-Display Pro Focus Strip (480×222) | Focus/result/usage navigation and native one-time permission decisions | Ordinary questions, multi-choice or unrepresentable subjects are read-only. |

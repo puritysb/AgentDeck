@@ -54,3 +54,9 @@ limit. Native `Buffer.equals` preserves exact-byte verification without walking
 millions of assertion nodes. All 7,115 tests then passed with coverage. The
 interrupted run was stopped before editing the test; the clean full check is
 rerun afterward.
+
+Visual QA at the actual key canvas found that the 120-unit text measure split
+`acceptance` into `acceptanc` and `e` at the new readable font size. A 132-unit
+measure keeps `Deck / acceptance` as two complete lines inside the key. The
+follow-up changes only the shared TypeScript measure, its renderer regression
+and scope documentation; native executable sources stay unchanged.

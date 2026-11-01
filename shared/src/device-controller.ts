@@ -4,7 +4,7 @@ import { OPENCODE_PERMISSION_CHOICES } from './opencode-question.js';
 /** Controller presentation SSOT. Key sizes are SVG units on a 144-unit key. */
 export const DEVICE_CONTROLLER_RULES = {
   observedInputAgents: ['claude-code', 'opencode'],
-  key: { canvas: 144, optionFont: 22, optionLine: 25, optionWidth: 120, optionLines: 3, questionFont: 16 },
+  key: { canvas: 144, optionFont: 22, optionLine: 25, optionWidth: 132, optionLines: 3, questionFont: 16 },
   compact: { questionBytes: 159, requestBytes: 39, optionLabelBytes: 63, options: 6 },
   permissionChoices: OPENCODE_PERMISSION_CHOICES,
 } as const;
