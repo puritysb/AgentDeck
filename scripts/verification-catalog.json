@@ -956,6 +956,7 @@
         "bridge/src/__tests__/background-work.test.ts",
         "bridge/src/__tests__/codex-hook-replay.test.ts",
         "bridge/src/__tests__/codex-approval-hold.test.ts",
+        "bridge/src/__tests__/codex-approval-probe.test.ts",
         "bridge/src/__tests__/managed-hook-harness.test.ts",
         "bridge/src/__tests__/codex-exec-children.test.ts",
         "bridge/src/__tests__/codex-auth.test.ts",

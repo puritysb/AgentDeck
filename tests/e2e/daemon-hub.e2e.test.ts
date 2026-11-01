@@ -839,9 +839,11 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
         if (evidence === 'malformed') writeFileSync(transcript, '{incomplete');
         if (evidence === 'missing-reviewer') writeFileSync(transcript, record());
         if (evidence === 'unknown-reviewer') writeFileSync(transcript, record('future_reviewer'));
-        const first = client.frames.length;
         await postHook(daemon.port, 'codex_permission_request', base);
         await waitFor('unknown reviewer clears speculative prompt', () => row()?.state === 'processing' ? true : undefined);
+        // Earlier human-prompt broadcasts may still be in flight while the
+        // asynchronous probe runs. Inspect new frames after its clear arrives.
+        const first = client.frames.length;
         const held = await fetch(`http://127.0.0.1:${daemon.port}/hooks/codex_permission_request`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'X-AgentDeck-Hold': '55' },
           body: JSON.stringify(base), signal: AbortSignal.timeout(5_000),
@@ -879,7 +881,7 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
     } finally { await postHook(daemon.port, 'codex_session_end', base); client.close(); }
   });
 
-  it.each(['user', 'auto_review'])('preserves %s approval semantics beyond multiple rollout windows', async reviewer => {
+  it.each(['user', 'auto_review'])('preserves Blender MCP %s approval semantics beyond multiple rollout windows', async reviewer => {
     const transcript = join(home, `long-review-${reviewer}.jsonl`);
     const thread = `e2e-long-review-${reviewer}`;
     const turn = 'long-review-turn';
@@ -889,7 +891,8 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
       output: 'x'.repeat(17 * 1024 * 1024),
     } }) + '\n');
     const base = { session_id: thread, turn_id: turn, transcript_path: transcript,
-      cwd: '/tmp/long-review', permission_mode: 'default', tool_name: 'mcp__playwright__browser_tabs' };
+      cwd: '/tmp/long-review', permission_mode: 'default', tool_name: 'mcp__blender__execute_blender_code',
+      tool_input: { code: 'import bpy; print(len(bpy.data.objects))' } };
     const client = await connect(daemon.port);
     const row = () => (client.frames.filter(f => f.type === 'sessions_list').at(-1)?.sessions as
       Array<Record<string, unknown>> | undefined)?.find(r => r.id === `observed:codex:${thread}`);
