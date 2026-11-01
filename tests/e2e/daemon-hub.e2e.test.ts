@@ -1206,6 +1206,21 @@ describe.skipIf(DARWIN_BLOCKED)('daemon hub (real CLI process)', () => {
         expect(r?.requestId).toBeUndefined();
       }
       await postHook(daemon.port, 'Stop', { ...base, hook_event_name: 'Stop' });
+      const terminalFrames = client.frames.length;
+      await postHook(daemon.port, 'Notification', { ...base, hook_event_name: 'Notification',
+        notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+      await settle();
+      expect(row(client.frames)?.state).not.toBe('awaiting_permission');
+      await postHook(daemon.port, 'SessionEnd', { ...base, hook_event_name: 'SessionEnd' });
+      await postHook(daemon.port, 'Notification', { ...base, hook_event_name: 'Notification',
+        notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+      await settle();
+      await waitFor('ended Claude row removed', () => row(client.frames) ? undefined : true);
+      for (const frame of client.frames.slice(terminalFrames)) {
+        if (frame.type !== 'sessions_list') continue;
+        const r = (frame.sessions as Array<Record<string, unknown>>).find((r) => r.id === rowId);
+        expect(r?.state).not.toBe('awaiting_permission');
+      }
     } finally {
       client.close();
       proc.kill();

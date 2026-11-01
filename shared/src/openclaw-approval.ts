@@ -186,8 +186,8 @@ function resolveDecisions(body: ExecApprovalRequestBody): ExecApprovalDecision[]
 }
 
 /**
- * Normalize a raw `exec.approval.requested` payload. Returns `null` only when
- * the payload carries no usable id — a request with no command text still
+ * Normalize a raw `exec.approval.requested` payload. Returns `null` when explicitly
+ * expired or the payload carries no usable id — a request with no command text still
  * produces a prompt (labeled as unknown) so the user keeps the ability to deny.
  */
 export function parseExecApprovalRequest(
@@ -198,6 +198,8 @@ export function parseExecApprovalRequest(
   const raw = payload as ExecApprovalRequestedPayload;
   const id = typeof raw.id === 'string' ? raw.id.trim() : '';
   if (!id) return null;
+  if (typeof raw.expiresAtMs === 'number' && Number.isFinite(raw.expiresAtMs)
+    && raw.expiresAtMs <= nowMs) return null;
 
   // Nested `request` is authoritative; the flat spread is the compatibility
   // path only. Merging (rather than picking one) means a Gateway that moves a

@@ -114,14 +114,15 @@ try {
 const stop = () => { try { child.kill(); } catch { /* already exited */ } };
 process.once('exit', stop);
 child.onData(data => fs.appendFileSync(join(root, 'tui.log'), data));
+const exited = new Promise(resolve => child.onExit(resolve));
+const timeout = setTimeout(() => { console.error('Acceptance deadline reached; closing isolated OpenCode'); process.exitCode = 1; stop(); }, timeoutMs);
+for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, stop);
 const metadata = { root, kind, pid: child.pid, orchestratorPid: process.pid, modelPort: model.address().port };
 fs.writeFileSync(join(root, 'run.json'), JSON.stringify(metadata));
 fs.mkdirSync('diagnostics', { recursive: true });
 fs.writeFileSync(`diagnostics/${kind}-acceptance-run.json`, JSON.stringify(metadata));
 console.log(JSON.stringify(metadata));
-const timeout = setTimeout(() => { console.error('Acceptance deadline reached; closing isolated OpenCode'); process.exitCode = 1; stop(); }, timeoutMs);
-for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, stop);
-await new Promise(resolve => child.onExit(resolve));
+await exited;
 clearTimeout(timeout);
 model.closeAllConnections();
 model.close();

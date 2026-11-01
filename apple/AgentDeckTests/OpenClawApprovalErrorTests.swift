@@ -12,6 +12,30 @@ import XCTest
 /// daemon won.
 final class OpenClawApprovalErrorTests: XCTestCase {
 
+    func testExpiredApprovalsCannotReplaceLiveAttention() async {
+        let adapter = OpenClawAdapter(gatewayUrl: "ws://127.0.0.1:9")
+        for kind in ["exec", "plugin"] {
+            await adapter.receiveGatewayEventForTesting("\(kind).approval.requested", payload: ["id": "live"])
+            let live = await adapter.activeApprovalId()
+            XCTAssertEqual(live, "live")
+            await adapter.receiveGatewayEventForTesting("\(kind).approval.requested", payload: [
+                "id": "expired", "expiresAtMs": Date().timeIntervalSince1970 * 1000,
+            ])
+            let retained = await adapter.activeApprovalId()
+            XCTAssertEqual(retained, "live")
+            await adapter.receiveGatewayEventForTesting("\(kind).approval.resolved", payload: ["id": "live"])
+        }
+    }
+
+    func testExpiryBoundaryKeepsUnknownAndLiveRequests() {
+        for expiry in [99.0, 100.0] {
+            XCTAssertNil(OpenClawApprovalRules.parse(["id": "x", "expiresAtMs": expiry], nowMs: 100))
+            XCTAssertNil(OpenClawPluginApprovalRules.parse(["id": "x", "expiresAtMs": expiry], nowMs: 100))
+        }
+        XCTAssertNotNil(OpenClawApprovalRules.parse(["id": "x", "expiresAtMs": 101], nowMs: 100))
+        XCTAssertNotNil(OpenClawPluginApprovalRules.parse(["id": "x"], nowMs: 100))
+    }
+
     func testDefaultScopesCanObserveOtherConnectionsApprovals() {
         XCTAssertEqual(OpenClawApprovalRules.operatorScopes(granted: nil),
                        ["operator.admin", "operator.approvals", "operator.read"])

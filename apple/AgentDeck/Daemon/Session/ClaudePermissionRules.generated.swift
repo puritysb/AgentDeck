@@ -4,6 +4,40 @@
 
 import Foundation
 
+/// Terminal hook evidence, generated from CLAUDE_ATTENTION_LIFECYCLE.
+struct ClaudeAttentionLifecycle {
+    private var terminal: [String: String] = [:]
+    private var order: [String] = []
+
+    mutating func admit(event: String, sessionId: String) -> Bool {
+        let names: [String: String] = [
+            "SessionStart": "session_start",
+            "UserPromptSubmit": "user_prompt_submit",
+            "PreToolUse": "tool_start",
+            "Stop": "stop",
+            "SessionEnd": "session_end",
+            "Notification": "notification",
+            "PermissionNotification": "permission_notification",
+        ]
+        let normalized = names[event] ?? event
+        let prior = terminal[sessionId]
+        if prior == "ended" && normalized != "session_start" { return false }
+        if prior == "stopped" && normalized == "permission_notification" { return false }
+        if ["session_start", "user_prompt_submit", "tool_start"].contains(normalized) {
+            terminal.removeValue(forKey: sessionId)
+            order.removeAll { $0 == sessionId }
+        } else if normalized == "stop" || normalized == "session_end" {
+            terminal[sessionId] = normalized == "stop" ? "stopped" : "ended"
+            order.removeAll { $0 == sessionId }
+            order.append(sessionId)
+            if order.count > 4096 {
+                terminal.removeValue(forKey: order.removeFirst())
+            }
+        }
+        return true
+    }
+}
+
 /// Claude Code permission prediction — the Swift half of the SSOT that decides
 /// the retired permission-hold compatibility API (always passive).
 /// See shared/src/claude-permission-rules.ts for the rule rationale; parity

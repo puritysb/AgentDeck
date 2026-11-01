@@ -1,3 +1,4 @@
+import { ClaudeAttentionLifecycle } from '@agentdeck/shared';
 import { loadHandoverTimeline } from './daemon-timeline-handover.js';
 import { dotSurfaceSnapshot } from '@agentdeck/shared';
 import { readDotAppearance } from './dot-appearance.js';
@@ -1841,6 +1842,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   const codexApmeSessions = new Set<string>();
   const codexRosterAbsentSince = new Map<string, number>();
   const hookClaudeSessions = new HookClaudeSessions();
+  const claudeAttentionLifecycle = new ClaudeAttentionLifecycle();
   // Who last moved the hub's global state machine — see hub-state-identity.ts.
   const hubDriver = new HubStateDriverTracker();
   // Codex Desktop ambient-suggestions threads — see codex-ambient-hooks.ts.
@@ -3717,6 +3719,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           res.end(eventName === 'PreToolUse' || eventName === 'Stop'
             ? ''
             : JSON.stringify({ received: true }));
+          return;
+        }
+        if (typeof json.session_id === 'string' && !eventName.includes('_')
+          && !claudeAttentionLifecycle.admit(eventName === 'Notification'
+            && isPermissionNotification(typeof json.notification_type === 'string' ? json.notification_type : undefined,
+              typeof json.message === 'string' ? json.message : '') ? 'PermissionNotification' : eventName, json.session_id)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(eventName === 'PreToolUse' || eventName === 'Stop' ? '' : JSON.stringify({ received: true }));
           return;
         }
         // After child-only filtering and before any state-machine broadcast.

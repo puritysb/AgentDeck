@@ -668,10 +668,10 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private async adoptPendingExecApproval(): Promise<void> {
     const pending = approvalListRows(await this.rpcCall('exec.approval.list', {}));
     if (pending && pending.length > 0) {
-      const oldest = [...pending].sort(
+      const now = Date.now();
+      const prompt = [...pending].sort(
         (a, b) => (a?.createdAtMs ?? 0) - (b?.createdAtMs ?? 0),
-      )[0];
-      const prompt = parseExecApprovalRequest(oldest, Date.now());
+      ).map((row) => parseExecApprovalRequest(row, now)).find((row) => row !== null);
       // Already tracking it (a reconnect that raced the event) — don't re-emit.
       if (prompt && this.pendingApproval?.id !== prompt.id) {
         debug('adapter:openclaw', `adopted pending approval ${prompt.id} on connect`);
@@ -690,10 +690,10 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
   private async adoptPendingPluginApprovalOnConnect(): Promise<void> {
     const pendingPlugin = approvalListRows(await this.rpcCall('plugin.approval.list', {}));
     if (pendingPlugin && pendingPlugin.length > 0) {
-      const oldest = [...pendingPlugin].sort(
+      const now = Date.now();
+      const prompt = [...pendingPlugin].sort(
         (a, b) => (a?.createdAtMs ?? 0) - (b?.createdAtMs ?? 0),
-      )[0];
-      const prompt = parsePluginApprovalRequest(oldest, Date.now());
+      ).map((row) => parsePluginApprovalRequest(row, now)).find((row) => row !== null);
       if (prompt && this.pendingPluginApproval?.id !== prompt.id) {
         debug('adapter:openclaw', `adopted pending plugin approval ${prompt.id} on connect`);
         this.setPendingPluginApproval(prompt);
@@ -832,7 +832,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
         // The `exec.approval.resolved` event is the authoritative close (it also
         // arrives when another operator answers). Clear here too so a dropped
         // event cannot strand the prompt.
-        if (this.pendingApproval?.id === prompt.id) this.clearPendingApproval();
+        if (this.pendingApproval?.id === prompt.id) {
+          this.handleGatewayEvent('exec.approval.resolved', { id: prompt.id, decision });
+        }
       })
       .catch((err) => {
         logError(`[adapter:openclaw] exec.approval.resolve failed (${decision}): ${String(err)}`);
@@ -989,7 +991,9 @@ export class OpenClawAdapter extends EventEmitter implements AgentAdapter {
     debug('adapter:openclaw', `plugin.approval.resolve ${prompt.id} → ${decision}`);
     this.rpcCall('plugin.approval.resolve', { id: prompt.id, decision })
       .then(() => {
-        if (this.pendingPluginApproval?.id === prompt.id) this.clearPendingPluginApproval();
+        if (this.pendingPluginApproval?.id === prompt.id) {
+          this.handleGatewayEvent('plugin.approval.resolved', { id: prompt.id, decision });
+        }
       })
       .catch((err) => {
         logError(`[adapter:openclaw] plugin.approval.resolve failed (${decision}): ${String(err)}`);

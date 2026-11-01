@@ -41,6 +41,7 @@ function swiftStringList(values, indent = '        ') {
 
 export function rulesFrom(mod) {
   return {
+    attentionLifecycle: mod.CLAUDE_ATTENTION_LIFECYCLE,
     permissionNotificationPattern: mod.CLAUDE_PERMISSION_NOTIFICATION_PATTERN,
     permissionModes: [...mod.CLAUDE_PERMISSION_MODES],
     neverPromptTools: [...mod.NEVER_PROMPT_TOOLS].sort(),
@@ -63,6 +64,34 @@ export function emitSwift(rules) {
   return `${header()}
 
 import Foundation
+
+/// Terminal hook evidence, generated from CLAUDE_ATTENTION_LIFECYCLE.
+struct ClaudeAttentionLifecycle {
+    private var terminal: [String: String] = [:]
+    private var order: [String] = []
+
+    mutating func admit(event: String, sessionId: String) -> Bool {
+        let names: [String: String] = [
+${Object.entries(rules.attentionLifecycle.events).map(([k,v]) => `            ${JSON.stringify(k)}: ${JSON.stringify(v)},`).join('\n')}
+        ]
+        let normalized = names[event] ?? event
+        let prior = terminal[sessionId]
+        if prior == "ended" && normalized != "session_start" { return false }
+        if prior == "stopped" && normalized == "permission_notification" { return false }
+        if ["session_start", "user_prompt_submit", "tool_start"].contains(normalized) {
+            terminal.removeValue(forKey: sessionId)
+            order.removeAll { $0 == sessionId }
+        } else if normalized == "stop" || normalized == "session_end" {
+            terminal[sessionId] = normalized == "stop" ? "stopped" : "ended"
+            order.removeAll { $0 == sessionId }
+            order.append(sessionId)
+            if order.count > ${rules.attentionLifecycle.maxSessions} {
+                terminal.removeValue(forKey: order.removeFirst())
+            }
+        }
+        return true
+    }
+}
 
 /// Claude Code permission prediction — the Swift half of the SSOT that decides
 /// the retired permission-hold compatibility API (always passive).

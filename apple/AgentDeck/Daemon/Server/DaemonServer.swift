@@ -6311,6 +6311,12 @@ final class DaemonServer {
             return
         }
 
+        if !isCodexEvent, !isOpenCodeEvent, let sessionId,
+           !claudeAttentionLifecycle.admit(
+            event: event == "notification" && Self.isPermissionNotification(
+                notificationType: json["notification_type"] as? String, message: json["message"] as? String ?? "")
+                ? "PermissionNotification" : event, sessionId: sessionId) { return }
+
         // Codex Desktop ambient-suggestions threads fire the user-global hooks
         // for prompts the user never typed. Drop them before session, state,
         // timeline and APME bookkeeping see them, and retract what the thread's
@@ -6561,6 +6567,7 @@ final class DaemonServer {
                 _ = stateMachine.transition(trigger: "session_end", source: .hook)
             }
             if let sessionId {
+                observedHookProcessIDs.removeValue(forKey: sessionId)
                 let expiredEntry = pushedSessionsById[sessionId]
                 let isCodex = expiredEntry.map { Self.isCodexSession(sessionId: sessionId, entry: $0) } ?? false
                 if isCodex {
@@ -6798,7 +6805,7 @@ final class DaemonServer {
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             appendOpenCodeChatEnd(json: json, sessionId: sessionId)
         case "opencode_session_end":
-            if let sessionId { openCodeProcessIDs.removeValue(forKey: sessionId) }
+            if let sessionId { observedHookProcessIDs.removeValue(forKey: sessionId) }
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
             if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
@@ -6816,9 +6823,11 @@ final class DaemonServer {
             }
         default: break
         }
-        if isOpenCodeEvent, let sessionId, pushedSessionsById[sessionId] != nil,
+        if let sessionId,
+           isOpenCodeEvent || pushedSessionsById[sessionId]?.agentType == "claude-code",
+           pushedSessionsById[sessionId] != nil,
            let pid = json["agentdeck_pid"] as? Int, pid > 1 {
-            openCodeProcessIDs[sessionId] = pid
+            observedHookProcessIDs[sessionId] = pid
         }
         if let sessionId, !isOpenCodeEvent {
             noteObservedAgentSettings(event: event, json: json, sessionId: sessionId, isCodex: isCodexEvent)
@@ -7322,7 +7331,7 @@ final class DaemonServer {
         let tombstoneCutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
         codexTerminalTombstoneBySession = codexTerminalTombstoneBySession.filter { $0.value >= tombstoneCutoff }
 
-        let exitedOpenCode = Set(openCodeProcessIDs.compactMap { sid, pid in
+        let exitedObservedHooks = Set(observedHookProcessIDs.compactMap { sid, pid in
             ProcessEnumerator.processLiveness(pid: pid) == false ? sid : nil
         })
         var expired = Set(lastHookAtByPushedSession.compactMap { (sid, ts) -> String? in
@@ -7334,7 +7343,7 @@ final class DaemonServer {
             )
             return ts < now.addingTimeInterval(-ttl) ? sid : nil
         })
-        expired.formUnion(exitedOpenCode)
+        expired.formUnion(exitedObservedHooks)
         // Faster eviction for Codex sessions whose terminal event (codex_stop /
         // codex_turn_complete / OTel turnEnd) is past the post-terminal TTL.
         // Without this, a burst of single-turn Codex Companion Tasks each
@@ -7354,6 +7363,9 @@ final class DaemonServer {
             ciWaits.forget(ObservedAgentRules.rawSessionId(sid))
             hermesGate.forget(sessionKey: sid)
             let expiredEntry = pushedSessionsById[sid]
+            if exitedObservedHooks.contains(sid), expiredEntry?.agentType == "claude-code" {
+                _ = claudeAttentionLifecycle.admit(event: "session_end", sessionId: sid)
+            }
             let isPostTerminal = lastTerminalCodexEventBySession[sid]
                 .map { $0 < codexTerminalCutoff } ?? false
 
@@ -7392,7 +7404,7 @@ final class DaemonServer {
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
             openCodeWaits.removeValue(forKey: sid)
-            openCodeProcessIDs.removeValue(forKey: sid)
+            observedHookProcessIDs.removeValue(forKey: sid)
             // Preserve the terminal timestamp as a tombstone: it is the only
             // signal that distinguishes a finished companion thread's late
             // tool callbacks (must stay dead) from a live turn whose row was
@@ -7413,8 +7425,8 @@ final class DaemonServer {
             openCodeLastPromptTopicBySession.removeValue(forKey: sid)
             if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
             if userFocusedSessionId == sid { userFocusedSessionId = nil }
-            if exitedOpenCode.contains(sid) {
-                DaemonLogger.shared.debug("Hook", "Evicted OpenCode session \(sid) after confirmed process exit")
+            if exitedObservedHooks.contains(sid) {
+                DaemonLogger.shared.debug("Hook", "Evicted observed session \(sid) after confirmed process exit")
             } else if isPostTerminal {
                 DaemonLogger.shared.debug("Hook", "Evicted finished codex session \(sid) (post-terminal \(Int(Self.codexPostTerminalTTL))s)")
             } else if let entry = expiredEntry {
@@ -7445,7 +7457,8 @@ final class DaemonServer {
 
     private var openCodeOwnership = OpenCodeObservationOwnership()
     private var openCodeWaits: [String: OpenCodeWaitState] = [:]
-    private var openCodeProcessIDs: [String: Int] = [:]
+    private var claudeAttentionLifecycle = ClaudeAttentionLifecycle()
+    private var observedHookProcessIDs: [String: Int] = [:]
     private var openCodeQuestionPollAt: [String: Date] = [:]
 
     private func noteOpenCodeQuestionPoll(rawSessionId: String) {

@@ -26,14 +26,24 @@ final class LocalRosterProbeModel: ObservableObject {
         self.store = store
         guard !AgentDeckApp.isHostedTest() else { return }
         accountObserver = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                self.stop(cancelWrites: false)
-                self.state = RemotePublisherState(account: "")
-                try? self.disk.remove("publisher.json")
-                await self.store.invalidateAccount()
-            }
+            Task { @MainActor in await self?.accountDidChange() }
         }
+    }
+
+    func accountDidChange() async {
+        // A notification can arrive before restoration. Revoke that disk consent
+        // too, retaining only the disabled writer binding for a verified return
+        // to the same account. Queued events and local session identities clear.
+        if state.account.isEmpty, let saved = disk.read("publisher.json", as: RemotePublisherState.self),
+           saved.version == 1, saved.pending.count <= RemoteObservationPolicy.pendingLimit {
+            state = saved
+        }
+        stop(cancelWrites: false)
+        if disk.read("publisher.json", as: RemotePublisherState.self)?.enabled != false {
+            try? disk.remove("publisher.json") // Never retain enabled consent after a failed write.
+        }
+        state = RemotePublisherState(account: "")
+        await store.invalidateAccount()
     }
 
     func start() {
