@@ -6798,6 +6798,7 @@ final class DaemonServer {
             updateSessionHookState(sessionId: sessionId, state: "idle", clearTool: true)
             appendOpenCodeChatEnd(json: json, sessionId: sessionId)
         case "opencode_session_end":
+            if let sessionId { openCodeProcessIDs.removeValue(forKey: sessionId) }
             // The current observer plugin never posts this (session teardown
             // is TTL-evicted) — accepted for forward-compatibility.
             if Self.hubDisconnectsOnSessionEnd(endedSessionId: sessionId, liveSessionIds: hubLiveSessionIds) {
@@ -6814,6 +6815,10 @@ final class DaemonServer {
                 broadcastSessionsList()
             }
         default: break
+        }
+        if isOpenCodeEvent, let sessionId, pushedSessionsById[sessionId] != nil,
+           let pid = json["agentdeck_pid"] as? Int, pid > 1 {
+            openCodeProcessIDs[sessionId] = pid
         }
         if let sessionId, !isOpenCodeEvent {
             noteObservedAgentSettings(event: event, json: json, sessionId: sessionId, isCodex: isCodexEvent)
@@ -7317,6 +7322,9 @@ final class DaemonServer {
         let tombstoneCutoff = now.addingTimeInterval(-Self.codexTerminalTombstoneTTL)
         codexTerminalTombstoneBySession = codexTerminalTombstoneBySession.filter { $0.value >= tombstoneCutoff }
 
+        let exitedOpenCode = Set(openCodeProcessIDs.compactMap { sid, pid in
+            ProcessEnumerator.processLiveness(pid: pid) == false ? sid : nil
+        })
         var expired = Set(lastHookAtByPushedSession.compactMap { (sid, ts) -> String? in
             guard let entry = pushedSessionsById[sid] else { return sid }
             let ttl = Self.hookIdleTTL(
@@ -7326,6 +7334,7 @@ final class DaemonServer {
             )
             return ts < now.addingTimeInterval(-ttl) ? sid : nil
         })
+        expired.formUnion(exitedOpenCode)
         // Faster eviction for Codex sessions whose terminal event (codex_stop /
         // codex_turn_complete / OTel turnEnd) is past the post-terminal TTL.
         // Without this, a burst of single-turn Codex Companion Tasks each
@@ -7382,6 +7391,8 @@ final class DaemonServer {
             pushedSessionsById.removeValue(forKey: sid)
             cachedSessions.removeAll { $0.id == sid }
             lastHookAtByPushedSession.removeValue(forKey: sid)
+            openCodeWaits.removeValue(forKey: sid)
+            openCodeProcessIDs.removeValue(forKey: sid)
             // Preserve the terminal timestamp as a tombstone: it is the only
             // signal that distinguishes a finished companion thread's late
             // tool callbacks (must stay dead) from a live turn whose row was
@@ -7402,7 +7413,9 @@ final class DaemonServer {
             openCodeLastPromptTopicBySession.removeValue(forKey: sid)
             if currentHookSessionId == sid { currentHookSessionId = nil; if hubDriver == .hook { hubDriver = .none } }
             if userFocusedSessionId == sid { userFocusedSessionId = nil }
-            if isPostTerminal {
+            if exitedOpenCode.contains(sid) {
+                DaemonLogger.shared.debug("Hook", "Evicted OpenCode session \(sid) after confirmed process exit")
+            } else if isPostTerminal {
                 DaemonLogger.shared.debug("Hook", "Evicted finished codex session \(sid) (post-terminal \(Int(Self.codexPostTerminalTTL))s)")
             } else if let entry = expiredEntry {
                 // Report the TTL the ladder actually applied. Restating a
@@ -7432,6 +7445,7 @@ final class DaemonServer {
 
     private var openCodeOwnership = OpenCodeObservationOwnership()
     private var openCodeWaits: [String: OpenCodeWaitState] = [:]
+    private var openCodeProcessIDs: [String: Int] = [:]
     private var openCodeQuestionPollAt: [String: Date] = [:]
 
     private func noteOpenCodeQuestionPoll(rawSessionId: String) {

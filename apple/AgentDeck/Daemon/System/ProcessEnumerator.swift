@@ -11,6 +11,17 @@ import Darwin
 import Foundation
 
 enum ProcessEnumerator {
+    /// A failed kernel probe is unknown, never proof of process exit.
+    static func processLiveness(pid: Int) -> Bool? {
+        guard pid > 1, let value = Int32(exactly: pid) else { return nil }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, value]
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0 else { return errno == ESRCH ? false : nil }
+        if size == 0 { return false }
+        return info.kp_proc.p_stat != 5 && (Int32(info.kp_proc.p_flag) & 0x2000) == 0
+    }
+
     struct ProcessSnapshot {
         let pid: pid_t
         let startedAt: Date

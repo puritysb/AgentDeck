@@ -11,6 +11,8 @@ const require = createRequire(new URL('../../../bridge/package.json', import.met
 const pty = require('node-pty');
 const kind = process.argv[2] || 'phone';
 if (!['phone', 'deck'].includes(kind)) throw new Error('Choose phone or deck');
+const timeoutMs = Number(process.env.AGENTDECK_ACCEPTANCE_TIMEOUT_MS || 180_000);
+if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 3_600_000) throw new Error('Acceptance timeout must be 1000..3600000 ms');
 const root = fs.mkdtempSync(join(tmpdir(), `agentdeck-device-acceptance-${kind}-`));
 const label = kind === 'phone' ? 'Phone acceptance' : 'Deck acceptance';
 const state = { stage: 'starting', calls: 0, toolResults: [] };
@@ -109,14 +111,15 @@ try {
     '--prompt', 'Run the isolated device acceptance using the question tool, then the harmless bash tool.',
   ], { cwd: root, env, cols: 110, rows: 35, name: 'xterm-256color' });
 } catch (error) { model.closeAllConnections(); model.close(); throw error; }
+const stop = () => { try { child.kill(); } catch { /* already exited */ } };
+process.once('exit', stop);
 child.onData(data => fs.appendFileSync(join(root, 'tui.log'), data));
 const metadata = { root, kind, pid: child.pid, orchestratorPid: process.pid, modelPort: model.address().port };
 fs.writeFileSync(join(root, 'run.json'), JSON.stringify(metadata));
 fs.mkdirSync('diagnostics', { recursive: true });
 fs.writeFileSync(`diagnostics/${kind}-acceptance-run.json`, JSON.stringify(metadata));
 console.log(JSON.stringify(metadata));
-const stop = () => { try { child.kill(); } catch { /* already exited */ } };
-const timeout = setTimeout(stop, 3_600_000);
+const timeout = setTimeout(() => { console.error('Acceptance deadline reached; closing isolated OpenCode'); process.exitCode = 1; stop(); }, timeoutMs);
 for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, stop);
 await new Promise(resolve => child.onExit(resolve));
 clearTimeout(timeout);

@@ -300,7 +300,7 @@ struct MonitorScreen: View {
         if preferences.effectiveDashboardType == .aquarium3D {
             if #available(iOS 18.0, macOS 15.0, *) {
                 GeometryReader { geometry in
-                    let top = featuredAwaitingSession == nil ? 0 : attentionHeight + 24
+                    let top = hudHidden || featuredAwaitingSession == nil ? 0 : attentionHeight + 24
                     ZStack(alignment: .top) {
                         TerrariumColors.deepSea
                         livingAquariumScene(labelInsets: communicationLabelInsets(size: geometry.size))
@@ -336,11 +336,9 @@ struct MonitorScreen: View {
         }
     }
 
-    /// Tap handler for empty terrarium water. When the AttentionTheater
-    /// card is up the user is mid-answer, so we disable the toggle to
-    /// avoid an off-target tap collapsing the HUD behind the question card.
+    /// Attention is non-modal: empty water still toggles the viewing mode.
+    /// Hiding the HUD never answers or dismisses the underlying request.
     private var backgroundTapHandler: (() -> Void)? {
-        guard featuredAwaitingSession == nil else { return nil }
         return {
             withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
         }
@@ -380,7 +378,7 @@ struct MonitorScreen: View {
     /// showing we suppress it (ConnectionOverlay owns the screen).
     @ViewBuilder
     private func attentionTheaterLayer(geo: GeometryProxy) -> some View {
-        if stateHolder.state.bridgeConnected,
+        if !hudHidden, stateHolder.state.bridgeConnected,
            let featured = featuredAwaitingSession {
             let awaiting = attentionSessions
             let queued = max(0, awaiting.count - 1)
@@ -565,22 +563,40 @@ struct MonitorScreen: View {
             HStack {
                 Spacer()
                 rotationButton
+                viewingModeButton
                 if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
                     settingsGearButton
                 }
             }
         }
         #else
-        if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
-            VStack {
+        VStack {
+            Spacer()
+            HStack {
                 Spacer()
-                HStack {
-                    Spacer()
+                viewingModeButton
+                if preferences.showSettingsButton || preferences.effectiveDashboardType == .aquarium3D {
                     settingsGearButton
                 }
             }
         }
         #endif
+    }
+
+    private var viewingModeButton: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.25)) { hudHidden.toggle() }
+        } label: {
+            Label(hudHidden ? "Show dashboard" : "View aquarium",
+                  systemImage: hudHidden ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                .labelStyle(.iconOnly)
+                .font(.title2)
+                .foregroundStyle(TerrariumHUD.subtext)
+                .padding(16)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("dashboard-viewing-mode")
+        .help(hudHidden ? "Show dashboard" : "View aquarium")
     }
 
     /// Gear icon that opens Settings. Routes through `openWindow(id:)`

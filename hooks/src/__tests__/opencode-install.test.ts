@@ -216,7 +216,7 @@ describe('AgentDeckObserver event sequencing', () => {
       { type: 'question.rejected', properties: { sessionID: 's1', requestID: 'q1' } },
     ]) await event({ event: wire });
     await flush();
-    expect(posts.find(p => p.event === 'opencode_permission_asked')?.body).toMatchObject({ permission_id: 'p1', title: 'bash: node harmless-probe.js' });
+    expect(posts.find(p => p.event === 'opencode_permission_asked')?.body).toMatchObject({ permission_id: 'p1', title: 'bash: node harmless-probe.js', agentdeck_pid: process.pid });
     expect(posts.find(p => p.event === 'opencode_permission_replied')?.body).toMatchObject({ permission_id: 'p1' });
     expect(posts.find(p => p.event === 'opencode_question_asked')?.body).toMatchObject({ question_id: 'q1', title: 'Which target?' });
     expect(posts.find(p => p.event === 'opencode_question_rejected')?.body).toMatchObject({ question_id: 'q1' });

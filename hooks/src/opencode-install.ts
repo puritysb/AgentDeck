@@ -129,7 +129,7 @@ function post(event, body) {
     return fetch("http://127.0.0.1:" + port + "/hooks/" + event, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, agentdeck_pid: process.pid }),
       signal: AbortSignal.timeout(800),
     });
   }).catch(() => { /* daemon down — observation is best-effort */ });
