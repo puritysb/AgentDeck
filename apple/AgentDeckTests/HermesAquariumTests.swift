@@ -220,11 +220,11 @@ final class HermesAquariumTests: XCTestCase {
         let home = resident.position, support = shell.transformMatrix(relativeTo: nil)
         let body = try XCTUnwrap(resident.findEntity(named: "body"))
         XCTAssertFalse(body.isEnabled, "A newly loaded idle mermaid rests inside the closed shell")
-        for _ in 0..<600 { scene.step(1/60) }
+        for _ in 0..<1200 { scene.step(1/60) }
         XCTAssertEqual(resident.position, home, "Idle must not drift away from the shell")
         state.hermesCreatures = [.init(id: "rest", projectName: "Hermes", activity: .working)]
         scene.sync(state, aspect: 1.6)
-        for _ in 0..<600 { scene.step(1/60) }
+        for _ in 0..<1200 { scene.step(1/60) }
         XCTAssertGreaterThan(resident.position.y, home.y + 0.25)
         XCTAssertTrue(body.isEnabled)
         XCTAssertGreaterThanOrEqual(body.visualBounds(relativeTo: scene.root).min.y,
@@ -346,7 +346,17 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertEqual(scene.root.children.filter { $0.name=="shared-shell-home" }.count,1)
         let house=try XCTUnwrap(scene.root.findEntity(named:"shared-shell-home"))
         let fixed=house.transform
-        for _ in 0..<1800 { scene.step(1/60) }
+        for frame in 0..<1800 {
+            scene.step(1/60)
+            guard frame % 4 == 0 else { continue }
+            let bodies=scene.residents.values.compactMap { $0.findEntity(named:"body") }.filter(\.isEnabled)
+            for i in bodies.indices {
+                let a=bodies[i].visualBounds(relativeTo:scene.root)
+                for b in bodies.dropFirst(i+1).map({ $0.visualBounds(relativeTo:scene.root) }) {
+                    XCTAssertTrue(a.max.x<=b.min.x || b.max.x<=a.min.x || a.max.y<=b.min.y || b.max.y<=a.min.y || a.max.z<=b.min.z || b.max.z<=a.min.z,"frame=\(frame) pair=\(i) a=\(a) b=\(b)")
+                }
+            }
+        }
         let outside=scene.residents.values.filter { $0.findEntity(named:"body")?.isEnabled==true }
         XCTAssertEqual(outside.count,3)
         XCTAssertGreaterThan((outside.map { $0.position.x }.max() ?? 0)-(outside.map { $0.position.x }.min() ?? 0),0.8)
@@ -432,15 +442,109 @@ final class HermesAquariumTests: XCTestCase {
         var traffic=SharedShellTraffic()
         traffic.update([.init(id:"b",wantsOut:true,emergence:0,distance:0),.init(id:"a",wantsOut:true,emergence:0,distance:0)])
         XCTAssertEqual(traffic.owner,"a");XCTAssertFalse(traffic.active("b",wantsOut:true,emergence:0))
-        traffic.update([.init(id:"a",wantsOut:true,emergence:1,distance:1),.init(id:"b",wantsOut:true,emergence:0,distance:0)])
+        traffic.update([.init(id:"a",wantsOut:true,emergence:1,distance:2),.init(id:"b",wantsOut:true,emergence:0,distance:0)])
         XCTAssertEqual(traffic.owner,"b")
-        traffic.update([.init(id:"a",wantsOut:false,emergence:1,distance:1),.init(id:"b",wantsOut:true,emergence:0.5,distance:0.1)])
+        traffic.update([.init(id:"a",wantsOut:false,emergence:1,distance:2),.init(id:"b",wantsOut:true,emergence:0.5,distance:0.1)])
         XCTAssertEqual(traffic.owner,"b");XCTAssertTrue(traffic.active("a",wantsOut:false,emergence:1))
         traffic.update([]);XCTAssertNil(traffic.owner)
     }
 
+    @MainActor
+    func testReturningBodiesStayAboveSealedBowlAndGatewayUsesAvailabilityNotWork() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource:"3d-residents",withExtension:"usdz"))))
+        scene.loadHermesTemplate(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource:"hermes-mermaid",withExtension:"usdz"))))
+        scene.loadHermesShell(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource:"hermes-shell",withExtension:"usdz"))))
+        var state = TerrariumState()
+        state.crayfishVisible = true; state.crayfishState = .sitting
+        state.hermesCreatures = [.init(id:"returner",projectName:"Hermes",activity:.working)]
+        scene.sync(state,aspect:0.6)
+        for _ in 0..<2400 { scene.step(1/60) }
+        let claw = try XCTUnwrap(scene.residents["crayfish"])
+        XCTAssertTrue(claw.findEntity(named:"body")?.isEnabled == true,"An available idle gateway remains on its rock")
+        XCTAssertGreaterThan(abs(claw.position.x),1)
+        XCTAssertNotNil(scene.root.findEntity(named:"substrate|crayfish"))
+        state.hermesCreatures = [.init(id:"returner",projectName:"Hermes",activity:.idle)]
+        state.crayfishVisible = false
+        scene.sync(state,aspect:0.6)
+        XCTAssertNotNil(scene.residents["crayfish"],"Connection loss retains geometry through its return")
+        var sawCompact = false
+        for _ in 0..<3600 {
+            scene.step(1/60)
+            for entity in scene.residents.values {
+                guard let body=entity.findEntity(named:"body"),body.isEnabled else { continue }
+                if body.scale.x<0.9 { sawCompact=true }
+                let bounds=body.visualBounds(relativeTo:scene.root)
+                XCTAssertGreaterThan(bounds.min.y,0,"No visible tail or foot may tunnel under the sealed shell or sand")
+            }
+        }
+        XCTAssertTrue(sawCompact)
+        XCTAssertNil(scene.residents["crayfish"])
+        XCTAssertFalse(scene.residents["returner"]?.findEntity(named:"body")?.isEnabled == true)
+    }
+
+    @MainActor
+    func testReducedMotionDropsDepartedShellResidentsWithoutAQueue() async throws {
+        let scene=AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf:XCTUnwrap(Bundle.main.url(forResource:"3d-residents",withExtension:"usdz"))))
+        scene.loadHermesTemplate(try await Entity(contentsOf:XCTUnwrap(Bundle.main.url(forResource:"hermes-mermaid",withExtension:"usdz"))))
+        scene.animate=false
+        var state=TerrariumState()
+        state.crayfishVisible=true;state.crayfishState = .sitting
+        state.hermesCreatures=[.init(id:"static",projectName:"Hermes",activity:.working)]
+        scene.sync(state,aspect:1.6)
+        XCTAssertEqual(scene.residents.count,2)
+        scene.sync(TerrariumState(),aspect:1.6)
+        XCTAssertTrue(scene.residents.isEmpty,"Reduced Motion has no return frames to retain")
+    }
+
+    func testSharedLidMustClearBeforeDockingAndPartialReturnCanReverse() {
+        let home=SIMD3<Float>(0,1,1.6)
+        var swim=HermesSwim(id:"door",position:home)
+        for _ in 0..<900 { swim.step(1/60,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1]) }
+        for _ in 0..<1800 { swim.step(1/60,home:home,size:0.8,activity:.idle,neighbours:[],aspect:1.6,berth:[2,1.5,1],aperture:0) }
+        XCTAssertEqual(swim.emergence,1)
+        XCTAssertLessThan(simd_distance(swim.position,HermesSwim.mouth(home:home,size:0.8)),0.02)
+        for _ in 0..<60 { swim.step(1/60,home:home,size:0.8,activity:.idle,neighbours:[],aspect:1.6,berth:[2,1.5,1],aperture:1) }
+        XCTAssertGreaterThan(swim.emergence,0);XCTAssertLessThan(swim.emergence,1)
+        let before=swim.position
+        swim.step(1/60,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1],aperture:1)
+        XCTAssertLessThan(simd_distance(before,swim.position),0.03,"Mid-dock interruption reverses without teleporting")
+        for _ in 0..<900 { swim.step(1/60,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1],aperture:1) }
+        XCTAssertEqual(swim.emergence,1);XCTAssertGreaterThan(swim.position.x,1)
+    }
+
+    func testShortTurnsAndResumedWorkReverseTheirCurrentLaneWithoutCornerCuts() {
+        let home=SIMD3<Float>(0,1,1.6)
+        for cut in stride(from:2,through:18,by:2) {
+            var swim=HermesSwim(id:"reverse",position:home)
+            for frame in 0..<4800 {
+                let t=Float(frame)/60
+                let active=t<Float(cut) || (t>=Float(cut)+1.5 && t<Float(cut)+3.5)
+                let before=swim.position
+                swim.step(1/60,home:home,size:0.8,activity:active ? .working:.idle,neighbours:[],aspect:1.6,berth:[2,1.5,1.3])
+                XCTAssertLessThan(simd_distance(before,swim.position),0.04)
+                if swim.emergence == 1 && swim.position.x>0.2 && swim.position.x<1.7 {
+                    XCTAssertEqual(swim.position.z,HermesSwim.mouth(home:home,size:0.8).z,accuracy:0.15,"Direction changes must use the front lane rather than cross a valve")
+                }
+            }
+            XCTAssertEqual(swim.emergence,0)
+        }
+    }
+
+    func testReducedMotionDuringDepartureResumesAtItsResolvedBerth() {
+        let home=SIMD3<Float>(0,1,1.6)
+        var swim=HermesSwim(id:"reduce",position:home)
+        for _ in 0..<180 { swim.step(1/60,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1.3]) }
+        swim.step(0,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1.3])
+        for _ in 0..<600 {
+            swim.step(1/60,home:home,size:0.8,activity:.working,neighbours:[],aspect:1.6,berth:[2,1.5,1.3])
+            XCTAssertGreaterThan(swim.position.x,1.7,"Resuming animation must not replay a completed departure")
+        }
+    }
+
     func testSwimIsBoundedSmoothAndDoesNotJumpOnStateChangesOrSleep() {
-        let home: SIMD3<Float> = [0, 3, 0]
+        let home: SIMD3<Float> = [0, 3, TerrariumRules.hermesHomeSharedZ + 0.8 * 0.35]
         var swim = HermesSwim(id: "h", position: home)
         var last = home
         var seen: [SIMD3<Float>] = []
@@ -580,6 +684,7 @@ final class HermesAquariumTests: XCTestCase {
         let face = try XCTUnwrap(resident.findEntity(named: "face"))
         XCTAssertEqual(AquariumResidents.sessionID(for: face), "h")
         let body = try XCTUnwrap(resident.findEntity(named: "body"))
+        for _ in 0..<900 { scene.step(1/60) }
         let bounds = body.visualBounds(relativeTo: resident)
         XCTAssertGreaterThan(bounds.extents.y, 0.8)
         XCTAssertLessThan(bounds.extents.y, 1.3)

@@ -563,12 +563,21 @@ The menu bar uses the small-size aquarium-deck symbol, not the full app icon ill
 Hermes's aquarium resident is the user-directed exception: an AgentDeck-original
 Nous girl mermaid adaptation, preserving the portrait's black bob, bangs and
 pale face while adding a small articulated tail. Its compact brand icon remains
-the exact upstream mark. In the native aquarium, Hermes and Dot share one fixed scallop over the
-substrate. Its lid opens before a resident emerges, residents take separate
-berths clear of the mouth, and returning bodies tuck inside before the last
-resident closes it. Quiet Hermes stays home; observed work drives swimming and
-working gestures. OpenClaw keeps its adjacent rock and original silhouette. Proximity must never be presented as task delegation. Reduced Motion freezes
-these movements while keeping explicit status cues visible.
+the exact upstream mark. In the native aquarium, Hermes, Dot and OpenClaw share
+one fixed scallop over the substrate. The lid clears before a resident emerges;
+a single entrance lease keeps simultaneous departures and returns apart. Travel
+passes over the front lip, then follows a low depth lane below the occupied
+swimming berths before rising into its own place. Depth-separated rows leave room
+for the complete tail silhouette. Return follows that lane in reverse, rises above the front lip at the centre,
+then the resident curls smaller
+around its planted lowest point inside the basin. No visible tail or foot drops
+through the sealed lower valve. The lid closes after the aperture clears, even
+while residents work outside. Quiet Hermes stays home; observed work drives
+swimming and working gestures. OpenClaw preserves its original silhouette and
+adjacent rock: gateway availability owns its first emergence and final return,
+while routing/idle only changes its behaviour outside. Proximity must never be
+presented as task delegation. Reduced Motion resolves the live berth without
+travel and keeps explicit status cues visible.
 
 Each agent (Claude Code, Codex, OpenClaw, OpenCode, Antigravity, Kiro, Hermes) has a creature avatar derived from its canonical mark. Motion and state effects may surround or transform the mark, but must not replace its identifying geometry.
 
