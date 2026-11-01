@@ -142,3 +142,39 @@ F.PALETTE = dict(F.PALETTE, lip='#c4ada9', lip_dark='#74686b',
                  iris='#1d1f26', glow='#3b404b')   # master: dark navy iris, lighter only low   # RealityKit lifts these: rendered iris top then matches the sheet's ~20-40   # ref iris: dark top ~20, lower half ~60-90 grey-blue
 F.crease = crease
 sys.modules["hermes_face_v2"] = F
+
+# Friendly animation revision: retain Nous hair/headset/face placement while
+# replacing the sharp, high-sclera gaze with round dark eyes and soft lids.
+F.EYE_X = 0.092
+F.EW, F.EH_T, F.EH_B = 0.076, 0.024, 0.023
+F.IRIS_R, F.IRIS_Y = (0.032, 0.034), 0.001
+IRIS_DX = 0.0
+
+def friendly_top(t, s):
+    return (s * (t-.5) * F.EW, F.EH_T * max(0, math.sin(math.pi*t))**.78)
+def friendly_bottom(t, s):
+    return (s * (t-.5) * F.EW, -F.EH_B * max(0, math.sin(math.pi*t))**.82)
+def friendly_liner(s):
+    return F.ribbon(lambda t: friendly_top(t,s), lambda t: .0035+.0015*math.sin(math.pi*t), 32)
+def friendly_lower(s):
+    return F.ribbon(lambda t: friendly_bottom(.22+.65*t,s),lambda t:.0008*math.sin(math.pi*t)+.0002,24)
+def friendly_closed(s):
+    return F.ribbon(lambda t:(s*(t-.5)*F.EW,-.007*math.sin(math.pi*t)),lambda t:.003,28)
+def friendly_iris(s):
+    return F.clip_to_almond(F.ellipse(0,F.IRIS_Y,*F.IRIS_R,48),s)
+def friendly_pupil(s):
+    return F.clip_to_almond(F.ellipse(0,F.IRIS_Y+.003,.027,.031,40),s)
+def friendly_glint(s):
+    return F.ellipse(-.010,.009,.0053,.0053,24)
+def friendly_glint_small(s):
+    return F.ellipse(.010,-.013,.0015,.0015,12)
+def friendly_brow(s):
+    return F.ribbon(lambda t:(s*(t-.5)*BROW_LEN,.003*math.sin(math.pi*t)),lambda t:.0012,24)
+F.top_arc,F.bot_arc=friendly_top,friendly_bottom
+F.upper_liner,F.lower_lash,F.closed_lid=friendly_liner,friendly_lower,friendly_closed
+F.lash_spikes=lambda s:[]
+F.lower_spikes=lambda s:[]
+F.iris,F.pupil,F.glint,F.glint_small= friendly_iris,friendly_pupil,friendly_glint,friendly_glint_small
+F.brow=friendly_brow
+F.crease=lambda s:F.ribbon(lambda t:(friendly_top(.15+.7*t,s)[0],friendly_top(.15+.7*t,s)[1]+.005),lambda t:.00045,24)
+F.PALETTE=dict(F.PALETTE,iris=F.PALETTE['line'],glow=F.neutral('ink-700',.65))

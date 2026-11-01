@@ -30,6 +30,8 @@ static float jitterY[HERMES_ARR_SIZE];
 static float phaseOffset[HERMES_ARR_SIZE];
 static float currentX[HERMES_ARR_SIZE];
 static float currentY[HERMES_ARR_SIZE];
+static float shellOpen[HERMES_ARR_SIZE];
+static float emergence[HERMES_ARR_SIZE];
 
 /** Bilinear-sampled layer of the generated mermaid sprite (42×60 A8), filled
  *  with one colour. Layers are drawn tail → rim → fluke → head; the head is
@@ -80,7 +82,7 @@ void init() {
 void render(uint16_t* buf, int w, int h, float time, float dt,
             CreatureState state, uint8_t idx, uint8_t total) {
     (void)buf;
-    (void)dt;
+    dt = std::isfinite(dt) ? fminf(.05f, fmaxf(0, dt)) : 0;
     if (idx >= MAX_HERMES) return;
 
     float scaleFactor = (total >= 4) ? 0.70f : (total >= 3) ? 0.84f : 1.0f;
@@ -117,6 +119,20 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
     }
     homeY += jitterY[idx];
 
+    const bool active = state == CreatureState::WORKING || state == CreatureState::ASKING;
+    const float restY = TerrariumRules::HermesHomeCanvasY;
+    const float entranceX=TerrariumRules::HermesHomeCanvasX;
+    if (active) {
+        shellOpen[idx] = fminf(1, shellOpen[idx] + dt * TerrariumRules::HermesHomeOpenRate);
+        if (shellOpen[idx] >= TerrariumRules::HermesHomeLidClearance)
+            emergence[idx] = fminf(1, emergence[idx] + dt * TerrariumRules::HermesHomeEmergeRate);
+    } else if (fabsf(currentX[idx]-entranceX)*w < 1 && fabsf(currentY[idx]-restY)*h < 1) {
+        emergence[idx] = fmaxf(0, emergence[idx] - dt * TerrariumRules::HermesHomeEmergeRate);
+        if (emergence[idx] == 0) shellOpen[idx] = fmaxf(0, shellOpen[idx] - dt * TerrariumRules::HermesHomeCloseRate);
+    }
+    if (!active) homeY = restY;
+    float departure = fminf(1, fmaxf(0, (emergence[idx]-TerrariumRules::HermesHomeDepartureStart)/(1-TerrariumRules::HermesHomeDepartureStart)));
+    departure = departure*departure*(3-2*departure);
     float renderX = homeX;
     float renderY = homeY;
     float t = time + phaseOffset[idx];
@@ -130,6 +146,12 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         if (renderY < Layout::HermesSwimMinY) renderY = Layout::HermesSwimMinY;
         if (renderY > Layout::HermesSwimMaxY) renderY = Layout::HermesSwimMaxY;
     }
+
+    renderX = entranceX + (renderX-entranceX)*departure;
+    renderY = restY + (renderY-restY)*departure;
+    const float blend = 1-expf(-dt*4);
+    renderX = currentX[idx] + (renderX-currentX[idx])*blend;
+    renderY = currentY[idx] + (renderY-currentY[idx])*blend;
 
     float breathBob = 0.0f;
     uint8_t alpha = 255;
@@ -147,6 +169,7 @@ void render(uint16_t* buf, int w, int h, float time, float dt,
         breathBob = fastSin(t * 0.9f) * h * 0.002f;
     }
 
+    alpha = (uint8_t)(alpha * emergence[idx]);
     int cx = (int)(renderX * w);
     int cy = (int)(renderY * h + breathBob);
     currentX[idx] = renderX;
@@ -238,5 +261,7 @@ float getY(uint8_t idx) {
     if (idx >= MAX_HERMES) return Layout::HermesStandingY;
     return currentY[idx];
 }
+
+float getShellOpening(uint8_t idx) { return idx < HERMES_ARR_SIZE ? shellOpen[idx] : 0; }
 
 }  // namespace Hermes

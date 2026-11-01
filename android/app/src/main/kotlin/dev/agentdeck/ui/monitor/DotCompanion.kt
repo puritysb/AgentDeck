@@ -56,7 +56,7 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: 
     @Composable fun character() {
         if (image != null) Image(image, contentDescription = "Dot character", modifier = Modifier.size(glyphSize))
         else Canvas(Modifier.size(glyphSize)) {
-            drawCircle(DesignTokens.Tide.s300, radius = size.minDimension / 2)
+            drawCircle(DesignTokens.Tide.s100, radius = size.minDimension / 2)
             for (x in listOf(0.37f, 0.63f)) drawLine(DesignTokens.Ink.s900, Offset(size.width * x, size.height * 0.35f), Offset(size.width * x, size.height * 0.6f), size.width * 0.08f)
         }
     }
@@ -64,10 +64,7 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: 
         DotCompanionStyle.Habitat -> Column(modifier.semantics(mergeDescendants = true) {
             contentDescription = "Dot. ${DotSurfaceRules.labels[code]}. Open report details."
         }.clickable { expanded = true }, horizontalAlignment = Alignment.CenterHorizontally) {
-            Box {
-                character()
-                Text(mark, color = tint, modifier = Modifier.align(Alignment.TopEnd), fontSize = scale.fontSub)
-            }
+            character()
             if (showLabel) Text("Dot", color = DesignTokens.Tide.s50, fontSize = scale.fontSub)
         }
         DotCompanionStyle.Timeline -> Row(modifier.fillMaxWidth().clickable { expanded = true }.padding(vertical = 5.dp),
@@ -85,10 +82,7 @@ fun DotCompanion(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier, scale: 
             Text("Dot · ${DotSurfaceRules.labels[code]}", color = tint, fontSize = scale.fontSub, modifier = Modifier.weight(1f))
         }
     }
-    if (expanded) AlertDialog(onDismissRequest = { expanded = false },
-        title = { Text("Dot report") },
-        text = { Column { Text(DotSurfaceRules.labels[code]); Text(if (dot.reportState == null) "No activity shared yet" else "Dot report"); dot.reportedAt?.let { Text(java.util.Date(it).toString()) }; dot.relation?.takeIf { it.evidence == "dot_report" }?.let { Text(it.label) } } },
-        confirmButton = { TextButton(onClick = { expanded = false }) { Text("Done") } })
+    if (expanded) DotReportDialog(dot) { expanded=false }
 }
 
 /** Static 1-bit companion for paper chrome; no animation or periodic refresh. */
@@ -116,4 +110,13 @@ fun DotPaperGlyph(dot: DotSurfaceSnapshot, modifier: Modifier = Modifier) {
                 size = androidx.compose.ui.geometry.Size(size.width / side, size.height / side))
         }
     }
+}
+
+@Composable
+fun DotReportDialog(dot: DotSurfaceSnapshot, onDismiss: () -> Unit) {
+    val code=dot.effectiveCode(System.currentTimeMillis())
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text("Dot report") },
+        text = { Column { Text(DotSurfaceRules.labels[code]); Text(if (dot.reportState == null) "No activity shared yet" else "Dot report"); dot.reportedAt?.let { Text(java.util.Date(it).toString()) }; dot.relation?.takeIf { it.evidence == "dot_report" }?.let { Text(it.label) } } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } })
 }

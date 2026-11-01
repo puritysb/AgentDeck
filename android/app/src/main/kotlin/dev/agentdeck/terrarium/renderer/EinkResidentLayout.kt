@@ -54,7 +54,7 @@ private fun seedOf(id: String): Int {
 }
 private fun unitSeed(id: String): Float = seedOf(id).toFloat() / Int.MAX_VALUE.toFloat()
 private fun phaseOf(id: String): Float = unitSeed(id) * (2 * PI).toFloat()
-private fun grounded(item: AquariumResident): Boolean = item.kind == "claudecode" || item.kind == "openclaw"
+private fun grounded(item: AquariumResident): Boolean = item.kind == "claudecode" || item.kind == "openclaw" || item.kind == "dot"
 private fun length(x: Float, y: Float): Float = sqrt(x * x + y * y)
 private fun radicalInverse(value: Int, base: Int): Float {
     var remaining = value
@@ -109,6 +109,8 @@ internal class EinkResidentFacing(initialSide: Float) {
 private data class HabitatBounds(val left: Float, val top: Float, val right: Float, val bottom: Float)
 private enum class ResidentIntent { WORK, IDLE, WAIT, SLEEP }
 private fun intent(item: AquariumResident): ResidentIntent = when {
+    // Paper shows a static shell pose; activity still comes from the ordinary state label.
+    item.kind == "dot" -> ResidentIntent.SLEEP
     item.state == OctopusVisualState.SLEEPING -> ResidentIntent.SLEEP
     item.state == OctopusVisualState.ASKING || item.ciWait?.agentWaiting == true -> ResidentIntent.WAIT
     item.state == OctopusVisualState.WORKING -> ResidentIntent.WORK

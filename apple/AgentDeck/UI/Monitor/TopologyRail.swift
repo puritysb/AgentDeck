@@ -108,11 +108,6 @@ struct TopologyRail: View {
             if let providerSaveError { Text(providerSaveError).font(.caption).foregroundStyle(.secondary) }
             upstreamRows
             hubZone
-            #if os(iOS) && AGENTDECK_DOT_PREVIEW
-            if stateHolder.state.bridgeConnected, let dot = stateHolder.state.dot, dot.configured {
-                DotSurfaceView(snapshot: dot, style: .compact).padding(.vertical, 4)
-            }
-            #endif
             #if os(macOS)
             if hasAnyDownstreamRow {
                 sectionHeader("DEVICES")

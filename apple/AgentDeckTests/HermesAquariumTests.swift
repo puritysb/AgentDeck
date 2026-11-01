@@ -237,8 +237,8 @@ final class HermesAquariumTests: XCTestCase {
         for _ in 0..<1200 { scene.step(1/60) }
         XCTAssertEqual(resident.position, home)
         XCTAssertEqual(shell.transformMatrix(relativeTo: nil), support)
-        XCTAssertEqual(AquariumResidents.sessionID(for: try XCTUnwrap(shell.findEntity(named: "shell-seat"))), "rest",
-                       "The closed shell remains an inspection target while the mermaid is inside")
+        XCTAssertNil(AquariumResidents.sessionID(for: try XCTUnwrap(shell.findEntity(named: "shell-seat"))),
+                       "A shared entrance must not impersonate one of its occupants")
         state.hermesCreatures = []
         scene.sync(state, aspect: 1.6)
         XCTAssertNil(scene.root.findEntity(named: "hermes-shell"))
@@ -280,11 +280,12 @@ final class HermesAquariumTests: XCTestCase {
         var state = TerrariumState()
         state.hermesCreatures = [.init(id: "h", projectName: "Hermes", activity: .working)]
         renderer.update(dt: 0.05, state: state)
-        XCTAssertEqual(renderer.creatureAtPoint(nx: 0.5, ny: 0.82 - 2.5/7), "h")
+        let pose=renderer.residentPose("h")!
+        XCTAssertEqual(renderer.creatureAtPoint(nx:pose.center.x,ny:pose.center.y),"h")
         XCTAssertTrue(SessionBrand.hasBrandMark(for: "hermes"))
         state.hermesCreatures = []
         renderer.update(dt: 0.05, state: state)
-        XCTAssertNil(renderer.creatureAtPoint(nx: 0.5, ny: 0.82 - 2.5/7))
+        XCTAssertNil(renderer.creatureAtPoint(nx: 0.5, ny: TerrariumRules.hermesHomeCanvasRestY))
     }
 
     func testShellOpensBeforeDepartureAndClosesOnlyAfterMermaidReturns() {
@@ -331,21 +332,36 @@ final class HermesAquariumTests: XCTestCase {
     }
 
     @MainActor
-    func testThreeAuthoredShellHomesKeepTheirValvesApart() async throws {
-        let scene = AquariumResidents()
-        scene.loadHermesTemplate(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz"))))
-        scene.loadHermesShell(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-shell", withExtension: "usdz"))))
-        var state = TerrariumState()
-        state.hermesCreatures = (0..<3).map { .init(id: "home-" + String($0), projectName: "Hermes", activity: .idle) }
-        scene.sync(state, aspect: 1.6)
-        let homes = scene.root.children.filter { $0.name.hasPrefix("substrate|") }
-            .sorted { $0.position.x < $1.position.x }
-        XCTAssertEqual(homes.count, 3)
-        for index in 1..<homes.count {
-            let left = try XCTUnwrap(homes[index-1].findEntity(named: "hermes-shell")).visualBounds(relativeTo: scene.root)
-            let right = try XCTUnwrap(homes[index].findEntity(named: "hermes-shell")).visualBounds(relativeTo: scene.root)
-            XCTAssertLessThan(left.max.x, right.min.x, "Adjacent large shells need a visible water gap")
-        }
+    func testMultipleResidentsShareOneFixedHouseAndDepartToSeparateBerths() async throws {
+        let scene=AquariumResidents()
+        scene.loadHermesTemplate(try await Entity(contentsOf:XCTUnwrap(Bundle.main.url(forResource:"hermes-mermaid",withExtension:"usdz"))))
+        scene.loadHermesShell(try await Entity(contentsOf:XCTUnwrap(Bundle.main.url(forResource:"hermes-shell",withExtension:"usdz"))))
+        var state=TerrariumState()
+        state.hermesCreatures=(0..<3).map { .init(id:"home-"+String($0),projectName:"Hermes",activity:.working) }
+        scene.sync(state,aspect:1.6)
+        XCTAssertEqual(scene.root.children.filter { $0.name=="shared-shell-home" }.count,1)
+        let house=try XCTUnwrap(scene.root.findEntity(named:"shared-shell-home"))
+        let fixed=house.transform
+        for _ in 0..<1800 { scene.step(1/60) }
+        let outside=scene.residents.values.filter { $0.findEntity(named:"body")?.isEnabled==true }
+        XCTAssertEqual(outside.count,3)
+        XCTAssertGreaterThan((outside.map { $0.position.x }.max() ?? 0)-(outside.map { $0.position.x }.min() ?? 0),0.8)
+        XCTAssertEqual(house.transform,fixed)
+        state.hermesCreatures=[];scene.sync(state,aspect:1.6)
+        XCTAssertEqual(scene.residents.count,3,"Removed sessions finish returning before their geometry is released")
+        for _ in 0..<3600 { scene.step(1/60) }
+        XCTAssertTrue(scene.residents.isEmpty)
+    }
+
+    func testSharedEntranceKeepsOneLeaseAcrossSimultaneousDirectionChanges() {
+        var traffic=SharedShellTraffic()
+        traffic.update([.init(id:"b",wantsOut:true,emergence:0,distance:0),.init(id:"a",wantsOut:true,emergence:0,distance:0)])
+        XCTAssertEqual(traffic.owner,"a");XCTAssertFalse(traffic.active("b",wantsOut:true,emergence:0))
+        traffic.update([.init(id:"a",wantsOut:true,emergence:1,distance:1),.init(id:"b",wantsOut:true,emergence:0,distance:0)])
+        XCTAssertEqual(traffic.owner,"b")
+        traffic.update([.init(id:"a",wantsOut:false,emergence:1,distance:1),.init(id:"b",wantsOut:true,emergence:0.5,distance:0.1)])
+        XCTAssertEqual(traffic.owner,"b");XCTAssertTrue(traffic.active("a",wantsOut:false,emergence:1))
+        traffic.update([]);XCTAssertNil(traffic.owner)
     }
 
     func testSwimIsBoundedSmoothAndDoesNotJumpOnStateChangesOrSleep() {
@@ -512,6 +528,7 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertLessThan(simd_distance(resident.position, pausedPosition), 0.02)
         state.hermesCreatures = []
         scene.sync(state, aspect: 1.6)
+        for _ in 0..<2400 { scene.step(1/60) }
         XCTAssertTrue(scene.residents.isEmpty)
     }
 

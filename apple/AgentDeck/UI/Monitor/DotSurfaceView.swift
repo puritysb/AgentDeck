@@ -33,12 +33,7 @@ struct DotSurfaceView: View {
             Button { expanded = true } label: {
                 if style == .habitat {
                     VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            DotCharacterImage(appearance: snapshot.appearance, tint: DesignTokens.Tide.s300)
-                            Image(systemName: phaseSymbol).font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(Self.tint(snapshot.effectiveCode))
-                                .padding(2).background(DesignTokens.Ink.s900, in: Circle()).offset(x: 6, y: -4)
-                        }
+                        DotCharacterImage(appearance: snapshot.appearance, tint: DesignTokens.Tide.s100)
                         if showsHabitatLabel {
                             Text("Dot").font(.custom("IBMPlexSans-Bold", size: 10))
                                 .foregroundStyle(DesignTokens.Tide.s50).fixedSize()

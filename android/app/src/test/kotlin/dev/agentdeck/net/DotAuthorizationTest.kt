@@ -20,7 +20,7 @@ class DotAuthorizationTest {
         assertEquals(2, frame.effectiveCode(now))
         assertEquals(true, frame.inhabitsHabitat(now))
         assertEquals(false, frame.copy(authorized = false).inhabitsHabitat(now))
-        assertEquals(false, frame.copy(reportState = null).inhabitsHabitat(now))
+        assertEquals(true, frame.copy(reportState = null).inhabitsHabitat(now))
         assertEquals(false, frame.inhabitsHabitat(now + 10001))
         assertEquals(8, frame.copy(authorized = false).effectiveCode(now))
         assertEquals(2, frame.copy(authorized = true).effectiveCode(now))

@@ -784,8 +784,11 @@ void render(float dt) {
     for (uint8_t i = 0; i < kiroCount && i < MAX_KIRO; i++) {
         Kiro::render(canvas_buf, canvasW, canvasH, totalTime, dt, kiroStates[i], i, kiroCount);
     }
+    float sharedHomeOpening=0;
+    bool sharedHomePresent=hermesCount>0;
     for (uint8_t i = 0; i < hermesCount && i < MAX_HERMES; i++) {
         Hermes::render(canvas_buf, canvasW, canvasH, totalTime, dt, hermesStates[i], i, hermesCount);
+        sharedHomeOpening=fmaxf(sharedHomeOpening,Hermes::getShellOpening(i));
     }
 
     // Parent-linked orbit accents sit above the creature layer but remain
@@ -832,29 +835,44 @@ void render(float dt) {
     for (auto& memo : ciMemos) if (!memo.seen) memo.occupied = false;
 
     if (dotCache && dotLabel) {
-        if (!dotFrame.configured || !DotSurfaceRules::inhabitsHabitat(dotFrame.effectiveCode(millis()))) lv_obj_add_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
-        else {
-            const uint8_t code = dotFrame.effectiveCode(millis());
-            const uint32_t tint = code == 2 ? ProductPalette::UiCyan : code == 3 ? ProductPalette::UiAttn
-                : code == 4 ? ProductPalette::UiOk : code == 5 ? ProductPalette::UiError : ProductPalette::UiIdle;
-            const int size = DotSurfaceRules::panelGlyphSize;
-            #if defined(BOARD_AMOLED)
-            const int x = canvasW * 3 / 4 - size / 2, y = canvasH / 4;
-#else
-            const int x = max(0, canvasW - size - (int)DotSurfaceRules::panelMargin);
-            const int y = max(24, canvasH / 5);
-#endif
-            DotCompanion::glyph(dotFrame, x, y, size, [](int px, int py, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-                setPixelAlpha(px, py, (uint32_t(r) << 16) | (uint32_t(g) << 8) | b, a);
-            });
-            snprintf(dotText, sizeof(dotText), "%s%s%s%s", code == 0 ? "" : "Dot ", DotSurfaceRules::compactLabels[code], dotFrame.relation[0] ? "\n" : "", dotFrame.relation);
-            lv_obj_set_pos(dotLabel, max(0, x + size - 112), y + size + 4);
-            lv_obj_set_width(dotLabel, 112);
-            lv_obj_set_style_text_color(dotLabel, lv_color_hex(tint), 0);
-            lv_obj_remove_flag(dotLabel, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_invalidate(dotLabel);
+        // One ordinary inhabitant in the substrate band, not a corner/HUD badge.
+        static float opening=0, emergence=0;
+        static float x=DotHabitatRules::homeX,y=DotHabitatRules::homeY;
+        const uint8_t code=dotFrame.effectiveCode(millis());
+        const bool out=dotFrame.configured && DotSurfaceRules::inhabitsHabitat(code);
+        const float hx=TerrariumRules::HermesHomeCanvasX,hy=TerrariumRules::HermesHomeCanvasY;
+        if(out) {
+            opening=fminf(1,opening+dt*TerrariumRules::HermesHomeOpenRate);
+            if(opening>=TerrariumRules::HermesHomeLidClearance) emergence=fminf(1,emergence+dt*TerrariumRules::HermesHomeEmergeRate);
+        } else if(fabsf(x-hx)*canvasW<1 && fabsf(y-hy)*canvasH<1) {
+            emergence=fmaxf(0,emergence-dt*TerrariumRules::HermesHomeEmergeRate);
+            if(emergence==0) opening=fmaxf(0,opening-dt*TerrariumRules::HermesHomeCloseRate);
         }
+        float departure=fmaxf(0,fminf(1,(emergence-TerrariumRules::HermesHomeDepartureStart)/(1-TerrariumRules::HermesHomeDepartureStart)));
+        departure=out ? departure*departure*(3-2*departure) : 0;
+        const float phase=totalTime*6.2831853f/DotHabitatRules::periodSeconds;
+        const float tx=hx+(code==2 ? fastSin(phase)*DotHabitatRules::travelX : 0)*departure;
+        const float ty=hy-(0.12f+(code==2 ? fastSin(phase*2)*DotHabitatRules::travelY : 0))*departure;
+        const float blend=1-expf(-dt*4);
+        x+=(tx-x)*blend;y+=(ty-y)*blend;
+        if(dotFrame.configured || opening>0) {
+            const int size=min((int)DotSurfaceRules::panelGlyphSize,max(12,canvasW/7));
+            sharedHomePresent=true;sharedHomeOpening=fmaxf(sharedHomeOpening,opening);
+            const float opacity=emergence;
+            if(emergence>.02f) DotCompanion::glyph(dotFrame,(int)(x*canvasW)-size/2,(int)(y*canvasH)-size/2,size,
+                [opacity](int px,int py,uint8_t r,uint8_t g,uint8_t b,uint8_t a) {
+                    setPixelAlpha(px,py,(uint32_t(r)<<16)|(uint32_t(g)<<8)|b,(uint8_t)(a*opacity));
+                });
+            snprintf(dotText,sizeof(dotText),"Dot");
+            lv_obj_set_pos(dotLabel,max(0,(int)(x*canvasW)-56),(int)(y*canvasH)-size/2-19);
+            lv_obj_set_width(dotLabel,112);
+            lv_obj_set_style_text_color(dotLabel,lv_color_hex(Theme::HUDText),0);
+            lv_obj_remove_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
+        } else lv_obj_add_flag(dotLabel,LV_OBJ_FLAG_HIDDEN);
     }
+    if(sharedHomePresent) Draw::scallop((int)(TerrariumRules::HermesHomeCanvasX*canvasW),
+        (int)(TerrariumRules::HermesHomeCanvasY*canvasH),max(4,(int)(fminf(canvasW,canvasH)*TerrariumRules::HermesHomeCanvasRadius)),sharedHomeOpening,Theme::HUDText);
+
 
     // 8. Data particles (food crumbs from working agents)
     Particles::update(dt, totalTime, cState, octCount, cfState, showCrayfish, octStates);
