@@ -239,36 +239,43 @@
     {
       "file": "shared-home-poster.png",
       "kind": "recording-still",
-      "sourceRevision": "5b4694e4",
+      "sourceRevision": "c374740d8eeab20020f44850cf37ade71d319845",
       "createdAt": "2026-11-02",
-      "capturedAt": "2026-11-01",
+      "capturedAt": "2026-11-02",
       "fictionalActivity": true,
-      "sha256": "752444629d4400e968d7ab9436f2550960665c1a9707966578041b46a45f4402",
-      "bytes": 425032,
-      "transformation": "Full-frame extraction at 23 seconds of shared-home.mp4.",
+      "sha256": "abe8d4031c131199ce22bac61f4f04b41c068087bbb2cdfe8769a8d6fb833844",
+      "bytes": 222162,
+      "transformation": "Full-frame extraction at 46 seconds of shared-home.mp4.",
       "dimensions": {
-        "width": 1080,
-        "height": 1920
+        "width": 720,
+        "height": 1280
       },
       "input": {
-        "file": "tablet-shared-final.mp4",
-        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
-      }
+        "file": "shared-home.mp4",
+        "sha256": "3e20e506d921abf155c34050d79d1a5777b229a3822f8f398d5f5214bf22fdd6"
+      },
+      "buildBaseRevision": "8fa7d89df8cba8e54c0c67bb0c95f69af233af92"
     },
     {
       "file": "shared-home-preview.gif",
       "kind": "recording-excerpt",
-      "sourceRevision": "5b4694e4",
+      "sourceRevision": "c374740d8eeab20020f44850cf37ade71d319845",
       "createdAt": "2026-11-02",
-      "capturedAt": "2026-11-01",
+      "capturedAt": "2026-11-02",
       "fictionalActivity": true,
-      "sha256": "8b6c587eb282fb92aef556e7a597e08e5afc18f47de2306f46d7d3264ca23197",
-      "bytes": 1137432,
-      "transformation": "12–20 seconds of shared-home.mp4; 360px wide, 10 fps GIF, no speed change.",
+      "sha256": "139a2d59d0d8da4b6bcf97411826eaf32855468afe10dab78ddbdaff7a56acf0",
+      "bytes": 1082130,
+      "transformation": "72–80 seconds of shared-home.mp4; 360px wide, 10 fps GIF, no speed change.",
       "input": {
-        "file": "tablet-shared-final.mp4",
-        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
-      }
+        "file": "shared-home.mp4",
+        "sha256": "3e20e506d921abf155c34050d79d1a5777b229a3822f8f398d5f5214bf22fdd6"
+      },
+      "buildBaseRevision": "8fa7d89df8cba8e54c0c67bb0c95f69af233af92",
+      "dimensions": {
+        "width": 360,
+        "height": 640
+      },
+      "durationSeconds": 8
     },
     {
       "file": "shared-home.en.vtt",
@@ -277,8 +284,8 @@
       "createdAt": "2026-11-02",
       "capturedAt": null,
       "fictionalActivity": true,
-      "sha256": "42ae13a0864be5642066d80c5f3fd67cd93a26a1b2a5c59b8e21ff7ea29a1646",
-      "bytes": 483,
+      "sha256": "5d44bcd3788036731cb5a8c0db95220a3d169a0704fa070766b1410997b75b99",
+      "bytes": 818,
       "transformation": "Authored text."
     },
     {
@@ -288,8 +295,8 @@
       "createdAt": "2026-11-02",
       "capturedAt": null,
       "fictionalActivity": true,
-      "sha256": "e1a2a42e655f7910bdcbba24334772331de9227cc183b7df1a2a491f4af7c992",
-      "bytes": 526,
+      "sha256": "7f37f276bfde3bc4f96e1fcef5db01be6bc63ba1a4a9f8900049e851d5c78f5a",
+      "bytes": 947,
       "transformation": "Authored text."
     },
     {
@@ -299,62 +306,70 @@
       "createdAt": "2026-11-02",
       "capturedAt": null,
       "fictionalActivity": true,
-      "sha256": "d7ab1269f0bc586f6ee0b0d268b2988bdfd409c333eb83b6eeb01558bf9553f6",
-      "bytes": 560,
+      "sha256": "743aa664b3d3282e07f50b748784f6755c01ddd44bb8104751501357bedd848c",
+      "bytes": 955,
       "transformation": "Authored text."
     },
     {
       "file": "shared-home.mp4",
       "kind": "native-app-recording",
-      "sourceRevision": "5b4694e4",
+      "sourceRevision": "c374740d8eeab20020f44850cf37ade71d319845",
       "createdAt": "2026-11-02",
-      "capturedAt": "2026-11-01",
+      "capturedAt": "2026-11-02",
       "fictionalActivity": true,
-      "sha256": "ad8d3f172fa164ae157ce62274ef657d8ac550978bae54d4ff74ee8c0f6ba7a1",
-      "bytes": 4660240,
-      "transformation": "Full 59.6-second Lenovo tablet recording; H.264 CRF21/yuv420p, 30 fps, same speed, no audio or UI retouching.",
+      "sha256": "3e20e506d921abf155c34050d79d1a5777b229a3822f8f398d5f5214bf22fdd6",
+      "bytes": 3465297,
+      "transformation": "Full connected Lenovo tablet recording; H.264 CRF26/yuv420p, 720×1280, 30 fps, unchanged speed, no audio or UI retouching.",
       "input": {
-        "file": "tablet-shared-final.mp4",
-        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
-      }
+        "file": "tablet-shell-transit-final.mp4",
+        "sha256": "a3a544ab7e559e44f83a2cb4bef682ae71aa86ac3c2275fa79b3c4861d109693"
+      },
+      "buildBaseRevision": "8fa7d89df8cba8e54c0c67bb0c95f69af233af92",
+      "dimensions": {
+        "width": 720,
+        "height": 1280
+      },
+      "durationSeconds": 134.866667
     },
     {
       "file": "tablet-returned.png",
       "kind": "native-app-capture",
-      "sourceRevision": "5b4694e4",
+      "sourceRevision": "c374740d8eeab20020f44850cf37ade71d319845",
       "createdAt": "2026-11-02",
-      "capturedAt": "2026-11-01",
+      "capturedAt": "2026-11-02",
       "fictionalActivity": true,
-      "sha256": "c1a49e0df5fd2bd62e7c5e7168c62c8b91780af979edf6f22edfb86ace1f4ea1",
-      "bytes": 340558,
-      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "sha256": "0ac0cdf5bea0a8749f796fa1a57c83eb558dec0de9ad97887abeee4026413d32",
+      "bytes": 286831,
+      "transformation": "Original PNG screen capture; no recompression or UI retouching.",
       "dimensions": {
         "width": 1200,
         "height": 2000
       },
       "input": {
-        "file": "tablet-solid-returned-no-labels.png",
-        "sha256": "37f78b2926804051ac03424cfde0787800c7b577f8526260089f0c339e8d9688"
-      }
+        "file": "tablet-hermes-dot-returned.png",
+        "sha256": "0ac0cdf5bea0a8749f796fa1a57c83eb558dec0de9ad97887abeee4026413d32"
+      },
+      "buildBaseRevision": "8fa7d89df8cba8e54c0c67bb0c95f69af233af92"
     },
     {
       "file": "tablet-working.png",
       "kind": "native-app-capture",
-      "sourceRevision": "5b4694e4",
+      "sourceRevision": "c374740d8eeab20020f44850cf37ade71d319845",
       "createdAt": "2026-11-02",
-      "capturedAt": "2026-11-01",
+      "capturedAt": "2026-11-02",
       "fictionalActivity": true,
-      "sha256": "3e29b5c8a769a66e9b49e5ce4d1b5f4236163d60489e675c3f31fdf6d3cb1ce7",
-      "bytes": 394480,
-      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "sha256": "63b355c31f95c7670f82198efac0c726cac6400a681f061d72bc4413533c8065",
+      "bytes": 348884,
+      "transformation": "Original PNG screen capture; no recompression or UI retouching.",
       "dimensions": {
         "width": 1200,
         "height": 2000
       },
       "input": {
-        "file": "tablet-solid-three-working.png",
-        "sha256": "7704d31d278fa06ce58f53be557c9598ac1150698285af5a49e2554139aacc58"
-      }
+        "file": "tablet-three-working.png",
+        "sha256": "63b355c31f95c7670f82198efac0c726cac6400a681f061d72bc4413533c8065"
+      },
+      "buildBaseRevision": "8fa7d89df8cba8e54c0c67bb0c95f69af233af92"
     },
     {
       "file": "ticker-dot-roster.png",
