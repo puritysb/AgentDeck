@@ -387,16 +387,12 @@ export class BridgeCore {
 
   // ===== Display monitor =====
 
-  private _previousDisplayOn = true;
   private _wakeHandler: (() => void) | null = null;
 
   wireDisplayMonitor(): void {
     this.displayMonitor.on('display_state_changed', (displayOn: boolean) => {
-      // Detect wake transition (asleep → awake)
-      if (displayOn && !this._previousDisplayOn) {
-        this._wakeHandler?.();
-      }
-      this._previousDisplayOn = displayOn;
+      // Display/presence wake is not system resume. Publish without USB/mDNS
+      // recovery; the clock-discontinuity path below owns genuine system wake.
       const evt: BridgeEvent = buildDisplayStateEvent(displayOn) as BridgeEvent;
       this.broadcast(evt);
     });
