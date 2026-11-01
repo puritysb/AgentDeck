@@ -21,6 +21,15 @@ index. If a location or gate changes, update this file in the same commit.
 
 ## Canonical sources (SSOT)
 
+The public navigation and its complete language picker (trigger, styled list,
+locale copy, focus/keyboard behavior and viewport placement) are owned by
+`scripts/pages-nav.html` and `scripts/pages-nav.css`. `sync-pages-nav.mjs` mirrors
+them across the authored Pages surfaces; Build Health consumes the same sources.
+The design viewer clones the actual closed control and open list for its
+specimen. `DESIGN.md` §1.5 defines the component's dimensions and interaction
+states; `.ad-lang` in `design/components.css` remains the legacy segmented
+variant used by older design studies.
+
 | Resource | Canonical location | Enforced by |
 |---|---|---|
 | Visual language spec | `DESIGN.md` | `design/lint.sh` (R1–R8, CI baseline in `docs/design-lint-baseline.md`) |

@@ -40,12 +40,16 @@ describe('public language selection contract', () => {
     expect(options.map(option => option[1])).toEqual(catalog.locales);
     expect(options.map(option => option[3])).toEqual(['English', '한국어', '日本語']);
     expect(options.every(option => option[1] === option[2])).toBe(true);
-    // The native select retains keyboard/touch semantics and stays outside the
-    // horizontally scrolling link row, so it remains reachable at small widths.
-    expect(nav).toMatch(/<\/div>\s*<label class="ad-language-control" data-language-control>/);
+    // One locale list feeds the styled menu and no-JS native fallback.
+    // The control remains outside the horizontally scrolling link row.
+    expect(nav).toMatch(/<\/div>\s*<div class="ad-language-control" data-language-control>/);
     expect(nav).toContain('<select id="lang" class="lang" aria-label="Language">');
+    expect(nav).toContain('const options = [...control.options].map(source =>');
+    expect(nav).toContain('role="menuitemradio"');
+    expect(nav).toContain('aria-haspopup="menu"');
     const specimen = read('agentdeck-design-system/viewer/app.js');
-    expect(specimen).toContain("document.querySelector('[data-language-control]').outerHTML");
+    expect(specimen).toContain("document.querySelector('[data-language-control]').cloneNode(true)");
+    expect(specimen).toContain("document.querySelector('[data-language-menu]').cloneNode(true)");
   });
   it('loads the CJK faces on every public surface that offers those languages', () => {
     for (const page of ['scripts/pages-index.html', 'docs/hardware/index.html', 'tools/creature-simulator/index.html',

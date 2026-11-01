@@ -96,13 +96,21 @@ photograph and native screen input recorded; it is not physical-device evidence.
 
 ## Current habitat media (November 2026)
 
-The shared navigation uses full native language names and a native select,
-without a decorative chevron. Its 44px control remains visible while the links
-move to a separate scroll row on narrow screens. Edit only `pages-nav.html` /
-`pages-nav.css`, run `node scripts/sync-pages-nav.mjs`, and check all six public
-surfaces in every supported locale at 320–1440 CSS pixels. Language options must
+The shared navigation uses a styled language menu with full native names,
+localized helper text, a selected check, warm hover/focus states, and a native
+select only as its no-JavaScript fallback. The 44px trigger remains visible
+while links move to a separate scroll row on narrow screens. The menu is a
+viewport-clamped portal with keyboard navigation, Escape/Tab/outside dismissal,
+and focus restoration. Edit only `pages-nav.html` / `pages-nav.css`, then run
+`node scripts/sync-pages-nav.mjs`. Menu rows come from the one locale option
+list; navigation translations and accessible names are shared too. The design
+viewer clones the closed control and open list as a static specimen.
+
+Check all six public surfaces and every locale at 320–1440 CSS pixels, including
+opened-menu bounds, keyboard/touch selection, long labels and section anchors.
+The actual navigation height drives fragment clearance. Language options must
 match the design catalog; expansion requires translation/fallback and layout
-coverage. The design viewer clones this control for its component specimen.
+coverage. Detailed menu geometry and states live in `DESIGN.md` §1.5.
 
 `docs/media/current/` contains the November 1 native macOS/Android validation
 captures and source-identified ESP32 host frames. `manifest.json` records each

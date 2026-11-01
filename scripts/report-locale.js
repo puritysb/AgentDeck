@@ -3,7 +3,7 @@
   const control = document.getElementById('lang');
   if (!control) return;
   const key = 'agentdeck-design-locale';
-  const protectedCopy = 'script,style,code,pre,.tname,.fpath,.cmd,.skipped tbody td:first-child,#report-locale-note';
+  const protectedCopy = 'script,style,code,pre,.tname,.fpath,.cmd,.skipped tbody td:first-child,#report-locale-note,[data-gnb],[data-language-menu]';
   const nodes = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {

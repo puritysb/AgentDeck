@@ -39,13 +39,33 @@ Two faces only: **IBM Plex Sans** for everything human, **JetBrains Mono** for e
 ### 1.5 Asia‑first multilingual
 KO/EN/JA all live on the same page; the type stack must render all three at the same optical weight. We use IBM Plex Sans / Plex Sans KR / Plex Sans JP as a unified family. Never set Korean in a Latin‑only face.
 
-**Language selection uses full native names: English, 한국어, 日本語.** The public
-site uses the native select inside `.ad-language-control`, with a globe and no
-decorative chevron. Keep the OS keyboard and touch behavior, a minimum 44px
-target, and the visible focus ring. The language control stays outside the
-scrolling navigation links and remains visible on narrow screens. Markup and
-styles are owned by `scripts/pages-nav.html` and `scripts/pages-nav.css`; the
-design-system specimen is cloned from that same component.
+**Language selection uses full native names: English, 한국어, 日本語.** The
+public `.ad-language-control` opens the styled `.ad-language-menu`; the native
+select is a no-JavaScript fallback. The closed control uses a globe, a full name,
+a 44px target and a visible focus ring, without a decorative chevron. It stays
+outside the scrolling navigation links. Markup, translations, interaction and
+styles are owned by `scripts/pages-nav.html` / `scripts/pages-nav.css`; the
+locale options are authored once and generate the menu rows. The design viewer
+clones the real closed control and open list as its component specimen.
+
+**The open list is part of the component contract.** Use Tide 50 for the panel,
+Tide 200 for its border, a 14px radius, the shared card shadow and 8px inner
+padding. The panel is 18rem wide, clamped to 16px viewport gutters, with an 8px
+gap from its trigger. Rows grow from a 56px minimum, with 10×12px padding and a
+10px radius. Each row has a full native name, a localized explanatory line and
+an explicit selected check. Tide 100 marks selection, Tide 200 marks hover,
+and the Kelp 700 focus outline remains visible independently of selection.
+Use Sans for all these human-facing labels; do not substitute language codes
+or flags. Longer rows wrap rather than ellipsize. The list scrolls within the
+viewport when more languages are admitted.
+
+**Interaction is defined with the visuals.** Opening focuses the selected row;
+Arrow Up/Down, Home/End and letter search move focus. Enter/Space select. Escape
+closes and restores trigger focus; Tab closes and continues through the page.
+Outside pointer/focus closes without stealing focus. Menu focus must not scroll
+the underlying page. Position the portal within the viewport, and measure the
+actual wrapped navigation height for fragment clearance. Navigation labels and
+accessible names use the same shared locale copy on every public surface.
 
 **Translate into fluid space, not fixed text boxes.** Cards and actions may grow
 vertically; grid children must be able to shrink, and long labels wrap without

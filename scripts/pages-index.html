@@ -126,26 +126,81 @@ html body :target { scroll-margin-block-start: 0; }
   color: var(--tide-50);
 }
 .ad-language-control {
+  display: inline-block;
+  max-width: 20rem;
+}
+.ad-language-trigger, .ad-language-native {
   display: inline-grid;
   grid-template-columns: 20px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  max-width: 20rem;
+  max-width: 100%;
   padding-inline: 12px;
   color: var(--ink-700);
   background: var(--tide-50);
   border: 1px solid var(--tide-300);
-  border-radius: 12px;
+  border-radius: var(--r-xl, 12px);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
 }
-.ad-language-control:hover {
+.ad-language-trigger { min-width: min(8rem, 100%); }
+.ad-language-trigger span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-trigger:hover, .ad-language-native:hover,
+.ad-language-trigger[aria-expanded="true"] {
   background: var(--tide-100);
   border-color: var(--kelp-700);
 }
-.ad-language-control:focus-within {
+.ad-language-trigger:focus-visible, .ad-language-native:focus-within {
   outline: 2px solid var(--kelp-700);
   outline-offset: 3px;
 }
+.ad-language-control [hidden], .ad-language-menu[hidden] { display: none; }
+.ad-language-menu {
+  position: fixed;
+  z-index: 1000;
+  width: min(18rem, calc(100vw - 2 * var(--s-4, 16px)));
+  max-height: calc(100dvh - 2 * var(--s-4, 16px));
+  overflow-y: auto;
+  padding: var(--s-2, 8px);
+  color: var(--ink-900);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-200);
+  border-radius: var(--r-2xl, 14px);
+  box-shadow: var(--sh-card);
+  font-family: inherit;
+}
+.ad-language-menu-heading { padding: var(--s-2, 8px) var(--s-3, 12px) var(--s-3, 12px); }
+.ad-language-menu-heading strong { font-size: 14px; font-weight: 600; }
+.ad-language-menu-heading p { margin: 4px 0 0; color: var(--ink-500); font-size: 12px; line-height: 1.5; }
+.ad-language-menu [role="menuitemradio"] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4, 16px);
+  width: 100%;
+  min-height: 56px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: var(--r-lg, 10px);
+  background: transparent;
+  color: var(--ink-700);
+  text-align: start;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ad-language-menu [role="menuitemradio"] strong { display: block; font-size: 14px; font-weight: 600; }
+.ad-language-menu [role="menuitemradio"] > span { min-width: 0; overflow-wrap: anywhere; }
+.ad-language-menu [role="menuitemradio"] small { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-500); }
+.ad-language-menu [role="menuitemradio"] svg { visibility: hidden; flex: 0 0 auto; color: var(--kelp-700); }
+.ad-language-menu [aria-checked="true"] { background: var(--tide-100); color: var(--ink-900); }
+.ad-language-menu [aria-checked="true"] svg { visibility: visible; }
+.ad-language-menu [role="menuitemradio"]:hover { background: var(--tide-200); }
+.ad-language-menu [role="menuitemradio"]:focus-visible { outline: 2px solid var(--kelp-700); outline-offset: -2px; }
+.ad-language-menu[data-specimen] { position: static; width: min(18rem, 100%); margin-top: var(--s-2, 8px); }
 .lang {
   /* A <select> does not inherit font-family by default, so state it. */
   font-family: inherit;
@@ -339,16 +394,26 @@ html body :target { scroll-margin-block-start: 0; }
       <a href="./reports/">Test Report</a>
       <a class="gh" href="https://github.com/puritysb/AgentDeck">GitHub</a>
     </div>
-    <label class="ad-language-control" data-language-control>
+    <div class="ad-language-control" data-language-control>
+      <label class="ad-language-native" data-language-native>
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
       <select id="lang" class="lang" aria-label="Language">
         <option value="en" lang="en">English</option>
         <option value="ko" lang="ko">한국어</option>
         <option value="ja" lang="ja">日本語</option>
       </select>
-    </label>
+      </label>
+      <button type="button" class="ad-language-trigger" data-language-trigger aria-haspopup="menu" aria-expanded="false" aria-controls="language-menu" hidden>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
+        <span data-language-current>English</span>
+      </button>
+    </div>
   </div>
 </nav>
+<div id="language-menu" class="ad-language-menu" data-language-menu role="menu" aria-label="Language" hidden>
+  <div class="ad-language-menu-heading"><strong data-language-heading>Language</strong><p data-language-hint>Choose your display language.</p></div>
+</div>
+<template data-language-option><button type="button" role="menuitemradio" aria-checked="false" tabindex="-1"><span><strong data-language-name></strong><small data-language-detail></small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg></button></template>
 <script>
 // Match fragment clearance to the actual translated, wrapped navigation.
 (() => {
@@ -357,6 +422,115 @@ html body :target { scroll-margin-block-start: 0; }
   measure();
   if ('ResizeObserver' in window) new ResizeObserver(measure).observe(nav);
   else window.addEventListener('resize', measure, { passive: true });
+})();
+</script>
+<script>
+(() => {
+  const control = document.getElementById('lang');
+  const trigger = document.querySelector('[data-language-trigger]');
+  const menu = document.querySelector('[data-language-menu]');
+  const template = document.querySelector('[data-language-option]');
+  const options = [...control.options].map(source => {
+    const option = template.content.firstElementChild.cloneNode(true);
+    option.dataset.locale = source.value;
+    option.lang = source.lang || source.value;
+    option.querySelector('[data-language-name]').textContent = source.textContent;
+    menu.appendChild(option);
+    return option;
+  });
+  const copy = {
+    en: {label:'Language',hint:'Choose your display language.',current:'Current language',names:['English','Korean','Japanese'],nav:['Overview','Devices','Flash','Live Preview','Design System','Test Report'],primary:'Primary'},
+    ko: {label:'언어',hint:'화면에 표시할 언어를 선택하세요.',current:'현재 사용 중',names:['영어','한국어','일본어'],nav:['소개','기기','펌웨어 설치','라이브 미리보기','디자인 시스템','테스트 리포트'],primary:'주 메뉴'},
+    ja: {label:'言語',hint:'表示する言語を選んでください。',current:'現在の言語',names:['英語','韓国語','日本語'],nav:['概要','デバイス','書き込み','ライブプレビュー','デザインシステム','テストレポート'],primary:'メインメニュー'},
+  };
+  let opened = false;
+  const nativeNames = Object.fromEntries([...control.options].map(o => [o.value,o.textContent]));
+  function render() {
+    const locale = Object.hasOwn(copy,control.value) ? control.value : 'en';
+    const text = copy[locale];
+    trigger.querySelector('[data-language-current]').textContent = nativeNames[locale];
+    trigger.lang = locale;
+    trigger.setAttribute('aria-label',`${text.label}: ${nativeNames[locale]}`);
+    menu.setAttribute('aria-label',text.label);
+    menu.lang = locale;
+    menu.querySelector('[data-language-heading]').textContent = text.label;
+    menu.querySelector('[data-language-hint]').textContent = text.hint;
+    options.forEach((option,index) => {
+      const selected = option.dataset.locale === locale;
+      option.setAttribute('aria-checked',String(selected));
+      const detail = option.querySelector('[data-language-detail]');
+      detail.textContent = selected ? text.current : (text.names[index] ?? nativeNames[option.dataset.locale]);
+      detail.lang = locale;
+    });
+    document.querySelector('[data-gnb]').setAttribute('aria-label',text.primary);
+    document.querySelector('[data-gnb]').lang = locale;
+    document.querySelectorAll('[data-gnb] .nav-links a:not(.gh)').forEach((link,index) => { link.textContent = text.nav[index]; });
+  }
+  function position() {
+    if (!opened) return;
+    const rect = trigger.getBoundingClientRect();
+    const styles = getComputedStyle(menu);
+    const gutter = parseFloat(styles.getPropertyValue('--s-4')) || 16;
+    const gap = parseFloat(styles.getPropertyValue('--s-2')) || 8;
+    const box = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(gutter,Math.min(rect.right-box.width,innerWidth-box.width-gutter))}px`;
+    menu.style.top = `${Math.max(gutter,Math.min(rect.bottom+gap,innerHeight-box.height-gutter))}px`;
+  }
+  function close(restoreFocus = false) {
+    opened = false; menu.hidden = true; trigger.setAttribute('aria-expanded','false');
+    if (restoreFocus) trigger.focus({preventScroll:true});
+  }
+  function focusOption(index) {
+    const option = options[index];
+    option.focus({preventScroll:true});
+    const row = option.getBoundingClientRect(), panel = menu.getBoundingClientRect();
+    const inset = parseFloat(getComputedStyle(menu).paddingTop) || 0;
+    if (row.bottom > panel.bottom-inset) menu.scrollTop += row.bottom-panel.bottom+inset;
+    else if (row.top < panel.top+inset) menu.scrollTop -= panel.top+inset-row.top;
+  }
+  function open(index = options.findIndex(o => o.getAttribute('aria-checked') === 'true')) {
+    opened = true; menu.hidden = false; trigger.setAttribute('aria-expanded','true');
+    position(); focusOption(Math.max(0,index));
+  }
+  trigger.addEventListener('click',() => opened ? close(true) : open());
+  trigger.addEventListener('keydown',event => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault(); open(event.key === 'ArrowDown' ? 0 : options.length-1);
+    }
+  });
+  menu.addEventListener('keydown',event => {
+    const index = options.indexOf(document.activeElement);
+    if (['ArrowDown','ArrowUp','Home','End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length-1 : (index+(event.key === 'ArrowDown' ? 1 : -1)+options.length)%options.length;
+      focusOption(next);
+    } else if (event.key === 'Escape') {event.preventDefault();event.stopPropagation();close(true);}
+    else if (event.key === 'Tab') close(true);
+    else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const locale = Object.hasOwn(copy,control.value) ? control.value : 'en';
+      const next = options.findIndex((option,i) => [nativeNames[option.dataset.locale],copy[locale].names[i]].some(name => name.toLocaleLowerCase().startsWith(event.key.toLocaleLowerCase())));
+      if (next >= 0) {event.preventDefault();focusOption(next);}
+    }
+  });
+  options.forEach(option => option.addEventListener('click',() => {
+    control.value = option.dataset.locale;
+    control.dispatchEvent(new Event('change',{bubbles:true}));
+    close(true);
+  }));
+  control.addEventListener('change',render);
+  document.addEventListener('pointerdown',event => {
+    if (opened && !menu.contains(event.target) && !trigger.contains(event.target)) close();
+  });
+  document.addEventListener('focusin',event => {
+    if (opened && !menu.contains(event.target) && event.target !== trigger) close();
+  });
+  document.addEventListener('keydown',event => {if(opened && event.key==='Escape'){event.preventDefault();close(true);}});
+  window.addEventListener('resize',position,{passive:true});
+  window.addEventListener('scroll',position,{passive:true,capture:true});
+  try {const saved = localStorage.getItem('agentdeck-design-locale');if(Object.hasOwn(copy,saved))control.value=saved;} catch {}
+  document.querySelector('[data-language-native]').hidden = true;
+  trigger.hidden = false;
+  render();
 })();
 </script>
 <!-- GNB:END -->
