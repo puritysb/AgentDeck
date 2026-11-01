@@ -8,7 +8,7 @@ canonical: true
 status: required
 owner: Apple product maintainers
 reviewed: 2026-10-11
-revision: 2026-10-11
+revision: 2026-11-01
 source_of_truth: docs/appstore-feature-matrix.md
 validators: [bash apple/scripts/verify-appstore-archive.sh]
 ---
@@ -56,6 +56,8 @@ All surfaces follow the same rule:
 
 | Capability | App Store | CLI | Boundary |
 |---|:---:|:---:|---|
+| CloudKit remote observation and forwarded Watch notifications | Planned; not implemented | No standalone publisher planned for the PoC | [Design ready for implementation](apple-remote-observation.md). Opt-in running Mac app publishes minimal observations to the same Apple Account's private CloudKit database; iPhone reads and receives visible subscription alerts. The app-layer publisher can observe either local daemon tier. No public relay, uploaded provider credentials, remote approvals or Watch app. Mac offline means historical state. Physical delivery and Production acceptance remain unverified. |
+| Remote observation phone/Watch widgets | Deferred | — | iPhone WidgetKit reader follows CloudKit transport and offline acceptance; a Watch target/complication is a separate follow-up. No current widget or independent Watch delivery claim. |
 | CI wait observation (#433) | Hook evidence | Hook evidence; optional GitHub status | Both daemons track explicitly identified CI watch tools independently of agent turn state, clear matching foreground tools and session boundaries, and emit explicit null on close. Background watches survive Stop. Hook intent has unknown CI phase until provider evidence arrives; it never proves success or failure. The App Store app must not spawn `gh`. No credentials or raw command reach the wire. |
 | Guided first use | Yes | — | Choose an available 2D/3D appearance, explicitly enable Claude/Codex observation through the existing consent flow, and enter with observed/ready/not-set-up status. Hardware discovery is optional, with an existing Stream Deck path and offline Device Preview. iOS offers appearance then bounded Mac discovery/QR pairing. Setup can be reopened; notifications are requested only on an explicit action. |
 | Hermes mermaid aquarium resident | Yes | Yes | Bundled Blender-authored Nous girl-inspired mermaid; observed Hermes sessions drive working/waiting poses. A fixed shell seat for idle rest, bounded lift-off for active work, skinned body/tail/fin and arm joints, independently controlled gaze/lids/brows/mouth, and cosmetic neighbour greetings; no inferred delegation or new controls. Observation currently comes from the Hermes-capable Node receiver. Reduced Motion freezes movement. |
