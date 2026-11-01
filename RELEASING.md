@@ -167,6 +167,25 @@ Pantone 6 and Crema S retained data and matched the new APK hash. Lenovo's
 Google Play-signed installation was preserved because its certificate differs
 from the sideload key; test it with a matching Play candidate later.
 
+#### 2.0 integration checkpoint
+
+Candidate `4100e0ca` passed `pnpm verify:full --record --allow-keychain` in a clean,
+frozen checkout (26m11s). The committed
+[receipt](verification/receipts/2026-11-01-4100e0c.json) records native configurations,
+package acceptance and un-attested lab gates. Coverage ran 7,265 passing tests
+(42 skipped); real daemon E2E ran 39 passing tests. All five PR workflows passed,
+including Windows CI, before [PR #643](https://github.com/puritysb/AgentDeck/pull/643)
+merged into master as `35ec15b4`. No manifest/version bump, release tag or Store
+upload was performed. The optional Dot native/local WIP stays excluded.
+
+New media uses this candidate's actual native binaries. Simulator UI tests and
+Mac UI control each sent the original answer and one-time approval into a real
+standalone OpenCode SDK session, which executed one harmless `node --test` in a
+fictional workspace and returned a passing result. This is distinct from physical
+Deck/iPhone/Watch acceptance and from Production CloudKit readiness. The local
+fixture models the provider only; capture-only discovery suppression and a pinned
+loopback receiver keep unrelated sessions and usage off the public recordings.
+
 #### 2.0 media refresh
 
 Re-record/re-generate the introduction after the candidate is stable, rather

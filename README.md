@@ -23,7 +23,7 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 **2.0 development:** improvements are being collected on `master` before combined
-acceptance and new demo recordings. See the [integration and media plan](RELEASING.md#200-integration-target-2026-11-02);
+acceptance and release preparation. See the [integration and media plan](RELEASING.md#200-integration-target-2026-11-02);
 [released downloads](#releases) retain their recorded channel versions.
 
 <p align="center">
@@ -39,7 +39,7 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
 [Watch the hardware desk tour](https://youtu.be/s-f8ICBcC4o)
 
 <p align="center">
-  <a href="https://puritysb.github.io/AgentDeck/#aquarium"><strong>▶ Watch the aquarium demo</strong></a>
+  <a href="https://puritysb.github.io/AgentDeck/#controller-workflow"><strong>▶ Watch the local-control workflow</strong></a>
   &nbsp;·&nbsp;
   <a href="https://puritysb.github.io/AgentDeck/"><strong>🌊 Project website</strong></a>
   &nbsp;·&nbsp;
@@ -50,23 +50,24 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
   <a href="https://puritysb.github.io/AgentDeck/design-system/">Design system</a>
 </p>
 
-## Agent activity · development preview
+## Local control · 2.0 development preview
 
-[![Agent activity visualization on the connected Android tablet](docs/media/current/shared-home-preview.gif)](https://puritysb.github.io/AgentDeck/#current-habitat)
+[![Original choices and one-time approval in the native AgentDeck phone UI](docs/media/current/agentdeck-200-workflow-preview.gif)](https://puritysb.github.io/AgentDeck/#controller-workflow)
 
-See which agents are working, waiting for input or finished, and respond to supported
-questions and approvals from a connected controller. The recording below focuses on
-the aquarium visualization: residents emerge during activity and return when it ends.
-Recorded November 2, 2026 in the native Android
-validation app with fictional local activity; the video shows the actual app, not generated UI.
-This is a development preview, not a claim about the current store release.
+Follow a working agent, read its original question, choose a target and approve
+one local test run. This recording uses the actual iPhone Simulator UI and a real
+OpenCode session in a fictional workspace. The close-up is cropped for readable
+controls and plays at its original speed. It shows a 2.0 development candidate;
+released downloads retain their recorded channel versions.
 
-[Watch the full native recording](https://puritysb.github.io/AgentDeck/#current-habitat) ·
-[Current macOS, tablet, e-ink and ESP32 views](https://puritysb.github.io/AgentDeck/hardware/#current-captures) ·
+[Watch the captioned workflow](https://puritysb.github.io/AgentDeck/#controller-workflow) ·
+[Full native phone view](docs/media/current/agentdeck-200-iphone.mp4) ·
+[Aquarium detail](https://puritysb.github.io/AgentDeck/#current-habitat) ·
+[Device captures](https://puritysb.github.io/AgentDeck/hardware/#current-captures) ·
 [Media provenance](docs/media/current/manifest.json)
 
-The device gallery also includes a clearly labeled AI-assisted 86 Box photo composite,
-alongside its unmodified firmware render. Original photographs and earlier videos remain available.
+Historical photographs and earlier recordings remain available. The device gallery
+labels its AI-assisted photo composite separately from actual app and firmware captures.
 
 ## Choose your view
 

@@ -1,5 +1,28 @@
 # AgentDeck launch recording runbook
 
+## Current 2.0 capture path
+
+The November 2, 2026 files now use the real native controller recordings described
+in [the capture record](APP_PREVIEW_STORYBOARD.md), with hashes and timing in the
+[media manifest](../../docs/media/current/manifest.json). The bounded
+[OpenCode device acceptance fixture](../DeviceAcceptance/README.md) is the scenario
+source: a separate fictional workspace, loopback model, original choice and one
+harmless `node --test` approval. Ordinary native UI actions execute the reply;
+a replayed status frame is not evidence that an answer reached the agent.
+
+Use an isolated loopback receiver and pin the generated observer to it throughout
+the take. Suppress unrelated discovery and hide real usage rows. Keep the raw take,
+UI logs, actual SDK tool result and binary/harness hashes. A macOS `screencapture`
+video interrupted with SIGINT may discard its output; use a bounded `-V` timer,
+wait for exit 0 and probe the saved file before closing the captured app. Restore
+the user's original apps and stop only the isolated fixture afterwards.
+
+These are local development candidates, with no upload or release approval. The
+remaining sections preserve the earlier synthetic launch scenario for rehearsal;
+they no longer describe the current preview files or prove executed controls.
+
+## Earlier synthetic launch rehearsal
+
 This runbook separates App Store metadata from broader launch marketing. The
 same deterministic scenario powers both, so the app and terminal footage tell
 one coherent story without exposing a real project, account, path, token, or

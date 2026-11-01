@@ -150,8 +150,18 @@ Latest run, history test counts and pass-rate charts use **executed = passed + f
 ## 2.0 capture checkpoint
 
 The [2.0 integration and media plan](../RELEASING.md#200-integration-target-2026-11-02)
-owns the new capture scope and promotion gate. Current Pages/README media work
-can supply current renderer assets, but final 2.0 introduction and Store takes
-follow the frozen candidate and combined device acceptance. Preserve dated 1.x
-footage and capture provenance; a new version label cannot substitute for a new
-recording of changed behavior.
+records the frozen candidate `4100e0ca` and its complete local verification receipt.
+The primary introduction is now [the controller workflow](https://puritysb.github.io/AgentDeck/#controller-workflow):
+a real local OpenCode session, original choices, one-time approval and the actual
+`node --test` result. Native iPhone/iPad simulator and Mac recordings use fictional
+workspaces and a loopback model fixture. The UI, observer, daemon, SDK response and
+permission paths execute normally; this does not verify provider discovery,
+subscription usage or CloudKit notification delivery.
+
+`agentdeck-200-workflow.mp4` crops the native phone recording for readable controls;
+the full phone and Mac views remain linked. Playback stays at original speed.
+EN/KO/JA captions, the README excerpt, raw/binary/harness digests and Store candidate
+metadata are indexed in `docs/media/current/manifest.json`. Store candidates are
+local preparation files, not uploaded previews or a 2.0 release approval. The
+longer aquarium recording remains a secondary development detail, and dated 1.x
+footage remains intact.

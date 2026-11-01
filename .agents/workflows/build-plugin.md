@@ -6,6 +6,13 @@ description: Build, deploy and verify Stream Deck plugin
 For macOS development, use the persistent main checkout. Integrate current upstream changes without
 resetting local development work, then install dependencies with `pnpm install`.
 
+The host must have developer mode enabled for CLI stop/restart requests. Run the
+official `streamdeck dev` when preparing this local development environment or
+when the host log says `Feature only enabled in developer mode`. CLI success alone
+does not establish this: with developer mode off, Stream Deck 7.6 acknowledged
+the deep link but retained the old plugin process (measured 2026-11-02). Recheck
+the running bundle after enabling it; do not bypass the process/receipt wait.
+
 Run `pnpm plugin:deploy`. This builds shared/plugin, preserves any packaged
 installation, restores the source link, restarts the plugin and verifies the
 running process against the bundle SHA-256. A failed link or missing runtime
