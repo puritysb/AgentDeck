@@ -49,9 +49,6 @@ const PROJECT_DIR = /[~\/][\w.\-\/]+\/(\w[\w.\-]*)\s*$/m;
 const REMOTE_CLAUDE_URL = /https?:\/\/(?:claude\.ai|console\.anthropic\.com)\/code\S*/;
 const REMOTE_KEYWORD_URL = /(?:remote|tunnel|server|listening|session\s*url)\s*:?\s*(https?:\/\/\S+)/i;
 
-// Tool action: "⏺ ToolName(description)" — capture args inside parens
-const TOOL_ACTION = /⏺\s+(\w+)\(([^)]*)\)/;
-
 // User prompt echo: "❯ some text" — text the user typed
 // Require at least one word character to avoid matching box-drawing lines (─────)
 const USER_PROMPT = /^❯[ \t]+(\S.*\w.*\S|\w.*)$/m;
@@ -75,15 +72,7 @@ const MODE_DEFAULT = /\?\s*for\s*shortcuts/;
 // ANSI stripping can remove inter-word spaces (e.g. "Opus4.6·ClaudeMax")
 const MODEL_INFO = /((?:Opus|Sonnet|Haiku)[ \t]*[\d.]+|Claude[ \t]*[\d.]+[ \t]*(?:Opus|Sonnet|Haiku))(?:[ \t]*(?:\([^)]+\))?[ \t]*[·•][ \t]*(.+))?/i;
 
-// Effort level: "/model" UI shows "High effort ← → to adjust" during selection
-// and "with high effort" in the confirmation line.
-// Claude Code 2.1+ adds per-model variants: Opus 4.7 exposes default/max/xhigh/
-// high/medium/low; Opus 4.6 adds "fast". Older builds only had high/medium/low.
-// Keep the whitelist explicit so unrelated "<word> effort" phrases don't match.
-const EFFORT_LEVEL = /\b(max|xhigh|high|medium|low|default|fast)\s+effort\b/i;
-
 const SPINNER_DEBOUNCE_MS = 2000;
-const IDLE_DEBOUNCE_MS = 300;
 const OPTION_DEBOUNCE_MS = 150;
 const SUGGESTION_DEBOUNCE_MS = 500;
 
@@ -143,19 +132,19 @@ function isUiChrome(text: string): boolean {
   );
 }
 
+/** Managed Claude terminal UI observer. Hooks own turn and tool lifecycle.
+ * Spinner/input-prompt recognition only gates picker redraws and suggestions. */
 export class OutputParser extends EventEmitter {
   private buffer = '';
   private spinnerActive = false;
   private spinnerTimer: ReturnType<typeof setTimeout> | null = null;
-  private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private optionTimer: ReturnType<typeof setTimeout> | null = null;
   private projectName: string | null = null;
   /** Bridge-resolved name; survives reset() so the scrape stays disabled. */
   private seededProjectName: string | null = null;
   private modelName: string | null = null;
-  private effortLevel: string | null = null;
-  // Don't trigger spinner until we've seen the first idle prompt
-  // This prevents Claude's startup banner (which contains ✻) from falsely triggering PROCESSING
+  // Arm spinner redraw suppression only after the first input prompt, so the
+  // startup banner's ✻ does not suppress UI parsing or suggestions.
   private seenFirstIdle = false;
   // Track pending mode switch: after Shift+Tab, wait for mode confirmation or idle
   private pendingModeSwitch = false;
@@ -176,8 +165,7 @@ export class OutputParser extends EventEmitter {
   // Explicit lifecycle for a prompt that is currently visible in the managed
   // terminal. This is armed only from fresh PTY fragments (never historical
   // buffer contents) and cleared by authoritative user input / idle / reset.
-  // While armed, Claude's concurrent status-line spinner redraws must not turn
-  // AWAITING back into PROCESSING.
+  // While armed, concurrent spinner redraws must not cancel option parsing.
   private interactivePromptActive = false;
   private interactivePromptNavigable = false;
   private remoteUrl: string | null = null;
@@ -393,13 +381,11 @@ export class OutputParser extends EventEmitter {
 
     // --- Always extract metadata ---
     this.parseStatusLine(chunk);
-    this.parseToolAction(chunk);
     this.parseProjectName(chunk);
     // Skip model parsing when chunk contains numbered options — option labels
     // like "Opus 4.6" match MODEL_INFO and overwrite the real model name
     if (!OPTION_NUMBERED.test(optionChunk)) {
       this.parseModelInfo(chunk);
-      this.parseEffortLevel(chunk);
     }
     this.parseUserPrompt(chunk);
     this.parseUsageInfo(chunk);
@@ -429,28 +415,21 @@ export class OutputParser extends EventEmitter {
     if (this.spinnerActive) {
       if (hasInteractive) {
         // Interactive prompt arrived during spinner (e.g. "❯ 1. Yes")
-        // Stop spinner but DON'T emit idle — fall through to prompt detection
+        // Stop redraw suppression and fall through to prompt detection
         debug('Parser', 'interactive prompt during spinner — stopping spinner');
         this.resetSpinnerTimer();
         this.spinnerActive = false;
         this.seenFirstIdle = true;
-        this.emit('spinner_stop');
         // Fall through to prompt detection below
       } else if (hasIdlePrompt) {
         // Idle prompt during spinner — but ignore if chunk is large (screen redraw).
         // Real idle prompts come in small chunks; screen redraws include ❯ in 200+ char chunks.
         const nonWs = chunk.replace(/\s/g, '').length;
         if (nonWs < 80) {
-          debug('Parser', 'idle prompt during spinner — stopping spinner, emitting idle');
+          debug('Parser', 'input prompt during spinner — ending redraw suppression');
           this.resetSpinnerTimer();
           this.spinnerActive = false;
           this.seenFirstIdle = true;
-          this.emit('spinner_stop');
-          this.resetIdleTimer();
-          this.idleTimer = setTimeout(() => {
-            debug('Parser', 'EMIT idle');
-            this.emit('idle');
-          }, IDLE_DEBOUNCE_MS);
           return;
         }
         // Large chunk with ❯ — screen redraw, ignore idle signal
@@ -475,19 +454,16 @@ export class OutputParser extends EventEmitter {
           if (!this.spinnerActive) {
             this.spinnerActive = true;
             this.clearSuggestion();
-            debug('Parser', 'EMIT spinner_start');
-            this.emit('spinner_start');
+            debug('Parser', 'spinner redraw suppression started');
           }
           this.resetSpinnerTimer();
           this.spinnerTimer = setTimeout(() => {
             if (this.spinnerActive) {
               this.spinnerActive = false;
-              debug('Parser', 'EMIT spinner_stop (debounced)');
-              this.emit('spinner_stop');
+              debug('Parser', 'spinner redraw suppression expired');
             }
           }, SPINNER_DEBOUNCE_MS);
-          // Cancel idle & option timers — we're processing now
-          this.resetIdleTimer();
+          // Suppress stale option redraws while the spinner is visible.
           this.resetOptionTimer();
           return;
         }
@@ -501,7 +477,6 @@ export class OutputParser extends EventEmitter {
     if (DIFF_PROMPT.test(chunk)) {
       debug('Parser', 'EMIT diff_prompt');
       this.lastNavigableEmit = false;
-      this.resetIdleTimer();
       this.resetOptionTimer();
       const parsed = this.parseDiffOptions(chunk);
       const options = parsed.length > 0 ? parsed : [
@@ -517,7 +492,6 @@ export class OutputParser extends EventEmitter {
     // --- Permission: "Yes, allow once" / "No, deny" / "Always allow" ---
     if (YES_NO_ALWAYS.test(chunk)) {
       this.lastNavigableEmit = false;
-      this.resetIdleTimer();
       this.resetOptionTimer();
       // Prefer the rich block parser so Claude's REAL options survive — modern
       // permission prompts are numbered and often carry a 3rd/4th choice (e.g.
@@ -555,7 +529,6 @@ export class OutputParser extends EventEmitter {
     if (PERMISSION_YN.test(chunk)) {
       debug('Parser', 'EMIT permission_prompt (yes_no)');
       this.lastNavigableEmit = false;
-      this.resetIdleTimer();
       this.resetOptionTimer();
       this.emit('permission_prompt', {
         options: [
@@ -579,7 +552,6 @@ export class OutputParser extends EventEmitter {
     // Require a selection cursor or an already confirmed interactive prompt.
     if (hasOptionInteraction && (OPTION_NUMBERED.test(optionChunk) || OPTION_BULLET.test(optionChunk)) && (hasNavigableCursor || chunkNonWs < 200)) {
       debug('Parser', 'option pattern detected — starting/resetting debounce');
-      this.resetIdleTimer();
       this.resetOptionTimer();
       this.optionTimer = setTimeout(() => {
         this.optionTimer = null;
@@ -630,7 +602,6 @@ export class OutputParser extends EventEmitter {
       const hasBareIdlePrompt = /^[❯>][ \t\u00A0]+$/m.test(chunk);
       if (!isGenuineIdle && !hasBareIdlePrompt) {
         debug('Parser', 'cursor-only redraw detected — debouncing buffer re-parse');
-        this.resetIdleTimer();
         this.resetOptionTimer();
         this.optionTimer = setTimeout(() => {
           this.optionTimer = null;
@@ -646,8 +617,7 @@ export class OutputParser extends EventEmitter {
             // Options disappeared (Esc, selection made, etc.) — exit navigable state
             this.lastNavigableEmit = false;
             this.lastCursorIndex = 0;
-            debug('Parser', 'navigable options disappeared — emitting idle');
-            this.emit('idle');
+            debug('Parser', 'navigable options disappeared');
           }
         }, OPTION_DEBOUNCE_MS);
         return;
@@ -664,7 +634,6 @@ export class OutputParser extends EventEmitter {
     // Detect this during navigable state: small non-empty chunks that aren't response text.
     if (this.lastNavigableEmit && !chunk.includes('❯') && chunkNonWs > 0 && chunkNonWs < 100) {
       debug('Parser', 'ANSI cursor reposition detected (no ❯) — debouncing buffer re-parse');
-      this.resetIdleTimer();
       this.resetOptionTimer();
       this.optionTimer = setTimeout(() => {
         this.optionTimer = null;
@@ -705,20 +674,9 @@ export class OutputParser extends EventEmitter {
         this.emit('mode_change', { mode: 'default' });
       }
       debug('Parser', 'idle prompt detected');
-      this.resetIdleTimer();
       this.resetOptionTimer();
-      this.idleTimer = setTimeout(() => {
-        debug('Parser', 'EMIT idle');
-        this.emit('idle');
-      }, IDLE_DEBOUNCE_MS);
       return;
     }
-
-    // --- IMPORTANT: Do NOT cancel idle timer for arbitrary chunks ---
-    // Keyboard echo characters (h, e, l, l, o) and status line updates
-    // arrive while Claude is idle. Cancelling the timer would prevent
-    // the idle event from ever firing.
-    // Only spinner detection and interactive prompts (above) cancel the idle timer.
   }
 
   private parseStatusLine(chunk: string): void {
@@ -730,15 +688,6 @@ export class OutputParser extends EventEmitter {
         const tokens = Math.round(parseFloat(match[2]) * 1000);
         this.emit('status_line', { durationSec: sec, tokens });
       }
-    }
-  }
-
-  private parseToolAction(chunk: string): void {
-    const match = chunk.match(TOOL_ACTION);
-    if (match) {
-      const toolArgs = match[2]?.trim() || null;
-      debug('Parser', `tool_action: ${match[1]}${toolArgs ? `(${toolArgs.slice(0, 60)})` : ''}`);
-      this.emit('tool_action', { toolName: match[1], toolArgs });
     }
   }
 
@@ -792,18 +741,6 @@ export class OutputParser extends EventEmitter {
         this.modelName = newModel;
         debug('Parser', `model_info: ${this.modelName}${plan ? ` (${plan})` : ''}`);
         this.emit('model_info', { model: this.modelName, plan: plan || null });
-      }
-    }
-  }
-
-  private parseEffortLevel(chunk: string): void {
-    const match = chunk.match(EFFORT_LEVEL);
-    if (match && match[1]) {
-      const level = match[1].toLowerCase();
-      if (level !== this.effortLevel) {
-        this.effortLevel = level;
-        debug('Parser', `effort_level: ${level}`);
-        this.emit('effort_level', { level });
       }
     }
   }
@@ -1269,10 +1206,6 @@ export class OutputParser extends EventEmitter {
     if (this.spinnerTimer) { clearTimeout(this.spinnerTimer); this.spinnerTimer = null; }
   }
 
-  private resetIdleTimer(): void {
-    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
-  }
-
   private resetOptionTimer(): void {
     if (this.optionTimer) { clearTimeout(this.optionTimer); this.optionTimer = null; }
   }
@@ -1332,7 +1265,6 @@ export class OutputParser extends EventEmitter {
 
   getProjectName(): string | null { return this.projectName; }
   getModelName(): string | null { return this.modelName; }
-  getEffortLevel(): string | null { return this.effortLevel; }
 
   reset(): void {
     this.buffer = '';
@@ -1343,13 +1275,11 @@ export class OutputParser extends EventEmitter {
     this.pendingModeSwitch = false;
     this.projectName = this.seededProjectName;
     this.modelName = null;
-    this.effortLevel = null;
     this.lastSuggestedPrompt = null;
     this.lastNavigableEmit = false;
     this.lastCursorIndex = 0;
     this.clearInteractivePrompt();
     this.resetSpinnerTimer();
-    this.resetIdleTimer();
     this.resetOptionTimer();
     this.resetInteractiveCooldown();
     if (this.modeSwitchTimer) {

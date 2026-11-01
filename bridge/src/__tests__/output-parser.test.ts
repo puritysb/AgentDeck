@@ -27,6 +27,14 @@ function collectEvents(parser: OutputParser, event: string): any[] {
   return events;
 }
 
+/** Cursorless numbered redraws are accepted only while an actual picker is live. */
+function expectPickerContext(p: OutputParser, active: boolean): void {
+  const options = collectEvents(p, 'option_prompt');
+  p.feed('\n1. Alpha\n2. Beta\n');
+  vi.advanceTimersByTime(200);
+  expect(options).toHaveLength(active ? 1 : 0);
+}
+
 describe('OutputParser', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -375,13 +383,11 @@ describe('OutputParser', () => {
       const p = armParser();
       const permission = collectEvents(p, 'permission_prompt');
       const options = collectEvents(p, 'option_prompt');
-      const stopped = collectEvents(p, 'spinner_stop');
       if (working) p.feed('✢ Working');
       p.feed('1. First finding\n2. Second finding\n');
       vi.advanceTimersByTime(500);
       expect(permission).toHaveLength(0);
       expect(options).toHaveLength(0);
-      expect(stopped).toHaveLength(0);
     });
 
     it.each([
@@ -523,12 +529,11 @@ describe('OutputParser', () => {
       expect(events[0].question).toBeUndefined();
     });
 
-    it('suppresses false idle from user prompt echo after permission (interactive cooldown)', () => {
+    it('retains permission context through user prompt echo during cooldown', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const permEvents = collectEvents(p, 'permission_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Permission prompt arrives in diff output
       p.feed('  \u276F Yes, allow once\n    No, deny\n    Always allow\n');
@@ -538,16 +543,15 @@ describe('OutputParser', () => {
       p.feed('❯ Review the commit log\n');
       vi.advanceTimersByTime(500);
 
-      // Idle should NOT have fired — cooldown active
-      expect(idleEvents).toHaveLength(0);
+      // The cooldown must retain the active picker context.
+      expectPickerContext(p, true);
     });
 
-    it('allows real idle after interactive cooldown expires', () => {
+    it('clears picker context after the input prompt returns', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const permEvents = collectEvents(p, 'permission_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Permission prompt
       p.feed('  \u276F Yes, allow once\n    No, deny\n    Always allow\n');
@@ -560,7 +564,7 @@ describe('OutputParser', () => {
       p.feed('❯ \n');
       vi.advanceTimersByTime(400);
 
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
   });
 
@@ -599,12 +603,11 @@ describe('OutputParser', () => {
       expect(events).toHaveLength(1);
     });
 
-    it('suppresses false idle from user prompt echo after diff (interactive cooldown)', () => {
+    it('retains diff context through user prompt echo during cooldown', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const diffEvents = collectEvents(p, 'diff_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       p.feed('(V)iew diff  (A)pply  (D)eny\n');
       expect(diffEvents).toHaveLength(1);
@@ -613,7 +616,7 @@ describe('OutputParser', () => {
       p.feed('❯ fix the bug\n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
   });
 
@@ -730,7 +733,6 @@ describe('OutputParser', () => {
     it('idle prompt is ignored when option debounce is pending', () => {
       const p = armInteractiveParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Feed options — debounce starts
       p.feed('1.First\n2.Second\n');
@@ -743,176 +745,82 @@ describe('OutputParser', () => {
       // Option prompt SHOULD have fired (debounce completes normally)
       expect(optEvents).toHaveLength(1);
       expect(optEvents[0].options).toHaveLength(2);
-      // Idle should NOT have fired
-      expect(idleEvents).toHaveLength(0);
-    });
-
-    it('idle prompt fires normally when no option debounce is pending', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500); // clear boot idle timer
-
-      const idleEvents = collectEvents(p, 'idle');
-
-      // Just idle prompt, no option debounce pending
-      p.feed('❯ \n');
-      vi.advanceTimersByTime(400);
-
-      expect(idleEvents).toHaveLength(1);
+      // The following redraw must still belong to the picker.
+      expectPickerContext(p, true);
     });
   });
 
   // === Interactive Prompt During Spinner ===
 
-  describe('interactive prompt during spinner', () => {
+  describe('interactive prompts during spinner redraws', () => {
+    it.each([
+      ['permission_prompt', 'Allow? (Y)es/(N)o\n', ['Yes', 'No']],
+      ['diff_prompt', '(V)iew diff  (A)pply  (D)eny\n', ['View diff', 'Apply', 'Deny']],
+      ['option_prompt', 'Choose one:\n❯ 1. Alpha\n  2. Beta\n', ['Alpha', 'Beta']],
+    ])('preserves %s choices while a spinner is visible', (event, prompt, labels) => {
+      const p = armParser();
+      const choices = collectEvents(p, event);
+      p.feed('✳');
+      p.feed(prompt);
+      vi.advanceTimersByTime(200);
+      expect(choices).toHaveLength(1);
+      expect(choices[0].options.map((option: PromptOption) => option.label)).toEqual(labels);
+    });
+
     it('parses a navigable prompt when spinner and prompt share the first chunk', () => {
       const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
       const options = collectEvents(p, 'option_prompt');
-
       p.feed('✳ Cooking…\nWhich approach?\n❯ 1. Safe\n  2. Fast\n');
       vi.advanceTimersByTime(200);
-
-      expect(starts).toHaveLength(0);
       expect(options).toHaveLength(1);
       expect(options[0].options.map((option: PromptOption) => option.label)).toEqual(['Safe', 'Fast']);
     });
 
     it('keeps a visible prompt active through spinner redraw floods', () => {
       const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
       const options = collectEvents(p, 'option_prompt');
-
       p.feed('Which approach?\n❯ 1. Safe\n  2. Fast\n');
       for (let i = 0; i < 80; i++) {
         p.feed(`${i % 2 === 0 ? '✻' : '✽'} Running build…\n`);
         vi.advanceTimersByTime(100);
       }
-
       expect(options).toHaveLength(1);
-      expect(starts).toHaveLength(0);
+      expect(options[0].options.map((option: PromptOption) => option.label)).toEqual(['Safe', 'Fast']);
     });
 
-    it('allows real processing immediately after the prompt is selected', () => {
+    it('resumes redraw suppression after the user selects the prompt', () => {
       const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
       const options = collectEvents(p, 'option_prompt');
-
+      const suggestions = collectEvents(p, 'suggested_prompt');
       p.feed('Choose one:\n❯ 1. Alpha\n  2. Beta\n');
       vi.advanceTimersByTime(200);
-      expect(options).toHaveLength(1);
-
       p.notifyUserInput('\r');
       p.feed('✻ Running the selected action\n');
-
-      expect(starts).toHaveLength(1);
+      p.feed('❯ Try "Ignore a screen redraw"' + ' '.repeat(100) + 'x'.repeat(80));
+      vi.advanceTimersByTime(500);
+      expect(options).toHaveLength(1);
+      expect(suggestions).toHaveLength(0);
     });
 
-    it('does not arm prompt lifecycle from stale numbered prose', () => {
+    it('does not arm interactive context from stale numbered prose', () => {
       const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
-
+      const options = collectEvents(p, 'option_prompt');
       p.feed('1. Historical note\n2. Another note\n');
       p.feed('✻ Running the selected action\n');
-
-      expect(starts).toHaveLength(1);
-    });
-
-    it('stops spinner when permission prompt arrives', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500); // clear idle timer from boot
-
-      const events: string[] = [];
-      p.on('spinner_start', () => events.push('spinner_start'));
-      p.on('spinner_stop', () => events.push('spinner_stop'));
-      p.on('permission_prompt', () => events.push('permission'));
-
-      p.feed('✳'); // start spinner
-      expect(events).toEqual(['spinner_start']);
-
-      // Permission prompt during spinner
-      p.feed('  ❯ Yes, allow once\n    No, deny\n    Always allow\n');
-      expect(events).toContain('spinner_stop');
-      expect(events).toContain('permission');
-    });
-
-    it('stops spinner when diff prompt arrives', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const events: string[] = [];
-      p.on('spinner_start', () => events.push('spinner_start'));
-      p.on('spinner_stop', () => events.push('spinner_stop'));
-      p.on('diff_prompt', () => events.push('diff'));
-
-      p.feed('✳');
-      expect(events).toEqual(['spinner_start']);
-
-      p.feed('(V)iew diff  (A)pply  (D)eny\n');
-      expect(events).toContain('spinner_stop');
-      expect(events).toContain('diff');
-    });
-
-    it('stops spinner when option prompt arrives', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const events: string[] = [];
-      p.on('spinner_start', () => events.push('spinner_start'));
-      p.on('spinner_stop', () => events.push('spinner_stop'));
-      p.on('option_prompt', () => events.push('option'));
-
-      p.feed('✳');
-      expect(events).toEqual(['spinner_start']);
-
-      p.feed('❯ 1. Alpha\n2. Bravo\n');
+      p.feed('1. New finding\n2. Another finding\n');
       vi.advanceTimersByTime(200);
-      expect(events).toContain('spinner_stop');
-      expect(events).toContain('option');
+      expect(options).toHaveLength(0);
     });
 
-    it('stops spinner when idle prompt arrives in small chunk', () => {
+    it.each([false, true])('only a small input prompt ends spinner suppression (large=%s)', (large) => {
       const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const events: string[] = [];
-      p.on('spinner_start', () => events.push('spinner_start'));
-      p.on('spinner_stop', () => events.push('spinner_stop'));
-      p.on('idle', () => events.push('idle'));
-
+      const suggestions = collectEvents(p, 'suggested_prompt');
       p.feed('✳');
-      expect(events).toEqual(['spinner_start']);
-
-      // Small chunk with idle prompt
-      p.feed('❯ \n');
-      expect(events).toContain('spinner_stop');
-
-      vi.advanceTimersByTime(400);
-      expect(events).toContain('idle');
-    });
-
-    it('ignores idle prompt in large chunk during spinner (screen redraw)', () => {
-      const p = armParser();
+      p.feed(large ? 'a'.repeat(100) + '❯ \n' + 'b'.repeat(50) : '❯ \n');
+      // This long redraw does not itself stop spinner suppression.
+      p.feed('\n❯ Try "Review the changes"' + 'x'.repeat(100));
       vi.advanceTimersByTime(500);
-
-      const stops = collectEvents(p, 'spinner_stop');
-      p.on('spinner_start', () => {});
-
-      p.feed('✳');
-
-      // Large chunk (>80 non-ws chars) with ❯ — screen redraw, not real idle
-      const largeChunk = 'a'.repeat(100) + '❯ \n' + 'b'.repeat(50);
-      p.feed(largeChunk);
-
-      // Spinner should NOT have stopped
-      expect(stops).toHaveLength(0);
+      expect(suggestions).toHaveLength(large ? 0 : 1);
     });
   });
 
@@ -1137,25 +1045,6 @@ describe('OutputParser', () => {
       expect(events[0].durationSec).toBe(15);
       expect(events[0].tokens).toBe(500);
     });
-
-    it('emits tool_action from ⏺ pattern', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'tool_action');
-
-      p.feed('⏺ Read(file.ts)\n');
-
-      expect(events).toHaveLength(1);
-      expect(events[0].toolName).toBe('Read');
-    });
-
-    it('extracts various tool names', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'tool_action');
-
-      p.feed('⏺ Write(output.ts)\n');
-      expect(events).toHaveLength(1);
-      expect(events[0].toolName).toBe('Write');
-    });
   });
 
   // === User Prompt ===
@@ -1300,149 +1189,55 @@ describe('OutputParser', () => {
     });
   });
 
-  // === Spinner Lifecycle ===
+  // === Terminal UI Observation Boundary ===
 
-  describe('spinner lifecycle', () => {
-    it('emits spinner_start on spinner char (after idle seen)', () => {
-      const p = armParser();
-      const starts = collectEvents(p, 'spinner_start');
-
-      p.feed('✻');
-
-      expect(starts).toHaveLength(1);
-    });
-
-    it('does NOT emit spinner_start before first idle', () => {
-      const p = createParser(); // no idle prompt fed
-      const starts = collectEvents(p, 'spinner_start');
-
-      p.feed('✻');
-
-      expect(starts).toHaveLength(0);
-    });
-
-    it('emits spinner_stop after debounce (2000ms)', () => {
-      const p = armParser();
-      const stops = collectEvents(p, 'spinner_stop');
-
-      p.feed('✻');
-      vi.advanceTimersByTime(2100);
-
-      expect(stops).toHaveLength(1);
-    });
-
-    it('does NOT emit duplicate spinner_start on repeated chars', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
-
-      p.feed('✳');
-      p.feed('✢');
-      p.feed('✶');
-
-      expect(starts).toHaveLength(1);
-    });
-
-    it('resets spinner debounce timer on repeated chars', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const events: string[] = [];
-      p.on('spinner_start', () => events.push('start'));
-      p.on('spinner_stop', () => events.push('stop'));
-
-      p.feed('✳');
-      vi.advanceTimersByTime(1500); // 1500ms elapsed
-      p.feed('✢'); // resets timer
-      vi.advanceTimersByTime(1500); // 3000ms total, 1500 from last
-      expect(events).toEqual(['start']); // no stop yet
-
-      vi.advanceTimersByTime(600); // now >2000ms from last char
-      expect(events).toEqual(['start', 'stop']);
-    });
-
-    it('ignores spinner chars in large text blocks (>80 non-ws)', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      const starts = collectEvents(p, 'spinner_start');
-
-      // Large chunk with spinner char embedded
-      const largeText = 'a'.repeat(100) + '✳' + 'b'.repeat(100);
-      p.feed(largeText);
-
-      expect(starts).toHaveLength(0);
-    });
-
-    it('recognizes all spinner characters', () => {
-      const spinnerChars = ['✢', '✳', '✶', '✻', '✽'];
-      for (const ch of spinnerChars) {
-        const p = armParser();
-        vi.advanceTimersByTime(500);
-
-        const starts = collectEvents(p, 'spinner_start');
-        p.feed(ch);
-        expect(starts).toHaveLength(1);
+  describe('terminal UI observation boundary', () => {
+    it('never emits retired lifecycle, tool or effort guesses', () => {
+      const p = createParser();
+      const retired = vi.fn();
+      for (const event of ['spinner_start', 'spinner_stop', 'idle', 'tool_action', 'effort_level']) {
+        p.on(event, retired);
       }
-    });
-  });
-
-  // === Idle Detection ===
-
-  describe('idle detection', () => {
-    it('emits idle after IDLE_DEBOUNCE_MS (300ms)', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'idle');
-
       p.feed('❯ \n');
-      expect(events).toHaveLength(0); // debounce pending
-
-      vi.advanceTimersByTime(400);
-      expect(events).toHaveLength(1);
-    });
-
-    it('sets seenFirstIdle on first idle prompt', () => {
-      const p = createParser();
-      const spinners = collectEvents(p, 'spinner_start');
-
-      // Before idle — spinner disabled
-      p.feed('✳');
-      expect(spinners).toHaveLength(0);
-
-      // See first idle prompt
+      expect(vi.getTimerCount()).toBe(0);
+      p.feed('✳ Working\n');
+      vi.advanceTimersByTime(2100);
+      p.feed('⏺ Read(file.ts)\nHigh effort ← → to adjust\n');
+      p.feed('Allow? (Y)es/(N)o\n');
       p.feed('❯ \n');
-      vi.advanceTimersByTime(400);
-
-      // After idle — spinner enabled
-      p.feed('✳');
-      expect(spinners).toHaveLength(1);
+      vi.advanceTimersByTime(300);
+      p.feed('❯ \n');
+      vi.runAllTimers();
+      expect(retired).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
     });
 
-    it('cancels idle timer when spinner starts', () => {
+    it.each(['✢', '✳', '✶', '✻', '✽'])('uses %s only to suppress suggestions during redraws', (spinner) => {
       const p = armParser();
+      const suggestions = collectEvents(p, 'suggested_prompt');
+      p.feed('❯ Try "Review the changes"\n');
       vi.advanceTimersByTime(500);
-
-      const events: string[] = [];
-      p.on('idle', () => events.push('idle'));
-      p.on('spinner_start', () => events.push('spinner'));
-
-      p.feed('❯ \n'); // idle timer starts
-      p.feed('✳');    // spinner should cancel idle timer
+      expect(suggestions).toEqual([{ text: 'Review the changes' }]);
+      p.feed(spinner);
+      expect(suggestions.at(-1)).toEqual({ text: null });
+      p.feed('Try "Ignore this redraw"');
+      vi.advanceTimersByTime(1500);
+      p.feed(spinner);
+      vi.advanceTimersByTime(1500);
+      expect(suggestions).toHaveLength(2);
+      vi.advanceTimersByTime(501);
+      p.feed('❯ Try "Resume review"\n');
       vi.advanceTimersByTime(500);
-
-      expect(events).toContain('spinner');
-      expect(events).not.toContain('idle');
+      expect(suggestions.at(-1)).toEqual({ text: 'Resume review' });
     });
 
-    it('recognizes > as idle prompt char', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'idle');
-
-      p.feed('> \n');
-      vi.advanceTimersByTime(400);
-
-      expect(events).toHaveLength(1);
+    it('does not suppress suggestions for spinner glyphs embedded in long output', () => {
+      const p = armParser();
+      const suggestions = collectEvents(p, 'suggested_prompt');
+      p.feed('a'.repeat(100) + '✳' + 'b'.repeat(100));
+      p.feed('\n❯ Try "Review the changes"\n');
+      vi.advanceTimersByTime(500);
+      expect(suggestions).toEqual([{ text: 'Review the changes' }]);
     });
   });
 
@@ -1542,6 +1337,20 @@ describe('OutputParser', () => {
   // === Reset ===
 
   describe('reset', () => {
+    it('clears pending UI work and re-arms suggestions only after a new input prompt', () => {
+      const p = armParser();
+      const suggestions = collectEvents(p, 'suggested_prompt');
+      p.feed('✳');
+      p.reset();
+      expect(vi.getTimerCount()).toBe(0);
+      p.feed('Try "Startup text"');
+      vi.advanceTimersByTime(500);
+      expect(suggestions).toHaveLength(0);
+      p.feed('\n❯ Try "Review the changes"\n');
+      vi.advanceTimersByTime(500);
+      expect(suggestions).toEqual([{ text: 'Review the changes' }]);
+    });
+
     it('clears cached project name and model name', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
@@ -1556,32 +1365,6 @@ describe('OutputParser', () => {
 
       expect(p.getProjectName()).toBeNull();
       expect(p.getModelName()).toBeNull();
-    });
-
-    it('disables spinner detection (clears seenFirstIdle)', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      p.reset();
-
-      const events = collectEvents(p, 'spinner_start');
-      p.feed('✳');
-      expect(events).toHaveLength(0);
-    });
-
-    it('allows re-detection after new idle prompt post-reset', () => {
-      const p = armParser();
-      vi.advanceTimersByTime(500);
-
-      p.reset();
-
-      // New idle prompt
-      p.feed('❯ \n');
-      vi.advanceTimersByTime(400);
-
-      const events = collectEvents(p, 'spinner_start');
-      p.feed('✳');
-      expect(events).toHaveLength(1);
     });
 
     it('allows re-detection of project name after reset', () => {
@@ -1641,12 +1424,11 @@ describe('OutputParser', () => {
   // === Option Navigation (Cursor Keys) ===
 
   describe('option navigation', () => {
-    it('cursor movement during option selection does NOT trigger idle', () => {
+    it('cursor movement during option selection retains picker context', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Trigger initial options
       p.feed('1.Default\n2.Sonnet\n❯3.Haiku\n');
@@ -1658,7 +1440,7 @@ describe('OutputParser', () => {
       p.feed('\n❯\n Haiku\n\n\n\n\n\n\n\n\n\n\n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
 
     it('cursor movement does NOT trigger user_prompt', () => {
@@ -1678,11 +1460,10 @@ describe('OutputParser', () => {
       expect(userEvents).toHaveLength(0);
     });
 
-    it('normal cursor movement between options emits no idle or user_prompt', () => {
+    it('normal cursor movement retains picker context without a user prompt', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
-      const idleEvents = collectEvents(p, 'idle');
       const userEvents = collectEvents(p, 'user_prompt');
 
       // Initial options
@@ -1693,15 +1474,13 @@ describe('OutputParser', () => {
       p.feed('\n \n❯Sonnet\n\n\n\n\n\n\n\n\n\n\n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
       expect(userEvents).toHaveLength(0);
     });
 
-    it('real idle prompt still works after option navigation', () => {
+    it('input prompt clears picker context after option navigation', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
-
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial options
       p.feed('1.Default\n2.Sonnet\n❯3.Haiku\n');
@@ -1710,19 +1489,17 @@ describe('OutputParser', () => {
       // Cursor navigation (no idle)
       p.feed('\n❯\n Haiku\n\n\n\n\n\n\n\n\n\n\n');
       vi.advanceTimersByTime(500);
-      expect(idleEvents).toHaveLength(0);
 
-      // Real idle prompt: "❯ " (with space) should trigger idle
+      // A bare input prompt clears the old picker context.
       p.feed('❯ \n');
       vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
 
     it('effort/hint text during navigation does not trigger events', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
-      const idleEvents = collectEvents(p, 'idle');
       const userEvents = collectEvents(p, 'user_prompt');
 
       // Initial options
@@ -1733,23 +1510,8 @@ describe('OutputParser', () => {
       p.feed('\n▌ Effort not supported for Haiku\n\n\n\n\n\n\n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
       expect(userEvents).toHaveLength(0);
-    });
-
-    it('IDLE_PROMPT requires space/tab/NBSP after ❯ (not newline)', () => {
-      const p = createParser();
-      const idleEvents = collectEvents(p, 'idle');
-
-      // "❯\n" (newline immediately after ❯) — NOT an idle prompt
-      p.feed('❯\n');
-      vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(0);
-
-      // "❯ \n" (space after ❯) — IS an idle prompt
-      p.feed('❯ \n');
-      vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(1);
     });
 
     it('USER_PROMPT requires space/tab after ❯ (not newline)', () => {
@@ -2484,7 +2246,7 @@ describe('OutputParser', () => {
       const p = armParser();
       const events = collectEvents(p, 'suggested_prompt');
 
-      // Chunk 1: prompt (triggers idle)
+      // Chunk 1: input prompt (arms suggestion detection)
       p.feed('❯ ');
       vi.advanceTimersByTime(50);
 
@@ -3055,13 +2817,12 @@ describe('OutputParser', () => {
     });
   });
 
-  describe('permission scroll does not trigger idle (Bug 1)', () => {
-    it('scroll chunk with ❯ option text does NOT cause idle when navigable', () => {
+  describe('permission scroll retains picker context (Bug 1)', () => {
+    it('scroll chunk with ❯ option text retains the navigable picker', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const permEvents = collectEvents(p, 'permission_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial permission prompt — sets lastNavigableEmit=true
       p.feed('❯ 1. Yes\n  2. Yes, and don\'t ask again for: file:*\n  3. No\n');
@@ -3073,7 +2834,7 @@ describe('OutputParser', () => {
       p.feed('\n \n  Yes\n \n❯ Yes, and don\'t ask again for: file:*\n \nctrl+e to explain');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
 
     it('/model combined chunk: confirmation + idle prompt clears options', () => {
@@ -3081,7 +2842,6 @@ describe('OutputParser', () => {
       vi.advanceTimersByTime(500);
 
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial /model option prompt — sets lastNavigableEmit=true
       p.feed('❯ 1. Default (claude-sonnet-4-20250514)\n  2. claude-opus-4-20250514\n  3. claude-haiku-4-5-20251001\n');
@@ -3094,7 +2854,7 @@ describe('OutputParser', () => {
       p.feed('Set model to Default (claude-sonnet-4-20250514)\n\n❯ \n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
 
     it('/model separate chunks: ANSI reposition timer does not block idle', () => {
@@ -3102,7 +2862,6 @@ describe('OutputParser', () => {
       vi.advanceTimersByTime(500);
 
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial /model option prompt — sets lastNavigableEmit=true
       p.feed('❯ 1. Default (claude-sonnet-4-20250514)\n  2. claude-opus-4-20250514\n  3. claude-haiku-4-5-20251001\n');
@@ -3114,19 +2873,18 @@ describe('OutputParser', () => {
       p.feed('Set model to Default\n');
 
       // Chunk 2: genuine idle prompt. Should clear navigable state AND
-      // cancel the stale optionTimer so idle is not suppressed at line 588.
+      // cancel the stale optionTimer so later prose cannot reuse the picker.
       p.feed('❯ \n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
 
-    it('cursor move chunk with option text does NOT falsely trigger idle', () => {
+    it('cursor move chunk with option text retains picker context', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial option prompt — sets lastNavigableEmit=true
       p.feed('❯ 1. Default\n  2. Sonnet\n  3. Haiku\n');
@@ -3138,15 +2896,14 @@ describe('OutputParser', () => {
       p.feed('❯ Sonnet');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
 
-    it('genuine idle prompt exits navigable state and emits idle', () => {
+    it('input prompt exits navigable picker context', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
       const permEvents = collectEvents(p, 'permission_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Initial permission prompt — sets lastNavigableEmit=true
       p.feed('❯ 1. Yes\n  2. No\n  3. Always\n');
@@ -3158,7 +2915,7 @@ describe('OutputParser', () => {
       p.feed('❯ \n');
       vi.advanceTimersByTime(500);
 
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
   });
 
@@ -3212,7 +2969,6 @@ describe('OutputParser', () => {
     it('"❯ \\n" is genuine idle — only prompt character, no label text', () => {
       const p = armParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Establish navigable state with non-permission labels
       p.feed('❯ 1. Alpha\n  2. Beta\n');
@@ -3222,13 +2978,12 @@ describe('OutputParser', () => {
       // Genuine idle: "❯" is the only non-whitespace character
       p.feed('❯ \n');
       vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(1);
+      expectPickerContext(p, false);
     });
 
     it('"❯ Beta" is NOT idle — has label text after prompt char', () => {
       const p = armParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Establish navigable state
       p.feed('❯ 1. Alpha\n  2. Beta\n');
@@ -3238,13 +2993,12 @@ describe('OutputParser', () => {
       // Cursor move to "Beta" option — should NOT be idle
       p.feed('❯ Beta');
       vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
 
     it('"❯ A" is NOT idle — single-char label still counts', () => {
       const p = armParser();
       const optEvents = collectEvents(p, 'option_prompt');
-      const idleEvents = collectEvents(p, 'idle');
 
       // Establish navigable state
       p.feed('❯ 1. Alpha\n  2. Bravo\n');
@@ -3254,156 +3008,17 @@ describe('OutputParser', () => {
       // Cursor move — "❯A" has nonWs content beyond just ❯
       p.feed('❯ A');
       vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(0);
+      expectPickerContext(p, true);
     });
 
     it('">" also treated as idle prompt character', () => {
       const p = armParser();
       vi.advanceTimersByTime(500);
 
-      const idleEvents = collectEvents(p, 'idle');
       p.feed('> \n');
       vi.advanceTimersByTime(400);
-      expect(idleEvents).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 
-  // === Effort Level Parsing ===
-
-  describe('effort level parsing', () => {
-    // Real PTY patterns from Claude Code /model UI:
-    // During selection: "▌ High effort ← → to adjust"
-    // Confirmation: "with high effort"
-    // Model info line: "Opus 4.6 with high effort · Claude Max"
-
-    it('detects "High effort" selection pattern', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌ High effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'high' });
-    });
-
-    it('detects "Medium effort" selection pattern', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌▌ Medium effort (default) ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'medium' });
-    });
-
-    it('detects "Low effort" selection pattern', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌ Low effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'low' });
-    });
-
-    it('detects "with high effort" confirmation line', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('Set model to Default (Opus 4.6) with high effort\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'high' });
-    });
-
-    it('detects effort in model info line', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('Opus 4.6 with high effort · Claude Max\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'high' });
-    });
-
-    it('caches effort level — no re-emit on same value', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('High effort ← → to adjust\n');
-      p.feed('High effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-    });
-
-    it('emits on effort level change', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('High effort ← → to adjust\n');
-      p.feed('Low effort ← → to adjust\n');
-      expect(events).toHaveLength(2);
-      expect(events[1]).toEqual({ level: 'low' });
-    });
-
-    it('resets effort level on reset()', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('High effort ← → to adjust\n');
-      p.reset();
-      p.feed('High effort ← → to adjust\n');
-      expect(events).toHaveLength(2);
-    });
-
-    it('does not match "effort" in unrelated context', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌▌▌ effort ← → to adjust\n');
-      // The initial indicator line has no level word before "effort"
-      expect(events).toHaveLength(0);
-    });
-
-    it('does not match effort inside numbered option lines', () => {
-      const p = armParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('  1. High effort quality\n');
-      vi.advanceTimersByTime(200);
-      expect(events).toHaveLength(0);
-    });
-
-    it('getter returns current effort level', () => {
-      const p = createParser();
-      expect(p.getEffortLevel()).toBeNull();
-      p.feed('Low effort ← → to adjust\n');
-      expect(p.getEffortLevel()).toBe('low');
-    });
-
-    // Claude Code 2.1+ effort variants exposed via /model
-    it('detects "Max effort" (Opus 4.7 variant)', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌ Max effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'max' });
-    });
-
-    it('detects "xhigh effort" (Opus 4.7 variant)', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌ xhigh effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'xhigh' });
-    });
-
-    it('detects "default effort" (per-model default variant)', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('Set model to Opus 4.7 (1M context) (default) with default effort\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'default' });
-    });
-
-    it('detects "fast effort" (Opus 4.6 variant)', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('▌ Fast effort ← → to adjust\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'fast' });
-    });
-
-    it('detects effort in /model confirmation line with max', () => {
-      const p = createParser();
-      const events = collectEvents(p, 'effort_level');
-      p.feed('Set model to Opus 4.7 (1M context) (default) with max effort\n');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ level: 'max' });
-    });
-  });
 });
