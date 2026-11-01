@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-10-25
-revision: 2026-10-25
+reviewed: 2026-11-02
+revision: 2026-11-02
 source_of_truth: DESIGN.md
 validators: [python3 design/verify-tokens-sync.py, bash design/lint.sh]
 ---
@@ -38,6 +38,25 @@ Two faces only: **IBM Plex Sans** for everything human, **JetBrains Mono** for e
 
 ### 1.5 Asia‑first multilingual
 KO/EN/JA all live on the same page; the type stack must render all three at the same optical weight. We use IBM Plex Sans / Plex Sans KR / Plex Sans JP as a unified family. Never set Korean in a Latin‑only face.
+
+**Language selection uses full native names: English, 한국어, 日本語.** The public
+site uses the native select inside `.ad-language-control`, with a globe and no
+decorative chevron. Keep the OS keyboard and touch behavior, a minimum 44px
+target, and the visible focus ring. The language control stays outside the
+scrolling navigation links and remains visible on narrow screens. Markup and
+styles are owned by `scripts/pages-nav.html` and `scripts/pages-nav.css`; the
+design-system specimen is cloned from that same component.
+
+**Translate into fluid space, not fixed text boxes.** Cards and actions may grow
+vertically; grid children must be able to shrink, and long labels wrap without
+ellipsis. At narrow widths the navigation becomes two rows, while the links
+scroll within their own row. Tables, code and device frames may keep their own
+scroll area or aspect ratio; the page itself must not acquire horizontal scroll.
+Check English, Korean and Japanese at 320, 390, 768, 1024 and 1440 CSS pixels,
+plus expanded pseudo-localized labels. A new locale is admitted with its full
+native name, translation/fallback coverage and these layout checks, rather than
+an abbreviation or an unreviewed automatically translated page. Keep the
+catalog locale list and navigation options aligned behind the Pages checks.
 
 ### 1.6 Honest placeholders
 When an asset (a real screenshot, a hardware shot, an icon) is not ready, ship a **placeholder pattern** — diagonal hatch on warm sand, monospace label inside — rather than a stretched stock photo or a hand‑drawn SVG that pretends to be the real thing.

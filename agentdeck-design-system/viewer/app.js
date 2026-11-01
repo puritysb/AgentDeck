@@ -718,13 +718,9 @@
     {
       group: 'Chrome',
       title: 'Language switcher',
-      classes: '.ad-lang',
-      note: 'DESIGN.md §1.5. KO/EN/JA are peers on the same pill; the active locale takes the ink fill.',
-      html: `<div class="ad-lang">
-          <button type="button" aria-pressed="true">EN</button>
-          <button type="button" aria-pressed="false">한국어</button>
-          <button type="button" aria-pressed="false">日本語</button>
-        </div>`,
+      classes: '.ad-language-control · .lang',
+      note: 'DESIGN.md §1.5. Full language names, native keyboard/touch selection, a 44px target and a visible focus ring. This specimen is cloned from the canonical Pages navigation; it cannot drift into a second design.',
+      html: document.querySelector('[data-language-control]').outerHTML.replace('id="lang"', 'id="language-example"'),
     },
     {
       group: 'Hardware',

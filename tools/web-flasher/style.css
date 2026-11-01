@@ -28,7 +28,8 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 12px 32px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
 }
@@ -51,6 +52,7 @@
   border-radius: 8px;
 }
 .nav-links {
+  min-width: 0;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -62,7 +64,7 @@
   font-size: 14px;
   text-decoration: none;
   color: var(--ink-700);
-  padding: 6px 12px;
+  padding: 10px 12px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -79,38 +81,80 @@
   background: var(--ink-900);
   color: var(--tide-50);
 }
+.ad-language-control {
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 20rem;
+  padding-inline: 12px;
+  color: var(--ink-700);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-300);
+  border-radius: 12px;
+}
+.ad-language-control:hover {
+  background: var(--tide-100);
+  border-color: var(--kelp-700);
+}
+.ad-language-control:focus-within {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 3px;
+}
 .lang {
   /* A <select> does not inherit font-family by default, so state it. */
   font-family: inherit;
   font-weight: 500;
-  font-size: 13px;
-  color: var(--ink-700);
-  background: var(--tide-100);
-  border: 1px solid var(--tide-200);
-  border-radius: 999px;
-  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  width: auto;
+  min-width: 8ch;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
 }
-.lang:hover {
-  background: var(--tide-200);
-  color: var(--ink-900);
+.lang:focus { outline: none; }
+.nav-links a:focus-visible {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 2px;
 }
-@media (max-width: 768px) {
+/* Translation length must not dictate a fixed card height or page width. */
+:where(.wrap, .shell, .page) :where(h1, h2, h3, p, figcaption) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
   .nav-in {
-    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     padding-inline: 16px;
   }
   .nav-links {
+    order: 2;
+    flex: 1 0 100%;
+    margin-left: 0;
+    width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-block: 4px;
+    scrollbar-width: thin;
   }
+  .ad-language-control { order: 1; margin-inline-start: auto; max-width: 100%; }
   .nav-links a {
     white-space: nowrap;
   }
   .nav-links .gh {
     display: none;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gnb] *, [data-gnb] *::before, [data-gnb] *::after { transition: none; }
 }
 /* GNB-CSS:END */
 

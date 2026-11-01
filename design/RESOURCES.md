@@ -7,8 +7,8 @@ locale: en
 canonical: true
 status: stable
 owner: Design system maintainers
-reviewed: 2026-10-09
-revision: 2026-10-09
+reviewed: 2026-11-02
+revision: 2026-11-02
 source_of_truth: design/RESOURCES.md
 validators: [node scripts/build-design-system-viewer.mjs --check, python3 design/verify-tokens-sync.py]
 ---
@@ -51,6 +51,7 @@ index. If a location or gate changes, update this file in the same commit.
 | Hermes connected character candidate | `build-hermes-character.py` → `assets/terrarium/hermes-character.blend` (build output, not committed; reviewed copy in the `assets-hermes-character-candidate` prerelease) | Editable CC0-topology adaptation, USDZ/GLB and RealityKit import/snapshot tools. Review candidate only; original-face and surface-quality gates remain incomplete in `docs/hermes-agent.md`, #428. |
 | Hermes reconstruction study | `assets/terrarium/reconstruct-hermes.py` + `evaluate-hermes-reconstruction.py` | Pinned TripoSR method comparison only; ignored diagnostic GLB/renders. No app asset replacement. Research and rejection criteria: `docs/hermes-agent.md`, #428. |
 | Published image crops | `docs/media/` | regenerated from `assets/`, never hand-edited |
+| Current habitat captures and labeled composites | `docs/media/current/manifest.json` | Per-asset source revision, evidence type, input hashes and transformations; original photos remain intact. Composite images are presentation previews, not physical-device verification. |
 | Doc-to-viewer binding | `agentdeck-design-system/catalog.json` | `pnpm design-system:check` |
 | Documentation coverage | `catalog.json` → `coverage.scan` / `coverage.exclusions` | `pnpm design-system:check` — a `docs/*.md` that is neither cataloged nor excluded-with-a-reason fails the build |
 | Pages global nav (GNB) | `scripts/pages-nav.html` | `scripts/sync-pages-nav.mjs --check` (CI: design-system.yml) |

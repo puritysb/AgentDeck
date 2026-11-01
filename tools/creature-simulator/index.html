@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="../icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Sans+KR:wght@400;500;600&amp;family=IBM+Plex+Sans+JP:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
   <script>
     window.__SIM_DATA = null;
   </script>
@@ -290,7 +290,8 @@
   max-width: 1240px;
   margin: 0 auto;
   padding: 12px 32px;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
 }
@@ -313,6 +314,7 @@
   border-radius: 8px;
 }
 .nav-links {
+  min-width: 0;
   margin-left: auto;
   display: flex;
   align-items: center;
@@ -324,7 +326,7 @@
   font-size: 14px;
   text-decoration: none;
   color: var(--ink-700);
-  padding: 6px 12px;
+  padding: 10px 12px;
   border-radius: 999px;
   white-space: nowrap;
 }
@@ -341,38 +343,80 @@
   background: var(--ink-900);
   color: var(--tide-50);
 }
+.ad-language-control {
+  display: inline-grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 20rem;
+  padding-inline: 12px;
+  color: var(--ink-700);
+  background: var(--tide-50);
+  border: 1px solid var(--tide-300);
+  border-radius: 12px;
+}
+.ad-language-control:hover {
+  background: var(--tide-100);
+  border-color: var(--kelp-700);
+}
+.ad-language-control:focus-within {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 3px;
+}
 .lang {
   /* A <select> does not inherit font-family by default, so state it. */
   font-family: inherit;
   font-weight: 500;
-  font-size: 13px;
-  color: var(--ink-700);
-  background: var(--tide-100);
-  border: 1px solid var(--tide-200);
-  border-radius: 999px;
-  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 10px 0;
+  width: auto;
+  min-width: 8ch;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
 }
-.lang:hover {
-  background: var(--tide-200);
-  color: var(--ink-900);
+.lang:focus { outline: none; }
+.nav-links a:focus-visible {
+  outline: 2px solid var(--kelp-700);
+  outline-offset: 2px;
 }
-@media (max-width: 768px) {
+/* Translation length must not dictate a fixed card height or page width. */
+:where(.wrap, .shell, .page) :where(h1, h2, h3, p, figcaption) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
   .nav-in {
-    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     padding-inline: 16px;
   }
   .nav-links {
+    order: 2;
+    flex: 1 0 100%;
+    margin-left: 0;
+    width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    padding-block: 4px;
+    scrollbar-width: thin;
   }
+  .ad-language-control { order: 1; margin-inline-start: auto; max-width: 100%; }
   .nav-links a {
     white-space: nowrap;
   }
   .nav-links .gh {
     display: none;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gnb] *, [data-gnb] *::before, [data-gnb] *::after { transition: none; }
 }
 /* GNB-CSS:END */
     .shell { max-width:var(--site-max); padding:40px 32px 80px; gap:24px; }
@@ -417,12 +461,15 @@
       <a href="../design-system/">Design System</a>
       <a href="../reports/">Test Report</a>
       <a class="gh" href="https://github.com/puritysb/AgentDeck">GitHub</a>
-      <select id="lang" class="lang" aria-label="Language">
-        <option value="en">EN</option>
-        <option value="ko">KO</option>
-        <option value="ja">JA</option>
-      </select>
     </div>
+    <label class="ad-language-control" data-language-control>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18M5 6.5h14M5 17.5h14"/></svg>
+      <select id="lang" class="lang" aria-label="Language">
+        <option value="en" lang="en">English</option>
+        <option value="ko" lang="ko">한국어</option>
+        <option value="ja" lang="ja">日本語</option>
+      </select>
+    </label>
   </div>
 </nav>
 <!-- GNB:END -->
@@ -432,6 +479,7 @@
       <h1 data-i18n="intro.h1">The real render,<br>on every grid.</h1>
       <p data-i18n="intro.p">Choose an agent and state, then compare how the same signal adapts to tablet, e-ink, ESP32, LED matrix, control deck, and terminal constraints.</p>
     </header>
+    <p class="notes"><a href="../#current-habitat">Watch the native shared-shell recording</a> · <a href="../hardware/#current-captures">Current device captures</a>. Native tablet and e-ink panels below are browser layout studies; real renderer outputs are labeled individually.</p>
     <div class="toolbar glass-panel">
       <h1>Preview controls</h1>
       <label>Agent
@@ -441,6 +489,9 @@
           <option value="opencode">OpenCode</option>
           <option value="openclaw">OpenClaw</option>
           <option value="antigravity">Antigravity</option>
+          <option value="kiro">Kiro</option>
+          <option value="hermes">Hermes Agent</option>
+          <option value="dot">Dot</option>
         </select>
       </label>
       <label>State
@@ -570,7 +621,7 @@
           <div class="device-frame">
             <svg class="device-screen" id="sim-esp32-ips10" viewBox="0 0 1280 800" style="aspect-ratio:16/10"></svg>
           </div>
-          <div class="device-meta">ESP32 IPS 10.1&quot; 1280×800 — actual firmware frame (&quot;pixel office&quot; tablet layout + HUD sidebar, esp32/sim).</div>
+          <div class="device-meta">ESP32 IPS 10.1&quot; 1280×800 — actual firmware project workspace and usage sidebar, advanced to the selected agent's project (esp32/sim).</div>
         </section>
         <section>
           <div class="device-frame">
@@ -606,7 +657,7 @@
           <div class="device-frame">
             <svg class="device-screen" id="sim-timebox" viewBox="0 0 11 11" style="aspect-ratio:1/1"></svg>
           </div>
-          <div class="device-meta">Divoom Timebox Mini 11×11 — actual renderer output, micro layout (single dominant creature on a status field).</div>
+          <div class="device-meta">Divoom Timebox Mini 11×11 — actual collective expression renderer. Dot reports participate in the same activity and attention policy.</div>
         </section>
         <section>
           <div class="device-frame">
@@ -672,6 +723,21 @@
     const ANTIGRAVITY_PATH = "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z";
 
     const AGENTS = {
+      kiro: {
+        label: "Kiro", referenceCopy: "Canonical Kiro silhouette and facial details.",
+        tabletCopy: "Browser layout study. Native application captures are available in the current habitat gallery.",
+        deviceCopy: "The firmware and matrix panels below use their real renderers at each native resolution.",
+      },
+      hermes: {
+        label: "Hermes Agent", referenceCopy: "Canonical Hermes identity; native 3D uses the updated headset mermaid.",
+        tabletCopy: "Browser layout study. Watch the native shared-shell emergence, swimming and return in the current habitat recording.",
+        deviceCopy: "Small displays preserve the Hermes identity while adapting detail to their pixel grids.",
+      },
+      dot: {
+        label: "Dot", referenceCopy: "Canonical pearl glyph. Dot is a read-only report resident, not an agent session.",
+        tabletCopy: "Browser layout study. Native 3D shares one shell with Hermes, beside OpenClaw's rock; watch the current habitat recording.",
+        deviceCopy: "Idle means awaiting activity; sleeping means host stopped; asking means needs you. Reports never imply session controls.",
+      },
       claude: {
         label: "Claude Code",
         referenceCopy: "Original Claude Code contours with opaque black eyes; no added facial details.",
@@ -858,7 +924,28 @@
 
     function drawAgentMark(svg, agent, cx, cy, size, options = {}) {
       const { palette = {}, promptStyle = {}, state = "idle", t = 0 } = options;
+      if (agent === 'dot') {
+        const glyph = window.__SIM_DATA?.dotGlyph;
+        if (!glyph) return;
+        const group = el('g', { transform: `translate(${cx-size/2} ${cy-size/2}) scale(${size/glyph.size})`, opacity: STATE_STYLE[state].opacity });
+        for (let y=0;y<glyph.size;y++) for (let x=0;x<glyph.size;x++) {
+          const i=(y*glyph.size+x)*4;
+          if (!glyph.rgba[i+3]) continue;
+          group.appendChild(el('rect', {x,y,width:1,height:1,fill: options.monochrome ? 'black' : `rgb(${glyph.rgba.slice(i,i+3).join(',')})`}));
+        }
+        svg.appendChild(group);
+        return;
+      }
       const originalAgent = agent === 'claude' ? 'claudecode' : agent;
+      if (window.__SIM_DATA?.sourceMarks?.[agent]) {
+        const mark = window.__SIM_DATA.sourceMarks[agent];
+        const source = new DOMParser().parseFromString(mark.svg, 'image/svg+xml').documentElement;
+        source.setAttribute('fill', options.monochrome || svg.id === 'reference' ? 'black' : mark.color);
+        const href = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(source));
+        svg.appendChild(el('image', {x:cx-size/2,y:cy-size/2,width:size,height:size,
+          href, opacity:STATE_STYLE[state].opacity}));
+        return;
+      }
       if (options.monochrome && originalCreatures[originalAgent]) {
         drawOriginalCreature(svg, originalAgent, cx, cy, size, 'black',
           palette.opacity ?? STATE_STYLE[state].opacity, 0, true);
@@ -868,7 +955,7 @@
       else if (agent === "codex") drawCodexLogo(svg, cx, cy, size, palette, promptStyle, state, t);
       else if (agent === "opencode") drawOpenCodeLogo(svg, cx, cy, size, palette, state, t);
       else if (agent === "openclaw") drawOpenClawLogo(svg, cx, cy, size, palette, state, t);
-      else drawAntigravityLogo(svg, cx, cy, size, palette, state, t);
+      else if (agent === "antigravity") drawAntigravityLogo(svg, cx, cy, size, palette, state, t);
     }
 
     function drawAskIndicator(svg, kind, x, y, scale = 1, t = 0) {

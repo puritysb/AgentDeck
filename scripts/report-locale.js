@@ -3,7 +3,7 @@
   const control = document.getElementById('lang');
   if (!control) return;
   const key = 'agentdeck-design-locale';
-  const protectedCopy = 'script,style,code,pre,.tname,.fpath,.cmd,.skipped tbody td:first-child';
+  const protectedCopy = 'script,style,code,pre,.tname,.fpath,.cmd,.skipped tbody td:first-child,#report-locale-note';
   const nodes = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   while (walker.nextNode()) {
@@ -95,6 +95,8 @@
     control.value = locale;
     // Japanese falls back to canonical English until a report translation exists.
     document.documentElement.lang = locale === 'ko' ? 'ko' : 'en';
+    const fallbackNote = document.getElementById('report-locale-note');
+    if (fallbackNote) fallbackNote.hidden = locale !== 'ja';
     nodes.forEach(({ node, original }) => {
       node.nodeValue = translate(original, locale);
     });

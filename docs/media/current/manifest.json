@@ -1,0 +1,405 @@
+{
+  "schemaVersion": 1,
+  "title": "Current habitat media — development preview",
+  "updatedAt": "2026-11-02",
+  "availability": "Development validation builds; not a claim about the current App Store or Play Store release.",
+  "evidence": "Native app captures use fictional local activity. Firmware host frames are not physical display captures. The AI composite is labeled and never used as device-verification evidence.",
+  "originals": "Historical photographs and earlier recordings remain unchanged in docs/media/.",
+  "assets": [
+    {
+      "file": "amoled-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "e9d3bb665ccd22e6fd2e6a4ab112640f7803e85a0e543fe232fe91e4df219451",
+      "bytes": 23404,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 360,
+        "height": 360
+      }
+    },
+    {
+      "file": "box86-composite.png",
+      "kind": "ai-composite",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "999759afc24a273dfd777ef5c0a85d8c02bd6a1dd88cc5ce046e3b347bc25911",
+      "bytes": 2298483,
+      "transformation": "AI-assisted screen replacement in a preserved historical photograph; presentation only, not physical-device evidence.",
+      "dimensions": {
+        "width": 1659,
+        "height": 948
+      },
+      "inputs": [
+        {
+          "file": "docs/media/box86.jpg",
+          "sha256": "90eb174d2f47083ace281807d0914c90181f69f95a49df2978727336a69cd68d",
+          "capturedAt": "2026-09-28"
+        },
+        {
+          "file": "docs/media/current/box86-working.png",
+          "sha256": "4077fcd7942fc063140f5760aef0a2d5cf9bb00a10eaaea0e6aee90d86173531"
+        },
+        {
+          "file": "docs/media/current/composite-prompt.txt",
+          "sha256": "fbb93407054d2cd117e8b993d9d020e1393dd0a20e7d8ae10594e7f4a544b36b"
+        }
+      ]
+    },
+    {
+      "file": "box86-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "4077fcd7942fc063140f5760aef0a2d5cf9bb00a10eaaea0e6aee90d86173531",
+      "bytes": 39776,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 480,
+        "height": 480
+      }
+    },
+    {
+      "file": "composite-prompt.txt",
+      "kind": "generation-prompt",
+      "sourceRevision": null,
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "fbb93407054d2cd117e8b993d9d020e1393dd0a20e7d8ae10594e7f4a544b36b",
+      "bytes": 1509,
+      "transformation": "Authored text."
+    },
+    {
+      "file": "crema-returned.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "928a868ecbe0ae98670036cd2527e50170ef237cd1deee0a1fa3a35774b73da3",
+      "bytes": 42744,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1448,
+        "height": 1072
+      },
+      "input": {
+        "file": "crema-solid-final-closed.png",
+        "sha256": "3fa893ed45635da97a0f6ade4068ae9465de66c22462d57afcc5db6515614c12"
+      }
+    },
+    {
+      "file": "crema-working.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "a0eb1a9274cc75461aac92156700ec33959611c3b39b7e675aa158e23f4311e6",
+      "bytes": 149272,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1448,
+        "height": 1072
+      },
+      "input": {
+        "file": "crema-final-shared-open.png",
+        "sha256": "0b3db6fd05d80f4af03f9f020f470632b9b2b892119679951d166d11d5254cb5"
+      }
+    },
+    {
+      "file": "ips10-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "8eddab87cab85c3ded3453040f352b40801fe0cddcf252048fa9096fd732be3e",
+      "bytes": 74409,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 1280,
+        "height": 800
+      }
+    },
+    {
+      "file": "ips35-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "d5d301e2166c81b991aaef7aab2b15940b3b6131c39bf199a085c1c9f761210f",
+      "bytes": 30640,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 480,
+        "height": 320
+      }
+    },
+    {
+      "file": "knob-dot-roster.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "bf222367225daabd05c9d40696d829cc5efe621c143cc955f7207f4f88db1a04",
+      "bytes": 3594,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 320,
+        "height": 170
+      }
+    },
+    {
+      "file": "macos-returned.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "44499cf09765ba7ed7bececda42b359c505fca70024aa6aa37bad29a826a3e5a",
+      "bytes": 1662961,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 3170,
+        "height": 1996
+      },
+      "input": {
+        "file": "macos-solid-final-closed.png",
+        "sha256": "f3f1d58e3243e4e1ef57e9b2357bc453f8fd92425034b28157657022f9eff9db"
+      }
+    },
+    {
+      "file": "macos-working.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "8f7aa1e3604f750ec0f1d9bb50d243e936477069874c6a96289506202b7dd0ff",
+      "bytes": 1815549,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 3170,
+        "height": 1996
+      },
+      "input": {
+        "file": "macos-solid-final-working.png",
+        "sha256": "1ffaef2f600d8bff25ae58e1e652ae4df35b99a348393ac3aab6d91861954060"
+      }
+    },
+    {
+      "file": "pantone-returned.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "04573d6587f52c3d1260a88dc4c671684f54295fa35d9dbabd93339c04dd02d1",
+      "bytes": 43311,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1448,
+        "height": 1072
+      },
+      "input": {
+        "file": "pantone-solid-final-closed.png",
+        "sha256": "dd2104d73f8f244d03d1e17ff1f796086d4dd8dc3168e1889e1c0b4565aafa79"
+      }
+    },
+    {
+      "file": "pantone-working.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "2eb9f2abe1c88c5ce7a3da621da0706df5875f00470fa1ddf76a54ee5cfb7d11",
+      "bytes": 923872,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1448,
+        "height": 1072
+      },
+      "input": {
+        "file": "pantone-final-fixture-working.png",
+        "sha256": "dd8d4715d10f283f828e7abf81011ad4859f62502c2a22b130b845653fe7a9b4"
+      }
+    },
+    {
+      "file": "shared-home-poster.png",
+      "kind": "recording-still",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "752444629d4400e968d7ab9436f2550960665c1a9707966578041b46a45f4402",
+      "bytes": 425032,
+      "transformation": "Full-frame extraction at 23 seconds of shared-home.mp4.",
+      "dimensions": {
+        "width": 1080,
+        "height": 1920
+      },
+      "input": {
+        "file": "tablet-shared-final.mp4",
+        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
+      }
+    },
+    {
+      "file": "shared-home-preview.gif",
+      "kind": "recording-excerpt",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "8b6c587eb282fb92aef556e7a597e08e5afc18f47de2306f46d7d3264ca23197",
+      "bytes": 1137432,
+      "transformation": "12–20 seconds of shared-home.mp4; 360px wide, 10 fps GIF, no speed change.",
+      "input": {
+        "file": "tablet-shared-final.mp4",
+        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
+      }
+    },
+    {
+      "file": "shared-home.en.vtt",
+      "kind": "captions",
+      "sourceRevision": null,
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "42ae13a0864be5642066d80c5f3fd67cd93a26a1b2a5c59b8e21ff7ea29a1646",
+      "bytes": 483,
+      "transformation": "Authored text."
+    },
+    {
+      "file": "shared-home.ja.vtt",
+      "kind": "captions",
+      "sourceRevision": null,
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "e1a2a42e655f7910bdcbba24334772331de9227cc183b7df1a2a491f4af7c992",
+      "bytes": 526,
+      "transformation": "Authored text."
+    },
+    {
+      "file": "shared-home.ko.vtt",
+      "kind": "captions",
+      "sourceRevision": null,
+      "createdAt": "2026-11-02",
+      "capturedAt": null,
+      "fictionalActivity": true,
+      "sha256": "d7ab1269f0bc586f6ee0b0d268b2988bdfd409c333eb83b6eeb01558bf9553f6",
+      "bytes": 560,
+      "transformation": "Authored text."
+    },
+    {
+      "file": "shared-home.mp4",
+      "kind": "native-app-recording",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "ad8d3f172fa164ae157ce62274ef657d8ac550978bae54d4ff74ee8c0f6ba7a1",
+      "bytes": 4660240,
+      "transformation": "Full 59.6-second Lenovo tablet recording; H.264 CRF21/yuv420p, 30 fps, same speed, no audio or UI retouching.",
+      "input": {
+        "file": "tablet-shared-final.mp4",
+        "sha256": "ecc13f3f8016ca588247461ebe78ffb286e7f2015e3934b25e08e90110c9c4be"
+      }
+    },
+    {
+      "file": "tablet-returned.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "c1a49e0df5fd2bd62e7c5e7168c62c8b91780af979edf6f22edfb86ace1f4ea1",
+      "bytes": 340558,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1200,
+        "height": 2000
+      },
+      "input": {
+        "file": "tablet-solid-returned-no-labels.png",
+        "sha256": "37f78b2926804051ac03424cfde0787800c7b577f8526260089f0c339e8d9688"
+      }
+    },
+    {
+      "file": "tablet-working.png",
+      "kind": "native-app-capture",
+      "sourceRevision": "5b4694e4",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "3e29b5c8a769a66e9b49e5ce4d1b5f4236163d60489e675c3f31fdf6d3cb1ce7",
+      "bytes": 394480,
+      "transformation": "Lossless PNG recompression; no UI retouching.",
+      "dimensions": {
+        "width": 1200,
+        "height": 2000
+      },
+      "input": {
+        "file": "tablet-solid-three-working.png",
+        "sha256": "7704d31d278fa06ce58f53be557c9598ac1150698285af5a49e2554139aacc58"
+      }
+    },
+    {
+      "file": "ticker-dot-roster.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "01c0bf50746401d85604b9a6c71a91bd5c118db2505e325bcd95e5cda7ac22fc",
+      "bytes": 7669,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 480,
+        "height": 222
+      }
+    },
+    {
+      "file": "trmnl_75-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "474fdb52c2296d63a37f38a9e18f3ef0c48fe2415bcd8e15887e29c854a234ce",
+      "bytes": 9420,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 800,
+        "height": 480
+      }
+    },
+    {
+      "file": "ttgo-working.png",
+      "kind": "firmware-host-render",
+      "sourceRevision": "19636742",
+      "createdAt": "2026-11-02",
+      "capturedAt": "2026-11-01",
+      "fictionalActivity": true,
+      "sha256": "32e961d26b1f096137ae99c5559d0baff42fac5437f24f827dad1038d7613f4f",
+      "bytes": 8207,
+      "transformation": "Actual firmware host renderer; lossless PNG recompression. Not physical panel photography.",
+      "dimensions": {
+        "width": 135,
+        "height": 240
+      }
+    }
+  ]
+}

@@ -1,12 +1,83 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 const overview = read('scripts/pages-index.html');
 const readme = read('README.md');
 const workflow = read('.github/workflows/test-report.yml');
+
+describe('public language selection contract', () => {
+  it('offers full native names aligned with the supported catalog locales', () => {
+    const nav = read('scripts/pages-nav.html');
+    const catalog = JSON.parse(read('agentdeck-design-system/catalog.json'));
+    const options = [...nav.matchAll(/<option value="([^"]+)" lang="([^"]+)">([^<]+)<\/option>/g)];
+    expect(options.map(option => option[1])).toEqual(catalog.locales);
+    expect(options.map(option => option[3])).toEqual(['English', '한국어', '日本語']);
+    expect(options.every(option => option[1] === option[2])).toBe(true);
+    // The native select retains keyboard/touch semantics and stays outside the
+    // horizontally scrolling link row, so it remains reachable at small widths.
+    expect(nav).toMatch(/<\/div>\s*<label class="ad-language-control" data-language-control>/);
+    expect(nav).toContain('<select id="lang" class="lang" aria-label="Language">');
+    const specimen = read('agentdeck-design-system/viewer/app.js');
+    expect(specimen).toContain("document.querySelector('[data-language-control]').outerHTML");
+  });
+  it('loads the CJK faces on every public surface that offers those languages', () => {
+    for (const page of ['scripts/pages-index.html', 'docs/hardware/index.html', 'tools/creature-simulator/index.html',
+      'tools/web-flasher/index.html', 'agentdeck-design-system/viewer/index.html', 'scripts/generate-html-report.py']) {
+      expect(read(page), page).toContain('family=IBM+Plex+Sans+KR');
+      expect(read(page), page).toContain('family=IBM+Plex+Sans+JP');
+    }
+  });
+});
+
+describe('current habitat publication', () => {
+  it('keeps native evidence, host renders and the composite distinguishable and intact', () => {
+    const manifest = JSON.parse(read('docs/media/current/manifest.json'));
+    const assets = new Map<string, any>(manifest.assets.map((asset: any) => [asset.file, asset]));
+    for (const [file, asset] of assets) {
+      const bytes = readFileSync(join(ROOT, 'docs/media/current', file));
+      expect(createHash('sha256').update(bytes).digest('hex'), file).toBe(asset.sha256);
+      expect(asset.bytes, file).toBe(bytes.length);
+    }
+    expect(assets.get('shared-home.mp4').kind).toBe('native-app-recording');
+    expect(assets.get('macos-working.png').kind).toBe('native-app-capture');
+    expect(assets.get('trmnl_75-working.png').kind).toBe('firmware-host-render');
+    const composite = assets.get('box86-composite.png');
+    expect(composite.kind).toBe('ai-composite');
+    expect(composite.inputs.map((input: any) => input.file)).toEqual([
+      'docs/media/box86.jpg', 'docs/media/current/box86-working.png', 'docs/media/current/composite-prompt.txt',
+    ]);
+    for (const input of composite.inputs) {
+      expect(createHash('sha256').update(readFileSync(join(ROOT, input.file))).digest('hex')).toBe(input.sha256);
+    }
+    const catalog = read('docs/hardware/index.html');
+    expect(catalog).toMatch(/data-evidence="ai-composite"[\s\S]*?AI-assisted composite/);
+    expect(catalog).toContain('Original desk photographs remain below.');
+    expect(read('docs/pages-site.md')).toContain('not physical-device evidence');
+  });
+
+  it('publishes a controlled, captioned current recording and all referenced current assets', () => {
+    const html = section('current-habitat');
+    const [video] = tags(html, 'video');
+    expect(video).toHaveProperty('controls');
+    expect(video).toHaveProperty('playsinline');
+    expect(video).not.toHaveProperty('autoplay');
+    expect(video!.preload).toBe('none');
+    expect(video!['aria-describedby']).toBe('current-caption');
+    expect(tags(html, 'track').map(track => track.srclang)).toEqual(['en', 'ko', 'ja']);
+    for (const media of mediaReferences(html)) expect(statSync(join(ROOT, 'docs', media)).size).toBeGreaterThan(0);
+    expect(workflow).toContain('cp -R docs/media/current _site/media/');
+    expect(readme).toContain('#current-habitat');
+  });
+
+  it('offers the newer residents in the interactive controls', () => {
+    const page = read('tools/creature-simulator/index.html');
+    for (const agent of ['kiro', 'hermes', 'dot']) expect(page).toContain(`<option value="${agent}">`);
+  });
+});
 
 // These authored fragments use ordinary quoted attributes and boolean controls;
 // inspect their contracts without introducing a browser or image decoder.

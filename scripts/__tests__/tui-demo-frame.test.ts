@@ -36,7 +36,15 @@ it('generated canonical TUI reset labels are finite for every synthetic agent/st
   execFileSync(process.execPath, ['scripts/render-creature-simulator.mjs'], { timeout: 20_000 });
   const text = readFileSync('tools/creature-simulator/sim-data.js', 'utf8');
   const data = JSON.parse(text.slice(text.indexOf('=') + 1).replace(/;\s*$/, ''));
-  expect(Object.keys(data.tui)).toHaveLength(28);
+  for (const surface of ['pixoo', 'idot', 'timebox', 'streamDeck', 'tui', 'tuiTerrarium']) {
+    expect(Object.keys(data[surface]), surface).toHaveLength(32);
+    for (const state of ['idle', 'working', 'asking', 'sleeping']) expect(data[surface][`dot:${state}`], surface).toBeDefined();
+  }
+  expect(data.streamDeck['dot:working'].svg).toContain('WORKING');
+  expect(data.streamDeck['dot:asking'].svg).toContain('NEEDS YOU');
+  expect(data.streamDeck['dot:sleeping'].svg).toContain('HOST STOPPED');
+  expect(data.streamDeck['dot:idle'].svg).toContain('AWAITING ACTIVITY');
+  expect(data.sourceMarks.hermes.svg).toContain('<title>Hermes Agent</title>');
   for (const frame of Object.values(data.tui) as { lines: string[] }[]) {
     const screen = frame.lines.join('\n');
     expect(screen).not.toContain('NaN');
