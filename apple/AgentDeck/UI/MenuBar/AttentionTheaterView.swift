@@ -298,6 +298,7 @@ struct AttentionTheaterView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.black.opacity(isCursor ? 0.55 : 0), lineWidth: 1.5)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

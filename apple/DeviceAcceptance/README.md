@@ -64,7 +64,7 @@ the run's PID, temporary root and local model port. Its `/status` endpoint recor
 the actual returned tool results; check the original selected label and harmless
 command output as well as the UI assertions. Incoming test model requests and
 TUI output stay under that temporary root. Ctrl-C stops only this test process;
-a one-hour bound also stops it. The observer uses the real current daemon and
+the configured deadline also stops it. The observer uses the real current daemon and
 its normal command queue, so production pairing remains in force. An installed
 candidate and an unlocked phone are still required. The simulator-only branch
 uses the normal manual URL UI against loopback and cannot attest physical-device
@@ -77,3 +77,9 @@ or fake summary is needed. Run it separately from the cloud/relaunch test: a
 passed storage probe cannot attest account matching or notification delivery.
 
 The OpenCode fixture closes its child after three minutes by default and also cleans up on parent exit. Set `AGENTDECK_ACCEPTANCE_TIMEOUT_MS` explicitly for a longer manual run (1000–3600000 ms). Stop the fixture when acceptance ends; do not leave its approval request in the live Dashboard.
+
+Before starting the question UI test, confirm the actual daemon has the new
+session's `awaiting_option` row, original choices and live response capability.
+The fixture model's `question` stage alone does not prove observer readiness.
+The runner waits for enabled/hittable controls and uses ordinary taps; no
+label-only coordinate fallback masks a broken button hit region.

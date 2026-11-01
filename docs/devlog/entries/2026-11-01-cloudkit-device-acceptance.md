@@ -43,3 +43,15 @@ showed the backoff/retained-ID status. These are server/publisher observations;
 only the earlier user-confirmed iPhone/Watch presentation establishes visible
 notification delivery. See the current contract and acceptance state in
 [the remote observation design](docs/apple-remote-observation.md).
+
+
+The subsequent installed-daemon iOS UI run found a failed ordinary question tap;
+the same flow completed when the diagnostic pressed the label area. Both custom
+attention button labels now declare a rectangular content shape. The PoC's Close
+control also moved into a reserved header. A separate failed rerun had begun
+before the native question/channel was ready, so the runner now waits for
+enabled/hittable controls and the lab confirms the real pending row first.
+The final ordinary-tap test passed in 32.4 seconds, with OpenCode returning both
+the exact original selected label and the harmless Bash output. It used no
+coordinate fallback. This does not upgrade simulator evidence into physical
+phone or Stream Deck hardware acceptance.
