@@ -278,6 +278,8 @@
     }
     body { padding:0; background:var(--tide-50); color:var(--ink-900); font-family:var(--font-sans); }
     /* GNB-CSS:BEGIN (generated from scripts/pages-nav.css — do not edit by hand) */
+html { scroll-padding-block-start: calc(var(--pages-nav-height, 72px) + 16px); }
+html body :target { scroll-margin-block-start: 0; }
 .nav {
   position: sticky;
   top: 0;
@@ -472,6 +474,16 @@
     </label>
   </div>
 </nav>
+<script>
+// Match fragment clearance to the actual translated, wrapped navigation.
+(() => {
+  const nav = document.querySelector('[data-gnb]');
+  const measure = () => document.documentElement.style.setProperty('--pages-nav-height', `${nav.getBoundingClientRect().height}px`);
+  measure();
+  if ('ResizeObserver' in window) new ResizeObserver(measure).observe(nav);
+  else window.addEventListener('resize', measure, { passive: true });
+})();
+</script>
 <!-- GNB:END -->
   <div class="shell">
     <header class="preview-intro">

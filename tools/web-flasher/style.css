@@ -16,6 +16,8 @@
 }
 
 /* GNB-CSS:BEGIN (generated from scripts/pages-nav.css — do not edit by hand) */
+html { scroll-padding-block-start: calc(var(--pages-nav-height, 72px) + 16px); }
+html body :target { scroll-margin-block-start: 0; }
 .nav {
   position: sticky;
   top: 0;

@@ -26,3 +26,13 @@
     </label>
   </div>
 </nav>
+<script>
+// Match fragment clearance to the actual translated, wrapped navigation.
+(() => {
+  const nav = document.querySelector('[data-gnb]');
+  const measure = () => document.documentElement.style.setProperty('--pages-nav-height', `${nav.getBoundingClientRect().height}px`);
+  measure();
+  if ('ResizeObserver' in window) new ResizeObserver(measure).observe(nav);
+  else window.addEventListener('resize', measure, { passive: true });
+})();
+</script>

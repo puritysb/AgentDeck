@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
+import { runInNewContext } from 'node:vm';
 
 const ROOT = resolve(__dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -10,6 +11,28 @@ const readme = read('README.md');
 const workflow = read('.github/workflows/test-report.yml');
 
 describe('public language selection contract', () => {
+  it('recomputes fragment clearance when translated navigation wraps', () => {
+    const nav = read('scripts/pages-nav.html');
+    const script = /<script>([\s\S]*?)<\/script>/.exec(nav)![1]!;
+    let height = 68;
+    let resized: (() => void) | undefined;
+    const values = new Map<string, string>();
+    runInNewContext(script, {
+      document: {
+        querySelector: () => ({ getBoundingClientRect: () => ({ height }) }),
+        documentElement: { style: { setProperty: (key: string, value: string) => values.set(key, value) } },
+      },
+      window: { ResizeObserver: true },
+      ResizeObserver: class {
+        constructor(callback: () => void) { resized = callback; }
+        observe() {}
+      },
+    });
+    expect(values.get('--pages-nav-height')).toBe('68px');
+    height = 184; // longer labels make a third row at a narrow viewport
+    resized!();
+    expect(values.get('--pages-nav-height')).toBe('184px');
+  });
   it('offers full native names aligned with the supported catalog locales', () => {
     const nav = read('scripts/pages-nav.html');
     const catalog = JSON.parse(read('agentdeck-design-system/catalog.json'));

@@ -6,6 +6,8 @@
    drift with each page's own container or spacing scale — which is exactly what
    left the five navs a few pixels apart. Edit THIS file, then run:
    node scripts/sync-pages-nav.mjs */
+html { scroll-padding-block-start: calc(var(--pages-nav-height, 72px) + 16px); }
+html body :target { scroll-margin-block-start: 0; }
 .nav {
   position: sticky;
   top: 0;
