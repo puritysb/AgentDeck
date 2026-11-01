@@ -2240,8 +2240,6 @@ final class DaemonServer {
         // 6. Start display monitor
         loadDisplaySleepDimFromSettings()
         serialEventSnapshot.setDisplayDim(currentDimDict())
-        await displayMonitor.start()
-        try checkStartupActive()
         await displayMonitor.setOnStateChanged { [weak self] displayOn in
             Task { @DaemonActor in
                 guard let self else { return }
@@ -2269,6 +2267,8 @@ final class DaemonServer {
                 }
             }
         }
+        await displayMonitor.start()
+        try checkStartupActive()
 
         // The listener, handlers and restored timeline are usable now. Slow
         // device discovery must not pin the dashboard to a retired fallback port.
