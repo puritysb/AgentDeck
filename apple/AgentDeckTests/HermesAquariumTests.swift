@@ -323,6 +323,10 @@ final class HermesAquariumTests: XCTestCase {
         let lid = try XCTUnwrap(shell.findEntity(named: "shell-lid"))
         let seat = try XCTUnwrap(shell.findEntity(named: "shell-seat"))
         XCTAssertGreaterThan(shell.visualBounds(relativeTo: shell).extents.x, 1.5)
+        let bedding = try XCTUnwrap(shell.findEntity(named: "shell_bedding"))
+        let contact = bedding.visualBounds(relativeTo: nil)
+        XCTAssertLessThan(contact.extents.y, contact.extents.x * 0.2)
+        XCTAssertLessThan(TerrariumRules.hermesHomeSharedFloor + contact.min.y * TerrariumRules.hermesHomeSharedSize, 0)
         let seatRest = seat.transform
         var swim = HermesSwim(id: "hinge", position: .zero)
         swim.step(0, home: .zero, size: 1, activity: .working, neighbours: [], aspect: 1.6)
@@ -351,6 +355,77 @@ final class HermesAquariumTests: XCTestCase {
         XCTAssertEqual(scene.residents.count,3,"Removed sessions finish returning before their geometry is released")
         for _ in 0..<3600 { scene.step(1/60) }
         XCTAssertTrue(scene.residents.isEmpty)
+    }
+
+    @MainActor
+    func testTuckedResidentsHideLabelsAndRestoreThemOnNextDeparture() async throws {
+        let scene = AquariumResidents()
+        scene.loadHermesTemplate(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.hermesCreatures = [.init(id: "quiet", projectName: "Hermes", activity: .idle)]
+        scene.sync(state, aspect: 1.6)
+        let resident = try XCTUnwrap(scene.residents["quiet"])
+        XCTAssertFalse(resident.findEntity(named: "body")?.isEnabled == true)
+        XCTAssertFalse(resident.findEntity(named: "label")?.isEnabled == true)
+        state.hermesCreatures = [.init(id: "quiet", projectName: "Hermes", activity: .working)]
+        scene.sync(state, aspect: 1.6)
+        for _ in 0..<900 { scene.step(1/60) }
+        XCTAssertTrue(resident.findEntity(named: "label")?.isEnabled == true)
+        state.hermesCreatures = [.init(id: "quiet", projectName: "Hermes", activity: .idle)]
+        scene.sync(state, aspect: 1.6)
+        for _ in 0..<3000 { scene.step(1/60) }
+        XCTAssertFalse(resident.findEntity(named: "body")?.isEnabled == true)
+        XCTAssertFalse(resident.findEntity(named: "label")?.isEnabled == true)
+        scene.labelsVisible = false; scene.labelsVisible = true
+        XCTAssertFalse(resident.findEntity(named: "label")?.isEnabled == true)
+        scene.animate = false
+        state.hermesCreatures = [.init(id: "quiet", projectName: "Hermes", activity: .working)]
+        scene.sync(state, aspect: 1.6)
+        XCTAssertTrue(resident.findEntity(named: "label")?.isEnabled == true)
+    }
+
+    @MainActor
+    func testActivityBarsStayBesideActualBodyAndShellBerthsClearTheCentralCloud() async throws {
+        let scene = AquariumResidents()
+        scene.loadTemplates(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "3d-residents", withExtension: "usdz"))))
+        scene.loadHermesTemplate(try await Entity(contentsOf: XCTUnwrap(Bundle.main.url(forResource: "hermes-mermaid", withExtension: "usdz"))))
+        var state = TerrariumState()
+        state.hermesCreatures = [.init(id:"left",projectName:"Hermes",activity:.working),.init(id:"right",projectName:"Hermes",activity:.working)]
+        state.cloudCreatures = [.init(id:"cloud",projectName:"Codex",modelName:nil,state:.pulsing,homeX:0.5,homeY:0.5,scale:1)]
+        state.crayfishVisible = true; state.crayfishState = .routing
+        for aspect:Float in [0.6,1.6] {
+            scene.sync(state,aspect:aspect)
+            for frame in 0..<2400 {
+                scene.step(1/60)
+                guard frame > 600 && frame % 60 == 0 else { continue }
+                let cloud = try XCTUnwrap(scene.residents["cloud"]?.findEntity(named:"body")).visualBounds(relativeTo:scene.root)
+                for id in ["left","right"] {
+                    let resident = try XCTUnwrap(scene.residents[id])
+                    let body = try XCTUnwrap(resident.findEntity(named:"body"))
+                    let bounds = body.visualBounds(relativeTo:scene.root)
+                    XCTAssertTrue(bounds.max.x < cloud.min.x || bounds.min.x > cloud.max.x || bounds.max.y < cloud.min.y || bounds.min.y > cloud.max.y || bounds.max.z < cloud.min.z || bounds.min.z > cloud.max.z, "\(id) must clear the cloud in portrait and landscape")
+                    let bar = try XCTUnwrap(resident.findEntity(named:"activity")?.children.first)
+                    let localBody = body.visualBounds(relativeTo:resident)
+                    XCTAssertLessThan(bar.position(relativeTo:resident).x-localBody.max.x,0.25)
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testShellDoorwayKeepsGroundedNeighboursInSeparateSideLanes() {
+        for aspect:Float in [0.6,1.6,2.4] {
+            let one = AquariumResidents.shellNeighbour(index:0,count:1,aspect:aspect)
+            let left = AquariumResidents.shellNeighbour(index:0,count:2,aspect:aspect)
+            let right = AquariumResidents.shellNeighbour(index:1,count:2,aspect:aspect)
+            XCTAssertGreaterThan(one.x,1.7)
+            XCTAssertLessThan(left.x,-1.7)
+            XCTAssertEqual(right.x,-left.x)
+            // Room for the clam, the complete support stone and a working step.
+            let shellReach:Float = 1.27 * TerrariumRules.hermesHomeSharedSize
+            let stoneReach:Float = 1.18 * TerrariumRules.hermesHomeNeighbourSize * TerrariumRules.hermesHomeNeighbourRockWidth
+            XCTAssertGreaterThan(abs(one.x),shellReach+stoneReach)
+        }
     }
 
     func testSharedEntranceKeepsOneLeaseAcrossSimultaneousDirectionChanges() {

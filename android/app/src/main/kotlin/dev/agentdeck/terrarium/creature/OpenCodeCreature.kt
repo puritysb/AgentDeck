@@ -236,6 +236,8 @@ class OpenCodeCreature(
         }
         val scaledSize = bodySize * pulseScale
 
+        if (isHermes() && !hermesMotion.visible) return
+
         // Draw the canonical vector mark for this agent.
         if (!isHermes() || hermesMotion.visible) drawBrandMark(scope, centerX, centerY, scaledSize,
             bodyAlpha * if (isHermes()) hermesMotion.emergence else 1f)

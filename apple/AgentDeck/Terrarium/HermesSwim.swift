@@ -255,6 +255,10 @@ struct HermesSwim {
         }
         let halfWidth = min(3.65, max(0.9, aspect * 3.0)) - size * 0.35
         destination.x = max(-halfWidth, min(halfWidth, destination.x))
+        if let berth, abs(berth.x) > 0.001 {
+            let inward = min(halfWidth, max(0, abs(berth.x) - size * TerrariumRules.hermesHomeBerthInwardTravel))
+            destination.x = berth.x < 0 ? min(-inward, destination.x) : max(inward, destination.x)
+        }
         destination.y = max(home.y, min(4.65, destination.y))
         destination.z = max(-1.0, min(berth == nil ? 1.7 : TerrariumRules.hermesHomeFrontLimit, destination.z))
         // Idle is a planted resting pose, not an endless swimming loop. Gaze,
