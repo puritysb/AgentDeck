@@ -7,6 +7,8 @@
 enum TerrariumRules {
     static let pixooUsageRowHeight: Int = 7
     static let pixooUsageCreatureMargin: Int = 11
+    static let hermesShellClosed: [String] = ["..###..",".#...#.","#######",".#####."]
+    static let hermesShellOpen: [String] = [".#####.","#..#..#","#.###.#","#..#..#","#######",".#####."]
     static let nativeResidentLimit: Int = 8
     static let ciCompanionOrbitRadiusX: Float = 0.08
     static let ciCompanionOrbitRadiusY: Float = 0.07
@@ -26,6 +28,19 @@ enum TerrariumRules {
     static let ciCompanionSeedOffset: UInt32 = 2166136261
     static let ciCompanionSeedPrime: UInt32 = 16777619
     static let ciCompanionSeedModulus: UInt32 = 10000
+    static let hermesHomeOpenRate: Float = 0.9
+    static let hermesHomeCloseRate: Float = 0.7
+    static let hermesHomeEmergeRate: Float = 0.65
+    static let hermesHomeLidClearance: Float = 0.98
+    static let hermesHomeDepartureStart: Float = 0.6
+    static let hermesHomeLidAngle: Float = 1.22
+    static let hermesHomeTuckDepth: Float = 0.65
+    static let hermesHomeSettleDistance: Float = 0.04
+    static let hermesHomeSettleSpeed: Float = 0.04
+    static let hermesHomeTravelRate: Float = 0.34
+    static let hermesHomeSwimLift: Float = 0.85
+    static let hermesHomeSwimRadius: Float = 0.85
+    static let hermesHomeWorkRadius: Float = 0.35
     static let nativeActivityIdleRate: Float = 0.65
     static let nativeActivityWorkRate: Float = 2.5
     static let nativeActivityGroundTravel: Float = 0.32

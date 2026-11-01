@@ -27,7 +27,7 @@ import { paintOfficialFeatures } from './official-features.js';
 import { HERMES_MERMAID_W, HERMES_MERMAID_H, HERMES_MERMAID_LAYERS, HERMES_MERMAID_COLORS } from './hermes-mermaid.generated.js';
 import type { Camera } from './pixoo-camera.js';
 import { worldToScreen, isVisible } from './pixoo-camera.js';
-import { State, STATE_COLORS } from '@agentdeck/shared';
+import { TERRARIUM_RULES, State, STATE_COLORS } from '@agentdeck/shared';
 import {
   OFFICIAL_DOT_GLYPHS,
   OFFICIAL_DOT_GLYPH_SIZE,
@@ -1669,5 +1669,16 @@ export function drawGaugeBar(
     for (let dx = 0; dx < width; dx++) {
       setPixel(buf, x + dx, y + dy, dx < filled ? color : bgColor);
     }
+  }
+}
+
+/** Static shell state at a fixed home. No invented activity or extra frame clock. */
+export function drawHermesShell(buf: Uint8Array, worldX: number, worldY: number, active: boolean, camera: Camera, scale: number): void {
+  const [x,y] = worldToScreen(worldX,worldY,camera);
+  const rows = active ? TERRARIUM_RULES.hermesShellPixels.open : TERRARIUM_RULES.hermesShellPixels.closed;
+  const pixel = Math.max(1, Math.round(camera.zoom * scale));
+  for (let j=0;j<rows.length;j++) for (let i=0;i<rows[j].length;i++) if(rows[j][i]==='#') {
+    for(let dy=0;dy<pixel;dy++) for(let dx=0;dx<pixel;dx++)
+      setPixel(buf,Math.round(x)+(i-3)*pixel+dx,Math.round(y)+(j-rows.length+1)*pixel+dy,COLORS.white);
   }
 }

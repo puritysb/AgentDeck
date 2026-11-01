@@ -613,6 +613,15 @@ final class PixooRenderer {
                 case .hermes: .hermes
                 case .octopus: .claudeCode
                 }
+                if creature.creatureType == .hermes {
+                    let peers = creatureOrder.compactMap { creatureInstances[$0] }.filter { $0.creatureType == .hermes }
+                    let index = peers.firstIndex { $0.sessionId == sessionId } ?? 0
+                    let slots = pixooSlots(for: .hermes, count: peers.count)
+                    let slot = slots[min(index, slots.count-1)]
+                    let home = stateY(.idle, kind: .hermes, baseY: Double(slot.y), hudProviderCount: hudCount)
+                    drawHermesShell(&output, worldX: creature.worldX, worldY: home+0.08*creature.sizeScale,
+                        active: creature.state != .idle, camera: camera, sizeScale: creature.sizeScale)
+                }
                 drawOfficialDotGlyph(&output, glyph: glyph, worldX: creature.worldX, worldY: creature.worldY, state: spriteState, animFrame: animFrame + creature.phaseOffset, camera: camera, sessionToneIndex: sessionToneIndex, sizeScale: creature.sizeScale)
             }
 
@@ -1585,6 +1594,20 @@ final class PixooRenderer {
 
     /// Canonical dot-matrix mark generated from design/brand/*.svg.
     /// Geometry is shared with the Node renderer; state only changes motion/color.
+    private func drawHermesShell(_ buf: inout [UInt8], worldX: Double, worldY: Double, active: Bool, camera: Camera, sizeScale: Double) {
+        let (scx,scy) = worldToScreen(worldX, worldY, camera)
+        let rows = active ? TerrariumRules.hermesShellOpen : TerrariumRules.hermesShellClosed
+        let pixel = max(1, Int(round(camera.zoom * sizeScale)))
+        for (j,row) in rows.enumerated() {
+            for (i,char) in row.enumerated() where char == "#" {
+                for dy in 0..<pixel { for dx in 0..<pixel {
+                    setPixel(&buf, Int(round(scx))+(i-3)*pixel+dx,
+                        Int(round(scy))+(j-rows.count+1)*pixel+dy, Self.colors.white)
+                } }
+            }
+        }
+    }
+
     func drawOfficialDotGlyph(
         _ buf: inout [UInt8],
         glyph: OfficialDotGlyph,

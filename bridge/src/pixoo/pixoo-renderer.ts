@@ -41,7 +41,8 @@ import {
 import { drawTextCentered } from './pixoo-font.js';
 import {
   type RGB, COLORS, setPixel, blendPixel, glowPixel, fillRect, lerpColor,
-  drawOfficialDotGlyph, drawTetra,
+  drawOfficialDotGlyph,
+  drawHermesShell, drawTetra,
   drawText,
   getOctopusPaletteForSession, getJellyfishPaletteForSession, getOpenCodePaletteForSession,
   getAntigravityPaletteForSession,
@@ -1621,6 +1622,12 @@ export function renderFrame(
           : c.creatureType === 'kiro' ? 'kiro'
           : c.creatureType === 'hermes' ? 'hermes'
           : 'claudeCode';
+    if (c.creatureType === 'hermes') {
+      const peers = [...creatureInstances.values()].filter(p => p.creatureType === 'hermes');
+      const slot = slotAt(slotsForType('hermes', peers.length), peers.indexOf(c));
+      const home = stateYForType('idle', 'hermes', slot.y, getUsageProviderCount(usageEvent));
+      drawHermesShell(outputBuf, c.worldX, home + 0.08 * c.sizeScale, c.state !== 'idle', camera, c.sizeScale);
+    }
     drawOfficialDotGlyph(
       outputBuf,
       glyph,

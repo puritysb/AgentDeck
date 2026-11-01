@@ -94,6 +94,23 @@ class AquariumResidentsTest {
         assertEquals(layoutHermesCreatures(1).single(), slot)
     }
 
+    @Test fun `Hermes keeps its skin and shell lid hinge in the shipped assets`() {
+        val assets=RuntimeEnvironment.getApplication().assets
+        fun gltf(name: String): JSONObject {
+            val bytes=assets.open("residents/$name.glb").use { it.readBytes() }
+            val length=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).getInt(12)
+            return JSONObject(String(bytes,20,length,Charsets.UTF_8))
+        }
+        val mermaid=gltf("hermes")
+        assertEquals(1,mermaid.getJSONArray("skins").length())
+        val nodes=mermaid.getJSONArray("nodes")
+        val names=(0 until nodes.length()).map { nodes.getJSONObject(it).optString("name") }
+        for(name in listOf("resident_hermes","tail_base","tail_mid","tail_tip","fin_left","fin_right")) assertTrue(name,names.contains(name))
+        val shell=gltf("hermes-shell").getJSONArray("nodes")
+        val lid=(0 until shell.length()).map { shell.getJSONObject(it) }.single { it.optString("name")=="shell_lid" }
+        assertEquals("The hinge origin must survive export",-.4,lid.getJSONArray("translation").getDouble(2),.0001)
+    }
+
     @Test fun `crowds remain bounded but focus and waiting sessions stay reachable`() {
         val idle = (0..47).map { AquariumResident("s$it", "codex", "Same project", OctopusVisualState.FLOATING) }
         val waiting = idle[20].copy(state = OctopusVisualState.ASKING)

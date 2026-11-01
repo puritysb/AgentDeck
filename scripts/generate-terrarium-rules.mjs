@@ -41,8 +41,11 @@ export function emitSwift(rules) {
 enum TerrariumRules {
     static let pixooUsageRowHeight: Int = ${rules.pixooUsageRowHeight}
     static let pixooUsageCreatureMargin: Int = ${rules.pixooUsageCreatureMargin}
+    static let hermesShellClosed: [String] = ${JSON.stringify(rules.hermesShellPixels.closed)}
+    static let hermesShellOpen: [String] = ${JSON.stringify(rules.hermesShellPixels.open)}
     static let nativeResidentLimit: Int = ${rules.nativeResidentLimit}
 ${Object.entries(rules.ciCompanion).map(([key, value]) => `    static let ciCompanion${key[0].toUpperCase() + key.slice(1)}: ${key.startsWith('seed') ? 'UInt32' : 'Float'} = ${key.startsWith('seed') ? value : f(value)}`).join('\n')}
+${Object.entries(rules.hermesHome).map(([key, value]) => `    static let hermesHome${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
 ${Object.entries(rules.nativeActivity).map(([key, value]) => `    static let nativeActivity${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
     static let nativeLabelDenseResidentCount: Int = ${rules.nativeLabel.denseResidentCount}
 ${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    static let nativeLabel${key[0].toUpperCase() + key.slice(1)}: Float = ${f(value)}`).join('\n')}
@@ -83,6 +86,7 @@ package dev.agentdeck.terrarium
 object TerrariumRules {
     const val NATIVE_RESIDENT_LIMIT = ${rules.nativeResidentLimit}
 ${Object.entries(rules.ciCompanion).map(([key, value]) => `    const val CI_COMPANION_${key.replace(/[A-Z]/g, m => '_' + m).toUpperCase()} = ${key.startsWith('seed') ? value + 'L' : f(value) + 'f'}`).join('\n')}
+${Object.entries(rules.hermesHome).map(([key, value]) => `    const val HERMES_HOME_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
 ${Object.entries(rules.nativeActivity).map(([key, value]) => `    const val NATIVE_ACTIVITY_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
     const val NATIVE_LABEL_DENSE_RESIDENT_COUNT = ${rules.nativeLabel.denseResidentCount}
 ${Object.entries(rules.nativeLabel).filter(([key]) => key !== 'denseResidentCount').map(([key, value]) => `    const val NATIVE_LABEL_${key.replace(/[A-Z]/g, c => '_' + c).toUpperCase()} = ${f(value)}f`).join('\n')}
@@ -122,6 +126,7 @@ export function emitCpp(rules) {
 // C++11-safe (util/-grade): plain constexpr values; standard integer types only.
 namespace TerrariumRules {
 ${Object.entries(rules.ciCompanion).map(([key, value]) => `constexpr ${key.startsWith('seed') ? 'uint32_t' : 'float'} CiCompanion${key[0].toUpperCase() + key.slice(1)} = ${key.startsWith('seed') ? value + 'u' : f(value) + 'f'};`).join('\n')}
+${Object.entries(rules.hermesHome).map(([key, value]) => `constexpr float HermesHome${key[0].toUpperCase() + key.slice(1)} = ${f(value)}f;`).join('\n')}
 constexpr float CrayfishHomeX = ${f(c.homeX)}f;
 constexpr float CrayfishSittingY = ${f(c.sittingY)}f;
 constexpr float CrayfishWidthFraction = ${f(c.widthFrac)}f;

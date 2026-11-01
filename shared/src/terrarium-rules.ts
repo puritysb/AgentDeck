@@ -52,6 +52,18 @@ export const TERRARIUM_RULES = {
   pixooUsageCreatureMargin: 11,
   /** Native 3D foreground budget; the full roster remains independently accessible. */
   nativeResidentLimit: 8,
+  /** Readable scallop silhouette for 64px matrices; compact brand tiles keep their existing status cues. */
+  hermesShellPixels: {
+    closed: ['..###..', '.#...#.', '#######', '.#####.'],
+    open: ['.#####.', '#..#..#', '#.###.#', '#..#..#', '#######', '.#####.'],
+  },
+  /** Open before emergence; return and tuck before closing, in simulation seconds. */
+  hermesHome: {
+    openRate: 0.9, closeRate: 0.7, emergeRate: 0.65, lidClearance: 0.98,
+    departureStart: 0.6, lidAngle: 1.22, tuckDepth: 0.65,
+    settleDistance: 0.04, settleSpeed: 0.04, travelRate: 0.34,
+    swimLift: 0.85, swimRadius: 0.85, workRadius: 0.35,
+  },
   /** Per-session CI companion; no fixed territory or resident identity. */
   ciCompanion: {
     orbitRadiusX: 0.080, orbitRadiusY: 0.070, sizeFrac: 0.050, edgeInset: 0.035,

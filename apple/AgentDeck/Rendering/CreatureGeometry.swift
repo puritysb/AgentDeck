@@ -15,7 +15,7 @@
 // don't change path geometry and only need a pin bump.
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/CreatureGeometry.kt d2814a37171c40b66ea48baeae8371257c70bb8f
 // SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/CloudCreature.kt ccf91203a69099cabb8b8968052c253201377dfe
-// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt 3eb291cf8a894b1c4dbacf7b5ef2e711d8399e37
+// SYNC-HASH android/app/src/main/kotlin/dev/agentdeck/terrarium/creature/OpenCodeCreature.kt d7a5bfa0931f444848528bf7283e37c6b7dd5af5
 //
 // Faithful scope: the Kotlin SSOT defines path geometry for the agent marks —
 //   • Octopus / Claude Code robot        (claudecode.svg,   viewBox 24)
@@ -279,6 +279,7 @@ struct CanonicalCreatureView: View {
     /// Hermes in a terrarium preview is the 2D mermaid the boards draw: the
     /// generated kelp tail under the official Nous girl head, whose crop fades
     /// into it (scripts/generate-hermes-mermaid-2d.mjs) — not a floating head.
+    // Habitat motion is owned by HermesCreature; compact previews keep the canonical silhouette.
     private static let hermesTail = CrayfishCreature.parseSvgPath(HermesMermaid2D.tail)
     private static let hermesRim = CrayfishCreature.parseSvgPath(HermesMermaid2D.rim)
     private static let hermesFluke = CrayfishCreature.parseSvgPath(HermesMermaid2D.fluke)

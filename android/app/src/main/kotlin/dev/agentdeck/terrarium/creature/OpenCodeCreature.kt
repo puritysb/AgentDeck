@@ -17,6 +17,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.PathParser
+import dev.agentdeck.terrarium.HermesHomeMotion
+import dev.agentdeck.terrarium.HermesShell
+import androidx.compose.ui.graphics.toArgb
 import dev.agentdeck.terrarium.CreatureGeometry
 import dev.agentdeck.terrarium.HermesMermaid2D
 import dev.agentdeck.ui.theme.DesignTokens
@@ -55,6 +58,9 @@ class OpenCodeCreature(
     private var nameTag: String? by mutableStateOf(displayName)
     private var showNameTag by mutableStateOf(displayName != null)
     private var renderedAgentType by mutableStateOf(agentType)
+
+    private val hermesMotion = HermesHomeMotion(phaseOffset)
+    private val shellPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // Swimming state
     private var homeX = centerXFraction
@@ -115,6 +121,13 @@ class OpenCodeCreature(
             transitionProgress = (transitionProgress + dt * 3f).coerceAtMost(1f)
         }
 
+        if (isHermes()) {
+            val restY = (homeY + .18f).coerceIn(.59f,.69f)
+            hermesMotion.step(dt, visualState == OctopusVisualState.WORKING || visualState == OctopusVisualState.ASKING,
+                visualState == OctopusVisualState.ASKING, (homeX-.5f)*8f, (.82f-restY)*7f, 0f, scaleFactor*.65f, 1.6f)
+            currentX=.5f+hermesMotion.x/8f; currentY=.82f-hermesMotion.y/7f
+            return
+        }
         when (visualState) {
             OctopusVisualState.SLEEPING -> {
                 val myDeepY = STANDING_Y_DEEP + standingJitter * 0.5f
@@ -223,7 +236,13 @@ class OpenCodeCreature(
         val scaledSize = bodySize * pulseScale
 
         // Draw the canonical vector mark for this agent.
-        drawBrandMark(scope, centerX, centerY, scaledSize, bodyAlpha)
+        if (isHermes()) {
+            val restY = (homeY + .18f).coerceIn(.59f,.69f)
+            HermesShell.draw(scope.drawContext.canvas.nativeCanvas, shellPaint, homeX*w, restY*h+bodySize*.4f,
+                bodySize*1.15f, hermesMotion.shellOpen, DesignTokens.Tide.s100.toArgb(), DesignTokens.Tide.s300.toArgb())
+        }
+        if (!isHermes() || hermesMotion.visible) drawBrandMark(scope, centerX, centerY, scaledSize,
+            bodyAlpha * if (isHermes()) hermesMotion.emergence else 1f)
 
         // ASKING: speech bubble with "?"
         if (visualState == OctopusVisualState.ASKING) {

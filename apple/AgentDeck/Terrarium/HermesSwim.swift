@@ -184,14 +184,14 @@ struct HermesSwim {
         }
         let active = activity == .working || activity == .waiting
         if active {
-            shellOpen = min(1, shellOpen + dt * 0.9)
+            shellOpen = min(1, shellOpen + dt * TerrariumRules.hermesHomeOpenRate)
             // The lid clears her head before the mermaid leaves the pearl basin.
-            if shellOpen >= 0.98 { emergence = min(1, emergence + dt * 0.65) }
-        } else if simd_distance(position, home) < max(0.01, size * 0.04) && simd_length(velocity) < 0.04 {
-            emergence = max(0, emergence - dt * 0.65)
-            if emergence == 0 { shellOpen = max(0, shellOpen - dt * 0.7) }
+            if shellOpen >= TerrariumRules.hermesHomeLidClearance { emergence = min(1, emergence + dt * TerrariumRules.hermesHomeEmergeRate) }
+        } else if simd_distance(position, home) < max(0.01, size * TerrariumRules.hermesHomeSettleDistance) && simd_length(velocity) < TerrariumRules.hermesHomeSettleSpeed {
+            emergence = max(0, emergence - dt * TerrariumRules.hermesHomeEmergeRate)
+            if emergence == 0 { shellOpen = max(0, shellOpen - dt * TerrariumRules.hermesHomeCloseRate) }
         }
-        let departure = max(0, min(1, (emergence - 0.6) / 0.4))
+        let departure = max(0, min(1, (emergence - TerrariumRules.hermesHomeDepartureStart) / (1 - TerrariumRules.hermesHomeDepartureStart)))
         let swimBlend = departure * departure * (3 - 2 * departure)
         elapsed += dt
         let blend = 1 - exp(-dt * 3)
@@ -205,11 +205,11 @@ struct HermesSwim {
 
         // A slow three-dimensional figure eight, tightly bounded around the
         // assigned slot so crowded/portrait tanks retain their label layout.
-        let t = elapsed * 0.34 + offset
+        let t = elapsed * TerrariumRules.hermesHomeTravelRate + offset
         let resting = activity == .idle || activity == .error
-        let radius = size * (0.85 + effort * 0.35) * (1 - attention * 0.85)
+        let radius = size * (TerrariumRules.hermesHomeSwimRadius + effort * TerrariumRules.hermesHomeWorkRadius) * (1 - attention * 0.85)
         var destination = home + SIMD3<Float>(sin(t) * radius,
-            size * 0.85 + sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // above her shell
+            size * TerrariumRules.hermesHomeSwimLift + sin(t * 1.37) * radius * 0.16 + sin(elapsed * 1.7 + offset) * size * 0.07   // above her shell
                 + sin(elapsed * 3.4) * size * 0.05 * attention,                        // waiting: an eager bob
             sin(t * 0.83) * radius * 0.70)
         var nearest: SIMD3<Float>?

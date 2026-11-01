@@ -1,0 +1,60 @@
+package dev.agentdeck.terrarium
+
+import kotlin.math.*
+
+/** Continuous per-session motion. Clock suspension freezes motion; reduced motion resolves the live pose. */
+internal class HermesHomeMotion(private val offset: Float = 0f) {
+    var shellOpen = 0f; private set
+    var emergence = 0f; private set
+    var x = 0f; private set
+    var y = 0f; private set
+    var z = 0f; private set
+    var vx = 0f; private set
+    var vy = 0f; private set
+    var vz = 0f; private set
+    var elapsed = 0f; private set
+    private var initialized = false
+    val visible get() = emergence > .02f
+    val yaw get() = (atan2(vx, .45f + abs(vz)) * .8f).coerceIn(-.55f, .55f)
+    val roll get() = (-vx * 1.8f).coerceIn(-.85f, .85f)
+    val pitch get() = (-vz * .6f - vy * .4f).coerceIn(-.3f, .3f)
+
+    fun step(delta: Float, active: Boolean, waiting: Boolean, homeX: Float, homeY: Float,
+             homeZ: Float, size: Float, aspect: Float, animate: Boolean = true) {
+        if (!initialized) { x = homeX; y = homeY; z = homeZ; initialized = true }
+        if (!animate) {
+            shellOpen = if (active) 1f else 0f; emergence = shellOpen
+            x = homeX; y = homeY + if (active) size * TerrariumRules.HERMES_HOME_SWIM_LIFT else 0f
+            z = homeZ; vx = 0f; vy = 0f; vz = 0f
+            return
+        }
+        val dt = if (delta.isFinite()) delta.coerceIn(0f, .05f) else 0f
+        if (dt == 0f) return
+        elapsed += dt
+        val distance = sqrt((x-homeX).pow(2)+(y-homeY).pow(2)+(z-homeZ).pow(2))
+        val speed = sqrt(vx*vx+vy*vy+vz*vz)
+        if (active) {
+            shellOpen = min(1f, shellOpen + dt * TerrariumRules.HERMES_HOME_OPEN_RATE)
+            if (shellOpen >= TerrariumRules.HERMES_HOME_LID_CLEARANCE)
+                emergence = min(1f, emergence + dt * TerrariumRules.HERMES_HOME_EMERGE_RATE)
+        } else if (distance < max(.01f, size * TerrariumRules.HERMES_HOME_SETTLE_DISTANCE) && speed < TerrariumRules.HERMES_HOME_SETTLE_SPEED) {
+            emergence = max(0f, emergence - dt * TerrariumRules.HERMES_HOME_EMERGE_RATE)
+            if (emergence == 0f) shellOpen = max(0f, shellOpen - dt * TerrariumRules.HERMES_HOME_CLOSE_RATE)
+        }
+        val departure = ((emergence-TerrariumRules.HERMES_HOME_DEPARTURE_START)/(1f-TerrariumRules.HERMES_HOME_DEPARTURE_START)).coerceIn(0f,1f)
+        val swim = if (active) departure*departure*(3f-2f*departure) else 0f
+        val t = elapsed*TerrariumRules.HERMES_HOME_TRAVEL_RATE+offset
+        val radius = size*(TerrariumRules.HERMES_HOME_SWIM_RADIUS+if (waiting) 0f else TerrariumRules.HERMES_HOME_WORK_RADIUS)*(if(waiting) .15f else 1f)
+        val limit = min(3.65f,max(.9f,aspect*3f))-size*.35f
+        val tx = (homeX+sin(t)*radius*swim).coerceIn(-limit,limit)
+        val ty = homeY+(size*TerrariumRules.HERMES_HOME_SWIM_LIFT+sin(t*1.37f)*radius*.16f+sin(elapsed*1.7f+offset)*size*.07f)*swim
+        val tz = homeZ+sin(t*.83f)*radius*.7f*swim
+        val blend = 1f-exp(-dt*2.5f)
+        vx += ((tx-x)*1.5f-vx)*blend; vy += ((ty-y)*1.5f-vy)*blend; vz += ((tz-z)*1.5f-vz)*blend
+        val nextSpeed = sqrt(vx*vx+vy*vy+vz*vz)
+        val maximum = max(.2f,size*(if(waiting) .5f else .8f))
+        if (nextSpeed > maximum) { vx *= maximum/nextSpeed; vy *= maximum/nextSpeed; vz *= maximum/nextSpeed }
+        x += vx*dt; y += vy*dt; z += vz*dt
+        if (!active && distance < .002f && speed < .005f) { x=homeX; y=homeY; z=homeZ; vx=0f; vy=0f; vz=0f }
+    }
+}

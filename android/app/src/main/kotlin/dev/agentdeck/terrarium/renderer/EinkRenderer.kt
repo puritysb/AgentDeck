@@ -1668,6 +1668,10 @@ private val hermesFlukePath by lazy { androidx.core.graphics.PathParser.createPa
 internal fun drawEinkHermesMermaid(canvas: android.graphics.Canvas, paint: Paint, state: OctopusVisualState, pose: EinkResidentPose? = null) {
     val asleep = state == OctopusVisualState.SLEEPING
     val headColor = paint.color
+    // Static state cue only: no timer or extra e-paper refresh. Keep the official face visible.
+    val active = state == OctopusVisualState.WORKING || state == OctopusVisualState.ASKING
+    dev.agentdeck.terrarium.HermesShell.draw(canvas, paint, 12f, 34f, 25f, if(active) 1f else 0f,
+        einkPick(GRAY_HERMES_SLEEP, COLOR_HERMES_TAIL_SLEEP), headColor)
     canvas.save()
     // Nous girl's source face looks left. Turn the complete figure so her tail
     // trails the same way; the name remains outside this body transform.
