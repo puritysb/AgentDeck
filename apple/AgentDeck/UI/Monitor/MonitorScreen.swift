@@ -546,6 +546,12 @@ struct MonitorScreen: View {
     /// that relay landing first. The question echo lets the daemon drop a press
     /// that answers a question the prompt has already moved past.
     private func respondToAwaiting(_ index: Int, session: SessionInfo) {
+        if let requestId = session.requestId, requestId.hasPrefix("ocperm:") {
+            if let choice = ObservedAgentRules.openCodePermissionChoices.first(where: { $0.index == index }) {
+                stateHolder.sendCommand(.permissionDecision(requestId: requestId, decision: choice.decision))
+            }
+            return
+        }
         stateHolder.sendCommand(.focusSession(sessionId: session.id))
         stateHolder.sendCommand(.selectOption(
             index: index, sessionId: session.id, question: questionFor(session)))

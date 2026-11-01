@@ -20,7 +20,7 @@
  * never two creatures.
  */
 
-import { OPENCODE_PENDING_REQUEST_LIMIT, OPENCODE_QUESTION_RULES, openCodeQuestionPrompt, type OpenCodeQuestionPrompt, type PromptOption } from '@agentdeck/shared';
+import { OPENCODE_PERMISSION_CHOICES, OPENCODE_PENDING_REQUEST_LIMIT, OPENCODE_QUESTION_RULES, openCodeQuestionPrompt, type OpenCodeQuestionPrompt, type PromptOption } from '@agentdeck/shared';
 import { askEchoMatches } from './ask-gate.js';
 import type { ObservedSession } from './passive-observer.js';
 import { resolveProjectNameFromCwdCached } from './utils/project-name.js';
@@ -140,7 +140,7 @@ export class HookOpenCodeSessions {
           const old = waits.get(key);
           waits.set(key, { kind, id, prompt: kind === 'question' ? openCodeQuestionPrompt(payload.questions) : undefined,
             answerable: payload.questionAnswerable === true, sending: payload.replyFailed ? false : old?.sending,
-            replyError: payload.replyFailed || old?.replyError, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
+            replyError: payload.replyFailed || old?.replyError, title: (payload.title ?? '').replace(/\s+/g, ' ').trim().slice(0, OPENCODE_QUESTION_RULES.maxText) || (kind === 'permission' ? 'Permission requested' : 'Answer in OpenCode') });
         }
         this.waits.set(sessionId, waits);
         break;
@@ -165,11 +165,11 @@ export class HookOpenCodeSessions {
     if (pending) {
       session.state = pending.kind === 'permission' ? 'awaiting_permission' : 'awaiting_option';
       session.question = pending.prompt?.question ?? pending.title;
-      session.options = pending.prompt?.options;
+      session.options = pending.kind === 'permission' ? OPENCODE_PERMISSION_CHOICES.map(({ index, label }) => ({ index, label })) : pending.prompt?.options;
       session.questionDetail = pending.sending ? OPENCODE_QUESTION_RULES.sendingText
         : pending.replyError ? OPENCODE_QUESTION_RULES.unconfirmedText : undefined;
-      session.liveAnswerable = pending.kind === 'question' && pending.answerable === true
-        && pending.prompt?.replyable === true && pending.sending !== true;
+      session.liveAnswerable = pending.kind === 'permission' || (pending.answerable === true
+        && pending.prompt?.replyable === true && pending.sending !== true);
       session.requestId = pending.kind === 'permission' ? openCodePermissionRequestId(sessionId, pending.id) : undefined;
     }
     this.sessions.set(sessionId, session);
@@ -177,6 +177,24 @@ export class HookOpenCodeSessions {
     const changed = JSON.stringify(session) !== before || !existing;
     if (changed) this.onChanged?.();
     return changed;
+  }
+
+  answerPermission(sessionId: string, requestId: string, decision: unknown,
+    enqueue: (permissionId: string, decision: 'allow' | 'deny') => boolean): boolean {
+    const wait = this.waits.get(sessionId)?.values().next().value;
+    if (!wait || wait.kind !== 'permission' || requestId !== openCodePermissionRequestId(sessionId, wait.id)
+      || (decision !== 'allow' && decision !== 'deny')) return false;
+    return enqueue(wait.id, decision);
+  }
+
+  answerOption(sessionId: string, index: unknown, echo: unknown,
+    question: (questionId: string, answers: string[][]) => boolean,
+    permission: (permissionId: string, decision: 'allow' | 'deny') => boolean): boolean {
+    const wait = this.waits.get(sessionId)?.values().next().value;
+    if (wait?.kind !== 'permission') return this.answerQuestion(sessionId, index, echo, question);
+    const choice = OPENCODE_PERMISSION_CHOICES.find(c => c.index === index);
+    if (!choice || typeof echo !== 'string' || !askEchoMatches(echo, wait.title)) return false;
+    return this.answerPermission(sessionId, openCodePermissionRequestId(sessionId, wait.id), choice.decision, permission);
   }
 
   answerQuestion(sessionId: string, index: unknown, echo: unknown,

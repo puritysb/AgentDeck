@@ -1,3 +1,4 @@
+import { OPENCODE_PERMISSION_CHOICES } from '@agentdeck/shared';
 import { dotDeckReservedKeys, type DotDeckSnapshot } from '@agentdeck/shared';
 import { claudeWeeklyReadings, nextClaudeWeeklyMode, type ClaudeWeeklyMode } from '@agentdeck/shared';
 import { selectedLunaReserve, selectedCodexCredits } from '@agentdeck/shared';
@@ -1268,6 +1269,12 @@ export class SessionSlotManager {
     const isOpenCodeObserved = session?.agentType === 'opencode';
     if (isAwaiting) {
       if (session?.requestId) {
+        if (isOpenCodeObserved) {
+          if (session.liveAnswerable !== true) return this.awaitingStatusCard(session, idx, false);
+          const choice = OPENCODE_PERMISSION_CHOICES.find(c => c.index === idx);
+          if (choice) return { type: 'option', option: { label: choice.label, index: choice.index }, optionIndex: choice.index };
+          return this.awaitingStatusCard(session, idx - OPENCODE_PERMISSION_CHOICES.length, false);
+        }
         // Device-native gate semantics (permit/deny THIS tool call) — the
         // daemon only surfaces requestIds for genuine prompts (held
         // PreToolUse gate / OpenCode permission.asked / held Codex

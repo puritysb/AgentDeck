@@ -79,7 +79,7 @@ import {
   refreshSessionSlots,
 } from './actions/session-slot-button.js';
 import { isDisplayDimmed, setDisplayDimmed, dimActionIfNeeded } from './display-dim.js';
-import { FocusedDetailState, type FocusedDetailSnapshot } from './focused-detail-state.js';
+import { FocusedDetailState, permissionCommandForDetail, type FocusedDetailSnapshot } from './focused-detail-state.js';
 import { voiceCommandForAction, type SessionSetting } from '@agentdeck/shared';
 
 let runtimeIdentity: ReturnType<typeof captureRuntimeIdentity> | undefined;
@@ -123,6 +123,12 @@ function primeDetailViewFromSession(session?: SessionInfo): void {
 
 function sendFocusedSessionCommand(command: { type: string; [key: string]: unknown }): void {
   const focused = getFocusedSession();
+  const detail = focusedDetailState.snapshot;
+  if (command.type === 'select_option' && (focused?.requestId?.startsWith('ocperm:') || detail?.requestId?.startsWith('ocperm:'))) {
+    const decision = permissionCommandForDetail(focused, detail, command.index, command.question);
+    if (decision) connMgr.send(decision as any);
+    return;
+  }
   // Wrap in session_command for any session the daemon can route: managed
   // bridges (port > 0) get PTY delivery; observed sessions get the daemon's
   // hook-steering primitives (soft STOP / turn-end queue / gate resolution).

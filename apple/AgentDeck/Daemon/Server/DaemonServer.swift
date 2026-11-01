@@ -5250,7 +5250,10 @@ final class DaemonServer {
                 if let sep = rest.firstIndex(of: ":") {
                     let rawSid = String(rest[rest.startIndex..<sep])
                     let permId = String(rest[rest.index(after: sep)...])
-                    guard !rawSid.isEmpty, !permId.isEmpty else { return }
+                    let rowId = Self.openCodeSessionPrefix + rawSid
+                    guard !rawSid.isEmpty, !permId.isEmpty,
+                          pushedSessionsById[rowId]?.requestId == requestId,
+                          canAnswerOpenCodeQuestion(sessionId: rowId) else { return }
                     Task {
                         let queued = await OpenCodeCommandQueue.shared.enqueue(
                             sessionId: rawSid,
@@ -5348,13 +5351,19 @@ final class DaemonServer {
             // (requestId "ocperm:<rawSid>:<permissionID>" on the row).
             if innerType == "respond" || innerType == "select_option",
                let rid = target.requestId, rid.hasPrefix("ocperm:") {
-                let allow = innerType == "select_option"
-                    ? (innerCommand["index"] as? Int) == 0
-                    : ["y", "yes"].contains(((innerCommand["value"] as? String) ?? "").lowercased())
+                let decision: String
+                if innerType == "select_option" {
+                    guard let value = OpenCodeDevicePermission.decision(command: innerCommand, question: target.question) else { return }
+                    decision = value
+                } else {
+                    let value = ((innerCommand["value"] as? String) ?? "").lowercased()
+                    guard ["y", "yes", "n", "no"].contains(value) else { return }
+                    decision = ["y", "yes"].contains(value) ? "allow" : "deny"
+                }
                 handleCommand([
                     "type": "permission_decision",
                     "requestId": rid,
-                    "decision": allow ? "allow" : "deny",
+                    "decision": decision,
                 ])
                 return
             }
@@ -7438,14 +7447,15 @@ final class DaemonServer {
             try? await Task.sleep(for: .seconds(ObservedAgentRules.openCodeQuestionPollFreshSeconds))
             guard openCodeQuestionPollAt[rawSessionId] == stamp else { return }
             openCodeQuestionPollAt.removeValue(forKey: rawSessionId)
-            if openCodeWaits[sid]?.first?.kind == "question" { broadcastSessionsList() }
+            if openCodeWaits[sid]?.first != nil { broadcastSessionsList() }
         }
     }
 
     private func canAnswerOpenCodeQuestion(sessionId: String) -> Bool {
         guard let pending = openCodeWaits[sessionId]?.first,
-              pending.kind == "question", pending.prompt?.replyable == true,
-              pending.answerable, !pending.sending else { return false }
+              (pending.kind == "permission" && pushedSessionsById[sessionId]?.requestId != nil)
+                || (pending.kind == "question" && pending.prompt?.replyable == true && pending.answerable && !pending.sending)
+        else { return false }
         let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
         guard let polledAt = openCodeQuestionPollAt[raw] else { return false }
         let age = Date().timeIntervalSince(polledAt)
@@ -7498,7 +7508,9 @@ final class DaemonServer {
                 var fields = ["label": AnyCodable(option.label), "index": AnyCodable(option.index)]
                 if let description = option.description { fields["description"] = AnyCodable(description) }
                 return fields
-            } ?? []
+            } ?? (wait.kind == "permission" ? ObservedAgentRules.openCodePermissionChoices.map {
+                ["label": AnyCodable($0.label), "index": AnyCodable($0.index)]
+            } : [])
             let raw = String(sessionId.dropFirst(Self.openCodeSessionPrefix.count))
             entry.requestId = answerable && wait.kind == "permission" ? "ocperm:\(raw):\(wait.id)" : nil
         } else if resolved {

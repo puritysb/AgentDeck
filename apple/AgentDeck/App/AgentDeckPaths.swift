@@ -10,7 +10,8 @@
 // Runtime behavior:
 //   - Sandboxed App Store runs write to:
 //     `~/Library/Containers/bound.serendipity.agent.deck/Data/Library/Application Support/AgentDeck/`.
-//   - Unsandboxed dev builds and xctest continue to use the legacy
+//   - iOS uses its data container’s Library/Application Support/AgentDeck.
+//   - Unsandboxed macOS dev builds and xctest continue to use the legacy
 //     `~/.agentdeck/` path so local CLI/plugin workflows remain unchanged.
 //
 // Migration: Users who were on a pre-Group-Container build have data in
@@ -39,7 +40,14 @@ enum AgentDeckPaths {
 
     private static let cachedBaseDirectory: URL = {
         let fm = FileManager.default
-        if AgentDeckRuntime.isSandboxed,
+        #if os(iOS)
+        // iOS is always containerized. The macOS sandbox environment flag is
+        // absent there; it must not select the home-root CLI data directory.
+        let useApplicationSupport = true
+        #else
+        let useApplicationSupport = AgentDeckRuntime.isSandboxed
+        #endif
+        if useApplicationSupport,
            let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
             let container = appSupport.appendingPathComponent("AgentDeck", isDirectory: true)
             try? fm.createDirectory(at: container, withIntermediateDirectories: true)

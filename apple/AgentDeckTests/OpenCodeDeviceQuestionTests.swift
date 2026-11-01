@@ -2,6 +2,16 @@ import XCTest
 @testable import AgentDeck
 
 final class OpenCodeDeviceQuestionTests: XCTestCase {
+    func testPermissionDecisionRejectsStaleQuestionInvalidIndicesAndBooleans() {
+        XCTAssertEqual(OpenCodeDevicePermission.decision(command: ["index": 0, "question": "bash: harmless probe"], question: "bash: harmless probe"), "allow")
+        XCTAssertEqual(OpenCodeDevicePermission.decision(command: ["index": 1, "question": "bash: harmless probe"], question: "bash: harmless probe"), "deny")
+        for index in [-1, 2, true, "0"] as [Any] {
+            XCTAssertNil(OpenCodeDevicePermission.decision(command: ["index": index, "question": "bash: harmless probe"], question: "bash: harmless probe"))
+        }
+        XCTAssertNil(OpenCodeDevicePermission.decision(command: ["index": 0, "question": "Choose target"], question: "bash: harmless probe"))
+        XCTAssertNil(OpenCodeDevicePermission.decision(command: ["index": 0], question: "bash: harmless probe"))
+    }
+
     func testPendingAnswerRequiresUpstreamResolutionAndFailedReplyCanRetry() throws {
         let prompt = try XCTUnwrap(OpenCodeDeviceQuestion.parse([["question": "Target?", "options": [["label": "Local"], ["label": "Review"]]]]))
         var state = OpenCodeWaitState()

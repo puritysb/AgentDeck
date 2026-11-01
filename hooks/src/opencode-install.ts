@@ -149,6 +149,12 @@ const permissionSession = new Map();
 // Retain only live requests; this is also the authority for command correlation.
 const questionRequests = new Map();
 let questionRevision = 0;
+function permissionTitle(perm) {
+  const title = typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested");
+  const patterns = Array.isArray(perm.patterns) ? perm.patterns.filter(p => typeof p === "string").join("; ") : "";
+  return patterns ? title + ": " + patterns : title;
+}
+
 function questionResponderAvailable(client) {
   return typeof client?._client?.post === "function" || typeof client?.question?.reply === "function";
 }
@@ -439,7 +445,7 @@ export const AgentDeckObserver = async ({ directory, client }) => {
         post("opencode_permission_asked", {
           session_id: parent,
           permission_id: perm.id,
-          title: typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested"),
+          title: permissionTitle(perm),
           cwd,
         });
       }
@@ -580,7 +586,7 @@ export const AgentDeckObserver = async ({ directory, client }) => {
             post("opencode_permission_asked", {
               session_id: psid,
               permission_id: perm.id,
-              title: typeof perm.title === "string" ? perm.title : (typeof perm.permission === "string" ? perm.permission : "Permission requested"),
+              title: permissionTitle(perm),
               cwd,
             });
           }

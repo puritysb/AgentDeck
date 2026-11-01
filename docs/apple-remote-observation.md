@@ -1,7 +1,9 @@
 # Apple remote observation — CloudKit PoC design
 
-**Decision date: 2026-11-01. Status: Stage A development-only transport code
-implemented; a user-assisted iPhone/Watch route verified, not released.** This document owns the proposed PoC
+**Decision date: 2026-11-01. Status: development-only transport, automatic
+publication and durable storage implemented. The user-assisted iPhone/Watch
+notification route is verified; final local-control and cold-start physical
+acceptance are recorded below. Not released.** This document owns the proposed PoC
 contract and acceptance plan. The [feature matrix](appstore-feature-matrix.md)
 owns availability; [introduction copy](marketing/apple-remote-observation.md)
 must retain the planned label until measured delivery evidence exists.
@@ -578,3 +580,60 @@ Regression coverage adds real disk reload, expired/future/corrupt/oversized
 cache rejection, unknown-vs-mismatched identity handling, stable outbox IDs,
 reconnect baseline behavior, coalescing and retry-after. Physical acceptance
 results are recorded separately from these source-level checks.
+
+
+### Integration and storage acceptance checkpoint
+
+The source was integrated into the persistent main checkout and the supervised
+Node daemon, installed Stream Deck runtime and separate Mac/iPhone PoC were
+updated. Development PoC installation preserves the App Store Mac app and the
+phone's existing data. Installed-runtime hashes, rather than a build alone,
+distinguish the plugin actually running.
+
+A fresh actual OpenCode TUI with the emitted observer reached the real daemon.
+The iOS simulator selected `Phone acceptance` through the normal local dashboard;
+OpenCode returned that exact original label and moved to its real harmless Bash
+permission wait. This proved the question UI/daemon/native reply path. Physical
+phone acceptance first encountered an old pairing token; only that test phone's
+normal per-device approval was renewed. A later device lock prevented completing
+modified-build UI acceptance and must not be counted as a pass.
+
+The real permission wait exposed another gap: its request ID was present but
+choices and `liveAnswerable` were absent. Both daemons now expose canonical
+one-time choices; native clients address the permission ID, while Stream Deck's
+session option route checks the echoed question before mapping its index to a
+decision. Missing native polling, invalid indices, stale question echoes and
+superseded permission IDs cannot authorize a tool. The shared choices generate
+the Swift mirror. No persistent `always` grant or CloudKit command is added.
+
+Physical reader evidence showed a successful cloud fetch followed by a durable
+write failure, then no summary on relaunch. iOS had incorrectly inherited the
+macOS-only legacy home-root path. The central path resolver now selects
+`Library/Application Support/AgentDeck` inside the iOS data container. The PoC's
+local storage check exercises atomic write/read with the real protection and
+backup-exclusion settings without contacting CloudKit or changing the reader.
+That check passed in a dedicated iOS simulator. Storage errors now expose only
+their Foundation domain/code. Physical filesystem and account-bound relaunch
+must be repeated after unlocking the phone; simulator success does not attest
+iPhone Data Protection behavior.
+
+When a locally available iCloud token cannot restore a saved reader immediately,
+startup now verifies the CloudKit account online and loads the original cached
+summary without fetching a newer snapshot. With no verified identity offline,
+it preserves the file and withholds its contents. A local dashboard remains
+usable while the independent cloud check is pending.
+
+On the Mac, automatic sharing saved actual encrypted counts, resumed after
+process relaunch, and preserved explicit Stop across another relaunch. Transient
+cloud outcomes also exercised the retained-ID/backoff status. These observations
+prove server save and publisher lifecycle, not notification presentation.
+A Stream Deck host restart recovered a deployment whose URI stop request had
+not stopped the old process; the replacement runtime hash was verified. Automated
+Virtual Stream Deck clicks did not establish SDK key-input acceptance, so a
+physical key press remains a separate lab result.
+
+The reproducible [OpenCode/device lab runner](../apple/DeviceAcceptance/README.md)
+records screenshots, accessibility trees, returned question labels and tool
+results. A local model fixture drives an actual new TUI; it never fabricates a
+hook or answers another running session. Quota provenance, widgets, the final
+Production schema and 24-hour cloud event cleanup remain deferred.

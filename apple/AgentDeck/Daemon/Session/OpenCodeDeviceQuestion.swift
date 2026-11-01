@@ -43,3 +43,17 @@ struct OpenCodeDeviceQuestion: Sendable, Equatable {
         return first
     }
 }
+
+#if os(macOS)
+/// A stale question selection must never become approval for a newer tool.
+enum OpenCodeDevicePermission {
+    static func decision(command: [String: Any], question: String?) -> String? {
+        guard let number = command["index"] as? NSNumber,
+              CFGetTypeID(number) != CFBooleanGetTypeID(),
+              let index = command["index"] as? Int,
+              let echo = command["question"] as? String, let question,
+              ObservedSteering.askEchoMatches(echo, question) else { return nil }
+        return ObservedAgentRules.openCodePermissionChoices.first { $0.index == index }?.decision
+    }
+}
+#endif

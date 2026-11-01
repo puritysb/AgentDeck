@@ -17,7 +17,7 @@ offline Mac never looks like a live source.
 ## What the first experiment will test
 
 - A real agent entering response wait, plus a clearly labeled test notification.
-- A recent summary from one Mac and one available Codex account quota reading.
+- A recent summary from one Mac; quota export follows verified account/source provenance.
 - iPhone cellular delivery and Apple Watch notification forwarding.
 - Honest historical state after sleep, network loss or a missed update.
 - Optional sharing through the user's private iCloud database, with stop/delete
@@ -47,11 +47,11 @@ Do not describe an expected quota reset as confirmed replenishment.
 
 AgentDeck은 실행 중인 Mac 앱에서 선택한 상태를 iCloud 개인 데이터베이스로
 보내고, iPhone과 Apple Watch 알림 전달로 확인하는 실험을 준비하고 있습니다.
-최근 작업 상태와 확인 가능한 사용량을 함께 보여주며, 마지막 관찰 시각을
-표시해 오래된 정보를 현재 상태로 오해하지 않도록 설계합니다.
+최근 작업 상태와 원본 관찰 시각을 보여줘 오래된 정보를 현재 상태로 오해하지
+않도록 설계합니다. 구독 사용량은 계정과 측정 출처를 검증한 뒤 추가할 후속 범위입니다.
 
 개발 기기에서는 실제 응답 대기 알림, iPhone 요약 조회와 오프라인 과거 상태 표시,
-Watch 알림 전달을 확인했습니다. 현재는 개발 전용 PoC이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
+Watch 알림 전달을 확인했습니다. 자동 발행과 로컬 캐시도 구현했으며, 수정 후 실기기 캐시·버튼 응답 검증은 남아 있습니다. 현재는 개발 전용 PoC이며 배포된 기능이 아닙니다. 첫 실험은 Mac 한 대와
 같은 Apple 계정의 iPhone, 연결된 Watch를 대상으로 합니다. Mac 앱이 꺼져 있으면
 새 상태를 관찰할 수 없고, 알림 표시와 지연은 Apple의 시스템 설정과 네트워크에
 영향을 받습니다. 워치 전용 앱·위젯·원격 승인은 후속 검토 범위입니다.
