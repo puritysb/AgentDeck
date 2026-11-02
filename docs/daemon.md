@@ -562,7 +562,11 @@ Managed remote attach keeps working unchanged alongside it.
   settings/voice/launch command is refused. Additive `relay_command_refused`
   frames report refusal without echoing command text. Native ask answers still
   require their current question and use the existing hook gate, never guessed
-  terminal input. Snapshot receipt is not execution acknowledgement.
+  terminal input. Held-question correlation remains only in the worker's private
+  publication; the public row carries original options without `requestId` so
+  controllers cannot mistake it for a binary approval. Replacing a hold changes
+  the private fingerprint even when its public question is identical.
+  Snapshot receipt is not execution acknowledgement.
 - **Controls on Node workers are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
   answer, a prompt queued for the end of the turn, a stop at the next tool call,
   and terminal injection where the worker's platform has a rung (macOS

@@ -44,6 +44,29 @@ enum DaemonRelayRules {
             return !id.isEmpty && id != "openclaw-gateway" && row["controlMode"] as? String != "managed" && !excluding.contains(id)
         }.map { row in row.filter { !DaemonRelayPolicy.RELAY_VOLATILE_FIELDS.contains($0.key) } }
     }
+    /// Keep held-question correlation private to the worker. On the public
+    /// SessionInfo wire, requestId means a binary permission, never a question.
+    static func nativeSnapshot(_ rows: [[String:Any]], current: [[String:Any]]) -> [[String:Any]] {
+        let local = Dictionary(current.compactMap { row in
+            (row["id"] as? String).map { ($0, row) }
+        }, uniquingKeysWith: { first, _ in first })
+        return rows.map { original in
+            guard let sid = original["id"] as? String,
+                  let held = local[sid], let rid = held["requestId"] as? String else { return original }
+            var row = original
+            row["requestId"] = rid
+            if bool(held["_relayHeldAsk"]) == true { row["_relayHeldAsk"] = true }
+            return row
+        }
+    }
+    static func nativeWireRows(_ rows: [[String:Any]]) -> [[String:Any]] {
+        rows.map { original in
+            var row = original
+            if bool(row.removeValue(forKey:"_relayHeldAsk")) == true { row.removeValue(forKey:"requestId") }
+            row.removeValue(forKey:"_relayHeldCodex")
+            return row
+        }
+    }
     static func data(_ object: Any) -> Data? {
         guard JSONSerialization.isValidJSONObject(object) else { return nil }
         return try? JSONSerialization.data(withJSONObject:object,options:[.sortedKeys])

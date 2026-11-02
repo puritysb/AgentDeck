@@ -96,7 +96,10 @@ final class DaemonRelayUplink {
         let observed = snapshot().filter { $0["controlMode"] as? String == "observed" }
         let rows = DaemonRelayRules.publish(observed,excluding:excluded), json = DaemonRelayRules.data(rows) ?? Data()
         guard force || json != lastJSON || Date().timeIntervalSince(lastSent)*1000 >= Double(DaemonRelayPolicy.RELAY_SNAPSHOT_HEARTBEAT_MS) else { return }
-        try await send(["type":"relay_sessions","sessions":rows],ws:ws)
+        // Fingerprint/retain the private hold identity, so replacing an identical
+        // question still refreshes its publication before commands are accepted.
+        // Only the public projection leaves this worker.
+        try await send(["type":"relay_sessions","sessions":DaemonRelayRules.nativeWireRows(rows)],ws:ws)
         guard valid(ticket,revision), socket === ws else { return }
         published = rows; lastJSON = json; lastSent = Date()
     }

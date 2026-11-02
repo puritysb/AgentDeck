@@ -169,6 +169,7 @@ artifact hashes or observed five-state delivery receipts.
 
 | Ticket | Included now | What remains / release treatment |
 | --- | --- | --- |
+| #662 native relay question rendering | Keep held-question correlation private; preserve original remote choices and ordinary permission IDs; real Swift uplink → Node hub → Stream Deck manager regression | Include the verified correction in the candidate. Existing two-Mac/real-agent limits remain; direct-command tests alone did not establish rendered-button behavior. |
 | #635 security report | Merged integration-command hardening plus public reporting channel; regression and scoped installation evidence | Coordinated public npm/macOS delivery, exact upgrade/refresh links and reporter confirmation. Keep open through that follow-up; a source merge is not a public fix receipt. |
 | #544 friendly session names | Verified producer/fallback contract, ID-preserving labels and name-only redraw fix | No cmux executable was found on PATH or at the standard app location in this pass; current title/rename API and physical D200X key/INFO/VOICE acceptance remain unmeasured. Retain these as follow-ups rather than inventing titles or recipient acceptance. |
 | #551 e-ink measurement | Existing refresh-completion telemetry and supported display behavior | TRMNL 7.5, EPD47 and NM-EPD-420 each need real actionable traffic plus physical camera evidence. Software screenshots/simulator/driver durations cannot close it. No optical-performance promise is added to 2.0. |
@@ -178,17 +179,28 @@ artifact hashes or observed five-state delivery receipts.
 - The [npm registry](https://www.npmjs.com/package/@agentdeck/bridge) and
   [public GitHub release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6) agree on **1.9.6**. The dated
   npm 1.9.7/macOS 1.9.5 CHANGELOG section is explicitly a preparation entry.
-- Apple's [public iPhone/iPad listing](https://apps.apple.com/app/id6784822497) reports **1.9.1**. It does not establish the
-  independent macOS version. The last recorded ASC macOS readback remains
-  **1.9.4 / 10001 READY_FOR_SALE** (October 30); read ASC again before allocating
-  a delivery build. Do not reuse a consumed CI build or call a local dev app live.
-- Android's public GitHub APK is **1.10.2**; the Play page shows an October 26
-  update but no reliable version/build floor in this read. Recheck the Play
-  production/edit inventory before choosing its delivery `versionCode`.
+- Apple's [public iPhone/iPad listing](https://apps.apple.com/app/id6784822497) reports **1.9.1**.
+  The fresh [read-only ASC status run 41389453342](https://github.com/puritysb/AgentDeck/actions/runs/41389453342)
+  independently confirms **macOS 1.9.4 READY_FOR_SALE**, latest valid uploaded
+  macOS build **10001**, and **iOS 1.9.1 READY_FOR_SALE**. It does not allocate a
+  delivery build or prove that all historical iOS build numbers fit the recent
+  20-build window. Recheck the final CI-derived build before upload.
+- Android's public GitHub APK and the signed-in Play production release agree
+  on **1.10.2 / versionCode 29**, shown as available on Google Play. The current
+  overview shows 100% rollout, internal testing **1.10.1 / 28**, no open/closed
+  testing release and no unpublished changes. This is a production/track read,
+  not proof that an unused uploaded bundle has no higher consumed code; recheck
+  the complete upload inventory when assigning the delivery `versionCode`.
+  Play's edge-to-edge/deprecated-API notices refer to released build 29; the
+  current source already calls `enableEdgeToEdge()`. Keep next-candidate inset
+  acceptance separate from claiming that all Store notices are resolved.
 - Elgato's [public listing](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) reports **1.8.1**, while the public GitHub plugin
-  artifact is **1.8.2**. Marketplace and GitHub availability remain separate.
-- Ulanzi's public GitHub artifact is **1.8.2**; its dynamic Marketplace page was
-  unavailable to the static reader. No fresh live-marketplace version is claimed.
+  artifact is **1.8.2**. A fresh public-page payload read returned 1.8.2
+  `status: review` with no publication date; 1.8.1 is `published`. Marketplace
+  and GitHub availability remain separate.
+- Ulanzi's public GitHub artifact is **1.8.2**; a fresh browser read of its
+  [dynamic Marketplace listing](https://ugc.ulanzistudio.com/contentView/1239890184745660416)
+  reports **1.8.1**. The review queue was not inspected in this pass.
 - ESP32's latest public GitHub firmware tag is **1.9.2**. Release only the board
   images actually built and accepted; partial board coverage must be explicit.
 
@@ -201,7 +213,7 @@ artifact hashes or observed five-state delivery receipts.
 | Apple iPhone/iPad | Readable actual choices and one-time approvals from supported producers, Attention/history/habitat/connection improvements and icon | Pair with the chosen daemon candidate; do not promote observation-only producers to controls. Verify reconnect/stale requests and final screenshots/previews; independent iOS version/build state. No CloudKit/Watch production claim. |
 | Android / Play + GitHub | Controller/habitat/e-ink presentation, background standby where implemented, discovery/address/retry improvements, icon; safe developer installation | One product version across Play/APK; fresh Play versionCode floor and preserved signing identities/data. Exercise one LCD and one e-ink controller; no optical-performance certification from screenshots. |
 | Stream Deck | Actual readable options, NEXT on small grids, recipient-preserving labels, Attention/standby and icon | Immutable action UUIDs, SDKVersion 3, correct package/profile behavior and real encoders on the DRM-processed Marketplace build. Public 1.8.1 and GitHub 1.8.2 are distinct baselines. |
-| Ulanzi | Request/recipient labels, name-only invalidation, Attention/standby and icon | WASM rasterizer/fonts packaged without native binaries; verify Studio/runtime and D200H keys. D200X friendly-name/INFO/VOICE acceptance remains #544; do not imply encoder support. Fresh Marketplace floor still needs readback. |
+| Ulanzi | Request/recipient labels, name-only invalidation, Attention/standby and icon | WASM rasterizer/fonts packaged without native binaries; verify Studio/runtime and D200H keys. D200X friendly-name/INFO/VOICE acceptance remains #544; do not imply encoder support. Public 1.8.1 and GitHub 1.8.2 are distinct baselines; recheck pending submissions before delivery. |
 | ESP32 | Supported compact labels/controls and e-ink standby; Wi-Fi provision identity/acknowledgement, radio recovery and board-scoped memory corrections | Build the selected board images and merged factory artifacts, validate manifest/hash/board identity, and record actual flash/boot/protocol acceptance. Full-tier TTGO/simulator checks alone do not certify every board or #551 optics. |
 
 **Remaining cut gates**

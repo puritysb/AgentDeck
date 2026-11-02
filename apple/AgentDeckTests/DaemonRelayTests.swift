@@ -50,6 +50,26 @@ final class DaemonRelayTests: XCTestCase {
         let rows = DaemonRelayRules.publish([local,["id":"r"],["id":"m","controlMode":"managed"],["id":"openclaw-gateway"]],excluding:["r"])
         XCTAssertEqual(rows.count,1); XCTAssertNil(rows[0]["elapsedSec"])
     }
+    func testHeldQuestionKeepsOriginalOptionsAndPrivateGateCorrelation() {
+        let visible: [String:Any] = ["id":"observed:claude:ask","agentType":"claude-code","controlMode":"observed",
+            "question":"Which path?","liveAnswerable":true,"options":[["index":0,"label":"Alpha"],["index":1,"label":"Bravo"],["index":2,"label":"Charlie"]]]
+        var held = visible; held["requestId"] = "ask-one"; held["_relayHeldAsk"] = true
+        let published = DaemonRelayRules.nativeSnapshot([visible],current:[held])
+        XCTAssertEqual(published[0]["requestId"] as? String,"ask-one")
+        let wire = DaemonRelayRules.nativeWireRows(published)[0]
+        XCTAssertNil(wire["requestId"]); XCTAssertNil(wire["_relayHeldAsk"])
+        XCTAssertEqual(wire["question"] as? String,"Which path?")
+        XCTAssertEqual((wire["options"] as? [[String:Any]])?.compactMap { $0["label"] as? String },["Alpha","Bravo","Charlie"])
+        let choose: [String:Any] = ["type":"select_option","sessionId":"observed:claude:ask","index":2,"question":"Which path?"]
+        XCTAssertNotNil(DaemonRelayRules.nativeCommand(choose,published:published,current:[held]))
+        var replacement = held; replacement["requestId"] = "ask-two"
+        XCTAssertNil(DaemonRelayRules.nativeCommand(choose,published:published,current:[replacement]))
+        let refreshed = DaemonRelayRules.nativeSnapshot([visible],current:[replacement])
+        XCTAssertNotEqual(DaemonRelayRules.data(published),DaemonRelayRules.data(refreshed))
+        XCTAssertEqual(DaemonRelayRules.data(DaemonRelayRules.nativeWireRows(published)),DaemonRelayRules.data(DaemonRelayRules.nativeWireRows(refreshed)))
+        XCTAssertNotNil(DaemonRelayRules.nativeCommand(choose,published:refreshed,current:[replacement]))
+        XCTAssertEqual(DaemonRelayRules.nativeWireRows([row])[0]["requestId"] as? String,"gate-one")
+    }
     @DaemonActor
     func testHubHandshakeSupersessionDedupAndCloseCannotRemoveReplacement() async {
         let hub = DaemonRelayHub(instanceId:"hub"), a = UUID(), b = UUID()

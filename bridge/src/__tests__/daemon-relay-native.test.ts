@@ -6,6 +6,9 @@ import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import { RelayHub, RelayUplink } from '../daemon-relay.js';
+import { SessionSlotManager, type DeckLayout } from '../../../plugin/src/session-slot-manager.js';
+import type { SessionInfo } from '@agentdeck/shared';
+const SD_PLUS_LAYOUT: DeckLayout = { columns: 4, rows: 2, keyCount: 8, family: 'streamdeckplus' };
 
 const sources = [
  'App/AgentDeckPaths.swift','Model/SessionWeightRules.generated.swift','Model/PairingCodeRules.generated.swift',
@@ -50,6 +53,27 @@ describe.skipIf(process.platform!=='darwin')('real mixed Node/Swift relay socket
    expect(hub.summary()).toHaveLength(1);
   } finally {process.child.kill('SIGTERM');for(const ws of wss.clients)ws.terminate();await new Promise<void>(r=>wss.close(()=>r()));await new Promise<void>(r=>http.close(()=>r()));}
  },30_000);
+ it('renders held questions as original choices and returns their selected index through the real Swift worker',async()=>{
+  const http=createServer((_,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify({mode:'daemon',daemonRelay:true}));});
+  const wss=new WebSocketServer({server:http});const hub=new RelayHub({instanceId:'question-hub',onChange:()=>{}});
+  const publications:Record<string,any>[]=[];
+  wss.on('connection',ws=>{ws.on('message',raw=>{const msg=JSON.parse(raw.toString());if(msg.type==='relay_sessions')publications.push(msg);hub.handleFrame(msg,ws);});ws.on('close',()=>hub.dropSocket(ws));});
+  await new Promise<void>(r=>http.listen(0,'127.0.0.1',r));
+  const process=native('worker-ask',(http.address() as {port:number}).port);
+  try {
+   await vi.waitFor(()=>expect(hub.rows()).toHaveLength(1),{timeout:6000});
+   const row=hub.rows()[0];
+   expect(row).not.toHaveProperty('requestId');
+   expect(publications[0].sessions[0]).not.toHaveProperty('_relayHeldAsk');
+   const manager=new SessionSlotManager();manager.updateSessions([row as SessionInfo]);manager.enterDetailView(row.id);
+   const cells=Array.from({length:SD_PLUS_LAYOUT.keyCount},(_,slot)=>manager.getSlotConfig(slot,SD_PLUS_LAYOUT));
+   expect(cells.filter(cell=>cell.type==='option').map(cell=>cell.option?.label)).toEqual(['Alpha','Bravo','Charlie']);
+   const selected=cells.findIndex(cell=>cell.optionIndex===2);
+   expect(manager.handleSlotPress(selected,SD_PLUS_LAYOUT)).toMatchObject({action:'select-option',optionIndex:2});
+   expect(hub.route({type:'select_option',sessionId:row.id,index:2,question:'Which path?'} as never,null,String)).toBe(true);
+   await vi.waitFor(()=>expect(process.frames).toContainEqual({event:'executed',command:{type:'session_command',sessionId:row.id,command:{type:'select_option',index:2,question:'Which path?'}}}),{timeout:3000});
+  } finally {process.child.kill('SIGTERM');for(const ws of wss.clients)ws.terminate();await new Promise<void>(r=>wss.close(()=>r()));await new Promise<void>(r=>http.close(()=>r()));}
+ },20_000);
  it('Node worker publishes to Swift hub and receives same-socket controls; real native WS rejects missing/wrong token for a browser-origin peer',async()=>{
   const port=await freePort(),process=native('hub',port);
   let uplink:RelayUplink|undefined;const executed:unknown[]=[];
