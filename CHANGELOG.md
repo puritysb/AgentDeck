@@ -69,6 +69,7 @@ not certified by the software or media checks below.
 
 ### Detailed unshipped changes
 
+- E-ink Decision faces use the displayed session's own original choices and indices, echo its question, and send genuine permissions by request ID. Replaced requests, unanswerable questions, questions exceeding the three-choice surface and outbound JSON overflow cannot submit a guessed reply.
 - Native daemon relay: keep held-question correlation in the worker's private snapshot. Remote controllers receive the original question/options without a permission request ID, so they can render and return the actual choice. Replacing an identical question still refreshes the private publication before accepting its answer; genuine permission IDs remain unchanged (#662).
 - App and plugin icons: refine the familiar aquarium, octopus, crayfish and six-key deck for clearer separation at small sizes. Apple, Android, web and full-colour deck plugin icons now come from one higher-resolution master with generated-export checks.
 - Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).

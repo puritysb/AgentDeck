@@ -24,7 +24,8 @@ Stream Deck, e-ink reader, or small desk display.
 
 **2.0 release preparation:** the source, release claims and remaining tickets have
 been audited, with a clean automated verification receipt. Final version/build,
-signed-device and channel delivery gates remain. See the
+signing/artifact and channel delivery gates remain. Non-automatable physical
+journeys use the owner's code-review acceptance for this release. See the
 [scope and verification record](RELEASING.md#20-frozen-source-verification-checkpoint-2026-11-02);
 [released downloads](#releases) retain their recorded channel versions.
 

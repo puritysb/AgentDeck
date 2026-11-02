@@ -171,8 +171,8 @@ artifact hashes or observed five-state delivery receipts.
 | --- | --- | --- |
 | #662 native relay question rendering | Keep held-question correlation private; preserve original remote choices and ordinary permission IDs; real Swift uplink → Node hub → Stream Deck manager regression | Merged via #663 and included in the verified candidate. Existing two-Mac/real-agent limits remain; direct-command tests alone did not establish rendered-button behavior. |
 | #635 security report | Merged integration-command hardening plus public reporting channel; regression and scoped installation evidence | Coordinated public npm/macOS delivery, exact upgrade/refresh links and reporter confirmation. Keep open through that follow-up; a source merge is not a public fix receipt. |
-| #544 friendly session names | Verified producer/fallback contract, ID-preserving labels and name-only redraw fix | No cmux executable was found on PATH or at the standard app location in this pass; current title/rename API and physical D200X key/INFO/VOICE acceptance remain unmeasured. Retain these as follow-ups rather than inventing titles or recipient acceptance. |
-| #551 e-ink measurement | Existing refresh-completion telemetry and supported display behavior | TRMNL 7.5, EPD47 and NM-EPD-420 each need real actionable traffic plus physical camera evidence. Software screenshots/simulator/driver durations cannot close it. No optical-performance promise is added to 2.0. |
+| #544 friendly session names | Verified producer/fallback contract, ID-preserving labels and name-only redraw fix | Physical D200X key/INFO/VOICE acceptance is replaced by the code-review decision below for 2.0. The unimplemented cmux live-title producer remains a separate non-blocking follow-up; no physical recipient acceptance or live-title capability is claimed. |
+| #551 e-ink measurement | Existing refresh-completion telemetry and supported display behavior; additional request-routing correction from this code review | Physical camera/traffic measurement is deferred and does not block 2.0 under the owner's decision below. No optical latency or ghosting result is claimed; the measurement ticket remains follow-up work. |
 
 **Publication baseline cross-check (November 2)**
 
@@ -228,9 +228,9 @@ artifact hashes or observed five-state delivery receipts.
    manufacture a protocol break or bypass the existing version gate.
 3. Read fresh portal/package floors; record the exact 2.0 channel version/build
    decision. Keep manifests, tags and portal state unchanged until that decision.
-4. Complete the bounded controller journeys on the chosen signed/device
-   candidates and run the distribution archive check. Keep #544/#551 and the
-   declared CloudKit/Dot/relay limitations explicit when their evidence is absent.
+4. Apply the code-review acceptance below to non-automatable physical journeys;
+   they do not block this release. Keep automated artifact/signing checks,
+   including the distribution archive check, and the declared feature boundaries.
 5. Finalize channel-specific notes, Store metadata/previews and package hashes.
    Then perform the separately recorded publish/upload/submit/live actions and
    read back each result. This preparation pass does not create a release tag,
@@ -250,7 +250,7 @@ Windows native runtime on Node 22/24/26 and mixed macOS Swift/Node parity.
 The full run covers 7,311 Vitest passes (42 skips) with the coverage floor,
 39 real-daemon E2E passes, Android compile/JUnit/Robolectric, five Apple
 configurations, deterministic CloudKit PoC checks, App Store submission limits,
-ESP32 host policies/12 simulator configurations/TTGO target compilation, and
+ESP32 host policies/14 simulator configurations/TTGO target compilation, and
 clean npm package installation with a 60-second daemon soak. CloudKit test
 success does not establish its production account/entitlement or release gates.
 
@@ -267,6 +267,39 @@ OpenCode checkout contains the integrated repair and predates later refinements.
 Its files and old untracked receipts were preserved. The separate Dot/local WIP
 is still excluded. Version manifests, tags and Store state remain unchanged;
 this checkpoint prepares release scope and source evidence, not public delivery.
+
+#### 2.0 code-review acceptance instead of physical checks 2026-11-02
+
+The owner explicitly directed: **replace non-automatable physical verification
+with code-level review and proceed**. For this 2.0 release, this decision
+supersedes the physical-journey clauses in the channel table and earlier
+checkpoints: D200X INFO/VOICE, physical deck keys/DRM encoders, e-ink camera and
+panel timing, physical flash/boot/performance, signed live-agent journeys and
+real OS sleep/wake or multi-Mac long-run observation are not release blockers.
+This is a release acceptance decision, not a report that hardware tests passed.
+Automatable tests, selected-board builds, package/manifest/hash checks,
+distribution signing/archive checks and Store state readback remain required.
+
+| Reviewed area | Code-level evidence and conclusion |
+| --- | --- |
+| E-ink request selection | Review found that the Decision face paired the first waiting row with global focused options and omitted the question echo. Correct it to capture that row's own bounded original options/indices, question and permission ID. Reply only to an exactly displayed request; larger or non-answerable requests remain observation-only. Reject overflow instead of queueing truncated JSON. Host regression covers original indices, escaping, replaced requests, permission decisions and overflow. |
+| E-ink refresh and memory | `eink_display.cpp`, `epd47_diff.h`, `epd47_refresh_policy.h`, `nm_refresh_policy.h`: one-time checked PSRAM frames, optional-buffer fallback, fixed completion queue, content coalescing, strip residue and tri-color full-cycle policy. Existing host assertions execute these policies. New Decision snapshots are fixed/reused storage (no per-frame heap); replies reuse the queue-sized buffer. Optical timing/ghosting stays unmeasured. |
+| Deck labels, INFO and VOICE | `shared/src/d200h-layout.ts`, `session-labels.ts`, `voice-ptt.ts`, Ulanzi `app.ts`/`deck-signature.ts`: selected ID drives detail labels and commands; the hold retains its initial recipient; name-only changes invalidate rendering. Existing session-label/hold/signature tests cover these paths. SDK/action identity and WASM/font package checks remain; no D200X encoder capability is added. |
+| Native Codex approval | `DaemonServer.swift`, `ObservedSteering.swift`, generated hold rules: confirmed human review, bounded read/hold budget, exact request resolution, expiry on press and owner/turn teardown. `CodexApprovalHoldTests` covers replacement, peer/owner expiry and decision bodies. A live signed Codex run is waived for this cut, not fabricated. |
+| Ownership, handover and wake | `DaemonService.swift`, `LocalPortProbe`, Node `requestDaemonStandDown`, checkpoint stores: generations/ownership epochs reject late callbacks; unknown liveness retains the peer; exact checkpoint persistence precedes commit; stopped attempts cannot silently restart. Existing retry/topology/checkpoint/wake tests cover these boundaries. OS/driver-specific physical cycles are accepted by review for this release. |
+| Two-Mac relay | Both hub/worker implementations retain auth, outbound-only connection, typed limits, stale expiry and local-identity precedence. Native private question IDs remain off the public wire and in the private freshness check (#663). Existing mixed-socket/controller tests supply the automated evidence. Relay remains experimental, without a remote-terminal or production-history-sync promise. |
+
+The full receipt above remains an immutable measurement of `4fdf507a`. This
+additional firmware correction passed the quick tier (7,311 Vitest passes,
+42 skips; 39 E2E passes), host regression assertions and all **14 simulator
+configurations** plus resident/input checks. The Apple change is only the
+preview's synchronization hash/comment; its default dashboard and Swift
+executable code are unchanged. The four physical/live lab entries in the full
+receipt remain un-attested.
+On the next final-version full run, record waived lab checks as
+`--attest <id>=skip:"owner accepted code review for 2.0"`, never `pass`.
+#544/#551 remain non-blocking follow-ups for the unimplemented/live-measurement
+scope; #635 still needs actual public corrected build links and reporter follow-up.
 
 #### Integration and release sequence
 
