@@ -3,8 +3,8 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// This build tool compares exact pixels across ARM macOS and x86 Linux.
-// Use scalar resampling so CPU-specific SIMD reductions cannot change exports.
+// Reduce CPU-specific resampling differences. Transparent RGB is compared by
+// its visible contribution below, with a one-level 8-bit rounding allowance.
 sharp.simd(false);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,6 +41,28 @@ export async function renderAppIcon(entry, base = root) {
   return image.resize(entry.size, entry.size, { fit: 'contain' }).png().toBuffer();
 }
 
+// RGB underneath zero alpha is not artwork. Check both black and white plates;
+// every background between them is bounded too. Keep the allowance at 1/255,
+// rather than permitting a fraction of arbitrarily different pixels.
+export function compareIconPixels(actual, expected) {
+  if (actual.length !== expected.length || actual.length % 4) return { matches: false };
+  let maxVisibleDeltaUnits = 0;
+  let maxAlphaDelta = 0;
+  let maxRawDelta = 0;
+  for (let i = 0; i < actual.length; i += 4) {
+    const a = actual[i + 3];
+    const b = expected[i + 3];
+    maxAlphaDelta = Math.max(maxAlphaDelta, Math.abs(a - b));
+    for (let channel = 0; channel < 3; channel++) {
+      const delta = actual[i + channel] * a - expected[i + channel] * b;
+      maxRawDelta = Math.max(maxRawDelta, Math.abs(actual[i + channel] - expected[i + channel]));
+      maxVisibleDeltaUnits = Math.max(maxVisibleDeltaUnits, Math.abs(delta), Math.abs(delta - (a - b) * 255));
+    }
+  }
+  return { matches: maxAlphaDelta <= 1 && maxVisibleDeltaUnits <= 255,
+    maxVisibleDelta: maxVisibleDeltaUnits / 255, maxAlphaDelta, maxRawDelta };
+}
+
 export async function generateAppIcons({ check = false, base = root } = {}) {
   const stale = [];
   for (const entry of appIconExports) {
@@ -52,8 +74,14 @@ export async function generateAppIcons({ check = false, base = root } = {}) {
         const metadata = await actual.metadata();
         const pixels = await actual.ensureAlpha().raw().toBuffer();
         const expectedPixels = await sharp(expected).ensureAlpha().raw().toBuffer();
+        const comparison = compareIconPixels(pixels, expectedPixels);
         if (metadata.width !== entry.size || metadata.height !== entry.size ||
-            Boolean(metadata.hasAlpha) === Boolean(entry.opaque) || !pixels.equals(expectedPixels)) stale.push(entry.path);
+            Boolean(metadata.hasAlpha) === Boolean(entry.opaque) ||
+            (entry.opaque ? !pixels.equals(expectedPixels) : !comparison.matches)) {
+          stale.push(`${entry.path} (${JSON.stringify(comparison)})`);
+        } else if (!pixels.equals(expectedPixels)) {
+          console.log(`Icon rounding: ${entry.path} ${JSON.stringify(comparison)}`);
+        }
       } catch { stale.push(entry.path); }
     } else {
       await mkdir(dirname(path), { recursive: true });

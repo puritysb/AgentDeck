@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { appIconExports, generateAppIcons } from '../generate-app-icons.mjs';
+import { appIconExports, compareIconPixels, generateAppIcons } from '../generate-app-icons.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -23,6 +23,15 @@ describe('AgentDeck app icon exports', () => {
   it('matches every active export to the master and platform alpha policy', async () => {
     await expect(generateAppIcons({ check: true })).resolves.toBe(appIconExports.length);
   }, 30_000);
+
+  it('ignores invisible RGB and bounds visible rounding on light and dark backgrounds', () => {
+    expect(compareIconPixels(Buffer.from([255, 120, 80, 0]), Buffer.from([0, 0, 0, 0])).matches).toBe(true);
+    expect(compareIconPixels(Buffer.from([100, 100, 100, 255]), Buffer.from([101, 100, 100, 255])).matches).toBe(true);
+    expect(compareIconPixels(Buffer.from([100, 100, 100, 255]), Buffer.from([102, 100, 100, 255])).matches).toBe(false);
+    // On black these two are equal; the white plate exposes the lost alpha.
+    expect(compareIconPixels(Buffer.from([0, 0, 0, 0]), Buffer.from([0, 0, 0, 2])).matches).toBe(false);
+    expect(compareIconPixels(Buffer.from([255, 0, 0, 128]), Buffer.from([0, 0, 0, 128])).matches).toBe(false);
+  });
 
   it('covers every configured Apple app icon slot and Android launcher density', () => {
     const catalog = JSON.parse(readFileSync(resolve(root, 'apple/AgentDeck/Resources/Assets.xcassets/AppIcon.appiconset/Contents.json'), 'utf8'));
