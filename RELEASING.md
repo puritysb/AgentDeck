@@ -66,7 +66,7 @@ default to patch; do not manufacture a feature milestone to justify a number.
 
 Root [`VERSION`](VERSION) is the compatibility-major anchor, not the latest
 product release and not a runtime negotiation value. It currently reads
-**1.0.2**, so maintained targets stay on major **1**. Same-major minor/patch
+**2.0.0**, so maintained targets stay on major **2**. Same-major minor/patch
 versions remain compatible in both directions. A target-specific patch does
 not force root or other targets to change.
 
@@ -96,6 +96,43 @@ above and PR review own that judgment. After delivery, update the
 observed portal/artifact state; do not present a candidate as public.
 
 ### 2.0.0 integration target (2026-11-02)
+
+#### 2.0.0 submission decision 2026-11-02
+
+The owner explicitly authorized completion **through Store submission**, including
+the new introduction, images and video. Cut all six maintained targets as
+**2.0.0** and move the root compatibility-major anchor with them. This is the
+owner-selected coordinated product migration, an explicit exception to the
+default patch/minor classification above; it does not manufacture a wire break.
+The v1 wire/capability contracts, pairing credentials, on-disk formats and all
+maintained managed CLI commands remain intact. The version consistency gate
+stays strict; maintained 2.x targets must share major 2. Do not claim universal
+1.x/2.x support merely because unchanged wire paths can interoperate.
+
+| Target / routes | Verified public / reserved baseline | Selected version / build | Scope |
+| --- | --- | --- | --- |
+| npm / four public packages | Registry 1.9.6; 2.0.0 queried unused November 2 | 2.0.0, four packages in lockstep | Integrated requests, Attention, labels, continuity, relay v1 and security correction |
+| Apple macOS + iOS/iPadOS | macOS 1.9.4 / 10001; iOS 1.9.1; fresh ASC readback before upload | 2.0.0; per-platform CI-owned build, read back after upload | Platform-scoped notes, new native previews and reviewed screenshots; standard Store artifact excludes Dot |
+| Android / Play + GitHub | Production 1.10.2 / 29; all-bundle view lists 16 uploads, highest 29 | 2.0.0 / 30 | Same product version for both routes, existing signing/data preserved |
+| Stream Deck | Marketplace 1.8.1, 1.8.2 review artifact | 2.0.0.0 | Existing immutable actions/profiles and SDK 3; no new encoder family |
+| Ulanzi | Marketplace 1.8.1, 1.8.2 review artifact | 2.0.0 | Keypad only; WASM/fonts, no D200X encoder promise |
+| ESP32 | Public 1.9.2 | 2.0.0 | Complete shipping-board artifact set, including the reviewed e-ink reply correction |
+
+Upgrade order: update the daemon/installer used on each Mac first, retain
+pairing/settings/history, refresh enabled integrations and review Codex hook
+trust, then update controllers/plugins/firmware. During staggered Store approval,
+use advertised capabilities and the supported observation fallback; do not reset
+credentials or force an older peer off the network. Relay remains opt-in.
+Preserve the previous signed artifacts and local configuration archives for
+recovery. Never uninstall Android to downgrade; any forward repair uses a higher
+versionCode. Published tags, npm versions and consumed Store builds are immutable.
+
+Non-automatable physical checks use the owner's code-review acceptance below.
+Run a new clean full-tier receipt on the final release source with those lab
+gates explicitly skipped for this cut. Then build/sign/upload and submit,
+recording each channel's exact uploaded and review state separately. A submitted
+build is not a public release, and the #635 reporter follow-up waits for exact
+public corrected-build links.
 
 The owner selected **2.0.0 as the next coordinated product release** on November
 2. This is an integration target, not a submitted or published version. Collect
@@ -161,7 +198,7 @@ availability.
 | Daemon relay v1 | [Mixed contract and signed two-Mac receipts](docs/appstore-feature-matrix.md#mixed-nodeswift-daemon-relay-contract) | Experimental, explicit opt-in on a trusted network/tunnel. Observed rows and supported controls only; no full remote terminal, timeline/APME/history sync, automatic target migration or real-agent long-run acceptance claim. |
 | Integration security correction | #636 merged; #635 reporter awaits the coordinated public builds; #647 parser containment included via #659 | Release corrected npm/native installers together, document integration refresh and existing user-owned Codex trust. Keep report specifics private and post exact release links after publication. |
 
-The [candidate highlights](CHANGELOG.md#20-candidate-highlights) are the editorial
+The [candidate highlights](CHANGELOG.md#20-highlights) are the editorial
 source for this scope. They do not replace channel-specific tag headings,
 artifact hashes or observed five-state delivery receipts.
 
@@ -3019,11 +3056,13 @@ looking correct while the server still holds the previous text.
 
 CI owns `CURRENT_PROJECT_VERSION` — `apple-release.yml` injects `github.run_number * 100 + github.run_attempt` into both archive steps, so the build number rises on every run and ASC never sees a duplicate `(version, build)` pair. Do not bump it by hand; the value in `apple/project.yml` is only a local-build default.
 
-#### Guarded macOS review delivery
+#### Guarded Apple review delivery
 
-The `asc-certificates.yml` maintenance workflow supports authorized macOS review
+The `asc-certificates.yml` maintenance workflow supports authorized Apple review
 delivery through Apple's official API. Credentials remain in GitHub Actions.
-The app (`6784822497`) and platform (`MAC_OS`) are fixed; the caller supplies an
+The app (`6784822497`) is fixed; `release_platform` is allow-listed to `MAC_OS`
+or `IOS` (default `MAC_OS`). New iOS mutations are scoped to the 2.0.0 prepare/submit
+operation and never inherit the legacy macOS replacement exception. The caller supplies an
 exact supported product version, processed build greater than `9201`, and
 successful upload run. The workflow verifies that the upload run, CI-derived
 build number and retained artifact all belong to the same reviewed source
@@ -3031,21 +3070,24 @@ commit. A prepared repository copy section for that exact version is required.
 The legacy 1.9.2/build-9201 replacement exception does not authorize replacing
 another candidate or modifying an active unrelated submission.
 
-1. Complete the source, exported-artifact and runtime checks, upload the macOS
+1. Complete the source, exported-artifact and runtime checks, upload the selected platform
    candidate, and read its actual CI build number and ASC processing state.
    An upload alone does not submit it for review.
 2. Dispatch `asc-certificates.yml` on the same reviewed source with
-   `action=release-prepare`, `release_version=<exact version>`,
+   `action=release-prepare`, `release_platform=MAC_OS|IOS`, `release_version=<exact version>`,
    `release_build=<actual build number>`, and `release_run=<successful upload run ID>`.
    Preparation reads the exact version's English, Korean and Japanese What's New
-   fields from `docs/appstore-metadata-draft.md` and the marked macOS Notes field
+   fields from `docs/appstore-metadata-draft.md` and the marked platform-specific Notes field
    from `apple/APP_REVIEW_NOTES.md`. For a new version, it carries required text
-   and review-contact metadata from the latest released macOS version, only when
-   no other macOS version or submission is in flight. It verifies inherited
-   screenshots/previews are complete and retain the released coverage, associates
+   and review-contact metadata from the latest released version of that platform, only when
+   no other version or submission of that platform is in flight. For 2.0.0 it
+   uploads the exact selected, checksummed screenshots and previews from
+   `apple/appstore-submission/media-2.0.0-selection.json`, replaces only that draft
+   display set, and verifies processing is COMPLETE, identities, checksums and order.
+   The version-specific JSON supplies full descriptions and promotional text.
+   Other versions verify inherited screenshot/preview coverage. It associates
    the exact valid build and selects automatic release after approval. Missing
-   media must be restored before continuing; text initialization is not media
-   upload. It refuses an unexpected build association and reads the result back.
+   media or asynchronous processing must be resolved before continuing. It refuses an unexpected build association and reads the result back.
 3. After successful preparation, dispatch the same source and all three target
    inputs with `action=release-submit`. It rechecks provenance, copy, build, media
    and release setting, accepts only a draft containing exactly that version,

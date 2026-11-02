@@ -17,21 +17,26 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Certificates, store status, or guarded macOS release"
+        description: "Certificates, store status, or guarded Apple release"
         required: true
         default: list
         type: choice
         options: [list, revoke, store-status, release-prepare, release-submit, release-replace-prepare, release-supersede-prepare]
+      release_platform:
+        description: "Exact release platform"
+        type: choice
+        default: MAC_OS
+        options: [MAC_OS, IOS]
       certificate_ids:
         description: "Comma-separated certificate ids (revoke only)"
         required: false
         type: string
       release_version:
-        description: "Exact macOS version with prepared repository copy (release actions only)"
+        description: "Exact selected-platform version with prepared repository copy (release actions only)"
         required: false
         type: string
       release_build:
-        description: "Exact uploaded macOS build (release actions only)"
+        description: "Exact uploaded selected-platform build (release actions only)"
         required: false
         type: string
 
@@ -65,7 +70,7 @@ concurrency:
 jobs:
   certificates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -78,6 +83,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+          ASC_RELEASE_PLATFORM: ${{ inputs.release_platform }}
           ASC_ACTION: ${{ inputs.action }}
           ASC_CERTIFICATE_IDS: ${{ inputs.certificate_ids }}
           ASC_RELEASE_VERSION: ${{ inputs.release_version }}

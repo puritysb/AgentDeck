@@ -1,0 +1,14 @@
+{
+  "version": "2.0.0",
+  "versionCode": 30,
+  "state": "prepared",
+  "icon": "icon-512.png",
+  "featureGraphic": "feature-graphic-1024x500.png",
+  "screenshots": "Retain existing approved actual Android phone/tablet/e-ink screenshots. Newer QA captures containing development-only Dot were rejected from this submission selection.",
+  "featureGraphicSource": "marketplace/play/1.6.1/tablet10-01-aquarium.png",
+  "featureGraphicSourceSha256": "d3eb5b6448e998d498d1fad8c5fa02b1cf91d7fd87b20784c41d0c8cea15696d",
+  "provenance": "New caption composition of an earlier actual native Android capture with fictional sessions; aspect-fit, no UI retouching. General product introduction, not evidence of newly captured 2.0 behavior.",
+  "video": "No Android-only footage selected. The new cross-platform product tour is separately identified as native Apple and device footage; do not upload it as Android screen recording.",
+  "iconPolicy": "Byte-identical opaque 512px canonical export (ink-900 background), copied from the active Apple icon export.",
+  "iconSha256": "7cbaabf71883e21b5d33bba2fe993198ff4404d677494483e30c80d799b84dc2"
+}

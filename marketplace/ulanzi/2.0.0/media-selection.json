@@ -1,0 +1,24 @@
+{
+  "version": "2.0.0",
+  "state": "prepared, not uploaded or submitted",
+  "generator": "scripts/generate-ulanzi-marketplace-assets.mjs",
+  "media": [
+    {
+      "file": "banner-01-1920x1280.jpg",
+      "sha256": "c09798dd7d6248b589c47d41da261b54d0e11a8390f63b8c033e5bfd5fcf9c80"
+    },
+    {
+      "file": "banner-02-1920x1280.jpg",
+      "sha256": "61fa5ac394ed434503be119dbde68ab860e636b4efee64afb0561641671136ef"
+    },
+    {
+      "file": "banner-03-1920x1280.jpg",
+      "sha256": "a85291f98bf37b364f6b7e0d3981e95124527c8a09a138f37070cdd2f6e86d5d"
+    },
+    {
+      "file": "cover-1024x1024.jpg",
+      "sha256": "6dd11e595d168a3f55135895d8181d1ddd2c9e54f5270294fda97bb1ac0178c8"
+    }
+  ],
+  "evidence": "Current production key/dial renderer output with fictional sessions. Ulanzi photo and app context panels reuse retained historical captures and are not physical 2.0 acceptance. No D200X encoder claim."
+}

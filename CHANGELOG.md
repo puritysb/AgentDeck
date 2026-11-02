@@ -45,11 +45,15 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
-### 2.0 candidate highlights
+No additional changes after the coordinated 2.0 cut.
 
-These are collected source changes for the coordinated 2.0 candidate, not a
-publication announcement. Availability follows the connected daemon, agent and
-surface; the release audit in [RELEASING.md](RELEASING.md#20-release-scope-audit-2026-11-02)
+## 2026-11-02 — npm 2.0.0, Apple 2.0.0, Android 2.0.0, ESP32 2.0.0, Stream Deck 2.0.0, Ulanzi 2.0.0
+
+### 2.0 highlights
+
+This is the coordinated 2.0 release source. Store approval and public delivery
+are recorded independently per channel. Availability follows the connected
+daemon, agent and surface; the release audit in [RELEASING.md](RELEASING.md#20-release-scope-audit-2026-11-02)
 records evidence, channel applicability and unfinished acceptance.
 
 - **Answer the actual request.** Supported controllers show original question labels and descriptions, retain the request/session identity, and expose original choices or explicit one-time approval. Small Stream Deck layouts now expose NEXT for observed questions. Unsupported or unconfirmed replies are not reported as completed actions; observation-only OpenCode installations do not gain controls by being upgraded.
@@ -67,7 +71,7 @@ routes and DotPreview Apple builds are not standard Store release features.
 Physical e-ink optical performance and D200X friendly-name/VOICE acceptance are
 not certified by the software or media checks below.
 
-### Detailed unshipped changes
+### Changes by target
 
 - E-ink Decision faces use the displayed session's own original choices and indices, echo its question, and send genuine permissions by request ID. Replaced requests, unanswerable questions, questions exceeding the three-choice surface and outbound JSON overflow cannot submit a guessed reply.
 - Native daemon relay: keep held-question correlation in the worker's private snapshot. Remote controllers receive the original question/options without a permission request ID, so they can render and return the actual choice. Replacing an identical question still refreshes the private publication before accepting its answer; genuine permission IDs remain unchanged (#662).

@@ -1,10 +1,10 @@
 {
   "name": "@agentdeck/bridge",
-  "version": "1.9.7",
+  "version": "2.0.0",
   "engines": {
     "node": "22.x || 24.x || 26.x"
   },
-  "description": "AgentDeck CLI and daemon \u2014 steer Claude Code, Codex, and OpenCode sessions from Stream Deck, tablets, e-ink, ESP32 panels, and your terminal",
+  "description": "AgentDeck CLI and daemon — steer Claude Code, Codex, and OpenCode sessions from Stream Deck, tablets, e-ink, ESP32 panels, and your terminal",
   "type": "module",
   "license": "MIT",
   "homepage": "https://puritysb.github.io/AgentDeck/",

@@ -574,7 +574,7 @@ describe('superseding a pending macOS version with a newer one', () => {
   });
 });
 
-function uploadFixture() {
+function uploadFixture(platform = 'MAC_OS') {
   const run = { id: 40313393201, repository: { full_name: 'puritysb/AgentDeck' }, path: '.github/workflows/apple-release.yml',
     head_sha: provenance.sourceSha, status: 'completed', conclusion: 'success', event: 'workflow_dispatch', run_number: 95, run_attempt: 1 };
   const job = { status: 'completed', conclusion: 'success', steps: [
@@ -583,9 +583,13 @@ function uploadFixture() {
   const artifact = { id: 123, name: 'apple-macos-1.9.3-95-1', expired: false, size_in_bytes: 1000,
     digest: provenance.artifactDigest, workflow_run: { id: run.id, head_sha: run.head_sha } };
   const jobs = { total_count: 1, jobs: [job] }, artifacts = { total_count: 1, artifacts: [artifact] };
+  if (platform === 'IOS') {
+    job.steps = ['Verify iOS App Store invariants (exported IPA)', 'Retain verified iOS candidate', 'Upload iOS to TestFlight'].map(name => ({name, status:'completed', conclusion:'success'}));
+    artifact.name = 'apple-ios-1.9.3-95-1';
+  }
   const paths: string[] = [];
   return { run, job, artifact, jobs, artifacts, paths, verify: () => verifyReleaseProvenance({ version: '1.9.3', build: '9501',
-    runId: provenance.runId, sourceSha: provenance.sourceSha, request: async (path: string) => {
+    runId: provenance.runId, sourceSha: provenance.sourceSha, platform, request: async (path: string) => {
       paths.push(path);
       if (path.endsWith('/jobs?per_page=100')) return clone(jobs);
       if (path.endsWith('/artifacts?per_page=100')) return clone(artifacts);
@@ -594,6 +598,14 @@ function uploadFixture() {
 }
 
 describe('uploaded macOS candidate provenance', () => {
+  it('requires the independently verified iOS export and successful iOS upload for IOS', async () => {
+    const f = uploadFixture('IOS');
+    expect(await f.verify()).toEqual(provenance);
+    f.job.steps[0].conclusion = 'skipped';
+    await expect(f.verify()).rejects.toThrow();
+    const mac = uploadFixture('IOS'); mac.artifact.name = 'apple-macos-1.9.3-95-1';
+    await expect(mac.verify()).rejects.toThrow();
+  });
   it('accepts only the source, version, build and successful upload artifact from the exact CI run attempt', async () => {
     const f = uploadFixture();
     expect(await f.verify()).toEqual(provenance);
