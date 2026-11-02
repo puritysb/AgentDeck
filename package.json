@@ -14,6 +14,7 @@
     "generate-opencode-observer": "pnpm --filter @agentdeck/hooks build && node scripts/generate-opencode-observer.mjs",
     "generate-connection-labels": "node scripts/generate-connection-labels.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
+    "generate-app-icons": "node scripts/generate-app-icons.mjs",
     "generate-brand-features": "node scripts/generate-brand-features.mjs",
     "generate-creature-glyphs": "node scripts/generate-creature-glyphs.mjs",
     "generate-hermes-mermaid-2d": "node scripts/generate-hermes-mermaid-2d.mjs",

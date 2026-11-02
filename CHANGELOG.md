@@ -45,6 +45,7 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- App and plugin icons: refine the familiar aquarium, octopus, crayfish and six-key deck for clearer separation at small sizes. Apple, Android, web and full-colour deck plugin icons now come from one higher-resolution master with generated-export checks.
 - Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).
 - Android development installation: `build-android-release.sh --install` retains the installed app and its private data on every failed update, reports the original adb output/status, and never automatically uninstalls it. The deployment skill follows the same rule (#646).
 - Node daemon: cancelling or replacing a connecting hardware-focus relay safely consumes the old socket's teardown error (#648). Serial discovery drops pending opens after flash suspension, stop or restart and checks the flash lease before each candidate; stale ports receive no initial writes (#649, #650).
