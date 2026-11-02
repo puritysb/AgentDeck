@@ -15,11 +15,21 @@ private final class Memory: @unchecked Sendable {
     static func main() async throws { try await run() }
     @DaemonActor static func run() async throws {
         let mode = CommandLine.arguments[1], port = Int(CommandLine.arguments[2])!
-        let rows: [[String:Any]] = [["id":"observed:claude:native","agentType":"claude-code","controlMode":"observed","state":"awaiting_permission","requestId":"native-held-gate","stopRequested":false,"waitingOn":NSNull()]]
-        if mode == "worker" {
+        var row: [String:Any] = ["id":"observed:claude:native","projectName":"relay-fixture","alive":true,"agentType":"claude-code","controlMode":"observed","state":"awaiting_permission","requestId":"native-held-gate","stopRequested":false,"waitingOn":NSNull()]
+        if mode == "worker-ask" {
+            row["state"] = "awaiting_option"; row["question"] = "Which path?"; row["liveAnswerable"] = true
+            row["requestId"] = "native-ask-gate"; row["_relayHeldAsk"] = true
+            row["options"] = ["Alpha", "Bravo", "Charlie"].enumerated().map { ["index":$0.offset,"label":$0.element] as [String:Any] }
+        }
+        let rows = [row]
+        if mode == "worker" || mode == "worker-ask" {
             let connection = DaemonRelayConnection(storage:Memory().storage)
             try await connection.connect(host:"127.0.0.1",port:port,token:nil,consent:true)
-            let uplink = DaemonRelayUplink(instanceId:"swift-worker",connection:connection,snapshot:{ rows + [["id":"legacy-managed","port":9122],["id":"explicit-managed","controlMode":"managed"],["id":"observed:claude:received","controlMode":"observed"]] },current:{rows},exclude:{["observed:claude:received"]},execute:{ emit(["event":"executed","command":$0]) })
+            let uplink = DaemonRelayUplink(instanceId:"swift-worker",connection:connection,snapshot:{ DaemonRelayRules.nativeSnapshot(rows.map { original in
+                var row = original
+                if row["_relayHeldAsk"] as? Bool == true { row.removeValue(forKey:"requestId"); row.removeValue(forKey:"_relayHeldAsk") }
+                return row
+            },current:rows) + [["id":"legacy-managed","port":9122],["id":"explicit-managed","controlMode":"managed"],["id":"observed:claude:received","controlMode":"observed"]] },current:{rows},exclude:{["observed:claude:received"]},execute:{ emit(["event":"executed","command":$0]) })
             await uplink.configure(); emit(["event":"started"])
             try await Task.sleep(for:.seconds(60)); uplink.stop()
         } else {

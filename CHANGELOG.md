@@ -45,6 +45,31 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+### 2.0 candidate highlights
+
+These are collected source changes for the coordinated 2.0 candidate, not a
+publication announcement. Availability follows the connected daemon, agent and
+surface; the release audit in [RELEASING.md](RELEASING.md#20-release-scope-audit-2026-11-02)
+records evidence, channel applicability and unfinished acceptance.
+
+- **Answer the actual request.** Supported controllers show original question labels and descriptions, retain the request/session identity, and expose original choices or explicit one-time approval. Small Stream Deck layouts now expose NEXT for observed questions. Unsupported or unconfirmed replies are not reported as completed actions; observation-only OpenCode installations do not gain controls by being upgraded.
+- **Attention that means a person is needed.** Automatic Codex reviews no longer become human approval alerts. Ended, abandoned and replaced OpenCode requests are retired without treating an unreadable response as completion.
+- **Keep sessions identifiable.** Same-project deck labels retain unique session tags and use available name/branch hints. Ulanzi refreshes name-only changes; narrow keys keep words and recipient identity readable. Commands addressed to one session do not fall through to another focused session.
+- **More capability in the native Mac daemon.** Expand native agent observation, GitHub CI status enrichment, consented ICS calendar context, Pixoo aquarium loops and APME storage/retention controls. Node/Swift handovers preserve supported timeline identity, in-flight state, session pins and Pixoo settings; opt-in cold recovery retains explicit conflict choices.
+- **A clearer aquarium across screen sizes.** Refine Hermes' shared-shell entrance/return, crowded layouts, swimming lanes and labels on native and compact surfaces. Display sleep/wake propagation and supported Android frontlight recovery are improved.
+- **Safer connections and updates.** Avoid opening known foreign USB serial devices, including the LG monitor interface; respect serial flash suspension and stop. Improve Android discovery/retry/address handling, preserve an explicit Apple connection stop, contain malformed WebSocket input and connecting-socket teardown errors, and retain Android app data on failed updates.
+- **Harden agent integrations.** Refresh generated integration commands while preserving custom handlers and user-owned hook trust. Upgrade the CLI and native installers together and refresh enabled integrations after the corrected builds are available; security-report details remain private.
+- **A consistent product presentation.** Refresh the app/deck icon from one master, with identical generated exports across platforms, and introduce the whole workflow with the new English/Korean/Japanese-captioned product tour.
+- **Experimental: daemon relay v1.** Explicitly configured workers publish observed session metadata to a hub and accept only supported controls over the same connection. Real two-Mac Node/Swift transport/control and signed-app save/relaunch/disable are verified with synthetic sessions. Full remote-terminal operation, remote timeline/APME sync and long-running real-agent two-Mac acceptance are outside this claim. Held Claude questions retain their original options rather than becoming binary approvals (#662). Use the documented trusted-network/tunnel boundary.
+
+CloudKit/Watch observation remains a development experiment. Dot native/local
+routes and DotPreview Apple builds are not standard Store release features.
+Physical e-ink optical performance and D200X friendly-name/VOICE acceptance are
+not certified by the software or media checks below.
+
+### Detailed unshipped changes
+
+- Native daemon relay: keep held-question correlation in the worker's private snapshot. Remote controllers receive the original question/options without a permission request ID, so they can render and return the actual choice. Replacing an identical question still refreshes the private publication before accepting its answer; genuine permission IDs remain unchanged (#662).
 - App and plugin icons: refine the familiar aquarium, octopus, crayfish and six-key deck for clearer separation at small sizes. Apple, Android, web and full-colour deck plugin icons now come from one higher-resolution master with generated-export checks.
 - Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).
 - Android development installation: `build-android-release.sh --install` retains the installed app and its private data on every failed update, reports the original adb output/status, and never automatically uninstalls it. The deployment skill follows the same rule (#646).
@@ -73,6 +98,12 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 - ESP32 IPS10: compress the ocean background without changing its pixels, reducing the measured firmware image from 99.2% to 92.4% of its OTA slot. Wake-word detection now requires a longer sustained match, and a voice turn with no speech ends after 3.5 seconds instead of 6; the voice tuning still needs physical acceptance.
 
 ## 2026-10-30 — npm 1.9.7 / Apple 1.9.5
+
+**Preparation record, not a public delivery receipt.** The coordinated 2.0
+candidate carries these changes forward. npm 1.9.6 remains the verified registry
+version in the November 2 audit; no npm 1.9.7 or Apple 1.9.5 release is implied by
+this heading. The dated release decision and channel readbacks remain in
+[RELEASING.md](RELEASING.md#2026-10-30-integration-hardening-preparation-decision).
 
 Apple delivery targets macOS only. iPhone and iPad remain on their existing release.
 

@@ -562,7 +562,11 @@ Managed remote attach keeps working unchanged alongside it.
   settings/voice/launch command is refused. Additive `relay_command_refused`
   frames report refusal without echoing command text. Native ask answers still
   require their current question and use the existing hook gate, never guessed
-  terminal input. Snapshot receipt is not execution acknowledgement.
+  terminal input. Held-question correlation remains only in the worker's private
+  publication; the public row carries original options without `requestId` so
+  controllers cannot mistake it for a binary approval. Replacing a hold changes
+  the private fingerprint even when its public question is identical.
+  Snapshot receipt is not execution acknowledgement.
 - **Controls on Node workers are the observed ones**: a held-gate Allow/Deny, an AskUserQuestion
   answer, a prompt queued for the end of the turn, a stop at the next tool call,
   and terminal injection where the worker's platform has a rung (macOS
@@ -574,8 +578,13 @@ Managed remote attach keeps working unchanged alongside it.
   for relayed rows are not supported yet (the hub's prefix resolver and TTL
   refresh see only its own rows). Independent relayed and hub-local Codex
   identities remain separately visible even with the same project and weight.
-- **Validated** with two real daemons on one host's loopback
-  (`tests/e2e/daemon-relay.e2e.test.ts`); not yet on two machines.
+- **Validation scope**: real-daemon loopback E2E
+  (`tests/e2e/daemon-relay.e2e.test.ts`) plus
+  [signed two-Mac Node/Swift transport/control](appstore-feature-matrix.md#signed-daemon-relay-two-mac-acceptance-2026-10-31)
+  and [installed Release save/relaunch/disable](appstore-feature-matrix.md#installed-signed-release-relay-acceptance-2026-10-31).
+  The two-Mac tests used synthetic hook sessions, including a real hook soft-stop
+  response, not a long-running remote coding-agent terminal. This remains an
+  experimental v1 capability; snapshot receipt is not execution acknowledgement.
 
 ## Observed-session order pins (#273)
 

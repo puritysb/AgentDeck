@@ -10362,11 +10362,9 @@ final class DaemonServer {
         let uplink = DaemonRelayUplink(instanceId: sessionId,
             snapshot: { [weak self] in
                 guard let self else { return [] }
-                let local = Dictionary(self.relayLocalRows().compactMap { row in (row["id"] as? String).map { ($0,row) } }, uniquingKeysWith: { first, _ in first })
-                return (self.buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? []).map { row in
-                    guard let sid = row["id"] as? String, let rid = local[sid]?["requestId"] as? String else { return row }
-                    var row = row; row["requestId"] = rid; return row
-                }
+                return DaemonRelayRules.nativeSnapshot(
+                    self.buildSessionsListEvent()["sessions"] as? [[String: Any]] ?? [],
+                    current: self.relayLocalRows())
             },
             current: { [weak self] in
                 guard let self else { return [] }
