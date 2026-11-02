@@ -16,7 +16,7 @@ Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category A
 Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
 point to the new id; dated records below keep the id they observed.
 
-## 2.0.0 — package public; portal update awaits sign-in (2026-11-02)
+## 2.0.0 — submitted for review (2026-11-02)
 
 The [official 2.0 package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0)
 is public. Downloaded ZIP SHA-256:
@@ -24,16 +24,29 @@ is public. Downloaded ZIP SHA-256:
 The package declares Version **2.0.0**, retains the immutable UUID, includes
 WASM resvg and fonts, and contains no native runtime library.
 
-All seven [locale pairs](2.0.0/listing-locales.json), cover and three banners
-are prepared. D200/D200H/D200X **keypad** support does not imply D200X encoders;
-Dial and AU05 must remain excluded after upload. The uploader-reset/readback
-procedure below still applies.
+After the owner signed in, **Edit review work** replaced the existing 1.8.2
+review record with 2.0.0. The previous main file was removed before uploading
+the official ZIP. **Save review changes → Confirm changes** returned one
+**Works under review** record with the 2.0 update note.
 
-The portal session expired. Clicking Login with no stored credentials produced
-the username/password-required errors; it did not authenticate or replace the
-pending work. The existing-account sign-in request remains pending. No 2.0
-portal submission is claimed; the last verified portal state is public 1.8.1
-and review 1.8.2.
+The saved main file is
+`/cdn/uploadPath/upload/2026/11/02/bba97392df6294468ad482c7957bea95.zip`.
+Downloading that CDN file returns the exact official SHA-256 above. Reopening
+the review form confirms **2.0.0**, immutable UUID, category **AI**, all seven
+[locale pairs](2.0.0/listing-locales.json), D200/D200H/D200X and all three OS
+variants. **Dial and AU05 are excluded**; D200X encoder support is not claimed.
+
+The manifest import again reset every locale and selected unsupported devices;
+these were corrected before submission and verified again from the saved
+record. The new form caps summaries at 300 and details at 1,000 characters.
+English was shortened from 1,223 to **904**; all seven locale pairs fit.
+
+The new 2.0 cover and all three banners are saved. Mandatory portal crop/export
+produces a **400×400 cover and 366×244 banners**; the previous banner has the
+same 366×244 size. High-resolution source files and hashes remain in the
+[media selection](2.0.0/media-selection.json). This is portal processing of the
+approved artwork, not new physical 2.0 acceptance. The public baseline was
+1.8.1; review submission does not establish 2.0 publication.
 
 ## 1.8.2 — submitted as a new review version (2026-10-28)
 

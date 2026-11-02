@@ -1,6 +1,6 @@
 {
   "version": "2.0.0",
-  "state": "prepared, not uploaded or submitted",
+  "state": "submitted for review 2026-11-02; saved record reopened and ZIP checksum verified",
   "generator": "scripts/generate-ulanzi-marketplace-assets.mjs",
   "media": [
     {
@@ -20,5 +20,10 @@
       "sha256": "6dd11e595d168a3f55135895d8181d1ddd2c9e54f5270294fda97bb1ac0178c8"
     }
   ],
-  "evidence": "Current production key/dial renderer output with fictional sessions. Ulanzi photo and app context panels reuse retained historical captures and are not physical 2.0 acceptance. No D200X encoder claim."
+  "evidence": "Current production key/dial renderer output with fictional sessions. Ulanzi photo and app context panels reuse retained historical captures and are not physical 2.0 acceptance. No D200X encoder claim.",
+  "portalTransform": {
+    "cover": "400x400 JPEG",
+    "banners": "366x244 JPEG",
+    "note": "Mandatory portal crop/export; prior banner is also 366x244. Source image hashes above identify selected high-resolution artwork, not portal-converted bytes."
+  }
 }
