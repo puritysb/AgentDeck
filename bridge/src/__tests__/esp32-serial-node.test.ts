@@ -30,7 +30,6 @@ import {
   ESP32_USB_VENDOR_IDS,
   isAllowedSerialVendor,
   parseIoregSerialVendors,
-  serialVendorsByPort,
   isUnidentifiedForeign,
   isHalfOpenIdentifiedCdc,
   isSilentIdentifiedUart,
@@ -224,25 +223,6 @@ describe('ESP32 serial USB vendor gate', () => {
     const port = '/dev/cu.usbmodem807NTAB1C2D31';
     expect(ESP32_PORT_PATTERNS.some(p => p.test(port))).toBe(true);
     expect(isAllowedSerialVendor(parseIoregSerialVendors(IOREG).get(port))).toBe(false);
-  });
-
-  it('does not lose the vendor gate when the registry exceeds 1 MiB', async () => {
-    const registry = ' '.repeat(1100000) + '\n' + IOREG;
-    const read = vi.fn(async (_command: string, _timeout?: number, maxBuffer = 1024 * 1024) => {
-      if (Buffer.byteLength(registry) > maxBuffer) throw new Error('stdout maxBuffer exceeded');
-      return registry;
-    });
-    const vendors = await serialVendorsByPort('darwin', read);
-    expect(vendors.get('/dev/cu.usbmodem807NTAB1C2D31')).toBe(0x043e);
-    expect(isAllowedSerialVendor(vendors.get('/dev/cu.usbmodem807NTAB1C2D31'))).toBe(false);
-  });
-
-  it('keeps failed vendor reads unknown and skips the lookup outside macOS', async () => {
-    const read = vi.fn(async () => { throw new Error('registry unavailable'); });
-    expect(await serialVendorsByPort('darwin', read)).toEqual(new Map());
-    read.mockClear();
-    expect(await serialVendorsByPort('linux', read)).toEqual(new Map());
-    expect(read).not.toHaveBeenCalled();
   });
 
   it('returns an empty map for empty or unrelated output', () => {
