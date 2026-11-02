@@ -157,7 +157,22 @@ class BridgeConnection internal constructor() {
     @Volatile
     var pairedUrl: String? = null
 
+    private fun connectionRequest(wsUrl: String): Request {
+        require(wsUrl.startsWith("ws://", ignoreCase = true) || wsUrl.startsWith("wss://", ignoreCase = true))
+        return Request.Builder().url(wsUrl).apply {
+            DeviceIdentity.current?.let { addHeader(PairingCodeRules.DEVICE_ID_HEADER, it) }
+        }.build()
+    }
+
     fun connect(requestedUrl: String, fallbackUrl: String? = null) {
+        // Reject malformed manual/saved endpoints before replacing a working socket.
+        try {
+            connectionRequest(requestedUrl)
+            fallbackUrl?.let { connectionRequest(it) }
+        } catch (_: IllegalArgumentException) {
+            _lastError.value = "Invalid AgentDeck address. Check the host and port (1-65535)."
+            return
+        }
         generation.incrementAndGet()
         pairedUrls = PairingCredential.remember(pairedUrl, pairedUrls)
         val wsUrl = PairingCredential.resolveFromStore(requestedUrl, pairedUrls)
@@ -238,18 +253,16 @@ class BridgeConnection internal constructor() {
             return
         }
         bridgeDebug { "doConnect($wsUrl) — opening WebSocket" }
+        val request = try {
+            connectionRequest(wsUrl)
+        } catch (_: IllegalArgumentException) {
+            shouldReconnect = false
+            _isReconnecting.value = false
+            _status.value = ConnectionStatus.DISCONNECTED
+            _lastError.value = "Invalid AgentDeck address. Check the host and port (1-65535)."
+            return
+        }
         _status.value = ConnectionStatus.CONNECTING
-
-        val request = Request.Builder()
-            .url(wsUrl)
-            .apply {
-                // Lets the daemon approve THIS device rather than its address —
-                // see DeviceIdentity. Omitted when there is no id to send, which
-                // leaves the daemon on its address-scoped fallback rather than
-                // sending it a value that changes every connect.
-                DeviceIdentity.current?.let { addHeader(PairingCodeRules.DEVICE_ID_HEADER, it) }
-            }
-            .build()
 
         val attempt = generation.incrementAndGet()
         webSocket = client.newWebSocket(request, object : WebSocketListener() {

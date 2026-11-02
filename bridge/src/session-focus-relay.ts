@@ -184,6 +184,9 @@ export class SessionFocusRelay {
     }
     if (this.ws) {
       this.ws.removeAllListeners();
+      // ws emits an asynchronous error when a CONNECTING socket is closed.
+      // The retired socket must retain a sink after lifecycle handlers leave.
+      this.ws.on('error', () => {});
       this.ws.close();
       this.ws = null;
     }

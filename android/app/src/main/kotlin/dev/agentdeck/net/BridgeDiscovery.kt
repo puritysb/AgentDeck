@@ -112,7 +112,7 @@ class BridgeDiscovery(context: Context) {
             }
         }
 
-        private fun rawDiscover(context: Context): Flow<List<DiscoveredBridge>> = callbackFlow {
+        internal fun rawDiscover(context: Context): Flow<List<DiscoveredBridge>> = callbackFlow {
             val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
             val bridges = mutableMapOf<String, DiscoveredBridge>()
 
@@ -147,6 +147,7 @@ class BridgeDiscovery(context: Context) {
             val resolveQueue = ArrayDeque<NsdServiceInfo>()
             val queuedNames = mutableSetOf<String>()
             var resolveInFlight = false
+            var active = true
 
             fun tryEmit() {
                 trySend(bridges.values.toList())
@@ -154,23 +155,26 @@ class BridgeDiscovery(context: Context) {
 
             fun startNextResolve() {
                 synchronized(resolveLock) {
-                    if (resolveInFlight) return
+                    if (!active || resolveInFlight) return
                     val next = resolveQueue.removeFirstOrNull() ?: return
                     resolveInFlight = true
 
                     val listener = object : NsdManager.ResolveListener {
                         override fun onResolveFailed(si: NsdServiceInfo, errorCode: Int) {
-                            synchronized(resolveLock) { resolveInFlight = false }
+                            synchronized(resolveLock) {
+                                if (!active) return
+                                resolveInFlight = false
+                            }
                             if (errorCode == 3 /* FAILURE_ALREADY_ACTIVE */) {
                                 // Another resolve (possibly leaked getaddrinfo on Lenovo
                                 // Android 11) still holds the slot. Re-queue at head and
                                 // retry after a short backoff so the live daemon eventually
                                 // resolves instead of being silently dropped.
                                 Log.w(TAG, "Resolve busy (errorCode=3) for ${si.serviceName} — retrying in 250ms")
-                                scope.launch {
+                                launch {
                                     delay(250)
                                     synchronized(resolveLock) {
-                                        if (queuedNames.add(si.serviceName)) {
+                                        if (active && si.serviceName in queuedNames) {
                                             resolveQueue.addFirst(si)
                                         }
                                         startNextResolve()
@@ -178,16 +182,18 @@ class BridgeDiscovery(context: Context) {
                                 }
                             } else {
                                 Log.w(TAG, "Resolve failed for ${si.serviceName}: errorCode=$errorCode")
-                                queuedNames.remove(si.serviceName)
+                                synchronized(resolveLock) { queuedNames.remove(si.serviceName) }
                                 startNextResolve()
                             }
                         }
 
                         override fun onServiceResolved(si: NsdServiceInfo) {
                             synchronized(resolveLock) {
+                                if (!active) return
                                 resolveInFlight = false
-                                queuedNames.remove(si.serviceName)
+                                if (!queuedNames.remove(si.serviceName)) { startNextResolve(); return }
                             }
+                            if (si.port !in 1..65535) { startNextResolve(); return }
                             val resolvedHost = si.host?.hostAddress
                             val token = try {
                                 si.attributes["token"]?.let { String(it, Charsets.UTF_8) }
@@ -234,7 +240,7 @@ class BridgeDiscovery(context: Context) {
 
             fun enqueueResolve(info: NsdServiceInfo) {
                 synchronized(resolveLock) {
-                    if (!queuedNames.add(info.serviceName)) return
+                    if (!active || !queuedNames.add(info.serviceName)) return
                     resolveQueue.addLast(info)
                     startNextResolve()
                 }
@@ -248,15 +254,19 @@ class BridgeDiscovery(context: Context) {
                 override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                     if (!serviceInfo.serviceType.contains("_agentdeck")) return
 
-                    // Pre-filter stale session-bridge advertisements. Only the
-                    // daemon hub advertises on BridgeConstants.WS_PORT; past
-                    // session bridges (or older daemons) advertised on 9121+
-                    // and their mDNS records can linger in NSD cache beyond TTL.
+                    if (!active) return
+                    val agentType = try {
+                        serviceInfo.attributes["agent"]?.let { String(it, Charsets.UTF_8) }
+                    } catch (_: Exception) { null }
+
+                    // Explicit daemon identity supports custom hub ports. Legacy
+                    // records lack that identity, so retain the default-port filter
+                    // that excludes stale session-bridge advertisements.
                     val txtPort = try {
                         serviceInfo.attributes["port"]
                             ?.let { String(it, Charsets.UTF_8).toIntOrNull() }
                     } catch (_: Exception) { null }
-                    if (txtPort != null && txtPort != BridgeConstants.WS_PORT) {
+                    if (txtPort != null && (txtPort !in 1..65535 || (agentType != "daemon" && txtPort != BridgeConstants.WS_PORT))) {
                         discoveryDebug {
                             "Skip ${serviceInfo.serviceName} (TXT port=$txtPort ≠ ${BridgeConstants.WS_PORT})"
                         }
@@ -268,9 +278,6 @@ class BridgeDiscovery(context: Context) {
                     } catch (_: Exception) { null }
                     val token = try {
                         serviceInfo.attributes["token"]?.let { String(it, Charsets.UTF_8) }
-                    } catch (_: Exception) { null }
-                    val agentType = try {
-                        serviceInfo.attributes["agent"]?.let { String(it, Charsets.UTF_8) }
                     } catch (_: Exception) { null }
 
                     // Fast path: TXT provides ip (+port). Emit immediately and
@@ -303,6 +310,7 @@ class BridgeDiscovery(context: Context) {
                     bridges.remove(serviceInfo.serviceName)
                     synchronized(resolveLock) {
                         queuedNames.remove(serviceInfo.serviceName)
+                        resolveQueue.removeAll { it.serviceName == serviceInfo.serviceName }
                     }
                     tryEmit()
                 }
@@ -318,6 +326,11 @@ class BridgeDiscovery(context: Context) {
             nsdManager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
 
             awaitClose {
+                synchronized(resolveLock) {
+                    active = false
+                    resolveQueue.clear()
+                    queuedNames.clear()
+                }
                 try {
                     nsdManager.stopServiceDiscovery(discoveryListener)
                 } catch (_: Exception) {

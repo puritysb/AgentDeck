@@ -378,6 +378,7 @@ export class SessionSlotManager {
   private dotReserve(layout: DeckLayout): number { return dotDeckReservedKeys(this._dot, layout.keyCount, this._sessions.length); }
 
   updateSessions(sessions: SessionInfo[]): void {
+    const previousFocused = this.getFocusedSession();
     // Build ordered list: sorted by agentType (openclaw→claude→codex→opencode) then name→startedAt
     const alive = foldCodexSessionsForDisplay(
       sessions.filter(s => (s.agentType as string) !== 'daemon' && s.alive),
@@ -394,6 +395,14 @@ export class SessionSlotManager {
     // Preserve focus by identity; explicit legacy folded rows can still supply
     // a successor when an older producer removes a selected member.
     this.reconcileFoldedIds();
+
+    const focused = this.getFocusedSession();
+    if (focused?.controlMode === 'observed' && JSON.stringify([
+      previousFocused?.id, previousFocused?.state, previousFocused?.question,
+      previousFocused?.requestId, previousFocused?.options,
+    ]) !== JSON.stringify([focused.id, focused.state, focused.question, focused.requestId, focused.options])) {
+      this._detailPage = 0;
+    }
 
     // Same project + same agent would draw identical keys — tag those (#544).
     this._labels = sessionDeckLabels(this._sessions);
@@ -636,6 +645,7 @@ export class SessionSlotManager {
     // Suggested prompt only applies in IDLE; clear it otherwise so a stale
     // suggestion can't leak a quick-send button into a busy/awaiting view.
     this._detailSuggestedPrompt = state === State.IDLE ? (suggestedPrompt || undefined) : undefined;
+    if (this.getFocusedSession()?.controlMode === 'observed') return;
     if (!this.isAwaitingDetailState() || questionChanged) {
       this._detailPage = 0;
     } else {
@@ -857,9 +867,17 @@ export class SessionSlotManager {
   }
 
   private detailOptionPages(layout: DeckLayout = DEFAULT_LAYOUT): number {
-    if (!this.isAwaitingDetailState()) return 1;
+    const session = this.getFocusedSession();
+    const rowAwaiting = (session?.state ?? '').toLowerCase().startsWith('awaiting');
+    const rowDriven = session?.controlMode === 'observed'
+      || (rowAwaiting && (session?.options?.length ?? 0) > 0 && !this.isAwaitingDetailState());
+    if (!rowDriven && !this.isAwaitingDetailState()) return 1;
+    if (rowDriven && !rowAwaiting) return 1;
+    const count = rowDriven
+      ? session?.requestId ? (session.agentType === 'opencode' ? OPENCODE_PERMISSION_CHOICES.length : 2) : session?.options?.length ?? 0
+      : this._detailOptions.length;
     const capacity = Math.max(1, this.detailContentSlots(layout, true).length);
-    return Math.max(1, Math.ceil(this._detailOptions.length / capacity));
+    return Math.max(1, Math.ceil(count / capacity));
   }
 
   private getListSlotConfig(slot: number, layout: DeckLayout): SessionSlotConfig {
@@ -1312,7 +1330,7 @@ export class SessionSlotManager {
       : this._detailState === State.PROCESSING;
     const isOpenClaw = session?.agentType === 'openclaw';
     const detailOptionPages = this.detailOptionPages(layout);
-    const reserveMore = isAwaiting && !isObserved && detailOptionPages > 1;
+    const reserveMore = isAwaiting && detailOptionPages > 1;
     const contentSlots = this.detailContentSlots(layout, reserveMore);
     const detailOptionStart = this._detailPage * Math.max(1, contentSlots.length);
     const controls = this.detailControlSlots(layout);

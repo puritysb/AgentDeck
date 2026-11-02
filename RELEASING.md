@@ -103,6 +103,12 @@ completed improvements on `master`, let the remaining workstreams finish, then
 freeze one candidate and run whole-product acceptance before release preparation.
 The earlier delivery records below remain historical evidence.
 
+The November 2 issue pass also collects #648–#657: focus-relay teardown, serial
+poll cancellation, explicit Apple connection stops, Android custom-port discovery,
+busy NSD retry and malformed-address handling, observed OpenCode option paging,
+Ulanzi name refresh, and Apple upload artifact selection. These are source fixes
+for the 2.0 candidate; their inclusion does not publish any channel.
+
 Keep current manifests, published tags, consumed build numbers and Store states
 unchanged during collection. The owner-directed major target does not prove a
 wire incompatibility: before changing `VERSION` or channel manifests, review the

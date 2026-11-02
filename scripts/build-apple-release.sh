@@ -27,6 +27,8 @@ echo "=== AgentDeck Apple v${VERSION} ==="
 
 # Parse arguments
 TARGET="${1:---all}"
+IOS_ARTIFACT=""
+MACOS_ARTIFACT=""
 
 build_ios() {
     echo ""
@@ -69,6 +71,7 @@ build_ios() {
         rm -rf "$VERIFY_PATH"
 
         cp "$IPA_PATH" "$DIST_DIR/agentdeck-ios-v${VERSION}.ipa"
+        IOS_ARTIFACT="$DIST_DIR/agentdeck-ios-v${VERSION}.ipa"
         echo ">>> iOS IPA: dist/agentdeck-ios-v${VERSION}.ipa"
     else
         echo "ERROR: IPA not found at $IPA_PATH"
@@ -125,6 +128,7 @@ build_macos() {
     bash "$APPLE_DIR/scripts/verify-appstore-archive.sh" "$APP_PATH"
     rm -rf "$VERIFY_PATH"
 
+    MACOS_ARTIFACT="$PKG_PATH"
     echo ">>> macOS export: dist/export_macos/"
 }
 
@@ -139,24 +143,18 @@ upload_testflight() {
     echo ""
     echo ">>> Uploading to TestFlight..."
 
-    if [ -f "$DIST_DIR/agentdeck-ios-v${VERSION}.ipa" ]; then
-        xcrun altool --upload-app \
-            -f "$DIST_DIR/agentdeck-ios-v${VERSION}.ipa" \
-            -t ios \
-            --apiKey "$ASC_API_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
-        echo ">>> iOS uploaded to TestFlight"
+    local platform="$1"
+    local artifact="$2"
+    if [ ! -f "$artifact" ]; then
+        echo "ERROR: verified $platform artifact missing: $artifact"
+        return 1
     fi
-
-    PKG_PATH=$(find "$DIST_DIR/export_macos" -name "*.pkg" 2>/dev/null | head -1)
-    if [ -n "${PKG_PATH:-}" ]; then
-        xcrun altool --upload-app \
-            -f "$PKG_PATH" \
-            -t macos \
-            --apiKey "$ASC_API_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID"
-        echo ">>> macOS uploaded to App Store Connect"
-    fi
+    xcrun altool --upload-app \
+        -f "$artifact" \
+        -t "$platform" \
+        --apiKey "$ASC_API_KEY_ID" \
+        --apiIssuer "$ASC_ISSUER_ID"
+    echo ">>> $platform uploaded to App Store Connect"
 }
 
 mkdir -p "$DIST_DIR"
@@ -164,16 +162,17 @@ mkdir -p "$DIST_DIR"
 case "$TARGET" in
     --ios)
         build_ios
-        upload_testflight
+        upload_testflight ios "$IOS_ARTIFACT"
         ;;
     --macos)
         build_macos
-        upload_testflight
+        upload_testflight macos "$MACOS_ARTIFACT"
         ;;
     --all)
         build_ios
         build_macos
-        upload_testflight
+        upload_testflight ios "$IOS_ARTIFACT"
+        upload_testflight macos "$MACOS_ARTIFACT"
         ;;
     *)
         echo "Usage: $0 [--ios|--macos|--all]"

@@ -287,7 +287,8 @@ fun ManualUrlInput(
     var urlInput by remember { mutableStateOf("") }
     val doConnect = {
         if (urlInput.isNotBlank()) {
-            val url = if (urlInput.startsWith("ws://")) urlInput else "ws://$urlInput"
+            val input = urlInput.trim()
+            val url = if (input.startsWith("ws://", ignoreCase = true) || input.startsWith("wss://", ignoreCase = true)) input else "ws://$input"
             onConnect(url)
         }
     }
@@ -340,6 +341,8 @@ fun ManualUrlInput(
                 placeholder = { Text("192.168.1.5:9120") },
                 singleLine = true,
                 label = { Text("Manual URL") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                keyboardActions = KeyboardActions(onGo = { doConnect() }),
             )
             Button(
                 onClick = { doConnect() },
