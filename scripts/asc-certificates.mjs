@@ -60,14 +60,14 @@ function token(keyId, issuerId, keyPem) {
   return `${header}.${payload}.${b64url(sig)}`;
 }
 
-export function createASCClient(env = process.env, transport = fetch) {
+export function createASCClient(env = process.env, transport = fetch, { pause = ms => new Promise(r => setTimeout(r, ms)) } = {}) {
   const keyPem = env.ASC_KEY_BASE64
     ? Buffer.from(env.ASC_KEY_BASE64, 'base64').toString('utf8')
     : env.ASC_KEY_PATH ? fs.readFileSync(env.ASC_KEY_PATH, 'utf8') : null;
   if (!env.ASC_KEY_ID || !env.ASC_ISSUER_ID || !keyPem) {
     throw new Error('Missing ASC_KEY_ID / ASC_ISSUER_ID / (ASC_KEY_BASE64 | ASC_KEY_PATH)');
   }
-  return async (path, method = 'GET', body) => {
+  const request = async (path, method = 'GET', body) => {
     if (!path.startsWith('/v1/') || path.includes('..') || path.includes('#') || path.includes('\\')) {
       throw new Error('Invalid ASC resource path');
     }
@@ -88,12 +88,24 @@ export function createASCClient(env = process.env, transport = fetch) {
         const body = await res.json();
         codes = (body.errors ?? []).map(error => error.code).filter(code => typeof code === 'string' && /^[A-Z0-9_.-]{1,100}$/.test(code)).slice(0,5);
       } catch { /* The HTTP status remains sufficient when the error is unreadable. */ }
-      throw new Error(`ASC ${method} failed (HTTP ${res.status})${codes.length ? ` [${codes.join(', ')}]` : ''} at ${path.split('?')[0]}`);
+      throw Object.assign(new Error(`ASC ${method} failed (HTTP ${res.status})${codes.length ? ` [${codes.join(', ')}]` : ''} at ${path.split('?')[0]}`),
+        { retryable: res.status >= 500 && res.status <= 599 });
     }
     if (method === 'DELETE' && res.status !== 204) throw new Error('ASC DELETE was not confirmed (expected HTTP 204)');
     if (res.status === 204) return null;
     try { return await res.json(); }
     catch { throw Object.assign(new Error(`ASC ${method} response unreadable; read back before retrying`), { outcomeUnknown: true }); }
+  };
+  return async (path, method = 'GET', body) => {
+    for (let attempt = 0; ; attempt++) {
+      try { return await request(path, method, body); }
+      catch (error) {
+        // Apple returned transient 500s across several otherwise valid reads.
+        // At most three bounded reads; mutations are always attempted once.
+        if (method !== 'GET' || attempt >= 2 || (!error.retryable && !error.outcomeUnknown)) throw error;
+        await pause(1000 * (attempt + 1));
+      }
+    }
   };
 }
 

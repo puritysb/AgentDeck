@@ -354,6 +354,33 @@ describe('bounded macOS ASC release', () => {
     expect(run).toContain('"$ASC_RELEASE_VERSION" "$ASC_RELEASE_BUILD"');
     expect(workflow).toContain('cancel-in-progress: false');
   });
+  it('retries transient read failures within a fixed budget and stops once the read succeeds', async () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    const env = { ASC_KEY_ID: 'test', ASC_ISSUER_ID: 'issuer', ASC_KEY_BASE64: Buffer.from(privateKey.export({ format: 'pem', type: 'pkcs8' })).toString('base64') };
+    let calls = 0; const delays: number[] = [];
+    const request = createASCClient(env, async () => {
+      calls++; if (calls === 1) throw new Error('network timeout');
+      return calls === 2 ? new Response('private internal failure', { status: 500 }) : Response.json({ data: [] });
+    }, { pause: async (ms: number) => { delays.push(ms); } });
+    await expect(request('/v1/appScreenshotSets/test/appScreenshots')).resolves.toEqual({ data: [] });
+    expect(calls).toBe(3); expect(delays).toEqual([1000, 2000]);
+  });
+  it.each(['POST', 'PATCH', 'DELETE'])('never retries a failed %s mutation', async method => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    let calls = 0, waits = 0;
+    const request = createASCClient({ ASC_KEY_ID: 'test', ASC_ISSUER_ID: 'issuer', ASC_KEY_BASE64: Buffer.from(privateKey.export({ format: 'pem', type: 'pkcs8' })).toString('base64') },
+      async () => { calls++; return new Response('private failure body', { status: 500 }); }, { pause: async () => { waits++; } });
+    await expect(request('/v1/reviewSubmissions', method, {})).rejects.toThrow(`ASC ${method} failed (HTTP 500)`);
+    expect(calls).toBe(1); expect(waits).toBe(0);
+  });
+  it.each([401, 403, 422, 500])('caps or refuses retries for GET HTTP %s without exposing response bodies', async status => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    let calls = 0;
+    const request = createASCClient({ ASC_KEY_ID: 'test', ASC_ISSUER_ID: 'issuer', ASC_KEY_BASE64: Buffer.from(privateKey.export({ format: 'pem', type: 'pkcs8' })).toString('base64') },
+      async () => { calls++; return new Response('private failure body', { status }); }, { pause: async () => {} });
+    await expect(request('/v1/reviewSubmissions')).rejects.toThrow(`ASC GET failed (HTTP ${status}) at /v1/reviewSubmissions`);
+    expect(calls).toBe(status === 500 ? 3 : 1);
+  });
 });
 
 const previousSubmission = '11111111-2222-4333-8444-555555555555';
