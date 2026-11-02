@@ -238,3 +238,67 @@ describe('public 1.8.0 media integration', () => {
     // unit contract deliberately has no ffprobe or video/pixel dependency.
   });
 });
+
+describe('whole-product 2.0 introduction', () => {
+  it('waits for metadata before a chapter click seeks an unloaded video', () => {
+    const script = [...overview.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+      .map(m => m[1]!).find(s => s.includes("querySelectorAll('[data-tour-seek]')"))!;
+    let click: () => void = () => {};
+    let loaded: () => void = () => {};
+    let played = 0;
+    let loads = 0;
+    const video = { readyState: 0, currentTime: 0,
+      play: () => { played++; return Promise.resolve(); }, load: () => { loads++; },
+      addEventListener: (event: string, callback: () => void) => { expect(event).toBe('loadedmetadata'); loaded = callback; },
+    };
+    runInNewContext(script, { document: {
+      querySelectorAll: () => [{ dataset: { tourSeek: '28' }, addEventListener: (_: string, callback: () => void) => { click = callback; } }],
+      getElementById: () => video,
+    }});
+    click();
+    expect(loads).toBe(1); expect(video.currentTime).toBe(0); expect(played).toBe(0);
+    video.readyState = 1; loaded();
+    expect(video.currentTime).toBe(28); expect(played).toBe(1);
+  });
+
+  it('keeps the product tour primary and the real control take a separate feature detail', () => {
+    const html = section('product-tour');
+    expect(overview.indexOf('id="product-tour"')).toBeLessThan(overview.indexOf('id="controller-workflow"'));
+    expect(readme).toContain('#product-tour');
+    expect(tags(html, 'source')[0]?.src).toBe('media/current/agentdeck-200-product-tour.mp4');
+    expect(tags(section('controller-workflow'), 'source')[0]?.src).toBe('media/current/agentdeck-200-workflow.mp4');
+    expect(tags(html, 'track').map(t => t.srclang)).toEqual(['en', 'ko', 'ja']);
+    const video = tags(html, 'video')[0]!;
+    expect(video).toHaveProperty('controls');
+    expect(video).not.toHaveProperty('autoplay');
+    expect(video.preload).toBe('none');
+    for (const media of mediaReferences(html)) expect(statSync(join(ROOT, 'docs', media)).size).toBeGreaterThan(0);
+  });
+  it('covers the product beyond approval and keeps chapter, source and caption clocks aligned', () => {
+    const story = JSON.parse(read('scripts/product-tour-story.json'));
+    const cuts = JSON.parse(read('docs/media/current/agentdeck-200-product-tour-cuts.json'));
+    const ids = story.chapters.map((c: any) => c.id);
+    for (const id of ['overview','tablet','session','collaboration','usage','answer','controllers',
+      'native-controls','evaluation','evidence','eink','compact','led','terminal']) expect(ids).toContain(id);
+    expect(cuts.duration).toBeGreaterThan(120);
+    expect(cuts.duration).toBeLessThan(180);
+    let at = 0;
+    for (const [i, c] of story.chapters.entries()) {
+      expect(c.duration).toBeGreaterThanOrEqual(8);
+      expect(cuts.chapters[i].start).toBeCloseTo(at, 3);
+      at += c.duration;
+      expect(cuts.chapters[i].end).toBeCloseTo(at, 3);
+      expect(cuts.chapters[i].proof).toBe(c.proof);
+      expect(cuts.chapters[i].layers.every((l: any) => /^[a-f0-9]{64}$/.test(l.sha256))).toBe(true);
+      for (const locale of ['en','ko','ja']) expect(c[locale].length).toBeGreaterThan(10);
+    }
+    expect(cuts.duration).toBeCloseTo(at, 3);
+    const bytes = readFileSync(join(ROOT, 'docs/media/current/agentdeck-200-product-tour.mp4'));
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(cuts.videoSha256);
+    const html = section('product-tour');
+    for (const button of tags(html, 'button')) {
+      const target = Number(button['data-tour-seek']);
+      expect(cuts.chapters.some((c: any) => Math.abs(c.start - target) < .001)).toBe(true);
+    }
+  });
+});

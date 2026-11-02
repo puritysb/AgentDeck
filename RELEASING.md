@@ -199,13 +199,14 @@ crop/encode metadata under `diagnostics/media-2.0/<sha>/` for review.
 | GitHub README | A short GIF excerpt and poster linked to the same 2.0 player; current hardware stills where the controls changed | Same source take, readable text at README size, accurate alt text and capture provenance; retain historical photos/footage as dated material |
 | App Store previews | Separate Mac, iPhone and iPad native captures of features actually available in each submitted build | Check current Apple requirements at release-preparation time; validate frame size, timing/audio/encoding and actual Store feature boundaries; no PoC-only screens or composited replacement UI |
 
-The core story is **observe real work → find a genuine response wait → read the
-original choices → answer/permit once → observe the result**. Then show usage
-with source freshness and the appropriate role of an e-ink, encoder or glance
-screen. Demonstrate the larger key labels at real display size. Use fictional
-projects and bounded harmless commands, keep the fixture loopback-only, and
-remove it afterwards. A read-only notification/cache clip must not imply remote
-control, guaranteed immediate delivery or an always-online Mac.
+The primary introduction is a whole-product tour: **parallel sessions and CI →
+collaboration and history → usage and freshness → original choice/one-time approval
+→ controller-native controls → task evaluation and evidence → device-specific
+views and the local hub**. The 25-second execution take is a feature detail.
+The [chapter source](scripts/product-tour-story.json) and
+[Pages media procedure](docs/pages-site.md#20-capture-checkpoint) own the current
+coverage and evidence labels. No CloudKit/Watch PoC is promoted into a released
+remote-control promise.
 
 The existing recording entry points are
 [`record-feature-demo.sh`](scripts/record-feature-demo.sh) and

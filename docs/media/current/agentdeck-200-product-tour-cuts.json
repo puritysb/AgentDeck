@@ -1,0 +1,369 @@
+{
+  "sourceRevision": "4100e0ca",
+  "availability": "2.0 development candidate; not current Store release",
+  "duration": 144.033333,
+  "transformations": "Original speed; editorial cuts, labeled native crops, static product captures and production renderer frames. No synthetic UI execution.",
+  "videoSha256": "6ee89371032cfb7c5f44543f332d34e6b01dd53066d2967504fac625b8c45661",
+  "chapters": [
+    {
+      "id": "overview",
+      "start": 0,
+      "end": 10,
+      "title": "All your agents. One local view.",
+      "proof": "Native Mac recording · fictional sessions · 2.0 development build",
+      "layers": [
+        {
+          "file": "raw/01-overview.mov",
+          "x": 40,
+          "y": 205,
+          "w": 1840,
+          "h": 760,
+          "start": 1,
+          "sha256": "549c8036563f72bd39f9d9baf4f047ee82516b8d7ce1a628a488eafe9cbbdd7f"
+        }
+      ]
+    },
+    {
+      "id": "tablet",
+      "start": 10,
+      "end": 19,
+      "title": "A dashboard that fits your desk.",
+      "proof": "Native iPad Simulator recording · Default dashboard · fictional sessions",
+      "layers": [
+        {
+          "file": "raw/14-tablet-default.mov",
+          "x": 40,
+          "y": 205,
+          "w": 1840,
+          "h": 760,
+          "sha256": "2d0f2bbe2ba814b3e713c5a8026838fa682b8675956e448ab036c7333e04f7f5"
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "start": 19,
+      "end": 28,
+      "title": "Follow the work, session by session.",
+      "proof": "Native Mac close-ups · actual production key renderer · sample state",
+      "layers": [
+        {
+          "file": "raw/02-session.mov",
+          "crop": [
+            0,
+            80,
+            530,
+            720
+          ],
+          "x": 80,
+          "y": 205,
+          "w": 560,
+          "h": 760,
+          "start": 1,
+          "sha256": "19d49e6abdc736f3c0134bb723ccdc314488d32b3560b0d33e5b2fe59aa142e6"
+        },
+        {
+          "file": "raw/02-session.mov",
+          "crop": [
+            2640,
+            1500,
+            1450,
+            300
+          ],
+          "x": 690,
+          "y": 600,
+          "w": 1150,
+          "h": 300,
+          "start": 1,
+          "sha256": "19d49e6abdc736f3c0134bb723ccdc314488d32b3560b0d33e5b2fe59aa142e6"
+        },
+        {
+          "file": "raw/07-deck-keys.png",
+          "crop": [
+            312,
+            0,
+            288,
+            288
+          ],
+          "x": 1040,
+          "y": 205,
+          "w": 350,
+          "h": 350,
+          "sha256": "19ac85ab9c04c24345f3eb606c6d56b764a3f5577c179e6618a8851e1007fc6b"
+        }
+      ]
+    },
+    {
+      "id": "collaboration",
+      "start": 28,
+      "end": 39,
+      "title": "See who is waiting on whom.",
+      "proof": "Native Mac collaboration graph · fictional observed messages · enlarged crop",
+      "layers": [
+        {
+          "file": "raw/04-graph.mov",
+          "crop": [
+            1370,
+            490,
+            1360,
+            1280
+          ],
+          "x": 510,
+          "y": 205,
+          "w": 900,
+          "h": 760,
+          "start": 1,
+          "sha256": "f544baab3a013ee0a73eca6bdd1ec03ca603d5b5d11cdb0b21ba2a04acd429b4"
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "start": 39,
+      "end": 49,
+      "title": "Know your remaining room to work.",
+      "proof": "Native iPhone usage panel + production Stream Deck+ encoder renderer · sample quota",
+      "layers": [
+        {
+          "file": "raw/13-phone-system.mov",
+          "crop": [
+            0,
+            120,
+            1320,
+            1000
+          ],
+          "x": 50,
+          "y": 240,
+          "w": 1000,
+          "h": 680,
+          "sha256": "398842774fe5ab4bf07b7e83d879651f10a712bb8f570f762da69267cbb03f9a"
+        },
+        {
+          "file": "raw/10-usage-dial.png",
+          "x": 1110,
+          "y": 360,
+          "w": 680,
+          "h": 420,
+          "sha256": "be64570fb78ac02153bcf2cc40ab59c7690439c4aa7450b8fa759a8406480e47"
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "start": 49,
+      "end": 74.033333,
+      "title": "Read the request. Make the actual choice.",
+      "proof": "Native iPhone Simulator · real OpenCode SDK execution · fictional workspace · original speed",
+      "layers": [
+        {
+          "file": "current/agentdeck-200-workflow.mp4",
+          "x": 365,
+          "y": 205,
+          "w": 1190,
+          "h": 760,
+          "sha256": "763198ba5314f559d0bc90fe64f429dc13075be5651e1e968d12f874c24ddfe4"
+        }
+      ]
+    },
+    {
+      "id": "controllers",
+      "start": 74.033333,
+      "end": 84.033333,
+      "title": "Give each controller a useful job.",
+      "proof": "Production key and Ulanzi layout renderers · fictional state · enlarged, not hardware footage",
+      "layers": [
+        {
+          "file": "raw/07-deck-keys.png",
+          "x": 70,
+          "y": 215,
+          "w": 950,
+          "h": 470,
+          "sha256": "19ac85ab9c04c24345f3eb606c6d56b764a3f5577c179e6618a8851e1007fc6b"
+        },
+        {
+          "file": "raw/08-native-options.png",
+          "x": 70,
+          "y": 730,
+          "w": 950,
+          "h": 222,
+          "sha256": "298dae2990bd52f63f67f10e980ed4becfc542b057bb710a25cdc9b9480bc32c"
+        },
+        {
+          "file": "raw/09-d200h.png",
+          "x": 1080,
+          "y": 320,
+          "w": 780,
+          "h": 520,
+          "sha256": "53ec23017650eec135352dc65109d8341d5873daca60bbb6dc0c3daed1b0059b"
+        }
+      ]
+    },
+    {
+      "id": "native-controls",
+      "start": 84.033333,
+      "end": 92.033333,
+      "title": "Use the controls your agent actually offers.",
+      "proof": "Production Ulanzi detail renderer · fictional Gateway state · no voice or settings command executed",
+      "layers": [
+        {
+          "file": "raw/12-native-controls.png",
+          "x": 340,
+          "y": 205,
+          "w": 1240,
+          "h": 760,
+          "sha256": "3f2d43498c8102a32a05779892ce2f98f664709774a574bca5b41d712c2d2f38"
+        }
+      ]
+    },
+    {
+      "id": "evaluation",
+      "start": 92.033333,
+      "end": 101.033333,
+      "title": "Review the result, not just a green light.",
+      "proof": "Actual APME product UI · fictional task and sample judge result · still capture",
+      "layers": [
+        {
+          "file": "raw/05-review.png",
+          "x": 100,
+          "y": 205,
+          "w": 1720,
+          "h": 760,
+          "sha256": "3d8e1da0e0ef26e3f8c6076e1ba625abf5439b46546a0e511ccfa52991bc93c9"
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "start": 101.033333,
+      "end": 110.033333,
+      "title": "Go back to the evidence.",
+      "proof": "Actual APME product UI · fictional archived evidence · still capture",
+      "layers": [
+        {
+          "file": "raw/06-evidence.png",
+          "x": 100,
+          "y": 205,
+          "w": 1720,
+          "h": 760,
+          "sha256": "6ef002a0fcf3c62de05b66497c5c0513ef198be1fafea4a811c580a82d1dbebc"
+        }
+      ]
+    },
+    {
+      "id": "eink",
+      "start": 110.033333,
+      "end": 119.033333,
+      "title": "A quiet view on e-ink.",
+      "proof": "Native Android screenshot + firmware host renderer · fictional data · not new physical testing",
+      "layers": [
+        {
+          "file": "current/crema-working.png",
+          "x": 80,
+          "y": 205,
+          "w": 700,
+          "h": 760,
+          "sha256": "a0eb1a9274cc75461aac92156700ec33959611c3b39b7e675aa158e23f4311e6"
+        },
+        {
+          "file": "current/trmnl_75-working.png",
+          "x": 880,
+          "y": 275,
+          "w": 970,
+          "h": 650,
+          "sha256": "474fdb52c2296d63a37f38a9e18f3ef0c48fe2415bcd8e15887e29c854a234ce"
+        }
+      ]
+    },
+    {
+      "id": "compact",
+      "start": 119.033333,
+      "end": 128.033333,
+      "title": "Small screens show the useful essentials.",
+      "proof": "Actual firmware host renders · fictional data · enlarged pixels, not physical captures",
+      "layers": [
+        {
+          "file": "current/ips35-working.png",
+          "x": 60,
+          "y": 260,
+          "w": 780,
+          "h": 600,
+          "sha256": "d5d301e2166c81b991aaef7aab2b15940b3b6131c39bf199a085c1c9f761210f"
+        },
+        {
+          "file": "current/amoled-working.png",
+          "x": 910,
+          "y": 280,
+          "w": 450,
+          "h": 450,
+          "sha256": "e9d3bb665ccd22e6fd2e6a4ab112640f7803e85a0e543fe232fe91e4df219451"
+        },
+        {
+          "file": "current/ips10-working.png",
+          "x": 1430,
+          "y": 280,
+          "w": 420,
+          "h": 450,
+          "sha256": "8eddab87cab85c3ded3453040f352b40801fe0cddcf252048fa9096fd732be3e"
+        }
+      ]
+    },
+    {
+      "id": "led",
+      "start": 128.033333,
+      "end": 136.033333,
+      "title": "A signal you can see from across the desk.",
+      "proof": "Historical physical-device photographs · September 28, 2026 · retained reference media",
+      "layers": [
+        {
+          "file": "repo/docs/media/timebox.jpg",
+          "x": 50,
+          "y": 235,
+          "w": 570,
+          "h": 680,
+          "sha256": "17b5b5b426422f3eb67089e0fbe18eafbae68bd0621732c148a71218280ec4e8"
+        },
+        {
+          "file": "repo/docs/media/idotmatrix.jpg",
+          "x": 675,
+          "y": 235,
+          "w": 570,
+          "h": 680,
+          "sha256": "f63717dc61fb2b0fa87f6f7c86b8517155430af12ef36292df099f66d88ac882"
+        },
+        {
+          "file": "repo/docs/media/tc001.jpg",
+          "x": 1300,
+          "y": 235,
+          "w": 570,
+          "h": 680,
+          "sha256": "bade84612d4a745a3d61e23613076dd8ebe76d16dc32238b6456d769ecd95cb2"
+        }
+      ]
+    },
+    {
+      "id": "terminal",
+      "start": 136.033333,
+      "end": 144.033333,
+      "title": "Start with the screen you already have.",
+      "proof": "Terminal reference capture + historical desk photograph, September 28, 2026",
+      "layers": [
+        {
+          "file": "repo/docs/media/tui-dashboard.png",
+          "x": 70,
+          "y": 230,
+          "w": 1000,
+          "h": 680,
+          "sha256": "b14e7f3bb9b46c0a1517e1e01135385e60aa539e696a47a1dab3abe41c24c0ef"
+        },
+        {
+          "file": "repo/docs/media/desk-overview.jpg",
+          "x": 1120,
+          "y": 255,
+          "w": 730,
+          "h": 620,
+          "sha256": "75f6a7ea5ea7cc3612525658e89fe07b38ff26eeef09d6df51daa6868a8bce18"
+        }
+      ]
+    }
+  ]
+}

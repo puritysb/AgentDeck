@@ -33,24 +33,29 @@ pairing and were rejected, so no new iPhone supplement is selected.
 This supplement is prepared locally, not submitted. Play, Elgato and Ulanzi retain
 dated listing media; current Android QA and rendered key previews remain
 acceptance evidence. The manifest identifies remaining listing selection/review
-work. Public showcase media is not an upload-ready Apple App Preview; the existing
-preview files below retain their documented 1.5 provenance.
+work. Public showcase media is not an upload-ready Apple App Preview; historical
+1.5 previews remain in git history; the current local 2.0 candidates are described below.
 
 ## App Preview videos
 
-The upload files are `previews/<platform>/agentdeck-preview.mp4` for
-`macOS`, `iPhone` and `iPad`. The macOS cut includes the aquarium, Collaboration
-and Dashboard settings. The mobile cuts were recaptured on 2026-09-23 from
-the current 1.5.0 Apple source and show the 3D aquarium, growing session roster,
-attention request and completion. Each mobile cut is 25 seconds. These English
-UI recordings are the canonical videos for all storefront languages; localized
-screenshots and metadata remain available. See the delivery record for actual
-portal upload and submission status.
+The local 2.0 candidate files are `previews/<platform>/agentdeck-preview.mp4`
+for `macOS`, `iPhone` and `iPad`. Each is about 28 seconds and introduces multiple
+sessions plus usage (mobile) or Collaboration Beta (Mac), followed by a real local
+question, original choice, one-time approval and resumed result. These use actual
+native app frames with fictional overview activity and a separately evidenced
+real OpenCode execution. They are prepared locally, not uploaded or approved.
+See the [current capture record](APP_PREVIEW_STORYBOARD.md) and
+[media manifest](../../docs/media/current/manifest.json) for exact sources and cuts.
 
-Use 1920×1080 for Mac, 886×1920 for iPhone and 1200×1600 for portrait iPad.
-Previews must be 15–30 seconds, H.264 High Profile Level 4.0, progressive,
-30 fps, with a silent AAC track. Validate each final file before upload.
-Keep original recordings locally for provenance.
+The broader Pages/README product introduction is a separate 2 min 24 sec tour;
+it must not be used as a Store App Preview. Historical 1.5/1.8 delivery records
+remain dated evidence and do not describe these new candidate files.
+
+Current canvases are Mac 1920×1080, iPhone 886×1920 and landscape iPad 1600×1200.
+Candidates use original-speed native frames, H.264 High Profile Level 4.0,
+progressive 30 fps, CBR at 11 Mbps, and silent AAC-LC stereo at 44.1 kHz.
+Validate each final file and recheck current Store requirements and submitted-build
+parity during release preparation. Preserve originals locally for provenance.
 
 ## 1.5.0 delivery
 
@@ -87,4 +92,4 @@ included in Release/App Store builds.
 
 Add `--network` to verify the public URLs as well.
 
-App Preview videos remain optional in App Store Connect, but upload-ready files are now provided for all three platforms. App previews appear before screenshots, so verify the 5-second poster frame after upload. Never include Terminal, Xcode, browser chrome, secrets, real project names, or local network addresses.
+App Preview videos remain optional in App Store Connect. Local development candidates are provided for all three platforms; they still require release and storefront review. App previews appear before screenshots, so verify the 5-second poster frame after upload. Never include Terminal, Xcode, browser chrome, secrets, real project names, or local network addresses.
