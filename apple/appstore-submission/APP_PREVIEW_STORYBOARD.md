@@ -16,9 +16,9 @@ hashes, exact cuts, streams and evidence boundaries.
 | --- | ---: | --- |
 | iPhone | 28.43s | Multiple sessions, then System with reported usage windows |
 | iPad | 28.33s | Landscape dashboard with roster, activity timeline and usage |
-| macOS | 28.37s | Multi-agent dashboard, then expanded Collaboration Beta graph |
+| macOS | 28.00s | Native dashboard, session context, observed Collaboration Beta and expanded graph |
 
-Each ends with its own real native question → original choice → one-time
+The mobile previews end with their own real native question → original choice → one-time
 permission → resumed result. These are original-speed editorial cuts of full
 native frames, aspect-fit to the platform canvas. The earlier complete control
 takes remain the feature-detail evidence rather than the whole product introduction.

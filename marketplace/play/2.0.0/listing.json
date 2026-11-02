@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "localizations": {
+    "en-US": {
+      "shortDescription": "AI coding-agent dashboard. Requires AgentDeck on your computer.",
+      "fullDescription": "AgentDeck turns live AI coding sessions into a calm aquarium dashboard. Pair with an AgentDeck daemon on your reachable local network to follow supported agents, session names, activity, history and reported usage in one place.\n\nSee when an agent needs your attention. Answer original choices and one-time approval requests when the paired daemon and integration support them. Observation-only sessions remain read-only; AgentDeck never approves a request automatically.\n\nAgentDeck 2.0 improves readable session labels, request identity, reconnect recovery, discovery and usage freshness. Attention distinguishes human responses from CI waits. Tablet and e-ink layouts keep work and usage readable together, with independent scrolling.\n\nChoose a dashboard appearance or a quiet frame view. Existing pairing and settings are retained through the update.\n\nThe Android app is a companion, not an agent runtime or a full remote terminal. Available controls and usage data depend on the connected daemon and source integration. No AgentDeck account, advertising or analytics SDK is required.\n\nSETUP\nOn Mac, open the free AgentDeck Dashboard app from the Mac App Store. On macOS, Windows or Linux, you can instead install the daemon with npx @agentdeck/setup. Start your coding agents normally, then pair this companion with the computer."
+    },
+    "ko-KR": {
+      "shortDescription": "컴퓨터의 AgentDeck과 연결해 AI 코딩 에이전트의 작업을 확인하는 동반 대시보드",
+      "fullDescription": "AgentDeck은 AI 코딩 에이전트의 실시간 작업을 잔잔한 수조 대시보드로 보여줍니다. 연결 가능한 로컬 네트워크의 AgentDeck 데몬과 페어링하여 지원되는 에이전트의 세션 이름, 활동, 기록과 제공된 사용량을 한곳에서 확인하세요.\n\n에이전트가 응답을 기다리는 순간을 확인하고, 연결된 데몬과 연동이 지원하는 원래 선택지와 일회성 승인 요청에 답할 수 있습니다. 관찰 전용 세션은 읽기 전용이며 요청을 자동으로 승인하지 않습니다.\n\nAgentDeck 2.0은 읽기 쉬운 세션 이름, 요청 식별, 재연결 복구, 로컬 검색과 사용량의 최신성을 개선했습니다. 사용자 응답과 CI 대기를 구분하고 태블릿과 전자잉크에서 작업과 사용량을 함께 읽기 쉽게 표시하며 각 영역을 따로 스크롤할 수 있습니다.\n\n원하는 대시보드 모습이나 조용한 액자 보기를 선택하세요. 업데이트해도 기존 페어링과 설정을 유지합니다.\n\nAndroid 앱은 동반 대시보드이며 에이전트 실행 환경이나 완전한 원격 터미널이 아닙니다. 사용 가능한 제어와 사용량은 연결된 데몬과 연동에 따라 달라집니다. AgentDeck 계정, 광고나 분석 SDK가 필요하지 않습니다.\n\n연결 준비\nMac에서는 Mac App Store의 무료 AgentDeck Dashboard 앱을 실행하세요. macOS·Windows·Linux에서는 npx @agentdeck/setup으로 데몬을 설치할 수도 있습니다. 평소처럼 코딩 에이전트를 시작한 뒤 이 동반 앱을 컴퓨터와 페어링하세요."
+    },
+    "ja-JP": {
+      "shortDescription": "コンピューターのAgentDeckと接続して使うAIエージェントダッシュボード",
+      "fullDescription": "AgentDeckはAIコーディングエージェントの作業を穏やかな水槽ダッシュボードで表示します。到達可能なローカルネットワークのAgentDeckデーモンとペアリングし、対応するエージェントのセッション名、活動、履歴、提供元が報告した使用量をまとめて確認できます。\n\n応答が必要な瞬間を確認し、接続先のデーモンと連携が対応する元の選択肢や一度限りの承認要求に応答できます。観測専用セッションは読み取り専用で、要求を自動承認しません。\n\nAgentDeck 2.0ではセッション名の読みやすさ、要求の識別、再接続、ローカル検出、使用量の鮮度を改善。ユーザーへの応答要求とCI待機を区別します。タブレットと電子ペーパーでは作業と使用量を同時に表示し、個別にスクロールできます。\n\n好みのダッシュボードや静かなフレーム表示を選択できます。更新後も既存のペアリングと設定を保持します。\n\nAndroidアプリはコンパニオンであり、エージェント実行環境や完全なリモートターミナルではありません。操作と使用量は接続先と連携に依存します。AgentDeckアカウント、広告、分析SDKは不要です。\n\n接続の準備\nMacではMac App Storeの無料AgentDeck Dashboardアプリを開きます。macOS、Windows、Linuxではnpx @agentdeck/setupでデーモンを導入することもできます。いつもどおりエージェントを開始し、このコンパニオンをコンピューターとペアリングします。"
+    }
+  }
+}

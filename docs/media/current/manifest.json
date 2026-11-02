@@ -893,16 +893,16 @@
         "file": "apple/appstore-submission/previews/macOS/agentdeck-preview.mp4",
         "platform": "macOS",
         "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
-        "sha256": "88ef670fbb2a5a036843716359d2630ce5921fd91a5dd9e6eef5caec1922d886",
-        "bytes": 38771034,
-        "durationSeconds": 28.366667,
+        "sha256": "3eae5684bacab2ce96c9573085d651b3499036ebcfaf3d20e617e23f1f73386d",
+        "bytes": 38266176,
+        "durationSeconds": 28,
         "video": {
           "codec_name": "h264",
           "profile": "High",
           "width": 1920,
           "height": 1080,
           "r_frame_rate": "30/1",
-          "bit_rate": "10923066"
+          "bit_rate": "10921999"
         },
         "audio": {
           "codec_name": "aac",
@@ -911,31 +911,39 @@
           "channels": 2,
           "bit_rate": "2088"
         },
-        "transformation": "Original-speed cuts of full native app frames, aspect-fit. Overview and usage/Collaboration precede real local question, one-time permission and resumed result. H.264 High Level 4.0 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "transformation": "Original-speed native Mac overview, session, observed Collaboration Beta and graph only. No Node-produced OpenCode controls. Aspect-fit; H.264 High Level 4 CBR 11 Mbps 30 fps, silent AAC stereo.",
         "clips": [
           {
             "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/01-overview.mov",
             "start": 1,
-            "duration": 5,
-            "proof": "Native Mac multi-agent dashboard, fictional activity",
+            "duration": 7,
             "startInPreview": 0,
-            "sha256": "549c8036563f72bd39f9d9baf4f047ee82516b8d7ce1a628a488eafe9cbbdd7f"
+            "sha256": "549c8036563f72bd39f9d9baf4f047ee82516b8d7ce1a628a488eafe9cbbdd7f",
+            "proof": "Native Mac UI; fictional observed activity"
+          },
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/02-session.mov",
+            "start": 1,
+            "duration": 7,
+            "startInPreview": 7,
+            "sha256": "19d49e6abdc736f3c0134bb723ccdc314488d32b3560b0d33e5b2fe59aa142e6",
+            "proof": "Native Mac UI; fictional observed activity"
+          },
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/03-collaboration-native.mov",
+            "start": 1,
+            "duration": 7,
+            "startInPreview": 14,
+            "sha256": "079b616071e03bd95ee1d514062bbd9883bb7655119fba7f8fa90fef964eabdb",
+            "proof": "Native Mac UI; fictional observed activity"
           },
           {
             "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/04-graph.mov",
             "start": 1,
-            "duration": 6,
-            "proof": "Native expanded Collaboration Beta graph, fictional observed messages",
-            "startInPreview": 5,
-            "sha256": "f544baab3a013ee0a73eca6bdd1ec03ca603d5b5d11cdb0b21ba2a04acd429b4"
-          },
-          {
-            "file": "diagnostics/media-2.0/4100e0ca/macos/original.mov",
-            "start": 21.22529411315918,
-            "duration": 17.371000051498413,
-            "proof": "Real local OpenCode execution, original choice, one-time approval and resumed result",
-            "startInPreview": 11,
-            "sha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+            "duration": 7,
+            "startInPreview": 21,
+            "sha256": "f544baab3a013ee0a73eca6bdd1ec03ca603d5b5d11cdb0b21ba2a04acd429b4",
+            "proof": "Native Mac UI; fictional observed activity"
           }
         ]
       }

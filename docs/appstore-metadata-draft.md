@@ -12,6 +12,89 @@ Copy-ready text for the App Store Connect submission form. Each field respects A
 **Content Rating**: 4+ (no user-generated content, no ads, no external links to age-restricted sites)
 **Price**: Free
 
+## Prepared macOS 2.0.0 update text
+
+The owner authorized this coordinated 2.0 submission. Full version-specific
+description, promotional text and release notes are in
+[metadata-2.0.0.json](../apple/appstore-submission/metadata-2.0.0.json).
+Historical copy below is not the selected 2.0 listing.
+
+### English — macOS What's New
+
+```text
+AgentDeck 2.0 brings clearer session controls and a more readable local dashboard.
+• Show original choices and supported one-time approvals, with accurate Attention and stale-request cleanup.
+• Improve same-project session labels, selected-session routing and busy aquarium layouts.
+• Expand native observation, optional CI/calendar context and supported history/settings continuity.
+• Improve connection recovery and USB device detection, and harden agent integration commands while preserving custom hooks.
+• Refresh the app icon and product introduction.
+Refresh enabled integrations after updating; review Codex hook trust when prompted.
+```
+
+### Korean — macOS 새로운 기능
+
+```text
+AgentDeck 2.0에서 세션 제어와 로컬 대시보드를 더 명확하게 개선했습니다.
+• 원래 선택지와 지원되는 일회성 승인을 표시하고, 정확한 Attention과 오래된 요청 정리를 제공합니다.
+• 같은 프로젝트의 세션 이름, 선택한 세션으로의 명령 전달, 복잡한 수조 배치를 개선했습니다.
+• 네이티브 관측, 선택적 CI·캘린더 정보와 지원되는 기록·설정 연속성을 확장했습니다.
+• 연결 복구와 USB 기기 감지를 개선하고 사용자 지정 hooks를 유지하면서 연동 명령을 강화했습니다.
+• 앱 아이콘과 제품 소개를 새롭게 정리했습니다.
+업데이트 후 사용 중인 연동을 갱신하고, Codex가 요청하면 hook 신뢰 설정을 검토해 주세요.
+```
+
+### Japanese — macOS このバージョンの新機能
+
+```text
+AgentDeck 2.0ではセッション操作とローカルダッシュボードを改善しました。
+• 元の選択肢と対応する一回限りの承認、正確なAttention、古い要求の整理。
+• 同一プロジェクトのセッション名、選択したセッションへの操作、多数のエージェントがいる水槽表示を改善。
+• ネイティブ観測、任意のCI・カレンダー情報、対応する履歴と設定の継続性を拡充。
+• 接続復旧とUSB検出を改善し、カスタムhooksを保持しながら連携コマンドを強化。
+• アプリアイコンと製品紹介を更新。
+更新後に使用中の連携を更新し、Codexから求められた場合はhookの信頼設定を確認してください。
+```
+
+## Prepared iOS 2.0.0 update text
+
+The owner authorized this coordinated 2.0 submission. Full version-specific
+description, promotional text and release notes are in
+[metadata-2.0.0.json](../apple/appstore-submission/metadata-2.0.0.json).
+Historical copy below is not the selected 2.0 listing.
+
+### English — iOS What's New
+
+```text
+AgentDeck 2.0 makes your companion dashboard clearer and more dependable.
+• Read original choices and supported one-time approvals with request/session identity preserved.
+• Improve Attention, session labels, crowded aquarium layouts and activity history.
+• Improve discovery, reconnect recovery and stale-request cleanup. An explicit Stop Reconnecting stays stopped until you choose to retry.
+• Refresh the app icon and product introduction.
+Available controls depend on the paired daemon and agent integration.
+```
+
+### Korean — iOS 새로운 기능
+
+```text
+AgentDeck 2.0에서 동반 대시보드를 더 명확하고 안정적으로 개선했습니다.
+• 요청과 세션의 식별자를 유지하며 원래 선택지와 지원되는 일회성 승인을 표시합니다.
+• Attention, 세션 이름, 복잡한 수조 배치와 활동 기록을 개선했습니다.
+• 검색·재연결과 오래된 요청 정리를 개선했습니다. 재연결 중지를 선택하면 직접 다시 시도하기 전까지 유지됩니다.
+• 앱 아이콘과 제품 소개를 새롭게 정리했습니다.
+사용 가능한 제어는 연결된 데몬과 에이전트 연동에 따라 달라집니다.
+```
+
+### Japanese — iOS このバージョンの新機能
+
+```text
+AgentDeck 2.0ではコンパニオンダッシュボードを改善しました。
+• 要求とセッションの識別を保ち、元の選択肢と対応する一回限りの承認を表示。
+• Attention、セッション名、多数のエージェントがいる水槽表示、活動履歴を改善。
+• 検出、再接続、古い要求の整理を改善。再接続を停止した状態は、再試行するまで維持。
+• アプリアイコンと製品紹介を更新。
+利用可能な操作は、接続したデーモンとエージェント連携に依存します。
+```
+
 ## Prepared macOS 1.9.5 update text
 
 Prepared for the coordinated integration correction authorized October 30.

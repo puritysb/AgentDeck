@@ -1,0 +1,5 @@
+{
+  "en-US": "AgentDeck 2.0 brings clearer session names, original choices and supported one-time approvals. Attention distinguishes requests for you from CI waits. Reconnection, local discovery, usage freshness and long-running stability are improved. E-ink keeps work and usage readable together. Existing pairing and settings are preserved.",
+  "ko-KR": "AgentDeck 2.0은 세션 이름과 원래 선택지, 지원되는 일회성 승인을 더 명확하게 보여줍니다. 사용자 응답과 CI 대기를 구분하고 재연결, 로컬 검색, 사용량의 최신성, 장시간 안정성을 개선했습니다. 전자잉크에서 작업과 사용량을 함께 읽기 쉽게 표시합니다. 기존 페어링과 설정을 유지합니다.",
+  "ja-JP": "AgentDeck 2.0ではセッション名、元の選択肢、対応する一度限りの承認を明確に表示。ユーザーへの応答要求とCI待機を区別し、再接続、ローカル検出、使用量の鮮度、長時間の安定性を改善しました。電子ペーパーでは作業と使用量を読みやすく表示。既存のペアリングと設定を保持します。"
+}

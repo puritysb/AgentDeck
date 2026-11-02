@@ -92,7 +92,7 @@ bash scripts/uninstall.sh   # remove hooks, unlink CLI and plugin
 Release steps, local build commands, identity/signing, CI secrets, and current App Store state live in **[RELEASING.md § Apple](RELEASING.md)**. Two invariants that apply outside a release:
 
 - **Bundle ID** `bound.serendipity.agent.deck`. The retired `bound.serendipity.agentdeck.*` tree carries an immovable ASC build floor (1.0.6/build 8) — never target it. The Stream Deck **plugin UUID** `bound.serendipity.agentdeck` (no suffix) is a separate, immutable identifier, unrelated to the app bundle ID.
-- **Versioning**: root `VERSION` (`1.0.2`) anchors compatibility; same-major targets interoperate. Minor versions name shared feature milestones; target-specific patches fix or complete existing promises regardless of effort. **Before a manifest bump, tag or upload, record the [version decision](RELEASING.md#choosing-a-version)**; candidate numbers are not release approval. `pnpm verify-version` checks consistency, not bump semantics. Tags remain channel-prefixed (`apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`, `streamdeck-v*`, `ulanzi-v*`).
+- **Versioning**: root `VERSION` (`2.0.0`) anchors compatibility; same-major targets interoperate. Minor versions name shared feature milestones; target-specific patches fix or complete existing promises regardless of effort. **Before a manifest bump, tag or upload, record the [version decision](RELEASING.md#choosing-a-version)**; candidate numbers are not release approval. `pnpm verify-version` checks consistency, not bump semantics. Tags remain channel-prefixed (`apple-v*`, `android-v*`, `esp32-v*`, `npm-v*`, `streamdeck-v*`, `ulanzi-v*`).
 
 ## Development
 

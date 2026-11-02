@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "state": "prepared, not uploaded or submitted",
+  "generator": "scripts/generate-elgato-marketplace-assets.mts",
+  "media": [
+    {
+      "file": "app-icon-288.png",
+      "sha256": "189ca0da4918c5d53c3b35eac875bc8204f0a13c6c15c8b80b886a15bd1498b6"
+    },
+    {
+      "file": "gallery-01-session-keys.png",
+      "sha256": "c791777f9df773733b00bd1661555088c4ad19686b15e99aa95b7d8644bd3642"
+    },
+    {
+      "file": "gallery-02-answer.png",
+      "sha256": "5453a0c4cbdaaa142914c5c4ecc059b01f377b3dc1285ced548c7373f1eef2d7"
+    },
+    {
+      "file": "gallery-03-dials.png",
+      "sha256": "483d825130eb65c9c704bf284672434bad1ff58aa1dfd006840fa0479789113d"
+    },
+    {
+      "file": "thumbnail-1920x960.png",
+      "sha256": "417e24e6a36a456a274f51c7c1682e2f9c22c14c240e3168861d2f7063546a9f"
+    }
+  ],
+  "evidence": "Current production key/dial renderer output with fictional sessions. Ulanzi photo and app context panels reuse retained historical captures and are not physical 2.0 acceptance. No D200X encoder claim.",
+  "iconPolicy": "288px transparent icon uses renderAppIcon fixed-point area sampling from the #661 canonical master."
+}

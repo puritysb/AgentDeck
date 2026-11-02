@@ -15,7 +15,12 @@ validators: [bash apple/scripts/verify-appstore-archive.sh]
 
 # AgentDeck Dashboard — App Review Notes
 
-**Current candidate — macOS 1.9.5, October 30:** the marked macOS Notes field
+**Selected submission — macOS and iOS 2.0.0, November 2:** the owner authorized
+build, upload and submission with updated media and localized copy. The marked
+Notes fields below are selected for 2.0.0. Submission/build readback is recorded
+separately in RELEASING.md; preparation alone does not assert review or public availability.
+
+**Historical prepared candidate — macOS 1.9.5, October 30:** the marked macOS Notes field
 below prepares the integration correction after released 1.9.4. The October 30
 19:47 UTC ASC readback shows 1.9.4 / 10001 READY_FOR_SALE with AFTER_APPROVAL.
 1.9.5 needs a new version record; this preparation does not cancel, submit or
@@ -611,8 +616,8 @@ long-form sections above are for the Resolution Center reply, where length is no
 ```text
 NO ACCOUNT REQUIRED. A paired Mac is optional for reviewing the offline Device Previews.
 
-NEW IN 1.9.1
-This patch refines the existing setup and pairing recovery flows, completes background-work display consistency, and keeps dashboard history inspection separate from device control targets. It introduces no new account, permissions or cloud service.
+NEW IN 2.0.0
+Clearer original choices and supported one-time approvals, accurate Attention and stale-request cleanup, readable sessions/history and improved reconnect behavior. Controls depend on the paired daemon and agent. No new account or cloud service.
 
 VERIFY ON A CLEAN IPAD OR IPHONE
 1. Choose an aquarium appearance and continue to connection setup.
@@ -639,8 +644,8 @@ Contact: admin@foundby.kr
 ```text
 NO ACCOUNT REQUIRED. Review on a clean Mac with only AgentDeck installed; no external process or terminal setup is required for these instructions.
 
-NEW IN 1.9.5 — MACOS ONLY
-Hardens generated integration commands and retains custom hook handlers. Codex users review changed command trust when prompted; trust is never automatic. Builds on the corrections already delivered in macOS 1.9.4. Dot is excluded; iOS is unchanged.
+NEW IN 2.0.0 — MACOS ONLY
+Clearer supported request controls, native observation and optional CI/calendar context, history/settings continuity, connection/USB fixes, hardened integration commands and a refreshed icon. Codex hook trust remains user-controlled. Dot is excluded.
 
 WHAT IT DOES
 The sandboxed Swift daemon monitors user-enabled agent integrations, serves Dashboard, pairs companions and evaluates turns. Users start agents independently. An optional experimental Collaboration view displays observed messages, not inferred project dependencies or automatic coordination.

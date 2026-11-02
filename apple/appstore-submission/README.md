@@ -3,6 +3,14 @@
 This directory contains prepared media and dated prior submission assets. Select
 the appropriate release set before uploading.
 
+## 2.0.0 selected submission set
+
+[Selection and SHA-256 provenance](media-2.0.0-selection.json) identifies the 36
+new English, Korean and Japanese screenshots (four per platform) selected for
+2.0.0. [Localized descriptions and update text](metadata-2.0.0.json) accompany
+the three preview videos. Other retained screenshot files are historical extras.
+Prepared does not mean uploaded, submitted or live; record each portal readback.
+
 ## Screenshot sets
 
 Localized screenshots live under `screenshots/{en,ko,ja}/{macOS,iPhone,iPad}/`.
@@ -40,8 +48,10 @@ work. Public showcase media is not an upload-ready Apple App Preview; historical
 
 The local 2.0 candidate files are `previews/<platform>/agentdeck-preview.mp4`
 for `macOS`, `iPhone` and `iPad`. Each is about 28 seconds and introduces multiple
-sessions plus usage (mobile) or Collaboration Beta (Mac), followed by a real local
-question, original choice, one-time approval and resumed result. These use actual
+sessions plus usage (mobile) or observed Collaboration Beta (Mac). Mobile previews then show a real local
+question, original choice, one-time approval and resumed result. The Mac preview
+uses only native overview, session context and Collaboration Beta; it does not
+show Node-produced OpenCode response controls. These use actual
 native app frames with fictional overview activity and a separately evidenced
 real OpenCode execution. They are prepared locally, not uploaded or approved.
 See the [current capture record](APP_PREVIEW_STORYBOARD.md) and
