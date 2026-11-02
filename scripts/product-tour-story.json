@@ -1,0 +1,383 @@
+{
+  "title": "AgentDeck 2.0 — product tour",
+  "sourceRevision": "4100e0ca",
+  "chapters": [
+    {
+      "id": "overview",
+      "duration": 10,
+      "title": "All your agents. One local view.",
+      "subtitle": "Follow multiple projects and agent tools from the same dashboard.",
+      "proof": "Native Mac recording · fictional sessions · 2.0 development build",
+      "en": "See working, quiet and CI-waiting sessions across agent tools and projects.",
+      "ko": "여러 도구와 프로젝트에서 작업 중·유휴·CI 대기 중인 세션을 함께 봅니다.",
+      "ja": "複数のツールやプロジェクトの作業中・待機・CI待ちをまとめて確認。",
+      "layers": [
+        {
+          "file": "raw/01-overview.mov",
+          "x": 40,
+          "y": 205,
+          "w": 1840,
+          "h": 760,
+          "start": 1
+        }
+      ]
+    },
+    {
+      "id": "tablet",
+      "duration": 9,
+      "title": "A dashboard that fits your desk.",
+      "subtitle": "Use a tablet as a dedicated view while you keep working on your computer.",
+      "proof": "Native iPad Simulator recording · Default dashboard · fictional sessions",
+      "en": "The tablet keeps the roster, activity timeline and usage windows in view.",
+      "ko": "태블릿에서 세션 목록·활동 타임라인·사용량 창을 한눈에 확인합니다.",
+      "ja": "タブレットでセッション一覧、活動履歴、使用量の期間枠を確認。",
+      "layers": [
+        {
+          "file": "raw/14-tablet-default.mov",
+          "x": 40,
+          "y": 205,
+          "w": 1840,
+          "h": 760
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "duration": 9,
+      "title": "Follow the work, session by session.",
+      "subtitle": "Read the project, model and activity. Keep CI waiting separate from a request for you.",
+      "proof": "Native Mac close-ups · actual production key renderer · sample state",
+      "en": "Select a session to focus its timeline. CI waiting does not mean approval is needed.",
+      "ko": "세션을 선택하면 해당 타임라인에 집중합니다. CI 대기와 사용자 승인 대기는 다릅니다.",
+      "ja": "セッションを選んで履歴を絞り込み。CI待ちとユーザー承認待ちは別の状態です。",
+      "layers": [
+        {
+          "file": "raw/02-session.mov",
+          "crop": [
+            0,
+            80,
+            530,
+            720
+          ],
+          "x": 80,
+          "y": 205,
+          "w": 560,
+          "h": 760,
+          "start": 1
+        },
+        {
+          "file": "raw/02-session.mov",
+          "crop": [
+            2640,
+            1500,
+            1450,
+            300
+          ],
+          "x": 690,
+          "y": 600,
+          "w": 1150,
+          "h": 300,
+          "start": 1
+        },
+        {
+          "file": "raw/07-deck-keys.png",
+          "crop": [
+            312,
+            0,
+            288,
+            288
+          ],
+          "x": 1040,
+          "y": 205,
+          "w": 350,
+          "h": 350
+        }
+      ]
+    },
+    {
+      "id": "collaboration",
+      "duration": 11,
+      "title": "See who is waiting on whom.",
+      "subtitle": "Collaboration Beta shows observed messages, explicit reply requests and related sessions.",
+      "proof": "Native Mac collaboration graph · fictional observed messages · enlarged crop",
+      "en": "Explicit reply requests have a waiting timer. A one-way notification stays a notification.",
+      "ko": "답변 요청에는 대기 시간이 표시됩니다. 단순 알림을 응답 대기로 취급하지 않습니다.",
+      "ja": "明示的な返信依頼には待機時間を表示。一方通行の通知とは区別します。",
+      "layers": [
+        {
+          "file": "raw/04-graph.mov",
+          "crop": [
+            1370,
+            490,
+            1360,
+            1280
+          ],
+          "x": 510,
+          "y": 205,
+          "w": 900,
+          "h": 760,
+          "start": 1
+        }
+      ]
+    },
+    {
+      "id": "usage",
+      "duration": 10,
+      "title": "Know your remaining room to work.",
+      "subtitle": "Inspect reported limit windows, reset times and freshness; keep missing readings unknown.",
+      "proof": "Native iPhone usage panel + production Stream Deck+ encoder renderer · sample quota",
+      "en": "Reported usage windows and reset times appear on the dashboard and dedicated dials.",
+      "ko": "보고된 사용량 창과 초기화 시각을 대시보드와 전용 다이얼에서 확인합니다.",
+      "ja": "取得できた使用量枠とリセット時刻をダッシュボードや専用ダイヤルで確認。",
+      "layers": [
+        {
+          "file": "raw/13-phone-system.mov",
+          "crop": [
+            0,
+            120,
+            1320,
+            1000
+          ],
+          "x": 50,
+          "y": 240,
+          "w": 1000,
+          "h": 680
+        },
+        {
+          "file": "raw/10-usage-dial.png",
+          "x": 1110,
+          "y": 360,
+          "w": 680,
+          "h": 420
+        }
+      ]
+    },
+    {
+      "id": "answer",
+      "duration": 25.033333,
+      "title": "Read the request. Make the actual choice.",
+      "subtitle": "Choose the offered option, review the command and allow one local run.",
+      "proof": "Native iPhone Simulator · real OpenCode SDK execution · fictional workspace · original speed",
+      "en": "Original question → choice → one-time permission → resumed work. This is the real local control path.",
+      "ko": "원문 질문 → 선택 → 일회성 승인 → 작업 재개. 실제 로컬 제어 경로입니다.",
+      "ja": "元の質問 → 選択 → 一度だけ許可 → 作業再開。実際のローカル制御経路です。",
+      "layers": [
+        {
+          "file": "current/agentdeck-200-workflow.mp4",
+          "x": 365,
+          "y": 205,
+          "w": 1190,
+          "h": 760
+        }
+      ]
+    },
+    {
+      "id": "controllers",
+      "duration": 10,
+      "title": "Give each controller a useful job.",
+      "subtitle": "Session keys, original choices and usage dials; Ulanzi uses the same session layout engine.",
+      "proof": "Production key and Ulanzi layout renderers · fictional state · enlarged, not hardware footage",
+      "en": "Keys surface sessions and supported answers. Dials keep usage accessible without taking over every key.",
+      "ko": "키는 세션과 지원되는 응답을, 다이얼은 사용량을 담당합니다. 기기의 입력 능력에 맞춥니다.",
+      "ja": "キーはセッションと対応する回答、ダイヤルは使用量。機器の入力能力に合わせます。",
+      "layers": [
+        {
+          "file": "raw/07-deck-keys.png",
+          "x": 70,
+          "y": 215,
+          "w": 950,
+          "h": 470
+        },
+        {
+          "file": "raw/08-native-options.png",
+          "x": 70,
+          "y": 730,
+          "w": 950,
+          "h": 222
+        },
+        {
+          "file": "raw/09-d200h.png",
+          "x": 1080,
+          "y": 320,
+          "w": 780,
+          "h": 520
+        }
+      ]
+    },
+    {
+      "id": "native-controls",
+      "duration": 8,
+      "title": "Use the controls your agent actually offers.",
+      "subtitle": "Voice input on deliverable sessions; model and thinking settings from a connected Gateway.",
+      "proof": "Production Ulanzi detail renderer · fictional Gateway state · no voice or settings command executed",
+      "en": "Available controls follow the connected agent. Unsupported sessions remain observation-only.",
+      "ko": "연결된 에이전트가 지원하는 조작만 제공합니다. 지원하지 않는 세션은 관찰 전용입니다.",
+      "ja": "接続先が対応する操作だけを表示。未対応のセッションは参照専用です。",
+      "layers": [
+        {
+          "file": "raw/12-native-controls.png",
+          "x": 340,
+          "y": 205,
+          "w": 1240,
+          "h": 760
+        }
+      ]
+    },
+    {
+      "id": "evaluation",
+      "duration": 9,
+      "title": "Review the result, not just a green light.",
+      "subtitle": "Open a task, inspect the AI estimate, its recorded reasoning and what it says is missing.",
+      "proof": "Actual APME product UI · fictional task and sample judge result · still capture",
+      "en": "Task review separates an AI estimate from verified evidence and from your own assessment.",
+      "ko": "작업 평가는 AI 추정·기록된 근거·사용자의 판단을 구분합니다.",
+      "ja": "作業レビューではAIの推定、記録された根拠、自分の評価を区別します。",
+      "layers": [
+        {
+          "file": "raw/05-review.png",
+          "x": 100,
+          "y": 205,
+          "w": 1720,
+          "h": 760
+        }
+      ]
+    },
+    {
+      "id": "evidence",
+      "duration": 9,
+      "title": "Go back to the evidence.",
+      "subtitle": "Revisit the original request, archived reply and tool output, then record your own assessment.",
+      "proof": "Actual APME product UI · fictional archived evidence · still capture",
+      "en": "Read the original request, reply and tool evidence. Your correction stays separate from the AI judgement.",
+      "ko": "원문 요청·응답·도구 기록을 검토합니다. 사용자 평가는 AI 판단과 별도로 보존됩니다.",
+      "ja": "元の依頼、応答、ツール記録を確認。ユーザー評価はAI判断と別に保存します。",
+      "layers": [
+        {
+          "file": "raw/06-evidence.png",
+          "x": 100,
+          "y": 205,
+          "w": 1720,
+          "h": 760
+        }
+      ]
+    },
+    {
+      "id": "eink",
+      "duration": 9,
+      "title": "A quiet view on e-ink.",
+      "subtitle": "Readable sessions and usage on Android readers and dedicated paper displays.",
+      "proof": "Native Android screenshot + firmware host renderer · fictional data · not new physical testing",
+      "en": "E-ink prioritizes readable status. Controls depend on the device and the connected agent's capabilities.",
+      "ko": "전자잉크에서는 읽기 쉬운 상태가 우선입니다. 조작은 기기와 연결된 에이전트의 능력에 따릅니다.",
+      "ja": "電子ペーパーでは読みやすい状態表示を優先。操作は機器と接続先の対応範囲に従います。",
+      "layers": [
+        {
+          "file": "current/crema-working.png",
+          "x": 80,
+          "y": 205,
+          "w": 700,
+          "h": 760
+        },
+        {
+          "file": "current/trmnl_75-working.png",
+          "x": 880,
+          "y": 275,
+          "w": 970,
+          "h": 650
+        }
+      ]
+    },
+    {
+      "id": "compact",
+      "duration": 9,
+      "title": "Small screens show the useful essentials.",
+      "subtitle": "Compact IPS and AMOLED panels show focused status; LED matrices remain glance displays.",
+      "proof": "Actual firmware host renders · fictional data · enlarged pixels, not physical captures",
+      "en": "A small display does not promise a full controller. Its useful status and input scope are device-specific.",
+      "ko": "작은 화면에 완전한 컨트롤러를 약속하지 않습니다. 유용한 상태와 입력 범위만 제공합니다.",
+      "ja": "小さな画面に全操作は詰め込みません。各機器に役立つ状態と入力範囲を提供します。",
+      "layers": [
+        {
+          "file": "current/ips35-working.png",
+          "x": 60,
+          "y": 260,
+          "w": 780,
+          "h": 600
+        },
+        {
+          "file": "current/amoled-working.png",
+          "x": 910,
+          "y": 280,
+          "w": 450,
+          "h": 450
+        },
+        {
+          "file": "current/ips10-working.png",
+          "x": 1430,
+          "y": 280,
+          "w": 420,
+          "h": 450
+        }
+      ]
+    },
+    {
+      "id": "led",
+      "duration": 8,
+      "title": "A signal you can see from across the desk.",
+      "subtitle": "LED matrices show glanceable activity and usage within their small pixel grids.",
+      "proof": "Historical physical-device photographs · September 28, 2026 · retained reference media",
+      "en": "Timebox, iDotMatrix and TC001 are glance displays; they do not promise touch approval.",
+      "ko": "Timebox·iDotMatrix·TC001은 상태를 훑어보는 화면입니다. 터치 승인을 약속하지 않습니다.",
+      "ja": "Timebox・iDotMatrix・TC001は一目で状態を見る画面。タッチ承認は提供しません。",
+      "layers": [
+        {
+          "file": "repo/docs/media/timebox.jpg",
+          "x": 50,
+          "y": 235,
+          "w": 570,
+          "h": 680
+        },
+        {
+          "file": "repo/docs/media/idotmatrix.jpg",
+          "x": 675,
+          "y": 235,
+          "w": 570,
+          "h": 680
+        },
+        {
+          "file": "repo/docs/media/tc001.jpg",
+          "x": 1300,
+          "y": 235,
+          "w": 570,
+          "h": 680
+        }
+      ]
+    },
+    {
+      "id": "terminal",
+      "duration": 8,
+      "title": "Start with the screen you already have.",
+      "subtitle": "Use the Mac app or terminal, then pair the displays and controllers that fit your setup.",
+      "proof": "Terminal reference capture + historical desk photograph, September 28, 2026",
+      "en": "The local hub connects your own screens. Additional hardware is optional.",
+      "ko": "로컬 허브에 이미 가진 화면을 연결합니다. 추가 하드웨어는 선택입니다.",
+      "ja": "手持ちの画面をローカルハブに接続。追加のハードウェアは必須ではありません。",
+      "layers": [
+        {
+          "file": "repo/docs/media/tui-dashboard.png",
+          "x": 70,
+          "y": 230,
+          "w": 1000,
+          "h": 680
+        },
+        {
+          "file": "repo/docs/media/desk-overview.jpg",
+          "x": 1120,
+          "y": 255,
+          "w": 730,
+          "h": 620
+        }
+      ]
+    }
+  ]
+}

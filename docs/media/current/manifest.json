@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "title": "AgentDeck 2.0 development media — local control and activity",
+  "title": "AgentDeck 2.0 development media — whole-product tour and feature details",
   "updatedAt": "2026-11-02",
   "availability": "Development validation builds; not a claim about the current App Store or Play Store release.",
   "evidence": "Native app captures use fictional local activity. Firmware host frames are not physical display captures. The AI composite is labeled and never used as device-verification evidence.",
@@ -597,6 +597,90 @@
         "height": 618
       },
       "durationSeconds": 25.033008
+    },
+    {
+      "file": "agentdeck-200-product-tour-cuts.json",
+      "kind": "media-provenance",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "5831c8a84353c15511897a965a1f3e9f114c21644f3c44e6c33cfdd6692ca791",
+      "bytes": 10522,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution."
+    },
+    {
+      "file": "agentdeck-200-product-tour-poster.jpg",
+      "kind": "product-tour-preview",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "4c909c1710f06394a9d0fd66470a6a4b07babc3119bd9b24fbe75bc7cc36790f",
+      "bytes": 74542,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution.",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080
+      }
+    },
+    {
+      "file": "agentdeck-200-product-tour-preview.gif",
+      "kind": "product-tour-preview",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "99a9009843c0aa3db7cb1a6f76537d3172543341da839845d8531584c1a6725a",
+      "bytes": 173339,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution.",
+      "dimensions": {
+        "width": 720,
+        "height": 405
+      },
+      "durationSeconds": 6.01
+    },
+    {
+      "file": "agentdeck-200-product-tour.en.vtt",
+      "kind": "caption-track",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "1c0744894009f8d162d2486aa647d75299f11b3d195f88b7d0df2ec5970f2465",
+      "bytes": 1725,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution."
+    },
+    {
+      "file": "agentdeck-200-product-tour.ja.vtt",
+      "kind": "caption-track",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "1392f569c87dea96ad34c58b13b31c5972fe65cc848830a47ba87839a024a6c5",
+      "bytes": 1937,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution."
+    },
+    {
+      "file": "agentdeck-200-product-tour.ko.vtt",
+      "kind": "caption-track",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "14837d4a3598a27afcd87e93d7f1566d1b4ab9b5c750a57f6d90a72b6efe941a",
+      "bytes": 1993,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution."
+    },
+    {
+      "file": "agentdeck-200-product-tour.mp4",
+      "kind": "mixed-product-tour",
+      "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+      "createdAt": "2026-11-02",
+      "fictionalActivity": true,
+      "sha256": "6ee89371032cfb7c5f44543f332d34e6b01dd53066d2967504fac625b8c45661",
+      "bytes": 6132346,
+      "transformation": "Editorial chapters at original speed; actual native UI, production renderer frames and explicitly labeled historical reference photographs. No replacement UI or synthetic execution.",
+      "dimensions": {
+        "width": 1920,
+        "height": 1080
+      },
+      "durationSeconds": 144.033333
     }
   ],
   "workflowCapture": {
@@ -717,66 +801,16 @@
         "file": "apple/appstore-submission/previews/iPhone/agentdeck-preview.mp4",
         "platform": "iPhone",
         "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
-        "sha256": "6c0b6f5c4da4fe824ee4fbe12e853410629ce6d42b49895c2708cb8f24162d9c",
-        "bytes": 34443180,
-        "durationSeconds": 25.033333,
+        "sha256": "c441d3600d04a0173f9b884ce815109c282e732a1aaa2423bb78c7c2598d85ba",
+        "bytes": 38816421,
+        "durationSeconds": 28.433333,
         "video": {
           "codec_name": "h264",
           "profile": "High",
           "width": 886,
           "height": 1920,
           "r_frame_rate": "30/1",
-          "bit_rate": "10996106"
-        },
-        "audio": {
-          "codec_name": "aac",
-          "profile": "LC",
-          "sample_rate": "44100",
-          "channels": 2,
-          "bit_rate": "2091"
-        },
-        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
-        "inputSha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
-      },
-      {
-        "file": "apple/appstore-submission/previews/iPad/agentdeck-preview.mp4",
-        "platform": "iPad",
-        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
-        "sha256": "95db344bdcd7d7b37a24f8e7e36497663c27bc507d0146313d50e783dab91c91",
-        "bytes": 33430718,
-        "durationSeconds": 24.4,
-        "video": {
-          "codec_name": "h264",
-          "profile": "High",
-          "width": 1200,
-          "height": 1600,
-          "r_frame_rate": "30/1",
-          "bit_rate": "10949639"
-        },
-        "audio": {
-          "codec_name": "aac",
-          "profile": "LC",
-          "sample_rate": "44100",
-          "channels": 2,
-          "bit_rate": "2091"
-        },
-        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
-        "inputSha256": "76e568c12a09aba17c08bbca11876e14adb0d5aef81651a6914ad7bd2b795584"
-      },
-      {
-        "file": "apple/appstore-submission/previews/macOS/agentdeck-preview.mp4",
-        "platform": "macOS",
-        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
-        "sha256": "eb693b1ee4352475965edca800eb28de8736f8d9f98f0e3cc1ff91a16709fe64",
-        "bytes": 29239596,
-        "durationSeconds": 21.433333,
-        "video": {
-          "codec_name": "h264",
-          "profile": "High",
-          "width": 1920,
-          "height": 1080,
-          "r_frame_rate": "30/1",
-          "bit_rate": "10902376"
+          "bit_rate": "10923136"
         },
         "audio": {
           "codec_name": "aac",
@@ -785,9 +819,140 @@
           "channels": 2,
           "bit_rate": "2089"
         },
-        "transformation": "Full native frame at original speed, aspect-fit on Store canvas, H.264 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
-        "inputSha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+        "transformation": "Original-speed cuts of full native app frames, aspect-fit. Overview and usage/Collaboration precede real local question, one-time permission and resumed result. H.264 High Level 4.0 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "clips": [
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/phone/original.mov",
+            "start": 9.923289108276368,
+            "duration": 3.5,
+            "proof": "Native multi-agent session roster, fictional activity",
+            "startInPreview": 0,
+            "sha256": "5371fee5805c678607344e53f91d44f871bbc812de745c4a2ca842ecea58fe84"
+          },
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/phone/original.mov",
+            "start": 18.59738187789917,
+            "duration": 4,
+            "proof": "Native usage/system view, fictional account quota",
+            "startInPreview": 3.5,
+            "sha256": "5371fee5805c678607344e53f91d44f871bbc812de745c4a2ca842ecea58fe84"
+          },
+          {
+            "file": "diagnostics/media-2.0/4100e0ca/iphone/original.mov",
+            "start": 23.001342058181763,
+            "duration": 20.948155879974365,
+            "proof": "Real local OpenCode execution, original choice, one-time approval and resumed result",
+            "startInPreview": 7.5,
+            "sha256": "e725104d01d93808c7728881a65cde0bedf86e85d5bffb859c525f60027b58e0"
+          }
+        ]
+      },
+      {
+        "file": "apple/appstore-submission/previews/iPad/agentdeck-preview.mp4",
+        "platform": "iPad",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "sha256": "7aba2922381b3f5ab917f977e795875e89720fcf320e1b845e7d3cb90be28743",
+        "bytes": 38679395,
+        "durationSeconds": 28.333333,
+        "video": {
+          "codec_name": "h264",
+          "profile": "High",
+          "width": 1600,
+          "height": 1200,
+          "r_frame_rate": "30/1",
+          "bit_rate": "10922907"
+        },
+        "audio": {
+          "codec_name": "aac",
+          "profile": "LC",
+          "sample_rate": "44100",
+          "channels": 2,
+          "bit_rate": "2089"
+        },
+        "transformation": "Original-speed cuts of full native app frames, aspect-fit. Overview and usage/Collaboration precede real local question, one-time permission and resumed result. H.264 High Level 4.0 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "clips": [
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/14-tablet-default.mov",
+            "start": 0,
+            "duration": 8,
+            "proof": "Native iPad multi-agent dashboard, timeline and usage, fictional activity",
+            "startInPreview": 0,
+            "sha256": "2d0f2bbe2ba814b3e713c5a8026838fa682b8675956e448ab036c7333e04f7f5"
+          },
+          {
+            "file": "diagnostics/media-2.0/4100e0ca/ipad/original.mov",
+            "start": 13.625648975372314,
+            "duration": 20.32721495628357,
+            "proof": "Real local OpenCode execution, original choice, one-time approval and resumed result",
+            "startInPreview": 8,
+            "sha256": "76e568c12a09aba17c08bbca11876e14adb0d5aef81651a6914ad7bd2b795584"
+          }
+        ]
+      },
+      {
+        "file": "apple/appstore-submission/previews/macOS/agentdeck-preview.mp4",
+        "platform": "macOS",
+        "sourceRevision": "4100e0ca1fe043ea72ee758b75f45838c5b24616",
+        "sha256": "88ef670fbb2a5a036843716359d2630ce5921fd91a5dd9e6eef5caec1922d886",
+        "bytes": 38771034,
+        "durationSeconds": 28.366667,
+        "video": {
+          "codec_name": "h264",
+          "profile": "High",
+          "width": 1920,
+          "height": 1080,
+          "r_frame_rate": "30/1",
+          "bit_rate": "10923066"
+        },
+        "audio": {
+          "codec_name": "aac",
+          "profile": "LC",
+          "sample_rate": "44100",
+          "channels": 2,
+          "bit_rate": "2088"
+        },
+        "transformation": "Original-speed cuts of full native app frames, aspect-fit. Overview and usage/Collaboration precede real local question, one-time permission and resumed result. H.264 High Level 4.0 CBR 11 Mbps 30 fps; silent stereo AAC-LC 44.1 kHz (256k encoder setting).",
+        "clips": [
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/01-overview.mov",
+            "start": 1,
+            "duration": 5,
+            "proof": "Native Mac multi-agent dashboard, fictional activity",
+            "startInPreview": 0,
+            "sha256": "549c8036563f72bd39f9d9baf4f047ee82516b8d7ce1a628a488eafe9cbbdd7f"
+          },
+          {
+            "file": "diagnostics/media-2.0/product-tour-4100e0ca/tour-raw/04-graph.mov",
+            "start": 1,
+            "duration": 6,
+            "proof": "Native expanded Collaboration Beta graph, fictional observed messages",
+            "startInPreview": 5,
+            "sha256": "f544baab3a013ee0a73eca6bdd1ec03ca603d5b5d11cdb0b21ba2a04acd429b4"
+          },
+          {
+            "file": "diagnostics/media-2.0/4100e0ca/macos/original.mov",
+            "start": 21.22529411315918,
+            "duration": 17.371000051498413,
+            "proof": "Real local OpenCode execution, original choice, one-time approval and resumed result",
+            "startInPreview": 11,
+            "sha256": "56856a44d70849b85134a4b7ffa871a9142c0bdcfdc5b074cb4560537c12d429"
+          }
+        ]
       }
     ]
+  },
+  "productTour": {
+    "sourceRevision": "4100e0ca",
+    "mediaBase": "2a1ab86a",
+    "durationSeconds": 144.033333,
+    "featureSource": "scripts/product-tour-story.json",
+    "chapterRecord": "agentdeck-200-product-tour-cuts.json",
+    "recipe": [
+      "scripts/product-tour-fixture.mjs",
+      "scripts/render-product-tour-keys.mts",
+      "scripts/assemble-product-tour.mjs"
+    ],
+    "rawCaptureRoot": "diagnostics/media-2.0/product-tour-4100e0ca",
+    "evidence": "Native Mac and iPad/iPhone Simulator views with fictional activity. Task/judge/quota data are presentation samples, not live evaluation/account measurements. The answer chapter reuses the separately evidenced real OpenCode execution. Firmware frames and historical physical photographs retain their labels. CloudKit/Watch experimental delivery is not shown as released remote control."
   }
 }

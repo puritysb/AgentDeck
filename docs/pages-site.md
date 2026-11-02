@@ -151,17 +151,44 @@ Latest run, history test counts and pass-rate charts use **executed = passed + f
 
 The [2.0 integration and media plan](../RELEASING.md#200-integration-target-2026-11-02)
 records the frozen candidate `4100e0ca` and its complete local verification receipt.
-The primary introduction is now [the controller workflow](https://puritysb.github.io/AgentDeck/#controller-workflow):
-a real local OpenCode session, original choices, one-time approval and the actual
-`node --test` result. Native iPhone/iPad simulator and Mac recordings use fictional
-workspaces and a loopback model fixture. The UI, observer, daemon, SDK response and
-permission paths execute normally; this does not verify provider discovery,
-subscription usage or CloudKit notification delivery.
+The primary introduction is now the [whole-product tour](https://puritysb.github.io/AgentDeck/#product-tour),
+**2 minutes 24 seconds**, with separate chapters for sessions/CI, tablet monitoring,
+collaboration, usage, real choices/approval, controller layouts, voice/native controls,
+task evaluation/evidence, e-ink, compact displays, LED glance devices and the terminal.
+The native control take is retained as a feature detail rather than the product introduction.
 
-`agentdeck-200-workflow.mp4` crops the native phone recording for readable controls;
-the full phone and Mac views remain linked. Playback stays at original speed.
-EN/KO/JA captions, the README excerpt, raw/binary/harness digests and Store candidate
-metadata are indexed in `docs/media/current/manifest.json`. Store candidates are
-local preparation files, not uploaded previews or a 2.0 release approval. The
-longer aquarium recording remains a secondary development detail, and dated 1.x
-footage remains intact.
+The new native Mac/iPad captures reuse the accepted `4100e0ca` binaries: app code
+is unchanged at the media base `2a1ab86a`. `scripts/product-tour-fixture.mjs` binds
+only loopback on an isolated port, uses fictional activity and never executes
+controls. Its task/judge and quota data are visual samples, not measurements of
+an actual account or an evaluation run. The control chapter retains the real
+OpenCode SDK execution from the earlier take; renderer frames and historical
+physical photographs carry their own on-screen evidence labels. CloudKit/Watch
+is a separate development experiment and is not advertised as released remote control.
+
+To reproduce the visual feed and assembly:
+
+```bash
+node scripts/product-tour-fixture.mjs 19570
+# Launch a Debug native app with -AgentDeckScreenshotURL ws://127.0.0.1:19570.
+# Capture overview, focus and Collaboration's expanded graph into diagnostics/tour-raw/.
+node --import tsx scripts/render-product-tour-keys.mts diagnostics/tour-raw
+node scripts/assemble-product-tour.mjs diagnostics/tour-raw
+```
+
+The [chapter source](../scripts/product-tour-story.json) owns feature coverage,
+frame placement, transformations and EN/KO/JA captions. The generated
+`agentdeck-200-product-tour-cuts.json` records native cuts and input digests.
+Do not shorten the primary film into a single feature demonstration. Review every
+chapter at normal speed, check the UI close-ups, and verify caption/seek alignment.
+The README links a lightweight excerpt to the controlled Pages player; no autoplay
+or up-front video download is introduced.
+
+`agentdeck-200-workflow.mp4` remains the original-speed close-up of the native phone
+recording, with its full phone and Mac views linked. The real local OpenCode
+question, choice, one-time permission and `node --test` result do not prove provider
+discovery, account quota or CloudKit delivery. Raw/binary/harness digests and Store
+candidate metadata remain indexed in `docs/media/current/manifest.json`.
+Store candidates are local preparation files, not uploaded previews or release approval.
+The longer aquarium recording stays a development detail, and dated 1.x footage
+remains intact.

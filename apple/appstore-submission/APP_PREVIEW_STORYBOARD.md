@@ -5,45 +5,62 @@ They have not been uploaded or approved for a Store release. The older September
 1.5.0 captures and their delivery record remain in git history and
 [the 1.5.0 record](macos-1.5.0.md).
 
-## November 2, 2026 native workflow captures
+## November 2, 2026 platform overviews
 
-Frozen source `4100e0ca` passed the complete local integration gate before these
-captures. The [media manifest](../../docs/media/current/manifest.json) owns exact
-binary/raw/output hashes, dimensions, cuts, encodes and evidence boundaries.
+Frozen app source `4100e0ca` passed the complete local integration gate before
+capture; app code is unchanged at the media base `2a1ab86a`. The
+[media manifest](../../docs/media/current/manifest.json) owns binary/raw/output
+hashes, exact cuts, streams and evidence boundaries.
 
-| Platform | Duration | Original choice visible | One-time permission visible | Resumed/idle observed |
-| --- | ---: | ---: | ---: | ---: |
-| iPhone | 25.03s | 4.50s | 13.26s | 19.95s |
-| iPad | 24.40s | 4.50s | 12.44s | 19.33s |
-| macOS | 21.43s | 4.50s | 11.93s | 16.37s |
+| Platform | Duration | Native overview before the control journey |
+| --- | ---: | --- |
+| iPhone | 28.43s | Multiple sessions, then System with reported usage windows |
+| iPad | 28.33s | Landscape dashboard with roster, activity timeline and usage |
+| macOS | 28.37s | Multi-agent dashboard, then expanded Collaboration Beta graph |
 
-Each platform records a separate real native app view. iPhone uses the standard
-portrait dashboard; iPad and Mac use the 2D aquarium. A fictional
-`Local Demo` workspace and loopback model produce an original OpenCode question.
-Native UI input selects `Local demo`, reads `bash: node --test`, and permits the
-command once. The real standalone OpenCode SDK executes the harmless test and
-returns one passing `demo total` result. No replacement UI or accelerated playback
-is used. Simulator footage is not physical-device verification.
+Each ends with its own real native question → original choice → one-time
+permission → resumed result. These are original-speed editorial cuts of full
+native frames, aspect-fit to the platform canvas. The earlier complete control
+takes remain the feature-detail evidence rather than the whole product introduction.
+Native simulator footage is not physical-device verification.
+
+Overview sessions, messages and quota are fictional presentation samples. The
+`Local Demo` control workspace and loopback model produce an original OpenCode
+question; native UI input selects `Local demo`, reviews `bash: node --test`, and
+permits that command once. The real standalone OpenCode SDK executes the harmless
+test and returns one passing `demo total` result. No replacement UI or accelerated
+playback is used.
 
 This shows a compatible connected controller path. It does not establish that the
-Mac app's observation-only OpenCode installer can answer questions, and it must
-not be used to advertise a Swift-only reply path. Check the eventual submitted
-build's supported host/control combination against the
-[feature matrix](../../docs/appstore-feature-matrix.md) before upload. No CloudKit
-PoC, remote approval, provider subscription data or guaranteed Watch delivery is
-shown. The Debug-only capture connection does not ship in Release builds.
+Mac app's observation-only OpenCode installer can answer questions, and must not
+advertise a Swift-only reply path. Check the eventual submitted build's host/control
+combination against the [feature matrix](../../docs/appstore-feature-matrix.md).
+The sample quota is not a live account measurement. No CloudKit PoC, remote
+approval or guaranteed Watch delivery is shown. Debug capture connections do not
+ship in Release builds.
+
+The broader Pages/README introduction is a separate **2 min 24 sec product tour**.
+Its fourteen chapters cover sessions/CI, collaboration, usage, real responses,
+controller/voice/native settings, evaluation/evidence, e-ink, compact/LED devices
+and the terminal. Historical photographs and production-renderer frames are
+explicitly labeled there; they are not included in the native-only Store cuts.
+
+Rebuild candidates with `node scripts/assemble-store-product-previews.mjs
+<new-capture-diagnostics> <original-control-capture-root>`. The native-only input
+list and original-speed cuts are retained in the media manifest. Keep raw takes
+outside git under `diagnostics/media-2.0/product-tour-4100e0ca/`.
 
 ## Encoding and review
 
 - Original speed, full native frames aspect-fit on each platform's accepted canvas.
 - H.264 High Profile Level 4.0, progressive, 30 fps, CBR HRD at 11 Mbps.
 - Silent stereo AAC-LC, 44.1 kHz, encoder setting 256 kbps.
-- iPhone 886 × 1920; iPad 1200 × 1600; macOS 1920 × 1080; 15–30 seconds.
+- iPhone 886 × 1920; iPad 1600 × 1200; macOS 1920 × 1080; 15–30 seconds.
 - Validate actual streams with `apple/scripts/validate-appstore-submission.sh`.
 - Choose a poster showing the original choices, then inspect it after Store processing.
 - Recheck current Apple requirements, accessibility, localized metadata and submitted
   build parity during release preparation. Local encoding validation is not Store acceptance.
 
-Pages uses an explicitly labeled crop of the phone take for readable controls,
-with the full phone and Mac views linked. Store candidate files retain full app
+Pages leads with the whole-product tour and retains a labeled phone close-up
+as a feature detail, with full phone and Mac control views linked. Store candidate files retain full app
 frames. Historical photos and older public recordings remain intact.

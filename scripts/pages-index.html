@@ -320,6 +320,11 @@ html body :target { scroll-margin-block-start: 0; }
     background: var(--tide-100); border-top: 1px solid var(--tide-200); text-align: left;
   }
 
+  .product-tour { margin-block:var(--s-8); }
+  .product-tour .hero-shot { max-width:1280px; margin-inline:auto; }
+  .product-tour video { aspect-ratio:16 / 9; }
+  .tour-chapters { display:flex; flex-wrap:wrap; justify-content:center; gap:var(--s-2); margin-block:var(--s-4); }
+  .tour-chapters .btn { min-height:44px; padding:var(--s-2) var(--s-3); font-size:13px; }
   .controller-workflow h2 { margin-top:var(--s-3); }
   .controller-workflow > .section-lede { margin-inline:auto; }
   .controller-workflow .hero-shot { max-width:960px; margin-inline:auto; }
@@ -553,8 +558,38 @@ html body :target { scroll-margin-block-start: 0; }
       <a class="btn btn-ghost" href="demo/" data-i18n="cta.demo">Try the live preview</a>
     </div>
 
+    <section id="product-tour" class="product-tour" aria-labelledby="tour-title">
+      <p class="kicker" data-i18n="tour.kicker">2.0 development · Product tour</p>
+      <h2 id="tour-title" data-i18n="tour.h">See the whole AgentDeck workflow.</h2>
+      <p class="section-lede" data-i18n="tour.p">Sessions, collaboration, usage, real choices and approvals, task review, and the screens that bring them onto your desk.</p>
+      <figure class="hero-shot">
+        <video id="product-tour-video" controls playsinline preload="none" poster="media/current/agentdeck-200-product-tour-poster.jpg" width="1920" height="1080" aria-describedby="tour-caption">
+          <source src="media/current/agentdeck-200-product-tour.mp4" type="video/mp4">
+          <track kind="captions" src="media/current/agentdeck-200-product-tour.en.vtt" srclang="en" label="English" default>
+          <track kind="captions" src="media/current/agentdeck-200-product-tour.ko.vtt" srclang="ko" label="한국어">
+          <track kind="captions" src="media/current/agentdeck-200-product-tour.ja.vtt" srclang="ja" label="日本語">
+          <a href="media/current/agentdeck-200-product-tour.mp4">Download the product tour</a>
+        </video>
+        <figcaption id="tour-caption" data-i18n="tour.caption">2 min 24 sec · Actual app UI, production renderer frames and labeled reference photographs. Most activity is fictional; the phone chapter records real local OpenCode execution. A 2.0 development candidate, not the current Store release.</figcaption>
+      </figure>
+      <div class="tour-chapters" role="group" aria-labelledby="tour-title">
+        <button class="btn btn-ghost" type="button" data-tour-seek="0.000" data-i18n="tour.overview">Overview</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="19.000" data-i18n="tour.session">Sessions & history</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="28.000" data-i18n="tour.collaboration">Collaboration</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="39.000" data-i18n="tour.usage">Usage</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="49.000" data-i18n="tour.answer">Choices & approval</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="74.033" data-i18n="tour.controllers">Keypads & controls</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="92.033" data-i18n="tour.evaluation">Evaluation & evidence</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="110.033" data-i18n="tour.eink">E-ink</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="119.033" data-i18n="tour.compact">Compact displays</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="128.033" data-i18n="tour.led">LED glance</button>
+        <button class="btn btn-ghost" type="button" data-tour-seek="136.033" data-i18n="tour.terminal">Terminal & local hub</button>
+      </div>
+      <p class="section-lede"><a href="media/current/agentdeck-200-product-tour-cuts.json" data-i18n="tour.sources">Chapters and source record</a> · <a href="#controller-workflow" data-i18n="tour.detail">Choice and approval detail</a></p>
+    </section>
+
     <section id="controller-workflow" class="controller-workflow" aria-labelledby="workflow-title">
-      <p class="kicker" data-i18n="workflow.kicker">2.0 development · Native app recording</p>
+      <p class="kicker" data-i18n="workflow.kicker">Feature detail · Real local control</p>
       <h2 id="workflow-title" data-i18n="workflow.h">Follow the work. Respond with context.</h2>
       <p class="section-lede" data-i18n="workflow.p">See an agent working, read its original question, choose a target and approve one local test run. The result comes back through the same local connection.</p>
       <figure class="hero-shot">
@@ -815,7 +850,24 @@ html body :target { scroll-margin-block-start: 0; }
   (function () {
     var I18N = {
       ko: {
-        "workflow.kicker": "2.0 개발 버전 · 실제 앱 녹화",
+        "tour.kicker": "2.0 개발 버전 · 제품 투어",
+        "tour.h": "AgentDeck의 전체 작업 흐름을 살펴보세요.",
+        "tour.p": "세션·협업·사용량·실제 선택과 승인·작업 평가, 그리고 책상 위 여러 화면의 역할까지 보여 드립니다.",
+        "tour.caption": "2분 24초 · 실제 앱 UI·제품 렌더러 화면·출처가 표시된 참고 사진. 대부분 가상 활동이며, iPhone 장면은 실제 로컬 OpenCode 실행입니다. 현재 스토어 출시본이 아닌 2.0 개발 후보입니다.",
+        "tour.sources": "장면별 구성과 출처",
+        "tour.detail": "선택·승인 상세 영상",
+        "tour.overview": "전체 보기",
+        "tour.session": "세션·이력",
+        "tour.collaboration": "협업",
+        "tour.usage": "사용량",
+        "tour.answer": "선택·승인",
+        "tour.controllers": "컨트롤러",
+        "tour.evaluation": "작업 평가",
+        "tour.eink": "전자잉크",
+        "tour.compact": "작은 화면",
+        "tour.led": "LED",
+        "tour.terminal": "터미널·로컬 허브",
+        "workflow.kicker": "기능 상세 · 실제 로컬 제어",
         "workflow.h": "작업을 확인하고, 필요한 순간에 응답하세요.",
         "workflow.p": "에이전트의 작업 상태를 보고, 원래 질문을 읽고, 검사할 대상을 선택한 뒤 로컬 테스트를 한 번 승인합니다. 결과도 같은 로컬 연결로 돌아옵니다.",
         "workflow.caption": "iPhone 시뮬레이터의 실제 앱 UI와 실제 로컬 OpenCode 세션 · 가상의 작업 공간. 원래 재생 속도 그대로 25초이며, 조작부를 읽기 쉽게 화면 일부를 잘랐습니다. 현재 스토어 출시본이 아닌 2.0 개발 후보입니다.",
@@ -899,7 +951,24 @@ html body :target { scroll-margin-block-start: 0; }
         'policy.canonical': '개인정보 처리방침은 영어 원문이 정본입니다.'
       },
       ja: {
-        "workflow.kicker": "2.0開発版 · 実アプリの画面収録",
+        "tour.kicker": "2.0開発版 · 製品ツアー",
+        "tour.h": "AgentDeckの作業フロー全体を確認。",
+        "tour.p": "セッション、協業、使用量、実際の選択と承認、作業レビュー、机上の各画面の役割まで紹介します。",
+        "tour.caption": "2分24秒 · 実アプリUI、製品レンダラー、出典付きの参考写真。大半は架空の活動で、iPhoneの章は実際のローカルOpenCode実行です。現在のストア公開版ではなく2.0開発候補です。",
+        "tour.sources": "章構成と出典",
+        "tour.detail": "選択・承認の詳細",
+        "tour.overview": "全体",
+        "tour.session": "セッション・履歴",
+        "tour.collaboration": "協業",
+        "tour.usage": "使用量",
+        "tour.answer": "選択・承認",
+        "tour.controllers": "コントローラー",
+        "tour.evaluation": "作業レビュー",
+        "tour.eink": "電子ペーパー",
+        "tour.compact": "小型画面",
+        "tour.led": "LED",
+        "tour.terminal": "ターミナル・ローカルハブ",
+        "workflow.kicker": "機能詳細 · 実際のローカル制御",
         "workflow.h": "作業を確認し、必要なときに応答。",
         "workflow.p": "エージェントの作業を確認し、元の質問を読んで対象を選び、ローカルテストを一度だけ承認します。結果も同じローカル接続で戻ります。",
         "workflow.caption": "iPhoneシミュレータの実UIと実際のローカルOpenCodeセッション。架空の作業環境、元の速度で25秒。操作を読みやすくするため画面を切り抜いています。現在のストア公開版ではなく2.0開発候補です。",
@@ -1006,6 +1075,25 @@ html body :target { scroll-margin-block-start: 0; }
       apply(sel.value);
     });
   })();
+</script>
+<script>
+  document.querySelectorAll('[data-tour-seek]').forEach(button => {
+    button.addEventListener('click', () => {
+      const video = document.getElementById('product-tour-video');
+      const time = Number(button.dataset.tourSeek);
+      if (video && Number.isFinite(time)) {
+        const seekAndPlay = () => {
+          video.currentTime = time;
+          video.play().catch(() => {});
+        };
+        if (video.readyState >= 1) seekAndPlay();
+        else {
+          video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+          video.load();
+        }
+      }
+    });
+  });
 </script>
 </body>
 </html>

@@ -1312,6 +1312,7 @@
         "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
         "scripts/__tests__/build-health-report.test.ts",
         "scripts/__tests__/public-media.test.ts",
+        "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts"
       ]
     }

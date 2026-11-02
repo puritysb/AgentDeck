@@ -39,7 +39,7 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
 [Watch the hardware desk tour](https://youtu.be/s-f8ICBcC4o)
 
 <p align="center">
-  <a href="https://puritysb.github.io/AgentDeck/#controller-workflow"><strong>▶ Watch the local-control workflow</strong></a>
+  <a href="https://puritysb.github.io/AgentDeck/#product-tour"><strong>▶ Watch the AgentDeck product tour</strong></a>
   &nbsp;·&nbsp;
   <a href="https://puritysb.github.io/AgentDeck/"><strong>🌊 Project website</strong></a>
   &nbsp;·&nbsp;
@@ -50,18 +50,23 @@ Use your Mac or terminal on its own, then add the displays that fit your desk.
   <a href="https://puritysb.github.io/AgentDeck/design-system/">Design system</a>
 </p>
 
-## Local control · 2.0 development preview
+## AgentDeck · 2.0 product tour
 
-[![Original choices and one-time approval in the native AgentDeck phone UI](docs/media/current/agentdeck-200-workflow-preview.gif)](https://puritysb.github.io/AgentDeck/#controller-workflow)
+[![AgentDeck product tour: sessions, collaboration, usage, real answers, evaluation and devices](docs/media/current/agentdeck-200-product-tour-preview.gif)](https://puritysb.github.io/AgentDeck/#product-tour)
 
-Follow a working agent, read its original question, choose a target and approve
-one local test run. This recording uses the actual iPhone Simulator UI and a real
-OpenCode session in a fictional workspace. The close-up is cropped for readable
-controls and plays at its original speed. It shows a 2.0 development candidate;
-released downloads retain their recorded channel versions.
+A **2 minute 24 second** tour of the whole workflow: parallel agent sessions,
+per-session history and CI waiting, collaboration, usage windows, original choices
+and one-time approval, voice and native agent controls, task evaluation and
+recorded evidence, then the roles of keypads, tablets, e-ink and small displays.
 
-[Watch the captioned workflow](https://puritysb.github.io/AgentDeck/#controller-workflow) ·
-[Full native phone view](docs/media/current/agentdeck-200-iphone.mp4) ·
+Actual Mac/iPad UI and production renderers use fictional activity; the phone
+control chapter uses a real local OpenCode execution. Static captures and older
+hardware photographs are labeled in the video. This is a **2.0 development
+candidate**, with English, Korean and Japanese captions; released downloads retain
+their channel versions. CloudKit/Watch remains a separate development experiment.
+
+[Watch the captioned product tour](https://puritysb.github.io/AgentDeck/#product-tour) ·
+[Choice and approval detail](https://puritysb.github.io/AgentDeck/#controller-workflow) ·
 [Aquarium detail](https://puritysb.github.io/AgentDeck/#current-habitat) ·
 [Device captures](https://puritysb.github.io/AgentDeck/hardware/#current-captures) ·
 [Media provenance](docs/media/current/manifest.json)
