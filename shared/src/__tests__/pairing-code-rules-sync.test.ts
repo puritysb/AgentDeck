@@ -33,6 +33,8 @@ describe('generated mirrors in sync', () => {
     expect(swift).toContain(`static let maxFailedAttempts = ${pairingCode.PAIRING_MAX_FAILED_ATTEMPTS}`);
     expect(kotlin).toContain(`const val DIGITS = ${pairingCode.PAIRING_CODE_DIGITS}`);
     expect(kotlin).toContain(`const val MAX_FAILED_ATTEMPTS = ${pairingCode.PAIRING_MAX_FAILED_ATTEMPTS}`);
+    expect(swift).toContain(`static let clientReconnectCooldownMs = ${pairingCode.CLIENT_RECONNECT_COOLDOWN_MS}`);
+    expect(kotlin).toContain(`const val CLIENT_RECONNECT_COOLDOWN_MS = ${pairingCode.CLIENT_RECONNECT_COOLDOWN_MS}L`);
   });
 
   it('the Swift mirror emits every outcome the TS union declares', () => {

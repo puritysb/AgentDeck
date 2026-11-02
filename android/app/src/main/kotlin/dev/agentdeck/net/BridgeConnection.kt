@@ -36,7 +36,10 @@ enum class ConnectionStatus {
     CONNECTED,
 }
 
-class BridgeConnection internal constructor() {
+class BridgeConnection internal constructor(
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val nowMs: () -> Long = System::currentTimeMillis,
+) {
 
     companion object {
         val instance: BridgeConnection by lazy { BridgeConnection() }
@@ -62,7 +65,6 @@ class BridgeConnection internal constructor() {
         private const val MAX_REMEMBERED_REFUSALS = 8
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // Liveness detection is pong-based, not data-based: OkHttp sends a ping every
     // pingInterval and fails the socket if no frame (pong or data) arrives within
     // readTimeout. We can't drive a data-silence "stale" timer off onMessage —
@@ -102,6 +104,9 @@ class BridgeConnection internal constructor() {
 
     private val _status = MutableStateFlow(ConnectionStatus.DISCONNECTED)
     val status: StateFlow<ConnectionStatus> = _status.asStateFlow()
+
+    private val _userStopped = MutableStateFlow(false)
+    val userStopped: StateFlow<Boolean> = _userStopped.asStateFlow()
 
     private val _url = MutableStateFlow<String?>(null)
     val url: StateFlow<String?> = _url.asStateFlow()
@@ -174,6 +179,7 @@ class BridgeConnection internal constructor() {
             return
         }
         generation.incrementAndGet()
+        _userStopped.value = false
         pairedUrls = PairingCredential.remember(pairedUrl, pairedUrls)
         val wsUrl = PairingCredential.resolveFromStore(requestedUrl, pairedUrls)
         if (!PairingCredential.isLoopback(wsUrl)) selectedUrl = wsUrl
@@ -209,6 +215,7 @@ class BridgeConnection internal constructor() {
 
     fun disconnect() {
         generation.incrementAndGet()
+        _userStopped.value = true
         selectedUrl = null
         shouldReconnect = false
         _isReconnecting.value = false
@@ -238,7 +245,7 @@ class BridgeConnection internal constructor() {
     fun sendQueryUsage() = send(PluginCommands.queryUsage())
     /** Connect to a saved URL if not already connected. */
     fun autoConnect(savedUrl: String?) {
-        if (savedUrl != null && _status.value == ConnectionStatus.DISCONNECTED) {
+        if (!_userStopped.value && savedUrl != null && _status.value == ConnectionStatus.DISCONNECTED) {
             connect(savedUrl)
         }
     }
@@ -366,13 +373,16 @@ class BridgeConnection internal constructor() {
     }
 
     private fun authenticationRequired(wsUrl: String) {
+        // Correlate a physical app/PID with the host's waiting-to-connect row.
+        // The per-install id is public handshake metadata, never a credential.
+        Log.w(TAG, "Authentication required for ${PairingCredential.endpointOf(wsUrl)}; device=${DeviceIdentity.current ?: "unknown"}")
         shouldReconnect = false
         _isReconnecting.value = false
         _reconnectAttempt.value = 0
         registrationCoordinator.socketClosed()
         PairingCredential.endpointOf(wsUrl)?.let { endpoint ->
             _unauthorizedEndpoints.update { current ->
-                (current + (endpoint to System.currentTimeMillis())).entries
+                (current + (endpoint to nowMs())).entries
                     .sortedByDescending { it.value }.take(MAX_REMEMBERED_REFUSALS)
                     .associate { it.key to it.value }
             }
@@ -393,7 +403,7 @@ class BridgeConnection internal constructor() {
                 PairingCredential.mayDialDiscovered(
                     discoveredUrl = "ws://$endpoint", currentUrl = null,
                     loopbackTried = true, unauthorizedAt = _unauthorizedEndpoints.value,
-                    savedUrl = null, nowMs = System.currentTimeMillis(),
+                    savedUrl = null, nowMs = nowMs(),
                 )
             ) connect(wsUrl)
         }
@@ -417,7 +427,7 @@ class BridgeConnection internal constructor() {
         ) {
             Log.w(
                 TAG,
-                "Primary $currentUrl failing after ${_reconnectAttempt.value} attempts — switching to resolved-host fallback $fb"
+                "Primary ${PairingCredential.endpointOf(currentUrl)} failing after ${_reconnectAttempt.value} attempts — switching to resolved-host fallback ${PairingCredential.endpointOf(fb)}"
             )
             triedFallback = true
             _reconnectAttempt.value = 0
@@ -442,7 +452,7 @@ class BridgeConnection internal constructor() {
         if (_reconnectAttempt.value > maxAttempts) {
             Log.w(
                 TAG,
-                "Connection to $currentUrl still failing after ${_reconnectAttempt.value} attempts — giving up, clearing URL for mDNS fallback"
+                "Connection to ${PairingCredential.endpointOf(currentUrl)} still failing after ${_reconnectAttempt.value} attempts — giving up, clearing URL for mDNS fallback"
             )
             shouldReconnect = false
             _isReconnecting.value = false
@@ -451,6 +461,16 @@ class BridgeConnection internal constructor() {
             _lastError.value = if (isLocalhost) "USB bridge not found — try WiFi" else "Bridge not found — re-discovering"
             _status.value = ConnectionStatus.DISCONNECTED
             onEvent?.invoke(BridgeEvent.Disconnected)
+            // Bonjour need not emit again when Node and Swift exchange the
+            // same endpoint. Keep the chosen host and retry after a quiet
+            // period, without falling through to an unrelated USB/LAN host.
+            val selected = selectedUrl
+            scope.launch {
+                delay(PairingCodeRules.CLIENT_RECONNECT_COOLDOWN_MS)
+                if (generation.get() == retryGeneration && selectedUrl == selected &&
+                    _url.value == null && _status.value == ConnectionStatus.DISCONNECTED
+                ) connect(selected ?: currentUrl)
+            }
             return
         }
 

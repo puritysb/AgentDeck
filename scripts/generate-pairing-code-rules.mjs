@@ -65,6 +65,9 @@ enum PairingCodeRules {
     /// Port a typed address means when it carries none.
     static let DEFAULT_DAEMON_PORT = ${rules.defaultDaemonPort}
 
+    /// Quiet period before retrying the same selected host, never another host.
+    static let clientReconnectCooldownMs = ${rules.clientReconnectCooldownMs}
+
     /// State a daemon keeps for an open window, and all these rules read.
     struct WindowSnapshot: Sendable {
         var code: String
@@ -286,6 +289,9 @@ object PairingCodeRules {
     /** Port a typed address means when it carries none. */
     const val DEFAULT_DAEMON_PORT = ${rules.defaultDaemonPort}
 
+    /** Quiet period before retrying the same selected host, never another host. */
+    const val CLIENT_RECONNECT_COOLDOWN_MS = ${rules.clientReconnectCooldownMs}L
+
     /** Wrong codes the whole window tolerates before it closes. */
     const val MAX_FAILED_ATTEMPTS = ${rules.maxFailedAttempts}
 
@@ -412,6 +418,7 @@ export function rulesFrom(mod) {
     maxFailedAttempts: mod.PAIRING_MAX_FAILED_ATTEMPTS,
     defaultRedemptions: mod.DEFAULT_PAIRING_REDEMPTIONS,
     defaultDaemonPort: mod.DEFAULT_DAEMON_PORT,
+    clientReconnectCooldownMs: mod.CLIENT_RECONNECT_COOLDOWN_MS,
     deviceIdHeader: mod.DEVICE_ID_HEADER,
     deviceIdLength: mod.DEVICE_ID_LENGTH,
   };

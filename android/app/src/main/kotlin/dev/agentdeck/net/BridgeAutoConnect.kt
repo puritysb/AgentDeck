@@ -64,6 +64,7 @@ fun BridgeAutoConnect(
     val discovery = remember { BridgeDiscovery(context) }
     val status by connection.status.collectAsState()
     val url by connection.url.collectAsState()
+    val userStopped by connection.userStopped.collectAsState()
 
     // The startup window before the first loopback dial has been issued. After
     // that the turn is held by the connection's URL, which the socket layer
@@ -76,7 +77,7 @@ fun BridgeAutoConnect(
     // steady advertisement from a daemon that just (re)appeared.
     var lastSeenDaemon by remember { mutableStateOf<String?>(null) }
 
-    fun mayDial(daemon: DiscoveredBridge): Boolean = PairingCredential.mayDialDiscovered(
+    fun mayDial(daemon: DiscoveredBridge): Boolean = !connection.userStopped.value && PairingCredential.mayDialDiscovered(
         discoveredUrl = daemon.wsUrl(),
         currentUrl = connection.url.value,
         loopbackTried = loopbackTried,
@@ -95,7 +96,7 @@ fun BridgeAutoConnect(
         // needs no stored credential (same-machine over the tunnel), and until
         // it is issued nothing holds the LAN fallback back but `loopbackTried`
         // — so a DataStore read that took its time would hand the turn away.
-        if (AutoConnectRules.shouldProbeOnEntry(connection.status.value, connection.selectedUrl)) {
+        if (AutoConnectRules.shouldProbeOnEntry(connection.status.value, connection.selectedUrl, connection.userStopped.value)) {
             autoConnectDebug { "Trying localhost:${BridgeConstants.WS_PORT} (USB)..." }
             connection.connect(BridgeConstants.LOCALHOST_WS_URL)
         }
@@ -141,7 +142,7 @@ fun BridgeAutoConnect(
     // last emission to a new subscriber but does not re-emit on its own, so an
     // effect that subscribed while the probe still held the turn would sit on a
     // daemon it had already decided not to dial.
-    LaunchedEffect(status, url, loopbackTried) {
+    LaunchedEffect(status, url, loopbackTried, userStopped) {
         // Connected over the LAN — nothing left to discover or offer.
         //
         // Connected over LOOPBACK is different, and the difference is the whole
@@ -192,11 +193,11 @@ fun BridgeAutoConnect(
     // start after the app, or a reverse tunnel may be attached later, so this
     // never stops — but it backs off, because on a device that has neither the
     // probe is the only thing on screen.
-    LaunchedEffect(status, url) {
-        if (status != ConnectionStatus.DISCONNECTED || url != null) return@LaunchedEffect
+    LaunchedEffect(status, url, userStopped) {
+        if (userStopped || status != ConnectionStatus.DISCONNECTED || url != null) return@LaunchedEffect
         delay(AutoConnectRules.loopbackProbeDelayMs(loopbackMisses))
         if (connection.status.value != ConnectionStatus.DISCONNECTED) return@LaunchedEffect
-        if (connection.url.value != null || connection.selectedUrl != null) return@LaunchedEffect
+        if (connection.userStopped.value || connection.url.value != null || connection.selectedUrl != null) return@LaunchedEffect
         loopbackMisses++
         autoConnectDebug { "Recovery probe #$loopbackMisses — localhost:${BridgeConstants.WS_PORT} (USB)" }
         connection.connect(BridgeConstants.LOCALHOST_WS_URL)
@@ -239,8 +240,8 @@ suspend fun adoptPairedUrl(
 /** Pure ladder rules, kept out of the composable so they have a test. */
 object AutoConnectRules {
     /** A composition remount after guided setup must not replace the chosen host with USB. */
-    fun shouldProbeOnEntry(status: ConnectionStatus, selectedUrl: String?): Boolean =
-        status == ConnectionStatus.DISCONNECTED && selectedUrl == null
+    fun shouldProbeOnEntry(status: ConnectionStatus, selectedUrl: String?, userStopped: Boolean = false): Boolean =
+        !userStopped && status == ConnectionStatus.DISCONNECTED && selectedUrl == null
 
 
     /** How long the startup ladder gives the loopback dial before the saved URL. */

@@ -25,6 +25,9 @@ object PairingCodeRules {
     /** Port a typed address means when it carries none. */
     const val DEFAULT_DAEMON_PORT = 9120
 
+    /** Quiet period before retrying the same selected host, never another host. */
+    const val CLIENT_RECONNECT_COOLDOWN_MS = 30000L
+
     /** Wrong codes the whole window tolerates before it closes. */
     const val MAX_FAILED_ATTEMPTS = 5
 

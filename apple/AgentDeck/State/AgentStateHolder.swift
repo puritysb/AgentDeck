@@ -130,7 +130,14 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     private var waterfallStage: WaterfallStage = .idle
     private var preferredLocalBridgeUrl: String?
-    private var preferredLocalRecovery: DispatchWorkItem?
+    private var selectedHostRecovery: DispatchWorkItem?
+    private var recoveryGeneration = 0
+    private var authenticationRetryNotBefore: Date?
+    private let recoveryDelaySec: TimeInterval
+
+    private var authenticationHoldoffActive: Bool {
+        authenticationRetryNotBefore.map { Date() < $0 } ?? false
+    }
 
     /// Hard ceiling on the user-visible foreground attempt, independent of which
     /// waterfall stage is in flight.
@@ -197,8 +204,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     /// - Parameter foregroundSearchDeadlineSec: ceiling on the visible search
     ///   indicator. Injectable so tests can assert the bound in milliseconds
     ///   instead of waiting out the production value.
-    init(foregroundSearchDeadlineSec: TimeInterval = 12, inertHost: Bool = false) {
+    init(foregroundSearchDeadlineSec: TimeInterval = 12, inertHost: Bool = false,
+         recoveryDelaySec: TimeInterval = Double(PairingCodeRules.clientReconnectCooldownMs) / 1000) {
         self.foregroundSearchDeadlineSec = foregroundSearchDeadlineSec
+        self.recoveryDelaySec = recoveryDelaySec
         self.isInertHost = inertHost
         timelineGenerator = StateTimelineGenerator(store: timelineStore)
         if inertHost {
@@ -254,7 +263,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
                 guard self.autoConnectTimer == nil else { return }
                 // An explicit stop must stick. Without this the next mDNS tick
                 // silently undoes "Stop Reconnecting" / Settings → Disconnect.
-                guard !self.userStoppedConnecting else { return }
+                guard !self.userStoppedConnecting, !self.authenticationHoldoffActive else { return }
                 // Unknown hosts are chosen by the bounded discovery window or
                 // an explicit tap, never by the first passive Bonjour callback.
                 guard self.selectedBridgeURL != nil || self.savedUrl != nil else { return }
@@ -290,24 +299,26 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         }
         connection.onAuthenticationRequired = { [weak self] in
             guard let self else { return }
-            self.preferredLocalRecovery?.cancel()
-            self.preferredLocalRecovery = nil
+            self.cancelSelectedHostRecovery()
             self.autoConnectTimer?.invalidate()
             self.autoConnectTimer = nil
             self.endForegroundSearch()
             self.waterfallStage = .idle
-            self.userStoppedConnecting = true
+            // An owner change can temporarily refuse a tokenless approved
+            // peer. Refusal is not a user stop: retry only this host after the
+            // shared cooldown, with normal authentication on every attempt.
+            self.authenticationRetryNotBefore = Date().addingTimeInterval(self.recoveryDelaySec)
             self.resetToDisconnected()
+            self.scheduleSelectedHostRecovery()
         }
         connection.onReconnectExhausted = { [weak self] _ in
             guard let self else { return }
             self.endForegroundSearch()
             self.waterfallStage = .idle
-            // Exhausting a network retry budget is not a user stop. A later
-            // advertisement for this same endpoint may restore the connection.
-            // The discovery selector still refuses every other host.
+            // Ownership may change without a new Bonjour advertisement.
+            // Discovery can recover sooner; the timer is the independent backstop.
             self.discovery.startSearching()
-            self.schedulePreferredLocalRecovery()
+            self.scheduleSelectedHostRecovery()
         }
         // Socket retries retain the selected endpoint. Discovery is not evidence
         // that a different computer is a replacement for it.
@@ -454,8 +465,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         #if os(macOS)
         latestAttentionSessionSnapshot = nil
         #endif
-        preferredLocalRecovery?.cancel()
-        preferredLocalRecovery = nil
+        cancelSelectedHostRecovery()
 
         backgroundEnteredAt = nil
         preferredLocalBridgeUrl = nil
@@ -582,6 +592,10 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
 
     func startConnectionWaterfall() {
         guard !isTerminating, !userStoppedConnecting else { return }
+        if authenticationHoldoffActive {
+            scheduleSelectedHostRecovery()
+            return
+        }
         hasStartedForegroundSearch = true
         if let preferredLocalBridgeUrl {
             endForegroundSearch()
@@ -613,6 +627,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     func retryConnectionWaterfall() {
         guard !isTerminating else { return }
         userStoppedConnecting = false
+        authenticationRetryNotBefore = nil
         autoConnectTimer?.invalidate()
         autoConnectTimer = nil
         endForegroundSearch()
@@ -630,8 +645,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     /// and no way back. Every user-facing stop goes through here instead.
     func stopConnectionAttempts() {
         guard !isTerminating else { return }
-        preferredLocalRecovery?.cancel()
-        preferredLocalRecovery = nil
+        cancelSelectedHostRecovery()
         autoConnectTimer?.invalidate()
         autoConnectTimer = nil
         endForegroundSearch()
@@ -640,25 +654,31 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         connection.disconnect()
     }
 
-    /// Bonjour advertises a LAN address, so it cannot revive a selected loopback
-    /// URL after exhaustion. Retry that same local endpoint after a quiet period;
-    /// explicit stop/auth refusal and a newer selection must still win.
-    func schedulePreferredLocalRecovery(after delay: TimeInterval = 30) {
-        preferredLocalRecovery?.cancel()
-        preferredLocalRecovery = nil
+    private func cancelSelectedHostRecovery() {
+        recoveryGeneration += 1
+        selectedHostRecovery?.cancel()
+        selectedHostRecovery = nil
+    }
+
+    /// Retry the selected endpoint independently of Bonjour, for both a remote
+    /// companion and the preferred local hub. A stop, new selection, termination
+    /// or a newer attempt invalidates even work already queued on the main thread.
+    func scheduleSelectedHostRecovery(after delay: TimeInterval? = nil) {
+        cancelSelectedHostRecovery()
         guard !isTerminating, !userStoppedConnecting,
-              let expected = selectedBridgeURL,
-              PairingCredential.sameEndpoint(preferredLocalBridgeUrl, expected) else { return }
+              let expected = selectedBridgeURL ?? savedUrl else { return }
+        let generation = recoveryGeneration
+        let holdoff = max(0, authenticationRetryNotBefore?.timeIntervalSinceNow ?? 0)
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.isTerminating, !self.userStoppedConnecting,
+                  self.recoveryGeneration == generation, !self.authenticationHoldoffActive,
                   !self.state.bridgeConnected, self.connection.status == .disconnected,
-                  PairingCredential.sameEndpoint(self.selectedBridgeURL, expected),
-                  PairingCredential.sameEndpoint(self.preferredLocalBridgeUrl, expected) else { return }
-            self.preferredLocalRecovery = nil
+                  PairingCredential.sameEndpoint(self.selectedBridgeURL ?? self.savedUrl, expected) else { return }
+            self.selectedHostRecovery = nil
             self.connectTo(url: expected)
         }
-        preferredLocalRecovery = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        selectedHostRecovery = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(delay ?? recoveryDelaySec, holdoff), execute: work)
     }
 
     // MARK: - Foreground search indicator
@@ -1363,8 +1383,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         #if os(macOS)
         latestAttentionSessionSnapshot = nil
         #endif
-        preferredLocalRecovery?.cancel()
-        preferredLocalRecovery = nil
+        cancelSelectedHostRecovery()
+        authenticationRetryNotBefore = nil
         userStoppedConnecting = false
         selectedBridgeURL = url
         autoConnectTimer?.invalidate()
