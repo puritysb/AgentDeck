@@ -23,8 +23,8 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 **2.0 delivery:** Google Play, npm and the Android/Stream Deck/Ulanzi/ESP32
-GitHub downloads are public. Elgato, macOS, iPhone and iPad are submitted for
-review. Ulanzi's portal update awaits sign-in.
+GitHub downloads are public. Elgato, Ulanzi, macOS, iPhone and iPad are submitted
+for review.
 See the [channel-by-channel delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
 Non-automatable physical journeys use the owner's code-review acceptance for this release.
 

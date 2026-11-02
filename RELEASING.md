@@ -109,7 +109,7 @@ Elgato-copy commits did not rebuild application behavior.
 | Apple iPhone / iPad | 2.0.0 / 10201 | Independently verified signed/exported IPA; ASC build VALID; [WAITING_FOR_REVIEW](https://github.com/puritysb/AgentDeck/actions/runs/41443853672), automatic release after approval |
 | Android GitHub / Play | 2.0.0 / 30 | [Signed APK public](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.0.0); [Google Play public](https://play.google.com/store/apps/details?id=dev.agentdeck), production 30 at **100% rollout**, managed publishing off |
 | Stream Deck GitHub / Marketplace | 2.0.0.0 | [Official package public](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v2.0.0); Maker Console **Pending review · 2**, auto-publish off |
-| Ulanzi GitHub / Marketplace | 2.0.0 | [Official WASM package public](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0); portal update blocked by missing authenticated session. Last readback remains public 1.8.1 / review 1.8.2 |
+| Ulanzi GitHub / Marketplace | 2.0.0 | [Official WASM package public](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0); existing 1.8.2 review record updated to **2.0.0 / Works under review** after account sign-in |
 | ESP32 | 2.0.0 | [Complete firmware release public](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.0.0), all twelve shipping boards and 62 assets |
 
 [Apple upload run 41436144306](https://github.com/puritysb/AgentDeck/actions/runs/41436144306)
@@ -160,6 +160,15 @@ Public APK SHA-256: `c43387cb3739fd570b52ea1514141350453401e4704e30e504ac4b16b53
 Play AAB SHA-256: `8e8bd9ceca60d568b304ea94a19051a682057d45d63b6dc584b311792de84b37`.
 Stream Deck SHA-256: `f59015c4dafb160555bb883cf24e33392fb5c983714eb3f12a351beb8b8f0ab8`.
 Ulanzi ZIP SHA-256: `66cb4ca236a744666581ad03307cc24291cb99aa0354696c1101ad3bc397a83d`.
+The Ulanzi portal update is now submitted. Reopening the saved review confirms
+**2.0.0**, all seven locale pairs, AI category, all three existing OS variants,
+and **D200/D200H/D200X with Dial/AU05 excluded**. The saved CDN ZIP was downloaded
+and hashes exactly to the official package above. The new cover and three
+banners are saved; the portal's mandatory crop/export produces a 400×400 cover
+and 366×244 banners, matching its previous banner size. The 1,223-character
+prepared English description was shortened to **904 characters** for the form's
+1,000-character detail limit; every locale's summary/detail is within 300/1,000.
+See the [Ulanzi receipt](marketplace/ulanzi/LISTING.md).
 The [ESP32 release run](https://github.com/puritysb/AgentDeck/actions/runs/41436161314)
 passed all twelve builds and published the complete set. Downloaded manifest
 and SHA256SUMS match their GitHub asset digests. Board identities/geometry agree
@@ -171,7 +180,9 @@ are retained privately under `diagnostics/release-2.0.0-6c11fc8f/`.
 
 The #635 security correction is included in npm 2.0.0 and the uploaded native
 builds. The issue remains open through native public availability and reporter
-confirmation. Update every installer in use (native app and/or CLI), then
+confirmation. The private report is formally accepted as a private draft, with
+first fixed npm version 2.0.0 and coordinated validation instructions recorded;
+its technical contents remain private. Update every installer in use (native app and/or CLI), then
 refresh enabled integrations and review Codex hook trust when prompted. Native
 users must distinguish an uploaded/submitted build from an available Store update.
 The physical-device waiver applies to this release only; #544's cmux title
