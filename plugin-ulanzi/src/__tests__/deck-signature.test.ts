@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { buildSessionDeck } from '@agentdeck/shared';
 import { deckSignature, deckViewSignature } from '../deck-signature.js';
 
 /**
@@ -114,4 +115,19 @@ it('invalidates the deck when Dot appears, stops, ages or clears', () => {
   const dot = { configured: true, hosting: true, reportState: 'working', reportedAt: 1800000000000, expiresAt: 1800001800000 };
   const values = [null, dot, { ...dot, hosting: false }, { ...dot, reportState: 'stale' }].map(dot => deckSignature({ dot }));
   expect(new Set(values).size).toBe(4);
+});
+
+
+it('invalidates every name-only change that changes the actual shared deck pixels', () => {
+  const positions = ['0_0', '1_0', '2_0', '3_0', '4_0', '0_1', '1_1', '2_1'];
+  const view = { mode: 'list' as const };
+  const session = { id: 'observed:claude:aaa1', port: 0, state: 'idle', alive: true,
+    agentType: 'claude-code', controlMode: 'observed', projectName: 'same', displayName: 'Before' };
+  const event = { state: 'idle', allSessions: [session, { ...session, id: 'observed:claude:bbb2' }] };
+  const pixels = (ev: unknown) => [...buildSessionDeck(ev, view, positions).values()].map(cell => cell.svg).join('');
+  for (const patch of [{ displayName: 'After' }, { displayName: '' }, { projectName: 'different' }]) {
+    const changed = { ...event, allSessions: [{ ...session, ...patch }, event.allSessions[1]] };
+    expect(pixels(changed)).not.toBe(pixels(event));
+    expect(deckViewSignature(changed, view, positions)).not.toBe(deckViewSignature(event, view, positions));
+  }
 });

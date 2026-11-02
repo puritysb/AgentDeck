@@ -395,8 +395,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         }
     }
 
-    private func handleSystemWake() {
-        guard !isTerminating else { return }
+    func handleSystemWake() {
+        guard !isTerminating, !userStoppedConnecting else { return }
         let now = Date()
         if let last = lastWakeHandledAt, now.timeIntervalSince(last) < Self.wakeDebounceSec {
             return
@@ -497,6 +497,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
         displaySync.handleForegroundReturn(hostDisplayOn: state.hostDisplayOn)
         #endif
 
+        guard !userStoppedConnecting else { return }
+
         #if os(macOS)
         if !state.bridgeConnected {
             if let preferredLocalBridgeUrl {
@@ -520,7 +522,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             print("[Lifecycle] medium suspend (\(Int(suspendDuration))s) — health check")
             connection.forceHealthCheck { [weak self] alive in
                 guard let self else { return }
-                guard !self.isTerminating else { return }
+                guard !self.isTerminating, !self.userStoppedConnecting else { return }
                 if !alive {
                     print("[Lifecycle] health check failed — reconnecting preferred local bridge")
                     self.connection.forceDisconnectAndRestart()
@@ -550,7 +552,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
             print("[Lifecycle] medium suspend (\(Int(suspendDuration))s) — health check")
             connection.forceHealthCheck { [weak self] alive in
                 guard let self else { return }
-                guard !self.isTerminating else { return }
+                guard !self.isTerminating, !self.userStoppedConnecting else { return }
                 if !alive {
                     print("[Lifecycle] health check failed — reconnecting")
                     self.connection.forceDisconnectAndRestart()
@@ -569,7 +571,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     }
 
     private func restartWaterfall() {
-        guard !isTerminating else { return }
+        guard !isTerminating, !userStoppedConnecting else { return }
         // Force reset waterfall stage so startConnectionWaterfall() can enter
         waterfallStage = .idle
         connection.resetReconnectCount()
@@ -579,9 +581,8 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     // MARK: - Connection Waterfall
 
     func startConnectionWaterfall() {
-        guard !isTerminating else { return }
+        guard !isTerminating, !userStoppedConnecting else { return }
         hasStartedForegroundSearch = true
-        userStoppedConnecting = false
         if let preferredLocalBridgeUrl {
             endForegroundSearch()
             waterfallStage = .idle
@@ -611,6 +612,7 @@ final class AgentStateHolder: ObservableObject, @unchecked Sendable {
     /// relaunching the app.
     func retryConnectionWaterfall() {
         guard !isTerminating else { return }
+        userStoppedConnecting = false
         autoConnectTimer?.invalidate()
         autoConnectTimer = nil
         endForegroundSearch()

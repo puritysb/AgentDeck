@@ -1305,3 +1305,41 @@ it('refreshes friendly labels without changing deck targets (#544/#632)', () => 
   expect(manager.displayNameFor(a)).toBe('AgentDeck #5f8f');
   expect(manager.sessions.map(s=>s.id)).toEqual(['5f8faaaa','b80cbbbb']);
 });
+
+
+describe('observed question page controls', () => {
+  it.each([SD_PLUS_LAYOUT, { columns: 3, rows: 2, keyCount: 6, family: 'streamdeck' } as DeckLayout])('exposes a reachable NEXT button for every original option on $keyCount keys', layout => {
+    const manager = new SessionSlotManager();
+    const options = Array.from({ length: 9 }, (_, i) => ({ index: 30 + i, label: `Choice ${i}` }));
+    const session = makeSession({ id: 'observed:opencode:pages', agentType: 'opencode', controlMode: 'observed',
+      state: State.AWAITING_OPTION, question: 'Which target?', liveAnswerable: true, options });
+    manager.updateSessions([session]);
+    manager.enterDetailView(session.id);
+    const seen = new Set<number>();
+    for (let page = 0; page < options.length; page++) {
+      const cells = Array.from({ length: layout.keyCount }, (_, slot) => manager.getSlotConfig(slot, layout));
+      for (const cell of cells) if (cell.type === 'option' && typeof cell.optionIndex === 'number') seen.add(cell.optionIndex);
+      if (seen.size === options.length) break;
+      const next = cells.findIndex(cell => cell.type === 'next-page');
+      expect(next).toBeGreaterThanOrEqual(0);
+      expect(manager.handleSlotPress(next, layout).action).toBe('next-page');
+      manager.nextPage(layout);
+    }
+    expect([...seen].sort((a, b) => a - b)).toEqual(options.map(option => option.index));
+  });
+});
+
+it('keeps observed question pages across unrelated relay updates and resets on a new prompt', () => {
+  const manager = new SessionSlotManager();
+  const row = makeSession({ id: 'observed:opencode:stable', agentType: 'opencode', controlMode: 'observed',
+    state: State.AWAITING_OPTION, question: 'First question', liveAnswerable: true,
+    options: Array.from({length: 9}, (_, index) => ({index, label: `Option ${index}`})) });
+  manager.updateSessions([row]); manager.enterDetailView(row.id); manager.nextPage(SD_PLUS_LAYOUT);
+  const secondPage = manager.getSlotConfig(2, SD_PLUS_LAYOUT).optionIndex;
+  expect(secondPage).toBeGreaterThan(0);
+  manager.updateDetailState(State.IDLE, [], undefined, undefined, 'Another session');
+  manager.updateSessions([{...row}]);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT).optionIndex).toBe(secondPage);
+  manager.updateSessions([{...row, question: 'New question'}]);
+  expect(manager.getSlotConfig(2, SD_PLUS_LAYOUT).optionIndex).toBe(0);
+});

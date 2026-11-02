@@ -332,6 +332,7 @@ let connections: SerialConnection[] = [];
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let pollInProgress = false;
+let serialStopped = true;
 const openingPorts = new Set<string>();
 const lastKnownDeviceInfoByPort = new Map<string, NonNullable<SerialConnection['deviceInfo']>>();
 const lastErrorByPort = new Map<string, string>();
@@ -1352,29 +1353,6 @@ async function openPort(port: string): Promise<SerialConnection | null> {
       writeTimer: null,
     };
 
-    const portType = isCDC ? 'CDC' : 'UART';
-    debug('ESP32', `Opened serial port (r/w): ${port} [${portType}]`);
-
-    // Start async read loop
-    void startReadLoop(conn);
-
-    // Request device info on connect
-    sendDeviceInfoRequest(conn);
-
-    // Send full initial state (state + usage + sessions) so ESP32 doesn't
-    // have to wait for next state change or heartbeat cycle
-    if (initialStateProvider) {
-      const events = initialStateProvider();
-      for (const event of events) {
-        if (!FORWARDED_EVENTS.has(event.type)) continue;
-        if ((event.type === 'usage_update' || event.type === 'sessions_list') && !hasLiveDeviceInfo(conn)) continue;
-        sendEventToBoard(conn, event);
-      }
-    } else if (stateProvider) {
-      const event = stateProvider();
-      if (event) sendToConnection(conn, JSON.stringify(prepareForSerial(event, conn)));
-    }
-
     openFailures.delete(port); // opened cleanly — reset the backoff
     return conn;
   } catch (err: any) {
@@ -1386,6 +1364,50 @@ async function openPort(port: string): Promise<SerialConnection | null> {
     return null;
   }
 }
+
+function activateConnection(conn: SerialConnection): void {
+  const port = conn.port;
+  const isCDC = /usbmodem|ttyACM/.test(port);
+  const portType = isCDC ? 'CDC' : 'UART';
+  debug('ESP32', `Opened serial port (r/w): ${port} [${portType}]`);
+
+  // Start async read loop
+  void startReadLoop(conn);
+
+  // Request device info on connect
+  sendDeviceInfoRequest(conn);
+
+  // Send full initial state (state + usage + sessions) so ESP32 doesn't
+  // have to wait for next state change or heartbeat cycle
+  if (initialStateProvider) {
+    const events = initialStateProvider();
+    for (const event of events) {
+      if (!FORWARDED_EVENTS.has(event.type)) continue;
+      if ((event.type === 'usage_update' || event.type === 'sessions_list') && !hasLiveDeviceInfo(conn)) continue;
+      sendEventToBoard(conn, event);
+    }
+  } else if (stateProvider) {
+    const event = stateProvider();
+    if (event) sendToConnection(conn, JSON.stringify(prepareForSerial(event, conn)));
+  }
+}
+
+type SerialDiscoveryIO = {
+  detect: typeof detectESP32Ports;
+  open: typeof openPort;
+  activate: typeof activateConnection;
+};
+let serialDiscoveryIO: SerialDiscoveryIO = { detect: detectESP32Ports, open: openPort, activate: activateConnection };
+
+/** @internal Supply fake port I/O without touching hardware in lifecycle tests. */
+export function __setSerialDiscoveryForTest(next: Partial<SerialDiscoveryIO>): () => void {
+  const previous = serialDiscoveryIO;
+  serialDiscoveryIO = { ...previous, ...next };
+  return () => { serialDiscoveryIO = previous; };
+}
+
+/** @internal Run the actual discovery loop with the configured test I/O. */
+export function __pollSerialDevicesForTest(): Promise<void> { return pollForDevices(); }
 
 function closeConnection(conn: SerialConnection): void {
   conn.connected = false;
@@ -1821,6 +1843,9 @@ function checkStaleConnections(): void {
  * USB port (stty stuck in kernel I/O) cannot block bridge startup.
  */
 export function startESP32Serial(): void {
+  if (!serialStopped) return;
+  serialStopped = false;
+  serialOpenGeneration++;
   loadDeviceInfoCache();
 
   // A flash may be in flight from BEFORE this process existed. The recorded
@@ -1855,7 +1880,7 @@ export function startESP32Serial(): void {
 }
 
 async function pollForDevices(): Promise<void> {
-  if (pollInProgress) return;
+  if (serialStopped || pollInProgress) return;
   // Checked at the top of the poll, not on a timer: a timer that fires late on
   // a sleeping laptop would extend the suspension past what was promised, and a
   // read-time check self-heals if the flasher dies mid-write. Nothing has to run
@@ -1865,10 +1890,13 @@ async function pollForDevices(): Promise<void> {
     debug('ESP32', `poll skipped — flash lease active for ${Math.ceil((lease.until - Date.now()) / 1000)}s`);
     return;
   }
+  const generation = serialOpenGeneration;
+  const current = () => !serialStopped && generation === serialOpenGeneration && !readLease();
   pollInProgress = true;
 
   try {
-    const ports = [...new Set(await detectESP32Ports())];
+    const ports = [...new Set(await serialDiscoveryIO.detect())];
+    if (!current()) return;
 
     const portSet = new Set(ports);
 
@@ -1918,6 +1946,7 @@ async function pollForDevices(): Promise<void> {
 
     // Add new ports (denylisted foreign ports are excluded via allowedPorts)
     for (const port of allowedPorts) {
+      if (!current()) return;
       if (connections.some(c => c.port === port) || openingPorts.has(port)) continue;
 
       // Open-failure backoff: don't re-open (and DTR-reset) a wedged port every
@@ -1929,20 +1958,21 @@ async function pollForDevices(): Promise<void> {
       }
 
       openingPorts.add(port);
-      const generation = serialOpenGeneration;
       try {
-        const conn = await openPort(port);
+        const conn = await serialDiscoveryIO.open(port);
         // Re-checked AFTER the await: a flash lease may have been taken while
         // this open was in flight, and adopting the connection now would hand
         // the flasher's TTY back to the heartbeat writer.
-        const stale = generation !== serialOpenGeneration;
+        const stale = !current();
         if (conn && !stale && !connections.some(c => c.port === port)) {
           connections.push(conn);
+          serialDiscoveryIO.activate(conn);
         } else if (conn) {
           if (stale) debug('ESP32', `Discarding open of ${port} — ports were released mid-open`);
           conn.connected = false;
           closeConnection(conn);
         }
+        if (stale) return;
       } finally {
         openingPorts.delete(port);
       }
@@ -2468,6 +2498,8 @@ export function releaseESP32SerialHold(port: string): void {
 }
 
 export function stopESP32Serial(): void {
+  serialStopped = true;
+  releaseESP32SerialPorts('serial bridge stopped');
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
@@ -2476,11 +2508,6 @@ export function stopESP32Serial(): void {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
-  for (const conn of connections) {
-    conn.connected = false;
-    closeConnection(conn);
-  }
-  connections = [];
   messageHandler = null;
   debug('ESP32', 'Serial bridge stopped');
 }

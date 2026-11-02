@@ -177,6 +177,30 @@ final class ForegroundSearchBoundTests: XCTestCase {
         XCTAssertEqual(phase(), .notFound)
     }
 
+    func testForegroundReturnRespectsExplicitStopUntilRetry() {
+        holder.startConnectionWaterfall()
+        holder.stopConnectionAttempts()
+        holder.handleBackgroundEntry()
+        holder.handleForegroundReturn()
+        holder.startConnectionWaterfall() // A repeated view appearance is still automatic.
+        XCTAssertFalse(holder.isAutoConnecting)
+        XCTAssertEqual(holder.connection.status, .disconnected)
+        holder.retryConnectionWaterfall()
+        XCTAssertTrue(holder.isAutoConnecting)
+    }
+
+    #if os(macOS)
+    func testSystemWakeRespectsExplicitStopUntilRetry() {
+        holder.startConnectionWaterfall()
+        holder.stopConnectionAttempts()
+        holder.handleSystemWake()
+        XCTAssertFalse(holder.isAutoConnecting)
+        XCTAssertEqual(holder.connection.status, .disconnected)
+        holder.retryConnectionWaterfall()
+        XCTAssertTrue(holder.isAutoConnecting)
+    }
+    #endif
+
     /// Search Again must never be a no-op. `startConnectionWaterfall()` alone
     /// returns early whenever a stage is left over, so the button routes through
     /// `retryConnectionWaterfall()` instead.

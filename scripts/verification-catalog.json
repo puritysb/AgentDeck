@@ -1300,6 +1300,7 @@
       "match": [
         "scripts/__tests__/version-policy.test.ts",
         "scripts/__tests__/release-notes.test.ts",
+        "scripts/__tests__/apple-release-upload.test.ts",
         "scripts/__tests__/asc-certificates.test.ts",
         "scripts/__tests__/node-runtime-support.test.ts",
         "scripts/__tests__/npm-registry-visibility.test.ts",

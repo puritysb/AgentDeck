@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createServer, type Socket } from 'node:net';
+import WebSocket from 'ws';
+const registry = vi.hoisted(() => ({ rows: [] as { id: string; port: number; agentType: string }[] }));
+vi.mock('../session-registry.js', () => ({ listActive: () => registry.rows }));
 import { SessionFocusRelay } from '../session-focus-relay.js';
 import type { BridgeEvent, PluginCommand } from '../types.js';
 
@@ -205,5 +209,30 @@ describe('SessionFocusRelay.routeCommandTo — explicit target survives a focus 
     a.send.mockClear();
     expect(relay.routeCommandTo(A, { type: 'query_usage' } as PluginCommand)).toBe(false);
     expect(a.send).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('local focus handshake teardown', () => {
+  it.each(['clear', 'replace'])('keeps a CONNECTING socket error local on immediate %s', async (action) => {
+    const sockets: Socket[] = [];
+    const tcp = createServer(socket => sockets.push(socket));
+    await new Promise<void>(resolve => tcp.listen(0, '127.0.0.1', resolve));
+    const port = (tcp.address() as { port: number }).port;
+    registry.rows = ['local-A', 'local-B'].map(id => ({ id, port, agentType: 'claude-code' }));
+    const relay = new SessionFocusRelay();
+    try {
+      relay.focus('local-A');
+      expect((relay as unknown as { ws: WebSocket }).ws.readyState).toBe(WebSocket.CONNECTING);
+      if (action === 'clear') relay.unfocus(); else relay.focus('local-B');
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(relay.getFocusedSessionId()).toBe(action === 'clear' ? null : 'local-B');
+    } finally {
+      relay.stop();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>(resolve => tcp.close(() => resolve()));
+      registry.rows = [];
+    }
   });
 });

@@ -47,6 +47,11 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 - Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).
 - Android development installation: `build-android-release.sh --install` retains the installed app and its private data on every failed update, reports the original adb output/status, and never automatically uninstalls it. The deployment skill follows the same rule (#646).
+- Node daemon: cancelling or replacing a connecting hardware-focus relay safely consumes the old socket's teardown error (#648). Serial discovery drops pending opens after flash suspension, stop or restart and checks the flash lease before each candidate; stale ports receive no initial writes (#649, #650).
+- Apple app: an explicit Stop Reconnecting or Disconnect remains in effect after foreground return, system wake and delayed health checks. Search Again and explicit host selection still resume connection (#651).
+- Android: discovery accepts custom ports advertised by an identified daemon; busy NSD resolution retries correctly and ends with the discovery lifetime (#652, #653). Malformed manual endpoints report an address error before replacing an existing connection (#654).
+- Stream Deck: observed OpenCode questions expose NEXT on small decks so every original choice remains reachable, retaining the selected page across unrelated relay updates (#655). Ulanzi decks redraw immediately when a session's display or project name changes (#656).
+- Apple release tooling: platform-specific builds upload only artifacts built and verified in that invocation, ignoring stale output from the other platform (#657).
 
 - macOS app and npm daemon: USB serial detection no longer opens a port whose USB vendor is known and is not an ESP32 serial bridge (Espressif native USB, WCH CH340/CH9102, Silicon Labs CP210x, Seeed XIAO). macOS names every CDC-ACM device `cu.usbmodem…`, so an LG monitor's "USB Controls" interface was opened, sent board JSON, and reset its USB-C/DisplayPort link roughly every 15–40 seconds while AgentDeck ran. Ports whose vendor cannot be resolved keep the previous pattern-only behavior.
 
