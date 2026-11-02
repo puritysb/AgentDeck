@@ -98,16 +98,31 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
       const matches = assets.filter(a => a.attributes?.fileName === file.name);
       check(matches.length <= 1, 'Duplicate reserved media file');
       let asset = matches[0];
-      if (!asset) asset = (await request(`/v1/${group.assetType}`, 'POST', { data: { type: group.assetType,
+      const reserve = async () => (await request(`/v1/${group.assetType}`, 'POST', { data: { type: group.assetType,
         attributes: { fileName: file.name, fileSize: file.bytes.length, ...(group.preview ? { previewFrameTimeCode: '00:00:05:00' } : {}) },
         relationships: { [group.preview ? 'appPreviewSet' : 'appScreenshotSet']: { data: { type: group.setType, id: set.id } } } } })).data;
-      asset = (await request(`/v1/${group.assetType}/${id(asset.id)}`)).data;
+      // The freshly read, app-scoped set already supplies identity and state.
+      // Apple's individual screenshot GET can return 500 for a COMPLETE asset
+      // even while this authoritative collection read succeeds.
+      if (!asset) asset = await reserve();
       const state = asset.attributes?.assetDeliveryState?.state;
       if (['UPLOAD_COMPLETE', 'COMPLETE'].includes(state)) {
-        check(asset.attributes.sourceFileChecksum === file.md5, 'Reserved media checksum differs');
+        check((state === 'UPLOAD_COMPLETE' && asset.attributes.sourceFileChecksum == null)
+          || asset.attributes.sourceFileChecksum === file.md5, 'Reserved media checksum differs');
         continue;
       }
       check(state === 'AWAITING_UPLOAD', 'Reserved asset is failed or in an unknown state');
+      // Apple supplies upload instructions on POST; a subsequent GET can omit
+      // them. Keep the reservation response. For a prior uncommitted reservation
+      // with no instructions, replace only this exact owned draft asset once.
+      if (!asset.attributes.uploadOperations?.length) {
+        check(asset.attributes.fileName === file.name && asset.attributes.fileSize === file.bytes.length,
+          'Uncommitted reservation identity differs');
+        await editable(request, versionId, platform, version);
+        await request(`/v1/${group.assetType}/${id(asset.id)}`, 'DELETE');
+        asset = await reserve();
+        check(asset.attributes?.assetDeliveryState?.state === 'AWAITING_UPLOAD', 'Replacement reservation is not awaiting upload');
+      }
       for (const op of uploadParts(asset.attributes.uploadOperations, file.bytes.length)) {
         const response = await transport(op.url, { method: op.method, redirect: 'error', signal: AbortSignal.timeout(120000),
           headers: Object.fromEntries(op.requestHeaders.map(h => [h.name, h.value])), body: file.bytes.subarray(op.offset, op.offset + op.length) });
@@ -140,10 +155,11 @@ export async function assertSelectedMedia({ request, version, platform, localiza
     check(assets.length === group.files.length, 'Selected media count differs');
     for (const file of group.files) {
       const matches = assets.filter(a => a.attributes?.fileName === file.name);
-      check(matches.length === 1 && matches[0].attributes.sourceFileChecksum === file.md5, 'Selected media identity/checksum readback differs');
+      check(matches.length === 1, 'Selected media identity readback differs');
       const state = matches[0].attributes.assetDeliveryState?.state;
       if (state === 'UPLOAD_COMPLETE') throw Object.assign(new Error('Selected media is still processing; recheck before submission'), { processing: true });
       check(state === 'COMPLETE', 'Selected media is not COMPLETE');
+      check(matches[0].attributes.sourceFileChecksum === file.md5, 'Selected media checksum readback differs');
     }
     const ordered = group.files.map(file => assets.find(a => a.attributes.fileName === file.name).id);
     check(assets.every((asset, index) => asset.id === ordered[index]), 'Selected media order differs');

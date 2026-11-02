@@ -90,6 +90,63 @@ describe('bounded Store media delivery', () => {
     const g=fixture(); let posts=0; const request=async(path:string,method='GET',body?:any)=>{if(method==='POST'){posts++;throw Object.assign(new Error('outcome unknown'),{outcomeUnknown:true});}return g.request(path,method,body);};
     await expect(prepareSelectedMedia({...g,request,version:'2.0.0',platform:'MAC_OS',versionId:'version'})).rejects.toThrow('outcome unknown');expect(posts).toBe(1);
   });
+  it('uses POST upload instructions when Apple omits them from subsequent GET responses', async () => {
+    const f = fixture(); let sent = 0;
+    const request = async (path: string, method = 'GET', body?: any) => {
+      const result = structuredClone(await f.request(path, method, body));
+      if (method === 'GET' && result?.data?.attributes) delete result.data.attributes.uploadOperations;
+      return result;
+    };
+    const args = { ...f, request, version: '2.0.0', platform: 'MAC_OS', versionId: 'version',
+      transport: async () => { sent++; return { ok: true }; } };
+    await expect(prepareSelectedMedia(args)).resolves.toMatchObject({ status: 'complete' });
+    expect(sent).toBe(15); expect(f.calls.filter(c => c.method === 'DELETE')).toHaveLength(0);
+  });
+  it('reconciles an exact uncommitted draft reservation once without duplicating completed media', async () => {
+    const f = fixture();
+    const args = { ...f, version: '2.0.0', platform: 'MAC_OS', versionId: 'version' };
+    await expect(prepareSelectedMedia({ ...args, transport: async () => ({ ok: false, status: 503 }) })).rejects.toThrow('Binary upload failed');
+    const request = async (path: string, method = 'GET', body?: any) => {
+      const result = structuredClone(await f.request(path, method, body));
+      if (method === 'GET') for (const row of Array.isArray(result?.data) ? result.data : [result?.data]) {
+        if (row?.attributes) delete row.attributes.uploadOperations;
+      }
+      return result;
+    };
+    await expect(prepareSelectedMedia({ ...args, request, transport: async () => ({ ok: true }) })).resolves.toMatchObject({ status: 'complete' });
+    expect(f.calls.filter(c => c.method === 'DELETE')).toHaveLength(1);
+    expect(f.assets.size).toBe(15);
+  });
+  it('uses fresh scoped collection state when individual completed-screenshot reads are unavailable', async () => {
+    const f = fixture(); let individualReads = 0;
+    const request = async (path: string, method = 'GET', body?: any) => {
+      if (method === 'GET' && /^\/v1\/appScreenshots\//.test(path)) { individualReads++; throw new Error('ASC GET failed (HTTP 500)'); }
+      return f.request(path, method, body);
+    };
+    const args = { ...f, request, version: '2.0.0', platform: 'MAC_OS', versionId: 'version', transport: async () => ({ ok: true }) };
+    await prepareSelectedMedia(args); const posts = f.calls.filter(c => c.method === 'POST').length;
+    await expect(prepareSelectedMedia(args)).resolves.toMatchObject({ status: 'complete' });
+    expect(individualReads).toBe(0); expect(f.calls.filter(c => c.method === 'POST')).toHaveLength(posts);
+  });
+  it('waits for nullable processing checksums and resumes without uploading again, but requires a final checksum', async () => {
+    const f = fixture(); const args = { ...f, version: '2.0.0', platform: 'MAC_OS', versionId: 'version', transport: async () => ({ ok: true }) };
+    await prepareSelectedMedia(args);
+    const posts = f.calls.filter(c => c.method === 'POST').length;
+    for (const asset of f.assets.values()) asset.attributes.assetDeliveryState.state = 'UPLOAD_COMPLETE';
+    const request = async (path: string, method = 'GET', body?: any) => {
+      const result = structuredClone(await f.request(path, method, body));
+      const rows = Array.isArray(result?.data) ? result.data : [result?.data];
+      for (const row of rows) if (row?.attributes?.assetDeliveryState?.state === 'UPLOAD_COMPLETE') row.attributes.sourceFileChecksum = null;
+      return result;
+    };
+    let pauses = 0;
+    await expect(prepareSelectedMedia({ ...args, request, pause: async () => {
+      pauses++; for (const asset of f.assets.values()) asset.attributes.assetDeliveryState.state = 'COMPLETE';
+    } })).resolves.toMatchObject({ status: 'complete' });
+    expect(pauses).toBe(1); expect(f.calls.filter(c => c.method === 'POST')).toHaveLength(posts);
+    [...f.assets.values()][0].attributes.sourceFileChecksum = null;
+    await expect(assertSelectedMedia(args)).rejects.toThrow('checksum');
+  });
   it('extracts separate iOS review notes and rejects a Mac-only version claim', () => {
     const metadata="## Prepared iOS 2.0.0 update text\n"+["English — iOS What's New",'Korean — iOS 새로운 기능','Japanese — iOS このバージョンの新機能'].map(h=>`### ${h}\n\n\`\`\`text\nUpdate\n\`\`\`\n`).join('');
     expect(extractReleaseCopy(metadata,'<!-- ios-notes-field:begin -->\n```text\nNEW IN 2.0.0\n```\n<!-- ios-notes-field:end -->','2.0.0','IOS').notes).toBe('NEW IN 2.0.0');
