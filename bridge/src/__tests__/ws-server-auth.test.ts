@@ -1,15 +1,22 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createServer, type Server } from 'http';
-import WebSocket from 'ws';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { createServer, type Server, type IncomingMessage } from 'http';
+import { EventEmitter } from 'node:events';
+import WebSocket, { type WebSocketServer } from 'ws';
+
+const trust = vi.hoisted(() => ({ local: false, verdict: 'trusted' }));
 
 // Force the remote-auth branch: treat every connection as non-local so the
 // token check actually runs (otherwise 127.0.0.1 is auto-trusted).
 vi.mock('../auth.js', () => ({
-  isLocalConnection: () => false,
+  isLocalConnection: () => trust.local,
+  localTrustOf: () => trust.verdict,
+  logLocalTrustRefusal: vi.fn(),
   validateToken: (t: string) => t === 'machine-token',
 }));
 
 import { WsServer } from '../ws-server.js';
+
+beforeEach(() => { trust.local = false; trust.verdict = 'trusted'; });
 
 let http: Server;
 let server: WsServer;
@@ -67,5 +74,63 @@ describe('WsServer remote auth', () => {
     const r = await attempt('?token=ephemeral-xyz');
     expect(r.ok).toBe(false);
     expect(r.code).toBe(4001);
+  });
+});
+
+
+describe('WsServer request URL isolation', () => {
+  function syntheticConnection(target: string, host: string) {
+    // Exercise the actual listener without directing a malformed request at any
+    // daemon. This socket never leaves the test process or joins wss.clients.
+    const ws = Object.assign(new EventEmitter(), {
+      readyState: WebSocket.OPEN,
+      close: vi.fn(),
+      ping: vi.fn(),
+    });
+    const req = { url: target, headers: { host }, socket: { remoteAddress: '192.0.2.1' } } as IncomingMessage;
+    const connect = () => (server as unknown as { wss: WebSocketServer }).wss.emit('connection', ws, req);
+    return { ws, connect };
+  }
+
+  it('ignores an untrusted Host value when reading remote query parameters', async () => {
+    const { ws, connect } = syntheticConnection('/?token=wrong-token', 'invalid host');
+    expect(connect).not.toThrow();
+    expect(ws.close).toHaveBeenCalledWith(4001, 'Unauthorized');
+    // The same listener still admits an ordinary paired client afterward.
+    expect((await attempt('/?token=machine-token')).ok).toBe(true);
+  });
+
+  it('keeps authenticated query-based board classification independent of Host', () => {
+    const snapshot = vi.fn();
+    server.onClientConnect(snapshot);
+    snapshot.mockClear();
+    const { ws, connect } = syntheticConnection('/?token=machine-token&clientType=esp32', 'invalid host');
+    try {
+      expect(connect).not.toThrow();
+      expect(ws.close).not.toHaveBeenCalled();
+      expect(snapshot).toHaveBeenCalledWith(ws);
+      expect(server.isEsp32Client(ws as unknown as WebSocket)).toBe(true);
+    } finally {
+      ws.emit('close');
+    }
+  });
+
+  it.each(['remote', 'browser', 'program'])('refuses a malformed target only on its %s connection', (kind) => {
+    trust.local = kind !== 'remote';
+    trust.verdict = kind === 'browser' ? 'untrusted-host' : 'trusted';
+    const snapshot = vi.fn();
+    const record = vi.fn();
+    server.onClientConnect(snapshot);
+    snapshot.mockClear();
+    server.setPairingApprovalHooks({ isApproved: () => true, record });
+    const { ws, connect } = syntheticConnection('http://[', 'localhost');
+    try {
+      expect(connect).not.toThrow();
+      expect(ws.close).toHaveBeenCalledWith(1008, 'Invalid request URL');
+      expect(snapshot).not.toHaveBeenCalled();
+      expect(record).not.toHaveBeenCalled();
+    } finally {
+      server.setPairingApprovalHooks(null);
+    }
   });
 });

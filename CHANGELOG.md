@@ -45,6 +45,9 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).
+- Android development installation: `build-android-release.sh --install` retains the installed app and its private data on every failed update, reports the original adb output/status, and never automatically uninstalls it. The deployment skill follows the same rule (#646).
+
 - macOS app and npm daemon: USB serial detection no longer opens a port whose USB vendor is known and is not an ESP32 serial bridge (Espressif native USB, WCH CH340/CH9102, Silicon Labs CP210x, Seeed XIAO). macOS names every CDC-ACM device `cu.usbmodem…`, so an LG monitor's "USB Controls" interface was opened, sent board JSON, and reset its USB-C/DisplayPort link roughly every 15–40 seconds while AgentDeck ran. Ports whose vendor cannot be resolved keep the previous pattern-only behavior.
 
 - Android and ESP32 e-ink: the background-work standby state (`STBY n`, #616) shipped in npm 1.9.5 and in the macOS app 1.9.4, and awaits each target's own delivery.
