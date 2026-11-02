@@ -51,7 +51,9 @@ jobs:
     # The app and test host require macOS 26; an older SDK host can build
     # the target but cannot execute its tests.
     runs-on: macos-26
-    timeout-minutes: 30
+    # Cold universal optimized builds can finish XCTest just as 30m expires.
+    # Keep every check; allow the preview job enough time for test/cleanup.
+    timeout-minutes: ${{ matrix.configuration == 'DotPreviewRelease' && 45 || 30 }}
     strategy:
       fail-fast: false
       matrix:
