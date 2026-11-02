@@ -286,7 +286,7 @@ credential rules from #145/#149 already say "a known endpoint inherits the crede
 is paired with" — this is the missing selection half. **M** · ~2 days, firmware +
 `mdns-discover.ts` + the two mobile discovery paths.
 
-**Partially done 2026-08-17 — the Node half only.** `discoverDaemons` now
+**Node selection completed 2026-08-17; mobile selection rechecked 2026-11-03.** `discoverDaemons` now
 orders candidates by `sortDiscoveredDaemons`: an explicitly named host first,
 then a daemon whose TXT `user` tag matches this process's, then an identified
 daemon belonging to someone else, then one that predates the TXT keys. It is a
@@ -302,10 +302,18 @@ what `--daemon-host` is for), so a daemon is only ever demoted, never dropped.
   discovered — retrying the one daemon that rejected us, forever, with nothing
   on screen the user can act on, is the whole complaint. Costs an OTA cut and
   hardware verification, so it is its own change.
-- **Apple / Android** discovery picks the first confirmed bridge. The
-  credential rules (`PairingCredential`) already say a known endpoint keeps its
-  credential; the missing half is preferring that endpoint during SELECTION.
-  The new `user` TXT key is what makes it decidable without dialling.
+- **Apple / Android — completed in current source (2026-11-03 audit).**
+  Apple `PairingCredential.preferredURL` selects the saved/manual endpoint;
+  Android `AutoConnectRules.pickDaemon` receives `selectedUrl ?: pairedUrl` and
+  matches that endpoint. Without a selected endpoint, both refuse an ambiguous
+  multi-daemon list instead of choosing its first entry. The discovery windows
+  collect peers before an unknown single endpoint is chosen. Credential
+  retention and endpoint selection are both implemented; the outstanding
+  first-seen selection work above is ESP32-specific. Source and regression
+  references: `apple/AgentDeck/State/AgentStateHolder.swift`,
+  `apple/AgentDeckTests/PairingCredentialTests.swift`,
+  `android/app/src/main/kotlin/dev/agentdeck/net/BridgeAutoConnect.kt` and
+  `android/app/src/test/kotlin/dev/agentdeck/net/AutoConnectRulesTest.kt`.
 
 ### 2.3 P1 — UDP beacons multiply
 
@@ -541,7 +549,7 @@ nothing.
 | 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d | **done on the calling side** (08-17) — every path where our code acts on another daemon, including the daemon's own port-window sweep, which used to shut down every colleague's macOS app. Receiving side is not UID-checkable over TCP (§1.2) |
 | 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d | **done** (08-17) — `findDaemonPortAsync` skips foreign ports, keeps sweeping, and names what it refused |
 | 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d | **done** (08-17) — `shared/src/mdns-identity.ts` SSOT + generated Swift mirror; `host`/`user` TXT keys added, `v` stays `3` |
-| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** (08-17) — Node `sortDiscoveredDaemons` ranks by identity; **ESP32 and the two mobile discovery paths are still first-seen** |
+| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** (08-17) — Node `sortDiscoveredDaemons` ranks by identity; **ESP32 remains first-seen; Apple/Android saved-endpoint preference and ambiguity refusal are implemented** |
 
 **P1 — the enterprise off switch.**
 
