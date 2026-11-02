@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   ESP32_BOARDS,
+  ESP32_USB_VENDOR_IDS,
   ESP32_BOOTLOADER_OFFSET,
   ESP32_BOARD_BY_TARGET,
   LEGACY_BOARD_IDS,
@@ -25,6 +26,8 @@ import {
   collectProblems,
   renderWorkflow,
   WORKFLOW_REL,
+  renderSwiftSerialVendors,
+  SERIAL_SWIFT_REL,
 } from '../../../scripts/generate-esp32-board-matrix.mjs';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -41,6 +44,12 @@ describe('ESP32 board SSOT', () => {
   it('keeps the release matrix generated, not hand-maintained', () => {
     const onDisk = readFileSync(join(repoRoot, WORKFLOW_REL), 'utf8');
     expect(renderWorkflow(ESP32_BOARDS)).toBe(onDisk);
+  });
+
+  it('generates the Swift serial vendor gate from the shared board policy', () => {
+    const swift = readFileSync(join(repoRoot, SERIAL_SWIFT_REL), 'utf8');
+    expect(renderSwiftSerialVendors(ESP32_USB_VENDOR_IDS)).toBe(swift);
+    expect(renderSwiftSerialVendors(new Set([...ESP32_USB_VENDOR_IDS, 0x1234]))).not.toBe(swift);
   });
 
   it('keeps the Swift Surface product allow-list on the board SSOT', () => {

@@ -190,3 +190,22 @@ describe('spinner', () => {
     expect(frames.size).toBe(10);
   });
 });
+
+describe('non-UTF-8 terminal fallback', () => {
+  it('uses ASCII spinner frames when no UTF-8 locale is advertised', async () => {
+    vi.stubEnv('LANG', 'C');
+    vi.stubEnv('LC_ALL', 'C');
+    vi.stubEnv('LC_CTYPE', 'C');
+    vi.resetModules();
+    try {
+      const { terminalCaps } = await import('../tui/ansi.js');
+      const { spinner: asciiSpinner } = await import('../tui/renderer.js');
+      expect(terminalCaps.unicode).toBe(false);
+      expect(terminalCaps.emoji).toBe(false);
+      expect(Array.from({ length: 8 }, (_, frame) => asciiSpinner(frame)).join('')).toBe('|/-\\|/-\\');
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+});
