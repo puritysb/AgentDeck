@@ -137,15 +137,19 @@ For EACH connected Android device in the target set:
 
 ```bash
 SERIAL="<device_serial>"
-APK="dist/agentdeck-v*.apk"  # use the actual versioned filename from Step 1
+APK="dist/agentdeck-v<version>.apk"  # use the actual versioned filename from Step 1
 
 # 1. Stop running app
 adb -s $SERIAL shell am force-stop dev.agentdeck
 
-# 2. Install (attempt direct first, uninstall on signature conflict)
-if ! adb -s $SERIAL install -r $APK 2>&1 | grep -q "Success"; then
-  adb -s $SERIAL uninstall dev.agentdeck
-  adb -s $SERIAL install $APK
+# 2. Update in place; preserve the existing installation on every failure
+if INSTALL_OUTPUT=$(adb -s "$SERIAL" install -r "$APK" 2>&1); then
+  printf '%s\n' "$INSTALL_OUTPUT"
+else
+  INSTALL_STATUS=$?
+  printf '%s\n' "$INSTALL_OUTPUT" >&2
+  echo "Update failed; no uninstall was attempted. Existing app and data are retained." >&2
+  exit "$INSTALL_STATUS"
 fi
 
 # 3. Launch
@@ -413,7 +417,7 @@ Use SKIP (not connected / not in target), OK (success), FAIL (error with reason)
 
 ## Error Handling
 
-- **Signature mismatch**: Auto-uninstall → reinstall. Warn user that app data is lost
+- **Android update failure (including signing mismatch)**: Retain the installed app and its data, report the actual adb error/status, and stop that target. Use a build signed for its existing distribution channel. A data-destructive replacement is a separate operation requiring specific user authorization; a deployment request alone does not authorize automatic uninstall.
 - **Device not connected**: SKIP with warning, don't fail the whole deploy
 - **Build failure**: Stop immediately, show error. Don't install stale APK
 - **iOS device locked**: Warn "device must be unlocked" and skip

@@ -66,10 +66,13 @@ if [[ "${1:-}" == "--install" ]]; then
   echo ""
   for DEVICE in $DEVICES; do
     echo "Installing on $DEVICE..."
-    if ! adb -s "$DEVICE" install -r "$OUTPUT_DIR/$APK_NAME" 2>&1 | grep -q "Success"; then
-      echo "  Signature mismatch — uninstalling old version..."
-      adb -s "$DEVICE" uninstall dev.agentdeck
-      adb -s "$DEVICE" install "$OUTPUT_DIR/$APK_NAME"
+    if INSTALL_OUTPUT=$(adb -s "$DEVICE" install -r "$OUTPUT_DIR/$APK_NAME" 2>&1); then
+      printf '%s\n' "$INSTALL_OUTPUT"
+    else
+      INSTALL_STATUS=$?
+      printf '%s\n' "$INSTALL_OUTPUT" >&2
+      echo "Update failed on $DEVICE (adb exit $INSTALL_STATUS). No uninstall was attempted; existing app and data are retained." >&2
+      exit "$INSTALL_STATUS"
     fi
   done
   echo "Done — installed on $(echo "$DEVICES" | wc -l | tr -d ' ') device(s)."

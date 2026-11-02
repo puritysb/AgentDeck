@@ -194,6 +194,13 @@ bash scripts/build-android-release.sh    # → dist/agentdeck-v{VERSION}.apk
 # git tag android-v{VERSION} && git push origin android-v{VERSION}  → CI builds APK
 ```
 
+Use `bash scripts/build-android-release.sh --install` to update connected devices
+in place. An unsuccessful `adb install -r` prints its actual output and stops with
+its exit status. The script never automatically uninstalls the existing app,
+including on signing mismatch, downgrade, storage or transport failures. Use a
+build signed for the installed channel (Play or sideload); replacing it and
+erasing private app data is a separate explicit operation.
+
 ### Wireless app updates
 
 The signed APK from GitHub Releases includes **Settings → App updates**
