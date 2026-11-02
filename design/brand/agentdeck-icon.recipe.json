@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-02",
+  "tool": "built-in image_gen",
+  "purpose": "Conservative AgentDeck 2.0 app icon refinement",
+  "input": {
+    "path": "design/brand/agentdeck-icon.png",
+    "revision": "df4c6d73",
+    "sha256": "600f7489b57b4fdd1bb0d8522e461cd624967547c8c5f2def5f9d8c84895537f",
+    "width": 640,
+    "height": 640
+  },
+  "output": {
+    "path": "design/brand/agentdeck-icon.png",
+    "width": 1254,
+    "height": 1254,
+    "transparent": true,
+    "sha256": "26a46b5e1c8d13c3df22e5dfc1d66ceff556248e9ff284a99189fb411c2cfc57"
+  },
+  "prompts": [
+    "Use case: precise-object-edit.\nAsset type: AgentDeck 2.0 app icon, transparent square, high resolution 2048 x 2048 if possible.\nInput image 1 is the existing icon to refine conservatively, NOT a new concept.\nPrimary request: carefully clean and refine this exact aquarium-on-six-key-control-deck illustration for legibility at small app icon sizes, retaining its instantly recognizable identity.\nInvariants: preserve the existing overall silhouette, viewpoint, relative proportions, glass dome, brushed metal deck, orange octopus at left and orange crayfish at right, cool clear aquarium water, two rows of three black square keys, same arrangement and symbols (music, headphones, coffee; volume, code braces, gears). Preserve transparent background.\nChange only clarity and polish: simplify the numerous tiny pebbles, little snails, thin plant fronds, driftwood details and busy secondary reflections into fewer calmer forms; reduce background plant contrast behind the two main characters; make octopus and crayfish silhouettes a little more distinct; clarify the dome rim, waterline and deck boundary with controlled crisp highlights; keep realistic dimensional materials but no excessive gloss. Keep both characters anatomically plausible, friendly and sophisticated. Code braces on the bottom center key remain crisp and visually central. Subtle refinement, NOT a cartoon makeover, not a redesign.\nComposition: one complete icon centered, full deck visible, approximately same margin as input. No enclosing rounded rectangle, no added backdrop, no text, no letters other than existing code braces, no badge, no watermark, no extra characters or keys.",
+    "Use case: background-extraction / precise-object-edit. The attached image is the approved refined AgentDeck icon. Preserve its entire artwork and identity, same aquarium dome, octopus, crayfish, deck and all six keys, proportions, colors and arrangement. Make only one cleanup: remove the floating white speck near the top outside the glass dome and any stray colored or white pixels outside the complete icon contour. Exterior must be genuinely transparent, with clean antialiased edges. Preserve the interior glass and its reflections; do NOT erase the glass. Do NOT change camera, characters, details or symbols. Keep complete icon centered with comfortable transparent margin on every side, no clipping. Square high resolution output at least 1024 x 1024. No background, no shadow outside the object, no text, no added elements.",
+    "Edit target: attached AgentDeck aquarium app icon. Keep this exact artwork intact. Fix the single stray blob floating at the very top center above the dome, around x600 y8. It is a mistake, not part of the icon. Remove it completely. There must be a perfectly empty transparent strip from the top of the canvas to the top of the glass dome; absolutely no floating bubble, dot, fragment, highlight, or speck above the dome. Clean the exterior transparency everywhere. Do not change the aquarium, octopus, crayfish, pebbles, plants, six buttons or symbols. Retain full silhouette, same framing, no extra shadows or backdrop. Square high-resolution transparent cutout."
+  ],
+  "export": "pnpm generate-app-icons",
+  "notes": [
+    "Generated master copied without artwork retouching; consumer exports only resize or flatten.",
+    "All six original key symbols retained; background detail reduced; no version badge.",
+    "No changes to archived release listings, physical photography or archived video."
+  ]
+}

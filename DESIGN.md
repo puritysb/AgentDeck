@@ -537,6 +537,19 @@ states state facts (`No sessions`), never placeholders.
 ### 6.1 Brand marks
 **Product mark** — the AgentDeck aquarium icon (`design/brand/agentdeck-icon.png`). A full-color illustration of an aquarium dome over a keyboard base. Used at 1024² for the App Store, 512/256/128 in the Dock and bundle, and as the splash on every hardware surface during pairing. **The aquarium icon IS the logo** — we do not have an abstract wordmark; the icon stands alone.
 
+The 2.0 refinement keeps the two orange residents, aquarium/deck silhouette and
+six-key layout. Fewer background pebbles and secondary details give the residents
+and code key more separation. The transparent 1254² master is an image-tool edit
+of the original 640² illustration; its prompt chain and input hash live in
+`design/brand/agentdeck-icon.recipe.json`. Run `pnpm generate-app-icons` to export
+all active app, web and full-colour plugin copies. Apple launcher exports are
+opaque on `--ink-900`; Android's existing PNG launcher fallback stays transparent.
+Fixed-point area reduction keeps decoded export pixels identical across build
+hosts; transparent colours are averaged by alpha coverage.
+The refinement does not add new adaptive, dark or tinted launcher modes. Historical
+marketplace releases, hardware photographs and archived videos keep their original
+artwork. Do not upsample a consumer copy to create a new master.
+
 **Small-size product symbol** — when the full illustration would collapse below roughly 32pt, use the simplified aquarium-deck symbol implemented as `AgentDeckLogo`: dome outline + waterline + keyboard base/buttons. It must preserve the app icon silhouette and must not revert to abstract card-stack, router, hub, or generic deck metaphors. In product UI it is monochrome and inherits the local product chrome color (`DesignTokens.UI.cyan`, label color, or the surface accent).
 
 **Agent marks** — the real upstream brand SVGs of each tool, kept verbatim:

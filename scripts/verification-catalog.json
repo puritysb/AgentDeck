@@ -1306,6 +1306,7 @@
         "scripts/__tests__/npm-registry-visibility.test.ts",
         "scripts/__tests__/npm-package-license.test.ts",
         "scripts/__tests__/native-palette.test.ts",
+        "scripts/__tests__/app-icons.test.ts",
         "scripts/__tests__/verification-catalog.test.ts",
         "scripts/__tests__/apple-dot-build.test.ts",
         "scripts/__tests__/local-main-deploy.test.ts",
