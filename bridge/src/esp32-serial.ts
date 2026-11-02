@@ -21,6 +21,8 @@ import { ips10RosterIndices } from './ips10-roster.js';
  */
 
 import { exec, execFile } from 'child_process';
+import { SerialVendorDiscovery } from './esp32-serial-vendors.js';
+export { parseIoregSerialVendors } from './esp32-serial-vendors.js';
 import {
   open as openFile,
   close,
@@ -75,50 +77,9 @@ export function isAllowedSerialVendor(vendorId: number | undefined): boolean {
   return vendorId === undefined || ESP32_USB_VENDOR_IDS.has(vendorId);
 }
 
-/**
- * Map each callout device in `ioreg -r -c IOUSBHostDevice -l -w0` output to the
- * `idVendor` of its nearest enclosing USB device (a CH340 behind a hub belongs
- * to the CH340, not the hub).
- * @internal Exported for testing only
- */
-export function parseIoregSerialVendors(output: string): Map<string, number> {
-  const vendors = new Map<string, number>();
-  const stack: { column: number; vendorId?: number }[] = [];
-  for (const line of output.split('\n')) {
-    const node = line.indexOf('+-o ');
-    if (node >= 0) {
-      while (stack.length > 0 && stack[stack.length - 1].column >= node) stack.pop();
-      stack.push({ column: node });
-      continue;
-    }
-    const vendor = /"idVendor" = (\d+)/.exec(line);
-    if (vendor && stack.length > 0) {
-      stack[stack.length - 1].vendorId = Number(vendor[1]);
-      continue;
-    }
-    const callout = /"IOCalloutDevice" = "([^"]+)"/.exec(line);
-    if (callout) {
-      const owner = [...stack].reverse().find(entry => entry.vendorId !== undefined);
-      if (owner?.vendorId !== undefined) vendors.set(callout[1], owner.vendorId);
-    }
-  }
-  return vendors;
-}
-
 const skippedForeignPorts = new Set<string>();
-
-/** @internal Bounded macOS registry read; injectable runner avoids hardware in tests. */
-export async function serialVendorsByPort(
-  platform = process.platform, run = execWithKill,
-): Promise<Map<string, number>> {
-  if (platform !== 'darwin') return new Map();
-  try {
-    // A real multi-device registry exceeded Node's default 1 MiB buffer.
-    return parseIoregSerialVendors(await run('ioreg -r -c IOUSBHostDevice -l -w0', 3000, 8 * 1024 * 1024));
-  } catch {
-    return new Map();
-  }
-}
+// Process lifetime, not module lifetime: stop/start cannot release a live child.
+const serialVendorDiscovery = new SerialVendorDiscovery(message => debug('ESP32', message));
 
 /** No-traffic threshold. ESP32 firmware should answer device_info/heartbeat JSON. */
 const STALE_THRESHOLD_MS = 60000; // 60 seconds
@@ -931,10 +892,13 @@ async function detectESP32Ports(): Promise<string[]> {
       if (EXCLUDE_PATTERNS.some(p => p.test(port))) return false;
       return ESP32_PORT_PATTERNS.some(p => p.test(port));
     });
-    if (candidates.length === 0) return [];
+    if (candidates.length === 0) {
+      await serialVendorDiscovery.lookup([]);
+      return [];
+    }
 
     // Never open a port whose USB vendor is known to be something else.
-    const vendors = await serialVendorsByPort();
+    const vendors = await serialVendorDiscovery.lookup(candidates);
     return candidates.filter(port => {
       const vendorId = vendors.get(port);
       if (isAllowedSerialVendor(vendorId)) {

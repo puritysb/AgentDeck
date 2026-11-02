@@ -1,4 +1,5 @@
 {
+  "USB vendor discovery caches unchanged candidates, bounds retries and retains its subprocess slot until close; fake children cover resisted signals and a POSIX executable fixture covers real timeout/kill recovery": "USB vendor 조회는 후보 목록이 같으면 캐시를 재사용하고 재시도를 제한하며 자식 프로세스가 닫힐 때까지 실행 슬롯을 유지합니다. 가짜 자식으로 시그널에 반응하지 않는 상황을, POSIX 실행 파일로 실제 타임아웃·종료 후 복구를 검증합니다.",
   "native APME retention preserves rows/history, validates preview fingerprints and explicit local-only confirmation, rolls both tables back on failure, handles WAL/busy stores and compacts disposable stores; Node/Swift SQL and UTF-16 marker parity use shared vectors": "네이티브 APME 보존 관리는 행과 이력을 유지하고 미리보기 식별값 및 로컬 확인을 검증합니다. 실패 시 두 테이블을 함께 롤백하고 WAL·잠금을 처리하며 임시 저장소를 압축합니다. Node·Swift의 SQL과 UTF-16 마커는 공통 벡터로 비교합니다.",
   "Overview": "소개",
   "Devices": "기기",

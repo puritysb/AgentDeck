@@ -152,6 +152,22 @@ tool for a bricked board is the tool that refused. The rule lives once, in
 `shared/src/esp32-boards.ts` (`esp32PreflightVerdict`), so the browser and the
 CLI cannot disagree about which board may be written.
 
+### macOS USB vendor discovery (Node daemon)
+
+The Node daemon checks USB vendors before opening candidate serial ports. It
+runs `ioreg` directly, with at most one registry process at a time. Callers stop
+waiting after three seconds; a timed-out process keeps its slot until it closes,
+including across serial module stop/start. A failed kill never permits another
+registry process to stack behind it.
+
+Successful results are reused for an unchanged candidate-port set for up to
+five minutes. A changed set, including an observed unplug/replug, invalidates
+that cache. Failures back off for 60, 120, 240, then 300 seconds; topology changes
+cannot bypass that backoff. On failure, a previous vendor map is retained only
+for the unchanged set. Otherwise the vendor remains unknown and the existing
+pattern-based compatibility fallback applies. Known foreign vendors remain
+excluded. This bounds discovery work; it does not fix a slow macOS USB driver.
+
 ### Freeing the serial port
 
 Every serial open toggles DTR/RTS and **resets the board**, so a daemon holding

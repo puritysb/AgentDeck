@@ -401,6 +401,7 @@
       "report_suite": "vitest",
       "proves": [
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)",
+        "USB vendor discovery caches unchanged candidates, bounds retries and retains its subprocess slot until close; fake children cover resisted signals and a POSIX executable fixture covers real timeout/kill recovery",
         "Node/Swift daemon policy mirror drift and common turn-boundary vectors; CLI rejects explicit Swift identity as Node readiness (native policy execution also runs on macOS)",
         "Deck settings preserve conversation targets and request correlation, reject malformed mutation values, and share generated Node/Swift bounds; picker timeout/refusal and D200H activity redraw regressions are covered",
         "line/function/branch/statement coverage of bridge, shared, plugin and hooks stays above the floor in vitest.config.ts",
