@@ -139,6 +139,91 @@ completed. Its current Watch path is notification mirroring, and its snapshots
 cannot approve commands. Widgets, direct Watch controls and experimental Dot
 routes are not made public features merely by naming this release 2.0.
 
+#### 2.0 release scope audit 2026-11-02
+
+The owner requested a cross-check of release-note claims and all remaining
+registered tickets before release preparation. Source base: `12a3af19` (icons
+#661), including the integration/media work and #645/#659/#660. No open PR was
+found at this audit. Other worktrees are retained; the single unmerged native
+Dot/local experiment stays excluded. This audit prepares the maximum supported
+scope without turning component tests or dated delivery candidates into public
+availability.
+
+| Release-note item | Implementation / strongest recorded evidence | Channel scope and allowed claim |
+| --- | --- | --- |
+| Actual choices and one-time approvals | [Steering contract](docs/appstore-feature-matrix.md#steering-invariant), [OpenCode question contract](.claude/rules/observed-sessions.md#opencode-structured-device-questions), integration #643 and NEXT fix #655/#660 | Supported daemon/agent/controller combinations only. Native-installed OpenCode observers remain observation-only; multi-question, multi-select and custom-text questions stay in OpenCode. No claim that every agent is steerable. |
+| Human Attention and stale-request cleanup | Confirmed reviewer evidence (`1d78a6ad`, `45dfaa39`); OpenCode cleanup (`643c8fdf`, `1e6cd03f`) | Shared observation behavior on Node/Swift and consuming dashboards. Already delivered channel corrections remain improvements, not newly invented features. |
+| Friendly labels and safe recipients | `09e7c3d6`, [name-source contract](docs/daemon.md#same-project-display-names), #656/#660 render invalidation and `ec5095dc` addressed routing | Node Claude observer supplies verified names/branch hints; native standalone retains its documented fallback. No cmux live-title producer or physical D200X acceptance claim. |
+| Native Mac capability expansion | [Canonical tier matrix](docs/appstore-feature-matrix.md): native CI, Antigravity observation, consented ICS, Pixoo loops and APME retention; dated signed-app receipts | macOS implementation, with each source/credential grant retained. Do not advertise full CLI/PTY parity, standalone Claude account quota, or new physical Pocket/Glance device acceptance. |
+| Continuity and recovery | `408b5f92`, `98432f22`, `cc020a4d`, `74569389`, `582a43c1`; [three-mode boundaries](docs/appstore-feature-matrix.md#revised-parity-priorities) | Preserve supported state/settings across ownership changes; cold recovery remains opt-in. No automatic secret/grant migration or certification of every sleep/network-partition scenario. |
+| Habitat and device reliability | Shared-shell/compact work #640/#642/#643, wake propagation `210da160`, USB #641/#645 and connection/data fixes #646–#657 | Apply to the changed native, plugin and firmware targets. E-ink standby/Wi-Fi/RAM work waits for its target's own delivery; no unmeasured optical latency, ghosting or universal battery-life claim. |
+| Icons and product introduction | #658 whole-product tour and #661 canonical icon/19-export checks; [media provenance](docs/media/current/manifest.json) | Reuse accepted, accurately labelled media. Historical/fictional/simulator captures remain labelled. Final Store previews must match the submitted channel artifact. |
+| Daemon relay v1 | [Mixed contract and signed two-Mac receipts](docs/appstore-feature-matrix.md#mixed-nodeswift-daemon-relay-contract) | Experimental, explicit opt-in on a trusted network/tunnel. Observed rows and supported controls only; no full remote terminal, timeline/APME/history sync, automatic target migration or real-agent long-run acceptance claim. |
+| Integration security correction | #636 merged; #635 reporter awaits the coordinated public builds; #647 parser containment included via #659 | Release corrected npm/native installers together, document integration refresh and existing user-owned Codex trust. Keep report specifics private and post exact release links after publication. |
+
+The [candidate highlights](CHANGELOG.md#20-candidate-highlights) are the editorial
+source for this scope. They do not replace channel-specific tag headings,
+artifact hashes or observed five-state delivery receipts.
+
+**Open-ticket disposition and feasible inclusion**
+
+| Ticket | Included now | What remains / release treatment |
+| --- | --- | --- |
+| #635 security report | Merged integration-command hardening plus public reporting channel; regression and scoped installation evidence | Coordinated public npm/macOS delivery, exact upgrade/refresh links and reporter confirmation. Keep open through that follow-up; a source merge is not a public fix receipt. |
+| #544 friendly session names | Verified producer/fallback contract, ID-preserving labels and name-only redraw fix | No cmux executable was found on PATH or at the standard app location in this pass; current title/rename API and physical D200X key/INFO/VOICE acceptance remain unmeasured. Retain these as follow-ups rather than inventing titles or recipient acceptance. |
+| #551 e-ink measurement | Existing refresh-completion telemetry and supported display behavior | TRMNL 7.5, EPD47 and NM-EPD-420 each need real actionable traffic plus physical camera evidence. Software screenshots/simulator/driver durations cannot close it. No optical-performance promise is added to 2.0. |
+
+**Publication baseline cross-check (November 2)**
+
+- The [npm registry](https://www.npmjs.com/package/@agentdeck/bridge) and
+  [public GitHub release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6) agree on **1.9.6**. The dated
+  npm 1.9.7/macOS 1.9.5 CHANGELOG section is explicitly a preparation entry.
+- Apple's [public iPhone/iPad listing](https://apps.apple.com/app/id6784822497) reports **1.9.1**. It does not establish the
+  independent macOS version. The last recorded ASC macOS readback remains
+  **1.9.4 / 10001 READY_FOR_SALE** (October 30); read ASC again before allocating
+  a delivery build. Do not reuse a consumed CI build or call a local dev app live.
+- Android's public GitHub APK is **1.10.2**; the Play page shows an October 26
+  update but no reliable version/build floor in this read. Recheck the Play
+  production/edit inventory before choosing its delivery `versionCode`.
+- Elgato's [public listing](https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464) reports **1.8.1**, while the public GitHub plugin
+  artifact is **1.8.2**. Marketplace and GitHub availability remain separate.
+- Ulanzi's public GitHub artifact is **1.8.2**; its dynamic Marketplace page was
+  unavailable to the static reader. No fresh live-marketplace version is claimed.
+- ESP32's latest public GitHub firmware tag is **1.9.2**. Release only the board
+  images actually built and accepted; partial board coverage must be explicit.
+
+**Channel-specific copy and delivery gates**
+
+| Channel | Candidate notes to carry forward | Gate before that channel is called ready to publish |
+| --- | --- | --- |
+| npm / CLI | Accurate observed requests/Attention, friendly-name hints, addressed control, daemon continuity/relay v1, integration/WS/serial hardening | Four public packages in lockstep; clean packaged install/soak, native ABI on maintained Node 22/24/26, reviewed upgrade/integration-refresh instructions and tarball hashes. |
+| Apple macOS | Native observation/CI/calendar/APME/Pixoo, supported request controls, continuity, connection/security/USB fixes, icon; relay v1 explicitly experimental | Correct Store-excluded Dot artifact, distribution signing/archive check, source/credential consent and selected physical-controller journeys; fresh ASC version/build floor. |
+| Apple iPhone/iPad | Readable actual choices and one-time approvals from supported producers, Attention/history/habitat/connection improvements and icon | Pair with the chosen daemon candidate; do not promote observation-only producers to controls. Verify reconnect/stale requests and final screenshots/previews; independent iOS version/build state. No CloudKit/Watch production claim. |
+| Android / Play + GitHub | Controller/habitat/e-ink presentation, background standby where implemented, discovery/address/retry improvements, icon; safe developer installation | One product version across Play/APK; fresh Play versionCode floor and preserved signing identities/data. Exercise one LCD and one e-ink controller; no optical-performance certification from screenshots. |
+| Stream Deck | Actual readable options, NEXT on small grids, recipient-preserving labels, Attention/standby and icon | Immutable action UUIDs, SDKVersion 3, correct package/profile behavior and real encoders on the DRM-processed Marketplace build. Public 1.8.1 and GitHub 1.8.2 are distinct baselines. |
+| Ulanzi | Request/recipient labels, name-only invalidation, Attention/standby and icon | WASM rasterizer/fonts packaged without native binaries; verify Studio/runtime and D200H keys. D200X friendly-name/INFO/VOICE acceptance remains #544; do not imply encoder support. Fresh Marketplace floor still needs readback. |
+| ESP32 | Supported compact labels/controls and e-ink standby; Wi-Fi provision identity/acknowledgement, radio recovery and board-scoped memory corrections | Build the selected board images and merged factory artifacts, validate manifest/hash/board identity, and record actual flash/boot/protocol acceptance. Full-tier TTGO/simulator checks alone do not certify every board or #551 optics. |
+
+**Remaining cut gates**
+
+1. Freeze the claim-audited source and record a new clean
+   `pnpm verify:full --record --allow-keychain` receipt. Record unavailable lab
+   gates as un-attested/skip, never pass. Repeat Windows/Linux checks for the
+   final executable tree; a documentation-only receipt follow-up does not change it.
+2. Before manifest changes, reconcile the owner-directed 2.0 product target with
+   the compatibility-major policy, the still-v1 wire/capability contracts,
+   mixed 1.x/2.x acceptance, upgrade order and rollback. This audit does not
+   manufacture a protocol break or bypass the existing version gate.
+3. Read fresh portal/package floors; record the exact 2.0 channel version/build
+   decision. Keep manifests, tags and portal state unchanged until that decision.
+4. Complete the bounded controller journeys on the chosen signed/device
+   candidates and run the distribution archive check. Keep #544/#551 and the
+   declared CloudKit/Dot/relay limitations explicit when their evidence is absent.
+5. Finalize channel-specific notes, Store metadata/previews and package hashes.
+   Then perform the separately recorded publish/upload/submit/live actions and
+   read back each result. This preparation pass does not create a release tag,
+   upload an artifact or close a ticket whose public/device evidence is pending.
+
 #### Integration and release sequence
 
 1. Collect completed, reviewed commits without resetting other work. Record
