@@ -16,6 +16,25 @@ Workshop for AgentDeck), which shows Version 1.8.1, D200/D200H/D200X, Category A
 Links in the README, install guide, roadmap, Pages index and `@agentdeck/setup`
 point to the new id; dated records below keep the id they observed.
 
+## 2.0.0 — package public; portal update awaits sign-in (2026-11-02)
+
+The [official 2.0 package](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0)
+is public. Downloaded ZIP SHA-256:
+`66cb4ca236a744666581ad03307cc24291cb99aa0354696c1101ad3bc397a83d`.
+The package declares Version **2.0.0**, retains the immutable UUID, includes
+WASM resvg and fonts, and contains no native runtime library.
+
+All seven [locale pairs](2.0.0/listing-locales.json), cover and three banners
+are prepared. D200/D200H/D200X **keypad** support does not imply D200X encoders;
+Dial and AU05 must remain excluded after upload. The uploader-reset/readback
+procedure below still applies.
+
+The portal session expired. Clicking Login with no stored credentials produced
+the username/password-required errors; it did not authenticate or replace the
+pending work. The existing-account sign-in request remains pending. No 2.0
+portal submission is claimed; the last verified portal state is public 1.8.1
+and review 1.8.2.
+
 ## 1.8.2 — submitted as a new review version (2026-10-28)
 
 Created from the published 1.8.1 work with **Create review version**, using the

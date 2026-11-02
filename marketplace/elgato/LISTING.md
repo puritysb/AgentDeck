@@ -3,14 +3,32 @@
 > **Live since 2026-07-28.** The product page is at
 > <https://marketplace.elgato.com/product/agentdeck-dce3806b-176e-40f2-be7d-e029bec0f464>,
 > and the public version is **1.8.1** (Maker Console Versions, read
-> 2026-10-28); 1.8.2 is pending review with auto-publish off. Earlier: `1.8`
+> 2026-11-02); 2.0 is pending review with auto-publish off. Earlier: `1.8`
 > (released 2026-10-08 per the public product page, read 2026-10-11), `1.6`
 > (2026-10-03, 758.41 KB), `1.3`, `1.2` and `1.0.6`
 > (2026-08-18), `1.0.5` (2026-08-10), `1.0.4` (2026-08-05), `1.0.3` (2026-07-31)
 > and `1.0.2` (2026-07-28).
 > This file stays the source of the listing copy and asset inventory for future revisions.
 
-## 1.8.2 — pending review (2026-10-28)
+## 2.0 — pending review (2026-11-02)
+
+The owner approved the permanent deletion of the old **1.8.2 pending submission**
+to unblock this replacement. Published **1.8.1** remains unchanged.
+
+Uploaded the official [2.0 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v2.0.0),
+SHA-256 `f59015c4dafb160555bb883cf24e33392fb5c983714eb3f12a351beb8b8f0ab8`.
+Maker Console parsed **2.0.0.0, SDK 3, DRM Yes, Stream Deck+ dials Yes, default
+profiles Yes**. After submission, Versions shows **Pending review · 2**;
+automatic publication is **off**.
+
+The [2.0 copy](2.0.0/listing.json), canonical 288px icon, thumbnail and three
+current production-renderer gallery images are saved. The gallery also contains
+the recent 144.033-second, 6,132,346-byte product tour from #658, within the
+portal's observed 50 MB limit. This is a whole-product introduction, not new
+physical Stream Deck acceptance. See the [selected assets](2.0.0/media-selection.json).
+After approval, verify the DRM-processed package before manual publication.
+
+## 1.8.2 — submitted October 28; superseded November 2
 
 Uploaded the official
 [1.8.2 CI package](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v1.8.2)

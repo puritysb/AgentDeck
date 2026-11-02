@@ -95,6 +95,88 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### 2.0 delivery checkpoint 2026-11-02
+
+All six immutable channel tags point to release source
+`cde6a8cd48b6f071efa86603ca9fc5ea2101d13d`. Its application/runtime inputs
+match the fully verified `6c11fc8f` candidate; the intervening receipt and
+Elgato-copy commits did not rebuild application behavior.
+
+| Channel | Exact version / build | Measured delivery state |
+| --- | --- | --- |
+| npm | 2.0.0 | [Public release](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0); registry readback confirms all four packages and their `latest` tags at 2.0.0 |
+| Apple macOS | 2.0.0 / 10201 | Signed/exported artifact passed Store archive invariants; ASC build VALID; [WAITING_FOR_REVIEW](https://github.com/puritysb/AgentDeck/actions/runs/41441844357), automatic release after approval |
+| Apple iPhone / iPad | 2.0.0 / 10201 | Independently verified signed/exported IPA; ASC build VALID; [WAITING_FOR_REVIEW](https://github.com/puritysb/AgentDeck/actions/runs/41443853672), automatic release after approval |
+| Android GitHub / Play | 2.0.0 / 30 | [Signed APK public](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.0.0); [Google Play public](https://play.google.com/store/apps/details?id=dev.agentdeck), production 30 at **100% rollout**, managed publishing off |
+| Stream Deck GitHub / Marketplace | 2.0.0.0 | [Official package public](https://github.com/puritysb/AgentDeck/releases/tag/streamdeck-v2.0.0); Maker Console **Pending review · 2**, auto-publish off |
+| Ulanzi GitHub / Marketplace | 2.0.0 | [Official WASM package public](https://github.com/puritysb/AgentDeck/releases/tag/ulanzi-v2.0.0); portal update blocked by missing authenticated session. Last readback remains public 1.8.1 / review 1.8.2 |
+| ESP32 | 2.0.0 | [Complete firmware release public](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.0.0), all twelve shipping boards and 62 assets |
+
+[Apple upload run 41436144306](https://github.com/puritysb/AgentDeck/actions/runs/41436144306)
+succeeded for both platforms. Build **10201** comes from run 102, attempt 1.
+The macOS submission was read back at **12:06 UTC**, submission
+`d8b96f46-070d-4d51-b424-18fa2a21b8f8`. All twelve selected macOS screenshots
+and three localized preview associations are COMPLETE with matching checksums.
+The iOS submission was read back at **12:21 UTC**, submission
+`ef54a1aa-eb2b-4565-946e-1e271807fa5a`. All twenty-four selected iPhone/iPad
+screenshots and six preview associations are COMPLETE with matching checksums.
+[Independent final ASC readback](https://github.com/puritysb/AgentDeck/actions/runs/41444119832)
+confirms both versions and their exact submission IDs **WAITING_FOR_REVIEW**,
+and all **36 screenshots / 9 preview associations COMPLETE** across the three locales.
+Preparation and submission use that original upload/artifact provenance. The
+delivery-only repair in [#669](https://github.com/puritysb/AgentDeck/pull/669)
+accepts only a bounded descendant changing the two ASC scripts and their tests;
+application, media, copy and workflow changes are refused. It preserves Apple's
+POST upload instructions and waits for processing assets before requiring their
+final checksums. Completed asset checksums read back equal to the selected files.
+Apple also returned transient 500s/timeouts across unrelated read endpoints.
+Read retries are capped at three attempts with a 30-second deadline each;
+mutations are attempted once. The final delivery tools passed **116 ASC
+regressions**, quick verification (**7,336 pass / 42 intentional skips**) and
+changed-area gates. These delivery-only changes do not alter the already
+verified signed applications or selected media/copy.
+
+Play received the signed AAB and all three locale release notes, plus six
+listing changes: English description/short description, canonical icon, feature
+graphic, and complete Korean/Japanese listings. Google pre-checks completed and
+the seven changes moved to **in review**. Existing approved Android screenshots
+remain selected; development-only Dot QA captures were excluded.
+The final signed-in readback then confirmed **30 (2.0.0)** as the latest public
+production release at **100% rollout**, with no unpublished changes and a
+November 2 publication notification. This is the observed publication date,
+not a reconstructed approval timestamp.
+
+The owner explicitly approved deleting only the old Elgato **1.8.2 pending
+submission** at its permanent-delete confirmation. Public **1.8.1** remains.
+The replacement package parsed as **2.0.0.0, SDK 3, DRM Yes, dials Yes, bundled
+profiles Yes**. The new icon, thumbnail, three production-renderer gallery images
+and retained recent **144.033-second / 6,132,346-byte** whole-product tour were
+uploaded before submission. Approval, DRM-processed package review and manual
+publication remain separate from submission.
+
+The public Android APK was downloaded and verified against the unchanged
+signing certificate `10603af8ec7b76237f6372106dc8b73f597576fb5f8b82ed28ce6aad31b08923`.
+Public APK SHA-256: `c43387cb3739fd570b52ea1514141350453401e4704e30e504ac4b16b536643c`.
+Play AAB SHA-256: `8e8bd9ceca60d568b304ea94a19051a682057d45d63b6dc584b311792de84b37`.
+Stream Deck SHA-256: `f59015c4dafb160555bb883cf24e33392fb5c983714eb3f12a351beb8b8f0ab8`.
+Ulanzi ZIP SHA-256: `66cb4ca236a744666581ad03307cc24291cb99aa0354696c1101ad3bc397a83d`.
+The [ESP32 release run](https://github.com/puritysb/AgentDeck/actions/runs/41436161314)
+passed all twelve builds and published the complete set. Downloaded manifest
+and SHA256SUMS match their GitHub asset digests. Board identities/geometry agree
+with the SSOT; all **60 binary asset sizes and digests** agree between the
+manifest, SHA256SUMS and GitHub upload metadata. All twelve merged factory images
+write at **0x0**. This is artifact verification, with no new physical flashing.
+Portal screenshots, upload receipts and local/public Android artifact digests
+are retained privately under `diagnostics/release-2.0.0-6c11fc8f/`.
+
+The #635 security correction is included in npm 2.0.0 and the uploaded native
+builds. The issue remains open through native public availability and reporter
+confirmation. Update every installer in use (native app and/or CLI), then
+refresh enabled integrations and review Codex hook trust when prompted. Native
+users must distinguish an uploaded/submitted build from an available Store update.
+The physical-device waiver applies to this release only; #544's cmux title
+producer and #551's optical latency/ghosting measurements remain open follow-ups.
+
 ### 2.0.0 integration target (2026-11-02)
 
 #### 2.0.0 submission decision 2026-11-02
@@ -147,8 +229,12 @@ passed. Hosted CI completed 14 checks successfully. The optimized DotPreview
 job hit its 30-minute execution limit after its log recorded 1,534 tests,
 12 skips, zero failures, `Test Succeeded`, and a verified compiled boundary.
 Its check remains CANCELLED, not a green result. The exact configuration also
-passed both local native and final full runs. A separate infrastructure follow-up
-prepares a 45-minute budget for that job without removing checks. The four physical/live lab gates explicitly record the owner's 2.0
+passed both local native and final full runs. Infrastructure follow-up
+[#668](https://github.com/puritysb/AgentDeck/pull/668) expanded only that job's
+budget to 45 minutes. Its [complete Apple run](https://github.com/puritysb/AgentDeck/actions/runs/41437497966)
+passed all six jobs; the cold optimized job completed in **30 min 50 s**.
+The identical-tree post-merge duplicate was canceled after this successful run,
+not counted as another pass. The four physical/live lab gates explicitly record the owner's 2.0
 code-review waiver and are not physical-device passes.
 
 The recent #644/#658 native captures/product tour and #661 canonical icon are
@@ -167,14 +253,14 @@ limit (1,384 characters with AI-assistance disclosure) and selects the existing
 [Elgato selection](marketplace/elgato/2.0.0/media-selection.json) and
 [official product guidelines](https://docs.elgato.com/guidelines/products/).
 
-This records verification and preparation only. Build, upload, submission and
-public availability must still be read back and recorded separately below.
+Build, upload, submission and public availability are recorded separately in the
+2.0 delivery checkpoint above; this subsection preserves the software-verification evidence.
 
-The owner selected **2.0.0 as the next coordinated product release** on November
-2. This is an integration target, not a submitted or published version. Collect
-completed improvements on `master`, let the remaining workstreams finish, then
-freeze one candidate and run whole-product acceptance before release preparation.
-The earlier delivery records below remain historical evidence.
+At the initial November 2 collection checkpoint, the owner selected **2.0.0 as
+the next coordinated product release**. Completed improvements were collected
+on `master`, the candidate was frozen, and whole-product software acceptance
+passed before submission. The scope records below preserve that preparation;
+the delivery checkpoint above records subsequent channel availability.
 
 The November 2 issue pass also collects #648–#657: focus-relay teardown, serial
 poll cancellation, explicit Apple connection stops, Android custom-port discovery,
