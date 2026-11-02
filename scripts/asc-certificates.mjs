@@ -146,6 +146,21 @@ async function storeStatus() {
   for (const path of paths) {
     const response = await api(path);
     console.log(JSON.stringify({resource: path.split('?')[0].split('/').at(-1), data: response.data, included: response.included ?? []}));
+    if (!path.startsWith(`${root}/appStoreVersions?`)) continue;
+    for (const version of response.data.filter(v => v.attributes?.versionString === '2.0.0')) {
+      const locales = await api(`/v1/appStoreVersions/${resourceId(version, 'appStoreVersions')}/appStoreVersionLocalizations?limit=200`);
+      for (const locale of locales.data) for (const [setType, assetType] of [['appScreenshotSets', 'appScreenshots'], ['appPreviewSets', 'appPreviews']]) {
+        const sets = await api(`/v1/appStoreVersionLocalizations/${resourceId(locale, 'appStoreVersionLocalizations')}/${setType}?limit=200`);
+        for (const set of sets.data) {
+          const assets = await api(`/v1/${setType}/${resourceId(set, setType)}/${assetType}?limit=10`);
+          // No presigned URLs, review contact information or credentials in logs.
+          console.log(JSON.stringify({ resource: 'releaseMedia', platform: version.attributes.platform, locale: locale.attributes.locale,
+            display: set.attributes.screenshotDisplayType ?? set.attributes.previewType, assets: assets.data.map(asset => ({ id: asset.id,
+              fileName: asset.attributes.fileName, fileSize: asset.attributes.fileSize, checksum: asset.attributes.sourceFileChecksum,
+              state: asset.attributes.assetDeliveryState })) }));
+        }
+      }
+    }
   }
 }
 
