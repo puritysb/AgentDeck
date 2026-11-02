@@ -108,12 +108,25 @@ describe('bounded Store media delivery', () => {
     await expect(prepareSelectedMedia({ ...args, transport: async () => ({ ok: false, status: 503 }) })).rejects.toThrow('Binary upload failed');
     const request = async (path: string, method = 'GET', body?: any) => {
       const result = structuredClone(await f.request(path, method, body));
-      if (method === 'GET' && result?.data?.attributes) delete result.data.attributes.uploadOperations;
+      if (method === 'GET') for (const row of Array.isArray(result?.data) ? result.data : [result?.data]) {
+        if (row?.attributes) delete row.attributes.uploadOperations;
+      }
       return result;
     };
     await expect(prepareSelectedMedia({ ...args, request, transport: async () => ({ ok: true }) })).resolves.toMatchObject({ status: 'complete' });
     expect(f.calls.filter(c => c.method === 'DELETE')).toHaveLength(1);
     expect(f.assets.size).toBe(15);
+  });
+  it('uses fresh scoped collection state when individual completed-screenshot reads are unavailable', async () => {
+    const f = fixture(); let individualReads = 0;
+    const request = async (path: string, method = 'GET', body?: any) => {
+      if (method === 'GET' && /^\/v1\/appScreenshots\//.test(path)) { individualReads++; throw new Error('ASC GET failed (HTTP 500)'); }
+      return f.request(path, method, body);
+    };
+    const args = { ...f, request, version: '2.0.0', platform: 'MAC_OS', versionId: 'version', transport: async () => ({ ok: true }) };
+    await prepareSelectedMedia(args); const posts = f.calls.filter(c => c.method === 'POST').length;
+    await expect(prepareSelectedMedia(args)).resolves.toMatchObject({ status: 'complete' });
+    expect(individualReads).toBe(0); expect(f.calls.filter(c => c.method === 'POST')).toHaveLength(posts);
   });
   it('waits for nullable processing checksums and resumes without uploading again, but requires a final checksum', async () => {
     const f = fixture(); const args = { ...f, version: '2.0.0', platform: 'MAC_OS', versionId: 'version', transport: async () => ({ ok: true }) };

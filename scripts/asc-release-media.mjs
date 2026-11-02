@@ -101,8 +101,10 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
       const reserve = async () => (await request(`/v1/${group.assetType}`, 'POST', { data: { type: group.assetType,
         attributes: { fileName: file.name, fileSize: file.bytes.length, ...(group.preview ? { previewFrameTimeCode: '00:00:05:00' } : {}) },
         relationships: { [group.preview ? 'appPreviewSet' : 'appScreenshotSet']: { data: { type: group.setType, id: set.id } } } } })).data;
-      if (asset) asset = (await request(`/v1/${group.assetType}/${id(asset.id)}`)).data;
-      else asset = await reserve();
+      // The freshly read, app-scoped set already supplies identity and state.
+      // Apple's individual screenshot GET can return 500 for a COMPLETE asset
+      // even while this authoritative collection read succeeds.
+      if (!asset) asset = await reserve();
       const state = asset.attributes?.assetDeliveryState?.state;
       if (['UPLOAD_COMPLETE', 'COMPLETE'].includes(state)) {
         check((state === 'UPLOAD_COMPLETE' && asset.attributes.sourceFileChecksum == null)
