@@ -259,7 +259,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |
-| `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
+| `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN> --pid <agent-pid>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
 
 ### Weather context
 
@@ -330,8 +330,12 @@ widen the LAN boundary.
 
 `inject-test` reproduces what the daemon does when a device answers an
 observed session's prompt: it drives the host's own UI rather than the bridge.
-Terminal hosts are addressed by controlling tty (find one with
-`ps -eo pid=,tty=,command= | grep -E ' claude| codex'`), GUI hosts by app name,
+Terminal hosts are addressed by controlling tty and agent PID (find both with
+`ps -eo pid=,tty=,command= | grep -E ' claude| codex'`): pass
+`--tty <ttysNNN> --pid <agent-pid>`. The PID identifies the cmux surface or,
+for iTerm2 and Terminal.app, the owning app through process ancestry. Without
+a verified host, AppleScript is skipped; tmux can still match by tty alone.
+GUI hosts are addressed by app name,
 where `--label` presses the button carrying that text before falling back to
 key events. `--text` types and submits a line instead of picking an option,
 which is the path dictation uses. Node daemon only — the App Store app spawns
