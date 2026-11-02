@@ -8,7 +8,35 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
-## 1.10.2 public — production readback (2026-11-02)
+## 2.0.0 / 30 — public at 100% rollout (2026-11-02)
+
+Production **30 (2.0.0)** and six Store listing changes were sent together.
+Google's automatic pre-checks completed and all seven changes entered review.
+The final signed-in readback shows **30 (2.0.0)** as the latest public production
+release at **100% rollout**, a November 2 publication notification, and no
+unpublished changes. This supersedes **29 (1.10.2)**. Managed publishing remains
+off; internal testing remains **28 (1.10.1)**.
+
+Uploaded AAB SHA-256:
+`8e8bd9ceca60d568b304ea94a19051a682057d45d63b6dc584b311792de84b37`.
+The [English/Korean/Japanese notes](2.0.0/release-notes.json) and complete
+[localized listing copy](2.0.0/listing.json) were read back. The new canonical
+icon and feature graphic are saved. Existing approved actual Android screenshots
+remain; newer QA captures containing development-only Dot are excluded. See the
+[media selection](2.0.0/selection.json). Review found zero blocking errors and
+one non-blocking native debug-symbol warning, with no supported-device loss.
+Post-publication Console advisories still flag edge-to-edge/deprecated Android
+API usage on build 30. Source already calls `enableEdgeToEdge()`; the owner's
+code-review acceptance does not establish physical inset validation or clear
+those advisory notices.
+
+The [official GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v2.0.0)
+is public, downloaded and signature-verified against the unchanged certificate
+`10603af8…b08923`; SHA-256:
+`c43387cb3739fd570b52ea1514141350453401e4704e30e504ac4b16b536643c`.
+No physical-device pass is inferred from the owner's code-review acceptance.
+
+## 1.10.2 public — production readback (2026-11-02, before 2.0 upload)
 
 The signed-in production release list shows **29 (1.10.2)** as available on
 Google Play, with **100% rollout**. Internal testing remains **28 (1.10.1)**;
