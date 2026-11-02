@@ -98,16 +98,28 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
       const matches = assets.filter(a => a.attributes?.fileName === file.name);
       check(matches.length <= 1, 'Duplicate reserved media file');
       let asset = matches[0];
-      if (!asset) asset = (await request(`/v1/${group.assetType}`, 'POST', { data: { type: group.assetType,
+      const reserve = async () => (await request(`/v1/${group.assetType}`, 'POST', { data: { type: group.assetType,
         attributes: { fileName: file.name, fileSize: file.bytes.length, ...(group.preview ? { previewFrameTimeCode: '00:00:05:00' } : {}) },
         relationships: { [group.preview ? 'appPreviewSet' : 'appScreenshotSet']: { data: { type: group.setType, id: set.id } } } } })).data;
-      asset = (await request(`/v1/${group.assetType}/${id(asset.id)}`)).data;
+      if (asset) asset = (await request(`/v1/${group.assetType}/${id(asset.id)}`)).data;
+      else asset = await reserve();
       const state = asset.attributes?.assetDeliveryState?.state;
       if (['UPLOAD_COMPLETE', 'COMPLETE'].includes(state)) {
         check(asset.attributes.sourceFileChecksum === file.md5, 'Reserved media checksum differs');
         continue;
       }
       check(state === 'AWAITING_UPLOAD', 'Reserved asset is failed or in an unknown state');
+      // Apple supplies upload instructions on POST; a subsequent GET can omit
+      // them. Keep the reservation response. For a prior uncommitted reservation
+      // with no instructions, replace only this exact owned draft asset once.
+      if (!asset.attributes.uploadOperations?.length) {
+        check(asset.attributes.fileName === file.name && asset.attributes.fileSize === file.bytes.length,
+          'Uncommitted reservation identity differs');
+        await editable(request, versionId, platform, version);
+        await request(`/v1/${group.assetType}/${id(asset.id)}`, 'DELETE');
+        asset = await reserve();
+        check(asset.attributes?.assetDeliveryState?.state === 'AWAITING_UPLOAD', 'Replacement reservation is not awaiting upload');
+      }
       for (const op of uploadParts(asset.attributes.uploadOperations, file.bytes.length)) {
         const response = await transport(op.url, { method: op.method, redirect: 'error', signal: AbortSignal.timeout(120000),
           headers: Object.fromEntries(op.requestHeaders.map(h => [h.name, h.value])), body: file.bytes.subarray(op.offset, op.offset + op.length) });

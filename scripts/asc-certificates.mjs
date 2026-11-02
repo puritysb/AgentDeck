@@ -180,6 +180,27 @@ export function validateReleaseTarget(version, build) {
     'Expected an exact release build number greater than 9201');
 }
 
+const DELIVERY_TOOL_FILES = new Set([
+  'scripts/asc-certificates.mjs', 'scripts/asc-release-media.mjs',
+  'scripts/__tests__/asc-certificates.test.ts', 'scripts/__tests__/asc-release-media.test.ts',
+]);
+
+/** A delivery-tool repair must not change any input to the uploaded application. */
+export async function verifyDeliveryToolSource({ version, uploadedSha, deliverySha, request }) {
+  requireThat(/^[a-f0-9]{40}$/.test(uploadedSha ?? '') && /^[a-f0-9]{40}$/.test(deliverySha ?? ''), 'Invalid release source identity');
+  if (uploadedSha === deliverySha) return;
+  requireThat(version === '2.0.0', 'Delivery-tool reconciliation is scoped to 2.0.0');
+  const diff = await request(`/repos/${REPOSITORY}/compare/${uploadedSha}...${deliverySha}?per_page=100`);
+  requireThat(diff.status === 'ahead' && diff.base_commit?.sha === uploadedSha && diff.merge_base_commit?.sha === uploadedSha
+    && Number.isSafeInteger(diff.total_commits) && diff.total_commits > 0 && diff.total_commits <= 100
+    && diff.commits?.length === diff.total_commits && diff.commits.at(-1)?.sha === deliverySha
+    && Array.isArray(diff.files) && diff.files.length > 0 && diff.files.length < 300,
+  'Delivery source comparison is incomplete or not a descendant');
+  requireThat(diff.files.every(file => DELIVERY_TOOL_FILES.has(file.filename)
+    && ['modified', 'added'].includes(file.status) && !file.previous_filename),
+  'Delivery source changes application, media or unapproved tooling inputs');
+}
+
 /** The upload run, source and retained artifact must all identify this candidate.
  * GitHub credentials stay on the runner; no logs or private artifact content are read. */
 export async function verifyReleaseProvenance({ version, build, runId, sourceSha, request, platform = PLATFORM }) {
@@ -190,9 +211,11 @@ export async function verifyReleaseProvenance({ version, build, runId, sourceSha
   const path = `/repos/${REPOSITORY}/actions/runs/${runId}`;
   const run = await request(path);
   requireThat(String(run.id) === runId && run.repository?.full_name === REPOSITORY
-    && run.path === RELEASE_WORKFLOW && run.head_sha === sourceSha
+    && run.path === RELEASE_WORKFLOW
     && run.status === 'completed' && run.conclusion === 'success'
     && ['workflow_dispatch', 'push'].includes(run.event), 'Upload run identity, source or success does not match');
+  await verifyDeliveryToolSource({ version, uploadedSha: run.head_sha, deliverySha: sourceSha, request });
+  sourceSha = run.head_sha;
   requireThat(Number.isSafeInteger(run.run_number) && Number.isSafeInteger(run.run_attempt)
     && run.run_number > 0 && run.run_attempt > 0 && run.run_attempt < 100
     && String(run.run_number * 100 + run.run_attempt) === build, 'Upload run build number does not match');
@@ -216,7 +239,9 @@ export async function verifyReleaseProvenance({ version, build, runId, sourceSha
 function githubClient(env = process.env, transport = fetch) {
   requireThat(env.GITHUB_REPOSITORY === REPOSITORY && env.GITHUB_TOKEN, 'Release provenance requires this repository CI token');
   return async path => {
-    requireThat(path.startsWith(`/repos/${REPOSITORY}/actions/runs/`), 'Invalid GitHub provenance resource');
+    requireThat(path.startsWith(`/repos/${REPOSITORY}/actions/runs/`)
+      || new RegExp(`^/repos/${REPOSITORY}/compare/[a-f0-9]{40}\\.\\.\\.[a-f0-9]{40}\\?per_page=100$`).test(path),
+    'Invalid GitHub provenance resource');
     const response = await transport(`https://api.github.com${path}`, {
       redirect: 'error', signal: AbortSignal.timeout(30000),
       headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
