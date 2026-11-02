@@ -21,6 +21,12 @@ process.env.AGENTDECK_FM_HELPER = join(dataDir, 'no-fm-helper');
 // macOS, Linux, and Windows without each contributor having to set TZ.
 process.env.TZ = 'Asia/Seoul';
 
+// TUI capabilities are resolved at import time. Pin the locale before modules
+// load so Unicode snapshots also work in minimal containers and non-UTF-8 shells.
+process.env.LANG = 'en_US.UTF-8';
+delete process.env.LC_ALL;
+delete process.env.LC_CTYPE;
+
 process.once('exit', () => {
   rmSync(dataDir, { recursive: true, force: true });
 });

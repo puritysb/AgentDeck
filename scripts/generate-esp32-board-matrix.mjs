@@ -248,6 +248,17 @@ export function renderWorkflow(boards) {
   return spliceRegion(read(WORKFLOW_REL), emitMatrixRows(boards), {});
 }
 
+export const SERIAL_SWIFT_REL = 'apple/AgentDeck/Daemon/Modules/ESP32Serial.swift';
+
+/** Regenerate the serial vendor gate from the same board SSOT as Node. */
+export function renderSwiftSerialVendors(vendors) {
+  return spliceRegion(read(SERIAL_SWIFT_REL),
+    `    static let esp32USBVendorIDs: Set<Int> = [${[...vendors].map(id => `0x${id.toString(16)}`).join(', ')}]`, {
+      begin: '// ESP32-USB-VENDORS:BEGIN (generated from shared/src/esp32-boards.ts)',
+      end: '// ESP32-USB-VENDORS:END', indent: '    ',
+    });
+}
+
 const isMain =
   process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
@@ -269,6 +280,16 @@ if (isMain) {
   } else if (next !== wf) {
     fs.writeFileSync(path.join(projectDir, WORKFLOW_REL), next);
     console.log(`updated ${WORKFLOW_REL}`);
+  }
+
+  const serial = renderSwiftSerialVendors(mod.ESP32_USB_VENDOR_IDS);
+  if (serial === null) {
+    problems.push(`${SERIAL_SWIFT_REL} has no ESP32-USB-VENDORS:BEGIN/END markers`);
+  } else if (check) {
+    if (serial !== read(SERIAL_SWIFT_REL)) problems.push(`${SERIAL_SWIFT_REL} vendor gate drifted — run: node scripts/generate-esp32-board-matrix.mjs`);
+  } else if (serial !== read(SERIAL_SWIFT_REL)) {
+    fs.writeFileSync(path.join(projectDir, SERIAL_SWIFT_REL), serial);
+    console.log(`updated ${SERIAL_SWIFT_REL}`);
   }
 
   if (problems.length) {

@@ -22,6 +22,11 @@
  * the duplication worse, not better.
  */
 
+/** USB serial bridge vendors used by supported boards (including Seeed XIAO). Unknown lookup results
+ * retain pattern-based discovery; known foreign vendors must never be opened.
+ * Swift mirror: pnpm generate-esp32-board-matrix. */
+export const ESP32_USB_VENDOR_IDS: ReadonlySet<number> = new Set([0x303a, 0x1a86, 0x10c4, 0x2886]);
+
 export type Esp32ChipFamily = 'ESP32' | 'ESP32-S3' | 'ESP32-P4' | 'ESP32-C6';
 export type Esp32FlashSize = '4MB' | '8MB' | '16MB';
 /** esptool `--before` values (esptool-js calls this the reset `mode`). */
