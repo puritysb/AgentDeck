@@ -3,6 +3,10 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// This build tool compares exact pixels across ARM macOS and x86 Linux.
+// Use scalar resampling so CPU-specific SIMD reductions cannot change exports.
+sharp.simd(false);
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apple = 'apple/AgentDeck/Resources/Assets.xcassets';
 const android = 'android/app/src/main/res';
