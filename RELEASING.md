@@ -130,6 +130,7 @@ new combination. Keep work owned by active sessions in their isolated checkouts.
 | dot 크리처 배치와 표기 개선 | Completed Pages/navigation and native habitat work through PR #640 and #642 (`0d721829`), including a physical-tablet development recording | Included in the combined candidate; activity and response value leads the introduction in English, Korean and Japanese |
 | `codex/mcp-auto-review-attention` | Behavioral fixes were already present; merged remaining history/receipts while retaining later Blender and process-exit regression cases | Repeat confirmed-human versus automatic-review semantics in combined daemon tests |
 | `codex/swift-capability-audit` | Completed through `76d19ec2`: native observation/setup, CI/calendar/Glance/Pocket/Pixoo, recovery/handover and display wake work | Included for integration verification; preserve newer CloudKit opt-in, actual choice controls, observation-only native plugin boundaries and current versions |
+| Post-collection P1 corrections (#646, #647) | Preserve Android installations on failed updates; contain malformed WebSocket URL input within its connection | Fake-adb data-retention regressions and isolated WsServer auth/parser regressions, followed by quick and applicable CI gates; include in the frozen 2.0 candidate |
 | `codex/dot-native-local-wip` | Explicit native/local-route experiments | Retain as WIP until availability/security decisions and its own acceptance; not an implicit Store promise |
 
 CloudKit remains a development experiment until its production account,

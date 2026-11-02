@@ -158,6 +158,16 @@ export class WsServer {
     }, WS_PING_INTERVAL_MS);
 
     this.wss.on('connection', (ws, req: IncomingMessage) => {
+      // Only the query is needed. Host is untrusted peer input, not a URL
+      // parser base; malformed targets must stay local to this connection.
+      let url: URL;
+      try {
+        url = new URL(req.url || '/', 'http://localhost');
+      } catch {
+        debug('WS', 'Refused invalid WebSocket request URL');
+        ws.close(1008, 'Invalid request URL');
+        return;
+      }
       // Token auth for remote connections
       const remoteIp = req.socket.remoteAddress || '';
       const local = isLocalConnection(remoteIp);
@@ -167,7 +177,6 @@ export class WsServer {
         // without this it would read every frame and send device commands. It
         // needs the token. It is never a pairing knock: approving a
         // same-machine address would hand local trust to every page.
-        const url = new URL(req.url || '/', 'http://localhost');
         if (!validateToken(url.searchParams.get('token') || '')) {
           logLocalTrustRefusal('WebSocket', localTrust, req);
           ws.close(4001, 'Unauthorized');
@@ -175,7 +184,6 @@ export class WsServer {
         }
         debug('WS', 'Same-machine web page authenticated with the pairing token');
       } else if (!local) {
-        const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
         const token = url.searchParams.get('token') || '';
         // The id a client offers on the handshake, if it offers one. Read here
         // rather than from a later frame because the decision happens now:
@@ -281,7 +289,6 @@ export class WsServer {
         }
         debug('WS', `Remote client authenticated from ${remoteIp}`);
       }
-      const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
       this.socketRemoteIp.set(ws, remoteIp);
       if (localTrust === 'trusted') this.localProgramClients.add(ws);
       if (url.searchParams.get('clientType') === 'esp32' || url.searchParams.get('esp32') === '1') {

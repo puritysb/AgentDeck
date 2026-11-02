@@ -45,6 +45,8 @@ bumped, superseded by 1.0.17, and never published, so it exists only in git.
 
 ## Unreleased
 
+- Node daemon: malformed WebSocket request input is refused on that connection. Query parsing uses a fixed base, and incoming Host values cannot turn URL parsing into an uncaught pre-authentication exception (#647).
+- Android development installation: `build-android-release.sh --install` retains the installed app and its private data on every failed update, reports the original adb output/status, and never automatically uninstalls it. The deployment skill follows the same rule (#646).
 - Node daemon: cancelling or replacing a connecting hardware-focus relay safely consumes the old socket's teardown error (#648). Serial discovery drops pending opens after flash suspension, stop or restart and checks the flash lease before each candidate; stale ports receive no initial writes (#649, #650).
 - Apple app: an explicit Stop Reconnecting or Disconnect remains in effect after foreground return, system wake and delayed health checks. Search Again and explicit host selection still resume connection (#651).
 - Android: discovery accepts custom ports advertised by an identified daemon; busy NSD resolution retries correctly and ends with the discovery lifetime (#652, #653). Malformed manual endpoints report an address error before replacing an existing connection (#654).

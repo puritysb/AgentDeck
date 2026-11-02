@@ -1309,6 +1309,7 @@
         "scripts/__tests__/verification-catalog.test.ts",
         "scripts/__tests__/apple-dot-build.test.ts",
         "scripts/__tests__/local-main-deploy.test.ts",
+        "scripts/__tests__/android-install.test.ts",
         "scripts/__tests__/verify-tiers.test.ts",
         "scripts/__tests__/swift-live-fixture-opt-in.test.ts",
         "scripts/__tests__/build-health-report.test.ts",
