@@ -165,11 +165,11 @@ The [candidate highlights](CHANGELOG.md#20-candidate-highlights) are the editori
 source for this scope. They do not replace channel-specific tag headings,
 artifact hashes or observed five-state delivery receipts.
 
-**Open-ticket disposition and feasible inclusion**
+**Ticket disposition and feasible inclusion**
 
 | Ticket | Included now | What remains / release treatment |
 | --- | --- | --- |
-| #662 native relay question rendering | Keep held-question correlation private; preserve original remote choices and ordinary permission IDs; real Swift uplink → Node hub → Stream Deck manager regression | Include the verified correction in the candidate. Existing two-Mac/real-agent limits remain; direct-command tests alone did not establish rendered-button behavior. |
+| #662 native relay question rendering | Keep held-question correlation private; preserve original remote choices and ordinary permission IDs; real Swift uplink → Node hub → Stream Deck manager regression | Merged via #663 and included in the verified candidate. Existing two-Mac/real-agent limits remain; direct-command tests alone did not establish rendered-button behavior. |
 | #635 security report | Merged integration-command hardening plus public reporting channel; regression and scoped installation evidence | Coordinated public npm/macOS delivery, exact upgrade/refresh links and reporter confirmation. Keep open through that follow-up; a source merge is not a public fix receipt. |
 | #544 friendly session names | Verified producer/fallback contract, ID-preserving labels and name-only redraw fix | No cmux executable was found on PATH or at the standard app location in this pass; current title/rename API and physical D200X key/INFO/VOICE acceptance remain unmeasured. Retain these as follow-ups rather than inventing titles or recipient acceptance. |
 | #551 e-ink measurement | Existing refresh-completion telemetry and supported display behavior | TRMNL 7.5, EPD47 and NM-EPD-420 each need real actionable traffic plus physical camera evidence. Software screenshots/simulator/driver durations cannot close it. No optical-performance promise is added to 2.0. |
@@ -218,10 +218,10 @@ artifact hashes or observed five-state delivery receipts.
 
 **Remaining cut gates**
 
-1. Freeze the claim-audited source and record a new clean
-   `pnpm verify:full --record --allow-keychain` receipt. Record unavailable lab
-   gates as un-attested/skip, never pass. Repeat Windows/Linux checks for the
-   final executable tree; a documentation-only receipt follow-up does not change it.
+1. The frozen-source automated receipt is recorded below. Repeat it after any
+   executable/version-manifest change and run hosted Windows/Linux checks for
+   the final executable tree. Record unavailable lab gates as un-attested/skip,
+   never pass; a documentation-only receipt follow-up does not change the code.
 2. Before manifest changes, reconcile the owner-directed 2.0 product target with
    the compatibility-major policy, the still-v1 wire/capability contracts,
    mixed 1.x/2.x acceptance, upgrade order and rollback. This audit does not
@@ -235,6 +235,38 @@ artifact hashes or observed five-state delivery receipts.
    Then perform the separately recorded publish/upload/submit/live actions and
    read back each result. This preparation pass does not create a release tag,
    upload an artifact or close a ticket whose public/device evidence is pending.
+
+#### 2.0 frozen-source verification checkpoint 2026-11-02
+
+[PR #663](https://github.com/puritysb/AgentDeck/pull/663) merged the claim audit
+and the additional native-relay question correction, closing #662. Its merge
+`5ddd4f77` has the identical tracked tree to verified commit
+`4fdf507ad5a392ffe3340bdcab778a7ee6e43519`. The
+[clean full-tier receipt](verification/receipts/2026-11-02-4fdf507.json) records
+**27 automated passes**, one local Windows skip and **four un-attested lab gates**
+in **26 minutes 31 seconds**. All hosted PR checks passed, including Linux,
+Windows native runtime on Node 22/24/26 and mixed macOS Swift/Node parity.
+
+The full run covers 7,311 Vitest passes (42 skips) with the coverage floor,
+39 real-daemon E2E passes, Android compile/JUnit/Robolectric, five Apple
+configurations, deterministic CloudKit PoC checks, App Store submission limits,
+ESP32 host policies/12 simulator configurations/TTGO target compilation, and
+clean npm package installation with a 60-second daemon soak. CloudKit test
+success does not establish its production account/entitlement or release gates.
+
+The four lab gates were **not performed on this frozen candidate**:
+`esp32-robot`, `device-deploy`, `swift-codex-live` and `daemon-lifecycle-live`.
+Earlier signed/device receipts remain dated evidence; neither they nor the
+automated result certify a final signed 2.0 artifact, all shipping board images,
+real-agent two-Mac long-run use, D200X INFO/VOICE acceptance or e-ink optics.
+Those boundaries and the #635/#544/#551 follow-ups remain as listed above.
+
+The final local-work inventory found no additional completed implementation to
+import. Icon/product-tour branches were squash-integrated; the older dirty
+OpenCode checkout contains the integrated repair and predates later refinements.
+Its files and old untracked receipts were preserved. The separate Dot/local WIP
+is still excluded. Version manifests, tags and Store state remain unchanged;
+this checkpoint prepares release scope and source evidence, not public delivery.
 
 #### Integration and release sequence
 

@@ -22,8 +22,10 @@ projects and tools. Watch them in a living aquarium, follow the timeline, and
 keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
-**2.0 development:** improvements are being collected on `master` before combined
-acceptance and release preparation. See the [integration and media plan](RELEASING.md#200-integration-target-2026-11-02);
+**2.0 release preparation:** the source, release claims and remaining tickets have
+been audited, with a clean automated verification receipt. Final version/build,
+signed-device and channel delivery gates remain. See the
+[scope and verification record](RELEASING.md#20-frozen-source-verification-checkpoint-2026-11-02);
 [released downloads](#releases) retain their recorded channel versions.
 
 <p align="center">
@@ -357,7 +359,7 @@ for verified publication and Store review status.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**Preparation, 2026-10-30:** npm **1.9.7** and macOS **1.9.5** are candidates for integration hardening and preservation of custom hook settings. They are not published. Update the native app and CLI together, then refresh enabled integrations and review Codex hook trust when prompted. See the [release decision](RELEASING.md#2026-10-30-integration-hardening-preparation-decision).
+**Preparation, 2026-10-30:** npm **1.9.7** and macOS **1.9.5** are candidates for integration hardening and preservation of custom hook settings. They are not published. After corrected builds are public, update the installers you use (native app and/or CLI), refresh enabled integrations and review Codex hook trust when prompted. See the [release decision](RELEASING.md#2026-10-30-integration-hardening-preparation-decision).
 
 **Delivery, 2026-10-29:** [npm 1.9.6 is public](https://github.com/puritysb/AgentDeck/releases/tag/npm-v1.9.6).
 A late update to a timeline row (summary, evaluation score, approval result) now

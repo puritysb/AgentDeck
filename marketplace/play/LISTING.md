@@ -8,6 +8,21 @@ created after 2023-11-13 does not apply — production is reachable directly.
 The APK on GitHub Releases stays; Play is an additional channel, not a
 replacement. Play uses store-managed updates; the sideload APK retains wireless updates.
 
+## 1.10.2 public — production readback (2026-11-02)
+
+The signed-in production release list shows **29 (1.10.2)** as available on
+Google Play, with **100% rollout**. Internal testing remains **28 (1.10.1)**;
+the overview shows no open/closed testing release and no unpublished changes.
+This supersedes the review-pending checkpoint below. It is a track read, not a
+complete inventory of unused uploaded bundles; recheck the consumed code floor
+before allocating the next delivery build.
+
+The current edge-to-edge/deprecated-API notices concern released build 29. Source
+already calls `enableEdgeToEdge()`, but final candidate inset/device acceptance
+and Store notice resolution still need their own evidence. This readback did not
+upload, submit or publish anything. See the
+[cross-channel baseline](../../RELEASING.md#20-release-scope-audit-2026-11-02).
+
 ## 1.10.2 GitHub public and Play submitted — 2026-10-26
 
 The signed [GitHub APK](https://github.com/puritysb/AgentDeck/releases/tag/android-v1.10.2)
