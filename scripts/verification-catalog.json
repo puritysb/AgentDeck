@@ -187,7 +187,7 @@
       "needs": ["build"],
       "paths": [
         "shared/src/esp32-boards.ts", "docs/**", "README.md", "tools/**", "agentdeck-design-system/**",
-        "scripts/pages-*", "scripts/sync-*.mjs", "scripts/check-surface-mirrors.mjs", "scripts/generate-esp32-board-matrix.mjs"
+        "apple/AgentDeck/Daemon/Modules/ESP32Serial.swift", "scripts/pages-*", "scripts/sync-*.mjs", "scripts/check-surface-mirrors.mjs", "scripts/generate-esp32-board-matrix.mjs"
       ]
     },
     {

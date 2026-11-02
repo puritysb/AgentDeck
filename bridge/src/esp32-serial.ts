@@ -1,3 +1,5 @@
+import { ESP32_USB_VENDOR_IDS } from '@agentdeck/shared';
+export { ESP32_USB_VENDOR_IDS } from '@agentdeck/shared';
 import { backgroundCount } from '@agentdeck/shared';
 import { compactDotSnapshot } from '@agentdeck/shared';
 import { ciWaitPhaseId, type CiWaitStatus } from '@agentdeck/shared';
@@ -65,6 +67,58 @@ export const EXCLUDE_PATTERNS = [
   /Bluetooth/i,
   /WLAN/i,
 ];
+
+/** Known foreign USB vendors must not be opened; lookup failure remains unknown.
+ * Membership is defined in shared/src/esp32-boards.ts and generated into Swift.
+ * @internal Exported for testing only */
+export function isAllowedSerialVendor(vendorId: number | undefined): boolean {
+  return vendorId === undefined || ESP32_USB_VENDOR_IDS.has(vendorId);
+}
+
+/**
+ * Map each callout device in `ioreg -r -c IOUSBHostDevice -l -w0` output to the
+ * `idVendor` of its nearest enclosing USB device (a CH340 behind a hub belongs
+ * to the CH340, not the hub).
+ * @internal Exported for testing only
+ */
+export function parseIoregSerialVendors(output: string): Map<string, number> {
+  const vendors = new Map<string, number>();
+  const stack: { column: number; vendorId?: number }[] = [];
+  for (const line of output.split('\n')) {
+    const node = line.indexOf('+-o ');
+    if (node >= 0) {
+      while (stack.length > 0 && stack[stack.length - 1].column >= node) stack.pop();
+      stack.push({ column: node });
+      continue;
+    }
+    const vendor = /"idVendor" = (\d+)/.exec(line);
+    if (vendor && stack.length > 0) {
+      stack[stack.length - 1].vendorId = Number(vendor[1]);
+      continue;
+    }
+    const callout = /"IOCalloutDevice" = "([^"]+)"/.exec(line);
+    if (callout) {
+      const owner = [...stack].reverse().find(entry => entry.vendorId !== undefined);
+      if (owner?.vendorId !== undefined) vendors.set(callout[1], owner.vendorId);
+    }
+  }
+  return vendors;
+}
+
+const skippedForeignPorts = new Set<string>();
+
+/** @internal Bounded macOS registry read; injectable runner avoids hardware in tests. */
+export async function serialVendorsByPort(
+  platform = process.platform, run = execWithKill,
+): Promise<Map<string, number>> {
+  if (platform !== 'darwin') return new Map();
+  try {
+    // A real multi-device registry exceeded Node's default 1 MiB buffer.
+    return parseIoregSerialVendors(await run('ioreg -r -c IOUSBHostDevice -l -w0', 3000, 8 * 1024 * 1024));
+  } catch {
+    return new Map();
+  }
+}
 
 /** No-traffic threshold. ESP32 firmware should answer device_info/heartbeat JSON. */
 const STALE_THRESHOLD_MS = 60000; // 60 seconds
@@ -721,10 +775,10 @@ function sanitizeOptions(options: unknown): Array<Record<string, unknown>> | und
 }
 
 /** Run a shell command with timeout, escalating to SIGKILL if SIGTERM fails. */
-function execWithKill(cmd: string, timeoutMs = 3000): Promise<string> {
+function execWithKill(cmd: string, timeoutMs = 3000, maxBuffer = 1024 * 1024): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const child = exec(cmd, { encoding: 'utf-8', timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+    const child = exec(cmd, { encoding: 'utf-8', timeout: timeoutMs, maxBuffer, windowsHide: true }, (err, stdout) => {
       if (settled) return;
       settled = true;
       if (err) {
@@ -872,9 +926,25 @@ async function detectESP32Ports(): Promise<string[]> {
     const ports = output.trim().split('\n').filter(Boolean);
 
     // Filter to ESP32 patterns, exclude known non-ESP32
-    return ports.filter(port => {
+    const candidates = ports.filter(port => {
       if (EXCLUDE_PATTERNS.some(p => p.test(port))) return false;
       return ESP32_PORT_PATTERNS.some(p => p.test(port));
+    });
+    if (candidates.length === 0) return [];
+
+    // Never open a port whose USB vendor is known to be something else.
+    const vendors = await serialVendorsByPort();
+    return candidates.filter(port => {
+      const vendorId = vendors.get(port);
+      if (isAllowedSerialVendor(vendorId)) {
+        skippedForeignPorts.delete(port);
+        return true;
+      }
+      if (!skippedForeignPorts.has(port)) {
+        skippedForeignPorts.add(port);
+        log(`ESP32 serial ${port} skipped: USB vendor 0x${vendorId!.toString(16).padStart(4, '0')} is not an ESP32 serial bridge`);
+      }
+      return false;
     }).sort(compareSerialPorts);
   } catch (err) {
     lastErrorByPort.set('detect', `port detection failed: ${err instanceof Error ? err.message : String(err)}`);
