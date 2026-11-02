@@ -105,7 +105,8 @@ export async function prepareSelectedMedia({ request, version, platform, localiz
       else asset = await reserve();
       const state = asset.attributes?.assetDeliveryState?.state;
       if (['UPLOAD_COMPLETE', 'COMPLETE'].includes(state)) {
-        check(asset.attributes.sourceFileChecksum === file.md5, 'Reserved media checksum differs');
+        check((state === 'UPLOAD_COMPLETE' && asset.attributes.sourceFileChecksum == null)
+          || asset.attributes.sourceFileChecksum === file.md5, 'Reserved media checksum differs');
         continue;
       }
       check(state === 'AWAITING_UPLOAD', 'Reserved asset is failed or in an unknown state');
@@ -152,10 +153,11 @@ export async function assertSelectedMedia({ request, version, platform, localiza
     check(assets.length === group.files.length, 'Selected media count differs');
     for (const file of group.files) {
       const matches = assets.filter(a => a.attributes?.fileName === file.name);
-      check(matches.length === 1 && matches[0].attributes.sourceFileChecksum === file.md5, 'Selected media identity/checksum readback differs');
+      check(matches.length === 1, 'Selected media identity readback differs');
       const state = matches[0].attributes.assetDeliveryState?.state;
       if (state === 'UPLOAD_COMPLETE') throw Object.assign(new Error('Selected media is still processing; recheck before submission'), { processing: true });
       check(state === 'COMPLETE', 'Selected media is not COMPLETE');
+      check(matches[0].attributes.sourceFileChecksum === file.md5, 'Selected media checksum readback differs');
     }
     const ordered = group.files.map(file => assets.find(a => a.attributes.fileName === file.name).id);
     check(assets.every((asset, index) => asset.id === ordered[index]), 'Selected media order differs');
