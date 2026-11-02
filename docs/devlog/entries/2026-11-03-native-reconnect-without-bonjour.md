@@ -48,3 +48,48 @@ arm64 using an invocation-local xcconfig: the existing Homebrew Rust installatio
 has no x86_64 target libraries. This does not certify a universal Intel archive.
 The Android stop flag is also observed by discovery, startup and USB recovery,
 so a Compose remount cannot undo an explicit disconnect.
+
+
+The clean-commit Full receipt is
+[`2026-11-02-3507335.json`](verification/receipts/2026-11-02-3507335.json)
+(UTC filename; the owner was testing on November 3 in Korea). All selected
+local automated steps passed, including coverage, both macOS test configurations,
+iOS Release and preview builds, deterministic CloudKit checks, submission assets,
+ESP32 host/simulator/TTGO builds, and isolated packaged-daemon recovery plus a
+60-second soak. Local Keychain opt-in was not granted, so the receipt correctly
+skips Darwin daemon E2E; the PR's Ubuntu daemon E2E and Windows Node 22/24/26
+runtime jobs passed without that access.
+
+Physical acceptance uses owner-signed, in-place Android updates and a development
+signed iPad candidate, with unchanged version/build numbers. The original Android
+APKs were retained and their signing certificates matched the candidate. Evidence
+is kept under the gitignored `diagnostics/local-update-2.0.0/native-reconnect-fix/`.
+Android frame checks filter the normal package PID and require a fresh parsed
+state or session-list event; a model-name dashboard row alone could belong to a
+separately installed QA variant and is not accepted as proof.
+
+Both e-ink apps recovered onto the unchanged Swift host without a client restart,
+retaining their installation-start PIDs. The observed host first exhausted its
+9120 bind retries, served 9121, then reclaimed 9120 after the bind-failure memory
+expired. That took approximately three minutes: the initial 150-second smoke
+window timed out and the extended observation passed. Its final 25-second probe
+is not the duration of the whole handover. No client was relaunched to make the
+check pass.
+
+The run also exposed a separate trust prerequisite: Crema's normal package had a
+stale LAN token and was already approved by the Swift owner, but the Node owner
+refused its per-install identity. The new retry remained active through those
+401s and connected when the approved Swift owner returned. Node reapproval was
+blocked by automatic approval review pending explicit owner consent; no grant,
+credential rotation, QA approval or auth relaxation was applied. iPad candidate
+installation was refused because the device had not been unlocked recently;
+physical acceptance waits for the owner to unlock it. These are recorded as
+pending, not converted into successful end-to-end acceptance by the socket tests.
+
+
+The return to Node also passed for Pantone with its original app PID and a fresh
+parsed session-list frame. The host is restored to Node owning 9120 and the
+unchanged Swift app acting as its client. Crema keeps retrying the Node owner at
+the shared cooldown and still reports an authentication refusal; its Node return
+is not counted as passed. Neither daemon autostart nor the disabled local-main
+deployment workflow was re-enabled.
