@@ -1,11 +1,14 @@
 #include "ui/companion/interaction_state.h"
 #include "state/device_controller_generated.h"
+#include "ui/eink/eink_decision.h"
+#include "net/ws_client.h"
 #include <cassert>
 struct Session {
     char id[32]{}, requestId[40]{}, question[160]{}, promptType[20]{}, state[20]{};
     struct Option { char label[64]{}; unsigned char index{}, recommended{}; } options[6];
     unsigned optionCount{};
     bool answerable{};
+    bool alive{true};
 };
 int main() {
     assert(!DeviceController::answer(true, true, false, false, false, 0, false, false));
@@ -45,4 +48,45 @@ int main() {
     assert(pending.observe(&s, true, 400) == R::RequestChanged);
     pending.begin(displayed, 0xfffffff0u);
     assert(pending.observe<Session>(nullptr, false, 15000) == R::Unconfirmed);
+
+    // E-ink replies carry the displayed session's original option index and
+    // raw question, not the unrelated globally focused session's choices.
+    s.answerable = true; s.requestId[0] = 0;
+    Companion::copy(s.question, "Which \"path\"?\n다음");
+    s.options[1].index = 4;
+    AgentDeckEink::Decision shown; shown.capture(s);
+    auto current = shown;
+    char command[Net::OUTBOUND_MAX_LEN];
+    assert(AgentDeckEink::decisionCommand(shown,current,1,command,sizeof(command)));
+    assert(std::strstr(command,"\"index\":4"));
+    assert(std::strstr(command,"\"sessionId\":\"a\""));
+    assert(std::strstr(command,"\"question\":\"Which \\\"path\\\"?\\n다음\""));
+    Companion::copy(current.request.question,"Replacement");
+    assert(!AgentDeckEink::decisionCommand(shown,current,1,command,sizeof(command)));
+    assert(!command[0]);
+    current = shown; current.request.options[1].index = 2;
+    assert(!AgentDeckEink::decisionCommand(shown,current,1,command,sizeof(command)));
+    current = shown;
+    assert(!AgentDeckEink::decisionCommand(shown,current,1,command,24));
+    assert(!command[0]);
+    s.optionCount = 4; current.capture(s);
+    assert(!current.ready); // no hidden fourth choice
+    s.optionCount = 2; s.answerable = false; current.capture(s);
+    assert(!current.ready);
+    s.answerable = true; Companion::copy(s.requestId,"gate-one");
+    shown.capture(s); current = shown;
+    assert(AgentDeckEink::decisionCommand(shown,current,1,command,sizeof(command)));
+    assert(std::strstr(command,"\"requestId\":\"gate-one\""));
+    assert(std::strstr(command,"\"decision\":\"deny\""));
+    Companion::copy(current.request.requestId,"gate-two");
+    assert(!AgentDeckEink::decisionCommand(shown,current,0,command,sizeof(command)));
+    s.requestId[0] = 0;
+    AgentDeckEink::captureFirstDecision(shown,sessions,2);
+    assert(!std::strcmp(shown.request.id,"a"));
+    assert(shown.request.options[1].index == 4);
+    Companion::copy(s.state,"processing");
+    AgentDeckEink::captureFirstDecision(shown,sessions,2);
+    assert(!std::strcmp(shown.request.id,"b"));
+    AgentDeckEink::captureFirstDecision(shown,sessions,0);
+    assert(!shown.ready);
 }

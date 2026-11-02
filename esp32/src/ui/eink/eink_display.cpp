@@ -55,6 +55,7 @@ void epd_draw_image(LilyEpdRect area, uint8_t* data, int mode);
 #include "ui/companion/dot_companion.h"
 #include "ui/creature_glyph_selection.h"
 #include "ui/eink/eink_dashboard_layout.h"
+#include "ui/eink/eink_decision.h"
 #include "ui/eink/epd47_diff.h"
 #include "ui/eink/epd47_page_policy.h"
 #include "ui/eink/epd47_refresh_policy.h"
@@ -387,7 +388,8 @@ struct Snap {
     uint8_t rowCount;
     uint8_t totalSessions;
     RowSnap rows[MAX_ROWS];
-    // Focused-session options (global — shown on the first awaiting card)
+    // First awaiting session's own request; never the globally focused options.
+    AgentDeckEink::Decision decision;
     uint8_t optionCount;
     char options[3][36];
     // Usage
@@ -513,9 +515,11 @@ void snapshot(Snap& s) {
         strncpy(peer.state,code==2 ? "processing" : code==3 ? "awaiting_option" : code==5 ? "error" : "idle",sizeof(peer.state)-1);
         strncpy(peer.activity,DotSurfaceRules::labels[code],sizeof(peer.activity)-1);peer.alive=true;s.totalSessions++;
     }
-    s.optionCount = g_state.optionCount < 3 ? g_state.optionCount : 3;
+    AgentDeckEink::captureFirstDecision(s.decision, g_state.sessions,
+        g_state.sessionCount < MAX_ROWS ? g_state.sessionCount : MAX_ROWS);
+    s.optionCount = s.decision.ready ? s.decision.request.count : 0;
     for (uint8_t i = 0; i < s.optionCount; i++)
-        strncpy(s.options[i], g_state.options[i].label, sizeof(s.options[i]) - 1);
+        strncpy(s.options[i], s.decision.request.options[i].label, sizeof(s.options[i]) - 1);
     s.fiveH = g_state.fiveHourPercent;
     s.sevenD = g_state.sevenDayPercent;
     strncpy(s.fiveReset, g_state.fiveHourReset, sizeof(s.fiveReset) - 1);
@@ -1681,9 +1685,20 @@ int primarySession(const Snap& s) {
 }
 
 uint32_t displayedDecisionHash = 0;
+// UI-task-owned fixed storage (~484 bytes); retained until the next frame is
+// admitted, so a late key cannot answer a different request with similar text.
+AgentDeckEink::Decision displayedDecision;
 
 uint32_t decisionHash(const Snap& s) {
     uint32_t h = 2166136261u;
+    h = fnvStr(h, s.decision.request.id);
+    h = fnvStr(h, s.decision.request.requestId);
+    h = fnvStr(h, s.decision.request.question);
+    h = fnv(h, &s.decision.ready, sizeof(s.decision.ready));
+    for (unsigned i = 0; i < s.decision.request.count; ++i) {
+        h = fnvStr(h, s.decision.request.options[i].label);
+        h = fnv(h, &s.decision.request.options[i].index, sizeof(s.decision.request.options[i].index));
+    }
     for (uint8_t i = 0; i < s.rowCount; i++) {
         if (!isAwaiting(s.rows[i].state)) continue;
         h = fnvStr(h, s.rows[i].id);
@@ -1699,10 +1714,11 @@ bool sendDecisionSelection(const Snap& s, uint8_t selection) {
     const int awaiting = primarySession(s, AgentDeckEink::StatusKind::Attention);
     if (awaiting < 0 || !strcmp(s.rows[awaiting].agentType,"dot") || s.optionCount == 0 || selection >= s.optionCount ||
         !displayedDecisionHash || decisionHash(s) != displayedDecisionHash) return false;
-    char command[112];
-    snprintf(command, sizeof(command),
-             "{\"type\":\"select_option\",\"index\":%u,\"sessionId\":\"%s\"}",
-             (unsigned)selection, s.rows[awaiting].id);
+    // One UI task composes commands. Reuse this 320-byte buffer rather than
+    // adding it to the render task's bounded stack or allocating on each press.
+    static char command[Net::OUTBOUND_MAX_LEN];
+    if (!AgentDeckEink::decisionCommand(displayedDecision, s.decision, selection,
+                                      command, sizeof(command))) return false;
     Net::queueOutbound(command);
     return true;
 }
@@ -2769,7 +2785,7 @@ void drawDecisionFace(const Snap& s) {
     drawAgentGlyph(r.agentType, pad, 138, 56, &s.dot);
     smartTextAt(102, 170, r.name, &FreeSansBold12pt7b);
     drawParagraph(102, 208, W - 130, 30, 3,
-                  r.question[0] ? r.question : "Agent is waiting for your decision.",
+                  s.decision.request.question[0] ? s.decision.request.question : "Agent is waiting for your decision.",
                   &FreeSansBold18pt7b);
     constexpr int16_t optionY = 298;
     constexpr int16_t optionH = 46;
@@ -2831,7 +2847,7 @@ void drawDecisionFace(const Snap& s) {
     const int questionLines = W <= 420 ? (compact ? 2 : 3) : 5;
     int used = drawParagraph(pad, top + (W <= 420 ? 50 : 62), W - pad * 2,
                              W <= 420 ? 24 : 30, questionLines,
-                             r.question[0] ? r.question : "Agent is waiting for your decision.",
+                             s.decision.request.question[0] ? s.decision.request.question : "Agent is waiting for your decision.",
                              W <= 420 ? &FreeSansBold12pt7b : &FreeSansBold18pt7b);
     int16_t oy = top + (W <= 420 ? (compact ? 42 : 62) : 78) + used * (W <= 420 ? 24 : 30);
     for (uint8_t o = 0; o < options && oy < H - 48; o++) {
@@ -3449,13 +3465,12 @@ void update(float /*dt*/) {
                 interactiveLeaseUntilMs = now + FACE_HOLD_MS;
                 keyHandled = true;
             } else if (key2Pressed) {
-                if (decisionSnap.optionCount > 0) {
-                    sendDecisionSelection(decisionSnap, nmDecisionSelection);
+                if (decisionSnap.optionCount > 0 && sendDecisionSelection(decisionSnap, nmDecisionSelection)) {
+                    suppressedDecisionHash = lastDecisionHash;
+                    manualFace = PaperFace::Glance;
+                    faceHoldUntilMs = 0;
+                    interactiveLeaseUntilMs = 0;
                 }
-                suppressedDecisionHash = lastDecisionHash;
-                manualFace = PaperFace::Glance;
-                faceHoldUntilMs = 0;
-                interactiveLeaseUntilMs = 0;
                 keyHandled = true;
             }
         }
@@ -3470,12 +3485,11 @@ void update(float /*dt*/) {
                 faceHoldUntilMs = now + FACE_HOLD_MS;
                 keyHandled = true;
             } else if (key2Pressed) {
-                if (decisionSnap.optionCount > 0) {
-                    sendDecisionSelection(decisionSnap, inkDecisionSelection);
+                if (decisionSnap.optionCount > 0 && sendDecisionSelection(decisionSnap, inkDecisionSelection)) {
+                    suppressedDecisionHash = lastDecisionHash;
+                    manualFace = PaperFace::Glance;
+                    faceHoldUntilMs = 0;
                 }
-                suppressedDecisionHash = lastDecisionHash;
-                manualFace = PaperFace::Glance;
-                faceHoldUntilMs = 0;
                 keyHandled = true;
             }
         }
@@ -3834,6 +3848,8 @@ void render() {
 #endif
 
     displayedDecisionHash = renderFace == PaperFace::Decision ? decisionHash(s) : 0;
+    if (renderFace == PaperFace::Decision) displayedDecision = s.decision;
+    else displayedDecision.ready = false;
     lastHash = h;
     lastPaintedFace = renderFace;
     lastAquariumAttention = aquariumAttention;
