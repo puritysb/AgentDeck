@@ -25,5 +25,14 @@
     }
   ],
   "evidence": "Current production key/dial renderer output with fictional sessions. Ulanzi photo and app context panels reuse retained historical captures and are not physical 2.0 acceptance. No D200X encoder claim.",
-  "iconPolicy": "288px transparent icon uses renderAppIcon fixed-point area sampling from the #661 canonical master."
+  "iconPolicy": "288px transparent icon uses renderAppIcon fixed-point area sampling from the #661 canonical master.",
+  "video": {
+    "file": "docs/media/current/agentdeck-200-product-tour.mp4",
+    "bytes": 6132346,
+    "sha256": "6ee89371032cfb7c5f44543f332d34e6b01dd53066d2967504fac625b8c45661",
+    "dimensions": "1920x1080",
+    "durationSeconds": 144.033333,
+    "context": "Whole product tour with optional app, companion and display views; not physical Stream Deck acceptance.",
+    "portalLimitBytes": 50000000
+  }
 }

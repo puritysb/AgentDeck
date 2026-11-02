@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "tier": "full",
+  "started_at": "2026-11-02T10:35:02.127Z",
+  "finished_at": "2026-11-02T10:59:25.189Z",
+  "duration_ms": 1463062,
+  "commit": "6c11fc8fe071abd915061d76bfbfcf295f05ce78",
+  "dirty": false,
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v26.5.0"
+  },
+  "result": "pass",
+  "steps": [
+    {
+      "id": "version",
+      "gate": "typecheck",
+      "name": "Version sync",
+      "status": "pass",
+      "duration_ms": 369
+    },
+    {
+      "id": "build",
+      "gate": "typecheck",
+      "name": "Build every workspace package",
+      "status": "pass",
+      "duration_ms": 7539
+    },
+    {
+      "id": "typecheck",
+      "gate": "typecheck",
+      "name": "Strict type check",
+      "status": "pass",
+      "duration_ms": 4057
+    },
+    {
+      "id": "eslint",
+      "gate": "eslint",
+      "name": "ESLint error ratchet",
+      "status": "pass",
+      "duration_ms": 6732
+    },
+    {
+      "id": "vitest-coverage",
+      "gate": "vitest",
+      "name": "Vitest, whole suite + coverage floor",
+      "status": "pass",
+      "duration_ms": 43914
+    },
+    {
+      "id": "e2e",
+      "gate": "daemon-e2e",
+      "name": "Daemon hub end-to-end",
+      "status": "pass",
+      "duration_ms": 33602
+    },
+    {
+      "id": "protocol-drift",
+      "gate": "typecheck",
+      "name": "Generated protocol types match protocol.ts",
+      "status": "pass",
+      "duration_ms": 6486
+    },
+    {
+      "id": "preview-mirror",
+      "gate": "typecheck",
+      "name": "Preview mirror SYNC-HASH pins",
+      "status": "pass",
+      "duration_ms": 259
+    },
+    {
+      "id": "tokens",
+      "gate": "design-docs",
+      "name": "Design token mirrors",
+      "status": "pass",
+      "duration_ms": 1196
+    },
+    {
+      "id": "design-lint",
+      "gate": "design-docs",
+      "name": "Design-lint ratchet",
+      "status": "pass",
+      "duration_ms": 1928
+    },
+    {
+      "id": "docs",
+      "gate": "design-docs",
+      "name": "Markdown links, anchors and the AGENTS.md budget",
+      "status": "pass",
+      "duration_ms": 485
+    },
+    {
+      "id": "design-catalog",
+      "gate": "design-docs",
+      "name": "Design-system catalog and translations",
+      "status": "pass",
+      "duration_ms": 403
+    },
+    {
+      "id": "devlog",
+      "gate": "design-docs",
+      "name": "Development-log entries",
+      "status": "pass",
+      "duration_ms": 424
+    },
+    {
+      "id": "pages-parity",
+      "gate": "design-docs",
+      "name": "Board table, GNB, spec-card and surface-count parity",
+      "status": "pass",
+      "duration_ms": 184
+    },
+    {
+      "id": "android",
+      "gate": "android-unit",
+      "name": "Android compile + JUnit + Robolectric",
+      "status": "pass",
+      "duration_ms": 967
+    },
+    {
+      "id": "apple-macos",
+      "gate": "apple-unit",
+      "name": "macOS app build + XCTest",
+      "status": "pass",
+      "duration_ms": 268217
+    },
+    {
+      "id": "apple-macos-release",
+      "gate": "apple-unit",
+      "name": "macOS Store Release build + Dot exclusion",
+      "status": "pass",
+      "duration_ms": 196420
+    },
+    {
+      "id": "apple-ios",
+      "gate": "apple-unit",
+      "name": "iOS app build (simulator, unsigned)",
+      "status": "pass",
+      "duration_ms": 51809
+    },
+    {
+      "id": "apple-dot-macos",
+      "gate": "apple-unit",
+      "name": "macOS DotPreview optimized build + XCTest + artifact boundary",
+      "status": "pass",
+      "duration_ms": 446766
+    },
+    {
+      "id": "apple-dot-ios",
+      "gate": "apple-unit",
+      "name": "iOS DotPreview optimized build + artifact boundary",
+      "status": "pass",
+      "duration_ms": 111208
+    },
+    {
+      "id": "apple-cloudkit-macos",
+      "gate": "apple-unit",
+      "name": "macOS CloudKit PoC deterministic persistence + transport XCTest",
+      "status": "pass",
+      "duration_ms": 14136
+    },
+    {
+      "id": "apple-cloudkit-ios",
+      "gate": "apple-unit",
+      "name": "iOS CloudKit PoC unsigned companion build",
+      "status": "pass",
+      "duration_ms": 8333
+    },
+    {
+      "id": "apple-submission",
+      "gate": "apple-unit",
+      "name": "App Store submission bundle limits",
+      "status": "pass",
+      "duration_ms": 5038
+    },
+    {
+      "id": "esp32-host",
+      "gate": "esp32-host-policy",
+      "name": "ESP32 host policy assertions",
+      "status": "pass",
+      "duration_ms": 6892
+    },
+    {
+      "id": "esp32-sim",
+      "gate": "esp32-sim",
+      "name": "ESP32 simulator builds and resident/input checks",
+      "status": "pass",
+      "duration_ms": 62750
+    },
+    {
+      "id": "esp32-ttgo",
+      "gate": "esp32-ttgo",
+      "name": "ESP32 TTGO target build",
+      "status": "pass",
+      "duration_ms": 53358
+    },
+    {
+      "id": "npm-packaged",
+      "gate": "npm-candidate-acceptance",
+      "name": "Clean npm candidate package acceptance",
+      "status": "pass",
+      "duration_ms": 129347
+    },
+    {
+      "id": "windows-runtime",
+      "gate": "windows-runtime",
+      "name": "Windows native runtime",
+      "status": "skip",
+      "reason": "needs Windows (ci.yml › windows-native-runtime runs this on Node 22, 24 and 26 for every pull request)"
+    },
+    {
+      "id": "esp32-robot",
+      "gate": "esp32-robot",
+      "name": "ESP32 boards: flash, boot, serial protocol, performance",
+      "status": "skip",
+      "attested": true,
+      "note": "Owner accepted code review for 2.0 on 2026-11-02"
+    },
+    {
+      "id": "device-deploy",
+      "gate": "device-deploy",
+      "name": "Build-and-deploy smoke on real devices",
+      "status": "skip",
+      "attested": true,
+      "note": "Owner accepted code review for 2.0 on 2026-11-02"
+    },
+    {
+      "id": "swift-codex-live",
+      "gate": "swift-codex-live",
+      "name": "Sandboxed Swift Codex live acceptance",
+      "status": "skip",
+      "attested": true,
+      "note": "Owner accepted code review for 2.0 on 2026-11-02"
+    },
+    {
+      "id": "daemon-lifecycle-live",
+      "gate": "daemon-lifecycle-live",
+      "name": "Signed Swift and Node lifecycle acceptance",
+      "status": "skip",
+      "attested": true,
+      "note": "Owner accepted code review for 2.0 on 2026-11-02"
+    }
+  ]
+}

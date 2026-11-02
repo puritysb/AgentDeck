@@ -134,6 +134,42 @@ recording each channel's exact uploaded and review state separately. A submitted
 build is not a public release, and the #635 reporter follow-up waits for exact
 public corrected-build links.
 
+#### 2.0.0 final software verification 2026-11-02
+
+Frozen application source `6c11fc8fe071abd915061d76bfbfcf295f05ce78` passed the
+[clean full-tier receipt](verification/receipts/2026-11-02-6c11fc8.json) in
+**24 min 23 s** (`dirty: false`). This includes the coverage floor, isolated
+Daemon E2E, Android, seven Apple configurations, Store media limits, ESP32 host,
+simulator and TTGO builds, and clean npm package acceptance. Quick verification
+passed 7,318 tests with 42 intentional skips; ASC delivery regressions passed 98.
+Windows is not available on the local host; the PR's Node 22/24/26 Windows jobs
+passed. Hosted CI completed 14 checks successfully. The optimized DotPreview
+job hit its 30-minute execution limit after its log recorded 1,534 tests,
+12 skips, zero failures, `Test Succeeded`, and a verified compiled boundary.
+Its check remains CANCELLED, not a green result. The exact configuration also
+passed both local native and final full runs. A separate infrastructure follow-up
+prepares a 45-minute budget for that job without removing checks. The four physical/live lab gates explicitly record the owner's 2.0
+code-review waiver and are not physical-device passes.
+
+The recent #644/#658 native captures/product tour and #661 canonical icon are
+retained. The clean media/product-tour/icon worktrees contain no newer uncommitted
+submission assets; the product-tour and icon branches were squash-merged, and
+their published binary assets match master. The selected mobile previews are
+unchanged; the Mac preview uses native overview/context/Collaboration only.
+Source logs, raw capture references, signed Android artifacts and the report are
+preserved privately under `diagnostics/release-2.0.0-6c11fc8f/`.
+
+The receipt follow-up changes no application/runtime inputs or Apple submission
+copy/media. It aligns the Elgato description to the official 1,500-character
+limit (1,384 characters with AI-assistance disclosure) and selects the existing
+6.13 MB product tour within the Maker Console's observed **50 MB** video limit
+(the public guideline still says 250 MB). See the
+[Elgato selection](marketplace/elgato/2.0.0/media-selection.json) and
+[official product guidelines](https://docs.elgato.com/guidelines/products/).
+
+This records verification and preparation only. Build, upload, submission and
+public availability must still be read back and recorded separately below.
+
 The owner selected **2.0.0 as the next coordinated product release** on November
 2. This is an integration target, not a submitted or published version. Collect
 completed improvements on `master`, let the remaining workstreams finish, then
