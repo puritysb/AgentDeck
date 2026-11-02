@@ -3,10 +3,6 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Reduce CPU-specific resampling differences. Transparent RGB is compared by
-// its visible contribution below, with a one-level 8-bit rounding allowance.
-sharp.simd(false);
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apple = 'apple/AgentDeck/Resources/Assets.xcassets';
 const android = 'android/app/src/main/res';
@@ -31,36 +27,51 @@ export const appIconExports = [
   { path: `${ulanzi}/categoryIcon.png`, size: 196 },
 ];
 
-export async function renderAppIcon(entry, base = root) {
-  const css = await readFile(resolve(base, 'design/tokens.css'), 'utf8');
-  const background = css.match(/--ink-900:\s*(#[0-9a-f]{6})/i)?.[1];
-  if (!background) throw new Error('Missing --ink-900 icon background token');
-  let image = sharp(resolve(base, 'design/brand/agentdeck-icon.png'));
-  // Flatten before reduction so the edge antialiasing matches the final plate.
-  if (entry.opaque) image = image.flatten({ background }).removeAlpha();
-  return image.resize(entry.size, entry.size, { fit: 'contain' }).png().toBuffer();
-}
-
-// RGB underneath zero alpha is not artwork. Check both black and white plates;
-// every background between them is bounded too. Keep the allowance at 1/255,
-// rather than permitting a fraction of arbitrarily different pixels.
-export function compareIconPixels(actual, expected) {
-  if (actual.length !== expected.length || actual.length % 4) return { matches: false };
-  let maxVisibleDeltaUnits = 0;
-  let maxAlphaDelta = 0;
-  let maxRawDelta = 0;
-  for (let i = 0; i < actual.length; i += 4) {
-    const a = actual[i + 3];
-    const b = expected[i + 3];
-    maxAlphaDelta = Math.max(maxAlphaDelta, Math.abs(a - b));
-    for (let channel = 0; channel < 3; channel++) {
-      const delta = actual[i + channel] * a - expected[i + channel] * b;
-      maxRawDelta = Math.max(maxRawDelta, Math.abs(actual[i + channel] - expected[i + channel]));
-      maxVisibleDeltaUnits = Math.max(maxVisibleDeltaUnits, Math.abs(delta), Math.abs(delta - (a - b) * 255));
+// Fixed-point area resampling: source pixels span `size` units and output
+// pixels span `sourceSize` units. Overlap weights and premultiplied colour sums
+// are integers, so ARM/x86 and libvips versions produce identical pixels.
+// Alpha-zero RGB contributes nothing. All exports are reductions of the master.
+export function resizeIconPixels(source, sourceSize, size, background) {
+  if (!Number.isInteger(size) || size < 1 || size > sourceSize || source.length !== sourceSize * sourceSize * 4) {
+    throw new Error('Icon export must be a square reduction of RGBA master pixels');
+  }
+  const channels = background ? 3 : 4;
+  const output = Buffer.alloc(size * size * channels);
+  const area = sourceSize * sourceSize;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const sums = [0, 0, 0, 0];
+      for (let sy = Math.floor(y * sourceSize / size); sy < Math.ceil((y + 1) * sourceSize / size); sy++) {
+        const wy = Math.min((sy + 1) * size, (y + 1) * sourceSize) - Math.max(sy * size, y * sourceSize);
+        for (let sx = Math.floor(x * sourceSize / size); sx < Math.ceil((x + 1) * sourceSize / size); sx++) {
+          const wx = Math.min((sx + 1) * size, (x + 1) * sourceSize) - Math.max(sx * size, x * sourceSize);
+          const i = (sy * sourceSize + sx) * 4;
+          const alphaWeight = source[i + 3] * wx * wy;
+          sums[3] += alphaWeight;
+          for (let c = 0; c < 3; c++) sums[c] += source[i + c] * alphaWeight;
+        }
+      }
+      const index = (y * size + x) * channels;
+      for (let c = 0; c < 3; c++) {
+        output[index + c] = background
+          ? Math.round((sums[c] + background[c] * (255 * area - sums[3])) / (255 * area))
+          : sums[3] ? Math.round(sums[c] / sums[3]) : 0;
+      }
+      if (!background) output[index + 3] = Math.round(sums[3] / area);
     }
   }
-  return { matches: maxAlphaDelta <= 1 && maxVisibleDeltaUnits <= 255,
-    maxVisibleDelta: maxVisibleDeltaUnits / 255, maxAlphaDelta, maxRawDelta };
+  return output;
+}
+
+export async function renderAppIcon(entry, base = root) {
+  const css = await readFile(resolve(base, 'design/tokens.css'), 'utf8');
+  const token = css.match(/--ink-900:\s*(#[0-9a-f]{6})/i)?.[1];
+  if (!token) throw new Error('Missing --ink-900 icon background token');
+  const background = entry.opaque ? [1, 3, 5].map(i => parseInt(token.slice(i, i + 2), 16)) : undefined;
+  const { data, info } = await sharp(resolve(base, 'design/brand/agentdeck-icon.png')).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  if (info.width !== info.height) throw new Error('Icon master must be square');
+  const pixels = resizeIconPixels(data, info.width, entry.size, background);
+  return sharp(pixels, { raw: { width: entry.size, height: entry.size, channels: entry.opaque ? 3 : 4 } }).png().toBuffer();
 }
 
 export async function generateAppIcons({ check = false, base = root } = {}) {
@@ -74,14 +85,8 @@ export async function generateAppIcons({ check = false, base = root } = {}) {
         const metadata = await actual.metadata();
         const pixels = await actual.ensureAlpha().raw().toBuffer();
         const expectedPixels = await sharp(expected).ensureAlpha().raw().toBuffer();
-        const comparison = compareIconPixels(pixels, expectedPixels);
         if (metadata.width !== entry.size || metadata.height !== entry.size ||
-            Boolean(metadata.hasAlpha) === Boolean(entry.opaque) ||
-            (entry.opaque ? !pixels.equals(expectedPixels) : !comparison.matches)) {
-          stale.push(`${entry.path} (${JSON.stringify(comparison)})`);
-        } else if (!pixels.equals(expectedPixels)) {
-          console.log(`Icon rounding: ${entry.path} ${JSON.stringify(comparison)}`);
-        }
+            Boolean(metadata.hasAlpha) === Boolean(entry.opaque) || !pixels.equals(expectedPixels)) stale.push(entry.path);
       } catch { stale.push(entry.path); }
     } else {
       await mkdir(dirname(path), { recursive: true });

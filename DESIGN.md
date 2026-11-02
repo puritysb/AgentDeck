@@ -544,6 +544,8 @@ of the original 640² illustration; its prompt chain and input hash live in
 `design/brand/agentdeck-icon.recipe.json`. Run `pnpm generate-app-icons` to export
 all active app, web and full-colour plugin copies. Apple launcher exports are
 opaque on `--ink-900`; Android's existing PNG launcher fallback stays transparent.
+Fixed-point area reduction keeps decoded export pixels identical across build
+hosts; transparent colours are averaged by alpha coverage.
 The refinement does not add new adaptive, dark or tinted launcher modes. Historical
 marketplace releases, hardware photographs and archived videos keep their original
 artwork. Do not upsample a consumer copy to create a new master.

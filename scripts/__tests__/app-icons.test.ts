@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { appIconExports, compareIconPixels, generateAppIcons } from '../generate-app-icons.mjs';
+import { appIconExports, resizeIconPixels, generateAppIcons } from '../generate-app-icons.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 
@@ -24,13 +24,20 @@ describe('AgentDeck app icon exports', () => {
     await expect(generateAppIcons({ check: true })).resolves.toBe(appIconExports.length);
   }, 30_000);
 
-  it('ignores invisible RGB and bounds visible rounding on light and dark backgrounds', () => {
-    expect(compareIconPixels(Buffer.from([255, 120, 80, 0]), Buffer.from([0, 0, 0, 0])).matches).toBe(true);
-    expect(compareIconPixels(Buffer.from([100, 100, 100, 255]), Buffer.from([101, 100, 100, 255])).matches).toBe(true);
-    expect(compareIconPixels(Buffer.from([100, 100, 100, 255]), Buffer.from([102, 100, 100, 255])).matches).toBe(false);
-    // On black these two are equal; the white plate exposes the lost alpha.
-    expect(compareIconPixels(Buffer.from([0, 0, 0, 0]), Buffer.from([0, 0, 0, 2])).matches).toBe(false);
-    expect(compareIconPixels(Buffer.from([255, 0, 0, 128]), Buffer.from([0, 0, 0, 128])).matches).toBe(false);
+  it('averages colour by coverage without bleeding invisible RGB into transparent edges', () => {
+    const pixels = Buffer.from([255,0,0,255, 0,255,0,0, 0,0,255,255, 0,255,0,0]);
+    expect([...resizeIconPixels(pixels, 2, 1)]).toEqual([128, 0, 128, 128]);
+    expect([...resizeIconPixels(pixels, 2, 1, [0, 0, 0])]).toEqual([64, 0, 64]);
+    expect([...resizeIconPixels(pixels, 2, 1, [255, 255, 255])]).toEqual([191, 128, 191]);
+  });
+
+  it('uses exact area weights at fractional reduction ratios and refuses enlargement', () => {
+    const row = [0,0,0,255, 120,120,120,255, 240,240,240,255];
+    const pixels = Buffer.from([...row, ...row, ...row]);
+    expect([...resizeIconPixels(pixels, 3, 2)]).toEqual([
+      40,40,40,255, 200,200,200,255, 40,40,40,255, 200,200,200,255,
+    ]);
+    expect(() => resizeIconPixels(pixels, 3, 4)).toThrow('reduction');
   });
 
   it('covers every configured Apple app icon slot and Android launcher density', () => {
