@@ -108,6 +108,19 @@ describe('codex OTLP span parser', () => {
     expect(events).toEqual([{ kind: 'turnStart', threadId: THREAD, turnId: 't1', cwd: '/repo/app' }]);
   });
 
+  it('keeps untrusted attribute names as data and preserves span-over-resource precedence', () => {
+    const otherThread = '019dee40-5555-7aaa-bbbb-ccccddddeeee';
+    const dangerousNames = JSON.parse('{"__proto__":"ignored","constructor":"ignored","prototype":"ignored","toString":"not-callable","hasOwnProperty":"not-callable"}') as Record<string, AttrValue>;
+    const events = parseCodexSpans(envelope([
+      { name: 'codex.turn.start', attributes: { ...dangerousNames, 'thread.id': otherThread, 'turn.id': 'span-turn', cwd: '/span' } },
+      { name: 'codex.turn.end', attributes: { ...dangerousNames, 'thread.id': otherThread } },
+    ], { ...dangerousNames, 'thread.id': THREAD, 'turn.id': 'resource-turn', cwd: '/resource' }));
+    expect(events).toEqual([
+      { kind: 'turnStart', threadId: otherThread, turnId: 'span-turn', cwd: '/span' },
+      { kind: 'turnEnd', threadId: otherThread, turnId: 'resource-turn' },
+    ]);
+  });
+
   it('drops unknown spans and spans with no identity at all', () => {
     expect(parseCodexSpans(envelope([{ name: 'garbage.collect', attributes: { 'thread.id': THREAD } }]))).toEqual([]);
     expect(parseCodexSpans(envelope([{ name: 'codex.turn.start' }]))).toEqual([]);

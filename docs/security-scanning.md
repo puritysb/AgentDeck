@@ -269,11 +269,11 @@ stuck execution and unavailable GitHub evidence fail the checker. Receipts and
 summaries are retained for 30 days. The watchdog cannot guarantee delivery by
 GitHub's scheduler; PR/push/manual runs supply additional detection points.
 
-Hosted Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
+Initial promotion: Kotlin CodeQL run 41628618438 and freshness run 41628618531 succeeded.
 Their exact check contexts were added to master protection with the existing
 eleven checks preserved (13 total), strict up-to-date checks and administrator
-enforcement retained. Readback verified the applied list. Swift remains gated
-on completed hosted extraction before promotion.
+enforcement retained. Readback verified that intermediate list. Swift was
+left unrequired pending hosted validation; the completed follow-up is below.
 
 ## Per-alert response ledger (November 3 follow-up)
 
@@ -296,11 +296,11 @@ does not establish complete framework/SDK resolution or advisory coverage.
 that gap and deferred major migrations for November 17 review; existing Rust
 maintenance exceptions expire December 1. No Snyk integration is claimed.
 
-At this checkpoint, the candidate npm audit has zero production matches and one
+At the initial ledger snapshot, the candidate npm audit had zero production matches and one
 low development-only deepmerge version match with a tested local mitigation.
-Android's compatible OkHttp 4.12.1 security backport is being validated separately
-from the proposed 5.x migration. Native CodeQL Kotlin analysis passed; completed
-Swift hosted extraction and the first scheduled event remain to be verified.
+The compatible OkHttp 4.12.1 backport was then being validated separately from
+the 5.x proposal. Kotlin analysis had passed, while Swift extraction and the
+first scheduled event were unverified. The completed follow-up is below.
 The freshness watchdog's hosted check passed; manual and push runs do not prove
 a cron event occurred. Product release and physical device acceptance remain
 separate delivery work.
@@ -336,3 +336,22 @@ language jobs also passed. All eight exact analysis checks are now required,
 with the previous thirteen checks preserved (15 total). Readback verified the
 list and strict up-to-date policy. The default-branch inventory must still be
 read after merge; a PR result does not substitute for that inventory.
+
+### Master reconciliation after #712
+
+The [post-merge checkpoint](../security/reports/2026-11-03-master-response.json)
+records 77 of the 266 baseline fingerprints marked fixed, three individually
+dismissed and 186 still open on `05a9bef6`. Six of the original 185 manual
+proposals were automatically marked fixed after source changes, so they are
+removed from the current proposal list. Two reviewed intentional/custom-limiter
+paths and the new SSE fingerprint #302 are included; the current manual proposal
+contains 182 open IDs. No bulk dismissal was performed.
+
+Five remaining OTLP dynamic-write findings receive a Map container follow-up.
+The earlier null-prototype object and reserved-name checks mitigate pollution,
+but Maps make arbitrary keys data throughout resource/span merging and lookup.
+Actual parser tests preserve malicious-name handling and span/resource
+precedence. Quick checks passed with 7,562 tests and 42 skips. Default-branch
+scanner closure of those five candidates remains to be read after merge.
+Native master analysis is tracked separately from the completed eight-category
+PR analysis; the checkpoint retains each job's actual state.

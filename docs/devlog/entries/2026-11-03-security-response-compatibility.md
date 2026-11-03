@@ -85,3 +85,23 @@ uses OkHttp's standard hostname verifier. Android dependencyInsight resolved
 4.12.1; 576 JUnit tests in 61 suites passed, and quick checks passed with 7,561
 tests and 42 platform skips. No installed app or device was updated.
 Source: [upstream advisory](https://publicobject.com/2026/10/20/mitigating-bad-roots-in-okhttp/).
+
+PR #712 passed all 29 checks, including actual Kotlin and both Swift target
+extractions. Its PR view had no open alerts. The full default-branch scan on
+05a9bef6 then marked 77 of the 266 baseline fingerprints fixed and retained
+three earlier individual dismissals; 186 baseline alerts remained open.
+This is another reason to preserve the branch/range distinction.
+
+Six originally proposed manual closures became fixed automatically. Five OTLP
+dynamic writes remained flagged despite the null-prototype/reserved-key
+mitigation; the follow-up uses Map throughout attribute storage/merging. Two
+remaining intentional/custom-admission paths and new SSE fingerprint #302
+belong in manual review. The reconciled proposal contains 182 open IDs, not
+the initial 185. No bulk or split dismissal was performed after automatic
+approval review rejected the operation. Fingerprint counts are not counts of
+independent product vulnerabilities.
+
+The [dated checkpoint](security/reports/2026-11-03-master-response.json) retains
+source locations, actual states, review reasoning and pending master jobs.
+The [readable list](security/reports/2026-11-03-review-closures.md) mirrors the
+current proposal; the earlier 266-row receipt remains historical.
