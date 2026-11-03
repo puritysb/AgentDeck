@@ -105,9 +105,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
     // Native 3D aquarium preview; pin all Filament components to one ABI.
-    implementation("com.google.android.filament:filament-android:1.75.1")
-    implementation("com.google.android.filament:gltfio-android:1.75.1")
-    implementation("com.google.android.filament:filament-utils-android:1.75.1")
+    implementation("com.google.android.filament:filament-android:1.77.3")
+    implementation("com.google.android.filament:gltfio-android:1.77.3")
+    implementation("com.google.android.filament:filament-utils-android:1.77.3")
 
     // Networking
     implementation("com.squareup.okhttp3:okhttp:4.12.1")
