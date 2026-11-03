@@ -63,6 +63,8 @@ export type TakeoverOutcome =
   | 'proceed'
   /** Our own daemon is already serving this port; exit 0. */
   | 'already-running'
+  /** The foreground worker must capture and negotiate before it binds. */
+  | 'deferred-to-foreground'
   /** The user asked for a port we must not take. Exit 1 with the reason. */
   | 'refuse';
 
@@ -106,6 +108,9 @@ export async function negotiateIncumbentDaemon(
      *  Default true: `daemon start` is a request for this build to be the one
      *  serving the port. `--no-upgrade` turns it off. */
     replaceStaleBuild?: boolean;
+    /** A background launcher must not stand Swift down before its worker
+     *  starts: the worker needs the live peer's timeline for admission. */
+    deferSwiftHandover?: boolean;
   },
   deps: TakeoverDeps,
 ): Promise<TakeoverOutcome> {
@@ -139,6 +144,8 @@ export async function negotiateIncumbentDaemon(
     log(`Could not confirm which user owns the daemon on port ${port} (it reports no pid) — `
       + `proceeding as if it were yours.`);
   }
+
+  if (incumbent.isSwift && args.deferSwiftHandover) return 'deferred-to-foreground';
 
   // Take over the fleet's credential along with the port. The app's daemon
   // keeps its token inside its sandbox container, unreadable from here, so
