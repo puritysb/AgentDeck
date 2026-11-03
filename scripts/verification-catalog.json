@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, the five existing CodeQL jobs plus hosted-validated Kotlin analysis, the CodeQL result check and hosted-validated security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Swift jobs are promoted only after completed hosted validation."
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Kotlin and both Swift target analyses completed successfully before promotion."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -1117,7 +1117,7 @@
       "job": "swift",
       "trigger": "Every PR, master push, weekly and manual",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
       "proves": [
         "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."

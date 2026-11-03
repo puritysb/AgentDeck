@@ -304,3 +304,35 @@ Swift hosted extraction and the first scheduled event remain to be verified.
 The freshness watchdog's hosted check passed; manual and push runs do not prove
 a cron event occurred. Product release and physical device acceptance remain
 separate delivery work.
+
+### Resolved Android runtime follow-up
+
+The [dated Android receipt](../security/reports/2026-11-03-android-runtime.json)
+resolves both runtime classpaths offline, explicitly rejects unresolved graph
+edges and excludes project components. The 136 unique external Maven
+coordinates had no OSV matches. A known-vulnerable Guava version produced three
+advisories as a control, while the earlier OkHttp 4.12.0 still produced none at
+that checkpoint. Upstream release-note review independently identified the
+certificate backport; the database result does not remove that requirement.
+AAR-internal native code and OS/device versions remain outside this scope.
+CI automation of the dated collection remains assigned in #713.
+
+The [readable manual-closure list](../security/reports/2026-11-03-review-closures.md)
+contains the exact alert IDs and source reasons from the review ledger. It is
+a proposal awaiting approval, not a completed dismissal record. Reconcile
+GitHub state again after master analysis before acting on that list.
+
+Final source-head verification at `1083235e`: quick checks passed with 7,561
+tests and 42 skips. Local macOS Debug passed 1,516 cases with five skips; the
+optimized preview suite passed 1,536 cases with 12 skips, both with zero
+failures. macOS universal Release and both iOS configurations built. The
+preliminary universal build failure was a missing Intel Rust standard library;
+a checksum-verified temporary 1.90.0 toolchain supplied the missing target.
+The original sandbox/target failures remain distinct from the permitted passes.
+
+Both Swift target analyses in run 41634861851 completed successfully on head
+`1083235e`; the iOS analysis uploaded at 12:54 UTC. Kotlin and all five existing
+language jobs also passed. All eight exact analysis checks are now required,
+with the previous thirteen checks preserved (15 total). Readback verified the
+list and strict up-to-date policy. The default-branch inventory must still be
+read after merge; a PR result does not substitute for that inventory.
