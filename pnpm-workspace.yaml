@@ -30,8 +30,9 @@ allowBuilds:
 ignoredBuiltDependencies:
   - esbuild
 
-# Same-major security fixes for transitive packages whose parents still resolve
-# older releases. Keep these explicit; never force a zod 3 consumer onto zod 4.
+# Security overrides are scoped and backed by consumer/API regression checks.
+# Elgato imports zod/v4-mini; the SDK peers support v4 and JSON-schema tooling
+# imports the preserved zod/v3 entry point. Do not broaden these selectors.
 overrides:
   fast-uri@3: 3.1.9
   brace-expansion@1: 1.1.21
@@ -39,3 +40,16 @@ overrides:
   brace-expansion@5: 5.0.12
   tar@7: 7.5.21
   moment@2: 2.31.0
+  '@elgato/utils>zod': 4.6.6
+  '@anthropic-ai/sdk>zod': 4.6.6
+  '@modelcontextprotocol/sdk>zod': 4.6.6
+  'zod-to-json-schema>zod': 4.6.6
+  'stream-json@3': 3.8.0
+  'glob@7': 14.0.3
+  'glob@13': 14.0.3
+  'minimatch@10': 11.0.4
+  'ejs>jake': 13.0.3
+  'filelist>minimatch': 11.0.4
+
+patchedDependencies:
+  deepmerge@4.3.1: patches/deepmerge@4.3.1.patch

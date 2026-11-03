@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DOT_LIMITS, dotInteractionLabel, type DotInteraction } from '@agentdeck/shared';
+import { DAEMON_PORT_WINDOW_LIMITS, DOT_LIMITS, dotInteractionLabel, type DotInteraction } from '@agentdeck/shared';
 import type { CardModule } from './card-modules.js';
 interface DotResult { interactions?: DotInteraction[]; requestId: string; integrationId: string; createdAt: number; expiresAt: number; delivery: string; report: null | { state: string; summary: string; receivedAt: number } }
 export function dotResultModule(reports: () => DotResult[]): CardModule {
@@ -20,7 +20,17 @@ export interface DirectDotHostConfiguration {
 }
 export type DotHostConfiguration = DirectDotHostConfiguration | { enabled: boolean; mode: 'local'; port: number; controlPort: number; bind?: string };
 export function readDotConfiguration(directory: string): DotHostConfiguration | undefined {
-  try { return JSON.parse(readFileSync(join(directory, 'dot-host.json'), 'utf8')) as DotHostConfiguration; }
+  try {
+    const value = JSON.parse(readFileSync(join(directory, 'dot-host.json'), 'utf8'));
+    if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.enabled !== 'boolean') {
+      throw new Error('Invalid Dot configuration');
+    }
+    if (value.enabled && [value.port, value.controlPort].some(port =>
+      typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port > DAEMON_PORT_WINDOW_LIMITS.max)) {
+      throw new Error('Invalid Dot port');
+    }
+    return value as DotHostConfiguration;
+  }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw error; }
 }
 export async function startConfiguredDotHost(directory: string, loopbackOnly: boolean) {

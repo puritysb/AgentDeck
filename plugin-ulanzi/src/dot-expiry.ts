@@ -8,7 +8,9 @@ export class DotExpiryRefresh {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     const remaining = dot?.configured ? dotSurfaceSnapshot(dot).validForMs ?? 0 : 0;
-    if (remaining <= 0) return;
-    this.timer = setTimeout(() => { this.timer = null; this.refresh(); }, remaining);
+    if (!Number.isFinite(remaining) || remaining <= 0) return;
+    // Node clamps overflowing delays to 1 ms. Re-evaluate distant expiries
+    // after its maximum representable delay rather than spinning immediately.
+    this.timer = setTimeout(() => { this.timer = null; this.refresh(); }, Math.min(remaining, 2_147_483_647));
   }
 }

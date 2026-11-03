@@ -487,7 +487,8 @@ describe('binding a run to its dry run', () => {
       'agentdeck apme reference-judge --run --until 2026-10-18T09:00:00.000Z --since 7d -n 5 --model gpt-x --effort high --seed agentdeck --expect abc123def456');
     const full = referenceRunCommand({ ...base, seed: "it's", category: 'ops', localBand: 'fail', projects: ['My App', 'AgentDeck'], timeoutSec: 600, retryParked: true }, 'darwin');
     expect(full).toContain("--seed 'it'\\''s' --category ops --local-band fail --project 'My App,AgentDeck' --timeout 600 --retry-parked --expect abc123def456");
-    expect(referenceRunCommand({ ...base, projects: ['My App'] }, 'win32')).toContain('--project "My App"');
+    expect(referenceRunCommand({ ...base, projects: ['My App'] }, 'win32')).toContain("--project 'My App'");
+    expect(referenceRunCommand({ ...base, projects: ["it's $(fixture) & safe"] }, 'win32')).toContain("--project 'it''s $(fixture) & safe'");
   });
 });
 

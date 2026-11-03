@@ -151,3 +151,18 @@ without its unrelated runtime edits or Swift analysis jobs. No stand-in success
 status or protection relaxation was used. The freshness fixtures preserve the
 bounded unverified startup state for cron rather than claiming manual success
 proves scheduled execution. The coverage catalogue records both actual checks.
+
+
+Final integration retained security PR #712 after it reached master as
+`05a9bef6`. The four overlapping CI/catalogue documents use that master version
+exactly, superseding the temporary minimal forward-port above. Reconnect runtime
+files remain identical to the originally tested source. Quick passed 7,561 tests
+(42 skipped); every selected Android, Apple and ESP32 native check passed on the
+integrated working tree. The changed-area JavaScript suite collided with occupied
+fixture ports 19200 and 29321/29324/29326; no competing process was stopped.
+The full native receipt preserves that failed JavaScript attempt separately
+from its successful retry. Local Apple verification remains ARM64-only and
+Darwin Keychain-dependent E2E remains explicitly skipped.
+The isolated whole-suite retry passed all 7,561 tests (42 skipped) on the
+same source after those fixture ports were free. No native check was repeated
+because the retry changed no source or native build input.

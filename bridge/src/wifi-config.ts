@@ -6,10 +6,11 @@
  * Can auto-detect current macOS WiFi SSID and query Keychain for password.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
+import { atomicWritePrivateFile } from './private-files.js';
 import { debug, log } from './logger.js';
 
 const LEGACY_DIR = join(homedir(), '.agentdeck');
@@ -50,7 +51,7 @@ export function loadWifiConfig(): WifiConfig | null {
       return null;
     }
     const data = JSON.parse(readFileSync(file, 'utf-8'));
-    if (data.ssid && data.password) {
+    if (typeof data.ssid === 'string' && data.ssid && typeof data.password === 'string' && data.password) {
       return {
         ssid: data.ssid,
         password: data.password,
@@ -66,8 +67,7 @@ export function loadWifiConfig(): WifiConfig | null {
 /** Save WiFi config to disk. */
 export function saveWifiConfig(config: WifiConfig): void {
   try {
-    mkdirSync(dataDir(), { recursive: true });
-    writeFileSync(wifiConfigPath(), JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
+    atomicWritePrivateFile(wifiConfigPath(), JSON.stringify(config, null, 2) + '\n');
     debug('wifi-config', `Saved WiFi config for SSID: ${config.ssid}`);
   } catch (err) {
     debug('wifi-config', `Failed to save wifi-config.json: ${err}`);
@@ -80,15 +80,15 @@ export function detectCurrentSSID(): string | null {
   if (process.platform !== 'darwin') return null;
   try {
     // Find the actual Wi-Fi interface (not always en0 — e.g. en1 on Mac Studio)
-    const ports = execSync('networksetup -listallhardwareports', {
-      encoding: 'utf-8', timeout: 3000,
+    const ports = execFileSync('networksetup', ['-listallhardwareports'], {
+      encoding: 'utf-8', timeout: 3000, windowsHide: true,
     });
     const wifiMatch = ports.match(/Hardware Port: Wi-Fi\nDevice: (en\d+)/);
     const iface = wifiMatch ? wifiMatch[1] : 'en0';
 
-    const output = execSync(`networksetup -getairportnetwork ${iface}`, {
+    const output = execFileSync('networksetup', ['-getairportnetwork', iface], {
       encoding: 'utf-8',
-      timeout: 3000,
+      timeout: 3000, windowsHide: true,
     }).trim();
     // Output: "Current Wi-Fi Network: MyNetwork"
     const match = output.match(/Current Wi-Fi Network:\s*(.+)/);
@@ -106,9 +106,9 @@ export function detectCurrentSSID(): string | null {
 export function getKeychainPassword(ssid: string): string | null {
   if (process.platform !== 'darwin') return null;
   try {
-    const output = execSync(
-      `security find-generic-password -ga "${ssid.replace(/"/g, '\\"')}" -w 2>/dev/null`,
-      { encoding: 'utf-8', timeout: 10000 },
+    const output = execFileSync(
+      'security', ['find-generic-password', '-ga', ssid, '-w'],
+      { encoding: 'utf-8', timeout: 10000, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim();
     return output || null;
   } catch {

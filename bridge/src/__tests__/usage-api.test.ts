@@ -19,6 +19,7 @@ vi.mock('child_process', async importOriginal => ({ ...await importOriginal<type
   execSync: vi.fn(() => fetchIo.credentials),
   execFile: vi.fn((_file, _args, _options, callback) => callback(null, fetchIo.credentials)),
 }));
+vi.mock('../private-files.js', () => ({ atomicWritePrivateFile: vi.fn((path: string, data: string) => fetchIo.files.set(path, data)) }));
 vi.mock('../claude-usage-recovery.js', () => ({ claudeUsageRecovery: { recover: vi.fn() } }));
 
 /** Build a CredSources with sane defaults; override per case. Spies let us assert which

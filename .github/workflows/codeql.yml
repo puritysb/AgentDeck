@@ -62,3 +62,54 @@ jobs:
       - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
         with:
           category: /language:java-kotlin
+
+  swift:
+    name: CodeQL (swift-${{ matrix.target }})
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macos
+            scheme: AgentDeck_macOS
+            destination: platform=macOS
+          - target: ios
+            scheme: AgentDeck_iOS
+            destination: generic/platform=iOS Simulator
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
+        with:
+          targets: aarch64-apple-darwin
+      - name: Select Xcode and generate project
+        run: |
+          # Xcode 27 / Swift 6.4 cannot be traced by CodeQL. Do not select the
+          # newest preview installed on the runner. Missing support fails closed.
+          test -d /Applications/Xcode_26.6.app
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcrun swift -version | tee "$RUNNER_TEMP/codeql-swift-version.txt"
+          grep -Eq 'Swift version (5\.|6\.[0-3][. ])' "$RUNNER_TEMP/codeql-swift-version.txt"
+          brew install xcodegen
+          cd apple
+          xcodegen generate
+      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-extended
+      - name: Compile app for extraction
+        run: |
+          xcodebuild build -project apple/AgentDeck.xcodeproj -scheme '${{ matrix.scheme }}' \
+            -configuration Debug -destination '${{ matrix.destination }}' \
+            -derivedDataPath "$RUNNER_TEMP/CodeQLDerivedData" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            SWIFT_USE_INTEGRATED_DRIVER=NO COMPILATION_CACHE_ENABLE_CACHING=NO SWIFT_ENABLE_COMPILE_CACHE=NO \
+            SWIFT_COMPILATION_MODE=wholemodule SWIFT_OPTIMIZATION_LEVEL=-Onone
+      - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          category: /language:swift-${{ matrix.target }}

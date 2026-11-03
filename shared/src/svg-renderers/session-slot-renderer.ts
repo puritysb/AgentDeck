@@ -1,4 +1,5 @@
 import { backgroundCompact } from '../background-work-presentation.js';
+import { trimCharacters } from '../text-scanning.js';
 import { ciWaitDetail } from '../ci-wait.js';
 /**
  * Session slot button SVG renderer for v4 dynamic layout.
@@ -190,7 +191,7 @@ export function summarizeQuestionForKey(question: string, max: number): string {
   // together — a wrong reading, not a partial one.
   let object = '';
   for (let i = 1; i < tokens.length; i += 1) {
-    const t = tokens[i].replace(/^["'`(]+|["'`);|&]+$/g, '');
+    const t = trimCharacters(tokens[i], '"\'`(', '"\'`);|&');
     if (!t || t.startsWith('-')) continue;
     if (t.includes('/') || /\.[A-Za-z0-9]{1,6}$/.test(t)) {
       object = t.slice(t.lastIndexOf('/') + 1);

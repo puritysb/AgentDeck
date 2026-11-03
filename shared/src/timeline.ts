@@ -1,3 +1,5 @@
+import { firstTagContent, hasOrderedTerms, stripCodeFences } from './text-scanning.js';
+
 /**
  * Shared timeline types and log parser for OpenClaw mode.
  * Used by both bridge (BridgeLogStream) and plugin (LogStream).
@@ -133,7 +135,8 @@ function extractReadableMessage(message: string): string {
     cleaned = `${lane}${errorMatch[1]}`;
   } else {
     // For ENOENT/file errors: extract the file path and simplify
-    const enoentMatch = cleaned.match(/ENOENT:.*?['"]([^'"]+)['"]/);
+    const enoentAt = cleaned.indexOf('ENOENT:');
+    const enoentMatch = enoentAt < 0 ? null : cleaned.slice(enoentAt + 7).split(/[\r\n\u2028\u2029]/, 1)[0].match(/['"]([^'"]+)['"]/);
     if (enoentMatch) {
       const filePath = enoentMatch[1];
       // Show just filename or last 2 path components
@@ -215,7 +218,7 @@ export function cleanDetailText(text: string): string {
   let cleaned = text;
 
   // Strip code fences: ```lang\n...\n``` → contents
-  cleaned = cleaned.replace(/```[\w]*\n?([\s\S]*?)```/g, '$1');
+  cleaned = stripCodeFences(cleaned);
 
   // Strip bold: **text** → text
   cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1');
@@ -343,7 +346,7 @@ export function parseSlashCommandPrompt(text?: string): SlashCommandInvocation |
   if (trimmed.includes('<command-name>')) {
     const name = /<command-name>\s*(\/?[A-Za-z][\w:-]*)\s*<\/command-name>/.exec(trimmed)?.[1];
     if (!name) return null;
-    const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(trimmed)?.[1]?.trim();
+    const args = firstTagContent(trimmed, '<command-args>', '</command-args>')?.trim();
     return {
       command: name.startsWith('/') ? name : `/${name}`,
       ...(args ? { args } : {}),
@@ -353,9 +356,11 @@ export function parseSlashCommandPrompt(text?: string): SlashCommandInvocation |
   // Shape 1: plain "/command [args...]" — the command token must be the whole
   // first word (a "/" inside the token means it's a filesystem path, not a
   // command).
-  const m = /^\/([A-Za-z][\w:-]*)(?:\s+([\s\S]+))?$/.exec(trimmed);
+  const m = /^\/([A-Za-z][\w:-]*)/.exec(trimmed);
   if (!m) return null;
-  const args = m[2]?.trim();
+  const rest = trimmed.slice(m[0].length);
+  if (rest && !/^\s/.test(rest)) return null;
+  const args = rest.trim();
   return { command: `/${m[1]}`, ...(args ? { args } : {}) };
 }
 
@@ -378,7 +383,7 @@ export function isTaskNotificationChatStart(entry: TimelineEntry): boolean {
 function hasOpenClawNotificationFailureSignal(text: string): boolean {
   return /\b(line|notification|userid|target id|target issue)\b/i.test(text) &&
     /\b(fail(?:ed|ure)?|missing|unconfigured|notified|needed|pending)\b/i.test(text) ||
-    /(LINE|알림|userId|사용자 ID|대상 ID).*(실패|미등록|미설정|구성되지|필요|대기)/i.test(text);
+    hasOrderedTerms(text, /LINE|알림|userId|사용자 ID|대상 ID/i, /실패|미등록|미설정|구성되지|필요|대기/i);
 }
 
 export function isOpenClawLowSignalResponse(entry: TimelineEntry): boolean {
@@ -399,7 +404,7 @@ export function isOpenClawLowSignalResponse(entry: TimelineEntry): boolean {
     /\b(in progress|still active|no action needed|nothing to notify yet)\b/.test(lower) ||
     /\bcron job (?:stays|retained|active)\b/.test(lower) ||
     /\bpipeline still active\b/.test(lower) ||
-    /(아직|여전히|계속).*(번역|진행)\s*중/.test(text) ||
+    hasOrderedTerms(text, /아직|여전히|계속/, /(?:번역|진행)\s*중/) ||
     /알릴 필요 없음|수행할 작업이 없음|대기합니다/.test(text);
 
   if (isAutomatedStart) return looksLikePolling;
@@ -795,9 +800,10 @@ export function parseLogLine(json: unknown): TimelineEntry | null {
 
   // Cron list table rows: UUID-prefixed lines from `openclaw cron list` output
   // Keep error rows as summarized entries; skip ok/skipped rows
-  const cronRowMatch = message.match(/^[0-9a-f]{8}-[0-9a-f]{4}-\S+\s+(\S+(?:\.\.\.)?\S*)\s+.*?\b(error|ok|skipped)\b/i);
-  if (cronRowMatch) {
-    const [, jobName, status] = cronRowMatch;
+  const cronPrefix = /^[0-9a-f]{8}-[0-9a-f]{4}-\S+\s+(\S+)/i.exec(message);
+  const cronStatus = cronPrefix && /\b(error|ok|skipped)\b/i.exec(message.slice(cronPrefix[0].length).split(/[\r\n\u2028\u2029]/, 1)[0]);
+  if (cronPrefix && cronStatus) {
+    const jobName = cronPrefix[1], status = cronStatus[1];
     if (status.toLowerCase() !== 'error') return null; // ok/skipped → skip
     // Extract human-readable job name (strip trailing ...)
     const name = jobName.replace(/\.{3}$/, '').replace(/-/g, ' ');

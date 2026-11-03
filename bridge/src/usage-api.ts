@@ -1,6 +1,7 @@
+import { atomicWritePrivateFile } from './private-files.js';
 import { execSync } from 'child_process';
 import { execFileProbe } from '@agentdeck/shared';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { debug, logTagged } from './logger.js';
@@ -319,7 +320,7 @@ function writeFileCache(data: ApiUsageData, fetchedAt: number): void {
   try {
     mkdirSync(AGENTDECK_DIR, { recursive: true });
     const cache: UsageCacheFile = { data, fetchedAt };
-    writeFileSync(USAGE_CACHE_FILE, JSON.stringify(cache), 'utf-8');
+    atomicWritePrivateFile(USAGE_CACHE_FILE, JSON.stringify(cache));
   } catch (err) {
     debug('UsageAPI', `Failed to write cache file: ${err}`);
   }
@@ -523,8 +524,8 @@ async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
           const currentCache = readFileCache();
           if (currentCache) {
             try {
-              writeFileSync(USAGE_CACHE_FILE, JSON.stringify({ ...currentCache,
-                retryAfter: retryDeadline }), 'utf-8');
+              atomicWritePrivateFile(USAGE_CACHE_FILE, JSON.stringify({ ...currentCache,
+                retryAfter: retryDeadline }));
             } catch { /* ignore */ }
           }
           debug('UsageAPI', `Rate limited (429), Retry-After: ${retrySec}s, consecutive failures: ${consecutiveFailures}`);
@@ -560,7 +561,7 @@ async function fetchUsageOnce(): Promise<UsageFetchResult | null> {
     }
     // Write raw response to file for inspection
     try {
-      writeFileSync(join(AGENTDECK_DIR, 'usage-raw-debug.json'), JSON.stringify(data, null, 2), 'utf-8');
+      atomicWritePrivateFile(join(AGENTDECK_DIR, 'usage-raw-debug.json'), JSON.stringify(data, null, 2));
     } catch { /* ignore */ }
 
     if (data.error) {

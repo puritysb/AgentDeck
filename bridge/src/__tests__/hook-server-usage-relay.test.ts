@@ -16,7 +16,8 @@
  * numbers as just-fetched. Closing it at the producer covers both consumers.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { AddressInfo } from 'net';
 import { HookServer } from '../hook-server.js';
 import type { VoiceManager } from '../voice.js';
@@ -37,10 +38,49 @@ async function startServer(): Promise<{ server: HookServer; port: number }> {
 const sampleUsage = () => ({ fiveHourPercent: 41, sevenDayPercent: 73 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   while (servers.length) await servers.pop()!.close();
 });
 
 describe('POST /voice/transcribe — binary payload boundary', () => {
+  it('bounds concurrent transcription and releases capacity when work completes', async () => {
+    const { server, port } = await startServer();
+    const finish: Array<(text: string) => void> = [];
+    const transcribeFile = vi.fn(() => new Promise<string>(resolve => finish.push(resolve)));
+    server.setVoiceManager({ transcribeFile } as unknown as VoiceManager);
+    const request = () => fetch(`http://127.0.0.1:${port}/voice/transcribe`, {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: Buffer.alloc(128, 7),
+    });
+    const first = request();
+    const second = request();
+    try {
+      await vi.waitFor(() => expect(transcribeFile).toHaveBeenCalledTimes(2));
+      expect((await request()).status).toBe(429);
+    } finally {
+      finish.forEach(resolve => resolve('done'));
+      expect((await first).status).toBe(200);
+      expect((await second).status).toBe(200);
+    }
+    transcribeFile.mockResolvedValue('next');
+    expect((await request()).status).toBe(200);
+  });
+
+  it('enforces a bounded request window and recovers at the next window', async () => {
+    const { port } = await startServer();
+    const now = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    for (let n = 0; n < 200; n++) {
+      const response = await fetch(`http://127.0.0.1:${port}/devices`);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    const limited = await fetch(`http://127.0.0.1:${port}/devices`);
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBe('1');
+    await limited.text();
+    now.mockReturnValue(11_000);
+    expect((await fetch(`http://127.0.0.1:${port}/devices`)).status).toBe(200);
+  });
+
   it('rejects parsed JSON arrays and length-shaped objects without transcribing', async () => {
     const { server, port } = await startServer();
     const transcribeFile = vi.fn();
@@ -57,8 +97,11 @@ describe('POST /voice/transcribe — binary payload boundary', () => {
   it('continues accepting binary audio and passes the exact bytes to transcription', async () => {
     const { server, port } = await startServer();
     const bytes = Buffer.alloc(128, 7);
+    let recordedPath = '';
     const transcribeFile = vi.fn(async (path: string) => {
+      recordedPath = path;
       expect(readFileSync(path)).toEqual(bytes);
+      if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
       return 'fixture transcription';
     });
     server.setVoiceManager({ transcribeFile } as unknown as VoiceManager);
@@ -68,6 +111,8 @@ describe('POST /voice/transcribe — binary payload boundary', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ text: 'fixture transcription' });
     expect(transcribeFile).toHaveBeenCalledOnce();
+    expect(existsSync(recordedPath)).toBe(false);
+    expect(existsSync(dirname(recordedPath))).toBe(false);
   });
 });
 

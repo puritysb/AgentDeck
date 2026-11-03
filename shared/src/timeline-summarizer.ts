@@ -4,6 +4,7 @@
  */
 
 import { cleanRawText } from './timeline.js';
+import { stripThinkBlocks, trimCharacters } from './text-scanning.js';
 
 export const SUMMARY_SYSTEM_PROMPT = `You are a timeline summarizer. Given an AI assistant's response text, produce a single-line Korean summary (max 80 characters) of what was accomplished. Focus on the result, not the process. No quotes, no markdown, no punctuation at the end. Output ONLY the summary line, nothing else. Examples:
 - 봇마당 인박스에 AI 에이전트 운영 팁 3건 수집
@@ -107,12 +108,7 @@ export function promptSnippetFallback(prompt: string | null | undefined, maxLen 
 
 /** Clean LLM output — strip thinking, quotes, markdown artifacts */
 export function cleanLLMOutput(content: string): string | null {
-  let cleaned = content
-    // Strip <think>...</think> blocks (Qwen thinking mode)
-    .replace(/<think>[\s\S]*?<\/think>/g, '')
-    // Strip unclosed <think> at end (truncated output)
-    .replace(/<think>[\s\S]*$/g, '')
-    .trim();
+  let cleaned = stripThinkBlocks(content).trim();
 
   // If output has multiple lines, take the last non-empty line
   // (thinking text tends to come first, summary last)
@@ -124,9 +120,7 @@ export function cleanLLMOutput(content: string): string | null {
   }
 
   // Strip surrounding quotes, markdown list markers
-  cleaned = cleaned
-    .replace(/^[-*]\s*/, '')
-    .replace(/^["'`\u201C\u201D\u2018\u2019]+|["'`\u201C\u201D\u2018\u2019]+$/g, '')
+  cleaned = trimCharacters(cleaned.replace(/^[-*]\s*/, ''), '"\'`\u201C\u201D\u2018\u2019')
     .replace(/[.\u3002]$/, '') // remove trailing period
     .trim();
 
