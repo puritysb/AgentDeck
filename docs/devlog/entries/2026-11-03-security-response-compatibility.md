@@ -75,3 +75,12 @@ hosted result is still required; an ordinary build is not extraction evidence.
 Local universal Release initially lacked the Intel Rust standard library. An
 isolated, checksum-verified Rust 1.90.0 toolchain supplies both macOS targets;
 no user's compiler defaults were changed.
+Android dependency review found a security backport hidden by the proposed
+OkHttp major update (#700). Upstream's October 20 advisory describes certificate
+blocklisting for compromised intermediate certificates (CVE-2026-111943);
+4.12.1 supplies the same protection without the 5.x API migration. This matters
+for AOSP/e-ink devices without current Google Play certificate updates. The app
+uses OkHttp's standard hostname verifier. Android dependencyInsight resolved
+4.12.1; 576 JUnit tests in 61 suites passed, and quick checks passed with 7,561
+tests and 42 platform skips. No installed app or device was updated.
+Source: [upstream advisory](https://publicobject.com/2026/10/20/mitigating-bad-roots-in-okhttp/).
