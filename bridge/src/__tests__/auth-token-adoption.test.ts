@@ -39,6 +39,16 @@ afterEach(() => {
 });
 
 describe('adoptPeerToken', () => {
+  it('rejects non-string token inputs before touching string operations or token storage', () => {
+    for (const candidate of [null, undefined, 42, {}, [], new Array(32).fill('a'),
+      { length: 32, charCodeAt: () => 97 }, Buffer.from(TOKEN_A)]) {
+      expect(auth.validateToken(candidate)).toBe(false);
+    }
+    expect(existsSync(join(dir, 'auth-token'))).toBe(false);
+    writeFileSync(join(dir, 'auth-token'), TOKEN_A + '\n');
+    expect(auth.validateToken(TOKEN_A)).toBe(true);
+  });
+
   it('serves the incumbent daemon token after adopting it', () => {
     writeFileSync(join(dir, 'auth-token'), TOKEN_A + '\n');
     expect(auth.getOrCreateToken()).toBe(TOKEN_A);

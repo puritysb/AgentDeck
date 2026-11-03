@@ -140,7 +140,18 @@
       "rust": 0
     },
     "analysisErrors": [],
-    "analysisWarnings": []
+    "analysisWarnings": [],
+    "scope": "PR diff only; not the repository-wide baseline",
+    "correction": {
+      "defaultBranchCommit": "60771186c1e1103b78367b37a1e01b81a88fb1da",
+      "totalAlerts": 271,
+      "severity": {
+        "critical": 5,
+        "high": 133,
+        "medium": 133
+      },
+      "intake": "security/intake/2026-11-03.json"
+    }
   },
   "requiredChecks": [
     {

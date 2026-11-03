@@ -139,8 +139,8 @@ export class HookServer extends EventEmitter {
   private checkAuth(req: express.Request, res: express.Response): boolean {
     const ip = req.ip || req.socket.remoteAddress || '';
     if (isLocalConnection(ip)) return true;
-    const token = req.query.token as string | undefined;
-    if (token && validateToken(token)) return true;
+    const token = req.query.token;
+    if (typeof token === 'string' && validateToken(token)) return true;
     res.status(401).json({ error: 'Unauthorized — token required' });
     return false;
   }
@@ -340,8 +340,8 @@ export class HookServer extends EventEmitter {
           return;
         }
 
-        const body = req.body as Buffer;
-        if (!body || body.length < 100) {
+        const body: unknown = req.body;
+        if (!Buffer.isBuffer(body) || body.length < 100) {
           res.status(400).json({ error: 'Empty or too short audio data' });
           return;
         }
