@@ -1,0 +1,14 @@
+{
+  "exceptions": [
+    {
+      "advisory": "GHSA-mrhx-c7xc-m3w5",
+      "package": "zod",
+      "version": "3.25.76",
+      "severity": "high",
+      "owner": "puritysb",
+      "expires": "2026-11-17",
+      "tracking": "docs/security-scanning.md#remaining-findings",
+      "reason": "Temporary migration window. Elgato utils still requires zod 3; the published fix is zod >=4.6.6. Do not force a major across SDK consumers. The plugin receives local Stream Deck host messages, and the experimental MCP SDK is a dev dependency. This is residual availability risk, not a declaration of non-exploitability. Review affected consumers and upstream compatibility before this deadline."
+    }
+  ]
+}
