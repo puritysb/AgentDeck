@@ -83,3 +83,21 @@ export function voiceCommandForAction(action: string, sessionId?: string): Voice
     default: return null;
   }
 }
+import type { VoiceDeliveryStatus } from './protocol.js';
+
+export function voiceDeliveryStatus(value: unknown): VoiceDeliveryStatus | undefined {
+  return typeof value === 'string' && ['delivered','held','refused','denied','expired','dropped','submitted','unavailable'].includes(value) ? value as VoiceDeliveryStatus : undefined;
+}
+export function voiceDeliveryPresentation(value: unknown): { label: string; tone: 'info' | 'awaiting' | 'error' } | undefined {
+  switch (voiceDeliveryStatus(value)) {
+    case 'delivered': return {label:'received by Claude',tone:'info'};
+    case 'held': return {label:'approve in Claude',tone:'awaiting'};
+    case 'submitted': return {label:'receipt pending',tone:'info'};
+    case 'refused': return {label:'Claude refused',tone:'error'};
+    case 'denied': return {label:'approval declined',tone:'error'};
+    case 'expired': return {label:'approval expired',tone:'error'};
+    case 'dropped': return {label:'message dropped',tone:'error'};
+    case 'unavailable': return {label:'inbox unavailable',tone:'error'};
+    default: return undefined;
+  }
+}

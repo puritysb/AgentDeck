@@ -163,7 +163,9 @@ private struct PixooPixelGrid: View {
 // colours, and subagent satellites. Usage layout and drawStateDot changes do
 // not alter the mirrored AGENTS pixels.
 //
-// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp 4f239b847368e1926cf5edd83845a7febceeccb6
+// 2026-11-03: firmware adds USB PAIR only for a confirmed authentication refusal.
+// This preview samples the normal OFFLINE branch; its pixels are unchanged.
+// SYNC-HASH esp32/src/ui/matrix/matrix_pages.cpp d7cfd51b290fb2efb404f56b7681cbfeafadaac9
 // scripts/check-preview-mirror-sync.mjs fails CI when the origin above drifts
 // from this pin — re-verify AGENTS-page parity and bump the hash together.
 

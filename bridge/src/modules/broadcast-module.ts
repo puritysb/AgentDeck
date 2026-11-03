@@ -5,7 +5,7 @@ import type { AgentType } from '../types.js';
 /**
  * UDP-broadcast daemon discovery. Runs alongside the mDNS module as a fallback
  * for routers that silently drop multicast — same payload shape, different
- * transport. Always activates unless explicitly disabled in module config.
+ * transport. Opt-in only: no in-repository device consumes this legacy beacon.
  */
 export class BroadcastModule implements DeviceModule {
   readonly name = 'broadcast';
@@ -17,8 +17,7 @@ export class BroadcastModule implements DeviceModule {
   }
 
   async shouldActivate(_config: 'auto' | boolean): Promise<boolean> {
-    // Lightweight UDP beacon — always on unless explicitly disabled.
-    return _config !== false;
+    return _config === true;
   }
 
   async start(ctx: BridgeContext): Promise<void> {

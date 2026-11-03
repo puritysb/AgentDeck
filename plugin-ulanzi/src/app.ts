@@ -188,7 +188,7 @@ function deckFor(animFrame: number, animated: boolean) {
   // quota gauges — this surface has no encoder LCD to carry usage.
   return buildSessionDeck(
     layoutInput(),
-    { ...view, claudeWeeklyMode, zaiPairMode, animFrame, animated, showUsage: true, voiceState: store.voiceState, settings: openSettings(), sessionOrder },
+    { ...view, claudeWeeklyMode, zaiPairMode, animFrame, animated, showUsage: true, voiceState: store.voiceState, voiceDeliveryStatus:store.voiceDeliveryStatus, voiceDeliverySessionId:store.voiceDeliverySessionId, settings: openSettings(), sessionOrder },
     positions(),
   );
 }
@@ -320,7 +320,7 @@ function renderAll(): void {
   // that repaint (the recurring deckSignature failure mode).
   const sig = deckViewSignature(
     ev,
-    { ...view, claudeWeeklyMode, zaiPairMode, voiceState: store.voiceState, settings: openSettings(), sessionOrder },
+    { ...view, claudeWeeklyMode, zaiPairMode, voiceState: store.voiceState, voiceDeliveryStatus:store.voiceDeliveryStatus, voiceDeliverySessionId:store.voiceDeliverySessionId, settings: openSettings(), sessionOrder },
     positions(),
     keys.layoutContexts(),
   );

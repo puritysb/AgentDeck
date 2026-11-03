@@ -202,8 +202,8 @@ export class BridgeCore {
   readonly ollamaProbe: OllamaProbe;
 
   // Auth
-  readonly authToken: string;
-  readonly wsUrl: string;
+  get authToken(): string { return getOrCreateToken(); }
+  get wsUrl(): string { return getWsUrl(this.port); }
 
   // State caches (public for caller access)
   cachedApiUsage: ApiUsageData | null = null;
@@ -314,8 +314,7 @@ export class BridgeCore {
     this.oauthConnected = hasOAuthToken();
 
     // Auth
-    this.authToken = getOrCreateToken();
-    this.wsUrl = getWsUrl(opts.port);
+    getOrCreateToken();
 
     // WebSocket server
     this.wsServer = new WsServer(opts.httpServer);

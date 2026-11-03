@@ -31,7 +31,7 @@
  */
 import type { IncomingMessage } from 'http';
 import { DEVICE_ID_HEADER } from '@agentdeck/shared';
-import { isLocalConnection, localTrustOf, validateToken } from './auth.js';
+import { getPairingGeneration, isLocalConnection, localTrustOf, validateToken } from './auth.js';
 import { deviceIdFromHeaders, isApprovedPeer } from './pairing-knocks.js';
 
 export type HttpGateDecision = 'allow' | 'public-health' | 'pair-redeem' | 'deny';
@@ -70,7 +70,7 @@ export function isAuthorizedHttpRequest(
   // `gateHttpRequest` as a third parameter so that function stays the pure
   // truth table its test drives — "authorized" is one input, however the peer
   // earned it. Mirrors DaemonServer.httpAccessResponse on the Swift side.
-  return isApprovedPeer(ip, deviceIdFromHeaders(req.headers, DEVICE_ID_HEADER));
+  return isApprovedPeer(ip, deviceIdFromHeaders(req.headers, DEVICE_ID_HEADER), getPairingGeneration());
 }
 
 /** The redemption route. Only a route while an operator window is open. */

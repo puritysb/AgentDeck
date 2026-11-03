@@ -100,7 +100,8 @@ import { resolveSessionIdPrefix } from './session-id-resolve.js';
 import {
   SessionOrderStore, resolveSessionOrderTarget, parseSessionOrderWeight,
 } from './session-order-store.js';
-import { injectObservedSelection, injectObservedText } from './observed-inject.js';
+import { injectObservedSelection, injectObservedText, type InjectResult } from './observed-inject.js';
+import { ClaudeInbox, type InboxResult } from './claude-inbox.js';
 import {
   setSerialCommandSink, setSerialVoiceSink, setSerialQuiesceCheck, sendSerialJson,
   serialPortConnected, serialPortCapabilities, serialPortBoard,
@@ -216,7 +217,7 @@ import { CLAUDE_STATUSLINE_ROUTE, parseClaudeStatusline } from '@agentdeck/share
 import { TASK_JUDGE_DRAIN_WINDOW_MS } from './apme/runner.js';
 import { stopClaudeUsageRecoveryChildren } from './claude-usage-recovery.js';
 import { AGENT_IDLE_GAP_MS, canonicalBoardId, resolveGatewayHealth } from '@agentdeck/shared';
-import { getOrCreateToken, isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
+import { getOrCreateToken, getPairingRetirement, getPairingGeneration, rotateToken, isLocalConnection, localTrustOf, logLocalTrustRefusal, validateToken } from './auth.js';
 import { buildPublicHealth, gateHttpRequest, isAuthorizedHttpRequest } from './http-auth-gate.js';
 import {
   closePairingWindow,
@@ -317,6 +318,8 @@ import {
   parsePocketAutonomyConfig,
 } from './pocket-autonomy.js';
 import { WeatherProvider, parseWeatherSettings } from './weather.js';
+import { fenceCredentialResponse } from './credential-response-fence.js';
+import { PAIRING_CREDENTIALS } from '@agentdeck/shared';
 import { CalendarProvider, parseCalendarSettings } from './calendar.js';
 import { loadLearningPack, matchesLearningPackRequest, type SurfaceLearningPack } from './learning-pack.js';
 import { loadFontPack, matchesFontPackRequest, type SurfaceFontPack } from './font-pack.js';
@@ -1904,6 +1907,19 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // the rest of startup finishes. A later `const` would leave that window
   // throwing on the temporal dead zone.
   const passiveSessionObserver = new PassiveSessionObserver();
+  const claudeInbox = new ClaudeInbox();
+  let observedDeliveryStopped = false;
+  const voiceDeliveryGenerations = new Map<string, string>();
+  async function deliverObservedPrompt(sessionId: string, obs: {tty?: string; appName?: string; pid?: number} | undefined, text: string, update?: (value: InboxResult) => void): Promise<InjectResult | InboxResult> {
+    if (observedDeliveryStopped) return {ok:false,reason:'daemon stopped'};
+    const voice = loadDaemonSettings().voice as {claudeDelivery?: unknown} | undefined;
+    if (sessionId.startsWith('observed:claude:') && voice?.claudeDelivery !== 'terminal') {
+      const inbox = await claudeInbox.deliver(sessionId.slice('observed:claude:'.length), obs?.pid, text, update);
+      if (observedDeliveryStopped) return {ok:false,reason:'daemon stopped'};
+      if (inbox.written) return inbox; // Ambiguous, held or refused is never a retry license.
+    }
+    return injectObservedText({tty:obs?.tty,appName:obs?.appName,pid:obs?.pid},text);
+  }
   // Daemon-persisted sort pins for observed sessions (#273 session-ordering
   // gate — the daemon-first replacement for launch-time `--weight`). Declared
   // before the HTTP server for the same TDZ reason as the observer: the
@@ -2158,6 +2174,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   });
 
   const httpServer = createServer((req, res) => {
+    const credentialGeneration = getPairingGeneration();
+    let permitsCredentialChange = false;
+    fenceCredentialResponse(res, () => permitsCredentialChange || credentialGeneration === getPairingGeneration());
     // LAN default-deny (issue #145): a request that is neither from a local
     // program nor token-bearing reaches exactly one route — a minimal GET
     // /health with no pairingToken, no module/device inventory, no session
@@ -2259,6 +2278,30 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // (the LAN gate above serves unauthenticated peers buildPublicHealth
     // instead). pairingToken stays here for local consumers: sibling bridges,
     // the TUI, and the macOS companion's file-less fallback.
+    if (req.method === 'POST' && pathname === '/pair/rotate') {
+      // An old paired LAN token must never authorize rotation. Only a trusted
+      // same-machine program may retire the active owner's credential.
+      if (!isLocalConnection(req.socket.remoteAddress ?? '') || localTrustOf(req) !== 'trusted') {
+        res.writeHead(403); res.end(); return;
+      }
+      void (async () => {
+        try {
+          const body = await readJsonBody(req, 4096);
+          if (body.confirm !== true || typeof body.minimumRevision !== 'number') throw new Error('invalid rotation request');
+          rotateToken(body.minimumRevision);
+          closePairingWindow();
+          permitsCredentialChange = true;
+          core.wsServer.reauthenticateClients();
+          res.once('finish', () => httpServer.closeAllConnections());
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ rotated: true, scope: PAIRING_CREDENTIALS.rotationScope, globalRevocation: PAIRING_CREDENTIALS.globalRevocation, pairingRetirement: getPairingRetirement() }));
+        } catch {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Pairing rotation was not confirmed; read owner state before retrying' }));
+        }
+      })();
+      return;
+    }
     if (req.method === 'GET' && pathname === '/health') {
       const snap = core.stateMachine.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2282,6 +2325,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         build: startupBuildId,
         broadcastMetrics: core.wsServer.getBroadcastMetrics(),
         pairingToken: core.authToken,
+        calendar: glanceCalendar.diagnostics(),
+        pairingRetirement: getPairingRetirement(),
+        pairingRotation: true,
         // Capability: this daemon drives remote sessions down their own push
         // socket (session_focus_down / session_command_down / session_event_up).
         // Workers require this flag before remote-attaching; the Swift daemon
@@ -2424,7 +2470,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           lastSeen: k.lastSeen,
           staleToken: k.staleToken,
         })),
-        approved: pairingApprovals().map((a) => ({
+        approved: pairingApprovals(getPairingGeneration()).map((a) => ({
           key: a.key,
           deviceId: a.deviceId ?? '',
           lastIP: a.lastIP,
@@ -2446,7 +2492,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
         }
         res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
         if (pathname === '/pair/approve') {
-          approvePeer(key);
+          approvePeer(key, Date.now(), credentialGeneration);
           log(`[agentdeck] Operator approved peer ${key}`);
           res.end(JSON.stringify({ approved: key }));
         } else if (pathname === '/pair/revoke') {
@@ -3746,6 +3792,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           return;
         }
         const { boundary, agentType: hookAgentType } = classifyObservedHookEvent(eventName, mapped);
+        if (hookAgentType === 'claude-code' && isLocalConnection(req.socket.remoteAddress ?? '') && localTrustOf(req) === 'trusted') {
+          claudeInbox.note(json.session_id, Number(json.agentdeck_pid), req.headers['x-agentdeck-inbox'], json.transcript_path, boundary === 'session_end');
+        }
         // A Codex/OpenCode Interrupt is the user's Ctrl+C: the turn ended with
         // no Stop, and the collector must not read it as a normal stop.
         if (/_interrupt$/.test(eventName)) json.interrupted = true;
@@ -5272,7 +5321,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // count in moduleHealthProvider below.
   const startedModules = await initModules(
     deviceModules,
-    daemonModuleConfigs(posture, serialMode),
+    daemonModuleConfigs(posture, serialMode, loadDaemonSettings().udpDiscoveryEnabled === true),
     {
       port, authToken: core.authToken, projectName: 'AgentDeck', wsServer: core.wsServer,
       // AdbModule restricts `adb reverse` to USB transports under loopback —
@@ -5408,7 +5457,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   // a session bridge sharing WsServer must not answer "is this peer approved?"
   // from a second, unowned copy of it.
   core.wsServer.setPairingApprovalHooks({
-    isApproved: (ip, deviceId) => isApprovedPeer(ip, deviceId),
+    isApproved: (ip, deviceId) => isApprovedPeer(ip, deviceId, getPairingGeneration()),
     record: (ip, deviceId, staleToken) => recordKnock(ip, deviceId, staleToken),
   });
 
@@ -6660,6 +6709,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
       return true; // consumed
     }
     if (msg.type === 'voice_begin') {
+      voiceDeliveryGenerations.delete(stableSink(sender).deviceKey());
       deviceVoice.begin(sender, msg);
       return true; // consumed
     }
@@ -7599,6 +7649,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   setSerialVoiceSink((port, msg) => {
     if (msg.type === 'voice_begin') {
+      voiceDeliveryGenerations.delete(serialSinkFor(port).deviceKey());
       deviceVoice.begin(port, msg);
     } else if (msg.type === 'audio_chunk') {
       const b64 = typeof msg.d === 'string' ? msg.d : '';
@@ -7687,6 +7738,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
   ): Promise<void> => {
         const device = sink.deviceKey();
         const generation = randomUUID();
+        if (voiceDeliveryGenerations.size >= 256) voiceDeliveryGenerations.delete(voiceDeliveryGenerations.keys().next().value!);
+        voiceDeliveryGenerations.set(device,generation);
         const personal = captured.sessionId === 'openclaw-personal';
         if (personal) personalVoiceActive.set(device, generation);
         const isCurrent = () => !personal || personalVoiceActive.get(device) === generation;
@@ -7752,6 +7805,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           let delivered = false;
           let via: string | undefined;
           let deliverReason: string | undefined;
+          let deliveryStatus: string | undefined;
           if (!text || !sessionId) {
             // The delivery block below (and its log) only runs when BOTH are
             // present, so without this the whole turn vanished silently — the
@@ -7783,11 +7837,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
               const obs = passiveSessionObserver.collect([])
                 .find((s) => s.id === sessionId) as
                   { tty?: string; appName?: string; pid?: number } | undefined;
-              const r = await injectObservedText(
-                { tty: obs?.tty, appName: obs?.appName, pid: obs?.pid }, text);
+              const r = await deliverObservedPrompt(sessionId, obs, text, value => {
+                if (voiceDeliveryGenerations.get(device) !== generation) return;
+                try { sink.send(JSON.stringify({type:'voice_result',requestId:captured.requestId,text,sessionId,delivered:value.ok,via:value.via,deliverReason:value.reason,deliveryStatus:value.status})); } catch { /* disconnected */ }
+              });
               delivered = r.ok;
               via = r.via;
               deliverReason = r.reason;
+              deliveryStatus = 'status' in r ? r.status : undefined;
             } else {
               handleDeviceCommand({
                 type: 'session_command',
@@ -7817,6 +7874,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
             sink.send(JSON.stringify({
               type: 'voice_result', requestId: captured.requestId, text, sessionId, delivered,
               ...(via ? { via } : {}),
+              ...(deliveryStatus ? { deliveryStatus } : {}),
               ...(deliverReason ? { deliverReason } : {}),
             }));
           } catch { /* client disconnecting */ }
@@ -7857,7 +7915,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
 
   const broadcastVoiceState = (
     state: 'idle' | 'recording' | 'transcribing' | 'error',
-    extra: { text?: string; error?: string; sessionId?: string } = {},
+    extra: { text?: string; error?: string; sessionId?: string; deliveryStatus?: InboxResult['status'] | null; deliveryReason?: string } = {},
   ): void => {
     core.broadcast({ type: 'voice_state', state, ...extra } as BridgeEvent);
   };
@@ -7872,12 +7930,14 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     send: (data) => {
       try {
         const msg = JSON.parse(data) as
-          { type?: string; text?: string; error?: string; sessionId?: string };
+          { type?: string; text?: string; error?: string; sessionId?: string; deliveryStatus?: InboxResult['status']; deliverReason?: string };
         if (msg.type === 'voice_result') {
           broadcastVoiceState(msg.error ? 'error' : 'idle', {
             ...(msg.text ? { text: msg.text } : {}),
             ...(msg.error ? { error: msg.error } : {}),
             ...(msg.sessionId ? { sessionId: msg.sessionId } : {}),
+            deliveryStatus:msg.deliveryStatus ?? null,
+            ...(msg.deliverReason ? {deliveryReason:msg.deliverReason} : {}),
           });
         }
       } catch { /* nothing renderable */ }
@@ -7918,6 +7978,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     }
     if (hostPttBusy) return;
     hostPttBusy = true;
+    voiceDeliveryGenerations.delete(HOST_SPEAKER_KEY);
     const sessionId = resolveDeviceSessionId(cmd.sessionId) || userFocusedSessionId || '';
     const sessionExtra = sessionId ? { sessionId } : {};
     const wavPath = join(tmpdir(), `agentdeck-ptt-${process.pid}-${Date.now()}.wav`);
@@ -7978,8 +8039,7 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
           const obs = passiveSessionObserver.collect([])
             .find((s) => s.id === sessionId) as
               { tty?: string; appName?: string; pid?: number } | undefined;
-          const r = await injectObservedText(
-            { tty: obs?.tty, appName: obs?.appName, pid: obs?.pid }, text);
+          const r = await deliverObservedPrompt(sessionId, obs, text);
           delivered = r.ok;
           via = r.via;
           deliverReason = r.reason;
@@ -8437,6 +8497,9 @@ export async function startDaemon(opts: DaemonOptions): Promise<void> {
     // Clears every per-session poll timer. A watchdog that survived teardown
     // would keep firing self-POSTs at a port this daemon no longer owns.
     observedStopWatchdogs.stop();
+    observedDeliveryStopped = true;
+    claudeInbox.close();
+    voiceDeliveryGenerations.clear();
     voiceAssistant?.stop();
     // A recovery turn in flight is a `claude` child whose own timeout dies with
     // this process; ending it here is the difference between a bounded 25s

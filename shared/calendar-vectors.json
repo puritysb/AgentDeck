@@ -437,5 +437,170 @@
         "startHm": "13:00"
       }
     ]
+  },
+  {
+    "name": "windows-korea",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:windows-korea\r\nDTSTART;TZID=Korea Standard Time:20261103T090000\r\nSUMMARY:windows-korea\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "windows-korea",
+        "startHm": "00:00"
+      }
+    ]
+  },
+  {
+    "name": "windows-pacific-dst",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:windows-pacific-dst\r\nDTSTART;TZID=Pacific Standard Time:20260703T090000\r\nSUMMARY:windows-pacific-dst\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1783036800000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "windows-pacific-dst",
+        "startHm": "16:00"
+      }
+    ]
+  },
+  {
+    "name": "windows-pacific-winter",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:windows-pacific-winter\r\nDTSTART;TZID=Pacific Standard Time:20261103T090000\r\nSUMMARY:windows-pacific-winter\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "windows-pacific-winter",
+        "startHm": "17:00"
+      }
+    ]
+  },
+  {
+    "name": "week-boundary-SU-20261108",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:week-boundary-SU-20261108\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=SU\r\nSUMMARY:week-boundary-SU-20261108\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1794096000000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "week-boundary-SU-20261115",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:week-boundary-SU-20261115\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=SU\r\nSUMMARY:week-boundary-SU-20261115\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1794700800000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "week-boundary-SU-20261115",
+        "startHm": "09:00"
+      }
+    ]
+  },
+  {
+    "name": "week-boundary-MO-20261108",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:week-boundary-MO-20261108\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=MO\r\nSUMMARY:week-boundary-MO-20261108\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1794096000000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "week-boundary-MO-20261108",
+        "startHm": "09:00"
+      }
+    ]
+  },
+  {
+    "name": "week-boundary-MO-20261115",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:week-boundary-MO-20261115\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;BYDAY=SU;WKST=MO\r\nSUMMARY:week-boundary-MO-20261115\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1794700800000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "monthly-first-last-weekday-20261102",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:monthly-first-last-weekday-20261102\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=1,-1\r\nSUMMARY:monthly-first-last-weekday-20261102\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793577600000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "monthly-first-last-weekday-20261102",
+        "startHm": "09:00"
+      }
+    ]
+  },
+  {
+    "name": "monthly-first-last-weekday-20261103",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:monthly-first-last-weekday-20261103\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=1,-1\r\nSUMMARY:monthly-first-last-weekday-20261103\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": []
+  },
+  {
+    "name": "monthly-first-last-weekday-20261130",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:monthly-first-last-weekday-20261130\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=1,-1\r\nSUMMARY:monthly-first-last-weekday-20261130\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1795996800000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "monthly-first-last-weekday-20261130",
+        "startHm": "09:00"
+      }
+    ]
+  },
+  {
+    "name": "monthly-set-intersection",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:monthly-set-intersection\r\nDTSTART:20261102T090000Z\r\nRRULE:FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYMONTHDAY=1,2,3,4,5;BYSETPOS=-1\r\nSUMMARY:monthly-set-intersection\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793836800000,
+    "zone": "UTC",
+    "expected": [
+      {
+        "title": "monthly-set-intersection",
+        "startHm": "09:00"
+      }
+    ]
+  },
+  {
+    "name": "unknown-zone",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:unknown-zone\r\nDTSTART;TZID=Unlisted Corporate Time:20261103T090000\r\nSUMMARY:unknown-zone\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [],
+    "expectedSkipped": {
+      "unsupported_zone": 1,
+      "unsupported_rule": 0,
+      "invalid_event": 0
+    }
+  },
+  {
+    "name": "unsupported-daily-setpos",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:unsupported-daily-setpos\r\nDTSTART:20261103T090000Z\r\nRRULE:FREQ=DAILY;BYDAY=MO;BYSETPOS=1\r\nSUMMARY:unsupported-daily-setpos\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [],
+    "expectedSkipped": {
+      "unsupported_zone": 0,
+      "unsupported_rule": 1,
+      "invalid_event": 0
+    }
+  },
+  {
+    "name": "invalid-date",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:invalid-date\r\nDTSTART:20261303T090000Z\r\nSUMMARY:invalid-date\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [],
+    "expectedSkipped": {
+      "unsupported_zone": 0,
+      "unsupported_rule": 0,
+      "invalid_event": 1
+    }
+  },
+  {
+    "name": "unsupported-empty-rule",
+    "ics": "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:unsupported-empty-rule\r\nDTSTART:20261103T090000Z\r\nRRULE:\r\nSUMMARY:unsupported-empty-rule\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+    "nowMs": 1793664000000,
+    "zone": "UTC",
+    "expected": [],
+    "expectedSkipped": {
+      "unsupported_zone": 0,
+      "unsupported_rule": 1,
+      "invalid_event": 0
+    }
   }
 ]

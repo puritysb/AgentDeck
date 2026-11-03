@@ -16,6 +16,9 @@
  *        match is exact rather than by tty. Once this rung knows the host is
  *        cmux it never falls through: the AppleScript rungs below would only
  *        raise Automation prompts for an app that does not own the tty.
+ *     Before AppleScript, a bounded process snapshot must identify the owning
+ *     app in the agent's ancestry. Unknown and unsupported hosts stop here;
+ *     neither may probe unrelated apps through Automation.
  *     3. iTerm2 — the session whose `tty` matches gets `write text` (no focus
  *        change; iTerm2 writes straight into the session).
  *     4. Terminal.app — has no write API, so: select the tab owning that tty
@@ -202,11 +205,11 @@ export function parseCmuxEnv(
 
 /** The surface the agent process was started in, or undefined when it does
  *  not run under cmux (or is gone, or is not this user's to read). */
-async function readCmuxSurface(pid: number): Promise<CmuxSurface | undefined> {
+export async function readCmuxSurface(pid: number, timeout = 2_000): Promise<CmuxSurface | undefined> {
   if (process.platform !== 'darwin' || !Number.isInteger(pid) || pid <= 1) return undefined;
   try {
     const args = ['-ww', '-o', 'command=', '-p', String(pid)];
-    const options = { encoding: 'utf8' as const, timeout: 2_000 };
+    const options = { encoding: 'utf8' as const, timeout };
     const before = await execFileAsync('ps', args, options);
     const combined = await execFileAsync('ps', ['-E', ...args], options);
     const after = await execFileAsync('ps', args, options);
@@ -216,6 +219,53 @@ async function readCmuxSurface(pid: number): Promise<CmuxSurface | undefined> {
     return parseCmuxEnv(combined.stdout, before.stdout);
   } catch {
     return undefined;
+  }
+}
+
+type TerminalHost =
+  | { kind: 'iterm2' | 'terminal-app' }
+  | { kind: 'unavailable'; reason: string };
+
+/** Read executable names, never argv: a prompt mentioning Terminal.app must
+ * not select an Automation target. A single snapshot bounds both latency and
+ * the ancestry walk; missing rows, failed reads and cycles remain unknown.
+ * The nearest app wins, so an editor launched from iTerm2 still owns its own
+ * embedded terminal. No Apple Events are needed to discover the host. */
+async function readTerminalHost(pid: number | undefined): Promise<TerminalHost> {
+  const unknown = (detail: string): TerminalHost => ({
+    kind: 'unavailable', reason: `terminal host unknown (${detail})`,
+  });
+  if (process.platform !== 'darwin') return unknown('requires macOS');
+  if (!pid || !Number.isSafeInteger(pid) || pid <= 1) return unknown('no valid agent pid');
+  try {
+    const { stdout } = await execFileAsync(
+      'ps', ['-ww', '-axo', 'pid=,ppid=,comm='],
+      { encoding: 'utf8', timeout: 2_000 },
+    );
+    const rows = new Map<number, { ppid: number; executable: string }>();
+    for (const line of stdout.split('\n')) {
+      const match = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line);
+      if (match) rows.set(Number(match[1]), { ppid: Number(match[2]), executable: match[3] });
+    }
+    const seen = new Set<number>();
+    for (let depth = 0; depth < 64 && pid > 1; depth++) {
+      if (seen.has(pid)) return unknown('cyclic process ancestry');
+      seen.add(pid);
+      const row = rows.get(pid);
+      if (!row) return unknown('incomplete process ancestry');
+      if (/\/[^/]+\.app\/Contents\/MacOS\/iTerm2$/.test(row.executable)) {
+        return { kind: 'iterm2' };
+      }
+      if (row.executable.endsWith('/Terminal.app/Contents/MacOS/Terminal')) {
+        return { kind: 'terminal-app' };
+      }
+      const app = /\/([^/]+)\.app\/Contents\//.exec(row.executable)?.[1];
+      if (app) return { kind: 'unavailable', reason: `terminal host not supported (${app})` };
+      pid = row.ppid;
+    }
+    return unknown('no supported app ancestor');
+  } catch {
+    return unknown('process ancestry unreadable');
   }
 }
 
@@ -570,7 +620,9 @@ export async function injectObservedSelection(
     }
     const cmux = target.pid ? await readCmuxSurface(target.pid) : undefined;
     if (cmux) return injectSelectionViaCmux(cmux, index, submits);
-    if (await runOsa(buildItermSelectScript(tty, index, { enter: false }), 5_000) === 'ok') {
+    const host = await readTerminalHost(target.pid);
+    if (host.kind === 'unavailable') return { ok: false, reason: host.reason };
+    if (host.kind === 'iterm2' && await runOsa(buildItermSelectScript(tty, index, { enter: false }), 5_000) === 'ok') {
       for (let i = 0; i < submits; i++) {
         await pause(SUBMIT_PACE_MS);
         await runOsa(buildItermSelectScript(tty, 0), 5_000);
@@ -579,7 +631,7 @@ export async function injectObservedSelection(
     }
     // Terminal.app: select the owning tab (no activation), then post keys to
     // its pid — focus-free.
-    if (await runOsa(buildTerminalAppSelectTabScript(tty), 5_000) === 'ok') {
+    if (host.kind === 'terminal-app' && await runOsa(buildTerminalAppSelectTabScript(tty), 5_000) === 'ok') {
       const posted = await runJxa(
         buildPostKeysScript({ bundleIds: ['com.apple.Terminal'], names: ['Terminal', '터미널'] }, index, submits),
       );
@@ -645,6 +697,8 @@ export async function injectObservedText(
 
   const cmux = target.pid ? await readCmuxSurface(target.pid) : undefined;
   if (cmux) return injectTextViaCmux(cmux, line);
+  const host = await readTerminalHost(target.pid);
+  if (host.kind === 'unavailable') return { ok: false, reason: host.reason };
 
   // iTerm2: type the line, pause, then submit with an explicit carriage return.
   //
@@ -672,7 +726,7 @@ export async function injectObservedText(
     'end tell',
     'return "notfound"',
   ].join('\n');
-  if (await runOsa(iterm, 5_000) === 'ok') return { ok: true, via: 'iterm2' };
+  if (host.kind === 'iterm2' && await runOsa(iterm, 5_000) === 'ok') return { ok: true, via: 'iterm2' };
 
   // Terminal.app: `do script … in <tab>` types into that tab and returns.
   const term = [
@@ -695,7 +749,7 @@ export async function injectObservedText(
     '  return "notfound"',
     'end if',
   ].join('\n');
-  if (await runOsa(term, 5_000) === 'ok') return { ok: true, via: 'terminal-app' };
+  if (host.kind === 'terminal-app' && await runOsa(term, 5_000) === 'ok') return { ok: true, via: 'terminal-app' };
 
   return { ok: false, reason: `no reachable terminal for ${tty}` };
 }

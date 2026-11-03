@@ -292,8 +292,11 @@ The daemon deliberately binds `0.0.0.0` — companion apps, ESP32 boards, and pu
 - **WS auth on both daemons**: non-local WebSocket upgrades require the token (Node `ws-server.ts` closes 4001; Swift `WebSocketServer` rejects the handshake with 401 — added 2026-08-07, previously unauthenticated), and so does a same-machine upgrade from a web page (above).
 - **Discovery never carries the token** — both mDNS TXT and the UDP 9121 fallback beacon are visible to every peer on the segment. The beacon advertises `authRequired: true` (same semantics as the unauthenticated `/health`): discovery says "a daemon is here and pairing is required" and nothing more. Only the daemon hub advertises; session bridges do not expose per-project metadata. Clients that used to self-serve the credential pair explicitly instead: companions via QR (`agentdeck qr`) / manual URL, ESP32 boards via serial provisioning (`wifi_provision.authToken` → NVS), remote workers via `--daemon-token` / `AGENTDECK_DAEMON_TOKEN`.
 - **Startup logs never carry the token-bearing pairing URL**. They direct the user to the explicit `agentdeck qr` command instead; this keeps the credential out of long-lived daemon log files.
-- **One machine, one pairing token.** Either daemon can own the port, and they store their credential in different files — the sandboxed app cannot read `~/.agentdeck/auth-token`, and Node must not reach into the app's container (TCC). So the daemon that starts second **adopts the incumbent's token** off the incumbent's loopback `/health` (`adoptPeerToken` in `bridge/src/auth.ts`, `AuthManager.adoptPeerToken` in Swift; the app also re-adopts on each health poll while it is a client). No new trust: the probe dials `127.0.0.1`, and same-machine peers are already fully trusted. Without this, whichever daemon happened to win the port decided whether the paired fleet authenticated, and a handover in either direction closed every board 4001. The superseded token moves to a bounded **accepted ring** (`auth-token-accepted`, max 4, never handed out) so convergence itself cannot lock out a device provisioned a moment earlier.
-- **Rotation**: `agentdeck token rotate` retires a leaked token (all paired clients re-pair) and clears the accepted ring — otherwise the retired token would survive in it. `agentdeck token show` prints it for provisioning.
+- **One machine, one pairing token.** Either daemon can own the port, and they store their credential in different files — the sandboxed app cannot read `~/.agentdeck/auth-token`, and Node must not reach into the app's container (TCC). So the daemon that starts second **adopts the incumbent's token** off the incumbent's loopback `/health` (`adoptPeerToken` in `bridge/src/auth.ts`, `AuthManager.adoptPeerToken` in Swift; the app also re-adopts on each health poll while it is a client). No new trust: the probe dials `127.0.0.1`, and same-machine peers are already fully trusted. Without this, whichever daemon happened to win the port decided whether the paired fleet authenticated, and a handover in either direction closed every board 4001. Before either peer has observed a retirement, the superseded token moves to a bounded **accepted ring** (`auth-token-accepted`, max 4, never handed out) so legacy convergence preserves provisioning. A newer retirement clears that ring; an older or conflicting peer cannot refill it.
+- **Rotation is scoped to the active owner.** `agentdeck token rotate` and macOS Pairing → **Renew pairing token** request the serving daemon's local-only `/pair/rotate`, verify its same-owner receipt, and require re-pairing on that owner. The receipt explicitly reports `scope: active-owner` and `globalRevocation: incomplete`. Its current and accepted tokens are retired together; the pairing-code window closes and previous approval grants become inactive. Existing sockets are disconnected. HTTP replies/streams and WebSocket sends retain their admission generation, so a request started before retirement cannot receive a later credential. New operator approvals carry that same generation and cannot outlive a subsequent retirement. The authoritative private `auth-credentials.json` atomically stores the token, empty accepted ring and retirement revision/event. Corrected peers carry that metadata through health/handover and reject older or conflicting credentials, including legacy health after observing a retirement. A SQLite OS lock serializes retirement-capable Node/Swift writers to the same profile and releases after process death; the lock database contains no credentials. Corrupt/unreadable authoritative state never falls back to old token files. A running process that already observed retirement also refuses mutation if its authority file disappears; deleting or rolling back private profile files is outside the normal persisted-restart guarantee. The legacy token/ring files remain compatibility mirrors only once atomic authority exists. Unfenced legacy convergence can still use mirrors if optional Node SQLite is unavailable; rotation and fenced adoption never use that fallback.
+  **Global revocation is incomplete:** offline, unreachable or older daemons may retain and accept previous tokens. Each profile/host must be checked separately; an offline daemon that never observed a retirement has no evidence of it. This is the explicit operator policy for #673, not a whole-machine revocation guarantee. Older peers that cannot carry retirement state must be updated before handover. A failed/lost rotation receipt may mean the owner already committed: read its state before retrying; there is no inactive-profile fallback or automatic retry. CLI `token show` still reads its local profile and may differ from a separate active native owner.
+
+- **Local token inspection**: `agentdeck token show` reads this CLI profile. For a different active owner, use its pairing UI/QR. Rotation uses the active-owner scope above; it does not claim global revocation.
 - **Re-arming a device**: the daemon pushes `auth_provision` (credential only, no WiFi side effects) to every serial-attached board whose token differs from the one it serves — independent of WiFi auto-provisioning, and *including* boards whose radio is already up, which `wifi_provision` deliberately skips. A board holding a credential the daemon no longer accepts is online and unreachable at the same time, and USB serial is the only channel that still works when authentication is what is broken. Boards persist the token in NVS (`wifiSaveAuthToken`) and restore it at boot, on every board — not just the two that also persist an endpoint.
 - **Pairing a device that has no camera and no cable — `agentdeck pair`** (see below). This is the *only* path by which the token reaches an unauthenticated LAN peer, and it exists because the alternatives cover every device except the ones that need it most: QR needs a camera, `wifi_provision` needs USB serial, and an e-ink reader has neither.
 - **Loopback-only posture**: `AGENTDECK_LOOPBACK_ONLY=1` (or `agentdeck daemon start --loopback`) binds `127.0.0.1` **and silences everything the daemon emits** — mDNS advertisement, the 2-second UDP beacon, the Pixoo LAN sweep, and the BLE scans. The USB channels keep working: serial, because a board on a cable is not a network peer, and the ADB reverse tunnel, because it rides the cable into the host's own loopback. It used to pick the bind address only, which left the daemon advertising and scanning for a service nobody on the segment could reach. The startup log names what is off. See [Enterprise / shared-network posture](#enterprise-and-shared-network-posture).
@@ -737,24 +740,28 @@ work. No private-container cross-read or silently copied credential is a substit
 argument, sort key or folding key. The active owner produces the roster; a Swift
 app attached to Node consumes its hints without rescanning private Claude files.
 On promotion, Swift explicitly emits `displayName: ""` for local rows without a
-source, retiring previously relayed Node names. No new folder grant, subprocess,
-account access or background name migration is introduced.
+source, retiring previously relayed Node names. The standalone Swift fallback
+does not gain a folder grant, subprocess or background name migration.
 
 - Node's passive Claude observer refreshes names on its existing scan (normally
-  five seconds; adaptive backoff applies). Priority: registry `nameSource=user`
+  five seconds; adaptive backoff applies). A terminal session with a positively
+  identified cmux app ancestor first uses its current workspace/surface title.
+  Other sessions, or an inaccessible cmux socket, use registry `nameSource=user`
   name → matching-session JSONL `custom-title` → other registry name → Git branch
   read from `.git/HEAD` (including worktree `.git` pointers). Detached HEAD has no
   invented branch. Only the bounded transcript head/tail already read for state
   is inspected; a custom title outside that window requires the registry source.
   Managed sessions and other agents keep their existing ID fallback unless
-  their own producer supplies a hint; this change adds no terminal-title census.
+  their own producer supplies a hint. The cmux read is bounded and read-only;
+  it never changes access mode or chooses the focused window as a recipient.
 - Claude **2.1.316** was measured in an isolated temporary config/project, with
   hooks disabled and no model prompt: `--name AgentDeckNameProbe` wrote
   `nameSource=user`; `/rename AgentDeckRenameProbe` kept `user`, changed
   `nameSince`, and appended the matching `custom-title`. `derived` is an automatic
   hint, not evidence of a user choice. Unknown source values are not classified
   as user names. `agent-name` is ignored; its session-title meaning is unproven.
-- A valid explicit empty registry/title value clears older fallback hints.
+- Within the Claude-file fallback chain, a valid explicit empty registry/title
+  value clears older file/branch hints.
   Unreadable registry identity retains the existing observed row, including its
   name; a fresh observer rebuilds from the source rather than a name cache.
   On the wire, absent means unknown/retain for the same ID; `""` explicitly clears.
@@ -772,12 +779,14 @@ account access or background name migration is introduced.
   for its complete board label; that transport projection is not a name source.
 
 The Swift standalone fallback is intentional: there is no security-scoped grant
-for Claude's registry/transcripts. No cmux executable was available on PATH or
-at its standard app location;
-existing `CMUX_SURFACE_ID`/`CMUX_SOCKET_PATH` delivery correlation supplies IDs,
-not verified live titles. cmux workspace/tab title production remains open until
-its current title API and rename behavior can be measured. Never guess a title
-from a UUID or use a startup workspace ID as a current destination.
+for Claude's registry/transcripts. On Node, cmux's `system.tree` response maps
+current workspace and surface titles by the inherited surface UUID. A surface
+move never uses its launch-time workspace ID. Duplicate surface IDs, malformed
+frames, access refusal and timeouts yield no terminal hint. Reads are capped at
+512 KiB/500 ms and never send terminal input. A signed official cmux 0.65.1 app in
+a temporary profile verified workspace rename, surface rename and cross-workspace
+move with an unchanged surface ID. Its published read snapshot can lag a mutation;
+the producer picks up the next snapshot rather than claiming immediate freshness.
 
 Automated acceptance covers same-agent/project pairs, duplicate/missing/renamed
 hints, fresh-observer reconstruction/reconnect and explicit clear, narrow INFO
@@ -785,6 +794,33 @@ labels and unchanged list/VOICE targets. Physical D200X session-key/INFO/VOICE r
 the friendly-name change remains pending; the reporter's earlier #548 ID-tag
 receipt does not certify this change. Shared daemon/devices are not redeployed
 by the isolated source checks.
+
+## Claude inbox dictation
+
+The Node daemon on macOS/Linux prefers a hook-advertised Claude inbox for dictated
+prompts. Older sessions without an inbox use the existing terminal ladder. Installers
+advertise only `CLAUDE_CODE_MESSAGING_SOCKET`; the exported child token is never
+forwarded or stored. The binding is private, supplied by trusted same-machine hooks,
+and tied to the observed session UUID and PID. It is not included in session lists,
+timeline/APME, diagnostics or device data. Windows retains terminal delivery.
+
+This is a **peer message**, subject to Claude's own inbound controls, not typed user
+input or permission approval. `delivered` requires a correlated receiver receipt or
+the same UUID in the recipient's actual persisted peer-input row. The sender reports
+held, refused, denied, expired and dropped separately. A write without confirmation
+is submitted/receipt-pending, and never causes an automatic terminal retry. Later
+receipts update the matching VOICE status; a new capture supersedes older updates.
+Delayed release does not arm unrelated spoken replies. A two-second initial wait,
+30-second transcript observation and bounded receipt retention prevent silent peers
+from holding work forever. `voice.claudeDelivery: "terminal"` explicitly selects the
+previous terminal path. Busy-session queued directives and device approval remain
+separate paths.
+
+Actual Claude Code 2.1.316 tests used temporary profiles, a synthetic loopback model
+server and OS-enforced denial of external network, real profiles and the real daemon.
+The production module confirmed accepted input by UUID and received distinct hold
+and refusal notifications. These receipts establish local protocol behavior, not an
+installed production daemon or Marketplace delivery.
 
 ## Explicit local cold recovery
 
@@ -863,3 +899,13 @@ adopting an approval, saves its existing supported files under a private
 new cursor is durable. Later private edits require a fresh choice. Consumed or
 superseded decisions cannot replay. A pending choice remains visible until that
 profile reconnects. Disconnect leaves this history and all original files intact.
+
+
+### Legacy UDP discovery
+
+Node's legacy UDP discovery beacon is disabled by default. AgentDeck clients use
+mDNS or an explicitly paired endpoint. External clients that require UDP 9121 may
+opt in with `"udpDiscoveryEnabled": true` in the active Node profile's
+`settings.json`, then restart the daemon. `--local` and `--loopback` keep UDP off
+even with that setting. The opt-in preserves the existing two-second broadcast
+protocol without including credentials. The native Swift daemon has no UDP beacon.

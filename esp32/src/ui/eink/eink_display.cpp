@@ -384,6 +384,7 @@ struct Snap {
     DotSurfaceState dot;
     bool bridgeConnected;
     bool wifiUp;
+    bool pairingRequired;
     bool serialUp;
     uint8_t rowCount;
     uint8_t totalSessions;
@@ -436,6 +437,7 @@ void snapshot(Snap& s) {
     s.serialUp = Net::serialConnected();
     lockState();
     s.bridgeConnected = g_state.wsConnected;
+    s.pairingRequired = g_state.pairingRequired;
     if (g_state.dot) s.dot = *g_state.dot;
     if (!s.bridgeConnected) s.dot.configured = false;
     s.totalSessions = g_state.sessionCount;
@@ -680,6 +682,7 @@ const char* codexCreditsText(const Snap& s) {
 uint32_t contentHash(const Snap& s) {
     uint32_t h = 2166136261u;
     h = fnv(h, &s.bridgeConnected, 1);
+    h = fnv(h, &s.pairingRequired, sizeof(s.pairingRequired));
     h = fnv(h, &s.wifiUp, 1);
     h = fnv(h, &s.serialUp, 1);
     h = fnv(h, &s.rowCount, 1);
@@ -1733,6 +1736,7 @@ uint32_t paperHash(const Snap& s, PaperFace face) {
         if (s.dot.custom) h = fnv(h, s.dot.rgba, sizeof(s.dot.rgba));
     }
     h = fnv(h, &s.bridgeConnected, sizeof(s.bridgeConnected));
+    h = fnv(h, &s.pairingRequired, sizeof(s.pairingRequired));
     h = fnv(h, &s.rowCount, sizeof(s.rowCount));
 #if defined(AGENTDECK_EPD47_UI)
     if (face == PaperFace::Glance) h = fnv(h, &epd47Page, sizeof(epd47Page));
@@ -2941,7 +2945,7 @@ void drawAquariumFace(const Snap& s) {
     char summary[88];
     if (s.bridgeConnected) snprintf(summary, sizeof(summary), "%u SESSIONS   %u WORKING   %u NEED YOU",
         s.totalSessions, working, attention);
-    else snprintf(summary, sizeof(summary), "OFFLINE  -  RECONNECTING");
+    else snprintf(summary, sizeof(summary), "%s", s.pairingRequired ? "CONNECT USB TO RE-PAIR" : "OFFLINE  -  RECONNECTING");
     textAt(16, 405, summary, CLASSIC_FONT);
     textRight(W - 16, 405, "AQUARIUM", CLASSIC_FONT);
     const bool known = s.bridgeConnected && !s.usageStale;
@@ -2965,10 +2969,10 @@ void drawSearching(const Snap& s) {
     {
     drawEp47Chrome(s, AgentDeckEpd47::Page::Limits);
     drawAgentDeckMark(W / 2 - 48, 142, 96);
-    const char* title = "OFFLINE";
+    const char* title = s.pairingRequired ? "PAIRING REQUIRED" : "OFFLINE";
     textAt(W / 2 - textWidth(title, &FreeSansBold18pt7b) / 2,
            302, title, &FreeSansBold18pt7b);
-    const char* msg = s.wifiUp || s.serialUp ? "SEARCHING FOR AGENTDECK"
+    const char* msg = s.pairingRequired ? "CONNECT USB TO RE-PAIR" : s.wifiUp || s.serialUp ? "SEARCHING FOR AGENTDECK"
                                              : "CONNECT USB OR PROVISION WIFI";
     textAt(W / 2 - textWidth(msg, &FreeSans9pt7b) / 2, 342, msg, &FreeSans9pt7b);
     if (s.wifiUp && s.ip[0]) {
@@ -2992,10 +2996,10 @@ void drawSearching(const Snap& s) {
     display.drawFastHLine(pad, 49, W - pad * 2, GxEPD_BLACK);
 
     drawAgentDeckMark(W / 2 - 31, 82, 62);
-    const char* title = "OFFLINE";
+    const char* title = s.pairingRequired ? "PAIRING REQUIRED" : "OFFLINE";
     textAt(W / 2 - textWidth(title, &FreeSansBold18pt7b) / 2,
            181, title, &FreeSansBold18pt7b);
-    const char* msg = s.wifiUp || s.serialUp ? "AGENTDECK NOT FOUND"
+    const char* msg = s.pairingRequired ? "CONNECT USB TO RE-PAIR" : s.wifiUp || s.serialUp ? "AGENTDECK NOT FOUND"
                                              : "CONNECT USB OR WIFI";
     textAt(W / 2 - textWidth(msg, &FreeSans9pt7b) / 2, 210, msg, &FreeSans9pt7b);
     if (s.wifiUp && s.ip[0]) {
@@ -3011,7 +3015,7 @@ void drawSearching(const Snap& s) {
         display.hash.paused = was;
     }
     display.drawFastHLine(pad, H - 39, W - pad * 2, GxEPD_BLACK);
-    const char* reconnect = "AUTO RECONNECTING";
+    const char* reconnect = s.pairingRequired ? "CONNECT USB TO RE-PAIR" : "AUTO RECONNECTING";
     textAt(W / 2 - textWidth(reconnect, CLASSIC_FONT) / 2,
            H - 18, reconnect, CLASSIC_FONT);
     return;
@@ -3024,10 +3028,10 @@ void drawSearching(const Snap& s) {
     // The panel holds this image without power, so make the terminal state the
     // primary line and keep the active retry phase as quiet supporting copy.
     // "no active sessions" remains a distinct live-daemon empty state.
-    const char* title = "OFFLINE";
+    const char* title = s.pairingRequired ? "PAIRING REQUIRED" : "OFFLINE";
     textAt(W / 2 - textWidth(title, &FreeSansBold18pt7b) / 2,
            centerY + 42, title, &FreeSansBold18pt7b);
-    const char* msg = s.wifiUp || s.serialUp ? "Searching for AgentDeck..."
+    const char* msg = s.pairingRequired ? "CONNECT USB TO RE-PAIR" : s.wifiUp || s.serialUp ? "Searching for AgentDeck..."
                                              : "No WiFi - connect USB or provision WiFi";
     textAt(W / 2 - textWidth(msg, &FreeSans9pt7b) / 2, centerY + 70, msg, &FreeSans9pt7b);
     if (s.wifiUp && s.ip[0]) {
@@ -3101,6 +3105,7 @@ bool firstDraw = true;
 bool forceFull = false;
 bool forceRefresh = false;  // immediate repaint without forcing a hard clear
 bool wasSearching = true;
+bool wasPairingRequired = false;
 char lastTickerShown[104] = "";
 uint32_t repaintCountValue = 0;
 uint32_t fullRefreshCountValue = 0;
@@ -3373,6 +3378,7 @@ void init() {
     physicalFaceReady = true;
 #endif
     wasSearching = initialSearching;
+    wasPairingRequired = s.pairingRequired;
     // init() is once-per-boot on hardware, but the host simulator reuses this
     // translation unit across multiple named scenes. The searching frame above
     // replaces the framebuffer, so invalidate the prior scene hash even when
@@ -3737,7 +3743,7 @@ void render() {
     const bool sweepDue = false;
 #endif
     if (h == lastHash && !forceFull && !forceRefresh && !stampDue && !sweepDue) return;
-    bool urgentTransition = searching != wasSearching;
+    bool urgentTransition = searching != wasSearching || s.pairingRequired != wasPairingRequired;
 #if defined(BOARD_NM_EPD_420)
     uint8_t nmAttention = 0, nmWorking = 0;
     for (uint8_t i = 0; i < s.rowCount; i++) {
@@ -3863,6 +3869,7 @@ void render() {
     forceFull = false;
     forceRefresh = false;
     wasSearching = searching;
+    wasPairingRequired = s.pairingRequired;
     strncpy(lastTickerShown, s.tickerCount > 0 ? s.tickerText[0] : "", sizeof(lastTickerShown) - 1);
     lastTickerShown[sizeof(lastTickerShown) - 1] = '\0';
 }

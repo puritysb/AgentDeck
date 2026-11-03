@@ -271,6 +271,12 @@ describe('cmux rung', () => {
     execRoute = (file, args) => {
       if (file === 'tmux') return { code: 'ENOENT' };
       if (file === 'ps') {
+        if (args.includes('pid=,ppid=,comm=')) return { stdout: [
+          `${PID} 100 /opt/homebrew/bin/claude`,
+          `${PID + 1} 100 /opt/homebrew/bin/claude`,
+          '100 50 /bin/zsh',
+          '50 1 /Applications/iTerm.app/Contents/MacOS/iTerm2',
+        ].join('\n') };
         const env = args.includes(String(PID)) ? environment : 'HOME=/Users/me';
         return { stdout: `${command}${args.includes('-E') ? ` ${env}` : ''}\n` };
       }
@@ -371,5 +377,117 @@ describe('cmux rung', () => {
   it('does not look for cmux when the agent pid is unknown', async () => {
     await injectObservedText({ tty: 'ttys003' }, 'hello');
     expect(execCalls.some((c) => c.file === 'ps')).toBe(false);
+  });
+});
+
+
+describe('terminal Automation host guard', () => {
+  const realPlatform = process.platform;
+  const PID = 4242;
+  const iterm = '/Applications/iTerm.app/Contents/MacOS/iTerm2';
+  const terminal = '/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal';
+  let ancestry: ExecReply;
+  let osaReply: ExecReply;
+  const osaCalls = () => execCalls.filter(c => c.file === 'osascript');
+  const deliver = (kind: 'text' | 'selection', pid: number | undefined = PID) => kind === 'text'
+    ? injectObservedText({ tty: 'ttys003', pid }, 'hello')
+    : injectObservedSelection({ tty: 'ttys003', pid }, 0);
+  const chain = (executable: string) => ({ stdout: [
+    `${PID} 300 /opt/homebrew/bin/claude`,
+    '300 200 /bin/zsh',
+    '200 100 /usr/bin/login',
+    `100 1 ${executable}`,
+  ].join('\n') });
+
+  beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    execCalls.length = 0;
+    ancestry = chain(iterm);
+    osaReply = { stdout: 'ok' };
+    execRoute = (file, args) => {
+      if (file === 'tmux') return { code: 'ENOENT' };
+      if (file === 'ps') return args.includes('pid=,ppid=,comm=')
+        ? ancestry : { stdout: '/opt/homebrew/bin/claude\n' };
+      if (file === 'osascript') return osaReply;
+      return { code: 'ENOENT' };
+    };
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform });
+  });
+
+  describe.each(['text', 'selection'] as const)('%s delivery', kind => {
+    it.each(['Ghostty', 'WezTerm', 'kitty', 'Alacritty', 'Visual Studio Code'])('skips Automation for %s', async app => {
+      ancestry = chain(`/Applications/${app}.app/Contents/MacOS/${app}`);
+      // Both supported terminal apps may be running, but neither owns this session.
+      ancestry.stdout += `\n800 1 ${iterm}\n900 1 ${terminal}`;
+      const result = await deliver(kind);
+      expect(result).toEqual({ ok: false, reason: `terminal host not supported (${app})` });
+      expect(osaCalls()).toEqual([]);
+    });
+
+    it.each([[iterm, 'iterm2'], [terminal, 'terminal-app']] as const)('only controls the owning app %s', async (executable, via) => {
+      ancestry = chain(executable);
+      expect(await deliver(kind)).toEqual({ ok: true, via });
+      expect(osaCalls().length).toBeGreaterThan(0);
+      const scripts = osaCalls().map(c => c.args.at(-1)).join('\n');
+      if (via === 'iterm2') expect(scripts).not.toContain('Terminal');
+      else expect(scripts).not.toContain('iTerm');
+    });
+
+    it.each([iterm, terminal])('does not try another app when the owner fails: %s', async executable => {
+      ancestry = chain(executable);
+      osaReply = { code: 1 };
+      expect((await deliver(kind)).ok).toBe(false);
+      expect(osaCalls()).toHaveLength(1);
+      expect(osaCalls()[0].args.at(-1)).toContain(executable === iterm ? 'iTerm2' : 'Terminal');
+    });
+
+    it('uses the nearest app when an editor was launched from iTerm2', async () => {
+      ancestry = chain('/Applications/Code.app/Contents/MacOS/Electron');
+      ancestry.stdout = ancestry.stdout!.replace('100 1 ', '100 50 ') + `\n50 1 ${iterm}`;
+      expect((await deliver(kind)).reason).toBe('terminal host not supported (Code)');
+      expect(osaCalls()).toEqual([]);
+    });
+
+    it.each([
+      { code: 1 }, // includes timeout / EPERM
+      { stdout: '' },
+      { stdout: `${PID} 100 /opt/homebrew/bin/claude` }, // missing ancestor
+      { stdout: `${PID} 100 /opt/homebrew/bin/claude\n100 ${PID} /bin/zsh` }, // cycle
+      { stdout: `${PID} 1 /opt/homebrew/bin/claude` }, // reparented / SSH
+      { stdout: 'malformed process snapshot' },
+    ] satisfies ExecReply[])('keeps an unreadable or incomplete host unknown: %j', async reply => {
+      ancestry = reply;
+      const result = await deliver(kind);
+      expect(result.ok).toBe(false);
+      expect(result.reason).toContain('terminal host unknown');
+      expect(osaCalls()).toEqual([]);
+    });
+
+    it.each([undefined, 0, -1, 1.5, NaN])('skips Automation without a valid pid: %s', async pid => {
+      // Avoid the helper default for an explicitly missing pid.
+      const result = kind === 'text'
+        ? await injectObservedText({ tty: 'ttys003', pid }, 'hello')
+        : await injectObservedSelection({ tty: 'ttys003', pid }, 0);
+      expect(result.ok).toBe(false);
+      expect(result.reason).toContain('no valid agent pid');
+      expect(osaCalls()).toEqual([]);
+    });
+
+    it('still delivers through tmux without discovering an app', async () => {
+      const route = execRoute;
+      execRoute = (file, args) => file === 'tmux'
+        ? { stdout: '/dev/ttys003\t%3\n' } : route(file, args);
+      expect(await deliver(kind)).toEqual({ ok: true, via: 'tmux' });
+      expect(execCalls.some(c => c.file === 'ps' || c.file === 'osascript')).toBe(false);
+    });
+
+    it('never uses Automation on a non-macOS host', async () => {
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      expect((await deliver(kind)).ok).toBe(false);
+      expect(execCalls.some(c => c.file === 'ps' || c.file === 'osascript')).toBe(false);
+    });
   });
 });
