@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled."
+    "summary": "Master branch protection requires ESP32 Sim Compile, dependency audits/review, CodeQL language and aggregate checks, and Security pipeline freshness. Required contexts were read from the repository API on 2026-11-03; other checks can still fail without blocking GitHub merge. Administrator enforcement remains disabled."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -1060,7 +1060,48 @@
         "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails."
       ],
       "does_not_prove": [
-        "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
+        "No exploitable defects; Swift coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
+      ]
+    },
+    {
+      "id": "codeql-kotlin",
+      "name": "CodeQL Kotlin security analysis",
+      "level": [
+        "compile",
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "kotlin",
+      "trigger": "Every PR, master push and schedule",
+      "blocking": true,
+      "required": true,
+      "command": "Gradle Android extraction + github/codeql-action",
+      "proves": [
+        "Android Java/Kotlin sources are compiled without the build cache for security-extended CodeQL extraction and analysis."
+      ],
+      "does_not_prove": [
+        "No exploitable defects; runtime TLS behavior; Swift or firmware coverage."
+      ]
+    },
+    {
+      "id": "security-pipeline-health",
+      "name": "Security pipeline freshness",
+      "level": [
+        "integration"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-health.yml",
+      "job": "freshness",
+      "trigger": "Every PR, master push, hourly schedule and manual dispatch",
+      "blocking": true,
+      "required": true,
+      "command": "node scripts/security-pipeline-health.mjs",
+      "proves": [
+        "Dependency and CodeQL workflows are active; recent completed and scheduled evidence is checked against bounded freshness windows. Disabled, stale, failed or unreadable evidence fails."
+      ],
+      "does_not_prove": [
+        "A first scheduled execution during its startup window is explicitly unverified, not healthy; no guarantee of zero security findings."
       ]
     }
   ],
@@ -1425,7 +1466,8 @@
         "scripts/__tests__/public-media.test.ts",
         "scripts/__tests__/product-tour-fixture.test.ts",
         "scripts/__tests__/aquarium-showcase-story.test.ts",
-        "scripts/__tests__/security-audit.test.ts"
+        "scripts/__tests__/security-audit.test.ts",
+        "scripts/__tests__/security-pipeline-health.test.ts"
       ]
     }
   ]

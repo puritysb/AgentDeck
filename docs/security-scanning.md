@@ -15,10 +15,12 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 | Dependabot | Continuous alerts; weekly version PRs | Maintainer review, no automatic merge | Security → Dependabot, update PRs |
 | Secret scanning + push protection | GitHub service | Existing provider-secret protections retained | GitHub Security → Secret scanning |
 
-CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
-using `build-mode: none`. C++ without target headers/build flags has limited
-precision. Swift and Kotlin analysis, a complete PlatformIO/Arduino dependency
-inventory, and inspection of every installed user environment remain gaps.
+CodeQL uses `build-mode: none` for JavaScript/TypeScript, Python, Actions,
+C/C++ and Rust. Android Java/Kotlin has a separate manual-build extraction job;
+it compiles Debug sources without the build cache. C++ without target
+headers/build flags has limited precision. Swift analysis, a complete
+PlatformIO/Arduino dependency inventory, and inspection of every installed user
+environment remain gaps.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
 Snyk has not been run or connected. These checks provide a baseline without an
@@ -216,3 +218,12 @@ public notes can publish aggregates and validated delivery status.
 
 Sources: [PR alert scope](https://docs.github.com/en/code-security/concepts/code-scanning/code-scanning-alerts),
 [separate Dependabot PR limits](https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-errors).
+
+
+The required `Security pipeline freshness` check reads actual GitHub workflow
+state and completed/scheduled run evidence. Dependency scans have a 26-hour
+window and CodeQL an eight-day window; disabled workflows, failed or stale
+scans, and execution stuck for over 90 minutes fail the check. A missing first
+scheduled execution is explicitly unverified only during the bounded startup
+window. Manual success does not prove cron ran. The implementation is
+`scripts/security-pipeline-health.mjs`; its unit fixtures cover these cases.

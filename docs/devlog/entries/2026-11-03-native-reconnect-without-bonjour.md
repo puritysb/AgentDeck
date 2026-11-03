@@ -128,3 +128,26 @@ local Apple scope applies. After the refused Swift window, a separate bounded
 Node observation verified all three unchanged client PIDs, both e-ink parsed
 frames and the iPad first-message counter advancing from one to two. This proves
 Node recovery; it is not an authenticated iPad-on-Swift pass.
+
+
+The owner then explicitly approved this iPad on Swift. Its current per-install
+identity was obtained from the unique live knock at the mDNS-confirmed iPad
+address, with the sole running AgentDeck process checked; a historical identity
+was stale and was never granted. After this one-time setup, the measured
+Swift → Node → Swift → Node cycle passed for all three clients with no further
+permission changes or client launches. PIDs remained iPad 6225, Pantone 12989 and
+Crema 9475. The iPad first-message counter advanced 2 → 3 → 4 → 5; Android proof
+required fresh parsed frames from each normal-package PID. Node → Swift took
+179.8 seconds and Swift → Node 62.0 seconds including host lifecycle waits;
+these are not claims that every handover finishes within the 30-second client
+cooldown. The final owner was Node on 9120, with the installed Swift app its
+client. Private `final-verified-acceptance.json` retains the complete phase data.
+
+During final CI review, repository protection already required Kotlin CodeQL
+and Security pipeline freshness while their definitions were absent from the
+current master. The real Kotlin extraction job and freshness workflow/script/
+fixtures were forward-ported from published PR #712 (source `1083235ea6ec`),
+without its unrelated runtime edits or Swift analysis jobs. No stand-in success
+status or protection relaxation was used. The freshness fixtures preserve the
+bounded unverified startup state for cron rather than claiming manual success
+proves scheduled execution. The coverage catalogue records both actual checks.
