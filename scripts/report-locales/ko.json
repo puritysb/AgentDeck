@@ -544,5 +544,21 @@
   "Installed App Store or Release delivery, real providers, source grants, physical writers or remote network partitions": "실제 App Store·Release 배포, 실제 제공자·소스 권한, 물리 기기 쓰기나 원격 네트워크 단절",
   "Absent-replica recovery, simultaneous durable-store loss, pins/settings/source-grant migration or staged-image distribution": "복제본 부재·동시 저장소 손실 복구, 핀·설정·소스 권한 이전이나 준비된 펌웨어 배포",
   "Physical X4 acceptance is deferred to companion-app integration": "X4 실기 검증은 컴패니언 앱 연동 시 진행합니다.",
-  "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations": "선택 실행하는 화면 소등 모드는 Swift 단독·Node 단독·동시 실행에서 실제 Mac 화면 꺼짐과 복원의 격리 클라이언트 전달 시간을 측정합니다."
+  "Opt-in display-only mode measures actual Mac sleep/wake edge delivery to isolated wire clients in Swift-only, Node-only and combined configurations": "선택 실행하는 화면 소등 모드는 Swift 단독·Node 단독·동시 실행에서 실제 Mac 화면 꺼짐과 복원의 격리 클라이언트 전달 시간을 측정합니다.",
+  "Known vulnerable npm dependencies": "알려진 npm 의존성 취약점 검사",
+  "Every PR, master push and schedule (dependency review: PR only)": "모든 PR·master 푸시·예약 실행. 의존성 변경 검토는 PR에서만 실행합니다.",
+  "All and production pnpm lockfile scopes are queried against the current registry; unreviewed high/critical advisories and expired exact-version exceptions fail; raw results and hashes are retained.": "전체·운영 pnpm 잠금 파일을 현재 데이터베이스와 대조합니다. 검토되지 않은 High·Critical 경고와 만료된 정확한 버전 예외는 실패하며 원본 결과와 해시를 보존합니다.",
+  "Reachability or absence of unknown vulnerabilities; native firmware dependencies; medium/low advisories do not fail this gate.": "실행 경로의 도달 가능성, 알려지지 않은 취약점의 부재, 펌웨어 의존성을 증명하지 않습니다. Moderate·Low 경고는 이 검사를 실패시키지 않습니다.",
+  "Python dependency audit": "Python 의존성 검사",
+  "Resolved BLE and Robot requirements are queried by pip-audit. Resolution or audit failure fails the job.": "BLE·Robot 요구 사항을 해석해 pip-audit로 검사합니다. 버전 해석이나 검사 실행 실패는 작업을 실패시킵니다.",
+  "The packages installed in an existing user BLE environment; OS-specific dependencies outside the Linux resolver.": "기존 사용자 BLE 환경의 설치 버전과 Linux 해석에 포함되지 않은 운영체제별 패키지는 확인하지 않습니다.",
+  "Rust dependency audit": "Rust 의존성 검사",
+  "Cargo.lock is queried by checksum-pinned OSV Scanner without running build scripts; three dated maintenance-only exceptions are visible in policy.": "체크섬으로 고정한 OSV Scanner가 빌드 스크립트를 실행하지 않고 Cargo.lock을 검사합니다. 유지보수 경고 예외에는 기한이 있습니다.",
+  "A full firmware/native dependency inventory or C++ vulnerability analysis; unmaintained crates are tracked separately from confirmed vulnerabilities.": "전체 펌웨어·네이티브 의존성 목록이나 C++ 취약점 분석을 증명하지 않습니다. 유지보수가 중단된 패키지는 확인된 취약점과 별도로 추적합니다.",
+  "New dependency review": "새 의존성 변경 검토",
+  "PR dependency changes are compared by GitHub dependency review; newly introduced high/critical advisories fail.": "GitHub가 PR의 의존성 변화를 비교합니다. 새로 들어오는 High·Critical 경고는 실패합니다.",
+  "All existing debt, all ecosystems or runtime exploitability.": "기존의 모든 미해결 경고, 모든 생태계 또는 런타임 공격 가능성을 확인하지는 않습니다.",
+  "CodeQL static security analysis": "CodeQL 정적 보안 분석",
+  "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails.": "security-extended 쿼리로 JavaScript·TypeScript, Python, Actions, C·C++, Rust를 빌드 없이 분석합니다. 추출·분석 실패는 작업을 실패시킵니다.",
+  "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage.": "악용 가능한 결함의 부재, Swift·Kotlin 범위 또는 기기 동작을 증명하지 않습니다. 분석 성공과 경고 없음은 별개이며 경고는 따로 검토합니다."
 }

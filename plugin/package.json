@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@agentdeck/shared": "workspace:*",
-    "@elgato/streamdeck": "^2.1.0",
+    "@elgato/streamdeck": "^2.1.2",
     "@elgato/utils": "^0.4.5",
     "ws": "^8.20.0"
   },
