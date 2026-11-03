@@ -86,6 +86,97 @@ final class MultiDaemonConnectionTests: XCTestCase {
         XCTAssertNil(connection.lastError)
     }
     #if DEBUG
+    func testRemoteHostRecoversAfterRealRetryExhaustionWithoutDiscovery() throws {
+        let ready = expectation(description: "unavailable owner ready")
+        let server = try RefusalServer(code: 503) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+        defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+        let holder = AgentStateHolder(recoveryDelaySec: 0.05)
+        holder.discovery.isBrowserEnabled = false
+        defer { holder.prepareForTermination() }
+        let recovered = expectation(description: "replacement owner supplied a frame")
+        let eventHandler = holder.connection.onEvent
+        holder.connection.onEvent = { event in
+            eventHandler?(event)
+            if case .connection(let state) = event, state.status == "connected" { recovered.fulfill() }
+        }
+        let exhausted = holder.connection.onReconnectExhausted
+        holder.connection.onReconnectExhausted = { endpoint in
+            server.approve()
+            exhausted?(endpoint)
+        }
+        holder.connectTo(url: "ws://127.0.0.1:\(try XCTUnwrap(server.port))")
+        wait(for: [recovered], timeout: 40)
+        XCTAssertGreaterThanOrEqual(server.requests, 7, "Exercise the real short retry budget before recovery")
+        XCTAssertTrue(holder.state.bridgeConnected)
+    }
+
+    func testRefusalRecoversAfterCooldownWithoutDiscoveryOrUserRetry() throws {
+        let ready = expectation(description: "refusing owner ready")
+        let server = try RefusalServer(code: 401) { ready.fulfill() }
+        defer { server.stop() }
+        wait(for: [ready], timeout: 5)
+        let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+        defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+        let holder = AgentStateHolder(recoveryDelaySec: 0.3)
+        holder.discovery.isBrowserEnabled = false
+        defer { holder.prepareForTermination() }
+        let refused = expectation(description: "original owner refused")
+        let authHandler = holder.connection.onAuthenticationRequired
+        holder.connection.onAuthenticationRequired = {
+            authHandler?()
+            server.approve()
+            refused.fulfill()
+        }
+        let recovered = expectation(description: "same endpoint accepted by replacement owner")
+        let eventHandler = holder.connection.onEvent
+        holder.connection.onEvent = { event in
+            eventHandler?(event)
+            if case .connection(let state) = event, state.status == "connected" { recovered.fulfill() }
+        }
+        let port = Int(try XCTUnwrap(server.port))
+        holder.connectTo(url: "ws://127.0.0.1:\(port)")
+        wait(for: [refused], timeout: 5)
+        holder.discovery.publishForTesting([DiscoveredBridge(name: "same", host: "127.0.0.1", port: port, token: nil, agentType: "daemon")])
+        let quiet = expectation(description: "refusal holdoff")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { quiet.fulfill() }
+        wait(for: [quiet], timeout: 2)
+        XCTAssertEqual(server.requests, 1, "Discovery must not bypass the holdoff")
+        wait(for: [recovered], timeout: 4)
+        XCTAssertEqual(server.requests, 2)
+        XCTAssertFalse(holder.isAutoConnecting)
+    }
+
+    func testQueuedRemoteRecoveryCannotUndoStopOrNewSelection() throws {
+        for stop in [true, false] {
+            let ready = expectation(description: "owner ready")
+            let server = try RefusalServer(code: 401) { ready.fulfill() }
+            defer { server.stop() }
+            wait(for: [ready], timeout: 5)
+            let old = UserDefaults.standard.string(forKey: "lastBridgeUrl")
+            defer { UserDefaults.standard.set(old, forKey: "lastBridgeUrl") }
+            let holder = AgentStateHolder(recoveryDelaySec: 0.15)
+            holder.discovery.isBrowserEnabled = false
+            defer { holder.prepareForTermination() }
+            let refused = expectation(description: "refused before user action")
+            let handler = holder.connection.onAuthenticationRequired
+            holder.connection.onAuthenticationRequired = { handler?(); refused.fulfill() }
+            holder.connectTo(url: "ws://127.0.0.1:\(try XCTUnwrap(server.port))")
+            wait(for: [refused], timeout: 5)
+            server.approve()
+            holder.connection.onAuthenticationRequired = handler
+            if stop { holder.stopConnectionAttempts() }
+            else { holder.connectTo(url: "ws://127.0.0.1:1") }
+            let settled = expectation(description: "retired recovery is fenced")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { settled.fulfill() }
+            wait(for: [settled], timeout: 2)
+            XCTAssertEqual(server.requests, 1)
+            XCTAssertFalse(holder.state.bridgeConnected)
+        }
+    }
+
     func testSavedHostIsDialedWhenOnlyOtherHostIsDiscovered() throws {
         let ready = expectation(description: "listener ready")
         let server = try RefusalServer(code: 401) { ready.fulfill() }
@@ -159,14 +250,14 @@ final class MultiDaemonConnectionTests: XCTestCase {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { disconnected.fulfill() }
         wait(for: [disconnected], timeout: 3)
         holder.connection.onReconnectExhausted?(url)
-        holder.schedulePreferredLocalRecovery(after: 0.01)
+        holder.scheduleSelectedHostRecovery(after: 0.01)
         let settled = expectation(description: "local recovery retry delivered")
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { settled.fulfill() }
         wait(for: [settled], timeout: 4)
         XCTAssertGreaterThan(server.requests, requests, "A preferred loopback endpoint must recover even without a matching Bonjour LAN address")
         let recoveredRequests = server.requests
         holder.stopConnectionAttempts()
-        holder.schedulePreferredLocalRecovery(after: 0.01)
+        holder.scheduleSelectedHostRecovery(after: 0.01)
         let stopped = expectation(description: "explicit stop remains in force")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { stopped.fulfill() }
         wait(for: [stopped], timeout: 3)

@@ -51,6 +51,13 @@ export const PAIRING_MAX_FAILED_ATTEMPTS = 5;
 /** Credentials one window hands out unless the operator asks for more. */
 export const DEFAULT_PAIRING_REDEMPTIONS = 1;
 
+/** Quiet period before a native client retries its selected host after exhaustion
+ * or authentication refusal. A host may change daemon owners without changing
+ * its Bonjour record; retries must not depend on another discovery emission.
+ * This never grants access: every new socket still passes the normal auth gate.
+ */
+export const CLIENT_RECONNECT_COOLDOWN_MS = 30_000;
+
 /** State a daemon must keep for an open window, and all this module reads. */
 export interface PairingWindowSnapshot {
   /** The code the operator is looking at. */
