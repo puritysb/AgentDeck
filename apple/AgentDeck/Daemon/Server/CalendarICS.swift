@@ -42,7 +42,14 @@ enum CalendarICS {
         return (1..<m.numberOfRanges).map { Range(m.range(at: $0), in: value).map { String(value[$0]) } }
     }
     private static func matches(_ value: String, _ pattern: String) -> Bool { value.range(of: pattern, options: .regularExpression)?.upperBound == value.endIndex }
+    static func emptySkipped() -> [String: Int] { Dictionary(uniqueKeysWithValues: P.skipReasons.map { ($0, 0) }) }
+    struct Parsed: Sendable { var events: [Event] = []; var skippedByReason = emptySkipped(); var skippedEvents = 0 }
+    private static func supportedZone(_ zone: String) -> Bool {
+        let mapped = P.windowsZones[zone] ?? zone
+        return matches(mapped, #"^(UTC|GMT|[A-Za-z_+-]+(?:/[A-Za-z0-9_+-]+)+)$"#) && TimeZone(identifier: mapped) != nil
+    }
     private static func instant(_ value: String, _ zone: String? = nil) -> Instant? {
+        let zone = zone.map { P.windowsZones[$0] ?? $0 }
         guard let m = groups(value, #"^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$"#), !(zone != nil && (m[6] != nil || m[3] == nil || !matches(zone!, #"^(UTC|GMT|[A-Za-z_+-]+(?:/[A-Za-z0-9_+-]+)+)$"#))) else { return nil }
         let c = m.prefix(6).map { Int($0 ?? "0") ?? -1 }
         guard c[0] >= P.minYear, c[0] <= P.maxYear, c[1] >= 1, c[1] <= 12, c[2] >= 1, c[2] <= 31,
@@ -68,7 +75,8 @@ enum CalendarICS {
         }
         if escaped { out += "\\" }; return out.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    static func parse(_ text: String, namespace: String = "") throws -> [Event] {
+    static func parse(_ text: String, namespace: String = "") throws -> [Event] { try parseDetailed(text, namespace: namespace).events }
+    static func parseDetailed(_ text: String, namespace: String = "") throws -> Parsed {
         guard text.utf8.count <= P.maxBodyBytes else { throw Failure.limit }
         var lines: [String] = []
         for raw in text.replacingOccurrences(of: "\r\n", with: "\n").trimmingCharacters(in: CharacterSet(charactersIn: "\u{FEFF}")).components(separatedBy: "\n") {
@@ -77,14 +85,22 @@ enum CalendarICS {
             if let last = lines.last, last.utf8.count > P.maxLineBytes { throw Failure.limit }
         }
         guard lines.first == "BEGIN:VCALENDAR", lines.last == "END:VCALENDAR" else { throw Failure.invalid }
-        var out: [Event] = [], props: [Property]?, depth = 0
+        var out = Parsed(); var props: [Property]?, depth = 0
         for line in lines {
             if line == "BEGIN:VEVENT" { guard props == nil else { throw Failure.invalid }; props = []; depth = 1; continue }
             guard props != nil else { continue }
             if line.hasPrefix("BEGIN:") { depth += 1; continue }
             if line.hasPrefix("END:"), line != "END:VEVENT" { depth -= 1; continue }
             if line == "END:VEVENT" {
-                if depth == 1, let event = event(props!, namespace: namespace) { out.append(event); if out.count > P.maxEvents { throw Failure.limit } }
+                var reason = "invalid_event"
+                let parsed = event(props!, namespace: namespace, reason: &reason)
+                if depth == 1, let parsed { out.events.append(parsed) }
+                else {
+                    if props!.contains(where: { $0.zone.map { !supportedZone($0) } ?? false }) { reason = "unsupported_zone" }
+                    else if props!.contains(where: { ["RDATE", "DURATION", "EXRULE", "UNSUPPORTED"].contains($0.name) }) { reason = "unsupported_rule" }
+                    out.skippedEvents += 1; out.skippedByReason[reason, default: 0] += 1
+                }
+                if out.events.count + out.skippedEvents > P.maxEvents { throw Failure.limit }
                 props = nil; continue
             }
             guard depth == 1, let colon = line.firstIndex(of: ":") else { continue }
@@ -95,25 +111,28 @@ enum CalendarICS {
         }
         guard props == nil else { throw Failure.invalid }; return out
     }
-    private static func event(_ props: [Property], namespace: String) -> Event? {
+    private static func event(_ props: [Property], namespace: String, reason: inout String) -> Event? {
         func get(_ name: String) -> [Property] { props.filter { $0.name == name } }
         func one(_ name: String) -> Property? { let rows = get(name); return rows.count == 1 ? rows[0] : nil }
         func stamp(_ name: String) -> Instant? { one(name).flatMap { instant($0.value, $0.zone) } }
         let recurrence = stamp("RECURRENCE-ID")
-        guard let start = stamp("DTSTART") ?? recurrence else { return nil }
         let summary = decodeText(one("SUMMARY")?.value ?? ""), cancelled = one("STATUS")?.value == "CANCELLED"
         var rule: [String: String]?
         if let raw = one("RRULE")?.value {
+            reason = "unsupported_rule"
             var r: [String: String] = [:]
             for pair in raw.components(separatedBy: ";") { let kv = pair.components(separatedBy: "="); guard kv.count == 2, !kv[1].isEmpty, r[kv[0]] == nil else { return nil }; r[kv[0]] = kv[1] }
-            guard !(r["FREQ"] == "WEEKLY" && r["BYMONTHDAY"] != nil), !(r["FREQ"] == "YEARLY" && (r["BYDAY"] != nil || r["BYMONTHDAY"] != nil)), r.keys.allSatisfy({ P.ruleKeys.contains($0) }), P.frequencies.contains(r["FREQ"] ?? ""), r["WKST"] == nil || r["WKST"] == "MO",
+            guard !(r["FREQ"] == "WEEKLY" && r["BYMONTHDAY"] != nil), !(r["FREQ"] == "YEARLY" && (r["BYDAY"] != nil || r["BYMONTHDAY"] != nil)), r.keys.allSatisfy({ P.ruleKeys.contains($0) }), P.frequencies.contains(r["FREQ"] ?? ""), r["WKST"] == nil || P.weekdays.contains(r["WKST"]!),
                   ["INTERVAL", "COUNT"].allSatisfy({ r[$0] == nil || matches(r[$0]!, #"^[1-9]\d{0,5}$"#) }),
                   r["COUNT"] == nil || r["UNTIL"] == nil, r["UNTIL"] == nil || instant(r["UNTIL"]!) != nil,
                   r["BYDAY"] == nil || r["BYDAY"]!.components(separatedBy: ",").allSatisfy({ matches($0, #"^([+-]?[1-5])?(SU|MO|TU|WE|TH|FR|SA)$"#) }),
                   !["DAILY","WEEKLY"].contains(r["FREQ"] ?? "") || r["BYDAY"] == nil || r["BYDAY"]!.components(separatedBy: ",").allSatisfy({ matches($0, #"^[A-Z]{2}$"#) }),
                   r["BYMONTHDAY"] == nil || r["BYMONTHDAY"]!.components(separatedBy: ",").allSatisfy({ matches($0, #"^-?([1-9]|[12]\d|3[01])$"#) }) else { return nil }
+            guard r["BYSETPOS"] == nil || (r["FREQ"] == "MONTHLY" && (r["BYDAY"] != nil || r["BYMONTHDAY"] != nil) && r["BYSETPOS"]!.components(separatedBy: ",").allSatisfy({ matches($0, #"^-?[1-9]\d?$"#) && abs(Int($0)!) <= P.maxSetPosition })) else { return nil }
             rule = r
         }
+        reason = "invalid_event"
+        guard let start = stamp("DTSTART") ?? recurrence else { return nil }
         let end = stamp("DTEND"); var exclusions: [Instant] = []
         for p in get("EXDATE") { for raw in p.value.components(separatedBy: ",") { guard let t = instant(raw, p.zone) else { return nil }; exclusions.append(t) } }
         guard ["UID","SUMMARY","DTSTART","DTEND","RRULE","RECURRENCE-ID","STATUS"].allSatisfy({ get($0).count <= 1 }),
@@ -122,7 +141,7 @@ enum CalendarICS {
         return .init(uid: namespace + "\0" + (one("UID")?.value ?? ""), summary: summary, start: start, end: end, rule: rule, exclusions: exclusions, recurrence: recurrence, cancelled: cancelled)
     }
     private static func weekday(_ c: [Int]) -> Int { (try! calendar()).component(.weekday, from: Date(timeIntervalSince1970: day(c) / 1000)) - 1 }
-    private static func ruleMatches(_ e: Event, _ c: [Int], _ offset: Int) -> Bool {
+    private static func ruleMatches(_ e: Event, _ c: [Int], _ offset: Int, applySetPosition: Bool = true) -> Bool {
         let r = e.rule!, start = e.start.civil, interval = Int(r["INTERVAL"] ?? "1")!, wd = weekday(c)
         var next = Array(c.prefix(3)) + [0,0,0]; next[1] += 1; next[2] = 0
         let monthDays = (try! parts(utc(next)))[2]
@@ -132,9 +151,19 @@ enum CalendarICS {
             return ord == 0 || (ord > 0 ? (c[2] - 1) / 7 + 1 == ord : -((monthDays - c[2]) / 7 + 1) == ord)
         }) { return false }
         if let bymonthday = r["BYMONTHDAY"], !bymonthday.components(separatedBy: ",").contains(where: { v in let n = Int(v)!; return c[2] == (n > 0 ? n : monthDays + n + 1) }) { return false }
+        if applySetPosition, let positions = r["BYSETPOS"] {
+            let candidates = (1...monthDays).filter { d in
+                var other = c; other[2] = d
+                return ruleMatches(e, other, offset + d - c[2], applySetPosition: false)
+            }
+            guard positions.components(separatedBy: ",").contains(where: { value in
+                let n = Int(value)!, index = n > 0 ? n - 1 : candidates.count + n
+                return candidates.indices.contains(index) && candidates[index] == c[2]
+            }) else { return false }
+        }
         switch r["FREQ"] {
         case "DAILY": return offset % interval == 0
-        case "WEEKLY": return ((offset + (weekday(start) + 6) % 7) / 7) % interval == 0 && (r["BYDAY"] != nil || wd == weekday(start))
+        case "WEEKLY": return ((offset + (weekday(start) - P.weekdays.firstIndex(of: r["WKST"] ?? P.defaultWeekStart)! + P.weekdays.count) % P.weekdays.count) / 7) % interval == 0 && (r["BYDAY"] != nil || wd == weekday(start))
         case "MONTHLY": return ((c[0] - start[0]) * 12 + c[1] - start[1]) % interval == 0 && (r["BYDAY"] != nil || r["BYMONTHDAY"] != nil || c[2] == start[2])
         case "YEARLY": return (c[0] - start[0]) % interval == 0 && c[1] == start[1] && (r["BYDAY"] != nil || r["BYMONTHDAY"] != nil || c[2] == start[2])
         default: return false

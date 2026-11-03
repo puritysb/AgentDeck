@@ -170,6 +170,8 @@ export class HookServer extends EventEmitter {
     const headers: Record<string, string> = {};
     const pid = req.get('X-AgentDeck-Pid');
     if (pid) headers['X-AgentDeck-Pid'] = pid;
+    const inbox = req.get('X-AgentDeck-Inbox');
+    if (inbox && isLocalConnection(req.socket.remoteAddress ?? '') && localTrustOf(req) === 'trusted') headers['X-AgentDeck-Inbox'] = inbox;
     // A Codex hold request must reach the daemon as one (the forwarder
     // restates its budget), or the daemon ingests it as a second notification.
     const hold = req.get(CODEX_APPROVAL_HOLD_HEADER);

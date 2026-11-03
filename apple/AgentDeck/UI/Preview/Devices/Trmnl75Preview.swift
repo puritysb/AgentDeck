@@ -50,7 +50,9 @@
 // separators became ASCII; this mirror shows only "Searching for AgentDeck…".
 // 2026-11-02: Decision request identity/routing changed; this default dashboard
 // schematic's geometry and sample content are unchanged. No Swift code change.
-// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 1f414679d8bcd616a56400abc6596083d226135a
+// 2026-11-03: confirmed auth-refusal copy is a firmware-only connection state;
+// this preview samples ordinary OFFLINE, with unchanged dashboard geometry.
+// SYNC-HASH esp32/src/ui/eink/eink_display.cpp 4bde5a6667b248fe826b6caea29f5fd47c4fe84e
 // SYNC-HASH esp32/src/ui/eink/eink_dashboard_layout.h 97b1d2a6f5c84e9cf733b3e5b3145ad45f3136e7
 
 import SwiftUI

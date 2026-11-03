@@ -44,3 +44,10 @@ Review and tests use dedicated worktrees, synthetic subprocess arguments,
 temporary profiles and ephemeral loopback sockets. No live daemon, credential,
 Keychain item or connected board was used. Private advisory details remain in the
 private reporting channel. Runbook: [docs/security-scanning.md](docs/security-scanning.md).
+
+After integrating the source and verification work from #709/#711, quick checks
+passed with 7,561 tests and 42 platform skips. The complete macOS Debug/XCTest
+suite and iOS Release build passed in the same isolated DerivedData profile; the
+previously failing Glance route case passed too. The failed earlier receipt is
+retained separately. Incoming-only source paths were byte-compared against the
+integration branch; only local XcodeGen path churn was excluded from the commit.

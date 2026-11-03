@@ -73,6 +73,7 @@ export function resolveDaemonPosture(
 export function daemonModuleConfigs(
   posture: DaemonPosture,
   serialMode: 'auto' | false,
+  udpDiscoveryEnabled = false,
 ): ModuleConfigs {
   if (posture.noDeviceModules) return allModulesOff();
   if (posture.loopbackOnly) {
@@ -84,7 +85,7 @@ export function daemonModuleConfigs(
   }
   return {
     mdns: true,
-    broadcast: true,
+    broadcast: udpDiscoveryEnabled === true,
     adb: 'auto',
     serial: serialMode,
     pixoo: 'auto',

@@ -185,6 +185,7 @@ struct DashboardState {
     DotSurfaceState* dot = nullptr; // Protocol owns one fallible reusable heap object.
     // Connection
     bool wsConnected;
+    bool pairingRequired = false;
     char bridgeIp[16];
     uint16_t bridgePort;
     char authToken[40];

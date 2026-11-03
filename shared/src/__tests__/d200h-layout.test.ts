@@ -389,6 +389,14 @@ describe('VOICE tile — hold-to-talk contract', () => {
     return [...deck.values()].find((c) => /VOICE/.test(c.svg));
   };
 
+  it('renders approval and receipt states only for the dictated recipient', () => {
+    const render = (sessionId: string, status: 'held' | 'submitted' | 'refused') => [...buildSessionDeck(state,{...view,voiceDeliverySessionId:sessionId,voiceDeliveryStatus:status},positions(15)).values()].find(c => /VOICE/.test(c.svg))!.svg;
+    expect(render(view.openSessionId,'held')).toContain('approve in Claude');
+    expect(render(view.openSessionId,'submitted')).toContain('receipt pending');
+    expect(render(view.openSessionId,'refused')).toContain('Claude refused');
+    expect(render('other-session','held')).toContain('hold to talk');
+  });
+
   it('tells the user to hold, not to tap', () => {
     const cell = voiceCell('idle');
     expect(cell?.svg).toContain('hold to talk');

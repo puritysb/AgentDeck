@@ -416,7 +416,10 @@ struct SettingsScreen: View {
         case .daemon:
             daemonContent
         case .pairing:
-            discoveryContent
+            VStack(alignment: .leading, spacing: 16) {
+                discoveryContent
+                PairingRotationSettings(port: Int(daemonService.port))
+            }
         case .display:
             displayContent
         case .hardware:

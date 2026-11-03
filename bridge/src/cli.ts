@@ -3310,17 +3310,25 @@ program
 
 program
   .command('token')
-  .description('Show or rotate the pairing token (~/.agentdeck/auth-token)')
+  .description('Show the local pairing token or rotate the active daemon token')
   .argument('[action]', "'show' (default) prints the token; 'rotate' replaces it", 'show')
   .action(async (action: string) => {
-    const { getOrCreateToken, rotateToken } = await import('./auth.js');
+    const { getOrCreateToken } = await import('./auth.js');
     if (action === 'rotate') {
-      const token = rotateToken();
-      log(`New pairing token: ${token}`);
+      try {
+        const { rotateActivePairingToken } = await import('./pairing-rotation.js');
+        await rotateActivePairingToken();
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : 'Pairing rotation was not confirmed');
+        process.exitCode = 1;
+        return;
+      }
+      log('Active daemon pairing token rotated; its previous tokens are retired.');
       log('All paired clients must re-pair: rescan the QR on companion apps (agentdeck qr),');
       log('re-provision WiFi ESP32 boards (they re-provision automatically over USB serial),');
       log('and update AGENTDECK_DAEMON_TOKEN on any remote workers.');
-      log('Restart the daemon (agentdeck daemon restart) so it picks up the new token.');
+      log('Global revocation is incomplete: offline, unreachable or older daemons may still accept previous tokens.');
+      log('Updated local peers adopt this retirement on their next health check. Confirm each host separately.');
     } else if (action === 'show') {
       log(getOrCreateToken());
       log('(Anyone with this token can control your sessions over the LAN — treat it like a password.)');
@@ -3333,17 +3341,17 @@ program
 program
   .command('inject-test')
   .description('Test observed-answer injection into a terminal or app (tuning aid)')
-  .option('--tty <tty>', 'Controlling terminal, e.g. ttys007')
+  .option('--tty <tty>', 'Controlling terminal, e.g. ttys007 (use with --pid outside tmux)')
   .option('--app <name>', 'Hosting app for GUI sessions, e.g. Claude / ChatGPT')
-  .option('--pid <pid>', 'Agent process id — lets the cmux rung find the surface it runs in')
+  .option('--pid <pid>', 'Agent process id — identifies the cmux surface or iTerm2/Terminal.app host')
   .option('--label <label>', 'Option label — app hosts press the matching button first')
   .option('-i, --index <n>', 'Zero-based option index (Down presses)', '0')
   .option('--text <text>', 'Type this text and submit it, instead of picking an option')
   .action(async (opts) => {
     if (!opts.tty && !opts.app) {
-      console.error('Give --tty <ttysNNN> or --app <Name>. Find a session\'s tty with:');
+      console.error('Give --tty <ttysNNN> --pid <agent-pid> or --app <Name>. Find the tty and PID with:');
       console.error("  ps -eo pid=,tty=,command= | grep -E ' claude| codex'");
-      console.error('Add --pid <pid> from the same line to reach a session running in cmux.');
+      console.error('The PID identifies cmux or the iTerm2/Terminal.app host; tmux can match by tty alone.');
       process.exit(1);
     }
     const { injectObservedSelection, injectObservedText } =

@@ -95,6 +95,31 @@ above and PR review own that judgment. After delivery, update the
 [README release table](README.md#releases) and the per-channel receipt from
 observed portal/artifact state; do not present a candidate as public.
 
+### Native delivery readback 2026-11-03
+
+The [read-only ASC run 41560313213](https://github.com/puritysb/AgentDeck/actions/runs/41560313213)
+observed at **10:32 KST on November 3** reports **iOS 2.0.0 READY_FOR_SALE**
+and submission `ef54a1aa-eb2b-4565-946e-1e271807fa5a` **COMPLETE**.
+The matching iOS 10201 build remains VALID and unexpired. This is the observed
+public-delivery state, not a reconstructed approval or publication timestamp.
+
+**macOS 2.0.0** and submission `d8b96f46-070d-4d51-b424-18fa2a21b8f8`
+remain **WAITING_FOR_REVIEW**, with release type AFTER_APPROVAL and build 10201
+VALID and unexpired. The iOS result does not establish macOS availability.
+For [#635](https://github.com/puritysb/AgentDeck/issues/635), the reporter's npm
+2.0.0 reproductions are now confirmed resolved; macOS public availability and
+coordinated private-report disclosure remain open. For
+[#674](https://github.com/puritysb/AgentDeck/issues/674), iOS delivery of the
+connection/discovery token-log correction is confirmed. No upload, submission,
+certificate change or release mutation was performed by this readback.
+
+The published npm **2.0.0** token-rotation command changes its CLI profile's
+stored token and accepted ring; its running Node daemon needs a restart.
+That artifact does not rotate a Swift owner or establish complete revocation
+across daemon handover. Active-owner retirement and explicit incomplete-global
+status are tracked separately in [#673](https://github.com/puritysb/AgentDeck/issues/673);
+source fixes must not be presented as already delivered in npm 2.0.0.
+
 ### 2.0 delivery checkpoint 2026-11-02
 
 All six immutable channel tags point to release source

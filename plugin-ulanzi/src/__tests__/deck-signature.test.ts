@@ -1,3 +1,4 @@
+import { StateStore } from '../state-store.js';
 import { describe, expect, it } from 'vitest';
 import { buildSessionDeck } from '@agentdeck/shared';
 import { deckSignature, deckViewSignature } from '../deck-signature.js';
@@ -130,4 +131,14 @@ it('invalidates every name-only change that changes the actual shared deck pixel
     expect(pixels(changed)).not.toBe(pixels(event));
     expect(deckViewSignature(changed, view, positions)).not.toBe(deckViewSignature(event, view, positions));
   }
+});
+
+it('repaints a scoped peer receipt even when capture stays idle and clears it on disconnect', () => {
+  const store = new StateStore();
+  expect(store.apply({type:'voice_state',state:'idle',deliveryStatus:'held',sessionId:'session-a'})).toBe(true);
+  const view = {mode:'detail' as const,openSessionId:'session-a',voiceState:store.voiceState,voiceDeliveryStatus:store.voiceDeliveryStatus,voiceDeliverySessionId:store.voiceDeliverySessionId};
+  const before = deckViewSignature({},view,[]);
+  expect(store.apply({type:'voice_state',state:'idle',deliveryStatus:'refused',sessionId:'session-a'})).toBe(true);
+  expect(deckViewSignature({},{...view,voiceDeliveryStatus:store.voiceDeliveryStatus},[])).not.toBe(before);
+  store.setConnected(false);expect(store.voiceDeliveryStatus).toBeUndefined();
 });

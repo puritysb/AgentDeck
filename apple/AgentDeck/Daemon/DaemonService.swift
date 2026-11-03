@@ -826,7 +826,12 @@ final class DaemonService: ObservableObject {
         let wsUrl = "ws://127.0.0.1:\(resolvedPort)"
         guard await self.releaseInProcessDaemon(resumingConnectionTo: knownPort) else { return }
         if abandonIfStale("client handover teardown") { return }
-        AuthManager.shared.adoptPeerToken(health["pairingToken"] as? String)
+        do {
+            let changed = try await AuthManager.shared.adoptPeerToken(health["pairingToken"] as? String, retirement: health["pairingRetirement"])
+            if changed, AuthManager.shared.credentials.revision > 0 { await PairingWindowStore.shared.close() }
+        }
+        catch { self.errorMessage = "Pairing credentials could not be synchronized. Renew pairing on the active host."; return }
+        if abandonIfStale("credential handover") { return }
         self.port = UInt16(resolvedPort)
         self.isRunning = false
         self.changeOwnership(.becameClient)
@@ -1071,7 +1076,12 @@ final class DaemonService: ObservableObject {
                 // this app its credential (defence in depth: the attach path
                 // refuses a foreign daemon before we ever get here).
                 if !LocalPeerOwnership.isForeignDaemon(health: health) {
-                    AuthManager.shared.adoptPeerToken(health?["pairingToken"] as? String)
+                    do {
+                        let changed = try await AuthManager.shared.adoptPeerToken(health?["pairingToken"] as? String, retirement: health?["pairingRetirement"])
+                        if changed, AuthManager.shared.credentials.revision > 0 { await PairingWindowStore.shared.close() }
+                    }
+                    catch { DaemonLogger.shared.error("Peer pairing retirement was refused; local credentials retained") }
+                    guard !Task.isCancelled, isUsingExternalDaemon, Int(port) == currentPort else { return }
                     if lastApmePeerSyncAt.map({ Date().timeIntervalSince($0) >= 60 }) ?? true {
                         lastApmePeerSyncAt = Date()
                         let synced = await ApmeActivityHistory.syncFromPeer(

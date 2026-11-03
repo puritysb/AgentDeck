@@ -42,6 +42,7 @@ final class PairingWindowStore {
 
     private struct Active {
         var snapshot: PairingCodeRules.WindowSnapshot
+        var credentialGeneration: String? = nil
         var redemptions: [Redemption] = []
         var failures: [Failure] = []
     }
@@ -56,6 +57,9 @@ final class PairingWindowStore {
         var redemptions: [Redemption]
         var failures: [Failure]
     }
+
+    private var generationProvider: @Sendable () -> String? = { nil }
+    func setCredentialGeneration(_ getter: @escaping @Sendable () -> String?) { generationProvider = getter }
 
     private var active: Active?
     private var receipt: Receipt?
@@ -91,6 +95,7 @@ final class PairingWindowStore {
             failedAttempts: 0,
             redemptionsRemaining: count
         ))
+        active?.credentialGeneration = generationProvider()
         // A fresh window starts with a fresh receipt: the previous run's
         // redemptions must not be reported as if this window had paired them.
         receipt = nil
@@ -219,6 +224,7 @@ final class PairingWindowStore {
     /// the security property.
     private func current(now: Date = Date()) -> Active? {
         guard let window = active else { return nil }
+        if window.credentialGeneration != generationProvider() { closeActive(now: now); return nil }
         if Self.epochMs(now) >= window.snapshot.expiresAt {
             closeActive(now: now)
             return nil
@@ -274,6 +280,7 @@ final class PairingWindowStore {
 
     /// Test seam — drops any window without logging an operator action.
     func resetForTests() {
+        generationProvider = { nil }
         active = nil
         receipt = nil
     }

@@ -74,5 +74,43 @@
   {
     "value": "//example.com/a",
     "valid": false
+  },
+  {
+    "value": "webcal://example.com/private.ics?secret=a%2Fb",
+    "valid": true,
+    "normalized": "https://example.com/private.ics?secret=a%2Fb"
+  },
+  {
+    "value": "webcal://localhost:1234/a",
+    "valid": true,
+    "normalized": "https://localhost:1234/a"
+  },
+  {
+    "value": "webcal://user:password@example.com/a",
+    "valid": false
+  },
+  {
+    "value": "webcal://example.com/a#secret",
+    "valid": false
+  },
+  {
+    "value": "webcal://example.com/a%ZZ",
+    "valid": false
+  },
+  {
+    "value": "webcal:///a",
+    "valid": false
+  },
+  {
+    "value": "WEBCAL://example.com/a",
+    "valid": false
+  },
+  {
+    "value": "webcals://example.com/a",
+    "valid": false
+  },
+  {
+    "value": "webcal://example.com/a\\b",
+    "valid": false
   }
 ]

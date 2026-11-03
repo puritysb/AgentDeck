@@ -1,3 +1,4 @@
+import { voiceDeliveryPresentation } from './voice-ptt.js';
 import { OPENCODE_PERMISSION_CHOICES } from './opencode-question.js';
 import { hasControllerInput, hasControllerAnswer } from './device-controller.js';
 import { dotDeckReservedKeys, renderDotDeckSlot } from './dot-deck.js';
@@ -744,6 +745,8 @@ export interface DeckView {
    * up cannot strand a recording.
    */
   voiceState?: 'idle' | 'recording' | 'transcribing' | 'error';
+  voiceDeliveryStatus?: import('./protocol.js').VoiceDeliveryStatus;
+  voiceDeliverySessionId?: string;
   /**
    * Opt-in: pin the last two list-view positions to 5H/7D subscription-usage
    * tiles (the global quota gauges). Used by surfaces with no encoder LCD to
@@ -794,6 +797,10 @@ const processingState = (s?: string) => s?.toLowerCase() === 'processing';
  * flipped.
  */
 function voiceTile(view: DeckView, sid: string): SessionDeckCell {
+  const receipt = view.voiceDeliverySessionId === sid ? voiceDeliveryPresentation(view.voiceDeliveryStatus) : undefined;
+  if ((view.voiceState ?? 'idle') === 'idle' && receipt) {
+    return {svg:actionTile('VOICE', receipt.tone === 'awaiting' ? UI.attn : receipt.tone === 'error' ? UI.error : UI.cyan, receipt.label),action:{kind:'command',command:{type:'voice',action:'start',sessionId:sid}}};
+  }
   switch (view.voiceState ?? 'idle') {
     case 'recording':
       return {

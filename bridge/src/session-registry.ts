@@ -465,7 +465,7 @@ export function readDaemonInfo(): DaemonInfo | null {
  * `httpPort` from `DaemonInfo` when available; otherwise the same `port` is
  * used (Node daemon unifies HTTP + WS on one port).
  */
-export function probeDaemonHealth(port: number): Promise<{ mode?: string; pid?: number; isSwift?: boolean; build?: string; sameSocketControl?: boolean; pairingToken?: string; posture?: { loopbackOnly?: boolean; noDeviceModules?: boolean } } | null> {
+export function probeDaemonHealth(port: number): Promise<{ mode?: string; pid?: number; isSwift?: boolean; build?: string; sameSocketControl?: boolean; pairingToken?: string; pairingRetirement?: unknown; pairingRotation?: boolean; posture?: { loopbackOnly?: boolean; noDeviceModules?: boolean } } | null> {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 2000 }, (res) => {
       let body = '';

@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { debug } from './logger.js';
+import { debug, log } from './logger.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -104,28 +104,49 @@ export async function getConnectedAdbDevices(opts: AdbReverseOptions = {}): Prom
   }
 }
 
-/**
- * Set up `adb reverse` for all connected Android devices.
- * Non-blocking, best-effort — bridge starts fine without adb.
- */
+export type AdbReverseState = { kind: 'absent' | 'matching' | 'unknown' } | { kind: 'conflict'; target: string };
+/** --list names endpoints, not an OS user. Malformed data is unknown. */
+export function inspectAdbReverse(output: string, port: number): AdbReverseState {
+  const matches: string[] = [];
+  for (const line of output.split(/\r?\n/).filter(l => l.trim())) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length !== 3) return { kind: 'unknown' };
+    if (fields[1] === `tcp:${ANDROID_PORT}`) matches.push(fields[2]);
+  }
+  if (matches.length > 1) return { kind: 'unknown' };
+  if (!matches.length) return { kind: 'absent' };
+  return matches[0] === `tcp:${port}` ? { kind: 'matching' } : { kind: 'conflict', target: matches[0] };
+}
+const notices = new Map<string, string>();
+function warnReverse(serial: string, state: AdbReverseState): void {
+  const message = state.kind === 'conflict' ? `already maps to ${state.target.replace(/[^a-zA-Z0-9_.:/-]/g, '').slice(0, 80)}` : 'could not be inspected';
+  if (notices.get(serial) === message) return;
+  if (notices.size >= 64) notices.clear();
+  notices.set(serial, message);
+  log(`[agentdeck] ADB reverse on ${serial.replace(/[^a-zA-Z0-9_.:-]/g, '')}: Android tcp:${ANDROID_PORT} ${message}; left unchanged. Another daemon or OS user may own it. Check its owner before changing the USB mapping.`);
+}
+async function ensureAdbReverse(serial: string, port: number, active = () => true): Promise<void> {
+  let state: AdbReverseState;
+  try {
+    const { stdout } = await execFileAsync('adb', ['-s', serial, 'reverse', '--list'], { timeout: 5000, windowsHide: true });
+    state = inspectAdbReverse(stdout.toString(), port);
+  } catch { state = {kind:'unknown'}; }
+  if (!active()) return;
+  if (state.kind === 'matching') { notices.delete(serial); return; }
+  if (state.kind !== 'absent') { warnReverse(serial,state); return; }
+  try {
+    // The probe is advisory. --no-rebind closes the create-after-probe race:
+    // an intervening owner wins and is never overwritten.
+    await execFileAsync('adb', ['-s', serial, 'reverse', '--no-rebind', `tcp:${ANDROID_PORT}`, `tcp:${port}`], { timeout: 5000, windowsHide: true });
+    notices.delete(serial);
+    debug(TAG, `adb reverse ${serial}: android:${ANDROID_PORT} → daemon:${port}`);
+  } catch { if (active()) warnReverse(serial,{kind:'unknown'}); }
+}
+
+/** Set up missing mappings only. Never replace another endpoint. */
 export async function setupAdbReverse(port: number, opts: AdbReverseOptions = {}): Promise<void> {
   const devices = await getConnectedAdbDevices(opts);
-  if (devices.length === 0) {
-    debug(TAG, 'no connected devices');
-    return;
-  }
-
-  for (const serial of devices) {
-    try {
-      await execFileAsync('adb', ['-s', serial, 'reverse', `tcp:${ANDROID_PORT}`, `tcp:${port}`], {
-        timeout: 5000,
-        windowsHide: true,
-      });
-      debug(TAG, `adb reverse ${serial}: android:${ANDROID_PORT} → daemon:${port}`);
-    } catch (err) {
-      debug(TAG, `adb reverse failed for ${serial}: ${err}`);
-    }
-  }
+  for (const serial of devices) await ensureAdbReverse(serial, port);
 }
 
 /**
@@ -140,34 +161,17 @@ export function startAdbReversePolling(
   opts: AdbReverseOptions & { intervalMs?: number } = {},
 ): () => void {
   const intervalMs = opts.intervalMs ?? 30_000;
-  let inFlight = false;
+  let inFlight = false, active = true;
 
   const timer = setInterval(() => {
-    if (inFlight) return;
+    if (!active || inFlight) return;
     inFlight = true;
     void (async () => {
       try {
         const devices = await getConnectedAdbDevices(opts);
         for (const serial of devices) {
-          try {
-            // Check if reverse already exists — if not, set it up.
-            // windowsHide on both: this polls from inside the daemon, which has no
-            // console of its own (see windows-service.ts), so an adb.exe without it
-            // puts a console window on the desktop on every poll.
-            const { stdout } = await execFileAsync('adb', ['-s', serial, 'reverse', '--list'], {
-              timeout: 5000,
-              windowsHide: true,
-            });
-            if (!stdout.toString().includes(`tcp:${ANDROID_PORT}`)) {
-              await execFileAsync('adb', ['-s', serial, 'reverse', `tcp:${ANDROID_PORT}`, `tcp:${port}`], {
-                timeout: 5000,
-                windowsHide: true,
-              });
-              debug(TAG, `adb reverse re-established ${serial}: android:${ANDROID_PORT} → daemon:${port}`);
-            }
-          } catch (err: any) {
-            debug(TAG, `adb reverse poll failed for ${serial}: ${err?.message ?? err}`);
-          }
+          if (!active) break;
+          await ensureAdbReverse(serial, port, () => active);
         }
       } finally {
         inFlight = false;
@@ -175,7 +179,7 @@ export function startAdbReversePolling(
     })();
   }, intervalMs);
 
-  return () => clearInterval(timer);
+  return () => { active = false; clearInterval(timer); };
 }
 
 /**
@@ -186,20 +190,10 @@ export async function getAdbDeviceCount(): Promise<number> {
   return (await getConnectedAdbDevices()).length;
 }
 
-/**
- * Remove `adb reverse` mappings on shutdown.
- */
+/** ADB has no compare-and-remove operation. Leave mappings on shutdown rather
+ * than deleting a replacement installed by another process after our probe.
+ * A later owner of the same host port can reuse the mapping; a different target
+ * is reported as a conflict and requires an explicit operator decision. */
 export async function cleanupAdbReverse(_port: number): Promise<void> {
-  const devices = await getConnectedAdbDevices();
-  for (const serial of devices) {
-    try {
-      await execFileAsync('adb', ['-s', serial, 'reverse', '--remove', `tcp:${ANDROID_PORT}`], {
-        timeout: 3000,
-        windowsHide: true,
-      });
-      debug(TAG, `removed reverse for ${serial}`);
-    } catch {
-      // ignore — device may already be disconnected
-    }
-  }
+  debug(TAG, 'Leaving ADB reverse mappings intact: endpoint listing cannot prove ownership for removal');
 }
