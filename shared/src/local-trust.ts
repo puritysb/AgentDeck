@@ -120,7 +120,10 @@ interface Authority {
 
 /** Trim ASCII whitespace only; `String.prototype.trim` also takes Unicode spaces. */
 function trimAscii(text: string): string {
-  return text.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, '');
+  let start = 0, end = text.length;
+  while (start < end && '\t\n\v\f\r '.includes(text[start])) start += 1;
+  while (end > start && '\t\n\v\f\r '.includes(text[end - 1])) end -= 1;
+  return text.slice(start, end);
 }
 
 function asciiLower(text: string): string {

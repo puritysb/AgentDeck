@@ -19,6 +19,7 @@ import { execFile } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
+import { pathToFileURL } from 'node:url';
 import { callJudgeWithMeta, resolveJudgeBackend } from './apme/runner.js';
 import { loadApmeConfig } from './apme/settings.js';
 import type { ApmeJudgeBackend } from './apme/settings.js';
@@ -392,12 +393,17 @@ ${detectedBlock}
 </div></body></html>`;
 }
 
+export function reviewBrowserCommand(path: string, platform = process.platform): { file: string; args: string[] } {
+  // A file URL is one data argument. In particular, never pass a local path
+  // through cmd/start: directory names may contain shell metacharacters.
+  const url = pathToFileURL(path).href;
+  if (platform === 'win32') return { file: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] };
+  return { file: platform === 'darwin' ? 'open' : 'xdg-open', args: [url] };
+}
+
 function openInBrowser(path: string): void {
-  const opener = process.platform === 'darwin' ? 'open'
-    : process.platform === 'win32' ? 'cmd'
-      : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', path] : [path];
-  execFile(opener, args, { timeout: 5_000, windowsHide: true }, () => { /* best effort */ });
+  const { file, args } = reviewBrowserCommand(path);
+  execFile(file, args, { timeout: 5_000, windowsHide: true }, () => { /* best effort */ });
 }
 
 /**

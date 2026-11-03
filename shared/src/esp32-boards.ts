@@ -422,8 +422,14 @@ export function esp32FlashSizeIsSafe(
 ): boolean | undefined {
   const mb = (s: string | undefined): number | undefined => {
     if (!s) return undefined;
-    const m = /(\d+)\s*MB/i.exec(s);
-    return m ? Number(m[1]) : undefined;
+    for (const marker of s.matchAll(/MB/gi)) {
+      let end = marker.index;
+      while (end > 0 && /\s/.test(s[end - 1])) end -= 1;
+      let start = end;
+      while (start > 0 && /[0-9]/.test(s[start - 1])) start -= 1;
+      if (start < end) return Number(s.slice(start, end));
+    }
+    return undefined;
   };
   const want = mb(declared);
   const have = mb(detected);

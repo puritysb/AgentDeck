@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'http';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
@@ -61,6 +61,7 @@ describe('APME HTTP routes', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
     apme?.store.close();
     if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -77,6 +78,14 @@ describe('APME HTTP routes', () => {
     } finally {
       await new Promise<void>((resolve) => noApme.server.close(() => resolve()));
     }
+  });
+
+  it('keeps storage exceptions out of HTTP responses', async () => {
+    if (!apme) return;
+    vi.spyOn(apme.store, 'listRuns').mockImplementation(() => { throw new Error('private-directory/secret.db: failed'); });
+    const response = await fetch(`${base}/apme/runs`);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'APME request failed' });
   });
 
   // A GET from this machine keeps local trust whatever page sent it, so the

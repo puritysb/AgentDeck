@@ -41,7 +41,7 @@
 // Device Preview draws BACK itself and carries the label (D200HLayoutModel).
 // Ported 2026-10-28: the state and tool labels pass `backgroundStandbyCount`
 // to the background compact label (STBY n for standby-only work).
-// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 217f806829100acaf3cf5d9357a9fab31426ac58
+// SYNC-HASH shared/src/svg-renderers/session-slot-renderer.ts 9f6055843cda537168fa150940b6bd4dbf7dfcf8
 //
 // Pin reviewed 2026-11-02: option/detail typography and controller labels changed
 // outside this session-card-only mirror; its 144-unit canvas is unchanged.

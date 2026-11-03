@@ -75,13 +75,15 @@ echo "   → plugin-command-schema.json"
 echo "   → gateway-frame-schema.json"
 
 echo "=== Step 2: Generate Swift types ==="
+# BridgeEvent contains JSONAny dictionaries, which cannot synthesize Equatable.
+# Keep Codable only, as for GatewayFrame below. These are reference artifacts;
+# native hand-written protocol models keep their own established conformances.
 npx quicktype \
   --src "$OUT_DIR/bridge-event-schema.json" \
   --src-lang schema \
   --lang swift \
   --density normal \
   --type-prefix AD \
-  --protocol equatable \
   --struct-or-class struct \
   --mutable-properties \
   --acronym-style camel \
@@ -137,6 +139,7 @@ npx quicktype \
   --src "$OUT_DIR/bridge-event-schema.json" \
   --src-lang schema \
   --lang kotlin \
+  --framework klaxon \
   --package dev.agentdeck.generated \
   --out "$OUT_DIR/BridgeEvent.kt" \
   2>&1 | grep -v "^Issue in line" || true
@@ -145,6 +148,7 @@ npx quicktype \
   --src "$OUT_DIR/plugin-command-schema.json" \
   --src-lang schema \
   --lang kotlin \
+  --framework klaxon \
   --package dev.agentdeck.generated \
   --out "$OUT_DIR/PluginCommand.kt" \
   2>&1 | grep -v "^Issue in line" || true
@@ -153,6 +157,7 @@ npx quicktype \
   --src "$OUT_DIR/gateway-frame-schema.json" \
   --src-lang schema \
   --lang kotlin \
+  --framework klaxon \
   --package dev.agentdeck.generated \
   --out "$OUT_DIR/GatewayFrame.kt" \
   2>&1 | grep -v "^Issue in line" || true

@@ -1,0 +1,32 @@
+name: Security pipeline health
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  freshness:
+    name: Security pipeline freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify scan and scheduled-run freshness
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/security-pipeline-health.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: security-pipeline-health
+          path: diagnostics/security-health/
+          retention-days: 30

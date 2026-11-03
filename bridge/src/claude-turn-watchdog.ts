@@ -104,7 +104,7 @@ export class ClaudeTurnWatchdog {
     if (this.stopped) return;
     this.lastHookAt = this.now();
     const tp = data?.transcript_path;
-    if (typeof tp === 'string' && tp) this.transcriptPath = tp;
+    if (typeof tp === 'string' && tp && !tp.startsWith('\\\\') && !tp.startsWith('//')) this.transcriptPath = tp;
 
     switch (eventName) {
       case 'UserPromptSubmit':

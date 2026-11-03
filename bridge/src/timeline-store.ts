@@ -6,8 +6,8 @@
 
 import type { TimelineEntry } from './types.js';
 import { deduplicateEntry, formatDurationSec, normalizeTimelineEntryForStorage, rawSessionId } from '@agentdeck/shared';
-import { readFileSync, writeFileSync, renameSync, mkdirSync, unlinkSync } from 'fs';
-import { dirname } from 'path';
+import { readFileSync } from 'fs';
+import { atomicWritePrivateFile } from './private-files.js';
 
 type EntryListener = (entry: TimelineEntry, upsert?: boolean) => void;
 /** Attribute an entry with session-scoped metadata (sessionId, projectName,
@@ -263,15 +263,11 @@ export class BridgeTimelineStore {
     if (!this.persistPath || !this.dirty) return;
     this.dirty = false;
     const target = this.persistPath;
-    const tmp = `${target}.tmp`;
     try {
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(tmp, JSON.stringify(this.entries), 'utf-8');
-      renameSync(tmp, target);
+      atomicWritePrivateFile(target, JSON.stringify(this.entries));
     } catch {
       // Disk full, permissions, read-only home — persistence is best-effort and
       // must never take the daemon down with it.
-      try { unlinkSync(tmp); } catch { /* nothing to clean up */ }
     }
   }
 

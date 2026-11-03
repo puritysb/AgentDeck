@@ -16,12 +16,13 @@
  * `tool_only`) is the fallback.
  */
 
-import { readFileSync, openSync, readSync, fstatSync, closeSync, existsSync, readdirSync } from 'fs';
+import { constants, openSync, readSync, fstatSync, closeSync, existsSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { debug } from '../logger.js';
 import { isClaudeInterruptRecord } from '../claude-interrupt-marker.js';
 import { lastAssistantTextFromTranscript } from '../session-transcript-timeline.js';
+
+const MAX_TRANSCRIPT_TAIL_BYTES = 512 * 1024;
 
 export interface LastTurnExcerpt {
   userPrompt: string;
@@ -46,23 +47,14 @@ type JsonlRecord = {
  * entries, malformed JSON). Callers treat `null` as "use the other source"
  * — this function never throws.
  *
- * Implementation: read the full file (capped size), walk lines in reverse
+ * Implementation: read a bounded file tail, walk lines in reverse
  * to find the last `user` role entry, then scan forward collecting the
  * `assistant` entries that follow. `content` on each message is either a
  * string (legacy shape) or an array of blocks with `type: 'text' | 'tool_use'`.
  */
 export function readLastTurn(transcriptPath: string): LastTurnExcerpt | null {
-  let raw: string;
-  try {
-    raw = readFileSync(transcriptPath, 'utf-8');
-  } catch (err) {
-    debug('APME', `transcript read failed: ${String(err)}`);
-    return null;
-  }
-  // Cap the scan to the trailing 512 KB — transcripts can grow large but the
-  // last turn is always at the tail. This also bounds worst-case memory.
-  const MAX_TAIL = 512 * 1024;
-  const tail = raw.length > MAX_TAIL ? raw.slice(raw.length - MAX_TAIL) : raw;
+  const tail = readTailString(transcriptPath, MAX_TRANSCRIPT_TAIL_BYTES);
+  if (tail === null) return null;
   const lines = tail.split('\n');
 
   // Walk forward parsing records; we keep the last `user` record index and
@@ -117,14 +109,8 @@ export function readLastTurn(transcriptPath: string): LastTurnExcerpt | null {
  * transcript is the authoritative source Claude writes. Never throws.
  */
 export function readModelFromTranscript(transcriptPath: string): string | null {
-  let raw: string;
-  try {
-    raw = readFileSync(transcriptPath, 'utf-8');
-  } catch {
-    return null;
-  }
-  const MAX_TAIL = 512 * 1024;
-  const tail = raw.length > MAX_TAIL ? raw.slice(raw.length - MAX_TAIL) : raw;
+  const tail = readTailString(transcriptPath, MAX_TRANSCRIPT_TAIL_BYTES);
+  if (tail === null) return null;
   const lines = tail.split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
@@ -300,15 +286,24 @@ export function readOpenTurnEvidence(transcriptPath: string, sinceMs: number): O
 /** Read at most `maxBytes` from the end of a file without loading the rest.
  *  Returns null when the file is unreadable. */
 function readTailString(path: string, maxBytes: number): string | null {
+  // A remote UNC path can cause an outbound SMB authentication attempt on
+  // Windows before opening fails. Transcripts are local files only.
+  if (typeof path !== 'string' || path.startsWith('\\\\') || path.startsWith('//')) return null;
   let fd: number | null = null;
   try {
-    fd = openSync(path, 'r');
-    const size = fstatSync(fd).size;
+    const flags = constants.O_RDONLY | (constants.O_NONBLOCK ?? 0) | (constants.O_NOFOLLOW ?? 0);
+    fd = openSync(path, flags);
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) return null;
+    const size = stat.size;
     const len = Math.min(size, maxBytes);
     if (len === 0) return '';
     const buf = Buffer.allocUnsafe(len);
-    readSync(fd, buf, 0, len, size - len);
-    return buf.toString('utf-8');
+    const bytesRead = readSync(fd, buf, 0, len, size - len);
+    // A concurrent truncate is an unknown observation, never uninitialized
+    // Buffer bytes interpreted as a transcript.
+    if (bytesRead !== len) return null;
+    return buf.subarray(0, bytesRead).toString('utf-8');
   } catch {
     return null;
   } finally {

@@ -44,7 +44,7 @@
 // 2026-11-03: Node peer-receipt subtitles affect detail VOICE tiles only; the
 // Swift device previews consume list mode, whose geometry/content is unchanged.
 // SYNC-HASH shared/src/d200h-layout.ts c96ea0d500dfed621c52353cebadbd1b04fc614d
-// SYNC-HASH shared/src/session-utils.ts f756fa1a85b62dbc63eb0dbeb2096878df3a1e60
+// SYNC-HASH shared/src/session-utils.ts b0274ff249f2705cc7fce39752d74a46b25f6b87
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333
 //
