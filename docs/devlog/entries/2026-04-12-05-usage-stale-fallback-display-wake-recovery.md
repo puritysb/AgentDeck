@@ -3,7 +3,7 @@
 ### 문제
 1. **재시작 후 usage 빈 화면** — `fetchUsage()` 가 file cache stale + network fail 시 캐시 데이터를 버리고 nil 반환. backoff 겹치면 90초+ 동안 usage 없음.
 2. **`!` 깜빡임** — `fetchUsageRelayed()` 실패 경로에서 매번 `apiUsageStale=true`. 2분 전 캐시여도 네트워크 한 번 실패하면 `!`.
-3. **모니터 off→on 후 stale 상태** — `DisplayMonitor` wake 콜백이 `display_state` broadcast 만 수행. serial reconnect / 모듈 wake / state 재방송 없음. `kIOMessageSystemHasPoweredOn` 은 system sleep 에만 울림.
+3. **모니터 off→on 후 stale 상태** — `DisplayMonitor` wake 콜백이 `display_state` broadcast 만 수행. serial reconnect / 모듈 wake / state 재전송 없음. `kIOMessageSystemHasPoweredOn` 은 system sleep 에만 울림.
 4. **serial errno=6 잔상** — 포트 재오픈 성공해도 `lastReadError` 가 `closeAllConnections()` 에서만 초기화.
 
 ### 해결

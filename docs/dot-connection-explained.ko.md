@@ -129,7 +129,7 @@ sequenceDiagram
     A->>U: 결과 및 크리처 상태 반영
 ```
 
-Events는 **AgentDeck → Dot 방향의 사건 알림**이다. OpenAI가 Dot의 모든 내부 상태를 AgentDeck으로 방송하는 피드는 아니다. 작업 결과는 다시 MCP 보고 도구를 통해 받아야 한다. 공식 문서는 MCP 2.0, 이벤트 검색·구독·해지, HTTPS 콜백 검증과 서명 전달을 요구한다. [OpenAI: MCP Events](https://developers.openai.com/plugins/build/mcp-events)
+Events는 **AgentDeck → Dot 방향의 이벤트 알림**이다. Dot의 작업 결과는 MCP 보고 도구를 통해 AgentDeck으로 전달받는다. 공식 문서는 MCP 2.0, 이벤트 검색·구독·해지, HTTPS 콜백 검증과 서명 전달을 요구한다. [OpenAI: MCP Events](https://developers.openai.com/plugins/build/mcp-events)
 
 현재 연결은 MCP `2025-11-25`로 도구 5개만 확인했다. 현재 어댑터에는 Events 메서드와 구독 권한이 없다. 따라서 다음 개발은 단순한 화면 버튼 추가가 아니라 **프로토콜 지원, 구독 권한, 만료·재구독, 중복 전달 처리, 실제 자동 호출 검증**까지 포함한다. 이전 Events 코드의 존재만으로 이 연결에서 동작한다고 할 수 없다.
 
