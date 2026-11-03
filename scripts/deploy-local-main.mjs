@@ -32,6 +32,23 @@ export function detachedEnv(env = process.env) {
   return { ...env, RUNNER_TRACKING_ID: '' };
 }
 
+/** Start this installed copy even when another checkout's app has the same ID. */
+export function launchInstalledApp(target, run, env = process.env, probe = execFileSync) {
+  const executable = join(target, 'Contents/MacOS/AgentDeck');
+  const pattern = `^${executable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+  try {
+    const pids = probe('pgrep', ['-f', pattern], { encoding: 'utf8', timeout: 5_000 }).trim();
+    if (!/^\d+(?:\n\d+)*$/.test(pids)) throw new Error('Installed app process probe returned no valid PID');
+    // Recovery after a quit timeout can reach this while the original is alive.
+    return;
+  } catch (error) {
+    if (error.status !== 1) throw error;
+  }
+  // Without -n, LaunchServices can reuse a running XCTest/development copy and
+  // return success while the installed application has no process at all.
+  return run('open-app', 'open', ['-n', target], 60_000, detachedEnv(env));
+}
+
 /**
  * Poll the restarted daemon until it answers as the installed build. A single
  * 5 s probe right after `daemon restart` raced the daemon's startup work
@@ -195,7 +212,7 @@ async function deploy() {
         }
         if (appPid) throw new Error('Installed app did not quit within 60 s; preserving it');
       },
-      launch: async () => { run('open-app', 'open', [target], 60_000, detachedEnv()); },
+      launch: async () => { launchInstalledApp(target, run); },
     });
     console.log(`macOS app: ${appDeployment.action}`);
     // An unsupervised restart spawns the daemon detached with this environment.
