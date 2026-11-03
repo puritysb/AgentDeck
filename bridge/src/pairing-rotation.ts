@@ -3,8 +3,8 @@ import { localPeerOwnership } from './auth.js';
 import { readDaemonInfo, findDaemonPort, probeDaemonHealth } from './session-registry.js';
 import { isValidDaemonPort, resolveDaemonPort } from './daemon-port.js';
 
-/** Rotate the actual owner, never an inactive on-disk profile. No retries on a
- * lost response: a rotation may have committed, so the next action is readback. */
+/** Rotate the actual owner, never an inactive on-disk profile. Never retry the
+ * mutation on a lost response: a rotation may already have committed. */
 export async function rotateActivePairingToken(): Promise<void> {
   const info = readDaemonInfo();
   const candidate = info?.httpPort ?? info?.port ?? findDaemonPort() ?? resolveDaemonPort({}).port;
@@ -28,7 +28,11 @@ export async function rotateActivePairingToken(): Promise<void> {
   const result = await response.json() as Record<string, unknown>;
   const retirement = parsePairingRetirement(result.pairingRetirement);
   if (result.scope !== PAIRING_CREDENTIALS.rotationScope || result.globalRevocation !== PAIRING_CREDENTIALS.globalRevocation || result.rotated !== true || !retirement || retirement.revision <= minimumRevision) throw new Error('Invalid rotation receipt; read owner state before retrying.');
-  const current = await probeDaemonHealth(port);
+  // Retirement closes existing HTTP connections after the receipt is sent.
+  // The first readback can reuse a closing keep-alive connection. Retry only
+  // an unavailable read once; each probe is bounded. Never retry the POST or
+  // wait through a readable conflicting/different owner's response.
+  const current = await probeDaemonHealth(port) ?? await probeDaemonHealth(port);
   const observed = parsePairingRetirement(current?.pairingRetirement);
   if (!current || current.pid !== health.pid || !observed || observed.revision < retirement.revision ||
       (observed.revision === retirement.revision && observed.eventId !== retirement.eventId)) {
