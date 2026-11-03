@@ -53,7 +53,7 @@ export const ANONYMOUS_OTEL_THREAD_ID = 'otel-active';
  */
 export const CODEX_OTEL_TRACES_PATH = '/otel/v1/traces';
 
-type Attrs = Record<string, string | number | boolean>;
+type Attrs = Map<string, string | number | boolean>;
 
 /**
  * Span names that start a user turn. Their own `cwd` attribute is session-level
@@ -111,25 +111,26 @@ function recordArray(value: unknown): Record<string, unknown>[] {
 
 /**
  * OTLP attributes are arrays of `{ key, value: { <type>Value } }`. Flatten to a
- * plain map so callers can dot-key into it without re-parsing the envelope.
+ * key/value map so arbitrary attribute names remain data. Callers read the
+ * parsed values without re-parsing the envelope.
  */
 function flattenAttrs(raw: unknown): Attrs {
-  const out: Attrs = Object.create(null);
+  const out: Attrs = new Map();
   for (const kv of recordArray(raw)) {
     const key = kv.key;
     const wrap = kv.value;
     if (typeof key !== 'string' || !isRecord(wrap)) continue;
     if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-    if (typeof wrap.stringValue === 'string') { out[key] = wrap.stringValue; continue; }
+    if (typeof wrap.stringValue === 'string') { out.set(key, wrap.stringValue); continue; }
     if (wrap.intValue !== undefined) {
       // OTLP encodes int64 as a number or a stringified number depending on SDK
       // version — accept both so an exporter swap doesn't silently drop keys.
-      if (typeof wrap.intValue === 'number') out[key] = wrap.intValue;
-      else if (typeof wrap.intValue === 'string' && /^-?\d+$/.test(wrap.intValue)) out[key] = Number(wrap.intValue);
+      if (typeof wrap.intValue === 'number') out.set(key, wrap.intValue);
+      else if (typeof wrap.intValue === 'string' && /^-?\d+$/.test(wrap.intValue)) out.set(key, Number(wrap.intValue));
       continue;
     }
-    if (typeof wrap.boolValue === 'boolean') { out[key] = wrap.boolValue; continue; }
-    if (typeof wrap.doubleValue === 'number') { out[key] = wrap.doubleValue; continue; }
+    if (typeof wrap.boolValue === 'boolean') { out.set(key, wrap.boolValue); continue; }
+    if (typeof wrap.doubleValue === 'number') { out.set(key, wrap.doubleValue); continue; }
   }
   return out;
 }
@@ -137,7 +138,7 @@ function flattenAttrs(raw: unknown): Attrs {
 /** First non-empty string/int attribute among `keys`. */
 function stringAttr(attrs: Attrs, keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = attrs[key];
+    const value = attrs.get(key);
     if (typeof value === 'string' && value.length > 0) return value;
     if (typeof value === 'number') return String(value);
   }
@@ -168,7 +169,7 @@ function isDurableSessionId(raw: string): boolean {
  */
 function firstDurableAttr(attrs: Attrs, keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = attrs[key];
+    const value = attrs.get(key);
     if (typeof value === 'string' && value.length > 0 && isDurableSessionId(value)) return value;
     if (typeof value === 'number' && isDurableSessionId(String(value))) return String(value);
   }
@@ -247,14 +248,14 @@ function buildCwdByThread(json: Record<string, unknown>): Map<string, string> {
     const spanAttrs = flattenAttrs(span.attributes);
     const cwd = cwdFromAttributes(spanAttrs);
     if (!cwd) continue;
-    const merged = { ...resourceAttrs, ...spanAttrs };
+    const merged: Attrs = new Map([...resourceAttrs, ...spanAttrs]);
     const threadId = threadIdAttr(merged) ?? anonymousThreadIdIfTraceBacked(span);
     if (threadId && !cwdByThread.has(threadId)) cwdByThread.set(threadId, cwd);
   }
   for (const { span, resourceAttrs } of eachSpan(json)) {
     const resourceCwd = cwdFromAttributes(resourceAttrs);
     if (!resourceCwd) continue;
-    const merged = { ...resourceAttrs, ...flattenAttrs(span.attributes) };
+    const merged: Attrs = new Map([...resourceAttrs, ...flattenAttrs(span.attributes)]);
     const threadId = threadIdAttr(merged) ?? anonymousThreadIdIfTraceBacked(span);
     if (threadId && !cwdByThread.has(threadId)) cwdByThread.set(threadId, resourceCwd);
   }
@@ -268,7 +269,7 @@ function classify(
 ): CodexSpanEvent | undefined {
   const rawName = span.name;
   if (typeof rawName !== 'string') return undefined;
-  const attrs = { ...resourceAttrs, ...flattenAttrs(span.attributes) };
+  const attrs: Attrs = new Map([...resourceAttrs, ...flattenAttrs(span.attributes)]);
 
   const threadId = threadIdAttr(attrs) ?? anonymousThreadIdIfTraceBacked(span);
   if (!threadId) return undefined;

@@ -418,9 +418,15 @@ export function isOpenClawCronPrompt(text?: string): boolean {
 export function summarizeOpenClawCronPrompt(text?: string): string {
   if (!text) return '자동 작업';
   const trimmed = text.trimStart();
-  const m = trimmed.match(/^\[cron:[^\s\]]+\s+([^\]]+)\]/);
-  if (!m) return '자동 작업';
-  const job = m[1]
+  if (!trimmed.startsWith('[cron:')) return '자동 작업';
+  const end = trimmed.indexOf(']', 6);
+  if (end < 0) return '자동 작업';
+  const header = trimmed.slice(6, end);
+  // Locate the separator once: overlapping whitespace/label repetitions let
+  // a malformed header make the previous regexp retry quadratically (#314).
+  const separator = header.search(/\s/);
+  if (separator <= 0) return '자동 작업';
+  const job = header.slice(separator)
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();

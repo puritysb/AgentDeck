@@ -1,12 +1,39 @@
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { vi } from 'vitest';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, sep } from 'path';
 
-// Keep test runs hermetic. Several modules discover a live AgentDeck daemon by
-// reading AGENTDECK_DATA_DIR plus App Store container fallbacks; using a temp
-// data dir prevents local app state from affecting Vitest.
+// AGENTDECK_DATA_DIR alone does not isolate legacy credential migration.
+// Node module home discovery uses a private fixture; existing tests may still
+// opt into a different HOME under the OS temporary root without changing the
+// invoking shell's environment. Subprocess fixtures need explicit temp paths.
+const testHome = vi.hoisted(() => {
+  const state = { home: '', inheritedHome: '', temporaryPrefix: '' };
+  return { state, homedir: () => {
+    if (!state.home) throw new Error('Test home fixture is not initialized');
+    const explicit = process.env.HOME;
+    return explicit && explicit !== state.inheritedHome && explicit.startsWith(state.temporaryPrefix)
+      ? explicit : state.home;
+  } };
+});
+vi.mock('os', async original => {
+  const actual = await original<typeof import('os')>();
+  return { ...actual, homedir: testHome.homedir, default: { ...actual, homedir: testHome.homedir } };
+});
+vi.mock('node:os', async original => {
+  const actual = await original<typeof import('node:os')>();
+  return { ...actual, homedir: testHome.homedir, default: { ...actual, homedir: testHome.homedir } };
+});
 const dataDir = mkdtempSync(join(tmpdir(), 'agentdeck-vitest-'));
+testHome.state.home = join(dataDir, 'home');
+testHome.state.inheritedHome = process.env.HOME ?? '';
+testHome.state.temporaryPrefix = tmpdir().replace(/[\\/]+$/, '') + sep;
+mkdirSync(testHome.state.home, { mode: 0o700 });
 process.env.AGENTDECK_DATA_DIR = dataDir;
+// Default child fixtures inherit this explicit data directory. A synthetic
+// token prevents their ordinary auth lookup from importing a live legacy key.
+writeFileSync(join(dataDir, 'auth-token'), randomBytes(16).toString('hex') + '\n', { mode: 0o600 });
 
 // No test starts the real Foundation Models helper. In a checkout without the
 // bundled binary, such as a fresh worktree, a test that reached session

@@ -1227,6 +1227,10 @@ struct SettingsScreen: View {
                 .textFieldStyle(.roundedBorder).font(.system(size: 11))
             SecureField("API key (required for OpenRouter / cloud; blank for local)", text: $preferences.apmeJudgeApiKey)
                 .textFieldStyle(.roundedBorder).font(.system(size: 11))
+            if !preferences.apmeJudgeCredentialNotice.isEmpty {
+                Text(preferences.apmeJudgeCredentialNotice)
+                    .font(.system(size: 11)).foregroundStyle(TerrariumHUD.subtext)
+            }
 
 #if os(macOS)
             HStack(spacing: 8) {

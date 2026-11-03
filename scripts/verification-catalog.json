@@ -2,7 +2,7 @@
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
     "as_of": "2026-11-03",
-    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, the five existing CodeQL jobs plus hosted-validated Kotlin analysis, the CodeQL result check and hosted-validated security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Swift jobs are promoted only after completed hosted validation."
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all eight hosted-validated CodeQL analysis jobs, the CodeQL result check and security pipeline freshness. Administrator enforcement and up-to-date branch checks are enabled. Kotlin and both Swift target analyses completed successfully before promotion."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -419,6 +419,7 @@
       "blocking": true,
       "command": "npx vitest run --coverage",
       "report_suite": "vitest",
+      "evidence": ["vitest.setup.ts", "bridge/src/__tests__/auth-token-adoption.test.ts"],
       "proves": [
         "bridge, shared, hooks, plugin, plugin-ulanzi, setup, scripts and the experimental Dot relay behave as their tests specify (the domain table below counts them)",
         "USB vendor discovery caches unchanged candidates, bounds retries and retains its subprocess slot until close; fake children cover resisted signals and a POSIX executable fixture covers real timeout/kill recovery",
@@ -428,7 +429,8 @@
         "generated Swift/Kotlin/C++ mirrors match their TypeScript source of truth (contract tests)",
         "CI wait command intent classification and generated Swift drift; identical command vectors execute in both TS and Swift on macOS, including strict JSON booleans, UTF-16 bounds and safe identity extraction; unsupported or ambiguous input is rejected; Hermes normalized CI evidence is allow-listed, bounded and matched by opaque invocation ID in both trackers",
         "CI compact transport requires explicit agentWaiting=true for pending phases while preserving terminal verdicts; common vectors execute in Node and Swift, plus the firmware ArduinoJson projection when its build dependency is installed",
-        "README/overview 1.8.0 supplement references resolve to real assets, user-controlled captioned video, and Pages assembly paths; WebVTT cues are nonempty and ordered"
+        "README/overview 1.8.0 supplement references resolve to real assets, user-controlled captioned video, and Pages assembly paths; WebVTT cues are nonempty and ordered",
+        "Node test module home lookups and default auth data use temporary fixtures; explicit legacy-token tests verify migration with synthetic credentials"
       ],
       "does_not_prove": [
         "anything about native apps, firmware or real devices",
@@ -737,13 +739,15 @@
       "blocking": true,
       "command": "./gradlew :app:testDebugUnitTest",
       "report_suite": "android",
+      "evidence": ["android/app/src/test/kotlin/dev/agentdeck/data/CredentialBackupPolicyTest.kt"],
       "proves": [
         "the Android app compiles",
         "protocol parsing, timeline store and state logic behave as specified on the JVM",
         "MOAAN frontlight mode transitions preserve original presets and absent keys across dim levels, process recreation, durable-save failure and refused settings writes",
         "multi-host refusal recovery retains endpoint-specific errors and distinguishes approval from network failure",
         "e-ink work and usage regions remain visible together with independent scrolling and inline provider limits across roster growth, rotation and large fonts; separate Frame mode preserves continuous travel, state-dependent work and rest behavior, bounded resident separation and quiet Hermes stillness on the JVM",
-        "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host"
+        "guided setup completion and upgrade migration preserve appearance and pairing; setup handoff retains the selected host",
+        "the packaged manifest disables backup and explicit legacy, cloud-backup and device-transfer rules exclude credential-bearing app storage"
       ],
       "does_not_prove": ["Compose UI on a device or e-ink panel (there are no instrumented tests)"]
     },
@@ -761,7 +765,8 @@
       "trigger": "PRs and pushes touching apple/**, shared/** or generated/protocol/**",
       "blocking": true,
       "command": "verify-build.sh macOS Debug / Release / DotPreviewRelease; verify-build.sh iOS Release / DotPreviewRelease; verify-build.sh macOS / iOS CloudKitPoCDebug; validate-appstore-submission.sh",
-      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift", "apple/AgentDeckTests/CloudKitProbeTests.swift", "apple/AgentDeckTests/RemoteObservationProjectionTests.swift", "apple/AgentDeckTests/RemoteObservationPersistenceTests.swift", "apple/AgentDeckTests/PixooBakedTests.swift", "apple/AgentDeckTests/CalendarTests.swift", "apple/AgentDeckTests/AntigravityObservationTests.swift", "apple/AgentDeckTests/ApmeStorageModelTests.swift", "apple/AgentDeckTests/ApmeRetentionTests.swift", "apple/AgentDeckTests/HermesReceiverSettingsTests.swift", "apple/AgentDeckTests/OpenCodeObserverSetupTests.swift", "apple/AgentDeckTests/PocketAutonomyTests.swift", "apple/AgentDeckTests/GitHubCIProviderTests.swift", "apple/AgentDeckTests/DaemonRelayTests.swift"],
+      "evidence": ["apple/AgentDeckTests/AppleBuildBoundaryTests.swift", "apple/AgentDeckTests/ExternalAttachRetryTests.swift", "apple/AgentDeckTests/AgentDeckPathsTests.swift", "apple/AgentDeckTests/TerrariumCloudFoldTests.swift", "apple/AgentDeckTests/CommunicationGraphTests.swift", "apple/AgentDeckTests/LocalPortProbeTests.swift", "apple/AgentDeckTests/LocalDaemonStartupTests.swift", "apple/AgentDeckTests/DaemonStartupCancellationTests.swift", "apple/AgentDeckTests/ListenerLeakTests.swift", "apple/AgentDeckTests/BridgeConnectionLifetimeTests.swift", "apple/AgentDeckTests/AttentionSessionAccessTests.swift", "apple/AgentDeckTests/AttentionSessionRosterTests.swift", "apple/AgentDeckTests/BridgeConnectionDeliveryTests.swift", "apple/AgentDeckTests/MonitorAttentionSelectionTests.swift", "apple/AgentDeckTests/SetupStatusContractTests.swift", "apple/AgentDeckTests/ClaudePermissionRequestTests.swift", "apple/AgentDeckTests/ClaudeStatuslineRulesTests.swift", "apple/AgentDeckTests/CloudKitProbeTests.swift", "apple/AgentDeckTests/RemoteObservationProjectionTests.swift", "apple/AgentDeckTests/RemoteObservationPersistenceTests.swift", "apple/AgentDeckTests/PixooBakedTests.swift", "apple/AgentDeckTests/CalendarTests.swift", "apple/AgentDeckTests/AntigravityObservationTests.swift", "apple/AgentDeckTests/ApmeStorageModelTests.swift", "apple/AgentDeckTests/ApmeRetentionTests.swift", "apple/AgentDeckTests/HermesReceiverSettingsTests.swift", "apple/AgentDeckTests/OpenCodeObserverSetupTests.swift", "apple/AgentDeckTests/PocketAutonomyTests.swift", "apple/AgentDeckTests/GitHubCIProviderTests.swift", "apple/AgentDeckTests/DaemonRelayTests.swift",
+        "apple/AgentDeckTests/ApmeCredentialProfileTests.swift"],
       "proves": [
         "the macOS app and its in-process Swift daemon build and pass XCTest",
         "the development-only CloudKit configuration deterministically tests bounded completion, account-generation invalidation, local cache/outbox reload and coalesced retry policy without contacting iCloud; the iOS PoC configuration compiles separately",
@@ -789,7 +794,8 @@
         "the iOS app builds unsigned in Store and DotPreview configurations",
         "iOS onboarding keeps guidance and recovery in one scroll view with pinned controls at phone portrait, landscape, accessibility text and iPad sizes; reopening retains preferences",
         "Store artifacts exclude Dot code/resources and ignore incoming Dot snapshots; DotPreview retains its contract and native tests",
-        "App Store metadata, screenshots and privacy manifest are within submission limits"
+        "App Store metadata, screenshots and privacy manifest are within submission limits",
+        "APME credential fixtures verify acknowledged migration, private CLI-file compatibility, failed-save preservation, clear/restart tombstones and hosted-test refusal of implicit profiles and inherited paid-provider keys; storage doubles replace real Keychain access"
       ],
       "does_not_prove": [
         "real Data Protection Keychain custody in an unsigned XCTest host; signed sandbox save, new-process restore and deletion are separate local acceptance",
@@ -1078,7 +1084,8 @@
       "required": true,
       "command": "github/codeql-action",
       "proves": [
-        "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails."
+        "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails.",
+        "newer commits cancel superseded runs only within the same PR and workflow; master, scheduled and manual runs retain independent groups, and cancelled runs are not successful analysis evidence"
       ],
       "does_not_prove": [
         "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
@@ -1117,7 +1124,7 @@
       "job": "swift",
       "trigger": "Every PR, master push, weekly and manual",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
       "proves": [
         "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."

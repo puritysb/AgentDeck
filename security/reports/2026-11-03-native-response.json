@@ -1,0 +1,135 @@
+{
+  "capturedAt": "2026-11-03T15:24:45.981860+00:00",
+  "scope": "First complete eight-category default-branch analysis at 05a9bef69d9ec8e5a89a50153412c92595f657d9, run 41642410793. Android/iOS added nine findings and macOS added two bundled-renderer evaluation findings. This records source response candidates, not delivered product fixes or GitHub fixed states.",
+  "sourceResponsePullRequest": 721,
+  "dismissalsPerformed": false,
+  "findings": [
+    {
+      "id": 303,
+      "rule": "java/android/backup-enabled",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Disable manifest backup and explicitly exclude all app storage domains from legacy backup, Android 12+ cloud backup and device transfer. Packaged-manifest/resource regression and 577 Android unit tests pass. OEM physical backup/restore is not tested."
+    },
+    {
+      "id": 304,
+      "rule": "java/android/arbitrary-apk-installation",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "Intentional user-confirmed updater. Its only current UI caller receives an app-owned cache file from the bounded downloader, which verifies the official release asset URL, SHA-256/size, exact package name, newer version code, and a nonempty signer set equal to the installed app before returning it. The system installer still requires user approval. Static source and existing updater regressions reviewed; no arbitrary downloaded APK was installed."
+    },
+    {
+      "id": 305,
+      "rule": "java/android/missing-certificate-pinning",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "User-configured daemon endpoint, not a single vendor HTTPS service. Standard OkHttp certificate and hostname verification is retained for TLS. Hardcoding a vendor certificate would break self-hosted endpoints and is not an authentication fix for intentional plain LAN ws/http. Pairing authorization and transport confidentiality are distinct; unencrypted LAN transport remains a limitation."
+    },
+    {
+      "id": 306,
+      "rule": "java/android/missing-certificate-pinning",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "Pairing connects to the user-selected daemon. No permissive trust manager or hostname verifier was introduced; standard TLS verification applies to HTTPS endpoints. The product has no pre-established certificate for every self-hosted daemon. Certificate enrollment/rotation requires a separate protocol decision. Pairing on plain HTTP has a transport-confidentiality limitation."
+    },
+    {
+      "id": 307,
+      "rule": "java/android/missing-certificate-pinning",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "The official GitHub updater retains standard CA/hostname checks using patched OkHttp 4.12.1, and independently verifies the downloaded APK signer against the installed application. Leaf-certificate pinning of rotating GitHub certificates is not the chosen trust policy. This does not claim that TLS or supply-chain attacks are impossible."
+    },
+    {
+      "id": 308,
+      "rule": "java/sensitive-log",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Replace saved/discovered full-URL debug logging with the canonical host/port endpoint projection. Token query, URL user-info and path are not included. Android compile and 577 unit tests pass; no real paired URL or logcat secrets were collected."
+    },
+    {
+      "id": 309,
+      "rule": "java/relative-path-command",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Pin the Android wake input executable to /system/bin/input while preserving argument-array execution and existing wake-lock fallback. Android compile/unit tests pass; physical device wake acceptance remains separate."
+    },
+    {
+      "id": 310,
+      "rule": "java/relative-path-command",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Pin the monitor-service wake executable to /system/bin/input, with fixed keyevent arguments; do not resolve an executable through PATH. Android compile/unit tests pass; no device power or shared service state changed."
+    },
+    {
+      "id": 311,
+      "rule": "swift/cleartext-storage-preferences",
+      "response": "source-change-awaiting-reanalysis",
+      "evidence": "Remove API-key writes to UserDefaults. Shipped sandbox macOS/iOS apps use noninteractive device-local Keychain storage; migration acknowledges secure persistence before removing legacy defaults/profile copies. Empty secure tombstones prevent stale profile resurrection, and unavailable secure storage never falls back to plaintext for provider requests. Unsandboxed development retains the explicit Node CLI JSON contract with exclusive atomic 0600 writes. Injected migration/provider-resolution regressions cover failure and clear/restart; real Keychain access and shipped-client acceptance were not performed."
+    },
+    {
+      "id": 312,
+      "rule": "swift/unsafe-js-eval",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "Intentional JavaScriptCore evaluation of the fixed generated pixoo-baked.generated.js application-bundle resource. Production constructs the renderer without an injected source; the source override is used by a standalone regression fixture only. Peer state is bounded JSON passed as function arguments and parsed as data, never concatenated into evaluated source. The context exposes no native file/network callbacks or remote script-loading route. Existing bundled-renderer/cache/activity/bounds and cross-language pixel-parity tests exercise this boundary. This is a source trust-policy review, not proof against maliciously replaced application code."
+    },
+    {
+      "id": 313,
+      "rule": "swift/unsafe-js-eval",
+      "response": "reviewed-manual-proposal-remains-open",
+      "evidence": "Intentional JavaScriptCore evaluation of the fixed generated pixoo-baked.generated.js application-bundle resource. Production constructs the renderer without an injected source; the source override is used by a standalone regression fixture only. Peer state is bounded JSON passed as function arguments and parsed as data, never concatenated into evaluated source. The context exposes no native file/network callbacks or remote script-loading route. Existing bundled-renderer/cache/activity/bounds and cross-language pixel-parity tests exercise this boundary. This is a source trust-policy review, not proof against maliciously replaced application code."
+    }
+  ],
+  "pendingManualClosureIds": [
+    304,
+    305,
+    306,
+    307,
+    312,
+    313
+  ],
+  "limits": [
+    "All nine findings were absent from prior PR-only results; a full default-branch scan is required.",
+    "Manual review proposals remain open; no bulk dismissal or workaround was performed.",
+    "Native builds and simulated storage tests do not prove physical backup, installer, wake or Keychain acceptance."
+  ],
+  "primarySources": [
+    "https://developer.android.com/identity/data/autobackup",
+    "https://developer.android.com/about/versions/12/behavior-changes-12#backup-restore",
+    "https://developer.apple.com/documentation/security/keychain-services"
+  ],
+  "localVerification": {
+    "quick": {
+      "passed": 7562,
+      "skipped": 42,
+      "status": "pass"
+    },
+    "android": {
+      "executed": 577,
+      "failures": 0,
+      "skipped": 0,
+      "status": "pass"
+    },
+    "macOSDebugFull": {
+      "executed": 1525,
+      "skipped": 5,
+      "failures": 0,
+      "status": "pass"
+    },
+    "macOSPreviewFull": {
+      "executed": 1545,
+      "skipped": 12,
+      "failures": 0,
+      "status": "pass"
+    },
+    "builds": {
+      "macOSUniversalRelease": "pass",
+      "iOSRelease": "pass",
+      "iOSPreviewRelease": "pass"
+    },
+    "documentation": "pass",
+    "scope": "Unsigned local builds. New APME tests inject storage/defaults and temporary profiles. Hosted APME lookups refuse implicit user profiles and inherited paid-provider environment keys; explicit temporary fixtures remain allowed. This is not OS-level sandbox isolation. No real Keychain or physical/installed product acceptance is claimed.",
+    "credentialCasesWithinBothFullSuites": 9
+  },
+  "hostedTestIsolation": {
+    "inertProfileDoesNotReadLegacyDefaults": true,
+    "implicitAPMEProfileAllowed": false,
+    "inheritedPaidEnvironmentKeyAllowed": false,
+    "explicitTemporaryFixtureAllowed": true,
+    "regressionCases": [
+      "inert legacy-default credential refusal",
+      "hosted provider implicit-profile/environment refusal and explicit-fixture success"
+    ]
+  }
+}

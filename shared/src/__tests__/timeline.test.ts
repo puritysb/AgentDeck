@@ -248,6 +248,24 @@ describe('normalizeTimelineEntryForStorage', () => {
     expect(summarizeOpenClawCronPrompt('[cron:id ai-eval-kindergarten-daily] body'))
       .toBe('자동 작업 · ai eval kindergarten daily');
   });
+
+  it('handles long malformed cron separators without retrying label matches', () => {
+    const spaces = '\t'.repeat(100_000);
+    expect(summarizeOpenClawCronPrompt(`[cron:!${spaces}`)).toBe('자동 작업');
+    expect(summarizeOpenClawCronPrompt(`[cron:!${spaces}]`)).toBe('자동 작업');
+    expect(summarizeOpenClawCronPrompt(`[cron:!${spaces}daily-review] body`))
+      .toBe('자동 작업 · daily review');
+  });
+
+  it('requires the header identifier and keeps label normalization and cap', () => {
+    expect(summarizeOpenClawCronPrompt('[cron: job]')).toBe('자동 작업');
+    expect(summarizeOpenClawCronPrompt('[cron:id] body')).toBe('자동 작업');
+    expect(summarizeOpenClawCronPrompt('prefix [cron:id job]')).toBe('자동 작업');
+    expect(summarizeOpenClawCronPrompt(' \n[cron:id\u2003daily__review\t now] body'))
+      .toBe('자동 작업 · daily review now');
+    expect(summarizeOpenClawCronPrompt(`[cron:id ${'a'.repeat(65)}] body`))
+      .toBe(`자동 작업 · ${'a'.repeat(61)}...`);
+  });
 });
 
 describe('isAssistantProgressUpdate', () => {

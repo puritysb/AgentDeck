@@ -113,7 +113,7 @@ fun BridgeAutoConnect(
         // tokens in #145, so this is the only copy the device has.
         connection.pairedUrls = displayPrefs.pairedBridgeUrlsFlow.first()
         connection.pairedUrl = savedUrl
-        autoConnectDebug { "Auto-connect: savedUrl=$savedUrl" }
+        autoConnectDebug { "Auto-connect: endpoint=${PairingCredential.endpointOf(savedUrl)}" }
 
         delay(AutoConnectRules.LOOPBACK_SETTLE_MS)
         if (savedUrl != null && connection.selectedUrl == null && connection.status.value != ConnectionStatus.CONNECTED) {
@@ -183,7 +183,7 @@ fun BridgeAutoConnect(
             if (connection.status.value == ConnectionStatus.CONNECTED) return@collectLatest
             if (daemon == null) return@collectLatest
             if (!mayDial(daemon)) return@collectLatest
-            autoConnectDebug { "mDNS dial: ${daemon.name} at ${daemon.wsUrl()}" }
+            autoConnectDebug { "mDNS dial: ${daemon.name} at ${PairingCredential.endpointOf(daemon.wsUrl())}" }
             connection.connect(daemon.wsUrl(), daemon.fallbackWsUrl())
         }
     }

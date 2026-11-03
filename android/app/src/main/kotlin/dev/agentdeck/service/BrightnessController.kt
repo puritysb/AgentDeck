@@ -462,7 +462,7 @@ class BrightnessController(
                 Log.d(TAG, "Acquired SCREEN_BRIGHT wake lock to wake screen")
             } catch (e: Exception) {
                 Log.w(TAG, "Wake lock failed, trying KEYCODE_WAKEUP: ${e.message}")
-                try { Runtime.getRuntime().exec(arrayOf("input", "keyevent", "KEYCODE_WAKEUP")) }
+                try { Runtime.getRuntime().exec(arrayOf("/system/bin/input", "keyevent", "KEYCODE_WAKEUP")) }
                 catch (e2: Exception) { Log.w(TAG, "KEYCODE_WAKEUP also failed: ${e2.message}") }
             }
         }
