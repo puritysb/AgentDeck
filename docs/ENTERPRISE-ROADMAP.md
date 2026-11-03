@@ -618,3 +618,21 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
    broadcast module can be deleted rather than defaulted off.
 3. **What is the enterprise actually deploying — the CLI, the App Store app, or both?**
    The Swift work (items 12, and half of 2 and 4) is only needed for the app.
+
+
+### ESP32 mDNS source correction
+
+Firmware now names its responder `agentdeck-display-<full factory MAC>` using a
+32-byte stack buffer. Candidate selection matches the current provisioned endpoint
+when available; if that endpoint is absent, it does not move the credential to
+another host. With no selected endpoint, it accepts one distinct daemon (or one
+legacy bridge), deduplicates identical advertisements and refuses ambiguous lists.
+A recent discovery result is never replayed after the preferred endpoint changes.
+Re-provision explicitly when a selected host's address changes. Boards whose older
+storage never saved an endpoint still need an explicit provision to establish one.
+
+This does not complete refusal recovery or hardware delivery. The pinned Arduino
+WebSockets client discards the received close code before its disconnect callback;
+ordinary TCP loss cannot safely be labelled an authentication refusal. No automatic
+credential fallback to another discovered host is introduced. Reconnect, radio
+parking and OTA acceptance remain physical checks before a firmware release.
