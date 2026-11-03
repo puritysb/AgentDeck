@@ -6,7 +6,7 @@
   신호였던 parser `spinner_start`/`idle_detected`를 Claude/Codex 어댑터에서 제거하면서
   hook 기반 탈출 전이를 추가하지 않아, **키보드로 프롬프트에 답한 managed 세션이 영구
   amber awaiting**에 고착됐다 (`stop`은 `PROCESSING→IDLE`뿐, Stop 핸들러가 전이 전에
-  question을 비워 "질문 없는 awaiting" 스냅샷까지 방송). (2) Claude Stop hook 유실 시
+  question을 비워 "질문 없는 awaiting" 스냅샷까지 전송). (2) Claude Stop hook 유실 시
   복구(스피너+링버퍼 3경로)가 대체 없이 삭제돼 상태 5분 고착·타임라인 미폐쇄·APME 응답
   유실이 남았고, 1.0.19 노트에 Codex 쪽 감쇠만 명시됐다. 기존 테스트는
   `handleParserEvent('spinner_start')`를 직접 호출해 **도달 불가 경로를 green으로
