@@ -112,6 +112,32 @@ final class ApmeCredentialProfileTests: XCTestCase {
         }
     }
 
+    func testInertProfileDoesNotReturnLegacyDefaultsCredential() throws {
+        try fixture { defaults, _ in
+            defaults.set("unrelated-user-key", forKey: ApmeCredentialProfile.legacyKey)
+            let inert = ApmeCredentialProfile(defaults: defaults, storage: nil, url: nil)
+            XCTAssertEqual(try inert.migrate(), "")
+            XCTAssertEqual(defaults.string(forKey: ApmeCredentialProfile.legacyKey), "unrelated-user-key")
+        }
+    }
+
+    func testHostedProviderReadsOnlyExplicitFixtureAndIgnoresInheritedEnvironmentKey() throws {
+        try fixture { _, url in
+            let hosted = ["XCTestBundlePath": "synthetic-test-host", "ANTHROPIC_API_KEY": "inherited-key"]
+            XCTAssertNil(ApmeSettings.resolvedSettingsPath(environment: hosted))
+            XCTAssertNil(ApmeSettings.load(environment: hosted).judge.apiKey)
+            #if os(macOS)
+            XCTAssertNil(ApmeJudgeApi.loadApiKey(environment: hosted))
+            #endif
+            var explicit = hosted
+            explicit["AGENTDECK_DATA_DIR"] = url.deletingLastPathComponent().path
+            XCTAssertEqual(ApmeSettings.load(environment: explicit).judge.apiKey, "legacy-file")
+            #if os(macOS)
+            XCTAssertEqual(ApmeJudgeApi.loadApiKey(environment: explicit), "legacy-file")
+            #endif
+        }
+    }
+
     func testMalformedProfileIsPreservedOnMigrationFailure() throws {
         try fixture { defaults, url in
             let corrupt = Data("not json".utf8); try corrupt.write(to: url)

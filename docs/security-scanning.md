@@ -391,3 +391,10 @@ completed successfully on earlier head `a37e87ab`. These prove the existing cron
 triggers ran, not latest-source acceptance or native-category cron coverage.
 The hourly health workflow's first scheduled event remains unobserved; its
 push/PR checks and deterministic freshness-policy regressions are separate.
+
+The final APME harness review also separates hosted tests from development-file
+fallbacks. An inert preferences profile does not read a legacy key; hosted
+provider lookups ignore inherited paid API keys and require an explicit temporary
+profile directory. Regression fixtures exercise both refusal and the permitted
+temporary-profile path without reading a real credential. This narrows the
+isolation claim to the APME paths covered by the tests.

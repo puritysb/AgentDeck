@@ -187,16 +187,19 @@ enum ApmeJudgeApi {
     /// Picker to gate the "api" option with a helpful subtitle.
     static var isConfigured: Bool { loadApiKey() != nil }
 
-    /// Priority: env var, then settings.json apme.judge.apiKey.
-    private static func loadApiKey() -> String? {
-        if let env = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"],
+    /// Explicit environment key, then the runtime-specific credential source.
+    static func loadApiKey(environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
+        // Hosted tests may use an explicit temporary profile, never an inherited
+        // paid-provider credential or an implicit real user profile.
+        if !AgentDeckApp.isHostedTest(environment: environment),
+           let env = environment["ANTHROPIC_API_KEY"],
            !env.isEmpty {
             return env
         }
         if let storage = ApmeAPIKeyStorage.current {
             return try? ApmeAPIKeyStorage.resolve(configured: nil, storage: storage)
         }
-        let path = AgentDeckPaths.settingsJson.path
+        guard let path = ApmeSettings.resolvedSettingsPath(environment: environment) else { return nil }
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let apme = json["apme"] as? [String: Any],

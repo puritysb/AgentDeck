@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-11-03T14:33:29.768754+00:00",
+  "capturedAt": "2026-11-03T15:24:45.981860+00:00",
   "scope": "First complete eight-category default-branch analysis at 05a9bef69d9ec8e5a89a50153412c92595f657d9, run 41642410793. Android/iOS added nine findings and macOS added two bundled-renderer evaluation findings. This records source response candidates, not delivered product fixes or GitHub fixed states.",
   "sourceResponsePullRequest": 721,
   "dismissalsPerformed": false,
@@ -102,19 +102,14 @@
       "status": "pass"
     },
     "macOSDebugFull": {
-      "executed": 1522,
+      "executed": 1525,
       "skipped": 5,
       "failures": 0,
       "status": "pass"
     },
     "macOSPreviewFull": {
-      "executed": 1543,
+      "executed": 1545,
       "skipped": 12,
-      "failures": 0,
-      "status": "pass"
-    },
-    "finalCredentialDebugFocused": {
-      "executed": 7,
       "failures": 0,
       "status": "pass"
     },
@@ -124,6 +119,17 @@
       "iOSPreviewRelease": "pass"
     },
     "documentation": "pass",
-    "scope": "Unsigned local builds. Explicit hosted-test detection and injected credential storage prevent login-Keychain/profile access. No installed app or physical-device validation."
+    "scope": "Unsigned local builds. New APME tests inject storage/defaults and temporary profiles. Hosted APME lookups refuse implicit user profiles and inherited paid-provider environment keys; explicit temporary fixtures remain allowed. This is not OS-level sandbox isolation. No real Keychain or physical/installed product acceptance is claimed.",
+    "credentialCasesWithinBothFullSuites": 9
+  },
+  "hostedTestIsolation": {
+    "inertProfileDoesNotReadLegacyDefaults": true,
+    "implicitAPMEProfileAllowed": false,
+    "inheritedPaidEnvironmentKeyAllowed": false,
+    "explicitTemporaryFixtureAllowed": true,
+    "regressionCases": [
+      "inert legacy-default credential refusal",
+      "hosted provider implicit-profile/environment refusal and explicit-fixture success"
+    ]
   }
 }

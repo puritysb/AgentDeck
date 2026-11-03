@@ -113,6 +113,8 @@ final class ApmeCredentialProfile {
     }
 
     func migrate() throws -> String {
+        // An inert hosted-test profile must not inspect legacy user defaults.
+        guard storage != nil || url != nil else { return "" }
         var root = try read()
         var apme = root["apme"] as? [String: Any] ?? [:]
         var judge = apme["judge"] as? [String: Any] ?? [:]

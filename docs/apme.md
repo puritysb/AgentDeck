@@ -461,7 +461,10 @@ its existing priority for the Anthropic adapter.
 Migration acknowledges the secure write before removing legacy copies. A failed migration preserves
 the original and displays a settings notice. Clearing a key retains an empty secure item so an old
 profile restored later cannot revive the credential. Malformed configuration is preserved rather
-than overwritten. Tests inject storage and temporary profiles; they do not access a login Keychain.
+than overwritten. Tests inject storage and temporary profiles. An inert credential profile does not read legacy
+defaults. Hosted APME provider lookups ignore inherited paid-provider environment keys and refuse
+implicit user-profile paths; an explicit temporary `AGENTDECK_DATA_DIR` remains available for fixtures.
+The secure-store test double replaces login-Keychain access.
 
 Unsandboxed development builds retain the Node CLI contract: an explicitly configured
 `apme.judge.apiKey` may remain in `AgentDeckPaths.settingsJson`, written by this settings path through

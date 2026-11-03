@@ -144,10 +144,11 @@ enum ApmeSettings {
     /// Path to the shared settings file. Env override (used by tests) takes
     /// precedence; otherwise we route through `AgentDeckPaths` so signed
     /// App Store builds land in the sandbox data container.
-    static var settingsPath: String {
-        if let override = ProcessInfo.processInfo.environment["AGENTDECK_DATA_DIR"] {
+    static func resolvedSettingsPath(environment: [String: String]) -> String? {
+        if let override = environment["AGENTDECK_DATA_DIR"], !override.isEmpty {
             return (override as NSString).appendingPathComponent("settings.json")
         }
+        guard !AgentDeckApp.isHostedTest(environment: environment) else { return nil }
         return AgentDeckPaths.settingsJson.path
     }
 
@@ -160,10 +161,10 @@ enum ApmeSettings {
     private static let settingsReadQueue = DispatchQueue(label: "dev.agentdeck.apme-settings.read", qos: .userInteractive)
     private static let settingsReadTimeout: DispatchTimeInterval = .milliseconds(700)
 
-    /// Load APME config from ~/.agentdeck/settings.json.
+    /// Load the runtime profile; hosted tests require an explicit fixture directory.
     /// Returns defaults on any failure — the daemon must keep booting.
-    static func load() -> ApmeConfig {
-        var config = readSettingsDataBounded().map(parse) ?? ApmeConfig()
+    static func load(environment: [String: String] = ProcessInfo.processInfo.environment) -> ApmeConfig {
+        var config = readSettingsDataBounded(environment: environment).map(parse) ?? ApmeConfig()
         config.judge.apiKey = try? ApmeAPIKeyStorage.resolve(configured: config.judge.apiKey)
         return config
     }
@@ -293,10 +294,11 @@ enum ApmeSettings {
         mlxCache = nil
     }
 
-    private static func readSettingsDataBounded() -> Data? {
+    private static func readSettingsDataBounded(environment: [String: String] = ProcessInfo.processInfo.environment) -> Data? {
+        guard let path = resolvedSettingsPath(environment: environment) else { return nil }
         let box = ApmeSettingsDataBox()
         let semaphore = DispatchSemaphore(value: 0)
-        let url = URL(fileURLWithPath: settingsPath)
+        let url = URL(fileURLWithPath: path)
         settingsReadQueue.async {
             box.set(try? Data(contentsOf: url))
             semaphore.signal()
