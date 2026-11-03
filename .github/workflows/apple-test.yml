@@ -29,6 +29,9 @@ defaults:
   run:
     shell: bash
 
+permissions:
+  contents: read
+
 jobs:
   # Gates the App Store submission bundle (metadata field limits per locale,
   # screenshot/preview dimensions, privacy manifest, encryption declaration).
@@ -39,7 +42,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install ffmpeg (App Preview probing)
         run: brew install ffmpeg
@@ -69,10 +72,11 @@ jobs:
             action: test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
         with:
+          toolchain: 1.90.0
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Select Xcode
@@ -123,7 +127,7 @@ jobs:
 
       - name: Upload xcresult on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: AgentDeckTests-${{ matrix.configuration }}-xcresult
           path: ${{ runner.temp }}/AgentDeckTests.xcresult
@@ -141,7 +145,7 @@ jobs:
             dot: preview
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Select Xcode
         run: |
@@ -197,7 +201,7 @@ jobs:
 
       - name: Upload companion layout results
         if: always() && matrix.configuration == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: CompanionOnboarding-xcresult
           path: ${{ runner.temp }}/CompanionOnboarding.xcresult

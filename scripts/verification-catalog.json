@@ -1061,6 +1061,48 @@
       "does_not_prove": [
         "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
       ]
+    },
+    {
+      "id": "codeql-java-kotlin",
+      "name": "CodeQL java-kotlin security analysis",
+      "level": [
+        "static",
+        "compile"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "kotlin",
+      "trigger": "Every PR, master push, weekly and manual",
+      "blocking": true,
+      "required": false,
+      "command": "./gradlew :app:assembleDebug --no-build-cache --rerun-tasks",
+      "proves": [
+        "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job."
+      ],
+      "does_not_prove": [
+        "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review."
+      ]
+    },
+    {
+      "id": "codeql-swift",
+      "name": "CodeQL swift security analysis",
+      "level": [
+        "static",
+        "compile"
+      ],
+      "where": "macos-26",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "swift",
+      "trigger": "Every PR, master push, weekly and manual",
+      "blocking": true,
+      "required": false,
+      "command": "xcodebuild build -scheme AgentDeck_macOS CODE_SIGNING_ALLOWED=NO",
+      "proves": [
+        "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job."
+      ],
+      "does_not_prove": [
+        "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review."
+      ]
     }
   ],
   "not_a_gate": {

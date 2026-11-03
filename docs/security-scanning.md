@@ -17,8 +17,11 @@ complements [the reporting policy](../SECURITY.md) and [testing](testing.md).
 
 CodeQL currently covers JavaScript/TypeScript, Python, Actions, C/C++ and Rust,
 using `build-mode: none`. C++ without target headers/build flags has limited
-precision. Swift and Kotlin analysis, a complete PlatformIO/Arduino dependency
-inventory, and inspection of every installed user environment remain gaps.
+precision. Separate manual-build jobs extract Kotlin from Android and Swift from
+both macOS and iOS Simulator targets; native extraction is verified by its actual
+hosted build and analysis result, not workflow presence. A complete
+PlatformIO/Arduino dependency inventory and inspection of every installed user
+environment still require separate checks.
 Dependabot additionally checks Gradle manifests and GitHub Actions. A configured
 workflow and a completed analysis are separate states; inspect the actual run.
 Snyk has not been run or connected. These checks provide a baseline without an
@@ -216,3 +219,12 @@ public notes can publish aggregates and validated delivery status.
 
 Sources: [PR alert scope](https://docs.github.com/en/code-security/concepts/code-scanning/code-scanning-alerts),
 [separate Dependabot PR limits](https://docs.github.com/en/code-security/reference/supply-chain-security/troubleshoot-dependabot/dependabot-errors).
+
+## Workflow execution integrity
+
+Remote Actions are pinned to full commit SHAs. Their version comments retain
+Dependabot update support; Rust toolchain selection is an explicit input rather
+than inferred from the Action ref. Workflows declare token permissions explicitly.
+Release jobs retain their existing publication scopes; ordinary test workflows
+receive read-only repository contents. Native CodeQL builds disable compilation
+caches so a cache hit cannot masquerade as source extraction.

@@ -561,5 +561,13 @@
   "CodeQL static security analysis": "CodeQL 정적 보안 분석",
   "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails.": "security-extended 쿼리로 JavaScript·TypeScript, Python, Actions, C·C++, Rust를 빌드 없이 분석합니다. 추출·분석 실패는 작업을 실패시킵니다.",
   "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage.": "악용 가능한 결함의 부재, Swift·Kotlin 범위 또는 기기 동작을 증명하지 않습니다. 분석 성공과 경고 없음은 별개이며 경고는 따로 검토합니다.",
-  "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled.": "master 브랜치 보호는 ESP32 Sim Compile, npm·Python·Rust 의존성 검사, 의존성 변경 검토, 다섯 CodeQL 분석 작업과 CodeQL 결과 검사를 요구합니다. 다른 CI도 실패하면 PR이 빨간 상태가 되지만 개별 필수 조건은 아닙니다. 관리자 강제 적용은 꺼져 있습니다."
+  "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled.": "master 브랜치 보호는 ESP32 Sim Compile, npm·Python·Rust 의존성 검사, 의존성 변경 검토, 다섯 CodeQL 분석 작업과 CodeQL 결과 검사를 요구합니다. 다른 CI도 실패하면 PR이 빨간 상태가 되지만 개별 필수 조건은 아닙니다. 관리자 강제 적용은 꺼져 있습니다.",
+  "CodeQL java-kotlin security analysis": "CodeQL Java·Kotlin 보안 분석",
+  "CodeQL swift security analysis": "CodeQL Swift 보안 분석",
+  "Every PR, master push, weekly and manual": "모든 PR·master 반영·주간 예약·수동 실행",
+  "A clean manual build supplies java-kotlin sources to security-extended queries; build, extraction or analysis failure fails the job.": "새 Android 빌드에서 Java·Kotlin 소스를 수집해 확장 보안 규칙으로 분석합니다. 빌드·추출·분석 오류는 검사를 실패 처리합니다.",
+  "A clean manual build supplies swift sources to security-extended queries; build, extraction or analysis failure fails the job.": "새 macOS 앱 빌드에서 Swift 소스를 수집해 확장 보안 규칙으로 분석합니다. 빌드·추출·분석 오류는 검사를 실패 처리합니다.",
+  "Absence of exploitable defects; alerts require per-finding review. Swift targets the macOS application; platform-exclusive iOS paths and physical-device behavior need separate verification.": "악용 가능한 결함이 없다는 보장은 아닙니다. 경고는 항목별 검토가 필요합니다. Swift 분석은 macOS 앱을 대상으로 하므로 iOS 전용 코드와 실기기 동작은 별도로 검증해야 합니다.",
+  "Clean manual macOS and iOS Simulator builds supply Swift sources to security-extended queries; build, extraction or analysis failure fails the job.": "새 macOS·iOS 시뮬레이터 빌드에서 Swift 소스를 수집해 확장 보안 규칙으로 분석합니다. 빌드·추출·분석 오류는 검사를 실패 처리합니다.",
+  "Absence of exploitable defects, physical-device behavior or release delivery; alerts require per-finding review.": "악용 가능한 결함의 부재, 실기기 동작이나 배포 완료를 보장하지 않습니다. 경고는 항목별 검토가 필요합니다."
 }

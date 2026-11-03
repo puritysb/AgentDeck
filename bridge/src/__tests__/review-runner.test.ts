@@ -1,8 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import {
   renderReviewHtml, renderJudgeGuidanceHtml, judgeTierNote,
+  reviewBrowserCommand,
   type ReviewFinding,
 } from '../review-runner.js';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
+
+describe('review browser opening', () => {
+  it.each(['review with spaces.html', 'review&echo injected.html', 'review%PATH%.html', 'review$(echo injected).html', 'review`echo injected`.html', 'review\"quoted\".html'])('keeps %s as a file URL argument without a command interpreter', (name) => {
+    const path = resolve('fixture reviews', name);
+    const windows = reviewBrowserCommand(path, 'win32');
+    expect(windows.file).toBe('rundll32.exe');
+    expect(windows.args).toHaveLength(2);
+    expect(windows.args[0]).toBe('url.dll,FileProtocolHandler');
+    expect(fileURLToPath(windows.args[1])).toBe(path);
+    expect(windows.args[1]).toMatch(/^file:\/\//);
+    for (const platform of ['darwin', 'linux'] as const) {
+      const command = reviewBrowserCommand(path, platform);
+      expect(command.file).toBe(platform === 'darwin' ? 'open' : 'xdg-open');
+      expect(command.args).toEqual([windows.args[1]]);
+    }
+  });
+});
 
 const FINDINGS: ReviewFinding[] = [
   { severity: 'high', title: 'rm -rf on user path', detail: 'destructive', file: 'x.sh' },
