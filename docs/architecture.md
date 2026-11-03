@@ -94,7 +94,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/apme-review.ts` (task correction/attempt storage, bounded evidence selection and text budgets) | `pnpm generate-apme-display-rules` → `ApmeReviewRules.generated.swift` | Drift gate plus `shared/apme-evidence-vectors.json` replay in TS/Swift; real SQLite reopen and long-task prompt regressions. |
 | `shared/src/apme-scorecard-sql.ts` (SQLite scorecard views, including cost per evaluated unit) | `pnpm generate-apme-display-rules` → `ApmeScorecardSQL.generated.swift` | The same SQL is imported by Node and generated for Swift; sample duplication, unknown pricing and store reopen behavior are covered by APME tests on both sides. |
 | `shared/pixoo-loop-policy.json` and canonical `bridge/src/pixoo/pixoo-renderer.ts` / shared art-layout rules | `node scripts/generate-pixoo-loop-policy.mjs` and `node scripts/generate-pixoo-baked.mjs` → Node/Swift bounds and fixed bundled Pixoo pixel code | `pixoo-baked.test.ts` checks both generators and compares every RGB byte against actual Swift/JavaScriptCore; `PixooBakedTests` drives real module scheduling/payloads with bounded fixtures. |
-| `shared/calendar-policy.json` plus Glance event bounds in `shared/src/protocol.ts` (ICS subset, recurrence/fetch/cache limits) | `node scripts/generate-calendar-policy.mjs` → Node/Swift calendar policy | `calendar.test.ts` executes actual Node/Swift parser, URL and cache vectors; `CalendarTests` covers consent, Keychain, revocation and aggregate-only Pocket storage. |
+| `shared/calendar-policy.json`, `shared/calendar-windows-zones.json` plus Glance event bounds in `shared/src/protocol.ts` (ICS subset, recurrence/fetch/cache limits) | `node scripts/generate-calendar-policy.mjs` → Node/Swift calendar policy | `calendar.test.ts` executes actual Node/Swift parser, URL and cache vectors; `CalendarTests` covers consent, Keychain, revocation and aggregate-only Pocket storage. |
 | `shared/antigravity-observation-policy.json` (JSONL identity, read-only SQLite activity queries, status enums, metadata and freshness bounds) | `pnpm generate-antigravity-observation` → Node/Swift policy | `antigravity-observation.test.ts` executes both parsers/readers on shared vectors; `AntigravityObservationTests` covers scoped consent, restoration, renewal, revocation, rotation and unknown/stale refusal. |
 | `shared/apme-retention-policy.json` (payload-only age predicate, scope, batch size and vacuum space gate) | `pnpm generate-apme-retention` → Node and Swift retention policy | `apme-retention-parity.test.ts` checks drift and executes both SQLite implementations against Unicode/NUL fixtures; `ApmeRetentionTests` covers history preservation, stale preview refusal, rollback, WAL, contention and temporary-store compaction. |
 | `shared/apme-read-indexes.json` (APME metadata read plans) | `pnpm generate-apme-read-indexes` → Node and Swift index migrations | `apme-work-board-plan.test.ts` checks generated drift and real query plans; `apme-background-plan.test.ts` and `ApmeHotReadPlanTests` pin queue and native SQLite plans. |
@@ -139,6 +139,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/claude-permission-rules.ts` (terminal Attention admission, retired permission-hold compatibility rules and legacy Notification sentence) | `pnpm generate-claude-permission-rules` (emits `ClaudePermissionRules.generated.swift`) | vitest byte gate + `shared/claude-permission-vectors.json` |
 | `shared/src/mlx-safety.ts` (resident-model selection, admission and failure cooldown) | `pnpm generate-mlx-safety` (emits `MlxSafetyRules.generated.swift`) | byte-for-byte generator drift gate plus `shared/mlx-safety-vectors.json` replayed by Vitest and XCTest. Node and Swift route MLX inference through one per-process endpoint gate. Server enforcement remains required across processes. |
 | `shared/src/apme-classifier-rules.ts` (LLM-assist `task_category` classifier: prompt, label vocabulary, output cap, timeout, backend try-order) | `pnpm generate-apme-classifier-rules` (emits `ApmeClassifierRules.generated.swift`) | `shared/src/__tests__/apme-classifier-rules-sync.test.ts`. `task_category` selects the judge rubric, so the two daemons disagreeing is a score difference — Swift's classifier used to route through `callConfiguredJudge`, i.e. whatever eval judge backend the user configured, including the paid `api`/`openai` legs (#299). The backend order is local-only by construction: `api`/`openai` are not members of the SSOT array |
+| `shared/src/pairing-credentials.ts` | `node scripts/generate-pairing-credentials.mjs` → Swift retirement rules | Shared credential-transition vectors and generated-byte drift; positive retirement revisions never retain a legacy ring or accept older/conflicting owner state. |
 | `shared/src/pairing-code.ts` | `pnpm generate-pairing-code-rules` | vitest drift gate; Swift carries the whole evaluator, Kotlin a client mirror; both native clients share the selected-host reconnect cooldown |
 | `shared/src/local-trust.ts` (same-machine trust: a request whose `Host` or `Origin` shows a web page is answered as a LAN peer) | `pnpm generate-local-trust-rules` → `LocalTrustRules.generated.swift` | `local-trust-sync.test.ts` byte gate; `shared/local-trust-vectors.json` replayed by `local-trust.test.ts` and `LocalTrustVectorsTests`. Each daemon supplies its own addresses, host name and port (`localTrustOf` in `bridge/src/auth.ts`, `LocalTrust.swift`). |
 | `shared/setup-status-contract.json` (the key set of `GET /setup-status`, the one cross-origin daemon route, so it must carry no secret) | none; each daemon builds the body by hand (`bridge/src/setup-status.ts`, `DaemonServer.setupStatusPayload`) | Contract replayed by `bridge/src/__tests__/setup-status.test.ts` and `SetupStatusContractTests`: exact keys, a forbidden-key pattern, `sessions` as a count or null, `claudeHooks` from a closed set. |
@@ -161,6 +162,7 @@ AGENTS.md § Key Conventions ("Cross-platform rules are SSOT-first"); this is th
 | `shared/src/session-state-presentation.ts` (colours from the `Session` group of `design/tokens.css`) | `pnpm generate-session-state` | Session state → tone, dark/paper colour and label/short/tiny words for every product surface; also emits `esp32/src/ui/product_palette.generated.h`, the C++ mirror of the `--ui-*`/`--brand-*`/`--session-*` tokens that ESP32 never had. `shared/src/__tests__/session-state-presentation.test.ts` gates tones, contrast, vocabulary budgets and mirror drift; `scripts/__tests__/native-palette.test.ts` ratchets raw colour literals in native Dashboard code |
 | `shared/src/usage-presentation.ts` | `pnpm generate-usage-presentation` | Generated C++/Swift/Kotlin heading, Luna and purchased-credit selection predicates, the credit-balance formatter (vectors: `shared/credit-balance-vectors.json`), plus the C++ plan-tier stripper (`subscriptionTier`); TS shared by Stream Deck and Ulanzi, C++ consumed by every ESP32 USAGE surface through `esp32/src/util/usage_rows.h`. Provider attribution table binds subscription metadata to usage rows. `usage-presentation.test.ts` gates drift and exhaustion/reset/unknown/tier cases. |
 | `shared/src/collaboration-presentation.ts` | `pnpm generate-collaboration-presentation` | Generated Swift/C++ live-census labels and parent waiting-on-work predicate, consumed by macOS Collaboration and IPS10 Details. Also owns Node/Swift communication-history bounds, excerpt length, graph refresh, simultaneous-message uncertainty window, and shared 2D/3D habitat current limits/recent-message motion policy (Swift generated). The authenticated `/apme/communications` feed contains only recent message relations across tasks. Graph edges never come from shared project membership. Complete-message intent patterns and bounded content fingerprints are also generated into Swift; shared coordination vectors gate both daemons. Only explicit reply requests start elapsed waits; notifications and legacy/unknown intent do not. Explicit replies settle only a single earlier request, with crossed and multiple-request ambiguity retained. `collaboration-presentation.test.ts` gates drift and phase precedence. |
+| `shared/transport-auth-policy.json` | `node scripts/generate-transport-auth-policy.mjs` | Node WebSocket refusal code and ESP32 HTTP/close classification; generated TS/C++ drift gate and actual host policy assertions. Network silence never means authentication refusal. |
 | `bridge/src/codex-auth.ts` (`resolveChatGptRenewalDate`: reported future date first, otherwise a monthly UTC calendar estimate anchored to the old end date) | Existing Swift mirror in `UsageAPIClient.swift`; auth start/end spans never establish billing cadence | `shared/codex-renewal-vectors.json` replayed by `codex-auth.test.ts` and `ProtocolTests.testResolveChatGptRenewalDateSharedVectors`: multi-month snapshots, future reported dates, month-end clamps, leap years and missing anchors. |
 | `shared/src/format-utils.ts` Codex snapshot freshness (`CODEX_SNAPSHOT_STALE_MS` + age-label bands) | `pnpm generate-codex-freshness-rules` | vitest drift gate; also emits Swift-only `CodexPlanRules` from `codexSnapshotMatchesAccountPlan`, since both daemons PRODUCE the wire snapshot but Android only consumes it |
 | `shared/src/zai-quota.ts` (z.ai GLM Coding Plan monitor-response → wire windows: schema family, unit classification, window minutes, plan names, PAYG key shape, authentication-failure code) | `pnpm generate-zai-quota-rules` | vitest drift gate + `shared/zai-quota-vectors.json` replayed by both suites (`zai-quota.test.ts`, `ZaiQuotaRulesVectorsTests`); Swift-only mirror — both daemons produce the `zaiRateLimits` block, Android consumes the wire (#348) |
@@ -370,17 +372,24 @@ the Keychain item, cancels owned work and invalidates all cached/late projection
 
 `calendar-ics.ts` and `CalendarICS.swift` implement the bounded shared subset in
 [calendar-policy](../shared/calendar-policy.json). A calendar retains source wall
-time and its UTC/IANA/floating form until occurrence expansion. The display zone is
-the daemon's local zone. DAILY, Monday-based WEEKLY (plain BYDAY), MONTHLY
-(BYMONTHDAY including negative/list values or ordinal/plain BYDAY), and simple
+time and its UTC/IANA/floating form until occurrence expansion. Windows TZIDs use
+the primary (`001`) IANA mapping from [Unicode CLDR release 48](https://raw.githubusercontent.com/unicode-org/cldr/release-48/common/supplemental/windowsZones.xml),
+pinned in the shared mapping with its source checksum and Unicode license. The
+display zone is the daemon's local zone. DAILY, WEEKLY (plain BYDAY with any valid
+WKST, default Monday), MONTHLY (BYMONTHDAY including negative/list values or
+ordinal/plain BYDAY, plus signed BYSETPOS over that monthly candidate set), and simple
 YEARLY rules support INTERVAL and COUNT or inclusive UNTIL. EXDATE and moved or
 cancelled RECURRENCE-ID entries match UID plus the full recurrence instant, scoped
 per source. Date-only DTEND is exclusive. Timed events are retained while ongoing;
 multiday events use the existing all-day Glance presentation. Explicit gap starts
 use the pre-gap offset, repeated gap instances are skipped without consuming COUNT,
 and overlap picks the first instant, following [RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html).
-Custom VTIMEZONE definitions, RDATE/DURATION, RANGE and other unsupported rule
-modifiers are omitted rather than misinterpreted. Malformed calendar envelopes, invalid UTF-8 and expansion-limit failures cannot
+Custom VTIMEZONE definitions, non-monthly BYSETPOS, RDATE/DURATION, RANGE and other
+unsupported rule modifiers are omitted. Full authenticated `/health` includes a
+content-free `calendar` snapshot: status, fetchedAt, skippedEvents and counts by
+`unsupported_zone`, `unsupported_rule` and `invalid_event`. It reads the existing
+cache without fetching feeds and exposes neither URLs nor event fields. Unknown
+time zones are never guessed. The minimal unauthenticated LAN health is unchanged. Malformed calendar envelopes, invalid UTF-8 and expansion-limit failures cannot
 replace a good cached parse. Expansion is bounded, not a full iCalendar engine.
 
 This also corrects Node's former literal-TZID, ordinal-BYDAY, date-only end and
@@ -388,6 +397,11 @@ date-only exception matching behavior. Both implementations use the same vectors
 for source zones differing from the display zone, DST gaps/overlaps, leap dates,
 recurrence exceptions, UTF-8 bounds and invalid input. No platform keeps the old
 timezone guess as its compatibility contract.
+
+Subscription `webcal://` addresses are normalized to HTTPS before storage or fetch;
+path and query bytes are preserved. There is no HTTP fallback. Settings explains
+that the server must support HTTPS. The normalization and transport targets are
+checked by shared URL vectors in Node and the actual Swift implementation.
 
 Fetches accept HTTPS (HTTP only for explicit localhost/loopback testing), reject
 URL credentials/fragments and redirects, omit ambient cookies/credentials, limit

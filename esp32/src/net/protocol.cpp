@@ -1047,10 +1047,15 @@ static void handleWifiProvision(JsonObject& obj) {
         g_state.authToken[sizeof(g_state.authToken) - 1] = '\0';
     }
     unlockState();
-    // Durable on every board, not just the two that persist an endpoint below:
-    // a credential the board forgets at reboot is a credential it can never be
-    // handed again over the air.
-    Net::wifiSaveAuthToken(authToken);
+    // Persist the endpoint and credential together on every board before dialing.
+    char persistedToken[sizeof(g_state.authToken)] = {};
+    lockState(); snprintf(persistedToken,sizeof(persistedToken),"%s",g_state.authToken); unlockState();
+    if (!Net::wifiSaveProvisionedBridge(bridgeIp,bridgePort,persistedToken)) {
+        Net::wsRequirePairing();
+        Serial.println("{\"type\":\"wifi_provision_ack\",\"success\":false,\"joined\":false,\"error\":\"pairing not saved\"}");
+        return;
+    }
+    Net::wsAuthenticationProvisioned();
 
     bool ok = false;
     // Whether this provision joined the network, as opposed to saving the
@@ -1070,7 +1075,6 @@ static void handleWifiProvision(JsonObject& obj) {
         // WiFi comes up from the serial-death path when USB actually goes away.
         ok = Net::wifiSaveProvisionedCredentials(ssid, password, credId);
         if (!ok) failure = "credentials not saved";
-        Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
     } else
 #endif
     {
@@ -1089,13 +1093,9 @@ static void handleWifiProvision(JsonObject& obj) {
         constexpr bool allowWifiAlongsideSerial = false;
 #endif
         if (!Net::wifiRadioParked() &&
-            (!Net::serialConnected() || allowWifiAlongsideSerial)) {
-            Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
-        }
-        if (!Net::wifiRadioParked() &&
             (!Net::serialConnected() || allowWifiAlongsideSerial) &&
             bridgeIp[0] != '\0' && bridgePort != 0 && !Net::wsConnected()) {
-            Net::wsConnect(bridgeIp, bridgePort, authToken);
+            Net::wsConnect(bridgeIp, bridgePort, persistedToken);
         }
     }
 
@@ -1169,13 +1169,13 @@ static void handleAuthProvision(JsonObject& obj) {
         if (bridgePort != 0) g_state.bridgePort = bridgePort;
         unlockState();
 
-        Net::wifiSaveAuthToken(authToken);
-        if (bridgeIp[0] != '\0' && bridgePort != 0) {
-            Net::wifiSaveProvisionedBridge(bridgeIp, bridgePort, authToken);
-        }
-
-        if (changed) Serial.println("[Provision] Pairing token re-armed");
-        resp["success"] = true;
+        char endpoint[sizeof(g_state.bridgeIp)]={}; uint16_t endpointPort;
+        lockState(); snprintf(endpoint,sizeof(endpoint),"%s",g_state.bridgeIp); endpointPort=g_state.bridgePort; unlockState();
+        const bool saved=Net::wifiSaveProvisionedBridge(endpoint,endpointPort,authToken);
+        if (saved) Net::wsAuthenticationProvisioned(); else Net::wsRequirePairing();
+        if (changed && saved) Serial.println("[Provision] Pairing token re-armed");
+        resp["success"] = saved;
+        if (!saved) resp["error"] = "pairing not saved";
         resp["changed"] = changed;
 
         // Drop a socket that is still presenting the superseded token, so the
@@ -1689,6 +1689,7 @@ void parseMessage(const char* json, size_t length) {
         char note[96];
         if (err[0]) snprintf(note, sizeof(note), "voice error");
         else if (!text[0]) snprintf(note, sizeof(note), "heard nothing");
+        else if (!delivered && obj["deliveryStatus"].is<const char*>()) snprintf(note,sizeof(note),"%s",obj["deliverReason"] | "Claude receipt pending");
         else if (!delivered) snprintf(note, sizeof(note), "NOT sent: \"%s\"", text);
         else snprintf(note, sizeof(note), "\"%s\"", text);
         Utf8::utf8TrimEnd(note);
@@ -2005,6 +2006,7 @@ void parseMessage(const char* json, size_t length) {
                 snprintf(note, sizeof(note), "Voice error: %s", err);
         }
         else if (!text[0])    snprintf(note, sizeof(note), "Heard nothing");
+        else if (!delivered && obj["deliveryStatus"].is<const char*>()) snprintf(note,sizeof(note),"%s",obj["deliverReason"] | "Claude receipt pending");
         else if (!delivered)  snprintf(note, sizeof(note), "NOT sent: \"%s\"", text);
         else                  snprintf(note, sizeof(note), "\"%s\"", text);
         if (delivered && text[0]) HUD::pushVoiceQuestion(text);

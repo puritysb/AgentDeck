@@ -95,7 +95,7 @@ export function buildHookCommand(eventName: string): string {
   // reaches Claude before curl quits.
   if (eventName === 'PreToolUse') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 60 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/PreToolUse" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -H "X-AgentDeck-Inbox: \${CLAUDE_CODE_MESSAGING_SOCKET:-}" --max-time 60 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -105,7 +105,7 @@ export function buildHookCommand(eventName: string): string {
   // this runs on EVERY turn end, so a wedged daemon must never stall the TUI.
   if (eventName === 'Stop') {
     return preamble.concat([
-      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" --max-time 10 -d @- 2>/dev/null)`,
+      `RESP=$(curl -s -X POST "http://127.0.0.1:$PORT/hooks/Stop" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -H "X-AgentDeck-Inbox: \${CLAUDE_CODE_MESSAGING_SOCKET:-}" --max-time 10 -d @- 2>/dev/null)`,
       `printf '%s' "\${RESP:-}"`,
     ]).join('\n');
   }
@@ -120,7 +120,7 @@ export function buildHookCommand(eventName: string): string {
   // is a display signal, and Claude Code waits for it before drawing the
   // dialog, so it must return at once and print nothing (no decision).
   return preamble.concat([
-    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -d @- >/dev/null 2>&1 || true`,
+    `curl -sf --connect-timeout 0.2 --max-time 0.8 -X POST "http://127.0.0.1:$PORT/hooks/${eventName}" -H 'Content-Type: application/json' -H "X-AgentDeck-Pid: $PPID" -H "X-AgentDeck-Inbox: \${CLAUDE_CODE_MESSAGING_SOCKET:-}" -d @- >/dev/null 2>&1 || true`,
   ]).join('\n');
 }
 
@@ -1067,6 +1067,14 @@ export function migrateHooksIfNeeded(home: string = homedir()): void {
     if (unsafeResolver) {
       applyHooks(settings, home);
       migrated = true;
+    }
+
+    // Refresh POSIX owned snippets that predate private inbox advertisement.
+    if (Object.values(settings.hooks ?? {}).some((groups: any) =>
+      Array.isArray(groups) && groups.some((group: any) => isAgentDeckHookEntry(group) &&
+        [group, ...(Array.isArray(group.hooks) ? group.hooks : [])].some((handler: any) =>
+          typeof handler.command === 'string' && handler.command.includes('X-AgentDeck-Pid:') && !handler.command.includes('X-AgentDeck-Inbox:'))))) {
+      applyHooks(settings, home); migrated = true;
     }
 
     if (migrated) {

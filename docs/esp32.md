@@ -152,6 +152,22 @@ tool for a bricked board is the tool that refused. The rule lives once, in
 `shared/src/esp32-boards.ts` (`esp32PreflightVerdict`), so the browser and the
 CLI cannot disagree about which board may be written.
 
+### macOS USB vendor discovery (Node daemon)
+
+The Node daemon checks USB vendors before opening candidate serial ports. It
+runs `ioreg` directly, with at most one registry process at a time. Callers stop
+waiting after three seconds; a timed-out process keeps its slot until it closes,
+including across serial module stop/start. A failed kill never permits another
+registry process to stack behind it.
+
+Successful results are reused for an unchanged candidate-port set for up to
+five minutes. A changed set, including an observed unplug/replug, invalidates
+that cache. Failures back off for 60, 120, 240, then 300 seconds; topology changes
+cannot bypass that backoff. On failure, a previous vendor map is retained only
+for the unchanged set. Otherwise the vendor remains unknown and the existing
+pattern-based compatibility fallback applies. Known foreign vendors remain
+excluded. This bounds discovery work; it does not fix a slow macOS USB driver.
+
 ### Freeing the serial port
 
 Every serial open toggles DTR/RTS and **resets the board**, so a daemon holding
@@ -364,7 +380,31 @@ OTA 대상 SSOT. **`agentdeck esp32-ota <target>`의 `<target>`은 로컬 Platfo
 
 ## Disconnect 복구 (ESP32 firmware)
 
-시리얼 10초 timeout + WebSocket 지수 backoff (1→8s). `main.cpp`는 `bridgeFound` 플래그 없이 **mDNS를 항상 폴링** → daemon IP 변경(DHCP 갱신, 호스트 이동) 즉시 감지 후 `wsDisconnect()`+새 IP로 `wsConnect()` 재바인딩. WS backoff가 15초 이상 saturated이면 `mdnsRefresh()`로 캐시 강제 무효화 (좀비 dns-sd 광고 상황 방어). `ws_client.cpp`의 `setReconnectInterval()`은 backoff 증가할 때마다 라이브러리 내부 타이머에 재동기화 (기존에는 `wsConnect()` 시점 값에 고정). `DashboardState.lastMessageMs`가 serial/WS TEXT 수신 시 갱신되어 UI에서 disconnect age 계산.
+시리얼 10초 timeout + WebSocket 지수 backoff (1→8s)를 사용한다. mDNS는 현재
+기기에 설정된 서버 주소(IP와 포트)를 우선하며, 그 주소가 없거나 후보가 모호하면
+다른 호스트에 토큰을 보내지 않는다. 주소가 바뀌면 신뢰할 수 있는 USB 설정
+메시지로 갱신한다. 재시도 간격이 상한에 도달하면 기기 검색 캐시를 갱신하지만
+인증 변경을 추측하지 않는다.
+
+HTTP 401 또는 WebSocket 4001을 실제 관찰하면 `pairingRequired`를 유지하고
+반복 재연결을 중단한다. 일반 연결 종료, 시간 초과, HTTP 403은 토큰 실패로
+추측하지 않는다. LCD/e-ink/ticker는 USB 재페어링을 안내하고 TC001은 `USB PAIR`를
+표시한다. 토큰을 지우거나 다른 데몬(백그라운드 서버)으로 자동 이동하지 않는다.
+USB 또는 이미 인증된 연결에서 신뢰할 수 있는 `auth_provision`/`wifi_provision`
+설정 메시지를 받아야 이 상태가 해제된다.
+
+모든 보드는 서버 주소·포트·토큰을 하나의 NVS 레코드로 저장하고 재부팅 시 함께
+복원한다. 이전 저장 형식은 완전한 주소가 있을 때만 이관한다. 이관 표시를 저장한
+뒤 레코드가 없거나 읽을 수 없으면 이전 토큰으로 되돌아가지 않고 USB 재페어링을
+요구한다. 주소 없이 토큰만 남아 있는 보드도 같은 안내를 표시한다. mDNS의 이전
+`token` TXT 값은 사용하지 않는다. 저장소 전체 삭제나 임의 복원까지 막는 기능은 아니다.
+
+현재 WebSockets 라이브러리는 종료 코드를 버리므로, PlatformIO 빌드 미들웨어가
+빌드 디렉터리의 소스 사본에 기존 virtual callback 호출 한 줄을 추가한다.
+다운로드한 외부 패키지는 수정하지 않으며 원본 처리 함수가 달라지면 빌드를 거부한다.
+분류 코드는 [shared policy](../shared/transport-auth-policy.json)에서 생성한다.
+실제 TTGO 빌드는 이 사본을 컴파일한다. 보드 설치·재페어링·USB 연결 시 무선
+절전의 실물 검증은 별도이며, 시뮬레이터나 컴파일 성공이 그 증거를 대신하지 않는다.
 
 **TC001 matrix disconnect UI**: stale 스프라이트 대신 상태 메시지 (`CONNECT WIFI` / `FINDING BRIDGE` / `DAEMON DOWN Xm` / `NO WIFI Xm`) + 우상단 깜빡이는 빨간 점.
 

@@ -42,6 +42,7 @@ import {
   type KiroSessionSnapshot,
 } from './kiro-session.js';
 import { claudeDisplayName } from './session-display-name.js';
+import { CmuxDisplayNames } from './cmux-titles.js';
 import { locateCodexRollout } from './codex-rollout-response.js';
 
 export type ObservedState = 'idle' | 'processing';
@@ -306,6 +307,7 @@ export class PassiveSessionObserver {
   private scanInFlight = false;
   private codexRolloutCache = new CodexRolloutCache();
   private kiroSessionCache = new KiroSessionCache();
+  private cmuxDisplayNames = new CmuxDisplayNames();
 
   /** Fired after a background scan changed the cached list. Wire to a
    *  debounced sessions broadcast so fresh observations reach clients
@@ -468,6 +470,16 @@ export class PassiveSessionObserver {
       }
       bindAntigravityOwners(antigravity, owners);
     }
+    const owners = new Map(this.lastProcesses.map(row => [row.pid, row]));
+    const cmuxRows = observed.filter(row => {
+      if (unknownPids.has(row.pid)) return false;
+      let owner = owners.get(row.pid);
+      for (let depth = 0; owner && depth < 16; depth++, owner = owners.get(owner.ppid)) {
+        if (/\/cmux[^/]*\.app\/Contents\/MacOS\/cmux(?:\s|$)/i.test(owner.command)) return true;
+      }
+      return false;
+    });
+    if (cmuxRows.length) await this.cmuxDisplayNames.refresh(cmuxRows);
     const { roster, execChildren } = foldHeadlessCodexSessions(observed, this.lastProcesses);
     const next = dedupeObservedSessions(roster, managedSessions, this.lastProcesses);
     // Only notify on real change — an unconditional callback would emit a

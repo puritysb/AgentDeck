@@ -1,0 +1,202 @@
+{
+  "capturedAt": "2026-11-03T02:14:07.326Z",
+  "sourceBase": "48089aeac7408c13c1eb0dea243953a50ddc8126",
+  "beforeLockfileSha256": "7acfe8b3e403e6b99ddd526679a60e8f7728e076a7839d0653b3d1b9ffaf8102",
+  "afterLockfileSha256": "02e8769e11dd927ba124eebdc49e108656cb8c1b106ec7eaa4b5ddb6aa9d0202",
+  "npm": {
+    "before": {
+      "all": {
+        "info": 0,
+        "low": 5,
+        "moderate": 23,
+        "high": 32,
+        "critical": 1
+      },
+      "production": {
+        "info": 0,
+        "low": 3,
+        "moderate": 6,
+        "high": 12,
+        "critical": 1
+      }
+    },
+    "after": {
+      "all": {
+        "info": 0,
+        "low": 1,
+        "moderate": 5,
+        "high": 1,
+        "critical": 0
+      },
+      "production": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 1,
+        "critical": 0
+      }
+    },
+    "remaining": [
+      {
+        "advisory": "GHSA-528h-pc64-c93x",
+        "package": "stream-json",
+        "severity": "moderate",
+        "versions": [
+          "1.8.0"
+        ]
+      },
+      {
+        "advisory": "GHSA-hqr4-qq8f-hg3x",
+        "package": "stream-json",
+        "severity": "moderate",
+        "versions": [
+          "1.8.0"
+        ]
+      },
+      {
+        "advisory": "GHSA-mjw6-4jj6-33hc",
+        "package": "stream-json",
+        "severity": "moderate",
+        "versions": [
+          "1.8.0"
+        ]
+      },
+      {
+        "advisory": "GHSA-mrhx-c7xc-m3w5",
+        "package": "zod",
+        "severity": "high",
+        "versions": [
+          "3.25.76"
+        ]
+      },
+      {
+        "advisory": "GHSA-gcqx-w48m-w2h4",
+        "package": "deepmerge",
+        "severity": "low",
+        "versions": [
+          "4.3.1"
+        ]
+      },
+      {
+        "advisory": "GHSA-g3hv-75wg-m249",
+        "package": "minimatch",
+        "severity": "moderate",
+        "versions": [
+          "10.2.5",
+          "3.1.5",
+          "5.1.9"
+        ]
+      },
+      {
+        "advisory": "GHSA-3g3m-2fjr-6pw4",
+        "package": "glob",
+        "severity": "moderate",
+        "versions": [
+          "13.0.6"
+        ]
+      }
+    ]
+  },
+  "python": {
+    "resolver": "uv pip compile --python-version 3.12 --no-build (macOS arm64)",
+    "scanner": "pip-audit 2.10.1",
+    "bleBefore": {
+      "pillow": "12.3.0",
+      "advisoryRecords": 39
+    },
+    "bleAfter": {
+      "pillow": "13.0.0",
+      "advisoryRecords": 0
+    },
+    "robotAdvisoryRecords": 0
+  },
+  "rust": {
+    "scanner": "OSV Scanner 2.7.0",
+    "packagesInLockfile": 51,
+    "maintenanceAdvisories": [
+      "RUSTSEC-2025-0056",
+      "RUSTSEC-2026-0206",
+      "RUSTSEC-2026-0192"
+    ],
+    "packageVersionMatches": 4,
+    "exceptionExpires": "2026-12-01"
+  },
+  "limits": [
+    "npm severity records are not counts of confirmed exploitable AgentDeck vulnerabilities.",
+    "Python resolves current requirements; existing installed user environments were not scanned or upgraded.",
+    "Rust maintenance notices are not asserted vulnerabilities.",
+    "No npm/app/firmware release or hardware deployment performed."
+  ],
+  "codeql": {
+    "sourceCommit": "4126ce1d",
+    "run": "https://github.com/puritysb/AgentDeck/actions/runs/41565955782",
+    "queries": "security-extended",
+    "buildMode": "none",
+    "categories": {
+      "javascript-typescript": 0,
+      "python": 0,
+      "actions": 0,
+      "c-cpp": 0,
+      "rust": 0
+    },
+    "analysisErrors": [],
+    "analysisWarnings": [],
+    "scope": "PR diff only; not the repository-wide baseline",
+    "correction": {
+      "defaultBranchCommit": "60771186c1e1103b78367b37a1e01b81a88fb1da",
+      "totalAlerts": 271,
+      "severity": {
+        "critical": 5,
+        "high": 133,
+        "medium": 133
+      },
+      "intake": "security/intake/2026-11-03.json"
+    }
+  },
+  "requiredChecks": [
+    {
+      "context": "ESP32 Sim Compile",
+      "app_id": 15368
+    },
+    {
+      "context": "Dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Python dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Rust dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Dependency review",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (javascript-typescript)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (python)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (actions)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (c-cpp)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (rust)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL",
+      "app_id": 57789
+    }
+  ]
+}

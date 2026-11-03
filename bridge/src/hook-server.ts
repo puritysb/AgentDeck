@@ -139,8 +139,8 @@ export class HookServer extends EventEmitter {
   private checkAuth(req: express.Request, res: express.Response): boolean {
     const ip = req.ip || req.socket.remoteAddress || '';
     if (isLocalConnection(ip)) return true;
-    const token = req.query.token as string | undefined;
-    if (token && validateToken(token)) return true;
+    const token = req.query.token;
+    if (typeof token === 'string' && validateToken(token)) return true;
     res.status(401).json({ error: 'Unauthorized — token required' });
     return false;
   }
@@ -152,6 +152,8 @@ export class HookServer extends EventEmitter {
     const headers: Record<string, string> = {};
     const pid = req.get('X-AgentDeck-Pid');
     if (pid) headers['X-AgentDeck-Pid'] = pid;
+    const inbox = req.get('X-AgentDeck-Inbox');
+    if (inbox && isLocalConnection(req.socket.remoteAddress ?? '') && localTrustOf(req) === 'trusted') headers['X-AgentDeck-Inbox'] = inbox;
     // A Codex hold request must reach the daemon as one (the forwarder
     // restates its budget), or the daemon ingests it as a second notification.
     const hold = req.get(CODEX_APPROVAL_HOLD_HEADER);
@@ -340,8 +342,8 @@ export class HookServer extends EventEmitter {
           return;
         }
 
-        const body = req.body as Buffer;
-        if (!body || body.length < 100) {
+        const body: unknown = req.body;
+        if (typeof body !== 'object' || body === null || !Buffer.isBuffer(body) || body.length < 100) {
           res.status(400).json({ error: 'Empty or too short audio data' });
           return;
         }

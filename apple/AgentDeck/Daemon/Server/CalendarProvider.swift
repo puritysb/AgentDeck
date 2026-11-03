@@ -5,6 +5,8 @@ struct CalendarSnapshot: Sendable {
     var status: String
     var events: [CalendarEvent]?
     var fetchedAt: Double?
+    var skippedEvents: Int?
+    var skippedByReason: [String: Int]?
     var revision = -1
     var owner: UUID?
 }
@@ -27,8 +29,12 @@ struct CalendarTransport: Sendable {
         return .init(status: response.statusCode, body: data)
     }
     func fetch(_ cfg: CalendarConfiguration, nowMs: Double, zone: String) async throws -> [CalendarICS.Event] {
+        try await fetchDetailed(cfg, nowMs: nowMs, zone: zone).events
+    }
+    func fetchDetailed(_ cfg: CalendarConfiguration, nowMs: Double, zone: String) async throws -> CalendarICS.Parsed {
+        guard let cfg = cfg.normalized else { throw CalendarICS.Failure.invalid }
         let started = ContinuousClock.now
-        var events: [CalendarICS.Event] = []
+        var parsed = CalendarICS.Parsed()
         for (index, raw) in cfg.urls.enumerated() {
             try Task.checkCancellation()
             let elapsed = started.duration(to: .now).components
@@ -39,12 +45,14 @@ struct CalendarTransport: Sendable {
             let reply = try await request(req)
             try Task.checkCancellation()
             guard reply.status == 200, reply.body.count <= CalendarPolicy.maxBodyBytes, let text = String(data: reply.body, encoding: .utf8) else { throw CalendarICS.Failure.invalid }
-            events += try CalendarICS.parse(text, namespace: String(index))
-            guard events.count <= CalendarPolicy.maxEvents else { throw CalendarICS.Failure.limit }
+            let source = try CalendarICS.parseDetailed(text, namespace: String(index))
+            parsed.events += source.events; parsed.skippedEvents += source.skippedEvents
+            for reason in CalendarPolicy.skipReasons { parsed.skippedByReason[reason, default: 0] += source.skippedByReason[reason, default: 0] }
+            guard parsed.events.count + parsed.skippedEvents <= CalendarPolicy.maxEvents else { throw CalendarICS.Failure.limit }
         }
-        _ = try CalendarICS.build(events, nowMs: nowMs, zone: zone)
+        _ = try CalendarICS.build(parsed.events, nowMs: nowMs, zone: zone)
         try Task.checkCancellation()
-        return events
+        return parsed
     }
 }
 @DaemonActor
@@ -54,8 +62,8 @@ final class CalendarProvider {
     private let transport: CalendarTransport
     private var activeRevision = -1, serial = 0
     private var owner: UUID?
-    private var cache: (at: Double, events: [CalendarICS.Event])?
-    private var job: (id: Int, at: Double, task: Task<[CalendarICS.Event], Error>)?
+    private var cache: (at: Double, parsed: CalendarICS.Parsed)?
+    private var job: (id: Int, at: Double, task: Task<CalendarICS.Parsed, Error>)?
     private var failedAt: Double?
     private var observer: UUID?
     private(set) var status = "disabled"
@@ -66,6 +74,11 @@ final class CalendarProvider {
         let age = nowMs - cache.at
         if age < 0 || age >= Double(CalendarPolicy.staleMs) { return "unknown" }
         return age < Double(CalendarPolicy.cacheMs) ? "fresh" : "stale"
+    }
+    func diagnostics(nowMs: Double = Date().timeIntervalSince1970 * 1000) -> [String: Any] {
+        let state = freshness(nowMs: nowMs)
+        guard ["fresh", "stale"].contains(state), let cache else { return ["status": state] }
+        return ["status": state, "fetchedAt": cache.at, "skippedEvents": cache.parsed.skippedEvents, "skippedByReason": cache.parsed.skippedByReason]
     }
     func stop(owner expected: UUID? = nil) {
         if let expected, owner != expected { return }
@@ -100,7 +113,7 @@ final class CalendarProvider {
             if job == nil {
                 serial += 1
                 let transport = transport
-                let worker = Task.detached(priority: .utility) { try await transport.fetch(cfg, nowMs: nowMs, zone: cfg.timeZone ?? zone) }
+                let worker = Task.detached(priority: .utility) { try await transport.fetchDetailed(cfg, nowMs: nowMs, zone: cfg.timeZone ?? zone) }
                 job = (serial, nowMs, worker)
             }
             let pending = job!, ticket = serial
@@ -117,11 +130,11 @@ final class CalendarProvider {
         guard activeRevision == revision, connection.grant.accepts(revision) else { return .init(status: "disabled") }
         guard let cache, nowMs >= cache.at, nowMs - cache.at < Double(CalendarPolicy.staleMs) else { status = "unknown"; return .init(status: status, revision: revision) }
         do {
-            let data = cache.events, display = cfg.timeZone ?? zone
+            let data = cache.parsed.events, display = cfg.timeZone ?? zone
             let events = try await Task.detached(priority: .utility) { try CalendarICS.build(data, nowMs: nowMs, zone: display) }.value
             guard (requestedOwner == nil || requestedOwner == owner), connection.grant.accepts(revision), activeRevision == revision else { return .init(status: "disabled") }
             status = nowMs - cache.at < Double(CalendarPolicy.cacheMs) ? "fresh" : "stale"
-            return .init(status: status, events: events, fetchedAt: cache.at, revision: revision, owner: owner)
+            return .init(status: status, events: events, fetchedAt: cache.at, skippedEvents: cache.parsed.skippedEvents, skippedByReason: cache.parsed.skippedByReason, revision: revision, owner: owner)
         } catch {
             guard (requestedOwner == nil || requestedOwner == owner), activeRevision == revision, connection.grant.accepts(revision) else { return .init(status: "disabled") }
             status = "unknown"; return .init(status: status, revision: revision)

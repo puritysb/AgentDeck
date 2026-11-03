@@ -38,6 +38,11 @@ bool wsConnected();
  */
 bool wsConnecting();
 
+/** A trusted serial/paired-channel credential receipt permits another attempt. */
+void wsAuthenticationProvisioned();
+/** Missing/unreadable credential binding requires explicit trusted recovery. */
+void wsRequirePairing();
+
 /**
  * Send a JSON command to the bridge.
  * @param json Null-terminated JSON string

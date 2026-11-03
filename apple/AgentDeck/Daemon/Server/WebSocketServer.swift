@@ -214,6 +214,15 @@ actor WebSocketServer {
         }
     }
 
+    func reauthenticateClients(includeHTTP: Bool = false) {
+        for conn in Array(connections) { conn.close(force: true) }
+        connections.removeAll()
+        if includeHTTP {
+            for conn in acceptedConnections.values { conn.forceCancel() }
+            acceptedConnections.removeAll()
+        }
+    }
+
     func stop() {
         listener?.cancel()
         for conn in connections {
@@ -361,6 +370,7 @@ actor WebSocketServer {
         // that is neither same-machine nor token-bearing never gets a socket.
         // Rejecting at the handshake (401) rather than post-upgrade keeps the
         // unauthenticated surface at zero frames.
+        let credentialGeneration = AuthManager.shared.credentialGeneration
         let remoteIP = Self.remoteIPString(nwConn.endpoint)
         let sameMachine = AuthManager.shared.isLocalConnection(remoteIP)
         let parsed = HTTPServer.parseHTTPRequest(requestData, remoteIP: remoteIP)
@@ -391,7 +401,7 @@ actor WebSocketServer {
             // every device that predates the header, which then falls back to
             // being approved by address.
             let deviceId = parsed.headers[PairingCodeRules.DEVICE_ID_HEADER]
-            let approvedPeer = PairingKnockStore.shared.isApproved(ip: remoteIP, deviceId: deviceId)
+            let approvedPeer = PairingKnockStore.shared.isApproved(ip: remoteIP, deviceId: deviceId, credentialGeneration: credentialGeneration)
             guard approvedPeer || AuthManager.shared.validateToken(token) else {
                 // Record before refusing: the refusal is the only moment the
                 // daemon learns this device wants in, and until it was surfaced
@@ -445,12 +455,12 @@ actor WebSocketServer {
                 nwConn.cancel()
                 return
             }
-            Task { await self?.setupWebSocketConnection(nwConn, isEsp32: isEsp32) }
+            Task { await self?.setupWebSocketConnection(nwConn, isEsp32: isEsp32, credentialGeneration: credentialGeneration) }
         }))
     }
 
-    private func setupWebSocketConnection(_ nwConn: NWConnection, isEsp32: Bool) {
-        let conn = WebSocketConnection(connection: nwConn, isEsp32: isEsp32)
+    private func setupWebSocketConnection(_ nwConn: NWConnection, isEsp32: Bool, credentialGeneration: String?) {
+        let conn = WebSocketConnection(connection: nwConn, isEsp32: isEsp32, authorityIsCurrent: { AuthManager.shared.credentialGeneration == credentialGeneration })
         connections.insert(conn)
         let remote = Self.describeRemote(nwConn.endpoint)
         DaemonLogger.shared.info("WS: Client connected from \(remote) (\(connections.count) total)")
@@ -489,6 +499,7 @@ actor WebSocketServer {
     // MARK: - WebSocket Message Handling
 
     private func handleMessage(_ data: Data, from conn: WebSocketConnection) {
+        guard !conn.isDisconnected else { conn.close(force: true); return }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         DaemonLogger.shared.debug("WS", "recv cmd: \(json["type"] as? String ?? "unknown")")
         onCommand?(json, conn)
@@ -566,6 +577,7 @@ final class WebSocketConnection: Hashable, Sendable {
     /// display client whose frames must be shaped/dropped, never full-fanout.
     let isEsp32: Bool
     private let connection: NWConnection
+    private let authorityIsCurrent: @Sendable () -> Bool
     private let frameParser = WebSocketFrameParser()
 
     nonisolated(unsafe) var onMessage: (@Sendable (Data) -> Void)?
@@ -601,6 +613,7 @@ final class WebSocketConnection: Hashable, Sendable {
     nonisolated(unsafe) private var _saturatedSince: Date?
 
     var isDisconnected: Bool {
+        if !authorityIsCurrent() { return true }
         disconnectedLock.lock()
         defer { disconnectedLock.unlock() }
         return _disconnected
@@ -612,8 +625,9 @@ final class WebSocketConnection: Hashable, Sendable {
         _disconnected = true
     }
 
-    init(connection: NWConnection, isEsp32: Bool = false) {
+    init(connection: NWConnection, isEsp32: Bool = false, authorityIsCurrent: @escaping @Sendable () -> Bool = { true }) {
         self.connection = connection
+        self.authorityIsCurrent = authorityIsCurrent
         self.isEsp32 = isEsp32
     }
 
@@ -624,6 +638,7 @@ final class WebSocketConnection: Hashable, Sendable {
     private func receiveLoop() {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] content, _, isComplete, error in
             guard let self else { return }
+            guard self.authorityIsCurrent() else { self.close(force: true); return }
             if let error {
                 DaemonLogger.shared.debug("WS", "Receive error: \(error)")
                 // Mark before scheduling onClose Task so any already-
@@ -683,6 +698,7 @@ final class WebSocketConnection: Hashable, Sendable {
     }
 
     func send(_ data: Data) {
+        guard authorityIsCurrent() else { close(force: true); return }
         sendLock.lock()
         if _inFlightSends >= Self.maxInFlightSends {
             let now = Date()

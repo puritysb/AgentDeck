@@ -15,9 +15,11 @@
  * `fetchedAt` and falls to `lastApiFetchTime = Date()`, stamping unknown-age
  * numbers as just-fetched. Closing it at the producer covers both consumers.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import type { AddressInfo } from 'net';
 import { HookServer } from '../hook-server.js';
+import type { VoiceManager } from '../voice.js';
 
 const servers: HookServer[] = [];
 
@@ -36,6 +38,37 @@ const sampleUsage = () => ({ fiveHourPercent: 41, sevenDayPercent: 73 });
 
 afterEach(async () => {
   while (servers.length) await servers.pop()!.close();
+});
+
+describe('POST /voice/transcribe — binary payload boundary', () => {
+  it('rejects parsed JSON arrays and length-shaped objects without transcribing', async () => {
+    const { server, port } = await startServer();
+    const transcribeFile = vi.fn();
+    server.setVoiceManager({ transcribeFile } as unknown as VoiceManager);
+    for (const body of [new Array(100).fill(1), { length: 100 }, { type: 'Buffer', data: new Array(100).fill(1) }]) {
+      const response = await fetch(`http://127.0.0.1:${port}/voice/transcribe`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(transcribeFile).not.toHaveBeenCalled();
+  });
+
+  it('continues accepting binary audio and passes the exact bytes to transcription', async () => {
+    const { server, port } = await startServer();
+    const bytes = Buffer.alloc(128, 7);
+    const transcribeFile = vi.fn(async (path: string) => {
+      expect(readFileSync(path)).toEqual(bytes);
+      return 'fixture transcription';
+    });
+    server.setVoiceManager({ transcribeFile } as unknown as VoiceManager);
+    const response = await fetch(`http://127.0.0.1:${port}/voice/transcribe`, {
+      method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ text: 'fixture transcription' });
+    expect(transcribeFile).toHaveBeenCalledOnce();
+  });
 });
 
 describe('GET /usage — relay source contract', () => {

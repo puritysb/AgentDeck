@@ -35,6 +35,15 @@ Aquarium-tide design system. Spec: [DESIGN.md](../../DESIGN.md). Source of truth
 **Coverage gate — this is what stops doc fragmentation.** `catalog.json` carries a `coverage` block (`scan` directories + `exclusions` map). Every `docs/*.md` must be either cataloged or excluded *with a stated reason*, and `pnpm design-system:check` fails otherwise. **Adding a doc to `docs/` therefore requires a decision in the same commit**: bind it (frontmatter + catalog entry) or write down why it does not belong. Excluding is legitimate — runbooks, credential setup, exploratory studies, and untranslated rationale essays are excluded today. The Asset library is likewise indexed from the real files (brand marks, generated masks, creatures, icons, brand type, product marks, hardware photography, reference surfaces); images ≤1 MiB ship inline, larger ones become pointer cards.
 **Markdown gate:** `pnpm docs:check` validates tracked and newly added Markdown local links and anchors, rejects machine-local Markdown links, and requires exactly one H1 in `README.md` and each `docs/**/*.md` file. `.github/workflows/design-system.yml` runs the same checker directly with Node.
 
+## Korean technical documentation
+
+**Use established technical terms and explain their behavior at first mention; avoid literal translations that obscure the mechanism.** Keep API identifiers, protocol fields and quoted UI labels exact. Use one term consistently in prose, diagrams, captions and summaries.
+
+- `UDP broadcast` → **UDP 브로드캐스트**: briefly explain that the discovery message is sent to devices on the same network segment. Do not call network traffic “방송”. Distinguish UDP broadcast from mDNS multicast and application-level WebSocket fan-out; use **전송·일괄 전송·재전송** when the exact mechanism is not the subject.
+- `discovery` → **기기 검색** in reader-facing prose; `advertisement` → **서비스 정보 알림** where “광고” would suggest marketing. `reconcile` needs a contextual phrase such as **상태 동기화·차이 조정**, never a mechanical “화해”. Preserve the original identifier in code references.
+- For a general audience, define **데몬** as the background server and **의존성** as the external packages the application uses. Explain optional dependencies as **선택적으로 설치되는 패키지**; describe daemon adoption as **기존 데몬에 연결** when that is the actual operation.
+- State who sends what, where it goes, the prerequisite and the observed effect. Separate an advisory match from a confirmed exploitable flaw, source changes from published delivery, and a successful check from its coverage limits. Check headings, diagram labels and image descriptions together with the body.
+
 ## Token bindings
 
 **Token bindings** (all mirror `design/tokens.css`; CSS stays canonical — update every mirror in the same commit when CSS tokens change). Seven mirrors are gated: the four language bindings below plus three non-binding copies (`apme-dashboard` HTML, Stream Deck PI `design-tokens.css`, and the Build Health generator `scripts/generate-html-report.py`) that `verify-tokens-sync.py` also checks — the verifier's own footer prints the count, so read it there rather than trusting this sentence:

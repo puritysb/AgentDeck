@@ -1070,11 +1070,12 @@ void update(float dt) {
     {
         lockState();
         bool connectedNow = g_state.wsConnected;
+        bool pairingRequired = g_state.pairingRequired;
         unlockState();
         if (!connectedNow) {
             ConnectionCard::render(
-                s_body, 480, BODY_H, "OFFLINE",
-                wifiUp ? "Searching for AgentDeck..." : "No WiFi · connect USB");
+                s_body, 480, BODY_H, pairingRequired ? "PAIRING REQUIRED" : "OFFLINE",
+                pairingRequired ? "Connect USB to re-pair" : wifiUp ? "Searching for AgentDeck..." : "No WiFi · connect USB");
         } else if (s_page == 0) {
             s_visibleFocus = focus;
             s_visibleRequest = s_frameRequest;

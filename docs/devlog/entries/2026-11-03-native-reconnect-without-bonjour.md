@@ -76,20 +76,55 @@ window timed out and the extended observation passed. Its final 25-second probe
 is not the duration of the whole handover. No client was relaunched to make the
 check pass.
 
-The run also exposed a separate trust prerequisite: Crema's normal package had a
+The initial run also exposed a separate trust prerequisite: Crema's normal package had a
 stale LAN token and was already approved by the Swift owner, but the Node owner
 refused its per-install identity. The new retry remained active through those
 401s and connected when the approved Swift owner returned. Node reapproval was
 blocked by automatic approval review pending explicit owner consent; no grant,
 credential rotation, QA approval or auth relaxation was applied. iPad candidate
 installation was refused because the device had not been unlocked recently;
-physical acceptance waits for the owner to unlock it. These are recorded as
+physical acceptance at that point waited for the owner to unlock it. These are recorded as
 pending, not converted into successful end-to-end acceptance by the socket tests.
 
 
 The return to Node also passed for Pantone with its original app PID and a fresh
 parsed session-list frame. The host is restored to Node owning 9120 and the
-unchanged Swift app acting as its client. Crema keeps retrying the Node owner at
-the shared cooldown and still reports an authentication refusal; its Node return
-is not counted as passed. Neither daemon autostart nor the disabled local-main
+unchanged Swift app acting as its client. At that point Crema kept retrying the Node owner at
+the shared cooldown and reported an authentication refusal; its Node return
+was not counted as passed. Neither daemon autostart nor the disabled local-main
 deployment workflow was re-enabled.
+
+
+On the owner's later unlock/approval, the candidate installed successfully on
+iPad. Crema's exact normal-package identity was reapproved on Node through
+`POST /pair/approve`, as explicitly authorized; no QA variant or IP-wide grant
+was added. Crema's retry recovered without a relaunch after this change.
+
+The evening handover attempts are not complete physical passes. A separate
+local task restarted Node during the first Swift window, so the iPad frame
+observed after that restart was not attributed to Swift. The next bounded
+continuous run retained all three client PIDs, but iPad received no first frame
+from Swift before the observation deadline. Local mDNS identified its current
+address as `.63`, and the Swift owner logged authentication refusals from that
+address. The iPad's existing Node device grant was absent from Swift's distinct
+approval store. An explicit request to approve only that iPad on Swift is pending;
+the reconnect change does not bypass this trust boundary. The run restored Node
+through the supported lifecycle command; an immediate post-start probe briefly
+refused TCP, and the subsequent bounded observation verified the owner alive.
+
+Latest-master integration uses `a37e87ab`. Its credential-retirement changes and
+other upstream fixes were retained byte-for-byte. The only textual conflict was
+the adjacent architecture catalogue rows, resolved by retaining both the new
+credential rules and the native reconnect cooldown. Quick verification of this
+integration passed 7,522 tests (42 skipped). The original Full receipt continues
+to describe source `35073357`, rather than claiming it was rerun on the merge.
+
+
+Changed-area verification of the working integration also passed every selected
+local automated step: Android, standard/optimized macOS XCTest, macOS Release,
+iOS Release/preview builds, submission assets, ESP32 host policy and simulator
+checks, plus the generated/protocol and documentation gates. The same ARM64-only
+local Apple scope applies. After the refused Swift window, a separate bounded
+Node observation verified all three unchanged client PIDs, both e-ink parsed
+frames and the iPad first-message counter advancing from one to two. This proves
+Node recovery; it is not an authenticated iPad-on-Swift pass.

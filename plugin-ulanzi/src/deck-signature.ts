@@ -66,6 +66,6 @@ export function deckViewSignature(
   contexts: string[] = [],
 ): string {
   return JSON.stringify([view.mode, view.openSessionId, view.page ?? 0, view.picker ?? '', view.settings ?? null,
-    view.voiceState ?? 'idle', view.claudeWeeklyMode ?? 'both', view.zaiPairMode ?? 'both', [...positions].sort(),
+    view.voiceState ?? 'idle', view.voiceDeliveryStatus ?? null, view.voiceDeliverySessionId ?? null, view.claudeWeeklyMode ?? 'both', view.zaiPairMode ?? 'both', [...positions].sort(),
     view.sessionOrder ?? null, [...contexts].sort()]) + deckSignature(ev);
 }

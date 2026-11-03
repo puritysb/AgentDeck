@@ -1,6 +1,8 @@
 #include "wifi_manager.h"
 #include "mdns_discovery.h"
 #include "wifi_cred_id_store.h"
+#include "wifi_bridge_binding.h"
+#include "state/agent_state.h"
 #include <WiFi.h>
 #include <WiFiManager.h>
 #include <Preferences.h>
@@ -21,6 +23,25 @@ static bool radioParked = false;
 namespace {
 constexpr const char* WIFI_PREFS_NS = "adwifi";
 constexpr const char* WIFI_PREFS_BRIDGE_TOKEN = "bridge_token";
+constexpr const char* WIFI_PREFS_BRIDGE_IP = "bridge_ip";
+constexpr const char* WIFI_PREFS_BRIDGE_PORT = "bridge_port";
+constexpr const char* WIFI_PREFS_BINDING = "pair_binding";
+constexpr const char* WIFI_PREFS_BINDING_MARKER = "pair_bound";
+using BridgeBinding = WifiBridgeBinding::Record<sizeof(g_state.bridgeIp),sizeof(g_state.authToken)>;
+bool pairingStoreUnavailable = false;
+WifiBridgeBinding::Read readBridgeBinding(BridgeBinding& binding) {
+    nvs_handle_t handle;
+    const esp_err_t opened = nvs_open(WIFI_PREFS_NS,NVS_READONLY,&handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return WifiBridgeBinding::Read::Missing;
+    if (opened != ESP_OK) return WifiBridgeBinding::Read::Unavailable;
+    uint8_t marker=0;
+    const auto mark=nvs_get_u8(handle,WIFI_PREFS_BINDING_MARKER,&marker);
+    size_t bytes = sizeof(binding.bytes);
+    const esp_err_t read = nvs_get_blob(handle,WIFI_PREFS_BINDING,binding.bytes,&bytes);
+    nvs_close(handle);
+    const auto status=[](esp_err_t value) { return value == ESP_OK ? WifiBridgeBinding::Read::Ready : value == ESP_ERR_NVS_NOT_FOUND ? WifiBridgeBinding::Read::Missing : WifiBridgeBinding::Read::Unavailable; };
+    return WifiBridgeBinding::decode(status(mark),marker,status(read),binding,bytes);
+}
 // Which provision the stored credentials came from (net/wifi_cred_id_store.h).
 // Board-agnostic like the token: every board reports it.
 constexpr const char* WIFI_PREFS_CRED_ID = "cred_id";
@@ -71,8 +92,6 @@ using CredIdStore = WifiCredId::Store<PrefsCredIdBackend>;
 namespace {
 constexpr const char* WIFI_PREFS_SSID = "ssid";
 constexpr const char* WIFI_PREFS_PASSWORD = "password";
-constexpr const char* WIFI_PREFS_BRIDGE_IP = "bridge_ip";
-constexpr const char* WIFI_PREFS_BRIDGE_PORT = "bridge_port";
 constexpr size_t IPS10_SSID_MAX = 64;
 constexpr size_t IPS10_PASSWORD_MAX = 128;
 
@@ -483,61 +502,74 @@ void wifiSaveAuthToken(const char* token) {
 }
 
 bool wifiLoadAuthToken(char* token, size_t tokenLen) {
-    if (!token || tokenLen == 0) return false;
+    if (!token || !tokenLen) return false;
     token[0] = '\0';
-
-    Preferences prefs;
-    if (!prefs.begin(WIFI_PREFS_NS, true)) return false;
-    prefs.getString(WIFI_PREFS_BRIDGE_TOKEN, token, tokenLen);
-    prefs.end();
-
-    token[tokenLen - 1] = '\0';
+    BridgeBinding binding;
+    const auto status = readBridgeBinding(binding);
+    if (status == WifiBridgeBinding::Read::Unavailable) { pairingStoreUnavailable=true; return false; }
+    if (status == WifiBridgeBinding::Read::Ready) {
+        if (strlen(binding.token()) >= tokenLen) { pairingStoreUnavailable=true; return false; }
+        snprintf(token,tokenLen,"%s",binding.token()); return token[0] != '\0';
+    }
+    // Unfenced legacy token, used only to detect a missing endpoint at startup.
+    nvs_handle_t handle;
+    const auto opened=nvs_open(WIFI_PREFS_NS,NVS_READONLY,&handle);
+    if (opened == ESP_ERR_NVS_NOT_FOUND) return false;
+    if (opened != ESP_OK) { pairingStoreUnavailable=true; return false; }
+    size_t size=tokenLen; const auto read=nvs_get_str(handle,WIFI_PREFS_BRIDGE_TOKEN,token,&size); nvs_close(handle);
+    if (read != ESP_OK) { token[0]='\0'; if (read != ESP_ERR_NVS_NOT_FOUND) pairingStoreUnavailable=true; return false; }
     return token[0] != '\0';
 }
 
-void wifiSaveProvisionedBridge(const char* ip, uint16_t port, const char* token) {
-    // The credential is board-agnostic even though the endpoint is not.
+bool wifiSaveProvisionedBridge(const char* ip, uint16_t port, const char* token) {
+    BridgeBinding binding;
+    if (!binding.assign(ip,port,token)) return false;
+    BridgeBinding existing;
+    if (readBridgeBinding(existing) == WifiBridgeBinding::Read::Ready && memcmp(existing.bytes,binding.bytes,sizeof(binding.bytes)) == 0) return true;
+    nvs_handle_t handle;
+    if (nvs_open(WIFI_PREFS_NS,NVS_READWRITE,&handle) != ESP_OK) return false;
+    // Persist the fence first. Interrupted or missing snapshots must never
+    // resurrect separate legacy token/endpoint keys after this upgrade.
+    bool saved=nvs_set_u8(handle,WIFI_PREFS_BINDING_MARKER,1) == ESP_OK && nvs_commit(handle) == ESP_OK;
+    if (saved) saved=nvs_set_blob(handle,WIFI_PREFS_BINDING,binding.bytes,sizeof(binding.bytes)) == ESP_OK;
+    if (saved) saved=nvs_commit(handle) == ESP_OK;
+    nvs_close(handle);
+    if (!saved) { Serial.println("[WiFi] Pairing binding not saved"); return false; }
+    pairingStoreUnavailable=false;
+    // Compatibility mirrors follow the authoritative atomic blob, never lead it.
     wifiSaveAuthToken(token);
-
-#if defined(AGENTDECK_PERSISTED_WIFI)
-    if (!ip || ip[0] == '\0' || port == 0) return;
-
-    Preferences prefs;
-    if (!prefs.begin(WIFI_PREFS_NS, false)) {
-        Serial.println("[WiFi] IPS10 bridge endpoint save failed: Preferences open failed");
-        return;
-    }
-    prefs.putString(WIFI_PREFS_BRIDGE_IP, ip);
-    prefs.putUShort(WIFI_PREFS_BRIDGE_PORT, port);
-    prefs.end();
-#else
-    (void)ip;
-    (void)port;
-#endif
+    return true;
 }
 
 bool wifiLoadProvisionedBridge(char* ip, size_t ipLen, uint16_t* port, char* token, size_t tokenLen) {
-    if (!ip || !port || !token || ipLen == 0 || tokenLen == 0) return false;
-    ip[0] = '\0';
-    token[0] = '\0';
-    *port = 0;
-
-#if defined(AGENTDECK_PERSISTED_WIFI)
-    Preferences prefs;
-    if (!prefs.begin(WIFI_PREFS_NS, true)) return false;
-    size_t ipBytes = prefs.getString(WIFI_PREFS_BRIDGE_IP, ip, ipLen);
-    uint16_t savedPort = prefs.getUShort(WIFI_PREFS_BRIDGE_PORT, 0);
-    prefs.getString(WIFI_PREFS_BRIDGE_TOKEN, token, tokenLen);
-    prefs.end();
-
-    ip[ipLen - 1] = '\0';
-    token[tokenLen - 1] = '\0';
-    *port = savedPort;
-    return ipBytes > 0 && ip[0] != '\0' && savedPort != 0;
-#else
-    return false;
-#endif
+    if (!ip || !port || !token || !ipLen || !tokenLen) return false;
+    ip[0]='\0';token[0]='\0';*port=0;
+    BridgeBinding binding;
+    auto status=readBridgeBinding(binding);
+    if (status == WifiBridgeBinding::Read::Unavailable) { pairingStoreUnavailable=true; return false; }
+    if (status == WifiBridgeBinding::Read::Missing) {
+        // Migrate an older complete endpoint/token tuple once. Missing endpoint
+        // plus a remembered token stays unbound and needs trusted provisioning.
+        nvs_handle_t handle;
+        const auto opened=nvs_open(WIFI_PREFS_NS,NVS_READONLY,&handle);
+        if (opened == ESP_ERR_NVS_NOT_FOUND) return false;
+        if (opened != ESP_OK) { pairingStoreUnavailable=true; return false; }
+        char oldIp[sizeof(g_state.bridgeIp)]={},oldToken[sizeof(g_state.authToken)]={};
+        size_t hostBytes=sizeof(oldIp),tokenBytes=sizeof(oldToken);uint16_t oldPort=0;
+        const auto host=nvs_get_str(handle,WIFI_PREFS_BRIDGE_IP,oldIp,&hostBytes);
+        const auto endpoint=nvs_get_u16(handle,WIFI_PREFS_BRIDGE_PORT,&oldPort);
+        const auto credential=nvs_get_str(handle,WIFI_PREFS_BRIDGE_TOKEN,oldToken,&tokenBytes);
+        nvs_close(handle);
+        if ((host != ESP_OK && host != ESP_ERR_NVS_NOT_FOUND) || (endpoint != ESP_OK && endpoint != ESP_ERR_NVS_NOT_FOUND) || (credential != ESP_OK && credential != ESP_ERR_NVS_NOT_FOUND)) { pairingStoreUnavailable=true; return false; }
+        if (host != ESP_OK || endpoint != ESP_OK || !binding.assign(oldIp,oldPort,oldToken)) return false;
+        if (!wifiSaveProvisionedBridge(binding.ip(),binding.port(),binding.token())) { pairingStoreUnavailable=true; return false; }
+    }
+    if (strlen(binding.ip()) >= ipLen || strlen(binding.token()) >= tokenLen) { pairingStoreUnavailable=true; return false; }
+    snprintf(ip,ipLen,"%s",binding.ip());snprintf(token,tokenLen,"%s",binding.token());*port=binding.port();
+    return true;
 }
+
+bool wifiPairingStoreUnavailable() { return pairingStoreUnavailable; }
 
 void wifiReset() {
     CredIdStore().forget();  // before the credentials it describes are erased

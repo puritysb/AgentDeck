@@ -834,6 +834,17 @@ describe('VOICE hold-to-talk key', () => {
     expect(allSlots(idleDetailManager(), SD_PLUS_LAYOUT).some(c => c.preset?.localAction === 'review_run')).toBe(false);
   });
 
+  it('shows scoped held/refused receipts independently of capture and clears them for a new capture', () => {
+    const mgr = idleDetailManager();
+    const subtitle = () => allSlots(mgr, SD_PLUS_LAYOUT).find(c => c.preset?.localAction === 'voice_ptt')?.preset?.subtitle;
+    expect(mgr.updateVoiceState('idle','held','session-1')).toBe(true);
+    expect(subtitle()).toBe('approve in Claude');
+    expect(mgr.updateVoiceState('idle','refused','session-1')).toBe(true);
+    expect(subtitle()).toBe('Claude refused');
+    mgr.updateVoiceState('idle','held','other-session');expect(subtitle()).toBe('hold to talk');
+    mgr.updateVoiceState('recording');mgr.updateVoiceState('idle');expect(subtitle()).toBe('hold to talk');
+  });
+
   it('restyles the VOICE key from daemon voice_state transitions', () => {
     const mgr = idleDetailManager();
     expect(mgr.updateVoiceState('recording')).toBe(true);

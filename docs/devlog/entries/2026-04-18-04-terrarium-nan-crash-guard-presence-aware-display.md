@@ -36,7 +36,7 @@
   `RockFormation`, `SandDisturbance`, `WaterSurface`.
 
 **27d2494e — DisplayMonitor 확장 + D200H 구독**
-- `DisplayMonitor` actor 에 네 개 입력을 합성해 단일 `displayOn` 방송.
+- `DisplayMonitor` actor 에 네 개 입력을 합성해 단일 `displayOn` 이벤트 전송.
   ```
   displayOn = !isDisplayAsleep       (CGDisplayIsAsleep, 2s 폴링 — 기존)
            && !isScreenLocked        (com.apple.screenIsLocked / Unlocked)

@@ -1,3 +1,4 @@
+import { voiceDeliveryPresentation, type VoiceDeliveryStatus } from '@agentdeck/shared';
 import { hasControllerInput, OPENCODE_PERMISSION_CHOICES } from '@agentdeck/shared';
 import { retainSessionDisplayNames } from '@agentdeck/shared';
 import { dotDeckReservedKeys, type DotDeckSnapshot } from '@agentdeck/shared';
@@ -182,7 +183,12 @@ function voiceMicIcon(stroke: string, filled: boolean): string {
 }
 
 /** Build the VOICE hold-to-talk preset styled for the current capture state. */
-function buildVoicePreset(state: SlotVoiceState): PresetAction {
+function buildVoicePreset(state: SlotVoiceState, delivery?: VoiceDeliveryStatus): PresetAction {
+  const receipt = state === 'idle' ? voiceDeliveryPresentation(delivery) : undefined;
+  if (receipt) {
+    const color = receipt.tone === 'awaiting' ? UI.attn : receipt.tone === 'error' ? UI.error : UI.cyan;
+    return {label:'VOICE',iconSvg:voiceMicIcon(color,false),color:UI.popupBgDark,textColor:color,subtitle:receipt.label,localAction:'voice_ptt'};
+  }
   switch (state) {
     case 'recording':
       return {
@@ -312,6 +318,8 @@ export class SessionSlotManager {
   get detailQuestion(): string | undefined { return this._detailQuestion; }
   /** Host push-to-talk capture state, mirrored from daemon voice_state events. */
   private _voiceState: SlotVoiceState = 'idle';
+  private _voiceDeliveryStatus?: VoiceDeliveryStatus;
+  private _voiceDeliverySessionId?: string;
   /** Latest `session_settings` answer per session (#463) — the agent's own values. */
   private _settings = new SessionSettingsRequestTracker();
   onSettingsChanged?: () => void;
@@ -621,9 +629,11 @@ export class SessionSlotManager {
 
   /** Mirror the daemon's host push-to-talk state. Returns true when it changed
    *  (caller decides whether a repaint is due). */
-  updateVoiceState(state: SlotVoiceState): boolean {
-    if (this._voiceState === state) return false;
-    this._voiceState = state;
+  updateVoiceState(state: SlotVoiceState, delivery?: VoiceDeliveryStatus | null, sessionId?: string): boolean {
+    const next = state === 'recording' || state === 'transcribing' || delivery === null ? undefined : delivery ?? this._voiceDeliveryStatus;
+    const owner = next ? (delivery ? sessionId : this._voiceDeliverySessionId) : undefined;
+    if (this._voiceState === state && this._voiceDeliveryStatus === next && this._voiceDeliverySessionId === owner) return false;
+    this._voiceState = state; this._voiceDeliveryStatus = next; this._voiceDeliverySessionId = owner;
     return true;
   }
 
@@ -1299,7 +1309,7 @@ export class SessionSlotManager {
     }
     // Idle is a readout plus user-authored input where delivery exists.
     const input = hasControllerInput(session);
-    if (input && idx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
+    if (input && idx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState, this._voiceDeliverySessionId === session?.id ? this._voiceDeliveryStatus : undefined) };
     const card = idx - (input ? 1 : 0);
     if (card === 0) return this.nowCard(session)
       ?? { type: 'status', label: 'IDLE', subtitle: 'no pending request', icon: 'ready', tone: 'info' };
@@ -1438,7 +1448,7 @@ export class SessionSlotManager {
 
     if (!isOpenClaw && this._detailState === State.IDLE) {
       const input = hasControllerInput(session);
-      if (input && contentIdx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState) };
+      if (input && contentIdx === 0) return { type: 'preset', preset: buildVoicePreset(this._voiceState, this._voiceDeliverySessionId === session?.id ? this._voiceDeliveryStatus : undefined) };
       return this.idleStatusCard(session, contentIdx - (input ? 1 : 0));
     }
 

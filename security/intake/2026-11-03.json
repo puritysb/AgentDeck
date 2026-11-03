@@ -1,0 +1,403 @@
+{
+  "observedAt": "2026-11-03T06:05:51.597690+00:00",
+  "repository": "puritysb/AgentDeck",
+  "sourceBase": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+  "window": {
+    "issueAndPrCreatedSince": "2026-11-03T00:00:00Z",
+    "firstBotPrAt": "2026-11-03T02:11:57Z",
+    "lastBotPrAt": "2026-11-03T02:44:06Z"
+  },
+  "initial": {
+    "newPublicIssues": 0,
+    "dependabotPullRequests": 18,
+    "openDependabotAlerts": 6,
+    "openDependabotSeverity": {
+      "medium": 4,
+      "low": 1,
+      "high": 1
+    },
+    "defaultBranchCodeScanningAlerts": 271,
+    "codeScanningSecuritySeverity": {
+      "high": 133,
+      "medium": 133,
+      "critical": 5
+    },
+    "codeScanningByRule": {
+      "js/remote-property-injection": 6,
+      "js/indirect-command-line-injection": 4,
+      "js/http-to-file-access": 14,
+      "js/insecure-temporary-file": 23,
+      "js/file-system-race": 56,
+      "js/regex/missing-regexp-anchor": 2,
+      "js/missing-origin-check": 3,
+      "js/user-controlled-bypass": 1,
+      "js/file-access-to-http": 76,
+      "js/polynomial-redos": 13,
+      "js/incomplete-multi-character-sanitization": 3,
+      "js/incomplete-sanitization": 3,
+      "js/bad-tag-filter": 3,
+      "js/stack-trace-exposure": 5,
+      "js/path-injection": 3,
+      "js/command-line-injection": 1,
+      "js/shell-command-injection-from-environment": 1,
+      "js/useless-regexp-character-escape": 1,
+      "js/weak-cryptographic-algorithm": 1,
+      "js/xss-through-dom": 1,
+      "js/type-confusion-through-parameter-tampering": 4,
+      "js/missing-rate-limiting": 3,
+      "js/resource-exhaustion": 1,
+      "js/unvalidated-dynamic-method-call": 1,
+      "js/loop-bound-injection": 1,
+      "js/insufficient-password-hash": 4,
+      "cpp/world-writable-file-creation": 1,
+      "cpp/path-injection": 2,
+      "cpp/comparison-with-wider-type": 1,
+      "py/bad-tag-filter": 3,
+      "actions/unpinned-tag": 22,
+      "actions/missing-workflow-permissions": 8
+    }
+  },
+  "codeScanningAnalyses": [
+    {
+      "id": 2083158731,
+      "commit": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+      "createdAt": "2026-11-03T05:21:37Z",
+      "category": "/language:javascript-typescript",
+      "results": 234
+    },
+    {
+      "id": 2083153140,
+      "commit": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+      "createdAt": "2026-11-03T05:20:05Z",
+      "category": "/language:rust",
+      "results": 0
+    },
+    {
+      "id": 2083152234,
+      "commit": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+      "createdAt": "2026-11-03T05:19:50Z",
+      "category": "/language:c-cpp",
+      "results": 4
+    },
+    {
+      "id": 2083148081,
+      "commit": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+      "createdAt": "2026-11-03T05:18:50Z",
+      "category": "/language:python",
+      "results": 3
+    },
+    {
+      "id": 2083147263,
+      "commit": "389ea6b774d914ac961c7bccf4e9500060b5dfb6",
+      "createdAt": "2026-11-03T05:18:39Z",
+      "category": "/language:actions",
+      "results": 30
+    }
+  ],
+  "pullRequests": [
+    {
+      "number": 686,
+      "url": "https://github.com/puritysb/AgentDeck/pull/686",
+      "title": "chore(deps): bump ip-address from 10.7.3 to 10.7.5",
+      "createdAt": "2026-11-03T02:11:57Z",
+      "initialState": "open",
+      "disposition": "superseded",
+      "decision": "Patch already in #690: ip-address 10.7.5.",
+      "owner": "puritysb",
+      "reviewBy": null,
+      "files": [
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 687,
+      "url": "https://github.com/puritysb/AgentDeck/pull/687",
+      "title": "chore(deps): bump fast-uri from 3.1.3 to 3.1.9",
+      "createdAt": "2026-11-03T02:12:03Z",
+      "initialState": "open",
+      "disposition": "superseded",
+      "decision": "Patch already in #690: fast-uri 3.1.9.",
+      "owner": "puritysb",
+      "reviewBy": null,
+      "files": [
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 688,
+      "url": "https://github.com/puritysb/AgentDeck/pull/688",
+      "title": "chore(deps): bump qs from 6.15.2 to 6.17.1",
+      "createdAt": "2026-11-03T02:12:05Z",
+      "initialState": "open",
+      "disposition": "superseded",
+      "decision": "Patch already in #690: qs 6.17.1.",
+      "owner": "puritysb",
+      "reviewBy": null,
+      "files": [
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 689,
+      "url": "https://github.com/puritysb/AgentDeck/pull/689",
+      "title": "chore(deps): bump body-parser from 2.2.2 to 2.4.0",
+      "createdAt": "2026-11-03T02:12:10Z",
+      "initialState": "open",
+      "disposition": "superseded",
+      "decision": "Patch already in #690: body-parser 2.4.0.",
+      "owner": "puritysb",
+      "reviewBy": null,
+      "files": [
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 691,
+      "url": "https://github.com/puritysb/AgentDeck/pull/691",
+      "title": "chore(deps): update bleak requirement from <3,>=2.1 to >=3.0.2,<4 in /bridge/python",
+      "createdAt": "2026-11-03T02:38:36Z",
+      "initialState": "open",
+      "disposition": "migration-review",
+      "decision": "BLE runtime major update; platform and physical-device acceptance needed.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "bridge/python/requirements-ble.txt"
+      ]
+    },
+    {
+      "number": 692,
+      "url": "https://github.com/puritysb/AgentDeck/pull/692",
+      "title": "chore(deps): update pyyaml requirement from >=6.0 to >=6.0.3 in /esp32/robot",
+      "createdAt": "2026-11-03T02:38:39Z",
+      "initialState": "open",
+      "disposition": "patch-review",
+      "decision": "Robot PyYAML minimum update; resolved scan already used 6.0.3.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "esp32/robot/requirements.txt"
+      ]
+    },
+    {
+      "number": 693,
+      "url": "https://github.com/puritysb/AgentDeck/pull/693",
+      "title": "chore(deps): update robotframework requirement from >=7.0 to >=7.5 in /esp32/robot",
+      "createdAt": "2026-11-03T02:38:45Z",
+      "initialState": "open",
+      "disposition": "minor-review",
+      "decision": "Robot tooling minor update; review runner compatibility.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "esp32/robot/requirements.txt"
+      ]
+    },
+    {
+      "number": 694,
+      "url": "https://github.com/puritysb/AgentDeck/pull/694",
+      "title": "chore(deps-dev): bump the compatible-development group with 11 updates",
+      "createdAt": "2026-11-03T02:40:04Z",
+      "initialState": "open",
+      "disposition": "group-review",
+      "decision": "11 development updates; separate lint, packaging and SDK effects.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "package.json",
+        "plugin/package.json",
+        "pnpm-lock.yaml",
+        "services/dot-relay/package.json"
+      ]
+    },
+    {
+      "number": 695,
+      "url": "https://github.com/puritysb/AgentDeck/pull/695",
+      "title": "chore(deps): bump yaml from 2.9.0 to 2.9.1",
+      "createdAt": "2026-11-03T02:40:12Z",
+      "initialState": "open",
+      "disposition": "merged",
+      "decision": "YAML 2.9.1 patch reviewed; all hosted checks passed; merge be162074.",
+      "owner": "puritysb",
+      "reviewBy": null,
+      "files": [
+        "hooks/package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 696,
+      "url": "https://github.com/puritysb/AgentDeck/pull/696",
+      "title": "chore(deps): bump @anthropic-ai/sdk from 0.111.0 to 1.3.0",
+      "createdAt": "2026-11-03T02:40:21Z",
+      "initialState": "open",
+      "disposition": "migration-review",
+      "decision": "Anthropic SDK 1.x; review API and schema compatibility, no assumed Zod remediation.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "bridge/package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 697,
+      "url": "https://github.com/puritysb/AgentDeck/pull/697",
+      "title": "chore(deps-dev): bump typescript from 6.0.3 to 7.0.2",
+      "createdAt": "2026-11-03T02:40:32Z",
+      "initialState": "open",
+      "disposition": "migration-review",
+      "decision": "TypeScript 7 compiler/toolchain migration.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "bridge/package.json",
+        "hooks/package.json",
+        "plugin-ulanzi/package.json",
+        "plugin/package.json",
+        "pnpm-lock.yaml",
+        "services/dot-relay/package.json",
+        "setup/package.json",
+        "shared/package.json"
+      ]
+    },
+    {
+      "number": 698,
+      "url": "https://github.com/puritysb/AgentDeck/pull/698",
+      "title": "chore(deps): bump bonjour-service from 1.4.0 to 1.4.4",
+      "createdAt": "2026-11-03T02:40:38Z",
+      "initialState": "open",
+      "disposition": "patch-review",
+      "decision": "Bonjour patch; review discovery behavior and test compatibility.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "bridge/package.json",
+        "pnpm-lock.yaml"
+      ]
+    },
+    {
+      "number": 699,
+      "url": "https://github.com/puritysb/AgentDeck/pull/699",
+      "title": "chore(deps): bump org.jetbrains.kotlin.plugin.compose from 2.3.21 to 2.4.21 in /android",
+      "createdAt": "2026-11-03T02:40:59Z",
+      "initialState": "open",
+      "disposition": "android-stack-review",
+      "decision": "Compose/Kotlin stack compatibility.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "android/build.gradle.kts"
+      ]
+    },
+    {
+      "number": 700,
+      "url": "https://github.com/puritysb/AgentDeck/pull/700",
+      "title": "chore(deps): bump com.squareup.okhttp3:okhttp from 4.12.0 to 5.5.1 in /android",
+      "createdAt": "2026-11-03T02:41:03Z",
+      "initialState": "open",
+      "disposition": "android-stack-review",
+      "decision": "OkHttp major migration; client behavior and native tests.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "android/app/build.gradle.kts"
+      ]
+    },
+    {
+      "number": 701,
+      "url": "https://github.com/puritysb/AgentDeck/pull/701",
+      "title": "chore(deps): bump com.android.application from 8.13.2 to 9.5.0 in /android",
+      "createdAt": "2026-11-03T02:41:08Z",
+      "initialState": "open",
+      "disposition": "android-stack-review",
+      "decision": "Android Gradle Plugin major migration; release/build compatibility.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "android/build.gradle.kts"
+      ]
+    },
+    {
+      "number": 702,
+      "url": "https://github.com/puritysb/AgentDeck/pull/702",
+      "title": "chore(deps): bump org.jetbrains.kotlinx:kotlinx-serialization-json from 1.9.0 to 1.12.0 in /android",
+      "createdAt": "2026-11-03T02:41:11Z",
+      "initialState": "open",
+      "disposition": "android-stack-review",
+      "decision": "Serialization library minor update; Kotlin/compiler compatibility.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "android/app/build.gradle.kts"
+      ]
+    },
+    {
+      "number": 703,
+      "url": "https://github.com/puritysb/AgentDeck/pull/703",
+      "title": "chore(deps): bump org.robolectric:robolectric from 4.16.1 to 4.17 in /android",
+      "createdAt": "2026-11-03T02:41:15Z",
+      "initialState": "open",
+      "disposition": "android-stack-review",
+      "decision": "Robolectric tooling update; Android unit tests.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        "android/app/build.gradle.kts"
+      ]
+    },
+    {
+      "number": 705,
+      "url": "https://github.com/puritysb/AgentDeck/pull/705",
+      "title": "chore(deps): bump the actions group with 16 updates",
+      "createdAt": "2026-11-03T02:44:06Z",
+      "initialState": "open",
+      "disposition": "workflow-review",
+      "decision": "16 grouped Actions updates include major versions; inspect pinning, inputs, permissions and release behavior.",
+      "owner": "puritysb",
+      "reviewBy": "2026-11-17",
+      "files": [
+        ".github/workflows/android-release.yml",
+        ".github/workflows/android-test.yml",
+        ".github/workflows/apple-release.yml",
+        ".github/workflows/apple-test.yml",
+        ".github/workflows/asc-certificates.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/codeql.yml",
+        ".github/workflows/dependency-review.yml",
+        ".github/workflows/design-system.yml",
+        ".github/workflows/esp32-release.yml",
+        ".github/workflows/esp32-sim.yml",
+        ".github/workflows/npm-release.yml",
+        ".github/workflows/security-scan.yml",
+        ".github/workflows/streamdeck-release.yml",
+        ".github/workflows/test-report.yml",
+        ".github/workflows/ulanzi-release.yml"
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "kind": "close-superseded",
+      "pullRequests": [
+        686,
+        687,
+        688,
+        689
+      ],
+      "reason": "Exact proposed package versions already present on master after #690. No suppression or ignore-major command used."
+    },
+    {
+      "kind": "merge-patch",
+      "pullRequest": 695,
+      "mergeCommit": "be162074b606659d142ef798bfc0341e695e13e6",
+      "reason": "Reviewed YAML patch and successful hosted verification."
+    }
+  ],
+  "limits": [
+    "Counts are tool findings and proposals, not confirmed exploitable vulnerabilities.",
+    "Code scanning PR results are restricted to the PR diff; they do not represent the default-branch inventory.",
+    "No mass alert dismissal, no automatic major-version merge, no release or device deployment.",
+    "Raw alert paths/messages remain in ignored local evidence and GitHub Security; public intake stores aggregates only."
+  ]
+}
