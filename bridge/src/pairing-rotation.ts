@@ -1,13 +1,17 @@
 import { PAIRING_CREDENTIALS, parsePairingRetirement } from '@agentdeck/shared';
 import { localPeerOwnership } from './auth.js';
 import { readDaemonInfo, findDaemonPort, probeDaemonHealth } from './session-registry.js';
-import { resolveDaemonPort } from './daemon-port.js';
+import { isValidDaemonPort, resolveDaemonPort } from './daemon-port.js';
 
 /** Rotate the actual owner, never an inactive on-disk profile. No retries on a
  * lost response: a rotation may have committed, so the next action is readback. */
 export async function rotateActivePairingToken(): Promise<void> {
   const info = readDaemonInfo();
-  const port = info?.httpPort ?? info?.port ?? findDaemonPort() ?? resolveDaemonPort({}).port;
+  const candidate = info?.httpPort ?? info?.port ?? findDaemonPort() ?? resolveDaemonPort({}).port;
+  if (!isValidDaemonPort(candidate)) throw new Error('Invalid active daemon port; pairing credentials were not changed.');
+  // daemon.json is untyped input. Convert only after the canonical port guard;
+  // no file-supplied string can become URL authority or a request destination.
+  const port = Number(candidate);
   const health = await probeDaemonHealth(port);
   if (health?.mode !== 'daemon') throw new Error('No confirmed active daemon; pairing credentials were not changed. Start your daemon and retry.');
   if (localPeerOwnership(health.pid) !== 'same-user') throw new Error('Cannot confirm that the active daemon belongs to this user; pairing credentials were not changed.');

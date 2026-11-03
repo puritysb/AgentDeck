@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const registry = vi.hoisted(() => ({probe:vi.fn(),ownership:vi.fn()}));
-vi.mock('../session-registry.js', () => ({readDaemonInfo:()=>({httpPort:19123}),findDaemonPort:()=>null,probeDaemonHealth:registry.probe}));
+const registry = vi.hoisted(() => ({probe:vi.fn(),ownership:vi.fn(),info:vi.fn()}));
+vi.mock('../session-registry.js', () => ({readDaemonInfo:registry.info,findDaemonPort:()=>null,probeDaemonHealth:registry.probe}));
 vi.mock('../auth.js', () => ({localPeerOwnership:registry.ownership}));
 import { rotateActivePairingToken } from '../pairing-rotation.js';
 const metadata = (revision:number) => ({version:1,revision,eventId:revision === 0 ? '' : String(revision).repeat(32)});
@@ -9,6 +9,7 @@ let post: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   registry.probe.mockReset().mockResolvedValueOnce(health(0)).mockResolvedValueOnce(health(1));
   registry.ownership.mockReset().mockReturnValue('same-user');
+  registry.info.mockReset().mockReturnValue({httpPort:19123});
   post = vi.fn(async () => new Response(JSON.stringify({rotated:true,scope:'active-owner',globalRevocation:'incomplete',pairingRetirement:metadata(1)})));
   vi.stubGlobal('fetch',post);
 });
@@ -25,6 +26,11 @@ describe('active owner rotation', () => {
   it.each(['other-user','unknown'])('refuses ownership %s before mutation', async owner => {
     registry.ownership.mockReturnValue(owner);
     await expect(rotateActivePairingToken()).rejects.toThrow('confirm'); expect(post).not.toHaveBeenCalled();
+  });
+  it.each(['19123@evil.example','19123/path',{},NaN,19123.5,0,65536,-1])('refuses malformed file-supplied port %s before any network request', async port => {
+    registry.info.mockReturnValue({httpPort:port});
+    await expect(rotateActivePairingToken()).rejects.toThrow('Invalid active daemon port');
+    expect(registry.probe).not.toHaveBeenCalled(); expect(post).not.toHaveBeenCalled();
   });
   it.each([null,{mode:'bridge'}, {...health(0),pairingRotation:false}, {...health(0),pairingRetirement:null}])('refuses absent or legacy owners', async initial => {
     registry.probe.mockReset().mockResolvedValue(initial);
