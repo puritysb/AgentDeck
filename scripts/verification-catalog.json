@@ -1,8 +1,8 @@
 {
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
-    "as_of": "2026-09-29",
-    "summary": "Branch protection on master requires one status check, ESP32 Sim Compile. Every other gate turns a pull request red when it fails but does not stop GitHub from merging it."
+    "as_of": "2026-11-03",
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -961,6 +961,106 @@
       "command": "package-ulanzi-plugin.sh",
       "proves": ["the Ulanzi plugin bundle packages with its WASM renderer and fonts"],
       "does_not_prove": ["behaviour inside Ulanzi Studio (manual, plugin-ulanzi/VERIFY.md)"]
+    },
+    {
+      "id": "dependency-audit",
+      "name": "Known vulnerable npm dependencies",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "dependencies",
+      "trigger": "Every PR, master push and schedule (dependency review: PR only)",
+      "blocking": true,
+      "required": true,
+      "command": "pnpm security:audit",
+      "proves": [
+        "All and production pnpm lockfile scopes are queried against the current registry; unreviewed high/critical advisories and expired exact-version exceptions fail; raw results and hashes are retained."
+      ],
+      "does_not_prove": [
+        "Reachability or absence of unknown vulnerabilities; native firmware dependencies; medium/low advisories do not fail this gate."
+      ]
+    },
+    {
+      "id": "python-dependency-audit",
+      "name": "Python dependency audit",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "python",
+      "trigger": "Every PR, master push and schedule (dependency review: PR only)",
+      "blocking": true,
+      "required": true,
+      "command": "pip-audit -r bridge/python/requirements-ble.txt; pip-audit -r esp32/robot/requirements.txt",
+      "proves": [
+        "Resolved BLE and Robot requirements are queried by pip-audit. Resolution or audit failure fails the job."
+      ],
+      "does_not_prove": [
+        "The packages installed in an existing user BLE environment; OS-specific dependencies outside the Linux resolver."
+      ]
+    },
+    {
+      "id": "rust-dependency-audit",
+      "name": "Rust dependency audit",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/security-scan.yml",
+      "job": "rust",
+      "trigger": "Every PR, master push and schedule (dependency review: PR only)",
+      "blocking": true,
+      "required": true,
+      "command": "osv-scanner scan source --config security/osv-scanner.toml --lockfile shared/glance-raster/Cargo.lock",
+      "proves": [
+        "Cargo.lock is queried by checksum-pinned OSV Scanner without running build scripts; three dated maintenance-only exceptions are visible in policy."
+      ],
+      "does_not_prove": [
+        "A full firmware/native dependency inventory or C++ vulnerability analysis; unmaintained crates are tracked separately from confirmed vulnerabilities."
+      ]
+    },
+    {
+      "id": "dependency-review",
+      "name": "New dependency review",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/dependency-review.yml",
+      "job": "review",
+      "trigger": "Every PR, master push and schedule (dependency review: PR only)",
+      "blocking": true,
+      "required": true,
+      "command": "actions/dependency-review-action",
+      "proves": [
+        "PR dependency changes are compared by GitHub dependency review; newly introduced high/critical advisories fail."
+      ],
+      "does_not_prove": [
+        "All existing debt, all ecosystems or runtime exploitability."
+      ]
+    },
+    {
+      "id": "codeql",
+      "name": "CodeQL static security analysis",
+      "level": [
+        "static"
+      ],
+      "where": "ubuntu-latest",
+      "workflow": ".github/workflows/codeql.yml",
+      "job": "analyze",
+      "trigger": "Every PR, master push and schedule (dependency review: PR only)",
+      "blocking": true,
+      "required": true,
+      "command": "github/codeql-action",
+      "proves": [
+        "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails."
+      ],
+      "does_not_prove": [
+        "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage."
+      ]
     }
   ],
   "not_a_gate": {
@@ -1318,7 +1418,8 @@
         "scripts/__tests__/build-health-report.test.ts",
         "scripts/__tests__/public-media.test.ts",
         "scripts/__tests__/product-tour-fixture.test.ts",
-        "scripts/__tests__/aquarium-showcase-story.test.ts"
+        "scripts/__tests__/aquarium-showcase-story.test.ts",
+        "scripts/__tests__/security-audit.test.ts"
       ]
     }
   ]
