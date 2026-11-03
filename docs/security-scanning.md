@@ -65,7 +65,7 @@ not establish exploitability in AgentDeck. Prefer the smallest compatible patch,
 then rerun the scanner and the applicable verification tier. Source merged,
 package published, installed, and device verified are different delivery states.
 
-Any accepted high/critical npm risk needs an exact GHSA/package/version entry in
+Any accepted high/critical npm risk needs an exact GHSA/package/version/severity entry in
 [the policy](../security/audit-policy.json), an owner, reason, tracking reference,
 and expiry. The report keeps the finding visible. Expiry fails even without a
 lockfile change. Critical findings require immediate investigation; high findings
@@ -126,3 +126,22 @@ Sources: [pnpm audit](https://pnpm.io/cli/audit),
 [Pillow 13 release notes](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html),
 [Sharp 0.35 changes](https://sharp.pixelplumbing.com/changelog/v0.35.0/),
 [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+
+## Verification receipt
+
+The first PR run on `4126ce1d` completed all npm/Python/Rust audits, dependency
+review and all five CodeQL categories. CodeQL reported **0 results**, no analysis
+errors and no warnings in these categories. This is a dated scan result, not a
+claim of vulnerability-free code. Existing Linux coverage/E2E, macOS parity and
+Windows Node 22/24/26 jobs passed too. ESP32 TTGO was intentionally skipped by
+its existing path policy; simulator compilation passed.
+
+Local `pnpm verify:quick` passed: 7,354 tests passed, 42 skipped; the daemon E2E
+requires macOS Keychain opt-in and was instead covered by hosted Linux CI. The
+changed docs/catalog/devlog gates passed. The initial Mac lint attempt used
+system Bash 3; rerunning with the already-installed Homebrew Bash 5 passed.
+
+- [PR #690](https://github.com/puritysb/AgentDeck/pull/690)
+- [Dependency scans + retained JSON artifacts](https://github.com/puritysb/AgentDeck/actions/runs/41565955733)
+- [CodeQL five-language analysis](https://github.com/puritysb/AgentDeck/actions/runs/41565955782)
+- [Linux/macOS/Windows validation](https://github.com/puritysb/AgentDeck/actions/runs/41565955709)

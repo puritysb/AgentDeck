@@ -4,6 +4,7 @@
       "advisory": "GHSA-mrhx-c7xc-m3w5",
       "package": "zod",
       "version": "3.25.76",
+      "severity": "high",
       "owner": "puritysb",
       "expires": "2026-11-17",
       "tracking": "docs/security-scanning.md#remaining-findings",

@@ -7,7 +7,7 @@ const report = (severity = 'high', version = '3.25.76') => ({
   metadata: { vulnerabilities: { [severity]: 1 } },
 });
 const exception = { advisory: 'GHSA-mrhx-c7xc-m3w5', package: 'zod', version: '3.25.76',
-  owner: 'maintainer', reason: 'Major migration pending', tracking: 'issue', expires: '2026-11-17' };
+  severity: 'high', owner: 'maintainer', reason: 'Major migration pending', tracking: 'issue', expires: '2026-11-17' };
 const now = new Date('2026-11-03T00:00:00Z');
 
 describe('dependency audit gate', () => {
@@ -25,6 +25,7 @@ describe('dependency audit gate', () => {
     expect(r.blocked).toBe(false);
     expect(r.findings[0].exception).toEqual(exception);
     expect(evaluate(report('high', '3.25.75'), policy, now).blocked).toBe(true);
+    expect(evaluate(report('critical'), policy, now).blocked).toBe(true);
     const other = report(); other.advisories[1].module_name = 'other';
     expect(evaluate(other, policy, now).blocked).toBe(true);
   });

@@ -18,7 +18,7 @@ export function evaluate(report, policy, now = new Date()) {
   for (const e of policy.exceptions) {
     const key = `${e.advisory}:${e.package}:${e.version}`;
     if (!/^GHSA-[\w-]+$/.test(e.advisory) || !e.package || !e.version ||
-        !e.owner || !e.reason || !e.tracking || !/^\d{4}-\d{2}-\d{2}$/.test(e.expires) ||
+        !levels.includes(e.severity) || !e.owner || !e.reason || !e.tracking || !/^\d{4}-\d{2}-\d{2}$/.test(e.expires) ||
         !Number.isFinite(Date.parse(e.expires)) || seen.has(key)) throw new Error(`Invalid exception: ${key}`);
     if (e.expires <= today) throw new Error(`Expired exception: ${key} (${e.expires})`);
     seen.add(key);
@@ -30,7 +30,7 @@ export function evaluate(report, policy, now = new Date()) {
     return a.findings.map(f => {
       if (!f.version || !Array.isArray(f.paths)) throw new Error('Missing affected version or paths');
       const exception = policy.exceptions.find(e => e.advisory === a.github_advisory_id &&
-        e.package === a.module_name && e.version === f.version);
+        e.package === a.module_name && e.version === f.version && e.severity === a.severity);
       return { advisory: a.github_advisory_id, package: a.module_name, version: f.version,
         severity: a.severity, paths: f.paths, url: a.url, exception: exception ?? null,
         blocking: levels.indexOf(a.severity) >= levels.indexOf('high') && !exception };
