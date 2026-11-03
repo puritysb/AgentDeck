@@ -81,6 +81,12 @@ The wake word system is **independent of the SFSpeech transcription path** — w
 
 ---
 
+## Terminal host checks
+
+For observed terminal sessions, the CLI daemon tries tmux and cmux first. Before using iTerm2 or Terminal.app, it reads the agent process's executable ancestry with a bounded `ps` query and only sends AppleScript to the identified host. This applies to both dictated prompts and device answers. An unsupported host such as Ghostty reports `terminal host not supported (Ghostty)` without requesting Automation access to unrelated apps. A missing PID or unreadable ancestry reports `terminal host unknown (…)` and skips AppleScript as well.
+
+Ghostty, WezTerm, kitty, Alacritty and editor terminals can receive input through tmux; direct delivery to those hosts is not supported. Granting control over Terminal.app does not enable delivery to another terminal.
+
 ## Delivering to a session in cmux
 
 The CLI daemon types a dictated prompt into a session running in [cmux](https://cmux.com) through the `cmux` CLI (#541). The macOS app cannot, because it never spawns subprocesses. The daemon finds the surface from `CMUX_SURFACE_ID` in the agent process's own environment, so no hook or setup change is needed. It never forces delivery: if the prompt already holds text you are typing, or a question or permission dialog is open, cmux refuses and the prompt is left as it was.

@@ -97,6 +97,7 @@ final class PairingKnockStore: @unchecked Sendable {
         /// silently reacquire the NAT and DHCP problems it exists to escape.
         let lastIP: String
         let approvedAt: Date
+        var credentialGeneration: String?
 
         var deviceId: String? {
             key.hasPrefix("device:") ? String(key.dropFirst("device:".count)) : nil
@@ -174,11 +175,11 @@ final class PairingKnockStore: @unchecked Sendable {
 
     /// Approving is what a pairing code would have done, minus the typing: from
     /// here on this peer authenticates by address. Persisted immediately.
-    func approve(key: String, now: Date = Date()) {
+    func approve(key: String, now: Date = Date(), credentialGeneration: String? = nil) {
         guard !key.isEmpty else { return }
         lock.lock()
         let lastIP = pending[key]?.ip ?? approved[key]?.lastIP ?? ""
-        approved[key] = Approval(key: key, lastIP: lastIP, approvedAt: now)
+        approved[key] = Approval(key: key, lastIP: lastIP, approvedAt: now, credentialGeneration: credentialGeneration)
         pending.removeValue(forKey: key)
         let snapshot = approved
         lock.unlock()
@@ -200,21 +201,21 @@ final class PairingKnockStore: @unchecked Sendable {
     /// its address the moment it does. Both are checked rather than one, because
     /// a device approved by address before it learned to send an id must not be
     /// locked out by the upgrade that taught it.
-    func isApproved(ip: String, deviceId: String?) -> Bool {
+    func isApproved(ip: String, deviceId: String?, credentialGeneration: String? = nil) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         if let normalized = PairingCodeRules.normalizeDeviceId(deviceId),
-           approved["device:\(normalized)"] != nil {
+           let approval = approved["device:\(normalized)"], approval.credentialGeneration == credentialGeneration {
             return true
         }
         guard !ip.isEmpty else { return false }
-        return approved["ip:\(ip)"] != nil
+        return approved["ip:\(ip)"].map { $0.credentialGeneration == credentialGeneration } ?? false
     }
 
-    func approvals() -> [Approval] {
+    func approvals(credentialGeneration: String? = nil) -> [Approval] {
         lock.lock()
         defer { lock.unlock() }
-        return approved.values.sorted { $0.approvedAt > $1.approvedAt }
+        return approved.values.filter { $0.credentialGeneration == credentialGeneration }.sorted { $0.approvedAt > $1.approvedAt }
     }
 
     // MARK: - Persistence

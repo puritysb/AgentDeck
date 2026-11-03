@@ -619,6 +619,10 @@ export class WsServer {
       : `[agentdeck] Rejected ${who}: no pairing token${repeated}. ${howToFix}`);
   }
 
+  reauthenticateClients(): void {
+    for (const client of [...this.wss.clients]) client.terminate();
+  }
+
   close(): void {
     clearInterval(this.pingTimer);
     this.clientAlive.clear();

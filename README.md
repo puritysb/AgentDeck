@@ -23,8 +23,8 @@ keep usage limits in view. Use your Mac or terminal on its own, or add a tablet,
 Stream Deck, e-ink reader, or small desk display.
 
 **2.0 delivery:** Google Play, npm and the Android/Stream Deck/Ulanzi/ESP32
-GitHub downloads are public. Elgato, Ulanzi, macOS, iPhone and iPad are submitted
-for review.
+GitHub downloads and the iPhone/iPad 2.0 update are public. macOS 2.0 is still
+awaiting review; deck Marketplace submissions are tracked separately.
 See the [channel-by-channel delivery record](RELEASING.md#20-delivery-checkpoint-2026-11-02).
 Non-automatable physical journeys use the owner's code-review acceptance for this release.
 
@@ -359,13 +359,14 @@ for verified publication and Store review status.
 | Ulanzi D200H / D200X LCD keys | [Ulanzi Marketplace](https://ugc.ulanzistudio.com/contentView/1239890184745660416); D200X encoders are not supported | `ulanzi-v*` |
 | ESP32 panels and TRMNL 7.5" | [Browser flasher](https://puritysb.github.io/AgentDeck/flash/) · [firmware releases](https://github.com/puritysb/AgentDeck/releases?q=esp32-v&expanded=true) | `esp32-v*` |
 
-**2.0 delivery, 2026-11-02:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
+**2.0 delivery, updated 2026-11-03:** [npm 2.0.0](https://github.com/puritysb/AgentDeck/releases/tag/npm-v2.0.0)
 is public for all four packages and includes the integration-command hardening.
 The complete [ESP32 firmware set](https://github.com/puritysb/AgentDeck/releases/tag/esp32-v2.0.0)
 covers all twelve shipping boards.
-Google Play **2.0.0 / 30** is public at 100% rollout. Elgato **2.0.0.0** and
-macOS/iPhone/iPad **2.0.0 / 10201** are submitted for review. Store approval and
-availability remain separate. The 1.9.7 / macOS 1.9.5 preparation numbers were
+Google Play **2.0.0 / 30** is public at 100% rollout. The November 3 ASC
+readback confirms iPhone/iPad **2.0.0 READY_FOR_SALE**, while macOS **2.0.0**
+and its submission remain **WAITING_FOR_REVIEW**. Elgato/Ulanzi submission
+receipts remain separate from Marketplace approval and public availability. The 1.9.7 / macOS 1.9.5 preparation numbers were
 superseded by this coordinated 2.0 release. After corrected installers are
 available, update the ones you use, refresh enabled integrations and review
 Codex hook trust when prompted. See the

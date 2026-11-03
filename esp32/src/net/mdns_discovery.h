@@ -28,9 +28,10 @@ void mdnsStop();
 /**
  * Poll for discovered bridges, starting the responder on first use. Call only
  * while the STA is connected and the radio is not parked.
- * Returns true if a new bridge was found since last call.
+ * Prefer the provisioned endpoint. Unknown multiple endpoints and an absent
+ * preferred endpoint are refused; discovery never authorizes a pairing change.
  */
-bool mdnsPoll(BridgeInfo& out);
+bool mdnsPoll(BridgeInfo& out, const char* preferredIp = nullptr, uint16_t preferredPort = 0);
 
 /**
  * Force a fresh mDNS query.

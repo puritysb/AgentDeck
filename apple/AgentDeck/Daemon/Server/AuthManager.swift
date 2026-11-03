@@ -4,6 +4,8 @@
 
 import Foundation
 import Security
+import Darwin
+import SQLite3
 
 final class AuthManager: @unchecked Sendable {
     static let shared = AuthManager()
@@ -16,7 +18,8 @@ final class AuthManager: @unchecked Sendable {
     static var acceptedTokenFile: URL { AgentDeckPaths.authTokenAccepted }
     private static let tokenLength = 32 // 32 hex chars = 16 bytes
     /// Bounded so a long-lived machine cannot accumulate an unbounded key ring.
-    private static let maxAcceptedTokens = 4
+    private static let maxAcceptedTokens = PairingCredentialRules.maxAccepted
+    private static let credentialIO = DispatchQueue(label: "AgentDeck.PairingCredentials", qos: .utility)
 
     private static func string(from nullTerminatedBytes: [CChar]) -> String {
         let bytes = nullTerminatedBytes.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
@@ -31,9 +34,36 @@ final class AuthManager: @unchecked Sendable {
     private var currentToken: String
     private var acceptedTokens: [String]
 
-    private init() {
-        self.currentToken = AuthManager.loadOrCreateToken()
-        self.acceptedTokens = AuthManager.loadAcceptedTokens()
+    private let credentialDirectory: URL
+    private var retirement = PairingCredentialRules.Retirement(revision: 0, eventId: "")
+    private var credentialUnavailable = false
+
+    init(directory: URL = AuthManager.agentDeckDir) {
+        credentialDirectory = directory
+        let result = Self.readFileWithTimeout(AgentDeckPaths.authCredentials(in: directory), label: "credential-state")
+        if case .missing = result {
+            currentToken = Self.loadOrCreateToken(at: AgentDeckPaths.authToken(in: directory))
+            acceptedTokens = Self.loadAcceptedTokens(at: AgentDeckPaths.authTokenAccepted(in: directory))
+        } else if let text = result.text, let state = try? PairingCredentialRules.decode(Data(text.utf8)) {
+            currentToken = state.token; acceptedTokens = state.accepted; retirement = state.retirement
+        } else {
+            // A fenced state that cannot be read must not revive legacy files.
+            currentToken = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            acceptedTokens = []; credentialUnavailable = true
+            DaemonLogger.shared.error("Pairing credential state unavailable; legacy fallback and rotation refused")
+        }
+    }
+
+    var credentials: PairingCredentialRules.State {
+        lock.lock(); defer { lock.unlock() }
+        return .init(revision: retirement.revision, eventId: retirement.eventId, token: currentToken, accepted: acceptedTokens)
+    }
+    var credentialGeneration: String? {
+        lock.lock(); defer { lock.unlock() }
+        return credentialUnavailable ? "unknown" : retirement.generation
+    }
+    var rotationAvailable: Bool {
+        lock.lock(); defer { lock.unlock() }; return !credentialUnavailable
     }
 
     var token: String {
@@ -44,7 +74,7 @@ final class AuthManager: @unchecked Sendable {
 
     // MARK: - Token Management
 
-    private static func loadOrCreateToken() -> String {
+    private static func loadOrCreateToken(at url: URL) -> String {
         // macOS 26 sandbox container I/O can silently block the very
         // first `Data(contentsOf:)` on auth-token at `__open` syscall —
         // sample shows main thread stuck in `_fcntl_overlay_open` →
@@ -58,7 +88,7 @@ final class AuthManager: @unchecked Sendable {
         // only state, regenerating it doesn't break any external integration.
         // The write also runs on a background queue, so a hung write
         // doesn't block startup either.
-        if let existing = readFileWithTimeout(tokenFile, label: "token-file")?
+        if let existing = readFileWithTimeout(url, label: "token-file").text?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            existing.count >= tokenLength {
             return existing
@@ -72,13 +102,13 @@ final class AuthManager: @unchecked Sendable {
         // Write fire-and-forget on a background queue; if it hangs the
         // next launch will hit the timeout path again and stay
         // functional rather than freezing the daemon.
-        DispatchQueue.global(qos: .utility).async {
+        credentialIO.async {
             do {
-                try FileManager.default.createDirectory(at: agentDeckDir, withIntermediateDirectories: true)
-                try (token + "\n").write(to: tokenFile, atomically: true, encoding: .utf8)
+                try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try (token + "\n").write(to: url, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes(
                     [.posixPermissions: 0o600],
-                    ofItemAtPath: tokenFile.path
+                    ofItemAtPath: url.path
                 )
                 DaemonLogger.shared.debug("auth", "Generated new auth token")
             } catch {
@@ -92,24 +122,31 @@ final class AuthManager: @unchecked Sendable {
     /// Read a small file off the calling thread with a hard deadline. Container
     /// I/O can wedge in `__open` (see `loadOrCreateToken`) and every caller here
     /// runs synchronously on the daemon's startup path.
-    private static func readFileWithTimeout(_ url: URL, label: String) -> String? {
+    private static func readFileWithTimeout(_ url: URL, label: String) -> AuthTokenReadResult {
         let semaphore = DispatchSemaphore(value: 0)
         let box = AuthTokenReadBox()
         DispatchQueue.global(qos: .userInitiated).async {
             defer { semaphore.signal() }
-            guard let data = try? Data(contentsOf: url),
-                  let text = String(data: data, encoding: .utf8) else { return }
-            box.set(text)
+            do {
+                let handle = try FileHandle(forReadingFrom: url)
+                defer { try? handle.close() }
+                let data = try handle.read(upToCount: PairingCredentialRules.maxBytes + 1) ?? Data()
+                guard data.count <= PairingCredentialRules.maxBytes, let text = String(data: data, encoding: .utf8) else { return }
+                box.set(.text(text))
+            } catch {
+                let e = error as NSError
+                if (e.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(e.code)) || (e.domain == NSPOSIXErrorDomain && e.code == Int(ENOENT)) { box.set(.missing) }
+            }
         }
         if semaphore.wait(timeout: .now() + 2) == .timedOut {
             DaemonLogger.shared.error("AuthManager: \(label) read timed out (sandbox first-launch?)")
-            return nil
+            return .unavailable
         }
         return box.get()
     }
 
-    private static func loadAcceptedTokens() -> [String] {
-        guard let text = readFileWithTimeout(acceptedTokenFile, label: "accepted-token-file") else { return [] }
+    private static func loadAcceptedTokens(at url: URL) -> [String] {
+        guard let text = readFileWithTimeout(url, label: "accepted-token-file").text else { return [] }
         return text
             .split(separator: "\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -118,18 +155,73 @@ final class AuthManager: @unchecked Sendable {
             .map { String($0) }
     }
 
-    private static func persist(token: String, accepted: [String]) {
-        DispatchQueue.global(qos: .utility).async {
-            do {
-                try FileManager.default.createDirectory(at: agentDeckDir, withIntermediateDirectories: true)
-                try (token + "\n").write(to: tokenFile, atomically: true, encoding: .utf8)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: tokenFile.path)
-                let body = accepted.map { $0 + "\n" }.joined()
-                try body.write(to: acceptedTokenFile, atomically: true, encoding: .utf8)
-                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: acceptedTokenFile.path)
-            } catch {
-                DaemonLogger.shared.error("Failed to persist adopted token: \(error)")
+    private static func writeAtomic(_ data: Data, to target: URL) throws {
+        let dir = target.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let temp = dir.appendingPathComponent(".credential-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: temp) }
+        guard FileManager.default.createFile(atPath: temp.path, contents: data, attributes: [.posixPermissions: 0o600]) else { throw PairingCredentialRules.Failure.unavailable }
+        let handle = try FileHandle(forWritingTo: temp)
+        defer { try? handle.close() }
+        try handle.synchronize()
+        guard rename(temp.path, target.path) == 0 else { throw PairingCredentialRules.Failure.unavailable }
+    }
+    private static func persist(_ state: PairingCredentialRules.State, directory: URL) throws {
+        try writeAtomic(JSONEncoder().encode(state), to: AgentDeckPaths.authCredentials(in: directory))
+        do {
+            try writeAtomic(Data(state.accepted.map { $0 + "\n" }.joined().utf8), to: AgentDeckPaths.authTokenAccepted(in: directory))
+            try writeAtomic(Data((state.token + "\n").utf8), to: AgentDeckPaths.authToken(in: directory))
+        } catch { DaemonLogger.shared.error("Legacy credential mirror unavailable; atomic state remains authoritative") }
+    }
+    /// Matches Node's BEGIN IMMEDIATE guard; process death releases the OS lock.
+    /// The lock database contains no tokens. The JSON file remains authority.
+    private static func withCredentialLock<T>(_ directory: URL, body: () throws -> T) throws -> T {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(AgentDeckPaths.authCredentialLock(in: directory).path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK,
+              let db = handle else { if let handle { sqlite3_close(handle) }; throw PairingCredentialRules.Failure.unavailable }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, Int32(PairingCredentialRules.timeoutMs))
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else { throw PairingCredentialRules.Failure.unavailable }
+        defer { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) }
+        return try body()
+    }
+    private func mutateCredentials(_ transform: @escaping @Sendable (PairingCredentialRules.State) throws -> PairingCredentialRules.State?) async throws -> PairingCredentialRules.State {
+        try await withCheckedThrowingContinuation { continuation in
+            Self.credentialIO.async { [self] in
+                do {
+                    lock.lock()
+                    let unavailable = credentialUnavailable
+                    let cached = PairingCredentialRules.State(revision: retirement.revision, eventId: retirement.eventId, token: currentToken, accepted: acceptedTokens)
+                    lock.unlock()
+                    guard !unavailable else { throw PairingCredentialRules.Failure.unavailable }
+                    let next = try Self.withCredentialLock(credentialDirectory) {
+                        let result = Self.readFileWithTimeout(AgentDeckPaths.authCredentials(in: credentialDirectory), label: "credential-mutation")
+                        let current: PairingCredentialRules.State
+                        if case .missing = result, cached.revision == 0 { current = cached }
+                        else if let text = result.text { current = try PairingCredentialRules.decode(Data(text.utf8)) }
+                        else { throw PairingCredentialRules.Failure.unavailable }
+                        guard current.revision >= cached.revision,
+                              current.revision != cached.revision || current.revision == 0 || (current.eventId == cached.eventId && current.token == cached.token) else { throw PairingCredentialRules.Failure.conflictingRetirement }
+                        let next = try transform(current) ?? current
+                        if next != current { try Self.persist(next, directory: credentialDirectory) }
+                        return next
+                    }
+                    lock.lock()
+                    currentToken = next.token; acceptedTokens = next.accepted; retirement = next.retirement
+                    lock.unlock()
+                    continuation.resume(returning: next)
+                } catch { continuation.resume(throwing: error) }
             }
+        }
+    }
+    func rotate(minimumRevision: Int) async throws -> PairingCredentialRules.State {
+        try await mutateCredentials { current in
+            var bytes = [UInt8](repeating: 0, count: 16)
+            guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { throw PairingCredentialRules.Failure.unavailable }
+            let token = bytes.map { String(format: "%02x", $0) }.joined()
+            let eventId = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            return try PairingCredentialRules.rotate(current, token: token, eventId: eventId, minimumRevision: minimumRevision)
         }
     }
 
@@ -144,31 +236,30 @@ final class AuthManager: @unchecked Sendable {
     /// what the incumbent serves, so a later handover in either direction costs
     /// no device its pairing and start order stops mattering.
     ///
-    /// The superseded token stays in the accepted list: boards provisioned under
-    /// it must keep working until they are re-armed.
+    /// Before retirement, the superseded token stays in the accepted list. A
+    /// newer retirement clears that ring and blocks older peer state.
     ///
     /// Returns true when the served token actually changed.
     @discardableResult
-    func adoptPeerToken(_ candidate: String?) -> Bool {
-        lock.lock()
-        guard let outcome = Self.adoption(of: candidate, current: currentToken, ring: acceptedTokens) else {
-            lock.unlock()
+    func adoptPeerToken(_ candidate: String?, retirement raw: Any? = nil) async throws -> Bool {
+        let metadata = try PairingCredentialRules.metadata(raw)
+        guard let candidate = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), candidate.count >= Self.tokenLength else {
+            if raw != nil { throw PairingCredentialRules.Failure.unavailable }
             return false
         }
-        currentToken = outcome.token
-        acceptedTokens = outcome.ring
-        lock.unlock()
-
-        Self.persist(token: outcome.token, accepted: outcome.ring)
-        DaemonLogger.shared.info("Adopted the incumbent daemon's pairing token; the previous one stays accepted")
-        return true
+        let before = credentials
+        let after = try await mutateCredentials { local in
+            try PairingCredentialRules.adopt(local, token: candidate, metadata: metadata.json)
+        }
+        return after != before
     }
 
     /// Pure decision core of `adoptPeerToken` — nil means "nothing to adopt".
     /// Split out so the ring semantics can be tested without touching the real
     /// credential on disk: `AuthManager.shared` is a singleton over the live
     /// token file, and a test that exercised it could un-pair the machine.
-    /// Mirrors `adoptPeerToken` in bridge/src/auth.ts.
+    /// Mirrors revision-zero legacy convergence only; production retirement
+    /// transitions use PairingCredentialRules and temporary-profile probes.
     nonisolated static func adoption(
         of candidate: String?, current: String, ring: [String], maxTokens: Int = maxAcceptedTokens
     ) -> (token: String, ring: [String])? {
@@ -303,17 +394,22 @@ final class AuthManager: @unchecked Sendable {
     }
 }
 
+private enum AuthTokenReadResult: Sendable {
+    case missing, unavailable, text(String)
+    var text: String? { if case .text(let value) = self { return value }; return nil }
+}
+
 private final class AuthTokenReadBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var value: String?
+    private var value: AuthTokenReadResult = .unavailable
 
-    func set(_ value: String) {
+    func set(_ value: AuthTokenReadResult) {
         lock.lock()
         self.value = value
         lock.unlock()
     }
 
-    func get() -> String? {
+    func get() -> AuthTokenReadResult {
         lock.lock()
         defer { lock.unlock() }
         return value

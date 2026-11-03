@@ -286,26 +286,35 @@ credential rules from #145/#149 already say "a known endpoint inherits the crede
 is paired with" — this is the missing selection half. **M** · ~2 days, firmware +
 `mdns-discover.ts` + the two mobile discovery paths.
 
-**Partially done 2026-08-17 — the Node half only.** `discoverDaemons` now
+**Node selection completed 2026-08-17; mobile selection rechecked 2026-11-03.** `discoverDaemons` now
 orders candidates by `sortDiscoveredDaemons`: an explicitly named host first,
 then a daemon whose TXT `user` tag matches this process's, then an identified
 daemon belonging to someone else, then one that predates the TXT keys. It is a
 preference, never a filter — attaching across users is a legitimate ask (it is
 what `--daemon-host` is for), so a daemon is only ever demoted, never dropped.
 
-**Still open, and these are the surfaces where the failure actually hurts:**
+**Selection source and remaining acceptance:**
 
-- **ESP32** (`esp32/src/net/mdns_discovery.cpp`) still takes the first service
-  whose TXT says `agent=daemon`. Two changes belong together there: prefer the
-  stored bridge endpoint when it appears among the discovered services, and
-  stop re-dialling an endpoint that closed us 4001 while other daemons were
-  discovered — retrying the one daemon that rejected us, forever, with nothing
-  on screen the user can act on, is the whole complaint. Costs an OTA cut and
-  hardware verification, so it is its own change.
-- **Apple / Android** discovery picks the first confirmed bridge. The
-  credential rules (`PairingCredential`) already say a known endpoint keeps its
-  credential; the missing half is preferring that endpoint during SELECTION.
-  The new `user` TXT key is what makes it decidable without dialling.
+- **ESP32** (`esp32/src/net/mdns_discovery.cpp`):
+  [PR #685](https://github.com/puritysb/AgentDeck/pull/685) supplies the source
+  correction for current-endpoint preference and ambiguous-list refusal.
+  Authentication-refusal recovery remains open: the pinned WebSockets client
+  discards incoming close codes before the disconnect callback. An ordinary
+  disconnect cannot safely trigger credential fallback to a different host.
+  Physical reconnect/radio checks and firmware delivery remain tracked in #674;
+  a source PR is not an OTA or installed-device receipt.
+- **Apple / Android — completed in current source (2026-11-03 audit).**
+  Apple `PairingCredential.preferredURL` selects the saved/manual endpoint;
+  Android `AutoConnectRules.pickDaemon` receives `selectedUrl ?: pairedUrl` and
+  matches that endpoint. Without a selected endpoint, both refuse an ambiguous
+  multi-daemon list instead of choosing its first entry. The discovery windows
+  collect peers before an unknown single endpoint is chosen. Credential
+  retention and endpoint selection are both implemented; remaining firmware
+  recovery and delivery work is tracked above. Source and regression
+  references: `apple/AgentDeck/State/AgentStateHolder.swift`,
+  `apple/AgentDeckTests/PairingCredentialTests.swift`,
+  `android/app/src/main/kotlin/dev/agentdeck/net/BridgeAutoConnect.kt` and
+  `android/app/src/test/kotlin/dev/agentdeck/net/AutoConnectRulesTest.kt`.
 
 ### 2.3 P1 — UDP beacons multiply
 
@@ -323,8 +332,12 @@ Two things make this worse than it looks:
   has no `BroadcastModule.swift`). The two daemons already disagree; codifying "off by
   default" costs nothing in parity.
 
-**Fix**: default the broadcast module **off**, opt in via settings for the fork's users;
-and back the interval off when no client has ever been seen. **S** · ~0.5 day.
+**Implemented default:** the broadcast module is off unless Node settings explicitly
+contain `"udpDiscoveryEnabled": true`. mDNS remains the standard discovery path;
+`--local` and `--loopback` override this opt-in. Restart the daemon after changing
+this setting. The Swift daemon still emits no UDP beacon. When explicitly enabled,
+the existing 2-second compatibility interval remains; there is no receiver/ack
+signal in this protocol from which to infer whether an external client is using it.
 
 ### 2.4 P2 — every ESP32 board claims one `.local` hostname
 
@@ -541,7 +554,7 @@ nothing.
 | 2 | UID check on `/shutdown`, `/stand-down`, `/pair/*`, and the Swift reclaim decision (§1.3) | M | 2d | **done on the calling side** (08-17) — every path where our code acts on another daemon, including the daemon's own port-window sweep, which used to shut down every colleague's macOS app. Receiving side is not UID-checkable over TCP (§1.2) |
 | 3 | Daemon port-scan fallback must not attach to another UID's daemon (§1.4) | S | 1d | **done** (08-17) — `findDaemonPortAsync` skips foreign ports, keeps sweeping, and names what it refused |
 | 4 | Unique mDNS instance name per host+user, both daemons (§2.1) | M | 2d | **done** (08-17) — `shared/src/mdns-identity.ts` SSOT + generated Swift mirror; `host`/`user` TXT keys added, `v` stays `3` |
-| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** (08-17) — Node `sortDiscoveredDaemons` ranks by identity; **ESP32 and the two mobile discovery paths are still first-seen** |
+| 5 | Clients prefer their paired endpoint over first-seen (§2.2) | M | 2d | **partial** — Node ranks by identity; Apple/Android saved-endpoint preference and ambiguity refusal are implemented. ESP32 selection correction is in #685; refusal recovery and firmware acceptance/delivery remain open in #674. |
 
 **P1 — the enterprise off switch.**
 
@@ -551,7 +564,7 @@ nothing.
 | 7 | `--local` record derived from the module registry; fixes the `idotmatrix` leak (§4.1) | S | 0.5d | **done** — `allModulesOff()`; the leak was also in the *default* session record, not only `--local` |
 | 8 | `daemon start/install --enterprise`, persisted into the autostart unit (§4.2) | M | 1.5d | **done** — argv-baked into all three writers; `daemon restart` inherits via `/health` |
 | 9 | Pixoo auto-discovery default off, cloud call opt-in separately (§5) | S | 1d | **done** — default off (Node + Swift); `pixoo scan --no-cloud` splits the two disclosures |
-| 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **superseded** — off under `--local`/`--loopback`; a global default-off still open (§2.3) |
+| 10 | UDP broadcast default off; back off when unused (§2.3) | S | 0.5d | **default-off implemented** — explicit `udpDiscoveryEnabled: true` opt-in; restricted postures still override it (§2.3) |
 | 11 | Configurable port window + persistent CLI daemon port (§1.5) | S | 1d | **done** (08-17) — `--port-window`; `agentdeck daemon port` persists `daemonPort`; a kernel-held preferred port is waited out (20s) instead of conceding forever; exhaustion message separates own from foreign ports |
 | 12 | Swift-side enterprise posture toggle in Settings (§3) | M | 2d | **done** (08-17) — Settings → Local server toggles → `DaemonPosture` (loopback bind, Bonjour skipped, module registration gated deny-by-default); posture rides Swift `/health` for `qr`/`pair`/`restart` parity |
 
@@ -618,3 +631,37 @@ Rough totals: **P0 ≈ 9 days**, **P1 ≈ 7.5 days**, **P2 ≈ 2.5 days**.
    broadcast module can be deleted rather than defaulted off.
 3. **What is the enterprise actually deploying — the CLI, the App Store app, or both?**
    The Swift work (items 12, and half of 2 and 4) is only needed for the app.
+
+
+### ADB reverse collision policy
+
+Node startup and polling inspect `adb reverse --list` before creating Android
+`tcp:9120`. An exact target is reused; a different target or unreadable listing is
+left unchanged with a warning. A missing entry is created using
+[`--no-rebind`](https://android.googlesource.com/platform/packages/modules/adb/+/882334464c178849d2322711424d2836d4593fe4/client/commandline.cpp),
+so an intervening writer cannot be overwritten. ADB exposes endpoints rather than
+OS-user ownership, so the warning says another daemon or user *may* own it.
+
+Shutdown leaves mappings intact: ADB has no conditional compare-and-remove, and a
+probe followed by removal could delete another user's replacement. A later daemon
+on the same port can reuse the tunnel. A port change can leave a stale conflicting
+tunnel that needs an explicit operator decision after checking its owner; automatic
+startup/polling never clears it. Tests use a fake ADB process interface and do not
+query or alter connected devices.
+
+### ESP32 mDNS source correction
+
+Firmware now names its responder `agentdeck-display-<full factory MAC>` using a
+32-byte stack buffer. Candidate selection matches the current provisioned endpoint
+when available; if that endpoint is absent, it does not move the credential to
+another host. With no selected endpoint, it accepts one distinct daemon (or one
+legacy bridge), deduplicates identical advertisements and refuses ambiguous lists.
+A recent discovery result is never replayed after the preferred endpoint changes.
+Re-provision explicitly when a selected host's address changes. Boards whose older
+storage never saved an endpoint still need an explicit provision to establish one.
+
+This does not complete refusal recovery or hardware delivery. The pinned Arduino
+WebSockets client discards the received close code before its disconnect callback;
+ordinary TCP loss cannot safely be labelled an authentication refusal. No automatic
+credential fallback to another discovered host is introduced. Reconnect, radio
+parking and OTA acceptance remain physical checks before a firmware release.

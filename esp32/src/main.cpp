@@ -110,6 +110,8 @@ static void networkTask(void* param) {
     Net::BridgeInfo bridge;
     char currentBridgeIp[16] = {0};  // IP we're currently trying to connect to
     uint16_t currentBridgePort = 0;
+    char pairedBridgeIp[16] = {};
+    uint16_t pairedBridgePort = 0;
     uint32_t lastMdnsRefreshMs = 0;
 
 #if defined(BOARD_T_DISPLAY_PRO)
@@ -238,7 +240,13 @@ static void networkTask(void* param) {
         // Keep WS available even when USB serial is attached. Serial remains
         // the primary state transport, but WiFi OTA needs an addressable WS
         // socket while boards are still on the bench.
-        if (!Net::wifiRadioParked() && Net::wifiConnected() && !Net::wsConnected() && !Net::wsConnecting() && Net::mdnsPoll(bridge)) {
+        if (!Net::wsConnected() && !Net::wsConnecting()) {
+            lockState();
+            snprintf(pairedBridgeIp, sizeof(pairedBridgeIp), "%s", g_state.bridgeIp);
+            pairedBridgePort = g_state.bridgePort;
+            unlockState();
+        }
+        if (!Net::wifiRadioParked() && Net::wifiConnected() && !Net::wsConnected() && !Net::wsConnecting() && Net::mdnsPoll(bridge, pairedBridgeIp, pairedBridgePort)) {
             bool ipChanged = (strcmp(currentBridgeIp, bridge.ip) != 0) || (currentBridgePort != bridge.port);
             if (ipChanged || !Net::wsConnected()) {
                 // Discovery answers WHERE the daemon is, never WHAT the token is.
@@ -263,14 +271,10 @@ static void networkTask(void* param) {
                     Serial.printf("[Net] Bridge (re)discovered via mDNS: %s:%d\n", bridge.ip, bridge.port);
                     strncpy(currentBridgeIp, bridge.ip, sizeof(currentBridgeIp) - 1);
                     currentBridgePort = bridge.port;
-                    // Self-heal the persisted endpoint: 67934f94 saved the bridge
-                    // IP to NVS but never refreshed it, so a board whose daemon
-                    // moved (DHCP drift, host IP change) reloads the STALE saved
-                    // IP on every reboot and loops on "connection reset by peer".
-                    // Persisting the freshly-discovered endpoint here lets the
-                    // board recover across reboots. No-op on non-IPS10 boards.
-                    // The token passed here is the retained one, so an endpoint
-                    // self-heal can never cost the board its credential.
+                    // Persist the selected endpoint where the board supports
+                    // it. Selection above never moves an existing preference
+                    // to another host; address changes require re-provisioning.
+                    // The retained token is never cleared by tokenless mDNS.
                     Net::wifiSaveProvisionedBridge(bridge.ip, bridge.port, authToken);
                     // New endpoint: tear down old WS so wsConnect rebinds cleanly
                     if (Net::wsConnected()) Net::wsDisconnect();

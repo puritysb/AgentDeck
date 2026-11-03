@@ -38,7 +38,16 @@ function decodeText(value: string): string {
   }
   return (out + (escaped ? '\\' : '')).trim();
 }
+function resolvedZone(zone: string | undefined): string | undefined {
+  return zone === undefined ? undefined : (P.windowsZones as Record<string, string>)[zone] ?? zone;
+}
+function supportedZone(zone: string): boolean {
+  const mapped = resolvedZone(zone)!;
+  if (!/^(UTC|GMT|[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)+)$/.test(mapped)) return false;
+  try { formatter(mapped); return true; } catch { return false; }
+}
 function instant(value: string, zone?: string): Instant | undefined {
+  zone = resolvedZone(zone);
   const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(value);
   if (!m || (zone && (m[7] || !m[4] || !/^(UTC|GMT|[A-Za-z_+-]+(?:\/[A-Za-z0-9_+-]+)+)$/.test(zone)))) return;
   const civil = m.slice(1, 7).map(x => Number(x ?? 0));
@@ -69,9 +78,15 @@ export function parseIcsInstant(value: string): { date: string; hm?: string } | 
   const c = t.zone ? parts(resolve(t, defaultZone())!, defaultZone()) : t.civil;
   return { date: date(c), ...(t.dateOnly ? {} : { hm: hm(c) }) };
 }
-export function parseIcsEvents(text: string, namespace = ''): IcsEvent[] {
+export type CalendarSkipReason = typeof P.skipReasons[number];
+export type CalendarSkipped = Record<CalendarSkipReason, number>;
+export const emptyCalendarSkipped = (): CalendarSkipped => Object.fromEntries(P.skipReasons.map(reason => [reason, 0])) as CalendarSkipped;
+export interface ParsedCalendar { events: IcsEvent[]; skippedByReason: CalendarSkipped; skippedEvents: number }
+export function parseIcsEvents(text: string, namespace = ''): IcsEvent[] { return parseIcsCalendar(text, namespace).events; }
+export function parseIcsCalendar(text: string, namespace = ''): ParsedCalendar {
   const lines = unfoldIcsLines(text);
   if (lines[0] !== 'BEGIN:VCALENDAR' || lines.at(-1) !== 'END:VCALENDAR') throw new Error('invalid_calendar');
+  const skippedByReason = emptyCalendarSkipped(); let skippedEvents = 0;
   const out: IcsEvent[] = []; let props: Array<[string, string, string | undefined]> | undefined; let depth = 0;
   for (const line of lines) {
     if (line === 'BEGIN:VEVENT') { if (props) throw new Error('invalid_calendar'); props = []; depth = 1; continue; }
@@ -86,30 +101,36 @@ export function parseIcsEvents(text: string, namespace = ''): IcsEvent[] {
       const summary = decodeText(one('SUMMARY')?.[1] ?? '');
       const cancelled = one('STATUS')?.[1] === 'CANCELLED';
       const ruleRaw = one('RRULE')?.[1];
-      const rule: Record<string, string> | undefined = ruleRaw ? Object.fromEntries(ruleRaw.split(';').map(s => s.split('='))) : undefined;
+      const rule: Record<string, string> | undefined = ruleRaw !== undefined ? Object.fromEntries(ruleRaw.split(';').map(s => s.split('='))) : undefined;
       const allowed = !rule || (ruleRaw!.split(';').every(s => /^[A-Z]+=[^=;]+$/.test(s)) && ruleRaw!.split(';').length === Object.keys(rule).length &&
         !(rule.FREQ === 'WEEKLY' && rule.BYMONTHDAY) && !(rule.FREQ === 'YEARLY' && (rule.BYDAY || rule.BYMONTHDAY)) && Object.keys(rule).every(k => (P.ruleKeys as readonly string[]).includes(k)) &&
-        (P.frequencies as readonly string[]).includes(rule.FREQ) && (!rule.WKST || rule.WKST === 'MO') &&
+        (P.frequencies as readonly string[]).includes(rule.FREQ) && (!rule.WKST || (P.weekdays as readonly string[]).includes(rule.WKST)) &&
         ['INTERVAL', 'COUNT'].every(k => !rule[k] || /^[1-9]\d{0,5}$/.test(rule[k])) &&
         (!rule.COUNT || !rule.UNTIL) && (!rule.UNTIL || instant(rule.UNTIL)) &&
         (!rule.BYDAY || rule.BYDAY.split(',').every(d => /^([+-]?[1-5])?(SU|MO|TU|WE|TH|FR|SA)$/.test(d))) &&
         (!(rule.FREQ === 'DAILY' || rule.FREQ === 'WEEKLY') || !rule.BYDAY || rule.BYDAY.split(',').every(d => /^[A-Z]{2}$/.test(d))) &&
         (!rule.BYMONTHDAY || rule.BYMONTHDAY.split(',').every(d => /^-?([1-9]|[12]\d|3[01])$/.test(d))));
+      const setPositionAllowed = !rule?.BYSETPOS || (rule.FREQ === 'MONTHLY' && !!(rule.BYDAY || rule.BYMONTHDAY) &&
+        rule.BYSETPOS.split(',').every(v => /^-?[1-9]\d?$/.test(v) && Math.abs(Number(v)) <= P.maxSetPosition));
       const end = stamp('DTEND');
       const exclusions: Instant[] = []; let validExclusions = true;
       for (const p of get('EXDATE')) for (const value of p[1].split(',')) {
         const t = instant(value, p[2]); if (t) exclusions.push(t); else validExclusions = false;
       }
       if (depth === 1 && start && ['UID','SUMMARY','DTSTART','DTEND','RRULE','RECURRENCE-ID','STATUS'].every(n => get(n).length <= 1) &&
-          (!get('DTSTART').length || stamp('DTSTART')) && (!recurrence || !!one('UID')?.[1]) && (summary || cancelled) && allowed && validExclusions &&
+          (!get('DTSTART').length || stamp('DTSTART')) && (!recurrence || !!one('UID')?.[1]) && (summary || cancelled) && allowed && setPositionAllowed && validExclusions &&
           !get('RDATE').length && !get('DURATION').length && !get('EXRULE').length &&
           (!get('DTEND').length || end) && (!get('RECURRENCE-ID').length || recurrence) &&
           !props.some(p => p[0] === 'UNSUPPORTED')) {
         out.push({ uid: namespace + '\u0000' + (one('UID')?.[1] ?? ''), summary, start, end, rule, exclusions, recurrence, cancelled,
           startDate: date(start.civil), ...(start.dateOnly ? {} : { startHm: hm(start.civil) }),
           ...(end ? { endDate: date(end.civil), ...(end.dateOnly ? {} : { endHm: hm(end.civil) }) } : {}) });
-        if (out.length > P.maxEvents) throw new Error('calendar_limit');
+      } else {
+        const reason: CalendarSkipReason = props.some(p => p[2] !== undefined && !supportedZone(p[2])) ? 'unsupported_zone'
+          : !allowed || !setPositionAllowed || ['RDATE', 'DURATION', 'EXRULE', 'UNSUPPORTED'].some(n => get(n).length > 0) ? 'unsupported_rule' : 'invalid_event';
+        skippedByReason[reason]++; skippedEvents++;
       }
+      if (out.length + skippedEvents > P.maxEvents) throw new Error('calendar_limit');
       props = undefined; continue;
     }
     if (depth !== 1) continue;
@@ -120,9 +141,9 @@ export function parseIcsEvents(text: string, namespace = ''): IcsEvent[] {
     props.push([name, line.slice(colon + 1).trim(), zone]);
   }
   if (props) throw new Error('invalid_calendar');
-  return out;
+  return { events: out, skippedByReason, skippedEvents };
 }
-function matches(e: IcsEvent, c: Civil, offset: number): boolean {
+function matches(e: IcsEvent, c: Civil, offset: number, applySetPosition = true): boolean {
   const r = e.rule!, start = e.start.civil, interval = Number(r.INTERVAL ?? 1), wd = new Date(day(c)).getUTCDay();
   const monthDays = new Date(Date.UTC(c[0], c[1], 0)).getUTCDate();
   const byDay = !r.BYDAY || r.BYDAY.split(',').some(v => {
@@ -131,9 +152,17 @@ function matches(e: IcsEvent, c: Civil, offset: number): boolean {
   });
   const byMonthDay = !r.BYMONTHDAY || r.BYMONTHDAY.split(',').some(v => c[2] === (Number(v) > 0 ? Number(v) : monthDays + Number(v) + 1));
   if (!byDay || !byMonthDay) return false;
+  if (applySetPosition && r.BYSETPOS) {
+    const candidates: number[] = [];
+    for (let d = 1; d <= monthDays; d++) {
+      const other = [...c]; other[2] = d;
+      if (matches(e, other, offset + d - c[2], false)) candidates.push(d);
+    }
+    if (!r.BYSETPOS.split(',').some(v => candidates[Number(v) > 0 ? Number(v) - 1 : candidates.length + Number(v)] === c[2])) return false;
+  }
   switch (r.FREQ) {
     case 'DAILY': return offset % interval === 0;
-    case 'WEEKLY': return Math.floor((offset + (new Date(day(start)).getUTCDay() + 6) % 7) / 7) % interval === 0 && (r.BYDAY ? true : wd === new Date(day(start)).getUTCDay());
+    case 'WEEKLY': return Math.floor((offset + (new Date(day(start)).getUTCDay() - (P.weekdays as readonly string[]).indexOf(r.WKST ?? P.defaultWeekStart) + P.weekdays.length) % P.weekdays.length) / 7) % interval === 0 && (r.BYDAY ? true : wd === new Date(day(start)).getUTCDay());
     case 'MONTHLY': return ((c[0] - start[0]) * 12 + c[1] - start[1]) % interval === 0 && (r.BYDAY || r.BYMONTHDAY ? true : c[2] === start[2]);
     case 'YEARLY': return (c[0] - start[0]) % interval === 0 && c[1] === start[1] && (r.BYDAY || r.BYMONTHDAY ? true : c[2] === start[2]);
     default: return false;

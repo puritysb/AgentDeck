@@ -64,6 +64,8 @@ struct DevicePairingWindow: View {
                 cameraSection
                 Divider().opacity(0.25)
                 codeSection
+                Divider().opacity(0.25)
+                PairingRotationSettings(port: port)
 
                 HStack {
                     Spacer()

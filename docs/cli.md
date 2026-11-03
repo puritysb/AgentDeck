@@ -251,7 +251,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck devices` | Connected devices (WS, ESP32, Pixoo, Timebox, ADB) |
 | `agentdeck qr` | Pairing QR code + URL |
 | `agentdeck pair` | Pair a device with a one-time code — no camera, no cable (`-t <seconds>`, `-n <devices>`) |
-| `agentdeck token [show\|rotate]` | Print the pairing token, or rotate it after a leak (all paired clients then re-pair; restart the daemon afterwards) |
+| `agentdeck token [show\|rotate]` | Print the local profile token, or rotate the confirmed active daemon and re-pair its clients; no restart required. Offline/older daemons remain unconfirmed; see [rotation scope](daemon.md#lan-security-model-issue-145) |
 | `agentdeck diag` | Daemon diagnostic dump (`-a` for AI analysis) |
 | `agentdeck diag agents [--json]` | Privacy-safe version, compatibility and registration-file evidence for normal Claude/Codex/OpenCode launches; activation and event reception are explicitly unverified; no daemon or paid probe required |
 | `agentdeck hermes-observer [--home <profile>] [--port <port> \| --registry]` | Install/update the opt-in observer, select a loopback receiver if needed, and print setup readiness; Hermes enablement/restart remain explicit |
@@ -259,7 +259,7 @@ Enterprise and shared-network posture](daemon.md#enterprise-and-shared-network-p
 | `agentdeck diag connection [--json] [-p <port>]` | Read-only registry, PID, HTTP health and WebSocket ping/pong checks; allowlisted report excludes tokens, paths and session content |
 | `agentdeck diag kiro [--json]` | Privacy-safe Kiro passive-observation diagnostic; no daemon required |
 | `agentdeck diag native [--json]` | Open an in-memory APME database under the current Node executable and report its version, ABI, native-binding status, and recovery; no daemon required |
-| `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
+| `agentdeck inject-test` | Exercise observed-answer injection against one host, for tuning (`--tty <ttysNNN> --pid <agent-pid>` or `--app <Name>`; `--label <text>`, `-i <n>`, `--text <text>`) |
 
 ### Weather context
 
@@ -330,8 +330,12 @@ widen the LAN boundary.
 
 `inject-test` reproduces what the daemon does when a device answers an
 observed session's prompt: it drives the host's own UI rather than the bridge.
-Terminal hosts are addressed by controlling tty (find one with
-`ps -eo pid=,tty=,command= | grep -E ' claude| codex'`), GUI hosts by app name,
+Terminal hosts are addressed by controlling tty and agent PID (find both with
+`ps -eo pid=,tty=,command= | grep -E ' claude| codex'`): pass
+`--tty <ttysNNN> --pid <agent-pid>`. The PID identifies the cmux surface or,
+for iTerm2 and Terminal.app, the owning app through process ancestry. Without
+a verified host, AppleScript is skipped; tmux can still match by tty alone.
+GUI hosts are addressed by app name,
 where `--label` presses the button carrying that text before falling back to
 key events. `--text` types and submits a line instead of picking an option,
 which is the path dictation uses. Node daemon only — the App Store app spawns

@@ -34,7 +34,8 @@
     "UNTIL",
     "BYDAY",
     "BYMONTHDAY",
-    "WKST"
+    "WKST",
+    "BYSETPOS"
   ],
   "weekdays": [
     "SU",
@@ -44,5 +45,12 @@
     "TH",
     "FR",
     "SA"
+  ],
+  "maxSetPosition": 31,
+  "defaultWeekStart": "MO",
+  "skipReasons": [
+    "unsupported_zone",
+    "unsupported_rule",
+    "invalid_event"
   ]
 }

@@ -1,3 +1,4 @@
+import { BroadcastModule } from '../modules/broadcast-module.js';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -100,4 +101,12 @@ describe('LAN discovery credential boundary (issue #145)', () => {
     const source = readFileSync(fileURLToPath(new URL('../index.ts', import.meta.url)), 'utf8');
     expect(source).toMatch(/mdns:\s*false,\s*\n\s*broadcast:\s*false,/);
   });
+});
+
+
+it('requires explicit legacy UDP module opt-in, including absent/auto config', async () => {
+  const module = new BroadcastModule('daemon');
+  expect(await module.shouldActivate('auto')).toBe(false);
+  expect(await module.shouldActivate(false)).toBe(false);
+  expect(await module.shouldActivate(true)).toBe(true);
 });

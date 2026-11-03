@@ -31,6 +31,7 @@ export interface IncumbentHealth {
    *  on a daemon older than the field). See daemon-build-identity.ts. */
   build?: string;
   pairingToken?: string;
+  pairingRetirement?: unknown;
 }
 
 /**
@@ -46,7 +47,7 @@ export interface TakeoverDeps {
   ownership?: (pid: number | null | undefined) => LocalPeerOwnership;
   log?: (msg: string) => void;
   /** Returns true when the served token actually changed. */
-  adoptToken: (token: unknown) => boolean;
+  adoptToken: (token: unknown, retirement?: unknown) => boolean;
   standDown: (port: number) => Promise<boolean>;
   shutdown: (port: number) => Promise<void>;
   waitForExit: (port: number, timeoutMs: number) => Promise<boolean>;
@@ -144,7 +145,7 @@ export async function negotiateIncumbentDaemon(
   // this loopback answer is the only place we can learn what every paired
   // board is currently holding. Adopting it BEFORE the stand-down means the
   // handover costs no device its pairing.
-  if (deps.adoptToken(incumbent.pairingToken)) {
+  if (deps.adoptToken(incumbent.pairingToken, incumbent.pairingRetirement)) {
     log(`Adopted the incumbent daemon's pairing token so paired devices survive the handover.`);
   }
 
