@@ -83,6 +83,16 @@ final class BridgeConnectionDeliveryTests: XCTestCase {
         XCTAssertEqual(connection.status, .disconnected)
     }
 
+    func testConcurrentConnectAndDisconnectDoNotInvalidateSessionDuringTaskCreation() {
+        let connection = BridgeConnection()
+        DispatchQueue.concurrentPerform(iterations: 100) { _ in
+            connection.connect(to: "ws://127.0.0.1:9")
+            connection.disconnect()
+        }
+        connection.disconnect()
+        connection.prepareForTermination()
+    }
+
     private static func rosterFrame(sessionID: String) -> String {
         """
         {"type":"sessions_list","sessions":[{"id":"\(sessionID)","port":9120,"projectName":"Project","alive":true,"state":"awaiting_option"}]}

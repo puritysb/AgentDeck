@@ -3,12 +3,6 @@
 //
 //   let aDBridgeEvent = try ADBridgeEvent(json)
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 import Foundation
 
 /// Bridge → clients — fires when a run completes evaluation (layer 1 or 2).
@@ -30,7 +24,7 @@ import Foundation
 /// Focus Strip (`auto` = portrait with a camera shield, else landscape). `landscape` is the
 /// legacy bool other LCD boards read.
 // MARK: - ADBridgeEvent
-struct ADBridgeEvent: Codable, Equatable {
+struct ADBridgeEvent: Codable {
     var agentCapabilities: ADAgentCapabilities?
     var agentType: ADAgentType?
     /// Local Antigravity IDE quota summary, when available
@@ -581,14 +575,8 @@ extension ADBridgeEvent {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADAgentCapabilities
-struct ADAgentCapabilities: Codable, Equatable {
+struct ADAgentCapabilities: Codable {
     var displayName: String
     /// OAuth-based API usage tracking
     var hasApiUsage: Bool
@@ -675,7 +663,7 @@ extension ADAgentCapabilities {
     }
 }
 
-enum ADAgentType: String, Codable, Equatable {
+enum ADAgentType: String, Codable {
     case antigravity = "antigravity"
     case claudeCode = "claude-code"
     case codexApp = "codex-app"
@@ -688,15 +676,9 @@ enum ADAgentType: String, Codable, Equatable {
     case opencode = "opencode"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Local Antigravity IDE quota summary, when available
 // MARK: - ADAntigravityStatusInfo
-struct ADAntigravityStatusInfo: Codable, Equatable {
+struct ADAntigravityStatusInfo: Codable {
     var availableCredits: Double?
     var minimumCreditAmountForUsage: Double?
     var planName: String?
@@ -751,20 +733,14 @@ extension ADAntigravityStatusInfo {
     }
 }
 
-enum ADBillingType: String, Codable, Equatable {
+enum ADBillingType: String, Codable {
     case api = "api"
     case subscription = "subscription"
     case unknown = "unknown"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADDeckSlotConfig
-struct ADDeckSlotConfig: Codable, Equatable {
+struct ADDeckSlotConfig: Codable {
     var actionType: String?
     var settings: [String: JSONAny]?
     var slot: Double
@@ -851,14 +827,8 @@ extension ADDeckSlotConfig {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADApmeRecommendation
-struct ADApmeRecommendation: Codable, Equatable {
+struct ADApmeRecommendation: Codable {
     var agentType: ADAgentType
     var confidence: Double
     /// Explicit null when the model has no trustworthy price source.
@@ -927,18 +897,12 @@ extension ADApmeRecommendation {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Codex usage limits parsed from local rollout files. `primary` is the short (5h-style)
 /// window, `secondary` the long (weekly) window — same idea as the Claude 5h/7d gauges.
 /// Credit-based plans report `primary`/`secondary` as null and convey usage via `credits` +
 /// `limitId` instead.
 // MARK: - ADCodexRateLimits
-struct ADCodexRateLimits: Codable, Equatable {
+struct ADCodexRateLimits: Codable {
     /// ISO-8601 instant this snapshot was WRITTEN by Codex (the rate-limit line's own timestamp,
     /// falling back to the rollout file's mtime).
     ///
@@ -1019,19 +983,13 @@ extension ADCodexRateLimits {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Credit balance for credit-based plans (present when windows are null).
 ///
 /// Codex credits balance, the metering Codex reports for credit-based plans (e.g. `limit_id:
 /// "premium"`) where the rolling 5h/7d windows are null. Mirrors the rollout's
 /// `rate_limits.credits` block.
 // MARK: - ADCodexCredits
-struct ADCodexCredits: Codable, Equatable {
+struct ADCodexCredits: Codable {
     /// Remaining balance — Codex reports this as a string (e.g. "0").
     var balance: String?
     /// Whether the plan has any credit allowance configured.
@@ -1085,17 +1043,11 @@ extension ADCodexCredits {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Additional Luna-only pool, separate from the account 5h/7d windows.
 ///
 /// Luna-only reserve window returned as an additional Codex rate-limit pool.
 // MARK: - ADCodexLunaReserve
-struct ADCodexLunaReserve: Codable, Equatable {
+struct ADCodexLunaReserve: Codable {
     /// Whether the reserve is currently usable.
     var available: Bool?
     /// When the regular advanced-model allowance becomes available again.
@@ -1154,17 +1106,11 @@ extension ADCodexLunaReserve {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// One Codex (ChatGPT) rate-limit window, mirroring the Claude 5h/7d shape. Sourced from the
 /// user's own local Codex session rollout files — Codex CLI writes these snapshots itself,
 /// so this is local-file data, not an API call.
 // MARK: - ADCodexRateLimitWindow
-struct ADCodexRateLimitWindow: Codable, Equatable {
+struct ADCodexRateLimitWindow: Codable {
     /// ISO-8601 reset instant (converted from the rollout's unix `resets_at`).
     var resetsAt: String?
     /// True when this window's snapshot has expired (its `resets_at` slid into the past with no
@@ -1230,7 +1176,7 @@ extension ADCodexRateLimitWindow {
     }
 }
 
-enum ADVoiceDeliveryStatus: String, Codable, Equatable {
+enum ADVoiceDeliveryStatus: String, Codable {
     case delivered = "delivered"
     case denied = "denied"
     case dropped = "dropped"
@@ -1241,12 +1187,6 @@ enum ADVoiceDeliveryStatus: String, Codable, Equatable {
     case unavailable = "unavailable"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// How to dim on sleep. Absent ⇒ legacy full-off.
 ///
 /// Per-broadcast instruction telling downstream devices HOW to dim when the host display
@@ -1254,7 +1194,7 @@ enum ADVoiceDeliveryStatus: String, Codable, Equatable {
 /// in every `display_state` event so that Pixoo / D200H / ESP32 dumb-apply a single
 /// consistent snapshot. Absent ⇒ legacy behavior (full-off when displayOn=false).
 // MARK: - ADDisplayDimInstruction
-struct ADDisplayDimInstruction: Codable, Equatable {
+struct ADDisplayDimInstruction: Codable {
     /// Master toggle. false ⇒ leave devices at their normal brightness.
     var enabled: Bool
     /// Minimum-brightness percent (1-100). Ignored when mode='off'.
@@ -1327,20 +1267,14 @@ extension ADDisplayDimInstruction {
 /// by value alone. Where a floor makes brightness unable to express dark — the iDotMatrix
 /// firmware accepts 5-100, and there is no screen-off command — 'off' means pushing black
 /// pixels, not the lowest brightness.
-enum ADMode: String, Codable, Equatable {
+enum ADMode: String, Codable {
     case min = "min"
     case off = "off"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Separate integration presence; never a coding session or authority to execute.
 // MARK: - ADDotDeckSnapshot
-struct ADDotDeckSnapshot: Codable, Equatable {
+struct ADDotDeckSnapshot: Codable {
     var appearance: ADDotAppearance?
     /// Active scoped MCP grant, not proof of Dot identity or global activity. Absent means
     /// unknown.
@@ -1421,14 +1355,8 @@ extension ADDotDeckSnapshot {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADDotAppearance
-struct ADDotAppearance: Codable, Equatable {
+struct ADDotAppearance: Codable {
     var id: String
     /// Canonical static PNG, authored by the importing host; optional on compact transport.
     var png: String?
@@ -1485,14 +1413,8 @@ extension ADDotAppearance {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADDotSurfaceRelation
-struct ADDotSurfaceRelation: Codable, Equatable {
+struct ADDotSurfaceRelation: Codable {
     var direction: String
     var evidence: ADDotSurfaceRelationEvidence
     var kind: String
@@ -1555,18 +1477,12 @@ extension ADDotSurfaceRelation {
     }
 }
 
-enum ADDotSurfaceRelationEvidence: String, Codable, Equatable {
+enum ADDotSurfaceRelationEvidence: String, Codable {
     case dotReport = "dot_report"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADEncoderSlotState
-struct ADEncoderSlotState: Codable, Equatable {
+struct ADEncoderSlotState: Codable {
     var accentColor: String?
     var counter: String?
     var detail: String?
@@ -1661,14 +1577,14 @@ extension ADEncoderSlotState {
     }
 }
 
-enum ADEncoderType: String, Codable, Equatable {
+enum ADEncoderType: String, Codable {
     case action = "action"
     case usage = "usage"
     case utility = "utility"
     case voice = "voice"
 }
 
-enum ADVoiceState: String, Codable, Equatable {
+enum ADVoiceState: String, Codable {
     case error = "error"
     case idle = "idle"
     case recording = "recording"
@@ -1676,14 +1592,8 @@ enum ADVoiceState: String, Codable, Equatable {
     case transcribing = "transcribing"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADTimelineEntry
-struct ADTimelineEntry: Codable, Equatable {
+struct ADTimelineEntry: Codable {
     var agentType: String?
     var approvalId: String?
     var automated: Bool?
@@ -1865,7 +1775,7 @@ extension ADTimelineEntry {
 /// approvals on 2026-08-23 closed as `run cancelled`, waits of 75s–402s, while the deck was
 /// showing a question nobody could read). The reason itself rides `raw` ("Not approved · run
 /// cancelled"); this field is what a renderer branches on.
-enum ADEntryStatus: String, Codable, Equatable {
+enum ADEntryStatus: String, Codable {
     case abandoned = "abandoned"
     case approved = "approved"
     case denied = "denied"
@@ -1879,7 +1789,7 @@ enum ADEntryStatus: String, Codable, Equatable {
 /// topic-hint extracted from response or prompt   - `'none'`    : last-resort fallback
 /// (literal "Completed", bare tool name, etc.)   - `'progress'`: non-terminal assistant
 /// status update (work still running)
-enum ADSummaryKind: String, Codable, Equatable {
+enum ADSummaryKind: String, Codable {
     case heuristic = "heuristic"
     case llm = "llm"
     case none = "none"
@@ -1888,7 +1798,7 @@ enum ADSummaryKind: String, Codable, Equatable {
 
 /// Shared timeline types and log parser for OpenClaw mode. Used by both bridge
 /// (BridgeLogStream) and plugin (LogStream).
-enum ADTimelineEntryType: String, Codable, Equatable {
+enum ADTimelineEntryType: String, Codable {
     case chatEnd = "chat_end"
     case chatResponse = "chat_response"
     case chatStart = "chat_start"
@@ -1908,7 +1818,7 @@ enum ADTimelineEntryType: String, Codable, Equatable {
 }
 
 /// OpenClaw Gateway auth/pairing state
-enum ADGatewayAuthStatus: String, Codable, Equatable {
+enum ADGatewayAuthStatus: String, Codable {
     case approvalPending = "approval_pending"
     case authFailed = "auth_failed"
     case connected = "connected"
@@ -1921,23 +1831,17 @@ enum ADGatewayAuthStatus: String, Codable, Equatable {
     case unsupportedProtocol = "unsupported_protocol"
 }
 
-enum ADLayout: String, Codable, Equatable {
+enum ADLayout: String, Codable {
     case auto = "auto"
     case landscape = "landscape"
     case portrait = "portrait"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// A completed residency observation. Unknown is explicit; [] with known=true means none.
 ///
 /// Optional additive metadata; old producers cannot prove non-residency.
 // MARK: - ADModelResidency
-struct ADModelResidency: Codable, Equatable {
+struct ADModelResidency: Codable {
     var known: Bool
     var models: [String]
 
@@ -1984,14 +1888,8 @@ extension ADModelResidency {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADModelCatalogEntry
-struct ADModelCatalogEntry: Codable, Equatable {
+struct ADModelCatalogEntry: Codable {
     var available: Bool
     var key: String
     var name: String
@@ -2046,15 +1944,9 @@ extension ADModelCatalogEntry {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// Ollama process status + running models
 // MARK: - ADOllamaStatus
-struct ADOllamaStatus: Codable, Equatable {
+struct ADOllamaStatus: Codable {
     var available: Bool
     var installedModelsKnown: Bool?
     var models: [ADOllamaModel]
@@ -2110,14 +2002,8 @@ extension ADOllamaStatus {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADOllamaModel
-struct ADOllamaModel: Codable, Equatable {
+struct ADOllamaModel: Codable {
     var name: String
     var size: Double
     var sizeVram: Double
@@ -2168,14 +2054,8 @@ extension ADOllamaModel {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADPromptOption
-struct ADPromptOption: Codable, Equatable {
+struct ADPromptOption: Codable {
     var index: Double
     var kind: ADOptionKind?
     var label: String
@@ -2238,12 +2118,12 @@ extension ADPromptOption {
     }
 }
 
-enum ADOptionKind: String, Codable, Equatable {
+enum ADOptionKind: String, Codable {
     case choice = "choice"
     case freeformInput = "freeform_input"
 }
 
-enum ADPermissionMode: String, Codable, Equatable {
+enum ADPermissionMode: String, Codable {
     case acceptEdits = "acceptEdits"
     case bypassPermissions = "bypassPermissions"
     case dontAsk = "dontAsk"
@@ -2251,7 +2131,7 @@ enum ADPermissionMode: String, Codable, Equatable {
     case plan = "plan"
 }
 
-enum ADPromptType: String, Codable, Equatable {
+enum ADPromptType: String, Codable {
     case diffReview = "diff_review"
     case multiSelect = "multi_select"
     case yesNo = "yes_no"
@@ -2260,21 +2140,15 @@ enum ADPromptType: String, Codable, Equatable {
 
 /// Last review verdict (with reviewFindings) — devices render "risk: low · 2" on the REVIEW
 /// tile.
-enum ADRisk: String, Codable, Equatable {
+enum ADRisk: String, Codable {
     case high = "high"
     case low = "low"
     case medium = "medium"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// A run that has finished evaluation.
 // MARK: - ADApmeRunSummary
-struct ADApmeRunSummary: Codable, Equatable {
+struct ADApmeRunSummary: Codable {
     var agentType: ADAgentType
     var compositeScore: Double?
     var costUsd: Double?
@@ -2381,15 +2255,9 @@ extension ADApmeRunSummary {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// A single evaluation score on a completed run.
 // MARK: - ADApmeEvalRow
-struct ADApmeEvalRow: Codable, Equatable {
+struct ADApmeEvalRow: Codable {
     var createdAt: Double
     var judgeModel: String?
     var layer: ADLayer
@@ -2452,7 +2320,7 @@ extension ADApmeEvalRow {
     }
 }
 
-enum ADLayer: String, Codable, Equatable {
+enum ADLayer: String, Codable {
     case deterministic = "deterministic"
     case llmJudge = "llm_judge"
     case manualReview = "manual_review"
@@ -2462,7 +2330,7 @@ enum ADLayer: String, Codable, Equatable {
     case vibe = "vibe"
 }
 
-enum ADOutcome: String, Codable, Equatable {
+enum ADOutcome: String, Codable {
     case abLoser = "ab_loser"
     case abWinner = "ab_winner"
     case abandoned = "abandoned"
@@ -2473,18 +2341,12 @@ enum ADOutcome: String, Codable, Equatable {
     case pending = "pending"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// A per-model scoped usage limit (e.g. the Claude weekly cap for a specific model like
 /// "Fable"). These come from the usage API's `limits[]` array and are distinct from the
 /// account-wide 5h/7d windows: a scoped model can be the ACTIVE binding constraint (`active:
 /// true`) while the 5h/7d numbers still read low.
 // MARK: - ADScopedUsageLimit
-struct ADScopedUsageLimit: Codable, Equatable {
+struct ADScopedUsageLimit: Codable {
     /// True when this limit is the currently active/binding constraint.
     var active: Bool?
     /// Raw API kind, e.g. "weekly_scoped". Forwarded for display grouping.
@@ -2553,14 +2415,8 @@ extension ADScopedUsageLimit {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADApmeModelScorecard
-struct ADApmeModelScorecard: Codable, Equatable {
+struct ADApmeModelScorecard: Codable {
     var agentType: ADAgentType
     var avgOverall: Double?
     var avgTestsPass: Double?
@@ -2636,14 +2492,8 @@ extension ADApmeModelScorecard {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADOcSessionStatus
-struct ADOcSessionStatus: Codable, Equatable {
+struct ADOcSessionStatus: Codable {
     var contextTokens: Double?
     var messageCount: Double?
     var model: String?
@@ -2702,14 +2552,8 @@ extension ADOcSessionStatus {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADSessionInfo
-struct ADSessionInfo: Codable, Equatable {
+struct ADSessionInfo: Codable {
     /// Daemon-synthesized "what is this agent doing right now" one-liner — a shared source so
     /// glance surfaces (XTeink X3 rows, TRMNL list) render the same text.
     var activity: String?
@@ -2989,16 +2833,10 @@ extension ADSessionInfo {
     }
 }
 
-enum ADControlMode: String, Codable, Equatable {
+enum ADControlMode: String, Codable {
     case managed = "managed"
     case observed = "observed"
 }
-
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
 
 /// Cross-session coordination census — see CoordinationSummary. Same emission rule as
 /// `subagents`: present with zeros once observed, absent only when this session has never
@@ -3013,7 +2851,7 @@ enum ADControlMode: String, Codable, Equatable {
 /// membership. Emitted with explicit zeros once a session has ever had a relation
 /// (retain-on-absent clients would otherwise latch the last count).
 // MARK: - ADCoordinationSummary
-struct ADCoordinationSummary: Codable, Equatable {
+struct ADCoordinationSummary: Codable {
     /// Background processes started by this session still running (argv names its scratchpad).
     var backgroundJobs: Double
     /// Name of the most recent peer messaged with, if the evidence carried one.
@@ -3087,17 +2925,11 @@ extension ADCoordinationSummary {
 }
 
 /// On-demand review lifecycle for the REVIEW badge tile ('running' while the judge works).
-enum ADReviewStatus: String, Codable, Equatable {
+enum ADReviewStatus: String, Codable {
     case done = "done"
     case error = "error"
     case running = "running"
 }
-
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
 
 /// Live child-agent census — see SubagentSummary.
 ///
@@ -3122,7 +2954,7 @@ enum ADReviewStatus: String, Codable, Equatable {
 /// steerable, they would flood a deck sized for sessions, and a device pressing one has
 /// nothing to press it with.
 // MARK: - ADSubagentSummary
-struct ADSubagentSummary: Codable, Equatable {
+struct ADSubagentSummary: Codable {
     /// Children currently running (started, no stop seen).
     var active: Double
     /// Children finished in this wave (reset with `peak` when `active` hits 0).
@@ -3182,14 +3014,8 @@ extension ADSubagentSummary {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADCiWaitStatus
-struct ADCiWaitStatus: Codable, Equatable {
+struct ADCiWaitStatus: Codable {
     var agentWaiting: Bool
     var checks: ADChecks?
     var evidence: ADCiWaitStatusEvidence
@@ -3276,14 +3102,8 @@ extension ADCiWaitStatus {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADChecks
-struct ADChecks: Codable, Equatable {
+struct ADChecks: Codable {
     var failed: Double
     var passed: Double
     var pending: Double
@@ -3338,16 +3158,16 @@ extension ADChecks {
     }
 }
 
-enum ADCiWaitStatusEvidence: String, Codable, Equatable {
+enum ADCiWaitStatusEvidence: String, Codable {
     case github = "github"
     case toolInput = "tool_input"
 }
 
-enum ADCiWaitStatusKind: String, Codable, Equatable {
+enum ADCiWaitStatusKind: String, Codable {
     case ci = "ci"
 }
 
-enum ADPhase: String, Codable, Equatable {
+enum ADPhase: String, Codable {
     case failed = "failed"
     case passed = "passed"
     case queued = "queued"
@@ -3355,21 +3175,15 @@ enum ADPhase: String, Codable, Equatable {
     case unknown = "unknown"
 }
 
-enum ADProvider: String, Codable, Equatable {
+enum ADProvider: String, Codable {
     case githubActions = "github-actions"
 }
-
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
 
 /// A session setting the deck can switch, as the agent itself describes it (#463). Every
 /// value comes from the agent at request time — the deck never invents a level, a list or a
 /// default, so an agent update cannot drift away from it.
 // MARK: - ADSessionSetting
-struct ADSessionSetting: Codable, Equatable {
+struct ADSessionSetting: Codable {
     /// The value in effect now (an override or the inherited one).
     var current: String?
     /// The agent's own default for this session/model; absent when it gives none.
@@ -3431,20 +3245,14 @@ extension ADSessionSetting {
     }
 }
 
-enum ADKey: String, Codable, Equatable {
+enum ADKey: String, Codable {
     case effort = "effort"
     case model = "model"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// One value an agent offers for a session setting, in the agent's own words.
 // MARK: - ADSessionSettingOption
-struct ADSessionSettingOption: Codable, Equatable {
+struct ADSessionSettingOption: Codable {
     /// The id the agent accepts back (OpenClaw thinking id, `provider/model`).
     var id: String
     /// The agent's own display label when it gives one; render `id` otherwise.
@@ -3494,7 +3302,7 @@ extension ADSessionSettingOption {
 }
 
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)
-enum ADState: String, Codable, Equatable {
+enum ADState: String, Codable {
     case awaitingDiff = "awaiting_diff"
     case awaitingOption = "awaiting_option"
     case awaitingPermission = "awaiting_permission"
@@ -3509,7 +3317,7 @@ enum ADState: String, Codable, Equatable {
     case transcribing = "transcribing"
 }
 
-enum ADBridgeEventStatus: String, Codable, Equatable {
+enum ADBridgeEventStatus: String, Codable {
     case connected = "connected"
     case disconnected = "disconnected"
     case error = "error"
@@ -3517,14 +3325,8 @@ enum ADBridgeEventStatus: String, Codable, Equatable {
     case running = "running"
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 // MARK: - ADSubscriptionInfo
-struct ADSubscriptionInfo: Codable, Equatable {
+struct ADSubscriptionInfo: Codable {
     var name: String
     var until: String?
 
@@ -3571,14 +3373,14 @@ extension ADSubscriptionInfo {
     }
 }
 
-enum ADTokenStatus: String, Codable, Equatable {
+enum ADTokenStatus: String, Codable {
     case expired = "expired"
     case missing = "missing"
     case unknown = "unknown"
     case valid = "valid"
 }
 
-enum ADType: String, Codable, Equatable {
+enum ADType: String, Codable {
     case apmeEval = "apme_eval"
     case apmeRecommendation = "apme_recommendation"
     case apmeScorecard = "apme_scorecard"
@@ -3609,19 +3411,13 @@ enum ADType: String, Codable, Equatable {
 }
 
 /// Voice assistant pipeline state (wake word → STT → LLM → TTS)
-enum ADVoiceAssistantState: String, Codable, Equatable {
+enum ADVoiceAssistantState: String, Codable {
     case disabled = "disabled"
     case idle = "idle"
     case listening = "listening"
     case processing = "processing"
     case speaking = "speaking"
 }
-
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
 
 /// Z.ai (GLM Coding Plan) usage limits, fetched directly from the provider's monitor
 /// endpoint with the account's coding-plan key — an active account query like the Claude
@@ -3631,7 +3427,7 @@ enum ADVoiceAssistantState: String, Codable, Equatable {
 /// quota on the standard schema — `limitId` says which quantity the number belongs to, the
 /// same "which limit" axis Codex carries).
 // MARK: - ADZaiRateLimits
-struct ADZaiRateLimits: Codable, Equatable {
+struct ADZaiRateLimits: Codable {
     /// Explicit provider credential rejection; false clears a prior failure.
     var authFailed: Bool?
     /// ISO-8601 instant this reading was fetched. Consumers derive age from it against their own
@@ -3702,18 +3498,12 @@ extension ADZaiRateLimits {
     }
 }
 
-//
-// Hashable or Equatable:
-// The compiler will not be able to synthesize the implementation of Hashable or Equatable
-// for types that require the use of JSONAny, nor will the implementation of Hashable be
-// synthesized for types that have collections (such as arrays or dictionaries).
-
 /// A z.ai quota window — the shared window shape plus WHICH QUANTITY it meters:
 /// token/credits windows (`tokens`) or the MCP tool-call quota (`mcp`). They are different
 /// kinds of usage rendered side by side, and a surface must never present an MCP gauge as
 /// token usage (or vice versa); the label follows the quantity ("5h" vs "MCP").
 // MARK: - ADZaiWindow
-struct ADZaiWindow: Codable, Equatable {
+struct ADZaiWindow: Codable {
     var quantity: ADQuantity?
     /// ISO-8601 reset instant (converted from the rollout's unix `resets_at`).
     var resetsAt: String?
@@ -3783,7 +3573,7 @@ extension ADZaiWindow {
     }
 }
 
-enum ADQuantity: String, Codable, Equatable {
+enum ADQuantity: String, Codable {
     case mcp = "mcp"
     case tokens = "tokens"
 }
@@ -3811,25 +3601,26 @@ func newJSONEncoder() -> JSONEncoder {
 class JSONNull: Codable, Hashable {
 
     public static func == (lhs: JSONNull, rhs: JSONNull) -> Bool {
-            return true
+        return true
     }
 
+
     public func hash(into hasher: inout Hasher) {
-            hasher.combine(0)
+        // No-op
     }
 
     public init() {}
 
     public required init(from decoder: Decoder) throws {
-            let container = try decoder.singleValueContainer()
-            if !container.decodeNil() {
-                    throw DecodingError.typeMismatch(JSONNull.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for JSONNull"))
-            }
+        let container = try decoder.singleValueContainer()
+        if !container.decodeNil() {
+            throw DecodingError.typeMismatch(JSONNull.self, DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Wrong type for JSONNull"))
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
-            var container = encoder.singleValueContainer()
-            try container.encodeNil()
+        var container = encoder.singleValueContainer()
+        try container.encodeNil()
     }
 }
 
@@ -3837,19 +3628,19 @@ final class JSONCodingKey: CodingKey {
     let key: String
 
     required init?(intValue: Int) {
-            return nil
+        return nil
     }
 
     required init?(stringValue: String) {
-            key = stringValue
+        key = stringValue
     }
 
     var intValue: Int? {
-            return nil
+        return nil
     }
 
     var stringValue: String {
-            return key
+        return key
     }
 }
 
@@ -3858,192 +3649,192 @@ class JSONAny: Codable {
     let value: Any
 
     static func decodingError(forCodingPath codingPath: [CodingKey]) -> DecodingError {
-            let context = DecodingError.Context(codingPath: codingPath, debugDescription: "Cannot decode JSONAny")
-            return DecodingError.typeMismatch(JSONAny.self, context)
+        let context = DecodingError.Context(codingPath: codingPath, debugDescription: "Cannot decode JSONAny")
+        return DecodingError.typeMismatch(JSONAny.self, context)
     }
 
     static func encodingError(forValue value: Any, codingPath: [CodingKey]) -> EncodingError {
-            let context = EncodingError.Context(codingPath: codingPath, debugDescription: "Cannot encode JSONAny")
-            return EncodingError.invalidValue(value, context)
+        let context = EncodingError.Context(codingPath: codingPath, debugDescription: "Cannot encode JSONAny")
+        return EncodingError.invalidValue(value, context)
     }
 
     static func decode(from container: SingleValueDecodingContainer) throws -> Any {
-            if let value = try? container.decode(Bool.self) {
-                    return value
-            }
-            if let value = try? container.decode(Int64.self) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self) {
-                    return value
-            }
-            if let value = try? container.decode(String.self) {
-                    return value
-            }
-            if container.decodeNil() {
-                    return JSONNull()
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        if let value = try? container.decode(Bool.self) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self) {
+            return value
+        }
+        if let value = try? container.decode(Double.self) {
+            return value
+        }
+        if let value = try? container.decode(String.self) {
+            return value
+        }
+        if container.decodeNil() {
+            return JSONNull()
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decode(from container: inout UnkeyedDecodingContainer) throws -> Any {
-            if let value = try? container.decode(Bool.self) {
-                    return value
+        if let value = try? container.decode(Bool.self) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self) {
+            return value
+        }
+        if let value = try? container.decode(Double.self) {
+            return value
+        }
+        if let value = try? container.decode(String.self) {
+            return value
+        }
+        if let value = try? container.decodeNil() {
+            if value {
+                return JSONNull()
             }
-            if let value = try? container.decode(Int64.self) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self) {
-                    return value
-            }
-            if let value = try? container.decode(String.self) {
-                    return value
-            }
-            if let value = try? container.decodeNil() {
-                    if value {
-                            return JSONNull()
-                    }
-            }
-            if var container = try? container.nestedUnkeyedContainer() {
-                    return try decodeArray(from: &container)
-            }
-            if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self) {
-                    return try decodeDictionary(from: &container)
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        }
+        if var container = try? container.nestedUnkeyedContainer() {
+            return try decodeArray(from: &container)
+        }
+        if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self) {
+            return try decodeDictionary(from: &container)
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decode(from container: inout KeyedDecodingContainer<JSONCodingKey>, forKey key: JSONCodingKey) throws -> Any {
-            if let value = try? container.decode(Bool.self, forKey: key) {
-                    return value
+        if let value = try? container.decode(Bool.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(Int64.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decode(String.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeNil(forKey: key) {
+            if value {
+                return JSONNull()
             }
-            if let value = try? container.decode(Int64.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decode(Double.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decode(String.self, forKey: key) {
-                    return value
-            }
-            if let value = try? container.decodeNil(forKey: key) {
-                    if value {
-                            return JSONNull()
-                    }
-            }
-            if var container = try? container.nestedUnkeyedContainer(forKey: key) {
-                    return try decodeArray(from: &container)
-            }
-            if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key) {
-                    return try decodeDictionary(from: &container)
-            }
-            throw decodingError(forCodingPath: container.codingPath)
+        }
+        if var container = try? container.nestedUnkeyedContainer(forKey: key) {
+            return try decodeArray(from: &container)
+        }
+        if var container = try? container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key) {
+            return try decodeDictionary(from: &container)
+        }
+        throw decodingError(forCodingPath: container.codingPath)
     }
 
     static func decodeArray(from container: inout UnkeyedDecodingContainer) throws -> [Any] {
-            var arr: [Any] = []
-            while !container.isAtEnd {
-                    let value = try decode(from: &container)
-                    arr.append(value)
-            }
-            return arr
+        var arr: [Any] = []
+        while !container.isAtEnd {
+            let value = try decode(from: &container)
+            arr.append(value)
+        }
+        return arr
     }
 
     static func decodeDictionary(from container: inout KeyedDecodingContainer<JSONCodingKey>) throws -> [String: Any] {
-            var dict = [String: Any]()
-            for key in container.allKeys {
-                    let value = try decode(from: &container, forKey: key)
-                    dict[key.stringValue] = value
-            }
-            return dict
+        var dict = [String: Any]()
+        for key in container.allKeys {
+            let value = try decode(from: &container, forKey: key)
+            dict[key.stringValue] = value
+        }
+        return dict
     }
 
     static func encode(to container: inout UnkeyedEncodingContainer, array: [Any]) throws {
-            for value in array {
-                    if let value = value as? Bool {
-                            try container.encode(value)
-                    } else if let value = value as? Int64 {
-                            try container.encode(value)
-                    } else if let value = value as? Double {
-                            try container.encode(value)
-                    } else if let value = value as? String {
-                            try container.encode(value)
-                    } else if value is JSONNull {
-                            try container.encodeNil()
-                    } else if let value = value as? [Any] {
-                            var container = container.nestedUnkeyedContainer()
-                            try encode(to: &container, array: value)
-                    } else if let value = value as? [String: Any] {
-                            var container = container.nestedContainer(keyedBy: JSONCodingKey.self)
-                            try encode(to: &container, dictionary: value)
-                    } else {
-                            throw encodingError(forValue: value, codingPath: container.codingPath)
-                    }
+        for value in array {
+            if let value = value as? Bool {
+                try container.encode(value)
+            } else if let value = value as? Int64 {
+                try container.encode(value)
+            } else if let value = value as? Double {
+                try container.encode(value)
+            } else if let value = value as? String {
+                try container.encode(value)
+            } else if value is JSONNull {
+                try container.encodeNil()
+            } else if let value = value as? [Any] {
+                var container = container.nestedUnkeyedContainer()
+                try encode(to: &container, array: value)
+            } else if let value = value as? [String: Any] {
+                var container = container.nestedContainer(keyedBy: JSONCodingKey.self)
+                try encode(to: &container, dictionary: value)
+            } else {
+                throw encodingError(forValue: value, codingPath: container.codingPath)
             }
+        }
     }
 
     static func encode(to container: inout KeyedEncodingContainer<JSONCodingKey>, dictionary: [String: Any]) throws {
-            for (key, value) in dictionary {
-                    let key = JSONCodingKey(stringValue: key)!
-                    if let value = value as? Bool {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? Int64 {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? Double {
-                            try container.encode(value, forKey: key)
-                    } else if let value = value as? String {
-                            try container.encode(value, forKey: key)
-                    } else if value is JSONNull {
-                            try container.encodeNil(forKey: key)
-                    } else if let value = value as? [Any] {
-                            var container = container.nestedUnkeyedContainer(forKey: key)
-                            try encode(to: &container, array: value)
-                    } else if let value = value as? [String: Any] {
-                            var container = container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key)
-                            try encode(to: &container, dictionary: value)
-                    } else {
-                            throw encodingError(forValue: value, codingPath: container.codingPath)
-                    }
+        for (key, value) in dictionary {
+            let key = JSONCodingKey(stringValue: key)!
+            if let value = value as? Bool {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? Int64 {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? Double {
+                try container.encode(value, forKey: key)
+            } else if let value = value as? String {
+                try container.encode(value, forKey: key)
+            } else if value is JSONNull {
+                try container.encodeNil(forKey: key)
+            } else if let value = value as? [Any] {
+                var container = container.nestedUnkeyedContainer(forKey: key)
+                try encode(to: &container, array: value)
+            } else if let value = value as? [String: Any] {
+                var container = container.nestedContainer(keyedBy: JSONCodingKey.self, forKey: key)
+                try encode(to: &container, dictionary: value)
+            } else {
+                throw encodingError(forValue: value, codingPath: container.codingPath)
             }
+        }
     }
 
     static func encode(to container: inout SingleValueEncodingContainer, value: Any) throws {
-            if let value = value as? Bool {
-                    try container.encode(value)
-            } else if let value = value as? Int64 {
-                    try container.encode(value)
-            } else if let value = value as? Double {
-                    try container.encode(value)
-            } else if let value = value as? String {
-                    try container.encode(value)
-            } else if value is JSONNull {
-                    try container.encodeNil()
-            } else {
-                    throw encodingError(forValue: value, codingPath: container.codingPath)
-            }
+        if let value = value as? Bool {
+            try container.encode(value)
+        } else if let value = value as? Int64 {
+            try container.encode(value)
+        } else if let value = value as? Double {
+            try container.encode(value)
+        } else if let value = value as? String {
+            try container.encode(value)
+        } else if value is JSONNull {
+            try container.encodeNil()
+        } else {
+            throw encodingError(forValue: value, codingPath: container.codingPath)
+        }
     }
 
     public required init(from decoder: Decoder) throws {
-            if var arrayContainer = try? decoder.unkeyedContainer() {
-                    self.value = try JSONAny.decodeArray(from: &arrayContainer)
-            } else if var container = try? decoder.container(keyedBy: JSONCodingKey.self) {
-                    self.value = try JSONAny.decodeDictionary(from: &container)
-            } else {
-                    let container = try decoder.singleValueContainer()
-                    self.value = try JSONAny.decode(from: container)
-            }
+        if var arrayContainer = try? decoder.unkeyedContainer() {
+            self.value = try JSONAny.decodeArray(from: &arrayContainer)
+        } else if var container = try? decoder.container(keyedBy: JSONCodingKey.self) {
+            self.value = try JSONAny.decodeDictionary(from: &container)
+        } else {
+            let container = try decoder.singleValueContainer()
+            self.value = try JSONAny.decode(from: container)
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
-            if let arr = self.value as? [Any] {
-                    var container = encoder.unkeyedContainer()
-                    try JSONAny.encode(to: &container, array: arr)
-            } else if let dict = self.value as? [String: Any] {
-                    var container = encoder.container(keyedBy: JSONCodingKey.self)
-                    try JSONAny.encode(to: &container, dictionary: dict)
-            } else {
-                    var container = encoder.singleValueContainer()
-                    try JSONAny.encode(to: &container, value: self.value)
-            }
+        if let arr = self.value as? [Any] {
+            var container = encoder.unkeyedContainer()
+            try JSONAny.encode(to: &container, array: arr)
+        } else if let dict = self.value as? [String: Any] {
+            var container = encoder.container(keyedBy: JSONCodingKey.self)
+            try JSONAny.encode(to: &container, dictionary: dict)
+        } else {
+            var container = encoder.singleValueContainer()
+            try JSONAny.encode(to: &container, value: self.value)
+        }
     }
 }

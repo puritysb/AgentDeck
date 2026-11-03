@@ -5,14 +5,38 @@
  * integration-only — they require a real Windows host and mutate the Task
  * Scheduler — and are exercised manually per docs/daemon.md, not here.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   TASK_NAME,
   xmlEscape,
   buildScheduledTaskXml,
   getDaemonNodeTarget,
+  installWindowsTask,
 } from '../windows-service.js';
 import { isAbsolute } from 'path';
+import { existsSync, readFileSync } from 'node:fs';
+const command = vi.hoisted(() => vi.fn());
+vi.mock('child_process', async (original) => ({ ...await original<typeof import('child_process')>(), execFileSync: command }));
+
+describe('scheduled task registration', () => {
+  afterEach(() => command.mockReset());
+  it('passes a private UTF-16 XML file as one argument and cleans it afterwards', () => {
+    let path = '';
+    command.mockImplementation((file, args, options) => {
+      expect(file).toBe('schtasks.exe');
+      expect(args.slice(0, 4)).toEqual(['/Create', '/TN', TASK_NAME, '/XML']);
+      path = args[4];
+      const xml = readFileSync(path);
+      expect([...xml.subarray(0, 2)]).toEqual([0xff, 0xfe]);
+      expect(xml.toString('utf16le')).toContain('<Task');
+      expect(options).toMatchObject({ windowsHide: true, timeout: 15_000 });
+      return Buffer.alloc(0);
+    });
+    installWindowsTask();
+    expect(command).toHaveBeenCalledOnce();
+    expect(existsSync(path)).toBe(false);
+  });
+});
 
 describe('getDaemonNodeTarget', () => {
   // The task must not depend on PATH: @agentdeck/setup may have installed the

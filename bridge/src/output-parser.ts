@@ -120,7 +120,7 @@ function isUiChrome(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   return (
-    /^Tip:|Did you know/i.test(t) ||
+    /^(?:Tip:|Did you know)/i.test(t) ||
     /ctrl[\+\-]|shift[\+\-]|⌘|⌥|⌃/i.test(t) ||
     /^\(\d+[mhs]/i.test(t) ||
     /\(thought\s+for\s/i.test(t) ||
@@ -313,7 +313,7 @@ export class OutputParser extends EventEmitter {
 
     // Filter out UI chrome fragments (defense-in-depth, also filtered at segment level)
     if (/^[?]$|^esc\b|^shift\b|^ctrl\b|^enter\b|for\s+shortcuts/i.test(text)) return;
-    if (/^Tip:|Did you know/i.test(text)) return;
+    if (/^(?:Tip:|Did you know)/i.test(text)) return;
     if (/ctrl[\+\-]|shift[\+\-]/i.test(text)) return;
     if (/^\(\d+[mhs]/i.test(text)) return;
     if (/\(thought\s+for\s/i.test(text)) return;

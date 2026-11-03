@@ -20,7 +20,8 @@
  * roll past midnight (memory: cross-day rollout selection).
  */
 
-import { readdirSync, readFileSync, openSync, readSync, closeSync, fstatSync } from 'fs';
+import { readdirSync } from 'fs';
+import { readBoundedRegularFile } from './private-files.js';
 import { homedir } from 'os';
 import { join } from 'path';
 import { debug } from './logger.js';
@@ -122,26 +123,8 @@ export async function codexRolloutIsSubagent(sessionId: string, sessionsRoot?: s
   return undefined;
 }
 
-function readTail(path: string, maxBytes: number, allowFallback = true): string {
-  try {
-    const fd = openSync(path, 'r');
-    try {
-      const size = fstatSync(fd).size;
-      const len = Math.min(size, maxBytes);
-      const buf = Buffer.alloc(len);
-      readSync(fd, buf, 0, len, size - len);
-      return buf.toString('utf-8');
-    } finally {
-      closeSync(fd);
-    }
-  } catch {
-    if (!allowFallback) return '';
-    try {
-      return readFileSync(path, 'utf-8').slice(-maxBytes);
-    } catch {
-      return '';
-    }
-  }
+function readTail(path: string, maxBytes: number): string {
+  return readBoundedRegularFile(path, maxBytes, true)?.toString('utf8') ?? '';
 }
 
 /**

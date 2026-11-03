@@ -1996,6 +1996,15 @@ describe('OutputParser', () => {
   // === UI Chrome False Positive Filtering ===
 
   describe('ghost text UI chrome filtering', () => {
+    it('retains a suggestion that mentions a tip label inside real content', () => {
+      const p = armParser();
+      const events = collectEvents(p, 'suggested_prompt');
+      p.feed('❯ \x1b[90mExplain the Did you know feature\x1b[0m');
+      vi.advanceTimersByTime(600);
+      expect(events).toHaveLength(1);
+      expect(events[0].text).toBe('Explain the Did you know feature');
+    });
+
     it('filters out "Tip:" segments on prompt line', () => {
       const p = armParser();
       const events = collectEvents(p, 'suggested_prompt');
