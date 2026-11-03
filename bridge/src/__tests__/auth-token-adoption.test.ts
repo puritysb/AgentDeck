@@ -13,11 +13,18 @@ import { mkdtempSync, mkdirSync, rmSync, readFileSync, writeFileSync, existsSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+const fixturePaths = vi.hoisted(() => ({ legacyHome: '' }));
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>();
+  return { ...actual, homedir: () => fixturePaths.legacyHome };
+});
+
 const TOKEN_A = 'a'.repeat(32);
 const TOKEN_B = 'b'.repeat(32);
 const TOKEN_C = 'c'.repeat(32);
 
 let dir: string;
+let fixtureRoot: string;
 let auth: typeof import('../auth.js');
 
 /** Fresh module instance — the token cache is keyed by data dir, but a fresh
@@ -28,15 +35,21 @@ async function loadAuth(): Promise<typeof import('../auth.js')> {
 }
 
 beforeEach(async () => {
-  dir = mkdtempSync(join(tmpdir(), 'agentdeck-auth-'));
-  process.env.AGENTDECK_DATA_DIR = dir;
+  fixtureRoot = mkdtempSync(join(tmpdir(), 'agentdeck-auth-'));
+  dir = join(fixtureRoot, 'data');
+  fixturePaths.legacyHome = join(fixtureRoot, 'home');
+  mkdirSync(dir);
+  mkdirSync(fixturePaths.legacyHome);
+  // A custom data directory may intentionally inherit legacy credentials.
+  // Isolate that source too, so tests never read the operator's pairing state.
+  vi.stubEnv('AGENTDECK_DATA_DIR', dir);
   auth = await loadAuth();
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
-  delete process.env.AGENTDECK_DATA_DIR;
-  rmSync(dir, { recursive: true, force: true });
+  vi.unstubAllEnvs();
+  rmSync(fixtureRoot, { recursive: true, force: true });
 });
 
 describe('adoptPeerToken', () => {
@@ -138,8 +151,8 @@ describe('data-dir resolution', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'agentdeck-home-'));
     mkdirSync(join(fakeHome, '.agentdeck'), { recursive: true });
     writeFileSync(join(fakeHome, '.agentdeck', 'auth-token'), TOKEN_A + '\n');
-    const realHome = process.env.HOME;
-    process.env.HOME = fakeHome;
+    const originalFixtureHome = fixturePaths.legacyHome;
+    fixturePaths.legacyHome = fakeHome;
     try {
       const mod = await loadAuth();
       expect(mod.getOrCreateToken()).toBe(TOKEN_A);
@@ -159,8 +172,7 @@ describe('data-dir resolution', () => {
       corrected.rotateToken();
       expect(corrected.getPairingRetirement().revision).toBe(4);
     } finally {
-      if (realHome === undefined) delete process.env.HOME;
-      else process.env.HOME = realHome;
+      fixturePaths.legacyHome = originalFixtureHome;
       rmSync(fakeHome, { recursive: true, force: true });
     }
   });

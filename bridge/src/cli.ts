@@ -1521,7 +1521,7 @@ daemon
     // both same-user-only operations, and the whole decision — including who
     // owns that process — lives in `negotiateIncumbentDaemon` so it can be
     // driven in tests against a foreign-owned incumbent.
-    const { negotiateIncumbentDaemon } = await import('./daemon-takeover.js');
+    const { negotiateIncumbentDaemon, isForeignDaemon } = await import('./daemon-takeover.js');
     const { capturePeerActivity } = await import('./apme/activity-history.js');
     const { capturePeerTimeline } = await import('./daemon-timeline-handover.js');
     const incumbent = await probeDaemonHealth(targetPort);
@@ -1532,6 +1532,7 @@ daemon
         portWasExplicit: !!opts.port,
         localBuild,
         replaceStaleBuild: opts.upgrade !== false,
+        deferSwiftHandover: !opts.foreground,
       },
       {
         adoptToken: adoptPeerToken,
@@ -1560,10 +1561,15 @@ daemon
       forget: () => void,
       what: string,
     ): Promise<void> => {
+      // The canonical peer was already considered above. Its listener can
+      // still answer while standing down; capturing it again would reject the
+      // handover after the first successful capture. This pass is for peers
+      // found on a different registry/fallback port.
+      if (probePort === targetPort) return;
       const health = await probeDaemonHealth(probePort);
       if (health?.mode === 'daemon') {
         const decision = await negotiateIncumbentDaemon(
-          { port: probePort, incumbent: health, portWasExplicit: false, localBuild, replaceStaleBuild: opts.upgrade !== false },
+          { port: probePort, incumbent: health, portWasExplicit: false, localBuild, replaceStaleBuild: opts.upgrade !== false, deferSwiftHandover: !opts.foreground },
           {
             adoptToken: adoptPeerToken,
             standDown: requestDaemonStandDown,
@@ -1576,6 +1582,9 @@ daemon
         );
         if (decision === 'already-running') process.exit(0);
         if (decision === 'refuse') process.exit(1);
+        // Preserve the live peer's registry for the foreground worker. Only
+        // that worker may capture its timeline and ask it to stand down.
+        if (decision === 'deferred-to-foreground') return;
         // 'proceed' — it stood down or was replaced; its registry row is dead.
         forget();
         return;
@@ -1683,8 +1692,27 @@ daemon
         stdio: ['ignore', out, err],
         windowsHide: true,
       });
+      let childAlive = true;
+      child.once('exit', () => { childAlive = false; });
       child.unref();
-      log(`Daemon started (PID ${child.pid}, build ${localBuild ?? 'unknown'})`);
+      const verdict = await waitForRestartedDaemon({
+        spawnedPid: child.pid,
+        preferredPort: preferredPort.port,
+        probeHealth: async port => {
+          const health = await probeDaemonHealth(port);
+          return health && isForeignDaemon(health) ? null : health;
+        },
+        readDaemonInfo, findDaemonPort,
+        expectedBuild: localBuild,
+        isChildAlive: () => childAlive,
+        onStillWaiting: () => log('Still starting — waiting for a daemon to bind.'),
+      });
+      if (!verdict.ok) {
+        reportDaemonWaitFailure(verdict, 'start');
+        process.exit(1);
+      }
+      log(`Daemon started (PID ${verdict.daemon.pid}, build ${verdict.daemon.build ?? 'unknown'})`
+        + `${verdict.daemon.port === preferredPort.port ? '' : ` on port ${verdict.daemon.port}`}.`);
       process.exit(0);
     }
 

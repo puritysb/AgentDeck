@@ -121,22 +121,20 @@ final class ApmeCredentialProfileTests: XCTestCase {
         }
     }
 
+    #if os(macOS)
     func testHostedProviderReadsOnlyExplicitFixtureAndIgnoresInheritedEnvironmentKey() throws {
         try fixture { _, url in
             let hosted = ["XCTestBundlePath": "synthetic-test-host", "ANTHROPIC_API_KEY": "inherited-key"]
             XCTAssertNil(ApmeSettings.resolvedSettingsPath(environment: hosted))
             XCTAssertNil(ApmeSettings.load(environment: hosted).judge.apiKey)
-            #if os(macOS)
             XCTAssertNil(ApmeJudgeApi.loadApiKey(environment: hosted))
-            #endif
             var explicit = hosted
             explicit["AGENTDECK_DATA_DIR"] = url.deletingLastPathComponent().path
             XCTAssertEqual(ApmeSettings.load(environment: explicit).judge.apiKey, "legacy-file")
-            #if os(macOS)
             XCTAssertEqual(ApmeJudgeApi.loadApiKey(environment: explicit), "legacy-file")
-            #endif
         }
     }
+    #endif
 
     func testMalformedProfileIsPreservedOnMigrationFailure() throws {
         try fixture { defaults, url in

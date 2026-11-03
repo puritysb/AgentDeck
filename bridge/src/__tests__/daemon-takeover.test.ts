@@ -46,6 +46,29 @@ const MINE = () => 'same-user' as const;
 const UNPROVEN = () => 'unknown' as const;
 
 describe('negotiateIncumbentDaemon', () => {
+  it('keeps Swift fully live for the foreground worker and captures its timeline only there', async () => {
+    let live = true;
+    const captureTimeline = vi.fn(async () => live);
+    const { calls, deps } = spies({
+      captureTimeline,
+      standDown: vi.fn(async () => { calls.push('stand-down'); live = false; return true; }),
+    });
+    const args = { port: 9120, incumbent: { mode: 'daemon', pid: 42, isSwift: true, pairingToken: 'a'.repeat(32) }, portWasExplicit: false };
+    expect(await negotiateIncumbentDaemon({ ...args, deferSwiftHandover: true }, { ...deps, ownership: MINE })).toBe('deferred-to-foreground');
+    expect(calls).toEqual([]);
+    expect(captureTimeline).not.toHaveBeenCalled();
+    expect(live).toBe(true);
+    expect(await negotiateIncumbentDaemon(args, { ...deps, ownership: MINE })).toBe('proceed');
+    expect(captureTimeline).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['adopt', 'stand-down']);
+  });
+
+  it('still refuses a foreign explicit owner before deferring a background handover', async () => {
+    const { calls, deps } = spies();
+    expect(await negotiateIncumbentDaemon({ port: 9120, incumbent: { mode: 'daemon', pid: 42, isSwift: true }, portWasExplicit: true, deferSwiftHandover: true }, { ...deps, ownership: FOREIGN })).toBe('refuse');
+    expect(calls).toEqual([]);
+  });
+
   it('takes neither the token nor the port from another user\'s daemon', async () => {
     const { calls, deps } = spies({
       captureActivity: vi.fn(async () => { calls.push('activity'); return true; }),

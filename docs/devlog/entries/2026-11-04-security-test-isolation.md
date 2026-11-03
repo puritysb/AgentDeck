@@ -60,3 +60,21 @@ loopback HTTP access. The permitted rerun passed product checks but selected
 system Bash 3 for design lint; rerunning that gate with `/opt/homebrew/bin`
 first passed. Changed verification then ran sequentially with that PATH.
 These environment failures are not counted as successful runs.
+
+The hosted iOS Release job later passed its app build, then failed while compiling
+the Debug test bundle: the shared credential test called macOS-only
+`ApmeSettings`. The provider fixture is now compiled only on macOS, while
+the eight shared storage/migration cases remain available to iOS. This was a
+test-target boundary defect that the earlier product-only iOS build could not
+prove absent. The final integration includes master `d835ab9d` and explicitly
+runs `xcodebuild build-for-testing` for the iOS Debug test bundle in addition
+to the catalogued native matrix. The earlier cancelled hosted Preview job
+remains cancelled evidence, not a successful check.
+
+The integrated rerun passed 7,574 Vitest cases (42 skips), Android 581
+cases, macOS Debug 1,528 cases (five skips) and optimized Preview 1,545
+cases (12 skips), all with zero failures. Universal macOS Release, both
+iOS app configurations and the iOS Debug `build-for-testing` succeeded.
+The changed-area catalog did not select untouched CloudKit/submission
+gates. Required docs/catalog/devlog checks also passed; these checks do not
+establish real Keychain or installed-device acceptance.
