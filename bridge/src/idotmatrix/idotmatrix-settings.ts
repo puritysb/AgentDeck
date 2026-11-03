@@ -1,11 +1,11 @@
 /**
- * iDotMatrix device settings CRUD — reads/writes idotmatrixDevices[] in ~/.agentdeck/settings.json.
+ * iDotMatrix device settings CRUD — reads/writes idotmatrixDevices[] in the active AgentDeck data directory.
  * Preserves all other settings in the file.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { getDataDir } from '../session-registry.js';
 
 export interface IDotMatrixDevice {
   address: string;
@@ -13,21 +13,20 @@ export interface IDotMatrixDevice {
   brightness?: number; // 5-100
 }
 
-const SETTINGS_DIR = join(homedir(), '.agentdeck');
-const SETTINGS_PATH = join(SETTINGS_DIR, 'settings.json');
+const getSettingsPath = () => join(getDataDir(), 'settings.json');
 
 function readSettings(): Record<string, unknown> {
   try {
-    if (!existsSync(SETTINGS_PATH)) return {};
-    return JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    if (!existsSync(getSettingsPath())) return {};
+    return JSON.parse(readFileSync(getSettingsPath(), 'utf-8'));
   } catch {
     return {};
   }
 }
 
 function writeSettings(settings: Record<string, unknown>): void {
-  mkdirSync(SETTINGS_DIR, { recursive: true });
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  mkdirSync(getDataDir(), { recursive: true });
+  writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2) + '\n');
 }
 
 export function loadIDotMatrixDevices(): IDotMatrixDevice[] {
@@ -42,7 +41,7 @@ export function loadIDotMatrixDevices(): IDotMatrixDevice[] {
  * must not, because settings.json is rewritten in place and a read can land
  * mid-write.
  */
-export function readIDotMatrixDevicesStrict(settingsPath = SETTINGS_PATH): IDotMatrixDevice[] | null {
+export function readIDotMatrixDevicesStrict(settingsPath = getSettingsPath()): IDotMatrixDevice[] | null {
   try {
     if (!existsSync(settingsPath)) return [];
     const settings: unknown = JSON.parse(readFileSync(settingsPath, 'utf-8'));
