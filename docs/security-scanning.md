@@ -379,7 +379,7 @@ The completed macOS full analysis then added #312/#313, both evaluating a fixed,
 Pixoo bundle script. Production never accepts a peer-provided
 script; bounded JSON is passed as function arguments without source interpolation.
 The injected-source seam belongs to a standalone test fixture. These two reviewed
-findings remain open too, bringing the exact manual proposal to **188 IDs**.
+findings remain open too, bringing the proposal at that checkpoint to **188 IDs**.
 All eight full master categories completed successfully in run 41642410793;
 completion and zero findings are different assertions.
 
@@ -414,3 +414,9 @@ HOME fixtures remain supported for legacy migration scenarios. This prevents
 an empty test data directory from importing a real legacy credential state;
 the fixture also verifies authoritative retirement inheritance. This is a
 module/fixture boundary, not a disposable OS sandbox for every subprocess.
+
+The dated proposal files preserve their observed master commit. Before approving
+manual closures, compare the exact still-open set with the latest master results
+in [#713](https://github.com/puritysb/AgentDeck/issues/713). Automatically fixed
+fingerprints leave that approval set; historical fixed/dismissed/open counts keep
+their original analysis scope and capture time.
