@@ -35,9 +35,48 @@ private final class Memory: @unchecked Sendable {
         } else {
             let hub = DaemonRelayHub(instanceId:"swift-hub"), listener = WebSocketServer(), http = HTTPServer()
             hub.onChange = { emit(["event":"roster","sessions":hub.rows()]) }
+            await http.setCredentialGeneration { AuthManager.shared.credentialGeneration }
             await http.get("/health") { _ in .json(["status":"ok","mode":"daemon","daemonRelay":true,"authRequired":true]) }
+            if mode == "generation" {
+                await http.get("/slow-secret") { _ in
+                    emit(["event": "slow-started"])
+                    try? await Task.sleep(for: .milliseconds(500))
+                    return .json(["token": AuthManager.shared.token])
+                }
+                await http.post("/advance") { _ in
+                    do {
+                        let state = try await AuthManager.shared.rotate(minimumRevision: 0)
+                        emit(["event": "advanced", "revision": state.revision])
+                        var response = HTTPServer.HTTPResponse.json(["advanced": true])
+                        response.permitsCredentialChange = true
+                        return response
+                    } catch { return .json(["error": true], status: 409) }
+                }
+                await http.post("/publish") { _ in
+                    await listener.broadcastRaw(Data(AuthManager.shared.token.utf8))
+                    return .json(["published": true])
+                }
+                await http.post("/approve") { _ in
+                    PairingKnockStore.shared.approve(key: "device:" + String(repeating: "a", count: 32), credentialGeneration: HTTPRequestContext.credentialGeneration)
+                    return .json(["approved": true])
+                }
+                await http.get("/approval") { _ in
+                    .json(["approved": PairingKnockStore.shared.isApproved(ip: "192.0.2.1", deviceId: String(repeating: "a", count: 32), credentialGeneration: AuthManager.shared.credentialGeneration)])
+                }
+            }
+            if mode == "retirement" {
+                await http.stream("/held-stream") { _, connection in
+                    connection.send(Data("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ready\n\n".utf8)) { _ in }
+                }
+                await http.post("/retire-sockets") { _ in
+                    var response = HTTPServer.HTTPResponse.json(["retired": true])
+                    response.afterSend = { Task { await listener.reauthenticateClients(includeHTTP: true) } }
+                    return response
+                }
+            }
             await listener.setHTTPHandler(http)
             await listener.setCommandHandler { cmd,conn in
+                if mode == "generation" { emit(["event": "generation-command-received"]) }
                 let box = RelayBox(value:cmd)
                 Task { @DaemonActor in hub.handle(box.value,socket:conn.id,send:{ if let data = DaemonRelayRules.data($0) { conn.send(data) } }) }
             }

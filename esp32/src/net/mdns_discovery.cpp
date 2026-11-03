@@ -1,11 +1,13 @@
 #include "mdns_discovery.h"
+#include "mdns_policy.h"
+#include <Esp.h>
+#include <esp_idf_version.h>
 #include <ESPmDNS.h>
 #include "config.h"
 #include <cstdio>
 #include <cstring>
 
 static Net::BridgeInfo discovered;
-static bool hasNew = false;
 static uint32_t lastQueryMs = 0;
 constexpr uint32_t QUERY_INTERVAL_MS = 5000;
 
@@ -36,7 +38,8 @@ void mdnsInit() {
     const uint32_t now = millis();
     if (lastStartAttemptMs != 0 && now - lastStartAttemptMs < QUERY_INTERVAL_MS) return;
     lastStartAttemptMs = now;
-    if (!MDNS.begin("agentdeck-display")) {
+    char hostname[32] = {};  // bounded stack storage on every board regime
+    if (!MdnsPolicy::hostname(hostname, sizeof(hostname), ESP.getEfuseMac()) || !MDNS.begin(hostname)) {
         // begin() can fail after mdns_init() succeeded (hostname); free what
         // it started so no cache is left running behind `started == false`.
         MDNS.end();
@@ -46,7 +49,6 @@ void mdnsInit() {
     started = true;
     Serial.println("[mDNS] Started, browsing for _agentdeck._tcp");
     memset(&discovered, 0, sizeof(discovered));
-    hasNew = false;
     lastQueryMs = 0;
 }
 
@@ -82,49 +84,45 @@ static bool isRoutableIpv4Literal(const char* s) {
     return true;
 }
 
-bool mdnsPoll(BridgeInfo& out) {
+bool mdnsPoll(BridgeInfo& out, const char* preferredIp, uint16_t preferredPort) {
     mdnsInit();
     if (!started) return false;
 
     uint32_t now = millis();
-    if (now - lastQueryMs < QUERY_INTERVAL_MS) {
-        if (hasNew) {
-            out = discovered;
-            hasNew = false;
-            return true;
-        }
-        return false;
-    }
+    if (now - lastQueryMs < QUERY_INTERVAL_MS) return false;
     lastQueryMs = now;
 
     int n = MDNS.queryService("_agentdeck", "_tcp");
     if (n <= 0) return false;
 
-    // Prefer daemon bridge for consistent state (daemon aggregates all sessions)
-    int daemonIdx = -1;
-    int firstIdx = -1;
-
+    MdnsPolicy::Choice choice(preferredIp, preferredPort);
     for (int i = 0; i < n; i++) {
-        uint16_t port = MDNS.port(i);
-        if (port == 0) continue;
-        if (firstIdx < 0) firstIdx = i;
-
-        // Check agent TXT record for daemon type
-        int numKeys = MDNS.numTxt(i);
-        for (int k = 0; k < numKeys; k++) {
-            if (MDNS.txtKey(i, k) == "agent" && MDNS.txt(i, k) == "daemon") {
-                daemonIdx = i;
-                break;
-            }
+        const uint16_t port = MDNS.port(i);
+        if (!port) continue;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+        IPAddress ip = MDNS.address(i);
+#else
+        IPAddress ip = MDNS.IP(i);
+#endif
+        char host[16] = {};
+        snprintf(host, sizeof(host), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+        bool daemon = false;
+        for (int k = 0; k < MDNS.numTxt(i); k++) {
+            const String key = MDNS.txtKey(i, k);
+            const String value = MDNS.txt(i, k);
+            if (key == "agent" && value == "daemon") daemon = true;
+            if (key == "ip" && isRoutableIpv4Literal(value.c_str())) snprintf(host, sizeof(host), "%s", value.c_str());
         }
-        if (daemonIdx >= 0) break;
+        if (isRoutableIpv4Literal(host)) choice.consider(i, host, port, daemon);
     }
-
-    int selected = (daemonIdx >= 0) ? daemonIdx : firstIdx;
-    if (selected < 0) return false;
+    const int selected = choice.selected();
+    if (selected < 0) {
+        Serial.println("[mDNS] No unambiguous paired endpoint; leaving pairing unchanged");
+        return false;
+    }
+    memset(&discovered, 0, sizeof(discovered));
 
     {
-#include <esp_idf_version.h>
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
         IPAddress ip = MDNS.address(selected);  // ESP-IDF 5.x (pioarduino / Arduino v3)
 #else
@@ -141,9 +139,7 @@ bool mdnsPoll(BridgeInfo& out) {
         for (int k = 0; k < numKeys; k++) {
             String key = MDNS.txtKey(selected, k);
             String val = MDNS.txt(selected, k);
-            if (key == "token") {
-                strncpy(discovered.token, val.c_str(), sizeof(discovered.token) - 1);
-            } else if (key == "project") {
+            if (key == "project") {
                 strncpy(discovered.project, val.c_str(), sizeof(discovered.project) - 1);
             } else if (key == "agent") {
                 strncpy(discovered.agent, val.c_str(), sizeof(discovered.agent) - 1);
@@ -174,7 +170,6 @@ bool mdnsPoll(BridgeInfo& out) {
 
         Serial.printf("[mDNS] Found bridge: %s:%d agent=%s project=%s\n",
                        discovered.ip, discovered.port, discovered.agent, discovered.project);
-        hasNew = true;
         out = discovered;
         return true;
     }

@@ -21,7 +21,8 @@ bool SimEink::renderToPng(const char* scene, const char* path) {
   const bool simulateDecision = std::strcmp(scene, "decision") == 0;
   const bool aquarium = std::strcmp(scene, "aquarium") == 0;
   const bool aquariumOffline = std::strcmp(scene, "aquarium-offline") == 0;
-  if (!SimScenes::apply(aquarium ? "multi" : aquariumOffline ? "offline" : simulateDecision ? "permission" : scene)) return false;
+  const bool pairingRequired = std::strcmp(scene, "pairing-required") == 0;
+  if (!SimScenes::apply(aquarium ? "multi" : aquariumOffline || pairingRequired ? "offline" : simulateDecision ? "permission" : scene)) return false;
   Eink::init();
 #if !defined(BOARD_SIM_PULL)
   if (aquarium) {
@@ -69,6 +70,23 @@ bool SimEink::renderToPng(const char* scene, const char* path) {
   Eink::render();
   g_sim_millis += 3600;
   Eink::render();
+
+  if (pairingRequired) {
+    // Drive a real cached OFFLINE -> auth-refused transition. Both admission
+    // hashes must change, and the real renderer must replace the framebuffer.
+    static Snap sample; snapshot(sample);
+    const uint32_t roster = paperHash(sample, PaperFace::Roster);
+    const uint32_t aquariumHash = paperHash(sample, PaperFace::Aquarium);
+    sample.pairingRequired = true;
+    assert(roster != paperHash(sample, PaperFace::Roster));
+    assert(aquariumHash != paperHash(sample, PaperFace::Aquarium));
+    const uint32_t before = Eink::repaintCount(), frame = lastFrameHash;
+    lockState(); g_state.pairingRequired = true; unlockState();
+    g_sim_millis += 3600; Eink::render();
+    g_sim_millis += 3600; Eink::render();
+    assert(Eink::repaintCount() > before);
+    assert(lastFrameHash != frame);
+  }
 
   const uint8_t* buf = display.hostBuffer();   // anon-namespace global, visible here
   const int W = display.hostWidth(), H = display.hostHeight();

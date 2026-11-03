@@ -41,7 +41,9 @@
 // Not ported, by scope: `DeckView.sessionOrder` (the plugin's sticky list order
 // is per-plugin state the preview does not have) and hiding the no-data Codex
 // credits tile (the preview only draws credits for a known balance).
-// SYNC-HASH shared/src/d200h-layout.ts 709a82b41592f6e932240ba2eb994758d182ee22
+// 2026-11-03: Node peer-receipt subtitles affect detail VOICE tiles only; the
+// Swift device previews consume list mode, whose geometry/content is unchanged.
+// SYNC-HASH shared/src/d200h-layout.ts c96ea0d500dfed621c52353cebadbd1b04fc614d
 // SYNC-HASH shared/src/session-utils.ts f756fa1a85b62dbc63eb0dbeb2096878df3a1e60
 // SYNC-HASH shared/src/dot-deck.ts 2aa36a3fc11092ade2f29f2086eb796c823583c6
 // SYNC-HASH shared/src/session-labels.ts c64d5537886af372c5997b9f5e9570540ec96333

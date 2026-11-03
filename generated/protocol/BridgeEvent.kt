@@ -17,6 +17,7 @@ private fun <T> Klaxon.convert(k: kotlin.reflect.KClass<*>, fromJson: (JsonValue
 private val klaxon = Klaxon()
     .convert(AgentType::class,                  { AgentType.fromValue(it.string!!) },                  { "\"${it.value}\"" })
     .convert(BillingType::class,                { BillingType.fromValue(it.string!!) },                { "\"${it.value}\"" })
+    .convert(VoiceDeliveryStatus::class,        { VoiceDeliveryStatus.fromValue(it.string!!) },        { "\"${it.value}\"" })
     .convert(Mode::class,                       { Mode.fromValue(it.string!!) },                       { "\"${it.value}\"" })
     .convert(DotSurfaceRelationEvidence::class, { DotSurfaceRelationEvidence.fromValue(it.string!!) }, { "\"${it.value}\"" })
     .convert(EncoderType::class,                { EncoderType.fromValue(it.string!!) },                { "\"${it.value}\"" })
@@ -268,6 +269,13 @@ data class BridgeEvent (
      * Transcribed user speech
      */
     val text: String? = null,
+
+    val deliveryReason: String? = null,
+
+    /**
+     * Capture and peer delivery are separate axes. Null clears an older receipt.
+     */
+    val deliveryStatus: VoiceDeliveryStatus? = null,
 
     val error: String? = null,
 
@@ -625,6 +633,31 @@ data class CodexRateLimitWindow (
      */
     val windowMinutes: Double
 )
+
+enum class VoiceDeliveryStatus(val value: String) {
+    Delivered("delivered"),
+    Denied("denied"),
+    Dropped("dropped"),
+    Expired("expired"),
+    Held("held"),
+    Refused("refused"),
+    Submitted("submitted"),
+    Unavailable("unavailable");
+
+    companion object {
+        public fun fromValue(value: String): VoiceDeliveryStatus = when (value) {
+            "delivered"   -> Delivered
+            "denied"      -> Denied
+            "dropped"     -> Dropped
+            "expired"     -> Expired
+            "held"        -> Held
+            "refused"     -> Refused
+            "submitted"   -> Submitted
+            "unavailable" -> Unavailable
+            else          -> throw IllegalArgumentException()
+        }
+    }
+}
 
 /**
  * How to dim on sleep. Absent ⇒ legacy full-off.

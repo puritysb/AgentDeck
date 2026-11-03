@@ -11,7 +11,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { homedir } from 'os';
+import { getDataDir } from '../session-registry.js';
 import { join } from 'path';
 
 export interface TimeboxDevice {
@@ -27,21 +27,20 @@ export function deviceId(device: TimeboxDevice): string {
   return device.address ?? '';
 }
 
-const SETTINGS_DIR = join(homedir(), '.agentdeck');
-const SETTINGS_PATH = join(SETTINGS_DIR, 'settings.json');
+const getSettingsPath = () => join(getDataDir(), 'settings.json');
 
 function readSettings(): Record<string, unknown> {
   try {
-    if (!existsSync(SETTINGS_PATH)) return {};
-    return JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8')) as Record<string, unknown>;
+    if (!existsSync(getSettingsPath())) return {};
+    return JSON.parse(readFileSync(getSettingsPath(), 'utf-8')) as Record<string, unknown>;
   } catch {
     return {};
   }
 }
 
 function writeSettings(settings: Record<string, unknown>): void {
-  mkdirSync(SETTINGS_DIR, { recursive: true });
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2) + '\n');
+  mkdirSync(getDataDir(), { recursive: true });
+  writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2) + '\n');
 }
 
 export function loadTimeboxDevices(): TimeboxDevice[] {

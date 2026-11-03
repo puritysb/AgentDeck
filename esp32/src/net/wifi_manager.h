@@ -87,18 +87,20 @@ bool wifiSaveProvisionedCredentials(const char* ssid, const char* password, cons
 bool wifiLoadCredId(char* out, size_t outLen);
 
 /**
- * Store/load a daemon bridge endpoint learned during serial WiFi provisioning.
+ * Store/load one endpoint+credential binding on every board. Failed or unknown
+ * storage never falls back to legacy keys after the migration fence is saved.
  * On IPS10 this lets a WiFi-only boot connect directly without waiting for mDNS.
  */
-void wifiSaveProvisionedBridge(const char* ip, uint16_t port, const char* token);
+bool wifiSaveProvisionedBridge(const char* ip, uint16_t port, const char* token);
 bool wifiLoadProvisionedBridge(char* ip, size_t ipLen, uint16_t* port, char* token, size_t tokenLen);
+bool wifiPairingStoreUnavailable();
 
 /**
  * Store/load the daemon pairing token, on EVERY board.
  *
- * The endpoint above is deliberately board-specific — which transport is
- * primary, and whether a saved IP helps, differs per board. A credential does
- * not: a board that cannot remember its token across a reboot has no way back
+ * The token loader uses the authoritative binding first. The token-only writer
+ * is a compatibility mirror; new provisions must save the complete binding.
+ * A board that cannot remember its token across a reboot has no way back
  * onto the daemon at all, because the daemon rejects an unauthenticated peer
  * (#145) and discovery stopped carrying the token (#149). That is precisely
  * how a WiFi-only 86 Box ended up dialing tokenless every few seconds forever
