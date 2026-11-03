@@ -27,6 +27,13 @@ transcription backend. No installed daemon, real credentials or hardware was
 used. Do not mark alerts fixed until the default-branch re-scan confirms them;
 reviewer decisions and source tests are different evidence.
 
+The first PR re-scan still reported the voice payload's type-confusion paths
+despite `Buffer.isBuffer()` and passing negative/positive HTTP tests. Its query
+models explicit `typeof` guards; the follow-up makes the object/null boundary
+explicit while retaining the Buffer check. Keep the pre-existing network-data
+file-write finding open for its own reachability/storage review. This is why a
+passing analysis job is not the same as a passing alert-result check.
+
 The PR budget now limits routine version proposals per ecosystem configuration;
 it does not disable alerts or consume GitHub's separate security-update PR
 budget. The Actions group is limited to minor/patch changes so one proposal does

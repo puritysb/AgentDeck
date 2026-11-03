@@ -341,7 +341,7 @@ export class HookServer extends EventEmitter {
         }
 
         const body: unknown = req.body;
-        if (!Buffer.isBuffer(body) || body.length < 100) {
+        if (typeof body !== 'object' || body === null || !Buffer.isBuffer(body) || body.length < 100) {
           res.status(400).json({ error: 'Empty or too short audio data' });
           return;
         }
