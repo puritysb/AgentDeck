@@ -560,5 +560,6 @@
   "All existing debt, all ecosystems or runtime exploitability.": "기존의 모든 미해결 경고, 모든 생태계 또는 런타임 공격 가능성을 확인하지는 않습니다.",
   "CodeQL static security analysis": "CodeQL 정적 보안 분석",
   "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails.": "security-extended 쿼리로 JavaScript·TypeScript, Python, Actions, C·C++, Rust를 빌드 없이 분석합니다. 추출·분석 실패는 작업을 실패시킵니다.",
-  "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage.": "악용 가능한 결함의 부재, Swift·Kotlin 범위 또는 기기 동작을 증명하지 않습니다. 분석 성공과 경고 없음은 별개이며 경고는 따로 검토합니다."
+  "No exploitable defects; Swift/Kotlin coverage; hardware behavior; a successful analysis job does not mean no alerts, which need separate triage.": "악용 가능한 결함의 부재, Swift·Kotlin 범위 또는 기기 동작을 증명하지 않습니다. 분석 성공과 경고 없음은 별개이며 경고는 따로 검토합니다.",
+  "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled.": "master 브랜치 보호는 ESP32 Sim Compile, npm·Python·Rust 의존성 검사, 의존성 변경 검토, 다섯 CodeQL 분석 작업과 CodeQL 결과 검사를 요구합니다. 다른 CI도 실패하면 PR이 빨간 상태가 되지만 개별 필수 조건은 아닙니다. 관리자 강제 적용은 꺼져 있습니다."
 }

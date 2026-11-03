@@ -145,3 +145,10 @@ system Bash 3; rerunning with the already-installed Homebrew Bash 5 passed.
 - [Dependency scans + retained JSON artifacts](https://github.com/puritysb/AgentDeck/actions/runs/41565955733)
 - [CodeQL five-language analysis](https://github.com/puritysb/AgentDeck/actions/runs/41565955782)
 - [Linux/macOS/Windows validation](https://github.com/puritysb/AgentDeck/actions/runs/41565955709)
+
+On 2026-11-03 these security checks were added to master branch protection and
+read back: npm/Python/Rust dependency audits, dependency review, all five CodeQL
+analysis jobs and the CodeQL result check. The existing ESP32 Sim Compile
+requirement was retained; strict/up-to-date mode, review requirements and
+administrator enforcement were not changed. Administrators can still bypass
+checks under the existing protection settings.

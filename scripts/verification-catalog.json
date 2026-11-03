@@ -1,8 +1,8 @@
 {
   "$comment": "What AgentDeck verifies, where, and what it does not. Rendered as the 'What we verify' tab of the GitHub Pages Build Health report (scripts/generate-html-report.py). Gated by scripts/__tests__/verification-catalog.test.ts: every workflow must be listed, every path must exist, and every test file must match a domain (domains are ordered; the first match wins). Edit this file in the same commit as a new gate, workflow or test area. Gate fields: `blocking` means a failure turns its workflow red; `required` means master branch protection lists the gate's check, so GitHub refuses the merge while it fails. Branch protection is a repository setting that CI cannot read, so `merge_policy.as_of` records when `required` was last checked against it.",
   "merge_policy": {
-    "as_of": "2026-09-29",
-    "summary": "Branch protection on master requires one status check, ESP32 Sim Compile. Every other gate turns a pull request red when it fails but does not stop GitHub from merging it."
+    "as_of": "2026-11-03",
+    "summary": "Branch protection on master requires ESP32 Sim Compile, npm/Python/Rust dependency audits, dependency review, all five CodeQL analysis jobs and the CodeQL result check. Other CI gates turn a PR red but are not individually required. Administrator enforcement remains disabled."
   },
   "levels": {
     "unit": "One module in isolation; collaborators faked.",
@@ -973,7 +973,7 @@
       "job": "dependencies",
       "trigger": "Every PR, master push and schedule (dependency review: PR only)",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "pnpm security:audit",
       "proves": [
         "All and production pnpm lockfile scopes are queried against the current registry; unreviewed high/critical advisories and expired exact-version exceptions fail; raw results and hashes are retained."
@@ -993,7 +993,7 @@
       "job": "python",
       "trigger": "Every PR, master push and schedule (dependency review: PR only)",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "pip-audit -r bridge/python/requirements-ble.txt; pip-audit -r esp32/robot/requirements.txt",
       "proves": [
         "Resolved BLE and Robot requirements are queried by pip-audit. Resolution or audit failure fails the job."
@@ -1013,7 +1013,7 @@
       "job": "rust",
       "trigger": "Every PR, master push and schedule (dependency review: PR only)",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "osv-scanner scan source --config security/osv-scanner.toml --lockfile shared/glance-raster/Cargo.lock",
       "proves": [
         "Cargo.lock is queried by checksum-pinned OSV Scanner without running build scripts; three dated maintenance-only exceptions are visible in policy."
@@ -1033,7 +1033,7 @@
       "job": "review",
       "trigger": "Every PR, master push and schedule (dependency review: PR only)",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "actions/dependency-review-action",
       "proves": [
         "PR dependency changes are compared by GitHub dependency review; newly introduced high/critical advisories fail."
@@ -1053,7 +1053,7 @@
       "job": "analyze",
       "trigger": "Every PR, master push and schedule (dependency review: PR only)",
       "blocking": true,
-      "required": false,
+      "required": true,
       "command": "github/codeql-action",
       "proves": [
         "security-extended queries analyze JavaScript/TypeScript, Python, Actions, C/C++ and Rust source in no-build mode; extraction or analysis failure fails."

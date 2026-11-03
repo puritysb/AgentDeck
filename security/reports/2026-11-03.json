@@ -126,5 +126,66 @@
     "Python resolves current requirements; existing installed user environments were not scanned or upgraded.",
     "Rust maintenance notices are not asserted vulnerabilities.",
     "No npm/app/firmware release or hardware deployment performed."
+  ],
+  "codeql": {
+    "sourceCommit": "4126ce1d",
+    "run": "https://github.com/puritysb/AgentDeck/actions/runs/41565955782",
+    "queries": "security-extended",
+    "buildMode": "none",
+    "categories": {
+      "javascript-typescript": 0,
+      "python": 0,
+      "actions": 0,
+      "c-cpp": 0,
+      "rust": 0
+    },
+    "analysisErrors": [],
+    "analysisWarnings": []
+  },
+  "requiredChecks": [
+    {
+      "context": "ESP32 Sim Compile",
+      "app_id": 15368
+    },
+    {
+      "context": "Dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Python dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Rust dependency audit",
+      "app_id": 15368
+    },
+    {
+      "context": "Dependency review",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (javascript-typescript)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (python)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (actions)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (c-cpp)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL (rust)",
+      "app_id": 15368
+    },
+    {
+      "context": "CodeQL",
+      "app_id": 57789
+    }
   ]
 }
