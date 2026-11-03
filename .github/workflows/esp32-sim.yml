@@ -56,7 +56,7 @@ jobs:
     outputs:
       esp32_changed: ${{ steps.scope.outputs.run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The merge commit plus both parents, so HEAD^1..HEAD is exactly the
           # PR's net change against the base tip.
@@ -90,7 +90,7 @@ jobs:
 
       - name: Cache PlatformIO (sim)
         if: steps.scope.outputs.run == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.platformio/packages
@@ -128,8 +128,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Install release PlatformIO

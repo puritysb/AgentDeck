@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ffmpeg (App Preview probing)
         run: brew install ffmpeg
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify release version
         run: |
@@ -146,7 +146,7 @@ jobs:
             "$RUNNER_TEMP/ipa_unpacked/Payload/AgentDeck.app"
 
       - name: Retain verified iOS candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apple-ios-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/export_ios/AgentDeck.ipa
@@ -178,9 +178,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -271,7 +271,7 @@ jobs:
           bash apple/scripts/verify-appstore-archive.sh "$APP"
 
       - name: Retain verified macOS candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apple-macos-${{ steps.version.outputs.VERSION }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/export_macos/AgentDeck.pkg
@@ -303,7 +303,7 @@ jobs:
     steps:
       # This job builds nothing, but the release body is rendered from
       # CHANGELOG.md by scripts/release-notes.mjs, so it needs the repository.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # github.ref_name is the full tag (apple-v1.0.0); strip the channel prefix
       # so the release reads "AgentDeck Apple v1.0.0", not "…vapple-v1.0.0".
@@ -315,7 +315,7 @@ jobs:
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: 'AgentDeck Apple v${{ steps.version.outputs.version }}'
           body_path: notes.md

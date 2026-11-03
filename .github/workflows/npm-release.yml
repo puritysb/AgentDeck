@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify release version
         run: |
@@ -22,11 +22,11 @@ jobs:
           node scripts/verify-release-version.mjs npm "$VERSION"
           node scripts/verify-version-sync.mjs
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.5.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -76,7 +76,7 @@ jobs:
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: 'AgentDeck npm v${{ steps.version.outputs.VERSION }}'
           body_path: notes.md

@@ -10,10 +10,10 @@ jobs:
     name: Token sync + lint regression
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -22,12 +22,12 @@ jobs:
       # builds @agentdeck/shared, so this job needs the workspace installed —
       # without it that step exits 127 (`pnpm: command not found`), which is a
       # gate that never checks anything while still failing the branch.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.5.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm

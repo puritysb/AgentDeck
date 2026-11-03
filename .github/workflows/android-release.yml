@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify release version
         run: |
@@ -22,7 +22,7 @@ jobs:
           node scripts/verify-version-sync.mjs
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -57,7 +57,7 @@ jobs:
         run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "AgentDeck Android v${{ steps.version.outputs.VERSION }}"
           body_path: notes.md

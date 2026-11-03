@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ffmpeg (App Preview probing)
         run: brew install ffmpeg
@@ -69,9 +69,9 @@ jobs:
             action: test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: dtolnay/rust-toolchain@1.90.0
+      - uses: dtolnay/rust-toolchain@1.120.0
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload xcresult on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: AgentDeckTests-${{ matrix.configuration }}-xcresult
           path: ${{ runner.temp }}/AgentDeckTests.xcresult
@@ -141,7 +141,7 @@ jobs:
             dot: preview
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Select Xcode
         run: |
@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload companion layout results
         if: always() && matrix.configuration == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CompanionOnboarding-xcresult
           path: ${{ runner.temp }}/CompanionOnboarding.xcresult
