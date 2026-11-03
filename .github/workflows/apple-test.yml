@@ -76,7 +76,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@7dcc700092a1a8b9c17ba0e140b4e34e93000946 # 1.90.0
         with:
-          toolchain: 1.90.0
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Select Xcode
